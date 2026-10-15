@@ -1,6 +1,6 @@
 # PDM Database (SurrealDB)
 
-> **Status:** v1, 2026-10-15. The schema is [`schema.surql`](schema.surql). Companion to the [architecture document](../architecture/README.md) (section 5) and [contracts.md](../architecture/contracts.md), which define the shapes these records store.
+> **Status:** v1.2, 2026-10-15. v1.2 ties step claims to their run with a commit check, adds `job.question` to the fallback's claim, deletes plans by equality (the `IN` bug), and clears claims when deletion starts. v1.1 adds the LiDAR records (section 3), a deletion order that removes tasks and trigger rules before their plans, per-image replacement of observations, and claimed steps between jobs that the scheduler's sweep can recover. v1: The schema is [`schema.surql`](schema.surql). Companion to the [architecture document](../architecture/README.md) (section 5) and [contracts.md](../architecture/contracts.md), which define the shapes these records store.
 > **Verified:** every pattern marked ✓ below was run against `surrealdb/surrealdb:v3.3.4` on 2026-10-15. The schema applies cleanly twice in a row, and a scenario script exercised the rest. Points marked *unverified* come from the docs only.
 
 ## Contents
@@ -113,7 +113,8 @@ Changes from the architecture sketch (section 5 there):
   - `garden.deleting_at` and `plant.deleting_at`, for the background deletion cascade;
   - `action_plan.reason`.
 - **Vector indexes:** `memory` and `scan_image` embeddings get no HNSW index (section 5).
-- **LiDAR** (architecture 6.7, 6.8): the `garden_map` table with the `garden.map_version` counter; `plant.position`; `scan_image.depth_key`, `depth_confidence_key` and `depth_meta`; and, on measurement observations, top-level `plant`, `quantity` and `measured_value` for the growth series.
+- **LiDAR** (architecture 6.7, 6.8): the `garden_map` table with the `garden.map_version` counter; `plant.position`; `scan_image.depth_key`, `depth_confidence_key` and `depth_meta`; on measurement observations, top-level `plant`, `quantity`, `measured_value` and `taken_at` for the growth series (index `observation_growth`); `question.step` and `step_at` for photo answers (index `question_stalled`); and `plan_trigger.plant` indexed (`plan_trigger_plant`).
+- **Recovery between jobs:** `scan.pipeline_step`, `pipeline_step_run`, `pipeline_step_at` and `rescore_pending` (index `scan_stalled`); `job.question`, so the fallback's claim can hold back a photo answer's segmentation job; and `observation.image`, so a stage's observations are replaced per image (section 5). `observation.quantity` also takes `hole_count`.
 
 ---
 
@@ -171,9 +172,10 @@ IF $held < $slots {
 COMMIT;
 ```
 
-- ✓ The inner `SELECT` uses the `job_queue` index in `queued_at` order, with no in-memory sort.
+- ✓ The inner `SELECT` uses the `job_queue` index in `queued_at` order. With one kind there is no in-memory sort; ✓ with several kinds (the fallback worker's list) the plan adds a top-k sort over the matching queued rows, which the queue's small size keeps cheap.
 - ✓ The outer `WHERE status = 'queued'` re-checks the row. Two workers that pick the same job conflict at commit, and the loser retries and gets the next one.
 - `$eligible_before` is `time::now()` for the GPU workers and `time::now() - 15s` for the fallback worker (contracts section 5).
+- The fallback worker's claim adds `AND (question = NONE OR !$perception_alive)`, where `$perception_alive` is `(SELECT count() AS n FROM worker WHERE caps CONTAINS 'perception' AND last_heartbeat > time::now() - 30s GROUP ALL)[0].n ?? 0) > 0`. A photo answer's segmentation job (top-level `job.question`) therefore waits for the perception worker while the rig is up. ✓ With a perception worker alive it skips that job; with none for 30 seconds it takes it. The filter is applied after the index and adds no sort.
 - The claim is a long poll. The API doesn't re-query in a tight loop: it waits on an in-process `tokio::sync::Notify` that every job insert signals, with a 1-second fallback poll. The API makes every write, so it doesn't need a live query.
 - Expired leases and stale workers are requeued by the scheduler with `UPDATE job SET status = 'queued', … WHERE status = 'leased' AND lease_until < time::now()`. ✓ That uses the `job_lease` index.
 
@@ -208,11 +210,53 @@ INSERT RELATION INTO member_of { id: type::record('member_of', [$user, $garden])
 
 `task.alert_key` has a unique index. ✓ Any number of tasks can have no key, and a second task with the same key fails, which makes the scheduler's dedupe race-free (architecture 8.3).
 
+### Steps between jobs ✓
+
+`api`'s own work between jobs (contracts 3, steps between jobs) holds a claim on the scan: `pipeline_step`, `pipeline_step_run` and `pipeline_step_at`. The sweep can then recover a step after a restart, the sweep and a slow original never both commit, and a step of an older run never commits.
+
+```sql
+-- claim, by an entry point (in the result handler's transaction for a job result).
+-- Claiming score clears rescore_pending: the step reads every input when it starts.
+UPDATE ONLY $scan SET pipeline_step = $step, pipeline_step_run = run, pipeline_step_at = time::now(),
+                      rescore_pending = IF $step = 'score' { false } ELSE { rescore_pending }
+  WHERE pipeline_step = NONE AND plant.deleting_at = NONE AND garden.deleting_at = NONE RETURN AFTER;
+-- NONE back: another step holds the claim, so flag the new input instead
+UPDATE ONLY $scan SET rescore_pending = true WHERE pipeline_step != NONE;
+
+-- commit: re-check the claim, write the output and hand over, in one transaction
+BEGIN;
+LET $s = (SELECT pipeline_step, pipeline_step_run, pipeline_step_at, run, rescore_pending,
+                 plant.deleting_at AS plant_deleting, garden.deleting_at AS garden_deleting
+          FROM ONLY $scan);
+IF $s.pipeline_step != $step OR $s.pipeline_step_at != $stamp OR $s.pipeline_step_run != $s.run
+   OR $s.plant_deleting != NONE OR $s.garden_deleting != NONE { THROW "claim_lost"; };
+-- … the step's output: the queued job, the diagnosis, the question or the plan …
+LET $next = IF $s.rescore_pending { 'score' } ELSE { $handover };   -- $handover: contracts 3
+UPDATE $scan SET pipeline_step = $next,
+                 pipeline_step_run = IF $next = NONE { NONE } ELSE { run },
+                 pipeline_step_at = IF $next = NONE { NONE } ELSE { time::now() },
+                 rescore_pending = false;
+COMMIT;
+
+-- the sweep: re-claim a stale step by its old stamp and run; NONE back means someone else has it
+UPDATE ONLY $scan SET pipeline_step_at = time::now()
+  WHERE pipeline_step = $step AND pipeline_step_at = $seen AND pipeline_step_run = run
+    AND plant.deleting_at = NONE AND garden.deleting_at = NONE
+  RETURN AFTER;
+```
+
+- A flag still set when a step commits means input arrived after the step read its inputs, so the commit hands over to `score` instead of its own next step. A question already asked or a plan already written is not lost: `score` simply runs again with the new input, under the re-planning rules (contracts 7).
+- Starting a run, failing the scan, and setting `deleting_at` on the plant or garden clear the claim (`pipeline_step = NONE`) in the same transaction.
+- Photo answers use `question.step`, `step_at` and the question's `run` the same way, and superseding a question clears its step.
+- Two claims on the same row conflict at commit, and the API retries the loser, which then finds the claim taken.
+
+✓ Of two claims, the first wins and the second returns NONE. A slow original whose stamp the sweep replaced throws `claim_lost`, and its diagnosis is never written. A claim whose run is older than the scan's is refused the same way.
+
 ### Garden map versions ✓
 
-`PUT /gardens/{id}/map` runs in one transaction: increment `garden.map_version`, create the `garden_map` with that version, delete the garden's older maps, and set or unset `position` on the garden's plants. Like the event counter, two concurrent uploads conflict on the garden row, and the API retries the loser, which then becomes the current map. Only the current map is kept, so a pin can only point at a live plant: deleting a plant first removes its pin from that map in place.
+`PUT /gardens/{id}/map` runs in one transaction: check that the upload's `base_version` equals `garden.map_version` (otherwise `409`, contracts 9), increment it, create the `garden_map` with the new version, delete the garden's older maps, and set or unset `position` on the garden's plants. Pins for plants with `deleting_at` set are dropped first. Two concurrent uploads conflict on the garden row; the API retries the loser, whose retry then fails the `base_version` check and returns `409`, so an upload never silently replaces a map made since its session started. Only the current map is kept, so a pin can only point at a live plant: deleting a plant first removes its pin from that map in place.
 
-✓ Two uploads in a row leave one map, at version 2, with the unpinned plant's `position` gone; a duplicate `[garden, version]` is rejected by the unique index, and so is a `north_deg` outside 0–360. ✓ `DELETE garden` is rejected while a map exists, so the cascade must delete the map first.
+✓ Two uploads in a row leave one map, at version 2, with the unpinned plant's `position` gone; a duplicate `[garden, version]` is rejected by the unique index, and so is a `north_deg` outside 0–360. ✓ `DELETE garden` is rejected while a map exists, so the cascade must delete the map first. ✓ An upload whose `base_version` is stale throws inside the transaction (`IF garden.map_version != $base { THROW … }`), and nothing changes: the version, the map and every `position` stay as they were.
 
 ### Deletion ✓
 
@@ -220,11 +264,18 @@ Parent links use `REFERENCE ON DELETE REJECT`. ✓ `DELETE garden:g1` while a pl
 
 The API deletes **bottom-up in batches**, never as one large transaction:
 1. Set `deleting_at` on the garden or plant. Every read filters it out, which is what makes `202 Accepted` safe.
-2. Cancel the jobs.
+2. Cancel the jobs, and clear the scans' step claims (`pipeline_step = NONE`) and their questions' `step`. A step already running then fails its commit check, which also re-checks `deleting_at`, so it can't write after the records below are gone.
 3. Delete the objects in RustFS ([storage](../storage/README.md)).
-4. Delete the records, children first: scan events (one range delete per scan), then observations, questions, diagnoses and plans (after unsetting `scan.plan` and `scan.diagnosis`), then scans, conversations, memories, tasks and plants, then the garden map, then the garden. A single plant first loses its pin on the garden map, and the tasks and trigger rules its plans made for neighbours, and that other plants' plans made for it, go with its tasks (contracts 9, deletion cascades).
+4. Delete the records, children first. Every step below holds a `REFERENCE ON DELETE REJECT` to something a later step deletes, so the order is fixed:
+   1. scan events (one range delete per scan) and the scans' jobs, which point at their scan;
+   2. tasks and plan trigger rules, which point at their plan: for a garden, all of them; for a plant, its own, those its plans made for neighbours (found through `task.plan` and `plan_trigger.plan`), and those other plants' plans made for it (`task.plant`, `plan_trigger.plant`). The other plants' plans themselves are not changed (contracts 7);
+   3. plans and diagnoses, after unsetting `scan.plan`, `scan.diagnosis` and `scan.open_question`. Select plans by equality (`WHERE plant = $p`, `WHERE garden = $g`, or one scan at a time), never `WHERE scan IN $scans`: ✓ on 3.3.4, a `DELETE` over that `IN` filter on the unique `action_plan_version` index deletes nothing ([#7593](https://github.com/surrealdb/surrealdb/issues/7593)), and the scan delete then fails;
+   4. masks and guided checks, which point at scan images, then observations, questions and scan feedback;
+   5. scan images, then scans;
+   6. conversations: for a garden, every conversation of the garden (`conversation.garden`), whatever it is anchored to, since any left would block the garden; for a plant, those anchored to the plant or its scans (`conversation.anchor`). For each, pending actions, message feedback, messages and chat images, then the conversation;
+   7. memories, then plants (a single plant first loses its pin on the garden map), then the garden map, then the garden.
 
-✓ This order deletes a whole garden cleanly.
+✓ This order deletes a whole garden, with plans, tasks, trigger rules, jobs, conversations and a map, and a single plant whose plan made a neighbour task on another plant, cleanly.
 
 Each batch is `DELETE (SELECT VALUE id FROM t WHERE … LIMIT 500) RETURN NONE`, repeated until empty. Small transactions don't conflict with live writers.
 
@@ -264,8 +315,12 @@ Added with LiDAR, ✓ each an `IndexScan` with no sort step:
 
 | Query | Index |
 |---|---|
-| Growth series: `WHERE plant = $p AND quantity = $q ORDER BY created_at` | `observation_growth (plant, quantity, created_at)` |
+| Growth series: `WHERE plant = $p AND quantity = $q AND retracted_at = NONE ORDER BY taken_at` | `observation_growth (plant, quantity, taken_at)` |
+| Stalled photo answers: `WHERE step = 'measuring' AND step_at < $now - 2m` | `question_stalled` |
+| Stalled run steps: `WHERE pipeline_step = $step AND pipeline_step_at < $now - $limit` | `scan_stalled` |
 | Current garden map: `WHERE garden = $g AND version = $garden.map_version` | `garden_map_version` |
+
+The growth series reads every measurement observation of the plant, not the scans' current `run`: a species-change run keeps the earlier run's measurements (contracts 7, growth). That works because re-running a pipeline stage deletes that stage's earlier observations **for the same images** (`observation.image`) in the transaction that stores the new ones, so only current observations remain. A run covers all of the scan's images, and also replaces the stage's observations with no image (species candidates, the plant check, the VLM's species guess); a question photo's segmentation and measurements cover that photo alone and replace nothing else; re-measuring one photo replaces that photo's measurements only. `taken_at` is the scan's `created_at`, so a re-measure doesn't move its point.
 
 Rules for new queries:
 - Run `EXPLAIN` on every new hot query, and look for `IndexScan`, `KnnScan` or a key range, not `TableScan` or `SortByKey`.

@@ -1,6 +1,6 @@
 # PDM Object Storage (RustFS)
 
-> **Status:** v1, 2026-10-15. Companion to the [architecture document](../architecture/README.md) (section 5, RustFS layout) and [contracts.md](../architecture/contracts.md) (signed image URLs, deletion cascades). The database side is in [docs/database](../database/README.md).
+> **Status:** v1.1, 2026-10-15. v1.1 adds LiDAR depth and confidence maps: their keys, uploads, deletes, the orphan sweep and their share of capacity. v1: Companion to the [architecture document](../architecture/README.md) (section 5, RustFS layout) and [contracts.md](../architecture/contracts.md) (signed image URLs, deletion cascades). The database side is in [docs/database](../database/README.md).
 > **Verified:** every point marked ✓ was run against `rustfs/rustfs:1.0.1` with the AWS CLI on 2026-10-15. Points marked *unverified* come from the RustFS docs, source code or issues only.
 
 ## Contents
@@ -146,7 +146,7 @@ docker run --rm --network container:<rustfs container> -v "$PWD":/w --entrypoint
 
 **Uploads.**
 1. The API processes the image first: EXIF orientation applied, metadata stripped, faces blurred, resized, encoded as WebP (architecture 8.1).
-2. It then calls `PutObject` with `Content-Type` and `If-None-Match: *`, so a key is never overwritten. A shot from a LiDAR phone also puts its depth map, and its confidence map when sent, as 16-bit and 8-bit PNGs, after they are rotated with the photo and their face regions zeroed. If one of those puts fails, the depth is dropped and the photo kept (contracts 3). ✓ A second put to an existing key fails with `412 PreconditionFailed`.
+2. It then calls `PutObject` with `Content-Type` and `If-None-Match: *`, so a key is never overwritten. A shot from a LiDAR phone also puts its depth map, and its confidence map when sent, as 16-bit and 8-bit PNGs, after they are rotated with the photo and their face regions zeroed in both maps. If one of those puts fails, the depth is dropped, any depth object already written is deleted, the photo is kept, and the upload response says `storage_error` (contracts 3). ✓ A second put to an existing key fails with `412 PreconditionFailed`.
 3. Then it creates the database record.
 
 A crash between steps 2 and 3 leaves an object without a record, never a record without its object. A daily sweep lists each garden's prefix and deletes objects older than an hour that no record points to. Every key field counts as a pointer: `scan_image.storage_key`, `depth_key` and `depth_confidence_key`, `mask.storage_key` and `chat_image.storage_key`. A sweep that checked only `storage_key` would delete every depth map an hour after its upload.

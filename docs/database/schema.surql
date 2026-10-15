@@ -127,9 +127,9 @@ DEFINE FIELD OVERWRITE created_at          ON plant TYPE datetime DEFAULT time::
 DEFINE INDEX IF NOT EXISTS plant_garden ON plant FIELDS garden, name;
 
 -- The garden map, made on a LiDAR device (architecture 6.8, contracts 9). Only the current
--- version is kept: a PUT increments garden.map_version, writes the new map and deletes the
--- older ones in one transaction, so pins never point at a plant deleted since. Deleting a
--- plant removes its pin from this map in place.
+-- version is kept: a PUT checks base_version against garden.map_version, increments it, writes
+-- the new map and deletes the older ones in one transaction, so pins never point at a plant
+-- deleted since. Deleting a plant removes its pin from this map in place.
 DEFINE TABLE OVERWRITE garden_map SCHEMAFULL;
 DEFINE FIELD OVERWRITE garden     ON garden_map TYPE record<garden> REFERENCE ON DELETE REJECT;
 DEFINE FIELD OVERWRITE version    ON garden_map TYPE int;
@@ -166,10 +166,17 @@ DEFINE FIELD OVERWRITE diagnosis      ON scan TYPE option<record<diagnosis>>;
 DEFINE FIELD OVERWRITE plan           ON scan TYPE option<record<action_plan>>;  -- compare-and-set target
 DEFINE FIELD OVERWRITE weather        ON scan TYPE option<object> FLEXIBLE;     -- WeatherSummary snapshot
 DEFINE FIELD OVERWRITE last_event_seq ON scan TYPE int DEFAULT 0;   -- the scan_event counter
+-- The api step between a run's jobs (contracts 3, steps between jobs), claimed by compare-and-set
+-- and re-run by the scheduler's sweep when its claim is older than its limit
+DEFINE FIELD OVERWRITE pipeline_step     ON scan TYPE option<"retrieve" | "score" | "plan">;
+DEFINE FIELD OVERWRITE pipeline_step_run ON scan TYPE option<int>;        -- the run the claim belongs to
+DEFINE FIELD OVERWRITE pipeline_step_at  ON scan TYPE option<datetime>;
+DEFINE FIELD OVERWRITE rescore_pending   ON scan TYPE bool DEFAULT false; -- new input arrived while a step held the claim
 DEFINE FIELD OVERWRITE submitted_at   ON scan TYPE option<datetime>;
 DEFINE FIELD OVERWRITE created_at     ON scan TYPE datetime DEFAULT time::now() READONLY;
 DEFINE INDEX IF NOT EXISTS scan_plant  ON scan FIELDS plant, created_at;   -- timeline, "most recent scan"
 DEFINE INDEX IF NOT EXISTS scan_garden ON scan FIELDS garden, created_at;
+DEFINE INDEX IF NOT EXISTS scan_stalled ON scan FIELDS pipeline_step, pipeline_step_at;   -- the stalled-step sweep
 
 DEFINE TABLE OVERWRITE scan_image SCHEMAFULL;
 DEFINE FIELD OVERWRITE scan        ON scan_image TYPE record<scan> REFERENCE ON DELETE REJECT;
@@ -214,7 +221,8 @@ DEFINE TABLE OVERWRITE observation SCHEMAFULL;
 DEFINE FIELD OVERWRITE scan           ON observation TYPE record<scan> REFERENCE ON DELETE REJECT;
 DEFINE FIELD OVERWRITE run            ON observation TYPE int;
 DEFINE FIELD OVERWRITE stage          ON observation TYPE "plant_check" | "segmentation" | "species" | "disease" | "soil" | "organism" | "damage" | "measurement";
-DEFINE FIELD OVERWRITE pipeline_stage ON observation TYPE string;   -- contracts 4, Stage; runs replace by this
+DEFINE FIELD OVERWRITE pipeline_stage ON observation TYPE string;   -- contracts 4, Stage; runs replace by this, per image
+DEFINE FIELD OVERWRITE image          ON observation TYPE option<record<scan_image>>;   -- the image it came from; replacement is per image
 DEFINE FIELD OVERWRITE label          ON observation TYPE string;
 DEFINE FIELD OVERWRITE ref            ON observation TYPE option<record<species | disease | organism>>;
 DEFINE FIELD OVERWRITE role           ON observation TYPE option<"pest" | "beneficial" | "neutral" | "invasive" | "unknown">;
@@ -225,13 +233,14 @@ DEFINE FIELD OVERWRITE source         ON observation TYPE "segmentation" | "bioc
 -- Measurement observations (contracts 7) only: top-level so the growth series is one indexed
 -- read per plant. The full Measurement stays in detail.
 DEFINE FIELD OVERWRITE plant          ON observation TYPE option<record<plant>>;
-DEFINE FIELD OVERWRITE quantity       ON observation TYPE option<"plant_height_cm" | "canopy_width_cm" | "leaf_length_cm" | "leaf_area_cm2" | "lesion_diameter_mm" | "lesion_count" | "affected_area_pct" | "hole_diameter_mm">;
+DEFINE FIELD OVERWRITE quantity       ON observation TYPE option<"plant_height_cm" | "canopy_width_cm" | "leaf_length_cm" | "leaf_area_cm2" | "lesion_diameter_mm" | "lesion_count" | "affected_area_pct" | "hole_diameter_mm" | "hole_count">;
 DEFINE FIELD OVERWRITE measured_value ON observation TYPE option<float>;
+DEFINE FIELD OVERWRITE taken_at       ON observation TYPE option<datetime>;   -- the scan's created_at: dates the growth point
 DEFINE FIELD OVERWRITE model_version  ON observation TYPE string;
 DEFINE FIELD OVERWRITE retracted_at   ON observation TYPE option<datetime>;   -- finding_retracted
 DEFINE FIELD OVERWRITE created_at     ON observation TYPE datetime DEFAULT time::now() READONLY;
-DEFINE INDEX IF NOT EXISTS observation_scan ON observation FIELDS scan, pipeline_stage;
-DEFINE INDEX IF NOT EXISTS observation_growth ON observation FIELDS plant, quantity, created_at;
+DEFINE INDEX IF NOT EXISTS observation_scan ON observation FIELDS scan, pipeline_stage, image;
+DEFINE INDEX IF NOT EXISTS observation_growth ON observation FIELDS plant, quantity, taken_at;
 
 DEFINE TABLE OVERWRITE question SCHEMAFULL;
 DEFINE FIELD OVERWRITE scan        ON question TYPE record<scan> REFERENCE ON DELETE REJECT;
@@ -249,9 +258,13 @@ DEFINE FIELD OVERWRITE resolved_by ON question TYPE option<"user" | "photo" | "s
 DEFINE FIELD OVERWRITE asked_at    ON question TYPE datetime DEFAULT time::now() READONLY;
 DEFINE FIELD OVERWRITE continue_at ON question TYPE datetime;
 DEFINE FIELD OVERWRITE continued_at ON question TYPE option<datetime>;   -- the scheduler continued without it
+-- A photo answer's current step and when it started (contracts 3); claimed by compare-and-set
+DEFINE FIELD OVERWRITE step         ON question TYPE option<"segmenting" | "measuring" | "verifying">;
+DEFINE FIELD OVERWRITE step_at      ON question TYPE option<datetime>;
 DEFINE FIELD OVERWRITE resolved_at ON question TYPE option<datetime>;
 DEFINE INDEX IF NOT EXISTS question_scan  ON question FIELDS scan;
 DEFINE INDEX IF NOT EXISTS question_sweep ON question FIELDS status, continue_at;   -- the 10-minute sweep
+DEFINE INDEX IF NOT EXISTS question_stalled ON question FIELDS step, step_at;   -- photo answers stuck while being measured
 
 DEFINE TABLE OVERWRITE guided_check SCHEMAFULL;
 DEFINE FIELD OVERWRITE scan       ON guided_check TYPE record<scan> REFERENCE ON DELETE REJECT;
@@ -319,13 +332,14 @@ DEFINE INDEX IF NOT EXISTS action_plan_version ON action_plan FIELDS scan, versi
 DEFINE TABLE OVERWRITE plan_trigger SCHEMAFULL;
 DEFINE FIELD OVERWRITE plan       ON plan_trigger TYPE record<action_plan> REFERENCE ON DELETE REJECT;
 DEFINE FIELD OVERWRITE garden     ON plan_trigger TYPE record<garden>;
-DEFINE FIELD OVERWRITE plant      ON plan_trigger TYPE record<plant>;
+DEFINE FIELD OVERWRITE plant      ON plan_trigger TYPE record<plant>;   -- the plant its tasks go to: the step's plant_id (a neighbour) or the plan's plant
 DEFINE FIELD OVERWRITE step_id    ON plan_trigger TYPE string;
 DEFINE FIELD OVERWRITE trigger    ON plan_trigger TYPE "frost" | "heat" | "humid_stretch" | "heavy_rain" | "after_rain" | "dry_soil";
 DEFINE FIELD OVERWRITE until      ON plan_trigger TYPE option<string> ASSERT fn::is_local_date($value);
 DEFINE FIELD OVERWRITE active     ON plan_trigger TYPE bool DEFAULT true;   -- false once the plan is superseded
 DEFINE INDEX IF NOT EXISTS plan_trigger_active ON plan_trigger FIELDS active, garden;
 DEFINE INDEX IF NOT EXISTS plan_trigger_plan   ON plan_trigger FIELDS plan;
+DEFINE INDEX IF NOT EXISTS plan_trigger_plant  ON plan_trigger FIELDS plant;   -- deleting a plant finds other plans' rules for it
 
 DEFINE TABLE OVERWRITE task SCHEMAFULL;
 DEFINE FIELD OVERWRITE garden        ON task TYPE record<garden> REFERENCE ON DELETE REJECT;
@@ -550,6 +564,7 @@ DEFINE TABLE OVERWRITE job SCHEMAFULL;
 DEFINE FIELD OVERWRITE kind        ON job TYPE "perception" | "vlm" | "verify" | "guided";
 DEFINE FIELD OVERWRITE scan        ON job TYPE record<scan> REFERENCE ON DELETE REJECT;
 DEFINE FIELD OVERWRITE run         ON job TYPE option<int>;   -- NONE for guided jobs
+DEFINE FIELD OVERWRITE question    ON job TYPE option<record<question>>;   -- a photo answer's segmentation or verify job; top-level for the claim
 DEFINE FIELD OVERWRITE payload     ON job TYPE object FLEXIBLE;
 DEFINE FIELD OVERWRITE status      ON job TYPE "queued" | "leased" | "done" | "failed" | "cancelled" DEFAULT "queued";
 DEFINE FIELD OVERWRITE worker      ON job TYPE option<string>;
