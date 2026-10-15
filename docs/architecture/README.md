@@ -1,6 +1,6 @@
 # PDM Architecture
 
-> **Status:** Draft v0.4.5, 2026-10-15. Synced with [contracts.md](contracts.md) v0.6: batching in perception, worker slots so the VLM can run two jobs when they fit, weather fetched once per ~1 km cell and shared by scans and the scheduler, and batched ingestion embeddings. v0.4.4 synced with contracts v0.5: plan-trigger task keys scoped to their plan, the dose check on every model-written tool argument, chat revisions stored exactly as previewed, `healthy` only on positive evidence, a diagnosis for every guided check, and SAM-class masks. v0.4.3 synced with contracts v0.4: guided checks outside runs, serialised re-plans that keep chat revisions, provisional plans tied to uncertain diagnoses, the readable-plant rule, and the dose check on every chat reply. v0.4.2 synced with contracts v0.3: guided soil checks and the full soil aspects back in scope, per-call photo routing to the VLM, recurring and trigger-based plan steps, lease deadlines, late answers that always re-plan, plan tasks dismissed with their plan, shared-only memories in plans, invites, deletion cascades, signed image URLs and a stronger dose check. v0.4.1: Review of v0.4 added: conversations owned by a user, a pre-VLM candidate set that also covers organisms the VLM finds, a scan state machine without `awaiting_species`, a cap of 3 indicators per candidate, a scheduler sweep for unanswered verification questions, deletion of chat images and chat-derived memory, and a cap of about 9 profiles on the pre-VLM candidate set. v0.4 audit fixes: text embeddings move to the control plane with one pinned model, the VLM detects organisms and answers verification indicators in its main pass, scans get a submit step and a state machine with resumable events, stale workers are requeued from heartbeats, deletion rules for shared gardens, garden-scoped memory, deterministic verification scoring, and schema fixes. v0.3 added soil data sources and soil findings from photos, the detection of organisms (pests, beneficial insects, wildlife, invasive species) and the damage they cause, and capture guidance. v0.2 added species identification, a knowledge base with retrieve-then-verify, and an optional fast text classifier (Jev).
+> **Status:** Draft v0.4.6, 2026-10-15. The SurrealDB schema now lives in [docs/database](../database/README.md) and the RustFS setup in [docs/storage](../storage/README.md), both checked against the pinned versions (SurrealDB 3.3.4, RustFS 1.0.1); section 5 summarises them. v0.4.5 synced with contracts v0.6: batching in perception, worker slots so the VLM can run two jobs when they fit, weather fetched once per ~1 km cell and shared by scans and the scheduler, and batched ingestion embeddings. v0.4.4 synced with contracts v0.5: plan-trigger task keys scoped to their plan, the dose check on every model-written tool argument, chat revisions stored exactly as previewed, `healthy` only on positive evidence, a diagnosis for every guided check, and SAM-class masks. v0.4.3 synced with contracts v0.4: guided checks outside runs, serialised re-plans that keep chat revisions, provisional plans tied to uncertain diagnoses, the readable-plant rule, and the dose check on every chat reply. v0.4.2 synced with contracts v0.3: guided soil checks and the full soil aspects back in scope, per-call photo routing to the VLM, recurring and trigger-based plan steps, lease deadlines, late answers that always re-plan, plan tasks dismissed with their plan, shared-only memories in plans, invites, deletion cascades, signed image URLs and a stronger dose check. v0.4.1: Review of v0.4 added: conversations owned by a user, a pre-VLM candidate set that also covers organisms the VLM finds, a scan state machine without `awaiting_species`, a cap of 3 indicators per candidate, a scheduler sweep for unanswered verification questions, deletion of chat images and chat-derived memory, and a cap of about 9 profiles on the pre-VLM candidate set. v0.4 audit fixes: text embeddings move to the control plane with one pinned model, the VLM detects organisms and answers verification indicators in its main pass, scans get a submit step and a state machine with resumable events, stale workers are requeued from heartbeats, deletion rules for shared gardens, garden-scoped memory, deterministic verification scoring, and schema fixes. v0.3 added soil data sources and soil findings from photos, the detection of organisms (pests, beneficial insects, wildlife, invasive species) and the damage they cause, and capture guidance. v0.2 added species identification, a knowledge base with retrieve-then-verify, and an optional fast text classifier (Jev).
 > **Event:** [Build North: Ship Something Real](https://luma.com/build-north). Build week Oct 16–25, submissions due Oct 25 at 11:59 PM ET, Demo Day Oct 29 in Toronto.
 
 PDM is a plant, crop and garden health monitoring app. A user photographs a plant. Computer vision on the backend assesses the plant, the soil and the surroundings. The results are combined with the weather and soil data for the garden's location and with the plant's own history, to produce a diagnosis and an action plan. Users can chat about the results, and the system warns them ahead of risky weather.
@@ -178,203 +178,46 @@ identity      user · member_of (user → garden, role, since) · push_token
 garden        garden (centroid point, boundary polygon, time_zone, soil_profile) · plant (name,
               species, custom_species_name, species_status, species_candidates, position,
               status) · invite (garden, code, role, created_by, expires_at, used_at, revoked_at)
-analysis      scan (status and run, see 8.1) · scan_image (kind, answers_question?, storage key,
-              embedding) · mask (region, storage key) · scan_event (seq, run, type, payload) ·
-              observation (run, stage: plant_check | segmentation | species | disease | soil |
-              organism | damage, label, confidence, region, model_version) · question (run,
-              kind, candidates, status) · weather_snapshot (weather + soil moisture, soil
-              temperature, ET₀) · diagnosis (run, supersedes)
+analysis      scan (status and run, see 8.1; plan, weather snapshot, event counter) · scan_image
+              (kind, answers_question?, storage key, embedding) · mask (region, storage key) ·
+              scan_event ([scan, seq], run, type, payload) · observation (run, stage,
+              pipeline_stage, label, confidence, region, model_version) · question (run, kind,
+              candidates, status) · guided_check · diagnosis (run, supersedes) · scan_feedback
 plans         action_plan (version, supersedes, diagnosis, provisional, constraints) · plan_trigger (plan, step, trigger, until) ·
               task (due, repeat, trigger, source, plan_step, done_at, dismissed_at,
               dismissed_reason, alert_key unique)
 chat          conversation (user, garden, anchor: scan | plant | garden, summary) · message
-              (role, content, tool_calls, model, prompt_version, tokens) ·
+              (role, content, tool_calls, model, prompt_version, tokens) · chat_image ·
               pending_action (proposed | confirmed | rejected | expired) · message_feedback
 memory        memory (garden, plant?, kind, text, embedding, source: pipeline | chat | user,
               shared, author?, source_msg?)
 knowledge     species (full | label_only) · disease (every kind of problem, see below) · organism ·
-              treatment · product (name, broad_spectrum) · classifier_label · source (url,
-              publisher, licence) ·
+              treatment · product (name, broad_spectrum) · classifier_label · soil_condition ·
+              source (url, publisher, licence) ·
               knowledge_chunk (source, crop, disease, organism, topic, text, embedding)
               edges: susceptible_to · looks_like · manages · caused_by · preys_on
-feedback      feedback (scan, user, verdict, corrected_label, notes)
 ops           job (kind: perception | vlm | verify | guided, run, payload, status, lease_until,
-              claimed_at, queued_at, worker, attempts, requeues) · worker (caps, last_heartbeat,
-              gpu) · usage_daily (tokens, requests, scans) · weather_cache
+              claimed_at, queued_at, worker, attempts, requeues) · worker (caps, slots,
+              last_heartbeat, gpu) · usage_daily (tokens, requests, scans) · idempotency_key ·
+              weather_cache ([hour, cell])
 ```
 
-### Schema sketch
+### Schema
 
-This is a sketch. Check the syntax against the SurrealDB version installed.
+The schema is [`docs/database/schema.surql`](../database/schema.surql), with its design notes, query patterns and caveats in [docs/database](../database/README.md). It was applied and exercised against SurrealDB 3.3.4, the pinned version. The decisions that shape the rest of this document:
 
-```sql
-DEFINE TABLE user SCHEMAFULL;
-DEFINE FIELD auth_id          ON user TYPE string;
-DEFINE FIELD display_name     ON user TYPE string;
-DEFINE FIELD location_consent ON user TYPE bool DEFAULT false;
-DEFINE FIELD created_at       ON user TYPE datetime DEFAULT time::now();
-DEFINE INDEX user_auth ON user FIELDS auth_id UNIQUE;
-
-DEFINE TABLE garden SCHEMAFULL;
-DEFINE FIELD name     ON garden TYPE string;
-DEFINE FIELD centroid ON garden TYPE geometry<point>;  -- from GPS with consent, else a typed postal code or city
-DEFINE FIELD boundary ON garden TYPE option<geometry<polygon>>;
-DEFINE FIELD soil_profile ON garden TYPE option<object>;  -- SoilGrids: pH, texture, organic carbon, CEC by depth, fetched_at
-
-DEFINE TABLE member_of TYPE RELATION IN user OUT garden SCHEMAFULL;
-DEFINE FIELD role  ON member_of TYPE string ASSERT $value IN ['owner', 'editor', 'viewer', 'reviewer'];
-DEFINE FIELD since ON member_of TYPE datetime DEFAULT time::now();  -- "longest-standing editor" in Deletion
-DEFINE INDEX member_unique ON member_of FIELDS in, out UNIQUE;
-
-DEFINE TABLE plant SCHEMAFULL;
-DEFINE FIELD garden  ON plant TYPE record<garden>;
-DEFINE FIELD name    ON plant TYPE string;
-DEFINE FIELD custom_species_name ON plant TYPE option<string>;  -- "something else" in the confirmation card
-DEFINE FIELD species            ON plant TYPE option<record<species>>;
-DEFINE FIELD species_status     ON plant TYPE string DEFAULT 'unknown';  -- unknown | suggested | confirmed
-DEFINE FIELD species_candidates ON plant TYPE array<object> DEFAULT [];  -- [{species, score, source}]
-DEFINE FIELD status             ON plant TYPE string DEFAULT 'healthy';
-
-DEFINE TABLE scan SCHEMAFULL;
-DEFINE FIELD garden   ON scan TYPE record<garden>;
-DEFINE FIELD plant    ON scan TYPE record<plant>;        -- created on the fly for a first scan
-DEFINE FIELD user     ON scan TYPE option<record<user>>; -- null once the user is deleted (shared gardens)
-DEFINE FIELD status   ON scan TYPE string DEFAULT 'pending';  -- state machine in 8.1
-DEFINE FIELD run      ON scan TYPE int DEFAULT 0;           -- 1 on submit, +1 on resubmit or species change
--- no location on the scan: weather uses the garden centroid
-
-DEFINE TABLE scan_event SCHEMAFULL;
-DEFINE FIELD scan    ON scan_event TYPE record<scan>;
-DEFINE FIELD seq     ON scan_event TYPE int;             -- Last-Event-ID for SSE resume
-DEFINE FIELD type    ON scan_event TYPE string;
-DEFINE FIELD payload ON scan_event TYPE object;
-DEFINE INDEX scan_event_seq ON scan_event FIELDS scan, seq UNIQUE;
-
-DEFINE TABLE conversation SCHEMAFULL;
-DEFINE FIELD user    ON conversation TYPE record<user>;    -- private to its owner; garden membership is checked too
-DEFINE FIELD garden  ON conversation TYPE record<garden>;
-DEFINE FIELD anchor  ON conversation TYPE record<scan | plant | garden>;
-DEFINE FIELD summary ON conversation TYPE option<string>;
-
-DEFINE TABLE task SCHEMAFULL;
-DEFINE FIELD garden    ON task TYPE record<garden>;
-DEFINE FIELD source    ON task TYPE string;               -- plan | forecast_alert | chat | user
-DEFINE FIELD alert_key ON task TYPE option<string>;       -- forecast: garden:trigger:date; plan: plan:plan_id:step_id:date
-DEFINE FIELD dismissed_at ON task TYPE option<datetime>;  -- plan and alert tasks are dismissed, never deleted
-DEFINE INDEX task_alert ON task FIELDS alert_key UNIQUE;  -- makes dedupe race-free. Confirm NONE is excluded
-                                                          -- from the unique index on the installed version;
-                                                          -- otherwise alert and plan-trigger keys get their own table
-
-DEFINE TABLE memory SCHEMAFULL;
-DEFINE FIELD garden    ON memory TYPE record<garden>;
-DEFINE FIELD plant     ON memory TYPE option<record<plant>>;  -- null = garden-level fact ("I garden organically")
-DEFINE FIELD kind      ON memory TYPE string;          -- fact | event | summary
-DEFINE FIELD text      ON memory TYPE string;
-DEFINE FIELD source     ON memory TYPE string;         -- pipeline | chat | user
-DEFINE FIELD source_msg ON memory TYPE option<record<message>>;  -- the chat message a fact came from, for deletion
-DEFINE FIELD embedding  ON memory TYPE array<float>;
-DEFINE INDEX memory_vec ON memory FIELDS embedding HNSW DIMENSION 768 DIST COSINE;
-
-DEFINE TABLE job SCHEMAFULL;
-DEFINE FIELD kind        ON job TYPE string;           -- perception | vlm | verify | guided
-DEFINE FIELD scan        ON job TYPE record<scan>;
-DEFINE FIELD run         ON job TYPE option<int>;       -- results from an older run are rejected; none for guided jobs
-DEFINE FIELD payload     ON job TYPE object DEFAULT {}; -- shapes per job kind: contracts.md section 5
-DEFINE FIELD status      ON job TYPE string DEFAULT 'queued';  -- queued | leased | done | failed | cancelled
-DEFINE FIELD lease_until ON job TYPE option<datetime>;
-DEFINE FIELD worker      ON job TYPE option<string>;
-DEFINE FIELD attempts    ON job TYPE int DEFAULT 0;         -- retryable failures plus every requeue after the 2nd
-DEFINE FIELD queued_at   ON job TYPE datetime;          -- reset on requeue; the fallback waits 15 s from it
-DEFINE FIELD created_at  ON job TYPE datetime DEFAULT time::now();
-
--- knowledge base
-DEFINE TABLE source SCHEMAFULL;
-DEFINE FIELD url       ON source TYPE string;
-DEFINE FIELD publisher ON source TYPE string;
-DEFINE FIELD licence   ON source TYPE option<string>;
-
-DEFINE TABLE species SCHEMAFULL;
-DEFINE FIELD scientific_name      ON species TYPE string;
-DEFINE FIELD common_names         ON species TYPE array<string>;
-DEFINE FIELD care                 ON species TYPE object;   -- water, light, hardiness, soil pH
-DEFINE FIELD classifier_supported ON species TYPE bool DEFAULT false;
-
--- `disease` holds every kind of problem a plant can have, including pest and wildlife
--- damage and abiotic causes. There is no separate pest-damage table; organisms link in
--- through `caused_by`. The name stays `disease` because the tools and relations read naturally.
-DEFINE TABLE disease SCHEMAFULL;
-DEFINE FIELD name        ON disease TYPE string;
-DEFINE FIELD kind        ON disease TYPE string;          -- fungal | bacterial | viral | pest | wildlife | abiotic
-DEFINE FIELD indicators  ON disease TYPE array<object>;   -- [{id, text, question, weight, discriminating, where, image_kinds}]
-DEFINE FIELD damage_patterns ON disease TYPE array<string>;  -- patterns that point to this problem
-DEFINE FIELD prevalence  ON disease TYPE string;          -- common | occasional | rare
-DEFINE FIELD conditions  ON disease TYPE object;          -- temperature, humidity, leaf-wetness ranges
-DEFINE FIELD sources     ON disease TYPE array<record<source>>;
-DEFINE FIELD reviewed_by ON disease TYPE option<string>;
-
-DEFINE TABLE organism SCHEMAFULL;
-DEFINE FIELD name            ON organism TYPE string;
-DEFINE FIELD scientific_name ON organism TYPE string;
-DEFINE FIELD taxon_group     ON organism TYPE string;     -- insect | mite | mollusc | worm | mammal | bird
-DEFINE FIELD role            ON organism TYPE string;     -- pest | beneficial | neutral | invasive
-DEFINE FIELD reporting_url   ON organism TYPE option<string>;  -- invasive species only
-DEFINE FIELD sources         ON organism TYPE array<record<source>>;
-
-DEFINE TABLE treatment SCHEMAFULL;
-DEFINE FIELD kind    ON treatment TYPE string;            -- cultural | biological | mechanical | chemical
-DEFINE FIELD text    ON treatment TYPE string;
-DEFINE FIELD sources ON treatment TYPE array<record<source>>;  -- so treatment steps can be cited
-
-DEFINE TABLE susceptible_to TYPE RELATION IN species OUT disease;
-DEFINE TABLE looks_like     TYPE RELATION IN disease OUT disease;  -- ingestion writes both directions
-DEFINE FIELD how_to_tell ON looks_like TYPE string;
-DEFINE TABLE manages        TYPE RELATION IN treatment OUT disease;
-DEFINE TABLE caused_by      TYPE RELATION IN disease OUT organism;   -- pest and wildlife damage
-DEFINE TABLE preys_on       TYPE RELATION IN organism OUT organism;  -- beneficial → pest
-
-DEFINE TABLE knowledge_chunk SCHEMAFULL;
-DEFINE FIELD source    ON knowledge_chunk TYPE record<source>;
-DEFINE FIELD crop      ON knowledge_chunk TYPE option<record<species>>;
-DEFINE FIELD disease   ON knowledge_chunk TYPE option<record<disease>>;
-DEFINE FIELD organism  ON knowledge_chunk TYPE option<record<organism>>;
-DEFINE FIELD topic     ON knowledge_chunk TYPE string;    -- symptoms | conditions | management | care | recognition
-DEFINE FIELD text      ON knowledge_chunk TYPE string;
-DEFINE FIELD embedding ON knowledge_chunk TYPE array<float>;
-DEFINE INDEX chunk_vec ON knowledge_chunk FIELDS embedding HNSW DIMENSION 768 DIST COSINE;
-```
-
-The vector dimensions depend on the embedding models chosen. One text-embedding model is picked on day 1 and pinned for the life of the database (see section 10); the HNSW dimension in the migration changes only together with the model.
-
-Example queries:
-
-```sql
--- membership check
-SELECT role FROM member_of WHERE in = $user AND out = $garden;
-
--- memory recall for the agent: the plant's facts plus the garden-level ones. The set
--- is small, so brute-force cosine is exact. HNSW with an extra WHERE post-filters and
--- can return fewer than 5. Check this against the installed SurrealDB version.
-SELECT text, kind FROM memory
-  WHERE garden = $garden AND (plant = $plant OR plant = NONE)
-  AND embedding <|5,COSINE|> $query_vec;
-
--- nearby gardens, for regional disease alerts (stretch, see 8.3)
-SELECT * FROM garden WHERE geo::distance(centroid, $point) < 5000;
-
--- candidate diseases for a confirmed species
-SELECT ->susceptible_to->disease.* AS candidates FROM $species;
-
--- look-alikes for a candidate, with how to tell them apart (stored in both directions)
-SELECT out.name AS lookalike, how_to_tell FROM looks_like WHERE in = $disease;
-
--- natural enemies of a pest ("leave the ladybugs, they eat aphids")
-SELECT <-preys_on<-organism.name AS natural_enemies FROM $pest;
-
--- grounding chunks for the plan writer. Per-disease chunk sets are small, so brute-force
--- cosine is exact; HNSW with a filter would post-filter (same caveat as memory recall)
-SELECT text, source.url FROM knowledge_chunk
-  WHERE disease = $disease AND topic = 'management' AND embedding <|5,COSINE|> $query_vec;
-```
+- **SurrealDB 3.3.4**, RocksDB storage, with the Rust crate pinned to the same version. The schema file is idempotent and applied by `api` on start.
+- **Natural keys where the key is the rule:**
+  - `member_of:[user, garden]`: one membership per pair, checked by a direct read;
+  - `scan_event:[scan, seq]`: SSE replay is a key-range read;
+  - `idempotency_key:[user, route, key]`;
+  - `usage_daily:[user, day]`;
+  - `weather_cache:[hour, cell]`: cleanup is one range delete.
+- **A gap-free event `seq`:** `scan.last_event_seq` is incremented in the same transaction that stores the event.
+- **Plan writes compare and set `scan.plan`**, and job claims re-check `status`, so concurrent writers conflict instead of overwriting each other. Conflicts are retried by the API.
+- **Deletion fails loudly rather than orphaning:** parent links reject the delete of a record that still has children, and the API deletes bottom-up in small batches.
+- **One HNSW index**, on knowledge chunks, with filters applied before the search. Memories and image embeddings are searched exactly within one garden, which is small, always correct, and avoids an open bug in filtered vector search after deletes.
+- **No TTL and no spatial index exist:** the scheduler deletes expired rows, and regional alerts use an indexed geohash.
 
 ### Fields that exist for traceability
 
@@ -387,6 +230,8 @@ SELECT text, source.url FROM knowledge_chunk
 - `disease.sources` and `disease.reviewed_by`: every profile points to its sources and records which teammate reviewed it.
 
 ### RustFS layout
+
+Setup, access keys, client configuration and caveats are in [docs/storage](../storage/README.md). RustFS 1.0.1 runs on one disk, never exposed publicly, and the API streams every image itself behind its own signed URLs (RustFS's presigned URLs break behind a proxy that changes the host).
 
 The bucket is private. Before anything is written, the image's EXIF orientation is applied to the pixels, then its metadata is stripped, faces are blurred and it is resized. The app and the workers reach images only through short-lived signed URLs issued by the API.
 
@@ -540,7 +385,7 @@ Soil information comes from three sources. Each one covers something the others 
 | Source | What it gives | When it's fetched |
 |---|---|---|
 | **SoilGrids** (ISRIC REST API) | Properties that don't change: pH, texture (clay, sand, silt), organic carbon, nitrogen, cation exchange capacity, bulk density, at depths from 0–5 cm down to 100–200 cm. About 250 m resolution | Once, when the garden is created. Stored as `garden.soil_profile` and refreshed rarely |
-| **Open-Meteo** (part of the weather call) | Conditions that change hourly: soil moisture at 0–1, 1–3, 3–9, 9–27 and 27–81 cm; soil temperature at 0, 6, 18 and 54 cm; evapotranspiration, including the FAO reference rate (ET₀) used to estimate watering needs | On every scan (stored in `weather_snapshot`) and in the scheduler's forecast checks |
+| **Open-Meteo** (part of the weather call) | Conditions that change hourly: soil moisture at 0–1, 1–3, 3–9, 9–27 and 27–81 cm; soil temperature at 0, 6, 18 and 54 cm; evapotranspiration, including the FAO reference rate (ET₀) used to estimate watering needs | On every scan (stored on the scan as its weather snapshot) and in the scheduler's forecast checks |
 | **The photo** (vlm-worker) | What the soil looks like now: moisture, surface (crusted or cracked), structure, colour, cover (bare, mulched, residue), deposits (salt crust, moss, algae, mould), erosion and weeds. Earthworms are reported as organisms | On every scan |
 | **Guided checks** (vlm-worker, optional) | Texture from a squeeze test or a jar test | When the user does one |
 
@@ -879,7 +724,7 @@ If the control plane runs behind a tunnel, SSE responses need `Cache-Control: no
 ### Operations
 
 - `tracing` with JSON logs. `/healthz` and `/status` endpoints. The job table doubles as an audit trail.
-- Nightly SurrealDB export and RustFS volume snapshot.
+- Nightly SurrealDB export (`surreal export`) and RustFS bucket copy (`rclone sync`) to storage off the host. Single-disk RustFS has no redundancy, so the copy is the only protection against disk loss.
 - The SSE hub uses an in-process `tokio::sync::broadcast`. This assumes a single `api` instance. Running more than one would need SurrealDB `LIVE SELECT` or a message bus.
 - Each scan's events go through one serialised writer that assigns `seq`, stores the event and broadcasts it in that order, because worker events, answers, the scheduler and species changes can all write to the same scan. A subscriber that falls behind the broadcast replays from the database.
 
@@ -899,7 +744,9 @@ PDM/
 │  └─ knowledge/       ingestion scripts + reviewed seed data
 ├─ infra/              compose files, Caddyfile, tunnel config
 └─ docs/
-   └─ architecture/    this document (README.md) and the data contracts (contracts.md)
+   ├─ architecture/    this document (README.md) and the data contracts (contracts.md)
+   ├─ database/        SurrealDB schema (schema.surql) and its notes
+   └─ storage/         RustFS setup and notes
 ```
 
 ---

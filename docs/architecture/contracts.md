@@ -34,7 +34,7 @@ This document is the agreement for build week. Once the code exists, the source 
 - `utoipa` generates the OpenAPI spec from them, and `openapi-typescript` generates the app's TypeScript types from that spec.
 - `schemars` generates JSON Schema from them for the fixed shapes: knowledge seed validation (section 10) and the plan writer's output. The VLM's schema is built per job by the worker (section 6), because its allowed values change with each payload.
 
-A change to a contract changes the Rust type first, and this document is updated in the same pull request.
+A change to a contract changes the Rust type first, and this document is updated in the same pull request. The records are stored as defined in [docs/database/schema.surql](../database/schema.surql), which changes in the same pull request when a stored shape changes.
 
 ### Notation
 
