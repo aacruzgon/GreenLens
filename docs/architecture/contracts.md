@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.5, 2026-10-15. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.6, 2026-10-15. Companion to the [architecture document](README.md).
+> **v0.6** adds batching: perception runs each model once per job over all of a scan's images or regions, a worker declares how many jobs it holds at once (`slots`, so the VLM worker can let vLLM batch two jobs when the day-2 benchmark allows it), and weather is fetched by cache cell, in multi-location requests for the scheduler.
 > **v0.5** applies the fourth audit: plan-trigger task keys scoped to their plan, the dose check on every string the model writes into a tool call, a validated `revise_plan` preview that is stored exactly as shown, `healthy` only on positive evidence, a diagnosis for every guided check, one late-work rule, ratio checks that pass ordinary pruning text, and wording fixes.
 > **v0.4** applies the third audit: guided checks outside runs and kind limits, serialised re-plans that keep chat revisions, `provisional` tied to `uncertain`, a readable-plant rule that keeps healthy plants out of `photos_unusable`, the dose check on every chat reply, one trigger vocabulary with deduplicated trigger tasks, a pipeline stage on every observation, and an `answering` state for questions.
 > **v0.3** restores the features v0.2 had cut (guided soil checks, the full set of soil aspects, recurring and trigger-based plan steps, HEIC uploads, segmentation masks, partial worker results), routes photos to the VLM per call, and applies the second audit: a lease backstop, species-change runs that keep earlier stages, a full late-answer lifecycle, plan tasks that follow plan versions, stricter idempotency, one rule for cancelled jobs, a stronger dose check, signed image URLs, invite and removal rules, and memory sharing by consent.
@@ -553,7 +554,14 @@ Example of a typical run, where the classifier suggests early blight and the ind
 
 ### Leases, runs and attempts
 
-- A GPU worker process runs **one job at a time**. The fallback worker may run several at once.
+- A worker holds at most **`slots`** jobs at once, declared in its claim and heartbeat. The broker never leases a worker more jobs than its `slots`:
+
+  | Worker | `slots` |
+  |---|---|
+  | perception-worker (RTX 3070) | 1. It batches inside a job instead (section 5, results) |
+  | vlm-worker (RTX 5070 Ti) | `VLM_SLOTS`: 1 or 2, deployment configuration set from the day-2 benchmark (open question 9). With 2, vLLM batches the two jobs' calls together; vLLM's `max_num_seqs` is set to the same value |
+  | fallback-worker | Several (default 4), bounded by the LLM API's rate limit |
+
 - `POST /internal/jobs/claim` returns a `lease_token` with each job. Every later call about that job sends it as `X-Lease-Token`.
 - The lease lasts 2 minutes. A heartbeat that lists the job, with its lease token, in `current_jobs` extends it to 2 minutes from the heartbeat, but **only if the token matches, the job is leased to that worker and isn't cancelled**, and **never beyond `claimed_at + max_runtime`** for the job's kind:
 
@@ -564,7 +572,7 @@ Example of a typical run, where the classifier suggests early blight and the ind
   | `verify`, `guided` | 3 minutes |
   | any kind on the fallback worker | twice the above |
 
-  A worker whose heartbeat thread keeps running while its model hangs still loses the job at `max_runtime`.
+  A worker whose heartbeat thread keeps running while its model hangs still loses the job at `max_runtime`. These limits hold at the configured `slots`: the day-2 benchmark checks that a `vlm` job's p95 time with `VLM_SLOTS` jobs running together stays under half its `max_runtime`.
 - The broker requeues a job when its worker's heartbeat is older than 30 seconds, or when its lease expires. Requeueing invalidates the lease token.
 - `attempts` counts `failed` completions with `retryable: true`, **plus every requeue after the 2nd**. A job that keeps crashing its worker therefore runs out of attempts. After the 3rd attempt, the job fails for good: a run's job sends the scan to `failed` with `processing_error`; a `verify` job for late work (section 3: the scan is `diagnosed` or `planned`) and every `guided` job report their failure as an event (`question_resolved` with `dropped`, or `guided_check_done` with a failed check) and leave the scan as it is.
 - Every `perception`, `vlm` and `verify` job belongs to a scan **run**. A `guided` job belongs to the scan, not to a run: a new run never cancels it, and it never fails the scan. When a new run starts (a resubmit or a species change), the broker cancels the old run's queued and leased run jobs, and the old run's open question is resolved as `superseded`. A worker learns this from its next heartbeat response (`cancel_job_ids`) and stops.
@@ -583,6 +591,7 @@ type Capability = "perception" | "vlm" | "fallback";
 interface Heartbeat {
   worker_id: string;              // stable per process, e.g. "rig-3070-perception-1"
   caps: Capability[];
+  slots: number;                  // the most jobs this worker holds at once
   gpu?: { name: string; vram_used_mb: number; vram_total_mb: number };
   current_jobs: { job_id: Id; lease_token: string }[];  // extends these leases, within max_runtime
   versions: Record<string, string>; // model name → version, shown on /status
@@ -602,6 +611,7 @@ Long poll.
 interface ClaimRequest {
   worker_id: string;
   caps: Capability[];
+  slots: number;                  // as in the heartbeat; a worker already holding `slots` jobs gets 204
   wait_s?: number;                // default 25, max 30
 }
 // 200 → Job, or 204 when nothing arrived within wait_s
@@ -769,6 +779,8 @@ interface GuidedResult {
 ```
 
 **Segmentation.** The leaf detector is fine-tuned on PlantDoc's leaf boxes, so `leaf` regions are reliable. PlantDoc has boxes but no mask outlines, so masks come from a SAM-class model prompted with those boxes, when it runs; masks are always optional. `plant`, `soil` and `surroundings` regions are produced when the model has them and are otherwise left out. Every later stage works without them: disease classification falls back to the whole `leaf_closeup` image (`region_id` absent).
+
+**Batching inside a job.** The perception-worker runs **each model once per job** over a batch, not once per image or region: the plant check and segmentation over every image, the SAM-class model over every leaf box of an image in one prompt, BioCLIP and the image-embedding model over every plant image, and the disease classifier over every leaf crop. The ONNX models are exported with a dynamic batch dimension. A batch larger than `PERCEPTION_MAX_BATCH` (deployment configuration, default 16, set on day 2 so the 3070 keeps its VRAM headroom) is split into several. Partial results are still sent per stage, after the stage's last batch.
 
 **Classifier candidates.** The worker restricts the classifier's output to the labels of the working species before taking each region's `top` 3, so a tomato leaf is never labelled with a grape disease. The API turns the per-region `top` lists into the scan's classifier candidates: the 3 distinct problems with the highest confidence across all regions, ignoring `healthy`.
 
@@ -999,6 +1011,14 @@ interface WeatherSummary {
 ```
 
 `hours_rh_over_90` is the stand-in for leaf wetness, which Open-Meteo doesn't provide. Disease profiles state their wetness condition in the same unit (section 10).
+
+**Fetching and caching.** Scans and the scheduler use the same `WeatherSummary`, fetched and cached the same way:
+
+- The cache key is a **cache cell**: the garden's stored coordinates rounded to 0.01° (about 1 km, the resolution of the weather models), plus the hour. Gardens stored at about 10 km or by postal code already share their coordinates.
+- A scan reads its garden's cell and fetches only on a miss.
+- The scheduler groups all gardens by cell, fetches each cell **once**, and sends the missing cells to Open-Meteo in multi-location requests (comma-separated `latitude` and `longitude`) of at most 50 cells. Open-Meteo's fair-use limit counts each location in such a request, so the quota saving comes from fetching each cell once; the batching saves round trips.
+- The scheduler then evaluates every garden's trigger rules from its cell's summary, so scans in the same hour reuse what the scheduler fetched.
+- A failed multi-location request is retried once, then its cells are fetched one by one; a cell that still fails skips its gardens until the next run.
 
 ### Diagnosis
 
@@ -1744,7 +1764,8 @@ The contracts changed these parts of the architecture document, which has been u
 | Change | Where in the architecture document |
 |---|---|
 | Scan runs; species-change runs that keep earlier stages; questions limited per run and never after `planned`; late answers always re-plan; resubmit only for retryable failures; post-`planned` work never fails the scan | 8.1, 6.2, 6.3 |
-| Lease backstop (`max_runtime`), requeue counting, one job per worker, `409 lease_lost` for cancelled and old-run jobs, `guided` jobs | 8.4, 5 (job schema) |
+| Lease backstop (`max_runtime`), requeue counting, worker `slots` (1 for perception, `VLM_SLOTS` for the VLM), `409 lease_lost` for cancelled and old-run jobs, `guided` jobs | 8.4, 10, 5 (job schema) |
+| Batching: each perception model once per job, weather by cache cell with multi-location requests for the scheduler, ingestion embeddings in batches | 5 (ingestion), 6.1, 8.3, 10 |
 | Photo routing per VLM call; guided soil checks in their own call; full soil aspects; masks from a SAM-class model | 6.1, 6.4, 6.6, 10 |
 | Plan steps: recurring and trigger-based, tasks dismissed when a plan is superseded, server-added safety note, the dose check on every step, every chat reply and every model-written tool argument; plan-trigger keys scoped to their plan; serialised plan writes that keep chat constraints, with chat revisions stored as previewed; `provisional` exactly when `uncertain` | 6.3, 8.2, 8.3, 11 |
 | Guided checks outside runs and kind limits, each with its own diagnosis; readable-plant rule for `photos_unusable`; `healthy` only on positive evidence; one late-work rule; `answering` questions | 6.3, 6.4, 8.1 |
@@ -1763,3 +1784,4 @@ The contracts changed these parts of the architecture document, which has been u
 6. **Species-change window:** re-running only the plant's most recent scan from the last 24 hours.
 7. **Daily scan limit** of 30 per user, and whether the fallback worker needs its own spending cap.
 8. **HEIC decoding** in the Rust image pipeline (libheif bindings): confirm on day 1; until then, the app converts HEIC to JPEG before upload.
+9. **`VLM_SLOTS`**: 2 if the day-2 benchmark shows that two `vlm` jobs of 4 images each fit the 5070 Ti's KV cache next to the model at `VLM_MAX_PIXELS`, and that a job's p95 time with two running stays under half its `max_runtime` (2.5 minutes); otherwise 1. Measure alongside open question 1, with `PERCEPTION_MAX_BATCH` on the 3070.
