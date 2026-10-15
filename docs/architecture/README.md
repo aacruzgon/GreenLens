@@ -1,9 +1,9 @@
 # PDM Architecture
 
-> **Status:** Draft v0.3, 2026-10-15. Adds soil data sources and soil findings from photos, the detection of organisms (pests, beneficial insects, wildlife, invasive species) and the damage they cause, and capture guidance. v0.2 added species identification, a knowledge base with retrieve-then-verify, and an optional fast text classifier (Jev).
+> **Status:** Draft v0.4.1, 2026-10-15. Review of v0.4 added: conversations owned by a user, a pre-VLM candidate set that also covers organisms the VLM finds, a scan state machine without `awaiting_species`, a cap of 3 indicators per candidate, a scheduler sweep for unanswered verification questions, deletion of chat images and chat-derived memory, and a cap of about 9 profiles on the pre-VLM candidate set. v0.4 audit fixes: text embeddings move to the control plane with one pinned model, the VLM detects organisms and answers verification indicators in its main pass, scans get a submit step and a state machine with resumable events, stale workers are requeued from heartbeats, deletion rules for shared gardens, garden-scoped memory, deterministic verification scoring, and schema fixes. v0.3 added soil data sources and soil findings from photos, the detection of organisms (pests, beneficial insects, wildlife, invasive species) and the damage they cause, and capture guidance. v0.2 added species identification, a knowledge base with retrieve-then-verify, and an optional fast text classifier (Jev).
 > **Event:** [Build North: Ship Something Real](https://luma.com/build-north). Build week Oct 16–25, submissions due Oct 25 at 11:59 PM ET, Demo Day Oct 29 in Toronto.
 
-PDM is a plant, crop and garden health monitoring app. A user photographs a plant. Computer vision on the backend assesses the plant, the soil and the surroundings. The results are combined with the weather and soil data for the photo's location and with the plant's own history, to produce a diagnosis and an action plan. Users can chat about the results, and the system warns them ahead of risky weather.
+PDM is a plant, crop and garden health monitoring app. A user photographs a plant. Computer vision on the backend assesses the plant, the soil and the surroundings. The results are combined with the weather and soil data for the garden's location and with the plant's own history, to produce a diagnosis and an action plan. Users can chat about the results, and the system warns them ahead of risky weather.
 
 ## Contents
 
@@ -35,7 +35,7 @@ The judges score five criteria, with no weights published. This table shows wher
 | Real-World Impact | Clear users: home gardeners and small farms. Catches disease early. Fits the Canadian frost and short-season context. Recognizes beneficial insects so they aren't killed by mistake. Helps users report invasive species. User feedback improves the model over time. |
 | UI & Design | Guided capture with hints to retake bad photos. Live progress for each stage. Boxes drawn on the affected leaves. The plan appears as a checklist. Chat answers cite their sources. Optional guided soil checks. |
 | Tech & Deployment | Live public link. GPU workers pull jobs from the API, with a fallback to API credits. Public repository. Mobile build. |
-| Security & Ethics | Managed authentication with MFA. Every garden-scoped query checks membership. Image storage is private. Photo metadata is stripped and faces are blurred before storage. Location needs consent. Deleting an account removes everything. Wildlife advice is humane. Pesticide advice is limited, uncertain results are shown as uncertain, and advice cites its sources. |
+| Security & Ethics | Managed authentication with MFA. Every garden-scoped query checks membership. Image storage is private. Photo metadata is stripped and faces are blurred before storage. Location needs consent and only the garden has one. Deleting an account removes the user's own data and any garden they alone use. Wildlife advice is humane. Pesticide advice is limited, uncertain results are shown as uncertain, and advice cites its sources. |
 
 Submission requirements: a demo video of 2 minutes or less, a public GitHub repository, a live link, and a Devpost page listing the tech stack, the partner platforms used, and any prior work.
 
@@ -71,7 +71,7 @@ Submission requirements: a demo video of 2 minutes or less, a public GitHub repo
                           │      │  │ context · tools · knowledge │         │    vision fallback
                           │      │  └─────────────────────────────┘         │──▶ Jev (optional)
                           │      ▼                                          │──▶ Weather / soil APIs
-                          │ job broker (leases) · SSE hub · scheduler       │──▶ Push (APNs / FCM)
+                          │ job broker · SSE hub · scheduler · text embed   │──▶ Push (Expo Push)
                           └────┬───────────────┬──────────────────▲─────────┘
                                │               │                  │
                       ┌────────▼─────────┐ ┌───▼──────────┐ ┌─────┴────────────┐
@@ -87,9 +87,10 @@ Submission requirements: a demo video of 2 minutes or less, a public GitHub repo
 │                                                                     │
 │  RTX 3070 (8 GB)                     RTX 5070 Ti (16 GB)            │
 │  perception-worker (Rust, ort/CUDA)  vlm-worker (Rust)              │
-│   quality gate · YOLO-seg ·            → vLLM / llama.cpp sidecar   │
-│   BioCLIP species · disease classifier   7–8B VLM, quantized        │
-│   image + text embeddings                                           │
+│   plant check · YOLO-seg ·             → vLLM / llama.cpp sidecar   │
+│   BioCLIP species · disease classifier   7–8B VLM, quantized:       │
+│   image embeddings                     organisms · soil · damage ·  │
+│                                        indicator answers · one job  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -100,8 +101,9 @@ Submission requirements: a demo video of 2 minutes or less, a public GitHub repo
 - **Retrieve, then verify.** Candidate diagnoses are checked against curated species and disease profiles before any advice is given. When the evidence is ambiguous, the app asks the user a targeted question instead of guessing. Advice cites its sources.
 - **Use the cheapest model that can do the job.** Small classifiers make the routine decisions (routing, gating, tagging). The strongest LLM is kept for reasoning and writing.
 - **One agent core with two callers.** The plan writer, running after the pipeline, and the chat use the same context builder, tools and safety policy, so their answers can't contradict each other.
-- **A trait at every external boundary:** `VisionModel`, `SpeciesIdentifier`, `TextClassifier`, `ChatModel`, `KnowledgeStore`, `WeatherProvider`, `SoilProvider`, `BlobStore`, `Store`, `MemoryStore`, `Notifier`. Swapping a vendor or sponsor technology means writing one adapter.
-- **Stream results, not video.** The app uploads a few still images (see 6.6). The progress and findings stream back over SSE.
+- **A trait at every external boundary:** `VisionModel`, `SpeciesIdentifier`, `TextClassifier`, `TextEmbedder`, `ChatModel`, `KnowledgeStore`, `WeatherProvider`, `SoilProvider`, `BlobStore`, `Store`, `MemoryStore`, `Notifier`. Swapping a vendor or sponsor technology means writing one adapter.
+- **Stream results, not video.** The app uploads a few still images (see 6.6). The progress and findings stream back over SSE, and every event is persisted so a phone that drops the connection can resume.
+- **Workers only pull.** Nothing in `api` waits on the rig synchronously. Anything a request needs right away (query embeddings, the blur check) runs on the control plane's CPU.
 
 ---
 
@@ -111,29 +113,30 @@ Submission requirements: a demo video of 2 minutes or less, a public GitHub repo
 |---|---|---|---|
 | Mobile app | Phones, web build | Expo / React Native. TypeScript types generated from OpenAPI | Guided capture, location consent, live progress, results with overlays, chat, timeline, tasks, push |
 | Auth provider | Managed service | JWT + JWKS, webhooks | Credentials, MFA, sessions. Never stores domain data |
-| `api` | Control plane | axum, tower-http, governor, utoipa | All public endpoints, authorization, uploads (EXIF stripping, face blurring), job broker, SSE hub, scheduler, agent core |
+| `api` | Control plane | axum, tower-http, governor, utoipa | All public endpoints, authorization, uploads (EXIF stripping, blur and exposure check, face blurring), text embeddings on CPU, scan state machine, job broker, SSE hub, scheduler, agent core |
 | Agent core | Inside `api` | `ChatModel` trait, tool registry | Context assembly, the tool-use loop, safety policy |
 | SurrealDB | Control plane | Graph edges, HNSW vectors, geometry types | All structured data, the job queue, memory |
 | RustFS | Control plane, private | S3 API via `aws-sdk-s3` | Images. Only `api` talks to it |
-| `perception-worker` | Rig, RTX 3070 | `ort` + CUDA, ONNX models | Quality gate, segmentation, species and organism identification (BioCLIP), disease classification per leaf, image and text embeddings |
-| `vlm-worker` + sidecar | Rig, RTX 5070 Ti | vLLM or llama.cpp, OpenAI-compatible API | Soil condition, organisms and damage patterns, verification indicator questions, overall structured findings |
-| `fallback-worker` | Control plane | `VisionModel` with the LLM API as backend | Keeps scans working while the rig is offline |
+| `perception-worker` | Rig, RTX 3070 | `ort` + CUDA, ONNX models | Plant-present check, segmentation, species identification (BioCLIP), disease classification per leaf, image embeddings. BioCLIP as a second opinion on organism crops is a stretch goal |
+| `vlm-worker` + sidecar | Rig, RTX 5070 Ti | vLLM or llama.cpp, OpenAI-compatible API | One `vlm` job per scan, in one or two VLM calls: soil condition, organisms with bounding boxes, damage patterns, species cross-check, and the answers to the candidates' verification indicators |
+| `fallback-worker` | Control plane | `VisionModel` with the LLM API as backend | Claims every job kind. Keeps scans working while the rig is offline |
 | Training | Dev machines / 5070 Ti | Python, PyTorch → ONNX | Fine-tunes the disease classifier. Not deployed |
 | Knowledge ingestion | Dev machines | Python scripts + LLM API, reviewed by a teammate | Builds the knowledge base from curated sources. Loaded through migrations. Not deployed |
-| Text classifier (optional) | Jev API, cheapest LLM as fallback | `TextClassifier` trait | Chat routing, safety gate, memory-extraction gate, chunk tagging, verification scoring |
+| Text classifier (optional) | Jev API, cheapest LLM as fallback | `TextClassifier` trait | Chat routing, safety gate, memory-extraction gate, chunk tagging. Not on the diagnosis path |
 
 ### Rust crates
 
 | Crate | Purpose |
 |---|---|
-| `domain` | Shared types, IDs, errors |
+| `domain` | Shared types, IDs, errors, the scan state machine, and every boundary trait (`VisionModel`, `TextClassifier`, `TextEmbedder`, `KnowledgeStore`, …), so no crate depends on another just to see a trait |
 | `store` | SurrealDB repository layer and migrations |
 | `blob` | RustFS client (custom endpoint, path-style addressing) |
 | `agent` | Context builder, tool registry, safety policy, `ChatModel` and `TextClassifier` implementations (Jev, LLM fallback) |
-| `vision` | `VisionModel` and `SpeciesIdentifier` traits, pipeline stages, `ort` sessions |
-| `knowledge` | `KnowledgeStore` trait, profile lookups, look-alike graph, chunk retrieval, verification scoring |
+| `vision` | Perception stages and `ort` sessions for the workers; the CPU blur and exposure check and the `TextEmbedder` implementation for `api` |
+| `knowledge` | `KnowledgeStore` implementation, profile lookups, look-alike graph, chunk retrieval, deterministic verification scoring |
+| `pipeline` | Stage orchestration for a scan: context, retrieval, scoring, fusion rules, the plan-writer call. Used by `api` |
 | `api` (binary) | Routes, auth middleware, job broker, SSE, scheduler |
-| `worker` (binary) | One binary started with `--caps perception,embed`, `--caps vlm` or `--caps fallback` |
+| `worker` (binary) | One binary started with `--caps perception`, `--caps vlm` or `--caps fallback` |
 
 ---
 
@@ -143,7 +146,7 @@ Submission requirements: a demo video of 2 minutes or less, a public GitHub repo
 
 - A managed auth provider handles sign-up, sign-in, social login, MFA and sessions.
 - The app attaches the provider's JWT to every request. The API checks it against the provider's JWKS (`jsonwebtoken`) and maps the `sub` claim to a `user` record.
-- The `user` record is created by the provider's `user.created` webhook (signature-verified), or on the first request as a fallback. `user.deleted` triggers the full data-deletion cascade.
+- The `user` record is created by the provider's `user.created` webhook (signature-verified), or on the first request as a fallback. The two can race, so creation is an upsert on `auth_id`. `user.deleted` triggers the deletion cascade described in section 5.
 
 ### Personas
 
@@ -159,6 +162,7 @@ Submission requirements: a demo video of 2 minutes or less, a public GitHub repo
 - A single middleware step resolves the user, and every garden-scoped repository function takes the user and checks membership.
 - Workers authenticate with their own tokens and can only act on the job they have leased.
 - The SSE stream checks ownership before it sends anything.
+- Conversations are private to the user who opened them. Every chat endpoint and every pending-action endpoint checks the conversation's owner and the garden membership. Other members of a shared garden see the scans and plans, never each other's chats.
 
 ---
 
@@ -167,23 +171,27 @@ Submission requirements: a demo video of 2 minutes or less, a public GitHub repo
 ### SurrealDB tables, grouped by area
 
 ```
-identity      user · member_of (user → garden, role) · push_token
+identity      user · member_of (user → garden, role, since) · push_token
 garden        garden (centroid point, boundary polygon, soil_profile) · plant (species,
               species_status, species_candidates, position, status)
-analysis      scan · scan_image (kind, storage key, embedding) · observation (stage:
+analysis      scan (status, see 8.1) · scan_image (kind, storage key, embedding) ·
+              scan_event (seq, type, payload) · observation (stage:
               species | disease | soil | organism | damage, label, confidence, region,
               model_version) · weather_snapshot (weather + soil moisture, soil
               temperature, ET₀) · diagnosis
-plans         action_plan (version, supersedes) · task (due_at, trigger, source, done_at)
-chat          conversation (anchor: scan | plant | garden, summary) · message
+plans         action_plan (version, supersedes) · task (due_at, trigger, source, done_at,
+              alert_key unique)
+chat          conversation (user, garden, anchor: scan | plant | garden, summary) · message
               (role, content, tool_calls, model, prompt_version, tokens) ·
               pending_action (proposed | confirmed | rejected) · message_feedback
-memory        memory (plant, kind, text, embedding, source: pipeline | chat | user)
-knowledge     species · disease · organism · treatment · source (url, publisher, licence) ·
-              knowledge_chunk (source, crop, disease, topic, text, embedding)
+memory        memory (garden, plant?, kind, text, embedding, source: pipeline | chat | user,
+              source_msg?)
+knowledge     species · disease (every kind of problem, see below) · organism · treatment ·
+              source (url, publisher, licence) ·
+              knowledge_chunk (source, crop, disease, organism, topic, text, embedding)
               edges: susceptible_to · looks_like · manages · caused_by · preys_on
 feedback      feedback (scan, verdict, corrected_label, notes)
-ops           job (kind, status, lease_until, worker, attempts) · worker (caps,
+ops           job (kind, payload, status, lease_until, worker, attempts) · worker (caps,
               last_heartbeat, gpu) · usage_daily (tokens, requests) · weather_cache
 ```
 
@@ -201,12 +209,14 @@ DEFINE INDEX user_auth ON user FIELDS auth_id UNIQUE;
 
 DEFINE TABLE garden SCHEMAFULL;
 DEFINE FIELD name     ON garden TYPE string;
-DEFINE FIELD centroid ON garden TYPE geometry<point>;
+DEFINE FIELD centroid ON garden TYPE geometry<point>;  -- from GPS with consent, else a typed postal code or city
 DEFINE FIELD boundary ON garden TYPE option<geometry<polygon>>;
 DEFINE FIELD soil_profile ON garden TYPE option<object>;  -- SoilGrids: pH, texture, organic carbon, CEC by depth, fetched_at
 
 DEFINE TABLE member_of TYPE RELATION IN user OUT garden SCHEMAFULL;
-DEFINE FIELD role ON member_of TYPE string ASSERT $value IN ['owner', 'editor', 'viewer'];
+DEFINE FIELD role  ON member_of TYPE string ASSERT $value IN ['owner', 'editor', 'viewer', 'reviewer'];
+DEFINE FIELD since ON member_of TYPE datetime DEFAULT time::now();  -- "longest-standing editor" in Deletion
+DEFINE INDEX member_unique ON member_of FIELDS in, out UNIQUE;
 
 DEFINE TABLE plant SCHEMAFULL;
 DEFINE FIELD garden  ON plant TYPE record<garden>;
@@ -217,22 +227,46 @@ DEFINE FIELD status             ON plant TYPE string DEFAULT 'healthy';
 
 DEFINE TABLE scan SCHEMAFULL;
 DEFINE FIELD garden   ON scan TYPE record<garden>;
-DEFINE FIELD plant    ON scan TYPE option<record<plant>>;
-DEFINE FIELD user     ON scan TYPE record<user>;
-DEFINE FIELD location ON scan TYPE option<geometry<point>>;
-DEFINE FIELD status   ON scan TYPE string DEFAULT 'pending';
+DEFINE FIELD plant    ON scan TYPE record<plant>;        -- created on the fly for a first scan
+DEFINE FIELD user     ON scan TYPE option<record<user>>; -- null once the user is deleted (shared gardens)
+DEFINE FIELD status   ON scan TYPE string DEFAULT 'pending';  -- state machine in 8.1
+-- no location on the scan: weather uses the garden centroid
+
+DEFINE TABLE scan_event SCHEMAFULL;
+DEFINE FIELD scan    ON scan_event TYPE record<scan>;
+DEFINE FIELD seq     ON scan_event TYPE int;             -- Last-Event-ID for SSE resume
+DEFINE FIELD type    ON scan_event TYPE string;
+DEFINE FIELD payload ON scan_event TYPE object;
+DEFINE INDEX scan_event_seq ON scan_event FIELDS scan, seq UNIQUE;
+
+DEFINE TABLE conversation SCHEMAFULL;
+DEFINE FIELD user    ON conversation TYPE record<user>;    -- private to its owner; garden membership is checked too
+DEFINE FIELD garden  ON conversation TYPE record<garden>;
+DEFINE FIELD anchor  ON conversation TYPE record<scan | plant | garden>;
+DEFINE FIELD summary ON conversation TYPE option<string>;
+
+DEFINE TABLE task SCHEMAFULL;
+DEFINE FIELD garden    ON task TYPE record<garden>;
+DEFINE FIELD source    ON task TYPE string;               -- plan | forecast_alert | chat | user
+DEFINE FIELD alert_key ON task TYPE option<string>;       -- garden:trigger:date, forecast alerts only
+DEFINE INDEX task_alert ON task FIELDS alert_key UNIQUE;  -- makes dedupe race-free. Confirm NONE is excluded
+                                                          -- from the unique index on the installed version;
+                                                          -- otherwise forecast alerts get their own table
 
 DEFINE TABLE memory SCHEMAFULL;
-DEFINE FIELD plant     ON memory TYPE record<plant>;
+DEFINE FIELD garden    ON memory TYPE record<garden>;
+DEFINE FIELD plant     ON memory TYPE option<record<plant>>;  -- null = garden-level fact ("I garden organically")
 DEFINE FIELD kind      ON memory TYPE string;          -- fact | event | summary
 DEFINE FIELD text      ON memory TYPE string;
-DEFINE FIELD source    ON memory TYPE string;          -- pipeline | chat | user
-DEFINE FIELD embedding ON memory TYPE array<float>;
+DEFINE FIELD source     ON memory TYPE string;         -- pipeline | chat | user
+DEFINE FIELD source_msg ON memory TYPE option<record<message>>;  -- the chat message a fact came from, for deletion
+DEFINE FIELD embedding  ON memory TYPE array<float>;
 DEFINE INDEX memory_vec ON memory FIELDS embedding HNSW DIMENSION 768 DIST COSINE;
 
 DEFINE TABLE job SCHEMAFULL;
 DEFINE FIELD kind        ON job TYPE string;           -- perception | vlm | verify
 DEFINE FIELD scan        ON job TYPE record<scan>;
+DEFINE FIELD payload     ON job TYPE object DEFAULT {}; -- stages to run, species override, image ids, indicator questions
 DEFINE FIELD status      ON job TYPE string DEFAULT 'queued';  -- queued | leased | done | failed
 DEFINE FIELD lease_until ON job TYPE option<datetime>;
 DEFINE FIELD worker      ON job TYPE option<string>;
@@ -251,6 +285,9 @@ DEFINE FIELD common_names         ON species TYPE array<string>;
 DEFINE FIELD care                 ON species TYPE object;   -- water, light, hardiness, soil pH
 DEFINE FIELD classifier_supported ON species TYPE bool DEFAULT false;
 
+-- `disease` holds every kind of problem a plant can have, including pest and wildlife
+-- damage and abiotic causes. There is no separate pest-damage table; organisms link in
+-- through `caused_by`. The name stays `disease` because the tools and relations read naturally.
 DEFINE TABLE disease SCHEMAFULL;
 DEFINE FIELD name        ON disease TYPE string;
 DEFINE FIELD kind        ON disease TYPE string;          -- fungal | bacterial | viral | pest | wildlife | abiotic
@@ -268,11 +305,12 @@ DEFINE FIELD reporting_url   ON organism TYPE option<string>;  -- invasive speci
 DEFINE FIELD sources         ON organism TYPE array<record<source>>;
 
 DEFINE TABLE treatment SCHEMAFULL;
-DEFINE FIELD kind ON treatment TYPE string;               -- cultural | biological | mechanical | chemical
-DEFINE FIELD text ON treatment TYPE string;
+DEFINE FIELD kind    ON treatment TYPE string;            -- cultural | biological | mechanical | chemical
+DEFINE FIELD text    ON treatment TYPE string;
+DEFINE FIELD sources ON treatment TYPE array<record<source>>;  -- so treatment steps can be cited
 
 DEFINE TABLE susceptible_to TYPE RELATION IN species OUT disease;
-DEFINE TABLE looks_like     TYPE RELATION IN disease OUT disease;
+DEFINE TABLE looks_like     TYPE RELATION IN disease OUT disease;  -- ingestion writes both directions
 DEFINE FIELD how_to_tell ON looks_like TYPE string;
 DEFINE TABLE manages        TYPE RELATION IN treatment OUT disease;
 DEFINE TABLE caused_by      TYPE RELATION IN disease OUT organism;   -- pest and wildlife damage
@@ -282,13 +320,14 @@ DEFINE TABLE knowledge_chunk SCHEMAFULL;
 DEFINE FIELD source    ON knowledge_chunk TYPE record<source>;
 DEFINE FIELD crop      ON knowledge_chunk TYPE option<record<species>>;
 DEFINE FIELD disease   ON knowledge_chunk TYPE option<record<disease>>;
-DEFINE FIELD topic     ON knowledge_chunk TYPE string;    -- symptoms | conditions | management | care
+DEFINE FIELD organism  ON knowledge_chunk TYPE option<record<organism>>;
+DEFINE FIELD topic     ON knowledge_chunk TYPE string;    -- symptoms | conditions | management | care | recognition
 DEFINE FIELD text      ON knowledge_chunk TYPE string;
 DEFINE FIELD embedding ON knowledge_chunk TYPE array<float>;
 DEFINE INDEX chunk_vec ON knowledge_chunk FIELDS embedding HNSW DIMENSION 768 DIST COSINE;
 ```
 
-The vector dimensions depend on the embedding models chosen.
+The vector dimensions depend on the embedding models chosen. One text-embedding model is picked on day 1 and pinned for the life of the database (see section 10); the HNSW dimension in the migration changes only together with the model.
 
 Example queries:
 
@@ -296,31 +335,37 @@ Example queries:
 -- membership check
 SELECT role FROM member_of WHERE in = $user AND out = $garden;
 
--- memory recall for the agent
-SELECT text, kind FROM memory WHERE plant = $plant AND embedding <|5|> $query_vec;
+-- memory recall for the agent: the plant's facts plus the garden-level ones. The set
+-- is small, so brute-force cosine is exact. HNSW with an extra WHERE post-filters and
+-- can return fewer than 5. Check this against the installed SurrealDB version.
+SELECT text, kind FROM memory
+  WHERE garden = $garden AND (plant = $plant OR plant = NONE)
+  AND embedding <|5,COSINE|> $query_vec;
 
--- nearby gardens, for regional disease alerts
+-- nearby gardens, for regional disease alerts (stretch, see 8.3)
 SELECT * FROM garden WHERE geo::distance(centroid, $point) < 5000;
 
 -- candidate diseases for a confirmed species
 SELECT ->susceptible_to->disease.* AS candidates FROM $species;
 
--- look-alikes for a candidate, with how to tell them apart
+-- look-alikes for a candidate, with how to tell them apart (stored in both directions)
 SELECT out.name AS lookalike, how_to_tell FROM looks_like WHERE in = $disease;
 
 -- natural enemies of a pest ("leave the ladybugs, they eat aphids")
 SELECT <-preys_on<-organism.name AS natural_enemies FROM $pest;
 
--- grounding chunks for the plan writer
+-- grounding chunks for the plan writer. Per-disease chunk sets are small, so brute-force
+-- cosine is exact; HNSW with a filter would post-filter (same caveat as memory recall)
 SELECT text, source.url FROM knowledge_chunk
-  WHERE disease = $disease AND topic = 'management' AND embedding <|5|> $query_vec;
+  WHERE disease = $disease AND topic = 'management' AND embedding <|5,COSINE|> $query_vec;
 ```
 
 ### Fields that exist for traceability
 
 - `model_version` and `prompt_version` on every observation, plan and message, so any output can be reproduced and audited.
 - `action_plan.version` / `supersedes`: when chat revises a plan, it creates a new version rather than overwriting the old one.
-- `memory.source`: tracks where each remembered fact came from.
+- `memory.source`: tracks where each remembered fact came from. `memory.plant` being null marks a garden-level fact.
+- `scan_event.seq`: every event the app was sent, so a result can be replayed exactly.
 - `feedback`: user corrections, which become labelled training data.
 - `plant.species_status`: whether the species was suggested by the models or confirmed by the user.
 - `disease.sources` and `disease.reviewed_by`: every profile points to its sources and records which teammate reviewed it.
@@ -334,7 +379,18 @@ gardens/{garden_id}/scans/{scan_id}/{image_id}.webp
 gardens/{garden_id}/chat/{conversation_id}/{image_id}.webp
 ```
 
-Keys are prefixed by garden, so deleting a garden or a user's data is a prefix delete plus a cascade in SurrealDB.
+Keys are prefixed by garden, so deleting a garden is a prefix delete plus a cascade in SurrealDB. Deleting a user is a different operation, below.
+
+### Deletion
+
+`DELETE /me` and the provider's `user.deleted` webhook run the same cascade. The app explains it on the confirmation screen.
+
+1. Gardens where the user is the only member are deleted outright: prefix delete in RustFS, cascade in SurrealDB.
+2. Gardens where the user is the only `owner` but others are members: ownership passes to the longest-standing editor. If there is none, the garden is deleted and the remaining viewers are told by push.
+3. Shared gardens the user doesn't solely own: the membership, push tokens, conversations (found through `conversation.user`), their messages, their images under `gardens/{garden_id}/chat/{conversation_id}/` in RustFS, pending actions and message feedback are deleted. Memories with `source = chat` whose `source_msg` belonged to one of the user's conversations are deleted too. The user's scans, observations and the `source = pipeline` memories derived from them stay with the garden, because the other members rely on the plant history. `scan.user` is set to null, so nothing in the garden points at the user any more.
+4. The `user` record and its auth mapping are deleted last.
+
+The judging claim is therefore "deleting an account removes the user's own data and any garden they alone use", not "everything".
 
 ### Knowledge base
 
@@ -358,10 +414,11 @@ The knowledge base lets the system check its diagnoses and base its advice on re
 
 1. Fetch the source documents, then clean and chunk them.
 2. Tag each chunk with crop, disease and topic using the text classifier, and drop irrelevant chunks.
-3. Embed the chunks with a local text-embedding model on the RTX 3070.
-4. Extract the structured profile fields (symptoms, conditions, look-alikes) with an LLM.
+3. Embed the chunks with the same text-embedding model `api` uses at query time (section 10), so the vectors are comparable.
+4. Extract the structured profile fields (symptoms, conditions, look-alikes) with an LLM. Each symptom becomes an indicator with a weight, and `looks_like` edges are written in both directions. For each profile, mark the 3 most discriminating indicators: the highest-weighted ones that differ from its `looks_like` neighbours. Only those are asked during verification.
 5. A teammate reviews every profile before it's loaded. Bad data here produces confident wrong advice.
 6. Load everything through SurrealDB migrations, so every environment has the same knowledge base.
+7. Generate the BioCLIP label list from the `species` and `organism` tables in the same step, so the classifier's labels and the knowledge base can't drift.
 
 **Licensing.** Store only short excerpts, keep `source.url` on every chunk and profile, link back to the source in the app, and check each source's terms before ingesting it.
 
@@ -373,17 +430,15 @@ The knowledge base lets the system check its diagnoses and base its advice on re
 
 | Stage | Output | Where it runs |
 |---|---|---|
-| Quality gate | Blur and exposure score, whether a plant is present. Prompts a retake if the photo fails | perception-worker |
+| Quality gate | Blur and exposure score for each shot as it is uploaded, so the retake prompt is instant. Whether a plant is present comes from segmentation | api (CPU) for blur and exposure, perception-worker for plant present |
 | Segmentation | Plant, leaf, soil and surroundings regions | perception-worker (YOLO-seg) |
 | Species identification | Top 3 species with scores, cross-checked with the VLM. Skipped once the plant's species is confirmed. See 6.2 | perception-worker (BioCLIP) + vlm-worker |
 | Disease classification | `{label, confidence, region}` for each leaf crop. Runs only for species the classifier was trained on | perception-worker (classifier fine-tuned on PlantDoc-style field images) |
-| Soil condition | Observations with confidence: moisture, crusting and cracking, structure, colour, mulch or bare soil, worm castings, salt crust, moss or mould, erosion, weeds. See 6.4 | vlm-worker |
-| Organisms | Pests, beneficial insects, wildlife and invasive species seen in the photo, each with a role and confidence. See 6.5 | perception-worker (BioCLIP on crops of detected organisms) + vlm-worker |
-| Damage patterns | Chewing, holes, leaf-mining tunnels, sticky residue and sooty mould, cut or torn stems, digging, tracks, droppings | vlm-worker |
-| Embeddings | Image vectors for finding similar past cases | perception-worker |
+| Image embeddings | Image vectors for finding similar past cases. Text embeddings for memory and knowledge queries are not a stage: they run in `api` on CPU, see 10 | perception-worker |
 | Context | Current weather, the past 7 days of weather, a 7–14 day forecast, soil moisture and temperature, evapotranspiration, climate zone, plus the garden's stored soil profile | api (Open-Meteo per scan, cached by rounded location and hour; SoilGrids once per garden) |
-| Retrieve | Profiles of the top 3 candidate problems (diseases, pests, wildlife damage, abiotic causes) and their look-alikes | api (`knowledge`) |
-| Verify | Candidates re-ranked against the photo, the weather and the profiles. Ambiguous cases end in a question for the user. See 6.3 | vlm-worker (indicator questions, as a `verify` job) + api (scoring) |
+| Retrieve | The pre-VLM candidate set, capped at about 9 profiles: the disease classifier's top 3 (when it ran) plus the problems linked to the working species through `susceptible_to`, including its pests and wildlife damage, ranked by classifier score, then by how well the current weather fits each profile's favourable conditions, then by prior prevalence for the crop. Look-alikes of the top-ranked candidates fill the remaining slots. Each profile brings its 3 most discriminating indicators. Anything outside the cap is still caught by the `verify` rule below. Runs before the VLM job so the VLM can answer the indicators in the same job. See 6.3 | api (`knowledge`) |
+| VLM pass | One `vlm` job per scan, in one or two VLM calls: (a) soil condition (see 6.4), organisms with bounding boxes and damage patterns (see 6.5), a species cross-check; (b) a yes / no / unsure answer, with a reason of a few words, for each indicator of each candidate (see 6.3) | vlm-worker (`vlm` job) |
+| Verify | Candidates scored deterministically from the indicator answers, the weather and the profiles. If the VLM reported an organism or damage pattern outside the candidate set, one `verify` job asks that candidate's indicators first. Ambiguous cases end in a question for the user. A `verify` job also runs for a new photo. See 6.3 | api (scoring), vlm-worker (`verify` job) |
 | Fusion | Risk scores from rules over the verified findings, weather, soil and history. Thresholds come from the disease profiles (e.g. humidity > 90% at 15–25 °C for 2+ days raises fungal risk). Evidence is ranked user input, then photo, then modelled data (see 6.4) | api |
 | Plan writer | Steps, timing, what to watch for, tasks. Based on the confirmed disease's management guidance, with citations | api → agent core → LLM API |
 
@@ -394,7 +449,7 @@ If the confidence is low, the app asks for a better photo or suggests contacting
 1. BioCLIP compares the photos against a label list of the supported crops plus common garden plants, and returns the top 3 species with scores.
 2. The VLM names the species independently.
 3. If both agree with a high score, the species is stored as `suggested` and the user confirms it with one tap. If they disagree, or the score is low, the app shows the top 3 with reference photos, plus a "something else" option.
-4. The pipeline continues with the best candidate, so results aren't held up. If the user picks a different species, the stages from disease classification onwards run again.
+4. The pipeline continues with the best candidate, so results aren't held up. If the user picks a different species, the stages from disease classification onwards run again, as a new `perception` job whose payload names the stages to run and the species to use.
 5. The confirmed species is stored on the `plant` with `species_status = confirmed`. Later scans of the same plant skip this stage.
 6. The disease classifier runs only if `species.classifier_supported` is true. For other species, the pipeline relies on the VLM's findings and marks them as lower confidence. This stops an unsupported plant being diagnosed as the closest supported one, such as basil being reported as "pepper, healthy".
 
@@ -407,26 +462,43 @@ An external identification API (Pl@ntNet, Kindwise/plant.id) can be added later 
 Classifiers and VLMs mostly fail on look-alikes: early blight vs. Septoria leaf spot, a nitrogen deficiency vs. a disease, sunscald vs. a fungal lesion. Verification checks each candidate against its profile before anything is shown as a diagnosis.
 
 ```
-species confirmed → top-3 problem candidates (disease classifier, VLM,
-                    organism and damage findings)
+working species → pre-VLM candidate set (api), capped at about 9 profiles:
+                  disease classifier top 3 (if it ran) + the problems the species
+                  is susceptible_to, including pests and wildlife damage, ranked by
+                  classifier score, then weather fit, then crop prevalence;
+                  look-alikes of the top-ranked candidates fill the remaining slots
         │
         ▼
-retrieve each candidate's profile and its look-alikes:
-  symptom indicators · where symptoms start · favourable weather · how to tell apart
+retrieve each candidate's profile (api, before the VLM job):
+  its 3 most discriminating indicators, with weights · where symptoms start ·
+  favourable weather · how to tell apart
         │
         ▼
 verify:
-  1. the VLM answers each indicator question about the photo, in text
+  1. the VLM answers the indicators of every candidate inside the `vlm` job,
+     as a second call if the findings call is already large:
+     yes | no | unsure, plus a reason of a few words
      ("concentric rings?", "started on lower leaves?", "yellow halo?")
-  2. the text classifier scores each candidate profile against those answers
-  3. the weather is checked against each profile's favourable conditions
+  2. if the VLM found an organism or damage pattern that is not in the set,
+     one `verify` job asks that candidate's indicators (the only other time
+     `verify` runs is for a new photo)
+  3. api scores each candidate: sum of the weights of matched indicators,
+     minus the weights of contradicted ones; unsure counts for nothing
+  4. the weather is checked against each profile's favourable conditions
         │
-        ├─ clear winner → diagnosis, with citations
-        └─ ambiguous    → one targeted question to the user, or a request
-                          for a specific photo; then verify again
+        ├─ clear winner → diagnosis, with citations and the matched indicators
+        └─ ambiguous    → one targeted question to the user, or a request for a
+                          specific photo. An answer is rescored in api; a new
+                          photo runs a `verify` job. No answer within 10 minutes:
+                          the scheduler continues the scan with the best
+                          candidate marked uncertain
 ```
 
-Answering specific indicator questions is more accurate than asking one broad question ("what disease is this?"). It also makes the diagnosis explainable: the app can show which indicators matched.
+Answering specific indicator questions is more accurate than asking one broad question ("what disease is this?"). It also makes the diagnosis explainable: the app shows which indicators matched. The scoring is arithmetic over the VLM's answers, so no text classifier sits on the diagnosis path, and the indicators are asked in one VLM job per scan, never one call per question.
+
+Two caps keep the job within what a quantized 7–8B model answers reliably: about 9 profiles in the candidate set, and 3 indicators per profile, so roughly 27 answers rather than 45 or more. A crop like tomato has 8–10 known problems, so without the profile cap the set with look-alikes would reach 15 or more. The indicators are chosen at ingestion (section 5), not at run time. A problem left outside the cap is not lost: if the VLM reports an organism or damage pattern outside the set, the `verify` job above asks that candidate's indicators.
+
+When the scheduler continues a scan without an answer, the plan writer produces a provisional plan: general steps that are safe for every remaining candidate, labelled as provisional, with the open question kept at the top of the plan until the user answers it. An answer that arrives later is still rescored. If the winner changes, a new `action_plan` version supersedes the provisional one and the user gets a push or an inbox alert.
 
 ### 6.4 Soil
 
@@ -461,11 +533,11 @@ The photos are checked for living things and for the damage they leave. Insects 
 
 | Category | Examples | Detected by |
 |---|---|---|
-| Insect and other pests | Aphids, whiteflies, spider mites, caterpillars and hornworms, Colorado potato beetle, flea beetles, slugs and snails | BioCLIP on crops of detected organisms (it covers insects as well as plants). The VLM for webbing, slime trails and droppings. Tiny pests need a close-up of the leaf underside |
+| Insect and other pests | Aphids, whiteflies, spider mites, caterpillars and hornworms, Colorado potato beetle, flea beetles, slugs and snails | The VLM, which names each organism and returns its bounding box (Qwen2.5-VL-class models do this grounding natively). The segmentation model has no organism class, so the VLM is the detector. BioCLIP on those crops as a second opinion is a stretch goal. Webbing, slime trails and droppings also come from the VLM. Tiny pests need a close-up of the leaf underside |
 | Damage patterns | Small "shot holes" (flea beetles), ragged holes with slime (slugs), tunnels inside leaves (leaf miners), sticky residue and black mould (aphids), cleanly cut stems (rabbits), torn stems (deer) | The VLM, checked against the knowledge base's `looks_like` comparisons |
 | Larger animals | Rabbits, deer, groundhogs, squirrels and raccoons digging, vole and mole tunnels, birds pecking fruit | Mostly from damage, holes, tracks and droppings |
-| Beneficial organisms | Ladybugs and their larvae, lacewing larvae, ground beetles, spiders, bees, earthworms | BioCLIP / VLM. Never flagged as pests |
-| Invasive species | For example jumping worms, Japanese beetle, box tree moth | BioCLIP / VLM, plus reporting guidance from the knowledge base |
+| Beneficial organisms | Ladybugs and their larvae, lacewing larvae, ground beetles, spiders, bees, earthworms | The VLM. Never flagged as pests |
+| Invasive species | For example jumping worms, Japanese beetle, box tree moth | The VLM, plus reporting guidance from the knowledge base |
 
 Organism and damage findings join the disease candidates in retrieve-then-verify (6.3). "Slug damage vs. flea beetle damage" is verified the same way as "early blight vs. Septoria leaf spot".
 
@@ -490,13 +562,13 @@ Organism and damage findings join the disease candidates in retrieve-then-verify
 | Flower or fruit | If present | Species identification |
 | Guided checks (squeeze test, jar test) | Optional | Soil texture |
 
-Each image is stored with its `scan_image.kind`, so each stage knows which photos to use. The quality gate checks each shot separately and asks for a retake of only the shots that fail.
+Each image is stored with its `scan_image.kind`, so each stage knows which photos to use. The blur and exposure check runs in `api` as each shot arrives and rejects a failing shot with a retake hint before the next one is taken. Analysis starts only when the app calls `POST /scans/{id}/submit`, so the API always knows the set of shots is complete. On the web build, each shot can also be chosen from a file picker.
 
 ---
 
 ## 7. Chat and agent core
 
-Chat runs **inside `api`, not on the job queue**, because it is interactive. Tokens stream straight from the LLM to the app over SSE. Only heavy actions, such as re-analysing a new photo, go through the workers.
+Chat runs **inside `api`, not on the job queue**, because it is interactive. Tokens stream straight from the LLM to the app over SSE. Only heavy actions, such as re-analysing a new photo, go through the workers. The query embedding for memory and knowledge search is computed in `api` on CPU (section 10), so a chat turn never waits on the rig.
 
 ### Conversation anchors
 
@@ -504,7 +576,7 @@ Chat runs **inside `api`, not on the job queue**, because it is interactive. Tok
 |---|---|---|
 | `scan` | "Ask about this result" | That diagnosis, its observations and image regions, the weather, the plan |
 | `plant` | Plant timeline | All scans of the plant, its memory, open tasks |
-| `garden` | Garden home | Summaries of each plant, the forecast, upcoming tasks |
+| `garden` | Garden home | Summaries of each plant, garden-level memory, the forecast, upcoming tasks |
 
 The context is rebuilt from the database on every turn. It uses the conversation summary, the most recent messages and the top memory hits, not the full transcript. The chat therefore always sees the latest data, such as a frost task the scheduler created an hour earlier.
 
@@ -515,7 +587,7 @@ The context is rebuilt from the database on every turn. It uses the conversation
 | `get_scan(scan_id)` | Findings, confidence, regions | read |
 | `view_image(image_id, region?)` | Sends the photo, or a crop of it, back to the model | read |
 | `get_forecast(garden_id, days)` | Weather forecast | read |
-| `search_plant_memory(plant_id, query)` | Vector search over past events and facts | read |
+| `search_memory(query, plant_id?)` | Vector search over the plant's facts and events plus the garden-level ones | read |
 | `find_similar_cases(image_id)` | Embedding search over the user's own past scans | read |
 | `search_knowledge(query)` | Retrieval over curated guides, returned with citations | read |
 | `get_species_profile(species)` | Care needs, diseases the species is susceptible to | read |
@@ -526,7 +598,7 @@ The context is rebuilt from the database on every turn. It uses the conversation
 | `list_tasks` / `create_task` / `complete_task` | Manage the task list | **write: user confirms** |
 | `revise_plan(diagnosis_id, constraints)` | Produces a new plan version | **write: user confirms** |
 | `request_rescan(plant_id, instructions)` | Asks the user for a specific photo, then runs the pipeline | async (worker) |
-| `remember(plant_id, fact)` | Saves a fact to plant memory | write (automatic, shown to the user) |
+| `remember(fact, plant_id?)` | Saves a fact to plant memory, or to garden memory when no plant is given | write (automatic, shown to the user) |
 
 Write tools return a `pending_action`. The app shows it as a confirmation card, and the model never changes data by itself.
 
@@ -547,6 +619,8 @@ The scores are compared with each other rather than treated as certainties, and 
 
 ### Memory
 
+Each memory belongs to a garden and, usually, to one plant. Facts that apply to the whole garden, such as "I garden organically", "everything is in containers" or "the beds are on a balcony", are stored with no plant and are recalled in every conversation and every plan for that garden. The plan writer treats them as constraints.
+
 `memory` is written from two places:
 
 - **The pipeline**, after each scan: a summary of the findings.
@@ -560,62 +634,79 @@ Memory persists across conversations and scans, which keeps advice consistent ov
 
 ### 8.1 Scan → diagnosis → plan
 
-1. The app sends `POST /scans` with the plant and GPS location. The API checks membership and creates the scan with status `pending`.
-2. The app uploads to `POST /scans/{id}/images`. The API strips the metadata, blurs any faces, resizes the image, writes it to RustFS and queues a `perception` job.
-3. The app opens SSE on `/scans/{id}/events`.
-4. The perception-worker claims the job. It runs the quality gate, segmentation, species identification (unless the plant's species is already confirmed), organism identification, disease classification and embeddings, and streams each result back as an event.
-5. The API stores the observations and queues a `vlm` job. The vlm-worker adds the soil condition, organism and damage findings and its own species suggestion. If the species isn't confirmed, the app shows the confirmation card.
-6. The API fetches the weather, including soil moisture and temperature, and loads the garden's soil profile. It retrieves the profiles of the top candidate problems and their look-alikes.
-7. The API queues a `verify` job, and the vlm-worker answers each candidate's indicator questions. The API scores the candidates and checks the weather against their conditions. It then either stores a `diagnosis` with citations or sends the user a question.
-8. Fusion computes the risk scores. The agent core writes the `action_plan` from the confirmed disease's management guidance and creates tasks.
-9. The API appends a summary to memory, updates the plant's status and sends `plan_ready`.
+```
+pending → queued → analysing → [awaiting_answer]* → diagnosed → planned
+any state → failed (with a reason). The app can retry from submit.
+```
+
+The scan's status is the state machine above, and it only models waits that block the pipeline. A pending species confirmation is not one: it lives on `plant.species_status = suggested`, and the app shows the confirmation card from that while the scan proceeds. Every transition and every finding is written to `scan_event` with a sequence number before it is sent over SSE.
+
+1. The app sends `POST /scans` with the plant, or a name for a new plant, which the API creates. The API checks membership and creates the scan with status `pending`.
+2. The app uploads each shot to `POST /scans/{id}/images` with its kind. The API runs the blur and exposure check on CPU and rejects a failing shot at once with a retake hint. For a good shot it strips the metadata, blurs any faces, resizes the image and writes it to RustFS.
+3. The app calls `POST /scans/{id}/submit`. The scan becomes `queued` and a `perception` job is created. The app opens SSE on `/scans/{id}/events`, sending `Last-Event-ID` if it is reconnecting.
+4. The perception-worker claims the job. The scan becomes `analysing`. The worker runs the plant-present check, segmentation, species identification (unless the plant's species is already confirmed), disease classification and image embeddings, and streams each result back as an event.
+5. The API stores the observations, fetches the weather, including soil moisture and temperature, and loads the garden's soil profile. It builds the candidate set, capped at about 9 profiles: the classifier's top 3 plus what the working species is susceptible to, ranked by classifier score, weather fit and crop prevalence, with look-alikes of the top-ranked ones filling the remaining slots. It retrieves each profile and its 3 indicators, and queues a `vlm` job whose payload carries those indicators. Problems outside the cap are caught in step 7 if the VLM finds them.
+6. The vlm-worker runs the `vlm` job in one or two VLM calls: soil condition, organisms with boxes, damage patterns, its own species suggestion, and an answer for every indicator. If the species isn't confirmed, `plant.species_status` becomes `suggested` and the app shows the confirmation card. The scan's status doesn't change, and the pipeline continues with the best candidate. If the user later picks a different species, the re-run from 6.2 step 4 puts the scan back to `analysing`.
+7. If the VLM found an organism or damage pattern outside the candidate set, the API queues one `verify` job for that candidate's indicators and waits for it. It then scores all candidates and checks the weather against their conditions. A clear winner becomes a `diagnosis` with citations and the scan is `diagnosed`. An ambiguous result puts the scan in `awaiting_answer` and sends the user one question. The answer is rescored in `api`. A new photo runs a `verify` job. After 10 minutes without an answer, the scheduler's sweep (8.3) continues the scan with the best candidate marked uncertain. A later answer is rescored, and a changed winner produces a new plan version.
+8. Fusion computes the risk scores. The agent core writes the `action_plan` from the confirmed disease's management guidance, or a provisional plan if the diagnosis is still uncertain, and creates tasks. The scan is `planned`.
+9. The API appends a summary to memory, updates the plant's status, sends `plan_ready`, and sends a push notification in case the app is closed.
 
 ### 8.2 Chat turn
 
-1. The app sends `POST /conversations/{id}/messages`. The API checks auth, membership and the user's token budget. The text classifier labels the message (see section 7).
+1. The app sends `POST /conversations/{id}/messages`. The API checks auth, the conversation's owner, garden membership and the user's token budget. The text classifier labels the message (see section 7).
 2. The context builder loads the anchor's data, the conversation summary, recent messages and the top memory hits.
 3. The LLM call streams over SSE. Read tools run as the session user. Write tools return confirmation cards. `request_rescan` starts flow 8.1.
 4. The API stores the message with its model, prompt version and token counts. If the classifier finds a fact worth remembering, a cheap model extracts it into memory. Long conversations are summarized.
 
 ### 8.3 Forecast alerts
 
-At a fixed interval, the scheduler fetches each garden's forecast and checks the trigger rules: frost, a humid stretch (fungal risk), heat, heavy rain, and dry soil (a watering reminder based on soil moisture and evapotranspiration). When a rule fires, it creates a `task` with `source = forecast_alert` and sends a push notification.
+At a fixed interval, the scheduler fetches each garden's forecast and checks the trigger rules: frost, a humid stretch (fungal risk), heat, heavy rain, and dry soil (a watering reminder based on soil moisture and evapotranspiration). When a rule fires, it creates a `task` with `source = forecast_alert` and sends a push notification. Each alert has an `alert_key` of garden, trigger and date, with a unique index on it, so a frost warning is created once rather than on every run even when two scheduler runs overlap. The in-app alert inbox is the list of these tasks, and it works in every build, with or without push.
+
+The same scheduler also sweeps scans that have been in `awaiting_answer` for more than 10 minutes and continues them with the best candidate marked uncertain, so the timeout has an owner and works even when the app is closed.
+
+Stretch: when several gardens within about 5 km report the same disease in a week, the nearby gardens get a regional alert (the geo query in section 5).
 
 ### 8.4 Job leasing and fallback
 
 - `POST /internal/jobs/claim` is a long poll. Inside a transaction, it leases the oldest queued job that matches the worker's capabilities, for 2 minutes.
-- If a worker misses its lease deadline, the job goes back to the queue and `attempts` increases.
-- Jobs still unclaimed after about 15 seconds also become available to the `fallback-worker`, which uses the LLM API.
-- Workers report a heartbeat to the `worker` table. A small status page shows the health of each GPU worker.
+- Workers heartbeat to the `worker` table every 10 seconds. The broker requeues the jobs of any worker whose heartbeat is older than 30 seconds without waiting for the lease to expire, and `attempts` increases. The lease itself is the backstop for a worker that keeps heartbeating but never finishes.
+- Jobs still unclaimed after about 15 seconds also become available to the `fallback-worker`, which uses the LLM API. A rig that dies mid-scan therefore hands over within about 45 seconds, not after the 2-minute lease.
+- A small status page shows the health of each GPU worker.
 
 ### 8.5 Garden setup
 
-When a garden is created, the API fetches its SoilGrids profile in the background and stores it as `garden.soil_profile`. If SoilGrids is unavailable, the garden is created anyway and the fetch is retried later. Until it succeeds, the pipeline runs without baseline soil properties.
+The garden's centroid comes from the phone's GPS when the user has given location consent, otherwise from a typed postal code or city, geocoded once. It is the only location the system stores; scans have none of their own. When a garden is created, the API fetches its SoilGrids profile in the background and stores it as `garden.soil_profile`. If SoilGrids is unavailable, the garden is created anyway and the fetch is retried later. Until it succeeds, the pipeline runs without baseline soil properties.
 
 ---
 
 ## 9. API surface
 
 ```
-User API (auth provider JWT)               Worker API (per-worker token)
-POST   /scans                              POST /internal/jobs/claim         (long-poll, caps)
-POST   /scans/{id}/images                  POST /internal/jobs/{id}/events
-GET    /scans/{id}                         POST /internal/jobs/{id}/complete
-GET    /scans/{id}/events          (SSE)   GET  /internal/jobs/{id}/images/{n}
+User API (auth provider JWT)                      Worker API (per-worker token)
+POST   /scans                                     POST /internal/jobs/claim          (long-poll, caps)
+POST   /scans/{id}/images                         POST /internal/jobs/{id}/events
+POST   /scans/{id}/submit                         POST /internal/jobs/{id}/complete
+GET    /scans/{id}                                GET  /internal/jobs/{id}/images/{n}
+GET    /scans/{id}/events          (SSE, resumable with Last-Event-ID)
 POST   /scans/{id}/feedback
-POST   /scans/{id}/answers                 (verification questions)
-POST   /plants/{id}/species                (confirm species)
-CRUD   /gardens · /gardens/{id}/members    Webhooks
-CRUD   /plants  · GET /plants/{id}/timeline POST /webhooks/auth              (signature-verified)
-CRUD   /tasks
-POST   /conversations
-POST   /conversations/{id}/messages (SSE)  Ops
-POST   /pending-actions/{id}/confirm       GET  /healthz
-POST   /pending-actions/{id}/reject        GET  /status                      (worker health)
+POST   /scans/{id}/answers         (verification questions)
+POST   /plants/{id}/species        (confirm species)
+CRUD   /gardens · /gardens/{id}/members           Webhooks
+CRUD   /plants  · GET /plants/{id}/timeline       POST /webhooks/auth                (signature-verified)
+CRUD   /tasks                      (?source=forecast_alert is the alert inbox)
 DELETE /me
+
+Chat (conversation owner + garden member)         Ops
+POST   /conversations · GET /conversations/{id}   GET  /healthz
+POST   /conversations/{id}/messages (SSE)         GET  /status                       (worker health)
+POST   /conversations/{id}/images
+POST   /pending-actions/{id}/confirm
+POST   /pending-actions/{id}/reject
 ```
 
 `utoipa` generates the OpenAPI spec from the routes. `openapi-typescript` generates the app's TypeScript types from that spec.
+
+Both SSE endpoints are consumed with a streaming `fetch` response (Expo SDK 52+ provides one), because the browser `EventSource` can only GET and cannot carry the auth header. Scan events are persisted in `scan_event`, so the app reconnects with `Last-Event-ID` after being backgrounded and receives everything it missed. Chat turns are not resumable: a dropped chat stream is shown as an interrupted message the user can resend.
 
 ---
 
@@ -623,18 +714,20 @@ DELETE /me
 
 | Task | Primary | Fallback |
 |---|---|---|
-| Quality gate, segmentation, disease classification, image embeddings | RTX 3070, ONNX via `ort` | LLM API vision. Embeddings are skipped |
-| Species and organism identification | RTX 3070, BioCLIP (ONNX), cross-checked with the VLM | LLM API vision. Optionally Pl@ntNet or Kindwise/plant.id for species |
+| Blur and exposure check | `api`, CPU (Laplacian variance and a histogram) | None needed |
+| Plant-present check, segmentation, disease classification, image embeddings | RTX 3070, ONNX via `ort` | LLM API vision. Embeddings are skipped |
+| Species identification | RTX 3070, BioCLIP (ONNX), cross-checked with the VLM | LLM API vision. Optionally Pl@ntNet or Kindwise/plant.id |
 | Face detection (for blurring on upload) | `api`, CPU, small ONNX face detector | None. Fails closed: an image isn't stored until blurring succeeds |
-| Text embeddings (queries, memory) | RTX 3070, a small open text-embedding model | An embeddings API |
-| Soil condition, organisms and damage patterns, verification indicator questions | RTX 5070 Ti, a Qwen-VL-class 7–8B VLM, 4- or 8-bit quantized | LLM API vision |
+| Text embeddings (queries, memory, knowledge chunks) | `api`, CPU, one small open text-embedding model via `ort` (`fastembed`-style), pinned by name and version in `TextEmbedder` and recorded on every vector | None. A different model would make the existing vectors incomparable, so the only acceptable substitute is a hosted endpoint serving the identical model |
+| Soil condition, organisms with bounding boxes, damage patterns, species cross-check, verification indicator answers, in one job of one or two calls | RTX 5070 Ti, a Qwen2.5-VL-class 7–8B VLM, 4- or 8-bit quantized, with structured output | LLM API vision |
 | Plan writer, chat | LLM API, strongest model | none |
-| Summaries, memory extraction | LLM API, cheapest model | local VLM in text-only mode |
-| Chat routing, safety gate, memory gate, chunk tagging, verification scoring | Jev (optional, early access) | LLM API, cheapest model, with structured output |
+| Summaries, memory extraction | LLM API, cheapest model | None. `api` has no synchronous path to the rig |
+| Chat routing, safety gate, memory gate, chunk tagging | Jev (optional, early access) | LLM API, cheapest model, with structured output |
 
 Notes:
 
-- The RTX 3070 models (BioCLIP, YOLO-seg, the disease classifier, the text-embedding model) need roughly 3–4 GB of VRAM together.
+- The RTX 3070 models (BioCLIP, YOLO-seg, the disease classifier) need roughly 3 GB of VRAM together.
+- The text-embedding model runs on the control plane because chat and knowledge search need a query vector synchronously, and workers only pull. A short query embeds in a few milliseconds on CPU. The same model, loaded from the same file, is used by the ingestion scripts, so the knowledge-chunk vectors match the query vectors.
 - **Jev** is text only and zero-shot, at around 150 ms per call. Its probabilities run somewhat high, so compare scores between candidates and calibrate them on the evaluation set. Nothing on the critical path depends on it. If early access hasn't arrived by Oct 17, use the fallback.
 - **No multi-GPU model sharding.** With two mismatched consumer cards, the "cluster" is a pool of workers pulling from one queue, each advertising what it can do. More GPUs means more workers.
 - **Day-1 check:** the 5070 Ti (Blackwell) needs CUDA 12.8+ builds of PyTorch, vLLM and ONNX Runtime. Confirm inference runs before building on it.
@@ -658,8 +751,8 @@ Notes:
 **Privacy**
 - Photo metadata (EXIF) is stripped before storage.
 - Faces that appear in photos are blurred on upload, before storage, and are never analysed.
-- Location requires consent and can be stored at reduced precision.
-- `DELETE /me` cascades through SurrealDB and deletes the user's images from RustFS.
+- Location requires consent. Only the garden has one: its centroid, at the precision the user chooses (exact, or rounded to about 1 km, which is enough for weather). Scans store no coordinates. Without consent, the user types a postal code or city.
+- `DELETE /me` runs the deletion cascade in section 5: gardens the user alone uses are removed from SurrealDB and RustFS, and shared gardens keep their scans with the user reference cleared.
 
 **Abuse and cost**
 - Rate limits and a daily token budget for each user.
@@ -699,6 +792,12 @@ The code is the same in both cases. We can start with everything on the rig and 
 
 If the control plane runs behind a tunnel, SSE responses need `Cache-Control: no-cache` and a keepalive comment every ~15 seconds, so idle connections are not dropped.
 
+### App delivery
+
+- The live link the judges open is the Expo web build, so the capture screen accepts a file picker as well as the camera.
+- Remote push does not work in Expo Go on Android since SDK 53 and needs Apple credentials on iOS. Push therefore goes through the Expo Push API from a development build, and the demo-safe path is the in-app alert inbox (section 8.3), which works in every build.
+- SSE is consumed with streaming `fetch` (section 9); no `EventSource` polyfill.
+
 ### Operations
 
 - `tracing` with JSON logs. `/healthz` and `/status` endpoints. The job table doubles as an audit trail.
@@ -713,7 +812,7 @@ If the control plane runs behind a tunnel, SSE responses need `Cache-Control: no
 PDM/
 ├─ app/                Expo app
 ├─ backend/
-│  ├─ crates/{domain, store, blob, agent, vision, knowledge}
+│  ├─ crates/{domain, store, blob, agent, vision, knowledge, pipeline}
 │  ├─ bins/{api, worker}
 │  └─ migrations/*.surql
 ├─ ml/
@@ -730,11 +829,11 @@ PDM/
 
 | Dates | Goal |
 |---|---|
-| Oct 16–17 | End-to-end skeleton: auth, upload, job broker with stub vision, SSE, control plane deployed. Choose the crops, list the knowledge sources, request Jev access |
+| Oct 16–17 | End-to-end skeleton: auth, upload with the CPU blur check, submit, scan state machine, job broker with stub vision and heartbeat requeue, resumable SSE, text embeddings in `api`, control plane deployed. Choose the crops and the text-embedding model, list the knowledge sources, request Jev access |
 | Oct 18–19 | Real models on the rig (BioCLIP, disease classifier, VLM). Species confirmation. Weather with soil moisture and temperature; garden soil profile. Face blurring on upload. Knowledge ingestion running |
-| Oct 20–21 | Knowledge profiles reviewed and loaded. Soil, organism and damage findings. Retrieve-then-verify. Fusion and plan writer with citations. Results UI with overlays |
+| Oct 20–21 | Knowledge profiles reviewed and loaded. The single VLM pass: soil, organisms with boxes, damage, indicator answers. Deterministic verification, questions and the provisional plan. Fusion and plan writer with citations. Results UI with overlays |
 | Oct 22 | Chat with tools, router, memory, confirmation cards, timeline |
-| Oct 23 | Forecast alerts and push notifications. Test the fallback by killing the rig in the middle of a scan |
+| Oct 23 | Forecast alerts with dedupe, alert inbox, push from a development build. Account deletion cascade. Test the fallback by killing the rig in the middle of a scan: hand-over must happen within about 45 seconds |
 | Oct 24 | Feature freeze, security review, UI polish, evaluation on field photos |
 | Oct 25 | Demo video (2 minutes or less), Devpost page, README, final deploy |
 
@@ -754,3 +853,5 @@ PDM/
 10. **SoilGrids reliability:** test it on day 1. If it's unreliable, load Soil Landscapes of Canada data instead.
 11. **Invasive species list and reporting contacts:** which species to include for Ontario, and where each should be reported.
 12. **Guided soil checks:** whether the squeeze and jar tests make it into the demo, or stay a stretch goal.
+13. **Text-embedding model** and its dimension. Picked on day 1 and pinned for the life of the database, since the memory and knowledge vectors must all come from the same model.
+14. **Verification-answer timeout.** 10 minutes is proposed before the pipeline continues with the best candidate marked uncertain.
