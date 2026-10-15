@@ -81,15 +81,17 @@ volumes:
 - No object lock, no lifecycle rules (caveat 7), and no server-side encryption: the host's disk encryption covers data at rest.
 - ✓ Buckets are private by default: an unsigned `GET` returns `403`.
 
-**Key layout** (unchanged from architecture section 5):
+**Key layout** (architecture section 5):
 
 ```
 gardens/{garden_id}/scans/{scan_id}/{image_id}.webp
 gardens/{garden_id}/scans/{scan_id}/masks/{mask_id}.png
+gardens/{garden_id}/scans/{scan_id}/depth/{image_id}.png
+gardens/{garden_id}/scans/{scan_id}/depth_confidence/{image_id}.png
 gardens/{garden_id}/chat/{conversation_id}/{image_id}.webp
 ```
 
-- Every ID is a ULID that the API generates, and the key is stored on the record (`scan_image.storage_key`, `mask.storage_key`, `chat_image.storage_key`), never rebuilt from user input.
+- Every ID is a ULID that the API generates, and the key is stored on the record (`scan_image.storage_key`, `depth_key` and `depth_confidence_key`, `mask.storage_key`, `chat_image.storage_key`), never rebuilt from user input. Depth maps from LiDAR phones (architecture 6.7) share their photo's `image_id`.
 - ✓ An empty segment (`gardens//scans/…`) is rejected with `400 InvalidArgument`, and so are `.` and `..` segments. The key builder asserts every segment is a 26-character ULID.
 - Prefixing by garden makes deleting a garden one prefix delete. A plant's objects are deleted scan by scan, through each scan's prefix.
 
@@ -128,6 +130,7 @@ docker run --rm --network container:<rustfs container> -v "$PWD":/w --entrypoint
 1. Every image `url` the API returns is the API's own short-lived signed URL:
    - app images: `GET /scans/{id}/images/{image_id}?exp=&sig=` and `/masks/{mask_id}`, and `GET /conversations/{id}/images/{image_id}`;
    - worker images: `GET /internal/jobs/{job_id}/images/{image_id}`, authorised by the lease token.
+   - Depth maps are never served: no route reads `depth/` or `depth_confidence/` except the API's own measurement stage.
 2. `sig` is an HMAC-SHA256, under a server secret, of the method, the path and `exp`. The URL expires after 15 minutes. A bad or expired signature gets `403 invalid_signature`.
 3. The API checks the signature, calls `GetObject` with the record's `storage_key`, and streams the body. It sets `Content-Type`, `ETag` and `Cache-Control: private, max-age=900`.
 
@@ -143,12 +146,12 @@ docker run --rm --network container:<rustfs container> -v "$PWD":/w --entrypoint
 
 **Uploads.**
 1. The API processes the image first: EXIF orientation applied, metadata stripped, faces blurred, resized, encoded as WebP (architecture 8.1).
-2. It then calls `PutObject` with `Content-Type` and `If-None-Match: *`, so a key is never overwritten. ✓ A second put to an existing key fails with `412 PreconditionFailed`.
+2. It then calls `PutObject` with `Content-Type` and `If-None-Match: *`, so a key is never overwritten. A shot from a LiDAR phone also puts its depth map, and its confidence map when sent, as 16-bit and 8-bit PNGs, after they are rotated with the photo and their face regions zeroed. If one of those puts fails, the depth is dropped and the photo kept (contracts 3). ✓ A second put to an existing key fails with `412 PreconditionFailed`.
 3. Then it creates the database record.
 
-A crash between steps 2 and 3 leaves an object without a record, never a record without its object. A daily sweep lists each garden's prefix and deletes objects older than an hour that no record points to.
+A crash between steps 2 and 3 leaves an object without a record, never a record without its object. A daily sweep lists each garden's prefix and deletes objects older than an hour that no record points to. Every key field counts as a pointer: `scan_image.storage_key`, `depth_key` and `depth_confidence_key`, `mask.storage_key` and `chat_image.storage_key`. A sweep that checked only `storage_key` would delete every depth map an hour after its upload.
 
-**Deletes** (garden, plant or scan deletion, account deletion, chat images):
+**Deletes** (garden, plant or scan deletion, account deletion, chat images). A shot removed before submit is deleted by key, with its depth and confidence maps:
 1. List the prefix with `ListObjectsV2` (paginated).
 2. Delete the keys in `DeleteObjects` batches of up to 1000, and check the `Errors` list in each response.
 3. ✓ This removes exactly the prefix's objects and leaves every other prefix alone.
@@ -195,6 +198,7 @@ fn storage_client(endpoint: &str, access_key: &str, secret_key: &str) -> Client 
 |---|---|
 | Health | `GET /health/ready` (readiness) and `/health/live`, both unauthenticated on port 9000 |
 | Backups | A nightly `rclone sync rustfs:pdm-images <off-host remote>`. The rclone remote is `type = s3`, `provider = Other`, `endpoint = http://127.0.0.1:9000`, `region = us-east-1`, `force_path_style = true`. Use a read-only key for it. Single-disk mode has no redundancy, so this backup is the only protection against disk loss or bitrot |
+| Capacity | A stored photo is 100–500 KB. A scan from a LiDAR phone takes roughly two to three times the space of an ordinary scan, by estimate: its photos are stored larger (a long side of at least 2048 pixels, architecture 6.7), and each comes with a 16-bit depth map of a few hundred pixels per side, about 0.3–0.9 MB as a PNG, plus an 8-bit confidence map on the ARKit path. The day-1 LiDAR check records the real sizes; size the disk and the backup remote from them |
 | Logs | `docker logs`, with `RUSTFS_OBS_LOG_STDOUT_ENABLED=true` |
 | Metrics | None for the hackathon. RustFS only pushes metrics over OTLP, and the 1.0.1 OTLP exporter panics ([#8364](https://github.com/rustfs/rustfs/issues/8364)). The health probe and the status page are enough |
 | Upgrades | Back up, change the pinned tag, then `docker compose pull rustfs && docker compose up -d --no-deps rustfs`. Never `down -v`, which deletes the volume. Rollback isn't guaranteed (#8003) |

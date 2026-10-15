@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.6, 2026-10-15. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.7, 2026-10-15. Companion to the [architecture document](README.md).
+> **v0.7** adds LiDAR, on the phones that have it: depth maps uploaded with photos, a `measurement` stage and observation, measurable indicators answered before the VLM (on photos sent for a question too, after a segmentation-only `perception` job), a growth series per plant, and a garden map with neighbours, spacing and neighbour monitoring steps. All of it is optional: without depth, every contract behaves as in v0.6.
 > **v0.6** adds batching: perception runs each model once per job over all of a scan's images or regions, a worker declares how many jobs it holds at once (`slots`, so the VLM worker can let vLLM batch two jobs when the day-2 benchmark allows it), and weather is fetched by cache cell, in multi-location requests for the scheduler.
 > **v0.5** applies the fourth audit: plan-trigger task keys scoped to their plan, the dose check on every string the model writes into a tool call, a validated `revise_plan` preview that is stored exactly as shown, `healthy` only on positive evidence, a diagnosis for every guided check, one late-work rule, ratio checks that pass ordinary pruning text, and wording fixes.
 > **v0.4** applies the third audit: guided checks outside runs and kind limits, serialised re-plans that keep chat revisions, `provisional` tied to `uncertain`, a readable-plant rule that keeps healthy plants out of `photos_unusable`, the dose check on every chat reply, one trigger vocabulary with deduplicated trigger tasks, a pipeline stage on every observation, and an `answering` state for questions.
@@ -48,11 +49,12 @@ Shapes are written as TypeScript types because they are compact and the app team
 | Field names | `snake_case`, matching the database and the Python ingestion scripts |
 | IDs | Opaque strings: the ULID key of the SurrealDB record, without the table prefix (`"01JAX3K9T6R2B8V0QZ4M7D1E5F"`). The field name says what it points to. Knowledge-base IDs are readable slugs (section 10) |
 | Timestamps | RFC 3339 in UTC with a `Z` suffix: `"2026-10-18T14:03:22Z"`. Calendar dates local to a garden are `YYYY-MM-DD` |
-| Units | Metric. °C, mm, m³/m³, km/h. Unit suffixes in field names (`temp_c`, `precip_mm`) |
+| Units | Metric. °C, mm, cm, m, cm², %, m³/m³, km/h. Unit suffixes in field names (`temp_c`, `precip_mm`, `x_m`) |
 | Confidence | A number from 0 to 1, always sent with `confidence_band`: **high** ≥ 0.8, **medium** ≥ 0.5, **low** below that, computed by the API so every screen agrees |
 | Enums | Lower-case `snake_case` strings |
 | Regions | Normalised to the stored image: `[x, y, w, h]`, each from 0 to 1, origin top-left. Whoever produces a box converts it before sending |
 | Images | Uploads may be JPEG, PNG, WebP or HEIC. On upload the API decodes the image, applies its EXIF orientation to the pixels, then strips all metadata, so `width`, `height` and every region refer to the upright image. Everything is stored as WebP |
+| Depth | LiDAR depth maps are 16-bit grayscale PNGs in millimetres, 0 meaning no depth. They are uploaded with a photo (section 3) and stored on the server. No URL exists for one, and workers never receive them |
 | Image URLs | Every `url` the API returns for an image or mask is **signed and short-lived** (15 minutes, `?exp=&sig=`) and needs no `Authorization` header, so plain `<img>` tags work in the web build. The app gets fresh URLs by re-reading the record |
 | Lists | `?cursor=&limit=` (default 20, max 100), returning `{ items: T[], next_cursor?: string }`. Each list endpoint states its sort order |
 
@@ -94,7 +96,7 @@ interface Page<T> {
 
 ### Idempotency
 
-Every create call accepts: `POST /gardens`, `POST /gardens/{id}/invites`, `POST /plants`, `POST /scans`, `POST /scans/{id}/images`, `POST /scans/{id}/answers`, `POST /scans/{id}/feedback`, `POST /conversations`, `POST /conversations/{id}/images`, `POST /conversations/{id}/messages`, `POST /memories` and `POST /tasks` accept an `Idempotency-Key` header (a UUID the app generates per user action and reuses only when retrying that action).
+Every create call accepts: `POST /gardens`, `POST /gardens/{id}/invites`, `POST /plants`, `POST /scans`, `POST /scans/{id}/images`, `POST /scans/{id}/answers`, `POST /scans/{id}/feedback`, `POST /conversations`, `POST /conversations/{id}/images`, `POST /conversations/{id}/messages`, `POST /memories`, `POST /tasks` and `PUT /gardens/{id}/map` accept an `Idempotency-Key` header (a UUID the app generates per user action and reuses only when retrying that action).
 
 | Rule | Behaviour |
 |---|---|
@@ -112,10 +114,11 @@ A user who is not a member of the garden, or not the owner of the conversation, 
 
 | Action | viewer | reviewer | editor | owner |
 |---|---|---|---|---|
-| Read gardens, plants, scans, plans, tasks, timeline | ✓ | ✓ | ✓ | ✓ |
+| Read gardens, plants, scans, plans, tasks, timeline, measurements, the garden map | ✓ | ✓ | ✓ | ✓ |
 | Chat in their own conversations, with the read tools and `remember` (which only writes the caller's private memory) | ✓ | ✓ | ✓ | ✓ |
 | Scan feedback | | ✓ | ✓ | ✓ |
 | Create scans, upload, answer questions, confirm species, add guided soil checks | | | ✓ | ✓ |
+| Map the garden (from a LiDAR device) | | | ✓ | ✓ |
 | Chat write tools (create and complete tasks, revise plans) and their confirmation cards | | | ✓ | ✓ |
 | Create, complete and dismiss tasks | | | ✓ | ✓ |
 | Create and edit plants | | | ✓ | ✓ |
@@ -235,6 +238,11 @@ interface ScanImage {
   height: number;
   url: string;               // signed, short-lived
   uploaded_at: Timestamp;
+  depth?: {                  // LiDAR phones only; the depth map itself is never served
+    width: number;
+    height: number;
+    has_gravity: boolean;    // plant height and canopy width need it
+  };
 }
 
 interface SpeciesRef {
@@ -259,6 +267,7 @@ interface Plant {
   species_status: "unknown" | "suggested" | "confirmed";
   species_candidates: SpeciesCandidate[];
   status: "healthy" | "watch" | "sick" | "dead";
+  position?: { map_version: number; x_m: number; y_m: number };  // from the garden map (section 9)
   created_at: Timestamp;
 }
 
@@ -322,7 +331,7 @@ interface ScanDetail extends Scan {
 }
 ```
 
-**Observations across runs.** Every observation records the `pipeline_stage` that produced it (section 7). A pipeline stage's observations are replaced only when a later run re-runs that pipeline stage. Guided-check observations (`pipeline_stage: "guided"`) are never replaced by a run; the diagnosis uses the latest check of each kind. A species-change run re-runs species, disease, the VLM stages and scoring, so `ScanDetail.observations` keeps the plant check, segmentation regions and image embeddings of the earlier run, and shows the new run's results for the rest. Every observation carries the `run` that produced it.
+**Observations across runs.** Every observation records the `pipeline_stage` that produced it (section 7). A pipeline stage's observations are replaced only when a later run re-runs that pipeline stage. Guided-check observations (`pipeline_stage: "guided"`) are never replaced by a run; the diagnosis uses the latest check of each kind. A species-change run re-runs species, disease, the VLM stages and scoring, so `ScanDetail.observations` keeps the plant check, segmentation regions, measurements and image embeddings of the earlier run (measuring again only if the earlier run hadn't finished it), and shows the new run's results for the rest. The regions and measurements of a photo sent for a question are added to its run's observations and replace nothing. Every observation carries the `run` that produced it.
 
 **Open questions.** `open_question` stays on the scan after the scheduler has continued without an answer, until the user answers it or a new run supersedes it. The current plan shows it at the top while it is open.
 
@@ -341,29 +350,66 @@ interface CreateScanRequest {
 
 ### `POST /scans/{id}/images`
 
-`multipart/form-data` with the fields `kind` (an `ImageKind`), `file`, and optionally `question_id` when the photo answers a `photo_request` question. Role: editor.
+`multipart/form-data` with the fields `kind` (an `ImageKind`), `file`, optionally `question_id` when the photo answers a `photo_request` question, and, from a LiDAR phone, `depth`, `depth_confidence` and `depth_meta` (below). Role: editor.
 
 | Upload | Allowed when | What happens |
 |---|---|---|
 | Any plant or soil kind, no `question_id` | The scan is `pending` | Stored for the run. A kind already at its limit returns `too_many_images`; the app deletes the shot first to replace it |
 | `squeeze_test` or `jar_test` | Any status except `failed` | Stored as a new `GuidedCheck`, and its own `guided` job analyses it, whether it was uploaded before or after submit (section 5). A check never blocks or fails the run. After submit there is no limit: a jar that hadn't settled, or a check that failed, is simply photographed again as a new check. The jar test is usually uploaded hours later, from the task the app created when the user started it |
-| With `question_id` | That question's `status` is `open`, whatever the scan's status | The question becomes `answering` and the photo goes straight to a `verify` job; no submit is needed. Doesn't count toward kind limits |
+| With `question_id` | That question's `status` is `open`, whatever the scan's status | The question becomes `answering` and the photo goes to a `verify` job; no submit is needed. A photo with depth may first be segmented and measured (section 7, measurement). Doesn't count toward kind limits |
 
 A question that is already answered, superseded or `answering` returns `409 invalid_state`.
+
+**Depth (LiDAR phones only).** Three optional parts, sent with any plant or soil kind, including a photo with `question_id`:
+
+| Part | Content |
+|---|---|
+| `depth` | 16-bit grayscale PNG of depth (not disparity) in millimetres, 0 for no depth, covering the same field of view as the photo, with its aspect ratio (within 1%). It is in the frame of the photo's pixels **before** EXIF orientation, the sensor frame in which the camera delivers both, so the photo must be the file the LiDAR module wrote, uploaded unchanged. At most 4 MB |
+| `depth_confidence` | Optional 8-bit PNG of the same size: 0 low, 1 medium, 2 high. Sent only when the capture path has one: ARKit's scene depth does, AVFoundation's `AVDepthData` doesn't |
+| `depth_meta` | JSON, a `DepthMeta` |
+
+```ts
+interface DepthMeta {
+  source: "lidar";
+  intrinsics: {                        // pixels of a reference size, in the sensor frame
+    fx: number; fy: number; cx: number; cy: number;
+    ref_width: number; ref_height: number;
+  };
+  distortion?: {                       // only if the day-1 check finds the photo and depth distorted
+    center: [number, number];          // reference-size pixels, sensor frame
+    inverse_lookup: number[];          // the calibration's inverse lens distortion table
+  };
+  gravity?: [number, number, number];  // unit vector towards the ground, in camera coordinates
+                                       // (x right, y down, z forward), sensor frame
+  device_model: string;                // "iPhone16,1"
+  filtered: boolean;                   // the phone filled holes in the depth map
+}
+```
+
+The API applies the photo's EXIF orientation to the depth and confidence maps and transforms the intrinsics and gravity to match, scales the intrinsics to the stored image's size, sets the depth to 0 inside every face box found for blurring, and stores the result (architecture 6.7). Orientations 1, 3, 6 and 8 are rotations: a quarter turn swaps `fx` with `fy` and `ref_width` with `ref_height`, and the principal point, the distortion centre and gravity's x and y turn with the pixels. The mirrored orientations (2, 4, 5 and 7) can't come from the rear camera, so their depth is dropped with `invalid_meta`. A photo uploaded with depth is stored with a long side of at least 2048 pixels, or at its own size when smaller, because spot sizes are measured on the stored image (section 7). **Depth problems never fail the upload:** the photo is stored, the depth is dropped, and the response says why. Depth sent with a `squeeze_test` or `jar_test` is dropped in the same way. The idempotency fingerprint covers every part.
 
 ```ts
 // 201 →
 interface UploadImageResponse {
   image: ScanImage;
   quality: { blur_score: number; exposure: number; passed: true };
+  depth?:                              // present when depth parts were sent
+    | { stored: true }
+    | {
+        stored: false;
+        problem: "aspect_mismatch" | "too_sparse" | "invalid_meta"
+               | "unsupported_format" | "too_large" | "not_for_this_kind";
+      };
 }
 ```
+
+`too_sparse` means fewer than 20% of the pixels have depth.
 
 Errors: `image_quality` (not stored: show `message` and retake), `upload_too_large`, `unsupported_media_type`, `too_many_images`, `invalid_state`, `processing_unavailable`.
 
 ### `DELETE /scans/{id}/images/{image_id}`
 
-Removes a shot while the scan is `pending`. Role: editor. `204`.
+Removes a shot, with its depth map, while the scan is `pending`. Role: editor. `204`.
 
 ### `GET /scans/{id}/images/{image_id}` and `GET /scans/{id}/masks/{mask_id}`
 
@@ -405,7 +451,7 @@ interface AnswerRequest {
 - Before the scan is `planned`: the answer is rescored and the run continues.
 - After the scheduler has continued without it (the scan is `diagnosed` or `planned`): the answer is a **late answer**. It always produces a new diagnosis and a new plan version with reason `late_answer`, whether or not the winner changes. The plan is provisional exactly when that diagnosis is `uncertain` (section 7), so an answer that settles the question ends the provisional plan, and an `unsure` that leaves it ambiguous keeps it provisional.
 - A question that is already answered, superseded or `answering` returns `409 invalid_state`.
-- While a `verify` job for a photo answer runs, the scan keeps its current status, progress shows as stage events, and the scheduler's sweep waits for that job before continuing the scan.
+- While a photo answer is analysed (its segmentation job when it has depth, then its `verify` job), the scan keeps its current status, progress shows as stage events, and the scheduler's sweep waits for those jobs before continuing the scan.
 
 ### `POST /plants/{id}/species`
 
@@ -424,7 +470,7 @@ The plant is updated. Then the plant's **most recent scan**, if it was created i
 | That scan's status | Effect |
 |---|---|
 | `pending` or `queued` | Nothing more: the run uses the new species when it starts |
-| `analysing`, `awaiting_answer`, `diagnosed` or `planned`, and the new species differs from the run's working species | A new run starts, in every case: the status becomes `analysing`; the old run's jobs are cancelled; its open question is resolved as `superseded`; and if the scan had a plan, the new run's plan supersedes it with reason `species_changed`. Which stages the new run repeats depends on the earlier run: if it had finished plant check and segmentation, the new run re-runs species, disease, the VLM stages and scoring, and keeps the earlier observations (see above); otherwise it runs every perception stage. With `custom_name` ("something else"), the new run skips species identification |
+| `analysing`, `awaiting_answer`, `diagnosed` or `planned`, and the new species differs from the run's working species | A new run starts, in every case: the status becomes `analysing`; the old run's jobs are cancelled; its open question is resolved as `superseded`; and if the scan had a plan, the new run's plan supersedes it with reason `species_changed`. Which stages the new run repeats depends on the earlier run: if it had finished plant check and segmentation, the new run re-runs species, disease, the VLM stages and scoring, and keeps the earlier observations (see above), measuring again only if the earlier run hadn't finished it; otherwise it runs every perception stage and measures again. With `custom_name` ("something else"), the new run skips species identification |
 
 ### `POST /scans/{id}/feedback`
 
@@ -513,11 +559,13 @@ When the scheduler continues a scan without an answer, there is no special event
 ```ts
 type Stage =
   | "plant_check" | "segmentation" | "species" | "disease" | "image_embedding"
-  | "context" | "retrieve" | "vlm_findings" | "vlm_indicators" | "guided"
+  | "measurement" | "context" | "retrieve" | "vlm_findings" | "vlm_indicators" | "guided"
   | "verify" | "scoring" | "fusion" | "plan";
 
 type ProblemKind = "fungal" | "bacterial" | "viral" | "pest" | "wildlife" | "abiotic";
 ```
+
+The `measurement` stage appears only when a photo has depth: in a run with at least one such photo, and for a photo with depth sent for a question (section 7). For other scans it is never started and never listed in `rerun_stages`. `api` sends its stage events itself, on the GPU and the fallback path alike; workers never report it. Its `finding` events carry `measurement` observations (section 7). When there is depth but nothing could be measured (no gravity, no mask, no confident depth), it completes with `skipped: { reason: "nothing_measurable" }`; when measuring fails, with `skipped: { reason: "error" }`, and the run continues without measurements. Organism lengths are added to organism findings before their `finding` events are sent, so they need no stage of their own. When measurements answered every indicator, `vlm_indicators` completes with `skipped: { reason: "all_measured" }`.
 
 Example of a typical run, where the classifier suggests early blight and the indicators confirm it:
 
@@ -574,7 +622,7 @@ Example of a typical run, where the classifier suggests early blight and the ind
 
   A worker whose heartbeat thread keeps running while its model hangs still loses the job at `max_runtime`. These limits hold at the configured `slots`: the day-2 benchmark checks that a `vlm` job's p95 time with `VLM_SLOTS` jobs running together stays under half its `max_runtime`.
 - The broker requeues a job when its worker's heartbeat is older than 30 seconds, or when its lease expires. Requeueing invalidates the lease token.
-- `attempts` counts `failed` completions with `retryable: true`, **plus every requeue after the 2nd**. A job that keeps crashing its worker therefore runs out of attempts. After the 3rd attempt, the job fails for good: a run's job sends the scan to `failed` with `processing_error`; a `verify` job for late work (section 3: the scan is `diagnosed` or `planned`) and every `guided` job report their failure as an event (`question_resolved` with `dropped`, or `guided_check_done` with a failed check) and leave the scan as it is.
+- `attempts` counts `failed` completions with `retryable: true`, **plus every requeue after the 2nd**. A job that keeps crashing its worker therefore runs out of attempts. After the 3rd attempt, the job fails for good: a run's job sends the scan to `failed` with `processing_error`; a `verify` job for late work (section 3: the scan is `diagnosed` or `planned`) and every `guided` job report their failure as an event (`question_resolved` with `dropped`, or `guided_check_done` with a failed check) and leave the scan as it is. The segmentation-only `perception` job for a photo sent to a question (section 7, measurement) never fails the scan or the question: when it fails, the photo goes on to its `verify` job unmeasured.
 - Every `perception`, `vlm` and `verify` job belongs to a scan **run**. A `guided` job belongs to the scan, not to a run: a new run never cancels it, and it never fails the scan. When a new run starts (a resubmit or a species change), the broker cancels the old run's queued and leased run jobs, and the old run's open question is resolved as `superseded`. A worker learns this from its next heartbeat response (`cancel_job_ids`) and stops.
 - **Any call about a requeued, expired or cancelled job, including a job of an older run, gets `409 lease_lost`.** This holds for `events` and `complete` alike. The worker drops the job.
 - Repeating `complete` with the same lease token for a job that already completed (a retry after a network timeout) returns `204` and changes nothing.
@@ -642,7 +690,8 @@ interface JobImage {
 
 ```ts
 interface PerceptionPayload {
-  images: JobImage[];             // every plant and soil image of the scan; no guided-check images
+  images: JobImage[];             // every plant and soil image of the scan, or only a question's photo (section 7);
+                                  // no guided-check images; never depth
   stages: ("plant_check" | "segmentation" | "species" | "disease" | "image_embedding")[];
   species_id?: Slug;              // confirmed or user-chosen species: skip identification, use this
   skip_species_identification?: boolean;  // true when the user chose "something else" (no species_id)
@@ -661,7 +710,8 @@ interface Indicator {
 interface CandidatePrompt {
   problem_id: Slug;
   name: string;
-  indicators: Indicator[];        // exactly 3 (architecture 6.3)
+  indicators: Indicator[];        // its 3 discriminating ones, minus those a measurement settled (section 7);
+                                  // a candidate with none left is not sent
 }
 
 interface VlmPayload {
@@ -694,6 +744,8 @@ interface GuidedPayload {
 | Verify | The answering photo first, then the indicator-call rule for the rest |
 
 The images go first in both prompts of the `vlm` job, so vLLM's prefix caching can reuse the image tokens when the two calls share images.
+
+When measurements have answered every indicator (section 7), `candidates` and `indicator_images` are empty: the worker skips the indicators call, returns no answers, and reports `vlm_indicators` as skipped with reason `all_measured`.
 
 ### `POST /internal/jobs/{id}/events`
 
@@ -941,6 +993,7 @@ type GuidedTexture =
 ```
 
 - **Certainty as a word, not a number.** A quantized 7–8B model's self-reported probabilities are poorly calibrated. The worker maps `low`, `medium` and `high` to 0.4, 0.65 and 0.85, so a VLM finding can never show more than "high (0.85)".
+- Measurements (section 7) are never put into a VLM prompt, so the VLM's answers stay independent of them.
 - Guided decoding guarantees the shape; the worker still validates it. On a validation failure it retries the call once, then fails the job with `retryable: true`.
 - A jar test with `settled: false` produces no texture observation; the app keeps the task to photograph the jar again later.
 - The fallback worker sends the same per-call schema to the LLM API's structured-output feature, requesting `norm_1000` boxes, and relies on `max_tokens` and truncation where that feature ignores `maxLength` or `maxItems`.
@@ -958,7 +1011,7 @@ interface Observation {
   id: Id;
   scan_id: Id;
   run: number;
-  stage: "plant_check" | "segmentation" | "species" | "disease" | "soil" | "organism" | "damage";
+  stage: "plant_check" | "segmentation" | "species" | "disease" | "soil" | "organism" | "damage" | "measurement";
   pipeline_stage: Stage;             // the pipeline stage that produced it; runs replace observations by this
   label: string;                     // display text: "Early blight", "Ladybug larva", "Soil: dry", "Leaf"
   ref?: {                            // the knowledge-base record, when there is one
@@ -973,15 +1026,91 @@ interface Observation {
     count?: "one" | "few" | "many";
     region_class?: RegionClass;      // segmentation
     guided_kind?: "squeeze_test" | "jar_test";
+    measurement?: Measurement;       // measurement observations
+    length_mm?: number;              // organisms on a photo with depth; shown, not scored
   };
   confidence: Confidence;
   confidence_band: ConfidenceBand;
   region?: Region;
-  source: "segmentation" | "bioclip" | "classifier" | "vlm" | "llm_fallback" | "user";
-  model_version: string;
+  source: "segmentation" | "bioclip" | "classifier" | "vlm" | "llm_fallback" | "user" | "measurement";
+  model_version: string;             // for measurements: the algorithm version and depth_meta.device_model
   created_at: Timestamp;
 }
 ```
+
+### Measurement
+
+Only for photos uploaded with depth (architecture 6.7). It runs in `api` after the perception result is stored, when a plant was found, before retrieval; and for a photo sent to a question, after that photo's segmentation (below). An error while measuring never fails a scan (section 4).
+
+```ts
+type MeasureQuantity =
+  | "plant_height_cm" | "canopy_width_cm"
+  | "leaf_length_cm" | "leaf_area_cm2"
+  | "lesion_diameter_mm" | "lesion_count" | "affected_area_pct"
+  | "hole_diameter_mm";
+
+interface Measurement {
+  quantity: MeasureQuantity;
+  value: number;                     // the median over the items (table below), or the single value
+  min?: number;                      // over the items, when n > 1
+  max?: number;
+  n: number;                         // the number of items; 1 for height and canopy width
+  distance_m: number;                // median camera distance over what was measured
+}
+```
+
+| Quantity | From | Items | Needs |
+|---|---|---|---|
+| `plant_height_cm` | `whole_plant` | One value | Gravity. The plant clear of the top and bottom edges of the frame |
+| `canopy_width_cm` | `whole_plant` | One value | Gravity. The plant clear of the side edges of the frame |
+| `leaf_length_cm`, `leaf_area_cm2` | `leaf_closeup`, `leaf_underside` | Leaves with a mask | A leaf mask |
+| `lesion_count`, `affected_area_pct` | `leaf_closeup`, `leaf_underside` | Leaves with a mask: each leaf's spot count, or the share of its area covered by spots and their yellowing | A leaf mask |
+| `lesion_diameter_mm` | `leaf_closeup`, `leaf_underside` | Spots at least 4 pixels across | A leaf mask and one such spot |
+| `hole_diameter_mm` | `leaf_closeup`, `leaf_underside` | Holes at least 4 pixels across | A leaf mask and one such hole |
+
+There is one observation per image and quantity. Its `region` is always present, so it names its image: the plant's box for height and canopy width, otherwise the box around the measured leaves. A quantity whose needs aren't met is not reported. The fallback worker's whole-image regions have no mask, so on the fallback path only height and canopy width can be measured.
+
+**Geometry.** These definitions are part of the contract, so measurements stay comparable between versions of the code:
+
+- **Pixels to a plane.** A pixel (u, v) of the stored image is the ray K⁻¹ · (u, v, 1), with K the intrinsics scaled to the stored image, after the pixel is undistorted when `depth_meta.distortion` was sent. A point on a leaf is where that ray meets the leaf's plane.
+- **Depth inside a mask** is read only after the mask is shrunk by two depth pixels, because depth along an outline mixes the leaf with what lies behind it.
+- **Leaf plane:** fitted by RANSAC to the depth inside the shrunken mask, from pixels with medium or high depth confidence. Its residual is the RMS distance of the inliers to the plane.
+- **Leaf length** is the longest distance between two points of the mask's outline projected onto the plane. **Leaf area** is the projected area of the mask.
+- **Spots** are connected groups of pixels inside a leaf mask that the `SpotSegmenter` marks as necrotic: brown, black or pale against the leaf's own green. Yellow pixels around them count toward `affected_area_pct`, never toward a spot's size, because sources give lesion sizes without the halo. A spot's diameter is that of the circle with its projected area. Spots under 4 pixels across are counted but not sized.
+- **Holes** are gaps enclosed by a leaf mask's outline, sized like spots.
+- **Plant points** are the `plant` region's mask when it has one, otherwise the connected depth layer around the centre of the frame (neighbouring depth pixels within 5 cm of each other), inside the `plant` box when there is one. **Height** is their spread along gravity, and **canopy width** their spread along the horizontal direction perpendicular to the line of sight, each from the 2nd to the 98th percentile.
+- **Organism length** (`detail.length_mm`) is the longer side of the organism's box, at the median depth inside the box. It isn't corrected for tilt, and it is shown, never scored. `api` adds it when it stores the VLM findings, before their `finding` events are sent.
+
+**Confidence.** Each measurement is rated on the criteria that apply to it. Its band is the lowest that any criterion reaches, mapped to the VLM's values:
+
+| Criterion | high (0.85) | medium (0.65) | Applies to |
+|---|---|---|---|
+| Coverage: the share of the shrunken region's pixels with medium or high depth confidence | 60% or more | 30% or more | All |
+| Plane residual (RMS) | 5 mm or less | 10 mm or less | Leaf, spot and hole quantities |
+| Median distance against the kind's valid range: 0.4–4 m for `whole_plant`, 0.2–0.6 m for the leaf kinds (the lower bound comes from the day-1 check) | Inside | Up to 20% beyond either end | All |
+| Plant region | A `plant` mask | The connected depth layer | Height and canopy width |
+| Depth map | Unfiltered, or with a confidence map | `filtered: true` without a confidence map | All |
+
+A measurement below medium on any criterion is low. Low measurements are shown but never answer an indicator and never enter the growth series. Without a `depth_confidence` map, every non-zero depth pixel counts as medium.
+
+**Measurable indicators.** Only a profile's discriminating indicators are asked, so only their `measure` (section 10) is used. Before a `vlm` or `verify` job is queued, `api` answers each measurable indicator of the job's candidates from the best measurement of its quantity (highest confidence, then largest `n`) that has medium confidence or more and comes from an image whose kind is in the indicator's `image_kinds`. The indicator's `stat` picks `value` (`median`), `max` or `min`. The margin m at each bound is 10% of the bound, but at least two stored-image pixels at the measured distance (2 × `distance_m` / `fx`) for lengths and diameters, and at least 1 for counts:
+
+| Measured value | Answer |
+|---|---|
+| Inside the range by at least m from each bound it has | `yes` |
+| Outside the range by more than m | `no` |
+| Within m of a bound, or no usable measurement | Not answered: the indicator goes to the VLM as before |
+
+The answer is stored as `IndicatorEvidence` with `source: "measurement"`, `measured`, and a generated `reason` ("Median spot 2.1 mm; range 1.5–3 mm").
+
+- Each indicator keeps one answer, ranked `user`, then `measurement`, then `vlm`. A user's answer to the same indicator replaces a measured one.
+- A measured indicator leaves the job's `CandidatePrompt`, and a candidate with none left is not sent. When no candidate is left, a `vlm` job skips its indicators call (section 5), a `verify` job isn't queued, and the scan is rescored straight away.
+- A question is chosen only from indicators that neither the user nor a measurement has answered.
+- For the `healthy` status (below), a measured `no` counts only when the measurement found no spots at all (`lesion_count` or `affected_area_pct` of 0). A spot of the wrong size still counts against its candidate.
+
+**Photos sent for a question.** A photo uploaded with `question_id` and depth, when one of the question's candidates still has an unanswered measurable indicator whose `image_kinds` include the photo's kind, first gets a `perception` job of the same run with `stages: ["segmentation"]` and that photo alone. `api` then measures the photo, answers what the measurements settle, and queues the `verify` job for the rest, or rescores straight away when nothing is left. The photo's regions and measurements are added to the run's observations and replace nothing. This segmentation job never fails the scan or drops the question: if it fails, or its regions have no mask, the photo goes to its `verify` job unmeasured. A photo without depth, or for a question with nothing measurable, goes straight to `verify` as before.
+
+**Growth.** Measurements of `plant_height_cm` and `canopy_width_cm` with medium confidence or more form the plant's growth series (`GET /plants/{id}/measurements`, section 9): one point per scan and quantity, the highest-confidence observation of the scan's latest run. Fusion adds the risk `growth_stalled` (level `low`) when all of these hold: the plant's species has a `mature_height_cm`; the latest height in the series is from the past 7 days and below `mature_height_cm`; and the most recent height taken at least 14 days before it differs from it by less than 2 cm or 5% of the earlier height, whichever is larger.
 
 ### WeatherSummary
 
@@ -1029,7 +1158,8 @@ interface IndicatorEvidence {
   weight: 1 | 2 | 3;
   answer: "yes" | "no" | "unsure";
   reason: string;
-  source: "vlm" | "user";
+  source: "vlm" | "user" | "measurement";
+  measured?: { quantity: MeasureQuantity; value: number; image_id: Id };  // with source "measurement"
 }
 
 interface CandidateScore {
@@ -1067,13 +1197,13 @@ interface Diagnosis {
   }[];
   soil: Observation[];               // the soil observations the diagnosis used, guided checks included
   risks: {
-    risk: string;                    // "fungal_spread", "root_rot", "frost_damage"
+    risk: string;                    // "fungal_spread", "root_rot", "frost_damage", "growth_stalled"
     level: "low" | "medium" | "high";
-    drivers: string[];               // "4 days over 90% humidity forecast"
+    drivers: string[];               // "4 days over 90% humidity forecast", "Crowded: nearest plant 30 cm away"
   }[];
   evidence_basis: {                  // architecture 6.4: user input, then photo, then modelled data
     user_input: string[];            // from shared memories only (section 8)
-    photo: string[];
+    photo: string[];                 // measurements included: "Median spot 2.1 mm"
     modelled: string[];
   };
   citations: Citation[];
@@ -1086,7 +1216,7 @@ The status is decided in this order, and the first row that holds wins:
 
 | `status` | When |
 |---|---|
-| `healthy` | **All** of these hold: no candidate scored above zero; no pest organism and no damage pattern was found with medium confidence or more; no classifier candidate other than `healthy` has medium confidence or more; and there is **positive evidence of health**: the classifier's highest-confidence result across the leaf regions is `healthy` with medium confidence or more, or every candidate has at least 2 of its 3 discriminating indicators answered `no`. The plan is a short care plan |
+| `healthy` | **All** of these hold: no candidate scored above zero; no pest organism and no damage pattern was found with medium confidence or more; no classifier candidate other than `healthy` has medium confidence or more; and there is **positive evidence of health**: the classifier's highest-confidence result across the leaf regions is `healthy` with medium confidence or more, or every candidate has at least 2 of its 3 discriminating indicators answered `no` (a measured `no` counts only when it found no spots, see measurement above). The plan is a short care plan |
 | `confirmed` | The top candidate scored above zero, leads the second by at least the fusion margin (open question 3), and no question is open |
 | `uncertain` | Everything else: the lead is too small, every score is zero without positive evidence of health, or the scan was continued without an answer. The plan is provisional |
 
@@ -1113,6 +1243,7 @@ interface PlanStep {
   category: "cultural" | "biological" | "mechanical" | "chemical" | "monitoring" | "wildlife_deterrent";
   when: PlanWhen;
   targets: { table: "disease" | "organism"; id: Slug }[];  // what the step acts on; may be empty
+  plant_id?: Id;                     // a neighbour this monitoring step is about (garden map); its task goes to that plant
   citations: Slug[];                 // source ids; at least one
   safety_note?: string;              // added by the server to every chemical step (below)
 }
@@ -1151,6 +1282,10 @@ interface ActionPlan {
 | `recurring` | A task with `repeat`; completing it creates the next occurrence until `until` |
 | `on_trigger` | No task yet. A plan trigger rule is registered with the scheduler, which creates the task when its rule fires (architecture 8.3), until `until` or until the plan is superseded. The task's `alert_key` is `plan:<plan_id>:<plan_step_id>:<date>`, under the same unique index as forecast alerts, so it is created at most once a day per step of that plan version even when scheduler runs overlap. Step ids are unique only within a plan, so the plan id keeps two plants' `s3` steps, or `s3` in two versions of one plan, apart |
 
+A step's task belongs to the step's `plant_id` when it has one, otherwise to the plan's plant.
+
+**Neighbours for the plan writer.** When the plant is pinned on the current garden map (section 9) and the diagnosis's primary problem, or for an `uncertain` diagnosis any remaining candidate, is of a kind that spreads (`fungal`, `bacterial`, `viral` or `pest`), the plan writer is given up to 5 neighbours, nearest first, as `{ plant_id, name, species_name, distance_m, problems: Slug[] }`. `problems` are the spreading problems among those that the neighbour's species, confirmed or suggested, is `susceptible_to`. A neighbour with no species, or susceptible to none of them, is left out. Healthy diagnoses get no neighbours. A new map version doesn't re-plan (the reasons below are the only ones): it is used the next time a plan is written.
+
 **Re-planning.** A new plan version is written for one of these reasons, and only these:
 
 | Reason | Trigger |
@@ -1181,6 +1316,7 @@ When a plan is **superseded**, the system dismisses its open tasks (`dismissed_r
 | Beneficials are never targeted | A step whose `targets` include an organism with role `beneficial` is rejected. Organisms reported as `other` have role `unknown` and cannot be targeted |
 | Beneficials are not harmed by the way | When the scan found a beneficial organism, a `chemical` step naming a product marked `broad_spectrum` in `products.yaml` is rejected, and the plan writer is asked for a targeted option instead |
 | Every step is cited | `citations` has at least one source, and every source appears in `ActionPlan.citations` |
+| Neighbour steps | A step with `plant_id` must be `monitoring`, that plant must be one of the neighbours given to the plan writer (above), and the step's `targets` must include one of that neighbour's `problems`, or an organism one of them is `caused_by`. A `revise_plan` preview is checked against the same neighbour list |
 
 **The dose check.** Case-insensitive, with word boundaries (`\b`) around every unit, so "2 lowest leaves" or "3 large leaves" don't match. A text fails when it contains:
 
@@ -1192,7 +1328,7 @@ When a plan is **superseded**, the system dismisses its open tasks (`dismissed_r
 
 The mixture words are `solution`, `mix`, `mixture`, `spray`, `dilute`, `concentration`.
 
-Time and spacing ("2 weeks", "every 3 days", "10 cm apart", "30 cm deep") don't match any measure and pass. Two known false positives: "1 gallon sprayer", and clock times such as "10:30", which match the ratio form. The plan writer and the chat prompt are told to describe equipment without sizes and to write times of day in words ("early morning").
+Time, spacing and measured sizes ("2 weeks", "every 3 days", "10 cm apart", "30 cm deep", "spots about 2 mm across") don't match any measure and pass. Three known false positives: "1 gallon sprayer"; clock times such as "10:30", which match the ratio form; and a measured share in a sentence with a mixture word ("spots cover 12% of the leaf, so spray…"). The plan writer and the chat prompt are told to describe equipment without sizes, to write times of day in words ("early morning"), and to give measured shares in a sentence of their own.
 
 The same check runs on **everything the chat model writes**, whatever the question's route (section 8), because a routine care question can still get a dose in its answer:
 
@@ -1270,7 +1406,7 @@ interface ConversationDetail extends Conversation {
 | `POST /conversations` | `CreateConversationRequest` | `201 Conversation` |
 | `GET /conversations?garden_id=&anchor_type=&anchor_id=` | | `200 Page<Conversation>`, the caller's own, newest `last_message_at` first |
 | `GET /conversations/{id}` | | `200 ConversationDetail` |
-| `POST /conversations/{id}/images` | `multipart/form-data` with `file` | `201 { image_id: Id, url: string }`. Same checks as scan uploads |
+| `POST /conversations/{id}/images` | `multipart/form-data` with `file` | `201 { image_id: Id, url: string }`. Same checks as scan uploads; depth parts are ignored |
 | `GET /conversations/{id}/images/{image_id}` | | The image, through its signed URL |
 | `POST /conversations/{id}/messages` | `SendMessageRequest` | An SSE stream (below) |
 | `POST /messages/{id}/feedback` | `{ rating: "up" \| "down", notes?: string }` | `204`, owner only, assistant messages only |
@@ -1387,6 +1523,8 @@ The agent's tools return the same records the app sees. Every tool runs as the s
 | `get_species_profile`, `get_disease_profile`, `get_organism_profile` | Knowledge base | The seed records of section 10 |
 | `compare_lookalikes` | Knowledge base | `{ problem_id: Slug; name: string; how_to_tell: string }[]` |
 | `get_soil_profile` | The garden | `{ soil_profile: SoilProfile \| null; latest: WeatherSummary["soil"]; texture?: Observation }` |
+| `get_plant_measurements` | Plants of the garden | `MeasurementPoint[]` (section 9): the latest 50, oldest first |
+| `get_garden_map` | The garden | `{ map: GardenMap \| null; neighbours: Record<Id, Id[]> }` (section 9) |
 | `list_tasks` | The garden | `Task[]` |
 | `remember` | The garden | `Memory` with `source: "chat"`, and a `memory_saved` event |
 | `request_rescan` | Plants of the garden | `{ plant_id: Id; photo_kind: ImageKind; instructions: string }`, and a `rescan_requested` event |
@@ -1463,6 +1601,7 @@ interface Invite {
 | `PATCH /plants/{id}` | editor | `{ name?, status? }` | `200 Plant` |
 | `DELETE /plants/{id}` | owner | | `202`; the cascade below runs in the background |
 | `GET /plants/{id}/timeline` | any | | `200 Page<TimelineEntry>`, newest first |
+| `GET /plants/{id}/measurements?quantity=` | any | | `200 Page<MeasurementPoint>`, oldest first: the growth series (section 7) |
 
 ```ts
 interface TimelineEntry {
@@ -1473,15 +1612,71 @@ interface TimelineEntry {
   primary?: { problem_id: Slug; name: string };
   thumbnail_image_id?: Id;           // the whole_plant shot, when there is one
   plan_id?: Id;
+  measurements?: { plant_height_cm?: number; canopy_width_cm?: number };  // medium confidence or more
+}
+
+interface MeasurementPoint {
+  scan_id: Id;
+  created_at: Timestamp;
+  quantity: "plant_height_cm" | "canopy_width_cm";
+  value: number;
+  confidence_band: ConfidenceBand;
 }
 ```
+
+The growth series has one point per scan and quantity, with medium confidence or more (section 7, growth).
+
+### Garden map
+
+Made on a LiDAR device (architecture 6.8). Viewing it needs no LiDAR.
+
+| Endpoint | Role | Body | Response |
+|---|---|---|---|
+| `GET /gardens/{id}/map` | any | | `200 { map: GardenMap \| null }` |
+| `PUT /gardens/{id}/map` | editor | `GardenMapInput` | `200 GardenMap`, a new version |
+
+```ts
+interface GardenMapInput {
+  beds: {                            // at most 20
+    id: string;                      // the app's own id, unique within the map
+    name?: string;
+    polygon_m: [number, number][];   // ground plane, metres; 3–50 points, a simple polygon
+  }[];
+  pins: {                            // at most 200; a plant appears at most once
+    plant_id?: Id;                   // exactly one of plant_id and new_plant
+    new_plant?: { name: string; species_id?: Slug };
+    x_m: number;                     // within 200 m of the origin
+    y_m: number;
+    canopy_radius_m?: number;
+    bed_id?: string;
+  }[];
+  north_deg?: number;                // 0–360, clockwise from the map's +y axis to north; only with a compass accuracy of 20° or better
+}
+
+interface GardenMap {
+  garden_id: Id;
+  version: number;
+  beds: { id: string; name?: string; polygon_m: [number, number][]; area_m2: number }[];
+  pins: { plant_id: Id; x_m: number; y_m: number; canopy_radius_m?: number; bed_id?: string }[];
+  north_deg?: number;
+  created_by?: { user_id: Id; display_name: string };  // absent once that user is deleted
+  created_at: Timestamp;
+}
+```
+
+- The frame is local, in metres on the ground plane: the origin is where the AR session started, `x` is ARKit's world x axis and `y` its world −z axis, so the plan reads normally from above. Nothing in the map is tied to the garden's location.
+- `north_deg` comes from the phone's compass during mapping, and is sent only when the reported heading accuracy is 20° or better. It and `canopy_radius_m` are shown on the map; no rule uses them.
+- A `PUT` is atomic. New plants are created, every pinned plant's `position` moves to the new version, and plants without a pin lose their position. The version number is assigned in the same transaction, so two editors mapping at once both succeed and the later upload is the current map. A `plant_id` that isn't a plant of this garden gets `400 invalid_request` with `{ field: "pins[i].plant_id", problem: "unknown_plant" }`, the same whether or not the ID exists elsewhere.
+- **Neighbours** of a plant are the plants pinned on the current map within `NEIGHBOUR_RADIUS_M` (1.5 m), centre to centre.
+- **Crowding:** when a plant's species has a `care.spacing_cm`, the nearest other pin on the current map is closer than 0.75 × that spacing, and the forecast or the past 7 days hold a humid stretch, fusion adds the driver "Crowded: nearest plant 30 cm away, recommended spacing 60 cm" to `fungal_spread`, raising its level one step (at most `high`), or adding it at `low` when the weather alone didn't. Plants without a species, or whose species has no `spacing_cm`, are never called crowded.
+- Deleting a plant removes its pin from the current map in place, without a new version.
 
 ### Deletion cascades
 
 | Deleted | Also deleted | Jobs |
 |---|---|---|
-| A plant | Its scans with their images, masks, observations, events, diagnoses, plans and questions; its tasks and plan trigger rules; conversations anchored to the plant or its scans, with their messages, images, pending actions and feedback; memories about the plant | Queued and leased jobs of its scans are cancelled |
-| A garden | Everything under `gardens/{garden_id}/` in RustFS, and every record of the garden: plants (as above), tasks, memories, conversations, invites, memberships | All its jobs are cancelled |
+| A plant | Its scans with their images, depth maps, masks, observations, events, diagnoses, plans and questions; its tasks and plan trigger rules, including the neighbour tasks and trigger rules its plans made for other plants; the tasks and trigger rules other plants' plans made for it, whose steps lose their `plant_id`; conversations anchored to the plant or its scans, with their messages, images, pending actions and feedback; memories about the plant; its pin on the garden map | Queued and leased jobs of its scans are cancelled |
+| A garden | Everything under `gardens/{garden_id}/` in RustFS, and every record of the garden: plants (as above), tasks, memories, conversations, invites, memberships, the garden map | All its jobs are cancelled |
 
 ### Tasks
 
@@ -1576,6 +1771,7 @@ interface ProblemSeed {
     discriminating: boolean;         // exactly 3 per problem
     where: IndicatorWhere;
     image_kinds: ImageKind[];
+    measure?: IndicatorMeasure;      // answered from LiDAR measurements when possible (section 7)
   }[];
   conditions: {
     temp_c?: { min: number; max: number };
@@ -1589,7 +1785,16 @@ interface ProblemSeed {
   reviewed_by: string;
   reviewed_at: LocalDate;
 }
+
+interface IndicatorMeasure {
+  quantity: MeasureQuantity;
+  stat: "median" | "max" | "min";
+  min?: number;                      // at least one of min and max, in the quantity's unit
+  max?: number;
+}
 ```
+
+An indicator with a `measure` keeps its `question`, because photos without depth are still asked it. It states the size and nothing else, so a measurement answers the whole indicator; a size that comes with other signs ("small spots with dark centres") is split into two indicators. Only discriminating indicators are asked, so a `measure` on any other indicator is never used. Ranges come from the sources, like the rest of the profile.
 
 Example. The content illustrates the format; the real profiles are written from the curated sources and reviewed.
 
@@ -1637,6 +1842,20 @@ reviewed_by: <teammate>
 reviewed_at: 2026-10-20
 ```
 
+A measurable indicator, from the look-alike's profile:
+
+```yaml
+# problems/tomato_septoria_leaf_spot.yaml (excerpt)
+  - id: tomato_septoria_leaf_spot.small_spots
+    text: Spots about 1.5–3 mm across
+    question: Are the spots small, about the size of a pinhead or a little bigger?
+    weight: 3
+    discriminating: true
+    where: lower_leaves
+    image_kinds: [leaf_closeup]
+    measure: { quantity: lesion_diameter_mm, stat: median, min: 1.5, max: 3 }
+```
+
 ### Other entity shapes
 
 ```ts
@@ -1659,6 +1878,8 @@ interface SpeciesSeed {
     light: "full_sun" | "part_shade" | "shade";
     soil_ph: { min: number; max: number };
     hardiness_zones?: string;        // Canadian plant hardiness zones, e.g. "annual" or "4-8"
+    spacing_cm?: number;             // recommended distance between plants; the garden map's crowding rule
+    mature_height_cm?: number;       // the growth_stalled rule stops here
     notes?: string;
   };
   classifier_supported: boolean;     // checked against classifier_labels.yaml at ingestion
@@ -1747,7 +1968,8 @@ The loader fails the build when:
 - a classifier label's `species_id` or `problem_id` is unknown, or `classifier_supported` disagrees with `classifier_labels.yaml`;
 - a `full` species has no `care`;
 - any treatment text fails the dose check of section 7;
-- an invasive organism has no `reporting_url`.
+- an invasive organism has no `reporting_url`;
+- a `measure` names a quantity that none of the indicator's `image_kinds` can measure (section 7), has neither `min` nor `max`, or has `min` ≥ `max`.
 
 It generates, alongside the migration:
 
@@ -1771,6 +1993,7 @@ The contracts changed these parts of the architecture document, which has been u
 | Guided checks outside runs and kind limits, each with its own diagnosis; readable-plant rule for `photos_unusable`; `healthy` only on positive evidence; one late-work rule; `answering` questions | 6.3, 6.4, 8.1 |
 | Memory: chat memories private until shared; plan writer reads only shared memories | 7 |
 | Role matrix; 404 for non-members; invites; member removal; deletion cascades; signed image URLs; daily scan limit; provider account deletion | 4, 5, 9, 11 |
+| LiDAR: depth uploads, the `measurement` stage, measurable indicators (also on photos sent for a question), the growth series, the garden map with neighbours, spacing and neighbour plan steps | 1, 2, 3, 5, 6.1, 6.2, 6.3, 6.6, 6.7, 6.8, 7, 8.1, 8.3, 8.4, 8.5, 9, 10, 11, 12, 13, 14, 15 |
 
 ---
 
@@ -1785,3 +2008,5 @@ The contracts changed these parts of the architecture document, which has been u
 7. **Daily scan limit** of 30 per user, and whether the fallback worker needs its own spending cap.
 8. **HEIC decoding** in the Rust image pipeline (libheif bindings): confirm on day 1; until then, the app converts HEIC to JPEG before upload.
 9. **`VLM_SLOTS`**: 2 if the day-2 benchmark shows that two `vlm` jobs of 4 images each fit the 5070 Ti's KV cache next to the model at `VLM_MAX_PIXELS`, and that a job's p95 time with two running stays under half its `max_runtime` (2.5 minutes); otherwise 1. Measure alongside open question 1, with `PERCEPTION_MAX_BATCH` on the 3070.
+10. **Measurement thresholds:** the indicator margin (10% of the bound, at least two pixels), the confidence rules (60% coverage, 5 mm residual), the spot colour thresholds, the smallest sized spot (4 pixels) and the stored size of photos with depth (a long side of at least 2048 pixels), the growth noise floor (2 cm or 5%), the crowding factor (0.75) and `NEIGHBOUR_RADIUS_M` (1.5 m). Set from LiDAR photos in the evaluation set.
+11. **LiDAR capture:** the shortest distance at which LiDAR depth is reliable, the depth map's size from the LiDAR depth camera, whether unfiltered depth keeps its holes, and whether the photo and its depth carry lens distortion (which decides whether `DepthMeta.distortion` is sent). Day-1 check; the distance sets the leaf kinds' valid range and the close-up distance hint. If AVFoundation's path fails the check, capture moves to ARKit's scene depth, which also sends `depth_confidence`.

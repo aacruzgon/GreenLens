@@ -1,6 +1,6 @@
 # PDM Architecture
 
-> **Status:** Draft v0.4.6, 2026-10-15. The SurrealDB schema now lives in [docs/database](../database/README.md) and the RustFS setup in [docs/storage](../storage/README.md), both checked against the pinned versions (SurrealDB 3.3.4, RustFS 1.0.1); section 5 summarises them. v0.4.5 synced with contracts v0.6: batching in perception, worker slots so the VLM can run two jobs when they fit, weather fetched once per ~1 km cell and shared by scans and the scheduler, and batched ingestion embeddings. v0.4.4 synced with contracts v0.5: plan-trigger task keys scoped to their plan, the dose check on every model-written tool argument, chat revisions stored exactly as previewed, `healthy` only on positive evidence, a diagnosis for every guided check, and SAM-class masks. v0.4.3 synced with contracts v0.4: guided checks outside runs, serialised re-plans that keep chat revisions, provisional plans tied to uncertain diagnoses, the readable-plant rule, and the dose check on every chat reply. v0.4.2 synced with contracts v0.3: guided soil checks and the full soil aspects back in scope, per-call photo routing to the VLM, recurring and trigger-based plan steps, lease deadlines, late answers that always re-plan, plan tasks dismissed with their plan, shared-only memories in plans, invites, deletion cascades, signed image URLs and a stronger dose check. v0.4.1: Review of v0.4 added: conversations owned by a user, a pre-VLM candidate set that also covers organisms the VLM finds, a scan state machine without `awaiting_species`, a cap of 3 indicators per candidate, a scheduler sweep for unanswered verification questions, deletion of chat images and chat-derived memory, and a cap of about 9 profiles on the pre-VLM candidate set. v0.4 audit fixes: text embeddings move to the control plane with one pinned model, the VLM detects organisms and answers verification indicators in its main pass, scans get a submit step and a state machine with resumable events, stale workers are requeued from heartbeats, deletion rules for shared gardens, garden-scoped memory, deterministic verification scoring, and schema fixes. v0.3 added soil data sources and soil findings from photos, the detection of organisms (pests, beneficial insects, wildlife, invasive species) and the damage they cause, and capture guidance. v0.2 added species identification, a knowledge base with retrieve-then-verify, and an optional fast text classifier (Jev).
+> **Status:** Draft v0.5, 2026-10-15. Synced with [contracts.md](contracts.md) v0.7: LiDAR on the phones that have it. Depth is captured with each photo, the capture screen shows live distance hints, a measurement stage sizes plants, leaves, spots and holes and answers measurable indicators without the VLM (a photo sent for a question is segmented first so it can be measured too), the timeline gets a growth curve, and a garden map gives plant positions, spacing and neighbour checks (6.7, 6.8). Phones without LiDAR, and the web build, don't offer the capture side, and everything else works as before. v0.4.6: the SurrealDB schema now lives in [docs/database](../database/README.md) and the RustFS setup in [docs/storage](../storage/README.md), both checked against the pinned versions (SurrealDB 3.3.4, RustFS 1.0.1); section 5 summarises them. v0.4.5 synced with contracts v0.6: batching in perception, worker slots so the VLM can run two jobs when they fit, weather fetched once per ~1 km cell and shared by scans and the scheduler, and batched ingestion embeddings. v0.4.4 synced with contracts v0.5: plan-trigger task keys scoped to their plan, the dose check on every model-written tool argument, chat revisions stored exactly as previewed, `healthy` only on positive evidence, a diagnosis for every guided check, and SAM-class masks. v0.4.3 synced with contracts v0.4: guided checks outside runs, serialised re-plans that keep chat revisions, provisional plans tied to uncertain diagnoses, the readable-plant rule, and the dose check on every chat reply. v0.4.2 synced with contracts v0.3: guided soil checks and the full soil aspects back in scope, per-call photo routing to the VLM, recurring and trigger-based plan steps, lease deadlines, late answers that always re-plan, plan tasks dismissed with their plan, shared-only memories in plans, invites, deletion cascades, signed image URLs and a stronger dose check. v0.4.1: Review of v0.4 added: conversations owned by a user, a pre-VLM candidate set that also covers organisms the VLM finds, a scan state machine without `awaiting_species`, a cap of 3 indicators per candidate, a scheduler sweep for unanswered verification questions, deletion of chat images and chat-derived memory, and a cap of about 9 profiles on the pre-VLM candidate set. v0.4 audit fixes: text embeddings move to the control plane with one pinned model, the VLM detects organisms and answers verification indicators in its main pass, scans get a submit step and a state machine with resumable events, stale workers are requeued from heartbeats, deletion rules for shared gardens, garden-scoped memory, deterministic verification scoring, and schema fixes. v0.3 added soil data sources and soil findings from photos, the detection of organisms (pests, beneficial insects, wildlife, invasive species) and the damage they cause, and capture guidance. v0.2 added species identification, a knowledge base with retrieve-then-verify, and an optional fast text classifier (Jev).
 > **Event:** [Build North: Ship Something Real](https://luma.com/build-north). Build week Oct 16–25, submissions due Oct 25 at 11:59 PM ET, Demo Day Oct 29 in Toronto.
 
 PDM is a plant, crop and garden health monitoring app. A user photographs a plant. Computer vision on the backend assesses the plant, the soil and the surroundings. The results are combined with the weather and soil data for the garden's location and with the plant's own history, to produce a diagnosis and an action plan. Users can chat about the results, and the system warns them ahead of risky weather.
@@ -33,11 +33,11 @@ The judges score five criteria, with no weights published. This table shows wher
 
 | Criterion | How the architecture addresses it |
 |---|---|
-| Innovation | Combines vision findings, weather and per-plant memory. Checks each candidate diagnosis against curated disease profiles before giving advice. Sends forecast alerts before problems appear. Shows a health timeline for each plant. Chat can re-examine the photos. |
+| Innovation | Combines vision findings, weather and per-plant memory. Checks each candidate diagnosis against curated disease profiles before giving advice. Sends forecast alerts before problems appear. Shows a health timeline for each plant, with a measured growth curve from LiDAR scans. Measures spot and hole sizes in millimetres to tell look-alikes apart. Chat can re-examine the photos. |
 | Real-World Impact | Clear users: home gardeners and small farms. Catches disease early. Fits the Canadian frost and short-season context. Recognizes beneficial insects so they aren't killed by mistake. Helps users report invasive species. User feedback improves the model over time. |
-| UI & Design | Guided capture with hints to retake bad photos. Live progress for each stage. Boxes drawn on the affected leaves. The plan appears as a checklist. Chat answers cite their sources. Optional guided soil checks. |
+| UI & Design | Guided capture with hints to retake bad photos. Live progress for each stage. Boxes drawn on the affected leaves. The plan appears as a checklist. Chat answers cite their sources. Optional guided soil checks. On LiDAR phones: live distance hints while framing, and a map of the garden's beds and plants. |
 | Tech & Deployment | Live public link. GPU workers pull jobs from the API, with a fallback to API credits. Public repository. Mobile build. |
-| Security & Ethics | Managed authentication with MFA. Every garden-scoped query checks membership. Image storage is private. Photo metadata is stripped and faces are blurred before storage. Location needs consent and only the garden has one. Deleting an account removes the user's own data and any garden they alone use. Wildlife advice is humane. Pesticide advice is limited, uncertain results are shown as uncertain, and advice cites its sources. |
+| Security & Ethics | Managed authentication with MFA. Every garden-scoped query checks membership. Image storage is private. Photo metadata is stripped and faces are blurred before storage. Location needs consent and only the garden has one. Deleting an account removes the user's own data and any garden they alone use. Depth maps never leave the server and have face regions removed; the garden map holds no images, 3D mesh or coordinates. Wildlife advice is humane. Pesticide advice is limited, uncertain results are shown as uncertain, and advice cites its sources. |
 
 Submission requirements: a demo video of 2 minutes or less, a public GitHub repository, a live link, and a Devpost page listing the tech stack, the partner platforms used, and any prior work.
 
@@ -55,6 +55,7 @@ Submission requirements: a demo video of 2 minutes or less, a public GitHub repo
 │ MOBILE APP (Expo / RN)        │◀──────┘               │
 │ capture + GPS · live results  │                       │
 │ chat · plant timeline · tasks │                       │
+│ LiDAR depth · garden map      │                       │
 └──────────────┬────────────────┘                       │
                │ HTTPS: REST + SSE                      │
 ═══════════════╪════════════════════════════════════════╪═════ CONTROL PLANE
@@ -74,6 +75,7 @@ Submission requirements: a demo video of 2 minutes or less, a public GitHub repo
                           │      │  └─────────────────────────────┘         │──▶ Jev (optional)
                           │      ▼                                          │──▶ Weather / soil APIs
                           │ job broker · SSE hub · scheduler · text embed   │──▶ Push (Expo Push)
+                          │ depth measurement (CPU) · garden map            │
                           └────┬───────────────┬──────────────────▲─────────┘
                                │               │                  │
                       ┌────────▼─────────┐ ┌───▼──────────┐ ┌─────┴────────────┐
@@ -101,6 +103,7 @@ Submission requirements: a demo video of 2 minutes or less, a public GitHub repo
 - **Pull-based GPU workers.** The rig opens no ports. It asks the API for jobs over outbound HTTPS. Where the control plane runs is a deployment choice, not a change to the architecture. To add GPU capacity, start another worker.
 - **Vision produces facts, rules produce risk, the LLM produces language.** Every finding carries a confidence score. The LLM explains structured findings and never invents a diagnosis.
 - **Retrieve, then verify.** Candidate diagnoses are checked against curated species and disease profiles before any advice is given. When the evidence is ambiguous, the app asks the user a targeted question instead of guessing. Advice cites its sources.
+- **Optional sensors add evidence; they never gate it.** LiDAR depth is used when the phone has it. Every stage works without it, and an indicator a measurement can't settle goes to the VLM as before.
 - **Use the cheapest model that can do the job.** Small classifiers make the routine decisions (routing, gating, tagging). The strongest LLM is kept for reasoning and writing.
 - **One agent core with two callers.** The plan writer, running after the pipeline, and the chat use the same context builder, tools and safety policy, so their answers can't contradict each other.
 - **A trait at every external boundary:** `VisionModel`, `SpeciesIdentifier`, `TextClassifier`, `TextEmbedder`, `ChatModel`, `KnowledgeStore`, `WeatherProvider`, `SoilProvider`, `BlobStore`, `Store`, `MemoryStore`, `Notifier`. Swapping a vendor or sponsor technology means writing one adapter.
@@ -113,14 +116,14 @@ Submission requirements: a demo video of 2 minutes or less, a public GitHub repo
 
 | Component | Runs on | Tech | Responsibility |
 |---|---|---|---|
-| Mobile app | Phones, web build | Expo / React Native. TypeScript types generated from OpenAPI | Guided capture, location consent, live progress, results with overlays, chat, timeline, tasks, push |
+| Mobile app | Phones, web build | Expo / React Native. TypeScript types generated from OpenAPI | Guided capture, location consent, live progress, results with overlays, chat, timeline, tasks, push. On LiDAR iPhones and iPads, a native module (`app/modules/lidar`) captures depth with each photo, shows distance hints and maps the garden |
 | Auth provider | Managed service | JWT + JWKS, webhooks | Credentials, MFA, sessions. Never stores domain data |
-| `api` | Control plane | axum, tower-http, governor, utoipa | All public endpoints, authorization, uploads (EXIF stripping, blur and exposure check, face blurring), text embeddings on CPU, scan state machine, job broker, SSE hub, scheduler, agent core |
+| `api` | Control plane | axum, tower-http, governor, utoipa | All public endpoints, authorization, uploads (EXIF stripping, blur and exposure check, face blurring), text embeddings on CPU, depth processing and the measurement stage on CPU, scan state machine, job broker, SSE hub, scheduler, agent core |
 | Agent core | Inside `api` | `ChatModel` trait, tool registry | Context assembly, the tool-use loop, safety policy |
 | SurrealDB | Control plane | Graph edges, HNSW vectors, geometry types | All structured data, the job queue, memory |
 | RustFS | Control plane, private | S3 API via `aws-sdk-s3` | Images. Only `api` talks to it |
 | `perception-worker` | Rig, RTX 3070 | `ort` + CUDA, ONNX models | Plant-present check, segmentation, species identification (BioCLIP), disease classification per leaf, image embeddings. BioCLIP as a second opinion on organism crops is a stretch goal |
-| `vlm-worker` + sidecar | Rig, RTX 5070 Ti | vLLM or llama.cpp, OpenAI-compatible API | One `vlm` job per scan, in two VLM calls (findings, then indicator answers) over at most 4 images: soil condition, organisms with bounding boxes, damage patterns, species cross-check, and the answers to the candidates' verification indicators |
+| `vlm-worker` + sidecar | Rig, RTX 5070 Ti | vLLM or llama.cpp, OpenAI-compatible API | One `vlm` job per scan, in two VLM calls (findings, then indicator answers, skipped when measurements answered them all) over at most 4 images: soil condition, organisms with bounding boxes, damage patterns, species cross-check, and the answers to the candidates' verification indicators |
 | `fallback-worker` | Control plane | `VisionModel` with the LLM API as backend | Claims every job kind. Keeps scans working while the rig is offline |
 | Training | Dev machines / 5070 Ti | Python, PyTorch → ONNX | Fine-tunes the disease classifier. Not deployed |
 | Knowledge ingestion | Dev machines | Python scripts + LLM API, reviewed by a teammate | Builds the knowledge base from curated sources. Loaded through migrations. Not deployed |
@@ -134,9 +137,9 @@ Submission requirements: a demo video of 2 minutes or less, a public GitHub repo
 | `store` | SurrealDB repository layer and migrations |
 | `blob` | RustFS client (custom endpoint, path-style addressing) |
 | `agent` | Context builder, tool registry, safety policy, `ChatModel` and `TextClassifier` implementations (Jev, LLM fallback) |
-| `vision` | Perception stages and `ort` sessions for the workers; the CPU blur and exposure check and the `TextEmbedder` implementation for `api` |
+| `vision` | Perception stages and `ort` sessions for the workers; the CPU blur and exposure check, depth processing and measurement (plane fits, spot and hole sizing), and the `TextEmbedder` implementation for `api` |
 | `knowledge` | `KnowledgeStore` implementation, profile lookups, look-alike graph, chunk retrieval, deterministic verification scoring |
-| `pipeline` | Stage orchestration for a scan: context, retrieval, scoring, fusion rules, the plan-writer call. Used by `api` |
+| `pipeline` | Stage orchestration for a scan: measurement, context, retrieval, scoring, fusion rules, the plan-writer call. Used by `api` |
 | `api` (binary) | Routes, auth middleware, job broker, SSE, scheduler |
 | `worker` (binary) | One binary started with `--caps perception`, `--caps vlm` or `--caps fallback` |
 
@@ -177,11 +180,13 @@ Submission requirements: a demo video of 2 minutes or less, a public GitHub repo
 identity      user · member_of (user → garden, role, since) · push_token
 garden        garden (centroid point, boundary polygon, time_zone, soil_profile) · plant (name,
               species, custom_species_name, species_status, species_candidates, position,
-              status) · invite (garden, code, role, created_by, expires_at, used_at, revoked_at)
+              status) · invite (garden, code, role, created_by, expires_at, used_at, revoked_at) ·
+              garden_map (garden, version, beds, pins, north_deg, created_by)
 analysis      scan (status and run, see 8.1; plan, weather snapshot, event counter) · scan_image
-              (kind, answers_question?, storage key, embedding) · mask (region, storage key) ·
+              (kind, answers_question?, storage key, embedding, depth_key?, depth_meta?) ·
+              mask (region, storage key) ·
               scan_event ([scan, seq], run, type, payload) · observation (run, stage,
-              pipeline_stage, label, confidence, region, model_version) · question (run, kind,
+              pipeline_stage, label, measurement?, confidence, region, model_version) · question (run, kind,
               candidates, status) · guided_check · diagnosis (run, supersedes) · scan_feedback
 plans         action_plan (version, supersedes, diagnosis, provisional, constraints) · plan_trigger (plan, step, trigger, until) ·
               task (due, repeat, trigger, source, plan_step, done_at, dismissed_at,
@@ -227,17 +232,20 @@ The schema is [`docs/database/schema.surql`](../database/schema.surql), with its
 - `scan_event.seq`: every event the app was sent, so a result can be replayed exactly.
 - `feedback`: user corrections, which become labelled training data.
 - `plant.species_status`: whether the species was suggested by the models or confirmed by the user.
+- The measurement algorithm's version and the phone model on every measurement observation, so a size can be traced to the code and the device that produced it.
 - `disease.sources` and `disease.reviewed_by`: every profile points to its sources and records which teammate reviewed it.
 
 ### RustFS layout
 
 Setup, access keys, client configuration and caveats are in [docs/storage](../storage/README.md). RustFS 1.0.1 runs on one disk, never exposed publicly, and the API streams every image itself behind its own signed URLs (RustFS's presigned URLs break behind a proxy that changes the host).
 
-The bucket is private. Before anything is written, the image's EXIF orientation is applied to the pixels, then its metadata is stripped, faces are blurred and it is resized. The app and the workers reach images only through short-lived signed URLs issued by the API.
+The bucket is private. Before anything is written, the image's EXIF orientation is applied to the pixels, then its metadata is stripped, faces are blurred and it is resized. The app and the workers reach images only through short-lived signed URLs issued by the API. Depth maps (6.7) are rotated with their photo, have the face regions zeroed, and are stored as 16-bit PNGs; no URL is ever issued for them, and each is deleted with its photo.
 
 ```
 gardens/{garden_id}/scans/{scan_id}/{image_id}.webp
 gardens/{garden_id}/scans/{scan_id}/masks/{mask_id}.png
+gardens/{garden_id}/scans/{scan_id}/depth/{image_id}.png
+gardens/{garden_id}/scans/{scan_id}/depth_confidence/{image_id}.png
 gardens/{garden_id}/chat/{conversation_id}/{image_id}.webp
 ```
 
@@ -249,13 +257,13 @@ Keys are prefixed by garden, so deleting a garden is a prefix delete plus a casc
 
 1. Gardens where the user is the only member are deleted outright: prefix delete in RustFS, cascade in SurrealDB.
 2. Gardens where the user is the only `owner` but others are members: ownership passes to the longest-standing editor. If there is none, the garden is deleted and the remaining viewers are told by push.
-3. Shared gardens the user doesn't solely own: the membership, push tokens, conversations (found through `conversation.user`), their messages, their images under `gardens/{garden_id}/chat/{conversation_id}/` in RustFS, pending actions and message feedback are deleted. The user's unshared chat memories are deleted too; memories they chose to share stay with the garden. The user's scans, observations and the `source = pipeline` memories derived from them stay with the garden, because the other members rely on the plant history. `scan.user` is set to null, so nothing in the garden points at the user any more.
+3. Shared gardens the user doesn't solely own: the membership, push tokens, conversations (found through `conversation.user`), their messages, their images under `gardens/{garden_id}/chat/{conversation_id}/` in RustFS, pending actions and message feedback are deleted. The user's unshared chat memories are deleted too; memories they chose to share stay with the garden. The user's scans, observations and the `source = pipeline` memories derived from them stay with the garden, because the other members rely on the plant history. `scan.user` and `garden_map.created_by` are set to null, so nothing in the garden points at the user any more.
 4. The user's scan feedback is deleted.
 5. The `user` record and its auth mapping are deleted, then the account is deleted at the auth provider too, retried until it succeeds, so signing in again doesn't recreate the user.
 
 **Removing a member** from a garden, by an owner or by leaving, runs step 3 for that garden only, so their private chats and unshared chat memories don't survive a later re-invite.
 
-**Deleting a plant or a garden** cascades to everything under it, including conversations anchored to it, tasks, plan trigger rules, invites and memberships (for a garden), and cancels its queued and leased jobs. The full list is in [contracts.md](contracts.md#deletion-cascades).
+**Deleting a plant or a garden** cascades to everything under it, including conversations anchored to it, tasks (with the neighbour tasks a plant's plans created on other plants), plan trigger rules, its pin or the garden map, invites and memberships (for a garden), and cancels its queued and leased jobs. The full list is in [contracts.md](contracts.md#deletion-cascades).
 
 The judging claim is therefore "deleting an account removes the user's own data and any garden they alone use", not "everything".
 
@@ -265,8 +273,8 @@ The knowledge base lets the system check its diagnoses and base its advice on re
 
 | Kind | Contents | Used by |
 |---|---|---|
-| Species profiles | Care needs, hardiness, water, light, soil pH, and whether the disease classifier supports the species. Common garden plants outside the supported crops get `label_only` records: names and a BioCLIP label, so they can be recognised, with no care profile or problems yet | Species confirmation, plan writer, chat |
-| Disease profiles | Symptoms written as checkable indicators, where symptoms start, the temperature, humidity and leaf-wetness ranges that favour the disease, how it spreads | Verification. Fusion rules take their risk thresholds from here instead of hard-coding them |
+| Species profiles | Care needs, hardiness, water, light, soil pH, spacing and mature height, and whether the disease classifier supports the species. Common garden plants outside the supported crops get `label_only` records: names and a BioCLIP label, so they can be recognised, with no care profile or problems yet | Species confirmation, plan writer, chat |
+| Disease profiles | Symptoms written as checkable indicators, some with a measurable range (spot or hole size) that LiDAR measurements can answer (6.7), where symptoms start, the temperature, humidity and leaf-wetness ranges that favour the disease, how it spreads | Verification. Fusion rules take their risk thresholds from here instead of hard-coding them |
 | Organism profiles | Pests, beneficial insects, wildlife and invasive species: how to recognize them and the damage they cause, their role, natural enemies, and reporting contacts for invasive species | Organism identification, verification, plan writer |
 | Soil conditions | Short descriptions of soil conditions visible in photos (compaction, crusting, waterlogging, salt build-up) and what to do about each | Soil findings, plan writer |
 | Graph relations | `susceptible_to`, `looks_like` (with how to tell them apart), `manages`, `caused_by` (damage → organism), `preys_on` (beneficial → pest) | Candidate lists, look-alike checks, natural-enemy advice |
@@ -283,7 +291,7 @@ The knowledge base lets the system check its diagnoses and base its advice on re
 1. Fetch the source documents, then clean and chunk them.
 2. Tag each chunk with crop, disease and topic using the text classifier, and drop irrelevant chunks.
 3. Embed the chunks with the same text-embedding model `api` uses at query time (section 10), so the vectors are comparable. Chunks are embedded in batches (64 per call by default), and a chunk whose text hash hasn't changed since the last run keeps its vector.
-4. Extract the structured profile fields (indicators, conditions, look-alikes, damage patterns) with an LLM, in the seed format of [contracts.md](contracts.md#10-knowledge-seed-format). Each symptom becomes an indicator with a weight, and `looks_like` edges are written in both directions. For each profile, mark the 3 most discriminating indicators: the highest-weighted ones that differ from its `looks_like` neighbours. Only those are asked during verification.
+4. Extract the structured profile fields (indicators, conditions, look-alikes, damage patterns) with an LLM, in the seed format of [contracts.md](contracts.md#10-knowledge-seed-format). Each symptom becomes an indicator with a weight; a symptom the source gives a size for ("spots 1.5–3 mm across") also gets a measurable range (6.7). `looks_like` edges are written in both directions. For each profile, mark the 3 most discriminating indicators: the highest-weighted ones that differ from its `looks_like` neighbours. Only those are asked during verification.
 5. A teammate reviews every profile before it's loaded. Bad data here produces confident wrong advice.
 6. Load everything through SurrealDB migrations, so every environment has the same knowledge base.
 7. Generate the BioCLIP label list from the `species` and `organism` tables in the same step, so the classifier's labels and the knowledge base can't drift.
@@ -302,12 +310,13 @@ The knowledge base lets the system check its diagnoses and base its advice on re
 | Segmentation | Leaf regions from a detector fine-tuned on PlantDoc's leaf boxes, with masks from a SAM-class model prompted with those boxes (PlantDoc has no mask outlines); plant, soil and surroundings regions when the model has them. Masks are optional, and later stages work without them | perception-worker (YOLO detector + SAM-class model) |
 | Species identification | Top 3 species with scores, cross-checked with the VLM. Skipped once the plant's species is confirmed. See 6.2 | perception-worker (BioCLIP) + vlm-worker |
 | Disease classification | The top 3 problems for each leaf region, or for the whole close-up when no region was found, restricted to the working species' labels. The API takes the 3 distinct problems with the highest confidence as the classifier candidates. Runs only for species the classifier was trained on | perception-worker (classifier fine-tuned on PlantDoc-style field images) |
+| Measurement (LiDAR phones only) | Sizes in real units from each photo's depth map: plant height and canopy width, leaf length and area, spot diameter, spot count, affected leaf area, hole diameter; organism lengths once the VLM's boxes arrive. Not run when no photo has depth. See 6.7 | api (CPU), after the perception result, alongside context |
 | Image embeddings | Image vectors for finding similar past cases. Text embeddings for memory and knowledge queries are not a stage: they run in `api` on CPU, see 10 | perception-worker |
 | Context | Current weather, the past 7 days of weather, a 7–14 day forecast, soil moisture and temperature, evapotranspiration, climate zone, plus the garden's stored soil profile | api (Open-Meteo, cached per ~1 km cell and hour and shared with the scheduler, see 8.3; SoilGrids once per garden) |
-| Retrieve | The pre-VLM candidate set, capped at about 9 profiles: the disease classifier's top 3 (when it ran) plus the problems linked to the working species through `susceptible_to`, including its pests and wildlife damage, ranked by classifier score, then by how well the current weather fits each profile's favourable conditions, then by prior prevalence for the crop. Look-alikes of the top-ranked candidates fill the remaining slots. Each profile brings its 3 most discriminating indicators. Anything outside the cap is still caught by the `verify` rule below. Runs before the VLM job so the VLM can answer the indicators in the same job. See 6.3 | api (`knowledge`) |
-| VLM pass | One `vlm` job per scan, always two calls of at most 4 images each: (a) findings, on the shots in a fixed order: soil condition (see 6.4), organisms with bounding boxes and damage patterns (see 6.5), a species cross-check; (b) indicator answers, on the shots the questions name: a yes / no / unsure answer, with a short reason, for each indicator of each candidate (see 6.3). Guided soil checks get their own single-image `guided` job | vlm-worker (`vlm` and `guided` jobs) |
-| Verify | Candidates scored deterministically from the indicator answers, the weather and the profiles. If the VLM reported an organism or damage pattern outside the candidate set, one `verify` job asks that candidate's indicators first. Ambiguous cases end in a question for the user. A `verify` job also runs for a new photo. See 6.3 | api (scoring), vlm-worker (`verify` job) |
-| Fusion | Risk scores from rules over the verified findings, weather, soil and history. Thresholds come from the disease profiles (e.g. humidity > 90% at 15–25 °C for 2+ days raises fungal risk). Evidence is ranked user input, then photo, then modelled data (see 6.4) | api |
+| Retrieve | The pre-VLM candidate set, capped at about 9 profiles: the disease classifier's top 3 (when it ran) plus the problems linked to the working species through `susceptible_to`, including its pests and wildlife damage, ranked by classifier score, then by how well the current weather fits each profile's favourable conditions, then by prior prevalence for the crop. Look-alikes of the top-ranked candidates fill the remaining slots. Each profile brings its 3 most discriminating indicators. Anything outside the cap is still caught by the `verify` rule below. Indicators that a measurement settles are answered here and left out of the VLM job (6.7). Runs before the VLM job so the VLM can answer the rest in the same job. See 6.3 | api (`knowledge`) |
+| VLM pass | One `vlm` job per scan, in two calls of at most 4 images each (the second is skipped when measurements answered every indicator): (a) findings, on the shots in a fixed order: soil condition (see 6.4), organisms with bounding boxes and damage patterns (see 6.5), a species cross-check; (b) indicator answers, on the shots the questions name: a yes / no / unsure answer, with a short reason, for each indicator of each candidate that no measurement settled (see 6.3). Guided soil checks get their own single-image `guided` job | vlm-worker (`vlm` and `guided` jobs) |
+| Verify | Candidates scored deterministically from the indicator answers, the weather and the profiles. If the VLM reported an organism or damage pattern outside the candidate set, one `verify` job asks that candidate's indicators first. Ambiguous cases end in a question for the user. A `verify` job also runs for a new photo, after the photo is segmented and measured when it has depth (6.7). See 6.3 | api (scoring), vlm-worker (`verify` job) |
+| Fusion | Risk scores from rules over the verified findings, weather, soil and history, plus the growth curve and plant spacing where LiDAR provided them (6.7, 6.8). Thresholds come from the disease profiles (e.g. humidity > 90% at 15–25 °C for 2+ days raises fungal risk). Evidence is ranked user input, then photo, then modelled data (see 6.4) | api |
 | Plan writer | Steps, timing, what to watch for, tasks. Based on the confirmed disease's management guidance, with citations | api → agent core → LLM API |
 
 **Batching.** The perception-worker runs each model once per job over all of the scan's images or leaf crops, split only above a configured batch size, rather than once per image. The VLM pass already asks every indicator in one job. Whether the vlm-worker runs two scans' jobs at once, so vLLM can batch them, is set from the day-2 benchmark (8.4).
@@ -319,7 +328,7 @@ If the confidence is low, the app asks for a better photo or suggests contacting
 1. BioCLIP compares the photos against a label list of the supported crops plus common garden plants (`label_only` species records), and returns the top 3 species with scores.
 2. The VLM names the species independently.
 3. If both agree with a high score, the species is stored as `suggested` and the user confirms it with one tap. If they disagree, or the score is low, the app shows the top 3 with reference photos, plus a "something else" option.
-4. The pipeline continues with the best candidate, so results aren't held up. If the user picks a different species, the plant's most recent scan (created in the last 24 hours and not `failed`) follows it. A scan that is still `pending` or `queued` simply uses the new species when it runs. A scan already past that starts a new **run**: its status returns to `analysing`, jobs of the old run are cancelled and their late results rejected, any open question is superseded, and species, disease, the VLM stages and scoring run again as a new `perception` job whose payload names the stages, the species and the earlier run's segmentation regions. The plant check, segmentation and image embeddings of the earlier run are kept, unless the earlier run hadn't finished them, in which case the new run does every perception stage. Choosing "something else" tells perception to skip species identification. If the scan already had a plan, the new plan supersedes it.
+4. The pipeline continues with the best candidate, so results aren't held up. If the user picks a different species, the plant's most recent scan (created in the last 24 hours and not `failed`) follows it. A scan that is still `pending` or `queued` simply uses the new species when it runs. A scan already past that starts a new **run**: its status returns to `analysing`, jobs of the old run are cancelled and their late results rejected, any open question is superseded, and species, disease, the VLM stages and scoring run again as a new `perception` job whose payload names the stages, the species and the earlier run's segmentation regions. The plant check, segmentation, measurements and image embeddings of the earlier run are kept, unless the earlier run hadn't finished them, in which case the new run does every perception stage and measures again; if only the measuring was unfinished, the new run measures again. Choosing "something else" tells perception to skip species identification. If the scan already had a plan, the new plan supersedes it.
 5. The confirmed species is stored on the `plant` with `species_status = confirmed`. Later scans of the same plant skip this stage.
 6. The disease classifier runs only if `species.classifier_supported` is true. For other species, the pipeline relies on the VLM's findings and marks them as lower confidence. This stops an unsupported plant being diagnosed as the closest supported one, such as basil being reported as "pepper, healthy".
 
@@ -345,8 +354,10 @@ retrieve each candidate's profile (api, before the VLM job):
         │
         ▼
 verify:
-  1. the VLM answers the indicators of every candidate in the `vlm` job's
-     second call, on the shots the questions name:
+  1. on LiDAR photos, api first answers the indicators a measurement
+     settles ("spots smaller than 3 mm?"); the VLM answers the rest of
+     every candidate's indicators in the `vlm` job's second call, on the
+     shots the questions name:
      yes | no | unsure, plus a short reason
      ("concentric rings?", "started on lower leaves?", "yellow halo?")
   2. if the VLM found an organism or damage pattern that is not in the set,
@@ -366,7 +377,7 @@ verify:
                           and the question stays open
 ```
 
-Answering specific indicator questions is more accurate than asking one broad question ("what disease is this?"). It also makes the diagnosis explainable: the app shows which indicators matched. The scoring is arithmetic over the VLM's answers, so no text classifier sits on the diagnosis path, and the indicators are asked in one VLM job per scan, never one call per question.
+Answering specific indicator questions is more accurate than asking one broad question ("what disease is this?"). It also makes the diagnosis explainable: the app shows which indicators matched. The scoring is arithmetic over the VLM's answers, so no text classifier sits on the diagnosis path, and the indicators are asked in one VLM job per scan, never one call per question. On LiDAR photos, size questions, which a small VLM answers worst, are measured instead of asked (6.7).
 
 Two caps keep the job within what a quantized 7–8B model answers reliably: about 9 profiles in the candidate set, and 3 indicators per profile, so roughly 27 answers rather than 45 or more. A crop like tomato has 8–10 known problems, so without the profile cap the set with look-alikes would reach 15 or more. The indicators are chosen at ingestion (section 5), not at run time. A problem left outside the cap is not lost: if the VLM reports an organism or damage pattern outside the set, the `verify` job above asks that candidate's indicators.
 
@@ -376,7 +387,7 @@ When a plan is superseded, its open tasks are dismissed and its trigger rules re
 
 A plan is rewritten only for a late answer, a species change, a guided check whose texture differs from the one the plan used, or a confirmed chat revision. Every plan write of a scan, the run's first plan included, runs one at a time, and each checks before storing that it still replaces the current plan. An automatic rewrite that loses starts again from the newer plan; a chat revision stores exactly the preview the user confirmed, or returns 409 if the plan changed, and is never retried automatically. A guided check that finishes after the diagnosis writes a new diagnosis with the texture, and the plan is rewritten from it when the texture changed. Constraints from a confirmed chat revision ("no copper") are stored on the plan and carried into every later version.
 
-A plant is called **healthy** only on positive evidence: no candidate scores above zero, nothing points to a disease, pest or damage, and either the classifier's top result is healthy or the candidates' indicators are answered no. A plant where every indicator came back unsure is ambiguous, not healthy, and gets a question, usually a request for a close-up.
+A plant is called **healthy** only on positive evidence: no candidate scores above zero, nothing points to a disease, pest or damage, and either the classifier's top result is healthy or the candidates' indicators are answered no. A plant where every indicator came back unsure is ambiguous, not healthy, and gets a question, usually a request for a close-up. A measured `no` counts toward that positive evidence only when the measurement found no spots at all (6.7).
 
 ### 6.4 Soil
 
@@ -443,6 +454,77 @@ Organism and damage findings join the disease candidates in retrieve-then-verify
 
 Each image is stored with its `scan_image.kind`, so each stage knows which photos to use. Perception sees every plant and soil shot. Each VLM call gets at most 4: the findings call takes them in the order whole plant, first leaf close-up, leaf underside, soil surface, second leaf close-up, flower or fruit; the indicator call takes the shots its questions name (each question lists the shot kinds that can show it); guided-check photos go alone to their own call. The rules are in [contracts.md](contracts.md#5-worker-api-and-jobs). The blur and exposure check runs in `api` as each shot arrives and rejects a failing shot with a retake hint before the next one is taken. Analysis starts only when the app calls `POST /scans/{id}/submit`, so the API always knows the set of shots is complete. On the web build, each shot can also be chosen from a file picker.
 
+**On LiDAR phones** the native LiDAR module provides the camera view, the capture screen shows the distance to the subject while framing and says when to move closer or back (the ranges per shot are in 6.7), and each plant and soil shot is uploaded with its depth map. Phones without LiDAR, and the web build, show the same screen without the distance hint.
+
+### 6.7 Depth and measurement (LiDAR)
+
+Phones with a LiDAR scanner (iPhone 12 Pro and later Pro models, iPad Pro 2020 and later, on iOS 15.4 or later) capture a depth map with each photo, and PDM uses it to measure what the photos show in real units. **The capture side is offered only on those devices:** without LiDAR there is no depth capture, no distance hint and no garden mapping. Android phones and the web build don't offer it. Results that already exist are data, so in a shared garden every member sees the measurements, the growth curve and the map on any device. The backend treats depth as optional evidence: every stage works without it, exactly as before.
+
+**Capability detection.** The native module (`app/modules/lidar`, Swift, built with the Expo Modules API) exports `getCapabilities(): { depth: boolean; mapping: boolean }`. `depth` is true when AVFoundation has a back `builtInLiDARDepthCamera`; `mapping` is true when ARKit supports scene reconstruction (`ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh)`). The app asks once at start-up. On Android, in the web build and in Expo Go the native module is absent, and the JavaScript side reports both as false.
+
+**What LiDAR can and can't see.** The iPhone's LiDAR projects a sparse grid of dots, and the phone fuses it with the camera image into a depth map a few hundred pixels across, accurate to around a centimetre at arm's length. That is too coarse to see a 2 mm spot, but more than enough to know how far away a leaf is and how it is tilted. So every size comes from the **photo's pixels**, and the depth map supplies only the **scale**: a plane is fitted to the depth inside a leaf, and the photo's pixels are projected onto that plane through the camera intrinsics. A spot 40 pixels across on a leaf 30 cm away becomes a diameter in millimetres, corrected for the leaf's tilt. Sizes are measured on the stored image, so the size it is stored at sets the smallest spot that can be sized: a 4:3 photo whose long side is 2048 pixels covers about 40 cm along it at 30 cm, about 0.2 mm per pixel. LiDAR shots are therefore stored with a long side of at least 2048 pixels, and a spot or hole under 4 pixels across is counted but not sized.
+
+**Capture.** On a LiDAR device the module provides the camera view for every shot, because only one capture session can use the camera at a time. It captures the photo through AVFoundation's LiDAR depth camera, which delivers an `AVDepthData` registered to the photo, with the camera calibration (intrinsics and their reference size). The module:
+
+- asks for unfiltered depth, so that missing depth stays missing instead of being filled in, converts disparity to depth when needed, and sends depth only when `AVDepthData` reports absolute accuracy;
+- encodes the photo as JPEG and keeps its EXIF orientation, so the photo and its depth are in the same sensor frame. The app uploads that file unchanged: no HEIC conversion, rotation or resizing on the phone;
+- reads gravity from Core Motion at the moment of capture and converts it from the device's axes to the camera's, for plant height and canopy width;
+- streams depth to the preview and shows the median depth of the centre of the frame as the distance hint.
+
+| Shot | Distance hint | Measured |
+|---|---|---|
+| Whole plant | 0.5–3 m, with the whole plant in the frame | Plant height, canopy width |
+| Leaf close-up, leaf underside | 25–45 cm (the lower bound is LiDAR's shortest reliable distance, confirmed on day 1) | Leaf length and area, spot diameter, spot count, affected area, hole diameter |
+| Soil surface, flower or fruit | 30–80 cm | Nothing of its own; the depth is stored |
+| Guided soil checks | None | Depth is not taken |
+
+On every shot with depth, organisms the VLM boxes also get a length.
+
+The day-1 check (section 10) confirms the depth map's size, the shortest reliable distance, whether unfiltered depth keeps its holes, the gravity conversion, and whether the photo and its depth carry lens distortion. If they do, the module also sends the calibration's inverse distortion table, and the API undistorts pixel positions before projecting them. If the AVFoundation path fails the check, the module captures through ARKit's scene depth instead, which has a lower photo resolution but adds a per-pixel confidence map; the upload contract covers both.
+
+**Upload.** The depth map, a confidence map when the capture path has one, and a small JSON record of the intrinsics and gravity travel as extra parts of the same `POST /scans/{id}/images` call. The API:
+
+1. rotates the depth and confidence maps with the photo's EXIF orientation, and transforms the intrinsics and gravity to match, so depth pixels line up with the stored image: a quarter turn swaps `fx` and `fy`, and the principal point and gravity turn with the pixels. A mirrored orientation can't come from the rear camera, so its depth is dropped;
+2. scales the intrinsics to the stored image's size. Photo and depth cover the same field of view, so the depth map's own intrinsics follow by scaling to its size;
+3. sets the depth to zero inside every face box the face detector found, because depth keeps a face's shape after the photo is blurred;
+4. writes it to RustFS as a 16-bit PNG in millimetres.
+
+A depth map that doesn't fit its photo is dropped and the photo is kept, so a good photo is never retaken because of its depth. A depth map is deleted with its photo, including a shot removed or replaced before submit. Depth maps stay on the server: no URL is ever issued for one, and the workers never receive them.
+
+**The measurement stage.** It runs in `api` on CPU (the `vision` crate, on a blocking thread), after the perception result is stored and only when a plant was found, alongside the weather context, so it is done before retrieval. It is deterministic geometry, not a model. Masks are shrunk by two depth pixels before depth is read inside them, because depth along an outline mixes the leaf with what lies behind it. The exact definitions are in [contracts.md](contracts.md#measurement).
+
+1. **Plant height and canopy width**, from the whole-plant shot. The plant's points are the `plant` region's mask when segmentation produced one, otherwise the connected depth layer around the centre of the frame. They are projected into 3D. Height is their spread along gravity; canopy width is their spread along the horizontal direction across the line of sight, because the back of the plant is hidden. Both run from the 2nd to the 98th percentile, so stray points don't count. A plant that touches the top or bottom edge of the frame gets no height, and one that touches a side gets no width, because either would only be a lower bound. Without a `plant` mask a pot counts as plant, so the confidence is at most medium.
+2. **Leaves.** For each `leaf` region with a mask, a plane is fitted to the confident depth inside the mask (RANSAC), and the mask is projected onto it. Leaf length is the longest distance across the projected outline, and leaf area the projected area.
+3. **Spots.** Inside each leaf mask, pixels that are brown, black or pale against the leaf's own green are grouped into spots. A spot's diameter is that of the circle with the same projected area. Yellowing around a spot counts toward the affected area but not toward its diameter, because the sources give lesion sizes without the halo. Spot count and affected area are per leaf. This needs a mask, so it doesn't run on the fallback worker's whole-image regions. The colour thresholds sit behind a `SpotSegmenter` trait, so a lesion-segmentation model can replace them later.
+4. **Holes.** Gaps enclosed by a leaf's outline are holes. Their diameters are measured the same way, which separates flea beetle shot holes (1–3 mm) from slug damage.
+5. **Organisms.** When the VLM's findings are stored, before their `finding` events are sent, each organism box on a photo with depth gets a length in millimetres: the box's longer side at the median depth inside it. It is shown on the finding but not used in scoring, because a box is only a rough outline.
+
+Each measurement becomes an observation with a value, a unit and a confidence. The confidence comes from rules (how much of the region has confident depth, how well the plane fits, whether the shot was within its distance range, whether there was a mask) and maps to the same 0.4 / 0.65 / 0.85 as the VLM's certainty words. A failure while measuring never fails the scan: the stage completes as skipped and the run continues without measurements.
+
+**Measurable indicators.** An indicator in a problem profile can carry a range in a measured quantity, taken from its sources: for example, Septoria leaf spot's spots are about 1.5–3 mm across, while early blight's lesions are around a centimetre. Such an indicator states the size and nothing else, so a measurement answers the whole question. Only a profile's 3 discriminating indicators are ever asked, so only their ranges are used. Before a `vlm` or `verify` job is queued, `api` answers each measurable indicator from a measurement of medium confidence or more: clearly inside the range is `yes`, clearly outside is `no`, and anything within the margin of an edge (10% of the bound, and never less than two pixels at the measured distance) is left to the VLM. A settled indicator is removed from the job. When none is left, the `vlm` job skips its indicator call and a `verify` job isn't queued at all. The VLM is therefore never asked about sizes it can measure, which a small VLM judges worst, and its job gets shorter. Every measurable indicator keeps its question, so photos without depth are asked it as before. The VLM never sees the measurements, so its answers stay independent of them.
+
+Each indicator keeps one answer, ranked user, then measurement, then VLM, just as user input outranks the photo (6.4). Questions are chosen only from indicators that neither the user nor a measurement has answered. A measured `no` counts against its candidate, but not as positive evidence of health (6.3) unless the measurement found no spots at all: a spot of the wrong size is still a spot.
+
+**Photos sent for a question.** A photo uploaded with depth for a question, when one of the question's candidates still has an unanswered measurable indicator that the photo's kind can show, first goes through a `perception` job with only the segmentation stage, on that photo alone. `api` then measures it, answers what the measurements settle, and queues the `verify` job for the rest, or rescores straight away when nothing is left. That segmentation job never fails the scan or drops the question: if it fails, or gives no mask, the photo goes to its `verify` job unmeasured.
+
+**Growth.** Plant height and canopy width are stored per scan, so the plant's timeline shows a growth curve. Fusion adds a low `growth_stalled` risk when the plant's species has a mature height, the latest height in the series is from the past week and below it, and the latest height measured at least 14 days earlier is within the measurement noise of it (2 cm or 5%, whichever is larger, set from the evaluation set). Only heights of medium confidence or more count. The plan writer and the chat see the curve.
+
+**Runs.** Measurement depends only on the photos, their depth and the segmentation. A species-change run therefore keeps it along with segmentation, and measures again only when segmentation re-runs or the earlier run hadn't finished measuring. Which indicators it settles is worked out again in retrieval, because the candidates change.
+
+### 6.8 Garden map (LiDAR)
+
+On a LiDAR device, an editor can map the garden. The app opens an ARKit world-tracking session with scene reconstruction; the user walks the beds, taps each bed's corners on the ground, and taps each plant to drop a pin, choosing which plant it is or naming a new one. The app uploads only the result: bed outlines and pin positions in metres on a local ground plane, a canopy radius for each plant from the reconstructed mesh around its pin (shown on the map, not used by any rule), and the direction of north from the phone's compass when its reported accuracy is 20° or better. The mesh, the camera frames and any coordinates never leave the phone.
+
+Every ARKit session has its own origin. To change a map, the app relocalises against the `ARWorldMap` it saved on the phone after the last mapping, which also never leaves the phone, and edits the existing pins. When relocalisation fails, or on another device, the garden is mapped again from the start, as it is when tracking is lost during mapping. Each upload is a whole new version: every pin moves to it, and a plant left without a pin loses its position.
+
+The map tells the backend three things it couldn't know before:
+
+- **Neighbours:** the plants within 1.5 m of a plant on the current map, centre to centre.
+- **Spacing:** when a plant's nearest pinned plant is closer than three quarters of its species' recommended spacing, fusion adds "crowded, poor airflow" as a driver of fungal risk whenever a humid stretch is forecast or has just happened, raising the risk one level, or creating it at low.
+- **Spread:** when a diagnosis names a problem that spreads (fungal, bacterial, viral or pest), the plan writer gets the neighbours whose species is susceptible to it, nearest first, and may add a `monitoring` step for each. That step becomes a task on the neighbour: "Septoria on Tomato 1: check the lower leaves of Tomato 2, 40 cm away". A new map version doesn't re-plan; it is used the next time a plan is written.
+
+The app shows the map as a top-down plan, with each pin coloured by its plant's status and linking to that plant's timeline. Every member can view it; editors and owners map. A garden doesn't need a map, and nothing else works differently without one.
+
 ---
 
 ## 7. Chat and agent core
@@ -454,8 +536,8 @@ Chat runs **inside `api`, not on the job queue**, because it is interactive. Tok
 | Anchor | Opened from | Context loaded |
 |---|---|---|
 | `scan` | "Ask about this result" | That diagnosis, its observations and image regions, the weather, the plan |
-| `plant` | Plant timeline | All scans of the plant, its memory, open tasks |
-| `garden` | Garden home | Summaries of each plant, garden-level memory, the forecast, upcoming tasks |
+| `plant` | Plant timeline | All scans of the plant, its memory, open tasks, its growth curve when it has one |
+| `garden` | Garden home | Summaries of each plant, garden-level memory, the forecast, upcoming tasks, the garden map when there is one |
 
 The context is rebuilt from the database on every turn. It uses the conversation summary, the most recent messages and the top memory hits, not the full transcript. The chat therefore always sees the latest data, such as a frost task the scheduler created an hour earlier.
 
@@ -474,6 +556,8 @@ The context is rebuilt from the database on every turn. It uses the conversation
 | `compare_lookalikes(disease)` | Look-alike diseases and how to tell them apart | read |
 | `get_organism_profile(organism)` | How to recognize it, its role (pest, beneficial, invasive), natural enemies, reporting guidance | read |
 | `get_soil_profile(garden_id)` | The garden's SoilGrids profile, plus the latest soil moisture and temperature | read |
+| `get_plant_measurements(plant_id, quantity?)` | The plant's measured sizes over time (height, canopy width), from LiDAR scans | read |
+| `get_garden_map(garden_id)` | The current garden map: beds, plant positions, neighbours and spacing | read |
 | `list_tasks` | The garden's tasks | read |
 | `create_task` / `complete_task` | Manage the task list | **write: user confirms** |
 | `revise_plan(constraints)` | Proposes a new version of the current plan; the card names the plan it is based on and says the plan is shared with the garden | **write: user confirms** |
@@ -528,12 +612,12 @@ any state after pending → failed (with a reason) → queued      (new run: res
 The scan's status is the state machine above, and it only models waits that block the pipeline. A pending species confirmation is not one: it lives on `plant.species_status = suggested`, and the app shows the confirmation card from that while the scan proceeds. Every transition and every finding is written to `scan_event` with a sequence number before it is sent over SSE. A **run** is one pass of the pipeline; jobs and events carry it, and results from an older run are discarded. A healthy plant gets a short care plan and ends in `planned`. A scan with no plant found, or with a plant but nothing readable from the photos (no leaf region, no classifier result including "healthy", no confident species and no VLM finding), ends in `failed` (`no_plant_found` or `photos_unusable`); a readable plant always reaches scoring instead, and is called healthy only on positive evidence (the classifier's top result is healthy, or the candidates' indicators are answered no), otherwise uncertain; those aren't retryable, and the app starts a new scan for new photos. Late work (a late answer or photo while the scan is `diagnosed` or `planned`, and every guided soil check) never changes the scan's status or fails the scan; it produces a new diagnosis and, when needed, a new plan version, or is dropped with an event if it fails. Event order and stream closing are defined in [contracts.md](contracts.md#4-scan-events-sse).
 
 1. The app sends `POST /scans` with the plant, or a name for a new plant, which the API creates. The API checks membership and creates the scan with status `pending`.
-2. The app uploads each shot to `POST /scans/{id}/images` with its kind. The API runs the blur and exposure check on CPU and rejects a failing shot at once with a retake hint. For a good shot it applies the EXIF orientation to the pixels, strips the metadata, blurs any faces, resizes the image and writes it to RustFS. HEIC uploads are decoded first.
+2. The app uploads each shot to `POST /scans/{id}/images` with its kind. The API runs the blur and exposure check on CPU and rejects a failing shot at once with a retake hint. For a good shot it applies the EXIF orientation to the pixels, strips the metadata, blurs any faces, resizes the image and writes it to RustFS. HEIC uploads are decoded first. On a LiDAR phone the depth map, intrinsics and gravity travel in the same call; the API rotates the depth map with the photo, zeroes its face regions and stores it, or drops it and keeps the photo if it doesn't fit (6.7).
 3. The app calls `POST /scans/{id}/submit`. The scan becomes `queued` and a `perception` job is created. The app opens SSE on `/scans/{id}/events`, sending `Last-Event-ID` if it is reconnecting.
 4. The perception-worker claims the job. The scan becomes `analysing`. The worker runs the plant-present check, segmentation, species identification (unless the plant's species is already confirmed), disease classification and image embeddings. It sends each stage's output as a partial result when the stage finishes, so findings appear before the job ends; the final result repeats them and wins if they differ.
-5. The API stores the observations, fetches the weather, including soil moisture and temperature, and loads the garden's soil profile. It builds the candidate set, capped at about 9 profiles: the classifier's top 3 plus what the working species is susceptible to, ranked by classifier score, weather fit and crop prevalence, with look-alikes of the top-ranked ones filling the remaining slots. It retrieves each profile and its 3 indicators, and queues a `vlm` job whose payload carries those indicators. Problems outside the cap are caught in step 7 if the VLM finds them.
+5. The API stores the observations and, when any photo has depth, runs the measurement stage (6.7) while it fetches the weather, including soil moisture and temperature, and loads the garden's soil profile. It builds the candidate set, capped at about 9 profiles: the classifier's top 3 plus what the working species is susceptible to, ranked by classifier score, weather fit and crop prevalence, with look-alikes of the top-ranked ones filling the remaining slots. It retrieves each profile and its 3 indicators, answers the ones a measurement settles, and queues a `vlm` job whose payload carries the rest. Problems outside the cap are caught in step 7 if the VLM finds them.
 6. The vlm-worker runs the `vlm` job in two VLM calls of at most 4 images each, findings then indicators: soil condition, organisms with boxes, damage patterns, its own species suggestion, and an answer for every indicator. If the species isn't confirmed, `plant.species_status` becomes `suggested` and the app shows the confirmation card. The scan's status doesn't change, and the pipeline continues with the best candidate. If the user later picks a different species, the re-run from 6.2 step 4 puts the scan back to `analysing`.
-7. If the VLM found an organism or damage pattern outside the candidate set, the API queues one `verify` job for that candidate's indicators and waits for it. It then scores all candidates and checks the weather against their conditions. A clear winner becomes a `diagnosis` with citations and the scan is `diagnosed`. An ambiguous result puts the scan in `awaiting_answer` and sends the user one question, at most 2 per run. The answer is rescored in `api`. A new photo runs a `verify` job. After 10 minutes without an answer, the scheduler's sweep (8.3) continues the scan with the best candidate marked uncertain; the question stays open. A later answer, or a photo for it, always produces a new diagnosis and a new plan version, even when the winner is the same.
+7. If the VLM found an organism or damage pattern outside the candidate set, the API queues one `verify` job for that candidate's indicators and waits for it. It then scores all candidates and checks the weather against their conditions. A clear winner becomes a `diagnosis` with citations and the scan is `diagnosed`. An ambiguous result puts the scan in `awaiting_answer` and sends the user one question, at most 2 per run. The answer is rescored in `api`. A new photo runs a `verify` job; a photo with depth may first be segmented and measured, which can settle its indicators without the VLM (6.7). After 10 minutes without an answer, the scheduler's sweep (8.3) continues the scan with the best candidate marked uncertain; the question stays open. A later answer, or a photo for it, always produces a new diagnosis and a new plan version, even when the winner is the same.
 8. Fusion computes the risk scores. The agent core writes the `action_plan` from the confirmed disease's management guidance, or a provisional plan if the diagnosis is still uncertain, and creates tasks. The scan is `planned`.
 9. The API appends a summary to memory, updates the plant's status, sends `status_changed → planned` and then `plan_ready`, closes the stream unless a question is still open, and sends a push notification in case the app is closed.
 
@@ -550,7 +634,7 @@ At a fixed interval, the scheduler fetches the forecast and checks every garden'
 
 The same scheduler also:
 
-- sweeps scans that have been in `awaiting_answer` for more than 10 minutes and continues them with the best candidate marked uncertain, so the timeout has an owner and works even when the app is closed. A scan whose question has a photo `verify` job in flight is skipped until that job finishes;
+- sweeps scans that have been in `awaiting_answer` for more than 10 minutes and continues them with the best candidate marked uncertain, so the timeout has an owner and works even when the app is closed. A scan whose question has a photo being analysed (its segmentation job when it has depth, then its `verify` job) is skipped until that finishes;
 - evaluates the **plan trigger rules** that `on_trigger` plan steps register (after rain, frost or heat forecast, a humid stretch, dry soil), and creates the step's task when its rule fires. The task's `alert_key` is `plan:<plan_id>:<step_id>:<date>` under the same unique index as forecast alerts, so it is created at most once a day per step of that plan version even when scheduler runs overlap; step ids are only unique within a plan. Plan triggers and forecast alerts share one trigger vocabulary (frost, heat, humid stretch, heavy rain, after rain, dry soil);
 - nothing is needed for **recurring** plan steps: completing a repeating task creates the next one.
 
@@ -562,7 +646,7 @@ Stretch: when several gardens within about 5 km report the same disease in a wee
 - Each claim returns a lease token that every later call about the job must carry; a requeue invalidates it, so a worker that dropped off and came back gets `409 lease_lost` instead of writing duplicate results.
 - Each worker declares `slots`, the most jobs it holds at once, and the broker never leases it more. The perception-worker has 1 and batches inside the job. The vlm-worker has `VLM_SLOTS`, 1 or 2: 2 only if the day-2 benchmark shows two 4-image jobs fit the 5070 Ti's KV cache and each still finishes well within its `max_runtime`, in which case vLLM batches the two jobs' calls. The fallback worker has several, bounded by the LLM API's rate limit.
 - Workers heartbeat through `POST /internal/workers/heartbeat` every 10 seconds. A heartbeat that lists a job with its lease token extends that job's lease, so a slow VLM or fallback job isn't requeued while it runs, but only for the worker that holds it and **never past `claimed_at + max_runtime`** for the job's kind (2 minutes for perception, 5 for vlm, 3 for verify and guided, doubled on the fallback worker). A worker whose model hangs while its heartbeat thread keeps running still loses the job.
-- The broker requeues the jobs of any worker whose heartbeat is older than 30 seconds without waiting for the lease to expire, and resets `queued_at`. Attempts count retryable failures plus every requeue after the 2nd, up to 3, so a job that keeps crashing its worker stops. A run's job that runs out of attempts fails the scan; late work (a late answer's verify job, any guided check) only reports its failure.
+- The broker requeues the jobs of any worker whose heartbeat is older than 30 seconds without waiting for the lease to expire, and resets `queued_at`. Attempts count retryable failures plus every requeue after the 2nd, up to 3, so a job that keeps crashing its worker stops. A run's job that runs out of attempts fails the scan; late work (a late answer's verify job, any guided check) only reports its failure. The segmentation job for a question photo never fails anything: the photo goes on to its `verify` job unmeasured.
 - When a scan starts a new run, its old jobs are cancelled; workers learn it from the heartbeat response. Any call about a requeued, expired or cancelled job, including an older run's, gets `409 lease_lost`.
 - The `vlm` capability claims `vlm`, `verify` and `guided` jobs; `fallback` claims every kind.
 - Jobs still unclaimed 15 seconds after `queued_at` also become available to the `fallback-worker`, which uses the LLM API. A rig that dies mid-scan therefore hands over within about 45 seconds, not after the 2-minute lease.
@@ -570,7 +654,7 @@ Stretch: when several gardens within about 5 km report the same disease in a wee
 
 ### 8.5 Garden setup
 
-The garden's centroid comes from the phone's GPS when the user has given location consent, otherwise from a typed postal code or city, geocoded once. It is the only location the system stores; scans have none of their own. The garden's time zone is derived from it and sets every local date (task due dates, alert dates). When a garden is created, the API fetches its SoilGrids profile in the background and stores it as `garden.soil_profile`. If SoilGrids is unavailable, the garden is created anyway and the fetch is retried later. Until it succeeds, the pipeline runs without baseline soil properties.
+The garden's centroid comes from the phone's GPS when the user has given location consent, otherwise from a typed postal code or city, geocoded once. It is the only location the system stores; scans have none of their own. The garden's time zone is derived from it and sets every local date (task due dates, alert dates). When a garden is created, the API fetches its SoilGrids profile in the background and stores it as `garden.soil_profile`. If SoilGrids is unavailable, the garden is created anyway and the fetch is retried later. Until it succeeds, the pipeline runs without baseline soil properties. On a LiDAR device an editor can map the garden at any time afterwards (6.8); a garden doesn't need a map.
 
 ---
 
@@ -597,7 +681,8 @@ DELETE /gardens/{id}/members/{user_id}
 GET    /gardens/{id}/invites · POST /gardens/{id}/invites   (owner)
 DELETE /gardens/{id}/invites/{invite_id}   (owner)
 POST   /invites/{code}/accept
-CRUD   /plants  · GET /plants/{id}/timeline
+GET    /gardens/{id}/map · PUT /gardens/{id}/map   (editor, LiDAR device)
+CRUD   /plants  · GET /plants/{id}/timeline · GET /plants/{id}/measurements
 POST   /plants/{id}/species        (confirm species)
 CRUD   /tasks                      (?source=forecast_alert is the alert inbox)
 
@@ -638,6 +723,7 @@ Both SSE endpoints are consumed with a streaming `fetch` response (Expo SDK 52+ 
 | Face detection (for blurring on upload) | `api`, CPU, small ONNX face detector | None. Fails closed: an image isn't stored until blurring succeeds |
 | Text embeddings (queries, memory, knowledge chunks) | `api`, CPU, one small open text-embedding model via `ort` (`fastembed`-style), pinned by name and version in `TextEmbedder` and recorded on every vector | None. A different model would make the existing vectors incomparable, so the only acceptable substitute is a hosted endpoint serving the identical model |
 | Soil condition, organisms with bounding boxes, damage patterns, species cross-check, verification indicator answers, in one job of two calls | RTX 5070 Ti, a Qwen2.5-VL-class 7–8B VLM, 4- or 8-bit quantized, with structured output | LLM API vision |
+| Depth measurement: plant, leaf, spot and hole sizes | `api`, CPU: plane fits over the LiDAR depth map and colour thresholding in the photo. No model | None: a scan without depth has no measurements, and its indicators go to the VLM |
 | Plan writer, chat | LLM API, strongest model | none |
 | Summaries, memory extraction | LLM API, cheapest model | None. `api` has no synchronous path to the rig |
 | Chat routing, safety gate, memory gate, chunk tagging | Jev (optional, early access) | LLM API, cheapest model, with structured output |
@@ -648,6 +734,7 @@ Notes:
 - The text-embedding model runs on the control plane because chat and knowledge search need a query vector synchronously, and workers only pull. A short query embeds in a few milliseconds on CPU. The same model, loaded from the same file, is used by the ingestion scripts, so the knowledge-chunk vectors match the query vectors.
 - **Jev** is text only and zero-shot, at around 150 ms per call. Its probabilities run somewhat high, so compare scores between candidates and calibrate them on the evaluation set. Nothing on the critical path depends on it. If early access hasn't arrived by Oct 17, use the fallback.
 - **No multi-GPU model sharding.** With two mismatched consumer cards, the "cluster" is a pool of workers pulling from one queue, each advertising what it can do. More GPUs means more workers.
+- **LiDAR day-1 check:** build the native module in a development build on a LiDAR iPhone, and record the photo and depth map sizes from the LiDAR depth camera, the shortest distance at which its depth is still reliable, whether unfiltered depth keeps its holes and reports absolute accuracy, and whether the photo and its depth carry lens distortion. Check the gravity conversion by photographing a spirit level, and the whole chain by measuring a ruler lying on a leaf at 30 cm. The close-up distance hint's lower bound comes from it. If the AVFoundation path fails, capture moves to ARKit's scene depth (6.7).
 - **Day-1 check:** the 5070 Ti (Blackwell) needs CUDA 12.8+ builds of PyTorch, vLLM and ONNX Runtime. Confirm inference runs before building on it.
 - **Training:** fine-tune the classifier in Python on PlantDoc and similar datasets of field photos, and export it to ONNX. Models trained only on PlantVillage generalize poorly to real photos.
 - Keep a small evaluation set of real field photos, and record the accuracy in the Devpost write-up.
@@ -674,6 +761,7 @@ Notes:
 - `DELETE /me` runs the deletion cascade in section 5: gardens the user alone uses are removed from SurrealDB and RustFS, shared gardens keep their scans with the user reference cleared, and the account is deleted at the auth provider too. Removing a member from a garden deletes their private chats there.
 - Chat memories are private to their author until shared. The plan writer, whose output every member sees, reads only shared memories.
 - Withdrawing location consent rounds every garden the user owns to about 10 km.
+- Depth maps from LiDAR phones are stored only on the server, with face regions zeroed; no URL is issued for them and the workers never receive them. The garden map holds bed outlines and plant positions in metres on a local ground plane: no images, no 3D mesh and no coordinates. The mesh and the AR world map saved for later edits stay on the phone.
 
 **Abuse and cost**
 - Rate limits, a daily chat token budget and a daily scan limit (30) for each user. Scans cost API credits when the fallback worker runs them.
@@ -720,6 +808,7 @@ If the control plane runs behind a tunnel, SSE responses need `Cache-Control: no
 - The live link the judges open is the Expo web build, so the capture screen accepts a file picker as well as the camera.
 - Remote push does not work in Expo Go on Android since SDK 53 and needs Apple credentials on iOS. Push therefore goes through the Expo Push API from a development build, and the demo-safe path is the in-app alert inbox (section 8.3), which works in every build.
 - SSE is consumed with streaming `fetch` (section 9); no `EventSource` polyfill.
+- The LiDAR features need a native module, so they run only in the iOS development build on LiDAR devices. The web build and Expo Go don't offer them; the demo video shows them.
 
 ### Operations
 
@@ -734,7 +823,7 @@ If the control plane runs behind a tunnel, SSE responses need `Cache-Control: no
 
 ```
 PDM/
-├─ app/                Expo app
+├─ app/                Expo app; app/modules/lidar is the native LiDAR module (Swift)
 ├─ backend/
 │  ├─ crates/{domain, store, blob, agent, vision, knowledge, pipeline}
 │  ├─ bins/{api, worker}
@@ -755,10 +844,10 @@ PDM/
 
 | Dates | Goal |
 |---|---|
-| Oct 16–17 | End-to-end skeleton: auth, upload with the CPU blur check, submit, scan state machine, job broker with stub vision and heartbeat requeue, resumable SSE, text embeddings in `api`, control plane deployed. Choose the crops and the text-embedding model, list the knowledge sources, request Jev access |
-| Oct 18–19 | Real models on the rig (BioCLIP, disease classifier, VLM). Species confirmation. Weather with soil moisture and temperature; garden soil profile. Face blurring on upload. Knowledge ingestion running |
-| Oct 20–21 | Knowledge profiles reviewed and loaded. The single VLM pass: soil, organisms with boxes, damage, indicator answers. Deterministic verification, questions and the provisional plan. Fusion and plan writer with citations. Results UI with overlays |
-| Oct 22 | Chat with tools, router, memory, confirmation cards, timeline |
+| Oct 16–17 | End-to-end skeleton: auth, upload with the CPU blur check, submit, scan state machine, job broker with stub vision and heartbeat requeue, resumable SSE, text embeddings in `api`, control plane deployed. Choose the crops and the text-embedding model, list the knowledge sources, request Jev access. LiDAR day-1 check (10) |
+| Oct 18–19 | Real models on the rig (BioCLIP, disease classifier, VLM). Species confirmation. Weather with soil moisture and temperature; garden soil profile. Face blurring on upload. Knowledge ingestion running. LiDAR module: depth capture, distance hint, depth upload and storage |
+| Oct 20–21 | Knowledge profiles reviewed and loaded. The single VLM pass: soil, organisms with boxes, damage, indicator answers. Deterministic verification, questions and the provisional plan. Fusion and plan writer with citations. Results UI with overlays. Measurement stage and measurable indicators |
+| Oct 22 | Chat with tools, router, memory, confirmation cards, timeline with the growth curve. Garden map: AR capture, map view, neighbour and spacing rules |
 | Oct 23 | Forecast alerts with dedupe, alert inbox, push from a development build. Account deletion cascade. Test the fallback by killing the rig in the middle of a scan: hand-over must happen within about 45 seconds |
 | Oct 24 | Feature freeze, security review, UI polish, evaluation on field photos |
 | Oct 25 | Demo video (2 minutes or less), Devpost page, README, final deploy |
@@ -782,3 +871,6 @@ PDM/
 13. **Text-embedding model** and its dimension. Picked on day 1 and pinned for the life of the database, since the memory and knowledge vectors must all come from the same model.
 14. **Verification-answer timeout.** 10 minutes is proposed before the pipeline continues with the best candidate marked uncertain.
 15. **VLM concurrency (`VLM_SLOTS`)** and the perception batch size: measured in the day-2 benchmark. See [contracts.md](contracts.md#12-open-questions).
+16. **LiDAR capture:** the shortest reliable distance, the depth map's size, holes in unfiltered depth and lens distortion, from the day-1 check, and with them whether capture stays on AVFoundation or moves to ARKit's scene depth. The distance sets the leaf distance hint and the measurement's valid range.
+17. **Measurement thresholds:** the margin for answering a measurable indicator (10% of the bound, at least two pixels, proposed), the confidence rules, the spot colour thresholds, the smallest spot that is sized (4 pixels) and the stored size of LiDAR shots (a long side of at least 2048 pixels), the growth noise floor (2 cm or 5%), the crowding factor (0.75) and the neighbour radius (1.5 m). Set from LiDAR photos in the evaluation set.
+18. **Further depth quantities:** leaf angle (for wilting) and soil-surface relief are measurable in principle, but untested at LiDAR's resolution. Add them only if the evaluation photos show they are reliable.

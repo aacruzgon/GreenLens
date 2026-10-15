@@ -96,7 +96,7 @@ The official migration tool, SurrealKit, is still in beta (1.0.0-beta.6), and th
 | Area | Tables |
 |---|---|
 | Identity | `user` (unique `auth_id`), `push_token` |
-| Gardens | `garden` (stored `weather_cell` and `geohash`), `member_of` (relation user → garden), `invite` (unique `code`), `plant` |
+| Gardens | `garden` (stored `weather_cell` and `geohash`), `member_of` (relation user → garden), `invite` (unique `code`), `plant`, `garden_map` (unique `garden, version`) |
 | Scans | `scan`, `scan_image`, `mask`, `scan_event`, `observation`, `question`, `guided_check`, `diagnosis`, `scan_feedback` |
 | Plans | `action_plan` (unique `scan, version`), `plan_trigger`, `task` (unique `alert_key`) |
 | Chat | `conversation`, `chat_image`, `message`, `pending_action`, `message_feedback` |
@@ -113,6 +113,7 @@ Changes from the architecture sketch (section 5 there):
   - `garden.deleting_at` and `plant.deleting_at`, for the background deletion cascade;
   - `action_plan.reason`.
 - **Vector indexes:** `memory` and `scan_image` embeddings get no HNSW index (section 5).
+- **LiDAR** (architecture 6.7, 6.8): the `garden_map` table with the `garden.map_version` counter; `plant.position`; `scan_image.depth_key`, `depth_confidence_key` and `depth_meta`; and, on measurement observations, top-level `plant`, `quantity` and `measured_value` for the growth series.
 
 ---
 
@@ -207,6 +208,12 @@ INSERT RELATION INTO member_of { id: type::record('member_of', [$user, $garden])
 
 `task.alert_key` has a unique index. ✓ Any number of tasks can have no key, and a second task with the same key fails, which makes the scheduler's dedupe race-free (architecture 8.3).
 
+### Garden map versions ✓
+
+`PUT /gardens/{id}/map` runs in one transaction: increment `garden.map_version`, create the `garden_map` with that version, delete the garden's older maps, and set or unset `position` on the garden's plants. Like the event counter, two concurrent uploads conflict on the garden row, and the API retries the loser, which then becomes the current map. Only the current map is kept, so a pin can only point at a live plant: deleting a plant first removes its pin from that map in place.
+
+✓ Two uploads in a row leave one map, at version 2, with the unpinned plant's `position` gone; a duplicate `[garden, version]` is rejected by the unique index, and so is a `north_deg` outside 0–360. ✓ `DELETE garden` is rejected while a map exists, so the cascade must delete the map first.
+
 ### Deletion ✓
 
 Parent links use `REFERENCE ON DELETE REJECT`. ✓ `DELETE garden:g1` while a plant still points at it fails with "Cannot delete `garden:g1` as it is referenced by `plant:p1`". A missed step in the cascade therefore fails loudly rather than orphaning records.
@@ -215,7 +222,7 @@ The API deletes **bottom-up in batches**, never as one large transaction:
 1. Set `deleting_at` on the garden or plant. Every read filters it out, which is what makes `202 Accepted` safe.
 2. Cancel the jobs.
 3. Delete the objects in RustFS ([storage](../storage/README.md)).
-4. Delete the records, children first: scan events (one range delete per scan), then observations, questions, diagnoses and plans (after unsetting `scan.plan` and `scan.diagnosis`), then scans, conversations, memories, tasks and plants, then the garden.
+4. Delete the records, children first: scan events (one range delete per scan), then observations, questions, diagnoses and plans (after unsetting `scan.plan` and `scan.diagnosis`), then scans, conversations, memories, tasks and plants, then the garden map, then the garden. A single plant first loses its pin on the garden map, and the tasks and trigger rules its plans made for neighbours, and that other plants' plans made for it, go with its tasks (contracts 9, deletion cascades).
 
 ✓ This order deletes a whole garden cleanly.
 
@@ -223,7 +230,7 @@ Each batch is `DELETE (SELECT VALUE id FROM t WHERE … LIMIT 500) RETURN NONE`,
 
 A few links behave differently:
 - **CASCADE** (✓ deleting a user deletes their push tokens): `push_token.user`, `invite.garden`, `scan_feedback.user`. These records have nothing outside the database.
-- **UNSET** (✓ the field disappears): `scan.created_by`, `task.created_by`, `memory.author`, `invite.created_by`/`used_by`. This keeps garden history when a member deletes their account (architecture 5, deletion).
+- **UNSET** (✓ the field disappears): `scan.created_by`, `task.created_by`, `memory.author`, `invite.created_by`/`used_by`, and `garden_map.created_by`. This keeps garden history when a member deletes their account (architecture 5, deletion).
 - **Plain links with no reference:** `memory.source_msg` and `action_plan.constraints[*].from_pending_action`, whose targets can be deleted first.
 
 ### Cleanup (no TTL)
@@ -252,6 +259,13 @@ Reads hide anything expired but not yet deleted (`WHERE expires_at > time::now()
 | Scheduler weather groups: `WHERE weather_cell = $cell` | `garden_cell` |
 | Expired leases: `WHERE status = 'leased' AND lease_until < $now` | `job_lease` |
 | Job claim | `job_queue (status, kind, queued_at)` |
+
+Added with LiDAR, ✓ each an `IndexScan` with no sort step:
+
+| Query | Index |
+|---|---|
+| Growth series: `WHERE plant = $p AND quantity = $q ORDER BY created_at` | `observation_growth (plant, quantity, created_at)` |
+| Current garden map: `WHERE garden = $g AND version = $garden.map_version` | `garden_map_version` |
 
 Rules for new queries:
 - Run `EXPLAIN` on every new hot query, and look for `IndexScan`, `KnnScan` or a key range, not `TableScan` or `SortByKey`.

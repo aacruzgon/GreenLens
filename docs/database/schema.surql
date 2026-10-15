@@ -77,6 +77,7 @@ DEFINE FIELD OVERWRITE weather_cell        ON garden VALUE string::concat(
 DEFINE FIELD OVERWRITE geohash             ON garden VALUE geo::hash::encode(centroid, 5);
 DEFINE FIELD OVERWRITE soil_profile        ON garden TYPE option<object> FLEXIBLE;  -- SoilProfile, contracts 10
 DEFINE FIELD OVERWRITE soil_profile_status ON garden TYPE "pending" | "ready" | "unavailable" DEFAULT "pending";
+DEFINE FIELD OVERWRITE map_version         ON garden TYPE int DEFAULT 0;      -- the current garden_map version, 0 for none
 DEFINE FIELD OVERWRITE deleting_at         ON garden TYPE option<datetime>;  -- set when DELETE starts; hides the garden
 DEFINE FIELD OVERWRITE created_at          ON garden TYPE datetime DEFAULT time::now() READONLY;
 DEFINE INDEX IF NOT EXISTS garden_cell    ON garden FIELDS weather_cell;
@@ -116,9 +117,33 @@ DEFINE FIELD OVERWRITE species_candidates.*.name    ON plant TYPE string;
 DEFINE FIELD OVERWRITE species_candidates.*.score   ON plant TYPE float;
 DEFINE FIELD OVERWRITE species_candidates.*.source  ON plant TYPE "bioclip" | "vlm" | "user";
 DEFINE FIELD OVERWRITE status              ON plant TYPE "healthy" | "watch" | "sick" | "dead" DEFAULT "healthy";
+-- from the garden map (architecture 6.8); absent when the plant has no pin on the current map
+DEFINE FIELD OVERWRITE position            ON plant TYPE option<object>;
+DEFINE FIELD OVERWRITE position.map_version ON plant TYPE int;
+DEFINE FIELD OVERWRITE position.x_m         ON plant TYPE float;
+DEFINE FIELD OVERWRITE position.y_m         ON plant TYPE float;
 DEFINE FIELD OVERWRITE deleting_at         ON plant TYPE option<datetime>;
 DEFINE FIELD OVERWRITE created_at          ON plant TYPE datetime DEFAULT time::now() READONLY;
 DEFINE INDEX IF NOT EXISTS plant_garden ON plant FIELDS garden, name;
+
+-- The garden map, made on a LiDAR device (architecture 6.8, contracts 9). Only the current
+-- version is kept: a PUT increments garden.map_version, writes the new map and deletes the
+-- older ones in one transaction, so pins never point at a plant deleted since. Deleting a
+-- plant removes its pin from this map in place.
+DEFINE TABLE OVERWRITE garden_map SCHEMAFULL;
+DEFINE FIELD OVERWRITE garden     ON garden_map TYPE record<garden> REFERENCE ON DELETE REJECT;
+DEFINE FIELD OVERWRITE version    ON garden_map TYPE int;
+DEFINE FIELD OVERWRITE beds       ON garden_map TYPE array<object> FLEXIBLE;   -- [{id, name?, polygon_m, area_m2}], validated in Rust
+DEFINE FIELD OVERWRITE pins       ON garden_map TYPE array<object>;
+DEFINE FIELD OVERWRITE pins.*.plant  ON garden_map TYPE record<plant>;   -- no reference: the API removes the pin before the plant
+DEFINE FIELD OVERWRITE pins.*.x_m    ON garden_map TYPE float;
+DEFINE FIELD OVERWRITE pins.*.y_m    ON garden_map TYPE float;
+DEFINE FIELD OVERWRITE pins.*.canopy_radius_m ON garden_map TYPE option<float>;
+DEFINE FIELD OVERWRITE pins.*.bed_id ON garden_map TYPE option<string>;
+DEFINE FIELD OVERWRITE north_deg  ON garden_map TYPE option<float> ASSERT $value = NONE OR ($value >= 0 AND $value < 360);
+DEFINE FIELD OVERWRITE created_by ON garden_map TYPE option<record<user>> REFERENCE ON DELETE UNSET;
+DEFINE FIELD OVERWRITE created_at ON garden_map TYPE datetime DEFAULT time::now() READONLY;
+DEFINE INDEX IF NOT EXISTS garden_map_version ON garden_map FIELDS garden, version UNIQUE;
 
 -- ---------------------------------------------------------------------------------------
 -- Scans
@@ -155,6 +180,10 @@ DEFINE FIELD OVERWRITE width       ON scan_image TYPE int;
 DEFINE FIELD OVERWRITE height      ON scan_image TYPE int;
 DEFINE FIELD OVERWRITE storage_key ON scan_image TYPE string READONLY;   -- docs/storage/README.md
 DEFINE FIELD OVERWRITE quality     ON scan_image TYPE object FLEXIBLE;  -- { blur_score, exposure }
+-- LiDAR depth (architecture 6.7): never served, never sent to workers, deleted with the photo
+DEFINE FIELD OVERWRITE depth_key            ON scan_image TYPE option<string> READONLY;
+DEFINE FIELD OVERWRITE depth_confidence_key ON scan_image TYPE option<string> READONLY;
+DEFINE FIELD OVERWRITE depth_meta           ON scan_image TYPE option<object> FLEXIBLE;   -- DepthMeta in the stored image's frame, with the map's width and height
 -- Image embedding for find_similar_cases. Searched exactly within one garden (README.md,
 -- vector search), so no HNSW index. The dimension is fixed with the image model on day 1.
 DEFINE FIELD OVERWRITE embedding   ON scan_image TYPE option<array<float>>;
@@ -184,7 +213,7 @@ DEFINE FIELD OVERWRITE ts      ON scan_event TYPE datetime DEFAULT time::now() R
 DEFINE TABLE OVERWRITE observation SCHEMAFULL;
 DEFINE FIELD OVERWRITE scan           ON observation TYPE record<scan> REFERENCE ON DELETE REJECT;
 DEFINE FIELD OVERWRITE run            ON observation TYPE int;
-DEFINE FIELD OVERWRITE stage          ON observation TYPE "plant_check" | "segmentation" | "species" | "disease" | "soil" | "organism" | "damage";
+DEFINE FIELD OVERWRITE stage          ON observation TYPE "plant_check" | "segmentation" | "species" | "disease" | "soil" | "organism" | "damage" | "measurement";
 DEFINE FIELD OVERWRITE pipeline_stage ON observation TYPE string;   -- contracts 4, Stage; runs replace by this
 DEFINE FIELD OVERWRITE label          ON observation TYPE string;
 DEFINE FIELD OVERWRITE ref            ON observation TYPE option<record<species | disease | organism>>;
@@ -192,11 +221,17 @@ DEFINE FIELD OVERWRITE role           ON observation TYPE option<"pest" | "benef
 DEFINE FIELD OVERWRITE detail         ON observation TYPE option<object> FLEXIBLE;
 DEFINE FIELD OVERWRITE confidence     ON observation TYPE float ASSERT $value >= 0 AND $value <= 1;
 DEFINE FIELD OVERWRITE region         ON observation TYPE option<object> FLEXIBLE;   -- Region, with region_id
-DEFINE FIELD OVERWRITE source         ON observation TYPE "segmentation" | "bioclip" | "classifier" | "vlm" | "llm_fallback" | "user";
+DEFINE FIELD OVERWRITE source         ON observation TYPE "segmentation" | "bioclip" | "classifier" | "vlm" | "llm_fallback" | "user" | "measurement";
+-- Measurement observations (contracts 7) only: top-level so the growth series is one indexed
+-- read per plant. The full Measurement stays in detail.
+DEFINE FIELD OVERWRITE plant          ON observation TYPE option<record<plant>>;
+DEFINE FIELD OVERWRITE quantity       ON observation TYPE option<"plant_height_cm" | "canopy_width_cm" | "leaf_length_cm" | "leaf_area_cm2" | "lesion_diameter_mm" | "lesion_count" | "affected_area_pct" | "hole_diameter_mm">;
+DEFINE FIELD OVERWRITE measured_value ON observation TYPE option<float>;
 DEFINE FIELD OVERWRITE model_version  ON observation TYPE string;
 DEFINE FIELD OVERWRITE retracted_at   ON observation TYPE option<datetime>;   -- finding_retracted
 DEFINE FIELD OVERWRITE created_at     ON observation TYPE datetime DEFAULT time::now() READONLY;
 DEFINE INDEX IF NOT EXISTS observation_scan ON observation FIELDS scan, pipeline_stage;
+DEFINE INDEX IF NOT EXISTS observation_growth ON observation FIELDS plant, quantity, created_at;
 
 DEFINE TABLE OVERWRITE question SCHEMAFULL;
 DEFINE FIELD OVERWRITE scan        ON question TYPE record<scan> REFERENCE ON DELETE REJECT;
