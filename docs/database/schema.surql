@@ -61,7 +61,7 @@ DEFINE INDEX IF NOT EXISTS push_token_user ON push_token FIELDS user;
 DEFINE TABLE OVERWRITE garden SCHEMAFULL;
 DEFINE FIELD OVERWRITE name                ON garden TYPE string;
 DEFINE FIELD OVERWRITE centroid            ON garden TYPE geometry<point>;  -- (lon, lat): longitude first
-DEFINE FIELD OVERWRITE location_precision  ON garden TYPE "exact" | "about_1_km" | "about_10_km" | "postal_code";
+DEFINE FIELD OVERWRITE location_precision  ON garden TYPE "exact" | "about_1_km" | "about_10_km" | "postal_code" | "city";
 DEFINE FIELD OVERWRITE location_label      ON garden TYPE string;           -- "Toronto, ON"
 DEFINE FIELD OVERWRITE time_zone           ON garden TYPE string;           -- IANA, sets every LocalDate
 DEFINE FIELD OVERWRITE boundary            ON garden TYPE option<geometry<polygon>>;
@@ -173,6 +173,7 @@ DEFINE FIELD OVERWRITE pipeline_step_run ON scan TYPE option<int>;        -- the
 DEFINE FIELD OVERWRITE pipeline_step_at  ON scan TYPE option<datetime>;
 DEFINE FIELD OVERWRITE rescore_pending   ON scan TYPE bool DEFAULT false; -- new input arrived while a step held the claim
 DEFINE FIELD OVERWRITE submitted_at   ON scan TYPE option<datetime>;
+DEFINE FIELD OVERWRITE deleting_at    ON scan TYPE option<datetime>;   -- DELETE /scans/{id} of a pending scan; uploads and submit re-check it
 DEFINE FIELD OVERWRITE created_at     ON scan TYPE datetime DEFAULT time::now() READONLY;
 DEFINE INDEX IF NOT EXISTS scan_plant  ON scan FIELDS plant, created_at;   -- timeline, "most recent scan"
 DEFINE INDEX IF NOT EXISTS scan_garden ON scan FIELDS garden, created_at;
@@ -280,6 +281,7 @@ DEFINE FIELD OVERWRITE scan           ON diagnosis TYPE record<scan> REFERENCE O
 DEFINE FIELD OVERWRITE run            ON diagnosis TYPE int;
 DEFINE FIELD OVERWRITE supersedes     ON diagnosis TYPE option<record<diagnosis>>;
 DEFINE FIELD OVERWRITE status         ON diagnosis TYPE "confirmed" | "uncertain" | "healthy";
+DEFINE FIELD OVERWRITE low_evidence   ON diagnosis TYPE bool DEFAULT false;   -- uncertain, and nothing points to any problem (contracts 7)
 DEFINE FIELD OVERWRITE primary_problem ON diagnosis TYPE option<record<disease>>;   -- for the timeline and similar cases
 DEFINE FIELD OVERWRITE primary        ON diagnosis TYPE option<object> FLEXIBLE;    -- CandidateScore
 DEFINE FIELD OVERWRITE candidates     ON diagnosis TYPE array<object> FLEXIBLE;
@@ -346,6 +348,10 @@ DEFINE FIELD OVERWRITE garden        ON task TYPE record<garden> REFERENCE ON DE
 DEFINE FIELD OVERWRITE plant         ON task TYPE option<record<plant>> REFERENCE ON DELETE REJECT;
 DEFINE FIELD OVERWRITE plan          ON task TYPE option<record<action_plan>> REFERENCE ON DELETE REJECT;
 DEFINE FIELD OVERWRITE plan_step_id  ON task TYPE option<string>;
+-- the scan a guided-check task belongs to (the jar test's later photo, contracts 9). Such a task can
+-- only be done on that scan, so deleting a pending scan deletes it (CASCADE); a plant or garden
+-- cascade deletes tasks before scans anyway.
+DEFINE FIELD OVERWRITE scan          ON task TYPE option<record<scan>> REFERENCE ON DELETE CASCADE;
 DEFINE FIELD OVERWRITE title         ON task TYPE string;
 DEFINE FIELD OVERWRITE detail        ON task TYPE option<string>;
 DEFINE FIELD OVERWRITE due           ON task TYPE option<string> ASSERT fn::is_local_date($value);
@@ -474,6 +480,12 @@ DEFINE FIELD OVERWRITE classifier_supported ON species TYPE bool DEFAULT false;
 DEFINE FIELD OVERWRITE bioclip_label        ON species TYPE string;
 DEFINE FIELD OVERWRITE sources              ON species TYPE array<record<source>> DEFAULT [];
 DEFINE FIELD OVERWRITE reviewed_by          ON species TYPE string;
+-- reference photos for the species confirmation card (contracts 10), at most 3, in RustFS under
+-- knowledge/species/{species_id}/ (docs/storage); written by the knowledge loader, served signed
+DEFINE FIELD OVERWRITE reference_images     ON species TYPE array<object> DEFAULT [] ASSERT array::len($value) <= 3;
+DEFINE FIELD OVERWRITE reference_images.*.storage_key ON species TYPE string;
+DEFINE FIELD OVERWRITE reference_images.*.credit      ON species TYPE string;   -- "Photo: A. Author, CC BY-SA 4.0"
+DEFINE FIELD OVERWRITE reference_images.*.source      ON species TYPE record<source>;
 
 -- every kind of problem: fungal, bacterial, viral, pest, wildlife and abiotic
 DEFINE TABLE OVERWRITE disease SCHEMAFULL;

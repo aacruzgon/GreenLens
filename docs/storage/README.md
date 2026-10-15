@@ -1,6 +1,6 @@
 # PDM Object Storage (RustFS)
 
-> **Status:** v1.1, 2026-10-15. v1.1 adds LiDAR depth and confidence maps: their keys, uploads, deletes, the orphan sweep and their share of capacity. v1: Companion to the [architecture document](../architecture/README.md) (section 5, RustFS layout) and [contracts.md](../architecture/contracts.md) (signed image URLs, deletion cascades). The database side is in [docs/database](../database/README.md).
+> **Status:** v1.2.2, 2026-10-15. v1.2.2: species photos are keyed by a content hash (`knowledge/species/{species_id}/{hash}.webp`) and routed by it, so a changed photo gets a new key and URL. v1.2.1: the knowledge loader's upload runs on the control-plane host, before the API starts with the migration that references the photos. v1.2 adds species reference photos under a `knowledge/` prefix that the API can only read and the knowledge loader writes with its own identity, and their signed route (contracts 9, species). v1.1 adds LiDAR depth and confidence maps: their keys, uploads, deletes, the orphan sweep and their share of capacity. v1: Companion to the [architecture document](../architecture/README.md) (section 5, RustFS layout) and [contracts.md](../architecture/contracts.md) (signed image URLs, deletion cascades). The database side is in [docs/database](../database/README.md).
 > **Verified:** every point marked ✓ was run against `rustfs/rustfs:1.0.1` with the AWS CLI on 2026-10-15. Points marked *unverified* come from the RustFS docs, source code or issues only.
 
 ## Contents
@@ -89,9 +89,11 @@ gardens/{garden_id}/scans/{scan_id}/masks/{mask_id}.png
 gardens/{garden_id}/scans/{scan_id}/depth/{image_id}.png
 gardens/{garden_id}/scans/{scan_id}/depth_confidence/{image_id}.png
 gardens/{garden_id}/chat/{conversation_id}/{image_id}.webp
+knowledge/species/{species_id}/{hash}.webp
 ```
 
-- Every ID is a ULID that the API generates, and the key is stored on the record (`scan_image.storage_key`, `depth_key` and `depth_confidence_key`, `mask.storage_key`, `chat_image.storage_key`), never rebuilt from user input. Depth maps from LiDAR phones (architecture 6.7) share their photo's `image_id`.
+- `knowledge/` holds the species reference photos (contracts 10), written only by the knowledge loader. `{species_id}` is the species slug and `{hash}` is the first 16 hex digits of the WebP file's SHA-256, so a changed photo gets a new key. A species has at most 3 (contracts 10). These are licensed public photos, not user data, so no garden prefix applies.
+- Every ID under `gardens/` is a ULID that the API generates, and the key is stored on the record (`scan_image.storage_key`, `depth_key` and `depth_confidence_key`, `mask.storage_key`, `chat_image.storage_key`), never rebuilt from user input. Depth maps from LiDAR phones (architecture 6.7) share their photo's `image_id`.
 - ✓ An empty segment (`gardens//scans/…`) is rejected with `400 InvalidArgument`, and so are `.` and `..` segments. The key builder asserts every segment is a 26-character ULID.
 - Prefixing by garden makes deleting a garden one prefix delete. A plant's objects are deleted scan by scan, through each scan's prefix.
 
@@ -100,7 +102,8 @@ gardens/{garden_id}/chat/{conversation_id}/{image_id}.webp
 | Identity | Can do | Used by |
 |---|---|---|
 | root | Everything | The one-time setup script and backups. Never the API |
-| `PDMAPI01` with policy `pdm-api` | ✓ `PutObject`, `GetObject` and `DeleteObject` under `pdm-images/gardens/*`, plus `ListBucket` on `pdm-images`. ✓ Writing outside `gardens/`, creating a bucket and deleting a bucket are all denied | The API |
+| `PDMAPI01` with policy `pdm-api` | ✓ `PutObject`, `GetObject` and `DeleteObject` under `pdm-images/gardens/*`, `GetObject` under `pdm-images/knowledge/*`, plus `ListBucket` on `pdm-images`. ✓ Writing outside `gardens/`, including writing or deleting under `knowledge/`, creating a bucket and deleting a bucket are all denied | The API |
+| `PDMSEED01` with policy `pdm-seed` | ✓ `PutObject`, `GetObject` and `DeleteObject` under `pdm-images/knowledge/*`, and `ListBucket` only for prefixes under `knowledge/`. ✓ Reading, listing, writing or deleting anything under `gardens/` is denied | The knowledge loader's upload step (contracts 10). RustFS is reachable only on the control plane's Docker network, so the upload runs there as a one-shot container, like the setup script below, **before** the API starts with the migration that references the photos. The loader's other steps run anywhere |
 
 Setup script, run once per environment (✓ these commands were run against 1.0.1):
 
@@ -109,15 +112,31 @@ docker run --rm --network container:<rustfs container> -v "$PWD":/w --entrypoint
   rc alias set pdm http://127.0.0.1:9000 "$ROOT_AK" "$ROOT_SK" &&
   rc mb pdm/pdm-images &&
   rc admin policy create pdm/ pdm-api /w/pdm-api.json &&
+  rc admin policy create pdm/ pdm-seed /w/pdm-seed.json &&
   rc admin user add pdm/ PDMAPI01 "$API_SK" &&
-  rc admin policy attach pdm/ pdm-api --user PDMAPI01'
+  rc admin user add pdm/ PDMSEED01 "$SEED_SK" &&
+  rc admin policy attach pdm/ pdm-api --user PDMAPI01 &&
+  rc admin policy attach pdm/ pdm-seed --user PDMSEED01'
 ```
+
+`pdm-api.json`:
 
 ```json
 {"Version":"2012-10-17","Statement":[
  {"Effect":"Allow","Action":["s3:ListBucket"],"Resource":["arn:aws:s3:::pdm-images"]},
- {"Effect":"Allow","Action":["s3:GetObject","s3:PutObject","s3:DeleteObject"],"Resource":["arn:aws:s3:::pdm-images/gardens/*"]}]}
+ {"Effect":"Allow","Action":["s3:GetObject","s3:PutObject","s3:DeleteObject"],"Resource":["arn:aws:s3:::pdm-images/gardens/*"]},
+ {"Effect":"Allow","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::pdm-images/knowledge/*"]}]}
 ```
+
+`pdm-seed.json`:
+
+```json
+{"Version":"2012-10-17","Statement":[
+ {"Effect":"Allow","Action":["s3:ListBucket"],"Resource":["arn:aws:s3:::pdm-images"],"Condition":{"StringLike":{"s3:prefix":["knowledge/*"]}}},
+ {"Effect":"Allow","Action":["s3:GetObject","s3:PutObject","s3:DeleteObject"],"Resource":["arn:aws:s3:::pdm-images/knowledge/*"]}]}
+```
+
+✓ Both policies, with the setup script above, were run against 1.0.1 on 2026-10-15, and each allowed and denied action in the table was tried with `rc` as each user.
 
 ✓ `DeleteObjects` (the batch delete) is allowed by `s3:DeleteObject`.
 
@@ -128,7 +147,7 @@ docker run --rm --network container:<rustfs container> -v "$PWD":/w --entrypoint
 **The API serves the bytes; RustFS never signs a URL.** This is the pattern contracts section 1 already describes:
 
 1. Every image `url` the API returns is the API's own short-lived signed URL:
-   - app images: `GET /scans/{id}/images/{image_id}?exp=&sig=` and `/masks/{mask_id}`, and `GET /conversations/{id}/images/{image_id}`;
+   - app images: `GET /scans/{id}/images/{image_id}?exp=&sig=` and `/masks/{mask_id}`, `GET /conversations/{id}/images/{image_id}`, and the species reference photos `GET /species/{id}/images/{hash}` (read from `knowledge/`);
    - worker images: `GET /internal/jobs/{job_id}/images/{image_id}`, authorised by the lease token.
    - Depth maps are never served: no route reads `depth/` or `depth_confidence/` except the API's own measurement stage.
 2. `sig` is an HMAC-SHA256, under a server secret, of the method, the path and `exp`. The URL expires after 15 minutes. A bad or expired signature gets `403 invalid_signature`.
@@ -149,7 +168,7 @@ docker run --rm --network container:<rustfs container> -v "$PWD":/w --entrypoint
 2. It then calls `PutObject` with `Content-Type` and `If-None-Match: *`, so a key is never overwritten. A shot from a LiDAR phone also puts its depth map, and its confidence map when sent, as 16-bit and 8-bit PNGs, after they are rotated with the photo and their face regions zeroed in both maps. If one of those puts fails, the depth is dropped, any depth object already written is deleted, the photo is kept, and the upload response says `storage_error` (contracts 3). ✓ A second put to an existing key fails with `412 PreconditionFailed`.
 3. Then it creates the database record.
 
-A crash between steps 2 and 3 leaves an object without a record, never a record without its object. A daily sweep lists each garden's prefix and deletes objects older than an hour that no record points to. Every key field counts as a pointer: `scan_image.storage_key`, `depth_key` and `depth_confidence_key`, `mask.storage_key` and `chat_image.storage_key`. A sweep that checked only `storage_key` would delete every depth map an hour after its upload.
+A crash between steps 2 and 3 leaves an object without a record, never a record without its object. The `knowledge/` prefix isn't swept: the loader owns it and deletes the photos that left the seed. A daily sweep lists each garden's prefix and deletes objects older than an hour that no record points to. Every key field counts as a pointer: `scan_image.storage_key`, `depth_key` and `depth_confidence_key`, `mask.storage_key` and `chat_image.storage_key`. A sweep that checked only `storage_key` would delete every depth map an hour after its upload.
 
 **Deletes** (garden, plant or scan deletion, account deletion, chat images). A shot removed before submit is deleted by key, with its depth and confidence maps:
 1. List the prefix with `ListObjectsV2` (paginated).

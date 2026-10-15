@@ -1,6 +1,25 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.7.3, 2026-10-15. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.8.2, 2026-10-15. Companion to the [architecture document](README.md).
+> **v0.8.2** applies the third audit:
+>   - failing a scan supersedes its open question, and a guided check that finishes on a failed scan only stores its result, for a resubmit;
+>   - `POST /tasks` refuses a `scan_id` that is missing or being deleted, in the insert's transaction;
+>   - species photos and `preys_on` are computed when read or sent, and species photos are keyed and routed by a content hash;
+>   - the knowledge loader's citation points at storage 2.
+> **v0.8.1** applies the audit of v0.8:
+>   - image URLs in events are signed each time an event is sent or replayed;
+>   - the stream stays open while any guided check is analysing, including after a failure;
+>   - `low_evidence` is narrowed to results where nothing points to a problem;
+>   - species photo credits travel with the candidate, and timeline entries carry their failure code;
+>   - push coverage is stated as it is;
+>   - feedback waits for submit, and deleting a pending scan also deletes its jar-test task;
+>   - reads skip scans being deleted, and the knowledge photos are uploaded on the control-plane host.
+> **v0.8** adds what the app's screens need ([frontend](../frontend/README.md#20-contract-changes-the-screens-need)):
+>   - thumbnails on plants and timeline entries, garden weather, and a species list with reference photos;
+>   - the prey of beneficial organisms, and `low_evidence` on diagnoses;
+>   - a scan link on tasks, a push payload, and stream closing while a guided check runs;
+>   - the `image_quality` hints, a city as a garden location, and `retryable` for each `429`;
+>   - deleting a `pending` scan, and Clerk with Svix as the auth provider.
 > **v0.7.3** applies the third LiDAR audit: a step claim records its run and is released by new runs, failures and deletion; steps hand over to the next in their commit, every entry point claims or flags `rescore_pending`, and the sweep covers every live status; question steps end at `verifying`; the fallback's claim holds back photo-answer segmentation in SQL too (`job.question`); observations with no image are replaced by a run; the ground is the highest plane beneath the base; plan writes skip only a dead neighbour's task; map resends use a new key and the `400` lists every unknown plant; and `hole_count`.
 > **v0.7.2** applies the LiDAR re-audit: `api`'s own steps between jobs are claimed by compare-and-set and recovered by the sweep (for runs and for photo answers), question-photo segmentation waits for the perception worker unless the rig is down, `min` and `max` are always sent so the healthy rule works for one leaf, the ground is the lowest supported plane, tasks are only ever created on live plants, observations are replaced per image, the `409` hint values are listed, and an upload that still pins a deleted plant drops the pin and resends.
 > **v0.7.1** applies the LiDAR audit: the question-photo trigger counts only user and measured answers, the leaf distance range matches the hint, a map upload racing a plant deletion drops that pin, map uploads carry `base_version` and get `409` when stale, the growth series uses each scan's current measurements dated by the scan, height and width remove the ground first, the healthy rule needs no spot on any leaf, the segmentation-only job carries `question_id` and is spelled out, a stalled photo answer is recovered by the sweep, neighbour deletion leaves stored plans alone and is re-checked on confirm, face regions are zeroed in the confidence map too, and `storage_error`.
@@ -93,9 +112,9 @@ interface Page<T> {
 
 | Caller | Header |
 |---|---|
-| App | `Authorization: Bearer <auth provider JWT>` (not needed for signed image URLs) |
+| App | `Authorization: Bearer <Clerk session token>` (not needed for signed image URLs) |
 | Worker | `Authorization: Bearer <worker token>`, plus `X-Lease-Token` on every call about a leased job (section 5) |
-| Auth webhooks | The provider's signature header, verified before the body is parsed |
+| Auth webhooks | Clerk's Svix headers (`svix-id`, `svix-timestamp`, `svix-signature`), verified before the body is parsed (section 9, auth webhook) |
 
 ### Idempotency
 
@@ -120,7 +139,7 @@ A user who is not a member of the garden, or not the owner of the conversation, 
 | Read gardens, plants, scans, plans, tasks, timeline, measurements, the garden map | ✓ | ✓ | ✓ | ✓ |
 | Chat in their own conversations, with the read tools and `remember` (which only writes the caller's private memory) | ✓ | ✓ | ✓ | ✓ |
 | Scan feedback | | ✓ | ✓ | ✓ |
-| Create scans, upload, answer questions, confirm species, add guided soil checks | | | ✓ | ✓ |
+| Create scans, upload, delete a scan before it is submitted, answer questions, confirm species, add guided soil checks | | | ✓ | ✓ |
 | Map the garden (from a LiDAR device) | | | ✓ | ✓ |
 | Chat write tools (create and complete tasks, revise plans) and their confirmation cards | | | ✓ | ✓ |
 | Create, complete and dismiss tasks | | | ✓ | ✓ |
@@ -142,7 +161,7 @@ interface ErrorBody {
     code: ErrorCode;
     message: string;          // human-readable, safe to show; English for now
     retryable: boolean;       // the same request may succeed later
-    retry_after_s?: number;   // with 409 request_in_progress, 429 and 503
+    retry_after_s?: number;   // with 409 request_in_progress, 429 rate_limited and 503
     details?: Record<string, unknown>;  // per code, below
     request_id: string;       // matches the server log line
   };
@@ -161,12 +180,12 @@ interface ErrorBody {
 | 409 | `lease_lost` | Worker call for a job whose lease was requeued, expired or cancelled, including jobs of an older run | `{ job_id }` |
 | 413 | `upload_too_large` | Image over 12 MB | `{ max_bytes }` |
 | 415 | `unsupported_media_type` | Not JPEG, PNG, WebP or HEIC, or a HEIC file that can't be decoded | `{ accepted: string[] }` |
-| 422 | `image_quality` | The upload blur or exposure check failed. The image was not stored | `{ problem: "too_blurry" \| "too_dark" \| "too_bright", blur_score, exposure, hint }` |
+| 422 | `image_quality` | The upload blur or exposure check failed. The image was not stored | `{ problem: "too_blurry" \| "too_dark" \| "too_bright", blur_score, exposure, hint: QualityHint }` |
 | 422 | `missing_required_shot` | Submit without a `whole_plant` image | `{ missing: ImageKind[] }` |
 | 422 | `too_many_images` | Kind limit reached (section 3) | `{ kind, max }` |
 | 422 | `idempotency_conflict` | Reused `Idempotency-Key` with a different body | |
-| 429 | `rate_limited` | Request rate limit, including invite-code attempts | |
-| 429 | `budget_exceeded` | Daily chat token budget or daily scan limit used up | `{ budget: "chat_tokens" \| "scans", resets_at }` |
+| 429 | `rate_limited` | Request rate limit, including invite-code attempts. `retryable: true`, with `retry_after_s` | |
+| 429 | `budget_exceeded` | Daily chat token budget or daily scan limit used up. `retryable: false`: it lasts until `resets_at` | `{ budget: "chat_tokens" \| "scans", resets_at }` |
 | 500 | `internal` | Bug. Logged with `request_id` | |
 | 503 | `processing_unavailable` | Face blurring or another required upload step failed. The image was not stored (fails closed) | |
 | 503 | `upstream_unavailable` | LLM API, weather or another dependency down | `{ upstream }` |
@@ -179,6 +198,12 @@ type ErrorCode =
   | "missing_required_shot" | "too_many_images" | "idempotency_conflict"
   | "rate_limited" | "budget_exceeded" | "internal"
   | "processing_unavailable" | "upstream_unavailable";
+
+// one hint per image_quality problem, for the app's retake prompt
+type QualityHint =
+  | "tap_to_focus"        // too_blurry: hold the phone still and tap the subject to focus
+  | "more_light"          // too_dark: move into better light or turn the plant to face it
+  | "avoid_glare";        // too_bright: shade the plant or step out of direct sun
 ```
 
 Example:
@@ -221,11 +246,11 @@ failed ──resubmit (retryable failures only)──▶ queued (new run)
 
 | Rule | What happens |
 |---|---|
-| Claiming | Every entry point claims before it works, with a compare-and-set on `pipeline_step = NONE` that records the scan's current run: the handler that stores a `perception` result (claims `retrieve`), a `vlm` or run `verify` result (`score`), in the same transaction as the result; an indicator answer; a photo answer once it is measured or verified; the 10-minute continuation of an unanswered question; a late answer; a guided check's result (all `score`) |
+| Claiming | Every entry point claims before it works, with a compare-and-set on `pipeline_step = NONE` that records the scan's current run: the handler that stores a `perception` result (claims `retrieve`), a `vlm` or run `verify` result (`score`), in the same transaction as the result; an indicator answer; a photo answer once it is measured or verified; the 10-minute continuation of an unanswered question; a late answer; a guided check's result on a `diagnosed` or `planned` scan (all `score`). A check's result on any other status claims nothing (section 7) |
 | A busy scan | If another step holds the claim, the entry point's input is already stored (the answer, the job result, the check), so it only sets `scan.rescore_pending`. Claiming `score` clears the flag, because the step reads every input when it starts. A step that commits with the flag set hands over to `score` instead of its own next step, so input that arrived while it ran is scored, and nothing waits in memory |
 | Committing | A step commits its output (a queued job, the diagnosis, a question, the plan) in one transaction that first re-checks its claim: the same step, run and stamp, the scan's `run` unchanged, and neither the plant nor the garden being deleted. If anything changed, the transaction rolls back and the step stops |
 | Handing over | The same commit sets the next step: `retrieve` queues the `vlm` job and releases the claim, since a job is now in flight; `score` asks a question (the scan goes to `awaiting_answer` and the claim is released), or sets the claim to `plan` with a new stamp when a plan must be written (section 7, re-planning), or releases it; `plan` stores the plan and releases it |
-| Runs, failures and deletion | Starting a run (submit, resubmit, species change), failing the scan, and starting the deletion of its plant or garden release the claim in the same transaction, and superseding a question clears its `step`. A step of an older run can therefore never commit, and a leftover claim never blocks the next run |
+| Runs, failures and deletion | Starting a run (submit, resubmit, species change), failing the scan, and starting the deletion of its plant or garden release the claim in the same transaction, and superseding a question clears its `step`. Failing the scan also resolves its open or `answering` question as `superseded` in that transaction, so a `failed` scan never holds a question. A step of an older run can therefore never commit, and a leftover claim never blocks the next run |
 | The sweep | Re-claims a step whose stamp is older than its limit (2 minutes; 5 for `plan`, which waits on the LLM API) on any scan that isn't `pending`, `failed` or being deleted, with a compare-and-set on the old stamp and run, and re-runs it. The original commits only if its stamp still holds, so only one of them ever commits |
 
 Every step is idempotent and re-reads its inputs when it starts: queueing checks for an existing job of the run, and the diagnosis and plan are written with a compare-and-set like any other (section 7). Chat plan revisions are not a step: they are stored synchronously by the per-scan plan writer (section 7).
@@ -272,6 +297,10 @@ interface SpeciesCandidate {
   name: string;
   score: Confidence;
   source: "bioclip" | "vlm" | "user";
+  reference_image?: {           // the species' first reference photo (section 9, species); computed from species_id when read or sent, never stored
+    url: string;                // signed
+    credit: string;             // shown with the photo
+  };
 }
 
 interface Plant {
@@ -284,6 +313,13 @@ interface Plant {
   species_candidates: SpeciesCandidate[];
   status: "healthy" | "watch" | "sick" | "dead";
   position?: { map_version: number; x_m: number; y_m: number };  // from the garden map (section 9)
+  latest_scan?: {                     // the plant's most recent scan, in any status
+    scan_id: Id;
+    created_at: Timestamp;
+    status: ScanStatus;
+    thumbnail_image_id?: Id;          // its whole_plant shot, when it has one
+    thumbnail_url?: string;           // signed URL of that shot
+  };
   created_at: Timestamp;
 }
 
@@ -427,6 +463,15 @@ Errors: `image_quality` (not stored: show `message` and retake), `upload_too_lar
 
 Removes a shot, with its depth and confidence maps, while the scan is `pending`. Role: editor. `204`.
 
+### `DELETE /scans/{id}`
+
+Deletes a scan that was never submitted, so an abandoned capture leaves nothing behind. Role: editor. `204`.
+
+- Only a `pending` scan can be deleted. Any other status gets `409 invalid_state` with `status`; a submitted scan is history, deleted only with its plant or garden.
+- The scan is marked as being deleted first (`deleting_at`), so an upload or submit racing the delete gets `404`. Its guided jobs are cancelled, then its images with their depth maps, its guided checks with their observations and events, and the conversations anchored to it are deleted, in the order of [database 4](../database/README.md#deletion-). Tasks that name the scan (`Task.scan_id`: the jar-test task) are deleted with it, since they can only be done on that scan.
+- From the moment deletion starts, the scan reads as missing: `GET /scans/{id}` gets `404`, `Plant.latest_scan` and the timeline skip it, and it is never the "most recent scan" a species change follows.
+- The scan still counts toward the daily scan limit. A plant created through `new_plant` stays; an owner can delete it.
+
 ### `GET /scans/{id}/images/{image_id}` and `GET /scans/{id}/masks/{mask_id}`
 
 Return the stored, face-blurred image (`image/webp`) or a segmentation mask (`image/png`). Reached through the signed URLs in the records; a request without a valid signature gets `403 invalid_signature`.
@@ -496,7 +541,7 @@ The plant is updated. Then the plant's **most recent scan**, if it was created i
 
 ### `POST /scans/{id}/feedback`
 
-Role: reviewer or above.
+Role: reviewer or above. A scan that is still `pending` gets `409 invalid_state`: there is nothing to judge yet, and feedback would block deleting it.
 
 ```ts
 interface FeedbackRequest {   // stored with the author's user id; deleted with their account
@@ -523,8 +568,9 @@ data: {"v":1,"seq":17,"run":1,"scan_id":"01JAX...","ts":"2026-10-18T14:03:22Z","
 ```
 
 - `id` equals `seq`: an integer per scan, starting at 1, strictly increasing, with no gaps, across all runs.
+- **Image URLs in events are signed as the event is sent**, live or replayed. The stored payload keeps image and mask IDs, never URLs, so a replay hours later carries fresh 15-minute URLs (`Region.mask_url`). A species photo has no image ID: `SpeciesCandidate.reference_image` isn't stored in the payload at all, and is filled in from `species_id` as the event is sent.
 - Every event is stored in `scan_event` before it is sent. Events for a scan come from several places (worker events, answers, the scheduler's sweep, species changes), so **one serialised writer per scan** assigns `seq`, stores the event and broadcasts it, in that order. A live subscriber that falls behind the broadcast (`Lagged`) switches to replaying from the database.
-- **Resume:** on reconnect the app sends `Last-Event-ID`. The server first subscribes to the scan's live broadcast, then replays every stored event with a higher `seq`, then forwards live events, dropping any whose `seq` it has already sent. The app also ignores any `seq` it has already applied.
+- **Resume:** on reconnect the app sends `Last-Event-ID`. The server first subscribes to the scan's live broadcast, then replays every stored event with a higher `seq`, then forwards live events, dropping any whose `seq` it has already sent. The app also ignores any `seq` it has already applied. Without `Last-Event-ID` the server replays the whole history, which is how the app rebuilds stage progress for a scan it opens partway through a run.
 - The server sends a `: keepalive` comment every 15 seconds.
 
 ### When the stream closes
@@ -533,13 +579,17 @@ The server closes the stream when the scan reaches a resting point:
 
 | Resting point | Last events before close |
 |---|---|
-| A run ends with a plan and no open question | `status_changed → planned`, then `plan_ready` |
+| A run ends with a plan, no open question and no guided check `analysing` | `status_changed → planned`, then `plan_ready` |
+| A run ends with a plan while a guided check is `analysing` | Stays open until the check's `guided_check_done`, and any `diagnosis` and plan events it causes |
 | A run ends with a plan and an open question | Stays open until the question resolves |
-| A question resolves after `planned` | `question_resolved`, then `diagnosis` and `plan_superseded` if a new plan was made |
-| A guided check or late `verify` job finishes after `planned`, with no open question | `guided_check_done` or `question_resolved`, then `diagnosis` and any new plan events |
-| The scan fails | `failed` |
+| A question resolves after `planned`, and no guided check is `analysing` | `question_resolved`, then `diagnosis` and `plan_superseded` if a new plan was made |
+| A guided check or late `verify` job finishes after `planned`, with no open question and no other guided check `analysing` | `guided_check_done` or `question_resolved`, then `diagnosis` and any new plan events |
+| The scan fails, and no guided check is `analysing` | `question_resolved` with `superseded` if a question was open or `answering`, then `failed` |
+| The scan fails while a guided check is `analysing` | Stays open until the last check's `guided_check_done` |
 
-The app may close the stream at any time and reopen it later with `Last-Event-ID`. Changes while it is closed are also sent as a push notification.
+The app may close the stream at any time and reopen it later with `Last-Event-ID`. The most important changes while it is closed are also sent as a push notification; section 9 (push notifications) lists which, and to whom. Everything else is on the scan when the app reads it again.
+
+**Opening the stream of a scan at rest** (no question open or `answering`, no guided check `analysing`, and `planned` or `failed`) replays the stored events after `Last-Event-ID` and then closes.
 
 ### Envelope
 
@@ -644,7 +694,7 @@ Example of a typical run, where the classifier suggests early blight and the ind
 
   A worker whose heartbeat thread keeps running while its model hangs still loses the job at `max_runtime`. These limits hold at the configured `slots`: the day-2 benchmark checks that a `vlm` job's p95 time with `VLM_SLOTS` jobs running together stays under half its `max_runtime`.
 - The broker requeues a job when its worker's heartbeat is older than 30 seconds, or when its lease expires. Requeueing invalidates the lease token.
-- `attempts` counts `failed` completions with `retryable: true`, **plus every requeue after the 2nd**. A job that keeps crashing its worker therefore runs out of attempts. After the 3rd attempt, the job fails for good: a run's job sends the scan to `failed` with `processing_error`; a `verify` job for late work (section 3: the scan is `diagnosed` or `planned`) and every `guided` job report their failure as an event (`question_resolved` with `dropped`, or `guided_check_done` with a failed check) and leave the scan as it is. The segmentation-only `perception` job for a photo sent to a question (section 7, measurement) never fails the scan or the question: when it fails, the photo goes on to its `verify` job unmeasured.
+- `attempts` counts `failed` completions with `retryable: true`, **plus every requeue after the 2nd**. A job that keeps crashing its worker therefore runs out of attempts. After the 3rd attempt, the job fails for good: a run's job sends the scan to `failed` with `processing_error`, resolving its open or `answering` question as `superseded` (section 3); a `verify` job for late work (section 3: the scan is `diagnosed` or `planned`) and every `guided` job report their failure as an event (`question_resolved` with `dropped`, or `guided_check_done` with a failed check) and leave the scan as it is. The segmentation-only `perception` job for a photo sent to a question (section 7, measurement) never fails the scan or the question: when it fails, the photo goes on to its `verify` job unmeasured.
 - Every `perception`, `vlm` and `verify` job belongs to a scan **run**. A `guided` job belongs to the scan, not to a run: a new run never cancels it, and it never fails the scan. When a new run starts (a resubmit or a species change), the broker cancels the old run's queued and leased run jobs, and the old run's open question is resolved as `superseded`. A worker learns this from its next heartbeat response (`cancel_job_ids`) and stops.
 - **Any call about a requeued, expired or cancelled job, including a job of an older run, gets `409 lease_lost`.** This holds for `events` and `complete` alike. The worker drops the job.
 - Repeating `complete` with the same lease token for a job that already completed (a retry after a network timeout) returns `204` and changes nothing.
@@ -1147,7 +1197,7 @@ The answer is stored as `IndicatorEvidence` with `source: "measurement"`, `measu
 interface WeatherSummary {
   provider: "open_meteo";
   fetched_at: Timestamp;
-  location_precision: "exact" | "about_1_km" | "about_10_km" | "postal_code";
+  location_precision: "exact" | "about_1_km" | "about_10_km" | "postal_code" | "city";
   current: { temp_c: number; rh_pct: number; wind_kmh: number; precip_mm_last_24h: number };
   past_7_days: { precip_mm: number; mean_rh_pct: number; hours_rh_over_90: number };
   forecast: {
@@ -1172,7 +1222,7 @@ interface WeatherSummary {
 
 **Fetching and caching.** Scans and the scheduler use the same `WeatherSummary`, fetched and cached the same way:
 
-- The cache key is a **cache cell**: the garden's stored coordinates rounded to 0.01° (about 1 km, the resolution of the weather models), plus the hour. Gardens stored at about 10 km or by postal code already share their coordinates.
+- The cache key is a **cache cell**: the garden's stored coordinates rounded to 0.01° (about 1 km, the resolution of the weather models), plus the hour. Gardens stored at about 10 km, by postal code or by city already share their coordinates.
 - A scan reads its garden's cell and fetches only on a miss.
 - The scheduler groups all gardens by cell, fetches each cell **once**, and sends the missing cells to Open-Meteo in multi-location requests (comma-separated `latitude` and `longitude`) of at most 50 cells. Open-Meteo's fair-use limit counts each location in such a request, so the quota saving comes from fetching each cell once; the batching saves round trips.
 - The scheduler then evaluates every garden's trigger rules from its cell's summary, so scans in the same hour reuse what the scheduler fetched.
@@ -1215,6 +1265,7 @@ interface Diagnosis {
   run: number;
   supersedes?: Id;                   // the earlier diagnosis of the same scan, after a late answer, a rerun or a guided check
   status: "confirmed" | "uncertain" | "healthy";
+  low_evidence: boolean;             // uncertain, and nothing points to any problem (below)
   primary?: CandidateScore;          // absent when healthy
   candidates: CandidateScore[];      // ranked, at most 9
   organisms: {
@@ -1223,6 +1274,7 @@ interface Diagnosis {
     name: string;
     role: "pest" | "beneficial" | "neutral" | "invasive" | "unknown";
     reporting_url?: string;          // invasive only: the app shows "How to report"
+    preys_on?: { organism_id: Slug; name: string }[];  // beneficial only: the pests it eats, from the preys_on graph when read; never stored
   }[];
   soil: Observation[];               // the soil observations the diagnosis used, guided checks included
   risks: {
@@ -1248,6 +1300,15 @@ The status is decided in this order, and the first row that holds wins:
 | `healthy` | **All** of these hold: no candidate scored above zero; no pest organism and no damage pattern was found with medium confidence or more; no classifier candidate other than `healthy` has medium confidence or more; and there is **positive evidence of health**: the classifier's highest-confidence result across the leaf regions is `healthy` with medium confidence or more, or every candidate has at least 2 of its 3 discriminating indicators answered `no` (a measured `no` counts only when its image shows no spot on any measured leaf and no hole: see measurement above). The plan is a short care plan |
 | `confirmed` | The top candidate scored above zero, leads the second by at least the fusion margin (open question 3), and no question is open |
 | `uncertain` | Everything else: the lead is too small, every score is zero without positive evidence of health, or the scan was continued without an answer. The plan is provisional |
+
+**`low_evidence`** is true exactly when `status` is `uncertain` and **nothing points to any problem**:
+- no candidate scored above zero;
+- no pest organism and no damage pattern was found with medium confidence or more;
+- no classifier candidate other than `healthy` has medium confidence or more.
+
+Those are the first three conditions of `healthy`, without its positive evidence. A classifier result of early blight at 0.71 with every indicator `unsure` (the example below) is therefore `uncertain` but not `low_evidence`: the app shows the possible problem and its question.
+
+With `low_evidence` the app names no problem (architecture 6.1, low confidence). It asks for a closer photo through the open `photo_request` question when there is one, and through a new scan otherwise, and it suggests a local extension office. A guided check's new diagnosis copies it.
 
 A result that is neither `healthy` nor `confirmed` is **ambiguous**: the run asks a question if it is still `analysing` or `awaiting_answer` and has asked fewer than 2, and is otherwise diagnosed `uncertain` (a late answer or a guided check never asks one). When every score is zero because the indicators came back `unsure`, the question is a `photo_request` for the shot those indicators need, usually a `leaf_closeup`. Two examples: a distant whole-plant photo where only the species is recognised and every indicator is `unsure` is not called healthy; and a classifier result of early blight at 0.71 with the VLM's indicators `unsure` is ambiguous, never `healthy` next to an early-blight finding.
 
@@ -1332,7 +1393,7 @@ A step's task belongs to the step's `plant_id` when it has one, otherwise to the
 - **A chat revision** never calls the plan writer and is never retried. Confirming stores exactly the validated preview the card showed (section 8): the plan at `base_plan_id` with `changed_steps` applied, `removed_step_ids` dropped and `constraints_added` appended. If `base_plan_id` is no longer the current plan when its turn comes, nothing is stored and `confirm` returns `409 invalid_state` with `current_plan_id`.
 - A chat revision's constraints are stored on the plan and given to the plan writer for every later version, so a later automatic re-plan keeps "no copper".
 
-**Guided checks and the diagnosis.** A guided check that finishes while the scan is `diagnosed` or `planned` writes a **new diagnosis** for the current run: a copy of the current one that `supersedes` it, with `soil` updated to the latest check of each kind and fusion's `risks` recomputed. Candidate scores and `status` don't change. It then queues a `guided_check` re-plan, which does nothing if the scan has no plan yet (the run's first plan write reads the new diagnosis when it starts) or if the current plan was already written from a diagnosis with the same texture. A check that finishes while the scan is `analysing` or `awaiting_answer` writes no diagnosis: the run's diagnosis uses it.
+**Guided checks and the diagnosis.** A guided check that finishes while the scan is `diagnosed` or `planned` writes a **new diagnosis** for the current run: a copy of the current one that `supersedes` it, with `soil` updated to the latest check of each kind and fusion's `risks` recomputed. Candidate scores and `status` don't change. It then queues a `guided_check` re-plan, which does nothing if the scan has no plan yet (the run's first plan write reads the new diagnosis when it starts) or if the current plan was already written from a diagnosis with the same texture. A check that finishes while the scan is `analysing` or `awaiting_answer` writes no diagnosis: the run's diagnosis uses it. A check that finishes while the scan is `pending` or `queued` writes no diagnosis and claims no step: the run reads it when it starts. A check that finishes while the scan is `failed` writes no diagnosis and claims no step either: its result stays on the scan, and a resubmitted run reads it.
 
 When a plan is **superseded**, the system dismisses its open tasks (`dismissed_reason: "plan_superseded"`) and removes its trigger rules, so the user never sees steps from an outdated diagnosis. The new plan creates its own tasks.
 
@@ -1376,6 +1437,7 @@ interface Task {
   plant_id?: Id;
   plan_id?: Id;
   plan_step_id?: string;
+  scan_id?: Id;                      // a guided-check task's scan: the jar test photographed later
   title: string;
   detail?: string;
   due?: LocalDate;
@@ -1577,14 +1639,16 @@ interface GardenLocationInput {
   lon?: number;
   precision?: "exact" | "about_1_km";
   postal_code?: string;              // without consent; geocoded once
+  city?: string;                     // without consent, instead of a postal code: "Guelph, ON"; geocoded once
 }
+// exactly one of: lat and lon, postal_code, city
 
 interface Garden {
   id: Id;
   name: string;
   my_role: "owner" | "editor" | "viewer" | "reviewer";
   location_label: string;            // "Toronto, ON"; raw coordinates are never returned
-  location_precision: "exact" | "about_1_km" | "about_10_km" | "postal_code";
+  location_precision: "exact" | "about_1_km" | "about_10_km" | "postal_code" | "city";
   time_zone: string;                 // IANA, e.g. "America/Toronto"; derived from the location; sets every LocalDate
   soil_profile_status: "pending" | "ready" | "unavailable";
   member_count: number;
@@ -1598,7 +1662,8 @@ interface Garden {
 | `POST /gardens` | signed in | `{ name, location: GardenLocationInput }` | `201 Garden`; the caller becomes owner; SoilGrids is fetched in the background |
 | `GET /gardens/{id}` | any | | `200 Garden` |
 | `PATCH /gardens/{id}` | owner | `{ name?, location? }` | `200 Garden` |
-| `DELETE /gardens/{id}` | owner | | `202`; the cascade below runs in the background |
+| `DELETE /gardens/{id}` | owner | | `202`; the cascade below runs in the background. The other members get a `garden_deleted` push (push notifications, below) |
+| `GET /gardens/{id}/weather` | any | | `200 { weather: WeatherSummary }`: the garden's weather cache cell for the current hour (section 7, fetching and caching), fetched on a miss exactly as a scan does. `503 upstream_unavailable` when the fetch fails |
 
 ### Members and invites
 
@@ -1646,6 +1711,8 @@ interface TimelineEntry {
   diagnosis_status?: "confirmed" | "uncertain" | "healthy";
   primary?: { problem_id: Slug; name: string };
   thumbnail_image_id?: Id;           // the whole_plant shot, when there is one
+  thumbnail_url?: string;            // signed URL of that shot
+  failure_code?: ScanFailureCode;    // with status failed: "Failed: no plant found"
   plan_id?: Id;
   measurements?: { plant_height_cm?: number; canopy_width_cm?: number };  // medium confidence or more
 }
@@ -1660,6 +1727,31 @@ interface MeasurementPoint {
 ```
 
 The growth series has one point per scan and quantity, with medium confidence or more (section 7, growth).
+
+`Plant.latest_scan` and `TimelineEntry.thumbnail_url` carry signed URLs like every other image (section 1), refreshed by reading the record again.
+
+### Species
+
+The knowledge base's species, for the species picker and the confirmation card. Read by any signed-in user; species aren't garden data.
+
+| Endpoint | Response |
+|---|---|
+| `GET /species?q=` | `200 Page<SpeciesSummary>`, by common name. `q` matches common and scientific names, case-insensitively, anywhere in the name; without `q`, every species |
+| `GET /species/{id}` | `200 SpeciesSummary`; an unknown slug gets `404` |
+| `GET /species/{id}/images/{hash}` | The reference photo (`image/webp`), through its signed URL. `{hash}` is the photo's content hash (section 10) |
+
+```ts
+interface SpeciesSummary extends SpeciesRef {
+  profile: "full" | "label_only";
+  classifier_supported: boolean;     // the disease classifier covers it (architecture 6.2)
+  reference_images: {                // at most 3, in seed order
+    url: string;                     // signed
+    credit: string;                  // "Photo: A. Author, CC BY-SA 4.0"; the app shows it under the photo
+  }[];
+}
+```
+
+`SpeciesCandidate.reference_image` is the first of these, with its credit, so the confirmation card needs no second call. It is computed from `species_id` each time a candidate is read or sent in an event, never stored with the candidate, so a reseed shows the new photo everywhere. Each photo's storage key carries a hash of its content (section 10), so its URL changes when the photo does.
 
 ### Garden map
 
@@ -1713,6 +1805,7 @@ interface GardenMap {
 | Deleted | Also deleted | Jobs |
 |---|---|---|
 | A plant | Its scans with their images, depth maps, masks, observations, events, diagnoses, plans and questions; its tasks and plan trigger rules, including the neighbour tasks and trigger rules its plans made for other plants; the tasks and trigger rules other plants' plans made for it (those plans are not changed: section 7, when a neighbour is deleted); conversations anchored to the plant or its scans, with their messages, images, pending actions and feedback; memories about the plant; its pin on the garden map | Queued and leased jobs of its scans are cancelled, and their step claims and question steps cleared, so no running step can commit afterwards |
+| A `pending` scan (`DELETE /scans/{id}`, section 3) | Its images with their depth maps, its guided checks with their observations and events, conversations anchored to it, and the tasks naming it (`Task.scan_id`) | Its guided jobs are cancelled |
 | A garden | Everything under `gardens/{garden_id}/` in RustFS, and every record of the garden: plants (as above), tasks, memories, conversations, invites, memberships, the garden map | All its jobs are cancelled, and every step claim and question step cleared |
 
 ### Tasks
@@ -1720,7 +1813,7 @@ interface GardenMap {
 | Endpoint | Role | Body | Response |
 |---|---|---|---|
 | `GET /tasks?garden_id=&source=&state=open\|done\|dismissed` | any | | `200 Page<Task>`, by `due` (tasks without one last), then `created_at`. `?source=forecast_alert` is the alert inbox |
-| `POST /tasks` | editor | `{ garden_id, plant_id?, title, detail?, due?, repeat? }` | `201 Task` with `source: "user"`. A `plant_id` that isn't a live plant of the garden, unknown or being deleted, gets `404 not_found` |
+| `POST /tasks` | editor | `{ garden_id, plant_id?, scan_id?, title, detail?, due?, repeat? }` | `201 Task` with `source: "user"`. A `plant_id` that isn't a live plant of the garden, unknown or being deleted, gets `404 not_found`. A `scan_id` must be a live scan of the garden, and of that plant when `plant_id` is given: a scan that is missing, of another garden or plant, or has `deleting_at` gets `404 not_found`. Like the plant, it is checked in the same transaction as the insert, since the schema accepts a link to a missing scan. The app sets it on the task it creates when a jar test starts (section 3), so the jar photo can be uploaded to the same scan later from any device |
 | `PATCH /tasks/{id}` | editor | `{ done?: boolean, dismissed?: boolean, title?, detail?, due?, repeat? }` | `200 Task`. Only `user` and `chat` tasks can change `title`, `detail`, `due` and `repeat`. Completing a repeating task creates the next one |
 | `DELETE /tasks/{id}` | editor | | `204` for `user` and `chat` tasks; `409 invalid_state` for `plan` and `forecast_alert` tasks, which are dismissed instead |
 
@@ -1732,11 +1825,34 @@ interface GardenMap {
 | `PATCH /me` | `{ display_name?, location_consent? }` | `200` the same shape. Withdrawing consent rounds the location of every garden the user owns to about 10 km (`about_10_km`); no reverse geocoding is needed |
 | `DELETE /me` | | `202 { deleted_gardens: Id[], transferred_gardens: { garden_id: Id; new_owner_user_id: Id }[] }`. The cascade (architecture section 5) runs in the background, then the account is deleted at the auth provider too, retried until it succeeds, so signing in again doesn't recreate the user |
 | `POST /me/push-tokens` | `{ token: string, platform: "ios" \| "android" \| "web" }` | `204`; registering the same token again is a no-op |
-| `DELETE /me/push-tokens/{token}` | | `204` |
+| `DELETE /me/push-tokens/{token}` | | `204`. The token is URL-encoded in the path (Expo tokens contain `[` and `]`) |
+
+### Push notifications
+
+Sent through the Expo Push API to every token the recipient registered with `platform` `ios` or `android`. Expo Push doesn't deliver to the web, so `web` tokens are stored and not yet used. The message has a short English title and body, and this payload as its `data`:
+
+```ts
+type PushPayload =
+  | { v: 1; kind: "scan"; reason: "plan_ready" | "plan_superseded" | "question" | "failed";
+      garden_id: Id; plant_id: Id; scan_id: Id }
+  | { v: 1; kind: "alert"; garden_id: Id; task_id: Id; trigger: TriggerKind }
+  | { v: 1; kind: "garden_deleted"; garden_name: string };
+```
+
+| `kind` | Sent when | To |
+|---|---|---|
+| `scan`, `plan_ready` | A run reaches `planned` (architecture 8.1) | The scan's creator, while still a member |
+| `scan`, `plan_superseded` | A late answer, a guided check or a species change produces a new plan version. Not for `chat_revision`: the member who confirmed it is already looking at it | The scan's creator, while still a member |
+| `scan`, `question` | A run asks a question | The scan's creator, while still a member |
+| `scan`, `failed` | A scan fails | The scan's creator, while still a member |
+| `alert` | A forecast alert creates its task (architecture 8.3) | Every member of the garden |
+| `garden_deleted` | A garden is deleted by its owner, or by the account-deletion cascade (architecture 5) | Every other member it had |
+
+Nothing else is pushed: a guided check that doesn't change the plan, a dropped photo answer and other late events are seen when the scan is next opened. The app ignores a payload with an unknown `v` or `kind`, and suppresses a `scan` notification for the scan already on screen. A push is a hint, never the only copy: the alert inbox, the timeline and the scan itself hold the same information.
 
 ### Auth webhook
 
-`POST /webhooks/auth`, signature-verified. The adapter for the chosen provider maps its payload to:
+`POST /webhooks/auth`, from Clerk, delivered through Svix. The adapter verifies the `svix-id`, `svix-timestamp` and `svix-signature` headers against the endpoint's signing secret before parsing the body, rejects a timestamp more than 5 minutes old, and maps Clerk's `user.created` and `user.deleted` events to:
 
 ```ts
 interface AuthWebhookEvent {
@@ -1922,6 +2038,11 @@ interface SpeciesSeed {
   classifier_supported: boolean;     // checked against classifier_labels.yaml at ingestion
   bioclip_label: string;             // the text prompt BioCLIP scores against
   sources: Slug[];                   // may be empty for label_only
+  reference_images?: {               // at most 3, for the species confirmation card
+    file: string;                    // under ml/knowledge/seed/images/, e.g. "species/tomato-1.jpg"
+    source_id: Slug;                 // a source whose licence allows reuse with credit
+    credit: string;                  // "Photo: A. Author, CC BY-SA 4.0", shown with the photo
+  }[];
   reviewed_by: string;
 }
 
@@ -2006,6 +2127,7 @@ The loader fails the build when:
 - a `full` species has no `care`;
 - any treatment text fails the dose check of section 7;
 - an invasive organism has no `reporting_url`;
+- a species has more than 3 `reference_images`, a file is missing, or its source has no `licence`;
 - a `measure` names a quantity that none of the indicator's `image_kinds` can measure (section 7), has neither `min` nor `max`, or has `min` ≥ `max`.
 
 It generates, alongside the migration:
@@ -2013,6 +2135,8 @@ It generates, alongside the migration:
 - the BioCLIP label list (`bioclip_label` of every species, `full` and `label_only`, and every organism) with its `label_set_version`;
 - the `species_options` and `organism_options` lists for VLM payloads;
 - the `classifier_labels_version` for perception payloads.
+
+The loader also converts each reference image to WebP (long side 1024 pixels, metadata stripped), writes it to RustFS under `knowledge/species/{species_id}/{hash}.webp`, where `{hash}` is the first 16 hex digits of the WebP file's SHA-256, with its own storage identity ([storage 2](../storage/README.md#2-bucket-keys-and-access)), and deletes the objects of images no longer in the seed. RustFS is reachable only on the control plane's Docker network, so this upload runs there as a one-shot container, **before** the API starts with the migration that references the photos ([storage 2](../storage/README.md#2-bucket-keys-and-access)). A changed photo therefore gets a new key and a new URL, and an app never shows a cached old photo next to a new credit.
 
 ---
 
@@ -2031,6 +2155,9 @@ The contracts changed these parts of the architecture document, which has been u
 | Memory: chat memories private until shared; plan writer reads only shared memories | 7 |
 | Role matrix; 404 for non-members; invites; member removal; deletion cascades; signed image URLs; daily scan limit; provider account deletion | 4, 5, 9, 11 |
 | LiDAR: depth uploads, the `measurement` stage, measurable indicators (also on photos sent for a question), the growth series, the garden map with neighbours, spacing and neighbour plan steps | 1, 2, 3, 5, 6.1, 6.2, 6.3, 6.6, 6.7, 6.8, 7, 8.1, 8.3, 8.4, 8.5, 9, 10, 11, 12, 13, 14, 15 |
+| What the screens need: thumbnails, garden weather, the species list with reference photos, prey of beneficials, `low_evidence`, a task's scan, the push payload, stream closing with a guided check running, quality hints, a city as location, `retryable` on `429`s, deleting a pending scan, Clerk and Svix | 3, 4, 5, 6.1, 6.2, 6.5, 8.1, 8.3, 8.5, 9, 12, 13, 15 |
+| The v0.8 audit: event URLs signed when sent, the stream kept open for any running guided check, the narrower `low_evidence`, photo credits on candidates, `TimelineEntry.failure_code`, push coverage, feedback after submit, jar-test tasks deleted with a pending scan, and the knowledge photo upload on the control plane | 3, 5, 6.1, 8.1, 12 |
+| The third audit: a failed scan supersedes its question and keeps a late guided check for a resubmit, `POST /tasks` checks its scan, species photos computed when read and keyed by a content hash, the loader's `seed-upload` container before `api`, and `low_evidence`'s threshold | 3, 5, 6.1, 8.4, 9, 12 |
 
 ---
 

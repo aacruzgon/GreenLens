@@ -8,7 +8,7 @@ PDM (GitHub repository: GreenLens) is a plant, crop and garden health monitoring
 
 A user photographs a plant. Computer vision on a home GPU rig assesses the plant, the soil and the surroundings. The results are combined with weather, soil data and the plant's history to produce a diagnosis and an action plan, which the user can chat about.
 
-**Stack:** Expo / React Native app (with a Swift LiDAR module), Rust backend (axum, tokio) in a Cargo workspace, SurrealDB 3.3.4, RustFS 1.0.1 for images, pull-based GPU workers (`ort`/CUDA and a vLLM or llama.cpp VLM sidecar), Python for model training and knowledge ingestion.
+**Stack:** Expo SDK 57 / React Native app with Clerk authentication (and a Swift LiDAR module), Rust backend (axum, tokio) in a Cargo workspace, SurrealDB 3.3.4, RustFS 1.0.1 for images, pull-based GPU workers (`ort`/CUDA and a vLLM or llama.cpp VLM sidecar), Python for model training and knowledge ingestion.
 
 **Current state:** the repository holds design documents only. No code exists yet. When code lands, follow the planned layout below and update this file.
 
@@ -22,6 +22,9 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | [`docs/architecture/contracts.md`](docs/architecture/contracts.md) | The data contracts: every shape that crosses a boundary (app ↔ API, API ↔ workers, worker ↔ VLM, ingestion ↔ database), with error codes, endpoints, events, job payloads, VLM output and pipeline records | You are writing or calling an endpoint, a worker, a job, an SSE event, a VLM prompt, or any type in the `domain` crate |
 | [`docs/database/README.md`](docs/database/README.md) | SurrealDB notes: version pin and setup, conventions, tables, verified write patterns (event `seq`, compare-and-set, job claims, idempotency, deletion order), reads and vector search, the Rust SDK, operations and caveats | You are writing a query, a repository function in the `store` crate, or a migration |
 | [`docs/database/schema.surql`](docs/database/schema.surql) | The database schema itself. Idempotent; safe to run on every API start | You need a table's exact fields, types, indexes or references |
+| [`docs/frontend/README.md`](docs/frontend/README.md) | The frontend architecture: stack and pins, libraries, layers and import rules, directory layout, Clerk, the API and streaming layers, state, platform adapters (phone and in-app browsers, the LiDAR module's JS interface), UI system, mock mode, testing, builds, build plan, open decisions and sources | You are working on anything in `app/`, or need to know how the app consumes an endpoint or event |
+| [`docs/frontend/flows.md`](docs/frontend/flows.md) | Sequence diagrams for every user flow and the app's state machines | You are implementing a flow end to end, or a reducer or state machine in a feature's `model/` |
+| [`docs/frontend/screens.md`](docs/frontend/screens.md) | Navigation map, screen inventory with data, actions and roles, wireframes, screen rules, shared components and wording rules | You are building or changing a screen |
 | [`docs/storage/README.md`](docs/storage/README.md) | RustFS notes: version pin and setup, bucket and key layout, how images are served through signed API URLs, writes and deletes, the Rust client (`aws-sdk-s3`), operations, caveats and the fallback | You are touching image or depth-map storage, the `blob` crate, or upload handling |
 
 ### Topic index
@@ -45,8 +48,12 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | Knowledge base and seed file format | architecture §5 (Knowledge base); contracts §10 |
 | Security, privacy and safety (EXIF, face blurring, dose checks) | architecture §11 |
 | Deployment, hosting, app delivery, operations | architecture §12 |
-| Build plan by day | architecture §14 |
-| Open decisions and open questions | architecture §15; contracts §12; database §9 |
+| App layers, layout, libraries and import rules | frontend §4–6 |
+| App auth (Clerk), API client, errors, idempotency, SSE handling | frontend §8–10 |
+| App flows and state machines | frontend flows |
+| App screens, wireframes and wording | frontend screens |
+| Build plan by day | architecture §14; frontend §18 |
+| Open decisions and open questions | architecture §15; contracts §12; database §9; frontend §19 |
 
 ## Sources of truth
 
@@ -54,6 +61,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 - **Stored shapes** are defined in `docs/database/schema.surql`. Change it in the same pull request as any contract change that affects what is stored.
 - **The architecture document follows the contracts.** When `contracts.md` changes, bring `docs/architecture/README.md` in line, bump both status lines, and add a row to contracts §11 listing the affected architecture sections.
 - **Version pins** (SurrealDB `v3.3.4`, RustFS `1.0.1`, both with image digests) were verified by running them. Don't change a pin without re-verifying the patterns that depend on it.
+- **App pins** (Expo SDK 57, `@clerk/expo` 4.x) are in docs/frontend §3. Before moving the SDK, check that `@clerk/expo`'s `peerDependencies` include it.
 
 ## Planned repository layout
 
@@ -61,7 +69,7 @@ From architecture §13. None of these directories exist yet.
 
 ```
 PDM/
-├─ app/                Expo app; app/modules/lidar is the native LiDAR module (Swift)
+├─ app/                Expo app (layout in docs/frontend §6); app/modules/lidar is the native LiDAR module (Swift)
 ├─ backend/
 │  ├─ crates/{domain, store, blob, agent, vision, knowledge, pipeline}
 │  ├─ bins/{api, worker}

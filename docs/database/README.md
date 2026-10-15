@@ -1,6 +1,6 @@
 # PDM Database (SurrealDB)
 
-> **Status:** v1.2, 2026-10-15. v1.2 ties step claims to their run with a commit check, adds `job.question` to the fallback's claim, deletes plans by equality (the `IN` bug), and clears claims when deletion starts. v1.1 adds the LiDAR records (section 3), a deletion order that removes tasks and trigger rules before their plans, per-image replacement of observations, and claimed steps between jobs that the scheduler's sweep can recover. v1: The schema is [`schema.surql`](schema.surql). Companion to the [architecture document](../architecture/README.md) (section 5) and [contracts.md](../architecture/contracts.md), which define the shapes these records store.
+> **Status:** v1.3.2, 2026-10-15. v1.3.2: `POST /tasks` checks its `scan_id` in the insert's transaction (✓ the schema accepts a link to a missing scan, and the check refuses it), and species photos and `preys_on` are computed when read. v1.3.1: `task.scan` is `CASCADE`, so a pending scan's jar-test task is deleted with it, and event payloads store image IDs, never signed URLs. v1.3 adds the fields the app's screens need (contracts v0.8): `task.scan`, `scan.deleting_at` and the deletion of a pending scan, `diagnosis.low_evidence`, `species.reference_images`, and `city` as a garden location precision. v1.2 ties step claims to their run with a commit check, adds `job.question` to the fallback's claim, deletes plans by equality (the `IN` bug), and clears claims when deletion starts. v1.1 adds the LiDAR records (section 3), a deletion order that removes tasks and trigger rules before their plans, per-image replacement of observations, and claimed steps between jobs that the scheduler's sweep can recover. v1: The schema is [`schema.surql`](schema.surql). Companion to the [architecture document](../architecture/README.md) (section 5) and [contracts.md](../architecture/contracts.md), which define the shapes these records store.
 > **Verified:** every pattern marked ✓ below was run against `surrealdb/surrealdb:v3.3.4` on 2026-10-15. The schema applies cleanly twice in a row, and a scenario script exercised the rest. Points marked *unverified* come from the docs only.
 
 ## Contents
@@ -112,6 +112,15 @@ Changes from the architecture sketch (section 5 there):
   - `task.state`, so the task list filters on one index;
   - `garden.deleting_at` and `plant.deleting_at`, for the background deletion cascade;
   - `action_plan.reason`.
+- **For the app's screens** (contracts v0.8):
+  - `task.scan`, the scan a guided-check task belongs to, with `REFERENCE ON DELETE CASCADE`: such a task can only be done on that scan;
+  - `scan.deleting_at`, for `DELETE /scans/{id}` of a pending scan;
+  - `diagnosis.low_evidence`, default `false`;
+  - `species.reference_images` (at most 3, each with `storage_key`, `credit` and `source`), checked by an `ASSERT` on the length;
+  - `city` in `garden.location_precision`.
+  - Thumbnails, the plant's latest scan and the garden's weather are computed when read, from `scan_image`, `scan` and `weather_cache`, so they add no fields.
+  - So are `SpeciesCandidate.reference_image`, from `species.reference_images[0]` each time a candidate is read or sent in an event, and `Diagnosis.organisms[].preys_on`, from the `preys_on` graph. Neither is stored on `plant.species_candidates`, `diagnosis.organisms` or an event payload, so a reseed shows the new photo and prey everywhere.
+  - `reference_images.*.storage_key` is `knowledge/species/{species_id}/{hash}.webp`, with a content hash, so a changed photo gets a new key ([storage 2](../storage/README.md#2-bucket-keys-and-access)).
 - **Vector indexes:** `memory` and `scan_image` embeddings get no HNSW index (section 5).
 - **LiDAR** (architecture 6.7, 6.8): the `garden_map` table with the `garden.map_version` counter; `plant.position`; `scan_image.depth_key`, `depth_confidence_key` and `depth_meta`; on measurement observations, top-level `plant`, `quantity`, `measured_value` and `taken_at` for the growth series (index `observation_growth`); `question.step` and `step_at` for photo answers (index `question_stalled`); and `plan_trigger.plant` indexed (`plan_trigger_plant`).
 - **Recovery between jobs:** `scan.pipeline_step`, `pipeline_step_run`, `pipeline_step_at` and `rescore_pending` (index `scan_stalled`); `job.question`, so the fallback's claim can hold back a photo answer's segmentation job; and `observation.image`, so a stage's observations are replaced per image (section 5). `observation.quantity` also takes `hole_count`.
@@ -134,6 +143,8 @@ COMMIT;
 ```
 
 ✓ With 40 concurrent appends to one scan, 35 committed and 5 failed with a retryable conflict. The stored sequence was exactly 1…38, with no gaps or duplicates (3 events existed before the burst). Because the API's per-scan writer serialises appends, conflicts only happen across API processes or on races with other updates to the scan record, and the retry handles them. Don't use `DEFINE SEQUENCE` here: sequence values are never rolled back, so a failed transaction leaves a gap.
+
+`payload` stores image and mask IDs, never signed URLs: the API adds fresh URLs each time it sends or replays an event (contracts 4), so a replay hours later doesn't hand out expired links.
 
 SSE replay after `Last-Event-ID` is a range read of the record keys, with no index involved. ✓ Bound parameters work inside the range:
 
@@ -277,10 +288,14 @@ The API deletes **bottom-up in batches**, never as one large transaction:
 
 ✓ This order deletes a whole garden, with plans, tasks, trigger rules, jobs, conversations and a map, and a single plant whose plan made a neighbour task on another plant, cleanly.
 
+**A pending scan** (`DELETE /scans/{id}`, contracts 3) uses the same steps for that one scan. Set `scan.deleting_at`, cancel its guided jobs, delete its objects, then delete its records: its events (one range delete) and jobs; its guided checks; its observations; its scan images; the conversations anchored to it, as in step 6; and then the scan, which deletes the tasks naming it through `task.scan`'s `CASCADE`. A pending scan has no plan, diagnosis, question or step claim, and no scan feedback (contracts 3 refuses feedback before submit). ✓ On 3.3.4 a pending scan with a guided check, its observation, its event and a queued guided job deletes cleanly in this order. Deleting the scan while its job still exists fails with "Cannot delete `scan:…` as it is referenced by `job:…`". ✓ Deleting the scan deletes a task naming it and leaves the plant's other tasks alone; a plant cascade, which deletes tasks before scans, is unchanged.
+
+The `CASCADE` only reaches tasks that exist when the scan is deleted, and the schema accepts a link to a missing scan (✓ a task with `scan = scan:missing` is created). So `POST /tasks` with a `scan_id` checks the scan in the same transaction as the insert, as it does the plant (contracts 9): the scan exists, is of that garden and plant, and has no `deleting_at`, otherwise it throws and nothing is created. ✓ On 3.3.4 that transaction creates the task for a live scan and creates nothing for a missing scan or one with `deleting_at`.
+
 Each batch is `DELETE (SELECT VALUE id FROM t WHERE … LIMIT 500) RETURN NONE`, repeated until empty. Small transactions don't conflict with live writers.
 
 A few links behave differently:
-- **CASCADE** (✓ deleting a user deletes their push tokens): `push_token.user`, `invite.garden`, `scan_feedback.user`. These records have nothing outside the database.
+- **CASCADE** (✓ deleting a user deletes their push tokens): `push_token.user`, `invite.garden`, `scan_feedback.user`, and `task.scan` (✓ a jar-test task goes with its pending scan). These records have nothing outside the database.
 - **UNSET** (✓ the field disappears): `scan.created_by`, `task.created_by`, `memory.author`, `invite.created_by`/`used_by`, and `garden_map.created_by`. This keeps garden history when a member deletes their account (architecture 5, deletion).
 - **Plain links with no reference:** `memory.source_msg` and `action_plan.constraints[*].from_pending_action`, whose targets can be deleted first.
 
