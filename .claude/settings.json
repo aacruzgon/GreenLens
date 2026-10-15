@@ -1,6 +1,15 @@
 {
+  "extraKnownMarketplaces": {
+    "clerk-skills": {
+      "source": {
+        "source": "github",
+        "repo": "clerk/skills"
+      }
+    }
+  },
   "enabledPlugins": {
-    "expo@claude-plugins-official": true
+    "expo@claude-plugins-official": true,
+    "clerk@clerk-skills": true
   },
   "hooks": {
     "SessionStart": [
