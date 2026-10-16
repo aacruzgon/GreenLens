@@ -35,6 +35,7 @@ SAM2_BUILD_CUDA=0 uv pip sync ml/requirements.lock --index-strategy unsafe-best-
 | Publish new model files | `python -m ml.models.publish` | Uploads new model files to `pdm-models` and writes their `sources.toml` rows |
 | Write the CPU manifest | `python -m ml.models.cpu_manifest` | `models/manifest.cpu.toml` (fp32 files) and a `<stem>.cpu.json` twin of each head |
 | Check a VLM server (day 1) | `python -m ml.training.eval.vlm_check [--base-url …] [--images …]` | `<out>/<label>.json` and `.md` with the checks and timings ([vlm 4](../docs/vision/vlm.md#4-serving)) |
+| Fake VLM server for the worker (replays recorded replies; `--record`, `--fault`) | `python3 -m ml.training.eval.fake_vlm [--port 8001] [--recordings …]` | An OpenAI-compatible server on port 8001, served name `vlm` ([dev-roadmap 5](../docs/vision/dev-roadmap.md#testing-the-vlm-worker)) |
 | Reference outputs for the Rust heads | `python -m ml.tests.make_fixtures` | `tests/fixtures/perception_reference.json` |
 | Tests | `python -m pytest ml/tests` | the file formats, the `label_set_version` vector and original-photo names |
 

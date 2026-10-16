@@ -1,6 +1,6 @@
 # PDM Vision-Language Model
 
-> **Status:** Draft v0.2.3, 2026-10-16. v0.2.3: section 4 settles `anyOf` with `null` (contracts open question 31) with two more checks on FP8, a soil photo's non-null readings and a prompt the grammar overrides, and notes that the day-1 images were web photos and how to keep strings under `maxLength`. v0.2.2: section 4 records the day-1 results on the RTX 5070 Ti (image, kernels, memory, schemas, boxes, speed, two slots). v0.2.1: the fallback's 8,000-token budget covers the guided check, as contracts 6 now says. v0.2: aligned with the backend design: sides rounded down to the cell, prompt versions as `findings@1`, the contracts 5 value formats for `model_versions`, box bounds for pixel formats, and the fallback's 1.15-megapixel cap, 8,000-token budget, full list of rejected schema keywords and cost. v0.1, 2026-10-15: First VLM design: Qwen3-VL-8B-Instruct (FP8) as the primary candidate and Qwen3.5-9B as the challenger, the vLLM v0.31 and llama.cpp configurations, image preparation and token counts, the KV-cache budget and `VLM_SLOTS`, the prompts for every call, the schemas from the model's side, box formats, sampling, and the fallback worker's hosted model.
+> **Status:** Draft v0.2.5, 2026-10-16. v0.2.5: section 4 runs the worker's own prompts and schemas on both candidates (every call validates; neither gives soil readings with the production findings prompt). v0.2.4: section 4 records the Qwen3.5-9B AWQ challenger's day-1 check (all checks pass, 116.7 tokens/s, 115,550 KV tokens) and settles its box scale at 0–1000; section 6 gets the measured weights and KV. v0.2.3: section 4 settles `anyOf` with `null` (contracts open question 31) with two more checks on FP8, a soil photo's non-null readings and a prompt the grammar overrides, and notes that the day-1 images were web photos and how to keep strings under `maxLength`. v0.2.2: section 4 records the day-1 results on the RTX 5070 Ti (image, kernels, memory, schemas, boxes, speed, two slots). v0.2.1: the fallback's 8,000-token budget covers the guided check, as contracts 6 now says. v0.2: aligned with the backend design: sides rounded down to the cell, prompt versions as `findings@1`, the contracts 5 value formats for `model_versions`, box bounds for pixel formats, and the fallback's 1.15-megapixel cap, 8,000-token budget, full list of rejected schema keywords and cost. v0.1, 2026-10-15: First VLM design: Qwen3-VL-8B-Instruct (FP8) as the primary candidate and Qwen3.5-9B as the challenger, the vLLM v0.31 and llama.cpp configurations, image preparation and token counts, the KV-cache budget and `VLM_SLOTS`, the prompts for every call, the schemas from the model's side, box formats, sampling, and the fallback worker's hosted model.
 > **Checked:** model cards, `config.json` files, checkpoint sizes, vLLM v0.31.0 source and xgrammar v0.2.7 source were read on 2026-10-15 (marked ✓). No GPU was available, so nothing here has run on one: every memory and speed figure is arithmetic from the published configs and is marked *estimate*. Points from community sources are *unverified*.
 
 The VLM is the part of the pipeline that sees what the small models can't: soil, organisms with their boxes, damage patterns, a second opinion on the species, and the answers to each candidate's indicator questions ([architecture 6.1](../architecture/README.md#61-stages), [contracts 6](../architecture/contracts.md#6-vlm-structured-output)). This document covers the model side: which model, how it is served, what it is asked and how. How the worker builds the request, calls the server and converts the result is in [docs/backend](../backend/vision.md) and the job flow in [the worker design](../backend/worker.md).
@@ -50,7 +50,7 @@ What this asks of the model:
 | Model | Licence | Params | Boxes | Tokens per 1 MP image | vLLM 0.31 | llama.cpp | Vendor quants | Verdict |
 |---|---|---|---|---|---|---|---|---|
 | **Qwen3-VL-8B-Instruct** (Oct 2025) | Apache-2.0 ✓ | 8.77 B ✓ | `bbox_2d`, 0–1000 ✓ | 972 (32 px per token) ✓ | ✓ | ✓ vendor GGUF + mmproj | FP8 (block 128×128) ✓ | **Primary** |
-| **Qwen3.5-9B** (Mar 2026), thinking off | Apache-2.0 ✓ | 9.65 B ✓ | `bbox_2d`, 0–1000 *unverified* (the card doesn't say) | 972 ✓ (same processor) | ✓ (0.17 and later) | ✓ | None for 9B ✓; community AWQ and NVFP4 | **Challenger** |
+| **Qwen3.5-9B** (Mar 2026), thinking off | Apache-2.0 ✓ | 9.65 B ✓ | `bbox_2d`, 0–1000 ✓ (ran 2026-10-16; the card doesn't say) | 972 ✓ (same processor) | ✓ (0.17 and later) | ✓ | None for 9B ✓; community AWQ and NVFP4 | **Challenger** |
 | Qwen2.5-VL-7B-Instruct | Apache-2.0 ✓ | 8.29 B ✓ | `bbox_2d`, pixels of the resized image | 1,271 (28 px) ✓ | ✓ | ✓ | AWQ ✓ | Baseline only: superseded, 31% more tokens per image |
 | InternVL3.5-8B | Apache-2.0 ✓ | 8.5 B | `<box>` tags, 0–1000 *unverified* | about 3,300 (448 px tiles) *estimate* | ✓ | not listed | none | Too many image tokens for 4 images and 2 slots |
 | MiniCPM-V 4.5 | Apache-2.0 with optional registration ✓ | 8.7 B | not documented | fewer | ✓ | ✓ | int4, AWQ, GGUF | No documented grounding |
@@ -156,7 +156,7 @@ Its fallback is llama.cpp's Vulkan build (`server-vulkan`) with the same GGUF fi
 The compose file and the two modes (the card also draws a desktop) are in [`infra/README.md`](../../infra/README.md). The check client is `ml/training/eval/vlm_check.py`; its reports are in `ml/training/eval/reports/`.
 
 - **Image:** `vllm/vllm-openai:v0.31.0` exists, digest `sha256:c1c9f6fd…67c3`, entrypoint `vllm serve`, built on CUDA **13.0.2** (not 13.0.3), 32.2 GB. It runs on driver 615.78.08 with the NVIDIA Container Toolkit 1.20.1 on Fedora 44.
-- **Checkpoints, pinned:** `Qwen/Qwen3-VL-8B-Instruct-FP8@9cdc6310`, `cyankiwi/Qwen3-VL-8B-Instruct-AWQ-4bit@87196f77`, `cyankiwi/Qwen3.5-9B-AWQ-4bit@156edc4b` (the challenger, downloaded, not yet started).
+- **Checkpoints, pinned:** `Qwen/Qwen3-VL-8B-Instruct-FP8@9cdc6310`, `cyankiwi/Qwen3-VL-8B-Instruct-AWQ-4bit@87196f77`, `cyankiwi/Qwen3.5-9B-AWQ-4bit@156edc4b` (the challenger; its day-1 check is below).
 - **Kernels:** FP8 selects `DeepGemmFp8BlockScaledMMKernel`, a native block-FP8 kernel on sm_120, not a dequantising fallback; AWQ selects Marlin; attention is FlashAttention (FlashInfer with an FP8 KV cache).
 - **Memory, FP8 at 0.90, headless:** weights 10.37 GiB (the estimate above was 9.86); KV 2.4 GiB = **17,440 tokens** at `--max-num-seqs 1` and 16,528 at 2 (estimate: 2.97 GiB, 21,600). Start-up 205 s, mostly CUDA graph capture. At 0.78 next to a desktop, FP8 doesn't start; AWQ does (KV 21,344 tokens).
 - **Structured output:** xgrammar enforces the per-call schema and `maxLength` (10 characters held). Checks a–e pass on both FP8 and AWQ. On FP8, three checks settle `anyOf` with `null` (contracts open question 31), report `vlm-day1-2026-10-16-qwen3vl8b-fp8-soil`:
@@ -164,9 +164,37 @@ The compose file and the two modes (the card also draws a desktop) are in [`infr
   - **Non-null branch (f):** on two TOM2024 field photos with bare soil (a maize seedling on dry soil, an onion leaf on wet soil), all 8 aspects come back as objects and every value validates (`moist`, `cracked`, `crumbly`; `wet`, `cloddy`, `dark`). This needs the prompt to show a reading's shape (`"moisture": {"value": "dry", "image": "img1", "certainty": "medium"}`). Without it, check d's request gives `null` for all 8 on both photos, though the notes say "Soil is dry and bare". With no schema, the model writes `"moisture": "moist"`; the grammar masks the quote and `null` is what's left. The production prompt (section 7) must show the shape.
   - **The grammar blocks (g):** a prompt that demands `soil.moisture.value: "saturated"`, `weeds: "some"`, certainties `"absolute"` and `"certain"`, a count of `25` and a box `[0, 0, 1500, 1500]` still gets a reply that validates (`wet`, `few`, `high`, `high`, `many`, `[0, 0, 150, 150]`). The same prompt with no schema writes 5 of the 6 demanded values, so the grammar, not the model, kept them out. The integer bound held too.
 - **Boxes:** `bbox_2d` comes back on the 0–1000 scale and lands on the spot it names when drawn on the prepared image, so `norm_1000` is right for Qwen3-VL. The day-1 images were PlantDoc web photos (a wallpaper, an isolated stock leaf), fine for this check; the day-2 benchmark must use the evaluation set's phone photos for the timing and box conclusions to hold.
+- **Qwen3.5-9B AWQ, the challenger (M3, 2026-10-16, headless, ✓ ran):** `cyankiwi/Qwen3.5-9B-AWQ-4bit@156edc4b`, the same vLLM v0.31.0 image, `--gpu-memory-utilization 0.90`, `--max-num-seqs 2`, `--max-model-len 16384`, thinking off through `VLM_EXTRA_ARGS` set from the shell. Report `vlm-day1-2026-10-16-qwen35-9b-awq-headless` (`.json`, `.md`). Checks a–g all pass.
+  - **Start-up:** healthy after 150 s (FP8: 205 s). The model loads 8.41 GiB in 14 s; CUDA graph capture takes 55 s.
+  - **Kernels on sm_120:** `MarlinLinearKernel` for the W4A16 layers (CompressedTensorsWNA16); the Gated DeltaNet layers use the FlashInfer GDN prefill kernel and the CUDA GDN decode kernel; the vision attention is FlashAttention 2.
+  - **Memory:** KV cache **115,550 tokens** (7.05 times the concurrency at 16,384 tokens per request), against FP8's 17,440. `nvidia-smi` shows 13,686 of 16,303 MiB used.
+  - **Speed:** first token after 0.069 s, **116.7 tokens/s** decoding (FP8: 84). Check a: 3,187 prompt and 133 completion tokens in 3.235 s.
+  - **Findings quality (check a, same photos as FP8):** 0 organisms and **0 damage findings** (FP8 found 1); `species: "other"` with a long `other_name`, certainty low. Indicators (b) pass in 1.374 s.
+  - **Strings and nulls:** `maxLength` 10 held (`Growing a `) with no language switch (c); `anyOf` with `null` gives `null` 8 of 8 (d).
+  - **Soil (f):** the plain prompt gives 0 of 8 soil values on both TOM2024 photos; with the shape shown, 8 of 8 on both (dry, cracked, cloddy, pale, bare, none, none, few; moist, crusted, cloddy, grey_mottled, bare, none, none, few). Same behaviour as FP8.
+  - **The grammar blocks (g):** the reply validates and returned dry, few, high, high, few and `[0, 0, 1000, 1000]` for the demanded saturated, some, absolute, certain, 25 and `[0, 0, 1500, 1500]`; without the schema it wrote 5 of 6.
+  - **Box scale: 0–1000.** A probe asked for a box around the largest leaf and the most visible spot, with a loose 0–5000 schema, on three PlantDoc photos. On the cherry leaf (800 × 1216 prepared) the leaf and its brown spot both land exactly when drawn as 0–1000. On the tomato photo (544 × 608) the box reads `[288, 0, 618, 686]`, beyond the image's pixel size, so the values are not pixels. Asked directly, it finds the spot it left out of its findings answer, so recall in findings is weaker with the stand-in prompt; compare it on the worker's real prompts (recordings pending).
 - **Speed, FP8:** first token after 0.06 s, **84 tokens/s** decoding (AWQ: 115), a 4-image findings call in about 3.2 s with 160 output tokens.
 - **Two slots, FP8:** two 4-image findings calls ran at once with no preemptions and 34% peak KV usage, in 5.3 s together against 3.2 s alone. `VLM_SLOTS = 2` looks feasible; the day-2 benchmark confirms it with full-length outputs and p95 timings ([section 6](#6-memory-and-vlm_slots)).
 - **For the prompts (section 7):** with a stand-in prompt, the model answered `species: "other"` with `other_name: "apple"` while `apple` was in the enum, called a fungal spot `leaf_mines`, and a length-capped string switched to Chinese mid-word (`Growing西红柿`). The production prompts should map names to slugs explicitly and ask for short English reasons. The Chinese switch is what grammar truncation does mid-word, so besides asking for English, keep each string's expected length well under its `maxLength`, so the cap is a guard the model rarely hits.
+
+### The worker's own prompts on both candidates (2026-10-16, ✓ ran)
+
+The day-1 check uses stand-in prompts and schemas. The worker's own calls were then run on both candidates through `record_against_live_server` (the worker's VLM tests), which drives the real adapter, prompts and schemas through `fake_vlm.py` in record mode. Two fixture payloads: a tomato case (findings with a soil shot, indicators for early blight, Septoria leaf spot and late blight, then verify) and a corn case (northern leaf blight, common rust, gray leaf spot), plus a squeeze test and a jar test. Seven photos from the training data: TOM2024 field photos for the plants and soil, PlantDoc photos for the leaves, and a wet-soil photo standing in for the squeeze and jar shots. The recordings are `ml/training/eval/recordings/worker-qwen3vl8b-fp8-2026-10-16.json` (the fake server's default) and `worker-qwen35-9b-awq-2026-10-16.json`.
+
+| Call | Qwen3-VL-8B FP8 | Qwen3.5-9B AWQ |
+|---|---|---|
+| Every call decodes and validates with the worker's code | ✅ 7 of 7 | ✅ 7 of 7 |
+| Tomato findings | tomato (0.85); aphids, 2 boxes; 3.5 s | tomato (0.40); no damage, no boxes; 1.5 s |
+| Corn findings | corn (0.85); shot holes, 4 boxes; 4.1 s | corn (0.85); chewed margins, 4 boxes; 3.5 s |
+| Soil readings from the soil shot | **none** | **none** |
+| Indicators, tomato and verify (yes, no, unsure) | 2, 6, 1; 3.8 s | 5, 2, 2; 3.2 s |
+| Indicators, corn | 4, 4, 1; 3.9 s | 3, 6, 0; 3.2 s |
+| Guided squeeze and jar (stand-in photo) | sticky ribbon; clayey | crumbles; sandy |
+
+- **Neither model gives a soil reading with the production findings prompt**, though the tomato case has a soil shot. That is check f's result on the real prompt: the prompt must show the shape of a reading, or the grammar leaves only `null` (task P5).
+- Qwen3.5 again reports no damage on the tomato leaf where FP8 finds some, as in the day-1 check. Too few cases to choose; the day-2 benchmark on the evaluation set decides (decision D1).
+- The photos are training-set stand-ins, so the answers test the wiring and the prompts' shape, not accuracy.
 
 ### llama.cpp (fallback)
 
@@ -256,9 +284,9 @@ A job's two calls run one after the other, so `VLM_SLOTS = 2` means at most two 
 |---|---|---|---|---|
 | Qwen3-VL-8B FP8 | 9.86 GiB | about 2.97 GiB | about 21,600 tokens | Yes, with little room for cached prefixes. Comfortable with FP8 KV (43,000 tokens) |
 | Qwen3-VL-8B AWQ | 7.03 GiB | about 5.8 GiB | about 42,000 tokens | Yes |
-| Qwen3.5-9B AWQ | 8.45 GiB | about 4.4 GiB | about 140,000 tokens | Yes, with room for larger images |
+| Qwen3.5-9B AWQ | 8.45 GiB (measured 8.41 GiB) | about 4.4 GiB | about 140,000 tokens (measured 115,550 at 0.90) | Yes, with room for larger images |
 
-All *estimates* until the day-2 benchmark reads vLLM's start-up log ("# GPU blocks") and `nvidia-smi` under load.
+Qwen3.5's figures were measured on day 1 (✓ ran); the rest are *estimates* until the day-2 benchmark reads vLLM's start-up log ("# GPU blocks") and `nvidia-smi` under load.
 
 ### Speed
 
@@ -447,7 +475,7 @@ The worker builds the JSON Schema per call from the payload ([contracts 6](../ar
 
 | Model | Native format | Adapter `box_format` | Conversion to `BBox` ([x, y, w, h], 0–1) |
 |---|---|---|---|
-| Qwen3-VL, Qwen3.5 | `[x1, y1, x2, y2]`, 0–1000 of the image's width and height ✓ (cookbook, tech report; *unverified* for Qwen3.5) | `norm_1000` | `[x1/1000, y1/1000, (x2−x1)/1000, (y2−y1)/1000]` |
+| Qwen3-VL, Qwen3.5 | `[x1, y1, x2, y2]`, 0–1000 of the image's width and height ✓ (cookbook, tech report; ✓ ran for Qwen3.5 on 2026-10-16) | `norm_1000` | `[x1/1000, y1/1000, (x2−x1)/1000, (y2−y1)/1000]` |
 | Qwen2.5-VL | `[x1, y1, x2, y2]` in absolute pixels ✓, of the resized image *unverified* (the preparation makes the two the same) | `abs_px_prepared` | Divide by the prepared size, then corners to width and height |
 | Claude on the fallback worker | Pixels of the image as the model sees it after its own resize ✓ ([vision coordinates](https://platform.claude.com/docs/en/build-with-claude/vision-coordinates)) | `abs_px_prepared`, with images sent at a size the API doesn't resize (section 12) | As Qwen2.5-VL |
 
@@ -538,7 +566,7 @@ The perception stages the fallback worker covers (species, disease, whole-image 
 
 The protocol is in [evaluation 8](evaluation.md#8-day-2-benchmarks): 20 dev cases, both candidates, `VLM_SLOTS` 1 and 2, three image sizes, validity, `maxLength` enforcement, box format by eye, indicator accuracy, organism recall (with boxes under 32 × 32 prepared pixels reported separately), beneficial-as-pest errors, time to first token, decode speed, p95 job time, peak VRAM, vLLM's preemptions and prefix-cache hit rate, and 200 jobs in a row for stability.
 
-The order of choice: no beneficial reported as a pest and valid output first, then indicator accuracy, then organism recall, then speed. The run also records whether Qwen3.5's boxes are on the 0–1000 scale; if they aren't, it is disqualified until its adapter is fixed.
+The order of choice: no beneficial reported as a pest and valid output first, then indicator accuracy, then organism recall, then speed. Qwen3.5's boxes are on the 0–1000 scale (day 1, section 4), so it is not disqualified on that ground.
 
 ---
 
