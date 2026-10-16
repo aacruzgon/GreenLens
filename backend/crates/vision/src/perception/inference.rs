@@ -37,6 +37,12 @@ pub enum ModelSlot {
 /// A model to load on the thread.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionSpec {
+    /// Its manifest entry, for errors.
+    pub name: &'static str,
+    /// Every input the file must take: the names it will be fed, from the manifest.
+    pub inputs: Vec<String>,
+    /// Outputs the file must have: the names that will be read (it may have others).
+    pub outputs: Vec<String>,
     /// Which model.
     pub slot: ModelSlot,
     /// Its file (hash already checked).
@@ -178,6 +184,16 @@ fn load(
     let mut sessions = BTreeMap::new();
     for spec in specs {
         let mut session = runtime.session(&spec.path, spec.settings)?;
+        let names = |outlets: &[ort::value::Outlet]| -> Vec<String> {
+            outlets.iter().map(|o| o.name().to_owned()).collect()
+        };
+        check_names(
+            spec.name,
+            &spec.inputs,
+            &names(session.inputs()),
+            &spec.outputs,
+            &names(session.outputs()),
+        )?;
         if let Some(inputs) = &spec.warm_up {
             let options = RunOptions::new()?;
             run(&mut session, inputs, &[], &options)?;
@@ -185,6 +201,49 @@ fn load(
         sessions.insert(spec.slot, session);
     }
     Ok(sessions)
+}
+
+/// Compares a loaded file's tensor names with the ones it will be run with: its inputs must be
+/// exactly the ones fed (ONNX Runtime needs every input, and an unknown name is an error), and
+/// each output read must exist. Run once at start-up, so a manifest that disagrees with its
+/// export fails there instead of on the first job.
+pub fn check_names(
+    entry: &str,
+    inputs: &[String],
+    file_inputs: &[String],
+    outputs: &[String],
+    file_outputs: &[String],
+) -> Result<(), VisionError> {
+    let mismatch = |detail: String| VisionError::TensorMismatch {
+        entry: entry.to_owned(),
+        detail,
+    };
+    let listed = |names: &[String]| names.join(", ");
+    for name in inputs {
+        if !file_inputs.contains(name) {
+            return Err(mismatch(format!(
+                "input {name} is not in the file, whose inputs are {}",
+                listed(file_inputs)
+            )));
+        }
+    }
+    for name in file_inputs {
+        if !inputs.contains(name) {
+            return Err(mismatch(format!(
+                "the file's input {name} would not be fed; the worker feeds {}",
+                listed(inputs)
+            )));
+        }
+    }
+    for name in outputs {
+        if !file_outputs.contains(name) {
+            return Err(mismatch(format!(
+                "output {name} is not in the file, whose outputs are {}",
+                listed(file_outputs)
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// One run on the inference thread. `SessionOutputs` borrows the session, so the outputs are
@@ -212,4 +271,78 @@ fn run(
             Ok(value.try_extract_array::<f32>()?.to_owned())
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::check_names;
+
+    fn names(n: &[&str]) -> Vec<String> {
+        n.iter().map(|&s| s.to_owned()).collect()
+    }
+
+    #[test]
+    fn matching_names_pass_and_extra_outputs_are_allowed() {
+        let decoder_out = names(&["mask_single", "iou_single", "masks", "iou_predictions"]);
+        assert!(
+            check_names(
+                "sam_decoder",
+                &names(&["image_embed", "boxes"]),
+                &names(&["boxes", "image_embed"]),
+                &names(&["mask_single", "iou_single"]),
+                &decoder_out,
+            )
+            .is_ok()
+        );
+    }
+
+    /// Gap G4 at start-up: the manifest says `image`, the file takes `images`.
+    #[test]
+    fn a_renamed_input_names_both_sides() {
+        let err = check_names(
+            "bioclip",
+            &names(&["image"]),
+            &names(&["images"]),
+            &names(&["embeddings"]),
+            &names(&["embeddings"]),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.starts_with("bioclip: the ONNX file doesn't match the manifest")
+                && err.contains("input image is not in the file, whose inputs are images"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn an_input_the_worker_would_not_feed_is_refused() {
+        let err = check_names(
+            "leaf_detector",
+            &names(&["input"]),
+            &names(&["input", "orig_size"]),
+            &names(&[]),
+            &names(&[]),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("input orig_size would not be fed"), "{err}");
+    }
+
+    #[test]
+    fn a_missing_output_is_refused() {
+        let err = check_names(
+            "bioclip",
+            &names(&["images"]),
+            &names(&["images"]),
+            &names(&["embeddings"]),
+            &names(&["pooled"]),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains("output embeddings is not in the file"),
+            "{err}"
+        );
+    }
 }

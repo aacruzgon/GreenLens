@@ -130,7 +130,9 @@ fn a_manifest_without_an_output_the_adapter_runs_is_refused() {
     let without = text.replacen("embeddings = \"embeddings\"", "pooled = \"embeddings\"", 1);
     assert_ne!(text, without, "the bioclip output line is in the manifest");
     let manifest = Manifest::parse(&without).expect("still a manifest");
-    let err = load_err(TensorNames::from_manifest(&manifest));
+    let err = TensorNames::from_manifest(&manifest)
+        .expect_err("no embeddings output")
+        .to_string();
     assert!(err.contains("bioclip has no output embeddings"), "{err}");
 }
 
@@ -171,28 +173,81 @@ fn the_thresholds_come_from_the_committed_manifests() {
     }
 }
 
+/// Removes `key` from the `[model.config]` of the entry named `entry`, and only there: keys
+/// like `max_batch` appear in several entries.
+fn without_key(text: &str, entry: &str, key: &str) -> String {
+    let mut current = "";
+    let mut removed = false;
+    let kept: Vec<&str> = text
+        .lines()
+        .filter(|line| {
+            if let Some(rest) = line.strip_prefix("name") {
+                current = rest.trim_start_matches([' ', '=']).trim_matches('"');
+            }
+            let hit = !removed
+                && current == entry
+                && line.trim_start().split([' ', '=']).next() == Some(key);
+            removed |= hit;
+            !hit
+        })
+        .collect();
+    assert!(removed, "{entry} has {key} in the committed manifest");
+    kept.join("\n")
+}
+
+/// Every key `from_manifest` reads refuses to start when it is missing, naming its entry.
 #[test]
-fn a_missing_threshold_refuses_to_start() {
+fn every_missing_threshold_refuses_to_start() {
     let text = committed_manifest_text();
-    for (line, entry, key) in [
-        ("  tau_leaf         = 0.5", "leaf_detector", "tau_leaf"),
-        ("  min_iou          = 0.6", "sam_decoder", "min_iou"),
-        (
-            "  species_temperature = 1.0",
-            "bioclip",
-            "species_temperature",
-        ),
-        (
-            "  crop_grow = 0.10",
-            "disease_head_disease-head-v1d-2026-10-16",
-            "crop_grow",
-        ),
+    let head = "disease_head_disease-head-v1d-2026-10-16";
+    for (entry, key) in [
+        ("leaf_detector", "score_threshold"),
+        ("leaf_detector", "min_side_px"),
+        ("leaf_detector", "max_per_image"),
+        ("leaf_detector", "nms_iou"),
+        ("leaf_detector", "tau_leaf"),
+        ("leaf_detector", "max_batch"),
+        ("sam_encoder", "max_batch"),
+        ("sam_decoder", "min_iou"),
+        ("sam_decoder", "plant_min_leaves"),
+        ("sam_decoder", "plant_grow"),
+        ("sam_decoder", "plant_min_cover"),
+        ("sam_decoder", "max_boxes"),
+        ("bioclip", "species_temperature"),
+        ("bioclip", "max_batch"),
+        (head, "crop_grow"),
     ] {
-        let without = text.replacen(line, "  # removed", 1);
-        assert_ne!(text, without, "{line:?} is in the manifest");
-        let err = config_of(&without).expect_err(key).to_string();
+        let err = config_of(&without_key(&text, entry, key))
+            .expect_err(key)
+            .to_string();
         assert!(err.contains(entry) && err.contains(key), "{err}");
     }
+}
+
+/// The environment's caps may lower each model's batch, never raise it past the manifest's,
+/// the batch its memory budget was measured at.
+#[test]
+fn a_cap_above_the_manifest_refuses_to_start() {
+    let manifest = Manifest::parse(&committed_manifest_text()).expect("a manifest");
+    let laptop = BatchCaps {
+        sam_encoder: 1,
+        detector: 4,
+        bioclip: 8,
+        ..BatchCaps::default()
+    };
+    assert!(PerceptionConfig::from_manifest(&manifest, BatchCaps::default()).is_ok());
+    assert!(PerceptionConfig::from_manifest(&manifest, laptop).is_ok());
+    let too_big = BatchCaps {
+        sam_encoder: 4,
+        ..BatchCaps::default()
+    };
+    let err = PerceptionConfig::from_manifest(&manifest, too_big)
+        .expect_err("4 > 2")
+        .to_string();
+    assert_eq!(
+        err,
+        "SAM_ENCODER_MAX_BATCH=4 is above sam_encoder's max_batch = 2 in the manifest"
+    );
 }
 
 #[test]

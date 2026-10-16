@@ -110,8 +110,10 @@ impl PerceptionConfig {
     }
 
     /// Reads every threshold from its entry's `[model.config]`; `caps` come from the
-    /// environment. A missing key, or disease heads that disagree on `crop_grow`, refuse to
-    /// start, so the settings in use are always the ones `perception_config` hashes.
+    /// environment and may lower, never raise, each model's `max_batch` (`max_boxes` for the
+    /// SAM decoder), the batch its memory budget was measured at. A missing key, a cap above the
+    /// manifest's, or disease heads that disagree on `crop_grow` refuse to start, so the settings
+    /// in use are always the ones `perception_config` hashes.
     ///
     /// | Field | Entry |
     /// |---|---|
@@ -120,6 +122,7 @@ impl PerceptionConfig {
     /// | `species_temperature` | `bioclip` |
     /// | `crop_grow` | every `disease_head*` |
     /// | `tau_plant` | `plant_probe`, when present |
+    /// | the caps' limits | `leaf_detector`, `sam_encoder`, `bioclip` (`max_batch`); `sam_decoder` (`max_boxes`) |
     pub fn from_manifest(manifest: &Manifest, caps: BatchCaps) -> Result<Self, ManifestError> {
         let det = manifest.entry("leaf_detector")?;
         let dec = manifest.entry("sam_decoder")?;
@@ -144,6 +147,33 @@ impl PerceptionConfig {
             Ok(probe) => Some(probe.config_f32("tau_plant")?),
             Err(_) => None,
         };
+        for (variable, cap, name, key) in [
+            (
+                "DETECTOR_MAX_BATCH",
+                caps.detector,
+                "leaf_detector",
+                "max_batch",
+            ),
+            (
+                "SAM_ENCODER_MAX_BATCH",
+                caps.sam_encoder,
+                "sam_encoder",
+                "max_batch",
+            ),
+            ("SAM_MAX_BOXES", caps.sam_boxes, "sam_decoder", "max_boxes"),
+            ("BIOCLIP_MAX_BATCH", caps.bioclip, "bioclip", "max_batch"),
+        ] {
+            let limit = manifest.entry(name)?.config_usize(key)?;
+            if cap > limit {
+                return Err(ManifestError::CapAboveManifest {
+                    variable,
+                    cap,
+                    name: name.to_owned(),
+                    key,
+                    limit,
+                });
+            }
+        }
         Ok(Self {
             caps,
             detector: DetectorConfig {
@@ -219,7 +249,7 @@ pub struct TensorNames {
 impl TensorNames {
     /// Reads the names from the manifest. An entry without the input or a logical output this
     /// adapter runs is refused at start-up.
-    pub fn from_manifest(manifest: &Manifest) -> Result<Self, VisionError> {
+    pub fn from_manifest(manifest: &Manifest) -> Result<Self, ManifestError> {
         let detector = manifest.entry("leaf_detector")?;
         let encoder = manifest.entry("sam_encoder")?;
         let decoder = manifest.entry("sam_decoder")?;
@@ -243,28 +273,53 @@ impl TensorNames {
     }
 }
 
+impl TensorNames {
+    /// The inputs a slot is fed and the outputs read from it, checked against the loaded
+    /// session at start-up.
+    fn for_slot(&self, slot: ModelSlot) -> (Vec<String>, Vec<String>) {
+        match slot {
+            ModelSlot::Detector => (
+                vec![self.detector_input.clone()],
+                self.detector_outputs.to_vec(),
+            ),
+            ModelSlot::SamEncoder => (
+                vec![self.sam_encoder_input.clone()],
+                self.sam_encoder_outputs.to_vec(),
+            ),
+            ModelSlot::SamDecoder => (
+                SAM_DECODER_INPUTS.map(str::to_owned).to_vec(),
+                self.sam_decoder_outputs.to_vec(),
+            ),
+            ModelSlot::Bioclip => (
+                vec![self.bioclip_input.clone()],
+                vec![self.bioclip_output.clone()],
+            ),
+        }
+    }
+}
+
 /// An entry's `[model.input]`: the image recipe and the input tensor's name.
-fn recipe(entry: &ModelEntry) -> Result<&ModelInput, VisionError> {
-    entry.input.as_ref().ok_or_else(|| VisionError::Shape {
-        model: "manifest",
-        detail: format!("{} has no [model.input]", entry.name),
+fn recipe(entry: &ModelEntry) -> Result<&ModelInput, ManifestError> {
+    entry.input.as_ref().ok_or_else(|| ManifestError::NoTensor {
+        name: entry.name.clone(),
+        what: "[model.input]".to_owned(),
     })
 }
 
 /// An entry's `[model.input] name`.
-fn input_name(entry: &ModelEntry) -> Result<String, VisionError> {
+fn input_name(entry: &ModelEntry) -> Result<String, ManifestError> {
     recipe(entry).map(|i| i.name.clone())
 }
 
 /// The tensor name of an entry's logical output in `[model.outputs]`.
-fn output(entry: &ModelEntry, logical: &str) -> Result<String, VisionError> {
+fn output(entry: &ModelEntry, logical: &str) -> Result<String, ManifestError> {
     entry
         .outputs
         .get(logical)
         .cloned()
-        .ok_or_else(|| VisionError::Shape {
-            model: "manifest",
-            detail: format!("{} has no output {logical} in [model.outputs]", entry.name),
+        .ok_or_else(|| ManifestError::NoTensor {
+            name: entry.name.clone(),
+            what: format!("output {logical} in [model.outputs]"),
         })
 }
 
@@ -294,15 +349,18 @@ impl PerceptionPipeline {
     ];
 
     /// Verifies every file's hash, loads the sessions on the inference thread (with warm-up at
-    /// the largest batch), and reads the heads. `cpu_permits` bounds image decoding and
-    /// pre-processing on the blocking pool.
+    /// the largest batch) and checks each one's tensor names against the manifest, and reads
+    /// the heads. The thresholds come from the manifest ([`PerceptionConfig::from_manifest`]),
+    /// so the settings in use are the ones `perception_config` reports; `caps` come from the
+    /// environment. `cpu_permits` bounds image decoding and pre-processing on the blocking pool.
     pub async fn load(
         runtime: OrtRuntime,
         manifest: &Manifest,
-        config: PerceptionConfig,
+        caps: BatchCaps,
         cpu_permits: usize,
     ) -> Result<Self, VisionError> {
         check_precision(manifest, runtime.ep())?;
+        let config = PerceptionConfig::from_manifest(manifest, caps)?;
         let tensor_names = TensorNames::from_manifest(manifest)?;
         let names: Vec<&str> = Self::GPU_MODELS.iter().map(|(n, _)| *n).collect();
         manifest.verify(&names)?;
@@ -319,7 +377,11 @@ impl PerceptionPipeline {
         for (name, slot) in Self::GPU_MODELS {
             let entry = manifest.entry(name)?;
             versions.insert(name.to_owned(), entry.version.clone());
+            let (inputs, outputs) = tensor_names.for_slot(slot);
             specs.push(SessionSpec {
+                name,
+                inputs,
+                outputs,
                 slot,
                 path: manifest.path(entry),
                 settings: SessionSettings {

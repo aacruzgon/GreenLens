@@ -27,6 +27,14 @@ pub enum VisionError {
         /// The manifest entry.
         entry: String,
     },
+    /// A loaded ONNX file's tensor names differ from its manifest entry's.
+    #[error("{entry}: the ONNX file doesn't match the manifest: {detail}")]
+    TensorMismatch {
+        /// The manifest entry.
+        entry: String,
+        /// Which name, and what the file has.
+        detail: String,
+    },
     /// A model returned a tensor of an unexpected shape or name.
     #[error("{model}: unexpected output: {detail}")]
     Shape {

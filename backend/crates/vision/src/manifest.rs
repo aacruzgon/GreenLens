@@ -51,6 +51,29 @@ pub enum ManifestError {
         /// The type expected.
         expected: &'static str,
     },
+    /// An entry lacks a tensor name the worker runs it with.
+    #[error("{name} has no {what}")]
+    NoTensor {
+        /// The entry.
+        name: String,
+        /// `[model.input]`, or the logical output missing from `[model.outputs]`.
+        what: String,
+    },
+    /// A batch cap from the environment is above the entry's own, the largest batch its memory
+    /// budget was measured at.
+    #[error("{variable}={cap} is above {name}'s {key} = {limit} in the manifest")]
+    CapAboveManifest {
+        /// The environment variable.
+        variable: &'static str,
+        /// Its value.
+        cap: usize,
+        /// The entry.
+        name: String,
+        /// Its key.
+        key: &'static str,
+        /// The manifest's value.
+        limit: usize,
+    },
     /// Two entries give different values for a setting the worker holds once.
     #[error("config key {key} is {first_value} in {first} but {second_value} in {second}")]
     Conflict {
