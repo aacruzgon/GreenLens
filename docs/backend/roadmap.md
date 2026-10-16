@@ -1,6 +1,6 @@
 # PDM Backend Roadmap
 
-> **Status:** Draft v0.1, 2026-10-16. v0.1: the backend's work for build week, as nine slices (S0–S8) from the code merged on Oct 16 to the final deploy. Each slice has its goal, its work, what it needs from the other tracks, its exit checks and the decisions it closes. Section 12 lists the gaps found while writing it.
+> **Status:** Draft v0.2, 2026-10-16. v0.2: every gap in section 12 now has a design, and the slices link to them: [infra](../infra/README.md) for CI, images and compose files, [database 1](../database/README.md#1-version-and-setup) for applying the migrations, [worker 15.1](worker.md#151-stub-vision) for stub vision, and [vision 6](../vision/README.md#delivering-model-files-to-the-backend) for model files; two bugs found on the way (the vector search's `k`, the bucket default) are fixed. v0.1: the backend's work for build week, as nine slices (S0–S8) from the code merged on Oct 16 to the final deploy. Each slice has its goal, its work, what it needs from the other tracks, its exit checks and the decisions it closes. Section 12 lists the gaps found while writing it.
 
 Companion to the [backend architecture](README.md). Its [build plan](README.md#13-build-plan) and [architecture 14](../architecture/README.md#14-build-plan) say what is done on each date. This document says how the backend gets there: the order of the work, what each step depends on, and how we know a step is finished.
 
@@ -99,6 +99,8 @@ flowchart LR
 **Work**
 
 1. Merge PR #8, the workspace.
+Designed in [infra](../infra/README.md): CI in section 2, images in section 3, compose files in section 4, with its own work items in [section 9](../infra/README.md#9-roadmap).
+
 2. Add a CI workflow, `.github/workflows/backend.yml`, with these steps:
    - `cargo fmt --all --check`;
    - `cargo clippy --workspace --all-targets -- -D warnings`;
@@ -139,8 +141,8 @@ flowchart LR
 
 **Work**
 
-1. **Stub vision in the worker** ([gap 2](#12-gaps-found-while-writing-this-roadmap)). It answers `perception` jobs with canned regions, so the loop runs without GPUs or model files.
-2. **The control plane** ([architecture 12](../architecture/README.md#12-deployment)):
+1. **Stub vision in the worker** ([worker 15.1](worker.md#151-stub-vision), work items ST1–ST7). It answers `perception` jobs with canned, marked results, so the loop runs without GPUs or model files. It must report the label versions the API queues (`STUB_LABEL_SET_VERSION`, `STUB_CLASSIFIER_LABELS_VERSION`), or submit answers `503`.
+2. **The control plane** ([architecture 12](../architecture/README.md#12-deployment); the compose file, bootstrap and secrets in [infra 4–7](../infra/README.md#4-compose-files)):
    - `infra/control-plane.compose.yml` with `caddy`, `api`, `surrealdb`, `rustfs` and `fallback-worker`;
    - the Caddyfile and the tunnel;
    - the database users of [database 1](../database/README.md#1-version-and-setup): root to apply the schema, `api` as `EDITOR`;
@@ -148,7 +150,7 @@ flowchart LR
    - secrets in env files that are never committed;
    - the `stop_grace_period` values from [README 12](README.md#12-builds-and-deployment).
 3. **Clerk's development instance:** the issuer, the JWKS and the Svix webhook to `POST /webhooks/auth`. Never use the production instance without asking.
-4. **The CPU models `api` loads:** the text embedder (`snowflake-arctic-embed-xs`, 384 dimensions, pinned by hash) and the face detector, in `/models` with a `manifest.toml`.
+4. **The CPU models `api` loads:** the text embedder (`snowflake-arctic-embed-xs`, 384 dimensions, pinned by hash), its tokenizer and the face detector. The S1 manifest's three entries, with verified hashes, are in [vision 6](../vision/README.md#the-s1-manifest); the `model-fetch` step fills `/models` (work items M1–M4).
 5. **A smoke script in `backend/tools/smoke/`.** It signs in with a Clerk testing token, creates a garden, uploads a photo, submits, and follows the stream. Then it drops the connection and resumes with `Last-Event-ID`.
 
 **Exit checks**
@@ -177,7 +179,7 @@ flowchart LR
 1. **The rig:**
    - `infra/rig.compose.yml`, with GPUs pinned by UUID ([worker 12](worker.md#12-deployment));
    - ONNX Runtime 1.31 on CUDA 13;
-   - the model manifest from `ml/models`.
+   - the model manifest from `ml/models`, our files from the private Hugging Face repository `pdm-models`, fetched by `model-fetch` ([vision 6](../vision/README.md#delivering-model-files-to-the-backend), work items M5–M9).
 2. **The first real ONNX sessions.** This is the first time ONNX Runtime has ever run in this code. Check each model's input and output shapes against its manifest entry, then run the vision day-1 checks ([vision evaluation 7](../vision/evaluation.md#7-day-1-checks)).
 3. **Uploads on real models:** face blurring with the real detector, WebP at the stored sizes, and the depth upload path. The LiDAR day-1 results settle the camera conventions ([vision 15](vision.md#15-open-questions), item 6).
 4. **Live site data:**
@@ -186,10 +188,10 @@ flowchart LR
    - a fallback label when reverse geocoding fails ([integrations 17](integrations.md#17-open-questions), item 4).
 5. **Species confirmation** end to end: the perception top 3, the card, and the confirmed species on the scan.
 6. **Knowledge loading:**
-   - apply the generated knowledge migration ([gap 1](#12-gaps-found-while-writing-this-roadmap));
+   - build the migration runner and apply the loader's `knowledge.surql` ([database 1](../database/README.md#1-version-and-setup), [store 4](store.md#4-connecting-and-the-schema));
    - add the `seed-upload` one-shot container before `api`;
    - load the first species and organism files;
-   - check vector search with real 384-dimension chunks, including the bound `k` that is still *unverified* ([store 22](store.md#22-open-questions), item 4).
+   - check vector search with the real chunks. A bound `k` failed to parse on 3.3.4; `search_chunks` now passes it as a literal, tested on the embedded engine ([store 22](store.md#22-open-questions), item 4).
 
 **Needs:** the manifest, the ONNX exports, the label matrices and `classifier_labels.yaml` (ml); the seed files (knowledge); the rig set up as in [setup](../setup/README.md).
 
@@ -340,18 +342,21 @@ flowchart LR
 
 ## 12. Gaps found while writing this roadmap
 
-These need design or code that doesn't exist yet. Each belongs to a slice.
+Each gap now has a design. The designs are proposals until their slice builds them; each ends with numbered work items and exit checks.
 
-1. **Nothing applies the knowledge migration (S2).**
-   - [Contracts 10](../architecture/contracts.md#10-knowledge-seed-format) has the Python loader generate a `.surql` migration.
-   - [Architecture 12](../architecture/README.md#12-deployment) has `api` start with it once `seed-upload` has run.
-   - But `store` applies only `schema.surql`, and `api` only reads the knowledge at start ([api](api.md), start-up step 3).
+| # | Gap | Slice | Designed in | Work items |
+|---|---|---|---|---|
+| 1 | Nothing applied the knowledge migration: `store` applied only `schema.surql`, and `api` only read the knowledge | S2 | [Database 1](../database/README.md#1-version-and-setup) (v1.5), with [store 4](store.md#4-connecting-and-the-schema) and [api 4](api.md#4-start-up-and-shutdown): numbered, hash-locked migrations plus the loader's regenerated `knowledge.surql`, each in its own transaction with a `migration` record | Database 1's runner; `schema.surql` gains the `migration` and `knowledge_meta` tables when it's built |
+| 2 | The worker had no stub vision for the walking skeleton | S1 | [Worker 15.1](worker.md#151-stub-vision): `--stub-vision`, refused in a release build without `PDM_ALLOW_STUB_VISION=1`, canned results marked `stub` | ST1–ST7 |
+| 3 | No CI, no containers, no `infra/` | S0, S1, S2, S3, S8 | [Infra](../infra/README.md): CI, images, the three compose files, ingress, secrets, deploys by digest, backups | [Infra 9](../infra/README.md#9-roadmap) |
+| 4 | Model files and seed data come from `ml/`, which doesn't exist yet | S1, S2, S3 | [Vision 6, delivering model files](../vision/README.md#delivering-model-files-to-the-backend): one manifest, our files in a private Hugging Face repository (the team's choice), `sources.toml` and `fetch.py` | [M1–M11](../vision/README.md#roadmap) |
+| 5 | Pipeline open question 3 was out of date | none | Resolved: the run's evidence fields are in the schema ([pipeline 17](pipeline.md#17-open-questions-and-decisions)) | none |
 
-   Proposal: `api` applies every `backend/migrations/*.surql` after the schema, in file-name order. Each applied file is recorded with its hash in a `migration` table, and a recorded file whose hash has changed stops the start.
-2. **The worker has no stub vision (S1).** The build plan's skeleton needs a worker "with a stub `VisionModel`", but the binary has only the real perception path and the fallback. Proposal: a `--stub-vision` flag that is off by default and refused in a release build without an explicit environment variable.
-3. **No CI, no containers, no `infra/` (S0, S1).** The documents describe all three ([architecture 12](../architecture/README.md#12-deployment), [worker 12](worker.md#12-deployment)); none exist yet.
-4. **Model files and seed data come from `ml/`, which doesn't exist yet (S1, S2).** `api` needs the embedder and the face detector from S1 on, and the worker needs the full manifest in S2. Agree the manifest's first entries with the vision track on Oct 16.
-5. **[Pipeline 17](pipeline.md#17-open-questions-and-decisions), item 3, is out of date.** `scan.candidates`, `question.indicator` and the `indicator_answer` table are already in the schema. Fix the item the next time `pipeline` is regenerated.
+**Bugs found while designing,** both fixed with a test:
+- **The knowledge vector search could never run.** `SEARCH_CHUNKS` bound `k` into `<|k, 40|>`, which SurrealDB 3.3.4 refuses to parse. `search_chunks` now writes it as a literal, clamped to 1–40.
+- **`api`'s bucket default was `pdm`,** but storage 2's bucket is `pdm-images`. The default now matches.
+
+**Decisions still open from the designs,** for the team: which Hugging Face organisation owns `pdm-models` and who holds the hosts' tokens ([vision 11](../vision/README.md#11-open-decisions), items 11 and 14); the CI minutes budget or a self-hosted runner, who deploys, and the off-host backup remote ([infra 10](../infra/README.md#10-open-questions)); whether `api` should refuse stub results in production ([worker 17](worker.md#17-open-questions)); and how the app shows a removed knowledge record that user data still points to, and whether restoring the pre-deploy backup is an acceptable rollback ([store 4](store.md#4-connecting-and-the-schema), the migration runner's open questions).
 
 ---
 
