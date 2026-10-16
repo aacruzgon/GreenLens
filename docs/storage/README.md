@@ -1,6 +1,6 @@
 # PDM Object Storage (RustFS)
 
-> **Status:** v1.2.2, 2026-10-15. v1.2.2: species photos are keyed by a content hash (`knowledge/species/{species_id}/{hash}.webp`) and routed by it, so a changed photo gets a new key and URL. v1.2.1: the knowledge loader's upload runs on the control-plane host, before the API starts with the migration that references the photos. v1.2 adds species reference photos under a `knowledge/` prefix that the API can only read and the knowledge loader writes with its own identity, and their signed route (contracts 9, species). v1.1 adds LiDAR depth and confidence maps: their keys, uploads, deletes, the orphan sweep and their share of capacity. v1: Companion to the [architecture document](../architecture/README.md) (section 5, RustFS layout) and [contracts.md](../architecture/contracts.md) (signed image URLs, deletion cascades). The database side is in [docs/database](../database/README.md).
+> **Status:** v1.2.3, 2026-10-16. v1.2.3: the delete rules say what the 120-second timeout is (the client's per-attempt operation timeout, a last resort, never a shorter task timeout) and that the API drains pending deletes before it exits ([backend blob](../backend/blob.md)). v1.2.2: species photos are keyed by a content hash (`knowledge/species/{species_id}/{hash}.webp`) and routed by it, so a changed photo gets a new key and URL. v1.2.1: the knowledge loader's upload runs on the control-plane host, before the API starts with the migration that references the photos. v1.2 adds species reference photos under a `knowledge/` prefix that the API can only read and the knowledge loader writes with its own identity, and their signed route (contracts 9, species). v1.1 adds LiDAR depth and confidence maps: their keys, uploads, deletes, the orphan sweep and their share of capacity. v1: Companion to the [architecture document](../architecture/README.md) (section 5, RustFS layout) and [contracts.md](../architecture/contracts.md) (signed image URLs, deletion cascades). The database side is in [docs/database](../database/README.md).
 > **Verified:** every point marked ✓ was run against `rustfs/rustfs:1.0.1` with the AWS CLI on 2026-10-15. Points marked *unverified* come from the RustFS docs, source code or issues only.
 
 ## Contents
@@ -177,8 +177,11 @@ A crash between steps 2 and 3 leaves an object without a record, never a record 
 
 **Never cancel a delete.** In 1.0.1, a `DeleteObject` or `DeleteObjects` call interrupted by a client disconnect or timeout can leave objects that can't be listed or deleted, and their disk space is lost ([#8374](https://github.com/rustfs/rustfs/issues/8374), fixed only in 1.0.2-preview.1). Rules:
 - run deletes in a detached background task, not inside a request;
-- give them a 120-second timeout;
-- retry on failure, because deleting a missing key is a no-op.
+- give each attempt the client's 120-second operation timeout, and nothing shorter: no request deadline or `tokio::time::timeout` around it. The timeout is a last resort against a hung connection; it can still leak objects, so it is set well above a normal delete's time;
+- retry on failure, because deleting a missing key is a no-op;
+- at shutdown, wait for every pending delete before exiting, for up to one full attempt, even when the rest of the drain is shorter.
+
+The backend's `blob::DeleteQueue` implements these rules ([backend blob](../backend/blob.md)).
 
 Don't use RustFS's `x-rustfs-force-delete` recursive delete. It is non-portable, needs its own permission, and holds a bucket-wide write lock while it runs.
 

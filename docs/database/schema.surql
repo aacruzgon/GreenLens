@@ -54,6 +54,18 @@ DEFINE FIELD OVERWRITE platform   ON push_token TYPE "ios" | "android" | "web";
 DEFINE FIELD OVERWRITE created_at ON push_token TYPE datetime DEFAULT time::now() READONLY;
 DEFINE INDEX IF NOT EXISTS push_token_user ON push_token FIELDS user;
 
+-- id = deleted_user:[auth_id]: the account-deletion tombstone and the cascade's marker. Created
+-- once (a second CREATE fails, so only one cascade starts); while it exists a sign-in with that
+-- auth id gets 401 instead of recreating the user. user is the ULID as a string, not a link: the
+-- user record is deleted before the auth provider's account. Deleted 24 hours after
+-- clerk_deleted_at.
+DEFINE TABLE OVERWRITE deleted_user SCHEMAFULL;
+DEFINE FIELD OVERWRITE id               ON deleted_user TYPE [string];
+DEFINE FIELD OVERWRITE user             ON deleted_user TYPE string;
+DEFINE FIELD OVERWRITE started_at       ON deleted_user TYPE datetime;
+DEFINE FIELD OVERWRITE clerk_deleted_at ON deleted_user TYPE option<datetime>;
+DEFINE INDEX IF NOT EXISTS deleted_user_pending ON deleted_user FIELDS clerk_deleted_at;
+
 -- ---------------------------------------------------------------------------------------
 -- Gardens, membership, plants
 -- ---------------------------------------------------------------------------------------
@@ -77,6 +89,7 @@ DEFINE FIELD OVERWRITE weather_cell        ON garden VALUE string::concat(
 DEFINE FIELD OVERWRITE geohash             ON garden VALUE geo::hash::encode(centroid, 5);
 DEFINE FIELD OVERWRITE soil_profile        ON garden TYPE option<object> FLEXIBLE;  -- SoilProfile, contracts 10
 DEFINE FIELD OVERWRITE soil_profile_status ON garden TYPE "pending" | "ready" | "unavailable" DEFAULT "pending";
+DEFINE FIELD OVERWRITE soil_retry_at       ON garden TYPE option<datetime>;   -- earliest next SoilGrids attempt after a failure (15 min outage, 7 days no data)
 DEFINE FIELD OVERWRITE map_version         ON garden TYPE int DEFAULT 0;      -- the current garden_map version, 0 for none
 DEFINE FIELD OVERWRITE deleting_at         ON garden TYPE option<datetime>;  -- set when DELETE starts; hides the garden
 DEFINE FIELD OVERWRITE created_at          ON garden TYPE datetime DEFAULT time::now() READONLY;
@@ -165,6 +178,7 @@ DEFINE FIELD OVERWRITE questions_asked ON scan TYPE int DEFAULT 0;   -- in the c
 DEFINE FIELD OVERWRITE diagnosis      ON scan TYPE option<record<diagnosis>>;
 DEFINE FIELD OVERWRITE plan           ON scan TYPE option<record<action_plan>>;  -- compare-and-set target
 DEFINE FIELD OVERWRITE weather        ON scan TYPE option<object> FLEXIBLE;     -- WeatherSummary snapshot
+DEFINE FIELD OVERWRITE candidates     ON scan TYPE array<object> FLEXIBLE DEFAULT [];   -- the current run's candidate set (SelectedCandidate[]): retrieve writes it, a verify adds to it, a new run resets it
 DEFINE FIELD OVERWRITE last_event_seq ON scan TYPE int DEFAULT 0;   -- the scan_event counter
 -- The api step between a run's jobs (contracts 3, steps between jobs), claimed by compare-and-set
 -- and re-run by the scheduler's sweep when its claim is older than its limit
@@ -193,7 +207,7 @@ DEFINE FIELD OVERWRITE depth_key            ON scan_image TYPE option<string> RE
 DEFINE FIELD OVERWRITE depth_confidence_key ON scan_image TYPE option<string> READONLY;
 DEFINE FIELD OVERWRITE depth_meta           ON scan_image TYPE option<object> FLEXIBLE;   -- DepthMeta in the stored image's frame, with the map's width and height
 -- Image embedding for find_similar_cases. Searched exactly within one garden (README.md,
--- vector search), so no HNSW index. The dimension is fixed with the image model on day 1.
+-- vector search), so no HNSW index. BioCLIP 2's whole-image vector: 768 floats (docs/vision).
 DEFINE FIELD OVERWRITE embedding   ON scan_image TYPE option<array<float>>;
 DEFINE FIELD OVERWRITE embedding_model ON scan_image TYPE option<string>;
 DEFINE FIELD OVERWRITE uploaded_at ON scan_image TYPE datetime DEFAULT time::now() READONLY;
@@ -205,6 +219,7 @@ DEFINE FIELD OVERWRITE scan        ON mask TYPE record<scan> REFERENCE ON DELETE
 DEFINE FIELD OVERWRITE image       ON mask TYPE record<scan_image> REFERENCE ON DELETE REJECT;
 DEFINE FIELD OVERWRITE region_id   ON mask TYPE string;
 DEFINE FIELD OVERWRITE storage_key ON mask TYPE string READONLY;
+DEFINE FIELD OVERWRITE rle         ON mask TYPE option<object> FLEXIBLE;   -- the worker's RleMask, kept for measurement (contracts 5)
 DEFINE FIELD OVERWRITE created_at  ON mask TYPE datetime DEFAULT time::now() READONLY;
 DEFINE INDEX IF NOT EXISTS mask_scan ON mask FIELDS scan;
 
@@ -252,6 +267,7 @@ DEFINE FIELD OVERWRITE options     ON question TYPE option<array<object>> FLEXIB
 DEFINE FIELD OVERWRITE photo_kind  ON question TYPE option<string>;
 DEFINE FIELD OVERWRITE photo_hint  ON question TYPE option<string>;
 DEFINE FIELD OVERWRITE candidates  ON question TYPE array<record<disease>>;
+DEFINE FIELD OVERWRITE indicator   ON question TYPE option<string>;   -- the indicator an `indicator` question asks about (server-side only), so an answer becomes that indicator's user evidence
 -- open and answering are what the app sees; the rest record how the question resolved
 DEFINE FIELD OVERWRITE status      ON question TYPE "open" | "answering" | "answered" | "superseded" | "dropped" DEFAULT "open";
 DEFINE FIELD OVERWRITE answer      ON question TYPE option<"yes" | "no" | "unsure">;
@@ -266,6 +282,24 @@ DEFINE FIELD OVERWRITE resolved_at ON question TYPE option<datetime>;
 DEFINE INDEX IF NOT EXISTS question_scan  ON question FIELDS scan;
 DEFINE INDEX IF NOT EXISTS question_sweep ON question FIELDS status, continue_at;   -- the 10-minute sweep
 DEFINE INDEX IF NOT EXISTS question_stalled ON question FIELDS step, step_at;   -- photo answers stuck while being measured
+
+-- Indicator answers of a run, between the retrieve and score steps (contracts 7, measurable
+-- indicators). id = indicator_answer:[scan, run, indicator_id]: one answer per indicator per run.
+-- Writes keep the higher-ranked answer (user 3 > measurement 2 > vlm 1, contracts 7): a write
+-- replaces the stored answer only when its rank is at least the stored rank (README.md,
+-- indicator answers). Re-measuring a photo first deletes that photo's measured answers.
+-- scan repeats the key's scan with a reference, so a missed cascade step fails loudly.
+DEFINE TABLE OVERWRITE indicator_answer SCHEMAFULL;
+DEFINE FIELD OVERWRITE id          ON indicator_answer TYPE [record<scan>, int, string];
+DEFINE FIELD OVERWRITE scan        ON indicator_answer TYPE record<scan> REFERENCE ON DELETE REJECT;
+DEFINE FIELD OVERWRITE run         ON indicator_answer TYPE int;
+DEFINE FIELD OVERWRITE source      ON indicator_answer TYPE "user" | "measurement" | "vlm";
+DEFINE FIELD OVERWRITE rank        ON indicator_answer VALUE IF source = "user" { 3 } ELSE IF source = "measurement" { 2 } ELSE { 1 };
+DEFINE FIELD OVERWRITE evidence    ON indicator_answer TYPE object FLEXIBLE;   -- IndicatorEvidence, contracts 7
+DEFINE FIELD OVERWRITE image       ON indicator_answer TYPE option<record<scan_image>> REFERENCE ON DELETE REJECT;   -- measured answers: the photo measured
+DEFINE FIELD OVERWRITE question    ON indicator_answer TYPE option<record<question>> REFERENCE ON DELETE REJECT;     -- user answers: the question answered
+DEFINE FIELD OVERWRITE answered_at ON indicator_answer TYPE datetime;
+DEFINE INDEX IF NOT EXISTS indicator_answer_scan ON indicator_answer FIELDS scan, run, source;
 
 DEFINE TABLE OVERWRITE guided_check SCHEMAFULL;
 DEFINE FIELD OVERWRITE scan       ON guided_check TYPE record<scan> REFERENCE ON DELETE REJECT;
@@ -554,7 +588,7 @@ DEFINE INDEX IF NOT EXISTS chunk_crop    ON knowledge_chunk FIELDS crop;
 DEFINE INDEX IF NOT EXISTS chunk_topic   ON knowledge_chunk FIELDS topic;
 -- The one HNSW index: search_knowledge searches the whole knowledge base. Filters on indexed
 -- fields pre-filter (3.3+). DIMENSION must equal the pinned text-embedding model's output;
--- 384 is a placeholder until the model is picked on day 1 (architecture 15).
+-- 384 for snowflake-arctic-embed-xs, the pinned model (docs/vision, architecture 10).
 DEFINE INDEX IF NOT EXISTS chunk_vec ON knowledge_chunk FIELDS embedding HNSW DIMENSION 384 DIST COSINE TYPE F32;
 
 -- Graph edges. Fieldless edges are LIGHTWEIGHT: the id is [in, out], RELATE is idempotent and
