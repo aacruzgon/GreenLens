@@ -107,6 +107,8 @@ def main() -> None:
     ap.add_argument("--version", required=True)
     ap.add_argument("--min-train", type=int, default=30)
     ap.add_argument("--views", type=int, default=0)
+    ap.add_argument("--balance-sources", action="store_true",
+                    help="within each class, give every dataset the same total weight")
     args = ap.parse_args()
 
     train, val, test = read_split("train"), read_split("val"), read_split("test")
@@ -141,6 +143,11 @@ def main() -> None:
     w = 1.0 / freq
     w = np.minimum(w / np.median(w), 10.0)
     sample_w = w[ytr]
+    if args.balance_sources:
+        src = np.asarray([r["dataset"] for r in train] + [r["dataset"] for r, y in zip(train, ys["train"]) for _ in range(args.views)])
+        pair = collections.Counter(zip(src, ytr))
+        n_src = collections.Counter(y for _, y in pair)
+        sample_w = sample_w * np.asarray([freq[y] / (n_src[y] * pair[(s, y)]) for s, y in zip(src, ytr)])
 
     best = None
     for C in (1, 5, 20, 50, 100, 200, 500):
@@ -206,6 +213,7 @@ def main() -> None:
         "C": C,
         "temperature": T,
         "views": args.views,
+        "balance_sources": args.balance_sources,
         "train_rows": int(len(ytr)),
         "val": report("val"),
         "test": report("test"),
