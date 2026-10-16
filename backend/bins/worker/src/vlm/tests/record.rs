@@ -131,6 +131,9 @@ async fn adapter(base_url: &str) -> VlmAdapter<Recording<OpenAiBackend>> {
         jpeg_quality: 90,
         budget: CallBudget::LOCAL,
         certainty: CertaintyMap::default(),
+        // Only the label the adapter stores with its results: it never reaches the server or the
+        // recording, so it stays FP8 when another model is recorded. Each recording's `models`
+        // field names the checkpoint that answered.
         identity: VlmIdentity {
             model: "Qwen/Qwen3-VL-8B-Instruct-FP8".to_owned(),
             quant: Some("fp8_block".to_owned()),
