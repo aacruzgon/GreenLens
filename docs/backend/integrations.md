@@ -1,6 +1,6 @@
 # PDM Backend: `integrations` crate
 
-> **Status:** Draft v0.3, 2026-10-16. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
+> **Status:** Draft v0.3.1, 2026-10-16. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
 
 Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate implements. Every listing below is copied from the compiled source of `crates/integrations`. `cargo check`, `cargo clippy -p integrations --all-targets` and `cargo test -p integrations` all pass: 58 tests, against `wiremock` servers and the live responses recorded on 2026-10-15.
 
@@ -2311,7 +2311,7 @@ impl AuthVerifier for ClerkVerifier {
 | Failure | `AuthError` | Contract |
 |---|---|---|
 | Malformed, wrong algorithm, bad signature, wrong issuer, expired, not yet valid, `azp` not allowed, unknown `kid` (also after a refetch, or while refetching is rate limited) | `InvalidToken(Some(source))` | `401 unauthenticated`; the app refreshes the token once, then signs out |
-| JWKS unreachable or 5xx | `Unavailable` | `503 upstream_unavailable`, `upstream: "clerk"` |
+| JWKS unreachable or 5xx | `Unavailable` | `503 upstream_unavailable`, `upstream: "auth"` (the role, as `database` and `storage` are; `PROVIDER = "clerk"` names the vendor in logs only) |
 
 ### Account deletion (`AuthAdmin`)
 

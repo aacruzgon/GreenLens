@@ -1,6 +1,6 @@
 # PDM Backend Flows
 
-> **Status:** Draft v0.2, 2026-10-16. v0.2: the diagrams follow the cross-crate fixes (one wake-up path for the claim long poll, one `fail_scan` per final failure, the sweep as the only question continuation, late events dropped, deletes through one `DeleteQueue`, the account tombstone, SoilGrids retry times, guided stage events, the plan step's release after 3 lost compare-and-sets), and section 20 marks each gap fixed and where. v0.1: sequence diagrams and state machines for every server-side flow, from a request's layers to a scan's steps, a job's lease, a chat turn, deletion, the scheduler and start-up. Every name is a type, trait or function from the crate documents and the compiled scratch workspace.
+> **Status:** Draft v0.2.1, 2026-10-16. v0.2.1: the scan stream ends on a duplicate flagged `rests`, the global body cap is 20 MiB + 128 KiB, and the `api` container's grace period is 190 s. v0.2: the diagrams follow the cross-crate fixes (one wake-up path for the claim long poll, one `fail_scan` per final failure, the sweep as the only question continuation, late events dropped, deletes through one `DeleteQueue`, the account tombstone, SoilGrids retry times, guided stage events, the plan step's release after 3 lost compare-and-sets), and section 20 marks each gap fixed and where. v0.1: sequence diagrams and state machines for every server-side flow, from a request's layers to a scan's steps, a job's lease, a chat turn, deletion, the scheduler and start-up. Every name is a type, trait or function from the crate documents and the compiled scratch workspace.
 
 Companion to the [backend architecture](README.md) and the server-side half of the [frontend flows](../frontend/flows.md). Every request, event and job here is defined in the [data contracts](../architecture/contracts.md). The system-level flows are in [architecture 8](../architecture/README.md#8-main-flows). This document shows how the crates work together at run time: which handler, entry point, repository method and adapter each arrow is.
 
@@ -76,7 +76,7 @@ sequenceDiagram
     Layers->>Layers: drop client x-request-id, SetRequestIdLayer req_ULID
     Layers->>Layers: TraceLayer span (request_id, method, matched route)
     Layers->>Layers: CorsLayer (answers preflights here)
-    Layers->>Layers: CompressionLayer, render_errors, CatchPanicLayer, RequestBodyLimitLayer 24 MiB
+    Layers->>Layers: CompressionLayer, render_errors, CatchPanicLayer, RequestBodyLimitLayer 20 MiB + 128 KiB
     Layers->>Group: TimeoutLayer (10 s app, 60 s uploads and worker, 35 s claim), DefaultBodyLimit
     Group->>Ext: AuthUser
     Ext->>Ints: authz::authenticate, AuthVerifier::verify (JWKS, exp, nbf, iss, azp)
@@ -523,7 +523,7 @@ sequenceDiagram
     else live
         Hub-->>Stream: Published seq 28
         Stream-->>App: id 28, event, data
-        Note over Stream: seq at or below last is dropped, a skip or Lagged goes back to the replay
+        Note over Stream: seq at or below last is dropped (one flagged rests ends the stream), a skip or Lagged goes back to the replay
         Hub-->>Stream: Published seq 33 rests true
         Stream-->>App: send, then close
     end
@@ -542,7 +542,7 @@ sequenceDiagram
 
 - **`seq` comes from the database,** not the actor: `append_event` increments `scan.last_event_seq` and creates `scan_event:[scan, seq]` in one transaction, so a writer that retired and came back continues the sequence ([pipeline 17](pipeline.md#17-open-questions-and-decisions), question 22).
 - **Resting points.** The writer reads `stream_state` only after the last event of a call that may end a resting point (`plan_ready`, `plan_superseded`, `diagnosis`, `question_resolved`, `guided_check_done`, `failed`). At rest means `planned` or `failed`, no question open or `answering`, no guided check `analysing`, and no step claim held ([contracts 4, when the stream closes](../architecture/contracts.md#when-the-stream-closes)).
-- **State before replay.** The stream reads the state, then replays. The writer stores an event before reading the state it leads to, so a scan seen at rest has every event up to its resting point in the replay that follows.
+- **State before replay.** The stream reads the state, then replays. The writer stores an event before reading the state it leads to, so a scan seen at rest has every event up to its resting point in the replay that follows. A resting event stored after the state read reaches the stream twice, in the replay and live; the live copy is a duplicate flagged `rests`, and it ends the stream.
 - **A slow subscriber** sees `RecvError::Lagged` on the 256-slot broadcast and replays from the database; it never sees a gap.
 - **Pushes** for `plan_ready`, `plan_superseded` (not `chat_revision`), `question` and `failed` go to the scan's creator while still a member, from the writer, because it sees every event ([contracts 9, push](../architecture/contracts.md#push-notifications)).
 
@@ -1223,6 +1223,8 @@ sequenceDiagram
 | 6 | Exits: face blurring fails closed, so uploads can't run without it | [vision 7](vision.md#7-the-upload-pipeline), [vision 10](vision.md#10-the-text-embedder) |
 | 7–9 | Exits on a store error | [api 4](api.md#4-start-up-and-shutdown), [api 17](api.md#17-deletion) |
 | 12–14 | `with_graceful_shutdown` waits for every open connection, which is why every long response ends on the token | [api 4](api.md#4-start-up-and-shutdown) |
+
+The `api` service's `stop_grace_period` is 190 s, so Compose's SIGKILL doesn't land inside that drain: 60 s for the slowest request, 120 s for a delete attempt and 10 s of margin ([api 4](api.md#4-start-up-and-shutdown)).
 
 `seed-upload` has finished before `api` starts (`depends_on` with `service_completed_successfully`), so the photo index sees the species photos ([architecture 12](../architecture/README.md#12-deployment)).
 

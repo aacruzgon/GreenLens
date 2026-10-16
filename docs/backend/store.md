@@ -1,6 +1,6 @@
 # PDM Backend: `store` crate
 
-> **Status:** Draft v0.3, 2026-10-16. v0.3: the account tombstone (`deleted_user`), SoilGrids retries, `live_lease`, and the store's `Notify` as the only claim wake-up (a requeue notifies too). v0.2: every repository method is real code (no `todo!()` left), reads decode straight into domain types through contract-shaped projections, and 12 more tests run on the embedded engine. v0.1: `SurrealStore`, which implements every repository of `domain::ports::store` and `MemoryStore` over SurrealDB 3.3.4, with every statement a named constant, one query per transaction with a conflict retry, one error classifier, and real code for each pattern that carries a guarantee, tested against the embedded 3.3.4 engine.
+> **Status:** Draft v0.4, 2026-10-16. v0.4: the multi-line query listings are complete (a generator bug cut eight of them after their first line); the step-claim pair is described as conditional, as in database 4; the protected parameters are `auth`, `token`, `access` and `session`; a bound `$before` is overridden only in `RETURN`, and `Option` fails only from 2 ids; the closure-lifetime error has no code. v0.3: the account tombstone (`deleted_user`), SoilGrids retries, `live_lease`, and the store's `Notify` as the only claim wake-up (a requeue notifies too). v0.2: every repository method is real code (no `todo!()` left), reads decode straight into domain types through contract-shaped projections, and 12 more tests run on the embedded engine. v0.1: `SurrealStore`, which implements every repository of `domain::ports::store` and `MemoryStore` over SurrealDB 3.3.4, with every statement a named constant, one query per transaction with a conflict retry, one error classifier, and real code for each pattern that carries a guarantee, tested against the embedded 3.3.4 engine.
 
 Companion to the [backend architecture](README.md), the [database notes](../database/README.md) (v1.4) and [`schema.surql`](../database/schema.surql). The ports it implements are in [domain 9](domain.md#9-boundary-traits). Every listing is copied from the compiled source of `crates/store` with the docgen tool: `cargo check -p store`, `cargo clippy -p store --all-targets` (clean) and `cargo test -p store` (7 unit tests and 25 tests against the embedded engine) pass on Rust 1.99.1 with `surrealdb = "=3.3.4"`.
 
@@ -362,7 +362,7 @@ where
 
 **Borrowed binds.** `.bind(("auth_id", auth_id.as_str()))` passes a `&str`: `bind` takes `impl IntoVariables` and converts the value into an owned `surrealdb::types::Value` at once, so the query holds no borrow of the argument and the bind needs no lifetime ✓ (research `surrealdb.md` §8). Ids are converted with `rid(&id)` into owned `RecordId`s. Where a bind is a row (`JobWriteRow`, `PlanWriteRow`), the closure clones it per attempt.
 
-**Results.** A statement's result is taken by index; transactions put their result in the last statement before `COMMIT` and take it at `num_statements() - 2`, so a fragment added earlier never shifts it (section 7). `take::<Option<T>>` is for a statement that returns one value, `take::<Vec<T>>` for one that returns an array ✓ (a `DELETE … RETURN VALUE $before.id` must be taken as `Vec`: as `Option` it fails with "Tried to take only a single result from a query that contains multiple").
+**Results.** A statement's result is taken by index; transactions put their result in the last statement before `COMMIT` and take it at `num_statements() - 2`, so a fragment added earlier never shifts it (section 7). `take::<Option<T>>` is for a statement that returns one value, `take::<Vec<T>>` for one that returns an array ✓ (a `DELETE … RETURN VALUE $before.id` must be taken as `Vec`: as `Option` it gives `None` for 0 ids and `Some` for 1, but fails with "Tried to take only a single result from a query that contains multiple" once 2 or more come back).
 
 ### Classifying failures
 
@@ -1765,7 +1765,7 @@ impl StepRepo for SurrealStore {
 }
 ```
 
-- The database's two claim statements are made conditional on each other: as written there, the second (`SET rescore_pending = true WHERE pipeline_step != NONE`) would also run after a successful claim and flag the scan the caller just claimed.
+- The two claim statements are conditional on each other, as in [database 4](../database/README.md#steps-between-jobs-): run unconditionally, the second (`SET rescore_pending = true WHERE pipeline_step != NONE`) also runs after a successful claim and flags the scan the caller just claimed (✓ on the pinned image, a fresh claim then reads `rescore_pending = true`).
 - **Stamps are compared exactly.** The stamp is the bound `$now`, stored with full precision, and the commit compares `pipeline_step_at != $stamp`. The domain's `Timestamp` keeps nanoseconds in memory and writes whole seconds only on the wire (open question 12, section 21).
 - The diagnosis is written with a compare-and-set on `scan.diagnosis` (its `supersedes`, or `NONE`); under the claim nothing else writes it, so a loss throws `claim_lost`.
 - A job queued by a commit signals `jobs_queued` after the commit returns.
@@ -2583,7 +2583,7 @@ pub fn step_statements(target: DeletionTarget, step: CascadeStep) -> &'static [&
 |---|---|---|
 | `run_tx<'c, F>` | `'c`, `F` | Section 5 |
 | `bind_claim<'c>(q: Query<'c, Any>, claim: &StepClaim) -> Query<'c, Any>` | `'c` | The query's borrow of the client passes through; the claim is read, not held |
-| `TargetBinds::bind<'c>` | `'c` | A function, not a closure: a closure's signature gets no lifetime elision tying its returned `Query<'c, _>` to its argument's `'c`, so `|q| q.bind(..)` with an annotated argument fails with "lifetime may not live long enough" (✓ E0521-class error, fixed this way); a function names the one borrow both share |
+| `TargetBinds::bind<'c>` | `'c` | A function, not a closure: a closure's signature gets no lifetime elision tying its returned `Query<'c, _>` to its argument's `'c`, so `|q| q.bind(..)` with an annotated argument fails with "lifetime may not live long enough … returning this value requires that `'1` must outlive `'2`" (✓ rustc 1.99.1, which gives this error no code; fixed this way); a function names the one borrow both share |
 | `send_commit<'a, F>` | `'a` | `&'a self` and the queries built from its client |
 | `ToRecordId for Id<T: Table>`, `Slug<K: SlugKind>` | `T`, `K` | One impl per marker family, so every table gets the mapping for free (section 6) |
 | `rid<I: ToRecordId + ?Sized>` | `?Sized` | Accepts `&Slug<K>` and any unsized implementor without a copy |

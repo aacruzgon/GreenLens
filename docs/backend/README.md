@@ -1,6 +1,6 @@
 # PDM Backend Architecture
 
-> **Status:** Draft v0.2, 2026-10-16. v0.2: the module trees, crate graph and configuration now match the compiled crates; adds the decisions on contracts open questions 12–24 and the changes to contracts v0.10, architecture v0.7 and database v1.4.
+> **Status:** Draft v0.2.1, 2026-10-16. v0.2.1: the release profile keeps symbols and adds line tables (stripping symbols empties panic backtraces, probed); the `api` container's `stop_grace_period` is 190 s; the scheduler tree lists the eight real tasks, with question continuation inside `sweep`; the database row names all four protected parameters. v0.2: the module trees, crate graph and configuration now match the compiled crates; adds the decisions on contracts open questions 12–24 and the changes to contracts v0.10, architecture v0.7 and database v1.4.
 > v0.1: the Rust backend designed crate by crate, down to every struct, enum, trait, generic parameter and lifetime, with each definition compiled on Rust 1.99.1 against the pinned crates; it follows [contracts](../architecture/contracts.md) v0.9 and [architecture](../architecture/README.md) v0.6.
 
 Companion to the [system architecture](../architecture/README.md), the [data contracts](../architecture/contracts.md), the [database](../database/README.md) and [storage](../storage/README.md) notes, the [frontend](../frontend/README.md) and the [computer-vision design](../vision/README.md). Those documents decide **what** the system does; this directory decides **how the Rust code is built**: crates, modules, types, traits, tasks and errors.
@@ -211,7 +211,7 @@ The decisions every crate follows. Each links to where it is explained in full.
 - one generic `Id<T>` instead of a newtype per table;
 - the extra `integrations` crate;
 - SurrealDB's embedded `kv-mem` engine for store tests, with one test against the pinned image;
-- a request timeout answers `503 upstream_unavailable`, not `500 internal` (contracts open question 17);
+- a request timeout answers `503 upstream_unavailable`, not `500 internal` (contracts 2, timeouts; settled in contracts v0.10, question 17);
 - access checks are extractors that produce proofs, not `route_layer` middleware.
 
 The full list, one row per skill rule, is kept for the skills' owners to fix on main.
@@ -230,8 +230,8 @@ main
  ├─ CPU models: face detector, text embedder, measurement config (vision)
  ├─ AppState { Arc<dyn Store>, Arc<dyn BlobStore>, Arc<dyn …> ports, ScanWriters, EventHub, JobNotify, … }
  ├─ TaskTracker
- │   ├─ scheduler tasks: weather + alerts · plan triggers · question continuation · step and question-step sweeps
- │   │                   · lease and stale-worker requeue · cleanup · SoilGrids retries · orphan sweep · push receipts
+ │   ├─ scheduler tasks: requeue (leases, silent workers) · sweep (stale steps, stalled measuring, question
+ │   │                   continuation) · idle · cleanup · weather (alerts, plan triggers) · soil · receipts · orphans
  │   ├─ deletion runner (resumes unfinished deletions on start)
  │   └─ per-scan writer actors (spawned on demand, stopped when idle)
  └─ axum::serve(...).with_graceful_shutdown(token)   SSE streams end with take_until(token)
@@ -310,9 +310,10 @@ Each binary reads typed configuration from the environment at start and refuses 
 | `worker` (no GPU) | `worker` without ONNX models | The VLM workers (the model runs in the vLLM sidecar) and the fallback worker |
 | `vllm` sidecars | `vllm/vllm-openai` (CUDA) and `vllm/vllm-openai-rocm` v0.31.0, pinned by digest | One beside each VLM worker |
 
-- **Release profile:** `lto = "thin"`, `codegen-units = 1`, `strip = "symbols"`, `panic = "unwind"` (so `CatchPanicLayer` and task joins can contain a panic).
+- **Release profile:** `lto = "thin"`, `codegen-units = 1`, `panic = "unwind"` (so `CatchPanicLayer` and task joins can contain a panic), `debug = "line-tables-only"`, `overflow-checks = true`, and no `strip`. `strip = "symbols"` would remove the symbol table, and a panic's backtrace then has no frames at all (`RUST_BACKTRACE=full` shows only `<unknown>` addresses). Without line tables, frames have function names but no file or line, because Cargo already strips debug info from a release build that requests none; line tables add them, at the cost of a larger binary (✓ rustc 1.99.1 on Linux in `rust:1.99.1-slim` and on macOS: a test binary went from 0.46 MB to 2.25 MB). The panic message's own `file:line:col` is kept either way ([Cargo profiles](https://doc.rust-lang.org/cargo/reference/profiles.html)).
 - **Docker builds** use `cargo-chef`-style dependency caching, a `debian:trixie-slim` runtime base (for libheif 1.19 and current CA certificates), and a non-root user.
 - **The rig's compose services** pin NVIDIA cards by GPU UUID and the RX 9070 XT by its render node ([worker](worker.md)).
+- **The `api` service sets `stop_grace_period: 190s`** in `infra/control-plane.compose.yml`. Compose sends SIGKILL 10 s after SIGTERM unless a service sets it ([Compose file reference](https://docs.docker.com/reference/compose-file/services/#stop_grace_period)), which would cut the delete drain short and can leak objects on RustFS 1.0.1. 190 s covers the slowest in-flight request (60 s, the upload routes' timeout), then one full delete attempt (120 s), plus 10 s of margin. Raising `SHUTDOWN_DRAIN_S` above 120 s raises it by the difference ([api 4](api.md#4-start-up-and-shutdown)). The workers' services set theirs from `DRAIN_SECONDS` ([worker](worker.md)).
 
 ---
 
@@ -341,7 +342,7 @@ Writing the types showed points the other documents left open. They were settled
 | [contracts](../architecture/contracts.md) v0.9 | The model adapters' cell size and box format; `bbox_2d` corner order; vLLM's `response_format`; the fallback's stripped schema keywords and box format; a second VLM worker with its own `VLM_SLOTS`; the same checkpoint on every VLM worker; `model_versions` keys; per-model perception caps; one SAM prompt per box; the plant check; `JobErrorCode` with `unknown_label_version`; `complete` results read by the job's kind; no mask URLs in worker payloads; where bare confidences are allowed; `Invite.created_by` optional; the default location precision; the soil-moisture derivation; `bioclip_label` and the classifier-label flow |
 | [contracts](../architecture/contracts.md) v0.10 | Answers to open questions 12–24 (timestamps, unknown fields, malformed ids, body limits, timeouts, job error codes, lease hand-back, unknown kinds, the per-scan writer's lifecycle, the lease-token header, webhook failures); the geocoding error; `retry_after_s` values; stored photo sizes; the stream staying open while a step holds the claim; chat tool signatures; the fallback's image and token budgets; new open questions from 27 |
 | [architecture](../architecture/README.md) v0.6, v0.7 | The RX 9070 XT; ONNX Runtime 1.31 on CUDA 13; the chosen models; the `integrations` crate; the layout with `docs/backend` and `docs/vision`; then the crate graph, user creation on the first request, and the chat tools |
-| [database](../database/README.md) v1.4, v1.4.1 and [schema](../database/schema.surql) | The `indicator_answer` table and its ranking; `scan.candidates`, `question.indicator`, `mask.rle`, `garden.soil_retry_at` and the account tombstone `deleted_user`; the embedding dimensions (384 text, 768 image); every `time::now()` bound as `$now`; the two claim statements made conditional on each other; parameter names SurrealDB protects (`auth`, `token`) and point literals with parameters ([store](store.md)) |
+| [database](../database/README.md) v1.4, v1.4.1, v1.4.2 and [schema](../database/schema.surql) | The `indicator_answer` table and its ranking; `scan.candidates`, `question.indicator`, `mask.rle`, `garden.soil_retry_at` and the account tombstone `deleted_user`; the embedding dimensions (384 text, 768 image); every `time::now()` bound as `$now`; the entry point's two step-claim statements made conditional on each other; parameter names SurrealDB protects (`auth`, `token`, `access`, `session`) and how binds named `before`, `after`, `this` and `parent` behave inside statements; point literals with parameters ([store](store.md)) |
 | [storage](../storage/README.md) v1.2.3 | What the 120-second delete timeout is, and draining pending deletes at shutdown. `BehaviorVersion` is pinned to `v2026_01_12` and every delete runs on one `DeleteQueue` ([blob](blob.md)) |
 
 The remaining questions each crate document found are in its "Open questions" section.

@@ -1,8 +1,8 @@
 # PDM Backend: `api` binary
 
-> **Status:** Draft v0.4, 2026-10-16. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
+> **Status:** Draft v0.5, 2026-10-16. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
 
-Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports and types `api` wires, and [domain-types](domain-types.md) for every wire shape. Every listing below is copied from the compiled source of `bins/api` by the docgen tool. `cargo check -p api`, `cargo clippy -p api --all-targets` (no warning in `api`) and `cargo test -p api` pass: 26 tests, among them handler tests that drive the real router with `tower::ServiceExt::oneshot`. `cargo check --workspace` passes, the binary links, and `api openapi` writes the document.
+Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports and types `api` wires, and [domain-types](domain-types.md) for every wire shape. Every listing below is copied from the compiled source of `bins/api` by the docgen tool. `cargo check -p api`, `cargo clippy -p api --all-targets` (no warning in `api`) and `cargo test -p api` pass: 28 tests, among them handler tests that drive the real router with `tower::ServiceExt::oneshot`. `cargo check --workspace` passes, the binary links, and `api openapi` writes the document.
 
 ## Contents
 
@@ -306,6 +306,8 @@ async fn signal(shutdown: CancellationToken) {
 
 Then `tracker.close()` and `tracker.wait()` with `SHUTDOWN_DRAIN_S` (30 s) as the deadline, and at the same time `DeleteQueue::drain` with `max(SHUTDOWN_DRAIN_S, 120 s)` as its deadline: pending `RustFS` deletes get at least one full attempt (the client's 120-second operation timeout, `blob::client::OPERATION_TIMEOUT`) even when the rest of the drain is shorter, because an interrupted delete can leak objects ([storage 4](../storage/README.md#4-writes-and-deletes)). The tracker holds the scheduler's loops (which end on the token), the writer actors (which drain and stop on the token), spawned follow-ups, and deletion cascades. Cascades don't watch the token, except an account cascade's Clerk retries, which stop on it (the tombstone resumes them); a cascade still running at the deadline is cut off with the process and resumes on the next start from `deleting_at` or the tombstone. Its object deletes belong to the delete queue, not to the cascade, so cutting the cascade off never interrupts one.
 
+**The container's grace period.** Docker Compose sends SIGKILL `stop_grace_period` after SIGTERM, 10 s by default ([Compose file reference](https://docs.docker.com/reference/compose-file/services/#stop_grace_period)), so the `api` service sets `stop_grace_period: 190s`: the slowest in-flight request (60 s, `SLOW_TIMEOUT`), then the delete drain (`max(SHUTDOWN_DRAIN_S, 120 s)`), plus 10 s of margin. A `SHUTDOWN_DRAIN_S` above 120 s raises it by the difference.
+
 ---
 
 ## 5. Configuration
@@ -429,7 +431,7 @@ pub struct ProviderConfig {
 | `MEASURE_CPU_PERMITS` | 2 | Measurement stages at once (the pipeline's `cpu_permits`) |
 | `REQUEST_TIMEOUT_S` | 10 | Response-head timeout of ordinary routes |
 | `RATE_PER_MINUTE` | 120 | The general per-user request limit (a placeholder: the documents give none) |
-| `SHUTDOWN_DRAIN_S` | 30 | How long shutdown waits for background tasks; pending `RustFS` deletes always get at least 120 s |
+| `SHUTDOWN_DRAIN_S` | 30 | How long shutdown waits for background tasks; pending `RustFS` deletes always get at least 120 s. Keep the service's `stop_grace_period` at `max(this, 120) + 70` seconds (190 s by default) |
 | `DIAGNOSIS_MARGIN` | 2 | The fusion margin ([contracts 12](../architecture/contracts.md#12-open-questions), question 3) |
 | `LOG_FORMAT` | `json` | `pretty` for development |
 | `RUST_LOG` | `info` | `tracing` filter |
@@ -1258,7 +1260,7 @@ pub fn app(state: SharedState) -> Router {
 | 6 | `CompressionLayer` with `DefaultPredicate` and `NotForContentType("text/event-stream")` | Outside the error renderer, so error bodies are compressed too. tower-http 0.7.1's default predicate already skips SSE, gRPC, `image/*` and tiny bodies (✓ research probe); the explicit SSE rule keeps the intent if the default changes, because a compressor buffers SSE frames |
 | 7 | `render_errors` | Writes every error body (section 8); everything inside it, tower-http's own responses included, gets an `ErrorBody` |
 | 8 | `CatchPanicLayer::custom(panic_response)` | Inside the renderer, so a panic's `internal` body gets its `request_id` |
-| 9 | `RequestBodyLimitLayer` (24 MiB) | The global byte cap; each group's `DefaultBodyLimit` is smaller and answers first, with its own number |
+| 9 | `RequestBodyLimitLayer` (20 MiB + 128 KiB) | The global byte cap, `WORKER_BODY_LIMIT.max(UPLOAD_BODY_LIMIT)`: the upload limit (12 MiB photo, two 4 MiB depth maps, 128 KiB for the meta and multipart overhead), which is larger than the worker routes' 16 MiB. Each group's `DefaultBodyLimit` is no larger and answers with its own number |
 
 `/openapi.json` serves the generated document (utoipa 6 emits OpenAPI 3.1.0); `api openapi` prints the same document for `backend/openapi.json`, from which `openapi-typescript` generates the app's types ([frontend 9](../frontend/README.md#9-api-layer)). ✓ Generated: 50 paths; each `Page<T>` instantiation gets its own component (`Page_Garden`, `Page_Plant`, …), which the research probe had left unverified. The frame:
 
@@ -1388,6 +1390,11 @@ pub async fn render_errors(request: Request, next: Next) -> Response {
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/json"),
     );
+    // Here, not only in `into_response`, so the errors built from a bare status (the timeout's
+    // 503) carry the header too.
+    if let Some(seconds) = body.error.retry_after_s {
+        headers.insert(header::RETRY_AFTER, HeaderValue::from(seconds));
+    }
     headers.remove(header::CONTENT_LENGTH);
     *response.body_mut() = Body::from(bytes);
     response
@@ -1409,7 +1416,7 @@ pub fn from_status(status: StatusCode) -> ApiError {
                 .collect(),
         }),
         400 | 422 => ApiError::invalid_request("body", "the request body could not be read"),
-        // Only the timeout layer answers 503 without an `ApiError` (open question 17).
+        // Only the timeout layer answers 503 without an `ApiError` (contracts 2, timeouts).
         503 => ApiError::new(ErrorKind::UpstreamUnavailable {
             upstream: "api".to_owned(),
         })
@@ -1439,7 +1446,7 @@ pub fn panic_response(panic: Box<dyn Any + Send + 'static>) -> Response {
 | 1 | `SetRequestIdLayer` | Puts `RequestId` (`req_<ULID>`) in the request's extensions |
 | 2 | `ApiError::into_response` | The status, `Retry-After` when there is one, and an `ErrorParts` in the **response** extensions; the cause chain rendered once, for the log |
 | 3 | `render_errors` | Reads `RequestId` on the way in; on the way out, if the response holds `ErrorParts`, writes the JSON with that `request_id`, and logs a `5xx` cause with `request_id` as a field of the event itself (a filter that drops the span would drop the span's fields) |
-| 4 | `render_errors`, fallback | A non-2xx response with no `ErrorParts` and no JSON body (axum's 404 and 405 and rejections, tower-http's 413 and timeouts) gets the body `from_status` picks. A stored idempotent replay of a `4xx` is already JSON, so it is left alone |
+| 4 | `render_errors`, fallback | A non-2xx response with no `ErrorParts` and no JSON body (axum's 404 and 405 and rejections, tower-http's 413 and timeouts) gets the body `from_status` picks. `render_errors` writes `Retry-After` from the body's `retry_after_s` on both paths, so the timeout's bare `503` gets `Retry-After: 5` like any other `503` (✓ `a_timeout_503_carries_retry_after_like_any_other`). A stored idempotent replay of a `4xx` is already JSON, so it is left alone |
 
 `ApiError` is a boxed struct: a `Result<T, ApiError>` is one pointer wider than `T`, however large the details (clippy's `result_large_err` flagged 83 sites before the box). Its `kind` is `domain::error::ErrorKind`, the code with its typed details, so every contracts 2 code exists exactly once and can't be paired with the wrong details.
 
@@ -1455,7 +1462,7 @@ pub fn panic_response(panic: Box<dyn Any + Send + 'static>) -> Response {
 | 409 | `invalid_state` | The state machine refuses (`status`, `allowed`); a non-retryable failed scan resubmitted (`hint: "new_scan"`); a stale plan (`current_plan_id`); a stale map (`current_map_version`); a card whose plant or neighbour was deleted (`hint`); a plan or alert task deleted | `DomainError::InvalidState`, `DomainError::Transition`, `Conflict::StalePlan`, `Conflict::StaleMap`, `Conflict::AlreadyExists` |
 | 409 | `request_in_progress` | Same `Idempotency-Key` still running; `retry_after_s: 2` | `IdempotencyBegin::InProgress` |
 | 409 | `lease_lost` | A worker call about a requeued, expired, cancelled or older-run job, with `job_id` | `Conflict::LeaseLost` |
-| 413 | `upload_too_large` | A photo over 12 MiB (`max_bytes: 12582912`); a body over the global 24 MiB cap | the upload reader, `MultipartError` 413, the body-limit layer |
+| 413 | `upload_too_large` | A photo over 12 MiB (`max_bytes: 12582912`); a body over the global cap (20 MiB + 128 KiB) | the upload reader, `MultipartError` 413, the body-limit layer |
 | 415 | `unsupported_media_type` | Not JPEG, PNG, WebP or HEIC by its declared type or its bytes; an undecodable HEIC | `UploadError::UnsupportedMedia` |
 | 422 | `image_quality` | The blur or exposure check failed; `problem`, `blur_score`, `exposure`, `hint`; `retryable: true` (a retake succeeds) | `UploadError::Quality` |
 | 422 | `missing_required_shot` | Submit without `whole_plant` | `DomainError::MissingRequiredShot` |
@@ -2299,7 +2306,7 @@ The webhook:
 ```rust
 /// `POST /webhooks/auth`: Clerk through Svix. The raw body is verified (signature over
 /// `id.timestamp.body`, timestamp within 5 minutes either way) **before** it is parsed; a bad
-/// signature or timestamp is `401 unauthenticated` (open question 24). `user.deleted` starts the
+/// signature or timestamp is `401 unauthenticated` (contracts 9, auth webhook). `user.deleted` starts the
 /// account cascade. `user.created` is acknowledged and changes nothing: the user record is made
 /// by the first authenticated request, and Clerk doesn't guarantee event order, so a late
 /// `user.created` must never recreate a deleted user. Idempotent: `204` every time, also for
@@ -3111,7 +3118,10 @@ pub async fn events(
 ///    the writer stores an event before the state it leads to is read back, so a scan seen at
 ///    rest has every event up to its resting point in the replay that follows;
 /// 3. at rest: end after the replay (a resting scan replays then closes);
-/// 4. live: drop `seq <= last`; a `seq` that skips ahead, or `Lagged`, goes back to 2;
+/// 4. live: drop `seq <= last`, but end on such a duplicate when it is flagged `rests`: the
+///    resting event was stored after the state read and already went out in the replay, so
+///    waiting for another event would keep a resting scan's stream open; a `seq` that skips
+///    ahead, or `Lagged`, goes back to 2;
 /// 5. end after an event flagged `rests`, when the channel closes, on a store error (the app
 ///    reconnects with `Last-Event-ID`), or on shutdown: `take_until` ends the stream when the
 ///    token fires, without which `axum::serve`'s graceful shutdown would wait on it forever.
@@ -3157,6 +3167,9 @@ pub fn scan_stream(
                     Ok(published) => {
                         let seq = published.event.seq;
                         if seq <= last {
+                            if published.rests {
+                                return;
+                            }
                             continue;
                         }
                         if seq > last.next() {
@@ -3194,10 +3207,10 @@ The handler checks everything that can fail with an error body before the first 
 1. **Subscribe first**, so an event stored while the replay runs is in the replay or in the receiver, never in neither.
 2. **Read the stream state, then replay** every stored event after `last` (a key-range read, `scan_event:[$scan, $after + 1]..=[$scan, ..]`). State first: the writer stores an event before it reads the state that event leads to, so a scan seen at rest has every event up to its resting point in the replay that follows.
 3. **At rest**: end after the replay; a scan at rest replays and closes (✓ `a_scan_at_rest_replays_and_closes`).
-4. **Live**: drop `seq <= last`; a `seq` that skips ahead (`seq > last + 1`) or `Lagged` goes back to step 2, so the client never sees a gap.
+4. **Live**: drop `seq <= last`, except that a duplicate flagged `rests` ends the stream: that resting event was stored after the state read, so it already went out in the replay, and waiting for another event would leave the stream of a resting scan open. A `seq` that skips ahead (`seq > last + 1`) or `Lagged` goes back to step 2, so the client never sees a gap.
 5. **End** after an event flagged `rests`, when the channel closes, on a store error (logged; the status is already 200, and the app reconnects with `Last-Event-ID`), or on shutdown through `take_until`.
 
-✓ `sse_resume_replays_after_last_event_id_then_goes_live_without_duplicates`: with `Last-Event-ID: 1`, the replay sends 2 and 3; a live repeat of 3 is dropped; 4 and 5 follow, and the stream ends after 5.
+✓ `sse_resume_replays_after_last_event_id_then_goes_live_without_duplicates`: with `Last-Event-ID: 1`, the replay sends 2 and 3; a live repeat of 3 is dropped; 4 and 5 follow, and the stream ends after 5. ✓ `a_resting_event_stored_during_the_replay_still_ends_the_stream`: the state read says `analysing`, the replay sends 2 and the resting 3, and the live copy of 3, flagged `rests`, ends the stream.
 
 **Signing on send.** Stored events hold image and mask ids; `to_sse` signs each one as it is sent, live or replayed, so a replay hours later carries fresh 15-minute URLs and species photos are filled in from `species_id` then ([contracts 4](../architecture/contracts.md#transport)). The `Signer<'_>` borrows the signer and photo ports from the `AppState` the generator owns, for the length of one call: it is built, used for one event's `sign`, and dropped before the next `.await`, so the stream holds no borrow across a suspension point.
 
@@ -4732,7 +4745,7 @@ async fn soil_failures_schedule_the_next_attempt_by_their_kind() {
 }
 ```
 
-The 26 tests: `an_upload_that_fails_the_quality_check_is_422_and_never_stored`, `a_repeated_key_replays_the_stored_response_without_running_the_handler`, `a_key_still_running_is_409_request_in_progress`, `a_non_member_gets_the_same_404_as_an_unknown_scan`, `a_viewer_is_403_with_the_required_role`, `unknown_paths_get_an_error_body_and_a_request_id`, `sse_resume_replays_after_last_event_id_then_goes_live_without_duplicates`, `a_scan_at_rest_replays_and_closes`, `an_empty_queue_answers_none_at_the_deadline_after_polling`, `signed_urls_verify_until_they_expire`, `the_eleventh_invite_attempt_waits`, `key_order_doesnt_change_the_fingerprint`, `the_fingerprint_covers_bytes_not_boundaries`, `every_code_keeps_its_status_and_retryable`, `store_conflicts_map_to_their_codes`, `unknown_statuses_fall_back_to_a_contract_code`, `defaults_and_derived_values`, `short_signing_key_is_refused`, `frost_and_a_humid_stretch_fire_on_their_dates`, `hours_truncate`, `identifies_only_exact_tokens`, `ids_used_by_the_tests_parse`, `late_worker_events_after_complete_are_204_and_dropped`, `a_tombstoned_accounts_token_is_401_and_never_creates_a_user`, `a_second_delete_me_while_a_cascade_runs_starts_nothing`, `soil_failures_schedule_the_next_attempt_by_their_kind`.
+The 28 tests: `an_upload_that_fails_the_quality_check_is_422_and_never_stored`, `a_repeated_key_replays_the_stored_response_without_running_the_handler`, `a_key_still_running_is_409_request_in_progress`, `a_non_member_gets_the_same_404_as_an_unknown_scan`, `a_viewer_is_403_with_the_required_role`, `unknown_paths_get_an_error_body_and_a_request_id`, `sse_resume_replays_after_last_event_id_then_goes_live_without_duplicates`, `a_resting_event_stored_during_the_replay_still_ends_the_stream`, `a_scan_at_rest_replays_and_closes`, `an_empty_queue_answers_none_at_the_deadline_after_polling`, `signed_urls_verify_until_they_expire`, `the_eleventh_invite_attempt_waits`, `key_order_doesnt_change_the_fingerprint`, `the_fingerprint_covers_bytes_not_boundaries`, `every_code_keeps_its_status_and_retryable`, `a_timeout_503_carries_retry_after_like_any_other`, `store_conflicts_map_to_their_codes`, `unknown_statuses_fall_back_to_a_contract_code`, `defaults_and_derived_values`, `short_signing_key_is_refused`, `frost_and_a_humid_stretch_fire_on_their_dates`, `hours_truncate`, `identifies_only_exact_tokens`, `ids_used_by_the_tests_parse`, `late_worker_events_after_complete_are_204_and_dropped`, `a_tombstoned_accounts_token_is_401_and_never_creates_a_user`, `a_second_delete_me_while_a_cascade_runs_starts_nothing`, `soil_failures_schedule_the_next_attempt_by_their_kind`.
 
 **Still to add once the crates are wired:** a graceful-shutdown test with an open stream (the research probe's), the writer actor's retire race, the chat stream's interrupt and replay, and an end-to-end run against `SurrealDB` and `RustFS` in containers (the project's `rust-testing` skill has the patterns).
 
