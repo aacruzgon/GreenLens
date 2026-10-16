@@ -277,8 +277,10 @@ def plantdoc(n: int, seed: int = 0) -> list[tuple[Path, np.ndarray, tuple[int, i
 
 def session(p: Path, **cuda_opts) -> ort.InferenceSession:
     opts = {"arena_extend_strategy": "kSameAsRequested", **cuda_opts}
-    s = ort.InferenceSession(str(p), providers=[("CUDAExecutionProvider", opts), "CPUExecutionProvider"])
-    assert s.get_providers()[0] == "CUDAExecutionProvider", s.get_providers()
+    ort.preload_dlls()
+    s = ort.InferenceSession(str(p), providers=[("CUDAExecutionProvider", opts)])
+    if s.get_providers()[0] != "CUDAExecutionProvider":
+        raise RuntimeError(f"{p}: CUDA execution provider failed to load ({s.get_providers()})")
     return s
 
 
