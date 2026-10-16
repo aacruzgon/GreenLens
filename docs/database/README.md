@@ -1,7 +1,7 @@
 # PDM Database (SurrealDB)
 
-> **Status:** v1.3.2, 2026-10-15. v1.3.2: `POST /tasks` checks its `scan_id` in the insert's transaction (✓ the schema accepts a link to a missing scan, and the check refuses it), and species photos and `preys_on` are computed when read. v1.3.1: `task.scan` is `CASCADE`, so a pending scan's jar-test task is deleted with it, and event payloads store image IDs, never signed URLs. v1.3 adds the fields the app's screens need (contracts v0.8): `task.scan`, `scan.deleting_at` and the deletion of a pending scan, `diagnosis.low_evidence`, `species.reference_images`, and `city` as a garden location precision. v1.2 ties step claims to their run with a commit check, adds `job.question` to the fallback's claim, deletes plans by equality (the `IN` bug), and clears claims when deletion starts. v1.1 adds the LiDAR records (section 3), a deletion order that removes tasks and trigger rules before their plans, per-image replacement of observations, and claimed steps between jobs that the scheduler's sweep can recover. v1: The schema is [`schema.surql`](schema.surql). Companion to the [architecture document](../architecture/README.md) (section 5) and [contracts.md](../architecture/contracts.md), which define the shapes these records store.
-> **Verified:** every pattern marked ✓ below was run against `surrealdb/surrealdb:v3.3.4` on 2026-10-15. The schema applies cleanly twice in a row, and a scenario script exercised the rest. Points marked *unverified* come from the docs only.
+> **Status:** v1.4.1, 2026-10-16. v1.4.1 records the embedding models chosen in [docs/vision](../vision/README.md): text embeddings are 384-dimensional (`snowflake-arctic-embed-xs`), so `chunk_vec`'s `DIMENSION 384` is final, and scan-image embeddings are BioCLIP 2's 768-dimensional image vectors, searched exactly per garden. No schema statement changed. v1.4 stores the indicator answers between the `retrieve` and `score` steps in a new `indicator_answer` table keyed `[scan, run, indicator]`, whose writes keep the higher-ranked answer (user, then measurement, then the VLM), and adds `scan.candidates`, `question.indicator`, `mask.rle`, `garden.soil_retry_at` and the account tombstone `deleted_user`, the deletion order for the answers, and two caveats found while building the `store` crate (protected parameter names, and `type::point` for a bound centroid). v1.3.3: the `api` user's password is a string literal in the setup script (a parameter is a parse error), ULIDs come from `Ulid::generate()`, the batched delete returns `$before.id` so it can tell when a table is empty, and statement errors are read with `take_errors()`, skipping `NotExecuted` and `Cancelled`. v1.3.2: `POST /tasks` checks its `scan_id` in the insert's transaction (✓ the schema accepts a link to a missing scan, and the check refuses it), and species photos and `preys_on` are computed when read. v1.3.1: `task.scan` is `CASCADE`, so a pending scan's jar-test task is deleted with it, and event payloads store image IDs, never signed URLs. v1.3 adds the fields the app's screens need (contracts v0.8): `task.scan`, `scan.deleting_at` and the deletion of a pending scan, `diagnosis.low_evidence`, `species.reference_images`, and `city` as a garden location precision. v1.2 ties step claims to their run with a commit check, adds `job.question` to the fallback's claim, deletes plans by equality (the `IN` bug), and clears claims when deletion starts. v1.1 adds the LiDAR records (section 3), a deletion order that removes tasks and trigger rules before their plans, per-image replacement of observations, and claimed steps between jobs that the scheduler's sweep can recover. v1: The schema is [`schema.surql`](schema.surql). Companion to the [architecture document](../architecture/README.md) (section 5) and [contracts.md](../architecture/contracts.md), which define the shapes these records store.
+> **Verified:** every pattern marked ✓ below was run against `surrealdb/surrealdb:v3.3.4` on 2026-10-15; the v1.3.3 changes were run against the same image, by digest, on 2026-10-16. The v1.4 points marked ✓ were run on 2026-10-16 against the embedded 3.3.4 engine (crate `surrealdb = "=3.3.4"` with `kv-mem`, the same engine code as the server image), by the `store` crate's tests; the v1.4 schema also applies twice in a row, as root, on the pinned image by digest (Docker, `memory` engine). The schema applies cleanly twice in a row, and a scenario script exercised the rest. Points marked *unverified* come from the docs only.
 
 ## Contents
 
@@ -60,7 +60,11 @@ volumes:
 | User | Level and role | Used by |
 |---|---|---|
 | root | Root, from `SURREAL_USER`/`SURREAL_PASS` | Applying `schema.surql`, backups, emergencies |
-| `api` | `DEFINE USER api ON DATABASE PASSWORD $secret ROLES EDITOR` | The API at runtime. ✓ It can read, write and change the schema, but `DEFINE USER` fails with "Not enough permissions" |
+| `api` | `DEFINE USER api ON DATABASE PASSWORD '…' ROLES EDITOR` | The API at runtime. ✓ It can read, write and change the schema, but `DEFINE USER` fails with "Not enough permissions" |
+
+The setup script creates `api` as root, with the password written into the statement as a single-quoted string, `\` and `'` escaped. ✓ It can't be a parameter: `PASSWORD $secret` is a parse error ("Unexpected token \`a parameter\`, expected a strand") whether `$secret` is bound or set with `LET`, and so is `PASSHASH $hash`. ✓ A password containing `'` and `\`, escaped that way, signs in.
+
+✓ Privileges for the statements at the top of `schema.surql`: `DEFINE NAMESPACE` needs root; a namespace-level `OWNER` can run `DEFINE DATABASE` but not `DEFINE NAMESPACE`; `api`, a database-level `EDITOR`, can run neither ("IAM error: Not enough permissions to perform this action"), and every other statement in the file applies as `api`.
 
 The API authenticates app users with the auth provider's JWTs itself, and talks to SurrealDB as `api`. SurrealDB could verify the provider's JWTs directly (`DEFINE ACCESS … TYPE JWT URL`), but that needs custom claims, outbound network access and a session per request. It would also duplicate the membership checks the API makes anyway, so we don't use it.
 
@@ -79,7 +83,7 @@ The official migration tool, SurrealKit, is still in beta (1.0.0-beta.6), and th
 
 | Topic | Rule |
 |---|---|
-| Record IDs | ULID string keys generated in Rust: `RecordId::new("scan", Ulid::new().to_string())`. Knowledge records use their slugs. A few tables use a natural **array key** (below). The API strips the table prefix in responses (contracts section 1) |
+| Record IDs | ULID string keys generated in Rust: `RecordId::new("scan", Ulid::generate().to_string())`. `ulid` 3.0.0 has no `Ulid::new()`, and `RecordIdKey` has no `From<Ulid>`, so the key is the string. Knowledge records use their slugs. A few tables use a natural **array key** (below). The API strips the table prefix in responses (contracts section 1) |
 | Array keys | Used where the key *is* the uniqueness rule or the access path: `scan_event:[scan, seq]`, `member_of:[user, garden]`, `idempotency_key:[user, route, key]`, `usage_daily:[user, day]`, `weather_cache:[hour, cell]`, `push_token:[token]`, `worker:[worker_id]`, `message_feedback:[message]`, `classifier_label:[model_version, index]`, `soil_condition:[aspect, value]`. ✓ `DEFINE FIELD id … TYPE [record<scan>, int]` rejects a key of the wrong shape |
 | Optional fields | `option<T>`. A field is absent (`NONE`), never `NULL`. ✓ `option<string>` refuses `NULL`. The Rust SDK sends `None` as `NONE` |
 | Enums | Literal union types: `TYPE "open" \| "answering"`. ✓ A bad value fails with ``Expected `'pending' \| 'queued'` `` |
@@ -95,9 +99,9 @@ The official migration tool, SurrealKit, is still in beta (1.0.0-beta.6), and th
 
 | Area | Tables |
 |---|---|
-| Identity | `user` (unique `auth_id`), `push_token` |
+| Identity | `user` (unique `auth_id`), `push_token`, `deleted_user` (the account tombstone) |
 | Gardens | `garden` (stored `weather_cell` and `geohash`), `member_of` (relation user → garden), `invite` (unique `code`), `plant`, `garden_map` (unique `garden, version`) |
-| Scans | `scan`, `scan_image`, `mask`, `scan_event`, `observation`, `question`, `guided_check`, `diagnosis`, `scan_feedback` |
+| Scans | `scan`, `scan_image`, `mask`, `scan_event`, `observation`, `question`, `indicator_answer`, `guided_check`, `diagnosis`, `scan_feedback` |
 | Plans | `action_plan` (unique `scan, version`), `plan_trigger`, `task` (unique `alert_key`) |
 | Chat | `conversation`, `chat_image`, `message`, `pending_action`, `message_feedback` |
 | Memory | `memory` |
@@ -123,13 +127,15 @@ Changes from the architecture sketch (section 5 there):
   - `reference_images.*.storage_key` is `knowledge/species/{species_id}/{hash}.webp`, with a content hash, so a changed photo gets a new key ([storage 2](../storage/README.md#2-bucket-keys-and-access)).
 - **Vector indexes:** `memory` and `scan_image` embeddings get no HNSW index (section 5).
 - **LiDAR** (architecture 6.7, 6.8): the `garden_map` table with the `garden.map_version` counter; `plant.position`; `scan_image.depth_key`, `depth_confidence_key` and `depth_meta`; on measurement observations, top-level `plant`, `quantity`, `measured_value` and `taken_at` for the growth series (index `observation_growth`); `question.step` and `step_at` for photo answers (index `question_stalled`); and `plan_trigger.plant` indexed (`plan_trigger_plant`).
+- **Indicator answers** (v1.4, contracts 7, measurable indicators): the `indicator_answer` table, `indicator_answer:[scan, run, indicator_id]`, holds every answer of a run (the user's, the measurements' and the VLM's) between the steps that write them and the `score` step that reads them (section 4, indicator answers). Also `scan.candidates`, the run's candidate set, which `retrieve` writes, a `verify` adds to and a new run resets; `question.indicator`, the indicator an `indicator` question asks about (server-side only), so an answer becomes that indicator's user evidence; and `mask.rle`, the worker's run-length mask, kept for measurement.
+- **Account deletion and soil retries** (v1.4): `deleted_user:[auth_id]`, the account tombstone (section 4, deletion), and `garden.soil_retry_at`, the earliest next SoilGrids attempt after a failure.
 - **Recovery between jobs:** `scan.pipeline_step`, `pipeline_step_run`, `pipeline_step_at` and `rescore_pending` (index `scan_stalled`); `job.question`, so the fallback's claim can hold back a photo answer's segmentation job; and `observation.image`, so a stage's observations are replaced per image (section 5). `observation.quantity` also takes `hole_count`.
 
 ---
 
 ## 4. Write patterns
 
-Each statement is its own transaction. Statements that must succeed or fail together go in one `BEGIN … COMMIT` sent as **one** query. Isolation is snapshot isolation: there are no locks, and a write-write conflict fails at `COMMIT` with a retryable "Transaction conflict". **The API retries the whole transaction**, up to 5 times with jittered back-off (section 6).
+Each statement is its own transaction. Statements that must succeed or fail together go in one `BEGIN … COMMIT` sent as **one** query. Isolation is snapshot isolation: there are no locks, and a write-write conflict fails at `COMMIT` with a retryable `TransactionConflict`: ✓ "Transaction conflict: Write conflict, retry the transaction. This transaction can be retried". A single statement is its own transaction and can conflict the same way. **The API retries the whole transaction**, up to 5 times with jittered back-off (section 6).
 
 ### Scan events: a gap-free `seq` ✓
 
@@ -197,7 +203,7 @@ CREATE type::record('idempotency_key', [$user, $route, $key])
   SET fingerprint = $fp, expires_at = time::now() + 24h;
 ```
 
-✓ A second `CREATE` with the same key fails with "already exists". The API then reads the record and applies contracts section 1: replay the stored response, return `409 request_in_progress`, or return `422 idempotency_conflict`. When the request finishes, the API sets `state = 'done'`, `response_status` and `response_body`. A response that must not be stored deletes the key instead.
+✓ A second `CREATE` with the same key fails with "already exists". ✓ When several connections create the same key at once, a loser can get the retryable conflict instead (8 of 320 in one run); the API's retry then gets "already exists". The same holds for `INSERT RELATION` in membership. The API then reads the record and applies contracts section 1: replay the stored response, return `409 request_in_progress`, or return `422 idempotency_conflict`. When the request finishes, the API sets `state = 'done'`, `response_status` and `response_body`. A response that must not be stored deletes the key instead.
 
 ### Limits and counters ✓
 
@@ -263,6 +269,25 @@ UPDATE ONLY $scan SET pipeline_step_at = time::now()
 
 ✓ Of two claims, the first wins and the second returns NONE. A slow original whose stamp the sweep replaced throws `claim_lost`, and its diagnosis is never written. A claim whose run is older than the scan's is refused the same way.
 
+### Indicator answers ✓
+
+Each indicator keeps one answer per run, ranked user, then measurement, then the VLM (contracts 7). The key `indicator_answer:[scan, run, indicator_id]` is that rule, and a computed `rank` field (3, 2, 1) lets a write keep the higher-ranked answer without reading it into Rust first:
+
+```sql
+-- re-measuring a photo first drops that photo's measured answers (contracts 7: a re-measure replaces that photo's measurements only)
+IF array::len($measured_images) > 0 {
+  DELETE indicator_answer WHERE scan = $scan AND run = $run AND source = 'measurement' AND image IN $measured_images;
+};
+FOR $a IN $answers {
+  IF ((SELECT VALUE rank FROM ONLY $a.id) ?? 0) <= $a.rank { UPSERT $a.id CONTENT $a.row; };
+};
+```
+
+- ✓ A measured answer replaces a VLM answer, a user answer is kept when a measured one arrives for the same indicator, and an answer of the same rank replaces the stored one.
+- The fragment runs inside the transaction that stores what produced the answers: a step's commit (under its claim), a photo answer's step, a job's completion, or `POST /scans/{id}/answers`.
+- `score` reads `SELECT VALUE evidence FROM indicator_answer WHERE scan = $scan AND run = $run` (index `indicator_answer_scan`). A new run starts with none; the earlier run's answers stay until the scan is deleted.
+- `scan` repeats the key's scan as a field with `REFERENCE ON DELETE REJECT`, and `image` and `question` are rejecting references too, so ✓ deleting a scan while an answer remains fails with "Cannot delete `scan:s` as it is referenced by `indicator_answer:[scan:s, 1, 'a.b']`".
+
 ### Garden map versions ✓
 
 `PUT /gardens/{id}/map` runs in one transaction: check that the upload's `base_version` equals `garden.map_version` (otherwise `409`, contracts 9), increment it, create the `garden_map` with the new version, delete the garden's older maps, and set or unset `position` on the garden's plants. Pins for plants with `deleting_at` set are dropped first. Two concurrent uploads conflict on the garden row; the API retries the loser, whose retry then fails the `base_version` check and returns `409`, so an upload never silently replaces a map made since its session started. Only the current map is kept, so a pin can only point at a live plant: deleting a plant first removes its pin from that map in place.
@@ -281,18 +306,20 @@ The API deletes **bottom-up in batches**, never as one large transaction:
    1. scan events (one range delete per scan) and the scans' jobs, which point at their scan;
    2. tasks and plan trigger rules, which point at their plan: for a garden, all of them; for a plant, its own, those its plans made for neighbours (found through `task.plan` and `plan_trigger.plan`), and those other plants' plans made for it (`task.plant`, `plan_trigger.plant`). The other plants' plans themselves are not changed (contracts 7);
    3. plans and diagnoses, after unsetting `scan.plan`, `scan.diagnosis` and `scan.open_question`. Select plans by equality (`WHERE plant = $p`, `WHERE garden = $g`, or one scan at a time), never `WHERE scan IN $scans`: ✓ on 3.3.4, a `DELETE` over that `IN` filter on the unique `action_plan_version` index deletes nothing ([#7593](https://github.com/surrealdb/surrealdb/issues/7593)), and the scan delete then fails;
-   4. masks and guided checks, which point at scan images, then observations, questions and scan feedback;
+   4. masks, guided checks and indicator answers, which point at scan images (indicator answers also at questions), then observations, questions and scan feedback;
    5. scan images, then scans;
    6. conversations: for a garden, every conversation of the garden (`conversation.garden`), whatever it is anchored to, since any left would block the garden; for a plant, those anchored to the plant or its scans (`conversation.anchor`). For each, pending actions, message feedback, messages and chat images, then the conversation;
    7. memories, then plants (a single plant first loses its pin on the garden map), then the garden map, then the garden.
 
-✓ This order deletes a whole garden, with plans, tasks, trigger rules, jobs, conversations and a map, and a single plant whose plan made a neighbour task on another plant, cleanly.
+✓ This order deletes a whole garden, with plans, tasks, trigger rules, jobs, conversations and a map, and a single plant whose plan made a neighbour task on another plant, cleanly. ✓ (v1.4) So does a garden whose scan has an indicator answer, deleted in step 4.
 
 **A pending scan** (`DELETE /scans/{id}`, contracts 3) uses the same steps for that one scan. Set `scan.deleting_at`, cancel its guided jobs, delete its objects, then delete its records: its events (one range delete) and jobs; its guided checks; its observations; its scan images; the conversations anchored to it, as in step 6; and then the scan, which deletes the tasks naming it through `task.scan`'s `CASCADE`. A pending scan has no plan, diagnosis, question or step claim, and no scan feedback (contracts 3 refuses feedback before submit). ✓ On 3.3.4 a pending scan with a guided check, its observation, its event and a queued guided job deletes cleanly in this order. Deleting the scan while its job still exists fails with "Cannot delete `scan:…` as it is referenced by `job:…`". ✓ Deleting the scan deletes a task naming it and leaves the plant's other tasks alone; a plant cascade, which deletes tasks before scans, is unchanged.
 
 The `CASCADE` only reaches tasks that exist when the scan is deleted, and the schema accepts a link to a missing scan (✓ a task with `scan = scan:missing` is created). So `POST /tasks` with a `scan_id` checks the scan in the same transaction as the insert, as it does the plant (contracts 9): the scan exists, is of that garden and plant, and has no `deleting_at`, otherwise it throws and nothing is created. ✓ On 3.3.4 that transaction creates the task for a live scan and creates nothing for a missing scan or one with `deleting_at`.
 
-Each batch is `DELETE (SELECT VALUE id FROM t WHERE … LIMIT 500) RETURN NONE`, repeated until empty. Small transactions don't conflict with live writers.
+Each batch is `DELETE (SELECT VALUE id FROM t WHERE … LIMIT 500) RETURN VALUE $before.id`, repeated until it returns no ids. ✓ `RETURN NONE` can't be used to stop: it returns `[]` both for a batch that deleted 2 rows and for one that deleted none. ✓ `RETURN VALUE id` gives `NONE` for each row, since the record is gone; `RETURN BEFORE` works but returns whole records. Small transactions don't conflict with live writers.
+
+**Account deletion** (architecture 5) starts with a tombstone, `CREATE deleted_user:[auth_id] SET user = $user, started_at = $now`. ✓ A second `CREATE` fails with "already exists", so only one cascade starts however many requests or webhooks arrive. `user` is the ULID as a string, not a link, because the `user` record is deleted before the auth provider's account. While the tombstone exists, a sign-in with that auth id is refused (the API answers `401`) instead of recreating the user: the check runs on the read of an existing user and in the transaction that would create one ✓. The tombstone is the cascade's marker after a restart (`clerk_deleted_at = NONE`, index `deleted_user_pending`); `clerk_deleted_at` is set once the auth provider confirms, and the cleanup deletes tombstones 24 hours after that.
 
 A few links behave differently:
 - **CASCADE** (✓ deleting a user deletes their push tokens): `push_token.user`, `invite.garden`, `scan_feedback.user`, and `task.scan` (✓ a jar-test task goes with its pending scan). These records have nothing outside the database.
@@ -305,7 +332,7 @@ SurrealDB has no record expiry ([#1317](https://github.com/surrealdb/surrealdb/i
 
 | What | Statement |
 |---|---|
-| Idempotency keys | `DELETE (SELECT VALUE id FROM idempotency_key WHERE expires_at < time::now() LIMIT 500) RETURN NONE` |
+| Idempotency keys | `DELETE (SELECT VALUE id FROM idempotency_key WHERE expires_at < time::now() LIMIT 500) RETURN VALUE $before.id`, until it returns no ids |
 | Weather cache older than 2 hours | ✓ `DELETE weather_cache:[NONE, NONE]..[$cutoff, NONE]`, a key range because the hour comes first in the key |
 | Pending actions | `UPDATE pending_action SET status = 'expired' WHERE status = 'proposed' AND expires_at < time::now()` |
 | Finished jobs older than 7 days | Delete in batches. Their payloads are the bulk of the table |
@@ -374,7 +401,7 @@ SELECT * FROM garden WHERE geohash IN $cell_and_neighbours AND geo::distance(cen
   - Datetimes are `chrono::DateTime<Utc>`.
   - API DTOs derive serde separately and turn `RecordId` into the bare ULID string.
 - **Always `.bind()`.** Never format values into SurrealQL. A misspelled bind name silently becomes `NONE`, so test each query.
-- **Check every statement.** `.query()` returns `Ok` even when a statement inside failed. Call `response.take_errors()`, or `.check()`, before `take(n)`.
+- **Check every statement.** `.query()` returns `Ok` even when a statement inside failed. Call `response.take_errors()` before `take(n)`. ✓ Inside `BEGIN … COMMIT`, `.check()` returns the lowest-index error, which is not the cause: the statements before the cause report `NotExecuted`, those after it `Cancelled`, and the `COMMIT` `NotExecuted`. So take the lowest-index error that is neither. `.check()` is fine for a single statement.
 - **Retry conflicts** around whole transactions:
 
 ```rust
@@ -436,13 +463,15 @@ Verified on 3.3.4 unless marked otherwise.
 13. Imports don't fire `DEFINE EVENT`s. We define no events: the API does the work they'd do, which keeps writes predictable.
 14. There is no record expiry; cleanup is scheduled (section 4).
 15. There is no spatial index; regional alerts use the geohash field (section 5).
+16. ✓ Some parameter names are protected. Binding `auth` or `token` fails the whole request with "'auth' is a protected variable and cannot be set". The `store` crate binds `auth_id`, `lease_token` and `push_token` instead. `$before`, `$after`, `$value`, `$parent` and `$this` have meanings of their own inside statements, so a bind with one of those names is avoided too (cleanup binds its cutoff as `$cutoff`).
+17. ✓ A point literal doesn't take parameters: `centroid = ($lon, $lat)` is a parse error. Use `type::point([$lon, $lat])` (longitude first); `type::point($lon, $lat)` fails with "Expected 1 argument", and a GeoJSON-shaped object isn't coerced to `geometry`.
 
 ---
 
 ## 9. Open questions
 
-1. **Text-embedding dimension** for `knowledge_chunk.chunk_vec`, set with the model on day 1 (architecture open decision 13).
-2. **Image-embedding model** for `scan_image.embedding`, and whether `find_similar_cases` needs more than an exact search per garden.
+1. **Text-embedding dimension:** decided. `snowflake-arctic-embed-xs` gives 384 dimensions, which `chunk_vec` already uses (architecture open decision 13, [backend vision](../backend/vision.md)).
+2. **Image embeddings:** the model is decided: BioCLIP 2's whole-image vector, 768 dimensions. Still open: whether `find_similar_cases` needs more than an exact search per garden. Measure it once real gardens hold a few hundred photos.
 3. **RocksDB block cache** on the control-plane host: 512 MiB is proposed. Measure memory once the knowledge base is loaded.
 
 ---

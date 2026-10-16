@@ -1,6 +1,22 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.8.2, 2026-10-15. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10, 2026-10-16. Companion to the [architecture document](README.md).
+> **v0.10** records what the [backend design](../backend/README.md) decided while writing the crates, and settles open questions 12–24 (section 12):
+>   - whole-second timestamps on the wire; unknown fields, malformed ids, oversized JSON, missing methods, timeouts, a missing `X-Lease-Token` and a location that can't be geocoded each get a fixed error, and `retry_after_s` has fixed values;
+>   - the job error codes with `max_runtime_exceeded`, no lease hand-back, claims filtered by kind, label versions as `model_versions` keys, the label-version rule with no live worker, and a guided job out of attempts failing its check;
+>   - the per-scan writer's lifecycle, and a held step claim keeps the stream open;
+>   - photos without depth stored at 1600 px, the quality gate on every scan kind, and a photo answer's first step decided with its upload;
+>   - VLM preparation details (box bounds, zero-area boxes, rounding down, JPEG 90, the hosted 1.15 MP cap and 8,000-token budget, the full list of rejected schema keywords);
+>   - measurement pooling and percentiles, the plan's summary fallback, the mixture words' inflections, and the chat tools' arguments, thinking replay, `memory_saved` order and interrupted turns;
+>   - the auth webhook only deletes users, geocoding and SoilGrids retry rules, server-side evidence fields, and embedding modes; new open questions 27–41;
+>   - `WeatherSummary.past_7_days.longest_humid_run_days` (section 7), so a humid stretch in the past 7 days (section 9, crowding) can be detected; the weather thresholds' one owner is [backend domain 7, weather thresholds](../backend/domain.md#weather-thresholds).
+> **v0.9** follows the model choices of [docs/vision](../vision/README.md), adds a second VLM worker, and settles points the [backend design](../backend/README.md) found ambiguous:
+>   - VLM adapters own their cell size and box format: the chosen Qwen3-VL-class models use 32-pixel cells and `norm_1000` corner boxes, the fallback uses `abs_px_prepared` until a live call confirms it, and hosted structured output strips the keywords it rejects;
+>   - vLLM's current structured-output request (`response_format`, `max_completion_tokens`), and a truncated call counts as a validation failure;
+>   - an RX 9070 XT joins as a second `vlm` worker with its own `VLM_SLOTS`, every VLM worker serves the same checkpoint, and `model_versions` keys are fixed;
+>   - perception batching per model, one SAM prompt per box, the plant check and the classifier's image kinds, and the job error `unknown_label_version`;
+>   - `complete` results are read by the job's kind, worker payloads carry no mask URLs, bare confidences in worker shapes, `Invite.created_by` optional, the default location precision, `bioclip_label` and the classifier label flow defined.
+> **v0.8.3** adds open questions 12–24 (section 12): behaviour the Rust backend needs that these contracts don't settle yet. No shape changes.
 > **v0.8.2** applies the third audit:
 >   - failing a scan supersedes its open question, and a guided check that finishes on a failed scan only stores its result, for a resubmit;
 >   - `POST /tasks` refuses a `scan_id` that is missing or being deleted, in the insert's transaction;
@@ -70,9 +86,9 @@ Shapes are written as TypeScript types because they are compact and the app team
 | Encoding | JSON, UTF-8. Uploads are `multipart/form-data` |
 | Field names | `snake_case`, matching the database and the Python ingestion scripts |
 | IDs | Opaque strings: the ULID key of the SurrealDB record, without the table prefix (`"01JAX3K9T6R2B8V0QZ4M7D1E5F"`). The field name says what it points to. Knowledge-base IDs are readable slugs (section 10) |
-| Timestamps | RFC 3339 in UTC with a `Z` suffix: `"2026-10-18T14:03:22Z"`. Calendar dates local to a garden are `YYYY-MM-DD` |
+| Timestamps | RFC 3339 in UTC with a `Z` suffix, in **whole seconds**: `"2026-10-18T14:03:22Z"`. The database keeps full precision; only the wire rounds. Calendar dates local to a garden are `YYYY-MM-DD` |
 | Units | Metric. °C, mm, cm, m, cm², %, m³/m³, km/h. Unit suffixes in field names (`temp_c`, `precip_mm`, `x_m`) |
-| Confidence | A number from 0 to 1, always sent with `confidence_band`: **high** ≥ 0.8, **medium** ≥ 0.5, **low** below that, computed by the API so every screen agrees |
+| Confidence | A number from 0 to 1, sent with `confidence_band` in every record the API returns: **high** ≥ 0.8, **medium** ≥ 0.5, **low** below that, computed by the API so every screen agrees. Worker results and VLM shapes (sections 5 and 6), which only workers produce and the API reads, carry the bare number; so does `SpeciesCandidate.score`, a ranking score. `MeasurementPoint` carries only the band |
 | Enums | Lower-case `snake_case` strings |
 | Regions | Normalised to the stored image: `[x, y, w, h]`, each from 0 to 1, origin top-left. Whoever produces a box converts it before sending |
 | Images | Uploads may be JPEG, PNG, WebP or HEIC. On upload the API decodes the image, applies its EXIF orientation to the pixels, then strips all metadata, so `width`, `height` and every region refer to the upright image. Everything is stored as WebP |
@@ -105,7 +121,8 @@ interface Page<T> {
 ### Versioning
 
 - REST endpoints have no version prefix during the hackathon. Changes are additive only: new optional fields and new enum values. Clients ignore fields they don't know.
-- Every SSE event and every worker job payload and result carries `"v": 1`. A worker that receives a `v` it doesn't support fails the job with the error code `unsupported_version` instead of guessing.
+- **The API rejects fields it doesn't know** in an app's request body: `400 invalid_request` with `details.field` naming the JSON path, so a misspelt optional field is never silently ignored. An API that accepts a new field is therefore deployed **before** an app that sends it. Worker traffic stays lenient both ways: the API ignores unknown fields in worker requests, and workers ignore unknown fields in jobs and responses ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions)).
+- Every SSE event and every worker job payload and result carries `"v": 1`. A worker that receives a `v` it doesn't support fails the job with the error code `unsupported_version`, `retryable: false`, instead of guessing.
 - Apps treat an unknown enum value as "other" and ignore unknown event types.
 
 ### Authentication headers
@@ -113,8 +130,8 @@ interface Page<T> {
 | Caller | Header |
 |---|---|
 | App | `Authorization: Bearer <Clerk session token>` (not needed for signed image URLs) |
-| Worker | `Authorization: Bearer <worker token>`, plus `X-Lease-Token` on every call about a leased job (section 5) |
-| Auth webhooks | Clerk's Svix headers (`svix-id`, `svix-timestamp`, `svix-signature`), verified before the body is parsed (section 9, auth webhook) |
+| Worker | `Authorization: Bearer <worker token>`, plus `X-Lease-Token` on every call about a leased job (section 5). A call without it gets `400 invalid_request` with `field: "X-Lease-Token"`; a wrong or stale token gets `409 lease_lost` |
+| Auth webhooks | Clerk's Svix headers (`svix-id`, `svix-timestamp`, `svix-signature`), verified before the body is parsed (section 9, auth webhook). A failed check gets `401 unauthenticated` |
 
 ### Idempotency
 
@@ -170,11 +187,11 @@ interface ErrorBody {
 
 | HTTP | `code` | When | `details` |
 |---|---|---|---|
-| 400 | `invalid_request` | Malformed JSON, missing or wrong-typed field | `{ field, problem }` |
-| 401 | `unauthenticated` | Missing, expired or invalid JWT | |
+| 400 | `invalid_request` | Malformed JSON; a missing, wrong-typed or unknown field (section 1, versioning); a malformed ID in a body or query; a JSON body over 1 MiB (`field: "body"`, the limit in `message`); a location that can't be geocoded (`field` is `location.postal_code`, `location.city` or `location.lat`); a worker call without `X-Lease-Token` (`field: "X-Lease-Token"`) | `{ field, problem }`; `field` is the JSON path |
+| 401 | `unauthenticated` | Missing, expired or invalid JWT; an auth webhook whose Svix signature fails or whose timestamp is more than 5 minutes away in either direction (section 9) | |
 | 403 | `forbidden` | A member whose role is too low (section 1) | `{ required_role }` |
-| 403 | `invalid_signature` | Expired or tampered signed image URL | |
-| 404 | `not_found` | Unknown ID, or one the caller may not see | |
+| 403 | `invalid_signature` | Expired or tampered signed image URL. Only signed URLs: a webhook signature failure is `401` | |
+| 404 | `not_found` | Unknown ID, or one the caller may not see; a malformed ID in a path, which can name no record; a method the route doesn't have (no `Allow` header, so it reads like an unknown path) | |
 | 409 | `invalid_state` | The scan, question, plan, task, invite, pending action or garden map isn't in a state that allows this call | `{ status?, allowed?: string[], current_plan_id?, current_map_version?, hint?: "new_scan" \| "neighbour_removed" \| "plant_removed" }` |
 | 409 | `request_in_progress` | Same `Idempotency-Key` while the first request is still running | |
 | 409 | `lease_lost` | Worker call for a job whose lease was requeued, expired or cancelled, including jobs of an older run | `{ job_id }` |
@@ -184,11 +201,11 @@ interface ErrorBody {
 | 422 | `missing_required_shot` | Submit without a `whole_plant` image | `{ missing: ImageKind[] }` |
 | 422 | `too_many_images` | Kind limit reached (section 3) | `{ kind, max }` |
 | 422 | `idempotency_conflict` | Reused `Idempotency-Key` with a different body | |
-| 429 | `rate_limited` | Request rate limit, including invite-code attempts. `retryable: true`, with `retry_after_s` | |
+| 429 | `rate_limited` | Request rate limit (per user, a placeholder of 120 requests a minute: open question 34), including invite-code attempts. `retryable: true`, with `retry_after_s` | |
 | 429 | `budget_exceeded` | Daily chat token budget or daily scan limit used up. `retryable: false`: it lasts until `resets_at` | `{ budget: "chat_tokens" \| "scans", resets_at }` |
 | 500 | `internal` | Bug. Logged with `request_id` | |
 | 503 | `processing_unavailable` | Face blurring or another required upload step failed. The image was not stored (fails closed) | |
-| 503 | `upstream_unavailable` | LLM API, weather or another dependency down | `{ upstream }` |
+| 503 | `upstream_unavailable` | LLM API, weather or another dependency down; no live perception worker has loaded the run's label versions (`upstream: "perception"`, section 5); a request past the API's timeout (`upstream: "api"`) | `{ upstream }` |
 
 ```ts
 type ErrorCode =
@@ -206,6 +223,10 @@ type QualityHint =
   | "avoid_glare";        // too_bright: shade the plant or step out of direct sun
 ```
 
+**`retry_after_s`** is 2 for `request_in_progress` and `processing_unavailable`, 5 for `upstream_unavailable` unless the provider named a longer wait, and the rate limiter's wait, rounded up to whole seconds, for `rate_limited`.
+
+**Timeouts.** A request past the API's timeout gets `503 upstream_unavailable` with `upstream: "api"`, `retryable: true` and `retry_after_s: 5`: such a request is almost always waiting on a slow dependency, every create call is idempotent, and the timeout releases the request's idempotency key. `405`, `408` and `504` are never produced. In a chat stream, a model call that times out ends with an `error` event of code `upstream_unavailable`, `retryable: true` ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions), [agent 18](../backend/agent.md#18-open-questions)).
+
 Example:
 
 ```json
@@ -220,7 +241,7 @@ Example:
 }
 ```
 
-A scan that fails during analysis is not an HTTP error: it ends in the `failed` status with a `ScanFailure` (section 3). Worker job errors (`unsupported_version`, model errors) travel in the job's `complete` body (section 5), never as HTTP status codes.
+A scan that fails during analysis is not an HTTP error: it ends in the `failed` status with a `ScanFailure` (section 3). Worker job errors (`JobErrorCode`, section 5) travel in the job's `complete` body, never as HTTP status codes.
 
 ---
 
@@ -387,6 +408,11 @@ interface ScanDetail extends Scan {
 
 **Open questions.** `open_question` stays on the scan after the scheduler has continued without an answer, until the user answers it or a new run supersedes it. The current plan shows it at the top while it is open.
 
+**Evidence kept server-side.** Three stored shapes never reach the app ([database 3](../database/README.md#3-tables), [indicator answers](../database/README.md#indicator-answers-)):
+- `question.indicator`: the indicator an `indicator` question asks, so its answer is recorded against that indicator;
+- `scan.candidates`: the current run's candidate set, written by `retrieve`, extended by a `verify` job's added candidates, read by `score`, and reset by a new run;
+- the `indicator_answer` table: one answer per indicator per run (`[scan, run, indicator_id]`), ranked `user`, then `measurement`, then `vlm` (section 7).
+
 ### `POST /scans`
 
 Creates a scan in `pending`. Exactly one of `plant_id` and `new_plant` is required. Role: editor. Counts toward the daily scan limit (30 per user).
@@ -411,6 +437,10 @@ interface CreateScanRequest {
 | With `question_id` | That question's `status` is `open`, whatever the scan's status | The question becomes `answering` and the photo goes to a `verify` job; no submit is needed. A photo with depth may first be segmented and measured (section 7, measurement). Doesn't count toward kind limits |
 
 A question that is already answered, superseded or `answering` returns `409 invalid_state`.
+
+**The quality gate** runs on every scan upload, of every kind: plant and soil shots, guided checks and photos sent for a question. A failing shot gets `422 image_quality` and is not stored. Chat images skip it (section 8) ([backend vision 7](../backend/vision.md#7-the-upload-pipeline)).
+
+**A photo answer's first step** (segment first, or measure and verify now: section 7, photos sent for a question) is decided before the image is stored, and recorded with the image in one transaction, its segmentation job included. A crash therefore never leaves an `answering` question with nothing in flight ([backend api 12](../backend/api.md#12-uploads)).
 
 **Depth (LiDAR phones only).** Three optional parts, sent with any plant or soil kind, including a photo with `question_id`:
 
@@ -438,7 +468,7 @@ interface DepthMeta {
 }
 ```
 
-The API applies the photo's EXIF orientation to the depth and confidence maps and transforms the intrinsics and gravity to match, scales the intrinsics to the stored image's size, sets the depth, and the confidence map when there is one, to 0 inside every face box found for blurring, with each box grown by 10% and rounded outwards when it is scaled down to the depth map's resolution so no edge of a face survives, and stores the result (architecture 6.7). Orientations 1, 3, 6 and 8 are rotations: a quarter turn swaps `fx` with `fy` and `ref_width` with `ref_height`, and the principal point, the distortion centre and gravity's x and y turn with the pixels. The mirrored orientations (2, 4, 5 and 7) can't come from the rear camera, so their depth is dropped with `invalid_meta`. A photo uploaded with depth is stored with a long side of at least 2048 pixels, or at its own size when smaller, because spot sizes are measured on the stored image (section 7). **Depth problems never fail the upload:** the photo is stored, the depth is dropped, and the response says why. Depth sent with a `squeeze_test` or `jar_test` is dropped in the same way. The idempotency fingerprint covers every part.
+The API applies the photo's EXIF orientation to the depth and confidence maps and transforms the intrinsics and gravity to match, scales the intrinsics to the stored image's size, sets the depth, and the confidence map when there is one, to 0 inside every face box found for blurring, with each box grown by 10% and rounded outwards when it is scaled down to the depth map's resolution so no edge of a face survives, and stores the result (architecture 6.7). Orientations 1, 3, 6 and 8 are rotations: a quarter turn swaps `fx` with `fy` and `ref_width` with `ref_height`, and the principal point, the distortion centre and gravity's x and y turn with the pixels. The mirrored orientations (2, 4, 5 and 7) can't come from the rear camera, so their depth is dropped with `invalid_meta`. A photo whose depth survives validation is stored with a long side of at least 2048 pixels, or at its own size when smaller, because spot sizes are measured on the stored image (section 7). Every other photo, including one whose depth was dropped, is stored with a long side of 1600 pixels, or at its own size when smaller, since nothing on it can be measured ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions), [vision 15](../backend/vision.md#15-open-questions)). **Depth problems never fail the upload:** the photo is stored, the depth is dropped, and the response says why. Depth sent with a `squeeze_test` or `jar_test` is dropped in the same way. The idempotency fingerprint covers every part.
 
 ```ts
 // 201 →
@@ -570,6 +600,7 @@ data: {"v":1,"seq":17,"run":1,"scan_id":"01JAX...","ts":"2026-10-18T14:03:22Z","
 - `id` equals `seq`: an integer per scan, starting at 1, strictly increasing, with no gaps, across all runs.
 - **Image URLs in events are signed as the event is sent**, live or replayed. The stored payload keeps image and mask IDs, never URLs, so a replay hours later carries fresh 15-minute URLs (`Region.mask_url`). A species photo has no image ID: `SpeciesCandidate.reference_image` isn't stored in the payload at all, and is filled in from `species_id` as the event is sent.
 - Every event is stored in `scan_event` before it is sent. Events for a scan come from several places (worker events, answers, the scheduler's sweep, species changes), so **one serialised writer per scan** assigns `seq`, stores the event and broadcasts it, in that order. A live subscriber that falls behind the broadcast (`Lagged`) switches to replaying from the database.
+- **The writer's lifecycle.** The writer starts on the scan's first event and retires after 60 seconds without one (or at shutdown), after draining its queue; an event that races the retirement starts a new writer. The scan's broadcast channel is created by its first subscriber and removed when it has no receivers. The scan's plan lock (section 7, re-planning) is removed only when nobody holds or waits for it. Correctness doesn't depend on any of these lifetimes, because `seq` is assigned in the transaction that stores the event (`scan.last_event_seq`), so a writer started later continues the sequence ([backend api 13](../backend/api.md#13-scan-events-writer-hub-and-stream), [pipeline 17](../backend/pipeline.md#17-open-questions-and-decisions)).
 - **Resume:** on reconnect the app sends `Last-Event-ID`. The server first subscribes to the scan's live broadcast, then replays every stored event with a higher `seq`, then forwards live events, dropping any whose `seq` it has already sent. The app also ignores any `seq` it has already applied. Without `Last-Event-ID` the server replays the whole history, which is how the app rebuilds stage progress for a scan it opens partway through a run.
 - The server sends a `: keepalive` comment every 15 seconds.
 
@@ -587,9 +618,11 @@ The server closes the stream when the scan reaches a resting point:
 | The scan fails, and no guided check is `analysing` | `question_resolved` with `superseded` if a question was open or `answering`, then `failed` |
 | The scan fails while a guided check is `analysing` | Stays open until the last check's `guided_check_done` |
 
+**A held step claim keeps the stream open.** A scan is at rest only when no step holds its claim (section 3, steps between jobs) as well. The writer checks this (`step_claimed`) after the last event of each step's commit. A late answer's `question_resolved` or a guided check's `guided_check_done` is sent while the `score` step its transaction claimed is still running, so the stream stays open until that step's `diagnosis` and plan events ([backend pipeline 10](../backend/pipeline.md#10-events)).
+
 The app may close the stream at any time and reopen it later with `Last-Event-ID`. The most important changes while it is closed are also sent as a push notification; section 9 (push notifications) lists which, and to whom. Everything else is on the scan when the app reads it again.
 
-**Opening the stream of a scan at rest** (no question open or `answering`, no guided check `analysing`, and `planned` or `failed`) replays the stored events after `Last-Event-ID` and then closes.
+**Opening the stream of a scan at rest** (no question open or `answering`, no guided check `analysing`, no step claim held, and `planned` or `failed`) replays the stored events after `Last-Event-ID` and then closes.
 
 ### Envelope
 
@@ -680,7 +713,10 @@ Example of a typical run, where the classifier suggests early blight and the ind
   |---|---|
   | perception-worker (RTX 3070) | 1. It batches inside a job instead (section 5, results) |
   | vlm-worker (RTX 5070 Ti) | `VLM_SLOTS`: 1 or 2, deployment configuration set from the day-2 benchmark (open question 9). With 2, vLLM batches the two jobs' calls together; vLLM's `max_num_seqs` is set to the same value |
+  | vlm-worker (RX 9070 XT) | Its own `VLM_SLOTS`, 1 or 2, from its own benchmark on its own server (vLLM on ROCm, or llama.cpp with Vulkan, open question 25) |
   | fallback-worker | Several (default 4), bounded by the LLM API's rate limit |
+
+  Every vlm-worker serves **the same model checkpoint** (repository, revision and quantization), so a scan's findings don't depend on which card claimed its job. Results across cards are comparable, not identical; `model_versions` records which worker and server produced them (below).
 
 - `POST /internal/jobs/claim` returns a `lease_token` with each job. Every later call about that job sends it as `X-Lease-Token`.
 - The lease lasts 2 minutes. A heartbeat that lists the job, with its lease token, in `current_jobs` extends it to 2 minutes from the heartbeat, but **only if the token matches, the job is leased to that worker and isn't cancelled**, and **never beyond `claimed_at + max_runtime`** for the job's kind:
@@ -690,16 +726,18 @@ Example of a typical run, where the classifier suggests early blight and the ind
   | `perception` | 2 minutes |
   | `vlm` | 5 minutes |
   | `verify`, `guided` | 3 minutes |
-  | any kind on the fallback worker | twice the above |
+  | any kind on the fallback worker | twice the above, doubled when the fallback claims the job, so `max_runtime_s` in the claim is already doubled |
 
   A worker whose heartbeat thread keeps running while its model hangs still loses the job at `max_runtime`. These limits hold at the configured `slots`: the day-2 benchmark checks that a `vlm` job's p95 time with `VLM_SLOTS` jobs running together stays under half its `max_runtime`.
 - The broker requeues a job when its worker's heartbeat is older than 30 seconds, or when its lease expires. Requeueing invalidates the lease token.
-- `attempts` counts `failed` completions with `retryable: true`, **plus every requeue after the 2nd**. A job that keeps crashing its worker therefore runs out of attempts. After the 3rd attempt, the job fails for good: a run's job sends the scan to `failed` with `processing_error`, resolving its open or `answering` question as `superseded` (section 3); a `verify` job for late work (section 3: the scan is `diagnosed` or `planned`) and every `guided` job report their failure as an event (`question_resolved` with `dropped`, or `guided_check_done` with a failed check) and leave the scan as it is. The segmentation-only `perception` job for a photo sent to a question (section 7, measurement) never fails the scan or the question: when it fails, the photo goes on to its `verify` job unmeasured.
+- **No hand-back at shutdown.** A stopping worker drops its open long poll and sends nothing for a lease it may have been granted meanwhile; that job is requeued when the worker's heartbeat goes stale (30 seconds) or its lease expires, and the requeue is one of the two free ones (below) ([backend worker 16](../backend/worker.md#16-decisions-on-the-contracts-open-questions), [store 21](../backend/store.md#21-decisions-on-open-questions)).
+- `attempts` counts `failed` completions with `retryable: true`, **plus every requeue after the 2nd**. A job that keeps crashing its worker therefore runs out of attempts. After the 3rd attempt, the job fails for good: a run's job sends the scan to `failed` with `processing_error`, resolving its open or `answering` question as `superseded` (section 3); a `verify` job for late work (section 3: the scan is `diagnosed` or `planned`) and every `guided` job report their failure as an event (`question_resolved` with `dropped`, or `guided_check_done` with a failed check) and leave the scan as it is. A `guided` job that runs out of attempts, by a failed completion or a requeue, marks its check `failed` in the same transaction. The segmentation-only `perception` job for a photo sent to a question (section 7, measurement) never fails the scan or the question: when it fails, the photo goes on to its `verify` job unmeasured.
 - Every `perception`, `vlm` and `verify` job belongs to a scan **run**. A `guided` job belongs to the scan, not to a run: a new run never cancels it, and it never fails the scan. When a new run starts (a resubmit or a species change), the broker cancels the old run's queued and leased run jobs, and the old run's open question is resolved as `superseded`. A worker learns this from its next heartbeat response (`cancel_job_ids`) and stops.
 - **Any call about a requeued, expired or cancelled job, including a job of an older run, gets `409 lease_lost`.** This holds for `events` and `complete` alike. The worker drops the job.
 - Repeating `complete` with the same lease token for a job that already completed (a retry after a network timeout) returns `204` and changes nothing.
 - `queued_at` is set when a job is queued and reset when it is requeued. A job still unclaimed 15 seconds after `queued_at` becomes claimable by the fallback worker, with one exception: a `perception` job with `question_id` (section 7, photos sent for a question) is claimable by the fallback worker only when no worker with the `perception` capability has sent a heartbeat in the last 30 seconds. Its only purpose is masks, which the fallback can't produce, so while the rig is up it waits for the perception worker even when that worker is busy.
-- The `vlm` capability claims `vlm`, `verify` and `guided` jobs. `fallback` claims every kind.
+- The `vlm` capability claims `vlm`, `verify` and `guided` jobs. `fallback` claims every kind. **The claim filters by these kinds** in its query, so a worker only receives kinds its `caps` cover. If one slips through anyway (an older worker against a newer API), the worker reads the job's head (`v`, `job_id`, `lease_token`) and completes it `failed` with `unsupported_version`, `retryable: false`, instead of leaving it to expire; so does a job whose payload it can't read ([backend worker 16](../backend/worker.md#16-decisions-on-the-contracts-open-questions)).
+- **A run's first claim moves the scan `queued → analysing`** in the claim's transaction, and `api` sends that `status_changed` through the scan's writer.
 
 ### `POST /internal/workers/heartbeat`
 
@@ -714,7 +752,7 @@ interface Heartbeat {
   slots: number;                  // the most jobs this worker holds at once
   gpu?: { name: string; vram_used_mb: number; vram_total_mb: number };
   current_jobs: { job_id: Id; lease_token: string }[];  // extends these leases, within max_runtime
-  versions: Record<string, string>; // model name → version, shown on /status
+  versions: Record<string, string>; // the model_versions keys (below), shown on /status; label versions comma-separated
 }
 
 // 200 →
@@ -767,7 +805,8 @@ interface PerceptionPayload {
   stages: ("plant_check" | "segmentation" | "species" | "disease" | "image_embedding")[];
   species_id?: Slug;              // confirmed or user-chosen species: skip identification, use this
   skip_species_identification?: boolean;  // true when the user chose "something else" (no species_id)
-  regions?: (Region & { region_id: string; class: RegionClass })[];  // from an earlier run, when segmentation isn't re-run
+  regions?: (Omit<Region, "mask_url"> & { region_id: string; class: RegionClass })[];  // from an earlier run, when segmentation isn't re-run;
+                                  // no mask URL: workers have no route to masks, and the stages that read regions use boxes
   label_set_version: string;      // BioCLIP label list generated from the knowledge base
   classifier_labels_version: string; // classifier class → problem mapping (section 10)
   question_id?: Id;               // set on a question photo's segmentation-only job (section 7): stages is ["segmentation"],
@@ -853,13 +892,51 @@ type PartialResult =
 interface CompleteJob {
   v: 1;
   status: "done" | "failed";
-  result?: PerceptionResult | VlmResult | VerifyResult | GuidedResult;   // with done
-  error?: { code: string; message: string; retryable: boolean };          // with failed
+  result?: PerceptionResult | VlmResult | VerifyResult | GuidedResult;   // with done; read as the job's own kind
+  error?: { code: JobErrorCode | string; message: string; retryable: boolean };  // with failed
   model_versions: Record<string, string>;
   timings_ms: Record<string, number>;
 }
 // 204
+
+type JobErrorCode =
+  | "unsupported_version"       // a payload or job `v` the worker doesn't support, a job kind it doesn't know,
+                                // or a payload it can't read; retryable: false
+  | "unknown_label_version"     // a label_set_version or classifier_labels_version the worker hasn't loaded; retryable: false
+  | "model_error"               // inference failed or its output failed validation twice; retryable: true,
+                                // except false when the worker's adapter can't do the job's kind at all
+  | "image_fetch_failed"        // an image URL failed after retries; retryable: true
+  | "max_runtime_exceeded";     // the worker stopped the job itself at its soft deadline, before max_runtime_s; retryable: true
 ```
+
+- **The codes and their `retryable`** are fixed as above ([backend worker 16](../backend/worker.md#16-decisions-on-the-contracts-open-questions)). The API keeps an unknown code string as written. `unsupported_version` is never retryable: the same worker can't succeed on a retry, and a newer worker gets the job only after a requeue.
+- **The result is read by the job's kind**, which the API recorded when it queued the job, never guessed from the shape: a `VlmResult` would also parse as a `VerifyResult`. A `done` result that doesn't decode as that kind is stored as a failure with `model_error`, `retryable: true`, the same code a worker sends for output that failed validation twice ([backend pipeline 17](../backend/pipeline.md#17-open-questions-and-decisions)).
+- **Versions a worker hasn't loaded.** Each perception and fallback worker reports the `label_set_version` and `classifier_labels_version` it has loaded in its heartbeat's `versions` (the keys below; with several loaded, the value lists them comma-separated, and the API splits it). The API never queues a `perception` job naming a version that no live perception or fallback worker reports:
+  - with no such worker live at all, the job is queued as usual and waits (or goes to a worker that starts later);
+  - with live workers of which none has both versions, the call that would queue it (submit, resubmit, a species change) fails with `503 upstream_unavailable`, `upstream: "perception"`, `retryable: true` ([backend pipeline 11](../backend/pipeline.md#11-runs)).
+
+  So `unknown_label_version` only happens across a deployment; as a run job's non-retryable failure it fails the scan with `processing_error`.
+- **The fallback's perception labels.** The payload carries only the label versions, so the fallback worker loads the matching label files from the model manifest, as the perception worker does, and restricts its disease output to the working species' `classifier_labels` ([backend worker 17](../backend/worker.md#17-open-questions)).
+
+**`model_versions` keys.** The same keys are used in `complete` and in the heartbeat's `versions`, so `/status` and every stored record name what produced them:
+
+| Key | Example | Set by |
+|---|---|---|
+| `worker_id` | `rig-9070xt-vlm-1` | Every worker |
+| `vlm_model` | `Qwen/Qwen3-VL-8B-Instruct-FP8@<revision>` | VLM and fallback workers |
+| `vlm_quant` | `fp8_block`, `awq_w4a16` | VLM workers |
+| `vlm_server` | `vllm@v0.31.0`, `vllm-rocm@v0.31.0`, `llama.cpp@b7123`, `anthropic` | VLM and fallback workers |
+| `vlm_box_format` | `norm_1000` (VLM workers), `abs_px_prepared` (fallback) | VLM and fallback workers (section 6) |
+| `vlm_max_pixels` | `1003520` | VLM and fallback workers |
+| `vlm_prompts` | `system@1,findings@1,indicators@1,verify@1,guided@1`: every prompt's name and version, comma-separated | VLM and fallback workers |
+| `vlm_certainty` | `0.4/0.65/0.85`: the low, medium and high values, slash-separated | VLM and fallback workers |
+| `label_set_version` | the job's own in `complete`; every loaded one, comma-separated, in the heartbeat | Perception and fallback workers |
+| `classifier_labels_version` | as `label_set_version` | Perception and fallback workers |
+| `perception_config` | first 16 hex digits of the model manifest's configuration hash | Perception workers ([vision 6](../vision/README.md#6-model-files-versions-and-pinning)) |
+| `ort_ep` | `cuda`, `migraphx`, `cpu` | Workers that run ONNX models |
+| `<manifest entry name>` | `bioclip: <version>`, `leaf_detector: <version>`, `sam_encoder: <version>`, `sam_decoder: <version>`, `disease_head: <version>`, `plant_probe: <version>` | Every model a job used, keyed by its entry name in the model manifest ([vision models](../vision/models.md)). SAM's two graphs are two entries |
+
+The value formats are this table's: underscores in `vlm_quant`, `@` before a version, commas between prompts and slashes between certainty values. [Vision 6](../vision/README.md#6-model-files-versions-and-pinning) and [vision vlm 11](../vision/vlm.md#11-validation-retries-and-versions) write some of them differently (`fp8-block128`, `sam` as one key, `0.4,0.65,0.85`); the workers follow this table and the manifest's entry names, and docs/vision is brought in line ([backend worker 17](../backend/worker.md#17-open-questions)).
 
 ### Results
 
@@ -907,7 +984,13 @@ interface GuidedResult {
 
 **Segmentation.** The leaf detector is fine-tuned on PlantDoc's leaf boxes, so `leaf` regions are reliable. PlantDoc has boxes but no mask outlines, so masks come from a SAM-class model prompted with those boxes, when it runs; masks are always optional. `plant`, `soil` and `surroundings` regions are produced when the model has them and are otherwise left out. Every later stage works without them: disease classification falls back to the whole `leaf_closeup` image (`region_id` absent).
 
-**Batching inside a job.** The perception-worker runs **each model once per job** over a batch, not once per image or region: the plant check and segmentation over every image, the SAM-class model over every leaf box of an image in one prompt, BioCLIP and the image-embedding model over every plant image, and the disease classifier over every leaf crop. The ONNX models are exported with a dynamic batch dimension. A batch larger than `PERCEPTION_MAX_BATCH` (deployment configuration, default 16, set on day 2 so the 3070 keeps its VRAM headroom) is split into several. Partial results are still sent per stage, after the stage's last batch.
+**Batching inside a job.** The perception-worker runs **each model once per job** over a batch, not once per image or region:
+- the leaf detector over every plant image;
+- the SAM-class model's decoder over every leaf box of an image in one call, **one prompt per box** (several boxes in one prompt would produce one merged mask), after its encoder has run on that image;
+- BioCLIP over every plant and soil image (soil images are embedded for similar cases but left out of species scoring), then over the leaf crops for the disease classifier;
+- the disease classifier over the leaf regions of `leaf_closeup` and `leaf_underside` images only, because whole-plant leaves are too small to classify.
+
+The **plant check** is the leaf detector's score or a plant probe on the BioCLIP embedding, over the plant shots only, so a soil close-up never counts against it and an unusual plant isn't failed for lacking PlantDoc-like leaves. The ONNX models are exported with a dynamic batch dimension. A batch larger than `PERCEPTION_MAX_BATCH` (deployment configuration, default 16, set on day 2 so the 3070 keeps its VRAM headroom) is split into several, and each model has its own smaller cap below it where its memory needs one: about 8 images for the detector, 2 for the SAM encoder, 16 boxes per SAM decoder call and 16 crops for BioCLIP ([vision 4](../vision/README.md#4-placement-and-vram-budgets)). Partial results are still sent per stage, after the stage's last batch.
 
 **Classifier candidates.** The worker restricts the classifier's output to the labels of the working species before taking each region's `top` 3, so a tomato leaf is never labelled with a grape disease. The API turns the per-region `top` lists into the scan's classifier candidates: the 3 distinct problems with the highest confidence across all regions, ignoring `healthy`.
 
@@ -921,27 +1004,29 @@ The fallback worker returns the same shapes. For each `leaf_closeup` it judges t
 
 ### Image preparation
 
-Qwen2.5-VL-class models resize every image internally ("smart resize": each side rounded to a multiple of 28, total pixels kept between `min_pixels` and `max_pixels`) and return box coordinates in pixels of **that resized image**. To make "the image as sent" and "the image as seen" the same:
+Qwen-VL-class models resize every image internally ("smart resize": each side rounded to a multiple of the model's **cell size**, total pixels kept within the processor's limits). The cell is 28 pixels for Qwen2.5-VL and 32 pixels for Qwen3-VL and Qwen3.5 (16-pixel patches merged 2 × 2), the chosen models ([vision vlm 5](../vision/vlm.md#5-image-preparation-and-tokens)). To make "the image as sent" and "the image as seen" the same:
 
-1. The worker resizes each image itself with the same rule, so both sides are multiples of 28 and the pixel count is at most `VLM_MAX_PIXELS`. This is deployment configuration shared by the worker and the vLLM server, not a payload field, because vLLM fixes it when the server starts (chosen on day 2, around 1 megapixel).
-2. vLLM is started with `mm_processor_kwargs` setting the processor's `min_pixels` **low** (for example 256 × 28 × 28) and its `max_pixels` **equal to** `VLM_MAX_PIXELS`. Every prepared image then falls inside the processor's range, so it is not resized again.
-3. The worker divides each returned box by the prepared image's width and height to get the normalised `BBox`.
+1. The worker resizes each image itself with the same rule, so both sides are multiples of the adapter's cell size and the pixel count is at most `VLM_MAX_PIXELS`. It scales down only, never up, rounds each side **down** to a multiple of the cell, which keeps the pixel count within the budget, and sends the result as a JPEG at quality 90 in a data URL; a 2048 × 1536 stored photo becomes 1152 × 864 ([backend worker 8](../backend/worker.md#8-the-vlm-adapters)). `VLM_MAX_PIXELS` is deployment configuration shared by the worker and the VLM server, not a payload field, because the server fixes it when it starts (chosen on day 2; it starts at 1,003,520 pixels, about 980 image tokens).
+2. The server is started so that every prepared image falls inside its processor's range and isn't resized again: on vLLM, `mm_processor_kwargs` sets the processor's lower limit low and its upper limit equal to `VLM_MAX_PIXELS`, with the keyword the model's processor uses (`min_pixels`/`max_pixels` for Qwen2.5-VL, `size.longest_edge` and `size.shortest_edge` for Qwen3-VL); on llama.cpp, `--image-max-tokens` is at least `VLM_MAX_PIXELS` / cell² and `--image-min-tokens` is left unset, so small images aren't upscaled.
+3. The worker converts each returned box to the normalised `BBox` by its adapter's `box_format` (below).
+
+The cell size and the server's pixel keyword are properties of the **model adapter**, next to `box_format`.
 
 ### Box formats per model adapter
 
-Models disagree on box coordinates. Each model adapter declares its format, and the worker converts:
+Every VLM returns `bbox_2d` as corners, `[x1, y1, x2, y2]`, which the worker converts to `[x, y, w, h]` for every format. Models disagree on the coordinate space, so each adapter declares its format, and the worker converts:
 
 | `box_format` | Used by | Conversion to `BBox` |
 |---|---|---|
-| `abs_px_prepared` | Qwen2.5-VL on vLLM with the preparation above | Divide by the prepared image's size |
-| `norm_1000` | Hosted LLMs on the fallback worker, and VLMs trained on 0–1000 coordinates | Divide by 1000 |
+| `norm_1000` | Qwen3-VL and Qwen3.5, the chosen models, on vLLM or llama.cpp | Divide by 1000 |
+| `abs_px_prepared` | Qwen2.5-VL on vLLM with the preparation above (the baseline); the fallback worker's hosted LLM, which returns pixels of the image as it sees it, so it is sent images it won't resize: at most 1568 pixels on the long side **and** at most 1,150,000 pixels (`FALLBACK_MAX_PIXELS`), since the hosted API also resizes above about 1.15 megapixels | Divide by the prepared image's size |
 | `norm_1` | Models that return 0–1 coordinates | None |
 
-If the VLM runs on llama.cpp instead of vLLM, `mm_processor_kwargs` doesn't apply; its adapter declares the format that server produces. The day-2 benchmark of two VLMs records each one's `box_format`.
+`box_format` belongs to the adapter **instance**: the model, the server and the preparation together. With `norm_1000`, a server that resizes images changes only the token count, not the boxes. The fallback's format is confirmed with one live call on day 2 (open question 26). The day-2 benchmark records each candidate's `box_format`.
 
 ### Per-job schema
 
-The worker builds the JSON Schema for each call from the payload and passes it to vLLM's structured-output (guided decoding) option, so the model can only produce valid values:
+The worker builds the JSON Schema for each call from the payload and sends it as the request's `response_format` (`{ type: "json_schema", json_schema: { strict: true, schema } }`), which vLLM and llama.cpp both enforce by constrained decoding, so the model can only produce valid values. vLLM removed the older `guided_json` option in v0.12; the output limit is `max_completion_tokens`. A call that ends with `finish_reason: "length"` is a validation failure (below). Pinned vLLM uses the xgrammar backend, which enforces `maxLength`, `maxItems` and integer bounds, but a length-limited string can't contain `"`, `\` or a line break, and `pattern` can't be combined with `maxLength`; the schema builder respects both.
 
 | In the schema | Alias | Mapped back to |
 |---|---|---|
@@ -952,7 +1037,7 @@ The worker builds the JSON Schema for each call from the payload and passes it t
 
 Keys that carry the indicator's meaning make it much harder for the model to answer one question under another's number.
 
-Text limits are `maxLength` in characters and `maxItems` for lists. Whether vLLM's structured-output backend enforces `maxLength` and `maxItems` is checked on day 2; if it doesn't, `max_tokens` bounds the output and the worker truncates over-long values.
+Text limits are `maxLength` in characters and `maxItems` for lists; box coordinates are arrays of exactly 4 integers with `minimum` 0 and `maximum` 1000 for `norm_1000`, and 0 to the call's **largest prepared side** for `abs_px_prepared`. The day-2 check confirms in practice that the server enforces them; the worker still truncates over-long values and clamps numbers and boxes after decoding.
 
 ### Findings call
 
@@ -985,7 +1070,7 @@ interface VlmFindingsRaw {
     other_name: string | null;
     count: "one" | "few" | "many";
     image: ImageAlias;
-    bbox_2d: [number, number, number, number];  // integers, in the adapter's box_format
+    bbox_2d: [number, number, number, number];  // integers, corners [x1, y1, x2, y2], in the adapter's box_format
     certainty: Certainty;
   }[];
   damage: {                     // maxItems 10
@@ -1069,11 +1154,13 @@ type GuidedTexture =
   | { kind: "jar_test"; settled: boolean; texture: "sandy" | "loamy" | "silty" | "clayey" | "unclear"; confidence: Confidence };
 ```
 
-- **Certainty as a word, not a number.** A quantized 7–8B model's self-reported probabilities are poorly calibrated. The worker maps `low`, `medium` and `high` to 0.4, 0.65 and 0.85, so a VLM finding can never show more than "high (0.85)".
+- **Certainty as a word, not a number.** A quantized 7–8B model's self-reported probabilities are poorly calibrated. The worker maps `low`, `medium` and `high` to 0.4, 0.65 and 0.85, so a VLM finding can never show more than "high (0.85)". Calibration (open question 2) may move each value within its band, never above 0.85; a word that belongs in another band is reported, not applied, because it changes what the app shows.
 - Measurements (section 7) are never put into a VLM prompt, so the VLM's answers stay independent of them.
-- Guided decoding guarantees the shape; the worker still validates it. On a validation failure it retries the call once, then fails the job with `retryable: true`.
+- Constrained decoding guarantees the shape; the worker still validates it. On a validation failure, including a call cut off with `finish_reason: "length"`, it retries the call once, then fails the job with `model_error`, `retryable: true`.
+- **Boxes with no area.** A box that has no area after clamping drops an organism, which needs one, and leaves a damage finding without its `region` ([backend worker 9](../backend/worker.md#9-the-per-call-schema-and-decoding)).
 - A jar test with `settled: false` produces no texture observation; the app keeps the task to photograph the jar again later.
-- The fallback worker sends the same per-call schema to the LLM API's structured-output feature, requesting `norm_1000` boxes, and relies on `max_tokens` and truncation where that feature ignores `maxLength` or `maxItems`.
+- The fallback worker sends the same per-call schema to the LLM API's structured-output feature. That feature compiles the schema to a grammar and **rejects with a `400`** the keywords it can't enforce: `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `minLength`, `maxLength`, `maxItems`, `minItems` above 1, `minProperties` and `maxProperties`, and it needs `additionalProperties: false` on every object. So the fallback adapter (and the plan writer, which uses the same feature) strips those keywords and adds `additionalProperties: false` before sending, then truncates strings and arrays and clamps numbers and boxes after decoding ([backend integrations 5](../backend/integrations.md#5-anthropic-messages-api)). Its boxes are `abs_px_prepared` (above). A reply cut off at its token limit, or a refusal, is a validation failure.
+- **The fallback's token budget** is 8,000 output tokens per call, for findings, indicators and guided checks alike, because the hosted model always thinks before it answers and its thinking counts toward the limit ([backend worker 17](../backend/worker.md#17-open-questions); open question 26).
 
 ---
 
@@ -1146,19 +1233,19 @@ interface Measurement {
 | `hole_diameter_mm` | `leaf_closeup`, `leaf_underside` | Holes at least 4 pixels across | A leaf mask and one such hole |
 | `hole_count` | `leaf_closeup`, `leaf_underside` | Leaves with a mask: each leaf's number of holes, of any size | A leaf mask |
 
-There is one observation per image and quantity. Its `region` is always present, so it names its image: the plant's box for height and canopy width, otherwise the box around the measured leaves. A quantity whose needs aren't met is not reported. The fallback worker's whole-image regions have no mask, so on the fallback path only height and canopy width can be measured.
+There is one observation per image and quantity. Its `region` is always present, so it names its image: the plant's box for height and canopy width, otherwise the box around the measured leaves. Each `value` is the **nearest-rank** median of its items (the value at rank ⌈n/2⌉ of the sorted items), every percentile in this section is nearest-rank, and `distance_m` is the median distance of the leaves (or the plant) that contributed ([backend vision 9](../backend/vision.md#confidence-and-aggregation)). A quantity whose needs aren't met is not reported. The fallback worker's whole-image regions have no mask, so on the fallback path only height and canopy width can be measured.
 
 **Geometry.** These definitions are part of the contract, so measurements stay comparable between versions of the code:
 
 - **Pixels to a plane.** A pixel (u, v) of the stored image is the ray K⁻¹ · (u, v, 1), with K the intrinsics scaled to the stored image, after the pixel is undistorted when `depth_meta.distortion` was sent. A point on a leaf is where that ray meets the leaf's plane.
 - **Depth inside a mask** is read only after the mask is shrunk by two depth pixels, because depth along an outline mixes the leaf with what lies behind it.
-- **Leaf plane:** fitted by RANSAC to the depth inside the shrunken mask, from pixels with medium or high depth confidence. Its residual is the RMS distance of the inliers to the plane.
+- **Leaf plane:** fitted by RANSAC to the depth inside the shrunken mask, from pixels with medium or high depth confidence. Its residual is the RMS distance of the inliers to the plane. RANSAC is deterministic: its random stream is ChaCha8 seeded with FNV-1a 64 of the image id and the region number, so measuring the same photo twice gives the same values ([backend vision 9](../backend/vision.md#deterministic-ransac)).
 - **Leaf length** is the longest distance between two points of the mask's outline projected onto the plane. **Leaf area** is the projected area of the mask.
 - **Spots** are connected groups of pixels inside a leaf mask that the `SpotSegmenter` marks as necrotic: brown, black or pale against the leaf's own green. Yellow pixels around them count toward `affected_area_pct`, never toward a spot's size, because sources give lesion sizes without the halo. A spot's diameter is that of the circle with its projected area. Spots under 4 pixels across are counted but not sized.
 - **Holes** are gaps enclosed by a leaf mask's outline, sized like spots. Holes under 4 pixels across are counted in `hole_count` but not sized.
 - **Ground plane.** Found first, among the confident depth points whose surface normal is within 15° of gravity. RANSAC is run repeatedly, removing each plane's inliers, and every plane with at least 5% of those points is a candidate. The **base** is estimated without the plant's points, so the rule isn't circular: the lowest 5% along gravity of the confident points inside the `plant` mask or box when segmentation gave one, otherwise inside the central third of the frame. The ground is the **highest candidate at or below the base**, allowing 5 cm above it where leaves touch the soil. So a raised bed's soil wins over the path beside it, and flat leaves (squash, lettuce) or a bench above the base are never ground. Points within 3 cm of it are ground, not plant. A whole-plant shot with no candidate at or below the base (the base is out of frame, or the plant is held up close) gets no height; its width can still be measured.
 - **Plant points** are the `plant` region's mask when it has one. Otherwise they are the connected depth layer around the centre of the frame (neighbouring depth pixels within 5 cm of each other), grown only through points that aren't ground, and kept inside the `plant` box when there is one. Without that step the layer would run into the ground at the base and measure the visible soil. **Height** runs along gravity from the ground plane to their 98th percentile; when a `plant` mask's lowest points sit more than 5 cm above the ground (a pot or a planter on a table), it runs from those points instead, so the pot isn't counted. Without a mask a pot counts as plant, which the confidence rules below cap at medium. **Canopy width** is their spread along the horizontal direction perpendicular to the line of sight, from the 2nd to the 98th percentile. The edge rules in the table above apply to the plant points after the ground is removed.
-- **Organism length** (`detail.length_mm`) is the longer side of the organism's box, at the median depth inside the box. It isn't corrected for tilt, and it is shown, never scored. `api` adds it when it stores the VLM findings, before their `finding` events are sent.
+- **Organism length** (`detail.length_mm`) is the longer side of the organism's box, at the median depth inside the box. It isn't corrected for tilt, and it is shown, never scored. The pipeline (inside `api`) adds it when it stores the VLM findings, before their `finding` events are sent; the `vision` crate computes it.
 
 **Confidence.** Each measurement is rated on the criteria that apply to it. Its band is the lowest that any criterion reaches, mapped to the VLM's values:
 
@@ -1170,7 +1257,7 @@ There is one observation per image and quantity. Its `region` is always present,
 | Plant region | A `plant` mask | The connected depth layer | Height and canopy width |
 | Depth map | Unfiltered, or with a confidence map | `filtered: true` without a confidence map | All |
 
-A measurement below medium on any criterion is low. Low measurements are shown but never answer an indicator and never enter the growth series. Without a `depth_confidence` map, every non-zero depth pixel counts as medium.
+A measurement below medium on any criterion is low. Low measurements are shown but never answer an indicator and never enter the growth series. Without a `depth_confidence` map, every non-zero depth pixel counts as medium. A leaf quantity pools several leaves, so it is rated on their **mean** coverage and **median** plane residual, with `distance_m` for the distance criterion ([backend vision 15](../backend/vision.md#15-open-questions)).
 
 **Measurable indicators.** Only a profile's discriminating indicators are asked, so only their `measure` (section 10) is used. Before a `vlm` or `verify` job is queued, `api` answers each measurable indicator of the job's candidates from the best measurement of its quantity (highest confidence, then largest `n`) that has medium confidence or more and comes from an image whose kind is in the indicator's `image_kinds`. The indicator's `stat` picks `value` (`median`), `max` or `min`. The margin m at each bound is 10% of the bound, but at least two stored-image pixels at the measured distance for lengths and diameters (2 × `distance_m` / `fx` metres, with `fx` in stored-image pixels: × 1000 for a quantity in mm, × 100 for one in cm), and at least 1 for counts:
 
@@ -1199,7 +1286,13 @@ interface WeatherSummary {
   fetched_at: Timestamp;
   location_precision: "exact" | "about_1_km" | "about_10_km" | "postal_code" | "city";
   current: { temp_c: number; rh_pct: number; wind_kmh: number; precip_mm_last_24h: number };
-  past_7_days: { precip_mm: number; mean_rh_pct: number; hours_rh_over_90: number };
+  past_7_days: {
+    precip_mm: number;
+    mean_rh_pct: number;
+    hours_rh_over_90: number;
+    longest_humid_run_days: number;  // 0–7: the longest run of consecutive humid days among the 7 local
+                                     // days before today; a humid day has the configured hours over 90%
+  };
   forecast: {
     date: LocalDate;
     t_min_c: number;
@@ -1207,7 +1300,8 @@ interface WeatherSummary {
     precip_mm: number;
     mean_rh_pct: number;
     hours_rh_over_90: number;
-    frost_risk: boolean;
+    frost_risk: boolean;             // the day's minimum at 2 m at or below the frost threshold, which is
+                                     // configuration (backend integrations 7; open question 27)
   }[];
   soil: {
     moisture_0_9cm_m3m3: number;
@@ -1218,12 +1312,16 @@ interface WeatherSummary {
 }
 ```
 
-`hours_rh_over_90` is the stand-in for leaf wetness, which Open-Meteo doesn't provide. Disease profiles state their wetness condition in the same unit (section 10).
+`hours_rh_over_90` is the stand-in for leaf wetness, which Open-Meteo doesn't provide. Disease profiles state their wetness condition in the same unit (section 10). `past_7_days.longest_humid_run_days` is computed from the same hourly history when the cell is fetched; it lets fusion count a humid stretch in the past week (section 9, crowding), which the 7-day total of hours can't show. Weather cached or stored before the field existed reads as 0.
+
+**Weather fit, triggers and fusion levels.** How `weather_fit` and the fusion risk levels are computed is defined in [backend knowledge 6](../backend/knowledge.md#6-weather-fit) and [backend pipeline 7](../backend/pipeline.md#7-score). The weather thresholds (frost, hard frost, heat, the humid day and humid stretch, heavy rain, after rain, dry soil) have one owner, [backend domain 7, weather thresholds](../backend/domain.md#weather-thresholds), read by `frost_risk`, every `TriggerKind` and fusion. Their numbers are configuration, not contract, and are confirmed in one place (open question 27). Defaults: frost at a 2 m minimum ≤ 0.5 °C, hard frost ≤ −2 °C, heat ≥ 30 °C, a humid day of ≥ 10 hours over 90%, a humid stretch of 2 humid days in a row, heavy rain ≥ 20 mm a day, after rain ≥ 5 mm in 24 h, dry soil below 0.15 m³/m³ at 0–9 cm with ET₀ ≥ 3 mm.
 
 **Fetching and caching.** Scans and the scheduler use the same `WeatherSummary`, fetched and cached the same way:
 
 - The cache key is a **cache cell**: the garden's stored coordinates rounded to 0.01° (about 1 km, the resolution of the weather models), plus the hour. Gardens stored at about 10 km, by postal code or by city already share their coordinates.
-- A scan reads its garden's cell and fetches only on a miss.
+- The cache holds the cell's weather without `location_precision`, which belongs to a garden, not a cell; the API adds the garden's precision when it builds a scan's or a garden's `WeatherSummary`.
+- Open-Meteo has soil moisture at 0–1, 1–3, 3–9, 9–27 and 27–81 cm. `moisture_0_9cm_m3m3` is their depth-weighted mean over the top three layers, (1 × m₀₋₁ + 2 × m₁₋₃ + 6 × m₃₋₉) / 9; `moisture_9_27cm_m3m3` and `temp_6cm_c` map directly.
+- A scan reads its garden's cell and fetches only on a miss. If that fetch fails, the run fails with `upstream_unavailable`, which can be resubmitted (section 3); it never continues without weather.
 - The scheduler groups all gardens by cell, fetches each cell **once**, and sends the missing cells to Open-Meteo in multi-location requests (comma-separated `latitude` and `longitude`) of at most 50 cells. Open-Meteo's fair-use limit counts each location in such a request, so the quota saving comes from fetching each cell once; the batching saves round trips.
 - The scheduler then evaluates every garden's trigger rules from its cell's summary, so scans in the same hour reuse what the scheduler fetched.
 - A failed multi-location request is retried once, then its cells are fetched one by one; a cell that still fails skips its gardens until the next run.
@@ -1397,7 +1495,7 @@ A step's task belongs to the step's `plant_id` when it has one, otherwise to the
 
 When a plan is **superseded**, the system dismisses its open tasks (`dismissed_reason: "plan_superseded"`) and removes its trigger rules, so the user never sees steps from an outdated diagnosis. The new plan creates its own tasks.
 
-**Plan validation.** The plan writer's output is checked before it is stored. A plan that fails is sent back to the plan writer once with the reasons, then stored without the failing steps:
+**Plan validation.** The plan writer's output is checked before it is stored. A plan that fails is sent back to the plan writer once with the reasons, then stored without the failing steps. After that retry, a failing `watch_for` item is dropped too, and a failing `summary` is replaced by a fixed sentence, so the plan is still stored ([backend agent 18](../backend/agent.md#18-open-questions)):
 
 | Rule | Check |
 |---|---|
@@ -1412,15 +1510,15 @@ When a plan is **superseded**, the system dismisses its open tasks (`dismissed_r
 
 **The dose check.** Case-insensitive, with word boundaries (`\b`) around every unit, so "2 lowest leaves" or "3 large leaves" don't match. A text fails when it contains:
 
-- a quantity followed by a measure: the quantity is a number (`2`, `0.5`, `1/2`, `½`, `¼`) or a number word (`one` … `twenty`, `half`, `a`, `an`), and the measure is one of `ml`, `millilitre(s)`, `milliliter(s)`, `l`, `litre(s)`, `liter(s)`, `fl oz`, `oz`, `ounce(s)`, `pint(s)`, `quart(s)`, `gallon(s)`, `gal`, `g`, `gram(s)`, `kg`, `mg`, `lb(s)`, `pound(s)`, `tbsp`, `tablespoon(s)`, `tsp`, `teaspoon(s)`, `spoonful(s)`, `cup(s)`, `drop(s)`, `capful(s)`, `pinch(es)`, `ppm`. The everyday words `drop`, `cup`, `spoonful`, `capful` and `pinch` count only when `of` follows within three words ("a drop of soap", "two cups of water"), so "a drop in temperature" and "leaves curl into a cup" pass;
-- "a few drops", "a splash" or "a squirt" followed by `of` within three words;
+- a quantity followed by a measure: the quantity is a number (`2`, `0.5`, `1/2`, `½`, `¼`) or a number word (`one` … `twenty`, `half`, `a`, `an`), and the measure is one of `ml`, `millilitre(s)`, `milliliter(s)`, `l`, `litre(s)`, `liter(s)`, `fl oz`, `oz`, `ounce(s)`, `pint(s)`, `quart(s)`, `gallon(s)`, `gal`, `g`, `gram(s)`, `kg`, `mg`, `lb(s)`, `pound(s)`, `tbsp`, `tablespoon(s)`, `tsp`, `teaspoon(s)`, `spoonful(s)`, `cup(s)`, `drop(s)`, `capful(s)`, `pinch(es)`, `ppm`. The everyday words `drop`, `cup`, `spoonful`, `capful` and `pinch` count only when `of` is one of the next three words ("a drop of soap", "two cups of water", "a cup or so of milk"), so "a drop in temperature" and "leaves curl into a cup" pass;
+- "a few drops", "a splash" or "a squirt" with `of` among the next three words;
 - a rate: `per litre`, `per liter`, `per gallon`, `/l`, `/gal`, `ml/l`, `g/l`;
 - a ratio: `\d+\s*:\s*\d+`; "<quantity> part(s) … to <quantity> part(s)" ("one part soap to ten parts water"); or "<quantity> part(s) … to <quantity>" and "<quantity> in <quantity>" in a sentence that also contains a product name or a mixture word ("mix 1 in 10 with water"). In ratios a quantity is a number or `one` … `twenty`, never `a`, `an` or `half`, so "cut a part of the stem back to a healthy bud", "plant one in a pot" and "remove one in three canes" pass;
 - a percentage in the same sentence as a product name or a mixture word: "a 2% soap spray" fails; "more than 50% of the leaves" and "above 90% humidity" pass.
 
-The mixture words are `solution`, `mix`, `mixture`, `spray`, `dilute`, `concentration`.
+The mixture words are `solution`, `mix`, `mixture`, `spray`, `dilute`, `concentration`, matched with their inflections (`solutions`, `mixes`, `mixed`, `mixing`, `mixtures`, `sprays`, `sprayed`, `spraying`, `dilutes`, `diluted`, `diluting`, `dilution`, `concentrations`), so a rewording doesn't slip past the condition. The product names are the list in the plan validation table above, with the British spelling `sulphur` beside `sulfur` and plurals allowed, plus every name in `products.yaml` ([backend agent 4](../backend/agent.md#4-the-dose-check), [agent 5](../backend/agent.md#5-sentences-and-products)).
 
-Time, spacing and measured sizes ("2 weeks", "every 3 days", "10 cm apart", "30 cm deep", "spots about 2 mm across") don't match any measure and pass. Three known false positives: "1 gallon sprayer"; clock times such as "10:30", which match the ratio form; and a measured share in a sentence with a mixture word ("spots cover 12% of the leaf, so spray…"). The plan writer and the chat prompt are told to describe equipment without sizes, to write times of day in words ("early morning"), and to give measured shares in a sentence of their own.
+Time, spacing and measured sizes ("2 weeks", "every 3 days", "10 cm apart", "30 cm deep", "spots about 2 mm across") don't match any measure and pass. Four known false positives: "1 gallon sprayer"; clock times such as "10:30", which match the ratio form; a measured share in a sentence with a mixture word ("spots cover 12% of the leaf, so spray…"); and "a drop in temperature of 5 °C", where `of` is among the next three words. The plan writer and the chat prompt are told to describe equipment without sizes, to write times of day in words ("early morning"), and to give measured shares in a sentence of their own.
 
 The same check runs on **everything the chat model writes**, whatever the question's route (section 8), because a routine care question can still get a dose in its answer:
 
@@ -1501,7 +1599,7 @@ interface ConversationDetail extends Conversation {
 | `POST /conversations` | `CreateConversationRequest` | `201 Conversation` |
 | `GET /conversations?garden_id=&anchor_type=&anchor_id=` | | `200 Page<Conversation>`, the caller's own, newest `last_message_at` first |
 | `GET /conversations/{id}` | | `200 ConversationDetail` |
-| `POST /conversations/{id}/images` | `multipart/form-data` with `file` | `201 { image_id: Id, url: string }`. Same checks as scan uploads; depth parts are ignored |
+| `POST /conversations/{id}/images` | `multipart/form-data` with `file` | `201 { image_id: Id, url: string }`. Same checks as scan uploads except the quality gate, which chat images skip; depth parts are ignored |
 | `GET /conversations/{id}/images/{image_id}` | | The image, through its signed URL |
 | `POST /conversations/{id}/messages` | `SendMessageRequest` | An SSE stream (below) |
 | `POST /messages/{id}/feedback` | `{ rating: "up" \| "down", notes?: string }` | `204`, owner only, assistant messages only |
@@ -1520,7 +1618,9 @@ interface SendMessageRequest {
 - Errors **before** the stream starts (auth, budget, validation) are ordinary HTTP errors with the section 2 body.
 - Errors **after** it starts arrive as an `error` event, and the stream ends.
 - Every assistant sentence passes the dose check (section 7) before it is streamed, and every string the model writes into a tool call passes it before the tool runs.
-- The stream is **not resumable**: events have no `id:` line. If the client disconnects, the server stops the LLM call and stores the message with `interrupted: true`; the app shows it with a "resend" action, which sends a new `Idempotency-Key`.
+- The stream is **not resumable**: events have no `id:` line. If the client disconnects, the server stops the LLM call and stores the message with `interrupted: true`; the app shows it with a "resend" action, which sends a new `Idempotency-Key`. A turn that ends with an `error` event is stored with `interrupted: true` too, since it never reached `message_completed`.
+- `memory_saved` from the automatic memory extraction is sent **before** `message_completed`, so completion waits for the memory gate and the extraction (about one call to the cheapest model).
+- **Model thinking** blocks are replayed unchanged only within one turn's tool loop. The context is rebuilt every turn (architecture 7), so earlier turns are sent to the model as text only ([backend agent 18](../backend/agent.md#18-open-questions)).
 
 | `event` | `data` |
 |---|---|
@@ -1605,27 +1705,35 @@ interface Memory {
 
 Because the plan writer reads only shared memories, a plan that every member sees never quotes something a member said in a private chat. `evidence_basis.user_input` lists only shared memories.
 
+A memory's text is embedded in document mode when it is written, and `search_memory`'s query in query mode (section 10, chunk embeddings).
+
 ### Tool return shapes and scope
 
-The agent's tools return the same records the app sees. Every tool runs as the session user, inside the conversation's garden. Viewers and reviewers get only the read tools.
+The agent's tools return the same records the app sees. Every tool runs as the session user, inside the conversation's garden. Viewers and reviewers get only the read tools. **No tool takes a garden id**: identity and scope come from the session, never from the model (architecture 11), so the garden is always the conversation's ([backend agent 12](../backend/agent.md#12-tools)).
 
-| Tool | Scope | Returns |
-|---|---|---|
-| `get_scan` | Scans of the garden | `ScanDetail` without image URLs |
-| `view_image` | The garden's scan images and this conversation's own images, nothing else | The image to the model; `{ ok: true }` to the log |
-| `get_forecast` | The garden | `WeatherSummary["forecast"]` |
-| `search_memory` | Shared memories of the garden, plus the caller's own chat memories | `Memory[]` |
-| `find_similar_cases` | Scans of the garden | `{ scan_id: Id; created_at: Timestamp; primary?: { problem_id: Slug; name: string }; similarity: number; thumbnail_image_id?: Id }[]`, at most 5 |
-| `search_knowledge` | Knowledge base | `{ text: string; citation: Citation }[]` |
-| `get_species_profile`, `get_disease_profile`, `get_organism_profile` | Knowledge base | The seed records of section 10 |
-| `compare_lookalikes` | Knowledge base | `{ problem_id: Slug; name: string; how_to_tell: string }[]` |
-| `get_soil_profile` | The garden | `{ soil_profile: SoilProfile \| null; latest: WeatherSummary["soil"]; texture?: Observation }` |
-| `get_plant_measurements` | Plants of the garden | `MeasurementPoint[]` (section 9): the latest 50, oldest first |
-| `get_garden_map` | The garden | `{ map: GardenMap \| null; neighbours: Record<Id, Id[]> }` (section 9) |
-| `list_tasks` | The garden | `Task[]` |
-| `remember` | The garden | `Memory` with `source: "chat"`, and a `memory_saved` event |
-| `request_rescan` | Plants of the garden | `{ plant_id: Id; photo_kind: ImageKind; instructions: string }`, and a `rescan_requested` event |
-| `create_task`, `complete_task`, `revise_plan` | The garden; editors and owners only | `PendingAction` |
+| Tool | Arguments | Scope | Returns |
+|---|---|---|---|
+| `get_scan` | `scan_id` | Scans of the garden | `ScanDetail` without image URLs |
+| `view_image` | `image_id`, `scan_id?`, `region?` | With `scan_id`: an image of that scan of the garden. Without: one of this conversation's own images. Nothing else | The image, or a crop of it, to the model; `{ ok: true }` to the log |
+| `get_forecast` | `days` (1–14) | The garden | `WeatherSummary["forecast"]` |
+| `search_memory` | `query`, `plant_id?` | Shared memories of the garden, plus the caller's own chat memories | `Memory[]` |
+| `find_similar_cases` | `image_id` | Scans of the garden | `{ scan_id: Id; created_at: Timestamp; primary?: { problem_id: Slug; name: string }; similarity: number; thumbnail_image_id?: Id }[]`, at most 5 |
+| `search_knowledge` | `query`, `topic?` (a `ChunkSeed` topic) | Knowledge base | `{ text: string; citation: Citation }[]` |
+| `get_species_profile` | `species` | Knowledge base | `{ profile: SpeciesSeed; susceptible_to: Slug[] }`: the problems it is `susceptible_to` |
+| `get_disease_profile` | `disease` | Knowledge base | `{ profile: ProblemSeed; treatments: TreatmentSeed[] }` |
+| `get_organism_profile` | `organism` | Knowledge base | `{ profile: OrganismSeed; preys_on: { organism_id: Slug; name: string }[] }` |
+| `compare_lookalikes` | `disease` | Knowledge base | `{ problem_id: Slug; name: string; how_to_tell: string }[]` |
+| `get_soil_profile` | none | The garden | `{ soil_profile: SoilProfile \| null; latest: WeatherSummary["soil"]; texture?: Observation }`. `texture` is the latest guided check of the conversation's scan, so only scan conversations get one |
+| `get_plant_measurements` | `plant_id`, `quantity?` | Plants of the garden | `MeasurementPoint[]` (section 9): the latest 50, oldest first |
+| `get_garden_map` | none | The garden | `{ map: GardenMap \| null; neighbours: Record<Id, Id[]> }` (section 9) |
+| `list_tasks` | `state?`: `open` (default), `done` or `dismissed` | The garden | `Task[]` |
+| `remember` | `fact`, `plant_id?` | The garden | `Memory` with `source: "chat"`, and a `memory_saved` event |
+| `request_rescan` | `plant_id`, `photo_kind`, `instructions` | Live plants of the garden | `{ plant_id: Id; photo_kind: ImageKind; instructions: string }`, and a `rescan_requested` event |
+| `create_task` | `title`, `detail?`, `plant_id?`, `due?`, `repeat_every_days?` | The garden; editors and owners only | `PendingAction` (preview `task`) |
+| `complete_task` | `task_id` | An open task of the garden; editors and owners only | `PendingAction` (preview `task` with `done_at`) |
+| `revise_plan` | `scan_id`, `summary`, `changed_steps`, `removed_step_ids`, `constraints` | The current plan of that scan of the garden; editors and owners only. A plant or garden conversation has no single current plan, so the scan is named | `PendingAction` (preview `plan`), after full plan validation |
+
+**Tool arguments are strict.** A call with a field the tool doesn't know, or a malformed id, is refused before the tool runs, and the model gets the reason as an error result, so it can correct the call; a misspelt optional argument is never silently ignored. An id that names nothing the tool may see is answered like a `404` ("No such image").
 
 ---
 
@@ -1637,7 +1745,7 @@ The agent's tools return the same records the app sees. Every tool runs as the s
 interface GardenLocationInput {
   lat?: number;                      // with location consent
   lon?: number;
-  precision?: "exact" | "about_1_km";
+  precision?: "exact" | "about_1_km";  // default "exact" when lat and lon are sent without it
   postal_code?: string;              // without consent; geocoded once
   city?: string;                     // without consent, instead of a postal code: "Guelph, ON"; geocoded once
 }
@@ -1665,6 +1773,21 @@ interface Garden {
 | `DELETE /gardens/{id}` | owner | | `202`; the cascade below runs in the background. The other members get a `garden_deleted` push (push notifications, below) |
 | `GET /gardens/{id}/weather` | any | | `200 { weather: WeatherSummary }`: the garden's weather cache cell for the current hour (section 7, fetching and caching), fetched on a miss exactly as a scan does. `503 upstream_unavailable` when the fetch fails |
 
+**Geocoding.** A location is geocoded once, when the garden is created or its location changes, and cached ([backend integrations 9](../backend/integrations.md#9-geocoding)):
+- a full Canadian postal code goes to Nominatim, then, if it finds nothing, to Zippopotam by its forward sortation area (the first 3 characters);
+- a bare forward sortation area (`A1A`) goes to Zippopotam only; Zippopotam can be switched off by configuration, and a bare area is then refused (open question 38);
+- a city goes to Open-Meteo's geocoder, limited to Canada;
+- GPS coordinates get their `location_label` from Nominatim's reverse lookup at 0.01° (open question 37);
+- the time zone comes from the coordinates, offline, unless Open-Meteo's geocoder gave one.
+
+A location that can't be geocoded gets `400 invalid_request` with `details.field` naming the input (`location.postal_code`, `location.city` or `location.lat`).
+
+**The soil profile.** SoilGrids is fetched in the background. Any failure sets `soil_profile_status: unavailable`, and the scheduler retries:
+- after a provider outage (timeout, connection error, `5xx`, `429`), every 15 minutes;
+- after **no data** at the location (SoilGrids answers null at the garden's point and at every nearby point it probes, 2 km and 5 km away, which is typical in cities), after 7 days, because a null pixel doesn't change on a quick retry.
+
+The app shows both the same way: the garden has no soil profile yet, and the pipeline runs without baseline soil properties ([backend integrations 8](../backend/integrations.md#8-soilgrids)).
+
 ### Members and invites
 
 Members join with **invite codes**, so the system never stores or looks up email addresses.
@@ -1684,7 +1807,7 @@ interface Invite {
   id: Id;
   code: string;                      // 26 random base32 characters (128 bits); shared as a link
   role: "owner" | "editor" | "viewer" | "reviewer";
-  created_by: Id;
+  created_by?: Id;                   // absent once that user is deleted (the link is unset, database 4)
   expires_at: Timestamp;             // 7 days
 }
 ```
@@ -1808,6 +1931,8 @@ interface GardenMap {
 | A `pending` scan (`DELETE /scans/{id}`, section 3) | Its images with their depth maps, its guided checks with their observations and events, conversations anchored to it, and the tasks naming it (`Task.scan_id`) | Its guided jobs are cancelled |
 | A garden | Everything under `gardens/{garden_id}/` in RustFS, and every record of the garden: plants (as above), tasks, memories, conversations, invites, memberships, the garden map | All its jobs are cancelled, and every step claim and question step cleared |
 
+A deletion interrupted by a restart is resumed from its first step for every target still marked `deleting_at`. A garden's objects are deleted again by prefix; a resumed plant's or scan's objects, whose keys are gone with their records, are left to the daily orphan sweep, which deletes objects no record points to ([backend api 17](../backend/api.md#17-deletion); open question 41). A member's removal leaves no marker yet, so it can't be resumed (open question 30).
+
 ### Tasks
 
 | Endpoint | Role | Body | Response |
@@ -1852,7 +1977,7 @@ Nothing else is pushed: a guided check that doesn't change the plan, a dropped p
 
 ### Auth webhook
 
-`POST /webhooks/auth`, from Clerk, delivered through Svix. The adapter verifies the `svix-id`, `svix-timestamp` and `svix-signature` headers against the endpoint's signing secret before parsing the body, rejects a timestamp more than 5 minutes old, and maps Clerk's `user.created` and `user.deleted` events to:
+`POST /webhooks/auth`, from Clerk, delivered through Svix. The adapter verifies the `svix-id`, `svix-timestamp` and `svix-signature` headers against the endpoint's signing secret before parsing the body, and maps Clerk's `user.created` and `user.deleted` events to:
 
 ```ts
 interface AuthWebhookEvent {
@@ -1861,6 +1986,15 @@ interface AuthWebhookEvent {
 }
 // 204, idempotent: a repeated event changes nothing
 ```
+
+| Delivery | Response |
+|---|---|
+| A bad signature, or a `svix-timestamp` more than 5 minutes away from now in either direction | `401 unauthenticated` |
+| `user.deleted` | `204`; the account deletion cascade runs (architecture 5) |
+| `user.created` | `204` and nothing else. The `user` record is created by the user's first authenticated request instead, because Clerk doesn't guarantee event order and a late `user.created` must never recreate a deleted user |
+| An event type the adapter doesn't handle, or a body it can't read after a good signature | `204`: Svix retries anything else, and the body would never parse |
+
+([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions))
 
 ### Ops
 
@@ -2036,7 +2170,9 @@ interface SpeciesSeed {
     notes?: string;
   };
   classifier_supported: boolean;     // checked against classifier_labels.yaml at ingestion
-  bioclip_label: string;             // the text prompt BioCLIP scores against
+  bioclip_label: string;             // the class text BioCLIP's prompt templates wrap ("a photo of {label}."):
+                                     // "<scientific name> with common name <common name>", e.g.
+                                     // "Solanum lycopersicum with common name tomato"
   sources: Slug[];                   // may be empty for label_only
   reference_images?: {               // at most 3, for the species confirmation card
     file: string;                    // under ml/knowledge/seed/images/, e.g. "species/tomato-1.jpg"
@@ -2055,7 +2191,8 @@ interface OrganismSeed {
   recognition: string;               // how to recognise it in a photo
   preys_on?: Slug[];                 // beneficial → pest edges
   reporting_url?: string;            // required when role is "invasive"
-  bioclip_label: string;
+  bioclip_label: string;             // same form as for species; a life stage names it:
+                                     // "Coccinellidae larva with common name ladybug larva"
   sources: Slug[];
   reviewed_by: string;
 }
@@ -2112,7 +2249,9 @@ interface SoilProfile {              // garden.soil_profile, from SoilGrids
 
 A treatment's safety note is not seeded: the server adds the same fixed note to every chemical step (section 7).
 
-Chunk embeddings are not stored in the seed. They are computed at load time with the pinned text-embedding model (architecture section 10), so changing the model re-embeds every chunk from the same text.
+Chunk embeddings are not stored in the seed. The Python loader computes them when it generates the migration, with the same pinned ONNX file `api` uses for queries (architecture section 10), so changing the model re-embeds every chunk from the same text. The model has two modes: knowledge chunks and memories are embedded in **document** mode, with no prefix, and chat questions and search queries in **query** mode, with the model's query prefix, so a query and the passages it should find are embedded as the model was trained ([backend vision 10](../backend/vision.md#10-the-text-embedder)).
+
+`classifier_labels.yaml` is written by training, into `ml/knowledge/seed/`, in the same pull request as the classifier it describes. The loader validates it, loads the `classifier_label` rows keyed by `[model_version, index]`, and uses `model_version` as the `classifier_labels_version`. It computes `label_set_version` from the BioCLIP model revision, its prompt templates and the label list.
 
 `soil_conditions.yaml` holds a description for each `SoilAspect` and value (section 6), with what to do and its sources.
 
@@ -2158,19 +2297,51 @@ The contracts changed these parts of the architecture document, which has been u
 | What the screens need: thumbnails, garden weather, the species list with reference photos, prey of beneficials, `low_evidence`, a task's scan, the push payload, stream closing with a guided check running, quality hints, a city as location, `retryable` on `429`s, deleting a pending scan, Clerk and Svix | 3, 4, 5, 6.1, 6.2, 6.5, 8.1, 8.3, 8.5, 9, 12, 13, 15 |
 | The v0.8 audit: event URLs signed when sent, the stream kept open for any running guided check, the narrower `low_evidence`, photo credits on candidates, `TimelineEntry.failure_code`, push coverage, feedback after submit, jar-test tasks deleted with a pending scan, and the knowledge photo upload on the control plane | 3, 5, 6.1, 8.1, 12 |
 | The third audit: a failed scan supersedes its question and keeps a late guided check for a resubmit, `POST /tasks` checks its scan, species photos computed when read and keyed by a content hash, the loader's `seed-upload` container before `api`, and `low_evidence`'s threshold | 3, 5, 6.1, 8.4, 9, 12 |
+| v0.9: the models of docs/vision (Qwen3-VL-class VLM with 32-pixel cells and `norm_1000` corner boxes, RF-DETR leaf detector, a disease head on BioCLIP 2, arctic-embed-xs text embeddings), the RX 9070 XT as a second VLM worker with its own `VLM_SLOTS`, the same checkpoint on every VLM worker, the `model_versions` keys, per-model perception batch caps, one SAM prompt per box, the plant check, the classifier on close-ups only, vLLM's `response_format`, the fallback's stripped schema keywords and its box format, `unknown_label_version`, ONNX Runtime 1.31 on CUDA 13, and the `integrations` crate | 2, 3, 6.1, 6.2, 6.5, 8.4, 10, 12, 13, 15 |
+| v0.10: the backend's decisions: the `integrations` crate and `knowledge` without a `store` dependency, the auth webhook that only deletes users, the error rules (unknown fields, malformed ids, timeouts as `503`, oversized JSON, geocoding), the job error codes and the label-version rule, no lease hand-back, kind-filtered claims, the writer's lifecycle and a held step claim keeping the stream open, photos without depth at 1600 px, the hosted model's size cap, token budget and rejected keywords, the chat tools without garden arguments, thinking replayed within a turn, SoilGrids retry rules, weather failure failing the run, embedding modes, the evidence fields kept server-side, the past week's longest humid run and the weather thresholds' one owner | 3, 4, 5, 6.1, 6.4, 6.7, 6.8, 7, 8.1, 8.2, 8.3, 8.4, 8.5, 10, 11, 12, 15 |
 
 ---
 
 ## 12. Open questions
 
-1. **`VLM_MAX_PIXELS`** for the VLM: around 1 megapixel per image keeps 4 images within context and VRAM on the 5070 Ti. Measure on day 2, with whether vLLM's structured-output backend enforces `maxLength` and `maxItems`.
-2. **Certainty mapping** for VLM answers (0.4 / 0.65 / 0.85): calibrate against the evaluation set on Oct 24.
-3. **Diagnosis margin:** how far the top candidate must lead the second to count as `confirmed`. Set from the evaluation set.
+1. **`VLM_MAX_PIXELS`** for the VLM: it starts at 1,003,520 pixels (about 980 tokens per image), which keeps 4 images within context and VRAM on a 16 GB card. Measure on day 2 on both VLM cards, and confirm in practice that xgrammar enforces `maxLength`, `maxItems` and the integer bounds, as its source says.
+2. **Certainty mapping** for VLM answers (0.4 / 0.65 / 0.85): calibrate on the evaluation set's development split on Oct 22–23, within each band (section 6); Oct 24 is the single scoring on the test split. Whether measurements' confidence values should move with the VLM's when calibration moves them, as section 7 ties them, is decided then.
+3. **Diagnosis margin:** how far the top candidate must lead the second to count as `confirmed`. Set from the evaluation set. Until then the pipeline's default is 2, one weight-2 indicator ([backend knowledge 12](../backend/knowledge.md#12-open-questions)).
 4. **Indicator weights** of 1–3: enough resolution, or does scoring need finer weights?
 5. **Expiry times:** pending actions 24 hours, invites 7 days, signed URLs 15 minutes.
 6. **Species-change window:** re-running only the plant's most recent scan from the last 24 hours.
 7. **Daily scan limit** of 30 per user, and whether the fallback worker needs its own spending cap.
 8. **HEIC decoding** in the Rust image pipeline (libheif bindings): confirm on day 1; until then, the app converts HEIC to JPEG before upload.
-9. **`VLM_SLOTS`**: 2 if the day-2 benchmark shows that two `vlm` jobs of 4 images each fit the 5070 Ti's KV cache next to the model at `VLM_MAX_PIXELS`, and that a job's p95 time with two running stays under half its `max_runtime` (2.5 minutes); otherwise 1. Measure alongside open question 1, with `PERCEPTION_MAX_BATCH` on the 3070.
+9. **`VLM_SLOTS`**, per VLM worker: 2 if the day-2 benchmark shows that two `vlm` jobs of 4 images each fit that card's KV cache next to the model at `VLM_MAX_PIXELS`, and that a job's p95 time with two running stays under half its `max_runtime` (2.5 minutes); otherwise 1. Measured separately on the 5070 Ti and the 9070 XT, alongside open question 1, with `PERCEPTION_MAX_BATCH` and the per-model caps on the 3070.
 10. **Measurement thresholds:** the indicator margin (10% of the bound, at least two pixels), the confidence rules (60% coverage, 5 mm residual), the spot colour thresholds, the smallest sized spot (4 pixels) and the stored size of photos with depth (a long side of at least 2048 pixels), the growth noise floor (2 cm or 5%), the crowding factor (0.75) and `NEIGHBOUR_RADIUS_M` (1.5 m). Set from LiDAR photos in the evaluation set.
 11. **LiDAR capture:** the shortest distance at which LiDAR depth is reliable, the depth map's size from the LiDAR depth camera, whether unfiltered depth keeps its holes, and whether the photo and its depth carry lens distortion (which decides whether `DepthMeta.distortion` is sent). Day-1 check; the distance sets the leaf kinds' valid range and the close-up distance hint. If AVFoundation's path fails the check, capture moves to ARKit's scene depth, which also sends `depth_confidence`.
+12. **Timestamp precision.** **Settled (v0.10):** whole seconds on the wire (`2026-10-18T14:03:22Z`), full precision in the database (section 1, wire format) ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions), [store 21](../backend/store.md#21-decisions-on-open-questions)).
+13. **Unknown fields in app requests.** **Settled (v0.10):** `400 invalid_request` with `details.field` naming the JSON path; the API is deployed before an app that sends a new field; worker traffic ignores unknown fields both ways (section 1, versioning). The agent's tool arguments are strict in the same way (section 8) ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions), [agent 18](../backend/agent.md#18-open-questions)).
+14. **A malformed ID.** **Settled (v0.10):** in a path, `404 not_found`, like an unknown ID; in a body or query, `400 invalid_request` naming the field (section 2) ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions)).
+15. **Oversized non-image bodies.** **Settled (v0.10):** an app's JSON body over 1 MiB gets `400 invalid_request` with `field: "body"` and the limit in the message; `413 upload_too_large` stays for images (section 2) ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions)).
+16. **`405`, `408` and `504`.** **Settled (v0.10):** a method a route doesn't have gets `404 not_found` without `Allow`; `408` and `504` are never produced, and a timeout answers as in 17 (section 2) ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions)).
+17. **Timeouts and `retryable`.** **Settled (v0.10):** a request past the API's timeout gets `503 upstream_unavailable` with `upstream: "api"`, `retryable: true`, `retry_after_s: 5`; a chat model timeout mid-stream is an `error` event with `upstream_unavailable` (section 2) ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions), [agent 18](../backend/agent.md#18-open-questions)).
+18. **Job error codes.** **Settled (v0.10):** `unsupported_version` and `unknown_label_version` (not retryable), `model_error` (retryable, except when the adapter can't do the kind), `image_fetch_failed` and `max_runtime_exceeded` (retryable); a result that doesn't decode for the job's kind is `model_error`, retryable (section 5, `JobErrorCode`) ([backend worker 16](../backend/worker.md#16-decisions-on-the-contracts-open-questions), [pipeline 17](../backend/pipeline.md#17-open-questions-and-decisions)).
+19. **Is `unsupported_version` retryable?** **Settled (v0.10):** no; a newer worker gets the job only after a requeue (section 5) ([backend worker 16](../backend/worker.md#16-decisions-on-the-contracts-open-questions)).
+20. **Lease hand-back at shutdown.** **Settled (v0.10):** no hand-back call; a stopping worker's leases are requeued when its heartbeat is 30 seconds stale or the lease expires (section 5, leases) ([backend worker 16](../backend/worker.md#16-decisions-on-the-contracts-open-questions), [store 21](../backend/store.md#21-decisions-on-open-questions)).
+21. **An unknown job `kind`.** **Settled (v0.10):** the claim filters by the kinds the worker's `caps` cover; one that slips through, or a payload the worker can't read, is completed `failed` with `unsupported_version`, not retryable (section 5) ([backend worker 16](../backend/worker.md#16-decisions-on-the-contracts-open-questions)).
+22. **The per-scan event writer's lifecycle.** **Settled (v0.10):** the writer starts on the first event and retires after 60 seconds idle with its queue drained; the broadcast channel is removed when it has no receivers, the plan lock when nobody holds or waits for it; `seq` comes from the event's transaction, so correctness doesn't depend on these lifetimes (section 4, transport) ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions), [pipeline 17](../backend/pipeline.md#17-open-questions-and-decisions)).
+23. **A missing `X-Lease-Token`.** **Settled (v0.10):** `400 invalid_request` with `field: "X-Lease-Token"`; a wrong or stale token stays `409 lease_lost` (sections 1 and 2) ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions)).
+24. **Auth webhook failures.** **Settled (v0.10):** `401 unauthenticated` for a bad signature or a timestamp more than 5 minutes away in either direction; `204` for an unhandled event type or an unreadable signed body; `user.created` is a no-op and the user record is created by the first authenticated request, which narrows architecture 4 (section 9, auth webhook) ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions)).
+25. **The RX 9070 XT's VLM server:** vLLM on ROCm (`vllm-openai-rocm` v0.31.0, built for gfx1201) is proposed; llama.cpp with Vulkan is the fallback if the day-1 check fails. Whichever runs there, it serves the same checkpoint as the 5070 Ti: if the block-FP8 checkpoint doesn't run on gfx1201, both cards serve the 4-bit AWQ one. On day 2, its boxes and indicator answers on 10 evaluation photos are compared with the 5070 Ti's ([backend worker](../backend/worker.md)).
+26. **The fallback's box format:** `abs_px_prepared`, from the hosted LLM's documentation; one live call on day 2 confirms it before the fallback's organism boxes are trusted. The same call confirms the list of schema keywords the hosted API rejects (section 6), which also comes from its documentation, and the day-2 run measures whether calls with the 8,000-token thinking budget finish within the fallback's doubled `max_runtime` ([backend integrations 17](../backend/integrations.md#17-open-questions), [worker 17](../backend/worker.md#17-open-questions)).
+27. **Weather and trigger thresholds.** The contracts fix the trigger vocabulary (`TriggerKind`) and the weather-fit values, not their numbers. The backend authors wrote different definitions: the frost threshold differs between the forecast's `frost_risk` and the frost alert rule, and the humid stretch differs between the alert rule and the fusion rule (two humid days in a row, or a count of hours over 90%). Give each threshold (frost, heat, humid stretch, heavy rain, after rain, dry soil, root-rot soil moisture, the weather-fit day counts and the fusion levels) one definition and one owner, and confirm the numbers from the evaluation set with open question 10. The weather thresholds now have one definition and one owner, [backend domain 7, weather thresholds](../backend/domain.md#weather-thresholds) (frost ≤ 0.5 °C at 2 m, hard frost ≤ −2 °C, heat ≥ 30 °C, a humid day ≥ 10 h over 90%, a humid stretch 2 such days in a row, forecast or in the past week, heavy rain ≥ 20 mm, after rain ≥ 5 mm in 24 h, dry soil < 0.15 m³/m³ with ET₀ ≥ 3 mm); the weather-fit day counts and fusion levels are in [knowledge 6](../backend/knowledge.md#6-weather-fit) and [pipeline 7](../backend/pipeline.md#7-score). The numbers still need confirming from the evaluation set.
+28. **Empty candidate sets.** A `label_only` species with no classifier result has no candidates, so "every candidate has at least 2 of its 3 indicators answered `no`" holds vacuously. The backend reads it as never `healthy` without the classifier's own `healthy` result, so such a scan is `uncertain`. Confirm ([backend knowledge 12](../backend/knowledge.md#12-open-questions)).
+29. **A plan-writer outage on a run's first plan** fails the scan with `upstream_unavailable` (section 3 lists "LLM API down"), which the user can resubmit. The alternative is to keep the scan `diagnosed` and let the sweep retry the `plan` step every 5 minutes, as it already does for a failing re-plan ([backend pipeline 17](../backend/pipeline.md#17-open-questions-and-decisions)).
+30. **Resuming a member's removal.** Deletions resume after a restart from the records marked `deleting_at`, but a member's removal leaves no marker: its `member_of` row is already gone when the cascade runs. A small pending-removal record (garden, user) would make it resumable ([backend store 22](../backend/store.md#22-open-questions)).
+31. **`anyOf` with `null` on xgrammar.** The worker's VLM schemas express nullable values (soil readings, `other_name`) as `anyOf` with `null`. Whether xgrammar 0.2.7 enforces this is *unverified*; the day-2 schema check confirms it ([backend worker 17](../backend/worker.md#17-open-questions), [vision 15](../backend/vision.md#15-open-questions)).
+32. **Apple's principal-point convention** and the exact use of the inverse-distortion table in `DepthMeta` are *unverified* until the LiDAR day-1 check (open question 11) ([backend vision 15](../backend/vision.md#15-open-questions)).
+33. **Cancelling a call on llama.cpp.** A worker stops a cancelled job by dropping its connection. Whether llama.cpp then frees the slot is *unverified*; it matters on the RX 9070 XT if it serves llama.cpp (open question 25) ([backend worker 17](../backend/worker.md#17-open-questions)).
+34. **Request limits.** The general rate limit (120 requests a minute per user) and the JSON body limit (1 MiB) are placeholders that no document gives. Confirm them, or set them from the build-week load ([backend api 23](../backend/api.md#23-open-questions)).
+35. **Jev's API.** The `TextClassifier` adapter for Jev is a placeholder until early access arrives; until then every call uses the LLM fallback ([backend integrations 17](../backend/integrations.md#17-open-questions)).
+36. **`organism_options` without recognition text.** The VLM payload's `organism_options` carry an id and a name only; adding each organism's `recognition` text to the prompt is a proposal of docs/vision, not yet in the contract ([backend worker 17](../backend/worker.md#17-open-questions)).
+37. **Reverse geocoding for a GPS garden.** A garden created from GPS needs a `location_label`, and a Nominatim failure today fails the request with `503 upstream_unavailable`. A fallback label (the time zone's city) would let creation go ahead ([backend integrations 17](../backend/integrations.md#17-open-questions)).
+38. **Zippopotam's terms** are unchecked. Confirm them, or switch it off and refuse a bare forward sortation area (section 9, geocoding) ([backend integrations 17](../backend/integrations.md#17-open-questions)).
+39. **Open-Meteo's licence.** The free API is for non-commercial use. Settle it before any public launch ([backend integrations 17](../backend/integrations.md#17-open-questions)).
+40. **Clerk deletion after a restart.** The account's deletion at Clerk (section 9, account) is retried in memory, so a restart after the user record is gone loses the retry, and signing in again would recreate an empty user. A durable "pending provider deletion" record would close it ([backend api 23](../backend/api.md#23-open-questions), [database 9](../database/README.md#9-open-questions)).
+41. **Objects of resumed deletions.** A resumed plant or scan deletion leaves its objects to the daily orphan sweep, up to a day later (section 9, deletion cascades). If that delay matters, the store can return each target's keys from the records still present ([backend api 23](../backend/api.md#23-open-questions)).
