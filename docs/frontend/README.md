@@ -1,6 +1,6 @@
 # PDM Frontend Architecture
 
-> **Status:** Draft v0.4.1, 2026-10-16. v0.4.1: the schema links point to `backend/migrations/schema.surql`. v0.4 applies the third audit and contracts v0.8.2: species photo paths carry a content hash, a failed scan never holds a question, push coverage, invalidations for confirmed plan revisions, the closer-photo rule, the `SFSafariViewController` cookie note and the CORS preflight reason.
+> **Status:** Draft v0.4.2, 2026-10-16. v0.4.2: the backend's OpenAPI spec is committed, so the app uses generated contract types from day 1 instead of hand-written ones (section 9, generated types; build plan). v0.4.1: the schema links point to `backend/migrations/schema.surql`. v0.4 applies the third audit and contracts v0.8.2: species photo paths carry a content hash, a failed scan never holds a question, push coverage, invalidations for confirmed plan revisions, the closer-photo rule, the `SFSafariViewController` cookie note and the CORS preflight reason.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Images:** event URLs arrive fresh, and the cache key is the image ID or the URL path; species photos carry their credit.
 >   - **Scan stream:** the resting rule counts guided checks on failed scans too.
@@ -302,7 +302,7 @@ app/
    │  ├─ resources/               scans, plants, gardens, members, tasks, chat, memories, map, me
    │  └─ mock/                    mock transport, fixture store, scripted runs (section 15)
    ├─ domain/
-   │  ├─ types.ts                 contract types the app uses (hand-written, then re-exported from generated)
+   │  ├─ types.ts                 contract types the app uses, re-exported from generated
    │  ├─ permissions.ts           the role matrix of contracts 1
    │  ├─ scan.ts                  statuses, stages, resting rule, image kind limits
    │  ├─ diagnosis.ts             wording from Diagnosis.status and low_evidence (screens.md 6)
@@ -444,7 +444,7 @@ The webhook and header rules are in contracts 1 and 9 (auth webhook). The token 
 ```
 
 - CI regenerates both files and fails when either differs from what is committed, so a contract change can't reach one side only.
-- Until the backend's first spec lands (build plan, Oct 16–17), `domain/types.ts` holds the contract types written by hand from [contracts.md](../architecture/contracts.md). When the spec arrives, the same file re-exports the generated types under the same names, so the switch touches one file.
+- The backend's spec is committed as `backend/openapi.json`, generated from the `domain` crate's types, which are the contracts' source of truth ([contracts 1](../architecture/contracts.md#source-of-truth)). `domain/types.ts` re-exports the generated types from the start; no contract type is written by hand.
 
 ### Request pipeline
 
@@ -950,8 +950,8 @@ The frontend track of [architecture 14](../architecture/README.md#14-build-plan)
 
 | Dates | Frontend goal |
 |---|---|
-| Oct 16–17 | Project on SDK 57 with the layers, lint rules and CI. Clerk sign-in, onboarding and garden creation. Hand-written contract types, mock transport and the scripted early-blight run. Scan screen on the reducer with stage progress. Capture with `expo-camera`, the system camera in phone browsers and the file picker, uploading to the API skeleton. LiDAR day-1 check in a development build |
-| Oct 18–19 | Generated types. Species confirmation card. Weather strip. LiDAR module: camera view, distance hints, depth upload. In-app browser detection and the sign-in banner |
+| Oct 16–17 | Project on SDK 57 with the layers, lint rules and CI. Clerk sign-in, onboarding and garden creation. Contract types generated from `backend/openapi.json`, mock transport and the scripted early-blight run. Scan screen on the reducer with stage progress. Capture with `expo-camera`, the system camera in phone browsers and the file picker, uploading to the API skeleton. LiDAR day-1 check in a development build |
+| Oct 18–19 | Species confirmation card. Weather strip. LiDAR module: camera view, distance hints, depth upload. In-app browser detection and the sign-in banner |
 | Oct 20–21 | Results UI: photos with regions and masks, organisms, soil, measurements, diagnosis with indicators, question card, plan checklist with provisional plans. Question photos and guided soil checks |
 | Oct 22 | Chat with streaming, tool chips, citations, confirmation cards, memories and message feedback. Plant timeline with the growth curve. Garden map view and mapping session |
 | Oct 23 | Tasks and the alert inbox, push from a development build, members and invites, account deletion, the web manifest |

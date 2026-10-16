@@ -1,6 +1,6 @@
 # PDM Architecture
 
-> **Status:** Draft v0.7.4, 2026-10-16. v0.7.4: sections 5 and 13 say the schema now lives at `backend/migrations/schema.surql`. v0.7.3: section 13 lists `docs/setup`, the developer setup. v0.7.2: section 12 gives the services' stop grace periods (190 s for `api`). v0.7.1 synced with [contracts.md](contracts.md) v0.10.1: the account tombstone keeps a deleted account's tokens out and the provider deletion running across restarts (4). v0.7 synced with [contracts.md](contracts.md) v0.10, which records the decisions of the [backend design](../backend/README.md):
+> **Status:** Draft v0.7.5, 2026-10-16. v0.7.5: section 9 says the `domain` types are the contracts' source of truth and the spec is committed as `backend/openapi.json` (contracts v0.10.4). v0.7.4: sections 5 and 13 say the schema now lives at `backend/migrations/schema.surql`. v0.7.3: section 13 lists `docs/setup`, the developer setup. v0.7.2: section 12 gives the services' stop grace periods (190 s for `api`). v0.7.1 synced with [contracts.md](contracts.md) v0.10.1: the account tombstone keeps a deleted account's tokens out and the provider deletion running across restarts (4). v0.7 synced with [contracts.md](contracts.md) v0.10, which records the decisions of the [backend design](../backend/README.md):
 >   - the crate list matches the code: `integrations` holds every outbound HTTP adapter, and `knowledge` reads through a port without depending on `store` (3);
 >   - the user record is created by the first authenticated request, and the auth webhook only deletes users (4, 11);
 >   - the chat tools take no garden id, `view_image` and `revise_plan` name their scan, and model thinking is replayed only within a turn (7);
@@ -735,9 +735,9 @@ POST   /pending-actions/{id}/confirm
 POST   /pending-actions/{id}/reject
 ```
 
-Request and response bodies, the scan and chat event catalogues, worker job payloads and results, and the error format are defined in [contracts.md](contracts.md).
+Request and response bodies, the scan and chat event catalogues, worker job payloads and results, and the error format are the `domain` crate's types, which are the source of truth; [contracts.md](contracts.md) explains them ([contracts 1, source of truth](contracts.md#source-of-truth)).
 
-`utoipa` generates the OpenAPI spec from the routes. `openapi-typescript` generates the app's TypeScript types from that spec.
+`utoipa` generates the OpenAPI spec from the routes, committed as `backend/openapi.json`. `openapi-typescript` generates the app's TypeScript types from that file.
 
 Both SSE endpoints are consumed with a streaming `fetch` response (Expo SDK 52+ provides one), because the browser `EventSource` can only GET and cannot carry the auth header. Scan events are persisted in `scan_event`, so the app reconnects with `Last-Event-ID` after being backgrounded and receives everything it missed. Chat turns are not resumable: a dropped chat stream is shown as an interrupted message the user can resend.
 

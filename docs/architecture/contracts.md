@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.3, 2026-10-16. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.4, 2026-10-16. Companion to the [architecture document](README.md).
+> **v0.10.4**: the `domain` crate's types are now the contracts' source of truth, since the code exists; this document explains them, and the generated OpenAPI spec is committed as `backend/openapi.json` (section 1, source of truth).
 > **v0.10.3**: section 1 links the stored shapes at their new place, `backend/migrations/schema.surql`; no contract changes.
 > **v0.10.2**: deleting a scan closes its event stream within 15 seconds, and so does a resting point reached without an event (section 4, when the stream closes).
 > **v0.10.1** settles open question 40 with the account tombstone: the Clerk deletion survives a restart, and a deleted account's session tokens get `401` until 24 hours after Clerk confirms (section 9, account).
@@ -71,12 +72,12 @@
 
 ### Source of truth
 
-This document is the agreement for build week. Once the code exists, the source of truth becomes the Rust types in the `domain` crate:
+The source of truth is the Rust types in the `domain` crate ([`backend/crates/domain`](../../backend/crates/domain), documented type by type in [domain-types](../backend/domain-types.md)). This document explains them; where the two disagree, the types win and this document is corrected.
 
-- `utoipa` generates the OpenAPI spec from them, and `openapi-typescript` generates the app's TypeScript types from that spec.
+- `utoipa` generates the OpenAPI spec from them, committed as [`backend/openapi.json`](../../backend/openapi.json); a test in `api` fails when the file falls behind the types. `openapi-typescript` generates the app's TypeScript types from that file.
 - `schemars` generates JSON Schema from them for the fixed shapes: knowledge seed validation (section 10) and the plan writer's output. The VLM's schema is built per job by the worker (section 6), because its allowed values change with each payload.
 
-A change to a contract changes the Rust type first, and this document is updated in the same pull request. The records are stored as defined in [backend/migrations/schema.surql](../../backend/migrations/schema.surql), which changes in the same pull request when a stored shape changes.
+A change to a contract changes the Rust type and its exact-JSON test first, regenerates `backend/openapi.json`, and updates this document in the same pull request. The records are stored as defined in [backend/migrations/schema.surql](../../backend/migrations/schema.surql), which changes in the same pull request when a stored shape changes.
 
 ### Notation
 
@@ -2307,6 +2308,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.1: the account tombstone settles open question 40: the provider deletion survives a restart, and a deleted account's session tokens get `401` until 24 hours after the provider confirms | 4 |
 | v0.10.2: a deleted scan's stream, and one at a resting point reached without an event, closes within 15 seconds | none (section 9's SSE description is unchanged) |
 | v0.10.3: the schema link points to `backend/migrations/schema.surql` | 5 (schema) and 13 (layout), which say the same |
+| v0.10.4: the `domain` types are the source of truth and the OpenAPI spec is committed as `backend/openapi.json` | 9 |
 
 ---
 

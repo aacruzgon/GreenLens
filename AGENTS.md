@@ -71,7 +71,8 @@ All design lives in `docs/`. Each document has a status line at the top with its
 
 ## Sources of truth
 
-- **Contracts** are defined in `contracts.md` until code exists. After that, the Rust types in the `domain` crate are the source of truth: `utoipa` generates the OpenAPI spec, `openapi-typescript` generates the app's types, and `schemars` generates JSON Schema for fixed shapes. A contract change updates the Rust type and `contracts.md` in the same pull request.
+- **Contracts:** the Rust types in the `domain` crate (`backend/crates/domain`) are the source of truth, and `contracts.md` explains them. Where the two disagree, the types win and the document is corrected. A contract change updates the Rust type, its exact-JSON test and `contracts.md` in the same pull request.
+- **Generated from the types:** `utoipa` generates the OpenAPI spec, committed as `backend/openapi.json` (an `api` test fails when it falls behind the types; regenerate it with `cargo run -p api -- openapi > openapi.json` in `backend/`). `openapi-typescript` generates the app's types from that file once `app/` exists. `schemars` generates JSON Schema for the fixed shapes.
 - **Stored shapes** are defined in `backend/migrations/schema.surql`. Change it in the same pull request as any contract change that affects what is stored.
 - **The architecture document follows the contracts.** When `contracts.md` changes, bring `docs/architecture/README.md` in line, bump both status lines, and add a row to contracts §11 listing the affected architecture sections.
 - **Version pins** (SurrealDB `v3.3.4`, RustFS `1.0.1`, both with image digests) were verified by running them. Don't change a pin without re-verifying the patterns that depend on it.

@@ -20,7 +20,7 @@ Every shape and behaviour the backend produces is fixed by the design documents.
 | [frontend](../../../docs/frontend/README.md) | What the app expects from the API: Clerk checks (§8), error handling (§9), streams (§10), CORS (§17) |
 | [backend](../../../docs/backend/README.md) | How the Rust code is built: the crate graph and conventions ([README 5, 7](../../../docs/backend/README.md#7-rust-conventions)), every type and port of `domain` ([domain](../../../docs/backend/domain.md)), and one document per crate and binary. The skills follow these documents ([README 7](../../../docs/backend/README.md#7-rust-conventions), "The project's Rust skills") |
 
-Where a skill and [docs/backend](../../../docs/backend/README.md) differ, the skill follows docs/backend and links the section. Once code exists, the Rust types in `domain` become the source of truth for the contracts, and a contract change updates the type, `contracts.md` and, if stored, `schema.surql` in one pull request ([AGENTS.md, sources of truth](../../../AGENTS.md#sources-of-truth)).
+Where a skill and [docs/backend](../../../docs/backend/README.md) differ, the skill follows docs/backend and links the section. The Rust types in `domain` are the source of truth for the contracts, and a contract change updates the type, `contracts.md`, `backend/openapi.json` and, if stored, `schema.surql` in one pull request ([AGENTS.md, sources of truth](../../../AGENTS.md#sources-of-truth)).
 
 ## Which skill to use
 

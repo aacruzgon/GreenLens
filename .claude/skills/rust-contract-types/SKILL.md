@@ -167,12 +167,12 @@ Choose the representation from the JSON the contract shows, then prove it with a
 
 ## 7. The source of truth
 
-Once the `domain` crate exists, its types are the contract ([AGENTS.md, sources of truth](../../../AGENTS.md#sources-of-truth)). A contract change, in one pull request:
+The `domain` crate's types are the contract, and contracts.md explains them ([AGENTS.md, sources of truth](../../../AGENTS.md#sources-of-truth)). A contract change, in one pull request:
 
 1. changes the Rust type and its exact-JSON test;
 2. updates contracts.md to match, bumps its status line, and adds a row to [contracts 11](../../../docs/architecture/contracts.md#11-changes-to-the-architecture-document) if the architecture document changes too;
 3. changes [schema.surql](../../../backend/migrations/schema.surql) if the shape is stored;
-4. regenerates the OpenAPI spec and the app's types.
+4. regenerates `backend/openapi.json` (`cargo run -p api -- openapi > openapi.json` in `backend/`; `api`'s test `the_committed_openapi_document_matches_the_types` fails until it does) and, once `app/` exists, the app's types.
 
 ## Review checklist
 
