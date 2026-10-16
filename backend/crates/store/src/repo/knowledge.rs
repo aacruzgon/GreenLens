@@ -60,15 +60,27 @@ FROM soil_condition ORDER BY id;";
 
     /// `search_knowledge` ([database 5] ✓): HNSW `<|k, 40|>` with the indexed filters applied
     /// before the graph search (`KnnScan` with the predicate). A `NONE` filter matches all.
+    /// `{k}` is replaced by a literal before the query is sent: the operator refuses a bound
+    /// parameter ("expected an unsigned integer", ✓ on 3.3.4).
     pub const SEARCH_CHUNKS: &str = "SELECT text, source, source.title AS title, source.publisher AS publisher, source.url AS url
 FROM knowledge_chunk
 WHERE ($topic = NONE OR topic = $topic) AND ($crop = NONE OR crop = $crop)
   AND ($problem = NONE OR problem = $problem) AND ($organism = NONE OR organism = $organism)
-  AND embedding <|$k, 40|> $query;";
+  AND embedding <|{k}, 40|> $query;";
 
     /// `GET /species/{id}/images/{hash}`: the photo's key under `knowledge/`.
     pub const SPECIES_PHOTO: &str =
         "SELECT VALUE id FROM $species WHERE $key IN reference_images.storage_key;";
+}
+
+/// The most hits one search returns: the HNSW search's candidate list (`ef`) is 40, and `k`
+/// above it would return fewer than asked.
+pub const MAX_CHUNK_HITS: usize = 40;
+
+/// [`sql::SEARCH_CHUNKS`] with `k`, clamped to `1..=MAX_CHUNK_HITS`, as a literal. `k` is an
+/// integer, so nothing a caller passes can change the statement.
+fn search_chunks_sql(k: usize) -> String {
+    sql::SEARCH_CHUNKS.replace("{k}", &k.clamp(1, MAX_CHUNK_HITS).to_string())
 }
 
 /// The `BioCLIP` label set's version: the schema stores no generated files (contracts 10), so it
@@ -311,12 +323,12 @@ impl KnowledgeRepo for SurrealStore {
             .map(|t| enum_str("topic", t))
             .transpose()
             .map_err(|e| e.into_store(WHAT))?;
-        let mut results = run_tx(&self.db, sql::SEARCH_CHUNKS, |q| {
+        let sql = search_chunks_sql(k);
+        let mut results = run_tx(&self.db, &sql, |q| {
             q.bind(("topic", topic.clone()))
                 .bind(("crop", opt_rid(filter.crop.as_ref())))
                 .bind(("problem", opt_rid(filter.problem.as_ref())))
                 .bind(("organism", opt_rid(filter.organism.as_ref())))
-                .bind(("k", i64::try_from(k).unwrap_or(5)))
                 .bind(("query", query.0.clone()))
         })
         .await
@@ -345,5 +357,19 @@ impl KnowledgeRepo for SurrealStore {
             key,
             content_type: ContentType::Webp,
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::search_chunks_sql;
+
+    #[test]
+    fn the_search_takes_k_as_a_clamped_literal() {
+        assert!(search_chunks_sql(5).contains("<|5, 40|>"));
+        assert!(search_chunks_sql(0).contains("<|1, 40|>"));
+        assert!(search_chunks_sql(1000).contains("<|40, 40|>"));
+        assert!(!search_chunks_sql(5).contains("{k}"));
+        assert!(!search_chunks_sql(5).contains("$k"));
     }
 }
