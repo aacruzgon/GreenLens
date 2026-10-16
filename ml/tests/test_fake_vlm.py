@@ -268,6 +268,16 @@ def test_a_prompt_change_on_a_single_recording_is_replayed_and_logged(start, rec
     assert "text drift: findings" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("served", ["vlm", "qwen3-vl"])
+def test_a_model_not_served_answers_404(start, recordings, served):
+    base = start(recordings=recordings, served_name=served)
+    status, _, raw = call(base, "/v1/chat/completions", {**FINDINGS_BODY, "model": "not-served"})
+    assert status == 404
+    assert json.loads(raw)["error"]["message"] == "The model `not-served` does not exist."
+    assert call(base, "/v1/chat/completions", {**FINDINGS_BODY, "model": served})[0] == 200
+    unnamed = {k: v for k, v in FINDINGS_BODY.items() if k != "model"}
+    assert call(base, "/v1/chat/completions", unnamed)[0] == 200
+
 
 def test_findings_with_new_enums_and_an_extra_image_are_conformed(start, recordings):
     base = start(recordings=recordings)

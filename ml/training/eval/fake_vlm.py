@@ -14,6 +14,8 @@ Point the worker at it with
 
 Endpoints: GET /health (always open), GET /v1/models (lists --served-name), POST
 /v1/chat/completions. With --api-key, /v1/* answers 401 unless `Authorization: Bearer <key>`.
+In replay, a chat request whose `model` isn't --served-name answers 404, as vLLM does, so a wrong
+VLM_SERVED_NAME shows offline (llama.cpp ignores the name; the fake is stricter there).
 
 A request's key is the SHA-256 of its schema name, its schema as canonical JSON (sorted keys,
 compact) and its number of images. The images themselves are not in the key. Two calls can share
@@ -581,6 +583,9 @@ class State:
             body = json.loads(raw)
         except ValueError:
             return error_reply(400, "the body is not JSON", "invalid_request_error")
+        model = body.get("model")
+        if not self.record and model is not None and model != self.served_name:
+            return error_reply(404, f"The model `{model}` does not exist.", "NotFoundError")
         name, schema = json_schema(body)
         if not name or not schema:
             return error_reply(400, "fake_vlm needs response_format.json_schema with a name and "
