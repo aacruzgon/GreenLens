@@ -1,10 +1,12 @@
 """Fetch every pinned dataset and upstream model in sources.yaml (training.md §4, step 1).
 
-    python ml/training/data/fetch.py                 # everything fetchable
-    python ml/training/data/fetch.py plantdoc_det    # one source
+    python -m ml.training.data.fetch                 # everything fetchable
+    python -m ml.training.data.fetch plantdoc_det    # one source
+    python -m ml.training.data.fetch --pin <name>    # a new source whose sha256 is still null
 
 Archives land in data/raw/<name>.zip and are unpacked to data/raw/<name>/. A source whose
-sha256 is null is downloaded and its hash printed, to be pinned in sources.yaml.
+sha256 is null is refused, unless --pin is given: then it is downloaded and its hash printed,
+to be pinned in sources.yaml.
 """
 
 from __future__ import annotations
@@ -24,6 +26,8 @@ HERE = Path(__file__).resolve().parent
 RAW = HERE / "raw"
 MODELS = HERE.parents[1] / "models" / "files"
 UA = "curl/8.9"  # Mendeley's API refuses Python's default User-Agent
+TIMEOUT = 60      # seconds without data before a download fails
+PIN = "--pin" in sys.argv  # allow sources whose sha256 is null, to print the hash to pin
 
 
 def sha256_file(path: Path) -> str:
@@ -42,12 +46,14 @@ def fetch_github_archive(src: dict) -> None:
         url = f"https://codeload.github.com/{src['repo']}/zip/{src['commit']}"
         print(f"[{name}] downloading {url}")
         tmp = archive.with_suffix(".part")
-        with urllib.request.urlopen(url) as r, tmp.open("wb") as f:
+        with urllib.request.urlopen(url, timeout=TIMEOUT) as r, tmp.open("wb") as f:
             shutil.copyfileobj(r, f, 1 << 20)
         tmp.rename(archive)
     digest = sha256_file(archive)
     if src.get("sha256") is None:
         print(f"[{name}] NOT PINNED: sha256 {digest}  <- put this in sources.yaml")
+        if not PIN:
+            raise SystemExit(f"[{name}] refusing an unpinned source; rerun with --pin to fetch it anyway")
     elif digest != src["sha256"]:
         raise SystemExit(f"[{name}] sha256 mismatch: expected {src['sha256']}, got {digest}")
     if not target.exists():
@@ -61,7 +67,7 @@ def download(url: str, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     req = urllib.request.Request(url, headers={"User-Agent": UA})
     tmp = dest.with_suffix(dest.suffix + ".part")
-    with urllib.request.urlopen(req) as r, tmp.open("wb") as f:
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r, tmp.open("wb") as f:
         shutil.copyfileobj(r, f, 1 << 20)
     tmp.rename(dest)
 
@@ -76,6 +82,8 @@ def fetch_direct(src: dict) -> None:
     digest = sha256_file(archive)
     if src.get("sha256") is None:
         print(f"[{name}] NOT PINNED: sha256 {digest}  <- put this in sources.yaml")
+        if not PIN:
+            raise SystemExit(f"[{name}] refusing an unpinned source; rerun with --pin to fetch it anyway")
     elif digest != src["sha256"]:
         raise SystemExit(f"[{name}] sha256 mismatch: expected {src['sha256']}, got {digest}")
     target = RAW / name
@@ -89,7 +97,7 @@ def mendeley_listing(dataset: str, version: int) -> list[dict]:
     """Every file of a Mendeley Data version: path, size, SHA-256 and download URL."""
     def get(url: str):
         req = urllib.request.Request(url, headers={"User-Agent": UA})
-        with urllib.request.urlopen(req) as r:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
             return json.load(r)
 
     api = "https://data.mendeley.com/public-api/datasets"
@@ -125,6 +133,8 @@ def fetch_mendeley_folder(src: dict) -> None:
     digest = hashlib.sha256(listing).hexdigest()
     if src.get("sha256") is None:
         print(f"[{name}] NOT PINNED: listing sha256 {digest} ({len(rows)} files)  <- put this in sources.yaml")
+        if not PIN:
+            raise SystemExit(f"[{name}] refusing an unpinned source; rerun with --pin to fetch it anyway")
     elif digest != src["sha256"]:
         raise SystemExit(f"[{name}] listing changed: expected {src['sha256']}, got {digest}")
     target = RAW / name
@@ -162,6 +172,7 @@ def fetch_huggingface(src: dict) -> None:
 
 
 def main(only: list[str]) -> None:
+    only = [a for a in only if a != "--pin"]
     RAW.mkdir(parents=True, exist_ok=True)
     sources = yaml.safe_load((HERE / "sources.yaml").read_text())
     for src in sources["datasets"] + sources["models"]:

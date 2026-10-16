@@ -20,14 +20,15 @@ SAM2_BUILD_CUDA=0 uv pip sync ml/requirements.lock --index-strategy unsafe-best-
 
 | Step | Command | Output |
 |---|---|---|
-| Fetch datasets and BioCLIP 2 | `python ml/training/data/fetch.py [name …]` | `training/data/raw/`, `models/files/bioclip2/` |
+| Fetch datasets and BioCLIP 2 | `python -m ml.training.data.fetch [name …]` | `training/data/raw/`, `models/files/bioclip2/` |
 | Export BioCLIP 2 and check it | `python -m ml.training.export.bioclip --images <photos> --fp16` | `models/files/bioclip/` and `check.json` |
 | Export SAM 2.1-T and check it | `python -m ml.training.export.sam2` | `models/files/sam2/` and `check.json` |
 | Deduplicate and split | `python -m ml.training.data.dedupe [--datasets …]` | `training/data/splits/*.tsv`, `dedupe_report.md` |
-| Detector data (COCO) | `python ml/training/detector/prepare.py` | `training/data/cache/leaf-coco/` |
-| Train the detector | `python ml/training/detector/train.py` | `training/runs/leaf-rfdetr-s-<date>/` |
-| Disease head | `python -m ml.training.heads.train_disease --version <v> [--views 4]` | `training/runs/heads/<v>/`: head JSON, `classifier_labels.yaml`, report |
+| Detector data (COCO) | `python -m ml.training.detector.prepare` | `training/data/cache/leaf-coco/` |
+| Train the detector | `python -m ml.training.detector.train` | `training/runs/leaf-rfdetr-s-<date>/` |
+| Disease head | `python -m ml.training.heads.train_disease --version <v> --balance-sources [--views 4]` | `training/runs/heads/<v>/`: head JSON and `classifier_labels.yaml`; the report also in `training/heads/reports/<v>.json` (committed) |
 | Label matrix | `python -m ml.training.labels.bioclip_text [--labels <yaml>]` | `models/files/bioclip_labels/` |
 | Zero-shot species check | `python -m ml.training.labels.zero_shot_check <matrix.json>` | printed |
+| Tests | `python -m pytest ml/tests` | the file formats and the `label_set_version` vector |
 
 Dataset sources, licences and hashes are in [`training/data/sources.yaml`](training/data/sources.yaml); class-to-slug mappings in [`training/data/mappings/`](training/data/mappings/). The slugs there are **proposed** until the knowledge base's seed files exist.

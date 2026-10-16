@@ -7,7 +7,9 @@ the graph. Pre-processing (shortest side to 224, centre crop, CLIP normalisation
 the graph and comes from pdm_vision, as the Rust worker does it.
 
 Pass condition (training.md §7): cosine ≥ 0.999 against PyTorch for every image, at batch 1,
-3 and the maximum, with identical results per image across batch sizes.
+3 and the maximum, and results per image that agree across batch sizes within
+BATCH_TOLERANCE. They aren't bit-identical on CUDA (1.5e-4 in fp32, 4.9e-4 in fp16 on the
+5070 Ti), so the check bounds the difference instead.
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ OUT = ROOT / "ml/models/files/bioclip"
 REVISION = "2957b322090f9cb17ae72c71981c7218a28d81e0"
 OPSET = 17
 MAX_BATCH = 16
+BATCH_TOLERANCE = 1e-3
 
 
 class VisionTower(torch.nn.Module):
@@ -76,7 +79,8 @@ def check(onnx_path: Path, tower: VisionTower, images: list[Path], provider: str
         "images": len(images),
         "min_cosine": {str(b): float(c.min()) for b, c in cos.items()},
         "max_diff_across_batches": spread,
-        "pass": all(float(c.min()) >= 0.999 for c in cos.values()),
+        "batch_tolerance": BATCH_TOLERANCE,
+        "pass": all(float(c.min()) >= 0.999 for c in cos.values()) and spread <= BATCH_TOLERANCE,
     }
 
 
