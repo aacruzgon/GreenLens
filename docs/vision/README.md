@@ -1,7 +1,7 @@
 # PDM Vision and ML
 
-> **Status:** Draft v0.2.6, 2026-10-16. v0.2.6: section 6 keeps our own model files in a private Hugging Face model repository, as the team decided, instead of GitHub release assets; open questions 11 and 14 follow. v0.2.5: section 1 says the repository is private until the submission; section 6 says how model files reach the backend (the S1 manifest's three entries with verified hashes, what `ml/` produces for each slice, the head and label-matrix JSON formats, the private `pdm-models` release store with `sources.toml` and `fetch.py`, the read-only `/models` volume, change-overs, notices and a numbered roadmap for S1–S3); sections 10 and 11 follow. v0.2.4: the SAM 2.1-T encoder's budget is 2.0 GB, from its measured fp16 export, and the 3070 total about 5.3 GB (review of PR #6). v0.2.3: section 5 says how `ort` loads ONNX Runtime (`load-dynamic`, `api-29`, `ORT_DYLIB_PATH`, `ORT_EP`) and why the CUDA 13.0.3 image needs it; section 12 says where the findings stand now that the backend design is on `main`. v0.2.2: section 6 lists the manifest entry names the worker reads. v0.2.1: finding 27 is taken up by the backend branch (contracts 6). v0.2: `model_versions` keys follow contracts 5 (manifest entry names, `sam_encoder` and `sam_decoder`, label versions as keys); section 12 says which findings the backend branch takes up and adds finding 27, the fallback's guided-check budget. v0.1, 2026-10-15: First vision and ML design: every model the system runs, where each one runs on the three GPUs of the rig and the control plane's CPU, VRAM budgets, runtimes and version pins, how model files are pinned and versioned, licences, the build plan, open decisions, and the points where the architecture and contracts need a change to match.
-> **Checked:** model cards, licences, configs, checkpoint sizes, package indexes and vLLM, xgrammar, ONNX Runtime and PyTorch sources were read on 2026-10-15 (✓). The ONNX exports of RF-DETR, SAM 2.1, MobileSAM, UperNet and BioCLIP, the PlantDoc probes, the text-embedder benchmark and YuNet were run on a Mac with ONNX Runtime 1.31 on CPU (✓ ran). Nothing has run on the rig's GPUs: every VRAM and GPU-speed figure is an *estimate* until the day-1 checks and day-2 benchmarks. Points from secondary sources are *unverified*. On 2026-10-16 the three S1 model files were downloaded at their pinned revision and commit and hashed (✓ ran), and GitHub's release documentation was read (✓).
+> **Status:** Draft v0.2.7, 2026-10-16. v0.2.7: section 6 takes the head and label-matrix formats from `ml/models/FORMATS.md` (PR #6) and lists the four points where the compiled loader still differs, one of them silent. v0.2.6: section 6 keeps our own model files in a private Hugging Face model repository, as the team decided, instead of GitHub release assets; open questions 11 and 14 follow. v0.2.5: section 1 says the repository is private until the submission; section 6 says how model files reach the backend (the S1 manifest's three entries with verified hashes, what `ml/` produces for each slice, the head and label-matrix JSON formats, the private `pdm-models` release store with `sources.toml` and `fetch.py`, the read-only `/models` volume, change-overs, notices and a numbered roadmap for S1–S3); sections 10 and 11 follow. v0.2.4: the SAM 2.1-T encoder's budget is 2.0 GB, from its measured fp16 export, and the 3070 total about 5.3 GB (review of PR #6). v0.2.3: section 5 says how `ort` loads ONNX Runtime (`load-dynamic`, `api-29`, `ORT_DYLIB_PATH`, `ORT_EP`) and why the CUDA 13.0.3 image needs it; section 12 says where the findings stand now that the backend design is on `main`. v0.2.2: section 6 lists the manifest entry names the worker reads. v0.2.1: finding 27 is taken up by the backend branch (contracts 6). v0.2: `model_versions` keys follow contracts 5 (manifest entry names, `sam_encoder` and `sam_decoder`, label versions as keys); section 12 says which findings the backend branch takes up and adds finding 27, the fallback's guided-check budget. v0.1, 2026-10-15: First vision and ML design: every model the system runs, where each one runs on the three GPUs of the rig and the control plane's CPU, VRAM budgets, runtimes and version pins, how model files are pinned and versioned, licences, the build plan, open decisions, and the points where the architecture and contracts need a change to match.
+> **Checked:** model cards, licences, configs, checkpoint sizes, package indexes and vLLM, xgrammar, ONNX Runtime and PyTorch sources were read on 2026-10-15 (✓). The ONNX exports of RF-DETR, SAM 2.1, MobileSAM, UperNet and BioCLIP, the PlantDoc probes, the text-embedder benchmark and YuNet were run on a Mac with ONNX Runtime 1.31 on CPU (✓ ran). Nothing has run on the rig's GPUs: every VRAM and GPU-speed figure is an *estimate* until the day-1 checks and day-2 benchmarks. Points from secondary sources are *unverified*. On 2026-10-16 the three S1 model files were downloaded at their pinned revision and commit and hashed (✓ ran), and Hugging Face's storage limits and GitHub's large-file and LFS billing pages were read (✓).
 
 This is the design of PDM's models and the machine learning around them. It builds on the [system architecture](../architecture/README.md) (sections 2, 3, 5, 6, 8.4, 10, 13, 14 and 15) and the [data contracts](../architecture/contracts.md) (sections 5, 6, 7 and 10), which define every shape the models' outputs travel in. How the Rust code calls a model (sessions, batching, the VLM client, schema building, box conversion, face blurring, the embedder, the measurement code) is in [docs/backend](../backend/vision.md) and [the worker design](../backend/worker.md).
 
@@ -314,33 +314,18 @@ Slices are those of the [backend roadmap](../backend/roadmap.md#3-the-slices-at-
 
 S2 needs a disease head and a label matrix, not only the four ONNX files. The API never queues a `perception` job naming a `label_set_version` or `classifier_labels_version` that no live worker reports ([contracts 5](../architecture/contracts.md#5-worker-api-and-jobs)), so a worker with no head or matrix gets no real jobs.
 
-**The JSON files.** All three are UTF-8 JSON with each matrix as one base64 string (RFC 4648 standard alphabet, with padding) of little-endian `f32`, row-major. Python writes one with `base64.b64encode(np.ascontiguousarray(m, dtype="<f4").tobytes())`. The fields match the `vision` crate's `heads.rs`; the loader rejects a file whose matrix size doesn't match its labels.
+**The JSON files** are specified in [`ml/models/FORMATS.md`](../../ml/models/FORMATS.md), the format of record: `pdm-linear-head/1` for the disease heads, the species head and the plant probe, and `pdm-label-matrix/1` for the label matrices, each matrix one base64 string of little-endian `f32`, row-major. `ml/training` writes them, and the files PR #6 produced follow it.
 
-```jsonc
-// bioclip_labels_<label_set_version>.json: N rows of 768, each L2-normalised
-{
-  "label_set_version": "<16 hex, as the knowledge loader computes it>",
-  "species": [{ "id": "tomato", "label": "Solanum lycopersicum with common name tomato" }],
-  "rows": "<base64, N × 768 f32>"
-}
+**The compiled loader doesn't read that format yet** (the `vision` crate's `perception/heads.rs` and `store`'s `label_set_version`; [roadmap gap 6](../backend/roadmap.md#12-gaps-found-while-writing-this-roadmap)). Until it does, no file `ml/` produces can be loaded:
 
-// disease_head_<classifier_labels_version>.json: logits = W · e + b, C classes
-{
-  "classifier_labels_version": "<model_version of classifier_labels.yaml>",
-  "temperature": 0.71,
-  "labels": [
-    { "species_id": "tomato", "problem": "early_blight" },
-    { "species_id": "tomato", "problem": "healthy" }
-  ],
-  "weight": "<base64, C × 768 f32; row i is class i, in classifier_labels.yaml's index order>",
-  "bias": "<base64, C f32>"
-}
+| Point | `FORMATS.md` | The Rust code today | Effect |
+|---|---|---|---|
+| A label matrix's labels | `labels: [{id, table, label}]` | `species: [{id, label}]` | The perception and fallback workers refuse to start: no `species` field |
+| A disease head's labels | `{index, label, species_id, problem_id}` | `{species_id, problem}`, with a missing `problem` read as `healthy` | **Silent:** `problem_id` is ignored, so every class loads as `healthy` |
+| The plant probe's `bias` | base64 `f32` | A JSON number | The perception worker refuses to start |
+| `label_set_version` | The first 16 hex digits of a SHA-256 over the BioCLIP revision, the templates and the sorted labels, with a test vector | `store` derives an FNV-1a hash of the seed's labels | The API queues jobs under a version no worker reports, so submit answers `503` |
 
-// plant_probe.json: σ(w · e + b)
-{ "weight": "<base64, 768 f32>", "bias": -1.25 }
-```
-
-- Ids are slugs (`^[a-z][a-z0-9_]{0,63}$`). A head label without `problem` reads as `healthy`.
+- Ids are slugs (`^[a-z][a-z0-9_]{0,63}$`).
 - The label-matrix and head entries carry the version twice: in the manifest (`label_set_version`, `classifier_labels_version`) and in the file. The worker keys what it loads by the file's value. `ml/models/check.py` fails unless the two are equal, the entry's name ends in the same version, and the head's `labels` equal `classifier_labels.yaml`'s rows in index order.
 - A head entry repeats the file's temperature as `temperature` in its `[model.config]`, so `perception_config` changes when it does; `check.py` checks the two are equal.
 

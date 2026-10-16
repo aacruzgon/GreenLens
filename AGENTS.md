@@ -86,7 +86,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 
 ## Repository layout
 
-From architecture §13. `backend/` exists, with `tools/` beside its crates for the `docs/backend` generator and `api`'s test-store generator; `app/`, `ml/` and `infra/` don't exist yet.
+From architecture §13. `backend/` exists, with `tools/` beside its crates for the `docs/backend` generator and `api`'s test-store generator; `ml/` holds the training and export code; `app/` and `infra/` don't exist yet.
 
 ```
 PDM/
