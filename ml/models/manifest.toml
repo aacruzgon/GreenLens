@@ -1,0 +1,143 @@
+# Every model file a worker or `api` loads (docs/vision/README.md §6; backend vision.md §5).
+# Paths are relative to ml/models/files/ once fetched (ml/models/fetch.py, not yet written).
+# Workers check each file's SHA-256 at start-up and refuse to start on a mismatch.
+#
+# Status 2026-10-16: development entries. The leaf detector arrives when its first fine-tune
+# finishes; the label matrix is a STAND-IN (ml/training/labels/standin_labels.yaml) until the
+# knowledge seed has species and organism files; the disease head is v1d on whole images of
+# the four datasets, with proposed slugs (issue #4). Thresholds are the docs' starting values,
+# set from the evaluation set on Oct 22–23. yunet and text_embedder entries are added by
+# whoever pins them.
+
+[[model]]
+name      = "bioclip"
+version   = "bioclip-2@2957b322"
+file      = "bioclip/bioclip-2-vision-fp16.onnx"
+sha256    = "b9016a6865e188c0a1129c368d4d92e4f1f0961fe5f391c71ede45e06ed54097"
+licence   = "MIT"
+source    = "imageomics/bioclip-2@2957b322090f9cb17ae72c71981c7218a28d81e0, vision tower, exported by ml/training/export/bioclip.py"
+runs_on   = "perception"
+opset     = 17
+precision = "fp16"                       # LayerNormalization, Softmax, ReduceMean kept fp32; fp32 I/O
+
+  [model.input]
+  name   = "images"
+  shape  = ["batch", 3, 224, 224]
+  colour = "rgb"
+  resize = "shortest_side_crop"
+  mean   = [0.48145466, 0.4578275, 0.40821073]
+  std    = [0.26862954, 0.26130258, 0.27577711]
+
+  [model.outputs]
+  embeddings = "embeddings"              # [batch, 768], L2-normalised in the graph
+
+  [model.config]
+  max_batch           = 16
+  species_temperature = 1.0              # T_species, fitted on the dev cases Oct 22–23
+  gpu_mem_limit_mb    = 1229
+
+  [model.check]                          # 50 PlantDoc test photos vs PyTorch fp32
+  min_cosine_b1  = 0.99961
+  min_cosine_b3  = 0.99963
+  min_cosine_b16 = 0.99963
+
+[[model]]
+name      = "sam_encoder"
+version   = "sam2.1-hiera-tiny@de431c40"
+file      = "sam2/sam2.1-hiera-tiny-encoder-fp16.onnx"
+sha256    = "eb3d1a7b3894f8f7532a4d79ff883cb702ed050f4385bafe31553fc8d71433b2"
+licence   = "Apache-2.0"
+source    = "facebook/sam2.1-hiera-tiny@de431c4043854a71d8101e17995dfe596bf101a5 with facebookresearch/sam2@2b90b9f5, exported by ml/training/export/sam2.py"
+runs_on   = "perception"
+opset     = 17
+precision = "fp16"
+
+  [model.input]
+  name   = "images"
+  shape  = ["batch", 3, 1024, 1024]
+  colour = "rgb"
+  resize = "squash"
+  mean   = [0.485, 0.456, 0.406]
+  std    = [0.229, 0.224, 0.225]
+
+  [model.outputs]
+  high_res_feats_0 = "high_res_feats_0"  # [batch, 32, 256, 256]
+  high_res_feats_1 = "high_res_feats_1"  # [batch, 64, 128, 128]
+  image_embed      = "image_embed"       # [batch, 256, 64, 64]
+
+  [model.config]
+  max_batch        = 2
+  # gpu_mem_limit caps the session's memory pool. Measured on the 5070 Ti in fp16 at batch 2:
+  # 1,872 MiB above the loaded session (peak_minus_loaded_mib in sam2/check.json; 2,178 MiB for
+  # the whole process with the CUDA context and weights). 1,638 would fail the warm-up (review
+  # of PR #6, item 5); 2,048 leaves 176 MiB of margin. Recheck on the 3070 (evaluation.md §8).
+  gpu_mem_limit_mb = 2048
+
+  [model.check]
+  mean_mask_iou_fp16 = 0.99966
+
+[[model]]
+name      = "sam_decoder"
+version   = "sam2.1-hiera-tiny@de431c40"
+file      = "sam2/sam2.1-hiera-tiny-box-decoder-fp16.onnx"
+sha256    = "fda2d2366fda0657d95eb638c379815f8e79d505c5a08cc0c0245e5d3bd3a674"
+licence   = "Apache-2.0"
+source    = "as sam_encoder; inputs: one image's three feature tensors and boxes [N, 4] (corners, 1024 frame)"
+runs_on   = "perception"
+opset     = 17
+precision = "fp16"                       # fp32 logits out
+
+  [model.outputs]
+  mask_single         = "mask_single"    # [N, 1, 256, 256] logits
+  iou_single          = "iou_single"     # [N, 1]
+  masks               = "masks"          # [N, 3, 256, 256]
+  iou_predictions     = "iou_predictions"
+  object_score_logits = "object_score_logits"
+
+  [model.config]
+  max_boxes        = 16
+  min_iou          = 0.6                 # τ_mask
+  plant_min_leaves = 3
+  plant_grow       = 0.05
+  plant_min_cover  = 0.6
+  gpu_mem_limit_mb = 614
+
+[[model]]
+name              = "bioclip_labels_233482ce598f591b"
+version           = "233482ce598f591b"
+file              = "bioclip_labels/bioclip_labels_233482ce598f591b.json"
+sha256            = "ffec89c4bcbfc91bd72de19015de4f71541a79eb06ac10185180e65292d8066d"
+licence           = "MIT"
+source            = "STAND-IN: 20 species from ml/training/labels/standin_labels.yaml, BioCLIP 2 text tower, 80 templates"
+runs_on           = "perception"
+label_set_version = "233482ce598f591b"
+
+[[model]]
+name                      = "disease_head_v1d"
+version                   = "disease-head-v1d-2026-10-16"
+file                      = "disease_head/disease-head-v1d-2026-10-16.json"
+sha256                    = "b6f92cc73982c6d07c148800c0c0b71380cba6e9e8de5818cf4c47a3537bd44f"
+licence                   = "Data CC BY 4.0 (PlantDoc, TOM2024, Tomato-Pakistan 2026, see its caveat in sources.yaml) and MIT (iBean); weights ours"
+source                    = "logistic regression (C=50, each dataset weighted equally within a class) on BioCLIP 2 fp16 features of whole images from PlantDoc, TOM2024, Tomato-Pakistan 2026 (one image per original photo, PlantDoc copies dropped) and iBean; ml/training/heads/train_disease.py --balance-sources; report in ml/training/heads/reports/"
+runs_on                   = "perception"
+classifier_labels_version = "disease-head-v1d-2026-10-16"
+
+  # T_disease (0.8208, fitted on validation with the restricted softmax) lives in the head
+  # file's `temperature` only (ml/models/FORMATS.md), so it can't drift from the weights.
+  [model.config]
+  crop_grow = 0.10
+
+  # Restricted to the true species, a crop with k or fewer classes is right at top-k by
+  # construction, so each top-k counts only crops with more than k classes, and calibration
+  # only crops with 2 or more. The headline leaves out bean until issue #4 decides on it.
+  # Trained and scored on WHOLE images; the worker feeds it leaf crops, so these numbers won't
+  # carry over until heads train on detector crops.
+  [model.check]
+  test_top1_multiclass_crops = 0.814     # 667 images: PlantDoc test and the field sets' held-out test (TOM2024 by field visit)
+  test_top3_over_3_classes   = 0.964     # 590 images: tomato and corn
+  test_ece_multiclass        = 0.032     # target 0.05 (evaluation.md §4): met
+  val_top1_multiclass_crops  = 0.819     # 768 images
+  test_top1_plantdoc         = 0.743     # 167 images, web photos
+  test_top1_tom2024          = 0.845     # 420 images from field visits never trained on
+  test_top1_tomato_pakistan  = 0.800     # 80 images
+  test_top1_ibean            = 0.961     # 128 images; bean is outside the headline

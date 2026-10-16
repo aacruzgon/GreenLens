@@ -1,0 +1,228 @@
+{
+  "version": "disease-head-v1c-2026-10-16",
+  "classes": 34,
+  "left_out_below_min": {},
+  "C": 500,
+  "temperature": 1.0427612464421416,
+  "views": 0,
+  "balance_sources": true,
+  "train_rows": 8941,
+  "val": {
+    "n": 1792,
+    "full_top1": 0.8850446428571429,
+    "full_top3": 0.9854910714285714,
+    "restricted_top1_multiclass": {
+      "value": 0.886646884272997,
+      "n": 1685
+    },
+    "restricted_top3_over_3_classes": {
+      "value": 0.9870525514089871,
+      "n": 1313
+    },
+    "ece_before_T_multiclass": {
+      "value": 0.026171224690332583,
+      "n": 1685
+    },
+    "ece_after_T_multiclass": {
+      "value": 0.022435469319629378,
+      "n": 1685
+    },
+    "trivial_share": 0.05970982142857143,
+    "per_crop": {
+      "apple": {
+        "n": 26,
+        "classes": 3,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "bean": {
+        "n": 299,
+        "classes": 3,
+        "top1": 0.9431438127090301,
+        "top3": 1.0
+      },
+      "blueberry": {
+        "n": 22,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "cherry": {
+        "n": 11,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "corn": {
+        "n": 202,
+        "classes": 5,
+        "top1": 0.9207920792079208,
+        "top3": 0.995049504950495
+      },
+      "grape": {
+        "n": 9,
+        "classes": 2,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "peach": {
+        "n": 13,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "pepper": {
+        "n": 15,
+        "classes": 2,
+        "top1": 0.8666666666666667,
+        "top3": 1.0
+      },
+      "potato": {
+        "n": 23,
+        "classes": 2,
+        "top1": 0.6956521739130435,
+        "top3": 1.0
+      },
+      "raspberry": {
+        "n": 12,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "soybean": {
+        "n": 5,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "squash": {
+        "n": 27,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "strawberry": {
+        "n": 17,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "tomato": {
+        "n": 1111,
+        "classes": 10,
+        "top1": 0.8658865886588659,
+        "top3": 0.9855985598559855
+      }
+    },
+    "note": "Restricted metrics assume the species is right. The head is trained and scored on whole images; the worker feeds it leaf crops."
+  },
+  "test": {
+    "n": 354,
+    "full_top1": 0.8163841807909604,
+    "full_top3": 0.9689265536723164,
+    "restricted_top1_multiclass": {
+      "value": 0.8372881355932204,
+      "n": 295
+    },
+    "restricted_top3_over_3_classes": {
+      "value": 0.9333333333333333,
+      "n": 90
+    },
+    "ece_before_T_multiclass": {
+      "value": 0.08062943735365138,
+      "n": 295
+    },
+    "ece_after_T_multiclass": {
+      "value": 0.07627564325171005,
+      "n": 295
+    },
+    "trivial_share": 0.16666666666666666,
+    "per_crop": {
+      "apple": {
+        "n": 29,
+        "classes": 3,
+        "top1": 0.9310344827586207,
+        "top3": 1.0
+      },
+      "bean": {
+        "n": 128,
+        "classes": 3,
+        "top1": 0.9609375,
+        "top3": 1.0
+      },
+      "blueberry": {
+        "n": 11,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "cherry": {
+        "n": 10,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "corn": {
+        "n": 22,
+        "classes": 5,
+        "top1": 0.7272727272727273,
+        "top3": 1.0
+      },
+      "grape": {
+        "n": 20,
+        "classes": 2,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "peach": {
+        "n": 9,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "pepper": {
+        "n": 17,
+        "classes": 2,
+        "top1": 0.9411764705882353,
+        "top3": 1.0
+      },
+      "potato": {
+        "n": 11,
+        "classes": 2,
+        "top1": 0.5454545454545454,
+        "top3": 1.0
+      },
+      "raspberry": {
+        "n": 7,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "soybean": {
+        "n": 8,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "squash": {
+        "n": 6,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "strawberry": {
+        "n": 8,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "tomato": {
+        "n": 68,
+        "classes": 10,
+        "top1": 0.5735294117647058,
+        "top3": 0.9117647058823529
+      }
+    },
+    "note": "Restricted metrics assume the species is right. The head is trained and scored on whole images; the worker feeds it leaf crops."
+  }
+}
