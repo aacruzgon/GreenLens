@@ -1,6 +1,6 @@
 # PDM Vision and ML
 
-> **Status:** Draft v0.2.9, 2026-10-16. v0.2.9: section 6 records the interim GitHub prerelease that holds our files until `pdm-models` exists; [dev-roadmap.md](dev-roadmap.md) plans the whole ML side, models and their integration into the backend, with owners, hand-offs and phases, and [roadmap.md](roadmap.md) tracks model progress against the build plan. v0.2.8: section 6 says the compiled loader and `store` now read `ml/models/FORMATS.md`; open question 13 is settled: organisms stay in the matrix, unscored. v0.2.7: section 6 takes the head and label-matrix formats from `ml/models/FORMATS.md` (PR #6) and lists the four points where the compiled loader still differs, one of them silent. v0.2.6: section 6 keeps our own model files in a private Hugging Face model repository, as the team decided, instead of GitHub release assets; open questions 11 and 14 follow. v0.2.5: section 1 says the repository is private until the submission; section 6 says how model files reach the backend (the S1 manifest's three entries with verified hashes, what `ml/` produces for each slice, the head and label-matrix JSON formats, the private `pdm-models` release store with `sources.toml` and `fetch.py`, the read-only `/models` volume, change-overs, notices and a numbered roadmap for S1–S3); sections 10 and 11 follow. v0.2.4: the SAM 2.1-T encoder's budget is 2.0 GB, from its measured fp16 export, and the 3070 total about 5.3 GB (review of PR #6). v0.2.3: section 5 says how `ort` loads ONNX Runtime (`load-dynamic`, `api-29`, `ORT_DYLIB_PATH`, `ORT_EP`) and why the CUDA 13.0.3 image needs it; section 12 says where the findings stand now that the backend design is on `main`. v0.2.2: section 6 lists the manifest entry names the worker reads. v0.2.1: finding 27 is taken up by the backend branch (contracts 6). v0.2: `model_versions` keys follow contracts 5 (manifest entry names, `sam_encoder` and `sam_decoder`, label versions as keys); section 12 says which findings the backend branch takes up and adds finding 27, the fallback's guided-check budget. v0.1, 2026-10-15: First vision and ML design: every model the system runs, where each one runs on the three GPUs of the rig and the control plane's CPU, VRAM budgets, runtimes and version pins, how model files are pinned and versioned, licences, the build plan, open decisions, and the points where the architecture and contracts need a change to match.
+> **Status:** Draft v0.2.9, 2026-10-16. v0.2.9: section 6's delivery is built in PR #7 (`sources.toml`, `fetch.py`, `check.py`, `publish.py`, `NOTICES.md` and `licences/`, the S1 entries in the manifest, our files in `GreenLens/pdm-models`), with `--cpu` for laptops and CPU twins of the heads; open questions 11 and 14 are settled; [dev-roadmap.md](dev-roadmap.md) plans the whole ML side, models and their integration into the backend, with owners, hand-offs and phases, and [roadmap.md](roadmap.md) tracks model progress against the build plan. v0.2.8: section 6 says the compiled loader and `store` now read `ml/models/FORMATS.md`; open question 13 is settled: organisms stay in the matrix, unscored. v0.2.7: section 6 takes the head and label-matrix formats from `ml/models/FORMATS.md` (PR #6) and lists the four points where the compiled loader still differs, one of them silent. v0.2.6: section 6 keeps our own model files in a private Hugging Face model repository, as the team decided, instead of GitHub release assets; open questions 11 and 14 follow. v0.2.5: section 1 says the repository is private until the submission; section 6 says how model files reach the backend (the S1 manifest's three entries with verified hashes, what `ml/` produces for each slice, the head and label-matrix JSON formats, the private `pdm-models` release store with `sources.toml` and `fetch.py`, the read-only `/models` volume, change-overs, notices and a numbered roadmap for S1–S3); sections 10 and 11 follow. v0.2.4: the SAM 2.1-T encoder's budget is 2.0 GB, from its measured fp16 export, and the 3070 total about 5.3 GB (review of PR #6). v0.2.3: section 5 says how `ort` loads ONNX Runtime (`load-dynamic`, `api-29`, `ORT_DYLIB_PATH`, `ORT_EP`) and why the CUDA 13.0.3 image needs it; section 12 says where the findings stand now that the backend design is on `main`. v0.2.2: section 6 lists the manifest entry names the worker reads. v0.2.1: finding 27 is taken up by the backend branch (contracts 6). v0.2: `model_versions` keys follow contracts 5 (manifest entry names, `sam_encoder` and `sam_decoder`, label versions as keys); section 12 says which findings the backend branch takes up and adds finding 27, the fallback's guided-check budget. v0.1, 2026-10-15: First vision and ML design: every model the system runs, where each one runs on the three GPUs of the rig and the control plane's CPU, VRAM budgets, runtimes and version pins, how model files are pinned and versioned, licences, the build plan, open decisions, and the points where the architecture and contracts need a change to match.
 > **Checked:** model cards, licences, configs, checkpoint sizes, package indexes and vLLM, xgrammar, ONNX Runtime and PyTorch sources were read on 2026-10-15 (✓). The ONNX exports of RF-DETR, SAM 2.1, MobileSAM, UperNet and BioCLIP, the PlantDoc probes, the text-embedder benchmark and YuNet were run on a Mac with ONNX Runtime 1.31 on CPU (✓ ran). Nothing has run on the rig's GPUs: every VRAM and GPU-speed figure is an *estimate* until the day-1 checks and day-2 benchmarks. Points from secondary sources are *unverified*. On 2026-10-16 the three S1 model files were downloaded at their pinned revision and commit and hashed (✓ ran), and Hugging Face's storage limits and GitHub's large-file and LFS billing pages were read (✓).
 
 This is the design of PDM's models and the machine learning around them. It builds on the [system architecture](../architecture/README.md) (sections 2, 3, 5, 6, 8.4, 10, 13, 14 and 15) and the [data contracts](../architecture/contracts.md) (sections 5, 6, 7 and 10), which define every shape the models' outputs travel in. How the Rust code calls a model (sessions, batching, the VLM client, schema building, box conversion, face blurring, the embedder, the measurement code) is in [docs/backend](../backend/vision.md) and [the worker design](../backend/worker.md).
@@ -254,7 +254,7 @@ Each loader calls `Manifest::verify` on only the entries it loads, and `Manifest
 
 #### The S1 manifest
 
-The first `ml/models/manifest.toml` holds the three entries `api` loads, in the format of [backend vision 5](../backend/vision.md#5-the-model-manifest). Each hash was recomputed from the file downloaded at the pinned revision or commit on 2026-10-16 (✓ ran). The two LFS files also match the hash their host publishes: the Hugging Face API's LFS object id for `onnx/model.onnx`, and the Git LFS pointer for YuNet (✓).
+`ml/models/manifest.toml` starts with the three entries `api` loads, in the format of [backend vision 5](../backend/vision.md#5-the-model-manifest). Each hash was recomputed from the file downloaded at the pinned revision or commit on 2026-10-16 (✓ ran). The two LFS files also match the hash their host publishes: the Hugging Face API's LFS object id for `onnx/model.onnx`, and the Git LFS pointer for YuNet (✓).
 
 ```toml
 [[model]]
@@ -321,8 +321,8 @@ S2 needs a disease head and a label matrix, not only the four ONNX files. The AP
 **The compiled code reads that format** (since the backend's model-formats pull request): `perception/heads.rs` loads `pdm-label-matrix/1` and `pdm-linear-head/1`, scores species over the species rows only and keeps the organism rows unscored, needs `species_id` and `problem_id` on every disease-head label, and reads the plant probe as a one-class head. The pipeline refuses a head whose `features` isn't this manifest's `bioclip` export and a file whose version differs from its manifest entry's. `store` computes `label_set_version` with the same recipe and passes the test vector. `backend/crates/vision/tests/ml_files.rs` loads files written as `headfile.py` writes them, and the committed manifest.
 
 - Ids are slugs (`^[a-z][a-z0-9_]{0,63}$`).
-- The label-matrix and head entries carry the version twice: in the manifest (`label_set_version`, `classifier_labels_version`) and in the file. The worker keys what it loads by the file's value. `ml/models/check.py` fails unless the two are equal, the entry's name ends in the same version, and the head's `labels` equal `classifier_labels.yaml`'s rows in index order.
-- A head entry repeats the file's temperature as `temperature` in its `[model.config]`, so `perception_config` changes when it does; `check.py` checks the two are equal.
+- The label-matrix and head entries carry the version twice: in the manifest (`label_set_version`, `classifier_labels_version`) and in the file. The worker keys what it loads by the file's value. `python -m ml.models.check` fails unless the two are equal, the entry's name ends in the same version, a head's `features` names the same manifest's `bioclip` file, and, once the seed has it, the head's `labels` equal `classifier_labels.yaml`'s rows in index order. It also checks that every entry of both manifests has a `sources.toml` row and a `NOTICES.md` section, and that one path never names two files.
+- A head's temperature lives only in the head file, as `ml/models/FORMATS.md` and the manifest say. The entry doesn't repeat it, so the two can't drift, and `check.py` has no temperature check. A refitted temperature ships as a new head file with a new `classifier_labels_version`, and results already report that version, so the change stays visible.
 
 A head entry, for the format:
 
@@ -336,12 +336,9 @@ licence                   = "Ours; trained on CC BY data (section 9)"
 source                    = "ml/training/heads at <git sha>, on BioCLIP 2 <revision> features"
 runs_on                   = "perception"                 # the worker's CPU, beside the GPU models
 classifier_labels_version = "disease-head-2026-10-17"
-
-  [model.config]
-  temperature = 0.71
 ```
 
-A label matrix's entry has the same fields, with `label_set_version` instead of `classifier_labels_version` and no `[model.config]`.
+The entry has no `[model.config]`: the head's temperature is in the file. A label matrix's entry has the same fields, with `label_set_version` instead of `classifier_labels_version`.
 
 #### Where the files live
 
@@ -349,7 +346,7 @@ A label matrix's entry has the same fields, with `label_set_version` instead of 
 |---|---|---|
 | `manifest.toml`, `sources.toml`, `fetch.py`, `check.py`, `NOTICES.md`, `licences/` | Git, in `ml/models/` | Small, reviewed, and they pin everything else |
 | Upstream files (arctic-embed-xs, YuNet; later the VLM checkpoint) | Their own source, at a pinned Hugging Face revision or Git commit | They are already hosted with a fixed revision; copying them adds nothing |
-| Our files (every ONNX export, the heads, the label matrices, the probe) | A private **Hugging Face model repository**, `<hf-org>/pdm-models`, under the team's Hugging Face organisation. Each file sits at `<entry>/<file>`, every upload is a commit, and `sources.toml` pins the 40-hex commit each file was uploaded in | See below |
+| Our files (every ONNX export, the heads, the label matrices, the probe) | A private **Hugging Face model repository**, `GreenLens/pdm-models`, under the team's Hugging Face organisation. Each file sits at its manifest `file` path, every upload is a commit, and `sources.toml` pins the 40-hex commit each file was uploaded in | See below |
 | Model weights in GreenLens | Never: no weights in git, and no Git LFS | |
 
 **Why a private Hugging Face repository.** Decided by the team on 2026-10-16.
@@ -361,7 +358,7 @@ A label matrix's entry has the same fields, with `label_set_version` instead of 
   - *GitHub release assets.* No bandwidth limit, but the files would share GreenLens's visibility and be tied to release tags rather than commits.
   - *A RustFS bucket.* It would open the image store to the rig and tie model delivery to the control plane being up.
 
-**Interim, until `pdm-models` exists (M3).** So that development isn't blocked, the current files (the fp16 set and the fp32 set for `ORT_EP=cpu`) are assets of a GreenLens prerelease, `models-2026-10-16`, and an interim `ml/models/fetch.py` downloads them by name through the GitHub CLI and checks each hash against the manifest ([dev-roadmap 5](dev-roadmap.md#5-getting-started-integration-track), task M5). That is the option rejected above for the long term: the release becomes public with GreenLens. The files move to `pdm-models` and `fetch.py` becomes the one this section describes as soon as M3 is done (dev-roadmap task M21), and the release is deleted before GreenLens goes public.
+Before `pdm-models` existed, a GitHub prerelease of GreenLens held the files for a day so development wasn't blocked. It is deleted before GreenLens goes public ([dev-roadmap](dev-roadmap.md) task M21).
 
 **`ml/models/sources.toml`** says where each file comes from, keyed by its hash, so the manifest stays exactly the struct Rust parses. Moving a file (private to public, or to another store) changes only this file, so it never changes `perception_config` or needs a restart.
 
@@ -372,24 +369,26 @@ url    = "https://huggingface.co/Snowflake/snowflake-arctic-embed-xs/resolve/d8c
 
 [[file]]                                  # one of ours: same shape, a private repository
 sha256 = "<64 hex>"
-url    = "https://huggingface.co/<hf-org>/pdm-models/resolve/<40-hex commit>/leaf_detector/rfdetr-s-leaf-2026-10-18.onnx"
+url    = "https://huggingface.co/GreenLens/pdm-models/resolve/<40-hex commit>/leaf_detector/rfdetr-s-leaf-2026-10-18.onnx"
 auth   = "hf"                             # send HF_TOKEN
 ```
 
-**Publishing one of our files.** The producing script writes the file, its SHA-256 and the `[model.check]` values. The author uploads it with `hf upload <hf-org>/pdm-models <file> <entry>/<file>`, which makes one commit, and copies that commit's 40-hex id into the `sources.toml` row. Then one GreenLens pull request adds the manifest entry, the `sources.toml` row, the `NOTICES.md` change and, for a head, `classifier_labels.yaml`. A path is never overwritten: a new file gets a new name, so a revision-pinned URL and the file at the head of `main` always agree.
+**Publishing one of our files.** The producing script writes the file, its SHA-256 and the `[model.check]` values. The author runs `python -m ml.models.publish` (logged in with `hf auth login` and write access to the organisation): it uploads every file the manifests name that has no `sources.toml` row, in one commit at each file's manifest path, refuses a path already in the repository, and appends the rows pinned to that commit's 40-hex id. Then one GreenLens pull request adds the manifest entry, the `sources.toml` row, the `NOTICES.md` change and, for a head, `classifier_labels.yaml`. A path is never overwritten: a new file gets a new name, so a revision-pinned URL and the file at the head of `main` always agree.
 
 #### How files reach `/models`
 
 On each host, `/models` is a Docker named volume, `models`. The consumers mount it read-only (`models:/models:ro`, as in [worker 12](../backend/worker.md#12-deployment)). Only a one-shot fetch step mounts it read-write. The compose services and the image that runs the step are in the infrastructure document, `docs/infra`; this section is what the step does.
 
-`fetch.py` uses only Python 3.12's standard library (`tomllib`, `hashlib`, `urllib`), so it runs in a `python:3.12-slim` container or on a dev machine.
+`fetch.py` uses only Python 3.12's standard library (`tomllib`, `hashlib`, `urllib`), so it runs in a `python:3.12-slim` container or on a dev machine. `--manifest` and `--sources` default to the files in `ml/models/`.
 
 ```text
-fetch.py --manifest ml/models/manifest.toml --sources ml/models/sources.toml \
-         --for api,fallback --dest /models          # control plane
-fetch.py ... --for perception --dest /models        # rig
-fetch.py ... --for ingest --dest ~/.cache/pdm-models  # a dev machine running ingestion
+python3 -m ml.models.fetch --for api,fallback --dest /models          # control plane
+python3 -m ml.models.fetch --for perception --dest /models            # rig
+python3 -m ml.models.fetch --for ingest --dest ~/.cache/pdm-models    # a dev machine running ingestion
+python3 -m ml.models.fetch --for perception --cpu --dest ~/.cache/pdm-models   # a laptop, ORT_EP=cpu
 ```
+
+`--cpu` reads `manifest.cpu.toml`, generated by `python -m ml.models.cpu_manifest`: each fp16 ONNX file swapped for its fp32 export, which ONNX Runtime's CPU provider needs, and each head swapped for a CPU twin, `<stem>.cpu.json`, identical but for a `features` that names the fp32 BioCLIP file, since the worker refuses a head trained on another export (dev-roadmap gap G10). It is written to the destination as `manifest.toml` like any other. `fetch.py` refuses a destination that isn't empty and wasn't made by it (it leaves a `.pdm-models` marker), so step 5 never deletes files elsewhere.
 
 | Group | Entries |
 |---|---|
@@ -440,7 +439,7 @@ Re-running the step downloads nothing when nothing changed. It re-hashes what is
 |---|---|---|---|
 | M1 | S1, Oct 16 | `ml/models/` with the S1 `manifest.toml` above, `sources.toml`, `fetch.py`, `licences/` and a first `NOTICES.md` for the three files | `fetch.py --for api` into an empty directory downloads three files with matching hashes; a second run downloads nothing; one changed byte makes it exit 2 and leaves the directory's manifest unchanged |
 | M2 | S1, Oct 16 | `api` started locally with `MODELS_DIR` at that directory | `api` starts; the embedder's golden test passes ([models 10](models.md#10-text-embedder)); `stored_name()` returns `snowflake-arctic-embed-xs@d8c86521`; a test photo's faces are found |
-| M3 | S1, Oct 16 | The private Hugging Face repository `<hf-org>/pdm-models` under the team's organisation, and two fine-grained read-only tokens, one for the control plane and one for the rig | Each host downloads a test file at a pinned revision with its own token, and gets `403` on an upload |
+| M3 | S1, Oct 16 | The private Hugging Face repository `GreenLens/pdm-models` under the team's organisation, and two fine-grained read-only tokens, one for the control plane and one for the rig | Each host downloads a test file at a pinned revision with its own token, and gets `403` on an upload |
 | M4 | S1, Oct 17 | The control plane's fetch step (`--for api,fallback`) before `api` and `fallback-worker`, on the `models` volume | The deployed `api` starts with the hashes checked; a photo with a face is blurred as in [architecture 11](../architecture/README.md#11-security-privacy-and-safety) (the roadmap's S1 exit check) |
 | M5 | S2, Oct 17–18 | The four ONNX exports and their `[model.check]` values, uploaded to `pdm-models` with their pinned commits, entries and source rows | `ml/training/export/check.py` passes for each; `fetch.py --for perception` verifies all four |
 | M6 | S2, Oct 18 | The first label matrix, disease head v0, `classifier_labels.yaml` in the seed, and `check.py` | `check.py` passes: versions agree between manifest, file and loader, and the head's labels equal the YAML's rows |
@@ -537,10 +536,10 @@ The vision work, mapped onto [architecture 14](../architecture/README.md#14-buil
 8. **The licence questions** of section 9.
 9. **Soil and surroundings regions:** only if a stage needs them and the ADE20K question is accepted ([models 5](models.md#5-plant-soil-and-surroundings-regions)).
 10. **The calibration values** (contracts open questions 2 and 3), on Oct 22–23.
-11. **Settled (2026-10-16): our model files live in a private Hugging Face model repository, `pdm-models`.** Still open: which Hugging Face organisation owns it (`<hf-org>` above), and who besides the owner may upload.
+11. **Settled (2026-10-16): our model files live in a private Hugging Face model repository, `GreenLens/pdm-models`,** in the team's Hugging Face organisation, which Sam created. Members with write access upload with `publish.py`; everyone else only reads.
 12. **How a deploy carries `ml/models/` to the fetch step:** an image built from the commit, or a checkout on the host. Shared with the infrastructure document (`docs/infra`); either way the fetched manifest must be the deployed commit's.
 13. **Settled: organisms in the label matrix.** The matrix keeps every organism row ([`FORMATS.md`](../../ml/models/FORMATS.md) gives each label its `table`), and the worker scores species over the species rows only, keeping the organism rows unscored until the organism second opinion ([models 11](models.md#11-organism-second-opinion-stretch)) uses them.
-14. **Token holders:** who creates and rotates the hosts' `HF_TOKEN`s on the control plane and the rig, and whether they get an expiry, so a fetch doesn't fail on demo day.
+14. **Settled: token holders.** Each teammate makes their own fine-grained read-only token for `pdm-models` as an organisation member; Sam makes one for the control plane and one for the rig and puts them in the hosts' `.env.models` files. No token is committed. Still open: whether the host tokens get an expiry, so a fetch doesn't fail on demo day.
 15. **The VLM cache check** (item M10): whether the Hugging Face cache keeps every LFS file as a blob named by its SHA-256 at the pinned `huggingface_hub` version, which `fetch.py --for vlm` relies on.
 
 ---

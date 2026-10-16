@@ -1,6 +1,6 @@
 # PDM Vision Roadmap
 
-> **Status:** v0.3, 2026-10-16 (night). v0.3: PR #6 merged; PR #7 has `main` merged in and targets `main`; our model files' GitHub release is an interim until `pdm-models` (dev-roadmap M21). v0.2: the PR #6 reviews are answered: Tomato-Pakistan reworked, disease head v1d, the detector retrained on a grouped split; the whole-ML plan with the integration track moves to [dev-roadmap.md](dev-roadmap.md). v0.1: First tracker of the vision and ML work against the build plan in [README 10](README.md#10-build-plan), with what is done, what is next and what waits on whom.
+> **Status:** v0.4, 2026-10-16 (night). v0.4: decisions now live only in dev-roadmap section 9; our model files moved from the interim GitHub release to `GreenLens/pdm-models`. v0.3: PR #6 merged; PR #7 has `main` merged in and targets `main`; our model files' GitHub release is an interim until `pdm-models` (dev-roadmap M21). v0.2: the PR #6 reviews are answered: Tomato-Pakistan reworked, disease head v1d, the detector retrained on a grouped split; the whole-ML plan with the integration track moves to [dev-roadmap.md](dev-roadmap.md). v0.1: First tracker of the vision and ML work against the build plan in [README 10](README.md#10-build-plan), with what is done, what is next and what waits on whom.
 > **How to use it:** read this first when picking up the ML work. Update it at the end of every work session: change the state of each item you touched, add the commit or report that proves it, and bump the status line. The plan itself stays in [README 10](README.md#10-build-plan); this file only tracks progress against it.
 
 Owner of the vision and ML work: Sam (models, training, export, evaluation, calibration; the RTX 5070 Ti). Running the models in the backend is Sara's track ([docs/backend/vision.md](../backend/vision.md), [worker.md](../backend/worker.md)); the plan both tracks share, with owners, hand-offs and the integration gaps, is [dev-roadmap.md](dev-roadmap.md). This file tracks the models.
@@ -85,19 +85,12 @@ Day 1 of 10 (Oct 16). The work is **ahead of plan on models and serving, behind 
 
 ## 4. Decisions and who they wait on
 
-| Decision | State | Waits on |
-|---|---|---|
-| [#2](https://github.com/aacruzgon/GreenLens/issues/2) Resize filter | Closed: Lanczos3 | — |
-| [#3](https://github.com/aacruzgon/GreenLens/issues/3) Head and label-matrix JSON format, `label_set_version` | Open; the Rust loaders on `main` read different field names (dev-roadmap G1–G3) | Sam and Sara agreeing the format |
-| [#4](https://github.com/aacruzgon/GreenLens/issues/4) Supported crops and class-to-slug mapping | Open | The knowledge-base owner. Bean's place decides whether iBean counts in the headline |
-| [#5](https://github.com/aacruzgon/GreenLens/issues/5) Duplicate threshold and conflicting PlantDoc groups | Open | A reviewer of the sampled pairs; mostly answered by the Tomato-Pakistan finding |
-| Which VLM (README 11.1) | Open | The day-2 benchmark |
-| Disease head or ConvNeXt-Tiny (README 11.4) | Open | v1d is 0.814 on whole images; decided on detector crops (the 75% top-1 bar) |
+Decisions are tracked in one table, [dev-roadmap section 9](dev-roadmap.md#9-decisions-and-blockers), whose rows link their GitHub issues.
 
 ## 5. Next steps, in order
 
-1. **Merge PR #7** once reviewed, so Sara builds against `main`. Then move our files to `pdm-models` as soon as the team settles its organisation and tokens (dev-roadmap M21, D9).
-2. **Unblock Sara:** the model release, `fetch.py`, the CPU manifest and the Rust fixtures are done (dev-roadmap M5, M6, M9); next, the fake VLM server (M20) and agreeing the formats in issue #3.
+1. **Merge PR #7** once reviewed, so Sara builds against `main`; invite Sara and Alan to the `GreenLens` organisation; make the control plane's and the rig's read tokens; delete the interim GitHub release (dev-roadmap M21).
+2. **Unblock Sara:** `pdm-models`, `fetch.py --for perception --cpu`, the CPU manifest with its head twins and the Rust fixtures are done (dev-roadmap M6, M9, M21); the formats are settled by #11. Next, the fake VLM server (M20).
 3. **Start the Qwen3.5 challenger once** and run the day-1 check on it.
 4. **Start the evaluation photos** and the 20 dev cases the day-2 benchmark needs (Oct 18).
 5. **YuNet and the text embedder pinned** (dev-roadmap M7, M8); BioCLIP zero-shot on team photos.
