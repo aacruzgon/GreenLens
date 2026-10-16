@@ -1,6 +1,6 @@
 # PDM Training, Export and Knowledge Ingestion
 
-> **Status:** Draft v0.2, 2026-10-16. v0.2: the heads and label matrices are written in the backend's JSON format (base64 `f32`), and an MLP head would need that format and the worker extended. v0.1, 2026-10-15: First training design: the Python environment, the datasets and their licences, data preparation with deduplication, the leaf detector fine-tune, the disease and species heads on BioCLIP 2 features, ONNX export and its checks, the label lists generated from the knowledge base, feedback as training data, and the model steps of knowledge ingestion.
+> **Status:** Draft v0.2.1, 2026-10-16. v0.2.1: the feature pre-processing resizes with Lanczos3, as the worker does (issue #2). v0.2: the heads and label matrices are written in the backend's JSON format (base64 `f32`), and an MLP head would need that format and the worker extended. v0.1, 2026-10-15: First training design: the Python environment, the datasets and their licences, data preparation with deduplication, the leaf detector fine-tune, the disease and species heads on BioCLIP 2 features, ONNX export and its checks, the label lists generated from the knowledge base, feedback as training data, and the model steps of knowledge ingestion.
 > **Checked:** ✓ means read in the primary source on that date; ✓ ran means executed. Dataset licences, package versions and wheel indexes were read on 2026-10-15 (✓). PlantDoc's duplicates and the BioCLIP probes were run on a Mac, on CPU and its Apple GPU (✓ ran). No training has run on the rig.
 
 Everything here lives in `ml/` ([architecture 13](../architecture/README.md#13-repository-layout)) and runs on dev machines or the rig, never in production. What it produces (ONNX files, label lists, temperatures, the knowledge seed) is consumed by the workers and `api` through the model manifest ([README 6](README.md#6-model-files-versions-and-pinning)).
@@ -158,7 +158,7 @@ Both heads sit on frozen BioCLIP 2 image features ([models 6–7](models.md#7-di
 
 ### Features
 
-- Run BioCLIP 2's vision tower once over every training image and every leaf crop, with the **exact** pre-processing the worker uses (shortest side to 224, bicubic, centre crop, CLIP normalisation) from `pdm_vision`, and cache the L2-normalised 768-dimensional vectors by image hash.
+- Run BioCLIP 2's vision tower once over every training image and every leaf crop, with the **exact** pre-processing the worker uses (shortest side to 224 with Lanczos3, centre crop, CLIP normalisation; [models 6](models.md#6-species-bioclip)) from `pdm_vision`, and cache the L2-normalised 768-dimensional vectors by image hash.
 - About 60–70 seconds for 2,342 images on a Mac (Apple GPU through PyTorch's MPS backend) with BioCLIP v1 ✓ ran; BioCLIP 2 is roughly 3–4 times the compute *estimate*, a few minutes on the 5070 Ti.
 
 ### Disease head

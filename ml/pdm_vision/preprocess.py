@@ -62,11 +62,16 @@ def load_rgb(path) -> Image.Image:
         return ImageOps.exif_transpose(im).convert("RGB")
 
 
+# The resize filter (issue #2). Part of the feature cache's key (features.preprocess_key).
+RESIZE_FILTER = "lanczos3"
+_FILTERS = {"lanczos3": Image.Resampling.LANCZOS, "bicubic": Image.Resampling.BICUBIC}
+
+
 def resize(im: Image.Image, width: int, height: int) -> Image.Image:
     """`imaging::resize`: Lanczos3 to exactly width × height."""
     if im.size == (width, height):
         return im.copy()
-    return im.resize((width, height), Image.Resampling.LANCZOS)
+    return im.resize((width, height), _FILTERS[RESIZE_FILTER])
 
 
 def fit_long_side(size: tuple[int, int], long_side: int) -> tuple[int, int]:

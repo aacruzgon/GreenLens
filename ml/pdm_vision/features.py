@@ -19,6 +19,13 @@ DEFAULT_MODEL = ROOT / "ml/models/files/bioclip/bioclip-2-vision-fp16.onnx"
 CACHE = ROOT / "ml/training/data/cache/features"
 
 
+def preprocess_key(recipe: pp.Recipe = pp.BIOCLIP) -> str:
+    """Everything about the pre-processing that changes a vector: the resize filter and the
+    recipe. Part of the cache key, so a change (issue #2) can't silently reuse old vectors."""
+    spec = f"{pp.RESIZE_FILTER}|{recipe.side}|{recipe.resize.value}|{recipe.mean}|{recipe.std}|{recipe.bgr}"
+    return hashlib.sha256(spec.encode()).hexdigest()[:8]
+
+
 def cuda_session(model: Path) -> ort.InferenceSession:
     """A session on the CUDA execution provider, or an error: never a silent CPU fallback
     (the worker uses `error_on_failure` for the same reason, README 5). The CUDA and cuDNN
@@ -46,7 +53,7 @@ class Embedder:
         self.model_sha = file_sha256(self.model)[:16]
         self.batch = batch
         self.sess = cuda_session(self.model)
-        self.cache_dir = CACHE / self.model_sha
+        self.cache_dir = CACHE / f"{self.model_sha}-{preprocess_key()}"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def run(self, tensors: np.ndarray) -> np.ndarray:
