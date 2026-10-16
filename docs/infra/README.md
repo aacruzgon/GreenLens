@@ -1,6 +1,6 @@
 # PDM Infrastructure and CI
 
-> **Status:** Draft v0.2, 2026-10-16. v0.2: `backend.yml` and `dependabot.yml` exist; the `test` job adds the doc tests nextest skips, the `examples` job runs only when the Rust skills change and on pushes to `main`, every Rust job installs 1.99.1 and sets `RUSTUP_TOOLCHAIN`, `checklinks.py` and `check_fences.py` now exit non-zero, and open question 1 is answered. Its audit added: no `--health-cmd` for distroless SurrealDB; `ml/`'s manifest and templates trigger `test`; the examples cache keyed on `versions.md`; `changes` as a required check; one concurrency group per commit on `main`; grouped Dependabot updates. v0.1.2: section 4's vLLM health check is verified on the rig, and the running `vllm` service is mapped to `vllm-nv`. v0.1.1: `api`'s bucket default is now `pdm-images`, so section 4's note no longer flags it. v0.1: first design of the CI workflows, the container images, the three compose files, ingress, secrets, deploys by digest, operations hooks and the infrastructure work items of the [backend roadmap](../backend/roadmap.md). Design only: nothing here exists yet.
+> **Status:** Draft v0.4, 2026-10-16. v0.4: `infra/dev.compose.yml` and `infra/env/.env.example` exist, and section 4 records the first run. Its changes from v0.1: `surrealdb-volume` gives the named volume to SurrealDB's user (database 1 had missed it), `surrealdb-init` creates the `api` user, and `rustfs-init` uses `rc bucket create`. Section 6 says how `infra/env/.env.example` differs from the rig's `infra/.env.example`. v0.2: `backend.yml` and `dependabot.yml` exist; the `test` job adds the doc tests nextest skips, the `examples` job runs only when the Rust skills change and on pushes to `main`, every Rust job installs 1.99.1 and sets `RUSTUP_TOOLCHAIN`, `checklinks.py` and `check_fences.py` now exit non-zero, and open question 1 is answered. Its audit added: no `--health-cmd` for distroless SurrealDB; `ml/`'s manifest and templates trigger `test`; the examples cache keyed on `versions.md`; `changes` as a required check; one concurrency group per commit on `main`; grouped Dependabot updates. v0.1.2: section 4's vLLM health check is verified on the rig, and the running `vllm` service is mapped to `vllm-nv`. v0.1.1: `api`'s bucket default is now `pdm-images`, so section 4's note no longer flags it. v0.1: first design of the CI workflows, the container images, the three compose files, ingress, secrets, deploys by digest, operations hooks and the infrastructure work items of the [backend roadmap](../backend/roadmap.md). Design only: nothing here exists yet.
 
 This document turns [architecture 12](../architecture/README.md#12-deployment) and [backend 12](../backend/README.md#12-builds-and-deployment) into files: what goes in `.github/` and `infra/`, how each image is built and pinned, and how the control plane and the rig are started, deployed and rolled back. It closes [roadmap gap 3](../backend/roadmap.md#12-gaps-found-while-writing-this-roadmap).
 
@@ -47,6 +47,8 @@ PDM/
 │  └─ .dockerignore            target/, tools/, .git
 ├─ infra/
 │  ├─ dev.compose.yml          SurrealDB and RustFS for a laptop and for the ignored tests
+│  ├─ dev/surrealdb-users.surql the `api` user dev.compose.yml imports (throwaway password)
+│  ├─ .env.example             the rig's vLLM template today, copied to infra/.env (infra/README.md)
 │  ├─ control-plane.compose.yml caddy · api · surrealdb · rustfs · fallback-worker · seed-upload · cloudflared (profile)
 │  ├─ rig.compose.yml          perception-worker · vllm-nv · vlm-worker-nv · vllm-amd · vlm-worker-amd
 │  ├─ rig-amd.compose.yml      only if the RX 9070 XT sits in a second host
@@ -261,50 +263,26 @@ x-hardened: &hardened
 
 ### `infra/dev.compose.yml`
 
-For a laptop: SurrealDB and RustFS on the ports and with the throwaway credentials that the ignored tests and `check_examples.py` expect. Nothing here is a secret, and nothing here is used anywhere else.
+For a laptop: SurrealDB and RustFS on the ports and with the throwaway credentials that the ignored tests and `check_examples.py` expect. Nothing here is a secret, and nothing here is used anywhere else. The file is [`infra/dev.compose.yml`](../../infra/dev.compose.yml):
 
-```yaml
-name: pdm-dev
-services:
-  surrealdb:
-    image: surrealdb/surrealdb:v3.3.4@sha256:649a60a3b9c0177d9923c938e1c2563e48cde2a9d06ac2c0519714be719b02af
-    command: start --user root --pass root --log info rocksdb:/data/db
-    ports: ["127.0.0.1:18000:8000"]
-    volumes: ["surrealdb-dev:/data"]
-    healthcheck:
-      test: ["CMD", "/surreal", "is-ready", "--endpoint", "http://127.0.0.1:8000"]
-      interval: 5s
-      retries: 12
-  rustfs:
-    image: rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
-    environment:
-      RUSTFS_VOLUMES: /data
-      RUSTFS_ACCESS_KEY: TESTROOT
-      RUSTFS_SECRET_KEY: testrootsecret
-      RUSTFS_CONSOLE_ENABLE: "false"
-      RUSTFS_CHECK_UPDATE: "false"
-      RUSTFS_OBS_LOG_STDOUT_ENABLED: "true"
-    ports: ["127.0.0.1:19000:9000"]
-    volumes: ["rustfs-dev:/data"]
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health/ready"]
-      interval: 5s
-      retries: 12
-      start_period: 30s
-  rustfs-init:                      # creates the bucket a local `api` uses, then exits
-    image: rustfs/rc:v0.1.36@sha256:ab024bfebee49a750ce886b4c70963ccd9ddaa03f491704a90710641d7a26699
-    depends_on: { rustfs: { condition: service_healthy } }
-    entrypoint: ["sh", "-c", "rc alias set dev http://rustfs:9000 TESTROOT testrootsecret && rc mb --ignore-existing dev/pdm-images"]
-volumes: { surrealdb-dev: {}, rustfs-dev: {} }
-```
+| Service | What it does |
+|---|---|
+| `surrealdb-volume` | `chown 65532:65532 /data` on the volume (`busybox:1.38.0`, pinned by digest), then exits. The image's `/data` is owned by root, so a new named volume is too and RocksDB can't write it ([database 1](../database/README.md#1-version-and-setup)) |
+| `surrealdb` | `start --user root --pass root rocksdb:/data/db` as the image's own user, on `127.0.0.1:18000` |
+| `surrealdb-init` | `surreal import` of [`dev/surrealdb-users.surql`](../../infra/dev/surrealdb-users.surql): the `pdm` namespace, the `main` database and the `api` user with password `api`, so a local `api` can sign in. `surreal import` refuses a file that doesn't start with `OPTION IMPORT` |
+| `rustfs` | RustFS with `TESTROOT`/`testrootsecret` on `127.0.0.1:19000` |
+| `rustfs-init` | `rc bucket create --ignore-existing dev/pdm-images` (`rustfs/rc:v0.1.36`; `mb` is deprecated there) |
 
-`docker compose -f infra/dev.compose.yml down -v` resets both; the `-v` is safe only in this file. A local `api` reads `SURREAL_URL=ws://127.0.0.1:18000` and `RUSTFS_ENDPOINT=http://127.0.0.1:19000` from the local section of `infra/env/.env.example`. Whether `rc mb` takes `--ignore-existing` is *unverified*; if it doesn't, the init tolerates the "already exists" error.
+✓ Run on 2026-10-16. From an empty volume, `up -d` leaves SurrealDB healthy and running as `nonroot`. Then `cargo nextest run --workspace --run-ignored only` passes (2 of 2), the `api` user signs in, and a wrong password gets `401`. After `down` and `up`, the data is kept, and both init services exit 0 again.
+
+`docker compose -f infra/dev.compose.yml down -v` resets both; the `-v` is safe only in this file. A local `api` reads `SURREAL_URL=ws://127.0.0.1:18000` and `RUSTFS_ENDPOINT=http://127.0.0.1:19000` from the local section of [`infra/env/.env.example`](../../infra/env/.env.example).
 
 ### `infra/control-plane.compose.yml`
 
 ```yaml
 name: pdm
 services:
+  surrealdb-volume:                 # database 1: gives the volume to UID 65532, then exits
   surrealdb:                        # database 1, with env_file: .env.surrealdb in place of interpolation, plus:
     logging: *logging
     networks: [data]
@@ -499,7 +477,8 @@ Architecture 12 chose Caddy in both hosting options, with a Cloudflare Tunnel wh
 | `.env.backup` | `ops/backup.sh` | `SURREAL_ROOT_PASS`, `PDMBACKUP01`'s keys, the off-host remote's credentials |
 | `tunnel.json` | `cloudflared` | The tunnel's credentials |
 
-- **`infra/env/.env.example`** lists every variable of every file above, grouped under a `# --- .env.api ---` style heading, with placeholders only (`change-me`, `GPU-00000000-…`, `sk-placeholder`), plus a local section for running `api` and `worker` against `dev.compose.yml`. The `infra` CI job renders each compose file with `infra/.env.example` copied to `infra/.env`, the file the rig's compose file reads, so a variable a compose file needs and that example lacks fails CI.
+- **[`infra/env/.env.example`](../../infra/env/.env.example)** lists every variable of every file above, grouped under a `# --- .env.api ---` style heading, with placeholders only (`change-me`, `GPU-00000000-…`, `sk-placeholder`), plus a local section for running `api` and `worker` against `dev.compose.yml`.
+- **`infra/.env.example`** is a different file: the rig's vLLM template from PR #7, which [infra/README.md](../../infra/README.md) copies to `infra/.env`, and which compose loads into the vLLM container. So `api`'s secrets never go in it. It folds into the per-service files when `rig.compose.yml` grows into section 4. The `infra` CI job renders each compose file with `infra/.env.example` copied to `infra/.env`, the file the rig's compose file reads, so a variable a compose file needs and that example lacks fails CI.
 - **Generating secrets:** `openssl rand -hex 32` for passwords, signing keys and worker tokens. RustFS access keys use A–Z and 0–9 only ([storage 1](../storage/README.md#1-version-and-setup)). A worker's token goes in two places: its own `.env.<worker id>` and `api`'s `WORKER_TOKENS`.
 - **Clerk:** the development instance's issuer and keys until the team decides otherwise; never the production instance without asking ([roadmap S1](../backend/roadmap.md#5-s1-walking-skeleton)).
 - **CI has no deployment secrets.** It needs only `GITHUB_TOKEN`. Nothing deploys from CI ([section 7](#7-deploying-and-rolling-back)), so no host credentials sit in GitHub.
