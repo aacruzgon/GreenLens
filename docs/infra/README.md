@@ -1,6 +1,6 @@
 # PDM Infrastructure and CI
 
-> **Status:** Draft v0.2, 2026-10-16. v0.2: `backend.yml` and `dependabot.yml` exist; the `test` job adds the doc tests nextest skips, the `examples` job runs only when the Rust skills change and on pushes to `main`, every Rust job installs 1.99.1 and sets `RUSTUP_TOOLCHAIN`, `checklinks.py` and `check_fences.py` now exit non-zero, and open question 1 is answered. v0.1.1: `api`'s bucket default is now `pdm-images`, so section 4's note no longer flags it. v0.1: first design of the CI workflows, the container images, the three compose files, ingress, secrets, deploys by digest, operations hooks and the infrastructure work items of the [backend roadmap](../backend/roadmap.md). Design only: nothing here exists yet.
+> **Status:** Draft v0.2, 2026-10-16. v0.2: `backend.yml` and `dependabot.yml` exist; the `test` job adds the doc tests nextest skips, the `examples` job runs only when the Rust skills change and on pushes to `main`, every Rust job installs 1.99.1 and sets `RUSTUP_TOOLCHAIN`, `checklinks.py` and `check_fences.py` now exit non-zero, and open question 1 is answered. Its audit added: no `--health-cmd` for distroless SurrealDB; `ml/`'s manifest and templates trigger `test`; the examples cache keyed on `versions.md`; `changes` as a required check; one concurrency group per commit on `main`; grouped Dependabot updates. v0.1.1: `api`'s bucket default is now `pdm-images`, so section 4's note no longer flags it. v0.1: first design of the CI workflows, the container images, the three compose files, ingress, secrets, deploys by digest, operations hooks and the infrastructure work items of the [backend roadmap](../backend/roadmap.md). Design only: nothing here exists yet.
 
 This document turns [architecture 12](../architecture/README.md#12-deployment) and [backend 12](../backend/README.md#12-builds-and-deployment) into files: what goes in `.github/` and `infra/`, how each image is built and pinned, and how the control plane and the rig are started, deployed and rolled back. It closes [roadmap gap 3](../backend/roadmap.md#12-gaps-found-while-writing-this-roadmap).
 
@@ -94,73 +94,39 @@ Whether the account allows spending past the included minutes, or whether a self
 | `docker/setup-buildx-action` | v4.4.1 (2026-09-16) | `f87e5991a6d7451dcb8d9637bfbc97413f497069` ✓ |
 | `docker/login-action` | v4.6.0 (2026-07-29) | `dbcb813823bdd20940b903addbd779551569679f` ✓ |
 
-Each is the latest release on 2026-10-16, and each commit is the one its tag points to (`gh api repos/<owner>/<repo>/commits/<tag>`). Workflows reference the full SHA with the version in a comment, so a moved tag changes nothing. Dependabot proposes updates weekly; each goes through a pull request like any other change. No other actions are used: images are built with `docker buildx bake` directly ([section 3](#3-images)).
+Each is the latest release on 2026-10-16, and each commit is the one its tag points to (`gh api repos/<owner>/<repo>/commits/<tag>`). Workflows reference the full SHA with the version in a comment, so a moved tag changes nothing. Dependabot proposes updates weekly, grouped into one pull request, because a change to `backend.yml` runs every job. No other actions are used: images are built with `docker buildx bake` directly ([section 3](#3-images)).
 
-Rust needs no action: the runner image has rustup, and the first `cargo` call installs 1.99.1 with rustfmt and Clippy from `backend/rust-toolchain.toml`. The runner is `ubuntu-26.04` (✓ a listed label), because its `libheif-dev` is 1.21.2 ([setup 4](../setup/README.md#4-backend-rust)) and the `heic` feature needs 1.19 or newer; Ubuntu 24.04 ships 1.17.6.
+Rust needs no setup action: the runner image has rustup, and each Rust job installs 1.99.1 itself (see the toolchain paragraph below). The runner is `ubuntu-26.04` (✓ a listed label), because its `libheif-dev` is 1.21.2 ([setup 4](../setup/README.md#4-backend-rust)) and the `heic` feature needs 1.19 or newer; Ubuntu 24.04 ships 1.17.6.
 
 ### `backend.yml`
 
-**Triggers:** `pull_request` to `main`, `push` to `main`, and `workflow_dispatch`. **Permissions:** `contents: read`. **Concurrency:** one group per pull request (or ref), `cancel-in-progress` on pull requests only. Every job sets `working-directory: backend` where it runs cargo, and passes `--locked`, so a stale `Cargo.lock` fails.
+**Triggers:** `pull_request` to `main`, `push` to `main`, and `workflow_dispatch`. **Permissions:** `contents: read`. **Concurrency:** one group per pull request, `cancel-in-progress` on pull requests only; on `main`, one group per commit, so a burst of merges never drops a pending run. Every job sets `working-directory: backend` where it runs cargo, and passes `--locked`, so a stale `Cargo.lock` fails.
 
 | Job | Runs when | Steps | Warm / cold time (estimate) |
 |---|---|---|---|
-| `changes` | always | `git diff --name-only` against the base; outputs `rust`, `docs`, `infra`, `live` as booleans | 0.5 min |
+| `changes` | always | `git diff --name-only` against the base; outputs `rust`, `docs`, `skills`, `infra`, `live` as booleans | 0.5 min |
 | `lint` | `rust` | `cargo fmt --all --check`; `cargo clippy --workspace --all-targets --locked -- -D warnings`; `cargo check -p worker --features cuda`; `cargo check -p vision --features cuda,migraphx,webgpu`; `cargo check -p vision --features heic` (installs `libheif-dev`) | 5 / 14 min |
 | `test` | `rust` | install cargo-nextest 0.9.148 with `taiki-e/install-action` (`tool: cargo-nextest@0.9.148`); `cargo nextest run --workspace --locked`. This includes the `api` test that fails when `backend/openapi.json` is stale. Then `cargo test --doc --workspace --locked`, because nextest doesn't run doc tests and the compile-fail tests of the proofs and URL states are doc tests ([backend 11](../backend/README.md#11-testing-and-tooling)) | 7 / 18 min |
-| `examples` | the Rust skills changed, or a push to `main` | `setup-python` 3.12; `python3 .claude/skills/rust/scripts/check_examples.py`. The examples compile against `versions.md` in a crate of their own, not against the workspace, so a backend change can't break them | 3 / 8 min |
+| `examples` | the Rust skills changed, or a push to `main` | `setup-python` 3.12; `python3 .claude/skills/rust/scripts/check_examples.py`. The examples compile against `versions.md` and a copy of `backend/migrations/schema.surql` in a crate of their own, not against the workspace crates, so only the skills and the schema can break them | 3 / 8 min |
 | `docs` | `rust` or `docs` (any `.md` file, or the generator) | `backend/tools/docgen/regen_all.sh` then `git diff --exit-code docs/backend`; `check_fences.py docs/backend`; `checklinks.py` over `AGENTS.md`, `CLAUDE.md` and `docs/**/*.md`. Both checkers exit 1 on a broken link or an unbalanced listing; a listing rustfmt can't parse is reported, not failed | 1 min |
-| `live` | `live`, or a push to `main` | service containers below; `cargo nextest run -p store -p blob --run-ignored only --locked`; `check_examples.py --live` | 5 / 12 min |
+| `live` | `live`, or a push to `main` | service containers below; `cargo nextest run -p store -p blob --run-ignored only --locked`; `check_examples.py --live --no-test`, since `examples` already runs the examples' own tests | 5 / 12 min |
 | `infra` | `infra` | `docker compose -f <file> --env-file infra/env/.env.example config -q` for each compose file; `caddy validate` in the pinned Caddy image; `bash -n` and `shellcheck` on `infra/**/*.sh` | 1 min |
 
 **The toolchain.** Every Rust job runs `rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy`, and the workflow sets `RUSTUP_TOOLCHAIN=1.99.1`. `check_examples.py` builds its crate in a temporary directory outside `backend/`, where `rust-toolchain.toml` doesn't apply, and refuses any `rustc` but the one `versions.md` pins.
 
-**How `changes` decides.** It diffs against the pull request's base, or the push's `before`; a manual run, a new branch, a base missing from history, or a change to `backend.yml` itself sets every output. `rust` is `backend/crates`, `backend/bins`, `backend/migrations` and the workspace's root files; `docs` is any `.md` file and `backend/tools/docgen/`; `skills` is `.claude/skills/rust*`; `infra` is `infra/` and `.github/`; `live` is `store`, `blob`, `migrations`, `Cargo.toml`, `Cargo.lock` and the Rust skills.
+**How `changes` decides.** It diffs against the pull request's base, or the push's `before`; a manual run, a new branch, a base missing from history, or a change to `backend.yml` itself sets every output. `rust` is `backend/crates`, `backend/bins`, `backend/migrations`, the workspace's root files, and `ml/models/manifest.toml` and `ml/models/templates/`, which `store`'s tests compare with their copies inside `backend/`; `docs` is any `.md` file and `backend/tools/docgen/`; `skills` is `.claude/skills/rust*` and `backend/migrations/`; `infra` is `infra/` and `.github/`; `live` is `store`, `blob`, `migrations`, `Cargo.toml`, `Cargo.lock` and the Rust skills.
 
 The GPU feature checks need no GPU and no CUDA: `ort` uses `load-dynamic`, so nothing links against ONNX Runtime at build time ([versions.md](../../.claude/skills/rust/versions.md#notes-and-things-not-confirmed)). They catch code behind `#[cfg(feature = "cuda")]` that the default build never compiles.
 
-**Caching.** `Swatinem/rust-cache` with `workspaces: backend -> target`, one `shared-key` per job (`lint`, `test`, `examples`, `live`) because each compiles a different profile or feature set, and `save-if: ${{ github.ref == 'refs/heads/main' }}`. `examples` and `live` also cache `~/.cache/pdm-rust-skills-check/target`, where `check_examples.py` builds; `examples` caches nothing else. Each key holds about 1–2 GB (*unverified*, an estimate from a 754-crate tree); four keys fit the 10 GB. Times above are estimates for 2 vCPUs; the first run on `main` records the real ones here.
+**Caching.** `Swatinem/rust-cache` with `workspaces: backend -> target`, one `shared-key` per job (`lint`, `test`, `examples`, `live`) because each compiles a different profile or feature set, and `save-if: ${{ github.ref == 'refs/heads/main' }}`. `examples` and `live` also cache `~/.cache/pdm-rust-skills-check/target`, where `check_examples.py` builds; `examples` caches nothing else. Both key those caches on `versions.md` as well. Each key holds about 1–2 GB (*unverified*, an estimate from a 754-crate tree); four keys fit the 10 GB. Times above are estimates for 2 vCPUs; the first run on `main` records the real ones here.
 
 **The live job's services.** GitHub Actions service containers accept `command` and `entrypoint` (✓ workflow syntax), so SurrealDB can start with the in-memory engine the store test expects. Ports match the defaults in `crates/store/tests/server.rs` and `crates/blob/tests/rustfs.rs`; the credentials are the throwaway ones those tests hard-code.
 
-```yaml
-live:
-  needs: changes
-  if: needs.changes.outputs.live == 'true' || github.event_name == 'push'
-  runs-on: ubuntu-26.04
-  timeout-minutes: 30
-  services:
-    surrealdb:
-      image: surrealdb/surrealdb:v3.3.4@sha256:649a60a3b9c0177d9923c938e1c2563e48cde2a9d06ac2c0519714be719b02af
-      command: start --user root --pass root memory
-      ports: ["127.0.0.1:18000:8000"]
-      options: >-
-        --health-cmd "/surreal is-ready --endpoint http://127.0.0.1:8000"
-        --health-interval 5s --health-retries 12
-    rustfs:
-      image: rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
-      env:
-        RUSTFS_VOLUMES: /data
-        RUSTFS_ACCESS_KEY: TESTROOT          # the test's hard-coded key; CI only
-        RUSTFS_SECRET_KEY: testrootsecret
-        RUSTFS_CONSOLE_ENABLE: "false"
-        RUSTFS_CHECK_UPDATE: "false"
-      ports: ["127.0.0.1:19000:9000"]
-      options: >-
-        --health-cmd "curl -fsS http://127.0.0.1:9000/health/ready"
-        --health-interval 5s --health-retries 12 --health-start-period 30s
-  env:
-    PDM_TEST_SURREALDB_URL: ws://127.0.0.1:18000
-    PDM_TEST_RUSTFS_URL: http://127.0.0.1:19000
-  steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      with: { workspaces: "backend -> target", shared-key: live, save-if: "${{ github.ref == 'refs/heads/main' }}" }
-    - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
-      with: { tool: cargo-nextest@0.9.148 }
-    - run: cargo nextest run -p store -p blob --run-ignored only --locked
-      working-directory: backend
-    - run: python3 .claude/skills/rust/scripts/check_examples.py --live
-```
+The job is in [`.github/workflows/backend.yml`](../../.github/workflows/backend.yml). What it decides:
+- **SurrealDB** starts with `start --user root --pass root memory` through the service's `command`, and no `--health-cmd`. The image is distroless, so a `--health-cmd` (always run through `/bin/sh`) fails every probe. Its own exec-form check, `/surreal isready`, runs at the job's `--health-interval 5s --health-retries 12` (✓ healthy in about 12 s, 2026-10-16).
+- **RustFS** uses `curl -fsS http://127.0.0.1:9000/health/ready`; the image has `sh` and `curl`.
+- **Ports** `127.0.0.1:18000` and `127.0.0.1:19000`, with `PDM_TEST_SURREALDB_URL` and `PDM_TEST_RUSTFS_URL` set to match.
+- **The examples' build cache** is keyed on `versions.md` as well as the lock file. Otherwise rust-cache finds its key unchanged after a pin moves, and never saves the new build.
 
 `check_examples.py --live` starts its own SurrealDB container with `docker run` and an ephemeral port, so it doesn't clash with the service. The images and digests are those of [database 1](../database/README.md#1-version-and-setup) and [storage 1](../storage/README.md#1-version-and-setup) (✓ both digests match Docker Hub on 2026-10-16).
 
@@ -170,7 +136,7 @@ The `main` ruleset ("Require PRs for main and master") gets a `required_status_c
 
 | When | Checks added | Why then |
 |---|---|---|
-| The pull request that adds `backend.yml` has merged and run green on `main` | `lint`, `test`, `examples`, `docs`, `infra` | AGENTS.md: add each check once its workflow exists |
+| The pull request that adds `backend.yml` has merged and run green on `main` | `changes`, `lint`, `test`, `examples`, `docs`, `infra` | AGENTS.md: add each check once its workflow exists. `changes` is required too: if it fails, every job after it is skipped, and a skipped job counts as passed |
 | S1 closes, after `live` has passed on three consecutive pushes to `main` | `live` | Service containers are the likeliest source of flakes; prove them first |
 | Never | `images` | It runs after the merge |
 
@@ -608,8 +574,8 @@ Each item belongs to a slice of the [backend roadmap](../backend/roadmap.md). It
 | # | Work | Slice | Exit check |
 |---|---|---|---|
 | 1 | `.github/workflows/backend.yml` with `changes`, `lint`, `test`, `examples`, `docs` and `infra`; `dependabot.yml` for the actions | [S0](../backend/roadmap.md#4-s0-foundation) | A pull request with a deliberate Clippy warning fails `lint`; a docs-only pull request finishes in under 3 minutes with the Rust jobs skipped |
-| 2 | Add the five checks to the `main` ruleset | S0 | A pull request with a failing `docs` job can't be merged |
-| 3 | The `live` job with SurrealDB and RustFS service containers | S0 | Both ignored tests and `check_examples.py --live` pass on a push to `main` |
+| 2 | Add the six checks to the `main` ruleset | S0 | A pull request with a failing `docs` job can't be merged |
+| 3 | The `live` job with SurrealDB and RustFS service containers | S0 | Both ignored tests and `check_examples.py --live --no-test` pass on a push to `main` |
 | 4 | `backend/Dockerfile` and `docker-bake.hcl` with `api`, `worker` and `worker-cuda` | S0 | `docker buildx bake` builds all three on a laptop; `docker run … api` exits with a configuration error naming a missing variable, as UID 10100 |
 | 5 | `infra/dev.compose.yml` and `infra/env/.env.example` | S0 | `docker compose -f infra/dev.compose.yml up -d`, then `cargo nextest run --workspace --run-ignored only`, passes on a laptop |
 | 6 | `.github/workflows/images.yml`, pushing to GHCR on merge | [S1](../backend/roadmap.md#5-s1-walking-skeleton) | A merge to `main` publishes three images with `sha-` tags and prints their digests in the run summary; a host pulls them with a `read:packages` token |
