@@ -4,9 +4,10 @@
 #
 # Status 2026-10-16: development entries. The leaf detector arrives when its first fine-tune
 # finishes; the label matrix is a STAND-IN (ml/training/labels/standin_labels.yaml) until the
-# knowledge seed has species and organism files; the disease head is v1b on whole images of
-# the four datasets, with proposed slugs (issue #4). Thresholds are the docs' starting values, set from the evaluation
-# set on Oct 22–23. yunet and text_embedder entries are added by whoever pins them.
+# knowledge seed has species and organism files; the disease head is v1d on whole images of
+# the four datasets, with proposed slugs (issue #4). Thresholds are the docs' starting values,
+# set from the evaluation set on Oct 22–23. yunet and text_embedder entries are added by
+# whoever pins them.
 
 [[model]]
 name      = "bioclip"
@@ -112,25 +113,31 @@ runs_on           = "perception"
 label_set_version = "233482ce598f591b"
 
 [[model]]
-name                      = "disease_head_v1c"
-version                   = "disease-head-v1c-2026-10-16"
-file                      = "disease_head/disease-head-v1c-2026-10-16.json"
-sha256                    = "a83c7473d7ceb6ece1391ad4523d06aa47e5924b80bd0de86b39464997238c9a"
-licence                   = "Data CC BY 4.0 (PlantDoc, TOM2024, Tomato-Pakistan 2026) and MIT (iBean); weights ours"
-source                    = "logistic regression (C=500, each dataset weighted equally within a class) on BioCLIP 2 fp16 features of whole images from PlantDoc, TOM2024, Tomato-Pakistan 2026 and iBean; ml/training/heads/train_disease.py --balance-sources; report in ml/training/heads/reports/"
+name                      = "disease_head_v1d"
+version                   = "disease-head-v1d-2026-10-16"
+file                      = "disease_head/disease-head-v1d-2026-10-16.json"
+sha256                    = "b6f92cc73982c6d07c148800c0c0b71380cba6e9e8de5818cf4c47a3537bd44f"
+licence                   = "Data CC BY 4.0 (PlantDoc, TOM2024, Tomato-Pakistan 2026, see its caveat in sources.yaml) and MIT (iBean); weights ours"
+source                    = "logistic regression (C=50, each dataset weighted equally within a class) on BioCLIP 2 fp16 features of whole images from PlantDoc, TOM2024, Tomato-Pakistan 2026 (one image per original photo, PlantDoc copies dropped) and iBean; ml/training/heads/train_disease.py --balance-sources; report in ml/training/heads/reports/"
 runs_on                   = "perception"
-classifier_labels_version = "disease-head-v1c-2026-10-16"
+classifier_labels_version = "disease-head-v1d-2026-10-16"
 
+  # T_disease (0.8208, fitted on validation with the restricted softmax) lives in the head
+  # file's `temperature` only (ml/models/FORMATS.md), so it can't drift from the weights.
   [model.config]
-  temperature = 1.0428                   # T_disease, fitted on validation (restricted softmax)
-  crop_grow   = 0.10
+  crop_grow = 0.10
 
   # Restricted to the true species, a crop with k or fewer classes is right at top-k by
   # construction, so each top-k counts only crops with more than k classes, and calibration
-  # only crops with 2 or more. Trained and scored on WHOLE images; the worker feeds it leaf
-  # crops, so these numbers won't carry over until heads train on detector crops.
+  # only crops with 2 or more. The headline leaves out bean until issue #4 decides on it.
+  # Trained and scored on WHOLE images; the worker feeds it leaf crops, so these numbers won't
+  # carry over until heads train on detector crops.
   [model.check]
-  test_top1_multiclass_crops = 0.837     # 295 of the 354 test images (PlantDoc + iBean test)
-  test_top3_over_3_classes   = 0.933     # 90 images: tomato and corn
-  test_ece_multiclass        = 0.076     # target 0.05 (evaluation.md §4): not met
-  val_top1_multiclass_crops  = 0.887     # 1,685 images, mostly the field sets
+  test_top1_multiclass_crops = 0.814     # 667 images: PlantDoc test and the field sets' held-out test (TOM2024 by field visit)
+  test_top3_over_3_classes   = 0.964     # 590 images: tomato and corn
+  test_ece_multiclass        = 0.032     # target 0.05 (evaluation.md §4): met
+  val_top1_multiclass_crops  = 0.819     # 768 images
+  test_top1_plantdoc         = 0.743     # 167 images, web photos
+  test_top1_tom2024          = 0.845     # 420 images from field visits never trained on
+  test_top1_tomato_pakistan  = 0.800     # 80 images
+  test_top1_ibean            = 0.961     # 128 images; bean is outside the headline
