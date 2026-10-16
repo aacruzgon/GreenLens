@@ -29,6 +29,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | [`docs/setup/README.md`](docs/setup/README.md) | Developer setup: what each team member installs on macOS, Windows and Linux, by role (everyone, app, backend, ML, rig and control plane), with the pinned versions and a check list | You are setting up a machine, or a build fails for a missing tool |
 | [`docs/backend/README.md`](docs/backend/README.md) | The Rust backend design: goals, the crate graph and dependency rules, workspace layout, Rust conventions, runtime composition, configuration, testing, builds, build plan. Links a document per crate (`domain`, `domain-types`, `store`, `blob`, `integrations`, `vision`, `knowledge`, `agent`, `pipeline`, `api`, `worker`) with every struct, enum, trait, generic and lifetime, compiled on Rust 1.99.1 | You write or review any Rust, a `Cargo.toml`, a repository method, an endpoint, a worker or a background task |
 | [`docs/backend/flows.md`](docs/backend/flows.md) | Server-side sequence diagrams across crates (request pipeline, uploads, a scan from submit to plan, claims and the sweep, SSE, job leases, chat turns, deletion, the scheduler, start-up and shutdown) and the server's state machines | You implement or debug a flow end to end on the server |
+| [`docs/backend/roadmap.md`](docs/backend/roadmap.md) | The backend's build-week work as nine slices (S0–S8), each with its goal, work, dependencies on other tracks, exit checks and the decisions it closes; and the gaps still to design | You plan, pick up or review backend work |
 | [`docs/vision/README.md`](docs/vision/README.md) | The vision and ML design: the model inventory, placement and VRAM budgets on the three GPUs, runtimes and pins, model files and versions, licences, open decisions and the proposed contract changes. Companions: [`models.md`](docs/vision/models.md) (every perception and CPU model), [`vlm.md`](docs/vision/vlm.md) (the VLM, its serving, prompts and schemas), [`training.md`](docs/vision/training.md) (datasets, training, ONNX export, label lists, knowledge-ingestion model steps) and [`evaluation.md`](docs/vision/evaluation.md) (evaluation set, metrics, calibration, benchmarks) | You are choosing, training, exporting, prompting or evaluating a model, setting a threshold or a VRAM budget, or working in `ml/` |
 
 ### Topic index
@@ -67,6 +68,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | Server-side flows and state machines | backend flows |
 | Weather and trigger thresholds | backend domain §7 (weather thresholds); contracts §7 |
 | Build plan by day | architecture §14; frontend §18; vision README §10 |
+| Backend work as slices, their order and exit checks | backend roadmap |
 | Open decisions and open questions | architecture §15; contracts §12; database §9; frontend §19; backend README §15 and each crate document's open questions; vision README §11 |
 
 ## Sources of truth
@@ -111,7 +113,7 @@ What each crate does is in architecture §3 (Rust crates); how each is built is 
 
 ### Documents
 
-- The crate documents in `docs/backend` (all but `README.md` and `flows.md`) are generated. Change the source or the template in `backend/tools/docgen/<doc>.md.tpl`, run `backend/tools/docgen/regen_all.sh`, and commit the documents with the change; don't edit a generated document by hand.
+- The crate documents in `docs/backend` (all but `README.md`, `flows.md` and `roadmap.md`) are generated. Change the source or the template in `backend/tools/docgen/<doc>.md.tpl`, run `backend/tools/docgen/regen_all.sh`, and commit the documents with the change; don't edit a generated document by hand.
 - Keep the status line current: bump the version, set the date, and prepend a one-sentence summary of what changed.
 - In the database and storage documents, mark a claim ✓ only if you ran it against the pinned version. Mark anything taken from vendor docs, source or issues as *unverified*.
 - In the vision documents, ✓ marks a fact read in its primary source on the date given, and ✓ ran a check that was executed; nothing there has run on the rig's GPUs until a day-1 check or day-2 benchmark records it.

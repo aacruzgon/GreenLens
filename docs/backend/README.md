@@ -1,6 +1,6 @@
 # PDM Backend Architecture
 
-> **Status:** Draft v0.2.4, 2026-10-16. v0.2.4: the schema now lives at `backend/migrations/schema.surql` and nowhere else, so section 6 no longer keeps two copies. v0.2.3: the workspace and the generator tools are now in `backend/`; section 6 lists `tools/`, and `migrations/schema.surql` is a copy of `docs/database/schema.surql` until the move. v0.2.2: section 7 says the Rust skills follow this design instead of listing departures; the generator tools move to `backend/tools/`; moving the scratch workspace into `backend/` is decided. v0.2.1: the release profile keeps symbols and adds line tables (stripping symbols empties panic backtraces, probed); the `api` container's `stop_grace_period` is 190 s; the scheduler tree lists the eight real tasks, with question continuation inside `sweep`; the database row names all four protected parameters. v0.2: the module trees, crate graph and configuration now match the compiled crates; adds the decisions on contracts open questions 12–24 and the changes to contracts v0.10, architecture v0.7 and database v1.4.
+> **Status:** Draft v0.2.5, 2026-10-16. v0.2.5: adds [roadmap.md](roadmap.md), the work as slices with exit checks, to section 3 and section 13. v0.2.4: the schema now lives at `backend/migrations/schema.surql` and nowhere else, so section 6 no longer keeps two copies. v0.2.3: the workspace and the generator tools are now in `backend/`; section 6 lists `tools/`, and `migrations/schema.surql` is a copy of `docs/database/schema.surql` until the move. v0.2.2: section 7 says the Rust skills follow this design instead of listing departures; the generator tools move to `backend/tools/`; moving the scratch workspace into `backend/` is decided. v0.2.1: the release profile keeps symbols and adds line tables (stripping symbols empties panic backtraces, probed); the `api` container's `stop_grace_period` is 190 s; the scheduler tree lists the eight real tasks, with question continuation inside `sweep`; the database row names all four protected parameters. v0.2: the module trees, crate graph and configuration now match the compiled crates; adds the decisions on contracts open questions 12–24 and the changes to contracts v0.10, architecture v0.7 and database v1.4.
 > v0.1: the Rust backend designed crate by crate, down to every struct, enum, trait, generic parameter and lifetime, with each definition compiled on Rust 1.99.1 against the pinned crates; it follows [contracts](../architecture/contracts.md) v0.9 and [architecture](../architecture/README.md) v0.6.
 
 Companion to the [system architecture](../architecture/README.md), the [data contracts](../architecture/contracts.md), the [database](../database/README.md) and [storage](../storage/README.md) notes, the [frontend](../frontend/README.md) and the [computer-vision design](../vision/README.md). Those documents decide **what** the system does; this directory decides **how the Rust code is built**: crates, modules, types, traits, tasks and errors.
@@ -89,6 +89,7 @@ The workers never touch the database or object storage: they only call the worke
 | [api.md](api.md) | The `api` binary: start-up, layers, auth and access, idempotency, every endpoint, uploads, SSE, the job broker, the scheduler, deletion, media | You add or change an endpoint or a background task |
 | [worker.md](worker.md) | The `worker` binary: leases, heartbeats, cancellation, the VLM adapters and per-job schemas, the fallback, multi-vendor GPUs and the rig's compose services | You touch a worker or the rig |
 | [flows.md](flows.md) | Server-side sequences across crates: a request, an upload, a scan from submit to plan, step claims and the sweep, SSE resume, a job's lease, a chat turn, deletion | You implement or debug a flow end to end |
+| [roadmap.md](roadmap.md) | The build-week work as nine slices (S0–S8): what each delivers, what it needs from the other tracks, its exit checks and the decisions it closes, plus the gaps still to design | You plan or pick up backend work, or need to know what "done" means for a capability |
 
 **How the listings stay true.** Each listing of a type or trait is copied from the compiled source by a small generator (section 11), so a document can be regenerated when the code changes.
 
@@ -314,7 +315,7 @@ Each binary reads typed configuration from the environment at start and refuses 
 
 ## 13. Build plan
 
-The backend track of [architecture 14](../architecture/README.md#14-build-plan).
+The backend track of [architecture 14](../architecture/README.md#14-build-plan). [roadmap.md](roadmap.md) breaks it into slices with their dependencies and exit checks.
 
 | Dates | Backend goal |
 |---|---|
