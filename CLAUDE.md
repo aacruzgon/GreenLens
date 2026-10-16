@@ -15,6 +15,21 @@ The project guidance for all agents lives in AGENTS.md, so there is one copy to 
 - **Apple's Human Interface Guidelines:** `.claude/skills/` has one skill per page and per group of the [guidelines](https://developer.apple.com/design/human-interface-guidelines), named after its place in Apple's tree (`/hig-components-presentation-sheets`). Start with `/hig`, which has the full index, the Expo equivalents and the build and review steps. Use them when designing, building or reviewing anything in `app/` or `docs/frontend/screens.md`.
 - Each page skill reads its page live with `.claude/skills/hig/scripts/hig_page.py`, so the repository holds Apple's links, not its text.
 - The `hig-*` skills and `hig/index.md` are generated. Don't edit them; rerun `python3 .claude/skills/hig/scripts/build_skills.py` when Apple changes the guidelines.
+- **The Rust backend:** start with `/rust` before writing or reviewing any Rust, `Cargo.toml` or backend design. It routes to the area skills, holds the pinned crate versions (`rust/versions.md`) and the example checker. The listing has too many skills to show every description, so use the area skill by name:
+
+  | Skill | Use it for |
+  |---|---|
+  | `/rust-async` | tokio tasks, cancellation, channels, shutdown, async traits |
+  | `/rust-axum-api` | routes, handlers, extractors, `ApiError`, Clerk and worker auth, SSE, layers, OpenAPI |
+  | `/rust-contract-types` | `domain` wire types: serde, IDs, timestamps, tagged unions, utoipa and schemars |
+  | `/rust-errors` | error enums, the contracts §2 mapping, logging error chains, worker job errors |
+  | `/rust-tracing` | the JSON subscriber, spans, request IDs, what never to log |
+  | `/rust-surrealdb` | `store` queries, transactions, conflict retries, batched deletes |
+  | `/rust-workers` | the worker binary: leases, claims, drain, reqwest, ort |
+  | `/rust-testing` | handler, property, mock and SurrealDB container tests |
+  | `/rust-cargo-lints` | the workspace manifest, lints, `clippy.toml`, profiles |
+
+- The skills follow the project's documents and link a source for every rule. Every Rust example in them compiles and passes Clippy: run `python3 .claude/skills/rust/scripts/check_examples.py` after changing one, and add `--live` (Docker and cargo-nextest at the pinned version) to also run the SurrealDB tests against the pinned container. A definition shared between skills has one canonical copy; the checker fails when a marked copy drifts from it.
 
 ## Plugins (Claude Code only)
 
