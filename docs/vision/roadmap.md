@@ -1,6 +1,6 @@
 # PDM Vision Roadmap
 
-> **Status:** v0.2, 2026-10-16 (night). v0.2: the PR #6 reviews are answered: Tomato-Pakistan reworked, disease head v1d, the detector retrained on a grouped split; the whole-ML plan with the integration track moves to [dev-roadmap.md](dev-roadmap.md). v0.1: First tracker of the vision and ML work against the build plan in [README 10](README.md#10-build-plan), with what is done, what is next and what waits on whom.
+> **Status:** v0.3, 2026-10-16 (night). v0.3: PR #6 merged; PR #7 has `main` merged in and targets `main`; our model files' GitHub release is an interim until `pdm-models` (dev-roadmap M21). v0.2: the PR #6 reviews are answered: Tomato-Pakistan reworked, disease head v1d, the detector retrained on a grouped split; the whole-ML plan with the integration track moves to [dev-roadmap.md](dev-roadmap.md). v0.1: First tracker of the vision and ML work against the build plan in [README 10](README.md#10-build-plan), with what is done, what is next and what waits on whom.
 > **How to use it:** read this first when picking up the ML work. Update it at the end of every work session: change the state of each item you touched, add the commit or report that proves it, and bump the status line. The plan itself stays in [README 10](README.md#10-build-plan); this file only tracks progress against it.
 
 Owner of the vision and ML work: Sam (models, training, export, evaluation, calibration; the RTX 5070 Ti). Running the models in the backend is Sara's track ([docs/backend/vision.md](../backend/vision.md), [worker.md](../backend/worker.md)); the plan both tracks share, with owners, hand-offs and the integration gaps, is [dev-roadmap.md](dev-roadmap.md). This file tracks the models.
@@ -25,14 +25,14 @@ Day 1 of 10 (Oct 16). The work is **ahead of plan on models and serving, behind 
 - Ahead: the detector is on its second clean fine-tune (planned Oct 17); the disease head is at v1d (v1 was planned for Oct 19); the VLM day-1 check passed with both Qwen3-VL-8B builds.
 - Fixed tonight (PR #6 reviews): Tomato-Pakistan's 7,200 files are copies of about 934 photos, 302 of them PlantDoc's web photos. Copies are now grouped by original photo, the PlantDoc copies dropped, TOM2024 grouped by field visit, and the field sets have their own test split. Validation images with a near-copy in train fell from 925 of 1,792 to 287 of 1,152. Disease head v1d: test top-1 0.814 without bean (val 0.819), ECE 0.032.
 - Behind: no evaluation photos yet (planned from Oct 16), no Python–Rust parity test.
-- Found tonight: the Rust loaders on `main` don't read our head, label-matrix and manifest formats yet (dev-roadmap gaps G1–G8). Sara's first task.
+- Found tonight: the Rust loaders on `main` don't read our head, label-matrix and manifest formats yet (dev-roadmap gaps G1–G9). Sara's first task.
 
 ## 2. Branches and pull requests
 
 | PR | Branch | Into | State | Holds |
 |---|---|---|---|---|
-| [#6](https://github.com/aacruzgon/GreenLens/pull/6) | `feat/ml-training` | `main` | Draft, review required; both reviews answered (efa6c4b–a2ebaa9) | Training environment, `pdm_vision`, data pipeline, exports, disease head v1d, manifest |
-| [#7](https://github.com/aacruzgon/GreenLens/pull/7) | `feat/vlm-serving` | `feat/ml-training` | Draft | `infra/` vLLM service, the day-1 check client and reports, vlm.md §4 results, the detector, this file and dev-roadmap.md |
+| [#6](https://github.com/aacruzgon/GreenLens/pull/6) | `feat/ml-training` (deleted) | `main` | Merged (749a6b1) | Training environment, `pdm_vision`, data pipeline, exports, disease head v1d, manifest |
+| [#7](https://github.com/aacruzgon/GreenLens/pull/7) | `feat/vlm-serving` | `main` | Ready for review; `main` merged in | `infra/` vLLM service, the day-1 check client and reports, vlm.md §4 results, the detector, this file and dev-roadmap.md |
 
 ## 3. Tracker by build-plan period
 
@@ -96,7 +96,7 @@ Day 1 of 10 (Oct 16). The work is **ahead of plan on models and serving, behind 
 
 ## 5. Next steps, in order
 
-1. **Merge PRs #6 and #7** once reviewed, so Sara builds against `main`.
+1. **Merge PR #7** once reviewed, so Sara builds against `main`. Then move our files to `pdm-models` as soon as the team settles its organisation and tokens (dev-roadmap M21, D9).
 2. **Unblock Sara:** the model release, `fetch.py`, the CPU manifest and the Rust fixtures are done (dev-roadmap M5, M6, M9); next, the fake VLM server (M20) and agreeing the formats in issue #3.
 3. **Start the Qwen3.5 challenger once** and run the day-1 check on it.
 4. **Start the evaluation photos** and the 20 dev cases the day-2 benchmark needs (Oct 18).

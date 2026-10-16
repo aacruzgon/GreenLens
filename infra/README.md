@@ -1,6 +1,6 @@
 # infra
 
-Compose files for the GPU rig. [`rig.compose.yml`](rig.compose.yml) runs the vLLM server (`vllm`) for the VLM ([vision/vlm.md 4](../docs/vision/vlm.md#4-serving)). The workers are added to the same file later. Deployment is described in [architecture 12](../docs/architecture/README.md#12-deployment).
+Compose files for the GPU rig. [`rig.compose.yml`](rig.compose.yml) runs the vLLM server (`vllm`) for the VLM ([vision/vlm.md 4](../docs/vision/vlm.md#4-serving)). The workers are added to the same file later. Deployment is described in [architecture 12](../docs/architecture/README.md#12-deployment), and the full infrastructure design, which this file grows into, in [docs/infra](../docs/infra/README.md): there the service is `vllm-nv`, beside `model-fetch`, `perception-worker` and `vlm-worker-nv` ([infra 4](../docs/infra/README.md#infrarigcomposeyml)).
 
 ## 1. Prerequisites
 

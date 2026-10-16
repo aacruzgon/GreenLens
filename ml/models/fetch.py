@@ -14,6 +14,11 @@ machine or in WSL before the training environment exists.
 
 A new model file is published by uploading it to the release under its file name
 (`gh release upload <tag> <path>`); file names are unique across the manifest's folders.
+
+INTERIM: the team's design keeps our files in the private Hugging Face repository `pdm-models`,
+fetched through `sources.toml` with `--for` groups (docs/vision/README.md §6). This script and the
+release are replaced by that as soon as the repository exists (dev-roadmap task M21); the
+release is deleted before GreenLens goes public.
 """
 
 from __future__ import annotations
