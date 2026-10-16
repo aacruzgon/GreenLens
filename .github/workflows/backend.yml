@@ -14,7 +14,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # One group per pull request; on main, one per commit, so a burst of merges never drops a run.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -58,9 +59,11 @@ jobs:
           if printf '%s\n' "$files" | grep -qx '.github/workflows/backend.yml'; then all=true; fi
           has() { [ "$all" = true ] || printf '%s\n' "$files" | grep -Eq "$1"; }
           out() { if has "$2"; then echo "$1=true"; else echo "$1=false"; fi >> "$GITHUB_OUTPUT"; }
-          out rust   '^backend/(crates|bins|migrations)/|^backend/(Cargo\.toml|Cargo\.lock|clippy\.toml|rust-toolchain\.toml|openapi\.json)$'
+          # store's tests read ml/'s manifest and templates (the copies inside backend/ must match them).
+          out rust   '^backend/(crates|bins|migrations)/|^backend/(Cargo\.toml|Cargo\.lock|clippy\.toml|rust-toolchain\.toml|openapi\.json)$|^ml/models/(manifest\.toml|templates/)'
           out docs   '\.md$|^backend/tools/docgen/'
-          out skills '^\.claude/skills/rust'
+          # check_examples.py copies the schema into its crate.
+          out skills '^\.claude/skills/rust|^backend/migrations/'
           out infra  '^infra/|^\.github/'
           out live   '^backend/crates/(store|blob)/|^backend/migrations/|^backend/Cargo\.(toml|lock)$|^\.claude/skills/rust'
           cat "$GITHUB_OUTPUT"
@@ -118,7 +121,7 @@ jobs:
 
   examples:
     needs: changes
-    # The examples compile against versions.md, not the workspace, so backend changes don't affect them.
+    # The examples compile against versions.md and the schema, not the workspace crates.
     if: needs.changes.outputs.skills == 'true' || github.event_name == 'push'
     runs-on: ubuntu-26.04
     timeout-minutes: 30
@@ -133,6 +136,7 @@ jobs:
         with:
           workspaces: "backend -> target"
           shared-key: examples
+          key: ${{ hashFiles('.claude/skills/rust/versions.md') }}
           cache-targets: false
           cache-directories: ~/.cache/pdm-rust-skills-check/target
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -192,8 +196,9 @@ jobs:
         image: surrealdb/surrealdb:v3.3.4@sha256:649a60a3b9c0177d9923c938e1c2563e48cde2a9d06ac2c0519714be719b02af
         command: start --user root --pass root memory
         ports: ["127.0.0.1:18000:8000"]
+        # Distroless: no /bin/sh for a --health-cmd, so the image's own exec-form check
+        # (/surreal isready) runs, at this interval.
         options: >-
-          --health-cmd "/surreal is-ready --endpoint http://127.0.0.1:8000"
           --health-interval 5s --health-retries 12
       rustfs:
         image: rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
@@ -218,6 +223,7 @@ jobs:
         with:
           workspaces: "backend -> target"
           shared-key: live
+          key: ${{ hashFiles('.claude/skills/rust/versions.md') }}
           cache-directories: ~/.cache/pdm-rust-skills-check/target
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
@@ -225,5 +231,5 @@ jobs:
           tool: cargo-nextest@0.9.148
       - run: cargo nextest run -p store -p blob --run-ignored only --locked
         working-directory: backend
-      # Starts its own SurrealDB container on an ephemeral port.
-      - run: python3 .claude/skills/rust/scripts/check_examples.py --live
+      # Starts its own SurrealDB container on an ephemeral port. --no-test: the examples job runs the rest.
+      - run: python3 .claude/skills/rust/scripts/check_examples.py --live --no-test

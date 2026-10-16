@@ -6,5 +6,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      actions:                      # one weekly pull request, since each one runs every job
+        patterns: ["*"]
     commit-message:
       prefix: chore(ci)
