@@ -1405,7 +1405,7 @@ pub enum ServerFlavour {
 /// Client settings.
 #[derive(Debug, Clone)]
 pub struct OpenAiCompatConfig {
-    /// `http://vlm:8000`, without `/v1`.
+    /// `http://vllm-nv:8000`, without `/v1`.
     pub base_url: String,
     /// `Authorization: Bearer`, when the server was started with `--api-key`.
     pub api_key: Option<SecretString>,
