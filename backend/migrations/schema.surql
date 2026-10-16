@@ -1,6 +1,6 @@
 -- PDM database schema
 -- SurrealDB 3.3.4 (pin: surrealdb/surrealdb:v3.3.4, crate surrealdb = "=3.3.4").
--- Design notes, query patterns and caveats: README.md in this folder.
+-- Design notes, query patterns and caveats: docs/database/README.md.
 --
 -- Idempotent: safe to run on every API start. OVERWRITE for tables, fields, events and
 -- functions; IF NOT EXISTS for indexes, because OVERWRITE on an index rebuilds it.

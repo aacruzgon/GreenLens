@@ -1,0 +1,56 @@
+[package]
+name = "vision"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# One binary for every GPU vendor: nothing is linked at build time, and libonnxruntime is opened at
+# start from ORT_DYLIB_PATH (Microsoft's 1.31 build on NVIDIA and the CPU, AMD's 1.29 on ROCm).
+# api-29 is the lowest ONNX Runtime API the binary asks for, so AMD's 1.29 loads too.
+default = ["load-dynamic", "api-29"]
+load-dynamic = ["ort/load-dynamic"]
+api-29 = ["ort/api-29"]
+# Alternative to load-dynamic: link pyke's prebuilt ORT 1.31 (one execution provider family per build).
+download-binaries = ["ort/download-binaries", "ort/tls-native", "ort/copy-dylibs"]
+# Execution providers. With download-binaries, never enable cuda and migraphx together (no such dist).
+cuda = ["ort/cuda"]
+migraphx = ["ort/migraphx"]
+webgpu = ["ort/webgpu"]
+# HEIC uploads through the system libheif (>= 1.19, found by pkg-config).
+heic = ["dep:libheif-rs"]
+
+[dependencies]
+domain.workspace = true
+
+async-trait.workspace = true
+bytes.workspace = true
+chacha20.workspace = true
+data-encoding.workspace = true
+fast_image_resize.workspace = true
+image.workspace = true
+imageproc.workspace = true
+libheif-rs = { workspace = true, optional = true }
+nalgebra.workspace = true
+ndarray.workspace = true
+ort.workspace = true
+png.workspace = true
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokenizers.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+toml.workspace = true
+tracing.workspace = true
+webp.workspace = true
+
+[dev-dependencies]
+domain = { workspace = true, features = ["test-util", "mock"] }
+tokio = { workspace = true, features = ["test-util"] }

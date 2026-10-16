@@ -1,0 +1,242 @@
+# PDM Backend: `blob` crate
+
+> **Status:** Draft v0.2.1, 2026-10-16. v0.2.1: the research notes are no longer named by a path outside the repository. v0.2: a delete's only deadline is the client's 120-second operation timeout per attempt (storage v1.2.3), no task timeout around it. v0.1: `S3BlobStore`, the object store over `RustFS` 1.0.1 with `aws-sdk-s3` 1.152, a `DeleteQueue` that runs every delete detached so it is never cancelled, an in-memory store for tests and the orphan sweep's listing side, run against the pinned `RustFS` image.
+
+Companion to the [backend architecture](README.md) and the [storage notes](../storage/README.md). The port it implements, `BlobStore`, and the key types `ObjectKey` and `ObjectPrefix` are in [domain 9](domain.md#9-boundary-traits). Every listing is copied from the compiled source of `crates/blob` with the docgen tool: `cargo check -p blob`, `cargo clippy -p blob --all-targets` and `cargo test -p blob` (4 unit tests) pass on Rust 1.99.1, and the ignored integration test passes against `rustfs/rustfs:1.0.1` by digest.
+
+## Contents
+
+1. [Purpose and boundaries](#1-purpose-and-boundaries)
+2. [Dependencies](#2-dependencies)
+3. [Module layout](#3-module-layout)
+4. [The client](#4-the-client)
+5. [The object store](#5-the-object-store)
+6. [Deletes that are never cancelled](#6-deletes-that-are-never-cancelled)
+7. [Keys](#7-keys)
+8. [The in-memory store](#8-the-in-memory-store)
+9. [The orphan sweep](#9-the-orphan-sweep)
+10. [Concurrency and lifetimes](#10-concurrency-and-lifetimes)
+11. [Errors](#11-errors)
+12. [Testing](#12-testing)
+13. [Decisions](#13-decisions)
+14. [Open questions](#14-open-questions)
+15. [Sources](#15-sources)
+
+---
+
+## 1. Purpose and boundaries
+
+**What it owns.** Every call to `RustFS` ([storage](../storage/README.md)): `PutObject` with `If-None-Match: *`, streamed `GetObject`, `ListObjectsV2` and `DeleteObjects` in batches of 1000; the rule that a delete is never cancelled ([storage 4](../storage/README.md#4-writes-and-deletes)); the listing side of the daily orphan sweep.
+
+**What it never does.** It builds no key from user input (keys come from `domain`'s `ObjectKey`, built only from typed ids); it never presigns a URL (the API serves the bytes, [storage 3](../storage/README.md#3-how-images-are-served)); it never touches the database. No AWS type appears in its public API: errors are the domain's `BlobError` and bodies are the domain's `ByteStream`, so `api` doesn't depend on `aws-sdk-s3`.
+
+**Who calls it.** `api` holds `Arc<dyn BlobStore>` for puts and gets, and a `DeleteQueue` for every delete; the deletion cascade and the orphan sweep go through the queue.
+
+**Where it departs from the storage notes** (each is in section 13):
+
+| Topic | Storage 5 | Here | Why |
+|---|---|---|---|
+| Behaviour version | `BehaviorVersion::latest()` | `BehaviorVersion::v2026_01_12()` | `latest()` moves with the SDK; pinning keeps retry and timeout behaviour fixed across upgrades (research `http-s3.md` §9) |
+| The trait | "a small `ObjectStore` trait (`put`, `get_stream`, `delete_prefix`)" | The domain's `BlobStore` (`put`, `get`, `get_bytes`, `delete_keys`, `delete_prefix`, `list`) | The measurement stage needs whole depth maps, a removed shot is deleted by key, and the orphan sweep lists |
+| Features | default features (the skills' `versions.md` turns them off) | default features off, `default-https-client`, `rt-tokio`, `http-1x` | The default `rustls` feature is the legacy client: a second HTTP stack (`hyper` 0.14, `rustls` 0.21) |
+
+---
+
+## 2. Dependencies
+
+@@file ../Cargo.toml@@
+
+| Crate | Version | Why |
+|---|---|---|
+| `aws-sdk-s3` | 1.152.0, default features off, `default-https-client`, `rt-tokio`, `http-1x` | The client `RustFS` documents and uses in its own tests ([storage 5](../storage/README.md#5-rust-client)); feature set from `versions.md` |
+| `domain` | path | The port, keys, `BlobError`, `ByteStream`, `Clock` |
+| `bytes`, `futures` | 1.12.1, 0.3.34 | `Bytes` bodies; `try_unfold` and `BoxStream` for the streamed body |
+| `tokio`, `tokio-util` | 1.53.3, 0.7.20 (`rt`) | `timeout`, `sleep`, `oneshot`; `TaskTracker` for detached deletes |
+| `chrono` | 0.4.45 | `last_modified` from the SDK's `DateTime` |
+| `async-trait`, `tracing` | 0.1.92, 0.1.44 | The port is `#[async_trait]`; warnings with the full SDK error chain |
+| `ulid` (dev) | 3.0.0 | Fresh bucket names and mask ids in the integration test |
+
+---
+
+## 3. Module layout
+
+```
+crates/blob/
+├─ Cargo.toml
+├─ src/
+│  ├─ lib.rs       crate docs and re-exports
+│  ├─ client.rs    BlobConfig, storage_client (storage 5 with a pinned behaviour version)
+│  ├─ s3.rs        S3BlobStore: the BlobStore port over aws-sdk-s3
+│  ├─ error.rs     map_sdk_error: SdkError → BlobError, 412 by status or code
+│  ├─ delete.rs    DeleteQueue, DeleteJob, DeleteHandle, DeleteOutcome: detached, never cancelled
+│  ├─ memory.rs    MemoryBlobStore, the in-memory fake with RustFS's rules
+│  └─ sweep.rs     orphan_candidates: the garden's objects older than an hour
+└─ tests/rustfs.rs ignored: put, 412, streamed get, 1005 keys listed and deleted against RustFS 1.0.1
+```
+
+---
+
+## 4. The client
+
+@@items client.rs OPERATION_TIMEOUT BlobConfig storage_client@@
+
+✓ Every builder method exists with that spelling in 1.152 and the client works against `RustFS` 1.0.1 (research `http-s3.md` §9; section 12). `Client` is `Clone + Send + Sync + 'static`, an `Arc` inside: one per process. The SDK sends CRC32 checksums by default, and `RustFS` accepts them ✓; `.request_checksum_calculation(WhenRequired)` is the first fallback if a swapped backend rejects them ([storage 8](../storage/README.md#8-fallback)).
+
+---
+
+## 5. The object store
+
+@@items s3.rs DELETE_BATCH S3BlobStore@@
+
+@@impl s3.rs impl BlobStore for S3BlobStore@@
+
+| Method | S3 call | Rule |
+|---|---|---|
+| `put` | `PutObject` with `Content-Type` and `If-None-Match: *` | A key is never overwritten; ✓ a second put gets `412 PreconditionFailed`, which is `AlreadyExists` ([storage 4](../storage/README.md#4-writes-and-deletes)) |
+| `get` | `GetObject`, streamed | The body is never buffered ([storage 5](../storage/README.md#5-rust-client)); `ETag` keeps its quotes and is passed through verbatim ✓ |
+| `get_bytes` | `GetObject`, collected | For the measurement stage's depth maps and the face blur, which need the whole image |
+| `delete_keys` | `DeleteObjects`, ≤ 1000 keys a call | `quiet`, and `errors()` read on every response (a `200` can carry per-key failures) |
+| `delete_prefix` | `ListObjectsV2` (paginated), then `DeleteObjects` per page | A page is at most 1000 keys, so one page is one batch ✓ |
+| `list` | `ListObjectsV2`, every page | The orphan sweep |
+
+The SDK body is turned into the domain's stream without buffering. `ByteStream` isn't a `futures::Stream` without an unstable feature, so `try_unfold` drives its `try_next()`:
+
+@@items s3.rs body_stream@@
+
+`api` can also stream a body straight into an axum response; `Body::new(out.body.into_inner())` keeps frame boundaries (research `http-s3.md` §4). The domain stream costs one small future per chunk and keeps AWS types out of `api`.
+
+@@impl s3.rs impl S3BlobStore@@
+
+---
+
+## 6. Deletes that are never cancelled
+
+[Storage 4](../storage/README.md#4-writes-and-deletes): on `RustFS` 1.0.1 a `DeleteObject(s)` call interrupted by a client disconnect or a timeout can leave objects that can't be listed or deleted, and their space is lost ([#8374](https://github.com/rustfs/rustfs/issues/8374)). A delete awaited inside a request future is cancelled when the client hangs up, because axum drops the future. So deletes have their own type:
+
+@@items delete.rs DELETE_ATTEMPTS DeleteJob DeleteOutcome DeleteHandle DeleteQueue@@
+
+@@impl delete.rs impl DeleteQueue@@
+
+@@items delete.rs run@@
+
+**What guarantees it.**
+
+- `submit` moves the work into a task spawned on a `TaskTracker`: the runtime owns the future, not the caller. Dropping the `DeleteHandle`, or the request future that awaits it, only drops the receiving end of a `oneshot` channel; the task's `send` then fails silently and the delete has already run. ✓ `a_dropped_handle_never_stops_the_delete` drops the handle at once and finds the objects gone.
+- The task is never aborted: `drain` closes the tracker and waits for every submitted delete at shutdown, after the HTTP server stopped. Nothing calls `JoinHandle::abort`, and a `TaskTracker` (unlike a `JoinSet`) doesn't abort its tasks when dropped ([tokio-util `TaskTracker`](https://docs.rs/tokio-util/0.7.20/tokio_util/task/task_tracker/struct.TaskTracker.html)).
+- No `tokio::time::timeout` wraps a delete: the only deadline is the client's 120-second operation timeout per attempt (`OPERATION_TIMEOUT`, set in `storage_client`; storage v1.2.3 §4), a last resort for a hung call that comes back as `Unavailable`.
+- Retries are safe because deleting a missing key is a no-op ✓; a prefix job falls back to the keys `RustFS` reported as failed.
+- `DeleteOutcome::is_done()` decides whether the cascade may delete the database records next: the objects first, then the records ([storage 4](../storage/README.md#4-writes-and-deletes); [database 4](../database/README.md#deletion-) step 3).
+- `api` reaches `delete_keys` and `delete_prefix` only through the queue; the port has them so a fake and a swapped backend implement them, but no handler calls them directly.
+
+---
+
+## 7. Keys
+
+Keys are the domain's `ObjectKey` and `ObjectPrefix` ([storage 2](../storage/README.md#2-bucket-keys-and-access); [domain 9](domain.md#9-boundary-traits)): built only from typed ids, so every segment under `gardens/` is a 26-character ULID, never user input, and a key read back from a record goes through `ObjectKey::from_stored`, which refuses empty, `.` and `..` segments ✓ (`RustFS` rejects them with `400`). `blob` adds no key builder of its own; listed keys that don't parse are skipped.
+
+| Key | Built by |
+|---|---|
+| `gardens/{garden}/scans/{scan}/{image}.webp` | `ObjectKey::scan_image` |
+| `gardens/{garden}/scans/{scan}/masks/{mask}.png` | `ObjectKey::mask` |
+| `gardens/{garden}/scans/{scan}/depth/{image}.png`, `depth_confidence/{image}.png` | `ObjectKey::depth`, `depth_confidence` (never served) |
+| `gardens/{garden}/chat/{conversation}/{image}.webp` | `ObjectKey::chat_image` |
+| `knowledge/species/{species}/{hash}.webp` | `ObjectKey::species_photo` (written by the knowledge loader only; the API's key can't write there) |
+| prefixes | `ObjectPrefix::garden`, `scan`, `chat` |
+
+---
+
+## 8. The in-memory store
+
+@@items memory.rs MemoryBlobStore@@
+
+@@impl memory.rs impl BlobStore for MemoryBlobStore@@
+
+It follows `RustFS`'s rules, so a test of a handler or the cascade sees the same behaviour: a put never overwrites (`AlreadyExists`), deleting a missing key counts as deleted, listing is by prefix in key order, and each object is dated by the injected `Clock` so the orphan sweep's age check is testable. The `std::sync::Mutex` is never held across an `.await` ([Tokio, shared state](https://tokio.rs/tokio/tutorial/shared-state)).
+
+---
+
+## 9. The orphan sweep
+
+[Storage 4](../storage/README.md#4-writes-and-deletes): a crash between the put and the record leaves an object without a record, never the reverse. The daily sweep runs in three steps across three crates:
+
+1. `blob::orphan_candidates` lists the garden's objects older than an hour;
+2. the store's `DeletionRepo::unreferenced_keys` keeps those no record points to, counting every key field (`storage_key`, `depth_key`, `depth_confidence_key`, masks and chat images) ([store 17](store.md#17-deletion-and-cleanup));
+3. `DeleteQueue::submit(DeleteJob::Keys(..))` deletes them.
+
+@@items sweep.rs ORPHAN_MIN_AGE orphan_candidates@@
+
+The `knowledge/` prefix is never swept: the loader owns it. The list of gardens comes from `WeatherCacheRepo::gardens_by_cell` in `api`.
+
+---
+
+## 10. Concurrency and lifetimes
+
+- **`ByteStream` is `BoxStream<'static, Result<Bytes, BlobError>>`** ([domain 9](domain.md#9-boundary-traits)): `try_unfold` takes the SDK body by value as its state, so the stream owns it and borrows nothing; `api` can move it into the response body and across tasks. Dropping it closes the connection to `RustFS`, which is fine for reads: the never-cancel rule is for deletes only.
+- **`DeleteQueue::submit`** spawns a `'static + Send` future: it owns an `Arc<dyn BlobStore>` (the trait is `Send + Sync`, [domain 10](domain.md#10-concurrency-and-lifetimes)) and the `DeleteJob`, and `#[async_trait]` futures are `Send`, so the task runs on any worker thread ([Tokio, spawning](https://tokio.rs/tokio/tutorial/spawning)). `run` borrows the store as `&dyn BlobStore` inside that task.
+- **`map_sdk_error<E>`** is generic over the operation's error with `E: ProvideErrorMetadata + Error + Send + Sync + 'static`: `ProvideErrorMetadata` gives the S3 code, and the auto-trait bounds make `SdkError<E, HttpResponse>` a valid `BoxError` source.
+- `S3BlobStore` is `Clone` (cheap) and `Send + Sync + 'static`; `api` holds it once as `Arc<dyn BlobStore>`.
+
+---
+
+## 11. Errors
+
+@@items error.rs map_sdk_error@@
+
+| `BlobError` | When | `api` maps it to |
+|---|---|---|
+| `NotFound` | `404`, `NoSuchKey` | `404 not_found` (a record without its object) |
+| `AlreadyExists` | `412`, `PreconditionFailed` (an `Unhandled` variant in 1.152, so matched by status or code) ✓ | an internal error: keys are fresh ULIDs |
+| `Unavailable` | timeouts, dispatch and response failures, `5xx` | `503 upstream_unavailable` with `upstream: "storage"` (`rust-errors`) |
+| `Rejected { operation }` | anything else: a policy, a bad key | `500 internal`, logged with its chain |
+
+The SDK error stays the `source`; `DisplayErrorContext` prints the whole chain into the warning, because a plain `to_string()` is just "service error". The chain includes the raw response, so it is logged, never returned.
+
+---
+
+## 12. Testing
+
+| Test | What it proves |
+|---|---|
+| `memory::puts_never_overwrite_and_gets_stream` | The fake's put, `AlreadyExists`, the streamed body, `NotFound` |
+| `delete::a_dropped_handle_never_stops_the_delete` | A handle dropped at once; the prefix is still deleted |
+| `delete::the_outcome_reports_the_deleted_keys` | A missing key counts as deleted |
+| `sweep::only_objects_older_than_an_hour_are_candidates` | The age cut-off, on the injected clock |
+| `tests/rustfs.rs` (ignored) | Against `rustfs/rustfs:1.0.1` by digest: the put, the `412` as `AlreadyExists`, the streamed get with its quoted `ETag`, `NotFound`, 1005 keys listed in two pages and deleted in two batches through the `DeleteQueue`, another prefix left alone ✓ (2026-10-16) |
+
+The integration test's file header has the `docker run` command; run it with `PDM_TEST_RUSTFS_URL=http://127.0.0.1:19000 cargo test -p blob --test rustfs -- --ignored`. It creates a fresh bucket per run as the root key.
+
+---
+
+## 13. Decisions
+
+| Topic | Decision | Settled in |
+|---|---|---|
+| Storage 5, behaviour version | Pinned `BehaviorVersion::v2026_01_12()` instead of `latest()` | Section 4 |
+| Storage 5, the trait | The domain's `BlobStore` replaces the sketched `ObjectStore` | Section 5 |
+| Storage 4, never cancel a delete | `DeleteQueue`: detached on a `TaskTracker`, drained at shutdown, the client's 120-second operation timeout per attempt (no task timeout), 5 attempts with 1–8 s back-off | Sections 4, 6 |
+| Contracts 12–24 | None is the object store's: it stores no timestamps on the wire and has no HTTP surface | — |
+
+---
+
+## 14. Open questions
+
+1. **The client's 120-second timeout can still interrupt a hung delete.** Storage v1.2.3 makes it a last resort; an attempt cut by it is retried, which re-deletes what is still listed but can't recover what an interrupted call leaked on 1.0.1 (caveat 1). The capacity check in [storage 6](../storage/README.md#6-operations) would show lost space until `RustFS` 1.0.2 is final.
+2. **`delete_prefix` lists every page before deleting.** It holds a garden's keys in memory (thousands of short strings) and deletes page by page after; deleting while paginating would bound memory but relies on S3 continuation tokens surviving deletes, which isn't verified on `RustFS`.
+
+---
+
+## 15. Sources
+
+**Rust and Tokio**
+- The Book: [16.4 `Send` and `Sync`](https://doc.rust-lang.org/book/ch16-04-extensible-concurrency-sync-and-send.html) · Tokio tutorial: [spawning](https://tokio.rs/tokio/tutorial/spawning) · [shared state](https://tokio.rs/tokio/tutorial/shared-state) · [`tokio::time::timeout`](https://docs.rs/tokio/1.53.3/tokio/time/fn.timeout.html) · [`oneshot`](https://docs.rs/tokio/1.53.3/tokio/sync/oneshot/index.html) · [tokio-util 0.7.20 `TaskTracker`](https://docs.rs/tokio-util/0.7.20/tokio_util/task/task_tracker/struct.TaskTracker.html)
+- [futures 0.3.34 `stream::try_unfold`](https://docs.rs/futures/0.3.34/futures/stream/fn.try_unfold.html)
+
+**Crates at the pinned versions**
+- aws-sdk-s3 1.152.0: [`Client`](https://docs.rs/aws-sdk-s3/1.152.0/aws_sdk_s3/struct.Client.html) · [`config::Builder`](https://docs.rs/aws-sdk-s3/1.152.0/aws_sdk_s3/config/struct.Builder.html) · [`PutObjectError`](https://docs.rs/aws-sdk-s3/1.152.0/aws_sdk_s3/operation/put_object/enum.PutObjectError.html) · [`GetObjectError`](https://docs.rs/aws-sdk-s3/1.152.0/aws_sdk_s3/operation/get_object/enum.GetObjectError.html) · [`DisplayErrorContext`](https://docs.rs/aws-sdk-s3/1.152.0/aws_sdk_s3/error/struct.DisplayErrorContext.html) · [`BehaviorVersion`](https://docs.rs/aws-smithy-runtime-api/1.19.0/aws_smithy_runtime_api/client/behavior_version/struct.BehaviorVersion.html) · aws-smithy-types 1.8.1 `ByteStream` (source: `src/byte_stream.rs`, `try_next`, `collect`)
+
+**Project documents, notes and skills**
+- [Storage](../storage/README.md) · [database](../database/README.md) · [domain](domain.md) · [store](store.md)
+- Research notes and an HTTP probe from writing this design (not kept in the repository): the 412 as `Unhandled`, the pinned behaviour version, `DisplayErrorContext`, pagination and batch deletes run against `RustFS` 1.0.1
+- Skills in the main checkout's `.claude/skills/`: `rust/versions.md`, `rust-errors`, `rust-async`, `rust-testing`
+
+The crate pages were checked against the pinned sources on 2026-10-16.

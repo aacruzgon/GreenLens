@@ -1,0 +1,179 @@
+//! Geocoder tests: the live Open-Meteo fixture, Nominatim's documented shape, the offline zone
+//! finder and the cache.
+
+use std::sync::{Arc, LazyLock};
+
+use serde_json::json;
+use wiremock::{
+    Mock, MockServer, ResponseTemplate,
+    matchers::{method, path, query_param},
+};
+
+use super::*;
+
+const TORONTO: &str = include_str!("../../fixtures/geocoding_toronto.json");
+
+/// Loading the boundaries takes a moment; share one finder across tests.
+static ZONES: LazyLock<Arc<TimeZoneFinder>> = LazyLock::new(|| Arc::new(TimeZoneFinder::default()));
+
+#[test]
+fn postal_codes_are_classified() {
+    assert_eq!(
+        PostalCode::parse(" m5v 3l9 "),
+        Some(PostalCode::Canadian("M5V3L9".into()))
+    );
+    assert_eq!(
+        PostalCode::parse("N1G"),
+        Some(PostalCode::CanadianFsa("N1G".into()))
+    );
+    assert_eq!(
+        PostalCode::parse("90210-1234"),
+        Some(PostalCode::UsZip("90210".into()))
+    );
+    assert_eq!(PostalCode::parse("Toronto"), None);
+}
+
+#[test]
+fn open_meteo_fixture_label() {
+    let r: SearchResponse = serde_json::from_str(TORONTO).unwrap();
+    assert_eq!(r.results[0].label(), "Toronto, ON");
+    assert_eq!(r.results[1].label(), "Toronto, PE");
+    let empty: SearchResponse = serde_json::from_str(r#"{"generationtime_ms":0.5}"#).unwrap();
+    assert_eq!(empty.results.len(), 0);
+}
+
+#[test]
+fn offline_time_zones() {
+    let z = |lat, lon| ZONES.zone(Coordinates::new(lat, lon).unwrap()).map(|t| t.0);
+    assert_eq!(z(43.65, -79.38).as_deref(), Some("America/Toronto"));
+    assert_eq!(z(49.28, -123.12).as_deref(), Some("America/Vancouver"));
+}
+
+#[test]
+fn rounding_per_precision() {
+    let c = Coordinates::new(43.65321, -79.38321).unwrap();
+    let one = round_for(c, LocationPrecision::About1Km);
+    assert!((one.lat - 43.65).abs() < 1e-9 && (one.lon + 79.38).abs() < 1e-9);
+    let ten = round_for(c, LocationPrecision::About10Km);
+    assert!((ten.lat - 43.7).abs() < 1e-9 && (ten.lon + 79.4).abs() < 1e-9);
+    assert_eq!(round_for(c, LocationPrecision::Exact), c);
+}
+
+fn geocoder(server: &MockServer) -> CompositeGeocoder {
+    CompositeGeocoder::new(
+        reqwest::Client::new(),
+        GeocoderConfig {
+            open_meteo_url: format!("{}/v1/search", server.uri()),
+            nominatim_url: server.uri(),
+            zippopotam_url: Some(server.uri()),
+            nominatim_interval: std::time::Duration::ZERO,
+            ..GeocoderConfig::default()
+        },
+        Arc::clone(&ZONES),
+    )
+}
+
+#[tokio::test]
+async fn city_through_open_meteo_and_cached() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/search"))
+        .and(query_param("name", "Toronto"))
+        .and(query_param("countryCode", "CA"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(TORONTO))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let g = geocoder(&server);
+    let a = g.geocode(GeocodeQuery::City("Toronto")).await.unwrap();
+    let b = g.geocode(GeocodeQuery::City(" toronto ")).await.unwrap();
+    assert_eq!(a.label, "Toronto, ON");
+    assert_eq!(a.time_zone.0, "America/Toronto");
+    assert_eq!(a, b);
+}
+
+#[tokio::test]
+async fn canadian_postal_code_through_nominatim() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/search"))
+        .and(query_param("postalcode", "M5V3L9"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([{
+            "lat": "43.6420847", "lon": "-79.3853098",
+            "display_name": "M5V 3L9, Toronto, Ontario, Canada",
+            "address": {"city": "Toronto", "state": "Ontario", "ISO3166-2-lvl4": "CA-ON",
+                        "postcode": "M5V 3L9", "country_code": "ca"}
+        }])))
+        .mount(&server)
+        .await;
+    let g = geocoder(&server)
+        .geocode(GeocodeQuery::PostalCode("m5v 3l9"))
+        .await
+        .unwrap();
+    assert_eq!(g.label, "Toronto, ON");
+    assert_eq!(g.time_zone.0, "America/Toronto");
+}
+
+#[tokio::test]
+async fn fsa_falls_back_to_zippopotam() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/search"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/ca/M5V"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "post code": "M5V", "country": "Canada", "country abbreviation": "CA",
+            "places": [{"place name": "Downtown Toronto (CN Tower / King and Spadina)",
+                        "longitude": "-79.3686", "latitude": "43.6525",
+                        "state": "Ontario", "state abbreviation": "ON"}]
+        })))
+        .mount(&server)
+        .await;
+    let g = geocoder(&server)
+        .geocode(GeocodeQuery::PostalCode("M5V 9Z9"))
+        .await
+        .unwrap();
+    assert_eq!(g.label, "Downtown Toronto, ON");
+}
+
+#[tokio::test]
+async fn unknown_city_is_not_found() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"generationtime_ms":0.4}"#))
+        .mount(&server)
+        .await;
+    let err = geocoder(&server)
+        .geocode(GeocodeQuery::City("Nowhereville"))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, ProviderError::NotFound { .. }));
+}
+
+#[tokio::test]
+async fn gps_reverse_sends_a_rounded_point() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/reverse"))
+        .and(query_param("lat", "43.65"))
+        .and(query_param("lon", "-79.38"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "lat": "43.65", "lon": "-79.38",
+            "address": {"city": "Toronto", "ISO3166-2-lvl4": "CA-ON"}
+        })))
+        .mount(&server)
+        .await;
+    let at = Coordinates::new(43.653_21, -79.383_21).unwrap();
+    let g = geocoder(&server)
+        .geocode(GeocodeQuery::Coordinates(at))
+        .await
+        .unwrap();
+    assert_eq!(g.label, "Toronto, ON");
+    assert_eq!(
+        g.coordinates, at,
+        "the caller's point is kept, only the lookup is rounded"
+    );
+}

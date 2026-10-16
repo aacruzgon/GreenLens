@@ -1,0 +1,60 @@
+[package]
+name = "api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# the workspace: domain for every type and port; the library crates only in wiring.rs
+domain.workspace = true
+store.workspace = true
+blob.workspace = true
+integrations.workspace = true
+vision.workspace = true
+knowledge.workspace = true
+agent.workspace = true
+pipeline.workspace = true
+# HTTP
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+utoipa.workspace = true
+utoipa-axum.workspace = true
+governor.workspace = true
+serde_path_to_error.workspace = true
+# async
+tokio.workspace = true
+tokio-util.workspace = true
+tokio-stream.workspace = true
+async-stream.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+bytes.workspace = true
+# data
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+ulid.workspace = true
+uuid.workspace = true
+# crypto and secrets
+hmac.workspace = true
+sha2.workspace = true
+secrecy.workspace = true
+rand.workspace = true
+data-encoding.workspace = true
+aws-lc-rs.workspace = true
+# errors and logs
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+domain = { workspace = true, features = ["mock", "test-util"] }
+http-body-util.workspace = true
+mockall.workspace = true
+tokio = { workspace = true, features = ["test-util"] }

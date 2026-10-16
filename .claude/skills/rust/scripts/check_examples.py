@@ -85,7 +85,7 @@ REPO = SCRIPT.parents[4]                # repository root
 VERSIONS_MD = SKILLS_DIR / "rust" / "versions.md"
 LINTS_MD = SKILLS_DIR / "rust-cargo-lints" / "SKILL.md"
 DATABASE_MD = REPO / "docs" / "database" / "README.md"
-SCHEMA = REPO / "docs" / "database" / "schema.surql"
+SCHEMA = REPO / "backend" / "migrations" / "schema.surql"
 
 HEADER = (
     '#![allow(dead_code, reason = "skill examples define items they do not call")]\n'
