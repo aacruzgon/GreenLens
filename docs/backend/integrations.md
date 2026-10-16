@@ -1,6 +1,6 @@
 # PDM Backend: `integrations` crate
 
-> **Status:** Draft v0.3.2, 2026-10-16. v0.3.2: section 4 says the worker builds its client with a 600 s read timeout, not the 60 s default, because its VLM and hosted LLM calls aren't streamed, and their 240 s and 300 s deadlines end a slow call; the skills table became a plain list of the extra dependencies. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
+> **Status:** Draft v0.3.3, 2026-10-16. v0.3.3: the Clerk tests generate their RSA key pair at run time, so no key file is committed, and the Svix tests use a made-up secret. v0.3.2: section 4 says the worker builds its client with a 600 s read timeout, not the 60 s default, because its VLM and hosted LLM calls aren't streamed, and their 240 s and 300 s deadlines end a slow call; the skills table became a plain list of the extra dependencies. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
 
 Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate implements. Every listing below is copied from the compiled source of `crates/integrations`. `cargo check`, `cargo clippy -p integrations --all-targets` and `cargo test -p integrations` all pass: 58 tests, against `wiremock` servers and the live responses recorded on 2026-10-15.
 
@@ -117,11 +117,10 @@ The root `Cargo.toml` pins these versions (all checked on crates.io on 2026-10-1
 ```
 crates/integrations/
 ├─ Cargo.toml
-├─ fixtures/                   live responses recorded on 2026-10-15, plus a throwaway test RSA key
+├─ fixtures/                   live responses recorded on 2026-10-15
 │  ├─ openmeteo_forecast_multi.json   Toronto and Ottawa, past_days=7, forecast_days=16
 │  ├─ geocoding_toronto.json
-│  ├─ soilgrids_{iowa,guelph,toronto}.json   one with data, two all-null urban pixels
-│  └─ clerk_test_rsa.pem, clerk_jwks.json    test-only key pair
+│  └─ soilgrids_{iowa,guelph,toronto}.json   one with data, two all-null urban pixels
 └─ src/
    ├─ lib.rs
    ├─ http.rs                  the shared client, RetryPolicy, retry(), Pacer, TransportError
@@ -2628,7 +2627,7 @@ The two LLM clients keep their own enums (`AnthropicError`, `OpenAiCompatError`)
 | Open-Meteo | the **live fixture** of 2026-10-15 (Toronto values above, Ottawa frost); query lists via `wiremock`; object versus array; 429 and 400 mapping; `fetch_cells` with `MockWeatherProvider` |
 | SoilGrids | `d_factor` conversion on the live Iowa fixture; the live Toronto and Guelph null fixtures; the nearby-point fallback and `NotFound` with `wiremock` |
 | Geocoder | the live Open-Meteo fixture; Nominatim and Zippopotam shapes; the 0.01° reverse lookup; the cache (one request for two queries); `tzf-rs` on Toronto and Vancouver |
-| Clerk | tokens signed with a throwaway RSA key (fixture) and served as a JWKS by `wiremock`: issuer, expiry, `nbf`, `azp`, leeway, missing `nbf`, refetch limit; `DELETE` 200, 404 and 429 |
+| Clerk | tokens signed with a throwaway RSA key, generated once per test run with `aws-lc-rs` so no private key is committed, and served as a JWKS by `wiremock`: issuer, expiry, `nbf`, `azp`, leeway, missing `nbf`, refetch limit; `DELETE` 200, 404 and 429 |
 | Svix | the `svix` crate's `Webhook::sign` as the oracle; rotation (several entries), tampering, ±301 s |
 | Expo | ticket order, `DeviceNotRegistered` in tickets and receipts, batches of 100, a failed whole push |
 
