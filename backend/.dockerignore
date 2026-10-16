@@ -4,5 +4,9 @@ target/
 tools/
 .git
 **/*.rs.bk
-.env
-.env.*
+**/.env
+**/.env.*
+# The build files: an edit to them must not change the context and force a full recompile.
+Dockerfile
+docker-bake.hcl
+.dockerignore
