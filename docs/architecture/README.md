@@ -1,6 +1,6 @@
 # PDM Architecture
 
-> **Status:** Draft v0.7, 2026-10-16. v0.7 synced with [contracts.md](contracts.md) v0.10, which records the decisions of the [backend design](../backend/README.md):
+> **Status:** Draft v0.7.1, 2026-10-16. v0.7.1 synced with [contracts.md](contracts.md) v0.10.1: the account tombstone keeps a deleted account's tokens out and the provider deletion running across restarts (4). v0.7 synced with [contracts.md](contracts.md) v0.10, which records the decisions of the [backend design](../backend/README.md):
 >   - the crate list matches the code: `integrations` holds every outbound HTTP adapter, and `knowledge` reads through a port without depending on `store` (3);
 >   - the user record is created by the first authenticated request, and the auth webhook only deletes users (4, 11);
 >   - the chat tools take no garden id, `view_image` and `revise_plan` name their scan, and model thinking is replayed only within a turn (7);
@@ -170,7 +170,7 @@ Each crate is designed in detail, down to its types and traits, in [docs/backend
 
 - Clerk, a managed auth provider, handles sign-up, sign-in, social login, MFA and sessions ([frontend 8](../frontend/README.md#8-authentication-clerk)).
 - The app attaches the provider's JWT to every request. The API checks it against the provider's JWKS (`jsonwebtoken`) and maps the `sub` claim to a `user` record.
-- The `user` record is created by the user's **first authenticated request**, as an upsert on `auth_id`. The provider's `user.created` webhook is acknowledged and changes nothing: Clerk doesn't guarantee event order, and a late `user.created` must never recreate a user who was deleted. `user.deleted` (signature-verified) triggers the deletion cascade described in section 5 ([contracts 9, auth webhook](contracts.md#auth-webhook)).
+- The `user` record is created by the user's **first authenticated request**, as an upsert on `auth_id`. The provider's `user.created` webhook is acknowledged and changes nothing: Clerk doesn't guarantee event order, and a late `user.created` must never recreate a user who was deleted. `user.deleted` (signature-verified) triggers the deletion cascade described in section 5 ([contracts 9, auth webhook](contracts.md#auth-webhook)). An account's deletion first writes a tombstone keyed by `auth_id`: while it exists (until 24 hours after the provider confirms the deletion) the account's still-valid session tokens get `401` and never create a new user, and the API resumes an unfinished deletion, the provider call included, after a restart.
 
 ### Personas
 
