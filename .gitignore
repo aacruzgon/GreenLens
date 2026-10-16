@@ -149,3 +149,4 @@ ml/training/eval/photos/
 *.safetensors
 *.pt
 *.pth
+ml/training/eval/reports/*/
