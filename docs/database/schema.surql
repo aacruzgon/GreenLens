@@ -8,8 +8,8 @@
 -- writes are happening can miss them (surrealdb#7533).
 --
 -- Conventions
---   ids        ULID string keys generated in Rust (RecordId::new("scan", Ulid::new())), except
---              knowledge records (slugs) and tables whose key is the natural key ([a, b] arrays).
+--   ids        ULID string keys generated in Rust (RecordId::new("scan", Ulid::generate().to_string())),
+--              except knowledge records (slugs) and tables whose key is the natural key ([a, b] arrays).
 --   NONE       an optional field is option<T>: absent, never NULL. The Rust SDK sends None as NONE.
 --   enums      literal union types, so a bad value fails with "Expected 'a' | 'b'".
 --   dates      datetime for instants; LocalDate ("YYYY-MM-DD" in the garden's time zone) as a

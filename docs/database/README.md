@@ -1,7 +1,7 @@
 # PDM Database (SurrealDB)
 
-> **Status:** v1.3.2, 2026-10-15. v1.3.2: `POST /tasks` checks its `scan_id` in the insert's transaction (✓ the schema accepts a link to a missing scan, and the check refuses it), and species photos and `preys_on` are computed when read. v1.3.1: `task.scan` is `CASCADE`, so a pending scan's jar-test task is deleted with it, and event payloads store image IDs, never signed URLs. v1.3 adds the fields the app's screens need (contracts v0.8): `task.scan`, `scan.deleting_at` and the deletion of a pending scan, `diagnosis.low_evidence`, `species.reference_images`, and `city` as a garden location precision. v1.2 ties step claims to their run with a commit check, adds `job.question` to the fallback's claim, deletes plans by equality (the `IN` bug), and clears claims when deletion starts. v1.1 adds the LiDAR records (section 3), a deletion order that removes tasks and trigger rules before their plans, per-image replacement of observations, and claimed steps between jobs that the scheduler's sweep can recover. v1: The schema is [`schema.surql`](schema.surql). Companion to the [architecture document](../architecture/README.md) (section 5) and [contracts.md](../architecture/contracts.md), which define the shapes these records store.
-> **Verified:** every pattern marked ✓ below was run against `surrealdb/surrealdb:v3.3.4` on 2026-10-15. The schema applies cleanly twice in a row, and a scenario script exercised the rest. Points marked *unverified* come from the docs only.
+> **Status:** v1.3.3, 2026-10-16. v1.3.3: the `api` user's password is a string literal in the setup script (a parameter is a parse error), ULIDs come from `Ulid::generate()`, the batched delete returns `$before.id` so it can tell when a table is empty, and statement errors are read with `take_errors()`, skipping `NotExecuted` and `Cancelled`. v1.3.2: `POST /tasks` checks its `scan_id` in the insert's transaction (✓ the schema accepts a link to a missing scan, and the check refuses it), and species photos and `preys_on` are computed when read. v1.3.1: `task.scan` is `CASCADE`, so a pending scan's jar-test task is deleted with it, and event payloads store image IDs, never signed URLs. v1.3 adds the fields the app's screens need (contracts v0.8): `task.scan`, `scan.deleting_at` and the deletion of a pending scan, `diagnosis.low_evidence`, `species.reference_images`, and `city` as a garden location precision. v1.2 ties step claims to their run with a commit check, adds `job.question` to the fallback's claim, deletes plans by equality (the `IN` bug), and clears claims when deletion starts. v1.1 adds the LiDAR records (section 3), a deletion order that removes tasks and trigger rules before their plans, per-image replacement of observations, and claimed steps between jobs that the scheduler's sweep can recover. v1: The schema is [`schema.surql`](schema.surql). Companion to the [architecture document](../architecture/README.md) (section 5) and [contracts.md](../architecture/contracts.md), which define the shapes these records store.
+> **Verified:** every pattern marked ✓ below was run against `surrealdb/surrealdb:v3.3.4` on 2026-10-15; the v1.3.3 changes were run against the same image, by digest, on 2026-10-16. The schema applies cleanly twice in a row, and a scenario script exercised the rest. Points marked *unverified* come from the docs only.
 
 ## Contents
 
@@ -60,7 +60,11 @@ volumes:
 | User | Level and role | Used by |
 |---|---|---|
 | root | Root, from `SURREAL_USER`/`SURREAL_PASS` | Applying `schema.surql`, backups, emergencies |
-| `api` | `DEFINE USER api ON DATABASE PASSWORD $secret ROLES EDITOR` | The API at runtime. ✓ It can read, write and change the schema, but `DEFINE USER` fails with "Not enough permissions" |
+| `api` | `DEFINE USER api ON DATABASE PASSWORD '…' ROLES EDITOR` | The API at runtime. ✓ It can read, write and change the schema, but `DEFINE USER` fails with "Not enough permissions" |
+
+The setup script creates `api` as root, with the password written into the statement as a single-quoted string, `\` and `'` escaped. ✓ It can't be a parameter: `PASSWORD $secret` is a parse error ("Unexpected token \`a parameter\`, expected a strand") whether `$secret` is bound or set with `LET`, and so is `PASSHASH $hash`. ✓ A password containing `'` and `\`, escaped that way, signs in.
+
+✓ Privileges for the statements at the top of `schema.surql`: `DEFINE NAMESPACE` needs root; a namespace-level `OWNER` can run `DEFINE DATABASE` but not `DEFINE NAMESPACE`; `api`, a database-level `EDITOR`, can run neither ("IAM error: Not enough permissions to perform this action"), and every other statement in the file applies as `api`.
 
 The API authenticates app users with the auth provider's JWTs itself, and talks to SurrealDB as `api`. SurrealDB could verify the provider's JWTs directly (`DEFINE ACCESS … TYPE JWT URL`), but that needs custom claims, outbound network access and a session per request. It would also duplicate the membership checks the API makes anyway, so we don't use it.
 
@@ -79,7 +83,7 @@ The official migration tool, SurrealKit, is still in beta (1.0.0-beta.6), and th
 
 | Topic | Rule |
 |---|---|
-| Record IDs | ULID string keys generated in Rust: `RecordId::new("scan", Ulid::new().to_string())`. Knowledge records use their slugs. A few tables use a natural **array key** (below). The API strips the table prefix in responses (contracts section 1) |
+| Record IDs | ULID string keys generated in Rust: `RecordId::new("scan", Ulid::generate().to_string())`. `ulid` 3.0.0 has no `Ulid::new()`, and `RecordIdKey` has no `From<Ulid>`, so the key is the string. Knowledge records use their slugs. A few tables use a natural **array key** (below). The API strips the table prefix in responses (contracts section 1) |
 | Array keys | Used where the key *is* the uniqueness rule or the access path: `scan_event:[scan, seq]`, `member_of:[user, garden]`, `idempotency_key:[user, route, key]`, `usage_daily:[user, day]`, `weather_cache:[hour, cell]`, `push_token:[token]`, `worker:[worker_id]`, `message_feedback:[message]`, `classifier_label:[model_version, index]`, `soil_condition:[aspect, value]`. ✓ `DEFINE FIELD id … TYPE [record<scan>, int]` rejects a key of the wrong shape |
 | Optional fields | `option<T>`. A field is absent (`NONE`), never `NULL`. ✓ `option<string>` refuses `NULL`. The Rust SDK sends `None` as `NONE` |
 | Enums | Literal union types: `TYPE "open" \| "answering"`. ✓ A bad value fails with ``Expected `'pending' \| 'queued'` `` |
@@ -129,7 +133,7 @@ Changes from the architecture sketch (section 5 there):
 
 ## 4. Write patterns
 
-Each statement is its own transaction. Statements that must succeed or fail together go in one `BEGIN … COMMIT` sent as **one** query. Isolation is snapshot isolation: there are no locks, and a write-write conflict fails at `COMMIT` with a retryable "Transaction conflict". **The API retries the whole transaction**, up to 5 times with jittered back-off (section 6).
+Each statement is its own transaction. Statements that must succeed or fail together go in one `BEGIN … COMMIT` sent as **one** query. Isolation is snapshot isolation: there are no locks, and a write-write conflict fails at `COMMIT` with a retryable `TransactionConflict`: ✓ "Transaction conflict: Write conflict, retry the transaction. This transaction can be retried". A single statement is its own transaction and can conflict the same way. **The API retries the whole transaction**, up to 5 times with jittered back-off (section 6).
 
 ### Scan events: a gap-free `seq` ✓
 
@@ -197,7 +201,7 @@ CREATE type::record('idempotency_key', [$user, $route, $key])
   SET fingerprint = $fp, expires_at = time::now() + 24h;
 ```
 
-✓ A second `CREATE` with the same key fails with "already exists". The API then reads the record and applies contracts section 1: replay the stored response, return `409 request_in_progress`, or return `422 idempotency_conflict`. When the request finishes, the API sets `state = 'done'`, `response_status` and `response_body`. A response that must not be stored deletes the key instead.
+✓ A second `CREATE` with the same key fails with "already exists". ✓ When several connections create the same key at once, a loser can get the retryable conflict instead (8 of 320 in one run); the API's retry then gets "already exists". The same holds for `INSERT RELATION` in membership. The API then reads the record and applies contracts section 1: replay the stored response, return `409 request_in_progress`, or return `422 idempotency_conflict`. When the request finishes, the API sets `state = 'done'`, `response_status` and `response_body`. A response that must not be stored deletes the key instead.
 
 ### Limits and counters ✓
 
@@ -292,7 +296,7 @@ The API deletes **bottom-up in batches**, never as one large transaction:
 
 The `CASCADE` only reaches tasks that exist when the scan is deleted, and the schema accepts a link to a missing scan (✓ a task with `scan = scan:missing` is created). So `POST /tasks` with a `scan_id` checks the scan in the same transaction as the insert, as it does the plant (contracts 9): the scan exists, is of that garden and plant, and has no `deleting_at`, otherwise it throws and nothing is created. ✓ On 3.3.4 that transaction creates the task for a live scan and creates nothing for a missing scan or one with `deleting_at`.
 
-Each batch is `DELETE (SELECT VALUE id FROM t WHERE … LIMIT 500) RETURN NONE`, repeated until empty. Small transactions don't conflict with live writers.
+Each batch is `DELETE (SELECT VALUE id FROM t WHERE … LIMIT 500) RETURN VALUE $before.id`, repeated until it returns no ids. ✓ `RETURN NONE` can't be used to stop: it returns `[]` both for a batch that deleted 2 rows and for one that deleted none. ✓ `RETURN VALUE id` gives `NONE` for each row, since the record is gone; `RETURN BEFORE` works but returns whole records. Small transactions don't conflict with live writers.
 
 A few links behave differently:
 - **CASCADE** (✓ deleting a user deletes their push tokens): `push_token.user`, `invite.garden`, `scan_feedback.user`, and `task.scan` (✓ a jar-test task goes with its pending scan). These records have nothing outside the database.
@@ -305,7 +309,7 @@ SurrealDB has no record expiry ([#1317](https://github.com/surrealdb/surrealdb/i
 
 | What | Statement |
 |---|---|
-| Idempotency keys | `DELETE (SELECT VALUE id FROM idempotency_key WHERE expires_at < time::now() LIMIT 500) RETURN NONE` |
+| Idempotency keys | `DELETE (SELECT VALUE id FROM idempotency_key WHERE expires_at < time::now() LIMIT 500) RETURN VALUE $before.id`, until it returns no ids |
 | Weather cache older than 2 hours | ✓ `DELETE weather_cache:[NONE, NONE]..[$cutoff, NONE]`, a key range because the hour comes first in the key |
 | Pending actions | `UPDATE pending_action SET status = 'expired' WHERE status = 'proposed' AND expires_at < time::now()` |
 | Finished jobs older than 7 days | Delete in batches. Their payloads are the bulk of the table |
@@ -374,7 +378,7 @@ SELECT * FROM garden WHERE geohash IN $cell_and_neighbours AND geo::distance(cen
   - Datetimes are `chrono::DateTime<Utc>`.
   - API DTOs derive serde separately and turn `RecordId` into the bare ULID string.
 - **Always `.bind()`.** Never format values into SurrealQL. A misspelled bind name silently becomes `NONE`, so test each query.
-- **Check every statement.** `.query()` returns `Ok` even when a statement inside failed. Call `response.take_errors()`, or `.check()`, before `take(n)`.
+- **Check every statement.** `.query()` returns `Ok` even when a statement inside failed. Call `response.take_errors()` before `take(n)`. ✓ Inside `BEGIN … COMMIT`, `.check()` returns the lowest-index error, which is not the cause: the statements before the cause report `NotExecuted`, those after it `Cancelled`, and the `COMMIT` `NotExecuted`. So take the lowest-index error that is neither. `.check()` is fine for a single statement.
 - **Retry conflicts** around whole transactions:
 
 ```rust
