@@ -102,6 +102,7 @@ precision = "fp16"                       # GridSample, Range, LayerNormalization
 
   [model.config]
   score_threshold  = 0.35                # τ_det, set on the evaluation set
+  tau_leaf         = 0.5                 # τ_leaf of the plant check (models.md 2), set on the evaluation set
   min_side_px      = 24
   max_per_image    = 40
   nms_iou          = 0.8
