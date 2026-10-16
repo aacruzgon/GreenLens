@@ -1,6 +1,6 @@
 # PDM Infrastructure and CI
 
-> **Status:** Draft v0.1.1, 2026-10-16. v0.1.1: `api`'s bucket default is now `pdm-images`, so section 4's note no longer flags it. v0.1: first design of the CI workflows, the container images, the three compose files, ingress, secrets, deploys by digest, operations hooks and the infrastructure work items of the [backend roadmap](../backend/roadmap.md). Design only: nothing here exists yet.
+> **Status:** Draft v0.2, 2026-10-16. v0.2: `backend.yml` and `dependabot.yml` exist; the `test` job adds the doc tests nextest skips, the `examples` job runs only when the Rust skills change and on pushes to `main`, every Rust job installs 1.99.1 and sets `RUSTUP_TOOLCHAIN`, `checklinks.py` and `check_fences.py` now exit non-zero, and open question 1 is answered. v0.1.1: `api`'s bucket default is now `pdm-images`, so section 4's note no longer flags it. v0.1: first design of the CI workflows, the container images, the three compose files, ingress, secrets, deploys by digest, operations hooks and the infrastructure work items of the [backend roadmap](../backend/roadmap.md). Design only: nothing here exists yet.
 
 This document turns [architecture 12](../architecture/README.md#12-deployment) and [backend 12](../backend/README.md#12-builds-and-deployment) into files: what goes in `.github/` and `infra/`, how each image is built and pinned, and how the control plane and the rig are started, deployed and rolled back. It closes [roadmap gap 3](../backend/roadmap.md#12-gaps-found-while-writing-this-roadmap).
 
@@ -106,15 +106,19 @@ Rust needs no action: the runner image has rustup, and the first `cargo` call in
 |---|---|---|---|
 | `changes` | always | `git diff --name-only` against the base; outputs `rust`, `docs`, `infra`, `live` as booleans | 0.5 min |
 | `lint` | `rust` | `cargo fmt --all --check`; `cargo clippy --workspace --all-targets --locked -- -D warnings`; `cargo check -p worker --features cuda`; `cargo check -p vision --features cuda,migraphx,webgpu`; `cargo check -p vision --features heic` (installs `libheif-dev`) | 5 / 14 min |
-| `test` | `rust` | install cargo-nextest 0.9.148 with `taiki-e/install-action` (`tool: cargo-nextest@0.9.148`); `cargo nextest run --workspace --locked`. This includes the `api` test that fails when `backend/openapi.json` is stale | 7 / 18 min |
-| `examples` | `rust` or the skills changed | `setup-python` 3.12; `python3 .claude/skills/rust/scripts/check_examples.py` | 3 / 8 min |
-| `docs` | `rust` or `docs` | `backend/tools/docgen/regen_all.sh` then `git diff --exit-code docs/backend`; `check_fences.py docs/backend`; `checklinks.py` over `AGENTS.md`, `CLAUDE.md` and `docs/**/*.md` | 1 min |
+| `test` | `rust` | install cargo-nextest 0.9.148 with `taiki-e/install-action` (`tool: cargo-nextest@0.9.148`); `cargo nextest run --workspace --locked`. This includes the `api` test that fails when `backend/openapi.json` is stale. Then `cargo test --doc --workspace --locked`, because nextest doesn't run doc tests and the compile-fail tests of the proofs and URL states are doc tests ([backend 11](../backend/README.md#11-testing-and-tooling)) | 7 / 18 min |
+| `examples` | the Rust skills changed, or a push to `main` | `setup-python` 3.12; `python3 .claude/skills/rust/scripts/check_examples.py`. The examples compile against `versions.md` in a crate of their own, not against the workspace, so a backend change can't break them | 3 / 8 min |
+| `docs` | `rust` or `docs` (any `.md` file, or the generator) | `backend/tools/docgen/regen_all.sh` then `git diff --exit-code docs/backend`; `check_fences.py docs/backend`; `checklinks.py` over `AGENTS.md`, `CLAUDE.md` and `docs/**/*.md`. Both checkers exit 1 on a broken link or an unbalanced listing; a listing rustfmt can't parse is reported, not failed | 1 min |
 | `live` | `live`, or a push to `main` | service containers below; `cargo nextest run -p store -p blob --run-ignored only --locked`; `check_examples.py --live` | 5 / 12 min |
 | `infra` | `infra` | `docker compose -f <file> --env-file infra/env/.env.example config -q` for each compose file; `caddy validate` in the pinned Caddy image; `bash -n` and `shellcheck` on `infra/**/*.sh` | 1 min |
 
+**The toolchain.** Every Rust job runs `rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy`, and the workflow sets `RUSTUP_TOOLCHAIN=1.99.1`. `check_examples.py` builds its crate in a temporary directory outside `backend/`, where `rust-toolchain.toml` doesn't apply, and refuses any `rustc` but the one `versions.md` pins.
+
+**How `changes` decides.** It diffs against the pull request's base, or the push's `before`; a manual run, a new branch, a base missing from history, or a change to `backend.yml` itself sets every output. `rust` is `backend/crates`, `backend/bins`, `backend/migrations` and the workspace's root files; `docs` is any `.md` file and `backend/tools/docgen/`; `skills` is `.claude/skills/rust*`; `infra` is `infra/` and `.github/`; `live` is `store`, `blob`, `migrations`, `Cargo.toml`, `Cargo.lock` and the Rust skills.
+
 The GPU feature checks need no GPU and no CUDA: `ort` uses `load-dynamic`, so nothing links against ONNX Runtime at build time ([versions.md](../../.claude/skills/rust/versions.md#notes-and-things-not-confirmed)). They catch code behind `#[cfg(feature = "cuda")]` that the default build never compiles.
 
-**Caching.** `Swatinem/rust-cache` with `workspaces: backend -> target`, one `shared-key` per job (`lint`, `test`, `examples`, `live`) because each compiles a different profile or feature set, and `save-if: ${{ github.ref == 'refs/heads/main' }}`. Each key holds about 1–2 GB (*unverified*, an estimate from a 754-crate tree); four keys fit the 10 GB. Times above are estimates for 2 vCPUs; the first run on `main` records the real ones here.
+**Caching.** `Swatinem/rust-cache` with `workspaces: backend -> target`, one `shared-key` per job (`lint`, `test`, `examples`, `live`) because each compiles a different profile or feature set, and `save-if: ${{ github.ref == 'refs/heads/main' }}`. `examples` and `live` also cache `~/.cache/pdm-rust-skills-check/target`, where `check_examples.py` builds; `examples` caches nothing else. Each key holds about 1–2 GB (*unverified*, an estimate from a 754-crate tree); four keys fit the 10 GB. Times above are estimates for 2 vCPUs; the first run on `main` records the real ones here.
 
 **The live job's services.** GitHub Actions service containers accept `command` and `entrypoint` (✓ workflow syntax), so SurrealDB can start with the in-memory engine the store test expects. Ports match the defaults in `crates/store/tests/server.rs` and `crates/blob/tests/rustfs.rs`; the credentials are the throwaway ones those tests hard-code.
 
@@ -623,7 +627,7 @@ Each item belongs to a slice of the [backend roadmap](../backend/roadmap.md). It
 
 ## 10. Open questions
 
-1. **Actions minutes.** Is the owner's plan Free (2,000 minutes) or Pro (3,000), and may the account spend past the included minutes? If not, a self-hosted runner on the rig could take `test`, `live` and `images`; it would need its own user, no access to the rig's env files, and a decision about running pull-request code on a home machine.
+1. **Actions minutes.** *Answered on 2026-10-16:* the team runs the design as written on GitHub's runners, `live` included on every push to `main`. When the included minutes run out, a self-hosted runner on the rig takes `test`, `live` and `images`; it will need its own user, no access to the rig's env files, and a decision about running pull-request code on a home machine.
 2. **Who deploys.** Manual deploys from the host (this design) or a pull-based updater that follows the `main` tag? Pull-based saves a step but deploys without a person choosing the moment.
 3. **Architecture of the control-plane VM**, if it's a VM: amd64 needs nothing more; arm64 adds an arm64 build of `api` and `worker`.
 4. **The off-host backup remote**: an S3-compatible bucket from a provider the team already has credits with, and who holds its key.
