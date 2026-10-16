@@ -1,8 +1,8 @@
 # PDM Backend: `vision` crate
 
-> **Status:** Draft v0.2.6, 2026-10-16. v0.2.6: the perception adapter takes every tensor name from the manifest (`TensorNames`, gap G4), reads every threshold from `[model.config]` with `PerceptionConfig::from_manifest` and has no default (G6; `tau_leaf` is a new `leaf_detector` key, `tau_plant` comes from `plant_probe`), and refuses fp16 models on the CPU provider (`check_precision`, G11), all from [issue #12](https://github.com/aacruzgon/GreenLens/issues/12). v0.2.5: open question 4 is settled: xgrammar enforces `anyOf` with `null`. v0.2.4: the head and label-matrix loaders read `ml/models/FORMATS.md` (`pdm-label-matrix/1`, `pdm-linear-head/1`), refuse a head trained on another export or a file whose version differs from its entry, and are tested on files written as `ml/` writes them; open question 5 is resolved. v0.2.3: open question 5 is open again: `ml/models/FORMATS.md` is the format of record, and the loader doesn't read it yet. v0.2.2: open question 5 is resolved: vision 6 now fixes the head and label-matrix JSON. v0.2.1: the section 1 note says the `rust-workers` skill follows this crate: `ort` with `load-dynamic` and `api-29`, providers as cargo features chosen by `ORT_EP`, one inference thread and the session pool. v0.2: the text embedder takes `domain::ports::EmbedMode` on each `embed` call instead of offering two pre-set instances (`queries()` and `documents()` are gone). v0.1: ONNX Runtime sessions with the execution provider chosen at run time, the perception models as one `VisionModel`, the CPU upload pipeline (decode, quality, two-pass face blurring, WebP, depth), LiDAR measurement as deterministic geometry, the text embedder and COCO RLE, compiled on Rust 1.99.1 with `ort` 2.0.0-rc.14.
+> **Status:** Draft v0.2.6, 2026-10-16. v0.2.6: the perception adapter takes every tensor name from the manifest (`TensorNames`, gap G4) and checks them against each loaded session at start-up (`check_names`), reads every threshold from `[model.config]` inside `PerceptionPipeline::load` with `PerceptionConfig::from_manifest` and has no default, and refuses an environment batch cap above the manifest's (G6; `tau_leaf` is a new `leaf_detector` key, `tau_plant` comes from `plant_probe`), and refuses fp16 models on the CPU provider (`check_precision`, G11), all from [issue #12](https://github.com/aacruzgon/GreenLens/issues/12). v0.2.5: open question 4 is settled: xgrammar enforces `anyOf` with `null`. v0.2.4: the head and label-matrix loaders read `ml/models/FORMATS.md` (`pdm-label-matrix/1`, `pdm-linear-head/1`), refuse a head trained on another export or a file whose version differs from its entry, and are tested on files written as `ml/` writes them; open question 5 is resolved. v0.2.3: open question 5 is open again: `ml/models/FORMATS.md` is the format of record, and the loader doesn't read it yet. v0.2.2: open question 5 is resolved: vision 6 now fixes the head and label-matrix JSON. v0.2.1: the section 1 note says the `rust-workers` skill follows this crate: `ort` with `load-dynamic` and `api-29`, providers as cargo features chosen by `ORT_EP`, one inference thread and the session pool. v0.2: the text embedder takes `domain::ports::EmbedMode` on each `embed` call instead of offering two pre-set instances (`queries()` and `documents()` are gone). v0.1: ONNX Runtime sessions with the execution provider chosen at run time, the perception models as one `VisionModel`, the CPU upload pipeline (decode, quality, two-pass face blurring, WebP, depth), LiDAR measurement as deterministic geometry, the text embedder and COCO RLE, compiled on Rust 1.99.1 with `ort` 2.0.0-rc.14.
 
-Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports this crate implements, and the [computer-vision design](../vision/README.md), whose model choices it follows. Every listing below is copied from the compiled source of `crates/vision` by the docgen tool. `cargo check -p vision` (also with `--features cuda`, `migraphx`, `webgpu`), `cargo clippy -p vision --all-targets` and `cargo test -p vision` pass: 57 unit tests and 18 tests that load `ml/`'s committed manifest and files written as `ml/` writes them, among them an end-to-end measurement of a synthetic leaf and byte-for-byte RLE fixtures from pycocotools. ONNX Runtime itself never runs in the tests: the default `load-dynamic` feature links nothing, and no test builds a session.
+Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports this crate implements, and the [computer-vision design](../vision/README.md), whose model choices it follows. Every listing below is copied from the compiled source of `crates/vision` by the docgen tool. `cargo check -p vision` (also with `--features cuda`, `migraphx`, `webgpu`), `cargo clippy -p vision --all-targets` and `cargo test -p vision` pass: 61 unit tests and 19 tests that load `ml/`'s committed manifest and files written as `ml/` writes them, among them an end-to-end measurement of a synthetic leaf and byte-for-byte RLE fixtures from pycocotools. ONNX Runtime itself never runs in the tests: the default `load-dynamic` feature links nothing, and no test builds a session.
 
 ## Contents
 
@@ -625,7 +625,7 @@ impl Manifest {
 }
 ```
 
-**What the perception adapter reads from each entry.** Every tensor name: inputs from `[model.input] name` and outputs from `[model.outputs]` by their logical names (`boxes`, `logits`, `high_res_feats_0`, `high_res_feats_1`, `image_embed`, `mask_single`, `iou_single`, `embeddings`); only the SAM decoder's four inputs, which its entry doesn't list, are a constant (section 6, `TensorNames`). Every threshold, from the entries in `PerceptionConfig::from_manifest`'s table; a missing key refuses to start, so the settings in use are always the ones `perception_config` hashes, and the environment sets only the batch caps. `precision`: with `ORT_EP=cpu`, an fp16 GPU model refuses to start, because ONNX Runtime's CPU provider segfaults on fp16 graphs instead of returning an error; the CPU manifest (`ml.models.fetch --cpu`) has the fp32 files.
+**What the perception adapter reads from each entry.** Every tensor name: inputs from `[model.input] name` and outputs from `[model.outputs]` by their logical names (`boxes`, `logits`, `high_res_feats_0`, `high_res_feats_1`, `image_embed`, `mask_single`, `iou_single`, `embeddings`); only the SAM decoder's four inputs, which its entry doesn't list, are a constant (section 6, `TensorNames`). Once each session is built, `check_names` compares the file's own input and output names with these and refuses to start on a difference, so a manifest that disagrees with its export fails at start-up, not on the first job. Every threshold, from the entries in `PerceptionConfig::from_manifest`'s table, which `PerceptionPipeline::load` calls itself; a missing key refuses to start, so the settings in use are always the ones `perception_config` hashes. The environment sets only the batch caps, and each may lower a model's `max_batch` (`max_boxes` for the SAM decoder) but not raise it, since that is the batch its memory budget was measured at. `precision`: with `ORT_EP=cpu`, an fp16 GPU model refuses to start, because ONNX Runtime's CPU provider segfaults on fp16 graphs instead of returning an error; the CPU manifest (`ml.models.fetch --cpu`) has the fp32 files.
 
 Entry names the code reads: `leaf_detector`, `sam_encoder`, `sam_decoder`, `bioclip`, every `bioclip_labels*` (one label matrix per `label_set_version`), every `disease_head*` (one per `classifier_labels_version`), `plant_probe`, `yunet`, `text_embedder` and `text_embedder_tokenizer`. The heads and label matrices are JSON files with their matrices as base64 little-endian `f32` (section 6); the format is ours, since [vision 6](../vision/README.md#6-model-files-versions-and-pinning) fixes the manifest but not these files.
 
@@ -656,6 +656,12 @@ pub enum ModelSlot {
 /// A model to load on the thread.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionSpec {
+    /// Its manifest entry, for errors.
+    pub name: &'static str,
+    /// Every input the file must take: the names it will be fed, from the manifest.
+    pub inputs: Vec<String>,
+    /// Outputs the file must have: the names that will be read (it may have others).
+    pub outputs: Vec<String>,
     /// Which model.
     pub slot: ModelSlot,
     /// Its file (hash already checked).
@@ -681,6 +687,49 @@ pub struct Inference {
 
 /// Terminates a run when dropped before [`TerminateOnDrop::disarm`].
 pub struct TerminateOnDrop(Option<Arc<RunOptions>>);
+
+/// Compares a loaded file's tensor names with the ones it will be run with: its inputs must be
+/// exactly the ones fed (ONNX Runtime needs every input, and an unknown name is an error), and
+/// each output read must exist. Run once at start-up, so a manifest that disagrees with its
+/// export fails there instead of on the first job.
+pub fn check_names(
+    entry: &str,
+    inputs: &[String],
+    file_inputs: &[String],
+    outputs: &[String],
+    file_outputs: &[String],
+) -> Result<(), VisionError> {
+    let mismatch = |detail: String| VisionError::TensorMismatch {
+        entry: entry.to_owned(),
+        detail,
+    };
+    let listed = |names: &[String]| names.join(", ");
+    for name in inputs {
+        if !file_inputs.contains(name) {
+            return Err(mismatch(format!(
+                "input {name} is not in the file, whose inputs are {}",
+                listed(file_inputs)
+            )));
+        }
+    }
+    for name in file_inputs {
+        if !inputs.contains(name) {
+            return Err(mismatch(format!(
+                "the file's input {name} would not be fed; the worker feeds {}",
+                listed(inputs)
+            )));
+        }
+    }
+    for name in outputs {
+        if !file_outputs.contains(name) {
+            return Err(mismatch(format!(
+                "output {name} is not in the file, whose outputs are {}",
+                listed(file_outputs)
+            )));
+        }
+    }
+    Ok(())
+}
 ```
 ```rust
 impl Inference {
@@ -808,8 +857,10 @@ impl PerceptionConfig {
     }
 
     /// Reads every threshold from its entry's `[model.config]`; `caps` come from the
-    /// environment. A missing key, or disease heads that disagree on `crop_grow`, refuse to
-    /// start, so the settings in use are always the ones `perception_config` hashes.
+    /// environment and may lower, never raise, each model's `max_batch` (`max_boxes` for the
+    /// SAM decoder), the batch its memory budget was measured at. A missing key, a cap above the
+    /// manifest's, or disease heads that disagree on `crop_grow` refuse to start, so the settings
+    /// in use are always the ones `perception_config` hashes.
     ///
     /// | Field | Entry |
     /// |---|---|
@@ -818,6 +869,7 @@ impl PerceptionConfig {
     /// | `species_temperature` | `bioclip` |
     /// | `crop_grow` | every `disease_head*` |
     /// | `tau_plant` | `plant_probe`, when present |
+    /// | the caps' limits | `leaf_detector`, `sam_encoder`, `bioclip` (`max_batch`); `sam_decoder` (`max_boxes`) |
     pub fn from_manifest(manifest: &Manifest, caps: BatchCaps) -> Result<Self, ManifestError> {
         let det = manifest.entry("leaf_detector")?;
         let dec = manifest.entry("sam_decoder")?;
@@ -842,6 +894,33 @@ impl PerceptionConfig {
             Ok(probe) => Some(probe.config_f32("tau_plant")?),
             Err(_) => None,
         };
+        for (variable, cap, name, key) in [
+            (
+                "DETECTOR_MAX_BATCH",
+                caps.detector,
+                "leaf_detector",
+                "max_batch",
+            ),
+            (
+                "SAM_ENCODER_MAX_BATCH",
+                caps.sam_encoder,
+                "sam_encoder",
+                "max_batch",
+            ),
+            ("SAM_MAX_BOXES", caps.sam_boxes, "sam_decoder", "max_boxes"),
+            ("BIOCLIP_MAX_BATCH", caps.bioclip, "bioclip", "max_batch"),
+        ] {
+            let limit = manifest.entry(name)?.config_usize(key)?;
+            if cap > limit {
+                return Err(ManifestError::CapAboveManifest {
+                    variable,
+                    cap,
+                    name: name.to_owned(),
+                    key,
+                    limit,
+                });
+            }
+        }
         Ok(Self {
             caps,
             detector: DetectorConfig {
@@ -3716,6 +3795,14 @@ pub enum VisionError {
     Fp16OnCpu {
         /// The manifest entry.
         entry: String,
+    },
+    /// A loaded ONNX file's tensor names differ from its manifest entry's.
+    #[error("{entry}: the ONNX file doesn't match the manifest: {detail}")]
+    TensorMismatch {
+        /// The manifest entry.
+        entry: String,
+        /// Which name, and what the file has.
+        detail: String,
     },
     /// A model returned a tensor of an unexpected shape or name.
     #[error("{model}: unexpected output: {detail}")]
