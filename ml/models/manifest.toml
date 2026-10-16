@@ -1,5 +1,7 @@
 # Every model file a worker or `api` loads (docs/vision/README.md §6; backend vision.md §5).
-# Paths are relative to ml/models/files/ once fetched (ml/models/fetch.py, not yet written).
+# Paths are relative to the manifest's own folder, as the worker resolves them: run
+# `python -m ml.models.fetch`, which puts the files and a copy of this manifest in
+# ml/models/files/, and point MODEL_MANIFEST at that copy (on the rig: /models/manifest.toml).
 # Workers check each file's SHA-256 at start-up and refuse to start on a mismatch.
 #
 # Status 2026-10-16: development entries. The leaf detector is its clean fine-tune; the label
