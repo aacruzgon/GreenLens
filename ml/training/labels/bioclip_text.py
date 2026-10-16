@@ -20,7 +20,6 @@ import numpy as np
 import open_clip
 import torch
 import yaml
-from open_clip.zero_shot_metadata import OPENAI_IMAGENET_TEMPLATES
 
 from ml.pdm_vision import headfile
 
@@ -30,10 +29,13 @@ SEED = ROOT / "ml/knowledge/seed"
 OUT = ROOT / "ml/models/files/bioclip_labels"
 REVISION = "2957b322090f9cb17ae72c71981c7218a28d81e0"
 TEMPLATES_NAME = "openai-imagenet-80"
+TEMPLATES_FILE = ROOT / "ml/models/templates/openai-imagenet-80.json"
 
 
 def templates() -> list[str]:
-    return [t("{label}") for t in OPENAI_IMAGENET_TEMPLATES]
+    """open_clip's 80 OpenAI ImageNet templates with `{label}` in place, from the committed file
+    the knowledge loader reads too (ml/models/FORMATS.md)."""
+    return json.loads(TEMPLATES_FILE.read_text())
 
 
 def label_set_version(labels: list[dict]) -> str:

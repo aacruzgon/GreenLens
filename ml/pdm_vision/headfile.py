@@ -50,6 +50,9 @@ def write_linear_head(
     classes, dim = weight.shape
     if bias.shape != (classes,) or len(labels) != classes:
         raise ValueError("weight, bias and labels disagree on the class count")
+    core = {"format", "kind", "version", "features", "dim", "classes", "temperature", "labels", "weight", "bias"}
+    if clash := core & set(extra or {}):
+        raise ValueError(f"extra fields would overwrite core fields: {sorted(clash)}")
     doc = {
         "format": LINEAR_HEAD,
         "kind": kind,
