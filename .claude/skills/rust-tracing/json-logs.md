@@ -480,7 +480,7 @@ fn debug_hides_the_value() {
 }
 ```
 
-The same goes for the server's own secrets (database passwords, storage keys, the signing secret, API keys, worker tokens): read them into such a type at start-up, so a logged config struct prints `..` for each ([SKILL.md, never in a log](SKILL.md#3-never-in-a-log)).
+The server's own secrets (database passwords, storage keys, the signing secret, API keys, worker tokens) are read at start-up into [`secrecy::SecretString`](https://docs.rs/secrecy/0.10.3/secrecy/type.SecretString.html) (secrecy 0.10.3), the design's type for every configuration secret ([backend README 9](../../../docs/backend/README.md#9-configuration); [backend api 5](../../../docs/backend/api.md#5-configuration)). It works like `LeaseToken` above: `Debug` prints `SecretBox<str>([REDACTED])` (`secrecy-0.10.3/src/lib.rs`), there is no `Display`, and [`ExposeSecret::expose_secret`](https://docs.rs/secrecy/0.10.3/secrecy/trait.ExposeSecret.html#tymethod.expose_secret) is the one way to the value, so a logged config struct shows no secret ([SKILL.md, never in a log](SKILL.md#3-never-in-a-log)). `secrecy` is pinned in [versions.md's third table](../rust/versions.md#pinned-by-the-design-not-built-by-the-check), which the checker doesn't build, so no block here uses it.
 
 A `reqwest::Error` prints its URL, query string included, as ` for url (…)` (`reqwest-0.13.5/src/error.rs`, `Display`). Strip it with [`Error::without_url`](https://docs.rs/reqwest/0.13.5/reqwest/struct.Error.html#method.without_url) before logging, and log the route as its own field:
 

@@ -5,7 +5,7 @@ description: "The backend/ Cargo workspace: members, [workspace.package], [works
 
 # Cargo workspace, lints, rustfmt and the release profile
 
-This skill sets up `backend/`: the workspace manifest, the lint set every crate inherits, the CI commands, rustfmt and the release profile. The layout comes from [architecture 13](../../../docs/architecture/README.md#13-repository-layout) and the crates from [architecture 3](../../../docs/architecture/README.md#rust-crates); **the project documents win** over anything here. Versions come from [`../rust/versions.md`](../rust/versions.md). The backend is a long-running server in Docker, not a crates.io library ([architecture 12](../../../docs/architecture/README.md#12-deployment)), so library-only rules (MSRV policy, `missing_docs`, `#[non_exhaustive]`) are left out on purpose.
+This skill sets up `backend/`: the workspace manifest, the lint set every crate inherits, the CI commands, rustfmt and the release profile. The layout comes from [backend README 6](../../../docs/backend/README.md#6-workspace-layout) (which refines [architecture 13](../../../docs/architecture/README.md#13-repository-layout)), the crate graph from [backend README 5](../../../docs/backend/README.md#5-crate-graph-and-dependency-rules), the lint rules from [README 7](../../../docs/backend/README.md#7-rust-conventions) and [11](../../../docs/backend/README.md#11-testing-and-tooling), and the release profile from [README 12](../../../docs/backend/README.md#12-builds-and-deployment); **the project documents win** over anything here. Versions come from [`../rust/versions.md`](../rust/versions.md). The backend is a long-running server in Docker, not a crates.io library ([architecture 12](../../../docs/architecture/README.md#12-deployment)), so library-only rules (MSRV policy, `missing_docs`, `#[non_exhaustive]`) are left out on purpose.
 
 Claims marked ✓ were run on 2026-10-15 with Rust 1.99.1 (Cargo 1.99.1, Clippy 0.1.99, rustfmt 1.10.0), on macOS and, for the profile, in `rust:1.99.1-slim` (Linux).
 
@@ -13,20 +13,32 @@ Claims marked ✓ were run on 2026-10-15 with Rust 1.99.1 (Cargo 1.99.1, Clippy 
 
 ```
 backend/
-├─ Cargo.toml          the manifest below (virtual: no [package])
-├─ Cargo.lock          committed
+├─ Cargo.toml            the manifest below (virtual: no [package])
+├─ Cargo.lock            committed: the binaries are deployed
+├─ rust-toolchain.toml   1.99.1 with rustfmt and clippy
 ├─ clippy.toml
-├─ rustfmt.toml
-├─ .config/nextest.toml  (rust-testing)
-├─ crates/{domain, store, blob, agent, vision, knowledge, pipeline}/
+├─ rustfmt.toml          this skill's addition (section 5)
+├─ .config/nextest.toml  this skill's addition (rust-testing)
+├─ crates/{domain, store, blob, integrations, vision, knowledge, agent, pipeline}/
 ├─ bins/{api, worker}/
-└─ migrations/*.surql  not a package, so outside `members`
+└─ migrations/schema.surql  not a package, so outside `members`
 ```
 
-The block below is the root manifest, abridged: `[workspace.dependencies]` shows a few of its rows (the full table has one per crate row in [versions.md](../rust/versions.md)); every other table is complete. The [example checker](../rust/scripts/check_examples.py) reads its `[workspace.lints]` tables as the `[lints]` of every skill example, so every example in the `rust-*` skills passes exactly this set. Don't change a level here without running the checker on every skill.
+The crates are those of [backend README 5](../../../docs/backend/README.md#5-crate-graph-and-dependency-rules): architecture 3's seven plus `integrations`, one crate for every outbound HTTP adapter. README 6 lists the files above except `rustfmt.toml` and `.config/nextest.toml`, which this skill and [rust-testing](../rust-testing/SKILL.md) add.
 
 ```toml
-# Cargo.toml (workspace root, abridged: a few [workspace.dependencies] rows)
+# rust-toolchain.toml
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+```
+
+`rustup` reads this file in the directory and its parents, so every `cargo` run in `backend/` uses 1.99.1 and installs it if missing ([rustup, the toolchain file](https://rust-lang.github.io/rustup/overrides.html#the-toolchain-file)). Bump it with `rust-version` and the Rust row in [versions.md](../rust/versions.md#toolchain).
+
+The block below is the root manifest. `[workspace.dependencies]` has one row per crate row in all three tables of [versions.md](../rust/versions.md), with its features ([backend README 4](../../../docs/backend/README.md#4-stack-and-version-pins)). The [example checker](../rust/scripts/check_examples.py) reads its `[workspace.lints]` tables as the `[lints]` of every skill example, so every example in the `rust-*` skills passes exactly this set. Don't change a level here without running the checker on every skill.
+
+```toml
+# Cargo.toml (workspace root)
 [workspace]
 members = ["crates/*", "bins/*"]
 resolver = "3"            # a virtual workspace must say it; edition 2024 implies "3"
@@ -41,16 +53,73 @@ publish = false
 # Our crates
 domain = { path = "crates/domain" }
 store = { path = "crates/store" }
-# One row per row of ../rust/versions.md; versions.md features go here
+blob = { path = "crates/blob" }
+integrations = { path = "crates/integrations" }
+vision = { path = "crates/vision" }
+knowledge = { path = "crates/knowledge" }
+agent = { path = "crates/agent" }
+pipeline = { path = "crates/pipeline" }
+# versions.md, dependencies
 tokio = { version = "1.53.3", features = ["full"] }
+tokio-util = { version = "0.7.20", features = ["rt"] }
+tokio-stream = { version = "0.1.19", features = ["sync"] }
+futures = "0.3.34"
+async-trait = "0.1.92"
+async-stream = "0.3.6"
 axum = { version = "0.8.9", features = ["macros", "multipart"] }
+tower = { version = "0.5.3", features = ["util", "timeout", "limit"] }
+tower-http = { version = "0.7.1", features = ["trace", "catch-panic", "cors", "limit", "timeout", "request-id", "util", "compression-gzip", "compression-br"] }
+http-body-util = "0.1.5"
+governor = "0.10.4"
+jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
+utoipa = { version = "6.0.0", features = ["axum_extras", "chrono"] }
+utoipa-axum = "0.3.0"
+schemars = { version = "1.2.3", features = ["chrono04"] }
+chrono = { version = "0.4.45", default-features = false, features = ["std", "clock", "serde"] }
+ulid = { version = "3.0.0", features = ["serde"] }
+uuid = { version = "1.28.0", features = ["v4", "serde"] }
+thiserror = "2.0.21"
+anyhow = "1.0.104"        # binaries only (README 7)
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+surrealdb = { version = "=3.3.4", default-features = false, features = ["protocol-ws", "rustls"] }  # exact: moves with the server image (database 1); store adds kv-mem for tests
 aws-sdk-s3 = { version = "1.152.0", default-features = false, features = ["default-https-client", "rt-tokio", "http-1x"] }
-surrealdb = "=3.3.4"      # exact: moves with the server image (database 1)
-ort = { version = "=2.0.0-rc.14", features = ["cuda"] }  # exact: a pre-release
-# Dev-dependencies are listed here too
+reqwest = { version = "0.13.5", features = ["json", "stream", "query"] }
+ort = { version = "=2.0.0-rc.14", default-features = false, features = ["std", "ndarray", "tracing"] }  # exact: a pre-release; vision's features add load-dynamic, api-29, cuda, migraphx, webgpu
+ndarray = "0.17.2"
+rand = "0.10.3"
+serde_path_to_error = "0.1.20"
+aws-lc-rs = "1.18.2"
+base64 = "0.23.1"
+# versions.md, pinned by the design
+bytes = "1.12.1"
+chrono-tz = "0.10.4"
+secrecy = "0.10.3"
+data-encoding = "2.11.1"
+moka = { version = "0.12.16", features = ["future"] }
+tzf-rs = { version = "2.1.3", default-features = false, features = ["bundled"] }
+regex = "1.13.1"
+hmac = "0.13.0"
+sha2 = "0.11.1"
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
+imageproc = { version = "0.27.0", default-features = false }
+fast_image_resize = { version = "6.1.0", features = ["image"] }
+png = "0.18.1"
+webp = { version = "0.3.1", default-features = false }
+libheif-rs = { version = "3.0.0", default-features = false, features = ["v1_19"] }
+nalgebra = "0.35.0"
+chacha20 = { version = "0.10.2", default-features = false, features = ["rng"] }
+tokenizers = { version = "0.23.2", default-features = false, features = ["fancy-regex"] }
+toml = "1.1.8"
+clap = { version = "4.6.7", features = ["derive", "env"] }
+# Dev-dependencies are listed here too; members add test-util (tokio) and kv-mem (surrealdb)
 insta = { version = "1.49.0", features = ["json", "redactions"] }
 proptest = "1.12.0"
 mockall = "0.15.0"
+wiremock = "0.6.5"
+svix = "2.8.0"            # test oracle only (README 4)
 
 [workspace.lints.rust]
 unsafe_code = "deny"                                   # allow-by-default
@@ -68,16 +137,19 @@ print_stdout = "warn"                          # restriction
 print_stderr = "warn"                          # restriction
 allow_attributes_without_reason = "warn"       # restriction
 
-[profile.release]
-debug = "line-tables-only"   # file:line in panic backtraces
-overflow-checks = true       # panic instead of wrapping
-panic = "unwind"             # the default; never "abort" (section 6)
+[profile.release]               # backend README 12, every key
+lto = "thin"
+codegen-units = 1
+panic = "unwind"                # the default; never "abort" (section 6)
+debug = "line-tables-only"      # file:line in panic backtraces
+overflow-checks = true          # panic instead of wrapping
+# no `strip`: stripped symbols empty a panic's backtrace (section 6)
 ```
 
 ```toml
 # clippy.toml
 allow-unwrap-in-tests = true
-# await_holding_invalid_type (suspicious, warn by default) reads this list; see rust-tracing's json-logs.md
+# This skill's addition to README 6's clippy.toml: await_holding_invalid_type (suspicious, warn by default) reads this list; see rust-tracing's json-logs.md
 await-holding-invalid-types = [
   { path = "tracing::span::Entered", reason = "a span guard across .await gives wrong traces; use tracing::Instrument" },
   { path = "tracing::span::EnteredSpan", reason = "a span guard across .await gives wrong traces; use tracing::Instrument" },
@@ -186,6 +258,8 @@ Left out on purpose:
 - **[`expect_used`](https://clippy.rust-lang.org/rust-1.99.0/index.html#expect_used)** (restriction, allow): `expect` with a reason is the house rule for invariants (see `unwrap_used` above).
 - **[`module_name_repetitions`](https://clippy.rust-lang.org/rust-1.99.0/index.html#module_name_repetitions)** is restriction in 1.99, not pedantic, so `store::StoreError` is fine without an override.
 - **`cargo` group** ([`multiple_crate_versions`](https://clippy.rust-lang.org/rust-1.99.0/index.html#multiple_crate_versions) and others): the tree has known duplicates (`tower-http` 0.6 inside `reqwest`, `ulid` 1.x inside `surrealdb-types`; [versions.md, compatibility](../rust/versions.md#compatibility-checks)).
+
+The set is the one [backend README 7](../../../docs/backend/README.md#7-rust-conventions) describes ("`unsafe_code = "deny"`; clippy pedantic with a few allows; `unwrap_used` warns outside tests") and the one the backend design's compiled workspace uses, table for table.
 - **`cargo deny` and `cargo audit`** aren't covered by the sources these skills may use, so they are not part of this setup.
 
 ## 4. CI commands
@@ -217,28 +291,29 @@ edition = "2024"
 
 ## 6. The release profile
 
-The `[profile.release]` table in the root manifest above sets three keys; everything else stays at Cargo's release defaults (`opt-level = 3`, `lto = false`, `codegen-units = 16`, `incremental = false`; [Cargo, release](https://doc.rust-lang.org/cargo/reference/profiles.html#release)).
+[Backend README 12](../../../docs/backend/README.md#12-builds-and-deployment) (v0.2.1) fixes every key: `lto = "thin"`, `codegen-units = 1`, `panic = "unwind"`, `debug = "line-tables-only"`, `overflow-checks = true`, and no `strip`. Everything else stays at Cargo's release defaults (`opt-level = 3`, `incremental = false`; [Cargo, release](https://doc.rust-lang.org/cargo/reference/profiles.html#release)).
 
 | Key | Value | Why |
 |---|---|---|
-| [`panic`](https://doc.rust-lang.org/cargo/reference/profiles.html#panic) | `"unwind"` (default) | Never `"abort"`. tower-http's `CatchPanicLayer` turns a handler panic into a 500 with `std::panic::catch_unwind` (✓ `tower-http-0.7.1/src/catch_panic.rs`), tokio reports a panicked task as a `JoinError` whose [`is_panic()`](https://docs.rs/tokio/1.53.3/tokio/task/struct.JoinError.html#method.is_panic) is true, and `catch_unwind` "only catches unwinding panics, not those that abort the process" ([std, `catch_unwind`](https://doc.rust-lang.org/std/panic/fn.catch_unwind.html)). ✓ With `panic = "abort"`, a panic inside `tokio::spawn` killed the process (exit 134) instead of returning `JoinError`. *Judgement*: the perf book's abort advice applies only when nothing catches panics ([perf book, abort on panic](https://nnethercote.github.io/perf-book/build-configuration.html#abort-on-panic)) |
-| [`debug`](https://doc.rust-lang.org/cargo/reference/profiles.html#debug) | `"line-tables-only"` | The minimum for backtraces with file and line ([Cargo, debug](https://doc.rust-lang.org/cargo/reference/profiles.html#debug)). ✓ On Linux the default release build printed `relprobe::deep` with no location, this one `deep at ./src/main.rs:5:17`. Cost: ✓ the probe binary went from 0.68 MB to 5.6 MB, because Cargo stops stripping debug info once `debug` is on |
-| [`overflow-checks`](https://doc.rust-lang.org/cargo/reference/profiles.html#overflow-checks) | `true` | Off by default in release, where `+`, `-` and `*` wrap silently; on, they panic ([Reference, overflow](https://doc.rust-lang.org/reference/expressions/operator-expr.html#overflow)). ✓ `254u8 + 3` printed `1` by default and panicked with `attempt to add with overflow` when on. This skill's choice: a panic becomes a 500 or a failed task with a backtrace, while a wrapped `seq`, attempt count or byte size is silent corruption. The cost is a check and branch per arithmetic operation, not measured here; if a profile shows a hot loop (the CPU blur check or depth processing in `vision`), use `wrapping_*` there or a [package override](https://doc.rust-lang.org/cargo/reference/profiles.html#overrides) for that crate |
+| [`panic`](https://doc.rust-lang.org/cargo/reference/profiles.html#panic) | `"unwind"` (default) | Never `"abort"`, "so `CatchPanicLayer` and task joins can contain a panic" (README 12). tower-http's `CatchPanicLayer` turns a handler panic into a 500 with `std::panic::catch_unwind` (✓ `tower-http-0.7.1/src/catch_panic.rs`), tokio reports a panicked task as a `JoinError` whose [`is_panic()`](https://docs.rs/tokio/1.53.3/tokio/task/struct.JoinError.html#method.is_panic) is true, and `catch_unwind` "only catches unwinding panics, not those that abort the process" ([std, `catch_unwind`](https://doc.rust-lang.org/std/panic/fn.catch_unwind.html)). ✓ With `panic = "abort"`, a panic inside `tokio::spawn` killed the process (exit 134) instead of returning `JoinError`. *Judgement*: the perf book's abort advice applies only when nothing catches panics ([perf book, abort on panic](https://nnethercote.github.io/perf-book/build-configuration.html#abort-on-panic)). `panic` and `lto` can't be set per package ([Cargo, overrides](https://doc.rust-lang.org/cargo/reference/profiles.html#overrides)) |
+| [`lto`](https://doc.rust-lang.org/cargo/reference/profiles.html#lto) | `"thin"` | README 12. "Thin" LTO works across all crates of the build at a fraction of fat LTO's link time ([Cargo, lto](https://doc.rust-lang.org/cargo/reference/profiles.html#lto)); *Judgement*: it "can improve runtime speed by 10-20% or more" at the cost of compile time ([perf book, LTO](https://nnethercote.github.io/perf-book/build-configuration.html#link-time-optimization)) |
+| [`codegen-units`](https://doc.rust-lang.org/cargo/reference/profiles.html#codegen-units) | `1` | README 12. Fewer units let the compiler optimise more at the cost of build parallelism ([Cargo, codegen-units](https://doc.rust-lang.org/cargo/reference/profiles.html#codegen-units)); *Judgement*: [perf book, codegen units](https://nnethercote.github.io/perf-book/build-configuration.html#codegen-units). Both slow the release build, which the Docker images' dependency caching (README 12) offsets |
+| [`debug`](https://doc.rust-lang.org/cargo/reference/profiles.html#debug) | `"line-tables-only"` | README 12: without line tables a backtrace's frames have function names but no file or line, because Cargo strips debug info from a release build that requests none; line tables add them, at the cost of a larger binary (README 12 measured a test binary going from 0.46 MB to 2.25 MB). ✓ On Linux the default release build printed `relprobe::deep` with no location, this one `deep at ./src/main.rs:5:17`. Since 1.77 Cargo passes `-C strip=debuginfo` when `debug` is off and stops when it is on ([release notes 1.77.0, Cargo](https://doc.rust-lang.org/releases.html#version-1770-2024-03-21)) |
+| [`strip`](https://doc.rust-lang.org/cargo/reference/profiles.html#strip) | not set | README 12: `strip = "symbols"` removes the symbol table, and a panic's backtrace then has no frames at all (`RUST_BACKTRACE=full` shows only `<unknown>` addresses, probed by the design on Linux and macOS); `"debuginfo"` would remove the line tables. The panic message's own `file:line:col` comes from the panic's [`Location`](https://doc.rust-lang.org/std/panic/struct.Location.html), not from debug info, so it is kept either way |
+| [`overflow-checks`](https://doc.rust-lang.org/cargo/reference/profiles.html#overflow-checks) | `true` | README 12. Off by default in release, where `+`, `-` and `*` wrap silently; on, they panic ([Reference, overflow](https://doc.rust-lang.org/reference/expressions/operator-expr.html#overflow)). ✓ `254u8 + 3` printed `1` by default and panicked with `attempt to add with overflow` when on. A panic becomes a 500 or a failed task, while a wrapped `seq`, attempt count or byte size is silent corruption. The cost is a check and branch per arithmetic operation, not measured here; if a profile shows a hot loop (the blur check or depth processing in `vision`), use `wrapping_*` there or a [package override](https://doc.rust-lang.org/cargo/reference/profiles.html#overrides) for that crate |
 
-- **Strip.** The profile docs list `strip = "none"` as the release default ([Cargo, strip](https://doc.rust-lang.org/cargo/reference/profiles.html#strip)), but since 1.77 Cargo strips all debug info when none is requested ([release notes 1.77.0, Cargo](https://doc.rust-lang.org/releases.html#version-1770-2024-03-21)). ✓ Cargo 1.99 passes `-C strip=debuginfo` when `debug` is off; with `debug = "line-tables-only"` it passes `-C debuginfo=line-tables-only` and no strip. Don't set `strip = "symbols"` or `"debuginfo"`: either removes what the backtrace needs (*Judgement*: a stripped program's backtrace "may contain less useful information", [perf book, strip symbols](https://nnethercote.github.io/perf-book/build-configuration.html#strip-symbols)).
 - **`split-debuginfo`.** Leave it unset. The Linux default keeps the line tables inside the binary; `unpacked` is the default only on macOS ([Cargo, split-debuginfo](https://doc.rust-lang.org/cargo/reference/profiles.html#split-debuginfo)), and a split file would have to be copied into the image.
-- **`lto` and `codegen-units`.** *Judgement* ([perf book, codegen units](https://nnethercote.github.io/perf-book/build-configuration.html#codegen-units), [LTO](https://nnethercote.github.io/perf-book/build-configuration.html#link-time-optimization)): keep the defaults. `codegen-units = 1` may speed up code at the cost of compile time, and LTO "can improve runtime speed by 10-20% or more" at the cost of worse compile times; this server waits on SurrealDB, RustFS, the LLM API and the GPU workers; the Docker image is rebuilt many times a day in build week. Revisit only with a profile that shows CPU time in `api`. `lto` and `panic` can't be set per package ([Cargo, overrides](https://doc.rust-lang.org/cargo/reference/profiles.html#overrides)).
 - **`opt-level`.** Keep 3. `"s"` and `"z"` are for binary size, which doesn't matter in a server image ([Cargo, opt-level](https://doc.rust-lang.org/cargo/reference/profiles.html#opt-level)).
 - **Backtraces at run time.** Line tables only help if a backtrace is captured. Set `RUST_BACKTRACE=1` and `RUST_LIB_BACKTRACE=0` in the container: the default panic hook prints a backtrace, while `Backtrace::capture` (which `anyhow` uses for every error) stays off, because capturing is "a quite expensive runtime operation" ([std, backtrace environment variables](https://doc.rust-lang.org/std/backtrace/index.html#environment-variables); [anyhow, details](https://docs.rs/anyhow/1.0.104/anyhow/index.html#details)). The variables are read once and cached.
 
 ## Review checklist
 
-- [ ] A new crate is under `crates/` or `bins/`, inherits `edition`, `rust-version`, `version` and `publish`, and has `[lints] workspace = true`.
+- [ ] A new crate is under `crates/` or `bins/`, fits the crate graph of [backend README 5](../../../docs/backend/README.md#5-crate-graph-and-dependency-rules), inherits `edition`, `rust-version`, `version` and `publish`, and has `[lints] workspace = true`.
 - [ ] Every dependency is `name.workspace = true`, with a row in versions.md and in `[workspace.dependencies]`; extra features are added at the member, never a second version.
 - [ ] No lint override in a member's `Cargo.toml`, no crate-level `#![allow]`; each suppression is an item-level `#[expect(..., reason = "...")]`.
-- [ ] `Cargo.lock` is committed and CI uses `--locked`.
+- [ ] `Cargo.lock` is committed and CI uses `--locked`; `rust-toolchain.toml` pins 1.99.1 with `rustfmt` and `clippy`.
 - [ ] `cargo fmt --check` and `cargo clippy --workspace --all-targets --locked -- -D warnings` pass.
-- [ ] `[profile.release]` keeps `panic = "unwind"`, line tables and overflow checks; no `strip`.
+- [ ] `[profile.release]` is README 12's: `lto = "thin"`, `codegen-units = 1`, `panic = "unwind"`, `debug = "line-tables-only"`, `overflow-checks = true`, no `strip`.
 
 ## Related skills
 

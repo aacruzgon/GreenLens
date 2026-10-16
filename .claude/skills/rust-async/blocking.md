@@ -17,9 +17,9 @@ Blocking in this project:
 
 | Where | Work | Why it blocks |
 |---|---|---|
-| `api`, uploads | Blur and exposure check, EXIF orientation, resize, HEIC decode, face detection and blurring (architecture [§8.1](../../../docs/architecture/README.md#81-scan--diagnosis--plan) step 2) | CPU-bound, milliseconds to seconds per image |
-| `api` | Text embeddings on CPU, depth measurement and plane fits ([§10](../../../docs/architecture/README.md#10-models-and-gpu-placement)) | CPU-bound |
-| `perception-worker` | `ort` `Session::run` and pre/post-processing | A synchronous call that runs until the model finishes |
+| `api`, uploads | Decode with EXIF orientation (HEIC too), the quality gate, face detection and blurring, resize, WebP (architecture [§8.1](../../../docs/architecture/README.md#81-scan--diagnosis--plan) step 2; [backend vision 7](../../../docs/backend/vision.md#7-the-upload-pipeline)) | CPU-bound, 0.1 to 1 s per image ([backend vision 12](../../../docs/backend/vision.md#12-concurrency-and-lifetimes)) |
+| `api` | Text embeddings on CPU, depth measurement and plane fits, mask RLE ([architecture 10](../../../docs/architecture/README.md#10-models-and-gpu-placement); [backend vision 9](../../../docs/backend/vision.md#9-measurement), [10](../../../docs/backend/vision.md#10-the-text-embedder)) | CPU-bound |
+| `perception-worker` | Image decoding and pre-processing into tensors; `ort` `Session::run` on the GPU; post-processing | Decoding is CPU-bound; a run is a synchronous call that lasts until the model finishes |
 | anywhere | `std::thread::sleep`, `std::fs`, a `std::sync::Mutex` held for long, `std::net` | Synchronous I/O or waiting |
 
 Not blocking: `tokio::time::sleep`, the async I/O of `reqwest`, `aws-sdk-s3` and the `surrealdb` SDK, and a `std::sync::Mutex` locked briefly with no `.await` inside ([SKILL.md, locks](SKILL.md#7-locks)).
@@ -33,7 +33,7 @@ Not blocking: `tokio::time::sleep`, the async I/O of `reqwest`, `aws-sdk-s3` and
 
 The table is from [Async: What is blocking?](https://ryhl.io/blog/async-what-is-blocking/#summary) by a tokio maintainer (its rayon row is left out: `rayon` isn't a project dependency); tokio's own docs say the same in [spawn_blocking: When to use spawn_blocking vs dedicated threads](https://docs.rs/tokio/1.53.3/tokio/task/fn.spawn_blocking.html#when-to-use-spawn_blocking-vs-dedicated-threads) and [CPU-bound tasks and blocking code](https://docs.rs/tokio/1.53.3/tokio/index.html#cpu-bound-tasks-and-blocking-code). Rules:
 
-- **`spawn_blocking` is for bounded work that ends on its own.** It runs the closure on the blocking pool. The pool starts threads on demand up to **512** (`Builder::max_blocking_threads`), keeps an idle thread for **10 s** (`thread_keep_alive`), and beyond the limit queues work with **no backpressure**, so the queue can grow without bound. [spawn_blocking](https://docs.rs/tokio/1.53.3/tokio/task/fn.spawn_blocking.html), [max_blocking_threads](https://docs.rs/tokio/1.53.3/tokio/runtime/struct.Builder.html#method.max_blocking_threads), [thread_keep_alive](https://docs.rs/tokio/1.53.3/tokio/runtime/struct.Builder.html#method.thread_keep_alive)
+- **`spawn_blocking` is for bounded work that ends on its own.** It runs the closure on the blocking pool. The pool starts threads on demand up to **512** ([`Builder::max_blocking_threads`](https://docs.rs/tokio/1.53.3/tokio/runtime/struct.Builder.html#method.max_blocking_threads), whose default it is), keeps an idle thread for **10 s** ([`thread_keep_alive`](https://docs.rs/tokio/1.53.3/tokio/runtime/struct.Builder.html#method.thread_keep_alive)), and beyond the limit "the tasks are put in a queue". `spawn_blocking` is a plain function that returns at once, so nothing slows the caller down: there is **no backpressure** ([spawn_blocking](https://docs.rs/tokio/1.53.3/tokio/task/fn.spawn_blocking.html)).
 - **512 threads is far more than the cores**, so many CPU-bound jobs on `spawn_blocking` oversubscribe the CPU. The docs: "When running many CPU-bound computations, a semaphore or some other synchronization primitive should be used to limit the number of computations executed in parallel." Section 3 does that. [spawn_blocking](https://docs.rs/tokio/1.53.3/tokio/task/fn.spawn_blocking.html)
 - **Work that runs for the life of the process goes on a dedicated thread**, not `spawn_blocking`: each long task holds a pool thread for its whole life. [spawn_blocking: When to use spawn_blocking vs dedicated threads](https://docs.rs/tokio/1.53.3/tokio/task/fn.spawn_blocking.html#when-to-use-spawn_blocking-vs-dedicated-threads), [Spawn a dedicated thread](https://ryhl.io/blog/async-what-is-blocking/#spawn-a-dedicated-thread)
 - **`spawn_blocking` can't be aborted once it has started**; `abort()` has no effect, and runtime shutdown waits for it. Pass a `CancellationToken` in and check `is_cancelled()` between steps. [spawn_blocking](https://docs.rs/tokio/1.53.3/tokio/task/fn.spawn_blocking.html), [Runtime: Shutdown](https://docs.rs/tokio/1.53.3/tokio/runtime/struct.Runtime.html#shutdown)
@@ -42,7 +42,7 @@ The table is from [Async: What is blocking?](https://ryhl.io/blog/async-what-is-
 
 ## 3. Bounded CPU work in `api`
 
-`api` does all of the CPU work in section 1 on request paths. Run it through one `CpuPool` in `AppState`: a `Semaphore` in front of `spawn_blocking`, so at most N jobs use the CPU at once and the rest wait **in async code** (no blocking thread is taken while waiting). Use `std::thread::available_parallelism()` for N ([std](https://doc.rust-lang.org/std/thread/fn.available_parallelism.html)). The permit moves into the closure, so it is released when the work ends, even by panic. [Semaphore::acquire_owned](https://docs.rs/tokio/1.53.3/tokio/sync/struct.Semaphore.html#method.acquire_owned)
+`api` does the CPU work in section 1 on request paths and in pipeline steps. Each kind of work gets a `Semaphore` in front of `spawn_blocking`, so at most N jobs of it use the CPU at once and the rest wait **in async code** (no blocking thread is taken while waiting): upload pipelines (`UPLOAD_CPU_PERMITS`, 2) and measurement stages (`MEASURE_CPU_PERMITS`, 2) ([backend api 5](../../../docs/backend/api.md#5-configuration); [backend vision 12](../../../docs/backend/vision.md#12-concurrency-and-lifetimes)). The permit moves into the closure, so it is released when the work ends, even by panic, and even if the caller's future is dropped first. [Semaphore::acquire_owned](https://docs.rs/tokio/1.53.3/tokio/sync/struct.Semaphore.html#method.acquire_owned). The `CpuPool` below is that pattern on its own:
 
 ```rust
 use std::sync::Arc;
@@ -132,38 +132,44 @@ Notes:
 
 - `Semaphore::acquire_owned` is not cancel safe in the "fair queue" sense: a caller that gives up (its request is dropped) loses its place, which is what we want. [Semaphore::acquire_owned](https://docs.rs/tokio/1.53.3/tokio/sync/struct.Semaphore.html#method.acquire_owned)
 - If the caller's future is dropped (a request timeout, a `select!` that another branch won), work still waiting for a permit is dropped with it, but a closure already on the blocking pool runs to the end and its result is discarded ([spawn_blocking](https://docs.rs/tokio/1.53.3/tokio/task/fn.spawn_blocking.html)).
-- `api` also runs ONNX models on CPU (the face detector and the text embedder, [architecture 10](../../../docs/architecture/README.md#10-models-and-gpu-placement)). ONNX Runtime gives **each session** an intra-op pool of one thread per physical core by default, and the calling thread joins in ([ONNX Runtime: Set number of intra-op threads](https://onnxruntime.ai/docs/performance/tune-performance/threading.html#set-number-of-intra-op-threads)). N pool permits times a core-sized intra-op pool oversubscribes the CPU. So either give those sessions a small intra-op count and keep N permits, or keep ONNX's default and run model calls one at a time (*this skill's choice*, from the same ONNX Runtime page). How to set the count on an `ort` session is in [rust-workers](../rust-workers/SKILL.md).
+- **`api`'s ONNX models on CPU** (the face detector and the text embedder, [architecture 10](../../../docs/architecture/README.md#10-models-and-gpu-placement)) sit in a **session pool**, one per model: `Session::run` takes `&mut self` in ort rc.14, so a session serves one caller at a time, and a pool of N sessions lets N calls run at once. A call checks a session out on its blocking thread (inside `spawn_blocking`) and waits on a `Condvar` when all N are busy, which is fine on a blocking thread and only there; the guard returns the session in `Drop`, however the call ends ([backend vision 4](../../../docs/backend/vision.md#4-onnx-runtime-environment-execution-providers-session-pool), the session pool; [12](../../../docs/backend/vision.md#12-concurrency-and-lifetimes)). Unlike a semaphore in async code, a waiting call holds a blocking thread, so N is sized to the callers (the upload permits for the face detector).
+- **ONNX Runtime's threads.** By default it gives **each session** an intra-op pool of one thread per physical core, and the calling thread joins in ([ONNX Runtime: Set number of intra-op threads](https://onnxruntime.ai/docs/performance/tune-performance/threading.html#set-number-of-intra-op-threads)), so N sessions times a core-sized pool would oversubscribe the CPU. The design builds **one environment per process with one shared intra-op pool**, spinning off (`OrtRuntime::init`, `GlobalThreadPoolOptions`), sized in `api` to its blocking-work budget, so every session uses the same threads ([backend vision 4](../../../docs/backend/vision.md#4-onnx-runtime-environment-execution-providers-session-pool); [ONNX Runtime: thread spinning](https://onnxruntime.ai/docs/performance/tune-performance/threading.html#thread-spinning-behavior)). Session settings are in [rust-workers](../rust-workers/SKILL.md).
 
 ## 4. The perception worker and ONNX Runtime's threads
 
-The perception worker holds `slots = 1` and batches inside the job ([contracts 5](../../../docs/architecture/contracts.md#leases-runs-and-attempts)), so inference is one long synchronous call at a time, for the life of the process. That is "runs forever" in the table above: give the models **one dedicated OS thread** that owns them, and talk to it over channels. Async work (heartbeat every 10 s, claim long poll, event posts) stays on the runtime and keeps running during inference, which [contracts 5](../../../docs/architecture/contracts.md#post-internalworkersheartbeat) depends on. Because the models never leave their thread, they don't need to be `Send`.
+The perception worker holds `slots = 1` and batches inside the job ([contracts 5](../../../docs/architecture/contracts.md#leases-runs-and-attempts)), so inference is one long synchronous call at a time, for the life of the process. That is "runs forever" in the table above: give the GPU sessions **one dedicated OS thread** that owns them, and talk to it over channels ([backend vision 6, the inference thread](../../../docs/backend/vision.md#6-perception)). Async work (heartbeat every 10 s, claim long poll, event posts) stays on the runtime and keeps running during inference, which [contracts 5](../../../docs/architecture/contracts.md#post-internalworkersheartbeat) depends on. Because the sessions never leave their thread, they don't need to be `Send`. **Cancellation is by drop**, as in [rust-workers, ort.md 4](../rust-workers/ort.md#4-the-inference-thread): the job's future is dropped, the request carries no token, and the thread skips a request whose `respond_to` is already closed ([`oneshot::Sender::is_closed`](https://docs.rs/tokio/1.53.3/tokio/sync/oneshot/struct.Sender.html#method.is_closed); [backend worker 7](../../../docs/backend/worker.md#7-cancellation); [backend vision 6](../../../docs/backend/vision.md#6-perception)).
+
+**Decoding and pre-processing don't run on that thread.** The design decodes each image and builds its tensors on the blocking pool, behind the pipeline's own semaphore (`PerceptionPipeline.cpu`), and sends the inference thread **only owned tensors** (`Vec<(String, ArrayD<f32>)>`): the closure gets owned `Bytes` and the `OwnedSemaphorePermit`, so the permit is held until the work ends even if the job is dropped, and the GPU thread never waits on a JPEG decoder ([backend vision 12](../../../docs/backend/vision.md#12-concurrency-and-lifetimes)). A channel's item type must be `Send + 'static` to cross threads, which owned tensors are.
 
 ```rust
+use std::sync::Arc;
 use std::thread;
 
-use tokio::sync::{mpsc, oneshot};
-use tokio_util::sync::CancellationToken;
+use tokio::sync::{Semaphore, mpsc, oneshot};
 
-/// What the inference thread is asked to do. The real request carries tensors.
+/// Owned input tensors: they cross a channel to another thread, so they borrow nothing from
+/// the job. The real type is `Vec<(String, ArrayD<f32>)>` (vision 6).
+pub type Inputs = Vec<f32>;
+
+/// What the inference thread is asked to do.
 pub struct InferRequest {
-    pub image: Vec<u8>,
-    /// Cancelled when the heartbeat response lists the job in `cancel_job_ids`.
-    pub cancel: CancellationToken,
-    pub respond_to: oneshot::Sender<Option<usize>>,
+    pub inputs: Inputs,
+    /// Closed when the job's future was dropped (cancellation is by drop, worker 7).
+    pub respond_to: oneshot::Sender<usize>,
 }
 
-/// Owns the models on one OS thread for the life of the process.
+/// Owns the GPU sessions on one OS thread for the life of the process.
 #[derive(Clone)]
 pub struct Inference {
     requests: mpsc::Sender<InferRequest>,
 }
 
 impl Inference {
-    /// `load` runs on the new thread, so the models never cross threads.
+    /// `load` runs on the new thread, so the sessions never cross threads.
     pub fn start<M, L>(load: L) -> std::io::Result<Self>
     where
         L: FnOnce() -> M + Send + 'static,
-        M: FnMut(&[u8]) -> usize,
+        M: FnMut(&[f32]) -> usize,
     {
         let (requests, mut inbox) = mpsc::channel::<InferRequest>(1);
         thread::Builder::new()
@@ -172,49 +178,85 @@ impl Inference {
                 let mut model = load();
                 // blocking_recv: this is a plain thread, not a runtime worker.
                 while let Some(req) = inbox.blocking_recv() {
-                    // Check between stages (rust-workers' ort.md also terminates a running stage).
-                    let out = (!req.cancel.is_cancelled()).then(|| model(&req.image));
-                    // Err only means the caller stopped waiting (cancelled or dropped).
+                    // A job dropped while its request waited in the channel: skip the run.
+                    // (A run that has started is stopped by rust-workers' `TerminateOnDrop`.)
+                    if req.respond_to.is_closed() {
+                        continue;
+                    }
+                    let out = model(&req.inputs);
+                    // Err only means the job was dropped while the model ran.
                     let _ = req.respond_to.send(out);
                 }
             })?;
         Ok(Self { requests })
     }
 
-    pub async fn run(&self, image: Vec<u8>, cancel: CancellationToken) -> Option<usize> {
+    /// `None` only when the inference thread has stopped. To cancel, drop the future.
+    pub async fn run(&self, inputs: Inputs) -> Option<usize> {
         let (respond_to, response) = oneshot::channel();
-        let req = InferRequest {
-            image,
-            cancel,
-            respond_to,
-        };
+        let req = InferRequest { inputs, respond_to };
         self.requests.send(req).await.ok()?;
-        response.await.ok().flatten()
+        response.await.ok()
     }
 }
 
+/// Decodes and pre-processes one image on the blocking pool, at most `cpu` at once
+/// (`PerceptionPipeline.cpu`, vision 12). The permit moves into the closure.
+pub async fn prepare(cpu: &Arc<Semaphore>, image: Vec<u8>) -> Option<Inputs> {
+    let permit = Arc::clone(cpu).acquire_owned().await.ok()?;
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit; // held until the work ends, even if the job is dropped
+        image.iter().map(|&b| f32::from(b) / 255.0).collect()
+    })
+    .await
+    .ok()
+}
+
 #[tokio::test]
-async fn the_runtime_stays_free_while_the_thread_works() {
-    let inference = Inference::start(|| {
-        |image: &[u8]| {
+async fn tensors_are_prepared_on_the_pool_and_run_on_the_thread() {
+    let runs = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = runs.clone();
+    let inference = Inference::start(move || {
+        move |inputs: &[f32]| {
+            counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             thread::sleep(std::time::Duration::from_millis(50)); // stands in for session.run
-            image.len()
+            inputs.len()
         }
     })
     .expect("thread starts");
-    let out = inference.run(vec![0; 3], CancellationToken::new()).await;
-    assert_eq!(out, Some(3));
+    let cpu = Arc::new(Semaphore::new(2));
+    let inputs = prepare(&cpu, vec![0, 128, 255]).await.expect("decoded");
+    assert!((inputs[2] - 1.0).abs() < f32::EPSILON, "255 maps to 1.0");
+    assert_eq!(inference.run(inputs).await, Some(3));
 
-    let cancelled = CancellationToken::new();
-    cancelled.cancel();
-    assert_eq!(inference.run(vec![0; 3], cancelled).await, None);
+    // A job dropped (here by a zero timeout) before the thread took its request: the thread
+    // skips the run. A run already started is stopped by ort.md 4's `TerminateOnDrop`.
+    let busy = tokio::spawn({
+        let inference = inference.clone();
+        async move { inference.run(vec![0.0; 2]).await }
+    });
+    while runs.load(std::sync::atomic::Ordering::SeqCst) < 2 {
+        tokio::task::yield_now().await; // until the thread is running `busy`'s request
+    }
+    let dropped = tokio::time::timeout(std::time::Duration::ZERO, inference.run(vec![0.0; 9]));
+    assert!(
+        dropped.await.is_err(),
+        "the wait was dropped while the request was queued"
+    );
+    assert_eq!(busy.await.expect("no panic"), Some(2));
+    assert_eq!(inference.run(vec![0.0; 1]).await, Some(1));
+    assert_eq!(
+        runs.load(std::sync::atomic::Ordering::SeqCst),
+        3,
+        "the dropped one never ran"
+    );
 }
 ```
 
 Threads on the rig's perception worker:
 
-- **ONNX Runtime's own pools.** Each session has an intra-op pool (default: one thread per physical core) and, only with `ORT_PARALLEL` execution, an inter-op pool (default: also one per physical core). By default idle pool threads spin waiting for work, which uses CPU. [ONNX Runtime threading](https://onnxruntime.ai/docs/performance/tune-performance/threading.html), [inter-op threads](https://onnxruntime.ai/docs/performance/tune-performance/threading.html#set-number-of-inter-op-threads), [spinning](https://onnxruntime.ai/docs/performance/tune-performance/threading.html#thread-spinning-behavior)
+- **ONNX Runtime's own pools.** By default each session has an intra-op pool (one thread per physical core) and, only with `ORT_PARALLEL` execution, an inter-op pool (also one per physical core), and idle pool threads spin waiting for work, which uses CPU. The design replaces the per-session pools with one global pool and turns spinning off (below). [ONNX Runtime threading](https://onnxruntime.ai/docs/performance/tune-performance/threading.html), [inter-op threads](https://onnxruntime.ai/docs/performance/tune-performance/threading.html#set-number-of-inter-op-threads), [spinning](https://onnxruntime.ai/docs/performance/tune-performance/threading.html#thread-spinning-behavior)
 - **Tokio's workers.** `#[tokio::main]` starts one per core ([tokio::main](https://docs.rs/tokio/1.53.3/tokio/attr.main.html)). The worker's async side is light (a heartbeat every 10 s, the claim long poll, event posts), so they are mostly idle.
-- Run the stages of a job one after another on the inference thread (several sessions running at once would each bring a core-sized intra-op pool, [ONNX Runtime threading](https://onnxruntime.ai/docs/performance/tune-performance/threading.html#set-number-of-intra-op-threads)), do image decode and resize on that thread too rather than on tokio workers, and leave the session thread settings to [rust-workers](../rust-workers/SKILL.md), which owns `ort` session configuration. *This skill's choice.*
-- Job cancellation (`cancel_job_ids` in the heartbeat response, [contracts 5](../../../docs/architecture/contracts.md#post-internalworkersheartbeat)) is checked between stages. A stage that has started can also be stopped from another thread: ort 2.0.0-rc.14's `RunOptions::terminate` sets a flag the run checks, and the run ends with an error ([RunOptions::terminate](https://docs.rs/ort/2.0.0-rc.14/ort/session/struct.RunOptions.html#method.terminate)). [rust-workers, ort.md](../rust-workers/ort.md#4-the-inference-thread) calls it when the job's token fires and, through a drop guard, when the wait for the answer is dropped. Without it, a started stage finishes and its result is dropped.
+- Run the models of a job one after another on the inference thread, and image decoding and pre-processing on the blocking pool behind the pipeline's semaphore, never on tokio workers ([backend vision 6](../../../docs/backend/vision.md#6-perception), [12](../../../docs/backend/vision.md#12-concurrency-and-lifetimes)). The process has one ONNX Runtime environment with one shared intra-op pool, 2 threads on a GPU worker to start with (a value to measure on day 2), spinning off, so the sessions don't each bring a core-sized pool ([backend vision 4](../../../docs/backend/vision.md#4-onnx-runtime-environment-execution-providers-session-pool); [ONNX Runtime threading](https://onnxruntime.ai/docs/performance/tune-performance/threading.html#set-number-of-intra-op-threads)). Session settings are in [rust-workers](../rust-workers/SKILL.md), which owns `ort` session configuration.
+- Job cancellation (`cancel_job_ids` in the heartbeat response, [contracts 5](../../../docs/architecture/contracts.md#post-internalworkersheartbeat)) drops the job's future ([backend worker 7](../../../docs/backend/worker.md#7-cancellation)). A stage that has started can be stopped from another thread: ort 2.0.0-rc.14's `RunOptions::terminate` sets a flag the run checks, and the run ends with an error ([RunOptions::terminate](https://docs.rs/ort/2.0.0-rc.14/ort/session/struct.RunOptions.html#method.terminate)). `Inference::run` arms a `TerminateOnDrop` guard that calls it when the wait for the answer is dropped ([backend vision 6](../../../docs/backend/vision.md#6-perception); [rust-workers, ort.md](../rust-workers/ort.md#4-the-inference-thread)). Without it, a started stage finishes and its result is dropped.
 - At process exit the inference thread doesn't hold anything up: when `main` returns the process ends even if other threads are running ([std::thread](https://doc.rust-lang.org/std/thread/index.html#the-threading-model)). Work on `spawn_blocking`, in contrast, is waited for by the runtime's drop ([shutdown.md](shutdown.md#4-what-runtime-drop-waits-for)).

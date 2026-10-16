@@ -14,11 +14,12 @@ Every example here, in [mapping.md](mapping.md) and in [jobs.md](jobs.md) is com
 | Layer | Type | Rules |
 |---|---|---|
 | `domain` | thiserror enums per concern (`TransitionError` for the scan state machine, …) | No I/O errors; values the caller can act on |
-| `store` | `StoreError` (thiserror), canonical in [mapping.md](mapping.md) | `NotFound`; `Conflict { what }`, a lost compare-and-set (`THROW 'stale_plan'`, `THROW 'claim_lost'`, a lease check); `TxConflict`, SurrealDB's retryable transaction conflict, which `retry_conflicts` re-runs; `AlreadyExists`; `Thrown(code)`, any other `THROW`; `Unavailable`, the connection; `Query`, anything else. Which SDK error is which is [rust-surrealdb](../rust-surrealdb/SKILL.md#how-failures-arrive)'s |
-| `blob` | `BlobError` (thiserror), canonical in [mapping.md](mapping.md) | `Unavailable`, or `Rejected { operation, source }` |
-| `agent`, `vision`, `knowledge`, `pipeline` | their own thiserror enums | Same rules as the store |
+| `domain::ports` (implemented by `store`, `blob`, `integrations`, `vision`) | One error enum per kind of port: `StoreError`, `BlobError`, `ProviderError`, `ModelError`, `AuthError` ([backend domain 6, port errors](../../../docs/backend/domain.md#port-errors)). `StoreError` and `BlobError` are canonical in [mapping.md](mapping.md) | `StoreError`: `NotFound`; `Conflict(Conflict)`, which check lost (`StalePlan { current }`, `ClaimLost`, `QuestionStepLost`, `LeaseLost { job_id }`, `StaleMap { current_version }`, `AlreadyExists`, `Retries`); `Rejected(DomainError)`, a rule inside the transaction; `Unavailable(BoxError)`, the connection; `Query { what, source }`, anything else. `BlobError`: `NotFound`, `AlreadyExists`, `Unavailable`, `Rejected { operation, source }`. Sources are `BoxError`, so no SDK type appears in a port |
+| `store` (inside the crate) | A crate-private `DbFailure`, classified once from each `surrealdb::Error` and mapped into `StoreError` with the operation's name ([backend store 5](../../../docs/backend/store.md#classifying-failures)) | Which SDK error is which is [rust-surrealdb](../rust-surrealdb/SKILL.md#how-failures-arrive)'s |
+| `domain` rules, and every crate's own logic | `DomainError` (thiserror): a rule refused the call; `kind()` maps it to its contract code ([backend domain 6](../../../docs/backend/domain.md#domainerror)). The variants the examples use are canonical in [mapping.md](mapping.md) | Port errors wrap it (`StoreError::Rejected`) |
+| `agent`, `vision`, `knowledge`, `pipeline` | their own thiserror enums, with the port errors as `#[from]` sources | Same rules as the store |
 | `api` handlers | `ApiError` (thiserror + `IntoResponse`) | One variant per contracts 2 code; [mapping.md](mapping.md) |
-| `worker` jobs | `JobError` (thiserror) | Becomes `CompleteJob.error`, never an HTTP status ([worker job errors](#worker-job-errors)) |
+| `worker` jobs | `domain::jobs::JobError` (`{ code: JobErrorCode, message, retryable }`, serde), built from the job's `ModelError` or the worker's own failure ([backend worker 14](../../../docs/backend/worker.md#14-errors)) | Becomes `CompleteJob.error`, never an HTTP status ([worker job errors](#worker-job-errors)) |
 | `main`, config loading, start-up | `anyhow::Result` | Nowhere else ([anyhow](#anyhow-only-at-the-edges)) |
 
 Library crates of the workspace return concrete enums so callers can match; the binaries' start-up code may use `anyhow` *Judgement*, [Effective Rust, item 4](https://effective-rust.com/errors.html#libraries-versus-applications). `thiserror` derives `Display`, `Error` and `From` and adds nothing to the public API beyond what a hand-written impl would ([thiserror docs](https://docs.rs/thiserror/2.0.21/thiserror/index.html)).
@@ -27,12 +28,12 @@ Library crates of the workspace return concrete enums so callers can match; the 
 
 - `#[error("…")]` is the `Display`. Fields are interpolated as `{field}` or `{0}`; extra arguments may use `.field` (`#[error("{}", .problem.message())]`) ([thiserror, details](https://docs.rs/thiserror/2.0.21/thiserror/index.html#details)).
 - `#[source]`, or a field named `source`, makes `Error::source()` return it. `#[from]` adds a `From` impl **and** implies `#[source]`; use it only when the conversion needs no context. `#[error(transparent)]` forwards both `Display` and `source()` to the inner error, for a wrapper that adds nothing ([thiserror, details](https://docs.rs/thiserror/2.0.21/thiserror/index.html#details)).
-- A variant built at a call that knows what it was doing carries that as **context fields** (`operation`, `scan_id`), so prefer a struct variant with `#[source] source` over `#[from]` there (this skill's choice: the log line then says what failed). Where one `From` classifies every error of a dependency, as `StoreError`'s does, it can't know the call, so the variant has no context field and the function's `#[instrument]` span names it ([mapping.md](mapping.md), design points).
+- A variant built at a call that knows what it was doing carries that as **context fields** (`operation`, `scan_id`), so prefer a struct variant with `#[source] source` over `#[from]` there (this skill's choice: the log line then says what failed). Where one function classifies every error of a dependency, as the store's `classify` does, it can't know the call, so the caller passes the operation's name when it maps the result (`into_store("append event")`, which fills `StoreError::Query { what }`; [backend store 5](../../../docs/backend/store.md#classifying-failures)).
 - A source may be `Box<dyn Error + Send + Sync>` when the type isn't fixed (a panic payload, a dependency's opaque error); keep `Send + Sync` so the error can cross tasks: [`tokio::spawn`](https://docs.rs/tokio/1.53.3/tokio/task/fn.spawn.html) needs a `Send` output, and `ApiError`'s sources are `Send + Sync` ([rust-axum-api](../rust-axum-api/error-responses.md#2-the-compiled-example)).
 
 ## The mapping table
 
-Every contracts 2 code, the `ApiError` variant that produces it, and its fixed properties. `retry_after_s` "with" means the field is always sent, as a whole number of seconds (`u64`): contracts 2 says it comes "with 409 request_in_progress, 429 rate_limited and 503". A `503` with no better number sends `UNAVAILABLE_RETRY_AFTER_S`, 5 s, this skill's choice. The `ApiError` enum is canonical in [rust-axum-api](../rust-axum-api/error-responses.md#2-the-compiled-example), whose test checks every row.
+Every contracts 2 code, the `ApiError` variant that produces it, and its fixed properties. `retry_after_s` "with" means the field is always sent, as a whole number of seconds (`u64`): contracts 2 says it comes "with 409 request_in_progress, 429 rate_limited and 503". Contracts 2 fixes the numbers: 2 s for `request_in_progress` and `processing_unavailable` (`SHORT_RETRY_AFTER_S`), 5 s for `upstream_unavailable` unless the provider named a longer wait (`UNAVAILABLE_RETRY_AFTER_S`), and the limiter's wait, rounded up, for `rate_limited` ([contracts 2](../../../docs/architecture/contracts.md#2-errors)). The renderer also sends it as a `Retry-After` header ([backend api 8](../../../docs/backend/api.md#8-errors)). The `ApiError` enum is canonical in [rust-axum-api](../rust-axum-api/error-responses.md#2-the-compiled-example), whose test checks every row.
 
 | HTTP | `code` | Variant | `retryable` | `retry_after_s` | `details` |
 |---|---|---|---|---|---|
@@ -60,17 +61,20 @@ Conversions from the lower layers ([mapping.md](mapping.md)):
 
 | From | To |
 |---|---|
-| `StoreError::NotFound` | `NotFound` (also what a non-member gets, [contracts 1, roles](../../../docs/architecture/contracts.md#roles-and-access)) |
-| `StoreError::Unavailable` | `UpstreamUnavailable { upstream: "database", retry_after_s: 5 }` |
+| `StoreError::NotFound`, `BlobError::NotFound` | `NotFound` (also what a non-member gets, [contracts 1, roles](../../../docs/architecture/contracts.md#roles-and-access)) |
+| `StoreError::Rejected(rule)` | The rule's own code (`DomainError::kind()`) |
+| `StoreError::Conflict(LeaseLost { job_id })` | `LeaseLost { job_id }` |
+| `StoreError::Conflict(StalePlan { current })` | `InvalidState` with `current_plan_id` (a chat revision); an automatic re-plan retries instead, before `?` |
+| `StoreError::Conflict(StaleMap { current_version })` | `InvalidState` with `current_map_version` |
+| `StoreError::Conflict(AlreadyExists)` | **Handled by the caller** before `?` (idempotency, membership, alert dedupe); one that reaches `?` is `InvalidState` |
+| `StoreError::Conflict(ClaimLost \| QuestionStepLost)` | Never an HTTP error: the step stops. Reaching HTTP is a bug, answered as `InvalidState` ([backend api 8](../../../docs/backend/api.md#8-errors)) |
+| `StoreError::Unavailable`, `StoreError::Conflict(Retries)` | `UpstreamUnavailable { upstream: "database", retry_after_s: 5 }`. `Retries` means SurrealDB's transaction conflicts outlived the store's 5 attempts ([rust-surrealdb, retrying conflicts](../rust-surrealdb/SKILL.md#retrying-conflicts)) |
 | `BlobError::Unavailable` | `UpstreamUnavailable { upstream: "storage", retry_after_s: 5 }` |
-| `StoreError::Conflict` | **Mapped by the handler** before `?`: `lease_lost`, `invalid_state` with `current_plan_id` or `current_map_version`, or `request_in_progress`, depending on the call. Reaching the blanket `From` means the handler forgot, so it is `internal` |
-| `StoreError::TxConflict` | Retried by `retry_conflicts` ([rust-surrealdb, retrying conflicts](../rust-surrealdb/SKILL.md#retrying-conflicts)); one that survives every attempt is `Internal` |
-| `StoreError::AlreadyExists`, `StoreError::Thrown` | Mapped at the call site where the call gives them a meaning (an edge that already exists, a `THROW` code of its own); otherwise `Internal` |
-| `StoreError::Query`, `BlobError::Rejected`, anything unexpected | `Internal`, logged with its chain |
+| `StoreError::Query`, `BlobError::Rejected`, `BlobError::AlreadyExists`, anything unexpected | `Internal`, logged with its chain |
 | A dependency that is down or timed out (LLM API, weather) | `UpstreamUnavailable { upstream: "llm" \| "weather" }` ([contracts 2](../../../docs/architecture/contracts.md#2-errors): "LLM API, weather or another dependency down") |
 | An upload processing step that failed (face blurring) | `ProcessingUnavailable`: the image is not stored (fails closed, [contracts 2](../../../docs/architecture/contracts.md#2-errors)) |
 
-`From` impls hold only the context-free rows; a mapping that depends on the call is a `map_err` at the call site ([mapping.md](mapping.md), `complete`).
+These are the rows of [backend api 8](../../../docs/backend/api.md#8-errors) and [backend domain 6](../../../docs/backend/domain.md#port-errors). `From` impls hold only the context-free rows; a mapping that depends on the call is a `match` at the call site before `?` ([mapping.md](mapping.md), `create_alert_task`).
 
 ## Display and source
 
@@ -228,13 +232,14 @@ pub const INVITE_ATTEMPTS_PER_MINUTE: NonZeroU32 = NonZeroU32::new(0).expect("0 
 
 A job that fails is **not** an HTTP error. The worker reports it in `POST /internal/jobs/{id}/complete` with `status: "failed"` and `error: { code, message, retryable }`, and the API answers `204` ([contracts 2](../../../docs/architecture/contracts.md#2-errors), last paragraph; [contracts 5, complete](../../../docs/architecture/contracts.md#post-internaljobsidcomplete)). HTTP errors on the worker API mean something about the *call*: `401` for a bad worker token, `409 lease_lost` for a lease that is gone ([rust-axum-api auth 2](../rust-axum-api/auth.md#2-workers-bearer-token-and-x-lease-token)).
 
+- **The type is `domain::jobs::JobError`**, a struct, not a `thiserror` enum: `code` is a `JobErrorCode`, which serialises as its bare string and keeps any code it doesn't know as `Other(String)`, so an older API reads a newer worker's code ([backend domain-types 5, events and completion](../../../docs/backend/domain-types.md#events-and-completion)). Its canonical form is the `JobErrorCode` region of [rust-contract-types, unions 4](../rust-contract-types/unions.md#4-complete-tagged-by-status-result-decoded-by-the-jobs-kind).
+- **The codes**, settled in [contracts 12, questions 18, 19 and 21](../../../docs/architecture/contracts.md#12-open-questions) and stated in [contracts 5, complete](../../../docs/architecture/contracts.md#post-internaljobsidcomplete) ([backend worker 14](../../../docs/backend/worker.md#14-errors), [16](../../../docs/backend/worker.md#16-decisions-on-the-contracts-open-questions)): `unsupported_version` and `unknown_label_version` are never retryable; `model_error` is retryable, except when the adapter can't do the job's kind at all (`ModelError::Unsupported`, whose `retryable()` is false); `image_fetch_failed` and `max_runtime_exceeded` are retryable. A `done` result that doesn't decode for the job's kind is stored by the API as `model_error`, `retryable: true` ([backend pipeline 17](../../../docs/backend/pipeline.md#17-open-questions-and-decisions)).
 - `retryable: true` counts toward the job's 3 attempts; `false` fails the job for good, which for a run's job sends the scan to `failed` with `processing_error` ([contracts 5, leases](../../../docs/architecture/contracts.md#leases-runs-and-attempts)).
-- `message` is for operators (the job table doubles as an audit trail, [architecture 12](../../../docs/architecture/README.md#operations)); the user sees the API's `ScanFailure`, never this text. So it is the full chain, `Chain(&error).to_string()`.
-- **`unsupported_version`**: every job carries `"v": 1`. A worker that receives a `v` it doesn't know fails the job with this code instead of guessing ([contracts 1, versioning](../../../docs/architecture/contracts.md#versioning)). Read `v` **before** the payload, because a new version may change the payload's shape: the `JobHead` region of [rust-contract-types](../rust-contract-types/unions.md#3-the-worker-checks-v-first) is the one implementation. Only a decoded `v` other than 1 is `unsupported_version`; a body whose head doesn't decode can't be completed at all (no `job_id` or `lease_token` to send), so it is logged and the lease left to expire.
-- **Not in the contracts yet:** `unsupported_version` is sent with `retryable: false`, because a retry on the same worker can't succeed ([contracts 12, question 19](../../../docs/architecture/contracts.md#12-open-questions)).
-- **Not in the contracts yet:** codes other than `unsupported_version` ("model errors" in contracts 2) aren't listed; `model_error` is this skill's placeholder, and [rust-workers](../rust-workers/SKILL.md) uses `max_runtime_exceeded` ([contracts 12, question 18](../../../docs/architecture/contracts.md#12-open-questions)). The job envelope types themselves are [rust-contract-types](../rust-contract-types/SKILL.md)'s.
+- **`message` is the error and its `source()` chain, `": "`-joined**: `Chain(&error).to_string()` ([backend worker 14](../../../docs/backend/worker.md#14-errors)). It is for operators (the job table doubles as an audit trail, [architecture 12](../../../docs/architecture/README.md#operations)); the user sees the API's `ScanFailure`, never this text.
+- **`unknown_label_version`** is found by downcasting the `ModelError`'s source to `vision::VisionError` ([backend worker 14](../../../docs/backend/worker.md#14-errors)); every other model failure is `model_error` with `ModelError::retryable()`.
+- **`unsupported_version`**: every job carries `"v": 1`. A worker that receives a `v` it doesn't know fails the job with this code instead of guessing ([contracts 1, versioning](../../../docs/architecture/contracts.md#versioning)), and so does a `v: 1` job whose `kind` or payload this build can't read ([contracts 5, leases](../../../docs/architecture/contracts.md#leases-runs-and-attempts)). Read `v` **before** the payload, because a new version may change the payload's shape: the `JobHead` region of [rust-contract-types](../rust-contract-types/unions.md#3-the-worker-checks-v-first) is the one implementation. A body whose head doesn't decode can't be completed at all (no `job_id` or `lease_token` to send), so it is logged and the lease left to expire.
 
-The compiled `JobError`, `JobFailure` and claim triage, with tests, are in [jobs.md](jobs.md).
+The compiled mapping (`job_error`, the `unsupported_version` failure, the claim triage), with tests, is in [jobs.md](jobs.md).
 
 ## Review checklist
 
@@ -242,7 +247,7 @@ The compiled `JobError`, `JobFailure` and claim triage, with tests, are in [jobs
 - [ ] No `#[error]` string renders the variant's own source.
 - [ ] Variants that wrap an error carry context fields; `#[from]` only where no context is needed.
 - [ ] Every `ApiError` variant matches a row of the mapping table; a new contracts 2 code adds a variant, a row and a test case in the same pull request ([AGENTS.md, sources of truth](../../../AGENTS.md#sources-of-truth)).
-- [ ] `StoreError::Conflict` is matched by the handler, not left to `?`; `TxConflict` goes through `retry_conflicts`.
+- [ ] Store errors are the domain's `StoreError`; a `Conflict(AlreadyExists)` or an automatic re-plan's `StalePlan` is matched by the caller before `?`; transaction conflicts are retried inside the store and arrive only as `Conflict(Retries)`.
 - [ ] `Internal` and `Upstream*` keep the source for the log and never show it to the user.
 - [ ] Errors are logged once, with the chain, where handled.
 - [ ] No `unwrap()` outside tests; every `expect` says why it can't fail.

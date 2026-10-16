@@ -14,8 +14,8 @@ Part of [rust-axum-api](SKILL.md). Versions: axum 0.8.9, tower 0.5.3, tower-http
 ## 1. How order works
 
 - `Router::layer` wraps everything added **before** it, so successive `.layer` calls run bottom to top. `ServiceBuilder` runs top to bottom: the first layer listed sees the request first. Put the global stack in **one** `ServiceBuilder` so it reads in request order ([axum middleware, ordering](https://docs.rs/axum/0.8.9/axum/middleware/index.html#ordering)).
-- `Router::layer` also wraps the fallback; `Router::route_layer` wraps matched routes only, so a layer that rejects (auth) belongs in `route_layer` and unknown paths still get `404` ([`Router::route_layer`](https://docs.rs/axum/0.8.9/axum/struct.Router.html#method.route_layer)).
-- A layer on a sub-router applies only to the routes added to that sub-router before it ([`Router::layer`](https://docs.rs/axum/0.8.9/axum/struct.Router.html#method.layer)), and `merge` combines the groups, each keeping its own layers ([`Router::merge`](https://docs.rs/axum/0.8.9/axum/struct.Router.html#method.merge)). Per-group layers are how routes get different auth, timeouts and body limits; the timeout tests below show the app group and the worker group with different limits.
+- `Router::layer` also wraps the fallback; `Router::route_layer` wraps matched routes only, so unknown paths still get `404` ([`Router::route_layer`](https://docs.rs/axum/0.8.9/axum/struct.Router.html#method.route_layer)). **Authentication, membership and rate limits are not layers** in PDM: they are extractors, because the proof a repository call needs (`Membership<R>`) comes out of the extractor, typed by the role the handler names, and a middleware can't hand a typed proof to the handler ([auth 4](auth.md#4-which-routes-get-which-check); [backend api 9](../../../docs/backend/api.md#9-authentication-and-access); [backend flows 1](../../../docs/backend/flows.md#1-the-request-pipeline), "Rate limits are not a layer"). An extractor also runs only on a matched route, so an unknown path is still `404`, not `401`.
+- A layer on a sub-router applies only to the routes added to that sub-router before it ([`Router::layer`](https://docs.rs/axum/0.8.9/axum/struct.Router.html#method.layer)), and `merge` combines the groups, each keeping its own layers ([`Router::merge`](https://docs.rs/axum/0.8.9/axum/struct.Router.html#method.merge)). Per-group layers are how routes get different timeouts and body limits; the timeout tests below show the app group and the worker group with different limits.
 - One thing runs **outside** every route layer: axum's method router adds `Allow` to a wrong-method response after the route's layers ran, so the finished router is wrapped once more in `without_allow` ([error-responses 2](error-responses.md#2-the-compiled-example)).
 
 ## 2. The stack in order
@@ -24,33 +24,37 @@ Part of [rust-axum-api](SKILL.md). Versions: axum 0.8.9, tower 0.5.3, tower-http
 |---|---|---|
 | 0–2 | `map_request` removing a client's `x-request-id`, `SetRequestIdLayer::x_request_id(MakeReqId)`, `PropagateRequestIdLayer::x_request_id()` | First, so every later layer, the trace span and the error body see the same `req_<ULID>`, and every response (preflights and rendered errors included) carries it. Owned by [rust-tracing](../rust-tracing/request-id.md#1-the-layer-stack) |
 | 3 | `TraceLayer` | Outside everything that can answer, so the span covers the final status. Its configuration is in [rust-tracing](../rust-tracing/request-id.md#2-the-code-and-its-test) |
-| 4 | `CorsLayer` | Before auth: a preflight carries no `Authorization`, and `Cors` answers every preflight itself without calling the inner service (`Cors::call` in [`cors/mod.rs`](https://docs.rs/crate/tower-http/0.7.1/source/src/cors/mod.rs)) |
-| 5 | `from_fn(render_errors)` | Writes every error body ([error-responses 1](error-responses.md#1-the-design-one-renderer)). Everything below it, including tower-http's own responses, gets an `ErrorBody` |
-| 6 | `CatchPanicLayer::custom(panic_response)` | Inside the renderer, so a panic's `internal` body gets its `request_id` ([error-responses 2](error-responses.md#2-the-compiled-example)) |
-| 7 | `RequestBodyLimitLayer` | The global byte cap, inside the renderer so its plain-text 413 becomes `upload_too_large` ([error-responses 4](error-responses.md#4-body-limits)) |
-| per group | `route_layer(auth)`, the rate limiter, `TimeoutLayer`, `DefaultBodyLimit` | Different for app, worker, webhook and ops routes ([auth 4](auth.md#4-which-routes-get-which-check)) |
+| 4 | `CorsLayer` | Before anything that answers: a preflight carries no `Authorization`, and `Cors` answers every preflight itself without calling the inner service (`Cors::call` in [`cors/mod.rs`](https://docs.rs/crate/tower-http/0.7.1/source/src/cors/mod.rs)) |
+| 5 | `CompressionLayer` with `DefaultPredicate::new().and(NotForContentType::const_new("text/event-stream"))` | Outside the renderer, so error bodies are compressed too, after they are written. Never an SSE body: a compressor buffers frames, so events and keepalives would sit in the encoder. tower-http 0.7.1's `DefaultPredicate` already skips `text/event-stream`, gRPC, images (except SVG) and bodies under 32 bytes (`compression/predicate.rs`); the explicit rule keeps the intent if that default changes ([backend api 7](../../../docs/backend/api.md#7-the-router-and-the-layer-stack), row 6; the `compression_skips_sse_and_compresses_error_bodies` test) |
+| 6 | `from_fn(render_errors)` | Writes every error body ([error-responses 1](error-responses.md#1-the-design-one-renderer)). Everything below it, including tower-http's own responses, gets an `ErrorBody` |
+| 7 | `CatchPanicLayer::custom(panic_response)` | Inside the renderer, so a panic's `internal` body gets its `request_id` ([error-responses 2](error-responses.md#2-the-compiled-example)) |
+| 8 | `RequestBodyLimitLayer` | The global byte cap, inside the renderer so its plain-text 413 becomes `upload_too_large` ([error-responses 4](error-responses.md#4-body-limits)) |
+| per group | `TimeoutLayer`, `DefaultBodyLimit` | Each group is its own router, layered, then merged: app (10 s, 1 MiB), uploads (60 s, 12 MiB + 2 × 4 MiB + 128 KiB), claim (35 s, 1 MiB), worker (60 s, 16 MiB) ([backend api 7](../../../docs/backend/api.md#7-the-router-and-the-layer-stack), groups). Every group sets its `DefaultBodyLimit` explicitly, the claim group's 1 MiB included, because a group without one gets axum's default of 2 MiB (`DEFAULT_LIMIT = 2_097_152` in `axum-core-0.5.6/src/ext_traits/request.rs`; backend api 7, `JSON_BODY_LIMIT`, and its `a_claim_body_over_the_json_limit_is_refused_before_the_handler` test). **Not in the contracts yet:** 1 MiB is a placeholder ([contracts 12, question 34](../../../docs/architecture/contracts.md#12-open-questions)) |
 | outside | `without_allow` | Wraps the finished router (section 1) |
 
-The `api` binary keeps the router in a function (`fn app(state: &Arc<AppState>) -> Router`) so tests drive the same stack with `oneshot`. The block carries copies of `ApiError`, `render_errors` and `MakeReqId`, so the stack under test is the real one.
+Auth, membership and the rate limits are extractors, not rows of this table ([auth 4](auth.md#4-which-routes-get-which-check), [section 5](#5-rate-limits)).
+
+The `api` binary keeps the router in a function (`fn app(state: &Arc<AppState>) -> Router`) so tests drive the same stack with `oneshot`. The block carries copies of `ApiError`, `render_errors` and `MakeReqId`, so the stack under test is the real one. Its routes are stand-ins without extractors; the auth extractors are in [auth 4](auth.md#4-which-routes-get-which-check).
 
 ```rust
 use std::{convert::Infallible, sync::Arc, time::Duration};
 
 use axum::{
     Router,
-    extract::{Request, State},
+    extract::{DefaultBodyLimit, Request},
     http::{HeaderName, HeaderValue, Method, StatusCode, header},
-    middleware::{self, Next},
-    response::{
-        Response,
-        sse::{Event, Sse},
-    },
+    middleware,
+    response::sse::{Event, Sse},
     routing::{get, post},
 };
 use futures::Stream;
 use tower::ServiceBuilder;
 use tower_http::{
     catch_panic::CatchPanicLayer,
+    compression::{
+        CompressionLayer,
+        predicate::{DefaultPredicate, NotForContentType, Predicate},
+    },
     cors::{AllowOrigin, CorsLayer},
     limit::RequestBodyLimitLayer,
     request_id::{PropagateRequestIdLayer, SetRequestIdLayer},
@@ -61,28 +65,31 @@ use tower_http::{
 pub struct AppState {
     /// The web build's origins (frontend 17), from configuration.
     pub web_origins: Vec<HeaderValue>,
+    /// Set when `/slow`'s idempotency stand-in is dropped (the timeout test).
+    pub released: Arc<std::sync::atomic::AtomicBool>,
 }
 
-/// auth.md: verify the Clerk token, put the user in the request's extensions.
-async fn require_user(State(_): State<Arc<AppState>>, request: Request, next: Next) -> Response {
-    next.run(request).await
-}
-
-/// auth.md: map the worker token to a worker.
-async fn require_worker(State(_): State<Arc<AppState>>, request: Request, next: Next) -> Response {
-    next.run(request).await
-}
-
-pub const UPLOAD_REQUEST_MAX: usize = 12 * 1024 * 1024 + 2 * 4 * 1024 * 1024 + 64 * 1024;
-/// Ordinary requests: well above any query, far below a stuck one (this skill's choice).
+/// The uploads group's limit, also the global cap (backend api 7).
+pub const UPLOAD_REQUEST_MAX: usize = 12 * 1024 * 1024 + 2 * 4 * 1024 * 1024 + 128 * 1024;
+/// `REQUEST_TIMEOUT_S`, default 10 s: the app group's response-head timeout (backend api 5, 7).
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// The claim long poll waits up to 30 s (contracts 5), so its group needs more.
 pub const CLAIM_TIMEOUT: Duration = Duration::from_secs(35);
+/// JSON bodies of the app and claim groups (contracts 2; a placeholder, contracts 12, question 34).
+pub const JSON_BODY_LIMIT: usize = 1024 * 1024;
 
-/// A per-group timeout whose response `render_errors` turns into `500 internal`, logged.
-// Not in the contracts yet: a timeout is `internal` (contracts 12, questions 16 and 17).
+/// A per-group timeout. contracts 2: a request past it is `503 upstream_unavailable` from
+/// `api`, retryable, `retry_after_s: 5`, which `render_errors` writes from the bare 503
+/// (contracts 12, questions 16 and 17). Dropping the handler releases its idempotency key.
 fn timeout(limit: Duration) -> TimeoutLayer {
-    TimeoutLayer::with_status_code(StatusCode::GATEWAY_TIMEOUT, limit)
+    TimeoutLayer::with_status_code(StatusCode::SERVICE_UNAVAILABLE, limit)
+}
+
+/// Never an SSE body (a compressor buffers frames); everything else as tower-http decides.
+fn compression() -> CompressionLayer<impl Predicate> {
+    CompressionLayer::new().compress_when(
+        DefaultPredicate::new().and(NotForContentType::const_new("text/event-stream")),
+    )
 }
 
 pub fn cors(origins: &[HeaderValue]) -> CorsLayer {
@@ -102,10 +109,22 @@ pub fn cors(origins: &[HeaderValue]) -> CorsLayer {
             HeaderName::from_static("idempotency-key"),
             HeaderName::from_static("last-event-id"),
         ])
+        // Readable by the web build's scripts (backend api 7).
+        .expose_headers([HeaderName::from_static("x-request-id"), header::RETRY_AFTER])
         .max_age(Duration::from_secs(600))
 }
 
-async fn slow() -> StatusCode {
+/// Stands in for an idempotency record (`Begun`): dropped unfinished, it releases the key.
+pub struct Held(pub Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+async fn slow(released: Arc<std::sync::atomic::AtomicBool>) -> StatusCode {
+    let _key = Held(released);
     tokio::time::sleep(Duration::from_secs(20)).await;
     StatusCode::OK
 }
@@ -127,24 +146,27 @@ async fn claim() -> StatusCode {
 
 pub fn app(state: &Arc<AppState>) -> Router {
     let cors = cors(&state.web_origins);
+    let released = Arc::clone(&state.released);
+    // The app group: auth, membership and rate limits are extractors in the handlers.
     let app_routes = Router::new()
-        .route("/slow", get(slow))
+        .route("/slow", get(move || slow(Arc::clone(&released))))
         .route("/scans/{id}/events", get(events))
-        .route_layer(middleware::from_fn_with_state(state.clone(), require_user))
+        .route("/missing", get(|| async { ApiError::NotFound }))
+        .route(
+            "/healthz",
+            get(|| async { axum::Json(serde_json::json!({ "ok": true })) }),
+        )
+        .layer(DefaultBodyLimit::max(JSON_BODY_LIMIT))
         .layer(timeout(REQUEST_TIMEOUT));
-    let worker_routes = Router::new()
+    // Explicit, as backend api 7 sets it: without it the group gets axum's 2 MiB default.
+    let claim_routes = Router::new()
         .route("/internal/jobs/claim", post(claim))
-        .route_layer(middleware::from_fn_with_state(
-            state.clone(),
-            require_worker,
-        ))
+        .layer(DefaultBodyLimit::max(JSON_BODY_LIMIT))
         .layer(timeout(CLAIM_TIMEOUT));
-    let ops_routes = Router::new().route("/healthz", get(|| async { "{\"ok\":true}" }));
 
     let routes = Router::new()
         .merge(app_routes)
-        .merge(worker_routes)
-        .merge(ops_routes)
+        .merge(claim_routes)
         .fallback(|| async { ApiError::NotFound })
         .layer(
             ServiceBuilder::new()
@@ -157,6 +179,7 @@ pub fn app(state: &Arc<AppState>) -> Router {
                 // rust-tracing configures its span (`make_span_with`, `on_response`).
                 .layer(TraceLayer::new_for_http())
                 .layer(cors)
+                .layer(compression())
                 .layer(middleware::from_fn(render_errors))
                 .layer(CatchPanicLayer::custom(panic_response))
                 .layer(RequestBodyLimitLayer::new(UPLOAD_REQUEST_MAX)),
@@ -200,7 +223,7 @@ pub async fn render_errors(
         Some(parts) => parts,
         None if response.status().as_u16() < 400 || is_json(&response) => return response,
         None => {
-            // Not made by ApiError: axum's 405 and rejections, tower-http's 413, a timeout.
+            // Not made by ApiError: axum's 405 and rejections, tower-http's 413, the timeout's 503.
             let error = from_status(response.status());
             *response.status_mut() = error.status();
             error.parts()
@@ -230,6 +253,10 @@ pub async fn render_errors(
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/json"),
     );
+    // The same wait as `retry_after_s`, for clients that read the header (backend api 8).
+    if let Some(seconds) = parts.retry_after_s {
+        headers.insert(header::RETRY_AFTER, HeaderValue::from(seconds));
+    }
     headers.remove(header::CONTENT_LENGTH);
     *response.body_mut() = axum::body::Body::from(bytes);
     response
@@ -250,12 +277,18 @@ fn from_status(status: axum::http::StatusCode) -> ApiError {
         StatusCode::PAYLOAD_TOO_LARGE => ApiError::UploadTooLarge {
             max_bytes: IMAGE_MAX_BYTES,
         },
-        // Not in the contracts yet: a method a route lacks is a 404 (contracts 12, question 16).
+        // contracts 2: a method a route lacks is a 404 without `Allow` (contracts 12, question 16).
         StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED => ApiError::NotFound,
-        // Not in the contracts yet: a timeout is `internal` (contracts 12, questions 16 and 17).
-        StatusCode::REQUEST_TIMEOUT | StatusCode::GATEWAY_TIMEOUT => {
-            ApiError::Internal("the request timed out".into())
-        }
+        // As backend api 8 maps them: a bare 401 or 415 keeps its own code.
+        StatusCode::UNAUTHORIZED => ApiError::Unauthenticated,
+        StatusCode::UNSUPPORTED_MEDIA_TYPE => ApiError::UnsupportedMediaType,
+        // contracts 2: only the timeout layer answers 503 itself; a request past the API's
+        // timeout is `upstream_unavailable` from `api`, retryable (contracts 12, question 17).
+        StatusCode::SERVICE_UNAVAILABLE => ApiError::UpstreamUnavailable {
+            upstream: "api",
+            retry_after_s: UNAVAILABLE_RETRY_AFTER_S,
+            source: "the request timed out".into(),
+        },
         s if s.is_client_error() => ApiError::invalid_request(
             "request",
             format!(
@@ -427,9 +460,11 @@ pub enum Budget {
 pub const ACCEPTED_MEDIA_TYPES: [&str; 4] = ["image/jpeg", "image/png", "image/webp", "image/heic"];
 /// contracts 2: `max_bytes` of `upload_too_large`, an image over 12 MB (read as MiB).
 pub const IMAGE_MAX_BYTES: usize = 12 * 1024 * 1024;
-/// `retry_after_s` on a `503` when the cause gives no better number. The value is this
-/// skill's choice; contracts 2 only says the field is sent with `503`.
+/// contracts 2: `retry_after_s` of `upstream_unavailable` (also a request past the API's
+/// timeout) unless the provider named a longer wait.
 pub const UNAVAILABLE_RETRY_AFTER_S: u64 = 5;
+/// contracts 2: `retry_after_s` of `request_in_progress` and `processing_unavailable`.
+pub const SHORT_RETRY_AFTER_S: u64 = 2;
 
 /// One variant per contracts 2 code. `Display` is the `message`: a sentence safe to show.
 #[derive(Debug, thiserror::Error)]
@@ -651,9 +686,10 @@ impl axum::response::IntoResponse for ApiError {
 // end: ApiError
 
 // copy of: rust-contract-types/primitives.md Timestamp
-/// RFC 3339 in UTC, whole seconds, `Z` suffix: `"2026-10-18T14:03:22Z"` (contracts 1).
-/// Keeps full precision in memory; only the wire form is truncated. Whole seconds are
-/// this skill's choice, not the contracts' (contracts 12, question 12).
+/// RFC 3339 in UTC, whole seconds, `Z` suffix: `"2026-10-18T14:03:22Z"` (contracts 1,
+/// wire format; contracts 12, question 12). Keeps full precision in memory and in the
+/// database; only the wire form is truncated. No `now()`: every reading comes from the
+/// `Clock` port, so tests control time (backend domain 4).
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, utoipa::ToSchema, schemars::JsonSchema,
 )]
@@ -662,10 +698,6 @@ impl axum::response::IntoResponse for ApiError {
 pub struct Timestamp(chrono::DateTime<chrono::Utc>);
 
 impl Timestamp {
-    pub fn now() -> Self {
-        Self(chrono::Utc::now())
-    }
-
     /// For the store, which binds `chrono::DateTime<Utc>` (database 2).
     pub const fn into_inner(self) -> chrono::DateTime<chrono::Utc> {
         self.0
@@ -721,10 +753,15 @@ mod tests {
 
     const WEB: &str = "https://app.example.org";
 
-    fn router() -> Router {
-        app(&Arc::new(AppState {
+    fn state() -> Arc<AppState> {
+        Arc::new(AppState {
             web_origins: vec![HeaderValue::from_static(WEB)],
-        }))
+            released: Arc::default(),
+        })
+    }
+
+    fn router() -> Router {
+        app(&state())
     }
 
     fn preflight(origin: &str) -> axum::http::Request<Body> {
@@ -761,6 +798,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_web_build_can_read_the_request_id_and_retry_after() {
+        // Exposed headers go on the actual response, not the preflight (`Cors::call`).
+        let request = axum::http::Request::get("/healthz")
+            .header(header::ORIGIN, WEB)
+            .body(Body::empty())
+            .unwrap();
+        let response = router().oneshot(request).await.unwrap();
+        assert_eq!(
+            response.headers()[header::ACCESS_CONTROL_EXPOSE_HEADERS],
+            "x-request-id,retry-after"
+        );
+    }
+
+    #[tokio::test]
     async fn other_origins_get_no_allow_origin() {
         let response = router()
             .oneshot(preflight("https://evil.example"))
@@ -778,16 +829,63 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_slow_handler_is_cut_at_the_timeout_and_rendered_as_internal() {
+    async fn a_slow_handler_is_cut_at_the_timeout_and_answered_503_retryable() {
+        let state = state();
         let start = tokio::time::Instant::now();
-        let response = router().oneshot(get_request("/slow")).await.unwrap();
+        let response = app(&state).oneshot(get_request("/slow")).await.unwrap();
         assert_eq!(start.elapsed(), REQUEST_TIMEOUT);
-        // The layer's 504 reached the renderer, which answers `internal`.
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        // The handler's future was dropped, and its idempotency stand-in with it.
+        assert!(state.released.load(std::sync::atomic::Ordering::SeqCst));
+        // The layer's bare 503 reached the renderer: contracts 2, timeouts.
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(response.headers()[header::RETRY_AFTER], "5");
         let bytes = response.into_body().collect().await.unwrap().to_bytes();
-        let body: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(body["error"]["code"], "internal");
-        assert_eq!(body["error"]["retryable"], false);
+        let mut body: Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(
+            body["error"]["request_id"]
+                .as_str()
+                .unwrap()
+                .starts_with("req_")
+        );
+        body["error"]["request_id"] = Value::from("[request_id]");
+        assert_eq!(
+            body,
+            serde_json::json!({ "error": {
+                "code": "upstream_unavailable",
+                "message": "A service we depend on is unavailable. Try again shortly.",
+                "retryable": true,
+                "retry_after_s": 5,
+                "details": { "upstream": "api" },
+                "request_id": "[request_id]"
+            }})
+        );
+    }
+
+    fn with_gzip(uri: &str) -> axum::http::Request<Body> {
+        axum::http::Request::get(uri)
+            .header(header::ACCEPT_ENCODING, "gzip")
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn compression_skips_sse_and_compresses_error_bodies() {
+        let error = router().oneshot(with_gzip("/missing")).await.unwrap();
+        assert_eq!(error.status(), StatusCode::NOT_FOUND);
+        assert_eq!(error.headers()[header::CONTENT_ENCODING], "gzip");
+        let bytes = error.into_body().collect().await.unwrap().to_bytes();
+        // The gzip magic number, not the JSON's `{`.
+        assert_eq!(&bytes[..2], [0x1f, 0x8b]);
+
+        let events = router()
+            .oneshot(with_gzip("/scans/01JAX/events"))
+            .await
+            .unwrap();
+        assert_eq!(events.headers()[header::CONTENT_TYPE], "text/event-stream");
+        assert!(!events.headers().contains_key(header::CONTENT_ENCODING));
+        let mut body = events.into_body();
+        let frame = body.frame().await.unwrap().unwrap().into_data().unwrap();
+        assert_eq!(&frame[..], b"id: 1\ndata: {}\n\n");
     }
 
     #[tokio::test(start_paused = true)]
@@ -833,6 +931,7 @@ The web build may have its own origin; then the API must answer CORS for it, all
 - **Headers**: exactly the four, as in the example; the preflight test checks the `Access-Control-Allow-Headers` value. No `allow_credentials`: the app sends a bearer token in `Authorization`, not cookies ([contracts 1, authentication headers](../../../docs/architecture/contracts.md#authentication-headers)).
 - **Methods**: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, the methods in [architecture 9](../../../docs/architecture/README.md#9-api-surface).
 - **`max_age`**: 600 s (this skill's choice) caches a preflight for ten minutes; browsers cap it lower or higher on their own ([MDN, `Access-Control-Max-Age`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Access-Control-Max-Age)).
+- **Exposed headers**: `x-request-id` and `retry-after`, so the web build's scripts can read the request ID for a bug report and the wait after a `429` or `503` ([backend api 7](../../../docs/backend/api.md#7-the-router-and-the-layer-stack), `cors`). Without [`expose_headers`](https://docs.rs/tower-http/0.7.1/tower_http/cors/struct.CorsLayer.html#method.expose_headers) a cross-origin script sees only the CORS-safelisted response headers ([MDN, `Access-Control-Expose-Headers`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Access-Control-Expose-Headers)). `Cors` adds them to actual responses, not to preflights (`Cors::call`); the `the_web_build_can_read_the_request_id_and_retry_after` test checks the value.
 - A disallowed origin gets a response without `Access-Control-Allow-Origin`, and the browser blocks it; the test checks that too.
 - tower-http 0.7.0 relaxed the default `Vary` header ([CHANGELOG 0.7.0](https://docs.rs/crate/tower-http/0.7.1/source/CHANGELOG.md), #674); nothing to set for PDM.
 
@@ -841,7 +940,9 @@ Docs: [`CorsLayer`](https://docs.rs/tower-http/0.7.1/tower_http/cors/struct.Cors
 ## 4. Timeouts
 
 - [`TimeoutLayer`](https://docs.rs/tower-http/0.7.1/tower_http/timeout/struct.TimeoutLayer.html) bounds the time until the response **head** is ready: its `ResponseFuture` races the handler's future against one `sleep` and answers with its status if the sleep wins ([`timeout/service.rs`](https://docs.rs/crate/tower-http/0.7.1/source/src/timeout/service.rs)). Once the handler has returned a response, the body is outside it, so an SSE body is never cut: the `the_timeout_does_not_cut_an_sse_body` test runs 12 s under a 10 s timeout and gets every event. So it is safe on the SSE routes, and still useful there for the work done before the stream starts.
-- **Construct it with `TimeoutLayer::with_status_code(StatusCode::GATEWAY_TIMEOUT, …)`.** `TimeoutLayer::new` is deprecated since tower-http 0.6.7, and its default status is `408 Request Timeout` (`timeout/service.rs`). Its response has an empty body; `render_errors` maps `408` and `504` to `500 internal` and logs it with the `request_id` ([error-responses 2](error-responses.md#2-the-compiled-example), `from_status`; the `a_slow_handler_is_cut_at_the_timeout_and_rendered_as_internal` test). A handler that runs past the limit is a bug or a hung dependency, and calls to dependencies (LLM API, weather) have their own shorter timeouts that map to `503 upstream_unavailable` ([rust-errors](../rust-errors/SKILL.md#the-mapping-table)). 504 rather than 500 keeps the log line's cause ("the request timed out") distinct from an unrendered 500. 10 s is this skill's choice. **Not in the contracts yet:** contracts 2 has no timeout code, and `internal` is `retryable: false`, so the app doesn't retry a timed-out request ([contracts 12, questions 16 and 17](../../../docs/architecture/contracts.md#12-open-questions)).
+- **Construct it with `TimeoutLayer::with_status_code(StatusCode::SERVICE_UNAVAILABLE, …)`.** `TimeoutLayer::new` is deprecated since tower-http 0.6.7, and its default status is `408 Request Timeout` (`timeout/service.rs`). Its response has an empty body; `render_errors` turns the bare `503` into `503 upstream_unavailable` with `upstream: "api"`, `retryable: true`, `retry_after_s: 5` and a `Retry-After: 5` header ([error-responses 2](error-responses.md#2-the-compiled-example), `from_status`; the `a_slow_handler_is_cut_at_the_timeout_and_answered_503_retryable` test). That is contracts 2's rule: such a request is almost always waiting on a slow dependency, and every create call is idempotent, so the app may retry it; `408` and `504` are never produced ([contracts 2](../../../docs/architecture/contracts.md#2-errors), "Timeouts"; [contracts 12, questions 16 and 17](../../../docs/architecture/contracts.md#12-open-questions); [backend api 22](../../../docs/backend/api.md#22-decisions-on-the-contracts-open-questions)). No handler answers a bare `503` itself (every other `503` is an `ApiError`), so `from_status` can read it as the timeout.
+- **The timeout drops the handler's future**, and with it everything the handler held, so a timed-out request never runs on in the background. An idempotency record (`Begun`) dropped unfinished releases its key from `Drop` in a spawned task, so the app's retry runs again instead of getting `409 request_in_progress` until the key expires ([contracts 2](../../../docs/architecture/contracts.md#2-errors), "Timeouts"; [backend api 10](../../../docs/backend/api.md#10-idempotency), "Never stuck"). The test proves the drop with a guard in the handler.
+- **Per group** ([backend api 7](../../../docs/backend/api.md#7-the-router-and-the-layer-stack)): the app group `REQUEST_TIMEOUT_S` (default 10 s), the uploads group 60 s (the CPU image pipeline), the claim group 35 s, the worker group 60 s (large completions).
 - **The claim long poll** (`POST /internal/jobs/claim`) waits up to `wait_s`, default 25 s, max 30 s ([contracts 5](../../../docs/architecture/contracts.md#post-internaljobsclaim)). Its group gets 35 s. The handler also ends its wait when the shutdown token fires and answers `204` ([rust-workers](../rust-workers/SKILL.md)).
 - **Never** put `ResponseBodyTimeoutLayer` or `ResponseBodyDeadlineLayer` (new in 0.7.0) on the SSE routes. [`ResponseBodyTimeoutLayer`](https://docs.rs/tower-http/0.7.1/tower_http/timeout/struct.ResponseBodyTimeoutLayer.html) is an idle timeout: it starts a timer when a frame is polled for and resets it after each frame ([`timeout/body.rs`](https://docs.rs/crate/tower-http/0.7.1/source/src/timeout/body.rs)). The stream sends at least a keepalive every 15 s ([sse 2](sse.md#2-what-axum-writes)), so a timeout over 15 s never fires and adds nothing, and one under 15 s ends a quiet stream with a body error, which aborts the response instead of closing it (the test below). [`ResponseBodyDeadlineLayer`](https://docs.rs/tower-http/0.7.1/tower_http/timeout/struct.ResponseBodyDeadlineLayer.html) is a hard deadline from the response's creation, which cuts every long stream. `RequestBodyTimeoutLayer` on the upload routes is fine.
 - tower's own `tower::timeout::TimeoutLayer` returns an *error* instead of a response, which axum then needs `HandleErrorLayer` for ([axum error handling, applying fallible middleware](https://docs.rs/axum/0.8.9/axum/error_handling/index.html#applying-fallible-middleware)); use tower-http's, which answers with a status.
@@ -899,11 +1000,12 @@ mod tests {
 
 - One keyed limiter per limit, in `AppState`, keyed by the user's ID: [`RateLimiter::keyed`](https://docs.rs/governor/0.10.4/governor/struct.RateLimiter.html#method.keyed) with a [`Quota`](https://docs.rs/governor/0.10.4/governor/struct.Quota.html).
 - **Don't use `Quota::per_minute(n)` for "n a minute".** It allows a burst of `n` and then replenishes one cell every `60 / n` seconds ([`Quota`, burst sizes](https://docs.rs/governor/0.10.4/governor/struct.Quota.html#burst-sizes)), so `per_minute(10)` lets 19 attempts through in the first 60 s (10 at once, then one every 6 s). A burst of `b` with one cell every `p` seconds lets `b` through at once and one more every `p` seconds after, so "at most `n` a minute" is a burst of `n / 2` and a period of `120 / n` seconds (`at_most_per_minute` below; this skill's choice of split). Invites get [`Quota::with_period`](https://docs.rs/governor/0.10.4/governor/struct.Quota.html#method.with_period)`(12 s)` with [`allow_burst`](https://docs.rs/governor/0.10.4/governor/struct.Quota.html#method.allow_burst)`(5)`: a client trying every 100 ms gets 9 attempts in any 60 s and the 10th exactly at the 60 s mark, then one every 12 s. The test drives the limiter with governor's [`FakeRelativeClock`](https://docs.rs/governor/0.10.4/governor/clock/struct.FakeRelativeClock.html) and checks every window.
-- The general per-user limit runs as a middleware **after** auth (it needs the user). The invite limit is a `route_layer` on `POST /invites/{code}/accept` only ([section 1](#1-how-order-works)).
+- **This is backend api 19's quota.** The `api` crate builds the invite limiter as `Quota::per_minute(INVITE_ATTEMPTS_PER_MINUTE / 2)`, a burst of 5 then one every 12 s, which is what `at_most_per_minute(10)` builds, because `Quota::per_minute(10)` would let about 20 through in a fresh minute; its test `the_sixth_quick_invite_attempt_waits_12_seconds` finds the sixth quick attempt answered `retry_after_s: 12`, as `a_refused_attempt_says_how_long_to_wait_and_that_wait_is_enough` below does ([backend api 19](../../../docs/backend/api.md#19-rate-limits-and-budgets); [contracts 9, members and invites](../../../docs/architecture/contracts.md#members-and-invites): "Rate-limited to 10 attempts per user per minute").
+- **Rate limits are not a layer.** The general per-user limit runs inside the `AuthUser` extractor, right after the token check, keyed by the user's ID, so an unauthenticated caller can't fill the limiter's key map; the invite limit runs in the `accept_invite` handler ([backend api 19](../../../docs/backend/api.md#19-rate-limits-and-budgets); [auth 4](auth.md#4-which-routes-get-which-check)).
 - [`check_key`](https://docs.rs/governor/0.10.4/governor/struct.RateLimiter.html#method.check_key) returns `Err(NotUntil)`; [`NotUntil::wait_time_from(clock.now())`](https://docs.rs/governor/0.10.4/governor/struct.NotUntil.html#method.wait_time_from) gives the wait. Round **up** to whole seconds, so a client that waits `retry_after_s` is allowed (the test retries after exactly that many seconds).
 - A keyed limiter keeps one entry per key forever unless pruned: call [`retain_recent`](https://docs.rs/governor/0.10.4/governor/struct.RateLimiter.html#method.retain_recent) from a background task (every minute, in the `TaskTracker`; [rust-async](../rust-async/SKILL.md#3-tasks)).
 - The state is in memory, which is right for the single `api` instance ([architecture 12, operations](../../../docs/architecture/README.md#operations)).
-- The general limit's numbers aren't in the docs. 120 requests a minute below is a placeholder to agree with the team. The daily scan limit and chat token budget are not rate limits: they are counters in the database answering `budget_exceeded` ([database 4](../../../docs/database/README.md#limits-and-counters-)).
+- **Not in the contracts yet:** the general limit, 120 requests a minute per user below, is one contracts 2 gives only as a placeholder ([contracts 2](../../../docs/architecture/contracts.md#2-errors), `rate_limited`; [contracts 12, question 34](../../../docs/architecture/contracts.md#12-open-questions); [backend api 23](../../../docs/backend/api.md#23-open-questions)). The daily scan limit and chat token budget are not rate limits: they are counters in the database answering `budget_exceeded` ([database 4](../../../docs/database/README.md#limits-and-counters-)).
 
 ```rust
 use std::{num::NonZeroU32, time::Duration};
@@ -1030,15 +1132,15 @@ mod tests {
 }
 ```
 
-The middleware around `check` reads the user from the request's extensions (put there by the auth layer), calls `check(&state.limits.per_user, &user.id)`, and on `Err(retry_after_s)` returns `ApiError::RateLimited { retry_after_s }`, which renders as in [error-responses 2](error-responses.md#2-the-compiled-example).
+The `AuthUser` extractor calls `check(&state.limits.per_user, &user.id)` once the token is verified, and on `Err(retry_after_s)` rejects with `ApiError::RateLimited { retry_after_s }`, which renders as in [error-responses 2](error-responses.md#2-the-compiled-example), with a `Retry-After` header.
 
 ## 6. Graceful shutdown
 
-The process has one `CancellationToken` and one `TaskTracker`; their semantics, the signal handling and the drain deadline are in [rust-async shutdown](../rust-async/shutdown.md#5-api). For the HTTP server:
+The process has one `CancellationToken` and one `TaskTracker`; their semantics, the signal handling and the drain deadline are in [rust-async shutdown](../rust-async/shutdown.md#5-api). A signal handler that fails to install is logged and waits forever, so it can't shut the API down the moment it starts ([backend api 4](../../../docs/backend/api.md#4-start-up-and-shutdown), `until_signal`). For the HTTP server:
 
 - `axum::serve(listener, app).with_graceful_shutdown(token.clone().cancelled_owned())`. After the signal it stops accepting, then **waits for every open connection to finish** ([`serve/mod.rs`](https://docs.rs/crate/axum/0.8.9/source/src/serve/mod.rs): `close_tx.closed().await`); it returns only then ([`Serve::with_graceful_shutdown`](https://docs.rs/axum/0.8.9/axum/serve/struct.Serve.html#method.with_graceful_shutdown)).
-- So every long response must end on the token: the SSE streams ([sse 1](sse.md#1-what-the-endpoint-does)) and the claim long poll. The second test below shows a stream that ignores the token keeping the server up.
-- After `serve` returns: `tracker.close()`, then `tracker.wait()` for the background tasks (scheduler, sweeps, `retain_recent`), each of which also watches the token ([rust-async shutdown 3](../rust-async/shutdown.md#3-tasktracker)).
+- So every long response must end on the token: the SSE streams ([sse 1](sse.md#1-what-the-endpoint-does)), the claim long poll, and image bodies streamed from RustFS, which end through `take_until` on the token because `TimeoutLayer` bounds only the response head; the client sees a short body and fetches the image again ([backend api 4](../../../docs/backend/api.md#4-start-up-and-shutdown), "Shutdown"; `media::stream_object` in [backend api 18](../../../docs/backend/api.md#18-media)). The second test below shows a stream that ignores the token keeping the server up.
+- After `serve` returns: `tracker.close()`, then `tracker.wait()` for the background tasks (scheduler, sweeps, `retain_recent`), each of which also watches the token ([rust-async shutdown 3](../rust-async/shutdown.md#3-tasktracker)). At the same time pending RustFS deletes drain for `max(SHUTDOWN_DRAIN_S, 120 s)`, one full attempt, because an interrupted delete can leak objects ([backend api 4](../../../docs/backend/api.md#4-start-up-and-shutdown); [storage 4](../../../docs/storage/README.md#4-writes-and-deletes)).
 
 ```rust
 use std::{convert::Infallible, time::Duration};

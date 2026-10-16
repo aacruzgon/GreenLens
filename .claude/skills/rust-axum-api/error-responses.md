@@ -19,11 +19,15 @@ Part of [rust-axum-api](SKILL.md). Every non-2xx response carries the `ErrorBody
 | 1 | `SetRequestIdLayer` (outermost, after removing any client-sent `x-request-id`) | Puts `RequestId` (`req_<ULID>`) in the request's extensions. Owned by [rust-tracing](../rust-tracing/request-id.md) |
 | 2 | `ApiError::into_response` | Returns the status with an empty body and an `ErrorParts` value in the **response** extensions. For a `5xx`, `ErrorParts.cause` holds the source chain |
 | 3 | `render_errors` middleware | Reads `RequestId` from the request, runs the inner service, and if the response holds `ErrorParts`, writes the `ErrorBody` JSON with that `request_id`. It logs every `5xx` once, with `request_id` as a field of the event and the cause chain |
-| 4 | `render_errors`, fallback | A non-2xx response with no `ErrorParts` and no JSON body (axum's 405 and rejections, tower-http's 413 and timeout responses) gets a body chosen from its status by `from_status` |
+| 4 | `render_errors`, fallback | A non-2xx response with no `ErrorParts` and no JSON body (axum's 405 and rejections, tower-http's 413 and the timeout layer's 503) gets a body chosen from its status by `from_status` |
 
 Why not a task-local or a body rewrite in each layer: one function owns the JSON shape and the log line, and responses that no `ApiError` made (from tower-http and axum itself) get the same body. A stored idempotent replay of a `4xx` is already JSON, so the fallback leaves it alone.
 
+Whenever the body has `retry_after_s`, the renderer also sets a `Retry-After` header with the same number of seconds, so a client that reads the header waits as long as one that reads the body. It sets it on both paths, for an `ApiError`'s parts and for an error built by `from_status` from a bare status, so the timeout's `503` gets `Retry-After: 5` like any other `503`. The skill matches [backend api 8](../../../docs/backend/api.md#8-errors) v0.5, whose `render_errors` writes the header from the body's `retry_after_s` on both paths (its `IntoResponse` also sets it; the result is the same) ([MDN, `Retry-After`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Retry-After)). The CORS layer exposes the header to the web build ([layers 3](layers.md#3-cors)).
+
 Contracts 2 says `internal` is "logged with `request_id`". The request span carries `request_id` too ([rust-tracing](../rust-tracing/request-id.md#2-the-code-and-its-test)), but a filter that drops the span's level drops the span's fields from the line, so the renderer writes `request_id` into the event itself.
+
+**The backend boxes it.** This skill keeps `ApiError` as an enum with one variant per code, because it reads as the contracts 2 table. The `api` crate writes the same thing as `pub struct ApiError(Box<Inner>)`, whose `kind` is `domain::error::ErrorKind` (the code with its typed details), so a `Result<T, ApiError>` stays one pointer wider than `T` however large the details get: clippy's [`result_large_err`](https://clippy.rust-lang.org/rust-1.99.0/index.html#result_large_err) flagged 83 sites before the box. There, `domain::ErrorCode` carries `http_status`, `default_retryable` and `is_stored_for_idempotency` as methods, so the status, `retryable` and the idempotency rule live with the code ([backend api 8](../../../docs/backend/api.md#8-errors); [domain 6, codes as data](../../../docs/backend/domain.md#codes-as-data)). The body on the wire is the same: the tests below hold for both.
 
 Sources: [`IntoResponse`](https://docs.rs/axum/0.8.9/axum/response/trait.IntoResponse.html), [`middleware::from_fn`](https://docs.rs/axum/0.8.9/axum/middleware/fn.from_fn.html), [`Response::extensions_mut`](https://docs.rs/http/1.4.0/http/response/struct.Response.html#method.extensions_mut), [`RequestId`](https://docs.rs/tower-http/0.7.1/tower_http/request_id/struct.RequestId.html).
 
@@ -153,9 +157,11 @@ pub enum Budget {
 pub const ACCEPTED_MEDIA_TYPES: [&str; 4] = ["image/jpeg", "image/png", "image/webp", "image/heic"];
 /// contracts 2: `max_bytes` of `upload_too_large`, an image over 12 MB (read as MiB).
 pub const IMAGE_MAX_BYTES: usize = 12 * 1024 * 1024;
-/// `retry_after_s` on a `503` when the cause gives no better number. The value is this
-/// skill's choice; contracts 2 only says the field is sent with `503`.
+/// contracts 2: `retry_after_s` of `upstream_unavailable` (also a request past the API's
+/// timeout) unless the provider named a longer wait.
 pub const UNAVAILABLE_RETRY_AFTER_S: u64 = 5;
+/// contracts 2: `retry_after_s` of `request_in_progress` and `processing_unavailable`.
+pub const SHORT_RETRY_AFTER_S: u64 = 2;
 
 /// One variant per contracts 2 code. `Display` is the `message`: a sentence safe to show.
 #[derive(Debug, thiserror::Error)]
@@ -412,7 +418,7 @@ pub async fn render_errors(
         Some(parts) => parts,
         None if response.status().as_u16() < 400 || is_json(&response) => return response,
         None => {
-            // Not made by ApiError: axum's 405 and rejections, tower-http's 413, a timeout.
+            // Not made by ApiError: axum's 405 and rejections, tower-http's 413, the timeout's 503.
             let error = from_status(response.status());
             *response.status_mut() = error.status();
             error.parts()
@@ -442,6 +448,10 @@ pub async fn render_errors(
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/json"),
     );
+    // The same wait as `retry_after_s`, for clients that read the header (backend api 8).
+    if let Some(seconds) = parts.retry_after_s {
+        headers.insert(header::RETRY_AFTER, HeaderValue::from(seconds));
+    }
     headers.remove(header::CONTENT_LENGTH);
     *response.body_mut() = axum::body::Body::from(bytes);
     response
@@ -462,12 +472,18 @@ fn from_status(status: axum::http::StatusCode) -> ApiError {
         StatusCode::PAYLOAD_TOO_LARGE => ApiError::UploadTooLarge {
             max_bytes: IMAGE_MAX_BYTES,
         },
-        // Not in the contracts yet: a method a route lacks is a 404 (contracts 12, question 16).
+        // contracts 2: a method a route lacks is a 404 without `Allow` (contracts 12, question 16).
         StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED => ApiError::NotFound,
-        // Not in the contracts yet: a timeout is `internal` (contracts 12, questions 16 and 17).
-        StatusCode::REQUEST_TIMEOUT | StatusCode::GATEWAY_TIMEOUT => {
-            ApiError::Internal("the request timed out".into())
-        }
+        // As backend api 8 maps them: a bare 401 or 415 keeps its own code.
+        StatusCode::UNAUTHORIZED => ApiError::Unauthenticated,
+        StatusCode::UNSUPPORTED_MEDIA_TYPE => ApiError::UnsupportedMediaType,
+        // contracts 2: only the timeout layer answers 503 itself; a request past the API's
+        // timeout is `upstream_unavailable` from `api`, retryable (contracts 12, question 17).
+        StatusCode::SERVICE_UNAVAILABLE => ApiError::UpstreamUnavailable {
+            upstream: "api",
+            retry_after_s: UNAVAILABLE_RETRY_AFTER_S,
+            source: "the request timed out".into(),
+        },
         s if s.is_client_error() => ApiError::invalid_request(
             "request",
             format!(
@@ -519,7 +535,8 @@ pub fn panic_response(panic: Box<dyn std::any::Any + Send + 'static>) -> axum::r
 // end: render_errors
 
 // canonical: rust-axum-api/error-responses.md ApiJson
-/// The limit for JSON bodies, set explicitly so the rejection can report it.
+/// contracts 2: the limit for JSON bodies, set explicitly so the rejection can report it.
+/// 1 MiB is a placeholder (contracts 12, question 34).
 pub const JSON_MAX_BYTES: usize = 1024 * 1024;
 
 /// `axum::Json` with contracts 2 rejections.
@@ -536,7 +553,8 @@ impl From<axum::extract::rejection::JsonRejection> for ApiError {
             JsonRejection::MissingJsonContentType(_) => {
                 Self::invalid_request("Content-Type", "Send the body as application/json.")
             }
-            // Not in the contracts yet: an oversized JSON body (contracts 12, question 15).
+            // contracts 2: a JSON body over the limit is `invalid_request` on `body`, with the
+            // limit in the message (contracts 12, question 15).
             JsonRejection::BytesRejection(e)
                 if e.status() == axum::http::StatusCode::PAYLOAD_TOO_LARGE =>
             {
@@ -574,9 +592,10 @@ fn json_field_error(rejection: &(dyn std::error::Error + 'static)) -> ApiError {
 // end: ApiJson
 
 // copy of: rust-contract-types/primitives.md Timestamp
-/// RFC 3339 in UTC, whole seconds, `Z` suffix: `"2026-10-18T14:03:22Z"` (contracts 1).
-/// Keeps full precision in memory; only the wire form is truncated. Whole seconds are
-/// this skill's choice, not the contracts' (contracts 12, question 12).
+/// RFC 3339 in UTC, whole seconds, `Z` suffix: `"2026-10-18T14:03:22Z"` (contracts 1,
+/// wire format; contracts 12, question 12). Keeps full precision in memory and in the
+/// database; only the wire form is truncated. No `now()`: every reading comes from the
+/// `Clock` port, so tests control time (backend domain 4).
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, utoipa::ToSchema, schemars::JsonSchema,
 )]
@@ -585,10 +604,6 @@ fn json_field_error(rejection: &(dyn std::error::Error + 'static)) -> ApiError {
 pub struct Timestamp(chrono::DateTime<chrono::Utc>);
 
 impl Timestamp {
-    pub fn now() -> Self {
-        Self(chrono::Utc::now())
-    }
-
     /// For the store, which binds `chrono::DateTime<Utc>` (database 2).
     pub const fn into_inner(self) -> chrono::DateTime<chrono::Utc> {
         self.0
@@ -653,8 +668,9 @@ impl tower_http::request_id::MakeRequestId for MakeReqId {
 // end: MakeReqId
 
 /// The global backstop (section 4): above every route's `DefaultBodyLimit`, so a JSON
-/// route's own limit always answers first. Photo, depth, confidence and form fields.
-pub const UPLOAD_REQUEST_MAX: usize = IMAGE_MAX_BYTES + 2 * 4 * 1024 * 1024 + 64 * 1024;
+/// route's own limit always answers first. Photo, depth, confidence and form fields
+/// (backend api 7, the uploads group).
+pub const UPLOAD_REQUEST_MAX: usize = IMAGE_MAX_BYTES + 2 * 4 * 1024 * 1024 + 128 * 1024;
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -703,6 +719,11 @@ pub fn app() -> Router {
             post(|| async { ApiError::RateLimited { retry_after_s: 6 } }),
         )
         .route("/raw", post(|| async { StatusCode::NO_CONTENT }))
+        // Stands in for `TimeoutLayer`, which answers a bare 503 (layers 4).
+        .route(
+            "/stalled",
+            get(|| async { StatusCode::SERVICE_UNAVAILABLE }),
+        )
         .fallback(|| async { ApiError::NotFound })
         .layer(DefaultBodyLimit::max(JSON_MAX_BYTES))
         .layer(
@@ -732,6 +753,15 @@ mod tests {
     /// Calls the app and checks that the body's `request_id` is the response's
     /// `x-request-id`, then replaces it with `[request_id]` so bodies compare exactly.
     async fn call(method: Method, uri: &str, body: &str) -> (StatusCode, HeaderValue, Value) {
+        let (status, headers, body) = call_with_headers(method, uri, body).await;
+        (status, headers[header::CONTENT_TYPE].clone(), body)
+    }
+
+    async fn call_with_headers(
+        method: Method,
+        uri: &str,
+        body: &str,
+    ) -> (StatusCode, axum::http::HeaderMap, Value) {
         let request = axum::http::Request::builder()
             .method(method)
             .uri(uri)
@@ -742,7 +772,7 @@ mod tests {
         let response = app().oneshot(request).await.unwrap();
         let status = response.status();
         assert!(!response.headers().contains_key(header::ALLOW));
-        let content_type = response.headers()[header::CONTENT_TYPE].clone();
+        let headers = response.headers().clone();
         let id = response.headers()["x-request-id"]
             .to_str()
             .unwrap()
@@ -752,7 +782,7 @@ mod tests {
         assert!(id.starts_with("req_") && id.len() == 30, "{id}");
         assert_eq!(body["error"]["request_id"], id.as_str());
         body["error"]["request_id"] = Value::from("[request_id]");
-        (status, content_type, body)
+        (status, headers, body)
     }
 
     #[tokio::test]
@@ -818,9 +848,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rate_limited_carries_retry_after_s() {
-        let (status, _, body) = call(Method::POST, "/invites/ABC/accept", "").await;
+    async fn rate_limited_carries_retry_after_s_and_the_header() {
+        let (status, headers, body) =
+            call_with_headers(Method::POST, "/invites/ABC/accept", "").await;
         assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(headers[header::RETRY_AFTER], "6");
         assert_eq!(
             body,
             json!({ "error": {
@@ -835,8 +867,10 @@ mod tests {
 
     #[tokio::test]
     async fn an_unavailable_dependency_is_503_with_retry_after_and_no_cause() {
-        let (status, _, body) = call(Method::GET, "/gardens/g1/weather", "").await;
+        let (status, headers, body) =
+            call_with_headers(Method::GET, "/gardens/g1/weather", "").await;
         assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(headers[header::RETRY_AFTER], "5");
         assert_eq!(
             body,
             json!({ "error": {
@@ -845,6 +879,24 @@ mod tests {
                 "retryable": true,
                 "retry_after_s": 5,
                 "details": { "upstream": "weather" },
+                "request_id": "[request_id]"
+            }})
+        );
+    }
+
+    #[tokio::test]
+    async fn the_timeout_layers_bare_503_is_upstream_unavailable_from_api() {
+        let (status, headers, body) = call_with_headers(Method::GET, "/stalled", "").await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(headers[header::RETRY_AFTER], "5");
+        assert_eq!(
+            body,
+            json!({ "error": {
+                "code": "upstream_unavailable",
+                "message": "A service we depend on is unavailable. Try again shortly.",
+                "retryable": true,
+                "retry_after_s": 5,
+                "details": { "upstream": "api" },
                 "request_id": "[request_id]"
             }})
         );
@@ -896,6 +948,18 @@ mod tests {
             "The request couldn't be processed (Length Required)."
         );
         assert_eq!(
+            from_status(StatusCode::UNAUTHORIZED).code(),
+            ErrorCode::Unauthenticated
+        );
+        let media = from_status(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        assert_eq!(media.code(), ErrorCode::UnsupportedMediaType);
+        assert_eq!(
+            media.details(),
+            Some(serde_json::json!({ "accepted": ACCEPTED_MEDIA_TYPES }))
+        );
+        // 408 and 504 are never produced (contracts 2, timeouts); if one appeared, it
+        // would be an unrendered response, logged as `internal`.
+        assert_eq!(
             from_status(StatusCode::GATEWAY_TIMEOUT).code(),
             ErrorCode::Internal
         );
@@ -918,7 +982,9 @@ mod tests {
                 hint: Some(StateHint::NewScan),
                 ..InvalidStateDetails::default()
             }),
-            ApiError::RequestInProgress { retry_after_s: 2 },
+            ApiError::RequestInProgress {
+                retry_after_s: SHORT_RETRY_AFTER_S,
+            },
             ApiError::LeaseLost {
                 job_id: "01JAX".into(),
             },
@@ -946,12 +1012,12 @@ mod tests {
             },
             ApiError::Internal(source()),
             ApiError::ProcessingUnavailable {
-                retry_after_s: 5,
+                retry_after_s: SHORT_RETRY_AFTER_S,
                 source: source(),
             },
             ApiError::UpstreamUnavailable {
                 upstream: "weather",
-                retry_after_s: 5,
+                retry_after_s: UNAVAILABLE_RETRY_AFTER_S,
                 source: source(),
             },
         ]
@@ -1010,7 +1076,7 @@ mod tests {
                 (429, true, Some(6)),
                 (429, false, None),
                 (500, false, None),
-                (503, true, Some(5)),
+                (503, true, Some(2)),
                 (503, true, Some(5)),
             ]
         );
@@ -1062,11 +1128,11 @@ What the example shows, rule by rule:
 
 - **`ErrorBody` exactly.** `retry_after_s` and `details` are omitted when absent, never `null` ([contracts 1, notation](../../../docs/architecture/contracts.md#notation)); `request_id` is always present. The tests compare the whole JSON value.
 - **`message` is `Display`.** For `Internal`, `ProcessingUnavailable` and `UpstreamUnavailable` it is a fixed sentence; the source chain goes to the log, not the body ([rust-errors](../rust-errors/SKILL.md#display-and-source)). A response that no `ApiError` made gets a fixed sentence from `from_status`, never a bare status number.
-- **`retry_after_s` on `503`.** Both `503` codes always send it, as contracts 2 lists it "with … 503"; `UNAVAILABLE_RETRY_AFTER_S` (5 s) is the value when the cause gives none.
+- **`retry_after_s` and `Retry-After`.** Contracts 2 fixes the values: `SHORT_RETRY_AFTER_S` (2 s) for `request_in_progress` and `processing_unavailable`, `UNAVAILABLE_RETRY_AFTER_S` (5 s) for `upstream_unavailable` unless the provider named a longer wait, and the limiter's wait, rounded up, for `rate_limited` ([contracts 2](../../../docs/architecture/contracts.md#2-errors), "`retry_after_s`"; [backend api 22](../../../docs/backend/api.md#22-decisions-on-the-contracts-open-questions)). The renderer copies the number into a `Retry-After` header; the tests check both.
 - **Logging.** `render_errors` logs each `5xx` once: `internal` at `error`, the `503` codes at `warn`, with `request_id` and the cause chain as fields ([contracts 2](../../../docs/architecture/contracts.md#2-errors): `internal` is "logged with `request_id`"; [rust-tracing](../rust-tracing/SKILL.md)). Handlers don't log the error they return.
 - **Panics.** [`CatchPanicLayer::custom`](https://docs.rs/tower-http/0.7.1/tower_http/catch_panic/struct.CatchPanicLayer.html#method.custom) takes a handler that implements `ResponseForPanic`, which any `FnMut(Box<dyn Any + Send>) -> Response + Clone` does (`catch_panic.rs`, `impl ResponseForPanic for F`). Returning `ApiError::Internal(...).into_response()` puts `ErrorParts` on the response, so the renderer writes `internal`. The default handler answers `text/plain` "Service panicked" (`DefaultResponseForPanic`). A panic is still a bug ([rust-errors](../rust-errors/SKILL.md#panics-and-expect)). It catches panics while the response future runs, not while a streamed body (SSE) is polled.
-- **Unknown routes and methods.** `Router::fallback` returns `not_found`. axum's 405 has an empty body and an `Allow` header; the renderer turns it into `404 not_found`, and `without_allow`, wrapped around the finished router, removes `Allow`, so the response says nothing about the route. It has to sit outside the router because axum's method router adds `Allow` after the route's own layers have run (`MethodRouter::call_with_state`). **Not in the contracts yet:** contracts 2 has no code for `405`, so this skill answers `404` ([contracts 12, question 16](../../../docs/architecture/contracts.md#12-open-questions)). [`Router::method_not_allowed_fallback`](https://docs.rs/axum/0.8.9/axum/struct.Router.html#method.method_not_allowed_fallback) is the alternative if a 405 status is wanted.
-- **Timeouts.** tower-http's `TimeoutLayer` answers with the status it was given and an empty body ([layers 4](layers.md#4-timeouts)); the renderer turns `408` and `504` into `internal`, which is logged. **Not in the contracts yet:** contracts 2 has no timeout code, and `internal` is `retryable: false`, so the app doesn't retry a timed-out request ([frontend 9](../../../docs/frontend/README.md#error-handling); [contracts 12, questions 16 and 17](../../../docs/architecture/contracts.md#12-open-questions)).
+- **Unknown routes and methods.** `Router::fallback` returns `not_found`. axum's 405 has an empty body and an `Allow` header; the renderer turns it into `404 not_found`, and `without_allow`, wrapped around the finished router, removes `Allow`, so the response says nothing about the route. It has to sit outside the router because axum's method router adds `Allow` after the route's own layers have run (`MethodRouter::call_with_state`). Contracts 2 settles it: a method the route doesn't have is `404 not_found` without `Allow`, so it reads like an unknown path ([contracts 2](../../../docs/architecture/contracts.md#2-errors), `not_found`; [contracts 12, question 16](../../../docs/architecture/contracts.md#12-open-questions); [backend api 22](../../../docs/backend/api.md#22-decisions-on-the-contracts-open-questions)).
+- **Timeouts.** tower-http's `TimeoutLayer` answers with the status it was given and an empty body; the API gives it `503` ([layers 4](layers.md#4-timeouts)), and `from_status` turns that into `503 upstream_unavailable` with `upstream: "api"`, `retryable: true` and `retry_after_s: 5`, logged at `warn` with the cause "the request timed out" (the `the_timeout_layers_bare_503_is_upstream_unavailable_from_api` test). Contracts 2 settles it this way because such a request is almost always waiting on a slow dependency and every create call is idempotent; `408` and `504` are never produced ([contracts 2](../../../docs/architecture/contracts.md#2-errors), "Timeouts"; [contracts 12, questions 16 and 17](../../../docs/architecture/contracts.md#12-open-questions); [backend api 22](../../../docs/backend/api.md#22-decisions-on-the-contracts-open-questions)). No handler answers a bare `503` itself: every other `503` is an `ApiError` with its own `ErrorParts`, so only the timeout reaches this branch.
 - **The request ID** comes from the request's `RequestId` extension, the same value [`PropagateRequestIdLayer`](https://docs.rs/tower-http/0.7.1/tower_http/request_id/struct.PropagateRequestIdLayer.html) copies to the response's `x-request-id`. `SetRequestIdLayer` would keep an `x-request-id` the client sent (`request_id.rs`, `SetRequestId::call`), so the stack first removes it, as [rust-tracing](../rust-tracing/request-id.md#1-the-layer-stack) decides; the tests send one and check it was replaced.
 
 ## 3. Extractor rejections
@@ -1077,16 +1143,16 @@ axum's built-in rejections answer in plain text with their own statuses: a JSON 
 |---|---|---|
 | `ApiJson<T>` (section 2) | Every JSON body | `invalid_request`, `field` = the JSON path (`location.lat`) from `serde_path_to_error`, which axum documents as reachable through `source()` ([accessing inner errors](https://docs.rs/axum/0.8.9/axum/extract/index.html#accessing-inner-errors)) |
 | `ApiQuery<T>` | `?cursor=&limit=` and other query strings | `invalid_request`, `field` = the parameter name |
-| `ApiPath<T>` | Path captures, typed (`ApiPath<ScanId>`) | `invalid_request` for a value that doesn't parse, `field` = the capture's name; `internal` for `MissingPathParams` or a wrong parameter count, which are bugs |
+| `ApiPath<T>` | Path captures, typed (`ApiPath<ScanId>`) | `404 not_found` for a value that doesn't parse, exactly like an unknown ID; `internal` for `MissingPathParams`, a wrong parameter count or an unsupported type, which are bugs |
 | `ApiMultipart` | Uploads | `invalid_request` for a missing or bad boundary. Errors while reading arrive per field as `MultipartError`; map them by its `status()`: `413` → `upload_too_large`, else `invalid_request` |
 | `HeaderMap` | `Idempotency-Key`, `Last-Event-ID`, `X-Lease-Token` | Parse by hand; a bad value is `invalid_request` with the header's name as `field` |
 
 Rules:
 
 - **The body extractor goes last**, and only one may consume the body. Everything before it must implement `FromRequestParts` (`State`, `ApiPath`, `ApiQuery`, `HeaderMap`, the auth extractor). ([the order of extractors](https://docs.rs/axum/0.8.9/axum/extract/index.html#the-order-of-extractors))
-- **IDs in paths are typed** (`ApiPath<ScanId>`, with the ID newtypes of [rust-contract-types](../rust-contract-types/primitives.md#1-the-code)), so a value that isn't a ULID fails extraction with `400 invalid_request` naming the capture. A well-formed ID that names no record, or one the caller may not see, is `404` ([contracts 2](../../../docs/architecture/contracts.md#2-errors)). **Not in the contracts yet:** contracts 2 doesn't say whether a malformed ID is `400` or `404`; this skill answers `400`, which reveals nothing because nothing can exist under it ([contracts 12, question 14](../../../docs/architecture/contracts.md#12-open-questions)).
+- **IDs in paths are typed** (`ApiPath<ScanId>`, with the `Id<T>` aliases of [rust-contract-types](../rust-contract-types/primitives.md#1-the-code)), and a value that isn't a ULID is `404 not_found`, the same body as a well-formed ID that names no record or one the caller may not see: the app builds paths only from IDs it received, so a garbled one is an unknown URL, and `404` reveals nothing (the `a_malformed_path_id_is_not_found_like_an_unknown_one` test). A malformed ID in a **body or query** is different: it fails decoding like any wrong-typed field, so it is `400 invalid_request` naming the field ([contracts 2](../../../docs/architecture/contracts.md#2-errors); [contracts 12, question 14](../../../docs/architecture/contracts.md#12-open-questions); [backend api 22](../../../docs/backend/api.md#22-decisions-on-the-contracts-open-questions)).
 - **Path syntax is `/{id}`.** axum 0.8 changed captures from `/:id` to `/{id}` and wildcards to `/{*rest}`; the old syntax panics when the route is added ([axum CHANGELOG 0.8.0](https://docs.rs/crate/axum/0.8.9/source/CHANGELOG.md), `routing/path_router.rs`).
-- **Unknown JSON fields in app requests are rejected.** Request types use `#[serde(deny_unknown_fields)]`, so a misspelt field is `400 invalid_request` naming it instead of a silent `None` ([rust-contract-types 5](../rust-contract-types/SKILL.md#5-unknown-fields-and-unknown-values-by-direction); the `missing_and_unknown_fields_are_named` test). **Not in the contracts yet:** contracts 2 lists malformed JSON and missing or wrong-typed fields as `invalid_request`, not unknown ones ([contracts 12, question 13](../../../docs/architecture/contracts.md#12-open-questions)). Worker requests keep ignoring unknown fields, because older and newer workers run side by side ([contracts 1, versioning](../../../docs/architecture/contracts.md#versioning)).
+- **Unknown JSON fields in app requests are rejected.** Request types use `#[serde(deny_unknown_fields)]`, so a misspelt field is `400 invalid_request` naming it instead of a silent `None` ([rust-contract-types 5](../rust-contract-types/SKILL.md#5-unknown-fields-and-unknown-values-by-direction); the `missing_and_unknown_fields_are_named` test). Contracts 1 and 2 settle it: an unknown field is `400 invalid_request` with `details.field` naming its JSON path, so an API that accepts a new field is deployed before an app that sends it ([contracts 1, versioning](../../../docs/architecture/contracts.md#versioning); [contracts 12, question 13](../../../docs/architecture/contracts.md#12-open-questions); [backend api 22](../../../docs/backend/api.md#22-decisions-on-the-contracts-open-questions)). Worker requests keep ignoring unknown fields both ways, because older and newer workers run side by side. The agent's tool arguments are strict too: a tool call with an unknown argument is refused back to the model ([backend agent 18](../../../docs/backend/agent.md#18-open-questions)).
 
 ```rust
 use std::error::Error as StdError;
@@ -1133,19 +1199,12 @@ impl From<axum::extract::rejection::PathRejection> for ApiError {
         use axum::extract::rejection::PathRejection;
         match rejection {
             PathRejection::FailedToDeserializePathParams(e) => match e.into_kind() {
-                ErrorKind::ParseErrorAtKey {
-                    key, expected_type, ..
-                } => Self::invalid_request(key, format!("expected {expected_type}")),
-                ErrorKind::DeserializeError { key, message, .. } => {
-                    Self::invalid_request(key, message)
-                }
-                ErrorKind::InvalidUtf8InPathParam { key } => {
-                    Self::invalid_request(key, "invalid UTF-8")
-                }
                 // The route and the type disagree: a bug, not the client's input.
                 kind @ (ErrorKind::WrongNumberOfParameters { .. }
                 | ErrorKind::UnsupportedType { .. }) => Self::Internal(kind.to_string().into()),
-                other => Self::invalid_request("path", other.to_string()),
+                // contracts 2: a malformed ID in a path names no record, so it is a 404 like an
+                // unknown one (contracts 12, question 14).
+                _ => Self::NotFound,
             },
             other => Self::Internal(other.body_text().into()),
         }
@@ -1172,10 +1231,8 @@ impl<S: Send + Sync> FromRequest<S> for ApiMultipart {
     }
 }
 
-/// A path ID, typed: the real newtypes are in rust-contract-types primitives.md.
-/// It parses inside a `visit_str`, so axum's path deserializer can name the capture in
-/// the error (`DeserializeError { key, .. }`, `extract/path/de.rs`). `ulid`'s own
-/// `Deserialize` parses after the visitor returns, and the key is lost.
+/// A path ID, typed: the real one is `Id<table::Scan>` (rust-contract-types primitives.md). A value
+/// that isn't a ULID fails to deserialize, which `ApiPath` answers with `404`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScanId(ulid::Ulid);
 
@@ -1214,9 +1271,10 @@ impl UploadLimits {
         depth_bytes: 4 * 1024 * 1024,
     };
 
-    /// For `DefaultBodyLimit::max` on the upload route: photo, depth, confidence, form fields.
+    /// For `DefaultBodyLimit::max` on the upload route: photo, depth, confidence, form fields
+    /// (backend api 7: 12 MiB + 2 × 4 MiB + 128 KiB).
     pub const fn request_bytes(self) -> usize {
-        self.image_bytes + 2 * self.depth_bytes + 64 * 1024
+        self.image_bytes + 2 * self.depth_bytes + 128 * 1024
     }
 }
 
@@ -1331,6 +1389,13 @@ pub struct ListParams {
     pub limit: Option<u32>,
 }
 
+/// An ID in a query string (`GET /conversations?anchor_id=`): malformed is `400`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AnchorParams {
+    pub anchor_id: ScanId,
+}
+
 // copy of: rust-axum-api/error-responses.md ErrorCode
 /// contracts 2 `ErrorCode`. In the domain crate; `ToSchema` adds it to the generated spec.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, utoipa::ToSchema)]
@@ -1434,9 +1499,11 @@ pub enum Budget {
 pub const ACCEPTED_MEDIA_TYPES: [&str; 4] = ["image/jpeg", "image/png", "image/webp", "image/heic"];
 /// contracts 2: `max_bytes` of `upload_too_large`, an image over 12 MB (read as MiB).
 pub const IMAGE_MAX_BYTES: usize = 12 * 1024 * 1024;
-/// `retry_after_s` on a `503` when the cause gives no better number. The value is this
-/// skill's choice; contracts 2 only says the field is sent with `503`.
+/// contracts 2: `retry_after_s` of `upstream_unavailable` (also a request past the API's
+/// timeout) unless the provider named a longer wait.
 pub const UNAVAILABLE_RETRY_AFTER_S: u64 = 5;
+/// contracts 2: `retry_after_s` of `request_in_progress` and `processing_unavailable`.
+pub const SHORT_RETRY_AFTER_S: u64 = 2;
 
 /// One variant per contracts 2 code. `Display` is the `message`: a sentence safe to show.
 #[derive(Debug, thiserror::Error)]
@@ -1658,9 +1725,10 @@ impl axum::response::IntoResponse for ApiError {
 // end: ApiError
 
 // copy of: rust-contract-types/primitives.md Timestamp
-/// RFC 3339 in UTC, whole seconds, `Z` suffix: `"2026-10-18T14:03:22Z"` (contracts 1).
-/// Keeps full precision in memory; only the wire form is truncated. Whole seconds are
-/// this skill's choice, not the contracts' (contracts 12, question 12).
+/// RFC 3339 in UTC, whole seconds, `Z` suffix: `"2026-10-18T14:03:22Z"` (contracts 1,
+/// wire format; contracts 12, question 12). Keeps full precision in memory and in the
+/// database; only the wire form is truncated. No `now()`: every reading comes from the
+/// `Clock` port, so tests control time (backend domain 4).
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, utoipa::ToSchema, schemars::JsonSchema,
 )]
@@ -1669,10 +1737,6 @@ impl axum::response::IntoResponse for ApiError {
 pub struct Timestamp(chrono::DateTime<chrono::Utc>);
 
 impl Timestamp {
-    pub fn now() -> Self {
-        Self(chrono::Utc::now())
-    }
-
     /// For the store, which binds `chrono::DateTime<Utc>` (database 2).
     pub const fn into_inner(self) -> chrono::DateTime<chrono::Utc> {
         self.0
@@ -1742,7 +1806,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_malformed_path_id_is_invalid_request_naming_the_capture() {
+    async fn a_malformed_query_id_is_invalid_request_naming_it() {
+        let (mut parts, ()) = HttpRequest::get("/conversations?anchor_id=not-a-ulid")
+            .body(())
+            .unwrap()
+            .into_parts();
+        let result = ApiQuery::<AnchorParams>::from_request_parts(&mut parts, &()).await;
+        let Err(ApiError::InvalidRequest { field, .. }) = result else {
+            panic!("expected invalid_request");
+        };
+        assert_eq!(field, "anchor_id");
+    }
+
+    #[tokio::test]
+    async fn a_malformed_path_id_is_not_found_like_an_unknown_one() {
         use axum::{Router, routing::get};
         use http_body_util::BodyExt;
         use tower::ServiceExt;
@@ -1762,9 +1839,10 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let response = app.oneshot(bad).await.unwrap();
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let parts = response.extensions().get::<ErrorParts>().unwrap();
-        assert_eq!(parts.details.as_ref().unwrap()["field"], "id");
+        assert_eq!(parts.code, ErrorCode::NotFound);
+        assert!(parts.details.is_none());
     }
 
     fn form(parts: &[(&str, &[u8])]) -> Request {
@@ -1865,9 +1943,10 @@ Two mechanisms exist, and the API uses both:
 
 Settings:
 
-- **One `RequestBodyLimitLayer`**: the global backstop at `UPLOAD_REQUEST_MAX`, the upload request size, around the whole router, so no handler can read more, whatever extractor it uses. It is larger than every route's `DefaultBodyLimit`, so on any route the route's own limit answers first and reports its own number. Never add a smaller `RequestBodyLimitLayer` on a route: a chunked body over it errors inside the extractor, which then reports the extractor's limit, not the layer's. The backstop's own `413` (a `Content-Length` over 20 MiB) renders as `upload_too_large` with `max_bytes` = 12,582,912, the photo limit.
-- **Upload routes** (`POST /scans/{id}/images`, `POST /conversations/{id}/images`): `.layer(DefaultBodyLimit::max(UploadLimits::CONTRACT.request_bytes()))` on that route only ([different limits for different routes](https://docs.rs/axum/0.8.9/axum/extract/struct.DefaultBodyLimit.html#different-limits-for-different-routes)), and the handler caps each part as in section 3: the photo at 12 MiB (`upload_too_large`, `max_bytes` = 12,582,912), the depth map at 4 MiB (dropped with `too_large`, the photo kept, [contracts 3](../../../docs/architecture/contracts.md#post-scansidimages)).
-- **JSON routes**: `DefaultBodyLimit::max(JSON_MAX_BYTES)` set explicitly, so the limit the rejection reports is the one in force. 1 MiB is this skill's choice; the contracts give no JSON limit. A body over it is `400 invalid_request` with `field: "body"` and the limit in the message. **Not in the contracts yet:** contracts 2 defines `upload_too_large` only for an image over 12 MB, and the app answers it by re-encoding the photo ([frontend 9](../../../docs/frontend/README.md#error-handling)), so an oversized JSON body must not use it ([contracts 12, question 15](../../../docs/architecture/contracts.md#12-open-questions)).
+- **One `RequestBodyLimitLayer`**: the global backstop at `UPLOAD_REQUEST_MAX`, the upload request size and the largest group limit (the worker group's is 16 MiB), around the whole router, so no handler can read more, whatever extractor it uses. It is larger than every route's `DefaultBodyLimit`, so on any route the route's own limit answers first and reports its own number. Never add a smaller `RequestBodyLimitLayer` on a route: a chunked body over it errors inside the extractor, which then reports the extractor's limit, not the layer's. The backstop's own `413` (a `Content-Length` over 20 MiB + 128 KiB) renders as `upload_too_large` with `max_bytes` = 12,582,912, the photo limit.
+- **Upload routes** (`POST /scans/{id}/images`, `POST /conversations/{id}/images`): `.layer(DefaultBodyLimit::max(UploadLimits::CONTRACT.request_bytes()))`, 12 MiB + 2 × 4 MiB + 128 KiB, on their own group only ([backend api 7](../../../docs/backend/api.md#7-the-router-and-the-layer-stack)) ([different limits for different routes](https://docs.rs/axum/0.8.9/axum/extract/struct.DefaultBodyLimit.html#different-limits-for-different-routes)), and the handler caps each part as in section 3: the photo at 12 MiB (`upload_too_large`, `max_bytes` = 12,582,912), the depth map at 4 MiB (dropped with `too_large`, the photo kept, [contracts 3](../../../docs/architecture/contracts.md#post-scansidimages)).
+- **JSON routes** (the app and claim groups): `DefaultBodyLimit::max(JSON_MAX_BYTES)` set explicitly, so the limit the rejection reports is the one in force. A body over it is `400 invalid_request` with `field: "body"` and the limit in the message; `413 upload_too_large` stays for images, which the app answers by re-encoding the photo ([frontend 9](../../../docs/frontend/README.md#error-handling)) ([contracts 2](../../../docs/architecture/contracts.md#2-errors); [contracts 12, question 15](../../../docs/architecture/contracts.md#12-open-questions); [backend api 22](../../../docs/backend/api.md#22-decisions-on-the-contracts-open-questions)). **Not in the contracts yet:** the 1 MiB itself is a placeholder no document gives ([contracts 12, question 34](../../../docs/architecture/contracts.md#12-open-questions)).
+- **Worker routes** (heartbeat, events, complete, job images): `DefaultBodyLimit::max(16 MiB)`, for result bodies with masks and embeddings for every image ([backend api 7](../../../docs/backend/api.md#7-the-router-and-the-layer-stack)).
 - "12 MB" in the contracts is read as 12 MiB here; `max_bytes` tells the app the exact number either way.
 
 ## 5. 404, not 403
@@ -1876,6 +1955,7 @@ A user who isn't a member of the garden (or doesn't own the conversation) gets `
 
 - Resolve membership and the record **in one step** that returns "not found" for both cases, so no code path can tell them apart. The garden-scoped repository function takes the user ([architecture 4](../../../docs/architecture/README.md#authorization-model); the query is in [rust-surrealdb](../rust-surrealdb/SKILL.md)).
 - Check the role **after** membership: a non-member never learns which role a route needs.
+- In the `api` crate both checks are one extractor that returns a typed proof, `Membership<R>`, which the repository call requires ([auth 4](auth.md#4-which-routes-get-which-check); [backend domain 8](../../../docs/backend/domain.md#8-authorization-proofs)). The function below is the decision it makes.
 - The roles form a chain (each column of the role matrix has every right of the one before), so `Role` derives `Ord` in matrix order.
 - The SSE stream checks membership before it sends anything, the same way ([architecture 4](../../../docs/architecture/README.md#authorization-model)).
 

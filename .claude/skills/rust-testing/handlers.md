@@ -6,7 +6,9 @@ Part of [`rust-testing`](SKILL.md). Handler tests call the axum `Router` as a to
 
 The real router, `AppState` and `ApiError` belong to [`rust-axum-api`](../rust-axum-api/SKILL.md) and the request-ID layers to [`rust-tracing`](../rust-tracing/SKILL.md). The block below builds a small router with the real error path, so the test checks the body the API actually writes: `ApiError`, the `render_errors` middleware that turns it into the contracts §2 body, and `MakeReqId`, the `req_<ULID>` generator, are exact copies of their canonical blocks ([error-responses.md](../rust-axum-api/error-responses.md), [request-id.md](../rust-tracing/request-id.md#2-the-code-and-its-test)), which `check_examples.py` compares line for line. The layer order is the one in [`rust-axum-api`, layers](../rust-axum-api/layers.md): the incoming `x-request-id` removed, then `SetRequestIdLayer`, `PropagateRequestIdLayer` and `render_errors`. Only the two handlers are stand-ins; the real `get_scan` takes `ApiPath<ScanId>`.
 
-In `bins/api/tests/` call the real `api::app` the same way. An integration test is linked with the package's library, not its binary ([Cargo book, integration tests](https://doc.rust-lang.org/cargo/reference/cargo-targets.html#integration-tests): "Integration tests can use the public API of the package's library"), so `bins/api` has a `src/lib.rs` that exports `app` and `AppState`, and its `src/main.rs` calls them ([binaries](https://doc.rust-lang.org/cargo/reference/cargo-targets.html#binaries): "Binaries can use the public API of the package's library").
+In the backend the handler tests are a `#[cfg(test)]` module of the `api` binary itself (`bins/api/src/tests.rs`), so they call the real `crate::router::app(state)` with no `src/lib.rs` ([backend api 3](../../../docs/backend/api.md#3-module-layout), [21](../../../docs/backend/api.md#21-testing)). A unit-test module sees the crate's private items; an integration test in `bins/api/tests/` would see only a library's public API ([Cargo book, integration tests](https://doc.rust-lang.org/cargo/reference/cargo-targets.html#integration-tests)), which a binary-only package doesn't have. The state is built from fakes: the domain ports as mockall mocks from `domain`'s `mock` feature, the store as `tests/fake_store.rs` (one mock per repository trait, generated), and small fakes for the pipeline, agent and vision seams; every port is an `Arc<dyn Port>`, so a fake fills the same slot as the real adapter ([backend api 6](../../../docs/backend/api.md#6-application-state-wiring-and-the-seams); [mocks.md](mocks.md)).
+
+Cover every status an endpoint can return, with the body contracts §2 gives it. The cases the rules settled ([contracts §12](../../../docs/architecture/contracts.md#12-open-questions), questions 13–17, 23 and 24; [backend api 22](../../../docs/backend/api.md#22-decisions-on-the-contracts-open-questions)) each need one: a malformed path ID is `404 not_found`, the same body as an unknown one, while a malformed body or query ID is `400` naming the field; an unknown JSON field is `400` naming its path; a JSON body over the 1 MiB limit is `400` with `field: "body"` (the number itself is a placeholder, [contracts §12](../../../docs/architecture/contracts.md#12-open-questions), question 34); a request past its timeout is `503 upstream_unavailable` with `upstream: "api"`, `retry_after_s: 5` and `Retry-After: 5`; a worker call without `X-Lease-Token` is `400`; a webhook with a bad signature is `401`, and any signed delivery `204`. The examples for each are in [`rust-axum-api`](../rust-axum-api/SKILL.md): [error-responses 2 and 3](../rust-axum-api/error-responses.md#2-the-compiled-example), [layers 4](../rust-axum-api/layers.md#4-timeouts), [auth 3](../rust-axum-api/auth.md#3-the-auth-webhook).
 
 - `Router` implements `Service<Request<Body>>`, so `oneshot` sends one request and returns the response ([`ServiceExt::oneshot`](https://docs.rs/tower/0.5.3/tower/trait.ServiceExt.html#method.oneshot)).
 - For several requests against one state, turn the router into a service once and call `ready().await?.call(request)` each time; `ServiceExt::<Request<Body>>::ready` names the request type because `Router` is a service for any body ([`ServiceExt::ready`](https://docs.rs/tower/0.5.3/tower/trait.ServiceExt.html#method.ready); [`Service::call`](https://docs.rs/tower/0.5.3/tower/trait.Service.html#tymethod.call)).
@@ -30,7 +32,8 @@ struct AppState {
     plants_created: AtomicU32,
 }
 
-// Stand-in: the real handler reads the store and answers 404 for a scan the user can't see.
+// Stand-in: the real handler takes `Access<Viewer, table::Scan>`, which answers 404 for a
+// malformed ID, an unknown scan and one the user can't see alike.
 async fn get_scan(Path(_id): Path<String>) -> Result<String, ApiError> {
     Err(ApiError::NotFound)
 }
@@ -160,9 +163,11 @@ pub enum Budget {
 pub const ACCEPTED_MEDIA_TYPES: [&str; 4] = ["image/jpeg", "image/png", "image/webp", "image/heic"];
 /// contracts 2: `max_bytes` of `upload_too_large`, an image over 12 MB (read as MiB).
 pub const IMAGE_MAX_BYTES: usize = 12 * 1024 * 1024;
-/// `retry_after_s` on a `503` when the cause gives no better number. The value is this
-/// skill's choice; contracts 2 only says the field is sent with `503`.
+/// contracts 2: `retry_after_s` of `upstream_unavailable` (also a request past the API's
+/// timeout) unless the provider named a longer wait.
 pub const UNAVAILABLE_RETRY_AFTER_S: u64 = 5;
+/// contracts 2: `retry_after_s` of `request_in_progress` and `processing_unavailable`.
+pub const SHORT_RETRY_AFTER_S: u64 = 2;
 
 /// One variant per contracts 2 code. `Display` is the `message`: a sentence safe to show.
 #[derive(Debug, thiserror::Error)]
@@ -419,7 +424,7 @@ pub async fn render_errors(
         Some(parts) => parts,
         None if response.status().as_u16() < 400 || is_json(&response) => return response,
         None => {
-            // Not made by ApiError: axum's 405 and rejections, tower-http's 413, a timeout.
+            // Not made by ApiError: axum's 405 and rejections, tower-http's 413, the timeout's 503.
             let error = from_status(response.status());
             *response.status_mut() = error.status();
             error.parts()
@@ -449,6 +454,10 @@ pub async fn render_errors(
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/json"),
     );
+    // The same wait as `retry_after_s`, for clients that read the header (backend api 8).
+    if let Some(seconds) = parts.retry_after_s {
+        headers.insert(header::RETRY_AFTER, HeaderValue::from(seconds));
+    }
     headers.remove(header::CONTENT_LENGTH);
     *response.body_mut() = axum::body::Body::from(bytes);
     response
@@ -469,12 +478,18 @@ fn from_status(status: axum::http::StatusCode) -> ApiError {
         StatusCode::PAYLOAD_TOO_LARGE => ApiError::UploadTooLarge {
             max_bytes: IMAGE_MAX_BYTES,
         },
-        // Not in the contracts yet: a method a route lacks is a 404 (contracts 12, question 16).
+        // contracts 2: a method a route lacks is a 404 without `Allow` (contracts 12, question 16).
         StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED => ApiError::NotFound,
-        // Not in the contracts yet: a timeout is `internal` (contracts 12, questions 16 and 17).
-        StatusCode::REQUEST_TIMEOUT | StatusCode::GATEWAY_TIMEOUT => {
-            ApiError::Internal("the request timed out".into())
-        }
+        // As backend api 8 maps them: a bare 401 or 415 keeps its own code.
+        StatusCode::UNAUTHORIZED => ApiError::Unauthenticated,
+        StatusCode::UNSUPPORTED_MEDIA_TYPE => ApiError::UnsupportedMediaType,
+        // contracts 2: only the timeout layer answers 503 itself; a request past the API's
+        // timeout is `upstream_unavailable` from `api`, retryable (contracts 12, question 17).
+        StatusCode::SERVICE_UNAVAILABLE => ApiError::UpstreamUnavailable {
+            upstream: "api",
+            retry_after_s: UNAVAILABLE_RETRY_AFTER_S,
+            source: "the request timed out".into(),
+        },
         s if s.is_client_error() => ApiError::invalid_request(
             "request",
             format!(
@@ -544,9 +559,10 @@ impl tower_http::request_id::MakeRequestId for MakeReqId {
 // end: MakeReqId
 
 // copy of: rust-contract-types/primitives.md Timestamp
-/// RFC 3339 in UTC, whole seconds, `Z` suffix: `"2026-10-18T14:03:22Z"` (contracts 1).
-/// Keeps full precision in memory; only the wire form is truncated. Whole seconds are
-/// this skill's choice, not the contracts' (contracts 12, question 12).
+/// RFC 3339 in UTC, whole seconds, `Z` suffix: `"2026-10-18T14:03:22Z"` (contracts 1,
+/// wire format; contracts 12, question 12). Keeps full precision in memory and in the
+/// database; only the wire form is truncated. No `now()`: every reading comes from the
+/// `Clock` port, so tests control time (backend domain 4).
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, utoipa::ToSchema, schemars::JsonSchema,
 )]
@@ -555,10 +571,6 @@ impl tower_http::request_id::MakeRequestId for MakeReqId {
 pub struct Timestamp(chrono::DateTime<chrono::Utc>);
 
 impl Timestamp {
-    pub fn now() -> Self {
-        Self(chrono::Utc::now())
-    }
-
     /// For the store, which binds `chrono::DateTime<Utc>` (database 2).
     pub const fn into_inner(self) -> chrono::DateTime<chrono::Utc> {
         self.0
@@ -643,8 +655,8 @@ async fn unknown_scan_is_404_with_the_error_body() {
       "error": {
         "code": "not_found",
         "message": "We couldn't find that.",
-        "request_id": "[request_id]",
-        "retryable": false
+        "retryable": false,
+        "request_id": "[request_id]"
       }
     }
     "#);
@@ -668,7 +680,7 @@ async fn state_carries_across_calls() {
 }
 ```
 
-What the snapshot shows: `retry_after_s` and `details` are absent, not `null`, because contracts §1 says an optional field is omitted ([contracts 1, notation](../../../docs/architecture/contracts.md#notation)). The keys are sorted because the body was parsed into a `serde_json::Value` ([SKILL.md, snapshots](SKILL.md#4-snapshots-insta)).
+What the snapshot shows: `retry_after_s` and `details` are absent, not `null`, because contracts §1 says an optional field is omitted ([contracts 1, notation](../../../docs/architecture/contracts.md#notation)). The keys keep the order the API wrote them in, because the workspace turns on serde_json's `preserve_order` (the worker's VLM schemas need property order, [versions](../rust/versions.md)), so a parsed `serde_json::Value` is backed by an insertion-ordered map instead of a sorted `BTreeMap` ([`serde_json::Map`](https://docs.rs/serde_json/1.0.154/serde_json/struct.Map.html)). Feature unification turns it on for every crate in the build, so the snapshot shows the wire order.
 
 A client's `x-request-id` is replaced. `SetRequestIdLayer` alone would keep it: it only generates an ID when the header is missing (`SetRequestId::call` in `tower-http-0.7.1/src/request_id.rs`). The API removes the incoming header first, which is [`rust-tracing`](../rust-tracing/SKILL.md)'s rule, and the test above sends one to prove it.
 

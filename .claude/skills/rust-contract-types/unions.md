@@ -1,6 +1,6 @@
 # Tagged unions: SSE events, jobs, results, worker events, depth, chat
 
-Part of [rust-contract-types](SKILL.md). Each union below is shaped to produce exactly the JSON of its contract, and each block proves it. Every type named after a contract shape carries every field the contract gives it. The blocks carry exact copies of `V1` and `Timestamp` from [primitives.md](primitives.md#1-the-code) and use `String` for IDs and `f64` for `Confidence` so they compile on their own; real code uses the ID newtypes and `Confidence` from primitives.md. Shapes owned by another section of the contracts (`VlmFindings`, `Citation`, `PendingAction`, …) are `serde_json::Value` here.
+Part of [rust-contract-types](SKILL.md). Each union below is shaped to produce exactly the JSON of its contract, and each block proves it. Every type named after a contract shape carries every field the contract gives it. The blocks carry exact copies of `V1` and `Timestamp` from [primitives.md](primitives.md#1-the-code) and use `String` for IDs and `f64` for `Confidence` so they compile on their own; real code uses the ID newtypes and `Confidence` from primitives.md. Shapes owned by another section of the contracts (`VlmFindings`, `Citation`, `PendingAction`, …) are `serde_json::Value` here. The compiled `domain` types these sections teach are in [backend domain-types](../../../docs/backend/domain-types.md) 4 (scan events), 5 (worker API and jobs) and 8 (chat); where a block differs from them, the section says how. Two regions are canonical here: `JobHead` (section 3) and `JobErrorCode` (section 4).
 
 ## Contents
 
@@ -17,16 +17,16 @@ Part of [rust-contract-types](SKILL.md). Each union below is shaped to produce e
 
 [Contracts 4](../../../docs/architecture/contracts.md#envelope) writes every event as one flat object: the `ScanEventBase` fields, then `type`, then the event's own fields (`{"v":1,"seq":17,"run":1,"scan_id":"01JAX...","ts":"…","type":"finding","observation":{…}}`). A struct with the common fields and a `#[serde(flatten)]` body that is internally tagged by `type` produces exactly that, in that key order. The body is a separate enum so the serialised writer can build a body and assign `seq` and `ts` later. The block shows three events of the catalogue; the others follow the same pattern.
 
-`SpeciesCandidate.reference_image` is never stored in the event payload; it is filled in from `species_id` as the event is sent ([contracts 4, transport](../../../docs/architecture/contracts.md#transport)), so the stored body has it as `None` and the sender sets it.
+`SpeciesCandidate.reference_image` is never stored in the event payload; it is filled in from `species_id` as the event is sent ([contracts 4, transport](../../../docs/architecture/contracts.md#transport)), so the stored body has it as `None` and the sender sets it. The event derives `Deserialize` as well as `Serialize`: every event is stored in `scan_event` before it is sent, and a replay reads it back ([contracts 4, transport](../../../docs/architecture/contracts.md#transport)). The `domain` type is `ScanEvent<U: UrlState>`, stored as `ScanEvent<Stored>` with image IDs and sent as `ScanEvent<Signed>` with signed URLs, and its body's `event_type()` is also the stored `type` column ([backend domain-types 4](../../../docs/backend/domain-types.md#4-scan-events); [backend domain 5, signed-URL typing](../../../docs/backend/domain.md#5-signed-url-typing)). The block below keeps one plain type and an `Option` for the filled-in field, which is enough to show the serde shape.
 
 Sources: [internally tagged](https://serde.rs/enum-representations.html#internally-tagged), [`flatten`](https://serde.rs/attr-flatten.html), [`skip_serializing_if`](https://serde.rs/field-attrs.html#skip_serializing_if).
 
 ```rust
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 /// contracts 4 `Stage`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, ToSchema)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Stage {
     PlantCheck,
@@ -46,20 +46,21 @@ pub enum Stage {
     Plan,
 }
 
-#[derive(Clone, Debug, Serialize, ToSchema)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct Skipped {
     pub reason: String,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, ToSchema)]
+/// contracts 3 `SpeciesCandidate.source`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum SpeciesSource {
+pub enum CandidateSource {
     Bioclip,
     Vlm,
     User,
 }
 
-#[derive(Clone, Debug, Serialize, ToSchema)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct ReferenceImage {
     /// Signed, short-lived.
     pub url: String,
@@ -67,22 +68,22 @@ pub struct ReferenceImage {
 }
 
 /// contracts 3 `SpeciesCandidate`.
-#[derive(Clone, Debug, Serialize, ToSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct SpeciesCandidate {
     /// `Slug | null`: always present, `null` when the name isn't in the knowledge base.
     #[schema(required = true)]
     pub species_id: Option<String>,
     pub name: String,
     pub score: f64,
-    pub source: SpeciesSource,
+    pub source: CandidateSource,
     /// `reference_image?`: filled in as the event is sent, never stored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(nullable = false)]
     pub reference_image: Option<ReferenceImage>,
 }
 
-/// `ScanEventBase` + body (contracts 4). Serialize only: the API writes events, the app reads them.
-#[derive(Clone, Debug, Serialize)]
+/// `ScanEventBase` + body (contracts 4). Stored before it is sent, and read back for a replay.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ScanEvent {
     pub v: V1,
     pub seq: u64,
@@ -93,7 +94,7 @@ pub struct ScanEvent {
     pub body: ScanEventBody,
 }
 
-#[derive(Clone, Debug, Serialize, ToSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ScanEventBody {
     StageStarted {
@@ -103,7 +104,7 @@ pub enum ScanEventBody {
         stage: Stage,
         duration_ms: u64,
         /// `skipped?`: omitted when absent, never `null`.
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         #[schema(nullable = false)]
         skipped: Option<Skipped>,
     },
@@ -174,9 +175,10 @@ impl schemars::JsonSchema for V1 {
 // end: V1
 
 // copy of: rust-contract-types/primitives.md Timestamp
-/// RFC 3339 in UTC, whole seconds, `Z` suffix: `"2026-10-18T14:03:22Z"` (contracts 1).
-/// Keeps full precision in memory; only the wire form is truncated. Whole seconds are
-/// this skill's choice, not the contracts' (contracts 12, question 12).
+/// RFC 3339 in UTC, whole seconds, `Z` suffix: `"2026-10-18T14:03:22Z"` (contracts 1,
+/// wire format; contracts 12, question 12). Keeps full precision in memory and in the
+/// database; only the wire form is truncated. No `now()`: every reading comes from the
+/// `Clock` port, so tests control time (backend domain 4).
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, utoipa::ToSchema, schemars::JsonSchema,
 )]
@@ -185,10 +187,6 @@ impl schemars::JsonSchema for V1 {
 pub struct Timestamp(chrono::DateTime<chrono::Utc>);
 
 impl Timestamp {
-    pub fn now() -> Self {
-        Self(chrono::Utc::now())
-    }
-
     /// For the store, which binds `chrono::DateTime<Utc>` (database 2).
     pub const fn into_inner(self) -> chrono::DateTime<chrono::Utc> {
         self.0
@@ -244,12 +242,17 @@ mod tests {
             skipped: None,
         });
         // A string comparison, so key order and the omitted `skipped` are checked too.
+        let text = serde_json::to_string(&e).unwrap();
         assert_eq!(
-            serde_json::to_string(&e).unwrap(),
+            text,
             r#"{"v":1,"seq":5,"run":1,"scan_id":"01JAX3K9T6R2B8V0QZ4M7D1E5F","ts":"2026-10-18T14:03:22Z","type":"stage_completed","stage":"plant_check","duration_ms":812}"#
         );
         let json = serde_json::to_value(&e).unwrap();
         assert_eq!(json["type"], e.body.event_type());
+        // A replay reads the stored event back: the same body, the wire's whole second.
+        let back: ScanEvent = serde_json::from_str(&text).unwrap();
+        assert_eq!(back.body, e.body);
+        assert_eq!(serde_json::to_string(&back).unwrap(), text);
     }
 
     #[test]
@@ -259,7 +262,7 @@ mod tests {
                 species_id: None,
                 name: "Mystery vine".to_owned(),
                 score: 0.4,
-                source: SpeciesSource::Vlm,
+                source: CandidateSource::Vlm,
                 reference_image: None,
             }],
             working_species_id: None,
@@ -319,9 +322,11 @@ Without the `#[schema(...)]` attributes, utoipa renders `working_species_id` as 
 
 ## 2. Jobs: `kind` and `payload` are adjacent tags
 
-`Job` carries `kind` and, as a sibling, `payload` ([contracts 5, claim](../../../docs/architecture/contracts.md#post-internaljobsclaim)). That is serde's adjacently tagged representation, flattened into the job, so `kind` and `payload` come last in the JSON rather than in the contract's order (JSON objects are unordered; nothing reads a job by position). A worker that gets a `kind` it doesn't know fails to decode the job.
+`Job` carries `kind` and, as a sibling, `payload` ([contracts 5, claim](../../../docs/architecture/contracts.md#post-internaljobsclaim)). That is serde's adjacently tagged representation, flattened into the job, so `kind` and `payload` come last in the JSON rather than in the contract's order (JSON objects are unordered; nothing reads a job by position). The `domain` types are the same shapes with the ID newtypes ([backend domain-types 5, job and payloads](../../../docs/backend/domain-types.md#job-and-payloads)).
 
-**Not in the contracts yet:** an unknown `kind` is treated as a bug and the job is failed; contracts 5 doesn't say what `complete` reports ([contracts 12, question 21](../../../docs/architecture/contracts.md#12-open-questions)).
+A worker that gets a `kind` it doesn't know fails to decode the job. The claim already filters by the kinds the worker's `caps` cover, so this happens only when one slips through (an older worker against a newer API); the worker then completes the job `failed` with `unsupported_version`, `retryable: false`, read from the job's head (section 3), as it does for a payload it can't read. Settled in [contracts 12, question 21](../../../docs/architecture/contracts.md#12-open-questions) and stated in [contracts 5, leases](../../../docs/architecture/contracts.md#leases-runs-and-attempts) ([backend worker 16](../../../docs/backend/worker.md#16-decisions-on-the-contracts-open-questions)).
+
+Two payload fields follow the contract exactly: `regions` never carries a `mask_url` (`Omit<Region, "mask_url">`: workers have no route to masks, and the stages that read regions use boxes), and `skip_species_identification` is a `bool` that is left out when false ([contracts 5, payloads](../../../docs/architecture/contracts.md#payloads); [backend domain-types 5](../../../docs/backend/domain-types.md#job-and-payloads)).
 
 `lease_token` is a `String` here; in real code it is the redacting `LeaseToken` of [rust-tracing](../rust-tracing/json-logs.md#5-secrets-cant-be-logged-by-accident), so a `Debug` of the job can't print it.
 
@@ -372,14 +377,13 @@ pub enum RegionClass {
     Surroundings,
 }
 
-/// `Region & { region_id: string; class: RegionClass }`: a region from an earlier run.
+/// `Omit<Region, "mask_url"> & { region_id: string; class: RegionClass }`: a region from an
+/// earlier run. No mask URL: workers have no route to masks.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PriorRegion {
     pub region_id: String,
     pub image_id: String,
     pub bbox: [f64; 4],
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mask_url: Option<String>,
     pub class: RegionClass,
 }
 
@@ -390,8 +394,9 @@ pub struct PerceptionPayload {
     pub stages: Vec<PerceptionStage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub species_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub skip_species_identification: Option<bool>,
+    /// `skip_species_identification?: boolean`: left out when false, which reads the same.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub skip_species_identification: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub regions: Option<Vec<PriorRegion>>,
     pub label_set_version: String,
@@ -552,9 +557,10 @@ impl schemars::JsonSchema for V1 {
 // end: V1
 
 // copy of: rust-contract-types/primitives.md Timestamp
-/// RFC 3339 in UTC, whole seconds, `Z` suffix: `"2026-10-18T14:03:22Z"` (contracts 1).
-/// Keeps full precision in memory; only the wire form is truncated. Whole seconds are
-/// this skill's choice, not the contracts' (contracts 12, question 12).
+/// RFC 3339 in UTC, whole seconds, `Z` suffix: `"2026-10-18T14:03:22Z"` (contracts 1,
+/// wire format; contracts 12, question 12). Keeps full precision in memory and in the
+/// database; only the wire form is truncated. No `now()`: every reading comes from the
+/// `Clock` port, so tests control time (backend domain 4).
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, utoipa::ToSchema, schemars::JsonSchema,
 )]
@@ -563,10 +569,6 @@ impl schemars::JsonSchema for V1 {
 pub struct Timestamp(chrono::DateTime<chrono::Utc>);
 
 impl Timestamp {
-    pub fn now() -> Self {
-        Self(chrono::Utc::now())
-    }
-
     /// For the store, which binds `chrono::DateTime<Utc>` (database 2).
     pub const fn into_inner(self) -> chrono::DateTime<chrono::Utc> {
         self.0
@@ -696,6 +698,7 @@ mod tests {
         unknown["kind"] = json!("soil_probe");
         let err = serde_json::from_value::<Job>(unknown).unwrap_err();
         assert!(err.to_string().starts_with("unknown variant `soil_probe`"));
+        // An unknown kind fails here; section 3 turns that into `unsupported_version`.
         // Another version doesn't decode at all, which is why section 3 reads a head first.
         let mut v2 = guided();
         v2["v"] = json!(2);
@@ -706,23 +709,23 @@ mod tests {
 
 ## 3. The worker checks `v` first
 
-"A worker that receives a `v` it doesn't support fails the job with the error code `unsupported_version`" ([contracts 1, versioning](../../../docs/architecture/contracts.md#versioning)). To fail a job the worker needs its `job_id` and `lease_token`, and a `v: 2` job may not decode as today's `Job` at all. So the worker decodes a small head first, with no `deny_unknown_fields`, checks `v`, and only then decodes the whole job. The outcomes:
+"A worker that receives a `v` it doesn't support fails the job with the error code `unsupported_version`" ([contracts 1, versioning](../../../docs/architecture/contracts.md#versioning)). To fail a job the worker needs its `job_id` and `lease_token`, and a `v: 2` job may not decode as today's `Job` at all. So the worker decodes a small head first, with no `deny_unknown_fields`, checks `v`, and only then decodes the whole job. A `v: 1` job whose `kind` or payload this build can't read keeps its head too, and is failed the same way: the claim filters by the worker's kinds, so such a job is an older worker against a newer API, and failing it at once is better than leaving it to expire ([contracts 5, leases](../../../docs/architecture/contracts.md#leases-runs-and-attempts); settled in [contracts 12, question 21](../../../docs/architecture/contracts.md#12-open-questions); [backend worker 6](../../../docs/backend/worker.md#6-leases-heartbeats-and-completion), `decode_claim`). The outcomes:
 
 | Claim body | Result | What the worker does |
 |---|---|---|
-| A head with `v: 1`, and the job decodes | `Claimed::Job` | Runs it |
-| A head with any other number in `v` | `Claimed::Unsupported(head)` | Completes the job as `failed` with `unsupported_version`, using `head.lease_token` ([rust-errors, jobs](../rust-errors/jobs.md)) |
-| No numeric `v`, or no `job_id` or `lease_token` | `ClaimError::Head` | Can't complete the job, because it can't name it or prove its lease. Logs the error (without the body) and drops the job; the lease expires and the broker requeues it, and a job that keeps coming back runs out of attempts ([contracts 5, leases](../../../docs/architecture/contracts.md#leases-runs-and-attempts)). Not `unsupported_version`: there is no version to report |
-| A head with `v: 1`, but the job doesn't decode (an unknown `kind`, a missing field) | `ClaimError::Job { head, .. }` | A bug: fails the job with `head` (contracts 12, question 21, above) |
+| A head with `v: 1`, and the job decodes | `ClaimedJob::Job` | Runs it |
+| A head with any other number in `v` | `ClaimedJob::Unsupported(head)` | Completes the job as `failed` with `unsupported_version`, `retryable: false`, using `head.lease_token` ([rust-errors, jobs](../rust-errors/jobs.md)) |
+| A head with `v: 1`, but the job doesn't decode (an unknown `kind`, a payload this build can't read) | `ClaimedJob::Unsupported(head)`, with the decode error logged | The same: `unsupported_version`, `retryable: false` ([contracts 5, complete](../../../docs/architecture/contracts.md#post-internaljobsidcomplete), `JobErrorCode`) |
+| No numeric `v`, or no `job_id` or `lease_token` | `UnreadableHead` | Can't complete the job, because it can't name it or prove its lease. Logs the error (without the body) and drops the job; the lease expires and the broker requeues it, and a job that keeps coming back runs out of attempts ([contracts 5, leases](../../../docs/architecture/contracts.md#leases-runs-and-attempts)). Not `unsupported_version`: there is no job to report it for |
 
-This is the one implementation of the head check: [rust-errors jobs.md](../rust-errors/jobs.md) carries an exact copy of the `JobHead` region.
+`JobHead` and `ClaimedJob` are the `domain::jobs` types of [backend domain-types 5](../../../docs/backend/domain-types.md#job-and-payloads) with `String` for the IDs, and `decode_claim` is the worker's ([backend worker 6](../../../docs/backend/worker.md#6-leases-heartbeats-and-completion)), generic over the job type so the region compiles on its own. In `domain`, `ClaimedJob::decode` reads the head and the `v: 1` job, and the worker's `decode_claim` adds the fallback to the head; here both steps are one function. This is the one implementation of the head check: [rust-errors jobs.md](../rust-errors/jobs.md) carries an exact copy of the `JobHead` region.
 
 ```rust
 use serde::Deserialize;
 
 // canonical: rust-contract-types/unions.md JobHead
 /// The fields needed to fail a claimed job, readable from any version: no
-/// `deny_unknown_fields`, nothing but what `complete` needs.
+/// `deny_unknown_fields`, nothing but what `complete` needs (`domain::jobs::JobHead`).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct JobHead {
     pub v: u64,
@@ -730,41 +733,39 @@ pub struct JobHead {
     pub lease_token: String,
 }
 
-/// A `200` claim body, read head first (contracts 1, versioning).
-#[derive(Debug)]
-pub enum Claimed<J> {
+/// What a worker makes of a `200` claim body (`domain::jobs::ClaimedJob`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum ClaimedJob<J> {
     /// `v` is 1 and the whole job decoded.
-    Job(J),
-    /// `v` isn't 1: complete the job as `failed` with `unsupported_version`.
+    Job(Box<J>),
+    /// Complete it as `failed` with `unsupported_version`, `retryable: false`: another `v`, or
+    /// a `v: 1` job whose `kind` or payload this build can't read (contracts 5, leases).
     Unsupported(JobHead),
 }
 
-/// A claim body the worker can't run. Neither message includes the body.
+/// A claim body without a numeric `v`, a `job_id` or a `lease_token`: the job can't be
+/// completed. Log it and let the lease expire (contracts 5, leases). The message never
+/// includes the body.
 #[derive(Debug, thiserror::Error)]
-pub enum ClaimError {
-    /// No numeric `v`, `job_id` or `lease_token`: the job can't be completed. Log it and
-    /// let the lease expire (contracts 5, leases).
-    #[error("claim body has no readable job head")]
-    Head(#[source] serde_json::Error),
-    /// `v` is 1 but the job doesn't decode: a bug, failed with `head`.
-    // Not in the contracts yet: what `complete` reports for it (contracts 12, question 21).
-    #[error("job {} does not decode as v1", .head.job_id)]
-    Job {
-        head: JobHead,
-        #[source]
-        source: serde_json::Error,
-    },
-}
+#[error("claim body has no readable job head")]
+pub struct UnreadableHead(#[source] pub serde_json::Error);
 
-/// Decodes a claim body: the head, then `v`, then the whole job.
-pub fn decode_claim<J: serde::de::DeserializeOwned>(body: &[u8]) -> Result<Claimed<J>, ClaimError> {
-    let head: JobHead = serde_json::from_slice(body).map_err(ClaimError::Head)?;
+/// Decodes a claim body: the head, then `v`, then the whole job. Only a body without even the
+/// head is an error.
+pub fn decode_claim<J: serde::de::DeserializeOwned>(
+    body: &[u8],
+) -> Result<ClaimedJob<J>, UnreadableHead> {
+    let head: JobHead = serde_json::from_slice(body).map_err(UnreadableHead)?;
     if head.v != 1 {
-        return Ok(Claimed::Unsupported(head));
+        return Ok(ClaimedJob::Unsupported(head));
     }
-    serde_json::from_slice(body)
-        .map(Claimed::Job)
-        .map_err(|source| ClaimError::Job { head, source })
+    match serde_json::from_slice(body) {
+        Ok(job) => Ok(ClaimedJob::Job(Box::new(job))),
+        Err(error) => {
+            tracing::error!(%error, job_id = %head.job_id, "unreadable job");
+            Ok(ClaimedJob::Unsupported(head))
+        }
+    }
 }
 // end: JobHead
 
@@ -785,29 +786,42 @@ pub enum Kind {
 mod tests {
     use super::*;
 
+    fn head(v: u64) -> JobHead {
+        JobHead {
+            v,
+            job_id: "J".to_owned(),
+            lease_token: "t".to_owned(),
+        }
+    }
+
     #[test]
     fn v2_job_is_failed_not_guessed() {
         let body = br#"{"v":2,"job_id":"J","lease_token":"t","task":{"new":"shape"}}"#;
         match decode_claim::<Job>(body).unwrap() {
-            Claimed::Unsupported(head) => {
-                assert_eq!(head.v, 2);
-                assert_eq!(head.job_id, "J");
-                assert_eq!(head.lease_token, "t");
-            }
-            Claimed::Job(job) => panic!("decoded a v2 job as v1: {job:?}"),
+            ClaimedJob::Unsupported(h) => assert_eq!(h, head(2)),
+            ClaimedJob::Job(job) => panic!("decoded a v2 job as v1: {job:?}"),
         }
     }
 
     #[test]
     fn v1_job_decodes() {
         let body = br#"{"v":1,"job_id":"J","lease_token":"t","kind":"guided","payload":{}}"#;
-        assert!(matches!(
-            decode_claim::<Job>(body).unwrap(),
-            Claimed::Job(Job {
-                kind: Kind::Guided,
-                ..
-            })
-        ));
+        let ClaimedJob::Job(job) = decode_claim::<Job>(body).unwrap() else {
+            panic!("a readable v1 job runs");
+        };
+        assert!(matches!(job.kind, Kind::Guided));
+    }
+
+    #[test]
+    fn a_v1_job_this_build_cannot_read_keeps_its_head() {
+        for body in [
+            br#"{"v":1,"job_id":"J","lease_token":"t","kind":"soil_probe","payload":{}}"#
+                .as_slice(),
+            br#"{"v":1,"job_id":"J","lease_token":"t"}"#, // no kind at all
+        ] {
+            let claimed = decode_claim::<Job>(body).unwrap();
+            assert!(matches!(&claimed, ClaimedJob::Unsupported(h) if *h == head(1)));
+        }
     }
 
     #[test]
@@ -819,24 +833,13 @@ mod tests {
             b"not json",
         ] {
             let err = decode_claim::<Job>(body).unwrap_err();
-            assert!(matches!(err, ClaimError::Head(_)), "{err}");
+            assert_eq!(err.to_string(), "claim body has no readable job head");
         }
-    }
-
-    #[test]
-    fn a_v1_job_of_unknown_kind_keeps_its_head() {
-        let body = br#"{"v":1,"job_id":"J","lease_token":"t","kind":"soil_probe","payload":{}}"#;
-        let err = decode_claim::<Job>(body).unwrap_err();
-        assert_eq!(err.to_string(), "job J does not decode as v1");
-        let ClaimError::Job { head, .. } = err else {
-            panic!("expected ClaimError::Job");
-        };
-        assert_eq!(head.lease_token, "t");
     }
 }
 ```
 
-The worker sends `unsupported_version` with `retryable: false`. **Not in the contracts yet:** contracts 1 doesn't say whether the error is retryable; `false` is this skill's choice, because a retry on the same worker can't succeed ([contracts 12, question 19](../../../docs/architecture/contracts.md#12-open-questions)).
+`unsupported_version` is sent with `retryable: false`: the same worker can't succeed on a retry, and a newer worker gets the job only after a requeue. Settled in [contracts 12, question 19](../../../docs/architecture/contracts.md#12-open-questions) and stated in [contracts 5, complete](../../../docs/architecture/contracts.md#post-internaljobsidcomplete) ([backend worker 16](../../../docs/backend/worker.md#16-decisions-on-the-contracts-open-questions)).
 
 The API side is the mirror: `WorkerEvents` and `CompleteJob` carry `v: V1`, so a worker sending another version gets `400 invalid_request` from the JSON extractor, which is correct for a body the API can't read ([contracts 2](../../../docs/architecture/contracts.md#2-errors)).
 
@@ -849,7 +852,11 @@ The API side is the mirror: `WorkerEvents` and `CompleteJob` carry `v: V1`, so a
 - **It accepts a result of the wrong kind.** A `verify` result sent for a `vlm` job fits `VerifyResult`, and untagged takes it whatever the order; it has no way to know which kind was asked for. Decoding by the recorded kind rejects it, because `VlmResult` needs `findings`.
 - **Its answer depends on the declaration order and on the fields.** The same `vlm` body decodes as `Verify` or `Vlm` depending on which variant is listed first, and adding an optional field to one result type can change which variant a body lands in. Decoding by kind gives the same answer whatever is declared and whatever a newer worker adds.
 
-The tests prove both. Sources: [untagged](https://serde.rs/enum-representations.html#untagged) ("Serde will try to match the data against each variant in order and the first one that deserializes successfully is the one returned"), [internally tagged](https://serde.rs/enum-representations.html#internally-tagged).
+Contracts v0.9 states the rule: the result "is read by the job's kind", and a `done` result that doesn't decode as that kind is stored as a failure with `model_error`, `retryable: true`, the code a worker sends for output that failed validation twice ([contracts 5, complete](../../../docs/architecture/contracts.md#post-internaljobsidcomplete); settled in [contracts 12, question 18](../../../docs/architecture/contracts.md#12-open-questions); [backend pipeline 9](../../../docs/backend/pipeline.md#9-entry-points), [17](../../../docs/backend/pipeline.md#17-open-questions-and-decisions)). In `domain` this is `JobOutcome::Done { result: Value }` and `JobResult::decode` ([backend domain-types 5, results](../../../docs/backend/domain-types.md#results)); `read_done` below is the pipeline's step.
+
+**`error.code` is `JobErrorCode | string`.** The five codes and their `retryable` are fixed by contracts 5: `unsupported_version` and `unknown_label_version` never retryable, `model_error` retryable unless the adapter can't do the job's kind at all, `image_fetch_failed` and `max_runtime_exceeded` retryable ([contracts 5, complete](../../../docs/architecture/contracts.md#post-internaljobsidcomplete); [contracts 12, questions 18 and 19](../../../docs/architecture/contracts.md#12-open-questions)). The API keeps a code it doesn't know as written, so an older API reads a newer worker's code: `JobErrorCode` serialises as its bare string and decodes any string, an unknown one as `Other(String)` ([backend domain-types 5, events and completion](../../../docs/backend/domain-types.md#events-and-completion)). That needs hand-written serde impls: a derived `#[serde(other)]` variant can't hold the string. `JobErrorCode` and `JobError` are the region `JobErrorCode`, which [rust-errors jobs.md](../rust-errors/jobs.md) copies.
+
+The tests prove each. Sources: [untagged](https://serde.rs/enum-representations.html#untagged) ("Serde will try to match the data against each variant in order and the first one that deserializes successfully is the one returned"), [internally tagged](https://serde.rs/enum-representations.html#internally-tagged).
 
 ```rust
 use std::collections::BTreeMap;
@@ -858,19 +865,17 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// `CompleteJob.error`: `{ code, message, retryable }`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct CompleteError {
-    pub code: String,
-    pub message: String,
-    pub retryable: bool,
-}
-
+/// `status`, with `result` (done) or `error` (failed): `domain::jobs::JobOutcome`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
-pub enum Outcome {
-    Done { result: Value },
-    Failed { error: CompleteError },
+pub enum JobOutcome {
+    /// Kept as JSON: decoded by the job's recorded kind ([`read_done`]).
+    Done {
+        result: Value,
+    },
+    Failed {
+        error: JobError,
+    },
 }
 
 /// contracts 5 `CompleteJob`.
@@ -878,7 +883,7 @@ pub enum Outcome {
 pub struct CompleteJob {
     pub v: V1,
     #[serde(flatten)]
-    pub outcome: Outcome,
+    pub outcome: JobOutcome,
     pub model_versions: BTreeMap<String, String>,
     pub timings_ms: BTreeMap<String, u64>,
 }
@@ -948,6 +953,113 @@ pub fn decode_result(kind: JobKind, result: Value) -> Result<JobResult, serde_js
         JobKind::Guided => decode(result).map(JobResult::Guided),
     }
 }
+
+/// A `done` result as the pipeline stores it: decoded for the recorded kind, or, when it
+/// doesn't decode, a failure with `model_error`, `retryable: true` (contracts 5, complete).
+pub fn read_done(kind: JobKind, result: Value) -> Result<JobResult, JobError> {
+    decode_result(kind, result).map_err(|e| {
+        JobError::new(
+            JobErrorCode::ModelError,
+            format!("result is not a {kind:?} result: {e}"),
+        )
+    })
+}
+
+// canonical: rust-contract-types/unions.md JobErrorCode
+/// `JobErrorCode` (contracts 5, complete): the codes a worker sends in `CompleteJob.error`,
+/// typed `JobErrorCode | string`, so a code this build doesn't know (from a newer worker)
+/// still decodes, as `Other`, and is stored as written (`domain::jobs::JobErrorCode`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum JobErrorCode {
+    /// A payload or job `v` the worker doesn't support, a kind it doesn't know, or a payload
+    /// it can't read; `retryable: false`.
+    UnsupportedVersion,
+    /// A `label_set_version` or `classifier_labels_version` the worker hasn't loaded;
+    /// `retryable: false`.
+    UnknownLabelVersion,
+    /// Inference failed, or its output failed validation twice; `retryable: true`, except
+    /// `false` when the adapter can't do the job's kind at all.
+    ModelError,
+    /// An image URL failed after retries; `retryable: true`.
+    ImageFetchFailed,
+    /// The worker stopped the job itself at its soft deadline; `retryable: true`.
+    MaxRuntimeExceeded,
+    /// Any other code, kept verbatim.
+    Other(String),
+}
+
+impl JobErrorCode {
+    /// The wire string.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::UnsupportedVersion => "unsupported_version",
+            Self::UnknownLabelVersion => "unknown_label_version",
+            Self::ModelError => "model_error",
+            Self::ImageFetchFailed => "image_fetch_failed",
+            Self::MaxRuntimeExceeded => "max_runtime_exceeded",
+            Self::Other(code) => code,
+        }
+    }
+
+    /// Whether the contract says a failure with this code may be retried; `None` for
+    /// `Other`, whose `retryable` flag alone decides. `model_error` says `Some(true)`, the
+    /// usual case: the worker sends `false` when the adapter can't do the kind.
+    pub const fn retryable(&self) -> Option<bool> {
+        match self {
+            Self::UnsupportedVersion | Self::UnknownLabelVersion => Some(false),
+            Self::ModelError | Self::ImageFetchFailed | Self::MaxRuntimeExceeded => Some(true),
+            Self::Other(_) => None,
+        }
+    }
+}
+
+impl serde::Serialize for JobErrorCode {
+    /// The bare string, `Other` as written.
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for JobErrorCode {
+    /// Any string: the five known codes, everything else as `Other`.
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let code = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match code.as_str() {
+            "unsupported_version" => Self::UnsupportedVersion,
+            "unknown_label_version" => Self::UnknownLabelVersion,
+            "model_error" => Self::ModelError,
+            "image_fetch_failed" => Self::ImageFetchFailed,
+            "max_runtime_exceeded" => Self::MaxRuntimeExceeded,
+            _ => Self::Other(code),
+        })
+    }
+}
+
+/// `CompleteJob.error` (contracts 5): job errors travel here, never as HTTP status codes
+/// (`domain::jobs::JobError`).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct JobError {
+    /// A `JobErrorCode`, or another string.
+    pub code: JobErrorCode,
+    /// Detail for the log: the error and its `source()` chain.
+    pub message: String,
+    /// Counts toward `attempts` when true.
+    pub retryable: bool,
+}
+
+impl JobError {
+    /// A failure with the contract's `retryable` for `code`. `Other` is never sent by this
+    /// build, so it gets `false`.
+    pub fn new(code: JobErrorCode, message: String) -> Self {
+        let retryable = code.retryable().unwrap_or(false);
+        Self {
+            code,
+            message,
+            retryable,
+        }
+    }
+}
+// end: JobErrorCode
 
 // copy of: rust-contract-types/primitives.md V1
 /// The `"v": 1` on every SSE event, job payload and result (contracts 1, versioning).
@@ -1032,7 +1144,10 @@ mod tests {
             "timings_ms": {}
         });
         let c: CompleteJob = serde_json::from_value(body.clone()).unwrap();
-        assert!(matches!(c.outcome, Outcome::Failed { .. }));
+        let JobOutcome::Failed { error } = &c.outcome else {
+            panic!("a failed body is Failed");
+        };
+        assert_eq!(error.code, JobErrorCode::UnsupportedVersion);
         assert_eq!(serde_json::to_value(&c).unwrap(), body);
         // `done` without `result` is rejected, so the invalid combination can't be stored.
         let bad = json!({ "v": 1, "status": "done", "model_versions": {}, "timings_ms": {} });
@@ -1051,6 +1166,64 @@ mod tests {
         ));
         assert!(decode_result(JobKind::Vlm, verify_body()).is_err());
         assert!(decode_result(JobKind::Guided, vlm_body()).is_err());
+        // Stored as a retryable `model_error`, like output that failed validation twice.
+        let Err(error) = read_done(JobKind::Vlm, verify_body()) else {
+            panic!("a verify body is not a vlm result");
+        };
+        assert_eq!(
+            (error.code, error.retryable),
+            (JobErrorCode::ModelError, true)
+        );
+    }
+
+    #[test]
+    fn job_error_codes_are_bare_strings_and_unknown_ones_are_kept() {
+        let known = [
+            (
+                JobErrorCode::UnsupportedVersion,
+                "unsupported_version",
+                Some(false),
+            ),
+            (
+                JobErrorCode::UnknownLabelVersion,
+                "unknown_label_version",
+                Some(false),
+            ),
+            (JobErrorCode::ModelError, "model_error", Some(true)),
+            (
+                JobErrorCode::ImageFetchFailed,
+                "image_fetch_failed",
+                Some(true),
+            ),
+            (
+                JobErrorCode::MaxRuntimeExceeded,
+                "max_runtime_exceeded",
+                Some(true),
+            ),
+        ];
+        for (code, wire, retryable) in known {
+            assert_eq!(serde_json::to_value(&code).unwrap(), json!(wire));
+            assert_eq!(
+                serde_json::from_value::<JobErrorCode>(json!(wire)).unwrap(),
+                code
+            );
+            assert_eq!(code.retryable(), retryable);
+        }
+        // A newer worker's code: kept as written, and its own `retryable` decides.
+        let newer: JobError = serde_json::from_value(json!({
+            "code": "thermal_throttled", "message": "GPU at 92 °C", "retryable": true
+        }))
+        .unwrap();
+        assert_eq!(
+            newer.code,
+            JobErrorCode::Other("thermal_throttled".to_owned())
+        );
+        assert_eq!(newer.code.retryable(), None);
+        assert_eq!(
+            serde_json::to_value(&newer).unwrap()["code"],
+            "thermal_throttled"
+        );
+        assert!(!JobError::new(JobErrorCode::UnsupportedVersion, String::new()).retryable);
     }
 
     #[test]
@@ -1324,7 +1497,9 @@ mod tests {
 }
 ```
 
-The third test is deliberate: `other` only covers the event's `type`. An unknown value *inside* a known event, such as a new `Stage`, still fails, because the API must store it and the schema's literal unions would reject it anyway ([database 2](../../../docs/database/README.md#2-conventions)). Add enum values on the API first, then on the workers.
+The third test is deliberate: `other` only covers the event's `type`. An unknown value *inside* a known event, such as a new `Stage`, still fails, because the API must store it and the schema's literal unions would reject it anyway ([database 2](../../../docs/database/README.md#2-conventions)). Add enum values on the API first, then on the workers. These are the `domain::jobs` shapes of [backend domain-types 5, events and completion](../../../docs/backend/domain-types.md#events-and-completion).
+
+A batch that arrives after its job completed with the same lease token (a late batch racing `complete`) is answered `204` and dropped, never forwarded: the result is final and its findings went out with `complete`. Any other stale token is `409 lease_lost` ([backend api 15](../../../docs/backend/api.md#15-the-job-broker-and-the-worker-api), `job_events`).
 
 ## 6. `deny_unknown_fields` breaks `flatten`
 
@@ -1528,7 +1703,12 @@ mod tests {
 
 ## 8. Chat stream events: the name is on the `event:` line only
 
-The chat stream's events ([contracts 8, sending a message](../../../docs/architecture/contracts.md#sending-a-message)) differ from the scan events: each `data` is `{ v: 1, …the event's fields }` with **no `type` field**; the event's name is only on the SSE `event:` line, and there is no `id:` line. An internally tagged enum would add a `"type"` key the contract doesn't have. So the body enum is `#[serde(untagged)]`, **for `Serialize` only**: untagged writes a variant's fields without a name, which is exactly the shape, and never decodes anything ([Rule 4](SKILL.md#4-tagged-unions)). A wrapper adds `v` in front, and `name()` gives the `event:` line. The app reads the events, choosing the shape by the `event:` name.
+The chat stream's events ([contracts 8, sending a message](../../../docs/architecture/contracts.md#sending-a-message)) differ from the scan events: each `data` is `{ v: 1, …the event's fields }` with **no `type` field**; the event's name is only on the SSE `event:` line, and there is no `id:` line. An internally tagged enum would add a `"type"` key the contract doesn't have. So the body enum is `#[serde(untagged)]`, **for `Serialize` only**: untagged writes a variant's fields without a name, which is exactly the shape, and never decodes anything ([Rule 4](SKILL.md#4-tagged-unions)). A wrapper adds `v` in front, and `name()` gives the `event:` line. The app reads the events, choosing the shape by the `event:` name. The `domain` type is the same untagged, serialise-only enum, with one struct per event that carries its own `v` and `event_name()` for the `event:` line ([backend domain-types 8, chat SSE events](../../../docs/backend/domain-types.md#chat-sse-events)); `usage`'s counts are `u32` there and here.
+
+Two rules of contracts 8 (v0.10) are about the order and the stored message, not the shape ([contracts 8, sending a message](../../../docs/architecture/contracts.md#sending-a-message)):
+
+- **`memory_saved` comes before `message_completed`**: the turn completes only after the memory gate and the extraction, so `message_completed` is always the last event of a turn that didn't fail.
+- **A turn that doesn't reach `message_completed` is stored with `interrupted: true`**: when the client disconnects (the server stops the model call) and when the turn ends with an `error` event. The app shows it with a resend action. That flag is on the stored message, never in an event; how the handler stores it after a disconnect is [rust-axum-api, SSE 4](../rust-axum-api/sse.md#4-chat-streams)'s.
 
 Sources: [untagged](https://serde.rs/enum-representations.html#untagged), [`flatten`](https://serde.rs/attr-flatten.html), [axum `sse::Event`](https://docs.rs/axum/0.8.9/axum/response/sse/struct.Event.html).
 
@@ -1548,8 +1728,8 @@ pub enum Route {
 
 #[derive(Clone, Copy, Debug, Serialize)]
 pub struct Usage {
-    pub tokens_in: u64,
-    pub tokens_out: u64,
+    pub tokens_in: u32,
+    pub tokens_out: u32,
 }
 
 /// contracts 8 chat stream events, one variant per row. `Citation`, `PendingAction` and

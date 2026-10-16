@@ -2,114 +2,198 @@
 
 Part of [rust-errors](SKILL.md#the-mapping-table). The table in SKILL.md is the summary. The `ApiError` enum itself, with every code of [contracts 2](../../../docs/architecture/contracts.md#2-errors) and the test that each is produced with its status, `retryable`, `retry_after_s` and `details`, is the canonical block in [rust-axum-api, error responses](../rust-axum-api/error-responses.md#2-the-compiled-example); this file copies it. What this file owns:
 
-- the **canonical `StoreError`**, the `store` crate's error, with the `From<surrealdb::Error>` that classifies the SDK's errors ([rust-surrealdb, how failures arrive](../rust-surrealdb/SKILL.md#how-failures-arrive));
-- the **canonical `BlobError`**, the `blob` crate's error;
-- the conversions from both to `ApiError`, and a call-site mapping for the errors whose meaning depends on the call.
+- the **canonical `StoreError`** with its `Conflict` and the **canonical `BlobError`**: the port errors of `domain::ports`, copied from [backend domain 6, port errors](../../../docs/backend/domain.md#port-errors), and `BoxError`, the boxed source they carry;
+- the **canonical `DomainError`**: the variants of `domain::error::DomainError` these examples need ([backend domain 6, `DomainError`](../../../docs/backend/domain.md#domainerror));
+- the conversions from all three to `ApiError` ([backend api 8](../../../docs/backend/api.md#8-errors)), and a call-site mapping for the case whose meaning depends on the call.
 
 Design points:
 
-- **`StoreError::Conflict` is a lost compare-and-set**: a `THROW 'stale_plan'` or `THROW 'claim_lost'` from the database 4 patterns, or a lease check that matched no row. Its meaning depends on the call (`lease_lost`, `invalid_state` with `current_plan_id` or `current_map_version`, `request_in_progress`), so the handler maps it before `?`.
-- **`StoreError::TxConflict` is SurrealDB's `TransactionConflict`**, which `retry_conflicts` retries ([rust-surrealdb, retrying conflicts](../rust-surrealdb/SKILL.md#retrying-conflicts)). One that survives five attempts is `internal`.
-- **`Unavailable`** is a connection error (`Error::is_connection`; the SDK builds its WebSocket errors with `Error::connection`, `src/engine/remote/ws/native.rs`). It becomes `503 upstream_unavailable` with `upstream: "database"`.
-- **`Query` carries no `what`**: `From<surrealdb::Error>` is the one place errors are classified, and it can't know the query. Every store function has an `#[instrument]` span that names it ([rust-tracing](../rust-tracing/SKILL.md)), so the log line still says which query failed.
-- **Messages** are lowercase, without trailing punctuation or the source's text ([SKILL.md, display and source](SKILL.md#display-and-source)).
+- **The port's error lives in `domain`, not in `store`.** Every implementation of a port and every caller share one enum per kind of boundary, so `Arc<dyn Store>` needs no associated error type ([backend domain 6, port errors](../../../docs/backend/domain.md#port-errors); [backend store 1](../../../docs/backend/store.md#1-purpose-and-boundaries)). The `store` crate classifies each SDK error once, into its own crate-private `DbFailure`, and maps that into `StoreError`, keeping the SDK error as the `source` ([backend store 5, classifying failures](../../../docs/backend/store.md#classifying-failures); [rust-surrealdb, errors and retries](../rust-surrealdb/errors-and-retries.md)). So no `surrealdb` or `aws-sdk-s3` type appears in a port error, and the sources are `BoxError`.
+- **`StoreError::Conflict(Conflict)` says which check lost**: `StalePlan { current }`, `ClaimLost`, `QuestionStepLost`, `LeaseLost { job_id }`, `StaleMap { current_version }`, `AlreadyExists`, or `Retries` (transaction conflicts that outlived the store's 5 attempts). Because each carries what the response needs, most map without context; `AlreadyExists` and an automatic re-plan's `StalePlan` are handled by the caller first ([backend domain 6](../../../docs/backend/domain.md#port-errors), the "Becomes" table).
+- **`Rejected(DomainError)`** is a rule checked inside the store's transaction (the last owner, the daily scan limit, unknown map plants), mapped by the rule's own code. `From<DomainError>` sends `NotFound` to `StoreError::NotFound` and everything else to `Rejected`.
+- **`Unavailable`** is a lost connection; with `Conflict(Retries)` it becomes `503 upstream_unavailable` with `upstream: "database"` and `retry_after_s: 5` ([contracts 2](../../../docs/architecture/contracts.md#2-errors): 5 for `upstream_unavailable` unless the provider named a longer wait).
+- **`Query { what, source }`** is a bug or a schema drift, `500 internal`; `what` names the operation for the log (`"append event"`), passed by the store at the call ([backend store 5](../../../docs/backend/store.md#classifying-failures), `into_store`).
+- **Messages** are lowercase, without trailing punctuation or the source's text ([SKILL.md, display and source](SKILL.md#display-and-source)). `Conflict`'s message prints the variant with `{0:?}`, as the design writes it: a `Conflict` holds no source and no secret.
+
+The block defines `JobId` and `PlanId` as `String` stand-ins for `domain`'s `Id<Job>` and `Id<Plan>` ([backend domain 4](../../../docs/backend/domain.md#4-ids-and-primitives)), because `ApiError` here carries ids as strings.
 
 ```rust
 use std::error::Error as StdError;
 
 use serde_json::json;
 
-// canonical: rust-errors/mapping.md StoreError
-/// The `store` crate's error. Messages: lowercase, no trailing punctuation, no source text.
-/// `From<surrealdb::Error>` is the one place SDK errors are classified (rust-surrealdb).
-#[derive(Debug, thiserror::Error)]
-pub enum StoreError {
-    /// The record isn't there, or the caller may not see it.
-    #[error("record not found")]
+/// Stand-ins for `domain::id::{JobId, PlanId}` (backend domain 4).
+pub type JobId = String;
+pub type PlanId = String;
+
+// canonical: rust-errors/mapping.md BoxError
+/// A boxed error from a library, kept as the source of the log chain (`domain::ports`).
+pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
+// end: BoxError
+
+// canonical: rust-errors/mapping.md DomainError
+/// The variants of `domain::error::DomainError` (backend domain 6) that these examples use,
+/// as the design writes them. The full enum also has `Forbidden`, `UnknownPlants`,
+/// `InvalidState`, `Transition`, `TooManyImages`, `MissingRequiredShot`, `BudgetExceeded`,
+/// `RequestInProgress` and `LeaseLost`, and maps each to its code in `kind()`.
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum DomainError {
+    /// The record doesn't exist, is being deleted, or the caller may not see it. Always 404,
+    /// never 403, for non-members ([contracts 1], roles and access).
+    #[error("not found")]
     NotFound,
-    /// A compare-and-set lost (`THROW 'stale_plan'`, `THROW 'claim_lost'`, a lease check).
-    /// The handler maps it: `lease_lost`, `invalid_state` or `request_in_progress`.
-    #[error("{what} changed concurrently")]
-    Conflict { what: &'static str },
-    /// `TransactionConflict`: `retry_conflicts` re-runs the whole transaction.
-    #[error("transaction conflict")]
-    TxConflict(#[source] surrealdb::Error),
-    /// A `CREATE` of an existing id, or an `INSERT RELATION` of an existing edge.
-    #[error("record already exists")]
-    AlreadyExists(#[source] surrealdb::Error),
-    /// A `THROW` whose code has no variant of its own.
-    #[error("query threw {0:?}")]
-    Thrown(String),
-    /// The connection to the server is gone.
-    #[error("database unreachable")]
-    Unavailable(#[source] surrealdb::Error),
-    /// Anything else: a bug or a schema mismatch. The store function's span names the query.
-    #[error("query failed")]
-    Query(#[source] surrealdb::Error),
+    /// A request field breaks a rule that serde can't express (exactly one of two fields, a
+    /// length, a range).
+    #[error("{field}: {problem}")]
+    InvalidRequest {
+        /// The field, as a dotted path.
+        field: String,
+        /// What is wrong.
+        problem: String,
+    },
+    /// The same idempotency key was used with another body.
+    #[error("idempotency key reused with a different body")]
+    IdempotencyConflict,
+}
+// end: DomainError
+
+// canonical: rust-errors/mapping.md StoreError
+/// Which compare-and-set or uniqueness check lost ([database 4]). The handler maps it to the
+/// right contract code before `?`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Conflict {
+    /// A plan write lost: `stale_plan`; carries the scan's current plan.
+    StalePlan {
+        /// The plan that won, if any.
+        current: Option<PlanId>,
+    },
+    /// A step's claim, stamp or run no longer holds: `claim_lost`. The step stops.
+    ClaimLost,
+    /// A question step's claim no longer holds.
+    QuestionStepLost,
+    /// The lease token, worker or status no longer matches: `409 lease_lost`.
+    LeaseLost {
+        /// The job.
+        job_id: JobId,
+    },
+    /// A map upload's `base_version` is stale: `409` with `current_map_version`.
+    StaleMap {
+        /// The garden's current version.
+        current_version: u32,
+    },
+    /// A record with that key exists (idempotency key, membership, alert key).
+    AlreadyExists,
+    /// Transaction conflicts still failing after the store's 5 retries.
+    Retries,
 }
 
-/// How the server reports a `THROW` (rust-surrealdb, how failures arrive).
-pub const THROWN_PREFIX: &str = "An error occurred: ";
+/// The store's error ([database 4], [database 6]).
+#[derive(Debug, thiserror::Error)]
+pub enum StoreError {
+    /// No such record, or one being deleted, or one outside the proof's garden.
+    #[error("record not found")]
+    NotFound,
+    /// A compare-and-set or uniqueness check lost.
+    #[error("conflict: {0:?}")]
+    Conflict(Conflict),
+    /// A rule checked inside the transaction refused the write (the last owner, a dead plant,
+    /// the daily scan limit, unknown map plants).
+    #[error("rejected by a rule")]
+    Rejected(#[source] DomainError),
+    /// `SurrealDB` can't be reached.
+    #[error("database unavailable")]
+    Unavailable(#[source] BoxError),
+    /// A query failed for another reason: a bug or a schema mismatch.
+    #[error("query failed: {what}")]
+    Query {
+        /// The operation, such as `"append event"`.
+        what: &'static str,
+        /// The SDK error.
+        #[source]
+        source: BoxError,
+    },
+}
 
-impl From<surrealdb::Error> for StoreError {
-    fn from(error: surrealdb::Error) -> Self {
-        use surrealdb::types::{AlreadyExistsError, QueryError};
-        if matches!(error.query_details(), Some(QueryError::TransactionConflict)) {
-            return Self::TxConflict(error);
+impl From<DomainError> for StoreError {
+    fn from(e: DomainError) -> Self {
+        match e {
+            DomainError::NotFound => Self::NotFound,
+            other => Self::Rejected(other),
         }
-        if matches!(
-            error.already_exists_details(),
-            Some(AlreadyExistsError::Record { .. })
-        ) {
-            return Self::AlreadyExists(error);
-        }
-        if error.is_connection() {
-            return Self::Unavailable(error);
-        }
-        if error.is_thrown() {
-            match error.message().strip_prefix(THROWN_PREFIX) {
-                Some("stale_plan") => return Self::Conflict { what: "plan" },
-                Some("claim_lost") => return Self::Conflict { what: "step claim" },
-                Some(code) => return Self::Thrown(code.to_owned()),
-                None => {}
-            }
-        }
-        Self::Query(error)
     }
 }
 // end: StoreError
 
 // canonical: rust-errors/mapping.md BlobError
-/// The `blob` crate's error.
+/// The object store's error ([storage 4]).
 #[derive(Debug, thiserror::Error)]
 pub enum BlobError {
-    #[error("object store unreachable")]
-    Unavailable(#[source] aws_sdk_s3::Error),
-    #[error("object store rejected {operation}")]
+    /// No object under that key.
+    #[error("object not found")]
+    NotFound,
+    /// `If-None-Match: *` refused: the key exists (`412`). Keys are never overwritten.
+    #[error("object already exists")]
+    AlreadyExists,
+    /// `RustFS` can't be reached or timed out.
+    #[error("storage unavailable")]
+    Unavailable(#[source] BoxError),
+    /// `RustFS` refused the call (a policy, a bad key).
+    #[error("storage refused {operation}")]
     Rejected {
+        /// The S3 operation.
         operation: &'static str,
+        /// The SDK error.
         #[source]
-        source: aws_sdk_s3::Error,
+        source: BoxError,
     },
 }
 // end: BlobError
 
-/// Context-free mappings only. A `Conflict` that reaches `?` was not handled by the
-/// handler, which is a bug, so it is `internal` and logged.
+/// A rule's refusal, by its code (backend domain 6, `DomainError::kind`).
+impl From<DomainError> for ApiError {
+    fn from(error: DomainError) -> Self {
+        match error {
+            DomainError::NotFound => Self::NotFound,
+            DomainError::InvalidRequest { field, problem } => {
+                Self::InvalidRequest { field, problem }
+            }
+            DomainError::IdempotencyConflict => Self::IdempotencyConflict,
+        }
+    }
+}
+
+/// The context-free mappings of backend api 8. Only `AlreadyExists` and an automatic
+/// re-plan's `StalePlan` need the caller first; if one reaches `?`, it is `invalid_state`.
 impl From<StoreError> for ApiError {
     fn from(error: StoreError) -> Self {
         match error {
             StoreError::NotFound => Self::NotFound,
-            StoreError::Unavailable(_) => Self::UpstreamUnavailable {
-                upstream: "database",
-                retry_after_s: UNAVAILABLE_RETRY_AFTER_S,
-                source: Box::new(error),
-            },
-            StoreError::Conflict { .. }
-            | StoreError::TxConflict(_)
-            | StoreError::AlreadyExists(_)
-            | StoreError::Thrown(_)
-            | StoreError::Query(_) => Self::Internal(Box::new(error)),
+            StoreError::Rejected(rule) => Self::from(rule),
+            StoreError::Conflict(Conflict::LeaseLost { job_id }) => Self::LeaseLost { job_id },
+            StoreError::Conflict(Conflict::StalePlan { current }) => {
+                Self::InvalidState(InvalidStateDetails {
+                    current_plan_id: current,
+                    ..InvalidStateDetails::default()
+                })
+            }
+            StoreError::Conflict(Conflict::StaleMap { current_version }) => {
+                Self::InvalidState(InvalidStateDetails {
+                    current_map_version: Some(u64::from(current_version)),
+                    ..InvalidStateDetails::default()
+                })
+            }
+            // The pipeline's own conflicts reach HTTP only through a bug (backend api 8).
+            StoreError::Conflict(
+                Conflict::ClaimLost | Conflict::QuestionStepLost | Conflict::AlreadyExists,
+            ) => Self::InvalidState(InvalidStateDetails::default()),
+            StoreError::Conflict(Conflict::Retries) | StoreError::Unavailable(_) => {
+                Self::UpstreamUnavailable {
+                    upstream: "database",
+                    retry_after_s: UNAVAILABLE_RETRY_AFTER_S,
+                    source: Box::new(error),
+                }
+            }
+            StoreError::Query { .. } => Self::Internal(Box::new(error)),
         }
     }
 }
@@ -117,33 +201,38 @@ impl From<StoreError> for ApiError {
 impl From<BlobError> for ApiError {
     fn from(error: BlobError) -> Self {
         match error {
+            BlobError::NotFound => Self::NotFound,
             BlobError::Unavailable(_) => Self::UpstreamUnavailable {
                 upstream: "storage",
                 retry_after_s: UNAVAILABLE_RETRY_AFTER_S,
                 source: Box::new(error),
             },
-            BlobError::Rejected { .. } => Self::Internal(Box::new(error)),
+            // Keys are never overwritten, so an existing key is a bug.
+            BlobError::AlreadyExists | BlobError::Rejected { .. } => {
+                Self::Internal(Box::new(error))
+            }
         }
     }
 }
 
-/// Stand-in for the store's lease-checked write: `Conflict` when the lease is gone.
-fn complete_job(lease_ok: bool) -> Result<(), StoreError> {
-    if lease_ok {
-        Ok(())
+/// Stand-in for the store's alert insert: its unique index refuses a second task for the
+/// same alert key (database 4, alert dedupe).
+fn insert_alert_task(key_taken: bool) -> Result<(), StoreError> {
+    if key_taken {
+        Err(StoreError::Conflict(Conflict::AlreadyExists))
     } else {
-        Err(StoreError::Conflict { what: "job lease" })
+        Ok(())
     }
 }
 
-/// The handler maps the call-dependent case before `?`; the rest goes through `From`.
-pub fn complete(job_id: &str, lease_ok: bool) -> Result<(), ApiError> {
-    complete_job(lease_ok).map_err(|error| match error {
-        StoreError::Conflict { .. } => ApiError::LeaseLost {
-            job_id: job_id.to_owned(),
-        },
-        other => ApiError::from(other),
-    })
+/// The caller gives `AlreadyExists` its meaning before `?`: the alert already has its task,
+/// which is success. The rest goes through `From`.
+pub fn create_alert_task(key_taken: bool) -> Result<bool, ApiError> {
+    match insert_alert_task(key_taken) {
+        Ok(()) => Ok(true),
+        Err(StoreError::Conflict(Conflict::AlreadyExists)) => Ok(false),
+        Err(other) => Err(other.into()),
+    }
 }
 
 // copy of: rust-axum-api/error-responses.md ErrorCode
@@ -249,9 +338,11 @@ pub enum Budget {
 pub const ACCEPTED_MEDIA_TYPES: [&str; 4] = ["image/jpeg", "image/png", "image/webp", "image/heic"];
 /// contracts 2: `max_bytes` of `upload_too_large`, an image over 12 MB (read as MiB).
 pub const IMAGE_MAX_BYTES: usize = 12 * 1024 * 1024;
-/// `retry_after_s` on a `503` when the cause gives no better number. The value is this
-/// skill's choice; contracts 2 only says the field is sent with `503`.
+/// contracts 2: `retry_after_s` of `upstream_unavailable` (also a request past the API's
+/// timeout) unless the provider named a longer wait.
 pub const UNAVAILABLE_RETRY_AFTER_S: u64 = 5;
+/// contracts 2: `retry_after_s` of `request_in_progress` and `processing_unavailable`.
+pub const SHORT_RETRY_AFTER_S: u64 = 2;
 
 /// One variant per contracts 2 code. `Display` is the `message`: a sentence safe to show.
 #[derive(Debug, thiserror::Error)]
@@ -473,9 +564,10 @@ impl axum::response::IntoResponse for ApiError {
 // end: ApiError
 
 // copy of: rust-contract-types/primitives.md Timestamp
-/// RFC 3339 in UTC, whole seconds, `Z` suffix: `"2026-10-18T14:03:22Z"` (contracts 1).
-/// Keeps full precision in memory; only the wire form is truncated. Whole seconds are
-/// this skill's choice, not the contracts' (contracts 12, question 12).
+/// RFC 3339 in UTC, whole seconds, `Z` suffix: `"2026-10-18T14:03:22Z"` (contracts 1,
+/// wire format; contracts 12, question 12). Keeps full precision in memory and in the
+/// database; only the wire form is truncated. No `now()`: every reading comes from the
+/// `Clock` port, so tests control time (backend domain 4).
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, utoipa::ToSchema, schemars::JsonSchema,
 )]
@@ -484,10 +576,6 @@ impl axum::response::IntoResponse for ApiError {
 pub struct Timestamp(chrono::DateTime<chrono::Utc>);
 
 impl Timestamp {
-    pub fn now() -> Self {
-        Self(chrono::Utc::now())
-    }
-
     /// For the store, which binds `chrono::DateTime<Utc>` (database 2).
     pub const fn into_inner(self) -> chrono::DateTime<chrono::Utc> {
         self.0
@@ -536,82 +624,99 @@ impl std::fmt::Display for Chain<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use surrealdb::types::{AlreadyExistsError, ConnectionError, QueryError};
 
-    #[test]
-    fn the_sdk_errors_are_classified_once() {
-        let conflict = surrealdb::Error::query(
-            "Transaction conflict".to_owned(),
-            QueryError::TransactionConflict,
-        );
-        assert!(matches!(
-            StoreError::from(conflict),
-            StoreError::TxConflict(_)
-        ));
-        let exists = surrealdb::Error::already_exists(
-            "Database record already exists".to_owned(),
-            AlreadyExistsError::Record {
-                id: "member_of:x".to_owned(),
-            },
-        );
-        assert!(matches!(
-            StoreError::from(exists),
-            StoreError::AlreadyExists(_)
-        ));
-        let down = surrealdb::Error::connection(
-            "WebSocket error".to_owned(),
-            ConnectionError::ConnectionFailed,
-        );
-        assert!(matches!(StoreError::from(down), StoreError::Unavailable(_)));
-        let stale = surrealdb::Error::thrown("An error occurred: stale_plan".to_owned());
-        assert!(matches!(
-            StoreError::from(stale),
-            StoreError::Conflict { what: "plan" }
-        ));
-        let other = surrealdb::Error::thrown("An error occurred: map_full".to_owned());
-        assert!(matches!(StoreError::from(other), StoreError::Thrown(code) if code == "map_full"));
-        let bug = surrealdb::Error::internal("Couldn't coerce value for field".to_owned());
-        assert!(matches!(StoreError::from(bug), StoreError::Query(_)));
+    fn sdk_error(message: &str) -> BoxError {
+        message.into()
     }
 
     #[test]
     fn store_errors_map_without_context() {
-        let down = StoreError::Unavailable(surrealdb::Error::connection(
-            "socket closed".to_owned(),
-            ConnectionError::ConnectionFailed,
-        ));
+        let down = StoreError::Unavailable(sdk_error("WebSocket error"));
         let api = ApiError::from(down);
         assert_eq!(api.code(), ErrorCode::UpstreamUnavailable);
         assert_eq!(api.details(), Some(json!({ "upstream": "database" })));
         assert_eq!(api.retry_after_s(), Some(UNAVAILABLE_RETRY_AFTER_S));
+        let retries = ApiError::from(StoreError::Conflict(Conflict::Retries));
+        assert_eq!(retries.code(), ErrorCode::UpstreamUnavailable);
         assert_eq!(
             ApiError::from(StoreError::NotFound).code(),
             ErrorCode::NotFound
         );
-        let lost = StoreError::Conflict { what: "job lease" };
-        assert_eq!(ApiError::from(lost).code(), ErrorCode::Internal);
+        let query = StoreError::Query {
+            what: "append event",
+            source: sdk_error("Couldn't coerce value for field `seq`"),
+        };
+        assert_eq!(ApiError::from(query).code(), ErrorCode::Internal);
     }
 
     #[test]
-    fn a_lost_lease_is_lease_lost_at_the_call_site() {
-        let Err(error) = complete("01JAX", false) else {
-            panic!("the lease was lost");
-        };
-        assert_eq!(error.code(), ErrorCode::LeaseLost);
-        assert_eq!(error.details(), Some(json!({ "job_id": "01JAX" })));
-        assert!(complete("01JAX", true).is_ok());
+    fn each_conflict_carries_what_its_response_needs() {
+        let lost = ApiError::from(StoreError::Conflict(Conflict::LeaseLost {
+            job_id: "01JAX".to_owned(),
+        }));
+        assert_eq!(lost.code(), ErrorCode::LeaseLost);
+        assert_eq!(lost.details(), Some(json!({ "job_id": "01JAX" })));
+        let stale = ApiError::from(StoreError::Conflict(Conflict::StalePlan {
+            current: Some("01JPLAN".to_owned()),
+        }));
+        assert_eq!(stale.code(), ErrorCode::InvalidState);
+        assert_eq!(
+            stale.details(),
+            Some(json!({ "current_plan_id": "01JPLAN" }))
+        );
+        let map = ApiError::from(StoreError::Conflict(Conflict::StaleMap {
+            current_version: 4,
+        }));
+        assert_eq!(map.details(), Some(json!({ "current_map_version": 4 })));
+        let bug = ApiError::from(StoreError::Conflict(Conflict::ClaimLost));
+        assert_eq!(bug.code(), ErrorCode::InvalidState);
+    }
+
+    #[test]
+    fn a_rule_inside_the_transaction_keeps_its_code() {
+        let refused = StoreError::from(DomainError::InvalidRequest {
+            field: "pins".to_owned(),
+            problem: "unknown_plant".to_owned(),
+        });
+        assert!(matches!(refused, StoreError::Rejected(_)));
+        assert_eq!(ApiError::from(refused).code(), ErrorCode::InvalidRequest);
+        assert!(matches!(
+            StoreError::from(DomainError::NotFound),
+            StoreError::NotFound
+        ));
+    }
+
+    #[test]
+    fn the_caller_handles_already_exists_first() {
+        assert!(matches!(create_alert_task(false), Ok(true)));
+        assert!(matches!(create_alert_task(true), Ok(false)));
+    }
+
+    #[test]
+    fn blob_errors_map_without_context() {
+        let down = ApiError::from(BlobError::Unavailable(sdk_error("dispatch failure")));
+        assert_eq!(down.details(), Some(json!({ "upstream": "storage" })));
+        assert_eq!(
+            ApiError::from(BlobError::NotFound).code(),
+            ErrorCode::NotFound
+        );
+        assert_eq!(
+            ApiError::from(BlobError::AlreadyExists).code(),
+            ErrorCode::Internal
+        );
     }
 
     #[test]
     fn the_log_carries_the_store_chain_and_the_body_does_not() {
-        let error: Box<dyn StdError + Send + Sync> = Box::new(StoreError::Query(
-            surrealdb::Error::internal("Couldn't coerce value for field `name`".to_owned()),
-        ));
+        let error: Box<dyn StdError + Send + Sync> = Box::new(StoreError::Query {
+            what: "load scan",
+            source: sdk_error("Couldn't coerce value for field `name`"),
+        });
         let api = ApiError::Internal(error);
         assert_eq!(api.to_string(), "Something went wrong on our side.");
         assert_eq!(
             api.parts().cause.as_deref(),
-            Some("query failed: Couldn't coerce value for field `name`")
+            Some("query failed: load scan: Couldn't coerce value for field `name`")
         );
     }
 }

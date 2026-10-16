@@ -13,17 +13,29 @@ Part of [rust-axum-api](SKILL.md). The behaviour is fixed by [contracts 4](../..
 
 In this order:
 
-1. **Before any byte is sent:** authenticate, take the scan ID as `ApiPath<ScanId>` (a value that isn't a ULID is `400 invalid_request` naming `id`; [error-responses 3](error-responses.md#3-extractor-rejections)), check membership (an unknown scan and a non-member both get `404`, [error-responses 5](error-responses.md#5-404-not-403)), and parse `Last-Event-ID` (absent means 0: replay the whole history). Errors here, a store error included (`500 internal`), are ordinary `ErrorBody` responses, because headers haven't gone out yet. **Not in the contracts yet:** contracts 2 doesn't say whether a malformed ID is `400` or `404` ([contracts 12, question 14](../../../docs/architecture/contracts.md#12-open-questions)).
+1. **Before any byte is sent:** authenticate, take the scan ID as `ApiPath<ScanId>` and check membership: a value that isn't a ULID, an unknown scan and a non-member all get the same `404` ([contracts 2](../../../docs/architecture/contracts.md#2-errors); [contracts 12, question 14](../../../docs/architecture/contracts.md#12-open-questions); [error-responses 3](error-responses.md#3-extractor-rejections), [5](error-responses.md#5-404-not-403)). In the `api` crate the ID and the membership come from one extractor, `Access<Viewer, table::Scan>`, whose `Membership<Viewer>` the replay read requires ([auth 4](auth.md#4-which-routes-get-which-check); [backend api 13, the stream](../../../docs/backend/api.md#the-stream)). Then parse `Last-Event-ID` (absent means 0: replay the whole history; a bad value is `400 invalid_request` naming the header). Errors here, a store error included (`500 internal`), are ordinary `ErrorBody` responses, because headers haven't gone out yet.
 2. **Subscribe** to the scan's broadcast. This comes first, so an event stored while the replay runs is either in the replay or in the receiver, never in neither ([contracts 4, transport](../../../docs/architecture/contracts.md#transport): "first subscribes … then replays"; [`Sender::subscribe`](https://docs.rs/tokio/1.53.3/tokio/sync/broadcast/struct.Sender.html#method.subscribe) sees only values sent after the call).
-3. **Read the scan's state, then replay** every stored event with `seq` > the last one sent. State first: the writer commits an event together with the state it leads to ([contracts 4, transport](../../../docs/architecture/contracts.md#transport): one serialised writer stores, then broadcasts), so if the scan was at rest when its state was read, the replay that follows holds every event up to the resting point. Reading the events first and the state second loses the last events when they arrive in between.
+3. **Read the scan's state, then replay** every stored event with `seq` > the last one sent. The order of writes behind it: a pipeline step commits the state change first; its last events then go through one `emit` call, in which the writer appends each event (`append_event`, which assigns `seq`), reads `stream_state` after the last one to set `rests`, and broadcasts ([backend api 13, the writer](../../../docs/backend/api.md#the-writer); [backend flows 5](../../../docs/backend/flows.md#5-the-per-scan-writer-and-the-sse-stream); [backend pipeline 10](../../../docs/backend/pipeline.md#10-events): "Events go out after the commit that makes them true"). Reading the state first means every event stored before the read is in the replay. That doesn't make the replay complete up to the resting point: a step commits its state and then emits its last events, so a stream that reads the state between the two sees the scan at rest, replays without those events (`plan_ready`, for example) and closes. The app covers the gap: on every close it refetches `GET /scans/{id}`, which already holds what the step committed ([frontend 10](../../../docs/frontend/README.md#10-live-streams)), and push notifications go out from the writer either way ([backend api 13, the stream](../../../docs/backend/api.md#the-stream), step 2; [backend flows 5](../../../docs/backend/flows.md#5-the-per-scan-writer-and-the-sse-stream), "State before replay").
 4. **If that state was at rest** (the [resting rule](../../../docs/architecture/contracts.md#when-the-stream-closes)), end the stream after the replay.
-5. **Forward live events**, dropping any whose `seq` was already sent ([contracts 4, transport](../../../docs/architecture/contracts.md#transport)). The writer marks, in the broadcast message, the event that brings the scan to rest; after sending it, end the stream. The mark isn't stored (`scan_event` has `run`, `type`, `payload` and `ts`; [schema.surql](../../../docs/database/schema.surql)), so the replay can't see it. That is why the drop rule has one exception: a dropped duplicate that carries the mark also ends the stream. It happens when the writer commits the resting event after step 3 read the state but before the replay read the events: the replay already sent it, and without the exception the stream would wait for an event that never comes (the `a_resting_event_committed_during_the_replay_closes_the_stream` test).
-6. **On `RecvError::Lagged`** (the receiver fell behind and the channel overwrote events), go back to step 3. A live event whose `seq` skips ahead (`seq > last + 1`) is treated the same way, so the client never sees a gap ([`Receiver::recv`](https://docs.rs/tokio/1.53.3/tokio/sync/broadcast/struct.Receiver.html#method.recv): after `Lagged`, the next `recv` returns the oldest value still held).
-7. **On `RecvError::Closed`** (the hub dropped the scan's sender while this stream was subscribed), subscribe again and go back to step 3. `Closed` is not a resting point: the stream ends only on the resting rules ([rust-async channels 4](../rust-async/channels.md#4-broadcast-the-sse-hub)). The new receiver comes with a sender the hub keeps, so this doesn't spin; the hub retires a sender only when it has no receivers ([rust-async channels 3](../rust-async/channels.md#3-oneshot-and-the-actor-pattern-the-per-scan-event-writer); not fixed by the contracts, [contracts 12, question 22](../../../docs/architecture/contracts.md#12-open-questions)).
-8. **On shutdown** (the process `CancellationToken`), end the stream; `axum::serve`'s graceful shutdown waits for every open connection, so a stream that never ends would hold the process up ([rust-async shutdown 5](../rust-async/shutdown.md#5-api), [layers 6](layers.md#6-graceful-shutdown)). The app resumes with `Last-Event-ID`.
-9. **On a store error mid-stream** (the state read or the replay), log it at `warn` and end the stream. The status is already 200; the app reconnects with `Last-Event-ID` ([frontend 10](../../../docs/frontend/README.md#10-live-streams)). Never turn the error into `false` or an empty replay: that would close a running scan's stream as if it were at rest, or leave it waiting.
+5. **Forward live events**, dropping any whose `seq` was already sent ([contracts 4, transport](../../../docs/architecture/contracts.md#transport)). The writer marks, in the broadcast message, the event that brings the scan to rest; after sending it, end the stream. The mark isn't stored (`scan_event` has `run`, `type`, `payload` and `ts`; [schema.surql](../../../docs/database/schema.surql)), so the replay can't see it. That is why the drop rule has one exception: a dropped duplicate that carries the mark also ends the stream. It happens when the writer commits the resting event after step 3 read the state but before the replay read the events: the replay already sent it, and without the exception the stream would wait for an event that never comes (the `a_resting_event_committed_during_the_replay_closes_the_stream` test). [Backend api 13](../../../docs/backend/api.md#the-stream) has the same rule (its `a_resting_event_stored_during_the_replay_still_ends_the_stream` test).
+6. **After `REST_CHECK` (15 s) without an event**, go back to step 3: read the state and replay again. Some changes reach a resting point without an event (a step claim released with nothing to say), and deleting a scan emits none, so only a fresh state read can close those streams, within 15 s ([contracts 4, when the stream closes](../../../docs/architecture/contracts.md#when-the-stream-closes); [backend api 13, the stream](../../../docs/backend/api.md#the-stream), steps 4 and 5). It costs each open stream one state read and one empty range read every 15 s. `recv` is cancel safe, so a timed-out wait loses no message ([`Receiver::recv`](https://docs.rs/tokio/1.53.3/tokio/sync/broadcast/struct.Receiver.html#method.recv)). The `a_resting_point_reached_without_an_event_closes_the_stream` and `deleting_the_scan_closes_its_stream` tests drive it with the paused clock.
+7. **When the scan is gone**, end the stream: `stream_state` reads only scans without `deleting_at`, so a scan being deleted answers `NotFound`, and a reconnect then gets `404` (backend api 13, step 5). This is a close, not a store error, so it logs at `debug`.
+8. **On `RecvError::Lagged`** (the receiver fell behind and the channel overwrote events), go back to step 3. A live event whose `seq` skips ahead (`seq > last + 1`) is treated the same way, so the client never sees a gap ([`Receiver::recv`](https://docs.rs/tokio/1.53.3/tokio/sync/broadcast/struct.Receiver.html#method.recv): after `Lagged`, the next `recv` returns the oldest value still held).
+9. **On `RecvError::Closed`**, end the stream; the app reconnects with `Last-Event-ID` and resumes, as after any close its scan record doesn't explain ([frontend 10](../../../docs/frontend/README.md#10-live-streams)). Under the hub's rule it can't happen to a live subscriber: the hub removes a scan's sender only under its map's lock and only when [`receiver_count() == 0`](https://docs.rs/tokio/1.53.3/tokio/sync/broadcast/struct.Sender.html#method.receiver_count), and the writer looks the sender up for every publish instead of caching it ([backend api 13, the hub](../../../docs/backend/api.md#the-hub)).
+10. **On shutdown** (the process `CancellationToken`), end the stream, during the replay as well as while live: the whole `stream!` is wrapped in `.take_until(token.cancelled_owned())`, as backend api 13 does, rather than a `select!` around `recv` only, which would miss the token while a store read is pending; `axum::serve`'s graceful shutdown waits for every open connection, so a stream that never ends would hold the process up ([rust-async shutdown 5](../rust-async/shutdown.md#5-api), [layers 6](layers.md#6-graceful-shutdown)). The app resumes with `Last-Event-ID`.
+11. **On a store error mid-stream** (the state read or the replay), log it at `warn` and end the stream. The status is already 200; the app reconnects with `Last-Event-ID` ([frontend 10](../../../docs/frontend/README.md#10-live-streams)). Never turn the error into `false` or an empty replay: that would close a running scan's stream as if it were at rest, or leave it waiting.
 
 Sources: [`async_stream::stream!`](https://docs.rs/async-stream/0.3.6/async_stream/macro.stream.html), [`tokio::select!`](https://docs.rs/tokio/1.53.3/tokio/macro.select.html), [`CancellationToken::cancelled`](https://docs.rs/tokio-util/0.7.20/tokio_util/sync/struct.CancellationToken.html#method.cancelled), [`RecvError`](https://docs.rs/tokio/1.53.3/tokio/sync/broadcast/error/enum.RecvError.html).
+
+**The lifetimes behind it** are settled ([contracts 4, transport](../../../docs/architecture/contracts.md#transport), "the writer's lifecycle"; [contracts 12, question 22](../../../docs/architecture/contracts.md#12-open-questions); [backend api 22](../../../docs/backend/api.md#22-decisions-on-the-contracts-open-questions); [backend flows 19](../../../docs/backend/flows.md#19-writer-actor-broadcast-channel-and-plan-lock)). Three pieces retire independently, so none keeps another alive:
+
+| Piece | Starts | Retires |
+|---|---|---|
+| The writer actor (one per scan) | On the scan's first event | After 60 s without a command, or at shutdown, after draining its queue; an event that races the retirement gets its command back from the failed send and starts a new actor |
+| The broadcast channel | With the first subscriber; a publish to a scan without one is a no-op (the event is stored) | When the idle sweep finds `receiver_count() == 0`, under the hub's lock |
+| The plan lock | On the first plan write | When nobody holds or waits for it (`Arc::strong_count == 1`) |
+
+Correctness doesn't depend on any of them: `seq` is assigned in the transaction that stores the event (`scan.last_event_seq`), so a writer started later continues the sequence. A disconnect needs no guard object: the dropped receiver lowers `receiver_count()`, and the sweep removes the channel ([backend flows 5](../../../docs/backend/flows.md#5-the-per-scan-writer-and-the-sse-stream)).
 
 ## 2. What axum writes
 
@@ -31,7 +43,7 @@ All checked in `axum-0.8.9/src/response/sse.rs` ([source](https://docs.rs/crate/
 
 | Need (contracts 4, architecture 12) | axum 0.8.9 |
 |---|---|
-| `id: 17`, `event: finding`, `data: {...}`, blank line | `Event::default().id("17").event("finding").data(json)`. Each setter writes `name: value\n` in call order, and the event ends with `\n`. So call `id`, `event`, `data` in that order to match the contract's layout. `id`, `event` and `retry` panic if called twice on one event; every value panics if it contains `\r` or `\n` (`data` splits on newlines into several `data:` lines instead) ([`Event`](https://docs.rs/axum/0.8.9/axum/response/sse/struct.Event.html)) |
+| `id: 17`, `event: finding`, `data: {...}`, blank line | `Event::default().id("17").event("finding").data(json)`. Each setter writes `name: value\n` in call order, and the event ends with `\n`. So call `id`, `event`, `data` in that order to match the contract's layout. `id`, `event`, `retry` and the `data*` setters (`data`, `json_data`) panic if called twice on one event ("Called Event::data* multiple times" in `sse.rs`); every value panics if it contains `\r` or `\n` (`data` splits on newlines into several `data:` lines instead) ([`Event`](https://docs.rs/axum/0.8.9/axum/response/sse/struct.Event.html)) |
 | JSON in `data` | `.json_data(&value)` serialises straight into the event and returns `Result`; `.data(&str)` for JSON already serialised (the stored payload with fresh signed URLs) ([`Event::json_data`](https://docs.rs/axum/0.8.9/axum/response/sse/struct.Event.html#method.json_data)) |
 | `: keepalive` every 15 s | `Sse::keep_alive(KeepAlive::new().text("keepalive"))`. `KeepAlive::new` sets `max_interval: Duration::from_secs(15)` and `event: Event::DEFAULT_KEEP_ALIVE`, which is `b":\n\n"`, an empty comment; `.text("keepalive")` gives `: keepalive\n\n` ([`KeepAlive::interval`](https://docs.rs/axum/0.8.9/axum/response/sse/struct.KeepAlive.html#method.interval) and [`KeepAlive::text`](https://docs.rs/axum/0.8.9/axum/response/sse/struct.KeepAlive.html#method.text) document both defaults). `KeepAliveStream::poll_next` resets the timer after every event, so a keepalive goes out after 15 s **without** an event, not on a fixed clock |
 | `Cache-Control: no-cache` | Set by `Sse`'s `IntoResponse`, with `Content-Type: text/event-stream`. Nothing to add ([`Sse`](https://docs.rs/axum/0.8.9/axum/response/sse/struct.Sse.html); the `event_wire_format_matches_contracts_4` test) |
@@ -41,7 +53,7 @@ All checked in `axum-0.8.9/src/response/sse.rs` ([source](https://docs.rs/crate/
 
 ## 3. The compiled example
 
-`Hub` stands for the SSE hub (one `broadcast::Sender` per scan) and `Store` for the `store` crate. `publish` in the tests plays the serialised writer: store, then broadcast. The block carries copies of `ApiError` and `ApiPath` from [error-responses](error-responses.md#2-the-compiled-example), so the handler's errors are the real ones; the tests check the `ErrorParts` each leaves on its response.
+`EventHub` and `Published` are the hub and its message as [backend api 13](../../../docs/backend/api.md#the-hub) names them (one `broadcast::Sender` per scan; the stored event and its `rests` flag), and `StoredEvent` the stored row, as in [rust-async channels](../rust-async/channels.md#4-broadcast-the-sse-hub); `Store` stands for the `store` crate. `publish` in the tests plays the writer: store the event, read the state it leads to, then broadcast through `EventHub::publish`. The block carries copies of `ApiError` and `ApiPath` from [error-responses](error-responses.md#2-the-compiled-example), so the handler's errors are the real ones; the tests check the `ErrorParts` each leaves on its response.
 
 ```rust
 use std::{
@@ -61,7 +73,7 @@ use axum::{
     http::HeaderMap,
     response::sse::{Event, KeepAlive, Sse},
 };
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use serde::Deserialize;
 use tokio::sync::broadcast::{self, error::RecvError};
 use tokio_util::sync::CancellationToken;
@@ -69,13 +81,13 @@ use tokio_util::sync::CancellationToken;
 /// A stored event (one `scan_event` row), with its data line already built (fresh
 /// signed URLs included).
 #[derive(Debug, Clone)]
-pub struct ScanEvent {
+pub struct StoredEvent {
     pub seq: u64,
     pub kind: &'static str,
     pub data: String,
 }
 
-impl ScanEvent {
+impl StoredEvent {
     fn to_sse(&self) -> Event {
         Event::default()
             .id(self.seq.to_string())
@@ -87,12 +99,12 @@ impl ScanEvent {
 /// What the writer broadcasts. `rests` marks the event that brings the scan to rest
 /// (contracts 4, when the stream closes); it isn't stored, so only live subscribers see it.
 #[derive(Debug)]
-pub struct Live {
-    pub event: ScanEvent,
+pub struct Published {
+    pub event: StoredEvent,
     pub rests: bool,
 }
 
-/// A typed path ID; the real newtypes are in rust-contract-types. It parses inside
+/// A typed path ID; the real one is `Id<table::Scan>` (rust-contract-types). It parses inside
 /// `visit_str`, so a bad value keeps the capture's name (error-responses 3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScanId(ulid::Ulid);
@@ -124,22 +136,39 @@ impl fmt::Display for ScanId {
 #[error("store unavailable")]
 pub struct StoreDown;
 
+/// What reading the scan's stream state can answer.
+#[derive(Debug, thiserror::Error)]
+pub enum StateError {
+    /// The scan is gone or being deleted: `stream_state` reads only scans without
+    /// `deleting_at` (backend api 13).
+    #[error("scan not found")]
+    NotFound,
+    #[error(transparent)]
+    Down(#[from] StoreDown),
+}
+
+/// How long a live stream waits without an event before it reads the state again
+/// (backend api 13, `REST_CHECK`; contracts 4, when the stream closes).
+pub const REST_CHECK: Duration = Duration::from_secs(15);
+
 type Write = Box<dyn FnOnce() + Send>;
 
 /// Stand-in for the `store` crate, for one scan.
 #[derive(Default)]
 pub struct Store {
-    events: Mutex<Vec<ScanEvent>>,
+    events: Mutex<Vec<StoredEvent>>,
     at_rest: AtomicBool,
     readable: Mutex<Vec<String>>,
     down: AtomicBool,
+    /// The scan is being deleted.
+    gone: AtomicBool,
     /// A write the writer commits after the stream read the state, before it reads the
     /// events: the window in which the resting event can land in the replay.
     racing_write: Mutex<Option<Write>>,
 }
 
 impl Store {
-    pub async fn events_after(&self, after: u64) -> Result<Vec<ScanEvent>, StoreDown> {
+    pub async fn events_after(&self, after: u64) -> Result<Vec<StoredEvent>, StoreDown> {
         tokio::task::yield_now().await; // the real query is a network round trip
         let racing = self.racing_write.lock().map_err(|_| StoreDown)?.take();
         if let Some(write) = racing {
@@ -156,44 +185,64 @@ impl Store {
             return Err(StoreDown);
         }
         let readable = self.readable.lock().map_err(|_| StoreDown)?;
-        Ok(readable.iter().any(|id| id == scan_id))
+        Ok(!self.gone.load(Ordering::SeqCst) && readable.iter().any(|id| id == scan_id))
     }
 
-    pub async fn at_rest(&self) -> Result<bool, StoreDown> {
+    pub async fn at_rest(&self) -> Result<bool, StateError> {
         tokio::task::yield_now().await;
         if self.down.load(Ordering::SeqCst) {
-            return Err(StoreDown);
+            return Err(StoreDown.into());
+        }
+        if self.gone.load(Ordering::SeqCst) {
+            return Err(StateError::NotFound);
         }
         Ok(self.at_rest.load(Ordering::SeqCst))
     }
 }
 
-/// One channel per scan. 256 is this skill's choice: a run sends dozens of events
+/// One channel per scan, 256 slots (backend flows 5): a run sends dozens of events
 /// (contracts 4, event catalogue), and a client that falls further behind replays.
 #[derive(Default)]
-pub struct Hub {
-    channels: Mutex<HashMap<String, broadcast::Sender<Arc<Live>>>>,
+pub struct EventHub {
+    channels: Mutex<HashMap<String, broadcast::Sender<Arc<Published>>>>,
 }
 
-impl Hub {
+impl EventHub {
     const CAPACITY: usize = 256;
 
-    pub fn subscribe(&self, scan_id: &str) -> broadcast::Receiver<Arc<Live>> {
-        self.sender(scan_id, Self::CAPACITY).subscribe()
+    /// Creates the scan's channel if it has none, and subscribes **under the map's lock**, so
+    /// the idle sweep (which removes a channel only at `receiver_count() == 0`, under the same
+    /// lock) can never remove it between the lookup and the subscribe (api 13, the hub).
+    pub fn subscribe(&self, scan_id: &str) -> broadcast::Receiver<Arc<Published>> {
+        self.subscribe_with_capacity(scan_id, Self::CAPACITY)
     }
 
-    fn sender(&self, scan_id: &str, capacity: usize) -> broadcast::Sender<Arc<Live>> {
+    fn subscribe_with_capacity(
+        &self,
+        scan_id: &str,
+        capacity: usize,
+    ) -> broadcast::Receiver<Arc<Published>> {
         let mut channels = self.channels.lock().unwrap_or_else(PoisonError::into_inner);
         channels
             .entry(scan_id.to_owned())
             .or_insert_with(|| broadcast::channel(capacity).0)
-            .clone()
+            .subscribe()
+    }
+
+    /// Looked up under the lock on every publish, never cached. No channel: nobody to tell,
+    /// and the event is already stored.
+    pub fn publish(&self, scan_id: &str, message: Published) {
+        let channels = self.channels.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(live) = channels.get(scan_id) {
+            // Err only means the last receiver just left.
+            let _ = live.send(Arc::new(message));
+        }
     }
 }
 
 pub struct AppState {
     pub store: Store,
-    pub hub: Hub,
+    pub hub: EventHub,
     pub shutdown: CancellationToken,
 }
 
@@ -218,9 +267,7 @@ pub async fn scan_events(
             .to_str()
             .ok()
             .and_then(|s| s.trim().parse::<u64>().ok())
-            .ok_or_else(|| {
-                ApiError::invalid_request("Last-Event-ID", "Send the last seq number applied.")
-            })?,
+            .ok_or_else(|| ApiError::invalid_request("Last-Event-ID", "not a sequence number"))?,
     };
     let keep_alive = KeepAlive::new()
         .interval(Duration::from_secs(15))
@@ -233,15 +280,22 @@ pub fn event_stream(
     scan_id: String,
     mut last: u64,
 ) -> impl Stream<Item = Result<Event, Infallible>> {
-    stream! {
+    // Shutdown ends the stream wherever it is, in the replay too (api 13: `take_until`).
+    let shutdown = state.shutdown.clone();
+    let events = stream! {
         // 1. Subscribe before reading the store.
         let mut live = state.hub.subscribe(&scan_id);
-        loop {
-            // 2. Read the scan's state *before* its events. The writer commits an
-            // event and the state it leads to together, so if the scan was at rest
-            // here, the replay below holds every event up to that point.
+        'replay: loop {
+            // 2. Read the scan's state *before* its events, so every event stored before
+            // the read is replayed. A step commits its state before it emits, so a scan
+            // can read at rest without its last events; the app refetches on close.
             let at_rest = match state.store.at_rest().await {
                 Ok(at_rest) => at_rest,
+                // Deleted (or being deleted): close; a reconnect gets 404.
+                Err(StateError::NotFound) => {
+                    tracing::debug!(scan_id, "scan gone; ending the stream");
+                    return;
+                }
                 Err(error) => {
                     tracing::warn!(error = %Chain(&error), scan_id, "state read failed; ending the stream");
                     return;
@@ -264,11 +318,13 @@ pub fn event_stream(
             if at_rest {
                 return;
             }
-            // 4. Live events until rest, lag, a gap, a closed channel or shutdown.
+            // 4. Live events until rest, lag, a gap, a closed channel, or `REST_CHECK`
+            // without an event, which reads the state again: a resting point reached
+            // without an event, and a deleted scan, close the stream only that way.
             loop {
-                let received = tokio::select! {
-                    () = state.shutdown.cancelled() => return,
-                    received = live.recv() => received,
+                // `recv` is cancel safe: a timed-out wait loses no message.
+                let Ok(received) = tokio::time::timeout(REST_CHECK, live.recv()).await else {
+                    continue 'replay;
                 };
                 match received {
                     // The replay already sent the resting event: nothing else will end
@@ -288,15 +344,16 @@ pub fn event_stream(
                         break;
                     }
                     Err(RecvError::Closed) => {
-                        // Not a resting point. The hub keeps the new sender, so this
-                        // receiver stays open; the replay fills any gap.
-                        live = state.hub.subscribe(&scan_id);
-                        break;
+                        // The hub removes a sender only with no receivers, so this is a
+                        // bug elsewhere: end, and the app resumes with Last-Event-ID.
+                        tracing::warn!(scan_id, "broadcast closed under a subscriber; ending the stream");
+                        return;
                     }
                 }
             }
         }
-    }
+    };
+    events.take_until(shutdown.cancelled_owned())
 }
 
 // copy of: rust-axum-api/error-responses.md ApiPath
@@ -311,19 +368,12 @@ impl From<axum::extract::rejection::PathRejection> for ApiError {
         use axum::extract::rejection::PathRejection;
         match rejection {
             PathRejection::FailedToDeserializePathParams(e) => match e.into_kind() {
-                ErrorKind::ParseErrorAtKey {
-                    key, expected_type, ..
-                } => Self::invalid_request(key, format!("expected {expected_type}")),
-                ErrorKind::DeserializeError { key, message, .. } => {
-                    Self::invalid_request(key, message)
-                }
-                ErrorKind::InvalidUtf8InPathParam { key } => {
-                    Self::invalid_request(key, "invalid UTF-8")
-                }
                 // The route and the type disagree: a bug, not the client's input.
                 kind @ (ErrorKind::WrongNumberOfParameters { .. }
                 | ErrorKind::UnsupportedType { .. }) => Self::Internal(kind.to_string().into()),
-                other => Self::invalid_request("path", other.to_string()),
+                // contracts 2: a malformed ID in a path names no record, so it is a 404 like an
+                // unknown one (contracts 12, question 14).
+                _ => Self::NotFound,
             },
             other => Self::Internal(other.body_text().into()),
         }
@@ -434,9 +484,11 @@ pub enum Budget {
 pub const ACCEPTED_MEDIA_TYPES: [&str; 4] = ["image/jpeg", "image/png", "image/webp", "image/heic"];
 /// contracts 2: `max_bytes` of `upload_too_large`, an image over 12 MB (read as MiB).
 pub const IMAGE_MAX_BYTES: usize = 12 * 1024 * 1024;
-/// `retry_after_s` on a `503` when the cause gives no better number. The value is this
-/// skill's choice; contracts 2 only says the field is sent with `503`.
+/// contracts 2: `retry_after_s` of `upstream_unavailable` (also a request past the API's
+/// timeout) unless the provider named a longer wait.
 pub const UNAVAILABLE_RETRY_AFTER_S: u64 = 5;
+/// contracts 2: `retry_after_s` of `request_in_progress` and `processing_unavailable`.
+pub const SHORT_RETRY_AFTER_S: u64 = 2;
 
 /// One variant per contracts 2 code. `Display` is the `message`: a sentence safe to show.
 #[derive(Debug, thiserror::Error)]
@@ -658,9 +710,10 @@ impl axum::response::IntoResponse for ApiError {
 // end: ApiError
 
 // copy of: rust-contract-types/primitives.md Timestamp
-/// RFC 3339 in UTC, whole seconds, `Z` suffix: `"2026-10-18T14:03:22Z"` (contracts 1).
-/// Keeps full precision in memory; only the wire form is truncated. Whole seconds are
-/// this skill's choice, not the contracts' (contracts 12, question 12).
+/// RFC 3339 in UTC, whole seconds, `Z` suffix: `"2026-10-18T14:03:22Z"` (contracts 1,
+/// wire format; contracts 12, question 12). Keeps full precision in memory and in the
+/// database; only the wire form is truncated. No `now()`: every reading comes from the
+/// `Clock` port, so tests control time (backend domain 4).
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, utoipa::ToSchema, schemars::JsonSchema,
 )]
@@ -669,10 +722,6 @@ impl axum::response::IntoResponse for ApiError {
 pub struct Timestamp(chrono::DateTime<chrono::Utc>);
 
 impl Timestamp {
-    pub fn now() -> Self {
-        Self(chrono::Utc::now())
-    }
-
     /// For the store, which binds `chrono::DateTime<Utc>` (database 2).
     pub const fn into_inner(self) -> chrono::DateTime<chrono::Utc> {
         self.0
@@ -733,32 +782,34 @@ mod tests {
 
     const SCAN: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5F";
 
-    fn event(seq: u64) -> ScanEvent {
-        ScanEvent {
+    fn event(seq: u64) -> StoredEvent {
+        StoredEvent {
             seq,
             kind: "stage_started",
             data: format!(r#"{{"v":1,"seq":{seq}}}"#),
         }
     }
 
-    /// The serialised writer, reduced: store the event and the scan's state together,
-    /// then broadcast.
+    /// The step and the writer, reduced: the step commits the state (here: at rest), the
+    /// writer appends the event, reads the state to set `rests`, then broadcasts.
     fn publish(state: &AppState, seq: u64, rests: bool) {
-        state.store.events.lock().unwrap().push(event(seq));
         if rests {
             state.store.at_rest.store(true, Ordering::SeqCst);
         }
-        let live = Arc::new(Live {
-            event: event(seq),
-            rests,
-        });
-        let _ = state.hub.sender("s1", Hub::CAPACITY).send(live);
+        state.store.events.lock().unwrap().push(event(seq));
+        state.hub.publish(
+            "s1",
+            Published {
+                event: event(seq),
+                rests,
+            },
+        );
     }
 
     fn state() -> Arc<AppState> {
         Arc::new(AppState {
             store: Store::default(),
-            hub: Hub::default(),
+            hub: EventHub::default(),
             shutdown: CancellationToken::new(),
         })
     }
@@ -816,9 +867,10 @@ mod tests {
         state.store.readable.lock().unwrap().push(SCAN.to_owned());
         let uri = format!("/scans/{SCAN}/events");
 
+        // A malformed path ID is the same 404 as an unknown scan (contracts 2).
         let response = call(&state, "/scans/not-a-ulid/events", None).await;
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        assert_eq!(field(&response), "id");
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(error_parts(&response).code, ErrorCode::NotFound);
 
         let other = "/scans/01JAX3K9T6R2B8V0QZ4M7D1E5G/events";
         let response = call(&state, other, None).await;
@@ -841,7 +893,7 @@ mod tests {
 
     #[tokio::test]
     async fn event_wire_format_matches_contracts_4() {
-        let finding = ScanEvent {
+        let finding = StoredEvent {
             seq: 17,
             kind: "finding",
             data: r#"{"v":1,"seq":17,"type":"finding"}"#.to_owned(),
@@ -884,11 +936,13 @@ mod tests {
             assert!(frame.starts_with(expected.as_bytes()));
         }
         // Live: a repeat of 3, then 4, then 5, which brings the scan to rest.
-        let repeat = Arc::new(Live {
-            event: event(3),
-            rests: false,
-        });
-        let _ = state.hub.sender("s1", Hub::CAPACITY).send(repeat);
+        state.hub.publish(
+            "s1",
+            Published {
+                event: event(3),
+                rests: false,
+            },
+        );
         publish(&state, 4, false);
         publish(&state, 5, true);
         // `collect` returns only because the stream ends after 5.
@@ -913,7 +967,7 @@ mod tests {
     async fn lagged_subscriber_replays_from_the_store() {
         let state = state();
         // A tiny channel so the subscriber lags.
-        let _ = state.hub.sender("s1", 2);
+        drop(state.hub.subscribe_with_capacity("s1", 2));
         publish(&state, 1, false);
         let sse = Sse::new(event_stream(state.clone(), "s1".to_owned(), 0));
         let mut body = sse.into_response().into_body();
@@ -931,19 +985,56 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_closed_channel_resubscribes_instead_of_ending() {
+    async fn a_closed_channel_ends_the_stream_for_a_resume() {
         let state = state();
         publish(&state, 1, false);
         let sse = Sse::new(event_stream(state.clone(), "s1".to_owned(), 0));
         let mut body = sse.into_response().into_body();
         let first = body.frame().await.unwrap().unwrap().into_data().unwrap();
         assert!(first.starts_with(b"id: 1\n"));
-        // The hub drops the scan's only sender: the receiver gets `Closed`.
+        // A hub that broke its rule drops the scan's only sender: `Closed` ends the stream,
+        // and a reconnect with `Last-Event-ID: 1` replays what this one missed.
         state.hub.channels.lock().unwrap().clear();
-        publish(&state, 2, false);
-        publish(&state, 3, true);
+        publish(&state, 2, true);
         let rest = body.collect().await.unwrap().to_bytes();
-        assert_eq!(ids(std::str::from_utf8(&rest).unwrap()), ["2", "3"]);
+        assert_eq!(ids(std::str::from_utf8(&rest).unwrap()), Vec::<&str>::new());
+        assert_eq!(ids_until_closed(&state, 1).await, ["2"]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_resting_point_reached_without_an_event_closes_the_stream() {
+        let state = state();
+        publish(&state, 1, false);
+        let sse = Sse::new(event_stream(state.clone(), "s1".to_owned(), 0));
+        let mut body = sse.into_response().into_body();
+        let first = body.frame().await.unwrap().unwrap().into_data().unwrap();
+        assert!(first.starts_with(b"id: 1\n"));
+        // A step releases its claim with nothing to say: the scan rests, no event.
+        let start = tokio::time::Instant::now();
+        state.store.at_rest.store(true, Ordering::SeqCst);
+        let rest = body.collect().await.unwrap().to_bytes();
+        assert_eq!(ids(std::str::from_utf8(&rest).unwrap()), Vec::<&str>::new());
+        assert_eq!(start.elapsed(), REST_CHECK);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn deleting_the_scan_closes_its_stream() {
+        let state = state();
+        state.store.readable.lock().unwrap().push(SCAN.to_owned());
+        publish(&state, 1, false);
+        let sse = Sse::new(event_stream(state.clone(), "s1".to_owned(), 0));
+        let mut body = sse.into_response().into_body();
+        let first = body.frame().await.unwrap().unwrap().into_data().unwrap();
+        assert!(first.starts_with(b"id: 1\n"));
+        // Deleting a scan emits no event; the next state read answers `NotFound`.
+        let start = tokio::time::Instant::now();
+        state.store.gone.store(true, Ordering::SeqCst);
+        let rest = body.collect().await.unwrap().to_bytes();
+        assert_eq!(ids(std::str::from_utf8(&rest).unwrap()), Vec::<&str>::new());
+        assert_eq!(start.elapsed(), REST_CHECK);
+        // Reopening it is the same 404 as an unknown scan.
+        let response = call(&state, &format!("/scans/{SCAN}/events"), None).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
@@ -981,10 +1072,203 @@ What to check in a review of this endpoint (each point is sourced in section 1):
 - The scan ID is `ApiPath<ScanId>`; membership, `Last-Event-ID` and store errors are answered before the stream starts, as ordinary `ErrorBody` responses.
 - Subscribe happens before the first store read, and the replay is driven by `last`, not by the `Last-Event-ID` header after the first pass.
 - Every `yield` updates `last` first; the live branch drops `seq <= last`, except that a dropped event marked as resting ends the stream.
-- `Lagged`, a `seq` gap and `Closed` all lead back to the replay, never to `return`.
-- The `select!` includes the shutdown token.
+- `Lagged`, a `seq` gap and `REST_CHECK` without an event lead back to the state read and replay, never to `return`; `Closed` ends the stream for a resume, and so does a state read that answers `NotFound` (the scan is being deleted).
+- The whole stream ends on the shutdown token (`take_until`), in the replay as well as live.
 - A store error ends the stream with a `warn`; no `unwrap_or(false)` and no `?` inside `stream!` that would turn it into an `Err` item.
 
 ## 4. Chat streams
 
-`POST /conversations/{id}/messages` also answers with SSE, but it is **not resumable**: no `id:` lines, no replay, an `error` event ends a failed turn ([contracts 8, sending a message](../../../docs/architecture/contracts.md#sending-a-message)). The same `Sse` and `KeepAlive` apply; leave out `.id(...)`. When the client disconnects, hyper drops the response body, which drops the stream; the turn's code must notice (the stream's drop, or a `CancellationToken` cancelled from a drop guard) to stop the LLM call and store the message with `interrupted: true` ([contracts 8](../../../docs/architecture/contracts.md#sending-a-message)). That task structure is in [rust-async](../rust-async/SKILL.md#4-select-and-cancellation).
+`POST /conversations/{id}/messages` also answers with SSE, but it is **not resumable**: no `id:` lines, no replay, an `error` event ends a failed turn ([contracts 8, sending a message](../../../docs/architecture/contracts.md#sending-a-message)). The same `Sse` and `KeepAlive` apply; leave out `.id(...)`. Errors before the stream (validation, the token budget) are ordinary `ErrorBody` responses.
+
+When the client disconnects, the server stops the LLM call and stores the message with `interrupted: true` (contracts 8). Storing is a database write, so it needs an `.await`, and `Drop` can't await: a drop guard on the response stream can't do it. So the turn runs in **its own task**, spawned on the process `TaskTracker`, and feeds the SSE body through a bounded `mpsc` channel ([backend agent 13, cancellation](../../../docs/backend/agent.md#cancellation); [backend api 14](../../../docs/backend/api.md#14-chat-streaming-and-confirmation-cards); [backend flows 8](../../../docs/backend/flows.md#8-chat-turn)):
+
+- When the client goes away, hyper drops the body, which drops the channel's `Receiver`. The task sees it at its next `send` (it fails) or, while it waits on the model, through [`Sender::closed`](https://docs.rs/tokio/1.53.3/tokio/sync/mpsc/struct.Sender.html#method.closed), which "completes when the receiver has dropped" and is cancel safe, in a `select!` with the model stream's `next()` and the shutdown token.
+- It then drops the model stream, which stops the HTTP call, and stores the partial reply with `interrupted: true`.
+- The outcome goes back through a `oneshot`, so the handler's own tracked task can finish the idempotency record: a completed message is stored as the replay `200 { message }`, an interrupted or failed one releases the key ([contracts 1, idempotency](../../../docs/architecture/contracts.md#idempotency)).
+- Shutdown ends the frames with `take_until(token.cancelled_owned())`, which drops the receiver and interrupts the turn the same way. The task is on the tracker, so shutdown waits for it to store its message ([layers 6](layers.md#6-graceful-shutdown)).
+
+A guard captured in the handler's closure would not even be kept: with edition 2021's disjoint captures, a `move` closure that never uses the guard doesn't capture it ([Edition Guide, disjoint capture](https://doc.rust-lang.org/edition-guide/rust-2021/disjoint-capture-in-closures.html); backend api 14). The cancellation patterns themselves are in [rust-async](../rust-async/SKILL.md#4-select-and-cancellation).
+
+```rust
+use std::{
+    convert::Infallible,
+    sync::{Arc, Mutex, PoisonError},
+};
+
+use axum::response::sse::{Event, KeepAlive, Sse};
+use futures::{Stream, StreamExt, stream::BoxStream};
+use tokio::sync::{mpsc, oneshot};
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
+
+/// contracts 8 `message_completed`'s `usage`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct Usage {
+    pub tokens_in: u32,
+    pub tokens_out: u32,
+}
+
+/// Two of contracts 8's chat events, enough to show the shape.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChatEvent {
+    TextDelta(String),
+    MessageCompleted { message_id: String, usage: Usage },
+}
+
+impl ChatEvent {
+    fn to_sse(&self) -> Event {
+        match self {
+            Self::TextDelta(text) => Event::default()
+                .event("text_delta")
+                .json_data(serde_json::json!({ "v": 1, "text": text }))
+                .unwrap_or_else(|_| Event::default().comment("unserialisable event")),
+            Self::MessageCompleted { message_id, usage } => Event::default()
+                .event("message_completed")
+                .json_data(serde_json::json!({ "v": 1, "message_id": message_id, "usage": usage }))
+                .unwrap_or_else(|_| Event::default().comment("unserialisable event")),
+        }
+    }
+}
+
+/// How the turn ended, for the idempotency record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TurnOutcome {
+    Completed,
+    Interrupted,
+}
+
+/// Stand-in for the chat repository: what the turn stored, and whether it was interrupted.
+#[derive(Default)]
+pub struct Messages {
+    pub stored: Mutex<Vec<(String, bool)>>,
+}
+
+impl Messages {
+    /// The real call is a database write: it needs an `.await`, which `Drop` can't do.
+    pub async fn store(&self, text: String, interrupted: bool) {
+        tokio::task::yield_now().await;
+        self.stored
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push((text, interrupted));
+    }
+}
+
+/// The model's reply as text chunks (the real one is `ChatModel::stream`).
+pub type ModelStream = BoxStream<'static, String>;
+
+/// Spawns the turn on the tracker; the handler maps the receiver to SSE frames.
+pub fn start_turn(
+    model: ModelStream,
+    messages: Arc<Messages>,
+    tasks: &TaskTracker,
+    shutdown: CancellationToken,
+) -> (ReceiverStream<ChatEvent>, oneshot::Receiver<TurnOutcome>) {
+    let (tx, rx) = mpsc::channel(32);
+    let (outcome_tx, outcome_rx) = oneshot::channel();
+    tasks.spawn(async move {
+        let outcome = run_turn(model, &tx, &messages, &shutdown).await;
+        let _ = outcome_tx.send(outcome);
+    });
+    (ReceiverStream::new(rx), outcome_rx)
+}
+
+async fn run_turn(
+    mut model: ModelStream,
+    tx: &mpsc::Sender<ChatEvent>,
+    messages: &Messages,
+    shutdown: &CancellationToken,
+) -> TurnOutcome {
+    let mut sent = String::new();
+    loop {
+        let chunk = tokio::select! {
+            () = tx.closed() => break,
+            () = shutdown.cancelled() => break,
+            chunk = model.next() => chunk,
+        };
+        let Some(chunk) = chunk else {
+            messages.store(sent, false).await;
+            let completed = ChatEvent::MessageCompleted {
+                message_id: "01JAX3K9T6R2B8V0QZ4M7D1E5F".to_owned(),
+                usage: Usage {
+                    tokens_in: 812,
+                    tokens_out: 64,
+                },
+            };
+            let _ = tx.send(completed).await;
+            return TurnOutcome::Completed;
+        };
+        if tx.send(ChatEvent::TextDelta(chunk.clone())).await.is_err() {
+            break;
+        }
+        sent.push_str(&chunk);
+    }
+    // Dropping the model stream stops the HTTP call; then store what was streamed.
+    drop(model);
+    messages.store(sent, true).await;
+    TurnOutcome::Interrupted
+}
+
+/// The handler's body: frames without `id:` lines, ended by shutdown too.
+pub fn chat_sse(
+    events: ReceiverStream<ChatEvent>,
+    shutdown: CancellationToken,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let frames = events
+        .map(|event| Ok(event.to_sse()))
+        .take_until(shutdown.cancelled_owned());
+    Sse::new(frames).keep_alive(KeepAlive::new().text("keepalive"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::response::IntoResponse;
+    use http_body_util::BodyExt;
+
+    fn turn(
+        model: ModelStream,
+    ) -> (
+        axum::body::Body,
+        oneshot::Receiver<TurnOutcome>,
+        Arc<Messages>,
+    ) {
+        let messages = Arc::new(Messages::default());
+        let tasks = TaskTracker::new();
+        let shutdown = CancellationToken::new();
+        let (events, outcome) = start_turn(model, Arc::clone(&messages), &tasks, shutdown.clone());
+        let body = chat_sse(events, shutdown).into_response().into_body();
+        (body, outcome, messages)
+    }
+
+    #[tokio::test]
+    async fn a_finished_turn_is_stored_and_completed() {
+        let model = futures::stream::iter(["Water ", "deeply."].map(str::to_owned)).boxed();
+        let (body, outcome, messages) = turn(model);
+        let text = body.collect().await.unwrap().to_bytes();
+        let text = std::str::from_utf8(&text).unwrap();
+        assert!(!text.contains("id:"), "chat events are not resumable");
+        let completed = r#"data: {"v":1,"message_id":"01JAX3K9T6R2B8V0QZ4M7D1E5F","usage":{"tokens_in":812,"tokens_out":64}}"#;
+        assert!(text.ends_with(&format!("event: message_completed\n{completed}\n\n")));
+        assert_eq!(outcome.await.unwrap(), TurnOutcome::Completed);
+        let stored = messages.stored.lock().unwrap().clone();
+        assert_eq!(stored, [("Water deeply.".to_owned(), false)]);
+    }
+
+    #[tokio::test]
+    async fn a_disconnect_while_the_model_thinks_stores_an_interrupted_message() {
+        // One chunk, then the model never answers again.
+        let model = futures::stream::once(async { "Check the ".to_owned() })
+            .chain(futures::stream::pending())
+            .boxed();
+        let (mut body, outcome, messages) = turn(model);
+        let frame = body.frame().await.unwrap().unwrap().into_data().unwrap();
+        assert!(frame.starts_with(b"event: text_delta\n"));
+        // The client goes away: hyper drops the body, and with it the receiver.
+        drop(body);
+        assert_eq!(outcome.await.unwrap(), TurnOutcome::Interrupted);
+        let stored = messages.stored.lock().unwrap().clone();
+        assert_eq!(stored, [("Check the ".to_owned(), true)]);
+    }
+}
+```

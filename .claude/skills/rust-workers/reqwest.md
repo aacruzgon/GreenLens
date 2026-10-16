@@ -1,6 +1,6 @@
 # HTTP from the worker: reqwest 0.13.5
 
-Part of [rust-workers](SKILL.md). Versions: reqwest 0.13.5 with the `json` feature ([versions.md](../rust/versions.md)), axum 0.8.9 for the test server. reqwest 0.13 is a new major release: code written for 0.12 may not compile or may behave differently ([CHANGELOG](https://github.com/seanmonstar/reqwest/blob/v0.13.5/CHANGELOG.md)). The calls themselves are fixed by [contracts 5](../../../docs/architecture/contracts.md#5-worker-api-and-jobs).
+Part of [rust-workers](SKILL.md). Versions: reqwest 0.13.5 with the `json`, `stream` and `query` features ([versions.md](../rust/versions.md)), axum 0.8.9 for the test server. reqwest 0.13 is a new major release: code written for 0.12 may not compile or may behave differently ([CHANGELOG](https://github.com/seanmonstar/reqwest/blob/v0.13.5/CHANGELOG.md)). The calls themselves are fixed by [contracts 5](../../../docs/architecture/contracts.md#5-worker-api-and-jobs). In the backend the worker API client is `HttpWorkerApi` ([backend worker 6](../../../docs/backend/worker.md#6-leases-heartbeats-and-completion)), and the VLM server and the hosted LLM are called through the `integrations` crate's clients, not raw reqwest (section 5; [backend worker 4](../../../docs/backend/worker.md#4-configuration), `build_model`).
 
 ## Contents
 
@@ -12,7 +12,7 @@ Part of [rust-workers](SKILL.md). Versions: reqwest 0.13.5 with the `json` featu
 
 ## 1. The client
 
-- **One `Client` per process.** It holds the connection pool, and it is an `Arc` inside: clone it into tasks, don't wrap it in another `Arc` and don't build one per call. [Client](https://docs.rs/reqwest/0.13.5/reqwest/struct.Client.html)
+- **One `Client` per process.** It holds the connection pool, and it is an `Arc` inside: clone it into tasks, don't wrap it in another `Arc` and don't build one per call. The worker builds it once with `integrations::http::client` and clones it into `HttpWorkerApi` and the VLM or LLM client ([backend integrations 4](../../../docs/backend/integrations.md#4-shared-http-client-retries-pacing-sse); [backend worker 3](../../../docs/backend/worker.md#3-module-layout), `main.rs`). [Client](https://docs.rs/reqwest/0.13.5/reqwest/struct.Client.html)
 - **Build it with `Client::builder()...build()`**, which returns an error. `Client::new()` panics if the TLS backend can't be initialised. [Client::new](https://docs.rs/reqwest/0.13.5/reqwest/struct.Client.html#method.new), [ClientBuilder::build](https://docs.rs/reqwest/0.13.5/reqwest/struct.ClientBuilder.html#method.build)
 - **TLS in 0.13**: the default backend is rustls with the aws-lc crypto provider, and certificates are checked by `rustls-platform-verifier` (0.7.1 in the lock file). On Linux that verifier loads the system's CA certificates when the client is built, and `build()` fails with "No CA certificates were loaded from the system" if there are none. So every worker image needs the distribution's CA certificates, even a rig worker that only calls the API. *From the source, not run*: `reqwest-0.13.5/src/async_impl/client.rs` (`rustls_platform_verifier::Verifier::new` in `build`) and `rustls-platform-verifier-0.7.1/src/verification/others.rs`. [CHANGELOG, v0.13.0](https://github.com/seanmonstar/reqwest/blob/v0.13.5/CHANGELOG.md)
 - **`json` is a crate feature** (on in versions.md): `RequestBuilder::json` sets `Content-Type: application/json` unless already set, and `Response::json` decodes the body. [RequestBuilder::json](https://docs.rs/reqwest/0.13.5/reqwest/struct.RequestBuilder.html#method.json), [Response::json](https://docs.rs/reqwest/0.13.5/reqwest/struct.Response.html#method.json)
@@ -22,13 +22,13 @@ Part of [rust-workers](SKILL.md). Versions: reqwest 0.13.5 with the `json` featu
 
 | Setting | Covers | Default | In the worker |
 |---|---|---|---|
-| `ClientBuilder::timeout` | The whole request: from connecting until the body has been read | None | 30 s, as a backstop only (*this skill's choice*) |
+| `ClientBuilder::timeout` | The whole request: from connecting until the body has been read | None | Not set: the shared client has no total timeout, because an LLM stream can last minutes ([backend integrations 4](../../../docs/backend/integrations.md#4-shared-http-client-retries-pacing-sse)) |
 | `RequestBuilder::timeout` | The same, for one request; overrides the client's | None | Every call sets its own |
-| `ClientBuilder::connect_timeout` | The connect phase only | None | 5 s |
-| `ClientBuilder::read_timeout` | Each read, reset after each successful read, **including the wait for the response headers** | None | Not set |
+| `ClientBuilder::connect_timeout` | The connect phase only | None | 5 s ([backend integrations 4](../../../docs/backend/integrations.md#4-shared-http-client-retries-pacing-sse)) |
+| `ClientBuilder::read_timeout` | Each read, reset after each successful read, **including the wait for the response headers** | None | **600 s** on the worker's client. `integrations`' shared builder defaults to 60 s, which `api` keeps; the worker overrides it ([backend worker 1, HTTP timeouts](../../../docs/backend/worker.md#1-purpose-and-boundaries)) |
 
-- The claim gets `wait_s + 10 s`, longer than the long poll. Heartbeat 5 s, `events` and `complete` 10 s, image fetch 20 s: *design choices*, each far below the 30 s heartbeat limit or the job's `max_runtime`.
-- **No `read_timeout` on the shared client.** Its timer starts when the request is sent and is checked before the headers arrive, so a claim that waits 25 s for a job fails at the read timeout. A vLLM call without streaming is silent until the answer is complete, too. The test `read_timeout_also_bounds_the_wait_for_headers` below shows it, and the source agrees: `reqwest-0.13.5/src/async_impl/client.rs`, `Pending::poll` checks `read_timeout_fut` before the response future. There is no per-request `read_timeout`. [ClientBuilder::read_timeout](https://docs.rs/reqwest/0.13.5/reqwest/struct.ClientBuilder.html#method.read_timeout), [RequestBuilder](https://docs.rs/reqwest/0.13.5/reqwest/struct.RequestBuilder.html)
+- **Each call's own deadline is what ends it**, all shorter than the 600 s read gap: the claim `wait_s + 10` = 35 s, longer than the long poll; an image 30 s; `events` and `complete` 10 s; the heartbeat 5 s, far below the 30 s after which the broker requeues; a VLM call 240 s and a hosted LLM call 300 s, set in their `integrations` client's configuration ([backend worker 1, HTTP timeouts](../../../docs/backend/worker.md#1-purpose-and-boundaries); [4](../../../docs/backend/worker.md#4-configuration), `build_model`).
+- **No short `read_timeout` on the shared client.** Its timer starts when the request is sent and is checked before the headers arrive, so a claim that waits 25 s for a job fails at a shorter read timeout, and a VLM call without streaming is silent until the answer is complete. The test `read_timeout_also_bounds_the_wait_for_headers` below shows it, and the source agrees: `reqwest-0.13.5/src/async_impl/client.rs`, `Pending::poll` checks `read_timeout_fut` before the response future. There is no per-request `read_timeout`. So the read gap must be longer than the longest silent wait of any call on the client: `integrations`' 60 s is safe for `api` (Anthropic streams send `ping` events while the model thinks), but a non-streamed VLM call can wait more than a minute for its headers, so the worker's client gets 600 s, above the VLM call's 240 s deadline, and each call's own `RequestBuilder::timeout` is what bounds it ([backend worker 1, HTTP timeouts](../../../docs/backend/worker.md#1-purpose-and-boundaries); [backend integrations 4](../../../docs/backend/integrations.md#4-shared-http-client-retries-pacing-sse)). [ClientBuilder::read_timeout](https://docs.rs/reqwest/0.13.5/reqwest/struct.ClientBuilder.html#method.read_timeout), [RequestBuilder](https://docs.rs/reqwest/0.13.5/reqwest/struct.RequestBuilder.html)
 - `Error::is_timeout()` walks the error's source chain, so it is also true for a timeout while reading the body. [Error::is_timeout](https://docs.rs/reqwest/0.13.5/reqwest/struct.Error.html#method.is_timeout)
 - **`is_decode()` alone doesn't mean a bad body.** `Response::json` and `bytes` report a body that couldn't be *read* (a timeout, a cut connection) with the same `Decode` kind as JSON that doesn't parse (`reqwest-0.13.5/src/async_impl/response.rs`, `do_bytes` and `json` both call `error::decode`). Tell them apart by the source: only a `serde_json::Error` source is a bad body; the test `a_bad_body_is_rejected_a_stalled_body_is_unavailable` proves both. [Error::is_decode](https://docs.rs/reqwest/0.13.5/reqwest/struct.Error.html#method.is_decode), [Response::json](https://docs.rs/reqwest/0.13.5/reqwest/struct.Response.html#method.json)
 
@@ -36,7 +36,7 @@ Sources: [ClientBuilder::timeout](https://docs.rs/reqwest/0.13.5/reqwest/struct.
 
 ## 3. The worker API calls
 
-`HttpApi` is what implements `WorkerApi` from [loop.md](loop.md) (the trait isn't repeated here, so this block compiles alone; `CallError` is the same as there). The tests run against an axum server on a local port, so they need no network.
+`HttpApi` is what implements `WorkerApi` from [loop.md](loop.md) (`HttpWorkerApi` in the worker; the trait isn't repeated here, so this block compiles alone; `CallError` is the same as there). The tests run against an axum server on a local port, so they need no network.
 
 ```rust
 use std::error::Error as _;
@@ -98,11 +98,13 @@ pub struct JobImage {
     pub url: String, // `GET /internal/jobs/{job_id}/images/{image_id}`
 }
 
-/// One per process. `Client` is an `Arc` inside, so clones share one connection pool.
+/// One per process. `Client` is an `Arc` inside, so clones share one connection pool. The
+/// worker's settings of `integrations::http::client`: a 5 s connect, a 600 s read gap (above
+/// the VLM call's 240 s deadline), no total timeout; each call sets its own.
 pub fn build_client() -> reqwest::Result<Client> {
     Client::builder()
         .connect_timeout(Duration::from_secs(5))
-        .timeout(Duration::from_secs(30)) // a backstop; each call below sets its own
+        .read_timeout(Duration::from_secs(600))
         .build()
 }
 
@@ -150,8 +152,9 @@ impl HttpApi {
         if resp.status() == StatusCode::NO_CONTENT {
             return Ok(None); // nothing arrived within wait_s
         }
-        // Production decodes head first with rust-contract-types' `decode_claim`, so a
-        // `v != 1` body still yields what `complete` needs (unions.md §3).
+        // Production decodes head first with rust-contract-types' `decode_claim` into a
+        // `ClaimedJob`, so another `v` or an unreadable `v: 1` job still yields what
+        // `complete` needs (unions.md §3); a body without a head is `Rejected`.
         json(check(resp).await?).await.map(Some)
     }
 
@@ -191,7 +194,7 @@ impl HttpApi {
             .get(url)
             .bearer_auth(&self.worker_token)
             .header(LEASE_TOKEN_HEADER, job.lease_token.as_str())
-            .timeout(Duration::from_secs(20))
+            .timeout(Duration::from_secs(30))
             .send()
             .await
             .map_err(|e| transport(&e))?;
@@ -220,7 +223,8 @@ impl HttpApi {
 
 /// Turns a non-2xx answer into a `CallError`. The body is read first: `error_for_status`
 /// would consume the response, and only the body says `lease_lost`, `retryable` and
-/// `retry_after_s` (contracts §2).
+/// `retry_after_s` (contracts §2). The body's `retryable` decides, whatever the status; only
+/// without an error body does the status decide (backend worker 6, `classify_body`).
 async fn check(resp: Response) -> Result<Response, CallError> {
     let status = resp.status();
     if status.is_success() {
@@ -229,11 +233,14 @@ async fn check(resp: Response) -> Result<Response, CallError> {
     // A proxy's own 502 has no `ErrorBody`: fall back to the status.
     let body = resp.json::<ErrorBody>().await.ok().map(|b| b.error);
     Err(match body {
-        Some(error) if error.code == "lease_lost" => CallError::LeaseLost,
+        Some(error) if status == StatusCode::CONFLICT && error.code == "lease_lost" => {
+            CallError::LeaseLost
+        }
         Some(error) if error.retryable => CallError::Unavailable {
             reason: format!("{status} {}", error.code),
             retry_after: error.retry_after_s.map(Duration::from_secs),
         },
+        // `retryable: false` (`500 internal`, `429 budget_exceeded` among them).
         Some(error) => CallError::Rejected(format!("{status} {}", error.code)),
         None if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() => {
             CallError::Unavailable {
@@ -241,7 +248,7 @@ async fn check(resp: Response) -> Result<Response, CallError> {
                 retry_after: None,
             }
         }
-        None => CallError::Rejected(status.to_string()),
+        None => CallError::Rejected(status.to_string()), // a 4xx without an error body
     })
 }
 
@@ -301,7 +308,12 @@ mod tests {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 error_body("internal", false, None),
             ),
-            _ => (StatusCode::BAD_GATEWAY, String::new()), // a proxy's own answer
+            "budget" => (
+                StatusCode::TOO_MANY_REQUESTS,
+                error_body("budget_exceeded", false, None),
+            ),
+            "bad" => (StatusCode::BAD_REQUEST, String::new()), // a 4xx without a body
+            _ => (StatusCode::BAD_GATEWAY, String::new()),     // a proxy's own answer
         }
     }
 
@@ -415,6 +427,15 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn retryable_false_or_a_bare_4xx_is_rejected_whatever_the_status() {
+        let api = api(serve().await);
+        for id in ["budget", "bad"] {
+            let err = api.complete(&job(id), &serde_json::json!({})).await;
+            assert!(matches!(err, Err(CallError::Rejected(_))), "{id}: {err:?}");
+        }
+    }
+
+    #[tokio::test]
     async fn a_5xx_without_an_error_body_is_unavailable() {
         let api = api(serve().await);
         let err = api.complete(&job("proxy"), &serde_json::json!({})).await;
@@ -500,7 +521,10 @@ mod tests {
   | `409` with `code: "lease_lost"` | `LeaseLost` | Drops the job, sends nothing more |
   | Any error body with `retryable: true` (a `429 rate_limited`, a `503`) | `Unavailable`, with `retry_after_s` when sent | Retries with backoff, and not before `retry_after_s` |
   | A `429` or `5xx` without an error body (a proxy's own answer), a connect error, a timeout, a body that couldn't be read | `Unavailable`, no `retry_after` | Retries with backoff |
-  | Any other error body (`retryable: false`, a `500 internal` among them), or a success body that doesn't parse | `Rejected` | Logs it; a bug on one side, so not retried in a loop |
+  | An error body with `retryable: false` (`500 internal`, `429 budget_exceeded`, `400 invalid_request`), a `4xx` without an error body, or a success body that doesn't parse | `Rejected` | Logs it, and doesn't retry in a loop (the claim loop still backs off and claims again) |
+  | `204` on a repeat `complete` | success | Done: the first one landed |
+
+  These are the rows of [backend worker 6](../../../docs/backend/worker.md#6-leases-heartbeats-and-completion), "What an answer means", whose `classify_body` reads the body the same way: the body's `retryable`, the server's word on whether the same request may succeed later ([contracts 2](../../../docs/architecture/contracts.md#2-errors)), decides whatever the status, and only `lease_lost` (from a `409`) has a meaning of its own.
 
   Sources: `retryable` and `retry_after_s` are fields of every error body ([contracts 2](../../../docs/architecture/contracts.md#2-errors)); `429` asks the client to wait before retrying ([MDN: 429](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/429)). The tests above prove each row.
 - The `ErrorBody` is decoded with only `code`, `retryable` and `retry_after_s`; serde ignores the other fields unless a type says `deny_unknown_fields`, and worker → API traffic stays lenient. [serde: deny_unknown_fields](https://serde.rs/container-attrs.html#deny_unknown_fields)
@@ -508,55 +532,11 @@ mod tests {
 
 ## 5. The VLM sidecar
 
-The vlm worker talks to vLLM or llama.cpp over their OpenAI-compatible API ([architecture 3](../../../docs/architecture/README.md#3-components)). Take the endpoint URL from configuration rather than building it here. The body (images first, then the prompt, with the per-job JSON Schema for structured output) is defined by [contracts 6](../../../docs/architecture/contracts.md#per-job-schema).
+The vlm worker talks to vLLM or llama.cpp over their OpenAI-compatible API, and the fallback worker to the hosted LLM, **through the `integrations` clients, not raw reqwest**: `openai_compat::OpenAiCompatClient` and `anthropic::AnthropicClient`, both built over the process's one `Client` ([backend worker 1, HTTP timeouts](../../../docs/backend/worker.md#1-purpose-and-boundaries); [backend worker 4](../../../docs/backend/worker.md#4-configuration), `build_model`; [backend integrations 5](../../../docs/backend/integrations.md#5-anthropic-messages-api), [6](../../../docs/backend/integrations.md#6-openai-compatible-vlm-servers)). The body (images first, then the prompt, with the per-call JSON Schema for structured output) is defined by [contracts 6](../../../docs/architecture/contracts.md#per-job-schema) and built by the worker's VLM adapter ([backend worker 8](../../../docs/backend/worker.md#8-the-vlm-adapters), [9](../../../docs/backend/worker.md#9-the-per-call-schema-and-decoding)).
 
-- **The call's timeout is what is left of the job, minus time for `complete`, capped.** A `vlm` job has 5 minutes for two calls ([contracts 5](../../../docs/architecture/contracts.md#leases-runs-and-attempts)); the second call gets whatever the first left. When less than the reserve remains, don't start the call: fail the job as retryable instead.
-- **Use `RequestBuilder::timeout`, not `read_timeout`**: without streaming, the sidecar sends nothing until the answer is complete.
-- Dropping the future (the job's token was cancelled) abandons the request on the worker's side. Whether the sidecar then stops generating is *unverified*; check it on day 2 with the benchmark.
-
-```rust
-use std::time::Duration;
-
-use tokio::time::Instant;
-
-/// Time one VLM call may take: what is left before the job's soft deadline, minus what
-/// `complete` needs, and never more than `cap`. `None` means: don't start the call.
-pub fn call_budget(now: Instant, soft_deadline: Instant, cap: Duration) -> Option<Duration> {
-    const RESERVE_FOR_COMPLETE: Duration = Duration::from_secs(5);
-    let left = soft_deadline.saturating_duration_since(now);
-    let budget = left.checked_sub(RESERVE_FOR_COMPLETE)?.min(cap);
-    (!budget.is_zero()).then_some(budget)
-}
-
-/// One call to the sidecar's OpenAI-compatible chat endpoint. `body` carries the messages
-/// and the per-job JSON Schema of contracts §6; building it is not this function's job.
-pub async fn vlm_call(
-    client: &reqwest::Client,
-    chat_url: &str,
-    body: &serde_json::Value,
-    budget: Duration,
-) -> reqwest::Result<serde_json::Value> {
-    client
-        .post(chat_url)
-        .json(body)
-        .timeout(budget) // the whole call, including the wait for the first byte
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await
-}
-
-#[test]
-fn the_budget_shrinks_to_the_deadline() {
-    let now = Instant::now();
-    let cap = Duration::from_secs(120);
-    let in_secs = |s| now + Duration::from_secs(s);
-    assert_eq!(call_budget(now, in_secs(285), cap), Some(cap));
-    assert_eq!(
-        call_budget(now, in_secs(65), cap),
-        Some(Duration::from_secs(60))
-    );
-    assert_eq!(call_budget(now, in_secs(5), cap), None);
-}
-```
+- **Each call has its own total deadline**, `OpenAiCompatConfig.timeout`, which the client sets with `RequestBuilder::timeout`: 240 s on the vlm worker; the fallback's `AnthropicConfig.request_timeout` is 300 s. Calls are non-streaming, so the server sends nothing until the answer is complete: that is why the shared client's read gap is 600 s, not `integrations`' 60 s default (section 2). [RequestBuilder::timeout](https://docs.rs/reqwest/0.13.5/reqwest/struct.RequestBuilder.html#method.timeout)
+- **No client retries: `RetryPolicy::NONE`.** The worker owns the job's deadline and its one validation retry, and a failed job is retried as a whole by the broker ([backend integrations 4](../../../docs/backend/integrations.md#4-shared-http-client-retries-pacing-sse), `RetryPolicy::NONE`). The job's soft deadline (`max_runtime_s` − 15 s, `timeout_at` around the whole model in `run_job`, [loop.md](loop.md)) bounds every call of the job: a `vlm` job has 5 minutes for its two calls, and a second call still running at the soft deadline is dropped and the job fails with `max_runtime_exceeded`, `retryable: true` ([contracts 5](../../../docs/architecture/contracts.md#leases-runs-and-attempts)).
+- **Failures** become `ModelError`: a connect failure, a timeout or a 5xx (a crashed or restarting sidecar) is `Failed`, worth another attempt; a 400 (a schema the grammar compiler rejects) is `Failed` too; a body that doesn't parse is `InvalidOutput`. Each completes the job with `model_error`, retryable ([backend integrations 6](../../../docs/backend/integrations.md#6-openai-compatible-vlm-servers); [rust-errors, jobs](../rust-errors/jobs.md)).
+- **Start-up check:** `GET /v1/models` must list `VLM_SERVED_NAME`, or the worker doesn't start ([backend worker 4](../../../docs/backend/worker.md#4-configuration)).
+- **Keys:** the sidecar's `--api-key` is `VLM_API_KEY`; the fallback reads the hosted model's key from **`LLM_API_KEY`**, the name `api` uses ([backend worker 4](../../../docs/backend/worker.md#4-configuration)). Both are `secrecy::SecretString`, so neither is printed.
+- **Cancellation:** dropping the call's future (the job's token was cancelled, or the soft deadline passed) closes the connection, and vLLM aborts a request whose client disconnected ([backend worker 7](../../../docs/backend/worker.md#7-cancellation)). **Not in the contracts yet:** whether llama.cpp then frees the slot is *unverified*; it matters on the RX 9070 XT if it serves llama.cpp ([contracts 12, questions 25 and 33](../../../docs/architecture/contracts.md#12-open-questions)).

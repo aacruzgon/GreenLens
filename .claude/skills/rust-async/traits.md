@@ -1,6 +1,6 @@
 # Async functions in traits, `dyn` and async closures
 
-Part of [rust-async](SKILL.md). Rust 1.99, edition 2024. Each claim about the compiler is backed by a block that compiles, or by a `compile_fail` block that the checker confirms fails.
+Part of [rust-async](SKILL.md). Rust 1.99, edition 2024, `async-trait` 0.1.92, `mockall` 0.15.0. Each claim about the compiler is backed by a block that compiles, or by a `compile_fail` block that the checker confirms fails.
 
 ## Contents
 
@@ -33,7 +33,7 @@ fn spawn_load<S: Store<load(..): Send> + Send + Sync + 'static>(s: S) {
 
 ## 2. The `Send` problem
 
-The future an `async fn` in a trait returns is an anonymous type, and the trait gives callers no way to require it to be `Send` (that is what return type notation would do). A generic caller therefore can't hand it to `tokio::spawn`, which needs `Send + 'static` ([tokio::spawn](https://docs.rs/tokio/1.53.3/tokio/task/fn.spawn.html)). The compiler rejects it and suggests the fix used in section 3:
+The future an `async fn` in a trait returns is an anonymous type, and the trait gives callers no way to require it to be `Send` (that is what return type notation would do). A generic caller therefore can't hand it to `tokio::spawn`, which needs `Send + 'static` ([tokio::spawn](https://docs.rs/tokio/1.53.3/tokio/task/fn.spawn.html)). The compiler rejects it and suggests `-> impl Future + Send`, which fixes generic callers but not `dyn` (section 3):
 
 ```rust,compile_fail
 pub trait VisionModel {
@@ -51,90 +51,189 @@ The error is "future cannot be sent between threads safely" (no error code), wit
 
 ## 3. What the project does with its boundary traits
 
-Architecture §2 puts "a trait at every external boundary" (`VisionModel`, `SpeciesIdentifier`, `TextClassifier`, `TextEmbedder`, `ChatModel`, `KnowledgeStore`, `WeatherProvider`, `SoilProvider`, `BlobStore`, `Store`, `MemoryStore`, `Notifier`), and §3 puts them all in `domain` ([design principles](../../../docs/architecture/README.md#design-principles), [Rust crates](../../../docs/architecture/README.md#rust-crates)). Rules:
+Architecture §2 puts "a trait at every external boundary", and §3 puts them all in `domain` ([design principles](../../../docs/architecture/README.md#design-principles), [Rust crates](../../../docs/architecture/README.md#rust-crates)). The backend design names them the **ports**, in `domain::ports` ([backend domain 9](../../../docs/backend/domain.md#9-boundary-traits)), and fixes how their async methods are written ([backend domain 10, dyn dispatch and async methods](../../../docs/backend/domain.md#dyn-dispatch-and-async-methods)). Rules:
 
-1. **Every boundary trait is `Send + Sync + 'static`** (`'static` where it's held in `Arc` and shared with spawned tasks), and **every async method promises a `Send` future**. There is no single-threaded caller in the backend.
-2. **Never write `async fn` in a `domain` trait declaration.** Write one of the two forms below. Implementations may still use `async fn`; the compiler then checks the body against the trait's `Send` promise.
-3. **Pick the form per trait:**
+1. **Every port is `Send + Sync`** and is held as `Arc<dyn Port>`: `AppState` holds only ports, so `State<Arc<AppState>>` is one concrete type and tests swap in mocks ([backend README 7, dispatch](../../../docs/backend/README.md#7-rust-conventions); [backend api 6](../../../docs/backend/api.md#6-application-state-wiring-and-the-seams)). `Arc<dyn Port>` means `Arc<dyn Port + 'static>` by the default object lifetime, so no port adds `'static` as a supertrait ([Reference, default trait object lifetimes](https://doc.rust-lang.org/reference/lifetime-elision.html#default-trait-object-lifetimes)).
+2. **A port's async methods use `#[async_trait]`** (`async-trait` 0.1.92), on the trait and on every `impl`. The macro rewrites `async fn m(&self, …) -> T` into `fn m<'life0, …, 'async_trait>(&'life0 self, …) -> Pin<Box<dyn Future<Output = T> + Send + 'async_trait>>`: a nameable return type, so the trait stays dyn compatible, and a `Send` future, so `tokio::spawn` accepts it. Every borrowed argument gets its own lifetime, so no signature spells one ([async-trait 0.1.92](https://docs.rs/async-trait/0.1.92/async_trait/); [backend domain 10](../../../docs/backend/domain.md#dyn-dispatch-and-async-methods)). The cost is one allocation per call, nothing next to a database, network or model call.
+3. **Not native `async fn` or `-> impl Future` in a port.** Neither is dyn compatible on Rust 1.99, so `Arc<dyn Port>` fails with `E0038` ([Reference, dyn compatibility](https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility); the two `compile_fail,E0038` blocks below).
+4. **Not a hand-written `BoxFuture<'a, T>` in a port.** It has the same runtime shape, but `mockall` 0.15 can't mock a method whose boxed future borrows a named lifetime: `#[automock]` fails with `E0521`, "borrowed data escapes outside of method" (the `compile_fail,E0521` block below; [backend domain 10](../../../docs/backend/domain.md#dyn-dispatch-and-async-methods)). With `#[async_trait]` the same trait mocks cleanly: put `#[automock]` above `#[async_trait]` ([mockall 0.15.0, async traits](https://docs.rs/mockall/0.15.0/mockall/index.html#async-traits)). How tests use the mocks is in [rust-testing, mocks](../rust-testing/mocks.md).
+5. **Synchronous ports stay plain methods**: `Clock`, `IdGen`, `UrlSigner`, `SpeciesPhotos`, `WebhookVerifier`, `SpotSegmenter` do microseconds of CPU work or run on a blocking thread ([backend domain 10](../../../docs/backend/domain.md#dyn-dispatch-and-async-methods)).
+6. **A port that streams returns `BoxStream<'a, …>` from a plain method.** `ChatModel::stream<'a>(&'a self, request: &'a ChatRequest) -> BoxStream<'a, Result<ChatChunk, ModelError>>` ties the stream to the model and the borrowed request, so the adapter streams without cloning the request; `complete` beside it is an `#[async_trait]` method ([backend domain 9, models](../../../docs/backend/domain.md#models); [named lifetimes](../../../docs/backend/domain.md#named-lifetimes)). The SSE body must be `'static`, so the caller moves the `Arc<dyn ChatModel>` and the owned request into a stream generator and borrows them inside it (the `the_chat_stream_owns_what_it_borrows` test). mockall can't mock this method either, so `domain`'s `mock` feature covers every port but `ChatModel`, and tests use the hand-written `ScriptedChat` ([backend domain 11](../../../docs/backend/domain.md#11-testing)).
+7. **Crate-internal traits keep `impl Future` or `BoxFuture`.** The agent's typed `Tool` returns `impl Future<Output = …> + Send` and has associated constants, so it is used with static dispatch only; the registry erases each tool once behind `DynTool`, whose `call<'a>` returns `BoxFuture<'a, …>` because a boxed future needs a named bound ([backend agent 12, typed tools, erased once](../../../docs/backend/agent.md#typed-tools-erased-once); [agent 15](../../../docs/backend/agent.md#15-concurrency-and-lifetimes)). Nothing mocks them: tests run real tools against mocked ports.
 
-| The trait is… | Form | Why |
-|---|---|---|
-| Held in `AppState` as `Arc<dyn Trait>` (so `State<Arc<AppState>>` stays one concrete type and tests can swap a fake), or chosen at run time (the worker's `VisionModel` by `--caps`; `TextClassifier`, which falls back from Jev to the LLM API's cheapest model, [architecture 10](../../../docs/architecture/README.md#10-models-and-gpu-placement)). `ChatModel` is the first kind: it has no fallback (chat and the plan writer use the LLM API's strongest model, architecture 10), but the agent core holds it in `AppState` | `fn m(&self, …) -> BoxFuture<'_, Result<T, E>>` (`futures::future::BoxFuture`) | `dyn` needs a nameable return type; one allocation per call is nothing next to a network or model call |
-| Only ever used through generics (`fn run<K: KnowledgeStore>(…)`) | `fn m(&self, …) -> impl Future<Output = Result<T, E>> + Send` | No allocation; not usable as `dyn` |
+| The trait is… | Form |
+|---|---|
+| A port in `domain::ports` (held as `Arc<dyn Port>`, mocked in tests) | `#[async_trait]` with `async fn`; `Send + Sync` |
+| A port method that returns a stream | A plain `fn m<'a>(&'a self, …) -> BoxStream<'a, …>` in the same `#[async_trait]` trait |
+| A synchronous port | Plain methods |
+| Crate-internal, static dispatch only (`Tool`) | `fn m(&self, …) -> impl Future<Output = T> + Send` |
+| Crate-internal, erased for a registry (`DynTool`) | `fn m<'a>(&'a self, …) -> BoxFuture<'a, T>` |
 
-When in doubt, use the boxed form: it is the only one that works both ways (`Arc<dyn Trait>` and generics). *This skill's choice*, from the two `compile_fail,E0038` blocks below.
-
-**`BlobStore` uses the `impl Future` form** (the project's decision, here and in [rust-testing, mocks](../rust-testing/mocks.md)): it has one production implementation, the `blob` crate's RustFS client, which `AppState` holds as a concrete type ([architecture 3, Rust crates](../../../docs/architecture/README.md#rust-crates)), and tests either write an in-memory fake or use mockall, which mocks `impl Future` methods ([mockall: impl Future](https://docs.rs/mockall/0.15.0/mockall/index.html#impl-future)). How the tests mock these traits is in [rust-testing](../rust-testing/SKILL.md).
-
-Both forms compile, spawn, and run:
+A port with an `#[async_trait]` method and a streaming method, its mock, a `dyn` call inside a spawned task, and the agent's erased tool:
 
 ```rust
-use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
-use tokio::sync::RwLock;
+use futures::stream::{self, BoxStream, Stream, StreamExt};
 
-/// Stands in for each boundary's own error type.
+/// Stands in for each port's error enum (`domain::ports`, backend domain 6).
 #[derive(Debug, thiserror::Error)]
 #[error("the boundary call failed")]
 pub struct CallFailed;
 
-/// Static dispatch: the trait promises a `Send` future, so generic callers can spawn it.
-pub trait BlobStore: Send + Sync + 'static {
-    fn get(&self, key: &str) -> impl Future<Output = Result<Vec<u8>, CallFailed>> + Send;
+/// A port: `#[async_trait]`, `Send + Sync`, held as `Arc<dyn SpeciesIdentifier>`. Both
+/// borrowed arguments get their own lifetime from the macro.
+#[mockall::automock]
+#[async_trait::async_trait]
+pub trait SpeciesIdentifier: Send + Sync {
+    async fn identify(&self, garden: &str, image: &[u8]) -> Result<String, CallFailed>;
 }
 
-#[derive(Default)]
-pub struct MemoryBlobs(RwLock<HashMap<String, Vec<u8>>>);
+pub struct ChatRequest {
+    pub messages: Vec<String>,
+}
 
-impl BlobStore for MemoryBlobs {
-    // An impl may still write `async fn`; the compiler checks the future is `Send`.
-    async fn get(&self, key: &str) -> Result<Vec<u8>, CallFailed> {
-        self.0.read().await.get(key).cloned().ok_or(CallFailed)
+/// The chat port: a plain method returning a stream tied to `self` and the request, and an
+/// `#[async_trait]` method for whole answers (backend domain 9, models).
+#[async_trait::async_trait]
+pub trait ChatModel: Send + Sync {
+    fn stream<'a>(&'a self, request: &'a ChatRequest) -> BoxStream<'a, Result<String, CallFailed>>;
+
+    async fn complete(&self, request: &ChatRequest) -> Result<String, CallFailed>;
+}
+
+/// The hand-written fake tests use for `ChatModel`, which mockall can't mock.
+pub struct ScriptedChat(pub Vec<String>);
+
+#[async_trait::async_trait]
+impl ChatModel for ScriptedChat {
+    fn stream<'a>(&'a self, request: &'a ChatRequest) -> BoxStream<'a, Result<String, CallFailed>> {
+        // Borrows the script and the request; nothing is cloned until an item is produced.
+        stream::iter(self.0.iter().chain(&request.messages))
+            .map(|text| Ok(text.clone()))
+            .boxed()
+    }
+
+    async fn complete(&self, request: &ChatRequest) -> Result<String, CallFailed> {
+        Ok(format!("{} turns", request.messages.len()))
     }
 }
 
-pub fn spawn_fetch<B: BlobStore>(blobs: Arc<B>, key: String) -> tokio::task::JoinHandle<bool> {
-    tokio::spawn(async move { blobs.get(&key).await.is_ok() })
+/// The SSE body must be `'static`: own the model and the request, borrow them inside.
+pub fn answer_stream(
+    model: Arc<dyn ChatModel>,
+    request: ChatRequest,
+) -> impl Stream<Item = Result<String, CallFailed>> + Send + 'static {
+    async_stream::stream! {
+        let mut chunks = model.stream(&request);
+        while let Some(chunk) = chunks.next().await {
+            yield chunk;
+        }
+    }
 }
 
-/// Dynamic dispatch: a boxed `Send` future, so the trait works as `dyn VisionModel`.
-pub trait VisionModel: Send + Sync {
+/// A crate-internal typed tool: static dispatch, so `impl Future` and an associated const.
+pub trait Tool: Send + Sync + 'static {
+    const NAME: &'static str;
+
+    /// Under edition 2024 the future captures `self` and `ctx`.
+    fn run(
+        &self,
+        ctx: &str,
+        args: String,
+    ) -> impl Future<Output = Result<String, CallFailed>> + Send;
+}
+
+/// The dyn-compatible face of a tool, for the registry. One named `'a` for the tool and the
+/// turn's context, because the boxed future borrows both and elision can't name it.
+pub trait DynTool: Send + Sync {
     fn name(&self) -> &'static str;
-    fn analyse<'a>(&'a self, image: &'a [u8]) -> BoxFuture<'a, Result<u32, CallFailed>>;
+
+    fn call<'a>(
+        &'a self,
+        ctx: &'a str,
+        arguments: String,
+    ) -> BoxFuture<'a, Result<String, CallFailed>>;
 }
 
-pub struct FallbackVision;
-
-impl VisionModel for FallbackVision {
+impl<T: Tool> DynTool for T {
     fn name(&self) -> &'static str {
-        "fallback"
+        T::NAME
     }
-    fn analyse<'a>(&'a self, image: &'a [u8]) -> BoxFuture<'a, Result<u32, CallFailed>> {
-        Box::pin(async move {
-            tokio::task::yield_now().await; // stands in for the LLM API call
-            u32::try_from(image.len()).map_err(|_| CallFailed)
-        })
+
+    fn call<'a>(
+        &'a self,
+        ctx: &'a str,
+        arguments: String,
+    ) -> BoxFuture<'a, Result<String, CallFailed>> {
+        Box::pin(self.run(ctx, arguments))
+    }
+}
+
+pub struct Echo;
+
+impl Tool for Echo {
+    const NAME: &'static str = "echo";
+
+    async fn run(&self, ctx: &str, args: String) -> Result<String, CallFailed> {
+        tokio::task::yield_now().await;
+        Ok(format!("{ctx}: {args}"))
     }
 }
 
 #[tokio::test]
-async fn static_dispatch_spawns() {
-    let blobs = Arc::new(MemoryBlobs::default());
-    blobs.0.write().await.insert("a".to_owned(), vec![1]);
-    let found = spawn_fetch(blobs, "a".to_owned()).await.expect("no panic");
-    assert!(found);
-}
-
-#[tokio::test]
-async fn dyn_dispatch_spawns() {
-    let model: Arc<dyn VisionModel> = Arc::new(FallbackVision);
-    let out = tokio::spawn(async move { model.analyse(&[1, 2, 3, 4]).await.ok() })
+async fn a_mocked_port_is_called_through_dyn_in_a_spawned_task() {
+    let mut mock = MockSpeciesIdentifier::new();
+    mock.expect_identify()
+        .withf(|garden, image| garden == "g1" && image.len() == 3)
+        .returning(|_, _| Ok("tomato".to_owned()));
+    let port: Arc<dyn SpeciesIdentifier> = Arc::new(mock);
+    let found = tokio::spawn(async move { port.identify("g1", &[1, 2, 3]).await })
         .await
         .expect("no panic");
-    assert_eq!(out, Some(4));
+    assert_eq!(found.ok().as_deref(), Some("tomato"));
+}
+
+#[tokio::test]
+async fn the_chat_stream_owns_what_it_borrows() {
+    fn assert_static_send<S: Send + 'static>(_: &S) {}
+    let model: Arc<dyn ChatModel> = Arc::new(ScriptedChat(vec!["Hello".to_owned()]));
+    let request = ChatRequest {
+        messages: vec!["How is my tomato?".to_owned()],
+    };
+    assert_eq!(
+        model.complete(&request).await.ok().as_deref(),
+        Some("1 turns")
+    );
+    let body = answer_stream(Arc::clone(&model), request);
+    assert_static_send(&body);
+    let chunks: Vec<String> = body.map(|chunk| chunk.expect("scripted")).collect().await;
+    assert_eq!(chunks, ["Hello", "How is my tomato?"]);
+}
+
+#[tokio::test]
+async fn an_erased_tool_runs_from_the_registry() {
+    let registry: Vec<Box<dyn DynTool>> = vec![Box::new(Echo)];
+    let tool = registry
+        .iter()
+        .find(|t| t.name() == "echo")
+        .expect("registered");
+    let turn = "turn 1".to_owned();
+    let out = tool.call(&turn, "hi".to_owned()).await;
+    assert_eq!(out.ok().as_deref(), Some("turn 1: hi"));
+}
+```
+
+A hand-written `BoxFuture` that borrows a named lifetime can't be mocked:
+
+```rust,compile_fail,E0521
+use futures::future::BoxFuture;
+
+#[mockall::automock]
+pub trait Store: Send + Sync {
+    fn load<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<u32, String>>;
 }
 ```
 
@@ -164,21 +263,21 @@ pub struct AppState {
 }
 ```
 
-The trait's `Send` promise is enforced on each implementation, so a non-`Send` body is caught where it is written:
+Where a trait does return `impl Future + Send` (the crate-internal `Tool`), the promise is enforced on each implementation, so a non-`Send` body is caught where it is written:
 
 ```rust,compile_fail
 use std::future::Future;
 use std::rc::Rc;
 
-pub trait KnowledgeStore: Send + Sync {
-    fn lookup(&self, slug: &str) -> impl Future<Output = Option<String>> + Send;
+pub trait Tool: Send + Sync {
+    fn run(&self, args: &str) -> impl Future<Output = Option<String>> + Send;
 }
 
 pub struct Cached;
 
-impl KnowledgeStore for Cached {
-    async fn lookup(&self, slug: &str) -> Option<String> {
-        let shared = Rc::new(slug.to_owned()); // Rc is !Send
+impl Tool for Cached {
+    async fn run(&self, args: &str) -> Option<String> {
+        let shared = Rc::new(args.to_owned()); // Rc is !Send
         tokio::task::yield_now().await;
         Some((*shared).clone())
     }

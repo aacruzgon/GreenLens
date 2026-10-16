@@ -1,6 +1,6 @@
 # Property tests
 
-Part of [`rust-testing`](SKILL.md). Each property below states a rule from the contracts and checks it over generated inputs with proptest 1.12.0 ([proptest book](https://proptest-rs.github.io/proptest/proptest/tutorial/macro-proptest.html)). The functions are small stand-ins written next to their tests; the real ones live in `domain` and `api` and get the same tests.
+Part of [`rust-testing`](SKILL.md). Each property below states a rule from the contracts and checks it over generated inputs with proptest 1.12.0 ([proptest book](https://proptest-rs.github.io/proptest/proptest/tutorial/macro-proptest.html)). The functions are small stand-ins written next to their tests; the real ones live in `domain` and `api` and get the same tests. The backend plans property tests for the dose check, scoring, the scan state machine and RLE round-trips too ([backend README 11](../../../docs/backend/README.md#11-testing-and-tooling)); they follow the same rules: the expected value comes from the document, and exact boundaries go in a plain table.
 
 ## Confidence bands
 
@@ -116,7 +116,7 @@ proptest! {
 
 ## SSE `seq` dedupe
 
-[Contracts §4, transport](../../../docs/architecture/contracts.md#transport): on resume the server subscribes to the live broadcast, replays every stored event after `Last-Event-ID`, then forwards live events, dropping any `seq` it has already sent. Live events can overlap the end of the replay. The property: whatever the overlap, every `seq` after `Last-Event-ID` is sent exactly once, in order, with no gaps.
+[Contracts §4, transport](../../../docs/architecture/contracts.md#transport): `seq` comes from the append's transaction, gap-free per scan ([contracts 12](../../../docs/architecture/contracts.md#12-open-questions), question 22, settled; [backend store 21](../../../docs/backend/store.md#21-decisions-on-open-questions)). On resume the server subscribes to the live broadcast, replays every stored event after `Last-Event-ID`, then forwards live events, dropping any `seq` it has already sent. Live events can overlap the end of the replay. The property: whatever the overlap, every `seq` after `Last-Event-ID` is sent exactly once, in order, with no gaps.
 
 ```rust
 use proptest::prelude::*;

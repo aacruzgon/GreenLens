@@ -1,28 +1,28 @@
 ---
 name: rust-testing
-description: "Tests for the PDM backend: #[tokio::test] and paused time, axum handler tests with oneshot, insta snapshots with redactions, proptest for contract rules, mockall at trait boundaries, cargo-nextest, and SurrealDB tests in a container. Use when writing, reviewing or running any backend test."
+description: "Tests for the PDM backend: #[tokio::test] and paused time, axum handler tests with oneshot, insta snapshots, proptest, mockall at the domain ports, wiremock for HTTP clients, cargo-nextest, SurrealDB tests on the embedded kv-mem engine. Use when writing, reviewing or running any backend test."
 ---
 
 # Testing the backend
 
 How to test the `backend/` workspace: async tests and the paused clock, handler tests without a network, snapshots of contract shapes, property tests for the rules in the contracts, mocks at trait boundaries, the test runner and database tests. The tests prove the shapes and behaviours in the project documents, and **the project documents win**: an expected value in a test comes from [contracts §1](../../../docs/architecture/contracts.md#1-conventions) (wire format, confidence bands, regions, idempotency), [§2](../../../docs/architecture/contracts.md#2-errors) (`ErrorBody` and the codes), [§4](../../../docs/architecture/contracts.md#4-scan-events-sse) (SSE) and [§5](../../../docs/architecture/contracts.md#5-worker-api-and-jobs) (leases), never from what the code happens to return.
 
-Versions: tokio 1.53.3 with `test-util` in dev-dependencies, tower 0.5.3, http-body-util 0.1.5, insta 1.49.0 (`json`, `redactions`), proptest 1.12.0, mockall 0.15.0, cargo-nextest 0.9.148 ([versions.md](../rust/versions.md)). Claims marked ✓ were run on 2026-10-15 and 2026-10-16 (cargo-insta 1.49.0; cargo-nextest 0.9.148, the pin); the database tests ran against `surrealdb/surrealdb:v3.3.4@sha256:649a60a3…`.
+Versions: tokio 1.53.3 with `test-util` in dev-dependencies, tower 0.5.3, http-body-util 0.1.5, insta 1.49.0 (`json`, `redactions`), proptest 1.12.0, mockall 0.15.0, async-trait 0.1.92, `surrealdb` 3.3.4 with `kv-mem` in dev-dependencies, cargo-nextest 0.9.148, and wiremock 0.6.5, which the design pins but the example checker doesn't build ([versions.md](../rust/versions.md); [backend README 4](../../../docs/backend/README.md#4-stack-and-version-pins)). The backend's test plan is [backend README 11](../../../docs/backend/README.md#11-testing-and-tooling); each crate document ends with its own tests. Claims marked ✓ were run on 2026-10-15 and 2026-10-16 (cargo-insta 1.49.0; cargo-nextest 0.9.148, the pin); the database tests ran on the embedded 3.3.4 engine and against `surrealdb/surrealdb:v3.3.4@sha256:649a60a3…`.
 
 | File | Covers |
 |---|---|
 | This file | Where tests go, async tests and paused time, snapshots, mocks and fakes, the runner and CI, checklist |
 | [handlers.md](handlers.md) | axum handler tests: `oneshot`, several calls with `ready`/`call`, the `ErrorBody` snapshot through the real `render_errors`, reading an SSE stream |
-| [mocks.md](mocks.md) | mockall at a boundary trait (`BoxFuture` and `impl Future` methods, `Arc<dyn Trait>` in `AppState`), an in-memory `BlobStore` fake with the storage rules |
+| [mocks.md](mocks.md) | What `domain`'s `mock` and `test-util` features give, mockall at an `#[async_trait]` port behind `Arc<dyn Trait>`, an in-memory `BlobStore` fake with the storage rules |
 | [properties.md](properties.md) | proptest for the confidence bands, region boxes, SSE `seq` dedupe and the multipart idempotency fingerprint |
-| [database.md](database.md) | SurrealDB tests against the pinned image: the `TestDb` harness (one namespace per test, the real schema, signed in as `api`), ignored by default |
+| [database.md](database.md) | SurrealDB tests: the `TestDb` harness, by default one embedded `kv-mem` datastore per test with the real schema; a namespace per test, signed in as `api`, for the few ignored tests against the pinned image |
 
 ## 1. Where tests go
 
-- **Unit tests** sit in the module they test, in `#[cfg(test)] mod tests`. **Integration tests** go in `tests/*.rs` of the crate and see only its public API ([Cargo book, tests](https://doc.rust-lang.org/cargo/reference/cargo-targets.html#tests)). Handler tests live in `bins/api/tests/` and build the router from the `pub fn app(state: &Arc<AppState>) -> Router` of [`rust-axum-api`, layers](../rust-axum-api/layers.md). An integration test can only use the package's library, not its binary ([Cargo book, integration tests](https://doc.rust-lang.org/cargo/reference/cargo-targets.html#integration-tests)), so `bins/api` has a `src/lib.rs` that exports `app` and `AppState`, and `src/main.rs` only starts it ([handlers.md](handlers.md#the-app-under-test)).
+- **Unit tests** sit in the module they test, in `#[cfg(test)] mod tests`. **Integration tests** go in `tests/*.rs` of the crate and see only its public API ([Cargo book, tests](https://doc.rust-lang.org/cargo/reference/cargo-targets.html#tests)). Handler tests are a `#[cfg(test)]` module of the `api` binary itself, `bins/api/src/tests.rs`, so they call the real `crate::router::app(state)` and see the crate's private items; there is no `src/lib.rs` ([backend api 3](../../../docs/backend/api.md#3-module-layout), [21](../../../docs/backend/api.md#21-testing); [handlers.md](handlers.md#the-app-under-test)). An integration test in `bins/api/tests/` would see only a library's public API, which a binary-only package doesn't have ([Cargo book, integration tests](https://doc.rust-lang.org/cargo/reference/cargo-targets.html#integration-tests)).
 - **Helpers use `expect`.** `allow-unwrap-in-tests` ([clippy.toml](../rust-cargo-lints/SKILL.md#1-layout-and-the-root-manifest)) covers `#[test]` functions and `#[cfg(test)]` modules only ([`unwrap_used`](https://clippy.rust-lang.org/rust-1.99.0/index.html#unwrap_used)). ✓ A helper `fn` in `tests/it.rs` that calls `.unwrap()` is flagged; the same call inside the `#[test]` isn't. Write `expect("why")` in helpers.
 - **No `println!` in tests.** `print_stdout` is on and `allow-print-in-tests` is not set ([`print_stdout`](https://clippy.rust-lang.org/rust-1.99.0/index.html#print_stdout)); assert instead.
-- A test that needs a service outside the process is `#[ignore = "needs SurrealDB"]` (or the service's name), so `cargo test` passes on a laptop without Docker ([Reference, `ignore`](https://doc.rust-lang.org/reference/attributes/testing.html#the-ignore-attribute); [database.md](database.md)).
+- A test that needs a service outside the process (the pinned SurrealDB image, RustFS) is `#[ignore = "needs SurrealDB"]` (or the service's name), so `cargo test` passes on a laptop without Docker ([Reference, `ignore`](https://doc.rust-lang.org/reference/attributes/testing.html#the-ignore-attribute); [database.md](database.md#2-the-pinned-image); [backend blob 12](../../../docs/backend/blob.md#12-testing)). Store tests on the embedded engine are not ignored: they need nothing outside the process.
 
 ## 2. Async tests and the paused clock
 
@@ -31,7 +31,7 @@ Versions: tokio 1.53.3 with `test-util` in dev-dependencies, tower 0.5.3, http-b
 - **`start_paused = true`** starts the runtime with the clock frozen. It needs the `test-util` feature ([`tokio::test`](https://docs.rs/tokio/1.53.3/tokio/attr.test.html#configure-the-runtime-to-start-with-time-paused)) and the current-thread flavour: the macro rejects `multi_thread` with "The `start_paused` option requires the `current_thread` runtime flavor" (✓ `tokio-macros-2.7.2/src/entry.rs`, and the block below).
 - **Auto-advance.** While time is paused and the runtime has nothing else to do, the clock jumps to the next timer, so a `sleep`, `interval` or `timeout` of minutes finishes at once and `Instant::elapsed()` reads the exact virtual time ([`pause`, auto-advance](https://docs.rs/tokio/1.53.3/tokio/time/fn.pause.html#auto-advance)). A `spawn_blocking` task holds auto-advance off while it runs.
 - **`time::advance(d)`** jumps the clock by `d` without running the expired timers in order; to fire timers in order, `sleep` instead ([`advance`](https://docs.rs/tokio/1.53.3/tokio/time/fn.advance.html)). Use `advance` to stop just before a deadline and check nothing fired yet.
-- Paused time only affects `tokio::time`: "the `Instant` in std continues to work as normal" ([`pause`](https://docs.rs/tokio/1.53.3/tokio/time/fn.pause.html)). While a test waits on real I/O (a socket to SurrealDB) the runtime has nothing else to do, so auto-advance jumps the clock to the next timer and a `timeout` around the query fires at once. Don't pause a test that talks to the database.
+- Paused time only affects `tokio::time`: "the `Instant` in std continues to work as normal" ([`pause`](https://docs.rs/tokio/1.53.3/tokio/time/fn.pause.html)). While a test waits on real I/O (a socket to SurrealDB) the runtime has nothing else to do, so auto-advance jumps the clock to the next timer and a `timeout` around the query fires at once. Don't pause a test that talks to the database, the embedded engine included ([database.md](database.md#1-the-embedded-engine)), or to a mock HTTP server: ✓ in `integrations`' tests auto-advance jumped to the request's timeout while `wiremock` answered ([backend integrations 16](../../../docs/backend/integrations.md#16-testing)).
 
 The heartbeat cadence and lease length come from [contracts §5](../../../docs/architecture/contracts.md#leases-runs-and-attempts) (heartbeat every 10 s, lease 2 minutes). These tests run in milliseconds:
 
@@ -97,7 +97,7 @@ Build the `Router` with test state and call it as a tower `Service`; no port, no
 
 - **`assert_json_snapshot!(value, { selector => redaction }, @"…")`** serialises the value with serde and compares it with the inline snapshot after `@` ([insta, inline snapshots](https://insta.rs/docs/quickstart/#inline-snapshots); [redactions](https://insta.rs/docs/redactions/#static-redactions)). Selectors: `.error.request_id`, `.items[].id` (every element), `.**.ts` (any depth) ([selectors](https://insta.rs/docs/redactions/#selectors)). ✓ `.**.ts` redacted `ts` at the top level, in a nested object and inside an array element.
 - **Redact what changes per run**: ULIDs, timestamps, `request_id`, signed URLs. Use `insta::dynamic_redaction` to check the format before replacing it, so a redaction never hides a wrong value ([dynamic redactions](https://insta.rs/docs/redactions/#dynamic-redactions)).
-- **Keys come out sorted** when the value is a `serde_json::Value`, because its map is a `BTreeMap` without serde_json's `preserve_order` feature ([`serde_json::Map`](https://docs.rs/serde_json/1.0.154/serde_json/struct.Map.html)). Field order isn't part of the contract, so this is fine; snapshot the typed struct when order matters.
+- **Keys keep their insertion order.** The workspace enables serde_json's `preserve_order` (the worker's VLM schemas need it, and features unify), so a `serde_json::Map` is an `IndexMap` and a `json!` value or a struct serialises its keys in the order they were written, not sorted ([serde_json features](https://docs.rs/crate/serde_json/1.0.154/features#preserve_order); [versions.md](../rust/versions.md#dependencies)). ✓ The snapshot below lists `id`, `name`, `created_at`, the struct's field order. Field order isn't part of the contract, but a snapshot records it, so reordering a struct's fields changes its snapshots.
 - **`INSTA_UPDATE`**: `auto` (default) is `no` when `CI` is set and `new` otherwise; `new` writes pending files; `always` writes `.snap` files directly (file snapshots only; inline snapshots always go through a pending file); `unseen` is `always` for new snapshots and `new` for changed ones; `no` writes nothing; `force` rewrites even passing snapshots ([insta, controlling updates](https://insta.rs/docs/advanced/#controlling-snapshot-updating); ✓ `insta-1.49.0/src/env.rs`, `snapshot_update_behavior`).
 - **CI.** insta treats `CI` as set unless it is unset, empty, `false` or `0` (✓ `insta-1.49.0/src/utils.rs`, `is_ci`); `TF_BUILD` counts too ([insta, CI](https://insta.rs/docs/quickstart/#continuous-integration)). A mismatch or a missing snapshot always fails the assertion unless the update mode writes the snapshot in place. ✓ With `CI=true` a failing inline snapshot panicked and wrote nothing; without `CI` it panicked and wrote `tests/.handler.rs.pending-snap`.
 - **Reviewing.** `cargo insta review` (interactive) or `cargo insta accept` writes pending results into the `.snap` files or the inline `@"…"` strings; `cargo insta test --review` runs and reviews in one go ([cargo-insta](https://insta.rs/docs/cli/#review)). ✓ `cargo insta accept` rewrote the inline snapshot in place. Commit `.snap` files (in `snapshots/` next to the test) with the code; never commit `.snap.new` or `.pending-snap` ([snapshot files](https://insta.rs/docs/snapshot-files/#snapshot-files)).
@@ -139,9 +139,9 @@ fn plant_list_redacts_ids_and_times() {
     {
       "items": [
         {
-          "created_at": "[timestamp]",
           "id": "[ulid]",
-          "name": "Tomato 1"
+          "name": "Tomato 1",
+          "created_at": "[timestamp]"
         }
       ]
     }
@@ -153,7 +153,7 @@ fn plant_list_redacts_ids_and_times() {
 
 ## 5. Property tests (proptest)
 
-Use proptest for pure logic with a rule in the contracts, where examples would miss the edges: the confidence bands (≥ 0.8 high, ≥ 0.5 medium), region boxes in 0..1, SSE `seq` dedupe on resume, the multipart fingerprint ignoring the boundary. [properties.md](properties.md) has them compiled and run. The expected value comes from the contract, not from the code: a property that restates the implementation's conditions passes whatever they are, and one that only checks "these two inputs agree" passes for a constant function, so pair it with one that different inputs differ.
+Use proptest for pure logic with a rule in the contracts, where examples would miss the edges. The backend plans it for the dose check, scoring, the scan state machine and RLE round-trips ([backend README 11](../../../docs/backend/README.md#11-testing-and-tooling)); [properties.md](properties.md) has four compiled and run: the confidence bands (≥ 0.8 high, ≥ 0.5 medium), region boxes in 0..1, SSE `seq` dedupe on resume, the multipart fingerprint ignoring the boundary. The expected value comes from the contract, not from the code: a property that restates the implementation's conditions passes whatever they are, and one that only checks "these two inputs agree" passes for a constant function, so pair it with one that different inputs differ.
 
 - `proptest! { #[test] fn name(x in strategy) { … } }`; assert with `prop_assert!`/`prop_assert_eq!` so failures shrink ([proptest! macro](https://proptest-rs.github.io/proptest/proptest/tutorial/macro-proptest.html)).
 - **Cases.** 256 by default; `#![proptest_config(ProptestConfig::with_cases(n))]` inside the macro, or `PROPTEST_CASES` in the environment ([config](https://proptest-rs.github.io/proptest/proptest/tutorial/config.html)).
@@ -163,16 +163,17 @@ Use proptest for pure logic with a rule in the contracts, where examples would m
 
 ## 6. Mocks and fakes
 
-[mocks.md](mocks.md) has both compiled and run.
+[mocks.md](mocks.md) has a mock and a fake compiled and run.
 
-- **Mock only at a trait boundary.** The boundaries are the traits in `domain`: `VisionModel`, `SpeciesIdentifier`, `TextClassifier`, `TextEmbedder`, `ChatModel`, `KnowledgeStore`, `WeatherProvider`, `SoilProvider`, `BlobStore`, `Store`, `MemoryStore`, `Notifier` ([architecture 2, design principles](../../../docs/architecture/README.md#design-principles)). Don't add a trait just to mock a function.
-- **`#[automock]`** on the trait generates `MockWeatherProvider` with `expect_<method>()`; `.withf(…)` matches arguments, `.times(n)` counts calls (checked when the mock drops) and `.returning(…)` gives the result ([mockall](https://docs.rs/mockall/0.15.0/mockall/index.html#getting-started)).
-- **Async methods.** The boundary traits return `BoxFuture<'_, …>` or `impl Future<Output = …> + Send` ([`rust-async`, traits](../rust-async/traits.md)). ✓ With mockall 0.15 both take `.returning(|_| Box::pin(async { … }))`, and a mock of a `BoxFuture` trait goes straight into `Arc<dyn Trait>` in the test `AppState`. mockall also handles native `async fn` ([async traits](https://docs.rs/mockall/0.15.0/mockall/index.html#async-traits)), but ✓ a `pub` trait with `async fn` warns (`async_fn_in_trait`), so `domain` doesn't use it.
-- **Fakes for state.** This skill's choice: for `Store` and `BlobStore`, whose tests need state across calls, write a small in-memory fake with the real store's rules (for blobs: put never overwrites, deleting a missing key is a no-op, [storage 4](../../../docs/storage/README.md#4-writes-and-deletes)) instead of scripting a mock per call ([mocks.md](mocks.md#a-fake-for-state)). Database behaviour itself is tested against SurrealDB ([database.md](database.md)), never a fake.
+- **Mock only a port.** The boundaries are the ports in `domain::ports` ([backend domain 9](../../../docs/backend/domain.md#9-boundary-traits); [architecture 2, design principles](../../../docs/architecture/README.md#design-principles)). Don't add a trait just to mock a function.
+- **The mocks come from `domain`.** Its `mock` feature generates `Mock<Trait>` for every port except `ChatModel`, and `test-util` gives `FixedClock`, `SequentialIds`, `FakeSigner`, `FixedPhotos` and `ScriptedChat` (for `ChatModel`); a crate's tests enable both in `[dev-dependencies]` ([backend domain 11](../../../docs/backend/domain.md#11-testing)). `api`'s handler tests build their `Store` from one mock per repository trait (`bins/api/src/tests/fake_store.rs`, generated from `domain::ports::store` by `backend/tools/apigen/gen_fake_store.py`, regenerated when a store trait changes; [backend api 3](../../../docs/backend/api.md#3-module-layout), [21](../../../docs/backend/api.md#21-testing)).
+- **The shape.** Ports are `#[async_trait]` traits, and the mock attribute goes above it: `#[mockall::automock]` then `#[async_trait::async_trait]`. mockall then sees each `async fn`, `.returning(…)` gives the output value itself, and the mock goes straight into `Arc<dyn Trait>` ([rust-async, traits 3](../rust-async/traits.md#3-what-the-project-does-with-its-boundary-traits); [mockall, async traits](https://docs.rs/mockall/0.15.0/mockall/index.html#async-traits)). `.withf(…)` matches arguments, `.times(n)` counts calls (checked when the mock drops) ([mockall](https://docs.rs/mockall/0.15.0/mockall/index.html#getting-started)).
+- **Fakes for state.** When a test needs state across calls, a small in-memory fake with the real rules beats a mock scripted call by call: `blob`'s `MemoryBlobStore` keeps `RustFS`'s (a put never overwrites and is `AlreadyExists`, a missing key is `NotFound`, deleting one counts as deleted; [backend blob 8](../../../docs/backend/blob.md#8-the-in-memory-store); [storage 4](../../../docs/storage/README.md#4-writes-and-deletes)) ([mocks.md](mocks.md#a-fake-for-state)). Database behaviour is never faked: store code runs on the embedded engine ([database.md](database.md)).
+- **Outbound HTTP clients** (`integrations`: the LLM API, Open-Meteo, SoilGrids, the geocoders, Clerk, Expo) are tested against `wiremock` servers through the real `reqwest` client, so headers, query strings, retries and SSE bodies are what is under test, plus responses recorded from the live services as fixtures ([backend integrations 1](../../../docs/backend/integrations.md#1-purpose-and-boundaries), [16](../../../docs/backend/integrations.md#16-testing); [wiremock 0.6.5](https://docs.rs/wiremock/0.6.5/wiremock/)). Code above the client mocks the port instead (`fetch_cells` with `MockWeatherProvider`). No example here uses wiremock: it is pinned in [versions.md](../rust/versions.md#pinned-by-the-design-not-built-by-the-check) but not built by the checker.
 
 ## 7. Running tests locally and in CI
 
-Use cargo-nextest as the runner. It runs **each test in its own process** ([nextest, why process-per-test](https://nexte.st/docs/design/why-process-per-test/)) (✓ two tests recorded different process IDs; under `cargo test` they shared one), so global state, environment variables and a panicking test can't leak into another test. The other side of that: a `static` set up "once per test binary" runs once per test, all at the same moment, which is why each database test makes its own namespace ([database.md](database.md#one-namespace-per-test)). Install it with `cargo install cargo-nextest --locked` ([installation from source](https://nexte.st/docs/installation/from-source/)) or a pre-built binary.
+Use cargo-nextest as the runner. It runs **each test in its own process** ([nextest, why process-per-test](https://nexte.st/docs/design/why-process-per-test/)) (✓ two tests recorded different process IDs; under `cargo test` they shared one), so global state, environment variables and a panicking test can't leak into another test. The other side of that: a `static` set up "once per test binary" runs once per test, all at the same moment, which is why each database test makes its own datastore, or on the server its own namespace ([database.md](database.md#2-the-pinned-image)). Install it with `cargo install cargo-nextest --locked` ([installation from source](https://nexte.st/docs/installation/from-source/)) or a pre-built binary.
 
 ```toml
 # backend/.config/nextest.toml
@@ -197,9 +198,9 @@ CI, from `backend/` (lints and formatting are in [`rust-cargo-lints`](../rust-ca
 
 ```bash
 export CI=true                    # insta: never write snapshots in CI
-cargo nextest run --workspace --locked --profile ci
+cargo nextest run --workspace --locked --profile ci   # store tests run on the embedded engine here
 cargo test --workspace --locked --doc
-# database tests: start the pinned image first (database.md); each test makes its own namespace
+# the few server tests: start the pinned image first (database.md, section 2)
 PDM_TEST_SURREALDB_URL=ws://127.0.0.1:18000 \
   cargo nextest run --workspace --locked --profile ci --run-ignored only
 ```
@@ -211,7 +212,7 @@ PDM_TEST_SURREALDB_URL=ws://127.0.0.1:18000 \
 - [ ] Time-based behaviour (heartbeats, leases, keepalives, timeouts, retries) is tested with `start_paused = true`, never with real sleeps.
 - [ ] Snapshots are inline or committed `.snap` files; every ULID, timestamp, `request_id` and signed URL is redacted with a format check.
 - [ ] Contract rules over a range of inputs have a property test plus exact boundary tests; regressions files are committed.
-- [ ] Mocks only at the `domain` boundary traits; stateful stores use fakes; database queries are tested against the pinned image.
+- [ ] Mocks only at the `domain` ports, from its `mock` feature; stateful boundaries use fakes with the real rules; outbound HTTP clients run against `wiremock`; store queries run on the embedded engine, one datastore per test, multi-threaded where they race.
 - [ ] Tests that need a service are `#[ignore = "needs …"]` and read their endpoint from the environment.
 - [ ] No `unwrap()` in test helpers outside `#[test]`/`#[cfg(test)]`, no `println!`, no real sleeps.
 
