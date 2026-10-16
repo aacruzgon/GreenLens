@@ -896,3 +896,16 @@ async fn a_signal_handler_that_fails_to_install_never_fires() {
         .await
         .unwrap();
 }
+
+/// `backend/openapi.json` is committed for the app's `openapi-typescript`, and the `domain` types
+/// are the contracts' source of truth, so the file must be what those types generate now.
+/// Regenerate with `cargo run -p api -- openapi > openapi.json` from `backend/`.
+#[test]
+fn the_committed_openapi_document_matches_the_types() {
+    let committed = include_str!("../../../openapi.json");
+    let generated = serde_json::to_string_pretty(&crate::router::openapi()).unwrap();
+    assert!(
+        committed.trim_end() == generated,
+        "backend/openapi.json is stale: run `cargo run -p api -- openapi > openapi.json` in backend/"
+    );
+}
