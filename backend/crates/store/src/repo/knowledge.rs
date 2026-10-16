@@ -4,6 +4,8 @@
 //! memory; the row types and statements here are public so its loader and migration can use
 //! them too.
 
+use std::{collections::BTreeMap, fmt::Write as _};
+
 use domain::{
     chat::KnowledgeHit,
     garden::species::SpeciesPhoto,
@@ -83,27 +85,65 @@ fn search_chunks_sql(k: usize) -> String {
     sql::SEARCH_CHUNKS.replace("{k}", &k.clamp(1, MAX_CHUNK_HITS).to_string())
 }
 
-/// The `BioCLIP` label set's version: the schema stores no generated files (contracts 10), so it
-/// is derived from what the label list is built from (every species' and organism's
-/// `bioclip_label`, in id order), as 16 hex digits of an FNV-1a hash. Any change to a label
-/// changes it.
+/// `BioCLIP` 2 at the revision every label matrix is built with ([`ml/models/FORMATS.md`],
+/// computing `label_set_version`). It changes with the `bioclip` entry of the model manifest.
+///
+/// [`ml/models/FORMATS.md`]: ../../../ml/models/FORMATS.md
+pub const BIOCLIP_MODEL: &str = "bioclip-2@2957b322090f9cb17ae72c71981c7218a28d81e0";
+
+/// The 80 prompt templates the label matrix averages over: a copy of
+/// `ml/models/templates/openai-imagenet-80.json`, embedded because images build from `backend/`.
+/// The `vision` crate's `ml_files` test keeps the two equal.
+pub const BIOCLIP_TEMPLATES_JSON: &str = include_str!("bioclip_templates.json");
+
+/// The `BioCLIP` label set's version, as [`ml/models/FORMATS.md`] fixes it so the knowledge
+/// loader, `ml/training` and this crate agree: the first 16 hex digits of the SHA-256 of the
+/// compact, key-sorted JSON `{"labels", "model", "templates"}`, where `labels` is every
+/// `"{table}:{id}\t{bioclip_label}"`, sorted. The schema stores no generated files
+/// (contracts 10), so it is computed from the seeds every species' and organism's label comes
+/// from. Any change to a label, the model or the templates changes it.
+///
+/// [`ml/models/FORMATS.md`]: ../../../ml/models/FORMATS.md
 pub fn label_set_version(species: &[SpeciesSeed], organisms: &[OrganismSeed]) -> String {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    let templates: Vec<String> = serde_json::from_str(BIOCLIP_TEMPLATES_JSON).unwrap_or_default();
     let labels = species
         .iter()
-        .map(|s| (s.id.as_str(), s.bioclip_label.as_str()))
+        .map(|s| ("species", s.id.as_str(), s.bioclip_label.as_str()))
         .chain(
             organisms
                 .iter()
-                .map(|o| (o.id.as_str(), o.bioclip_label.as_str())),
+                .map(|o| ("organism", o.id.as_str(), o.bioclip_label.as_str())),
         );
-    for (id, label) in labels {
-        for b in id.bytes().chain([0]).chain(label.bytes()).chain([0]) {
-            hash ^= u64::from(b);
-            hash = hash.wrapping_mul(0x0100_0000_01b3);
-        }
-    }
-    format!("{hash:016x}")
+    label_set_version_of(BIOCLIP_MODEL, &templates, labels)
+}
+
+/// [`label_set_version`] over explicit inputs: `(table, id, bioclip_label)` per label.
+pub fn label_set_version_of<'a>(
+    model: &str,
+    templates: &[String],
+    labels: impl IntoIterator<Item = (&'a str, &'a str, &'a str)>,
+) -> String {
+    let mut lines: Vec<String> = labels
+        .into_iter()
+        .map(|(table, id, label)| format!("{table}:{id}\t{label}"))
+        .collect();
+    lines.sort_unstable();
+    // A `BTreeMap` serialises its keys sorted, and `serde_json::to_string` writes no spaces and
+    // UTF-8 as is: Python's `json.dumps(sort_keys=True, separators=(",", ":"),
+    // ensure_ascii=False)`, which the test vector confirms.
+    let doc = BTreeMap::from([
+        ("labels", serde_json::json!(lines)),
+        ("model", serde_json::json!(model)),
+        ("templates", serde_json::json!(templates)),
+    ]);
+    let blob = serde_json::to_string(&doc).unwrap_or_default();
+    let digest = aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA256, blob.as_bytes());
+    digest.as_ref()[..8]
+        .iter()
+        .fold(String::with_capacity(16), |mut hex, b| {
+            let _ = write!(hex, "{b:02x}");
+            hex
+        })
 }
 
 /// A `knowledge_chunk` hit with its source.
@@ -362,7 +402,61 @@ impl KnowledgeRepo for SurrealStore {
 
 #[cfg(test)]
 mod tests {
-    use super::search_chunks_sql;
+    use super::{BIOCLIP_MODEL, BIOCLIP_TEMPLATES_JSON, label_set_version_of, search_chunks_sql};
+
+    /// The test vector of `ml/models/FORMATS.md`, which `ml/tests/test_formats.py` checks too.
+    const VECTOR: [(&str, &str, &str); 3] = [
+        (
+            "species",
+            "strawberry",
+            "Fragaria × ananassa with common name strawberry",
+        ),
+        (
+            "species",
+            "tomato",
+            "Solanum lycopersicum with common name tomato",
+        ),
+        (
+            "organism",
+            "ladybug_larva",
+            "Coccinellidae larva with common name ladybug larva",
+        ),
+    ];
+
+    /// The embedded copies follow `ml/`: the templates byte for byte, and the model revision the
+    /// manifest's `bioclip` entry was exported from.
+    #[test]
+    fn the_embedded_templates_and_model_match_ml() {
+        let ml = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../ml/models");
+        let templates =
+            std::fs::read_to_string(ml.join("templates/openai-imagenet-80.json")).unwrap();
+        assert_eq!(
+            templates, BIOCLIP_TEMPLATES_JSON,
+            "copy ml/models/templates/openai-imagenet-80.json"
+        );
+        let manifest = std::fs::read_to_string(ml.join("manifest.toml")).unwrap();
+        let revision = BIOCLIP_MODEL.trim_start_matches("bioclip-2@");
+        assert!(
+            manifest.contains(&format!("imageomics/bioclip-2@{revision}")),
+            "BIOCLIP_MODEL is the manifest's bioclip revision"
+        );
+    }
+
+    #[test]
+    fn label_set_version_matches_the_formats_test_vector() {
+        let templates: Vec<String> = serde_json::from_str(BIOCLIP_TEMPLATES_JSON).unwrap();
+        assert_eq!(templates.len(), 80);
+        assert_eq!(
+            label_set_version_of(BIOCLIP_MODEL, &templates, VECTOR),
+            "129f0395e8d89bd5"
+        );
+        let reversed = VECTOR.iter().rev().copied();
+        assert_eq!(
+            label_set_version_of(BIOCLIP_MODEL, &templates, reversed),
+            "129f0395e8d89bd5",
+            "the labels are sorted first"
+        );
+    }
 
     #[test]
     fn the_search_takes_k_as_a_clamped_literal() {

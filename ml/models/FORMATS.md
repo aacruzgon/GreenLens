@@ -1,6 +1,6 @@
 # Head and label-matrix files
 
-> **Status:** Proposal v0.2, 2026-10-16. v0.2: the templates are a committed file, `label_set_version` has a test vector, `features` names the exact ONNX export, and extra fields can't overwrite core ones (review of PR #6, issue #3). v0.1: To be confirmed with the Rust perception worker's author ([backend vision 15](../../docs/backend/vision.md#15-open-questions), question 5). Written and read by [`pdm_vision/headfile.py`](../pdm_vision/headfile.py).
+> **Status:** v0.3, 2026-10-16. v0.3: the Rust worker reads both formats and the API computes `label_set_version` with this recipe, passing the test vector; a head's `features` must name the manifest's `bioclip` export or the worker refuses it. v0.2: the templates are a committed file, `label_set_version` has a test vector, `features` names the exact ONNX export, and extra fields can't overwrite core ones (review of PR #6, issue #3). v0.1: To be confirmed with the Rust perception worker's author ([backend vision 15](../../docs/backend/vision.md#15-open-questions), question 5). Written and read by [`pdm_vision/headfile.py`](../pdm_vision/headfile.py).
 
 The backend fixes only that these are JSON files with their matrices as base64 little-endian `f32` ([backend vision 5](../../docs/backend/vision.md#5-the-model-manifest)). This is the exact shape `ml/training` writes. Matrices are row-major. Each file has a `format` string, and a reader refuses a format it doesn't know.
 
@@ -53,7 +53,7 @@ blob = json.dumps(doc, sort_keys=True, separators=(",", ":"), ensure_ascii=False
 label_set_version = sha256(blob).hexdigest()[:16]
 ```
 
-The JSON has no spaces, keys sorted (`labels`, `model`, `templates`), non-ASCII characters written as UTF-8 rather than `\u` escapes, and Python's default string escaping (a tab is `\t`). `serde_json::to_string` on a `BTreeMap` should write the same bytes (*unverified*; the test vector settles it).
+The JSON has no spaces, keys sorted (`labels`, `model`, `templates`), non-ASCII characters written as UTF-8 rather than `\u` escapes, and Python's default string escaping (a tab is `\t`). `serde_json::to_string` on a `BTreeMap` writes the same bytes: `store`'s `label_set_version` passes the test vector (backend `crates/store/src/repo/knowledge.rs`).
 
 **Test vector.** Both sides test against it (`ml/tests/test_formats.py`):
 

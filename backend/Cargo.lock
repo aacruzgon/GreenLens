@@ -6007,6 +6007,7 @@ name = "store"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "aws-lc-rs",
  "chrono",
  "domain",
  "rand 0.10.3",

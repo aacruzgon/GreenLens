@@ -1,15 +1,17 @@
 //! What runs on the worker's CPU on top of `BioCLIP` 2's 768-dimensional embeddings
 //! ([vision models 2, 6, 7]): the label matrix (species scoring), the disease head, the optional
-//! species head and the plant probe. Each is one JSON file pinned in the manifest, with its
-//! matrices as base64 little-endian `f32`.
+//! species head and the plant probe. Each is one JSON file pinned in the manifest, in the formats
+//! of [`ml/models/FORMATS.md`] (`pdm-label-matrix/1`, `pdm-linear-head/1`), with its matrices as
+//! base64 little-endian `f32`, row-major.
 //!
 //! [vision models 2, 6, 7]: ../../../docs/vision/models.md#6-species-bioclip
+//! [`ml/models/FORMATS.md`]: ../../../ml/models/FORMATS.md
 
 use std::path::Path;
 
 use data_encoding::BASE64;
 use domain::{
-    id::{ProblemOrHealthy, SpeciesId},
+    id::{OrganismId, ProblemOrHealthy, SpeciesId},
     jobs::{ProblemScore, SpeciesLabel},
     scan::ImageKind,
     wire::Confidence,
@@ -20,6 +22,36 @@ use crate::VisionError;
 
 /// `BioCLIP` 2's embedding width.
 pub const EMBEDDING_DIM: usize = 768;
+
+/// The label matrix's `format`.
+pub const LABEL_MATRIX_FORMAT: &str = "pdm-label-matrix/1";
+
+/// Every linear head's `format`: the disease head, the species head and the plant probe.
+pub const LINEAR_HEAD_FORMAT: &str = "pdm-linear-head/1";
+
+fn shape(what: &'static str, detail: impl Into<String>) -> VisionError {
+    VisionError::Shape {
+        model: what,
+        detail: detail.into(),
+    }
+}
+
+/// Refuses a file of another format or embedding width, so a file this build can't read fails
+/// at start-up instead of scoring wrongly.
+fn check_header(
+    what: &'static str,
+    format: &str,
+    want: &str,
+    dim: usize,
+) -> Result<(), VisionError> {
+    if format != want {
+        return Err(shape(what, format!("format {format:?}, expected {want:?}")));
+    }
+    if dim != EMBEDDING_DIM {
+        return Err(shape(what, format!("dim {dim}, expected {EMBEDDING_DIM}")));
+    }
+    Ok(())
+}
 
 fn floats(b64: &str, what: &'static str) -> Result<Vec<f32>, VisionError> {
     let bytes = BASE64
@@ -56,53 +88,89 @@ fn read_json<T: for<'de> Deserialize<'de>>(
     })
 }
 
+/// `pdm-label-matrix/1`.
 #[derive(Deserialize)]
 struct LabelFile {
+    format: String,
     label_set_version: String,
-    species: Vec<LabelRow>,
+    dim: usize,
+    count: usize,
+    labels: Vec<LabelRow>,
     rows: String,
 }
 
+/// One row's label: a species or an organism, by `table`.
 #[derive(Deserialize)]
-struct LabelRow {
-    id: SpeciesId,
-    label: String,
+#[serde(tag = "table", rename_all = "snake_case")]
+enum LabelRow {
+    Species { id: SpeciesId, label: String },
+    Organism { id: OrganismId, label: String },
 }
 
-/// The species rows of one `label_set_version`: `N × 768`, L2-normalised text embeddings of
-/// every `bioclip_label`, averaged over the 80 templates offline.
+/// The rows of one `label_set_version`: L2-normalised text embeddings of every `bioclip_label`,
+/// averaged over the 80 templates offline. Species are scored over the species rows only
+/// ([vision models 6], step 3); the organism rows are kept, unscored.
+///
+/// [vision models 6]: ../../../docs/vision/models.md#how-it-scores-species
 #[derive(Debug, Clone, PartialEq)]
 pub struct LabelMatrix {
     /// `label_set_version`.
     pub version: String,
-    /// Row `i` is this species.
+    /// Row `i` of the species rows is this species.
     pub species: Vec<(SpeciesId, String)>,
+    /// The organism rows' labels, in file order.
+    pub organisms: Vec<(OrganismId, String)>,
     rows: Vec<f32>,
 }
 
 impl LabelMatrix {
-    /// Reads a label file.
+    /// Reads a `pdm-label-matrix/1` file.
     pub fn load(path: &Path) -> Result<Self, VisionError> {
-        let file: LabelFile = read_json(path, "label matrix")?;
-        let rows = floats(&file.rows, "label matrix")?;
-        if rows.len() != file.species.len() * EMBEDDING_DIM {
-            return Err(VisionError::Shape {
-                model: "label matrix",
-                detail: format!("{} values for {} species", rows.len(), file.species.len()),
-            });
+        const WHAT: &str = "label matrix";
+        let file: LabelFile = read_json(path, WHAT)?;
+        check_header(WHAT, &file.format, LABEL_MATRIX_FORMAT, file.dim)?;
+        let all = floats(&file.rows, WHAT)?;
+        if file.labels.len() != file.count || all.len() != file.count * EMBEDDING_DIM {
+            return Err(shape(
+                WHAT,
+                format!(
+                    "count {}, {} labels, {} values",
+                    file.count,
+                    file.labels.len(),
+                    all.len()
+                ),
+            ));
+        }
+        let mut species = Vec::new();
+        let mut organisms = Vec::new();
+        let mut rows = Vec::new();
+        for (label, row) in file
+            .labels
+            .into_iter()
+            .zip(all.as_chunks::<EMBEDDING_DIM>().0)
+        {
+            match label {
+                LabelRow::Species { id, label } => {
+                    species.push((id, label));
+                    rows.extend_from_slice(row);
+                }
+                LabelRow::Organism { id, label } => organisms.push((id, label)),
+            }
         }
         Ok(Self {
             version: file.label_set_version,
-            species: file.species.into_iter().map(|r| (r.id, r.label)).collect(),
+            species,
+            organisms,
             rows,
         })
     }
 
-    /// From parts (tests and the fallback).
+    /// From parts (tests and the fallback): species rows only.
     pub fn from_parts(version: String, species: Vec<(SpeciesId, String)>, rows: Vec<f32>) -> Self {
         Self {
             version,
             species,
+            organisms: Vec::new(),
             rows,
         }
     }
@@ -174,21 +242,80 @@ pub fn combine_species(
         .collect()
 }
 
+/// `pdm-linear-head/1`: the disease head, the species head and the plant probe.
 #[derive(Deserialize)]
 struct HeadFile {
-    #[serde(default)]
-    classifier_labels_version: Option<String>,
+    format: String,
+    kind: HeadKind,
+    version: String,
+    features: String,
+    dim: usize,
+    classes: usize,
     temperature: f32,
     labels: Vec<HeadLabel>,
     weight: String,
     bias: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum HeadKind {
+    DiseaseHead,
+    SpeciesHead,
+    PlantProbe,
+}
+
+/// One output's description. Which fields a kind needs is checked by its loader, so a missing
+/// `problem_id` is an error, never a silent `healthy`.
 #[derive(Deserialize)]
 struct HeadLabel {
-    species_id: SpeciesId,
+    index: usize,
     #[serde(default)]
-    problem: Option<ProblemOrHealthy>,
+    species_id: Option<SpeciesId>,
+    #[serde(default)]
+    problem_id: Option<ProblemOrHealthy>,
+}
+
+/// A head file, checked against its header: the format, the kind, the width, `labels[i].index
+/// == i`, and the matrix sizes against `classes`.
+struct CheckedHead {
+    version: String,
+    features: String,
+    temperature: f32,
+    labels: Vec<HeadLabel>,
+    linear: Linear,
+}
+
+fn read_head(path: &Path, what: &'static str, kind: HeadKind) -> Result<CheckedHead, VisionError> {
+    let file: HeadFile = read_json(path, what)?;
+    check_header(what, &file.format, LINEAR_HEAD_FORMAT, file.dim)?;
+    if file.kind != kind {
+        return Err(shape(
+            what,
+            format!("kind {:?}, expected {kind:?}", file.kind),
+        ));
+    }
+    if let Some((i, l)) = file.labels.iter().enumerate().find(|(i, l)| l.index != *i) {
+        return Err(shape(what, format!("labels[{i}] has index {}", l.index)));
+    }
+    let weight = floats(&file.weight, what)?;
+    let bias = floats(&file.bias, what)?;
+    if file.labels.len() != file.classes
+        || weight.len() != file.classes * EMBEDDING_DIM
+        || bias.len() != file.classes
+    {
+        return Err(shape(what, "weight, bias or labels differ from classes"));
+    }
+    if !(file.temperature.is_finite() && file.temperature > 0.0) {
+        return Err(shape(what, format!("temperature {}", file.temperature)));
+    }
+    Ok(CheckedHead {
+        version: file.version,
+        features: file.features,
+        temperature: file.temperature,
+        labels: file.labels,
+        linear: Linear { weight, bias },
+    })
 }
 
 /// A linear head on the embedding: `logits = W · e + b`, one row per class.
@@ -213,35 +340,40 @@ impl Linear {
 /// The disease head: one class per `classifier_labels.yaml` entry (species, problem or healthy).
 #[derive(Debug, Clone, PartialEq)]
 pub struct DiseaseHead {
-    /// `classifier_labels_version`.
+    /// `classifier_labels_version`: the file's `version`, `classifier_labels.yaml`'s
+    /// `model_version`.
     pub version: String,
+    /// The exact `BioCLIP` export the head was trained on,
+    /// `bioclip-2@<revision>+<first 16 hex of the ONNX file's SHA-256>`.
+    pub features: String,
     temperature: f32,
     labels: Vec<(SpeciesId, ProblemOrHealthy)>,
     linear: Linear,
 }
 
 impl DiseaseHead {
-    /// Reads a head file.
+    /// Reads a `pdm-linear-head/1` file of kind `disease_head`. Every label needs its
+    /// `species_id` and `problem_id`.
     pub fn load(path: &Path) -> Result<Self, VisionError> {
-        let file: HeadFile = read_json(path, "disease head")?;
-        let weight = floats(&file.weight, "disease head")?;
-        let bias = floats(&file.bias, "disease head")?;
-        let labels: Vec<(SpeciesId, ProblemOrHealthy)> = file
+        const WHAT: &str = "disease head";
+        let head = read_head(path, WHAT, HeadKind::DiseaseHead)?;
+        let labels = head
             .labels
             .into_iter()
-            .map(|l| (l.species_id, l.problem.unwrap_or(ProblemOrHealthy::Healthy)))
-            .collect();
-        if weight.len() != labels.len() * EMBEDDING_DIM || bias.len() != labels.len() {
-            return Err(VisionError::Shape {
-                model: "disease head",
-                detail: "weight or bias size differs from the label count".to_owned(),
-            });
-        }
+            .map(|l| match (l.species_id, l.problem_id) {
+                (Some(species), Some(problem)) => Ok((species, problem)),
+                _ => Err(shape(
+                    WHAT,
+                    format!("labels[{}] needs species_id and problem_id", l.index),
+                )),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Self {
-            version: file.classifier_labels_version.unwrap_or_default(),
-            temperature: file.temperature,
+            version: head.version,
+            features: head.features,
+            temperature: head.temperature,
             labels,
-            linear: Linear { weight, bias },
+            linear: head.linear,
         })
     }
 
@@ -291,6 +423,7 @@ impl DiseaseHead {
     ) -> Self {
         Self {
             version: "test".to_owned(),
+            features: "test".to_owned(),
             temperature: 1.0,
             labels,
             linear: Linear { weight, bias },
@@ -298,40 +431,40 @@ impl DiseaseHead {
     }
 }
 
-#[derive(Deserialize)]
-struct ProbeFile {
-    weight: String,
-    bias: f32,
-}
-
-/// The plant probe: logistic regression on the embedding, `σ(w · e + b)` ([vision models 2]).
+/// The plant probe: logistic regression on the embedding, `σ((w · e + b) / T)`
+/// ([vision models 2]), a one-class `pdm-linear-head/1` file whose temperature is 1.0.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlantProbe {
+    /// The exact `BioCLIP` export the probe was trained on, as [`DiseaseHead::features`].
+    pub features: String,
     weight: Vec<f32>,
     bias: f32,
+    temperature: f32,
 }
 
 impl PlantProbe {
-    /// Reads a probe file.
+    /// Reads a `pdm-linear-head/1` file of kind `plant_probe` with one class.
     pub fn load(path: &Path) -> Result<Self, VisionError> {
-        let file: ProbeFile = read_json(path, "plant probe")?;
-        let weight = floats(&file.weight, "plant probe")?;
-        if weight.len() != EMBEDDING_DIM {
-            return Err(VisionError::Shape {
-                model: "plant probe",
-                detail: format!("{} weights", weight.len()),
-            });
-        }
+        const WHAT: &str = "plant probe";
+        let head = read_head(path, WHAT, HeadKind::PlantProbe)?;
+        let [bias] = head.linear.bias[..] else {
+            return Err(shape(
+                WHAT,
+                format!("{} classes, expected 1", head.linear.bias.len()),
+            ));
+        };
         Ok(Self {
-            weight,
-            bias: file.bias,
+            features: head.features,
+            weight: head.linear.weight,
+            bias,
+            temperature: head.temperature,
         })
     }
 
     /// The plant probability of one image.
     pub fn probability(&self, e: &[f32]) -> f32 {
         let z = self.weight.iter().zip(e).map(|(w, x)| w * x).sum::<f32>() + self.bias;
-        1.0 / (1.0 + (-z).exp())
+        1.0 / (1.0 + (-z / self.temperature).exp())
     }
 }
 
