@@ -1,6 +1,6 @@
 # PDM Backend: `worker` binary
 
-> **Status:** Draft v0.4.2, 2026-10-16. v0.4.2: the rig's compose listing gives each worker an `env_file` with its own `WORKER_TOKEN` (the worker reads no `WORKER_TOKEN_FILE`). v0.4.1: section 17 keeps only the four questions still open, since docs/vision v0.2 and contracts 5–6 now agree on the rest; section 1 drops the image-fetch difference (the skill uses 30 s too); section 12 lists the fallback service with its `stop_grace_period`. v0.4: the SIGTERM shutdown ends within `DRAIN_SECONDS`, dropping a `complete` or heartbeat call in flight (it could take 20 + 10 + 5 = 35 s, past the 30 s grace); the worker API client retries by the error body's `retryable` and `retry_after_s` (contracts 2), not by status, and waits `retry_after_s`; section 1 states the HTTP timeouts and only the two skill differences that remain. v0.3.1: why the immediate re-claim after a `204` can't spin while the API shuts down (probed). v0.3: the hosted fallback gives the guided check the same 8,000-token budget as the other calls (docs/vision README 12 #27), and the fallback row points to the full list of stripped schema keywords. v0.2: the fallback worker reads its hosted-LLM key from `LLM_API_KEY`, the name `api` and the backend README §9 use (it was `ANTHROPIC_API_KEY`). v0.1: the worker process (`--caps perception|vlm|fallback`): configuration, the heartbeat and claim loops with slots, leases and the SIGTERM drain, cancellation by drop, the VLM adapter with its per-call schema builder and decoding, the hosted fallback, per-card settings for the RX 9070 XT, and the rig's compose services; compiled on Rust 1.99.1.
+> **Status:** Draft v0.5, 2026-10-16. v0.5: section 15.1 designs stub vision (`--stub-vision`, refused in a release build without `PDM_ALLOW_STUB_VISION`), the canned `perception` result the API accepts, its marks in `model_versions` and logs, the tests, and seven work items for the roadmap's slice S1; section 17 has six new questions; no section number changes. v0.4.2: the rig's compose listing gives each worker an `env_file` with its own `WORKER_TOKEN` (the worker reads no `WORKER_TOKEN_FILE`). v0.4.1: section 17 keeps only the four questions still open, since docs/vision v0.2 and contracts 5–6 now agree on the rest; section 1 drops the image-fetch difference (the skill uses 30 s too); section 12 lists the fallback service with its `stop_grace_period`. v0.4: the SIGTERM shutdown ends within `DRAIN_SECONDS`, dropping a `complete` or heartbeat call in flight (it could take 20 + 10 + 5 = 35 s, past the 30 s grace); the worker API client retries by the error body's `retryable` and `retry_after_s` (contracts 2), not by status, and waits `retry_after_s`; section 1 states the HTTP timeouts and only the two skill differences that remain. v0.3.1: why the immediate re-claim after a `204` can't spin while the API shuts down (probed). v0.3: the hosted fallback gives the guided check the same 8,000-token budget as the other calls (docs/vision README 12 #27), and the fallback row points to the full list of stripped schema keywords. v0.2: the fallback worker reads its hosted-LLM key from `LLM_API_KEY`, the name `api` and the backend README §9 use (it was `ANTHROPIC_API_KEY`). v0.1: the worker process (`--caps perception|vlm|fallback`): configuration, the heartbeat and claim loops with slots, leases and the SIGTERM drain, cancellation by drop, the VLM adapter with its per-call schema builder and decoding, the hosted fallback, per-card settings for the RX 9070 XT, and the rig's compose services; compiled on Rust 1.99.1.
 
 Companion to the [backend architecture](README.md), the [`vision` crate](vision.md) (the perception models and image code it uses), the [`integrations` crate](integrations.md) (its HTTP clients for the VLM server and the LLM API) and the [`domain` crate](domain.md) (the job types and the `VisionModel` port). Every listing is copied from the compiled source of `bins/worker` by the docgen tool. `cargo check -p worker` (also `--features cuda`), `cargo clippy -p worker --all-targets` and `cargo test -p worker` pass: 34 tests, among them the loop on paused time against a fake broker and the VLM adapter against a scripted backend.
 
@@ -320,6 +320,7 @@ pub struct Timings {
 | `VLM_SLOTS` | 1 | vlm | Jobs held at once; the sidecar's `--max-num-seqs` (or `-np`) is the same |
 | `LLM_API_KEY`, `FALLBACK_VISION_MODEL` | —, `claude-opus-5-5` | fallback | The hosted model |
 | `FALLBACK_SLOTS`, `FALLBACK_MAX_LONG_SIDE`, `FALLBACK_MAX_PIXELS` | 4, 1568, 1,150,000 | fallback | Slots, and the size the API won't resize |
+| `WORKER_STUB_VISION`, `PDM_ALLOW_STUB_VISION`, `STUB_*` | off, unset | perception | Canned results for the walking skeleton; refused in a release build without the allow variable ([section 15.1](#151-stub-vision), proposed) |
 
 Start-up fails before the first claim on a missing key, a file whose hash differs from the manifest, a provider that isn't compiled in or doesn't register, or a VLM server that doesn't serve `VLM_SERVED_NAME` (`GET /v1/models`).
 
@@ -2394,7 +2395,138 @@ The message is the error and its `source()` chain, `": "`-joined ([rust-errors](
 | `images_are_prepared_on_the_cell_grid` | A 64 × 48 image becomes 64 × 32 on the 32-pixel grid |
 | schema, decode, prepare unit tests | `reason` before `answer` in the serialised schema; `unsure`-only questions; payload enums and box bounds; one guided branch; aliases, boxes, truncation and certainty mapped; a zero-area organism box drops the organism; unknown species and missing keys fail; Qwen3 cells and the pixel budget; the hosted 1568-pixel cap |
 
-All loop tests run on paused time (`start_paused = true`) against a fake `WorkerApi`; the fake answers an empty claim like a 25 s long poll, so the clock can advance. Contract tests of `HttpWorkerApi` against a live `api` belong to the end-to-end tests ([api](api.md)). The day-2 benchmark ([vision evaluation](../vision/evaluation.md)) checks the adapters against the real servers: valid output, xgrammar's enforcement of `maxLength` and `maxItems`, boxes drawn back on the prepared images, and the 9070 XT against the 5070 Ti.
+The stub's tests are in [section 15.1.5](#1515-tests) (proposed). All loop tests run on paused time (`start_paused = true`) against a fake `WorkerApi`; the fake answers an empty claim like a 25 s long poll, so the clock can advance. Contract tests of `HttpWorkerApi` against a live `api` belong to the end-to-end tests ([api](api.md)). The day-2 benchmark ([vision evaluation](../vision/evaluation.md)) checks the adapters against the real servers: valid output, xgrammar's enforcement of `maxLength` and `maxItems`, boxes drawn back on the prepared images, and the 9070 XT against the 5070 Ti.
+
+### 15.1 Stub vision
+
+The roadmap's first slice (S1, [roadmap 5](roadmap.md#5-s1-walking-skeleton)) runs a scan from the app through the API and the broker to a worker and back over SSE, before any GPU or model file exists. The worker has only the real perception path and the hosted fallback, so S1 has nothing to claim a `perception` job ([roadmap gap 2](roadmap.md#12-gaps-found-while-writing-this-roadmap)). **Stub vision** is a `VisionModel` that answers `perception` jobs with canned, valid results. It is a development tool. It is off by default, it is refused in a release build unless the operator says so twice, and it marks everything it produces.
+
+Nothing in this section is compiled yet. The listings are labelled "Proposed (not compiled)", and the numbers in section 15.1.7 are the work items.
+
+#### 15.1.1 Turning it on
+
+| Setting | Name | Default | Meaning |
+|---|---|---|---|
+| Flag | `--stub-vision` (env `WORKER_STUB_VISION`) | off | Use `StubModel` instead of the real model for `--caps perception` |
+| Allow variable | `PDM_ALLOW_STUB_VISION=1` | unset | Required in a release build (`cfg!(debug_assertions)` is false). Debug builds and `cargo test` don't need it |
+| `STUB_LABEL_SET_VERSION`, `STUB_CLASSIFIER_LABELS_VERSION` | env only | none, **required** | The label versions the stub reports in its heartbeat (comma-separated when several). Set them to the values the API queues, which are the knowledge base's `label_set_version` and the classifier mapping's version |
+| `STUB_SPECIES` | env only | `tomato` | Comma-separated species slugs used as candidates (section 15.1.2) |
+| `STUB_PROBLEMS` | env only | empty | Comma-separated problem slugs the disease stage may add below `healthy` |
+| `STUB_PLANT_PRESENT` | env only | `true` | `false` makes the plant check fail, to exercise `no_plant_found` |
+| `STUB_STAGE_DELAY_MS` | env only | 150 | Pause inside each stage, so the SSE stream shows the stages in order and a test can kill the worker mid-job. `10000` leaves a window of about a minute for the lease-expiry check |
+
+**The rules, all checked before the first claim** (a refusal exits with a message that names the rule; nothing is claimed):
+
+1. `--stub-vision` is valid only with `--caps perception`. With `vlm` or `fallback` it is refused: a VLM job is the real VLM's or the hosted model's, and a canned `VlmResult` would put invented findings into a diagnosis.
+2. In a release build it is refused unless `PDM_ALLOW_STUB_VISION=1`. The flag alone isn't enough, so a flag left in a compose file by mistake can't start it, and the rig's `infra/rig.compose.yml` never sets the variable.
+3. Both `STUB_*_VERSION` variables must be set. The API queues a `perception` job only when a live perception or fallback worker reports the job's label versions in its heartbeat; with live workers of which none has both, submit fails with `503 upstream_unavailable` ([contracts 5](../architecture/contracts.md#post-internaljobsidcomplete)). The stub can't read a manifest (section 15.1.4), so the operator names the versions.
+4. `MODEL_MANIFEST`, `ORT_*` and the `*_MAX_BATCH` variables are ignored. The manifest isn't loaded, no ONNX Runtime is initialised, and no GPU or model file is needed.
+
+```text
+// Proposed (not compiled): bins/worker/src/config.rs
+#[derive(Debug, Args)]
+pub struct StubArgs {
+    #[arg(long, env = "WORKER_STUB_VISION")]
+    pub stub_vision: bool,
+    #[arg(long, env = "PDM_ALLOW_STUB_VISION")]
+    pub allow_stub_vision: bool,
+    #[arg(long, env = "STUB_LABEL_SET_VERSION")]
+    pub label_set_version: Option<String>,
+    #[arg(long, env = "STUB_CLASSIFIER_LABELS_VERSION")]
+    pub classifier_labels_version: Option<String>,
+    #[arg(long, env = "STUB_SPECIES", value_delimiter = ',', default_value = "tomato")]
+    pub species: Vec<String>,
+    #[arg(long, env = "STUB_PROBLEMS", value_delimiter = ',')]
+    pub problems: Vec<String>,
+    #[arg(long, env = "STUB_PLANT_PRESENT", default_value_t = true)]
+    pub plant_present: bool,
+    #[arg(long, env = "STUB_STAGE_DELAY_MS", default_value_t = 150)]
+    pub stage_delay_ms: u64,
+}
+
+/// A pure function, so a test can pass `release` instead of changing its own build.
+pub fn check_stub_allowed(cli: &Cli, release: bool) -> Result<(), StubRefused> { /* rules 1 to 3 */ }
+```
+
+`build_model` calls `check_stub_allowed(&cli, !cfg!(debug_assertions))` first and returns `StubModel::new(StubConfig::from(&cli.stub))` when the flag is on. It logs one `warn!` line, `stub vision is on: results are canned`, and the worker's tracing span carries `stub_vision = true` for the life of the process.
+
+#### 15.1.2 What a stub result contains
+
+`StubModel::perceive` reads only the payload: image ids, kinds and sizes, the stage list, `species_id`, `skip_species_identification` and `regions`. It never looks at pixels. It runs the stages in the payload's `stages`, in the contract's order, and for each one sends `stage_started`, a `partial_result` and `stage_completed`, with a pause of `STUB_STAGE_DELAY_MS` before the last of the three. `complete` then repeats every stage's output, so the API finds nothing to change ([contracts 5](../architecture/contracts.md#post-internaljobsidcomplete)). Every number goes through `Confidence::new` and `BBox::new`, which reject anything the API's decoding would.
+
+| Field | Stub value |
+|---|---|
+| `plant_present` | Set only when `plant_check` is in `stages`: `STUB_PLANT_PRESENT` (default `true`) |
+| `regions` | Only with `segmentation`. Per image, numbered from 1 as `<image_id>.<n>`: `whole_plant` gives one `plant` region, box `x 0.10, y 0.10, w 0.80, h 0.80`; `leaf_closeup` and `leaf_underside` give one `leaf` region, box `0.15, 0.15, 0.70, 0.70`; `soil_surface` gives one `soil` region, box `0.00, 0.50, 1.00, 0.50`; `flower_fruit` gives none. Confidence 0.90. **No `mask`**: masks are optional, and the API measures only what needs no mask. A question photo's job (`question_id` set) gets the same rule for its one image |
+| `species` | Only with `species`, and only when the payload has no `species_id` and doesn't set `skip_species_identification`. Up to three candidates from `STUB_SPECIES`, in order, with scores 0.62, 0.21 and 0.09 (the top one is a medium confidence, so a plant with only this stage counts as readable, [contracts 3](../architecture/contracts.md#3-scan-rest-api)). `species_id` is the slug, `label` is `"<slug> (stub)"`. A slug the knowledge base doesn't know is the operator's mistake: the API keeps `knowledge_ref` and the candidate stays unmatched |
+| `disease` | Only with `disease`. For each leaf region of this job (or of the payload's `regions` when segmentation isn't re-run) on a `leaf_closeup` or `leaf_underside` image, one entry with its `region_id`. `top` is `healthy` at 0.70, then the first two `STUB_PROBLEMS` at 0.20 and 0.10, in that order, so it is sorted and has at most three entries. The working species is the payload's `species_id` or the first candidate; the stub doesn't restrict `top` to its labels, because it has no label file |
+| `disease_skipped` | `no_leaves_found` when `disease` is requested and there is no leaf region and no close-up. Never `species_not_supported` |
+| `image_embeddings` | **Absent**, always. The field is optional. A made-up vector stored with an embedding model name would corrupt the similar-case search the day a real one is stored beside it. The `image_embedding` stage is reported complete with `skipped: { reason: "stub" }` |
+
+`analyse`, `verify` and `read_guided_check` return `ModelError::Unsupported`, so a `vlm`, `verify` or `guided` job that reaches the stub (it can't: the claim filters by `caps`) would complete `failed`, `model_error`, not retryable.
+
+**What the API checks, and why a stub result passes.** The API decodes `result` as the job's recorded kind (`JobResult::decode`), and a result that doesn't decode is stored as a failure with `model_error` ([contracts 5](../architecture/contracts.md#post-internaljobsidcomplete)). Decoding rejects a confidence outside 0 to 1 and a box outside the image. Nothing else is checked: `perception_writes` copies regions, candidates and `top` entries into observations, and no code reads `image_embeddings` yet. The one check that depends on the worker is the label-version gate in rule 3 above. The stub passes it only because the operator set the versions.
+
+#### 15.1.3 How a stub result is recognised
+
+A stub result must never be taken for a real one, in a log or in stored data.
+
+| Where | Mark |
+|---|---|
+| `complete.model_versions` and the heartbeat's `versions` | `stub: "1"`, `perception_config: "stub"`, and `stub` as the value of `leaf_detector`, `bioclip` and `disease_head`. `worker_id` is added by `JobRunner` as for every worker. `label_set_version` and `classifier_labels_version` are the job's own, as for a real worker. No `ort_ep` |
+| Stored observations | `model_version` is `stub`: the API takes it from `vlm_model`, then from `perception_config` (`complete.model_versions`) |
+| Candidate labels | `"<slug> (stub)"` |
+| `WORKER_ID` | By convention `dev-stub-perception-1`; the compose file for S1 uses it |
+| Logs | The `warn!` at start-up, and `stub_vision = true` on the worker's span, so every line has it |
+| Stage event | The `image_embedding` skip reason `stub` |
+
+The API can't tell a stub from a real worker by anything but `model_versions`. Whether it should refuse them in production is open (section 17).
+
+#### 15.1.4 What the stub never does
+
+- **No network.** `StubModel` holds no `reqwest` client, no `integrations` client and no `ort` session. The worker loop's own calls to the API (heartbeat, claim, events, image fetch, `complete`) are unchanged, and that includes the image fetch: it exercises the API's worker image route, which S1 wants. The stub ignores the bytes and never decodes them.
+- **No files.** It reads no manifest, no label file and no model file, and writes nothing. Its only inputs are the payload and the environment.
+- **No randomness and no clock.** Equal payloads give equal results, so a test can compare them and the smoke script can assert on them. The only wait is `tokio::time::sleep`, which a cancellation drops like any other `.await`.
+- **No other kind.** It answers `perception` and nothing else (section 15.1.1, rule 1).
+
+#### 15.1.5 Tests
+
+| Test | Shows |
+|---|---|
+| `stub_is_refused_in_release_without_the_allow_variable` | `check_stub_allowed(cli, true)` fails; with `allow_stub_vision` it passes; with `release = false` it passes without it |
+| `stub_is_refused_with_vlm_and_fallback_caps` | Rule 1, for both caps |
+| `stub_needs_both_label_versions` | A missing `STUB_LABEL_SET_VERSION` or `STUB_CLASSIFIER_LABELS_VERSION` is refused, naming the variable |
+| `stub_regions_follow_the_image_kinds` | A full scan's five photo kinds give the plant, leaf, leaf, soil regions and none for `flower_fruit`, ids `<image>.1`, no mask |
+| `stub_result_decodes_as_the_jobs_kind` | The serialised result passes `JobResult::decode(JobKind::Perception, …)` for every subset of `stages`, and every box and confidence is in range |
+| `stub_follows_the_payloads_species_choice` | With `species_id` or `skip_species_identification` there is no `species`; disease uses the given species; without either, three candidates in descending score |
+| `stub_disease_is_sorted_and_skips_without_leaves` | `top` has at most three entries in descending order; no leaf regions and no close-up give `disease_skipped: no_leaves_found` |
+| `stub_never_sends_embeddings` | `image_embeddings` is `None`, and the `image_embedding` stage is skipped with reason `stub` |
+| `stub_marks_every_version` | `model_versions` has `stub: "1"`, `perception_config: "stub"` and the three model keys as `stub` |
+| `stub_module_has_no_io` | The module's source (`include_str!`) contains none of `reqwest`, `std::fs`, `tokio::fs`, `std::net`, `ort`, `rand` or `SystemTime` |
+| `a_stub_job_completes_through_the_loop` | The existing loop test with a fake `WorkerApi` and a `StubModel`: `done`, `stub` in `model_versions`, the stage events in order |
+| `a_cancelled_stub_job_stops_at_its_delay` | With `STUB_STAGE_DELAY_MS = 10_000` on paused time, a cancel after 3 s ends the job and sends nothing |
+
+One more test belongs to `pipeline`, since the stub's output is its input: `a_stub_perception_result_stores_its_observations`. A fixture of the stub's full result for a five-photo scan goes through `job_completed`, and the stored observations carry `model_version: "stub"` and the `Retrieve` claim.
+
+**The S1 exit check these enable.** With a stub worker on the control plane, the smoke script ([roadmap 5](roadmap.md#5-s1-walking-skeleton)) creates a garden, uploads photos, submits and follows the stream through the plant check, segmentation, species, disease and `image_embedding` stages. It then drops the connection and resumes with `Last-Event-ID`. With `STUB_STAGE_DELAY_MS=10000`, killing the worker mid-job requeues the job once its lease runs out, and a second stub worker finishes it. Restarting `api` during the scan and resuming replays each missed event once. These are the first two exit checks and the third.
+
+#### 15.1.6 Where the stub stops
+
+The scan goes on to the `retrieve` step and queues a `vlm` job. On the control plane, the fallback worker takes that job 15 s after `queued_at`, with a real `LLM_API_KEY` and a real cost. Without a key the scan waits at `analysing` with the `vlm` job queued. S1's exit checks hold either way, because they end at the perception stages and the requeue. A canned VLM result is not offered (rule 1); open question 7 asks whether the smoke test needs one.
+
+#### 15.1.7 Work items
+
+All are part of S1's work item 1 ([roadmap 5](roadmap.md#5-s1-walking-skeleton)). Each item's exit check is a test or a command.
+
+| # | Work | Exit check |
+|---|---|---|
+| ST1 | `StubArgs`, `check_stub_allowed`, the `build_model` branch, the start-up `warn!` and span field | The three refusal tests pass; `worker --caps perception --stub-vision` with the allow variable starts in a release build on a machine with no GPU and no `/models` |
+| ST2 | `StubModel` and its result builder | `stub_regions_follow_the_image_kinds`, `stub_result_decodes_as_the_jobs_kind`, `stub_follows_the_payloads_species_choice`, `stub_disease_is_sorted_and_skips_without_leaves` and `stub_never_sends_embeddings` pass; `cargo clippy -p worker --all-targets` is clean |
+| ST3 | The marks of section 15.1.3 and `stub_module_has_no_io` | `stub_marks_every_version` and `stub_module_has_no_io` pass; the heartbeat of a started stub lists both label versions |
+| ST4 | The stage events and the delay | `a_stub_job_completes_through_the_loop` and `a_cancelled_stub_job_stops_at_its_delay` pass on paused time |
+| ST5 | `pipeline`'s fixture test, and a check that the stub's output decodes against `contracts.md` | `a_stub_perception_result_stores_its_observations` passes |
+| ST6 | A `perception-stub-worker` service in S1's `control-plane.compose.yml` (`--caps perception --stub-vision`, `PDM_ALLOW_STUB_VISION=1`, the `STUB_*` variables, its own `env_file` with `WORKER_TOKEN`) | The worker's first heartbeat shows on the API; a submitted scan's perception job is claimed within a second and the stage events reach the stream |
+| ST7 | The kill, restart and resume checks of section 15.1.5 in the S1 smoke script | S1's first three exit checks pass against the deployed control plane |
 
 ---
 
@@ -2418,6 +2550,12 @@ The questions of [contracts 12](../architecture/contracts.md#12-open-questions) 
 2. **The fallback's runtime.** Opus 5.5 always thinks, so every hosted call gets 8,000 output tokens ([contracts 6](../architecture/contracts.md#after-decoding)). Whether calls that long finish within the fallback's doubled `max_runtime` is measured on day 2 ([contracts open question 26](../architecture/contracts.md#12-open-questions)).
 3. **`anyOf` with `null`** for nullable values in the schema is *unverified* on xgrammar 0.2.7 (the day-2 schema check, [contracts open question 31](../architecture/contracts.md#12-open-questions)).
 4. **Cancellation on llama.cpp**: whether a dropped connection frees the slot is *unverified* ([contracts open question 33](../architecture/contracts.md#12-open-questions)).
+5. **Should `api` refuse stub results in production?** Today only `model_versions.stub` tells them apart. A setting such as `API_REJECT_STUB_VISION=true` on the deployed control plane, once S1 is over, would fail a `complete` that carries the key. The alternative is to rely on the release guard and the compose files alone (section 15.1.3).
+6. **Is the `stub` key a contracts change?** The `model_versions` table in [contracts 5](../architecture/contracts.md#post-internaljobsidcomplete) lists keys by model entry. Adding `stub` and the value `stub` for `perception_config` needs a row there. The coordinator applies it.
+7. **Does S1 need a canned `vlm` result?** Section 11.6 stops at the `vlm` job, and the fallback worker would answer it for a real LLM key. If the smoke test must reach `planned` without a key, a stub for `vlm`, `verify` and `guided` is a second flag with the same guard. It would need findings that name only knowledge-base ids, and a plan the scoring step accepts. It stays out until S1 shows the need.
+8. **Where the label versions come from.** The stub gets them from two variables because the heartbeat needs them before any job, and it reads no file. Reading only the two version strings from the manifest's header would be a smaller burden for the operator, but it is a file read. They stay variables unless the S1 compose file shows them going stale after a knowledge reseed.
+9. **Does the skeleton build need ONNX Runtime at all?** If the S1 worker image is built without the `cuda` feature and with `load-dynamic`, the stub starts with no `libonnxruntime`. This is *unverified*: ST1's exit check on a machine with no GPU settles it.
+10. **Species and `image_embedding` events.** Section 11.2 sends no events for `species` when the payload names the species, and a `skipped: stub` for `image_embedding`. Whether `PerceptionPipeline` does the same is not compared yet; ST4 compares the event order of both.
 
 **Resolved with docs/vision v0.2.** Contracts 5 and 6 and [vision 6](../vision/README.md#6-model-files-versions-and-pinning) and [vision vlm 11–12](../vision/vlm.md#11-validation-retries-and-versions) now agree on what this section used to list: the `model_versions` value formats (underscores, `@` versions, commas between prompts, slashes between certainty values); per-model keys named by their manifest entry, with SAM as `sam_encoder` and `sam_decoder`; `label_set_version` and `classifier_labels_version` as keys, comma-separated in the heartbeat; boxes with no area; box bounds for pixel formats; the hosted model's 1,568-pixel and 1.15-megapixel caps; the fallback loading its label files from the manifest; JPEG at quality 90 with each side rounded down; the 8,000-token hosted budget; and `BoxFormat`'s comment, which names `norm_1000` as the Qwen3-VL format and `abs_px_prepared` as the fallback's.
 
