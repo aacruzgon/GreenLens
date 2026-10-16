@@ -1,6 +1,6 @@
 # PDM Frontend Architecture
 
-> **Status:** Draft v0.4, 2026-10-15. v0.4 applies the third audit and contracts v0.8.2: species photo paths carry a content hash, a failed scan never holds a question, push coverage, invalidations for confirmed plan revisions, the closer-photo rule, the `SFSafariViewController` cookie note and the CORS preflight reason.
+> **Status:** Draft v0.4.1, 2026-10-16. v0.4.1: the schema links point to `backend/migrations/schema.surql`. v0.4 applies the third audit and contracts v0.8.2: species photo paths carry a content hash, a failed scan never holds a question, push coverage, invalidations for confirmed plan revisions, the closer-photo rule, the `SFSafariViewController` cookie note and the CORS preflight reason.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Images:** event URLs arrive fresh, and the cache key is the image ID or the URL path; species photos carry their credit.
 >   - **Scan stream:** the resting rule counts guided checks on failed scans too.
@@ -977,7 +977,7 @@ The frontend track of [architecture 14](../architecture/README.md#14-build-plan)
 
 ## 20. Contract changes the screens need
 
-Writing the screens showed data they needed that the contracts didn't carry. [Contracts](../architecture/contracts.md) v0.8 added all of it, and v0.8.1 and v0.8.2 tightened it, with the stored shapes in [`schema.surql`](../database/schema.surql). The schema changes and the new storage policies were run on the pinned SurrealDB 3.3.4 and RustFS 1.0.1 ([database 3, 4](../database/README.md#3-tables), [storage 2](../storage/README.md#2-bucket-keys-and-access)).
+Writing the screens showed data they needed that the contracts didn't carry. [Contracts](../architecture/contracts.md) v0.8 added all of it, and v0.8.1 and v0.8.2 tightened it, with the stored shapes in [`schema.surql`](../../backend/migrations/schema.surql). The schema changes and the new storage policies were run on the pinned SurrealDB 3.3.4 and RustFS 1.0.1 ([database 3, 4](../database/README.md#3-tables), [storage 2](../storage/README.md#2-bucket-keys-and-access)).
 
 | # | What was missing | Contract change (v0.8 / v0.8.1 / v0.8.2) | Used in |
 |---|---|---|---|
@@ -1047,4 +1047,4 @@ Every link was opened on 2026-10-15. The sections above link the page they rely 
 - [`AVDepthData`](https://developer.apple.com/documentation/avfoundation/avdepthdata) · [`ARWorldTrackingConfiguration`](https://developer.apple.com/documentation/arkit/arworldtrackingconfiguration) · [`ARWorldMap`](https://developer.apple.com/documentation/arkit/arworldmap) · [Core Motion](https://developer.apple.com/documentation/coremotion)
 
 **Project documents**
-- [System architecture](../architecture/README.md) · [data contracts](../architecture/contracts.md) · [database](../database/README.md) and [schema](../database/schema.surql) · [storage](../storage/README.md)
+- [System architecture](../architecture/README.md) · [data contracts](../architecture/contracts.md) · [database](../database/README.md) and [schema](../../backend/migrations/schema.surql) · [storage](../storage/README.md)

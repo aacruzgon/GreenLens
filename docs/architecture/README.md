@@ -1,6 +1,6 @@
 # PDM Architecture
 
-> **Status:** Draft v0.7.3, 2026-10-16. v0.7.3: section 13 lists `docs/setup`, the developer setup. v0.7.2: section 12 gives the services' stop grace periods (190 s for `api`). v0.7.1 synced with [contracts.md](contracts.md) v0.10.1: the account tombstone keeps a deleted account's tokens out and the provider deletion running across restarts (4). v0.7 synced with [contracts.md](contracts.md) v0.10, which records the decisions of the [backend design](../backend/README.md):
+> **Status:** Draft v0.7.4, 2026-10-16. v0.7.4: sections 5 and 13 say the schema now lives at `backend/migrations/schema.surql`. v0.7.3: section 13 lists `docs/setup`, the developer setup. v0.7.2: section 12 gives the services' stop grace periods (190 s for `api`). v0.7.1 synced with [contracts.md](contracts.md) v0.10.1: the account tombstone keeps a deleted account's tokens out and the provider deletion running across restarts (4). v0.7 synced with [contracts.md](contracts.md) v0.10, which records the decisions of the [backend design](../backend/README.md):
 >   - the crate list matches the code: `integrations` holds every outbound HTTP adapter, and `knowledge` reads through a port without depending on `store` (3);
 >   - the user record is created by the first authenticated request, and the auth webhook only deletes users (4, 11);
 >   - the chat tools take no garden id, `view_image` and `revise_plan` name their scan, and model thinking is replayed only within a turn (7);
@@ -228,7 +228,7 @@ ops           job (kind: perception | vlm | verify | guided, run, payload, statu
 
 ### Schema
 
-The schema is [`docs/database/schema.surql`](../database/schema.surql), with its design notes, query patterns and caveats in [docs/database](../database/README.md). It was applied and exercised against SurrealDB 3.3.4, the pinned version. The decisions that shape the rest of this document:
+The schema is [`backend/migrations/schema.surql`](../../backend/migrations/schema.surql), with its design notes, query patterns and caveats in [docs/database](../database/README.md). It was applied and exercised against SurrealDB 3.3.4, the pinned version. The decisions that shape the rest of this document:
 
 - **SurrealDB 3.3.4**, RocksDB storage, with the Rust crate pinned to the same version. The schema file is idempotent and applied by `api` on start.
 - **Natural keys where the key is the rule:**
@@ -879,7 +879,7 @@ PDM/
    ├─ backend/         the Rust backend, crate by crate, down to its types and traits
    ├─ vision/          the computer-vision models, training and evaluation
    ├─ frontend/        the app's architecture (README.md), flows (flows.md) and screens (screens.md)
-   ├─ database/        SurrealDB schema (schema.surql) and its notes
+   ├─ database/        SurrealDB notes (the schema itself is backend/migrations/schema.surql)
    ├─ storage/         RustFS setup and notes
    └─ setup/           what each team member installs, per OS
 ```

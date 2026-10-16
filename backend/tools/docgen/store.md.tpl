@@ -1,8 +1,8 @@
 # PDM Backend: `store` crate
 
-> **Status:** Draft v0.4.1, 2026-10-16. v0.4.1: section 1 keeps only the `$now` difference from database 4, since the skills now follow this design; section 17 lists `TargetBinds`, which section 18 cites; research notes are no longer named by a path outside the repository. v0.4: the multi-line query listings are complete (a generator bug cut eight of them after their first line); the step-claim pair is described as conditional, as in database 4; the protected parameters are `auth`, `token`, `access` and `session`; a bound `$before` is overridden only in `RETURN`, and `Option` fails only from 2 ids; the closure-lifetime error has no code. v0.3: the account tombstone (`deleted_user`), SoilGrids retries, `live_lease`, and the store's `Notify` as the only claim wake-up (a requeue notifies too). v0.2: every repository method is real code (no `todo!()` left), reads decode straight into domain types through contract-shaped projections, and 12 more tests run on the embedded engine. v0.1: `SurrealStore`, which implements every repository of `domain::ports::store` and `MemoryStore` over SurrealDB 3.3.4, with every statement a named constant, one query per transaction with a conflict retry, one error classifier, and real code for each pattern that carries a guarantee, tested against the embedded 3.3.4 engine.
+> **Status:** Draft v0.4.2, 2026-10-16. v0.4.2: the schema now lives at `backend/migrations/schema.surql` only, no longer a copy of a file in `docs/database`. v0.4.1: section 1 keeps only the `$now` difference from database 4, since the skills now follow this design; section 17 lists `TargetBinds`, which section 18 cites; research notes are no longer named by a path outside the repository. v0.4: the multi-line query listings are complete (a generator bug cut eight of them after their first line); the step-claim pair is described as conditional, as in database 4; the protected parameters are `auth`, `token`, `access` and `session`; a bound `$before` is overridden only in `RETURN`, and `Option` fails only from 2 ids; the closure-lifetime error has no code. v0.3: the account tombstone (`deleted_user`), SoilGrids retries, `live_lease`, and the store's `Notify` as the only claim wake-up (a requeue notifies too). v0.2: every repository method is real code (no `todo!()` left), reads decode straight into domain types through contract-shaped projections, and 12 more tests run on the embedded engine. v0.1: `SurrealStore`, which implements every repository of `domain::ports::store` and `MemoryStore` over SurrealDB 3.3.4, with every statement a named constant, one query per transaction with a conflict retry, one error classifier, and real code for each pattern that carries a guarantee, tested against the embedded 3.3.4 engine.
 
-Companion to the [backend architecture](README.md), the [database notes](../database/README.md) (v1.4) and [`schema.surql`](../database/schema.surql). The ports it implements are in [domain 9](domain.md#9-boundary-traits). Every listing is copied from the compiled source of `crates/store` with the docgen tool: `cargo check -p store`, `cargo clippy -p store --all-targets` (clean) and `cargo test -p store` (7 unit tests and 25 tests against the embedded engine) pass on Rust 1.99.1 with `surrealdb = "=3.3.4"`.
+Companion to the [backend architecture](README.md), the [database notes](../database/README.md) (v1.4) and [`schema.surql`](../../backend/migrations/schema.surql). The ports it implements are in [domain 9](domain.md#9-boundary-traits). Every listing is copied from the compiled source of `crates/store` with the docgen tool: `cargo check -p store`, `cargo clippy -p store --all-targets` (clean) and `cargo test -p store` (7 unit tests and 25 tests against the embedded engine) pass on Rust 1.99.1 with `surrealdb = "=3.3.4"`.
 
 ## Contents
 
@@ -97,7 +97,7 @@ crates/store/
 │  ├─ embedded/support.rs   fixtures built through the store's own methods
 │  ├─ flows.rs        uploads, completion, guided checks, answers, reads, chat, memory, deletions, knowledge
 │  └─ server.rs       ignored: the schema applied twice on the pinned image
-└─ ../../migrations/schema.surql   the schema the crate embeds (a copy of docs/database/schema.surql)
+└─ ../../migrations/schema.surql   the schema the crate embeds
 ```
 
 ---
@@ -116,7 +116,7 @@ crates/store/
 
 @@lines lib.rs 22-31@@
 
-- The schema file is `backend/migrations/schema.surql` (the scratch tree's `migrations/`), a copy of [`schema.surql`](../database/schema.surql); `include_str!` embeds it, so the binary and its schema can't drift. ✓ The v1.4 file applies twice in a row on the embedded engine and, as root, on the pinned image by digest.
+- The schema file is [`backend/migrations/schema.surql`](../../backend/migrations/schema.surql); `include_str!` embeds it, so the binary and its schema can't drift. ✓ The v1.4 file applies twice in a row on the embedded engine and, as root, on the pinned image by digest.
 
 ---
 
@@ -624,7 +624,7 @@ Answers this crate settles, for [contracts 12](../architecture/contracts.md#12-o
 - [rand 0.10.3 `random_range`](https://docs.rs/rand/0.10.3/rand/fn.random_range.html) · [async-trait 0.1.92](https://docs.rs/async-trait/0.1.92/async_trait/)
 
 **Project documents, notes and skills**
-- [Database](../database/README.md) v1.4 and [schema](../database/schema.surql) · [contracts](../architecture/contracts.md) · [storage](../storage/README.md) · [domain](domain.md) · [knowledge](knowledge.md)
+- [Database](../database/README.md) v1.4 and [schema](../../backend/migrations/schema.surql) · [contracts](../architecture/contracts.md) · [storage](../storage/README.md) · [domain](domain.md) · [knowledge](knowledge.md)
 - Research notes and a SurrealDB probe from writing this design (not kept in the repository): the `untagged` enums, `take_errors()` minus `NotExecuted`, `is_thrown()` with the message, unique indexes as `Internal`, array keys, multi-thread retry tests
 - Skills in the main checkout's `.claude/skills/`: `rust-surrealdb` (with `errors-and-retries.md` and `write-patterns.md`), `rust-errors`, `rust-testing`, `rust-async`, `rust/versions.md`
 

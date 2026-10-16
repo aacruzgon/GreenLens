@@ -12,8 +12,8 @@ use tokio::sync::Notify;
 
 use crate::{error::classify, tx::run_tx};
 
-/// The schema, embedded at build time. The file is `backend/migrations/schema.surql`, a copy of
-/// `docs/database/schema.surql` ([database 1], applying the schema). Idempotent: `OVERWRITE`
+/// The schema, embedded at build time. The file is `backend/migrations/schema.surql` ([database 1],
+/// applying the schema). Idempotent: `OVERWRITE`
 /// for tables, fields and functions, `IF NOT EXISTS` for indexes.
 pub const SCHEMA: &str = include_str!("../../../migrations/schema.surql");
 

@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.2, 2026-10-16. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.3, 2026-10-16. Companion to the [architecture document](README.md).
+> **v0.10.3**: section 1 links the stored shapes at their new place, `backend/migrations/schema.surql`; no contract changes.
 > **v0.10.2**: deleting a scan closes its event stream within 15 seconds, and so does a resting point reached without an event (section 4, when the stream closes).
 > **v0.10.1** settles open question 40 with the account tombstone: the Clerk deletion survives a restart, and a deleted account's session tokens get `401` until 24 hours after Clerk confirms (section 9, account).
 > **v0.10** records what the [backend design](../backend/README.md) decided while writing the crates, and settles open questions 12–24 (section 12):
@@ -75,7 +76,7 @@ This document is the agreement for build week. Once the code exists, the source 
 - `utoipa` generates the OpenAPI spec from them, and `openapi-typescript` generates the app's TypeScript types from that spec.
 - `schemars` generates JSON Schema from them for the fixed shapes: knowledge seed validation (section 10) and the plan writer's output. The VLM's schema is built per job by the worker (section 6), because its allowed values change with each payload.
 
-A change to a contract changes the Rust type first, and this document is updated in the same pull request. The records are stored as defined in [docs/database/schema.surql](../database/schema.surql), which changes in the same pull request when a stored shape changes.
+A change to a contract changes the Rust type first, and this document is updated in the same pull request. The records are stored as defined in [backend/migrations/schema.surql](../../backend/migrations/schema.surql), which changes in the same pull request when a stored shape changes.
 
 ### Notation
 
@@ -2305,6 +2306,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10: the backend's decisions: the `integrations` crate and `knowledge` without a `store` dependency, the auth webhook that only deletes users, the error rules (unknown fields, malformed ids, timeouts as `503`, oversized JSON, geocoding), the job error codes and the label-version rule, no lease hand-back, kind-filtered claims, the writer's lifecycle and a held step claim keeping the stream open, photos without depth at 1600 px, the hosted model's size cap, token budget and rejected keywords, the chat tools without garden arguments, thinking replayed within a turn, SoilGrids retry rules, weather failure failing the run, embedding modes, the evidence fields kept server-side, the past week's longest humid run and the weather thresholds' one owner | 3, 4, 5, 6.1, 6.4, 6.7, 6.8, 7, 8.1, 8.2, 8.3, 8.4, 8.5, 10, 11, 12, 15 |
 | v0.10.1: the account tombstone settles open question 40: the provider deletion survives a restart, and a deleted account's session tokens get `401` until 24 hours after the provider confirms | 4 |
 | v0.10.2: a deleted scan's stream, and one at a resting point reached without an event, closes within 15 seconds | none (section 9's SSE description is unchanged) |
+| v0.10.3: the schema link points to `backend/migrations/schema.surql` | 5 (schema) and 13 (layout), which say the same |
 
 ---
 

@@ -171,7 +171,7 @@ Once the `domain` crate exists, its types are the contract ([AGENTS.md, sources 
 
 1. changes the Rust type and its exact-JSON test;
 2. updates contracts.md to match, bumps its status line, and adds a row to [contracts 11](../../../docs/architecture/contracts.md#11-changes-to-the-architecture-document) if the architecture document changes too;
-3. changes [schema.surql](../../../docs/database/schema.surql) if the shape is stored;
+3. changes [schema.surql](../../../backend/migrations/schema.surql) if the shape is stored;
 4. regenerates the OpenAPI spec and the app's types.
 
 ## Review checklist
