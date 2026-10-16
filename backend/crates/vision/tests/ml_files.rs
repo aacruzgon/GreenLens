@@ -13,7 +13,11 @@ use domain::id::{ProblemOrHealthy, SpeciesId};
 use serde_json::{Value, json};
 use vision::{
     manifest::Manifest,
-    perception::heads::{DiseaseHead, EMBEDDING_DIM, LabelMatrix, PlantProbe},
+    perception::{
+        BatchCaps, PerceptionConfig, TensorNames, check_precision,
+        heads::{DiseaseHead, EMBEDDING_DIM, LabelMatrix, PlantProbe},
+    },
+    runtime::OrtEp,
 };
 
 fn ml_models() -> PathBuf {
@@ -93,6 +97,239 @@ fn the_committed_manifest_parses() {
         Some(head.version.as_str()),
         "a head's classifier_labels_version is its version"
     );
+}
+
+/// Both committed manifests name every tensor the perception adapter runs (gap G4): `BioCLIP`'s
+/// export takes `images` and returns `embeddings`.
+#[test]
+fn the_committed_manifests_name_every_tensor() {
+    for file in ["manifest.toml", "manifest.cpu.toml"] {
+        let manifest = Manifest::load(&ml_models().join(file)).expect(file);
+        let names = TensorNames::from_manifest(&manifest).expect(file);
+        assert_eq!(names.bioclip_input, "images", "{file}");
+        assert_eq!(names.bioclip_output, "embeddings", "{file}");
+        assert_eq!(names.detector_input, "input", "{file}");
+        assert_eq!(names.detector_outputs, ["dets", "labels"], "{file}");
+        assert_eq!(names.sam_encoder_input, "images", "{file}");
+        assert_eq!(
+            names.sam_encoder_outputs,
+            ["high_res_feats_0", "high_res_feats_1", "image_embed"],
+            "{file}"
+        );
+        assert_eq!(
+            names.sam_decoder_outputs,
+            ["mask_single", "iou_single"],
+            "{file}"
+        );
+    }
+}
+
+#[test]
+fn a_manifest_without_an_output_the_adapter_runs_is_refused() {
+    let text = std::fs::read_to_string(ml_models().join("manifest.toml")).expect("the manifest");
+    let without = text.replacen("embeddings = \"embeddings\"", "pooled = \"embeddings\"", 1);
+    assert_ne!(text, without, "the bioclip output line is in the manifest");
+    let manifest = Manifest::parse(&without).expect("still a manifest");
+    let err = load_err(TensorNames::from_manifest(&manifest));
+    assert!(err.contains("bioclip has no output embeddings"), "{err}");
+}
+
+fn committed_manifest_text() -> String {
+    std::fs::read_to_string(ml_models().join("manifest.toml")).expect("the manifest")
+}
+
+fn config_of(text: &str) -> Result<PerceptionConfig, vision::manifest::ManifestError> {
+    PerceptionConfig::from_manifest(
+        &Manifest::parse(text).expect("a manifest"),
+        BatchCaps::default(),
+    )
+}
+
+/// Gap G6: every threshold comes from the manifest, in both committed manifests.
+#[test]
+fn the_thresholds_come_from_the_committed_manifests() {
+    for file in ["manifest.toml", "manifest.cpu.toml"] {
+        let manifest = Manifest::load(&ml_models().join(file)).expect(file);
+        let caps = BatchCaps {
+            sam_encoder: 1,
+            ..BatchCaps::default()
+        };
+        let c = PerceptionConfig::from_manifest(&manifest, caps).expect(file);
+        assert_eq!(c.caps, caps, "the caps are the environment's");
+        assert!((c.detector.score_threshold - 0.35).abs() < 1e-6, "{file}");
+        assert!((c.detector.min_side_px - 24.0).abs() < 1e-6, "{file}");
+        assert_eq!(c.detector.max_per_image, 40, "{file}");
+        assert!((c.detector.nms_iou - 0.8).abs() < 1e-6, "{file}");
+        assert!((c.tau_leaf - 0.5).abs() < 1e-6, "{file}");
+        assert!((c.sam.min_iou - 0.6).abs() < 1e-6, "{file}");
+        assert_eq!(c.sam.plant_min_leaves, 3, "{file}");
+        assert!((c.sam.plant_grow - 0.05).abs() < 1e-12, "{file}");
+        assert!((c.sam.plant_min_cover - 0.6).abs() < 1e-12, "{file}");
+        assert!((c.species_temperature - 1.0).abs() < 1e-6, "{file}");
+        assert!((c.crop_grow - 0.10).abs() < 1e-12, "{file}");
+        assert_eq!(c.tau_plant, None, "{file} has no plant probe yet");
+    }
+}
+
+#[test]
+fn a_missing_threshold_refuses_to_start() {
+    let text = committed_manifest_text();
+    for (line, entry, key) in [
+        ("  tau_leaf         = 0.5", "leaf_detector", "tau_leaf"),
+        ("  min_iou          = 0.6", "sam_decoder", "min_iou"),
+        (
+            "  species_temperature = 1.0",
+            "bioclip",
+            "species_temperature",
+        ),
+        (
+            "  crop_grow = 0.10",
+            "disease_head_disease-head-v1d-2026-10-16",
+            "crop_grow",
+        ),
+    ] {
+        let without = text.replacen(line, "  # removed", 1);
+        assert_ne!(text, without, "{line:?} is in the manifest");
+        let err = config_of(&without).expect_err(key).to_string();
+        assert!(err.contains(entry) && err.contains(key), "{err}");
+    }
+}
+
+#[test]
+fn disease_heads_must_agree_on_crop_grow() {
+    let text = committed_manifest_text();
+    let second = |grow: &str| {
+        format!(
+            "{text}\n[[model]]\nname = \"disease_head_v2\"\nversion = \"v2\"\nfile = \"v2.json\"\n\
+             sha256 = \"00\"\nlicence = \"MIT\"\nruns_on = \"perception\"\n\
+             classifier_labels_version = \"v2\"\n\n  [model.config]\n  crop_grow = {grow}\n"
+        )
+    };
+    assert!(config_of(&second("0.10")).is_ok());
+    let err = config_of(&second("0.2"))
+        .expect_err("they differ")
+        .to_string();
+    assert!(
+        err.contains("crop_grow") && err.contains("disease_head_v2"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_plant_probe_brings_its_own_tau_plant() {
+    let probe = |config: &str| {
+        format!(
+            "{}\n[[model]]\nname = \"plant_probe\"\nversion = \"p1\"\nfile = \"p1.json\"\n\
+             sha256 = \"00\"\nlicence = \"MIT\"\nruns_on = \"perception\"\n\n  [model.config]\n{config}\n",
+            committed_manifest_text()
+        )
+    };
+    let c = config_of(&probe("  tau_plant = 0.7")).expect("the probe gives tau_plant");
+    assert_eq!(c.tau_plant, Some(0.7));
+    let err = config_of(&probe("")).expect_err("no tau_plant").to_string();
+    assert!(
+        err.contains("plant_probe") && err.contains("tau_plant"),
+        "{err}"
+    );
+}
+
+/// Calibration works by editing the manifest: a changed value changes both the settings in use
+/// and the `perception_config` that results report.
+#[test]
+fn a_changed_threshold_changes_the_config_and_its_hash() {
+    let text = committed_manifest_text();
+    let changed = text.replacen("score_threshold  = 0.35", "score_threshold  = 0.4", 1);
+    assert_ne!(text, changed);
+    let (a, b) = (config_of(&text).unwrap(), config_of(&changed).unwrap());
+    assert!((b.detector.score_threshold - 0.4).abs() < 1e-6);
+    assert_ne!(a, b);
+    assert_ne!(
+        Manifest::parse(&text).unwrap().perception_config(),
+        Manifest::parse(&changed).unwrap().perception_config()
+    );
+}
+
+/// Gap G11: the fp16 manifest on the CPU provider stops with an error naming the entry and
+/// `--cpu`, instead of segfaulting in ONNX Runtime; the CPU manifest passes.
+#[test]
+fn fp16_models_are_refused_on_the_cpu() {
+    let gpu = Manifest::load(&ml_models().join("manifest.toml")).expect("manifest.toml");
+    let cpu = Manifest::load(&ml_models().join("manifest.cpu.toml")).expect("manifest.cpu.toml");
+    let err = load_err(check_precision(&gpu, OrtEp::Cpu));
+    assert!(err.contains("fp16") && err.contains("--cpu"), "{err}");
+    assert!(check_precision(&gpu, OrtEp::Cuda).is_ok());
+    assert!(check_precision(&cpu, OrtEp::Cpu).is_ok());
+}
+
+#[test]
+fn one_fp16_entry_is_enough_to_refuse_the_cpu() {
+    let cpu = std::fs::read_to_string(ml_models().join("manifest.cpu.toml")).expect("the manifest");
+    let one = cpu.replacen(
+        "file      = \"sam2/sam2.1-hiera-tiny-box-decoder-fp32.onnx\"",
+        "file      = \"sam2/sam2.1-hiera-tiny-box-decoder-fp16.onnx\"",
+        1,
+    );
+    let mut lines: Vec<&str> = one.lines().collect();
+    let at = lines
+        .iter()
+        .position(|l| l.contains("box-decoder-fp16"))
+        .expect("the decoder entry");
+    let precision = lines[at..]
+        .iter()
+        .position(|l| l.starts_with("precision"))
+        .expect("its precision")
+        + at;
+    lines[precision] = "precision = \"fp16\"";
+    let manifest = Manifest::parse(&lines.join("\n")).expect("a manifest");
+    let err = load_err(check_precision(&manifest, OrtEp::Cpu));
+    assert!(err.starts_with("sam_decoder is an fp16 model"), "{err}");
+    assert!(check_precision(&manifest, OrtEp::Cuda).is_ok());
+}
+
+/// Without a plant probe only the leaf score can find a plant: no plant probability passes.
+#[test]
+fn without_a_probe_no_plant_probability_passes() {
+    use domain::scan::ImageKind;
+    use vision::perception::heads::plant_present;
+    let mut c = config_of(&committed_manifest_text()).expect("the committed manifest");
+    assert!(c.plant_threshold().is_infinite());
+    let shot = |leaf, plant| [(ImageKind::WholePlant, leaf, plant)];
+    assert!(!plant_present(
+        &shot(0.0, 0.0),
+        c.tau_leaf,
+        c.plant_threshold()
+    ));
+    assert!(!plant_present(
+        &shot(0.0, 1.0),
+        c.tau_leaf,
+        c.plant_threshold()
+    ));
+    assert!(plant_present(
+        &shot(0.9, 0.0),
+        c.tau_leaf,
+        c.plant_threshold()
+    ));
+    c.tau_plant = Some(0.7);
+    assert!(plant_present(
+        &shot(0.0, 0.8),
+        c.tau_leaf,
+        c.plant_threshold()
+    ));
+}
+
+/// An fp16 entry whose `precision` key is missing is still caught by its file name.
+#[test]
+fn an_fp16_file_without_a_precision_key_is_refused_on_the_cpu() {
+    let gpu = std::fs::read_to_string(ml_models().join("manifest.toml")).expect("the manifest");
+    let no_key: String = gpu
+        .lines()
+        .filter(|l| !l.starts_with("precision"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let manifest = Manifest::parse(&no_key).expect("a manifest");
+    assert!(manifest.models().iter().all(|m| m.precision.is_none()));
+    let err = load_err(check_precision(&manifest, OrtEp::Cpu));
+    assert!(err.contains("fp16"), "{err}");
 }
 
 #[test]

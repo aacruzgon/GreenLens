@@ -87,16 +87,16 @@ async fn build_model(
                 intra_threads: p.ort_intra_threads,
                 name: "perception-worker",
             })?;
-            let config = PerceptionConfig {
-                caps: BatchCaps {
-                    job: p.max_batch,
-                    detector: p.detector_max_batch,
-                    sam_encoder: p.sam_encoder_max_batch,
-                    sam_boxes: p.sam_max_boxes,
-                    bioclip: p.bioclip_max_batch,
-                },
-                ..PerceptionConfig::default()
+            // Thresholds come from the manifest's [model.config]; the environment sets only caps.
+            let caps = BatchCaps {
+                job: p.max_batch,
+                detector: p.detector_max_batch,
+                sam_encoder: p.sam_encoder_max_batch,
+                sam_boxes: p.sam_max_boxes,
+                bioclip: p.bioclip_max_batch,
             };
+            let config = PerceptionConfig::from_manifest(&manifest, caps)
+                .context("MODEL_MANIFEST [model.config]")?;
             Arc::new(PerceptionPipeline::load(runtime, &manifest, config, cli.cpu_permits).await?)
         }
         Caps::Vlm => {

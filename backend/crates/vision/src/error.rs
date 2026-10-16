@@ -17,6 +17,16 @@ pub enum VisionError {
     /// The configured execution provider isn't compiled into this build.
     #[error("execution provider {0:?} is not compiled into this build")]
     EpNotCompiled(OrtEp),
+    /// An fp16 model was given to ONNX Runtime's CPU provider, which crashes on fp16 graphs.
+    #[error(
+        "{entry} is an fp16 model, which the CPU provider can't run: fetch the fp32 set with \
+         `python3 -m ml.models.fetch --for perception --cpu --dest DIR` and point MODEL_MANIFEST at \
+         DIR/manifest.toml"
+    )]
+    Fp16OnCpu {
+        /// The manifest entry.
+        entry: String,
+    },
     /// A model returned a tensor of an unexpected shape or name.
     #[error("{model}: unexpected output: {detail}")]
     Shape {
