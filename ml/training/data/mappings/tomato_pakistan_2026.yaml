@@ -1,0 +1,17 @@
+# Tomato Leaf Disease Classification Dataset in Pakistan (2026) → slugs  (training.md §4, step 3)
+# PROPOSED slugs, as in plantdoc.yaml (issue #4). 1,200 smartphone photos per class.
+# No published split: dedupe.py holds out 15% for validation.
+
+dataset: tomato_pakistan_2026
+source: tomato_pakistan_2026
+root: Tomato_Leaf_Dataset
+splits: { train: . }
+reviewed_by: null
+
+classes:
+  "Tomato_Healthy":                { species_id: tomato, problem_id: healthy }
+  "Tomato_Early_blight":           { species_id: tomato, problem_id: tomato_early_blight }
+  "Tomato_leaf_late_blight":       { species_id: tomato, problem_id: tomato_late_blight }
+  "Tomato_septora_leaf_spot":      { species_id: tomato, problem_id: tomato_septoria_leaf_spot }
+  "Tomato_mold_leaf":              { species_id: tomato, problem_id: tomato_leaf_mold }
+  "Tomato_leaf_yellow_curl_virus": { species_id: tomato, problem_id: tomato_yellow_leaf_curl_virus }

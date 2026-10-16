@@ -38,7 +38,7 @@ datasets:
     version: 1
     prefix: CATEGORY A/CATA-English/
     url: https://data.mendeley.com/datasets/3d4yg89rtr/1
-    sha256: null              # SHA-256 of the sorted "path sha256" listing, per fetch.py
+    sha256: 165c8155145376ecd93289bad7effdd33210dc9b51672e6e40cc018cb37284a7   # SHA-256 of the sorted "path sha256" listing of its 10,498 files, per fetch.py
     licence: CC BY 4.0
     citation: >-
       Appiah O. et al. (2024) TOM2024, Mendeley Data V1, doi:10.17632/3d4yg89rtr.1;
@@ -68,7 +68,7 @@ datasets:
     repo_type: dataset
     repo: AI-Lab-Makerere/beans
     revision: 27aa014ce09b193e1a6f58112d4a66e0eddb69c5
-    files: [train.zip, validation.zip, test.zip]
+    files: [data/train.zip, data/validation.zip, data/test.zip]
     landing: https://github.com/AI-Lab-Makerere/ibean
     licence: MIT
     citation: "Makerere AI Lab (2020) Bean disease dataset, https://github.com/AI-Lab-Makerere/ibean/"
