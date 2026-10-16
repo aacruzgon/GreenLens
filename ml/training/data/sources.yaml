@@ -90,3 +90,15 @@ models:
     files: [open_clip_config.json, open_clip_model.safetensors, tokenizer.json, tokenizer_config.json, special_tokens_map.json, vocab.json, merges.txt]
     licence: MIT
     use: species zero-shot, image embeddings, features for the heads
+
+  - name: rfdetr_small
+    description: >-
+      RF-DETR-S COCO weights, the leaf detector's starting point. rfdetr 1.11.2 downloads the
+      same file by itself and checks only its own MD5 (fb37061c1af7bace359c91b723a8d5c1);
+      detector/train.py loads this pinned copy instead
+    kind: file
+    url: https://storage.googleapis.com/rfdetr/small_coco/checkpoint_best_regular.pth
+    dest: rfdetr/rf-detr-small.pth
+    sha256: d81979a9213a2109345158ce9232668df4c1ae52e9b8db3f2ec0a8cbad959b33
+    licence: Apache-2.0
+    use: leaf detector fine-tuning

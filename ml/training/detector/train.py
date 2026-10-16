@@ -1,4 +1,7 @@
-"""Train the leaf detector (RF-DETR-S, one class `leaf`) on ml/training/data/cache/leaf-coco."""
+"""Train the leaf detector (RF-DETR-S, one class `leaf`) on ml/training/data/cache/leaf-coco.
+
+Starts from the pinned COCO weights (`rfdetr_small` in data/sources.yaml, fetched by
+`python -m ml.training.data.fetch rfdetr_small`), not the copy rfdetr downloads by itself."""
 import argparse
 import datetime
 from pathlib import Path
@@ -6,6 +9,7 @@ from pathlib import Path
 from rfdetr import RFDETRSmall
 
 ROOT = Path(__file__).resolve().parents[1]
+WEIGHTS = ROOT.parent / "models/files/rfdetr/rf-detr-small.pth"
 
 
 def main():
@@ -20,7 +24,9 @@ def main():
     a = ap.parse_args()
     bs = a.batch_size if a.batch_size == "auto" else int(a.batch_size)
 
-    model = RFDETRSmall()
+    if not WEIGHTS.exists():
+        raise SystemExit(f"{WEIGHTS} is missing: run python -m ml.training.data.fetch rfdetr_small")
+    model = RFDETRSmall(pretrain_weights=str(WEIGHTS))
     model.train(
         dataset_dir=a.dataset_dir,
         epochs=a.epochs,
