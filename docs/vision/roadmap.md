@@ -1,6 +1,6 @@
 # PDM Vision Roadmap
 
-> **Status:** v0.4, 2026-10-16 (night). v0.4: decisions now live only in dev-roadmap section 9; our model files moved from the interim GitHub release to `GreenLens/pdm-models`. v0.3: PR #6 merged; PR #7 has `main` merged in and targets `main`; our model files' GitHub release is an interim until `pdm-models` (dev-roadmap M21). v0.2: the PR #6 reviews are answered: Tomato-Pakistan reworked, disease head v1d, the detector retrained on a grouped split; the whole-ML plan with the integration track moves to [dev-roadmap.md](dev-roadmap.md). v0.1: First tracker of the vision and ML work against the build plan in [README 10](README.md#10-build-plan), with what is done, what is next and what waits on whom.
+> **Status:** v0.5, 2026-10-16 (night). v0.5: the Qwen3.5-9B challenger passed its day-1 check and the fake VLM server is built, with the fixes from its review. v0.4: decisions now live only in dev-roadmap section 9; our model files moved from the interim GitHub release to `GreenLens/pdm-models`. v0.3: PR #6 merged; PR #7 has `main` merged in and targets `main`; our model files' GitHub release is an interim until `pdm-models` (dev-roadmap M21). v0.2: the PR #6 reviews are answered: Tomato-Pakistan reworked, disease head v1d, the detector retrained on a grouped split; the whole-ML plan with the integration track moves to [dev-roadmap.md](dev-roadmap.md). v0.1: First tracker of the vision and ML work against the build plan in [README 10](README.md#10-build-plan), with what is done, what is next and what waits on whom.
 > **How to use it:** read this first when picking up the ML work. Update it at the end of every work session: change the state of each item you touched, add the commit or report that proves it, and bump the status line. The plan itself stays in [README 10](README.md#10-build-plan); this file only tracks progress against it.
 
 Owner of the vision and ML work: Sam (models, training, export, evaluation, calibration; the RTX 5070 Ti). Running the models in the backend is Sara's track ([docs/backend/vision.md](../backend/vision.md), [worker.md](../backend/worker.md)); the plan both tracks share, with owners, hand-offs and the integration gaps, is [dev-roadmap.md](dev-roadmap.md). This file tracks the models.
@@ -53,7 +53,8 @@ Day 1 of 10 (Oct 16). The work is **ahead of plan on models and serving, behind 
 | Disease head v0 → v1d | Done | cc884dd, c1c9c37, then v1d (3c10ae9): C = 50, T = 0.821; test top-1 0.814 without bean (PlantDoc 0.743, TOM2024 0.845, Tomato-Pakistan 0.800), top-3 0.964, ECE 0.032 |
 | BioCLIP label matrix and `label_set_version` | Done (stand-in) | Format in `ml/models/FORMATS.md`, test vector `129f0395e8d89bd5` (confirmed by aacruzgon); stand-in labels until the seed files exist |
 | vLLM serves Qwen3-VL-8B FP8 on the 5070 Ti, day-1 check | Done | 97b0f9a, fe1e639, 01aea25; reports in `ml/training/eval/reports/`. FP8 headless at 0.90 (84 tok/s, 2 slots fit); AWQ in desktop mode at 0.78 (115 tok/s) |
-| Qwen3.5-9B AWQ challenger loads | Next | Weights downloaded and pinned (infra README 4); not yet started once |
+| Qwen3.5-9B AWQ challenger, day-1 check | Done | ✓ ran 2026-10-16, headless at 0.90 with 2 slots: checks a–g pass, 116.7 tok/s, 115,550 KV tokens, boxes 0–1000, no damage found in findings (FP8: one). Report `vlm-day1-2026-10-16-qwen35-9b-awq-headless` (vlm.md 4) |
+| Fake VLM server (`ml.training.eval.fake_vlm`) | Done | Replays the worker's own recorded calls (dev-roadmap M20, section 5); the 27 tests in `ml/tests/test_fake_vlm.py` pass, and tomato's verify call replays its own recording |
 | vLLM ROCm on the RX 9070 XT | Not ours | AMD day-1 check, owner of that card |
 | BioCLIP zero-shot on 20 team photos | Not started | `labels/zero_shot_check.py` exists; needs the photos |
 | Face detector on 10 team photos | Not started | Needs YuNet and the photos |
@@ -90,12 +91,11 @@ Decisions are tracked in one table, [dev-roadmap section 9](dev-roadmap.md#9-dec
 ## 5. Next steps, in order
 
 1. **Merge PR #7** once reviewed, so Sara builds against `main`; invite Sara and Alan to the `GreenLens` organisation; make the control plane's and the rig's read tokens; delete the interim GitHub release (dev-roadmap M21).
-2. **Unblock Sara:** `pdm-models`, `fetch.py --for perception --cpu`, the CPU manifest with its head twins and the Rust fixtures are done (dev-roadmap M6, M9, M21); the formats are settled by #11. Next, the fake VLM server (M20).
-3. **Start the Qwen3.5 challenger once** and run the day-1 check on it.
-4. **Start the evaluation photos** and the 20 dev cases the day-2 benchmark needs (Oct 18).
-5. **YuNet and the text embedder pinned** (dev-roadmap M7, M8); BioCLIP zero-shot on team photos.
-6. Day-2 VLM benchmark on Oct 18 with Sara's worker; leaf relabelling; second detector run that night.
+2. **Unblock Sara:** `pdm-models`, `fetch.py --for perception --cpu`, the CPU manifest with its head twins and the Rust fixtures are done (dev-roadmap M6, M9, M21); the formats are settled by #11. The fake VLM server (M20) is built.
+3. **Start the evaluation photos** and the 20 dev cases the day-2 benchmark needs (Oct 18).
+4. **YuNet and the text embedder pinned** (dev-roadmap M7, M8); BioCLIP zero-shot on team photos.
+5. Day-2 VLM benchmark on Oct 18 with Sara's worker; leaf relabelling; second detector run that night.
 
 ## 6. The rig right now
 
-As of 2026-10-16 night: **headless** (desktop stopped), vLLM serving Qwen3-VL-8B FP8 at 0.90 with 2 slots (`infra-vllm-1`, about 14.6 of 16.3 GB used); it was stopped for the detector retrain and started again with `docker start infra-vllm-1`. To get the desktop back: `docker compose -f infra/rig.compose.yml down`, `sudo systemctl isolate graphical.target`, log in, and run vLLM with the AWQ build at 0.78 ([infra README 3](../../infra/README.md#3-desktop-mode-and-headless-mode)). After the desktop is back, run `gh auth login` again so the token moves into the keyring.
+As of 2026-10-16 night: **headless** (desktop stopped), vLLM serving Qwen3-VL-8B FP8 at 0.90 with 2 slots (`infra-vllm-1`, about 14.6 of 16.3 GB used), started again after the Qwen3.5 check with shell overrides (`infra/.env` unchanged); earlier it was stopped for the detector retrain and started with `docker start infra-vllm-1`. To get the desktop back: `docker compose -f infra/rig.compose.yml down`, `sudo systemctl isolate graphical.target`, log in, and run vLLM with the AWQ build at 0.78 ([infra README 3](../../infra/README.md#3-desktop-mode-and-headless-mode)). After the desktop is back, run `gh auth login` again so the token moves into the keyring.
