@@ -1,6 +1,6 @@
 # PDM Backend: `worker` binary
 
-> **Status:** Draft v0.4.1, 2026-10-16. v0.4.1: section 17 keeps only the four questions still open, since docs/vision v0.2 and contracts 5–6 now agree on the rest; section 1 drops the image-fetch difference (the skill uses 30 s too); section 12 lists the fallback service with its `stop_grace_period`. v0.4: the SIGTERM shutdown ends within `DRAIN_SECONDS`, dropping a `complete` or heartbeat call in flight (it could take 20 + 10 + 5 = 35 s, past the 30 s grace); the worker API client retries by the error body's `retryable` and `retry_after_s` (contracts 2), not by status, and waits `retry_after_s`; section 1 states the HTTP timeouts and only the two skill differences that remain. v0.3.1: why the immediate re-claim after a `204` can't spin while the API shuts down (probed). v0.3: the hosted fallback gives the guided check the same 8,000-token budget as the other calls (docs/vision README 12 #27), and the fallback row points to the full list of stripped schema keywords. v0.2: the fallback worker reads its hosted-LLM key from `LLM_API_KEY`, the name `api` and the backend README §9 use (it was `ANTHROPIC_API_KEY`). v0.1: the worker process (`--caps perception|vlm|fallback`): configuration, the heartbeat and claim loops with slots, leases and the SIGTERM drain, cancellation by drop, the VLM adapter with its per-call schema builder and decoding, the hosted fallback, per-card settings for the RX 9070 XT, and the rig's compose services; compiled on Rust 1.99.1.
+> **Status:** Draft v0.4.2, 2026-10-16. v0.4.2: the rig's compose listing gives each worker an `env_file` with its own `WORKER_TOKEN` (the worker reads no `WORKER_TOKEN_FILE`). v0.4.1: section 17 keeps only the four questions still open, since docs/vision v0.2 and contracts 5–6 now agree on the rest; section 1 drops the image-fetch difference (the skill uses 30 s too); section 12 lists the fallback service with its `stop_grace_period`. v0.4: the SIGTERM shutdown ends within `DRAIN_SECONDS`, dropping a `complete` or heartbeat call in flight (it could take 20 + 10 + 5 = 35 s, past the 30 s grace); the worker API client retries by the error body's `retryable` and `retry_after_s` (contracts 2), not by status, and waits `retry_after_s`; section 1 states the HTTP timeouts and only the two skill differences that remain. v0.3.1: why the immediate re-claim after a `204` can't spin while the API shuts down (probed). v0.3: the hosted fallback gives the guided check the same 8,000-token budget as the other calls (docs/vision README 12 #27), and the fallback row points to the full list of stripped schema keywords. v0.2: the fallback worker reads its hosted-LLM key from `LLM_API_KEY`, the name `api` and the backend README §9 use (it was `ANTHROPIC_API_KEY`). v0.1: the worker process (`--caps perception|vlm|fallback`): configuration, the heartbeat and claim loops with slots, leases and the SIGTERM drain, cancellation by drop, the VLM adapter with its per-call schema builder and decoding, the hosted fallback, per-card settings for the RX 9070 XT, and the rig's compose services; compiled on Rust 1.99.1.
 
 Companion to the [backend architecture](README.md), the [`vision` crate](vision.md) (the perception models and image code it uses), the [`integrations` crate](integrations.md) (its HTTP clients for the VLM server and the LLM API) and the [`domain` crate](domain.md) (the job types and the `VisionModel` port). Every listing is copied from the compiled source of `bins/worker` by the docgen tool. `cargo check -p worker` (also `--features cuda`), `cargo clippy -p worker --all-targets` and `cargo test -p worker` pass: 34 tests, among them the loop on paused time against a fake broker and the VLM adapter against a scripted backend.
 
@@ -2198,12 +2198,12 @@ x-worker: &worker
   stop_grace_period: 30s            # DRAIN_SECONDS (20), the shutdown's bound, + 10 s (section 5)
   environment: &worker-env
     API_BASE_URL: https://api.example.org
-    WORKER_TOKEN_FILE: /run/secrets/worker_token
 
 services:
   perception-worker:                # RTX 3070
     <<: *worker
     command: ["--caps", "perception"]
+    env_file: rig-3070-perception-1.env   # WORKER_TOKEN (never committed)
     environment:
       <<: *worker-env
       WORKER_ID: rig-3070-perception-1
@@ -2237,6 +2237,7 @@ services:
   vlm-worker-nv:
     <<: *worker
     command: ["--caps", "vlm"]
+    env_file: rig-5070ti-vlm-1.env  # WORKER_TOKEN, VLM_API_KEY (never committed)
     depends_on: [vllm-nv]
     environment:
       <<: *worker-env
@@ -2269,6 +2270,7 @@ services:
   vlm-worker-amd:
     <<: *worker
     command: ["--caps", "vlm"]
+    env_file: rig-9070xt-vlm-1.env  # WORKER_TOKEN, VLM_API_KEY (never committed)
     depends_on: [vllm-amd]
     environment:
       <<: *worker-env
