@@ -1,0 +1,878 @@
+//! The chat turn (architecture 8.2; [contracts 8], sending a message): validation, the token
+//! budget, routing and storing the user's message before the stream exists; then, in a task,
+//! the context, the model's stream checked one sentence at a time, tool calls, the stored reply,
+//! memory extraction and `message_completed`.
+//!
+//! **Who owns what.** axum needs a `'static` response body, so nothing the stream yields may
+//! borrow from the request handler. [`ChatAgent::start_turn`] moves everything the turn needs
+//! into a [`Turn`] (owned: ids, the proof, the text, the route) and spawns [`run`] with an
+//! `Arc<Inner>` clone. Inside the task the turn borrows `&AgentDeps` from that `Arc` and lends
+//! it to the context builder, the tools (`ToolCtx<'t>`) and the model (`ChatModel::stream<'a>`
+//! borrows the `ChatRequest` the task owns). Those borrows live inside one `async` block, which
+//! the compiler turns into a self-contained future: a borrow held across an `.await` is just a
+//! field of that future, so it is allowed and the future stays `'static` because it owns the
+//! `Arc` it borrows from. The handler gets a [`TurnStream`]: a channel receiver, `'static` by
+//! construction.
+//!
+//! **Disconnects.** Dropping the stream (the client went away) closes the channel. The task
+//! notices at its next send or while waiting for the model (`Sender::closed`), stops the model
+//! call by dropping its stream, and stores the message with `interrupted: true`.
+
+use std::sync::Arc;
+
+use domain::{
+    authz::{ConversationOwner, Viewer},
+    chat::{
+        Anchor, ChatErrorEvent, ChatEvent, ChatRoute, CitationEvent, MemorySaved, Message,
+        MessageCompleted, MessageRole, MessageStarted, PendingActionEvent, RescanRequested,
+        SendMessageRequest, TextDelta, ToolFinished, ToolStarted, Usage,
+    },
+    error::{Budget, DomainError, ErrorCode},
+    id::{ChatImageId, MessageId},
+    ports::{
+        ChatChunk, ChatMessage, ChatPurpose, ChatRequest, ChatRole, ClassifierTask, ContentPart,
+        IdGenExt as _, ModelError, NewMessage, ObjectKey, StopReason,
+    },
+    records::diagnosis::Citation,
+    rules::limits::{MESSAGE_MAX_CHARS, MESSAGE_MAX_IMAGES},
+    url::Stored,
+    wire::{PageRequest, Timestamp, V1},
+};
+use futures::{Stream, StreamExt as _};
+use tokio::sync::{mpsc, oneshot};
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
+
+use crate::{
+    context,
+    deps::AgentDeps,
+    error::{TurnError, stream_error},
+    memory,
+    prompt::{
+        BUDGET_TEXT, CHAT_PROMPT_VERSION, DataKind, LOOP_CAP_TEXT, OFF_TOPIC_PROMPT_VERSION,
+        POISON_CONTROL_VERSION, REFUSAL_TEXT, chat_system, data, off_topic_system,
+    },
+    safety::{
+        REPLACED_SENTENCE, RouteDecision, SAFETY_POLICY, SentenceSplitter, decide_route, dose_check,
+    },
+    tools::{ToolCtx, ToolEffect, ToolRegistry},
+};
+
+/// Events buffered between the turn task and the response body. Small: the body drains it as
+/// fast as the network allows, and a full buffer makes the task wait instead of running ahead.
+const EVENT_BUFFER: usize = 32;
+
+/// The chat agent `api` holds: cheap to clone.
+#[derive(Clone)]
+pub struct ChatAgent {
+    inner: Arc<Inner>,
+}
+
+struct Inner {
+    deps: AgentDeps,
+    tools: ToolRegistry,
+    tracker: TaskTracker,
+}
+
+impl std::fmt::Debug for ChatAgent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ChatAgent")
+            .field("tools", &self.inner.tools)
+            .finish_non_exhaustive()
+    }
+}
+
+/// One `POST /conversations/{id}/messages`.
+#[derive(Debug, Clone)]
+pub struct TurnRequest {
+    /// From `domain::authz::check_conversation`: the caller owns the conversation and is a
+    /// member of its garden. The real role (for the tool list) is `owner.membership().role()`.
+    pub owner: ConversationOwner<Viewer>,
+    /// The body.
+    pub message: SendMessageRequest,
+    /// Server shutdown: the turn stops and stores what it has, like a disconnect.
+    pub shutdown: CancellationToken,
+}
+
+/// How a turn ended, for `api`'s idempotency record: a completed message is stored under the
+/// key and replayed as `200 { message }`; anything else releases the key ([contracts 1]).
+#[derive(Debug, Clone, PartialEq)]
+pub enum TurnOutcome {
+    /// `message_completed` was sent; the stored assistant message.
+    Completed(Box<Message<Stored>>),
+    /// The client went away or the server shut down; stored with `interrupted: true`.
+    Interrupted,
+    /// An `error` event ended the stream.
+    Failed,
+}
+
+/// The turn's events, `'static`: a channel receiver plus the outcome. Dropping it interrupts
+/// the turn.
+#[derive(Debug)]
+pub struct TurnStream {
+    events: ReceiverStream<ChatEvent>,
+    outcome: oneshot::Receiver<TurnOutcome>,
+}
+
+impl TurnStream {
+    /// The events and, once the task has stored the message, how the turn ended. Dropping the
+    /// event half still interrupts the turn; dropping the outcome half is fine.
+    pub fn into_parts(self) -> (ReceiverStream<ChatEvent>, oneshot::Receiver<TurnOutcome>) {
+        (self.events, self.outcome)
+    }
+}
+
+impl Stream for TurnStream {
+    type Item = ChatEvent;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<ChatEvent>> {
+        self.events.poll_next_unpin(cx)
+    }
+}
+
+/// Everything the task needs, owned.
+#[derive(Debug)]
+struct Turn {
+    owner: ConversationOwner<Viewer>,
+    anchor: Anchor,
+    text: String,
+    image_keys: Vec<ObjectKey>,
+    user_message: MessageId,
+    message_id: MessageId,
+    decision: RouteDecision,
+    now: Timestamp,
+    /// Tokens left in the user's daily budget when the turn started.
+    budget_left: u64,
+    shutdown: CancellationToken,
+}
+
+impl ChatAgent {
+    /// The agent over its ports. `tracker` is the process's task tracker, so shutdown waits for
+    /// turns to store their messages.
+    pub fn new(deps: AgentDeps, tracker: TaskTracker) -> Self {
+        Self {
+            inner: Arc::new(Inner {
+                deps,
+                tools: ToolRegistry::standard(),
+                tracker,
+            }),
+        }
+    }
+
+    /// The ports.
+    pub fn deps(&self) -> &AgentDeps {
+        &self.inner.deps
+    }
+
+    /// The tool registry.
+    pub fn tools(&self) -> &ToolRegistry {
+        &self.inner.tools
+    }
+
+    /// The work before the stream: errors here are ordinary HTTP errors ([contracts 8]).
+    pub async fn start_turn(&self, req: TurnRequest) -> Result<TurnStream, TurnError> {
+        let deps = &self.inner.deps;
+        let owner = req.owner;
+        let member = owner.membership();
+        let text = req.message.text;
+        let image_ids = req.message.image_ids.unwrap_or_default();
+        validate(&text, &image_ids)?;
+
+        let now = deps.clock.now();
+        let used = deps
+            .stores
+            .usage
+            .usage(member.user(), now.utc_day())
+            .await?;
+        let spent = used.tokens_in.saturating_add(used.tokens_out);
+        let budget = deps.config.daily_chat_tokens;
+        if spent >= budget {
+            return Err(DomainError::BudgetExceeded {
+                budget: Budget::ChatTokens,
+                resets_at: next_utc_midnight(now),
+            }
+            .into());
+        }
+
+        let first = PageRequest {
+            cursor: None,
+            limit: Some(1),
+        };
+        let anchor = deps
+            .stores
+            .chats
+            .conversation_detail(owner, first)
+            .await?
+            .conversation
+            .anchor;
+
+        let mut image_keys = Vec::with_capacity(image_ids.len());
+        for id in &image_ids {
+            let object = deps
+                .stores
+                .chats
+                .chat_image_object(owner.conversation(), *id)
+                .await?
+                .ok_or_else(|| DomainError::invalid("image_ids", "unknown_image"))?;
+            image_keys.push(object.key);
+        }
+
+        let scores = tokio::time::timeout(
+            deps.config.classifier_timeout,
+            deps.classifier.classify(ClassifierTask::Route, &text),
+        )
+        .await
+        .ok()
+        .and_then(Result::ok);
+        let decision = decide_route(&text, scores.as_deref(), &deps.config.calibration);
+
+        let user_message = deps.ids.id();
+        deps.stores
+            .chats
+            .store_message(
+                owner,
+                NewMessage {
+                    id: user_message,
+                    role: MessageRole::User,
+                    text: text.clone(),
+                    attachments: image_ids,
+                    citations: Vec::new(),
+                    tool_calls: Vec::new(),
+                    route: Some(decision.route()),
+                    interrupted: false,
+                    model: None,
+                    prompt_version: None,
+                    tokens_in: 0,
+                    tokens_out: 0,
+                    created_at: now,
+                },
+            )
+            .await?;
+
+        let turn = Turn {
+            owner,
+            anchor,
+            text,
+            image_keys,
+            user_message,
+            message_id: deps.ids.id(),
+            decision,
+            now,
+            budget_left: budget - spent,
+            shutdown: req.shutdown,
+        };
+        let (tx, rx) = mpsc::channel(EVENT_BUFFER);
+        let (outcome_tx, outcome_rx) = oneshot::channel();
+        let inner = Arc::clone(&self.inner);
+        self.inner
+            .tracker
+            .spawn(async move { run(inner, turn, tx, outcome_tx).await });
+        Ok(TurnStream {
+            events: ReceiverStream::new(rx),
+            outcome: outcome_rx,
+        })
+    }
+}
+
+/// `SendMessageRequest`'s limits: at most 2,000 characters and 3 images.
+fn validate(text: &str, images: &[ChatImageId]) -> Result<(), DomainError> {
+    if text.trim().is_empty() {
+        return Err(DomainError::invalid("text", "empty"));
+    }
+    if text.chars().count() > MESSAGE_MAX_CHARS {
+        return Err(DomainError::invalid("text", "too_long"));
+    }
+    if images.len() > MESSAGE_MAX_IMAGES {
+        return Err(DomainError::invalid("image_ids", "too_many"));
+    }
+    Ok(())
+}
+
+/// When the daily budget resets: the next midnight UTC (usage is counted per UTC day).
+fn next_utc_midnight(now: Timestamp) -> Timestamp {
+    let day = now.utc_day();
+    day.succ_opt()
+        .and_then(|d| d.and_hms_opt(0, 0, 0))
+        .map_or(now, |t| Timestamp::from(t.and_utc()))
+}
+
+// ---------------------------------------------------------------------------------------------
+// The task
+// ---------------------------------------------------------------------------------------------
+
+/// Sends events until the client goes away.
+struct Emitter {
+    tx: mpsc::Sender<ChatEvent>,
+    gone: bool,
+}
+
+impl Emitter {
+    /// Sends one event; false once the receiver is gone.
+    async fn send(&mut self, event: ChatEvent) -> bool {
+        if !self.gone && self.tx.send(event).await.is_err() {
+            self.gone = true;
+        }
+        !self.gone
+    }
+
+    async fn text(&mut self, text: String) -> bool {
+        self.send(ChatEvent::TextDelta(TextDelta { v: V1, text }))
+            .await
+    }
+}
+
+/// How the reply ended.
+#[derive(Debug)]
+enum Ended {
+    Completed,
+    Interrupted,
+    Failed(ModelError),
+    Store(domain::ports::StoreError),
+}
+
+/// What the stored assistant message is built from.
+#[derive(Debug, Default)]
+struct Reply {
+    /// The text as streamed, failing sentences replaced.
+    text: String,
+    citations: Vec<Citation>,
+    /// Tool calls and results, in order (stored, never sent to the app).
+    tool_calls: Vec<ContentPart>,
+    usage: Usage,
+    purpose: Option<ChatPurpose>,
+    prompt_version: &'static str,
+}
+
+impl Reply {
+    fn add_usage(&mut self, u: Usage) {
+        self.usage.tokens_in = self.usage.tokens_in.saturating_add(u.tokens_in);
+        self.usage.tokens_out = self.usage.tokens_out.saturating_add(u.tokens_out);
+    }
+
+    fn spent(&self) -> u64 {
+        u64::from(self.usage.tokens_in) + u64::from(self.usage.tokens_out)
+    }
+}
+
+/// The turn task. Owns `inner` (an `Arc`) and `turn`; everything below borrows from them.
+async fn run(
+    inner: Arc<Inner>,
+    turn: Turn,
+    tx: mpsc::Sender<ChatEvent>,
+    outcome: oneshot::Sender<TurnOutcome>,
+) {
+    let deps = &inner.deps;
+    let mut out = Emitter { tx, gone: false };
+    let mut reply = Reply::default();
+    let route = turn.decision.route();
+
+    let started = MessageStarted {
+        v: V1,
+        message_id: turn.message_id,
+        route,
+    };
+    let ended = if out.send(ChatEvent::MessageStarted(started)).await {
+        match turn.decision {
+            RouteDecision::PoisonControl => {
+                reply.prompt_version = POISON_CONTROL_VERSION;
+                let text = deps.config.poison_control_text.clone();
+                emit_checked(deps, &mut out, &mut reply, text).await
+            }
+            RouteDecision::OffTopic => off_topic(deps, &turn, &mut out, &mut reply).await,
+            RouteDecision::Model(route) => {
+                model_turn(&inner, &turn, route, &mut out, &mut reply).await
+            }
+        }
+    } else {
+        Ended::Interrupted
+    };
+
+    let failed = matches!(ended, Ended::Failed(_) | Ended::Store(_));
+    if let Ended::Failed(e) = &ended {
+        tracing::warn!(error = %e, message_id = %turn.message_id, "chat model failed mid-turn");
+        let (code, message) = stream_error(e);
+        error_event(&mut out, code, message).await;
+    }
+    if let Ended::Store(e) = &ended {
+        tracing::warn!(error = %e, message_id = %turn.message_id, "store failed mid-turn");
+        error_event(
+            &mut out,
+            ErrorCode::Internal,
+            "Something went wrong while answering.",
+        )
+        .await;
+    }
+    let completed = matches!(ended, Ended::Completed) && !out.gone;
+
+    let stored = store_reply(deps, &turn, &reply, route, !completed).await;
+    let member = turn.owner.membership();
+    if let Err(e) = deps
+        .stores
+        .usage
+        .add_chat_usage(member.user(), turn.now.utc_day(), reply.usage)
+        .await
+    {
+        tracing::warn!(error = %e, "chat usage not recorded");
+    }
+
+    let result = match (stored, completed) {
+        (Ok(message), true) => {
+            if matches!(turn.decision, RouteDecision::Model(_)) {
+                let ctx = tool_ctx(deps, &turn, None);
+                match memory::after_turn(&ctx, &turn.text, &message.text).await {
+                    Ok(Some(memory)) => {
+                        out.send(ChatEvent::MemorySaved(MemorySaved { v: V1, memory }))
+                            .await;
+                    }
+                    Ok(None) => {}
+                    Err(e) => tracing::warn!(error = %e, "memory extraction failed"),
+                }
+            }
+            let done = MessageCompleted {
+                v: V1,
+                message_id: turn.message_id,
+                usage: reply.usage,
+            };
+            if out.send(ChatEvent::MessageCompleted(done)).await {
+                TurnOutcome::Completed(Box::new(message))
+            } else {
+                TurnOutcome::Interrupted
+            }
+        }
+        (Ok(_), false) if failed => TurnOutcome::Failed,
+        (Ok(_), false) => TurnOutcome::Interrupted,
+        (Err(e), _) => {
+            tracing::warn!(error = %e, message_id = %turn.message_id, "assistant message not stored");
+            if completed {
+                error_event(
+                    &mut out,
+                    ErrorCode::Internal,
+                    "The reply could not be saved.",
+                )
+                .await;
+            }
+            TurnOutcome::Failed
+        }
+    };
+    let _ = outcome.send(result);
+    drop(out);
+
+    if let Err(e) = memory::summarise_if_due(deps, turn.owner).await {
+        tracing::warn!(error = %e, "conversation summary failed");
+    }
+}
+
+async fn error_event(out: &mut Emitter, code: ErrorCode, message: &str) {
+    out.send(ChatEvent::Error(ChatErrorEvent {
+        v: V1,
+        code,
+        message: message.to_owned(),
+        retryable: code.default_retryable(),
+    }))
+    .await;
+}
+
+fn tool_ctx<'t>(
+    deps: &'t AgentDeps,
+    turn: &Turn,
+    plant: Option<domain::id::PlantId>,
+) -> ToolCtx<'t> {
+    ToolCtx {
+        deps,
+        owner: turn.owner,
+        anchor: turn.anchor,
+        plant: plant.or(match turn.anchor {
+            Anchor::Plant(p) => Some(p),
+            Anchor::Scan(_) | Anchor::Garden(_) => None,
+        }),
+        message_id: turn.message_id,
+        now: turn.now,
+    }
+}
+
+async fn store_reply(
+    deps: &AgentDeps,
+    turn: &Turn,
+    reply: &Reply,
+    route: ChatRoute,
+    interrupted: bool,
+) -> Result<Message<Stored>, domain::ports::StoreError> {
+    deps.stores
+        .chats
+        .store_message(
+            turn.owner,
+            NewMessage {
+                id: turn.message_id,
+                role: MessageRole::Assistant,
+                text: reply.text.clone(),
+                attachments: Vec::new(),
+                citations: reply.citations.clone(),
+                tool_calls: reply.tool_calls.clone(),
+                route: Some(route),
+                interrupted,
+                model: reply.purpose.map(|p| deps.chat.model_name(p)),
+                prompt_version: Some(reply.prompt_version.to_owned()),
+                tokens_in: reply.usage.tokens_in,
+                tokens_out: reply.usage.tokens_out,
+                created_at: deps.clock.now(),
+            },
+        )
+        .await
+}
+
+/// Dose-checks one streamed piece and sends it; a failing sentence is replaced by the fixed
+/// safety note, keeping the piece's surrounding whitespace ([contracts 7]).
+async fn emit_piece(deps: &AgentDeps, out: &mut Emitter, reply: &mut Reply, piece: String) -> bool {
+    let checked = if dose_check(&piece, &deps.products).is_some() {
+        let lead = &piece[..piece.len() - piece.trim_start().len()];
+        let trail = &piece[piece.trim_end().len()..];
+        format!("{lead}{REPLACED_SENTENCE}{trail}")
+    } else {
+        piece
+    };
+    reply.text.push_str(&checked);
+    out.text(checked).await
+}
+
+/// Sends a fixed or complete text sentence by sentence.
+async fn emit_checked(
+    deps: &AgentDeps,
+    out: &mut Emitter,
+    reply: &mut Reply,
+    text: String,
+) -> Ended {
+    let mut splitter = SentenceSplitter::new();
+    let pieces = splitter.push(&text).into_iter().chain(splitter.finish());
+    for piece in pieces {
+        if !emit_piece(deps, out, reply, piece).await {
+            return Ended::Interrupted;
+        }
+    }
+    Ended::Completed
+}
+
+/// What one model call produced.
+#[derive(Debug, Default)]
+struct CallResult {
+    /// The assistant turn exactly as the model wrote it (raw text, reasoning, tool calls), to
+    /// replay in the next request of the loop.
+    parts: Vec<ContentPart>,
+    calls: Vec<(String, String, serde_json::Value)>,
+    stop: Option<StopReason>,
+}
+
+/// Streams one model call: text goes out sentence by sentence, everything is recorded.
+async fn stream_call(
+    deps: &AgentDeps,
+    turn: &Turn,
+    request: &ChatRequest,
+    out: &mut Emitter,
+    reply: &mut Reply,
+    splitter: &mut SentenceSplitter,
+) -> Result<CallResult, Ended> {
+    let mut result = CallResult::default();
+    let mut raw = String::new();
+    let mut usage = Usage::default();
+    let mut stream = deps.chat.stream(request);
+    loop {
+        let next = tokio::select! {
+            biased;
+            () = turn.shutdown.cancelled() => return Err(Ended::Interrupted),
+            () = out.tx.closed() => return Err(Ended::Interrupted),
+            next = stream.next() => next,
+        };
+        let chunk = match next {
+            None => break,
+            Some(Err(e)) => {
+                reply.add_usage(usage);
+                return Err(Ended::Failed(e));
+            }
+            Some(Ok(c)) => c,
+        };
+        match chunk {
+            ChatChunk::TextDelta(t) => {
+                raw.push_str(&t);
+                for piece in splitter.push(&t) {
+                    if !emit_piece(deps, out, reply, piece).await {
+                        reply.add_usage(usage);
+                        return Err(Ended::Interrupted);
+                    }
+                }
+            }
+            ChatChunk::Reasoning(block) => {
+                flush_raw(&mut result.parts, &mut raw);
+                result.parts.push(ContentPart::Reasoning(block));
+            }
+            ChatChunk::ToolCall {
+                call_id,
+                name,
+                arguments,
+            } => {
+                flush_raw(&mut result.parts, &mut raw);
+                result.parts.push(ContentPart::ToolCall {
+                    call_id: call_id.clone(),
+                    name: name.clone(),
+                    arguments: arguments.clone(),
+                });
+                result.calls.push((call_id, name, arguments));
+            }
+            // Usage is cumulative within a call: keep the latest.
+            ChatChunk::Usage(u) => usage = u,
+            ChatChunk::Done(s) => result.stop = Some(s),
+        }
+    }
+    drop(stream);
+    flush_raw(&mut result.parts, &mut raw);
+    reply.add_usage(usage);
+    // Text before a tool call may not end with a full stop: check and send it now.
+    if let Some(rest) = splitter.finish()
+        && !emit_piece(deps, out, reply, rest).await
+    {
+        return Err(Ended::Interrupted);
+    }
+    Ok(result)
+}
+
+fn flush_raw(parts: &mut Vec<ContentPart>, raw: &mut String) {
+    if !raw.is_empty() {
+        parts.push(ContentPart::Text(std::mem::take(raw)));
+    }
+}
+
+/// The off-topic route: the cheapest model, no tools, a short redirect.
+async fn off_topic(deps: &AgentDeps, turn: &Turn, out: &mut Emitter, reply: &mut Reply) -> Ended {
+    reply.purpose = Some(ChatPurpose::OffTopic);
+    reply.prompt_version = OFF_TOPIC_PROMPT_VERSION;
+    let request = ChatRequest {
+        purpose: ChatPurpose::OffTopic,
+        system: off_topic_system(),
+        messages: vec![ChatMessage {
+            role: ChatRole::User,
+            content: vec![ContentPart::Text(data(DataKind::UserMessage, &turn.text))],
+        }],
+        tools: Vec::new(),
+        response_schema: None,
+        max_tokens: deps.config.cheap_max_tokens,
+    };
+    let mut splitter = SentenceSplitter::new();
+    match stream_call(deps, turn, &request, out, reply, &mut splitter).await {
+        Ok(_) => Ended::Completed,
+        Err(e) => e,
+    }
+}
+
+/// A normal turn: context, then up to `max_model_calls` model calls with tools in between.
+async fn model_turn(
+    inner: &Inner,
+    turn: &Turn,
+    route: ChatRoute,
+    out: &mut Emitter,
+    reply: &mut Reply,
+) -> Ended {
+    let deps = &inner.deps;
+    reply.purpose = Some(ChatPurpose::Chat);
+    reply.prompt_version = CHAT_PROMPT_VERSION;
+
+    let query = deps
+        .embedder
+        .embed(
+            domain::ports::EmbedMode::Query,
+            std::slice::from_ref(&turn.text),
+        )
+        .await
+        .ok()
+        .and_then(|mut v| v.pop());
+    let ctx = match context::load(
+        deps,
+        turn.owner,
+        turn.anchor,
+        turn.user_message,
+        query.as_ref(),
+    )
+    .await
+    {
+        Ok(c) => c,
+        Err(e) => return Ended::Store(e),
+    };
+
+    let mut images = Vec::with_capacity(turn.image_keys.len());
+    for key in &turn.image_keys {
+        match deps.blob.get_bytes(key).await {
+            Ok(data) => images.push(ContentPart::Image {
+                media_type: "image/webp",
+                data,
+            }),
+            Err(e) => tracing::warn!(error = %e, "chat image not loaded"),
+        }
+    }
+    let mut last = ctx.turn_message(&turn.text, images);
+    if route == ChatRoute::SafetySensitive {
+        // Server-written, outside the data blocks, before the user's words.
+        last.content
+            .insert(0, ContentPart::Text(SAFETY_POLICY.to_owned()));
+    }
+    let mut messages = ctx.history.clone();
+    messages.push(last);
+
+    let role = turn.owner.membership().role();
+    let mut request = ChatRequest {
+        purpose: ChatPurpose::Chat,
+        system: chat_system(),
+        messages,
+        tools: inner.tools.specs_for(role),
+        response_schema: None,
+        max_tokens: deps.config.chat_max_tokens,
+    };
+    let tool_ctx = tool_ctx(deps, turn, ctx.plant);
+    let mut splitter = SentenceSplitter::new();
+    let max_calls = deps.config.max_model_calls.max(1);
+
+    for call_no in 1..=max_calls {
+        if reply.spent() >= turn.budget_left {
+            return emit_checked(deps, out, reply, BUDGET_TEXT.to_owned()).await;
+        }
+        let result = match stream_call(deps, turn, &request, out, reply, &mut splitter).await {
+            Ok(r) => r,
+            Err(e) => return e,
+        };
+        match result.stop {
+            Some(StopReason::Refusal) => {
+                return emit_checked(deps, out, reply, format!(" {REFUSAL_TEXT}")).await;
+            }
+            Some(StopReason::ToolUse) if !result.calls.is_empty() => {}
+            _ => return Ended::Completed,
+        }
+        if call_no == max_calls {
+            return emit_checked(deps, out, reply, format!(" {LOOP_CAP_TEXT}")).await;
+        }
+
+        // The assistant turn goes back unchanged (thinking blocks included), then the results.
+        request.messages.push(ChatMessage {
+            role: ChatRole::Assistant,
+            content: result.parts,
+        });
+        let mut results = Vec::with_capacity(result.calls.len());
+        let mut extra = Vec::new();
+        for (call_id, name, arguments) in result.calls {
+            let Some((part, mut images)) =
+                run_tool(inner, &tool_ctx, role, out, reply, call_id, name, arguments).await
+            else {
+                return Ended::Interrupted;
+            };
+            results.push(part);
+            extra.append(&mut images);
+        }
+        results.append(&mut extra);
+        request.messages.push(ChatMessage {
+            role: ChatRole::Tool,
+            content: results,
+        });
+    }
+    Ended::Completed
+}
+
+/// Runs one tool call and sends its events. `None` when the client went away.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one call's inputs, all borrowed from the turn"
+)]
+async fn run_tool(
+    inner: &Inner,
+    ctx: &ToolCtx<'_>,
+    role: domain::wire::Role,
+    out: &mut Emitter,
+    reply: &mut Reply,
+    call_id: String,
+    name: String,
+    arguments: serde_json::Value,
+) -> Option<(ContentPart, Vec<ContentPart>)> {
+    let tool = inner.tools.find(&name, role);
+    let label = tool.map_or("Working", |t| t.label());
+    let started = ToolStarted {
+        v: V1,
+        call_id: call_id.clone(),
+        tool: name.clone(),
+        label: label.to_owned(),
+    };
+    if !out.send(ChatEvent::ToolStarted(started)).await {
+        return None;
+    }
+    reply.tool_calls.push(ContentPart::ToolCall {
+        call_id: call_id.clone(),
+        name: name.clone(),
+        arguments: arguments.clone(),
+    });
+    let result = match tool {
+        Some(t) => t.call(ctx, arguments).await,
+        None => Err(crate::error::ToolError::Rejected(format!(
+            "There is no tool named {name}."
+        ))),
+    };
+    let (content, is_error, images) = match result {
+        Ok(output) => {
+            for effect in output.effects {
+                if !send_effect(out, reply, effect).await {
+                    return None;
+                }
+            }
+            (output.content, false, output.images)
+        }
+        Err(e) => {
+            tracing::info!(tool = %name, error = %e, "tool call refused or failed");
+            (
+                serde_json::json!({ "error": e.for_model() }),
+                true,
+                Vec::new(),
+            )
+        }
+    };
+    let part = ContentPart::ToolResult {
+        call_id: call_id.clone(),
+        content,
+        is_error,
+    };
+    reply.tool_calls.push(part.clone());
+    let finished = ToolFinished {
+        v: V1,
+        call_id,
+        ok: !is_error,
+    };
+    if !out.send(ChatEvent::ToolFinished(finished)).await {
+        return None;
+    }
+    Some((part, images))
+}
+
+async fn send_effect(out: &mut Emitter, reply: &mut Reply, effect: ToolEffect) -> bool {
+    let event = match effect {
+        ToolEffect::Citation(citation) => {
+            if reply
+                .citations
+                .iter()
+                .any(|c| c.source_id == citation.source_id)
+            {
+                return true;
+            }
+            reply.citations.push(citation.clone());
+            ChatEvent::Citation(CitationEvent { v: V1, citation })
+        }
+        ToolEffect::PendingAction(a) => ChatEvent::PendingAction(PendingActionEvent {
+            v: V1,
+            pending_action: *a,
+        }),
+        ToolEffect::MemorySaved(memory) => ChatEvent::MemorySaved(MemorySaved { v: V1, memory }),
+        ToolEffect::RescanRequested(r) => ChatEvent::RescanRequested(RescanRequested {
+            v: V1,
+            plant_id: r.plant_id,
+            photo_kind: r.photo_kind,
+            instructions: r.instructions,
+        }),
+    };
+    out.send(event).await
+}
+
+#[cfg(test)]
+mod tests;

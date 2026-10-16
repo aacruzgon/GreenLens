@@ -1,0 +1,108 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "bins/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+# internal crates
+domain = { path = "crates/domain" }
+store = { path = "crates/store" }
+blob = { path = "crates/blob" }
+integrations = { path = "crates/integrations" }
+vision = { path = "crates/vision" }
+knowledge = { path = "crates/knowledge" }
+agent = { path = "crates/agent" }
+pipeline = { path = "crates/pipeline" }
+
+# shared external crates (agents add more here; keep versions exact-minor)
+async-trait = "0.1.92"
+bytes = "1.12.1"
+chrono = { version = "0.4.45", default-features = false, features = ["std", "clock", "serde"] }
+chrono-tz = "0.10.4"
+futures = "0.3.34"
+schemars = { version = "1.2.3", features = ["chrono04"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+tokio = { version = "1.53.3", features = ["full"] }
+tokio-util = { version = "0.7.20", features = ["rt"] }
+tracing = "0.1.44"
+ulid = { version = "3.0.0", features = ["serde"] }
+utoipa = { version = "6.0.0", features = ["axum_extras", "chrono"] }
+uuid = { version = "1.28.0", features = ["v4", "serde"] }
+mockall = "0.15.0"
+proptest = "1.12.0"
+# integrations (outbound HTTP)
+reqwest = { version = "0.13.5", features = ["json", "stream", "query"] }
+secrecy = "0.10.3"
+rand = "0.10.3"
+data-encoding = "2.11.1"
+aws-lc-rs = "1.18.2"
+jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
+moka = { version = "0.12.16", features = ["future"] }
+tzf-rs = { version = "2.1.3", default-features = false, features = ["bundled"] }
+wiremock = "0.6.5"
+svix = "2.8.0"
+# vision + worker (ONNX, images, geometry, the worker binary)
+ort = { version = "=2.0.0-rc.14", default-features = false, features = ["std", "ndarray", "tracing"] }
+ndarray = "0.17.2"
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
+imageproc = { version = "0.27.0", default-features = false }
+fast_image_resize = { version = "6.1.0", features = ["image"] }
+png = "0.18.1"
+webp = { version = "0.3.1", default-features = false }
+libheif-rs = { version = "3.0.0", default-features = false, features = ["v1_19"] }
+nalgebra = "0.35.0"
+chacha20 = { version = "0.10.2", default-features = false, features = ["rng"] }
+tokenizers = { version = "0.23.2", default-features = false, features = ["fancy-regex"] }
+toml = "1.1.8"
+sha2 = "0.11.1"
+clap = { version = "4.6.7", features = ["derive", "env"] }
+anyhow = "1.0.104"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+# store + blob
+surrealdb = { version = "=3.3.4", default-features = false, features = ["protocol-ws", "rustls"] }
+aws-sdk-s3 = { version = "1.152.0", default-features = false, features = ["default-https-client", "rt-tokio", "http-1x"] }
+# api (HTTP server)
+axum = { version = "0.8.9", features = ["macros", "multipart"] }
+tower = { version = "0.5.3", features = ["util", "timeout", "limit"] }
+tower-http = { version = "0.7.1", features = ["trace", "catch-panic", "cors", "limit", "timeout", "request-id", "util", "compression-gzip", "compression-br"] }
+utoipa-axum = "0.3.0"
+governor = "0.10.4"
+tokio-stream = { version = "0.1.19", features = ["sync"] }
+async-stream = "0.3.6"
+http-body-util = "0.1.5"
+hmac = "0.13.0"
+serde_path_to_error = "0.1.20"
+# agent (dose check)
+regex = "1.13.1"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+unwrap_used = "warn"
+dbg_macro = "warn"
+todo = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+allow_attributes_without_reason = "warn"
+
+# README 12: symbols kept (stripping them empties panic backtraces), line tables for file and line.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "unwind"
+debug = "line-tables-only"
+overflow-checks = true
