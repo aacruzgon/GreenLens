@@ -1,7 +1,7 @@
 # PDM Database (SurrealDB)
 
-> **Status:** v1.4.3, 2026-10-16. v1.4.3: the schema now lives at `backend/migrations/schema.surql`, beside the `store` crate that embeds it, instead of in this folder. v1.4.2 shows the entry point's step claim as the `store` crate runs it, with the flag set only when the claim comes back `NONE`, and corrects caveat 16: `access` and `session` are protected too, and a bound `$before`, `$after`, `$this` or `$parent` is used in some places and overridden in others. v1.4.1 records the embedding models chosen in [docs/vision](../vision/README.md): text embeddings are 384-dimensional (`snowflake-arctic-embed-xs`), so `chunk_vec`'s `DIMENSION 384` is final, and scan-image embeddings are BioCLIP 2's 768-dimensional image vectors, searched exactly per garden. No schema statement changed. v1.4 stores the indicator answers between the `retrieve` and `score` steps in a new `indicator_answer` table keyed `[scan, run, indicator]`, whose writes keep the higher-ranked answer (user, then measurement, then the VLM), and adds `scan.candidates`, `question.indicator`, `mask.rle`, `garden.soil_retry_at` and the account tombstone `deleted_user`, the deletion order for the answers, and two caveats found while building the `store` crate (protected parameter names, and `type::point` for a bound centroid). v1.3.3: the `api` user's password is a string literal in the setup script (a parameter is a parse error), ULIDs come from `Ulid::generate()`, the batched delete returns `$before.id` so it can tell when a table is empty, and statement errors are read with `take_errors()`, skipping `NotExecuted` and `Cancelled`. v1.3.2: `POST /tasks` checks its `scan_id` in the insert's transaction (✓ the schema accepts a link to a missing scan, and the check refuses it), and species photos and `preys_on` are computed when read. v1.3.1: `task.scan` is `CASCADE`, so a pending scan's jar-test task is deleted with it, and event payloads store image IDs, never signed URLs. v1.3 adds the fields the app's screens need (contracts v0.8): `task.scan`, `scan.deleting_at` and the deletion of a pending scan, `diagnosis.low_evidence`, `species.reference_images`, and `city` as a garden location precision. v1.2 ties step claims to their run with a commit check, adds `job.question` to the fallback's claim, deletes plans by equality (the `IN` bug), and clears claims when deletion starts. v1.1 adds the LiDAR records (section 3), a deletion order that removes tasks and trigger rules before their plans, per-image replacement of observations, and claimed steps between jobs that the scheduler's sweep can recover. v1: The schema is [`schema.surql`](../../backend/migrations/schema.surql). Companion to the [architecture document](../architecture/README.md) (section 5) and [contracts.md](../architecture/contracts.md), which define the shapes these records store.
-> **Verified:** every pattern marked ✓ below was run against `surrealdb/surrealdb:v3.3.4` on 2026-10-15; the v1.3.3 changes were run against the same image, by digest, on 2026-10-16. The v1.4 points marked ✓ were run on 2026-10-16 against the embedded 3.3.4 engine (crate `surrealdb = "=3.3.4"` with `kv-mem`, the same engine code as the server image), by the `store` crate's tests; the v1.4 schema also applies twice in a row, as root, on the pinned image by digest (Docker, `memory` engine). The v1.4.2 points were run on 2026-10-16 against the pinned image by digest, through the Rust SDK over `ws`, and against the embedded engine, with the same results. The schema applies cleanly twice in a row, and a scenario script exercised the rest. Points marked *unverified* come from the docs only.
+> **Status:** v1.5, 2026-10-16. v1.5 proposes how `api` applies the numbered migrations and the generated `knowledge.surql` after the schema, with a `migration` record of each file's hash and a `knowledge_meta` record, and records the checks run on the pinned image (section 1, section 7). v1.4.3: the schema now lives at `backend/migrations/schema.surql`, beside the `store` crate that embeds it, instead of in this folder. v1.4.2 shows the entry point's step claim as the `store` crate runs it, with the flag set only when the claim comes back `NONE`, and corrects caveat 16: `access` and `session` are protected too, and a bound `$before`, `$after`, `$this` or `$parent` is used in some places and overridden in others. v1.4.1 records the embedding models chosen in [docs/vision](../vision/README.md): text embeddings are 384-dimensional (`snowflake-arctic-embed-xs`), so `chunk_vec`'s `DIMENSION 384` is final, and scan-image embeddings are BioCLIP 2's 768-dimensional image vectors, searched exactly per garden. No schema statement changed. v1.4 stores the indicator answers between the `retrieve` and `score` steps in a new `indicator_answer` table keyed `[scan, run, indicator]`, whose writes keep the higher-ranked answer (user, then measurement, then the VLM), and adds `scan.candidates`, `question.indicator`, `mask.rle`, `garden.soil_retry_at` and the account tombstone `deleted_user`, the deletion order for the answers, and two caveats found while building the `store` crate (protected parameter names, and `type::point` for a bound centroid). v1.3.3: the `api` user's password is a string literal in the setup script (a parameter is a parse error), ULIDs come from `Ulid::generate()`, the batched delete returns `$before.id` so it can tell when a table is empty, and statement errors are read with `take_errors()`, skipping `NotExecuted` and `Cancelled`. v1.3.2: `POST /tasks` checks its `scan_id` in the insert's transaction (✓ the schema accepts a link to a missing scan, and the check refuses it), and species photos and `preys_on` are computed when read. v1.3.1: `task.scan` is `CASCADE`, so a pending scan's jar-test task is deleted with it, and event payloads store image IDs, never signed URLs. v1.3 adds the fields the app's screens need (contracts v0.8): `task.scan`, `scan.deleting_at` and the deletion of a pending scan, `diagnosis.low_evidence`, `species.reference_images`, and `city` as a garden location precision. v1.2 ties step claims to their run with a commit check, adds `job.question` to the fallback's claim, deletes plans by equality (the `IN` bug), and clears claims when deletion starts. v1.1 adds the LiDAR records (section 3), a deletion order that removes tasks and trigger rules before their plans, per-image replacement of observations, and claimed steps between jobs that the scheduler's sweep can recover. v1: The schema is [`schema.surql`](../../backend/migrations/schema.surql). Companion to the [architecture document](../architecture/README.md) (section 5) and [contracts.md](../architecture/contracts.md), which define the shapes these records store.
+> **Verified:** every pattern marked ✓ below was run against `surrealdb/surrealdb:v3.3.4` on 2026-10-15; the v1.3.3 changes were run against the same image, by digest, on 2026-10-16. The v1.4 points marked ✓ were run on 2026-10-16 against the embedded 3.3.4 engine (crate `surrealdb = "=3.3.4"` with `kv-mem`, the same engine code as the server image), by the `store` crate's tests; the v1.4 schema also applies twice in a row, as root, on the pinned image by digest (Docker, `memory` engine). The v1.4.2 points were run on 2026-10-16 against the pinned image by digest, through the Rust SDK over `ws`, and against the embedded engine, with the same results. The schema applies cleanly twice in a row, and a scenario script exercised the rest. The v1.5 migration points were run on 2026-10-16 against the pinned image by digest (RocksDB engine), as root through the Rust SDK over `ws`, with the proposed tables added to the schema. Points marked *unverified* come from the docs only.
 
 ## Contents
 
@@ -75,7 +75,109 @@ The API authenticates app users with the auth provider's JWTs itself, and talks 
 - Define indexes before writes start. An index defined while writes are happening can miss them ([#7533](https://github.com/surrealdb/surrealdb/issues/7533)).
 - Changing a field's type doesn't convert existing rows; it's checked on each row's next write. Convert explicitly with a batched `UPDATE t SET f = <int> f WHERE f != NONE`.
 
-The official migration tool, SurrealKit, is still in beta (1.0.0-beta.6), and the community `surrealdb-migrations` crate is archived and 2.x-only. An idempotent schema file is enough for the hackathon.
+The official migration tool, SurrealKit, is still in beta (1.0.0-beta.6), and the community `surrealdb-migrations` crate is archived and 2.x-only. An idempotent schema file, plus the small runner below, is enough for the hackathon.
+
+**Applying the migrations (proposed).** Today the `store` crate applies only `schema.surql`, and nothing loads the knowledge base the loader generates ([contracts 10](../architecture/contracts.md#checks-and-generated-files)). The design below fills that gap. It is not code yet; the work items are in [backend store 4](../backend/store.md#4-connecting-and-the-schema).
+
+`backend/migrations/` holds three kinds of file, all committed. A build script in `store` embeds every `*.surql` file in the directory, so the binary and its migrations can't drift and a new file needs no code change.
+
+| File | Written by | Applied | Recorded in `migration` |
+|---|---|---|---|
+| `schema.surql` | Hand | On every start, first | No: it is idempotent and changes often |
+| `NNNN_<slug>.surql`: 4 digits from `0001`, then lower-case words joined by `_` | Hand, in a pull request | Once, in number order, after the schema | Yes. A changed hash or a missing file stops the start |
+| `knowledge.surql` | The knowledge loader in `ml/knowledge/`, never by hand | Last, when its hash differs from the recorded one, or when a numbered file was applied in the same start | Yes. Its hash changes with every seed change, by design |
+
+Why one regenerated knowledge file instead of numbered ones. The loader's checks are whole-set checks (unique IDs, edges that resolve), so the file it can vouch for is the whole reviewed set. A numbered diff would need the loader to know what each environment already holds. A numbered full copy would add about 20 MB to the repository per seed change. One file written in a fixed order changes only the lines whose records changed, so Git stores a small delta. The roadmap's first proposal, every file hash-locked, fits the hand-written files only.
+
+What a file may contain:
+- No `USE`, `BEGIN`, `COMMIT`, `CANCEL`, `OPTION`, or `DEFINE NAMESPACE`, `DATABASE`, `USER` or `ACCESS`. The runner selects `pdm`/`main` and wraps each file in its own transaction. A test fails on any of these.
+- A numbered file does what can't be idempotent in `schema.surql`: a type conversion (`UPDATE t SET f = <int> f`), an index change, or a remap of stored IDs. Tables and fields stay in `schema.surql`, so stored shapes keep one home.
+- `knowledge.surql` writes only the knowledge tables and `knowledge_meta`, and ends every write with `RETURN NONE`.
+
+**The knowledge file** replaces the whole knowledge set. A record that isn't in the file is deleted, so a renamed record is the old ID deleted and the new ID written; an ID is never reused ([contracts 10](../architecture/contracts.md#files)). Proposed layout, the shape the loader writes:
+
+```surql
+-- Proposed. Generated by ml/knowledge from the reviewed seed. Do not edit.
+UPSERT knowledge_meta:current CONTENT { label_set_version: '…', classifier_labels_version: '…',
+  embedding_model: 'snowflake-arctic-embed-xs@d8c86521', embedding_dimension: 384 } RETURN NONE;
+DELETE susceptible_to; DELETE manages; DELETE caused_by; DELETE preys_on; DELETE looks_like;
+DELETE source WHERE id NOT IN [source:`umn-tomato`, …];
+UPSERT source:`umn-tomato` CONTENT { … } RETURN NONE;
+-- the same for species, disease, organism, treatment, product, classifier_label,
+-- soil_condition and knowledge_chunk: delete the stale rows, then upsert in id order
+RELATE species:`tomato`->susceptible_to->disease:`tomato_early_blight` RETURN NONE;
+INSERT RELATION INTO looks_like { id: looks_like:[disease:`a`, disease:`b`], in: disease:`a`,
+  out: disease:`b`, how_to_tell: '…' } RETURN NONE;
+```
+
+- Edges are deleted first and rebuilt last. Each table's stale rows go before its upserts, so a product renamed to a new ID with the same name doesn't trip the `product_name` unique index.
+- `UPSERT`, not delete-all and insert: an unchanged chunk keeps its row, and the HNSW index sees fewer deletes ([#7423](https://github.com/surrealdb/surrealdb/issues/7423)). Whether the index skips a vector that didn't change is *unverified*.
+- User records link to knowledge with plain links (`plant.species`, `scan.working_species`, `question.candidates`, `diagnosis.primary_problem`), not `REFERENCE`. ✓ Deleting a linked species succeeds and the link is left pointing at a missing record. Readers must then treat a missing knowledge record as unknown; no code checks that yet ([backend store 4](../backend/store.md#4-connecting-and-the-schema), open question 1). The loader lists every removed species, problem and organism ID in its output, so the reviewer sees them in the pull request.
+- The output is deterministic: tables in the order above, records by ID, each float in the shortest form that reads back as the same `f32`. The same seed gives the same bytes, so the same hash, and `api` skips the file.
+- ✓ 4,000 chunks of 384 floats and 340 characters of text make a 21.0 MB file. ✓ One query of 62.9 MB applies over WebSocket; one of 68.2 MB is refused before it is sent ("Message too long"), which fits a 64 MiB message cap (*unverified* in the source). The loader fails when the file passes 48 MiB, about 9,000 chunks.
+- ✓ Without `RETURN NONE`, a 62.8 MB file returned every record it wrote, the connection reset, and the transaction had committed all the same. With it, the same file applied in 5.3 s.
+
+**How `api` applies them**, at start-up step 3 ([backend api 4](../backend/api.md#4-start-up-and-shutdown)), over the short-lived root connection that applies the schema today:
+
+1. Apply `schema.surql`.
+2. Select `pdm`/`main`, and read `SELECT record::id(id) AS name, kind, hash FROM migration`.
+3. Check the record against the files. Stop the start, naming the file, when:
+   - a recorded numbered file has a different hash (both hashes are logged);
+   - a recorded file is missing from the build (a renamed file, or a database ahead of this build);
+   - an unrecorded numbered file sorts before the highest recorded one (merged out of order: give it the next number).
+4. Apply each new numbered file in order, each in its own transaction.
+5. Apply `knowledge.surql` if its hash differs from the recorded one, or if step 4 applied any file. A numbered file can delete knowledge rows, as a dimension change does below.
+6. Close the root connection, then sign in as `api` and load the knowledge index, as today.
+
+Each file runs in one transaction with its own record, so a file and its record commit together or not at all:
+
+```surql
+-- Proposed wrapper; $name, $kind and $hash are bound, and the file goes where the comment is.
+BEGIN;
+LET $prev = (SELECT VALUE hash FROM ONLY type::record('migration', $name));
+IF $prev != $expected { THROW 'migration raced: ' + $name };
+-- the file
+UPSERT type::record('migration', $name) CONTENT { kind: $kind, hash: $hash, applied_at: time::now() };
+COMMIT;
+```
+
+- `$expected` is the hash step 2 read, or `NONE` for a file never applied. If another process applied the file in between, the `THROW` rolls this attempt back, and the runner reads the record again and moves on. Production runs one `api`, so this is a guard, not a lock.
+- It also covers a lost reply: a file that committed before the connection dropped is recorded, so the next start skips it.
+- The hash is the SHA-256 of the file, as 64 lower-case hex digits, with `\r\n` read as `\n`, so a Windows checkout hashes the same.
+
+**The record of applied files**, proposed for `schema.surql`:
+
+```surql
+-- Proposed. One row per applied migration file; id = the file name, e.g. migration:`0002_x.surql`.
+DEFINE TABLE OVERWRITE migration SCHEMAFULL;
+DEFINE FIELD OVERWRITE kind       ON migration TYPE "versioned" | "knowledge";
+DEFINE FIELD OVERWRITE hash       ON migration TYPE string ASSERT $value = /^[0-9a-f]{64}$/;
+DEFINE FIELD OVERWRITE applied_at ON migration TYPE datetime;
+
+-- Proposed. The generated values of the current knowledge set: one record, knowledge_meta:current.
+DEFINE TABLE OVERWRITE knowledge_meta SCHEMAFULL;
+DEFINE FIELD OVERWRITE label_set_version         ON knowledge_meta TYPE string;
+DEFINE FIELD OVERWRITE classifier_labels_version ON knowledge_meta TYPE string;
+DEFINE FIELD OVERWRITE embedding_model           ON knowledge_meta TYPE string;
+DEFINE FIELD OVERWRITE embedding_dimension       ON knowledge_meta TYPE int;
+```
+
+`knowledge_meta` stores the versions the loader computes, so `load_knowledge` reads `label_set_version` instead of deriving its own hash ([backend store 22](../backend/store.md#22-open-questions), item 7).
+
+**Checked on the pinned image.** ✓ Run on 2026-10-16 against `surrealdb/surrealdb:v3.3.4` by digest, RocksDB engine, as root over WebSocket with the `surrealdb = "=3.3.4"` client, using the real `schema.surql` plus the two proposed tables:
+- ✓ The wrapper around a 21 MB file of 4,000 chunks commits in 2.2 s on empty tables and in 6–7 s over the same rows, so skipping an unchanged file saves real time at each start. The record's hash matches the file.
+- ✓ After the load, `<|5, 40|>` runs as a `KnnScan` and returns the nearest chunk first; after a file that drops 100 chunks, a dropped chunk's own vector no longer finds it. Right after the load, the server logged that HNSW compaction was behind the writes; the search still answered.
+- ✓ A file with an invalid `topic` halfway through fails; no row changes and the record keeps the previous hash.
+- ✓ A stale `$expected` throws "migration raced" and rolls back. Re-sending a recorded file throws the same way.
+- ✓ `REMOVE INDEX` and `DELETE` inside the wrapper roll back with the file.
+- ✓ `DELETE knowledge_chunk` followed by `DEFINE INDEX chunk_vec … DIMENSION 8` in the same transaction fails ("Incorrect vector dimension (384)"): the index build still sees the deleted rows. In two files, one after the other, it works, and afterwards a 384-float vector is refused.
+- ✓ `<|$k, 40|>` with a bound `k` is a parse error ("expected an unsigned integer"), so `k` must be a literal.
+
+**Changing the text-embedding model.** One pull request: the new model in the manifest; the loader re-embeds every chunk (its cache is keyed by text hash and model), so `knowledge.surql` changes with the new `embedding_model`. If the dimension changes too:
+- change `DIMENSION` in `schema.surql`, for new databases;
+- add `NNNN_drop_chunk_vec.surql` (`REMOVE INDEX chunk_vec ON knowledge_chunk; DELETE knowledge_chunk;`) and `NNNN+1_chunk_vec_<dim>.surql` (the new `DEFINE INDEX`). Two files, because one transaction can't do both.
+
+Since a numbered file ran, `knowledge.surql` is applied again in the same start. If the dimension files are forgotten, the old index refuses the new vectors and the start fails, which is the safe failure. `api` also stops when `knowledge_meta.embedding_model` differs from the embedder it loaded, since its query vectors would not match the stored ones.
 
 ---
 
@@ -436,6 +538,13 @@ fn is_conflict(e: &surrealdb::Error) -> bool {
 4. Run `REBUILD INDEX` on the vector and composite indexes, which picks up index-format fixes.
 
 Rolling back means importing the export into a fresh datastore, because an older binary can't read a datastore a newer one has opened. Don't upgrade during build week unless a fix requires it.
+
+**Migrations** ([section 1](#1-version-and-setup), applying the migrations; proposed):
+- **A file failed.** `api` exits, naming the file, the statement and the error, and Compose restarts it into the same failure until a fixed build ships. The failed file committed nothing, so it may be edited. Files before it stay applied.
+- **A recorded file changed.** `api` exits with both hashes. Revert the edit and put the change in a new numbered file. For an edit to comments alone, an operator may set the new hash by hand as root (`UPDATE migration:\`0003_x.surql\` SET hash = '…'`) after reading the diff.
+- **Rolling back `api`.** An older build refuses to start on a database that recorded a file it doesn't have. Roll back by restoring the backup taken before the deploy, as for an upgrade.
+- **Re-applying the knowledge set** by hand: `DELETE migration:\`knowledge.surql\`` as root, then restart `api`.
+- **A development database** that disagrees with the files is cheaper to drop than to repair: `docker compose -f infra/dev.compose.yml down -v`.
 
 **Monitoring.** The status page (contracts section 9) and `/surreal is-ready`. Log at `info`. Watch the transaction-conflict rate: a steady stream points to a hot record that needs its writes serialised.
 

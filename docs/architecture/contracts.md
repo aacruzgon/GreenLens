@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.4, 2026-10-16. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.5, 2026-10-16. Companion to the [architecture document](README.md).
+> **v0.10.5**: section 10 states the loader's migration output: one regenerated, deterministic `backend/migrations/knowledge.surql` that replaces the whole knowledge set and records the generated versions in `knowledge_meta`; no wire shape changed.
 > **v0.10.4**: the `domain` crate's types are now the contracts' source of truth, since the code exists; this document explains them, and the generated OpenAPI spec is committed as `backend/openapi.json` (section 1, source of truth).
 > **v0.10.3**: section 1 links the stored shapes at their new place, `backend/migrations/schema.surql`; no contract changes.
 > **v0.10.2**: deleting a scan closes its event stream within 15 seconds, and so does a resting point reached without an event (section 4, when the stream closes).
@@ -2280,6 +2281,16 @@ It generates, alongside the migration:
 - the BioCLIP label list (`bioclip_label` of every species, `full` and `label_only`, and every organism) with its `label_set_version`;
 - the `species_options` and `organism_options` lists for VLM payloads;
 - the `classifier_labels_version` for perception payloads.
+
+**The migration.** The loader writes one file, `backend/migrations/knowledge.surql`, committed in the same pull request as the seed change, and overwrites it on every run. `api` applies it after the schema whenever its hash changes ([database 1](../database/README.md#1-version-and-setup), applying the migrations). The file:
+
+- holds the **whole** knowledge set: every record is upserted by its ID, and each knowledge table's records missing from the seed are deleted, so a removed or renamed record goes away. Graph edges are deleted and written again. The loader prints every removed species, problem and organism ID, so the reviewer sees them;
+- writes `knowledge_meta:current` with `label_set_version`, `classifier_labels_version`, `embedding_model` (`<name>@<version>` from the model manifest) and `embedding_dimension`;
+- has no `USE`, `BEGIN`, `COMMIT` or `DEFINE` statement, and ends every write with `RETURN NONE`: the API wraps the file in one transaction, and returning every record overflows the connection;
+- is deterministic: tables in a fixed order, records by ID, each float in the shortest form that reads back as the same `f32`. The same seed gives the same bytes;
+- stays under 48 MiB. A single query over the API's WebSocket can't pass 64 MiB; 4,000 chunks take about 21 MB.
+
+Changes that can't be written as a full replace, such as a new `chunk_vec` dimension, go in a hand-written numbered migration beside it.
 
 The loader also converts each reference image to WebP (long side 1024 pixels, metadata stripped), writes it to RustFS under `knowledge/species/{species_id}/{hash}.webp`, where `{hash}` is the first 16 hex digits of the WebP file's SHA-256, with its own storage identity ([storage 2](../storage/README.md#2-bucket-keys-and-access)), and deletes the objects of images no longer in the seed. RustFS is reachable only on the control plane's Docker network, so this upload runs there as a one-shot container, **before** the API starts with the migration that references the photos ([storage 2](../storage/README.md#2-bucket-keys-and-access)). A changed photo therefore gets a new key and a new URL, and an app never shows a cached old photo next to a new credit.
 
