@@ -1,0 +1,70 @@
+# GPU rig. See infra/README.md. Architecture section 12 names this file.
+# The perception worker and the vlm worker are added here later by their owner.
+#
+# Image: vllm/vllm-openai:v0.31.0, pinned by digest below.
+# The entrypoint is overridden with bash so that environment values, the JSON
+# flag values and VLM_EXTRA_ARGS (parsed by eval, so quotes work) all behave.
+# Compose reads $${...} as a literal ${...} for the shell; ${...} is filled by compose.
+#
+# --limit-mm-per-prompt width and height (1152x864 = 995328 px) must be changed
+# together with VLM_MAX_PIXELS (1003520). Keep width x height at or below it.
+
+services:
+  vllm:
+    image: vllm/vllm-openai@sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        eval "set -- $${VLM_EXTRA_ARGS:-}"
+        exec vllm serve "$${VLM_MODEL}" \
+          --revision "$${VLM_REVISION}" \
+          --served-model-name vlm \
+          --max-model-len "$${VLM_MAX_MODEL_LEN}" \
+          --max-num-seqs "$${VLM_MAX_NUM_SEQS}" \
+          --max-num-batched-tokens 8192 \
+          --gpu-memory-utilization "$${VLM_GPU_MEM_UTIL}" \
+          --kv-cache-dtype "$${VLM_KV_CACHE_DTYPE}" \
+          --enable-prefix-caching \
+          --limit-mm-per-prompt '{"image":{"count":4,"width":1152,"height":864},"video":0}' \
+          --mm-processor-kwargs "{\"size\":{\"longest_edge\":$${VLM_MAX_PIXELS},\"shortest_edge\":65536}}" \
+          --structured-outputs-config.backend xgrammar \
+          --structured-outputs-config.disable_any_whitespace true \
+          --generation-config vllm \
+          --max-cudagraph-capture-size 8 \
+          --api-key "$${VLM_API_KEY}" \
+          "$$@"
+    env_file:
+      - .env   # required: VLM_API_KEY has no default
+    environment:
+      VLM_MODEL: ${VLM_MODEL:-Qwen/Qwen3-VL-8B-Instruct-FP8}
+      VLM_REVISION: ${VLM_REVISION:-9cdc6310a8cb770ce18efaf4e9935334512aee45}
+      VLM_MAX_NUM_SEQS: ${VLM_MAX_NUM_SEQS:-1}
+      VLM_GPU_MEM_UTIL: ${VLM_GPU_MEM_UTIL:-0.78}
+      VLM_MAX_MODEL_LEN: ${VLM_MAX_MODEL_LEN:-16384}
+      VLM_KV_CACHE_DTYPE: ${VLM_KV_CACHE_DTYPE:-auto}
+      VLM_MAX_PIXELS: ${VLM_MAX_PIXELS:-1003520}
+      VLM_EXTRA_ARGS: ${VLM_EXTRA_ARGS:-}
+      VLM_API_KEY: ${VLM_API_KEY:?set VLM_API_KEY in infra/.env}
+      HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-1}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${VLM_GPU_UUID:?set VLM_GPU_UUID in infra/.env}"]
+              capabilities: [gpu]
+    security_opt:
+      - label=disable   # SELinux: allow the container to read the mounted cache
+    ipc: host
+    volumes:
+      - ${HF_HOME_HOST:-${HOME}/.cache/huggingface}:/root/.cache/huggingface
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 600s   # model load and CUDA graph capture are slow
+    stop_grace_period: 30s
+    restart: "no"
