@@ -1,0 +1,13 @@
+# Deletes preinstalled toolchains no PDM job uses (.NET, Android, GHC, CodeQL), about 20 GB on
+# ubuntu-26.04. The runner starts with about 15 GB free, and the heavy jobs need more
+# (docs/infra/README.md section 2, Disk).
+name: Free disk space
+description: Remove unused preinstalled toolchains and print the free space before and after
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        df -h /
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+        df -h /
