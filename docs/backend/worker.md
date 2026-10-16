@@ -1,8 +1,8 @@
 # PDM Backend: `worker` binary
 
-> **Status:** Draft v0.3.1, 2026-10-16. v0.3.1: why the immediate re-claim after a `204` can't spin while the API shuts down (probed). v0.3: the hosted fallback gives the guided check the same 8,000-token budget as the other calls (docs/vision README 12 #27), and the fallback row points to the full list of stripped schema keywords. v0.2: the fallback worker reads its hosted-LLM key from `LLM_API_KEY`, the name `api` and the backend README §9 use (it was `ANTHROPIC_API_KEY`). v0.1: the worker process (`--caps perception|vlm|fallback`): configuration, the heartbeat and claim loops with slots, leases and the SIGTERM drain, cancellation by drop, the VLM adapter with its per-call schema builder and decoding, the hosted fallback, per-card settings for the RX 9070 XT, and the rig's compose services; compiled on Rust 1.99.1.
+> **Status:** Draft v0.4, 2026-10-16. v0.4: the SIGTERM shutdown ends within `DRAIN_SECONDS`, dropping a `complete` or heartbeat call in flight (it could take 20 + 10 + 5 = 35 s, past the 30 s grace); the worker API client retries by the error body's `retryable` and `retry_after_s` (contracts 2), not by status, and waits `retry_after_s`; section 1 states the HTTP timeouts and only the two skill differences that remain. v0.3.1: why the immediate re-claim after a `204` can't spin while the API shuts down (probed). v0.3: the hosted fallback gives the guided check the same 8,000-token budget as the other calls (docs/vision README 12 #27), and the fallback row points to the full list of stripped schema keywords. v0.2: the fallback worker reads its hosted-LLM key from `LLM_API_KEY`, the name `api` and the backend README §9 use (it was `ANTHROPIC_API_KEY`). v0.1: the worker process (`--caps perception|vlm|fallback`): configuration, the heartbeat and claim loops with slots, leases and the SIGTERM drain, cancellation by drop, the VLM adapter with its per-call schema builder and decoding, the hosted fallback, per-card settings for the RX 9070 XT, and the rig's compose services; compiled on Rust 1.99.1.
 
-Companion to the [backend architecture](README.md), the [`vision` crate](vision.md) (the perception models and image code it uses), the [`integrations` crate](integrations.md) (its HTTP clients for the VLM server and the LLM API) and the [`domain` crate](domain.md) (the job types and the `VisionModel` port). Every listing is copied from the compiled source of `bins/worker` by the docgen tool. `cargo check -p worker` (also `--features cuda`), `cargo clippy -p worker --all-targets` and `cargo test -p worker` pass: 24 tests, among them the loop on paused time against a fake broker and the VLM adapter against a scripted backend.
+Companion to the [backend architecture](README.md), the [`vision` crate](vision.md) (the perception models and image code it uses), the [`integrations` crate](integrations.md) (its HTTP clients for the VLM server and the LLM API) and the [`domain` crate](domain.md) (the job types and the `VisionModel` port). Every listing is copied from the compiled source of `bins/worker` by the docgen tool. `cargo check -p worker` (also `--features cuda`), `cargo clippy -p worker --all-targets` and `cargo test -p worker` pass: 34 tests, among them the loop on paused time against a fake broker and the VLM adapter against a scripted backend.
 
 ## Contents
 
@@ -43,7 +43,9 @@ One binary, three roles ([architecture 3](../architecture/README.md#rust-crates)
 
 **Dependency direction:** `worker → vision, integrations, domain` ([crate graph](README.md#5-crate-graph-and-dependency-rules)). The VLM adapters live here, not in `vision`, because they are HTTP clients over `integrations`; `vision` stays free of networking.
 
-**Where it departs from the project skills.** The `rust-workers` skill's loop (`loop.md`) is the model for `lifecycle` and `job`, with the domain's real types instead of its sketches, `max_runtime_exceeded` as a proposed `JobErrorCode` (section 16), and a progress sink that cancels the job on `409 lease_lost`. The skill calls the VLM sidecar with raw `reqwest`; here the `integrations` clients do, and the shared client is built with a 600 s read gap instead of `integrations`' 60 s default, because a non-streamed VLM call can wait more than a minute for its response headers (the skill's rule: no short client-wide read timeout).
+**HTTP timeouts.** The process has one `reqwest::Client`, built by `integrations::http::client` with a 600 s read timeout instead of its 60 s default ([integrations 4](integrations.md#4-shared-http-client-retries-pacing-sse)). The read timeout also covers the wait for the response headers, and a VLM call isn't streamed: the server sends nothing until the answer is complete. Each call sets its own total deadline, shorter than 600 s, and that deadline is what ends it: 240 s for a VLM call, 300 s for a hosted LLM call, `wait_s + 10` = 35 s for the claim, 30 s for an image, 10 s for `events` and `complete`, 5 s for the heartbeat.
+
+**Where it departs from the project skills.** The `rust-workers` skill's loop (`loop.md`) is the model for `lifecycle` and `job`, with the domain's real types instead of its sketches. The skill follows this document on the `integrations` clients, the 600 s read timeout, the progress sink that cancels a job on `409 lease_lost`, the settled job error codes and the retry rules of section 6. Two differences remain. The skill backs off after a `204` that comes back in under half of `wait_s`; the claim loop here claims again at once, because the API stops accepting connections when it shuts down (section 5, with the probe). And the skill gives an image fetch 20 s; `HttpWorkerApi::image` gives it 30 s.
 
 ---
 
@@ -115,8 +117,9 @@ image.workspace = true
 bins/worker/src/
 ├─ main.rs               tracing, CLI, the shared HTTP client, build_model for --caps, run
 ├─ config.rs             Cli and its flattened groups, Caps, Timings
-├─ api.rs                WorkerApi trait, HttpWorkerApi, JobLease, CallError, decode_claim
-├─ lifecycle.rs          Backoff, Running registry, Worker<A>: heartbeat, claim loop, drain; run_until_sigterm
+├─ api.rs                WorkerApi trait, HttpWorkerApi, JobLease, CallError, classify_body, decode_claim
+├─ api/tests.rs          classify_body against contracts 2's error bodies
+├─ lifecycle.rs          Backoff, retry_delay, Running registry, Worker<A>: heartbeat, claim loop, drain; run_until_sigterm, run_until
 ├─ lifecycle/tests.rs    the loop on paused time
 ├─ job.rs                JobRunner, run_job, complete retries, image fetch, ApiProgress, job_error
 ├─ vlm.rs                VlmAdapter<B> (VisionModel): analyse, verify, read_guided_check, call_validated
@@ -305,7 +308,7 @@ pub struct Timings {
 |---|---|---|---|
 | `WORKER_ID` | | all | Names the card: `rig-3070-perception-1`, `rig-5070ti-vlm-1`, `rig-9070xt-vlm-1`, `cp-fallback-1`. Sent as `worker_id` everywhere |
 | `API_BASE_URL`, `WORKER_TOKEN` | | all | The control plane and the bearer token |
-| `DRAIN_SECONDS` | 20 | all | SIGTERM drain bound; below the container's stop timeout |
+| `DRAIN_SECONDS` | 20 | all | SIGTERM drain bound, and so the bound of the whole shutdown (section 5); keep `stop_grace_period` at least 10 s above it |
 | `CPU_PERMITS` | 2 | all | Blocking-pool permits for decode, resize, pre-processing |
 | `MODEL_MANIFEST` | `/models/manifest.toml` | perception, fallback | The manifest; the fallback reads its label lists |
 | `ORT_EP`, `ORT_DEVICE_ID`, `ORT_DYLIB_PATH`, `ORT_INTRA_THREADS` | `cuda`, 0, —, 2 | perception | Section 11 |
@@ -490,6 +493,8 @@ impl<A: WorkerApi> Worker<A> {
 
     /// Every 10 s until `stop`: list the running jobs, cancel what the broker says to cancel.
     /// `Delay` sends one catch-up beat after a slow call instead of a burst of stale ones.
+    /// `stop` also drops a call in flight, so the loop ends at once. A failed beat is logged,
+    /// never retried early: the next one is 10 s away, and the broker waits 30 s.
     pub async fn heartbeat_loop(&self, stop: CancellationToken) {
         let mut every = tokio::time::interval(self.timings.heartbeat_every);
         every.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -506,9 +511,13 @@ impl<A: WorkerApi> Worker<A> {
                 current_jobs: self.running.current_jobs(),
                 versions: self.versions(),
             };
-            match tokio::time::timeout(self.timings.heartbeat_timeout, self.api.heartbeat(&hb))
-                .await
-            {
+            let call =
+                tokio::time::timeout(self.timings.heartbeat_timeout, self.api.heartbeat(&hb));
+            let answer = tokio::select! {
+                () = stop.cancelled() => return,
+                answer = call => answer,
+            };
+            match answer {
                 Ok(Ok(resp)) => self.running.cancel(&resp.cancel_job_ids),
                 Ok(Err(e)) => tracing::warn!(error = %e, "heartbeat failed"),
                 Err(_) => tracing::warn!("heartbeat timed out"),
@@ -548,7 +557,7 @@ impl<A: WorkerApi> Worker<A> {
                 Ok(None) => backoff.reset(),
                 Err(e) => {
                     drop(slot);
-                    let wait = backoff.next_delay();
+                    let wait = retry_delay(&e, &mut backoff);
                     tracing::warn!(error = %e, wait_ms = wait.as_millis(), "claim failed");
                     tokio::select! {
                         () = shutdown.cancelled() => return,
@@ -584,7 +593,9 @@ impl<A: WorkerApi> Worker<A> {
     }
 
     /// After `shutdown`: wait up to the drain bound for running jobs, then abandon the rest
-    /// (nothing is sent; the broker requeues them 30 s after the last heartbeat).
+    /// (nothing is sent; the broker requeues them 30 s after the last heartbeat). Every await
+    /// in a job task, a `complete` call in flight included, selects on the job's token, so
+    /// the second wait ends at once: the drain never outlasts its bound.
     pub async fn drain(&self) {
         self.tracker.close();
         if tokio::time::timeout(self.timings.drain, self.tracker.wait())
@@ -605,11 +616,28 @@ impl<A: WorkerApi> Worker<A> {
 }
 ```
 ```rust
-/// The process: heartbeat and claims until SIGTERM, then stop claiming, drain, stop
-/// heartbeating. The heartbeat outlives the claim loop so draining jobs keep their leases.
+/// The process: heartbeat and claims until SIGTERM or Ctrl-C, then [`run_until`]'s shutdown.
 pub async fn run_until_sigterm<A: WorkerApi>(worker: Arc<Worker<A>>) -> std::io::Result<()> {
     use tokio::signal::unix::{SignalKind, signal};
     let mut sigterm = signal(SignalKind::terminate())?;
+    let stopped = async move {
+        tokio::select! {
+            _ = sigterm.recv() => Ok(()),
+            r = tokio::signal::ctrl_c() => r,
+        }
+    };
+    run_until(worker, stopped).await
+}
+
+/// Heartbeat and claims until `stopped`, then stop claiming, drain, stop heartbeating. The
+/// heartbeat outlives the claim loop so draining jobs keep their leases. From `stopped` to the
+/// return is at most the drain bound: the claim loop and the heartbeat drop a call in flight,
+/// and the drain cuts every job at its bound.
+pub async fn run_until<A, S>(worker: Arc<Worker<A>>, stopped: S) -> std::io::Result<()>
+where
+    A: WorkerApi,
+    S: Future<Output = std::io::Result<()>>,
+{
     let (shutdown, stop_heartbeat) = (CancellationToken::new(), CancellationToken::new());
     let heartbeat = tokio::spawn({
         let (worker, stop) = (Arc::clone(&worker), stop_heartbeat.clone());
@@ -619,10 +647,7 @@ pub async fn run_until_sigterm<A: WorkerApi>(worker: Arc<Worker<A>>) -> std::io:
         let (worker, shutdown) = (Arc::clone(&worker), shutdown.clone());
         async move { worker.claim_loop(shutdown).await }
     });
-    tokio::select! {
-        _ = sigterm.recv() => {}
-        r = tokio::signal::ctrl_c() => r?,
-    }
+    stopped.await?;
     tracing::info!("shutting down: no new claims");
     shutdown.cancel();
     if let Err(e) = claims.await {
@@ -647,7 +672,16 @@ pub struct Backoff {
     base: Duration,
     cap: Duration,
 }
+
+/// The wait before retrying after `e`: the backoff's next delay, or the API's `retry_after_s`
+/// when it asked for longer ([contracts 2]).
+pub fn retry_delay(e: &CallError, backoff: &mut Backoff) -> Duration {
+    let delay = backoff.next_delay();
+    e.retry_after().map_or(delay, |after| delay.max(after))
+}
 ```
+
+**Shutdown time.** From SIGTERM to exit takes at most `DRAIN_SECONDS`, 20 s. The claim loop returns at once and drops an open long poll. Running jobs get the 20 s. At the bound, `abandon` cancels every job's token, and every await in a job task selects on that token: the model, an image fetch, a `complete` call in flight and the backoff between `complete` calls. So the tasks end at once. Then the heartbeat stops, and its `stop` token drops a call in flight too. What is left when `main` returns is a decode or resize already started on the blocking pool, which the runtime waits for, and an ONNX Runtime run, which `TerminateOnDrop` has already told to stop. Compose's `stop_grace_period: 30s` leaves 10 s for these and for Docker (section 12). Without the two cuts, a `complete` in flight at the bound (10 s deadline) and then a heartbeat in flight (5 s deadline) would run on after the drain: 20 + 10 + 5 = 35 s, past the grace, and Docker would SIGKILL the worker. A `complete` cut at the bound is either committed by the API or not. If not, the job is requeued 30 s after the last heartbeat, like any abandoned job, and the requeue is free for the job's first two. `the_whole_shutdown_ends_within_the_drain_bound` shows exactly 20 s on paused time.
 
 ---
 
@@ -666,20 +700,51 @@ pub struct JobLease {
     pub lease_token: LeaseToken,
 }
 
-/// A failed call.
+/// A failed call, classified by the error body's `retryable` ([contracts 2]): the server's
+/// word on whether the same request may succeed later.
 #[derive(Debug, thiserror::Error)]
 pub enum CallError {
-    /// `409 lease_lost`: the job was requeued, expired or cancelled. Drop it silently.
+    /// `409` with `code: "lease_lost"`: the job was requeued, expired or cancelled. Drop it
+    /// silently.
     #[error("lease lost")]
     LeaseLost,
-    /// Connect error, timeout or 5xx: retry with backoff.
-    #[error("worker API unavailable: {0}")]
-    Unavailable(String),
-    /// Any other 4xx: a bug on one side; the same call would fail again.
+    /// The same call may succeed later: an error body with `retryable: true`, a `429` or `5xx`
+    /// without an error body (a proxy's own answer), a connect error, a timeout, or a body
+    /// that couldn't be read. Retry with backoff, and not before `retry_after` when the body
+    /// had `retry_after_s`.
+    #[error("worker API unavailable: {reason}")]
+    Unavailable {
+        /// The status and body, or the transport error.
+        reason: String,
+        /// The body's `retry_after_s`.
+        retry_after: Option<Duration>,
+    },
+    /// An error body with `retryable: false` (`500 internal` among them), or a `4xx` without
+    /// one: the same call would fail again.
     #[error("worker API rejected the call: {0}")]
     Rejected(String),
 }
+```
+```rust
+impl CallError {
+    /// `Unavailable` without a `retry_after`.
+    pub fn unavailable(reason: impl Into<String>) -> Self {
+        Self::Unavailable {
+            reason: reason.into(),
+            retry_after: None,
+        }
+    }
 
+    /// The wait the API asked for, if any.
+    pub const fn retry_after(&self) -> Option<Duration> {
+        match self {
+            Self::Unavailable { retry_after, .. } => *retry_after,
+            Self::LeaseLost | Self::Rejected(_) => None,
+        }
+    }
+}
+```
+```rust
 /// The API boundary. Methods return `impl Future + Send`: the trait is used generically
 /// (`Worker<A: WorkerApi>`), never as `dyn`, so no boxing is needed, and the explicit `Send`
 /// lets job tasks that await these futures be spawned on the multi-thread runtime. Under
@@ -716,15 +781,62 @@ pub trait WorkerApi: Send + Sync + 'static {
     ) -> impl Future<Output = Result<Bytes, CallError>> + Send;
 }
 
-/// The reqwest implementation. One `Client` per process (clones share its pool), with no
-/// client-wide read timeout: each call sets its own deadline, so the claim long poll and large
-/// image downloads aren't cut by a read gap.
+/// The reqwest implementation. One `Client` per process (clones share its pool), whose 600 s
+/// read gap (`main`) is longer than every deadline here: each call sets its own, so the claim
+/// long poll and large image downloads end at that deadline, never at a read gap.
 #[derive(Debug, Clone)]
 pub struct HttpWorkerApi {
     http: Client,
     base: String,
     token: SecretString,
     wait_s: u32,
+}
+
+/// The fields of [contracts 2]'s error body the worker reads; serde ignores the others.
+#[derive(Deserialize)]
+struct ErrorBody {
+    error: ErrorDetail,
+}
+
+#[derive(Deserialize)]
+struct ErrorDetail {
+    code: String,
+    retryable: bool,
+    #[serde(default)]
+    retry_after_s: Option<u32>,
+}
+
+/// Reads a non-2xx response. Only the body says `lease_lost`, `retryable` and
+/// `retry_after_s`, so it is read before anything consumes the response; a body that can't be
+/// read is a transport error.
+async fn classify(response: Response) -> CallError {
+    let status = response.status();
+    match response.text().await {
+        Ok(body) => classify_body(status, &body),
+        Err(e) => transport(&e),
+    }
+}
+
+/// Classifies an error answer by its body's `retryable`, the server's word ([contracts 2]).
+/// `lease_lost` is the one code with its own meaning. Without an error body (a proxy's `502`),
+/// a `429` or `5xx` is worth another try and anything else is not.
+pub fn classify_body(status: StatusCode, body: &str) -> CallError {
+    let what = format!("{status}: {body}");
+    match serde_json::from_str::<ErrorBody>(body)
+        .ok()
+        .map(|b| b.error)
+    {
+        Some(e) if status == StatusCode::CONFLICT && e.code == "lease_lost" => CallError::LeaseLost,
+        Some(e) if e.retryable => CallError::Unavailable {
+            reason: what,
+            retry_after: e.retry_after_s.map(|s| Duration::from_secs(u64::from(s))),
+        },
+        None if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS => {
+            CallError::unavailable(what)
+        }
+        // `retryable: false` (`500 internal` among them), or a 4xx without an error body.
+        Some(_) | None => CallError::Rejected(what),
+    }
 }
 
 /// Decodes a claimed job. `ClaimedJob::decode` reads `v`, `job_id` and `lease_token` first and
@@ -753,10 +865,22 @@ pub fn decode_claim(body: &[u8]) -> Result<ClaimedJob, CallError> {
 | A slot before each claim; `slots` the same in claim and heartbeat | `Worker::claim_loop` |
 | Claim long poll `wait_s` 25 with a request timeout of `wait_s + 10` s | `HttpWorkerApi::claim` |
 | `X-Lease-Token` on events, complete and image calls | `HttpWorkerApi::leased` |
-| A `409` body's `error.code` decides `lease_lost`, read before anything consumes the response | `classify` |
+| Every error body is read before anything consumes the response: its `code` decides `lease_lost`, its `retryable` and `retry_after_s` decide the retry (table below) | `classify`, `classify_body` |
 | Decode `v`, `job_id`, `lease_token` first; another `v` → `failed`, `unsupported_version`, not retryable | `ClaimedJob::decode`, `decode_claim`, `run_job` |
-| Images only through `GET /internal/jobs/{id}/images/{image_id}`, each retried twice after a transport error | `fetch_images` |
-| `complete` with `model_versions` and `timings_ms`, retried with backoff until `max_runtime_s`; a repeat is `204` | `complete_with_retry` |
+| Images only through `GET /internal/jobs/{id}/images/{image_id}`, each retried twice after an `Unavailable` answer | `fetch_images` |
+| `complete` with `model_versions` and `timings_ms`, retried with backoff (at least `retry_after_s`) until `max_runtime_s`; a repeat is `204`; the job's token cuts it, a call in flight included | `complete_with_retry` |
+
+**What an answer means** ([contracts 2](../architecture/contracts.md#2-errors)). Every error body has `retryable`, the server's word on whether the same request may succeed later, so the worker follows it whatever the status. Only `lease_lost` has a meaning of its own. A status alone decides only when there is no error body, as with Caddy's own `502` while the API is down.
+
+| Answer | `CallError` | Heartbeat | Claim | Image fetch | `complete` |
+|---|---|---|---|---|---|
+| `409` with `code: "lease_lost"` | `LeaseLost` | — | — | drops the job | drops the job; nothing more is sent |
+| An error body with `retryable: true` (`429 rate_limited`, `503 upstream_unavailable`) | `Unavailable`, with `retry_after_s` | logged; the next beat is 10 s away | backs off, at least `retry_after_s` | retried twice, at least `retry_after_s` apart | retried with backoff, at least `retry_after_s`, until `max_runtime_s` |
+| A `429` or `5xx` without an error body, a connect error, a timeout, a body that couldn't be read | `Unavailable` | logged | backs off | retried twice | retried with backoff |
+| An error body with `retryable: false` (`500 internal`, `429 budget_exceeded`, `400 invalid_request`, `404 not_found`), or a `4xx` without one | `Rejected` | logged | backs off like any error | fails the job with `image_fetch_failed` | logged, not retried; the job leaves the heartbeat, so its lease expires and the broker requeues it |
+| `204` on a repeat `complete` | success | | | | done |
+
+The backoffs are 1 s doubling to 30 s for the claim, 0.5 s doubling to 8 s for `complete` and 0.25 s doubling to 2 s for an image, each delay drawn from `[d/2, d]`; `retry_delay` waits the longer of that delay and `retry_after_s`.
 
 ```rust
 /// Runs jobs on the process's model and labels results with its versions.
@@ -794,7 +918,8 @@ pub fn job_images(spec: &JobSpec) -> Vec<JobImage> {
 
 /// The job task's body: version check, the model under the soft deadline (15 s before
 /// `max_runtime_s`, on the monotonic clock), then `complete` with retries. A cancelled token
-/// (`cancel_job_ids`, `lease_lost`, or the drain running out) returns without sending anything.
+/// (`cancel_job_ids`, `lease_lost`, or the drain running out) returns at once without sending
+/// anything more, whichever of these it is in.
 pub async fn run_job<A: WorkerApi>(
     api: &Arc<A>,
     runner: &JobRunner,
@@ -865,7 +990,10 @@ pub async fn run_job<A: WorkerApi>(
 }
 
 /// Repeating `complete` with the same lease token is safe: a job that already completed gets
-/// `204`. Stops at the hard deadline, since the lease can't outlive `max_runtime`.
+/// `204`. Retries an `Unavailable` answer with backoff, not before its `retry_after_s`; stops at
+/// the hard deadline, since the lease can't outlive `max_runtime`. The job's token cuts a call
+/// in flight too, so a drain that runs out isn't held up by a slow `complete`: if the API
+/// didn't commit it, the job is requeued 30 s after the last heartbeat, like any abandoned job.
 async fn complete_with_retry<A: WorkerApi>(
     api: &A,
     lease: &JobLease,
@@ -875,23 +1003,26 @@ async fn complete_with_retry<A: WorkerApi>(
 ) {
     let mut backoff = Backoff::new(Duration::from_millis(500), Duration::from_secs(8));
     loop {
-        match api.complete(lease, body).await {
+        let answer = tokio::select! {
+            () = cancel.cancelled() => return,
+            answer = api.complete(lease, body) => answer,
+        };
+        let e = match answer {
             Ok(()) | Err(CallError::LeaseLost) => return,
             Err(CallError::Rejected(e)) => {
                 tracing::error!(error = %e, job_id = %lease.job_id, "complete rejected");
                 return;
             }
-            Err(CallError::Unavailable(e)) => {
-                let wait = backoff.next_delay();
-                if Instant::now() + wait >= until {
-                    tracing::warn!(error = %e, job_id = %lease.job_id, "giving up on complete");
-                    return;
-                }
-                tokio::select! {
-                    () = cancel.cancelled() => return,
-                    () = tokio::time::sleep(wait) => {}
-                }
-            }
+            Err(e @ CallError::Unavailable { .. }) => e,
+        };
+        let wait = retry_delay(&e, &mut backoff);
+        if Instant::now() + wait >= until {
+            tracing::warn!(error = %e, job_id = %lease.job_id, "giving up on complete");
+            return;
+        }
+        tokio::select! {
+            () = cancel.cancelled() => return,
+            () = tokio::time::sleep(wait) => {}
         }
     }
 }
@@ -1039,7 +1170,7 @@ Three things end a job early, all through the job's `CancellationToken` (a child
 | `cancel_job_ids` in a heartbeat response (a new run, a deleted scan) | `Running::cancel` | nothing |
 | `409 lease_lost` on an `events` call | `ApiProgress::send` cancels the token | nothing |
 | `409 lease_lost` on an image fetch | `execute` returns `LeaseLost` | nothing |
-| The drain runs out at SIGTERM | `abandon.cancel()` | nothing; the broker requeues after the heartbeat goes stale |
+| The drain runs out at SIGTERM | `abandon.cancel()` | nothing more, and a `complete` in flight is dropped; the broker requeues after the heartbeat goes stale |
 | The soft deadline (`max_runtime_s − 15 s`) | `timeout_at` around the model | `failed`, `max_runtime_exceeded`, retryable |
 
 `run_job` `select!`s on the token and the model's future; when the token fires it returns, and **dropping the model's future is the cancellation** ([domain 9](domain.md#models)). Each adapter makes that drop effective: the perception pipeline's `TerminateOnDrop` guard terminates a running ONNX Runtime batch ([vision 6](vision.md#6-perception)); dropping a `reqwest` future closes the VLM server's connection, and vLLM aborts a request whose client disconnected (*unverified* for llama.cpp, which finishes the slot).
@@ -2064,7 +2195,7 @@ Which server runs on the 9070 XT is open ([contracts 12](../architecture/contrac
 x-worker: &worker
   image: ghcr.io/pdm/worker@sha256:<digest>
   restart: unless-stopped
-  stop_grace_period: 30s            # above DRAIN_SECONDS (20)
+  stop_grace_period: 30s            # DRAIN_SECONDS (20), the shutdown's bound, + 10 s (section 5)
   environment: &worker-env
     API_BASE_URL: https://api.example.org
     WORKER_TOKEN_FILE: /run/secrets/worker_token
@@ -2166,7 +2297,7 @@ volumes: { models: {}, hf-cache: {} }
 
 | Task | Lives | Token |
 |---|---|---|
-| Heartbeat | until after the drain | `stop_heartbeat` (not a child of `shutdown`, so draining jobs keep their leases) |
+| Heartbeat | until after the drain | `stop_heartbeat` (not a child of `shutdown`, so draining jobs keep their leases); it also drops a call in flight |
 | Claim loop | until SIGTERM | `shutdown`; `biased` `select!` drops an open long poll |
 | One task per job, on the `TaskTracker` | until `complete` or cancellation | a child of `abandon` |
 | CPU work (decode, resize, JPEG, pre-processing) | one blocking task per batch | an `OwnedSemaphorePermit` moved into the closure |
@@ -2237,6 +2368,12 @@ The message is the error and its `source()` chain, `": "`-joined ([rust-errors](
 | `a_hung_model_is_stopped_before_max_runtime` | `max_runtime_exceeded` at 105 s for `max_runtime_s: 120` |
 | `shutdown_abandons_jobs_after_the_drain_bound` | The drain waits exactly 20 s, sends nothing, frees the slot |
 | `claim_errors_back_off_instead_of_spinning` | 6–8 claims in 60 s against an unreachable API |
+| `claim_errors_wait_for_retry_after` | Claims at 0, 20 and 40 s after errors with `retry_after_s: 20` |
+| `complete_waits_for_retry_after` | After a `503` with `retry_after_s: 7`, the next `complete` goes out 7 s later, not after the 0.25–0.5 s backoff |
+| `a_complete_in_flight_does_not_hold_up_the_drain` | A `complete` that never answers is dropped at the 20 s bound, and the slot is freed |
+| `stopping_the_heartbeat_drops_a_call_in_flight` | The heartbeat loop ends at once, not after the call's 5 s |
+| `the_whole_shutdown_ends_within_the_drain_bound` | `run_until` with a hung `complete` and a hung heartbeat returns exactly 20 s after the signal |
+| `classify_body` tests (5) | `lease_lost` only from a `409` with that code; `retryable: true` → `Unavailable` with `retry_after_s`; `retryable: false` → `Rejected` whatever the status (`500 internal`, `429 budget_exceeded`); without an error body only `429` and `5xx` are retried |
 | `a_cut_off_answer_is_retried_once_then_succeeds` | `finish_reason: length`, then a valid answer; `vlm_indicators` skipped with `all_measured` |
 | `two_invalid_answers_fail_with_a_retryable_model_error` | Unparseable, then a refusal → `InvalidOutput`, retryable |
 | `images_are_prepared_on_the_cell_grid` | A 64 × 48 image becomes 64 × 32 on the 32-pixel grid |

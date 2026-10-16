@@ -1,6 +1,6 @@
 # PDM Backend Flows
 
-> **Status:** Draft v0.2.1, 2026-10-16. v0.2.1: the scan stream ends on a duplicate flagged `rests`, the global body cap is 20 MiB + 128 KiB, and the `api` container's grace period is 190 s. v0.2: the diagrams follow the cross-crate fixes (one wake-up path for the claim long poll, one `fail_scan` per final failure, the sweep as the only question continuation, late events dropped, deletes through one `DeleteQueue`, the account tombstone, SoilGrids retry times, guided stage events, the plan step's release after 3 lost compare-and-sets), and section 20 marks each gap fixed and where. v0.1: sequence diagrams and state machines for every server-side flow, from a request's layers to a scan's steps, a job's lease, a chat turn, deletion, the scheduler and start-up. Every name is a type, trait or function from the crate documents and the compiled scratch workspace.
+> **Status:** Draft v0.2.2, 2026-10-16. v0.2.2: the scan stream closes on a 15-second re-check (rest without an event, a deleted scan), a stream can close before a step's last events (the app refetches on close), image bodies end on shutdown, and the worker's shutdown drops a `complete` or heartbeat in flight, so it ends within `DRAIN_SECONDS`. v0.2.1: the scan stream ends on a duplicate flagged `rests`, the global body cap is 20 MiB + 128 KiB, and the `api` container's grace period is 190 s. v0.2: the diagrams follow the cross-crate fixes (one wake-up path for the claim long poll, one `fail_scan` per final failure, the sweep as the only question continuation, late events dropped, deletes through one `DeleteQueue`, the account tombstone, SoilGrids retry times, guided stage events, the plan step's release after 3 lost compare-and-sets), and section 20 marks each gap fixed and where. v0.1: sequence diagrams and state machines for every server-side flow, from a request's layers to a scan's steps, a job's lease, a chat turn, deletion, the scheduler and start-up. Every name is a type, trait or function from the crate documents and the compiled scratch workspace.
 
 Companion to the [backend architecture](README.md) and the server-side half of the [frontend flows](../frontend/flows.md). Every request, event and job here is defined in the [data contracts](../architecture/contracts.md). The system-level flows are in [architecture 8](../architecture/README.md#8-main-flows). This document shows how the crates work together at run time: which handler, entry point, repository method and adapter each arrow is.
 
@@ -523,7 +523,7 @@ sequenceDiagram
     else live
         Hub-->>Stream: Published seq 28
         Stream-->>App: id 28, event, data
-        Note over Stream: seq at or below last is dropped (one flagged rests ends the stream), a skip or Lagged goes back to the replay
+        Note over Stream: seq at or below last is dropped (one flagged rests ends the stream), a skip, Lagged or 15 s without an event goes back to the replay
         Hub-->>Stream: Published seq 33 rests true
         Stream-->>App: send, then close
     end
@@ -542,7 +542,8 @@ sequenceDiagram
 
 - **`seq` comes from the database,** not the actor: `append_event` increments `scan.last_event_seq` and creates `scan_event:[scan, seq]` in one transaction, so a writer that retired and came back continues the sequence ([pipeline 17](pipeline.md#17-open-questions-and-decisions), question 22).
 - **Resting points.** The writer reads `stream_state` only after the last event of a call that may end a resting point (`plan_ready`, `plan_superseded`, `diagnosis`, `question_resolved`, `guided_check_done`, `failed`). At rest means `planned` or `failed`, no question open or `answering`, no guided check `analysing`, and no step claim held ([contracts 4, when the stream closes](../architecture/contracts.md#when-the-stream-closes)).
-- **State before replay.** The stream reads the state, then replays. The writer stores an event before reading the state it leads to, so a scan seen at rest has every event up to its resting point in the replay that follows. A resting event stored after the state read reaches the stream twice, in the replay and live; the live copy is a duplicate flagged `rests`, and it ends the stream.
+- **State before replay.** The stream reads the state, then replays, so every event stored before the read is in the replay. The replay can still miss a resting point's last events: a step commits its state, then emits ([pipeline 10](pipeline.md#10-events)), so a stream that reads between the two sees the scan at rest and closes without them. The app refetches `GET /scans/{id}` on every close ([frontend 10](../frontend/README.md#10-live-streams)), which holds what the step committed. A resting event stored after the state read reaches the stream twice, in the replay and live; the live copy is a duplicate flagged `rests`, and it ends the stream.
+- **Rest without an event.** A live stream that gets no event for 15 s (`REST_CHECK`) reads the state and replays again. A resting point reached without an event (a step claim released with nothing to say) then closes it, and so does a scan being deleted: `stream_state` answers `NotFound`.
 - **A slow subscriber** sees `RecvError::Lagged` on the 256-slot broadcast and replays from the database; it never sees a gap.
 - **Pushes** for `plan_ready`, `plan_superseded` (not `chat_revision`), `question` and `failed` go to the scan's creator while still a member, from the writer, because it sees every event ([contracts 9, push](../architecture/contracts.md#push-notifications)).
 
@@ -643,10 +644,10 @@ sequenceDiagram
     CL-->>Main: claim loop ends
     Main->>Jobs: Worker::drain, close and wait up to DRAIN_SECONDS (20 s)
     alt jobs still running at the bound
-        Main->>Jobs: abandon.cancel, nothing is sent
+        Main->>Jobs: abandon.cancel, every job task ends at once (a complete in flight is dropped), nothing more is sent
     end
-    Main->>HB: stop_heartbeat.cancel (heartbeats kept leases alive during the drain)
-    Note over Main: abandoned jobs are requeued 30 s after the last heartbeat
+    Main->>HB: stop_heartbeat.cancel, drops a call in flight (heartbeats kept leases alive during the drain)
+    Note over Main: the whole shutdown takes at most DRAIN_SECONDS, and abandoned jobs are requeued 30 s after the last heartbeat
 ```
 
 Contracts open question 20 is answered by [worker 16](worker.md#16-decisions-on-the-contracts-open-questions) and [store 21](store.md#21-decisions-on-open-questions): no hand-back call, the stale-heartbeat requeue takes the jobs back, and the first two requeues are free. A job being cancelled drops the model's future; the perception pipeline's `TerminateOnDrop` guard stops a running ONNX Runtime batch and a dropped `reqwest` future closes the VLM server's connection ([worker 7](worker.md#7-cancellation)).
@@ -1210,7 +1211,7 @@ sequenceDiagram
     Main->>Sched: scheduler::start (eight loops on the tracker)
     Main->>Main: spawn signal (Ctrl-C or SIGTERM cancels the token)
     Main->>Serve: bind, serve with_graceful_shutdown(token.cancelled_owned)
-    Note over Serve: SSE streams end through take_until, the claim long poll answers 204
+    Note over Serve: SSE streams and image bodies end through take_until, the claim long poll answers 204
     Serve-->>Main: last connection closed
     Main->>Main: tasks.close, wait up to SHUTDOWN_DRAIN_S (30 s), and DeleteQueue::drain up to max(SHUTDOWN_DRAIN_S, 120 s)
     Note over Main: writer actors drain and stop, scheduler loops end, follow-ups and chat turns finish, cascades run on (cut off at the deadline, resumed on start), pending RustFS deletes get at least one full 120 s attempt

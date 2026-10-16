@@ -1,8 +1,8 @@
 # PDM Backend: `api` binary
 
-> **Status:** Draft v0.5, 2026-10-16. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
+> **Status:** Draft v0.6, 2026-10-16. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
 
-Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports and types `api` wires, and [domain-types](domain-types.md) for every wire shape. Every listing below is copied from the compiled source of `bins/api` by the docgen tool. `cargo check -p api`, `cargo clippy -p api --all-targets` (no warning in `api`) and `cargo test -p api` pass: 28 tests, among them handler tests that drive the real router with `tower::ServiceExt::oneshot`. `cargo check --workspace` passes, the binary links, and `api openapi` writes the document.
+Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports and types `api` wires, and [domain-types](domain-types.md) for every wire shape. Every listing below is copied from the compiled source of `bins/api` by the docgen tool. `cargo check -p api`, `cargo clippy -p api --all-targets` (no warning in `api`) and `cargo test -p api` pass: 33 tests, among them handler tests that drive the real router with `tower::ServiceExt::oneshot`. `cargo check --workspace` passes, the binary links, and `api openapi` writes the document.
 
 ## Contents
 
@@ -50,15 +50,7 @@ Companion to the [backend architecture](README.md), the [`domain` crate](domain.
 
 **Who calls it.** The app (REST and two SSE streams), the workers (the worker API), Clerk through Svix (the webhook), and the operator (`/healthz`, `/status`, `api openapi`).
 
-**Where it departs from the project skills.** The documents win; these are the deliberate differences with `.claude/skills/rust-axum-api` and its siblings:
-
-| Topic | Skill | Here | Why |
-|---|---|---|---|
-| Auth | A `route_layer` middleware per group puts the user in the extensions | Extractors (`AuthUser`, `Access<R, T>`, `ConvAccess<R, T>`, `WorkerAuth`, `JobLease`) | The proof a repository call needs (`Membership<R>`) comes out of the extractor, typed by the role the handler names; a middleware can't hand a typed proof to the handler |
-| Malformed path ids | `400 invalid_request` (error-responses.md) | `404 not_found` | Section 22, question 14 |
-| Request timeouts | `500 internal` | `503 upstream_unavailable`, `upstream: "api"`, retryable | Section 22, question 17 |
-| Writer lifetime | Retire only with no SSE subscriber | The actor, the broadcast channel and the plan lock retire independently | Section 13; question 22 |
-| State | Raw `Surreal<Any>`, `aws_sdk_s3::Client` in `AppState` | Only `Arc<dyn Port>`s | The crate graph keeps SQL in `store` and S3 in `blob` |
+**The project skills.** `.claude/skills/rust-axum-api` and its siblings follow this document. Access checks are extractors (`AuthUser`, `Access<R, T>`, `ConvAccess<R, T>`, `WorkerAuth`, `JobLease`), so the `Membership<R>` proof a repository call needs comes out of the extractor, typed by the role the handler names. A malformed path id is `404 not_found` (section 22, question 14). A request timeout is `503 upstream_unavailable` with `upstream: "api"`, retryable (question 17). The writer, the broadcast channel and the plan lock retire independently (section 13; question 22). `AppState` holds only `Arc<dyn Port>`s, so SQL stays in `store` and S3 in `blob`. Where a skill and this document disagree, this document wins.
 
 ---
 
@@ -261,16 +253,18 @@ fn init_tracing(json: bool) {
     }
 }
 
-/// Cancels the token on Ctrl-C or SIGTERM (Docker's stop signal).
+/// Cancels the token on Ctrl-C or SIGTERM (Docker's stop signal). A handler that fails to
+/// install is logged and waits forever, so it can't end the process the moment it starts; the
+/// other signal, or Docker's SIGKILL, still stops it.
 async fn signal(shutdown: CancellationToken) {
-    let ctrl_c = async {
-        let _ = tokio::signal::ctrl_c().await;
-    };
+    let ctrl_c = until_signal("ctrl_c", tokio::signal::ctrl_c());
     #[cfg(unix)]
     let term = async {
-        if let Ok(mut s) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-        {
-            s.recv().await;
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut s) => {
+                s.recv().await;
+            }
+            Err(e) => until_signal("sigterm", std::future::ready(Err(e))).await,
         }
     };
     #[cfg(not(unix))]
@@ -281,6 +275,14 @@ async fn signal(shutdown: CancellationToken) {
     }
     tracing::info!("shutdown signal");
     shutdown.cancel();
+}
+
+/// Waits for a signal. If its handler can't be installed, logs that and never returns.
+async fn until_signal(name: &str, signal: impl Future<Output = std::io::Result<()>>) {
+    if let Err(error) = signal.await {
+        tracing::error!(signal = name, %error, "signal handler not installed");
+        std::future::pending::<()>().await;
+    }
 }
 ```
 
@@ -302,7 +304,7 @@ async fn signal(shutdown: CancellationToken) {
 
 `seed-upload` has already finished when `api` starts (`depends_on` with `service_completed_successfully`, [architecture 12](../architecture/README.md#12-deployment)), so the migration that references the species photos and the photo index see them.
 
-**Shutdown.** One `CancellationToken` for the process, cancelled on Ctrl-C or SIGTERM. `axum::serve(..).with_graceful_shutdown(token.cancelled_owned())` stops accepting and then waits for every open connection; it returns only when the last one closes. So every long response ends on the token: the scan stream and the chat stream through `.take_until(token.cancelled_owned())`, the claim long poll through its `select!` (it answers `204` and the worker reconnects). Without that, one open SSE stream keeps the process up forever (✓ verified in the HTTP research probe: `completed = false` without `take_until`, true with it). `cancelled_owned()` returns an owned, `'static` future, which is what `with_graceful_shutdown` and `take_until` need.
+**Shutdown.** One `CancellationToken` for the process, cancelled on Ctrl-C or SIGTERM. A handler that fails to install is logged and waits forever (`until_signal`), so it can't shut the API down the moment it starts (✓ `a_signal_handler_that_fails_to_install_never_fires`). `axum::serve(..).with_graceful_shutdown(token.cancelled_owned())` stops accepting and then waits for every open connection; it returns only when the last one closes. So every long response ends on the token: the scan stream and the chat stream through `.take_until(token.cancelled_owned())`, the claim long poll through its `select!` (it answers `204` and the worker reconnects), and image bodies through `take_until` in `media::stream_object`, since `TimeoutLayer` bounds only the response head and a slow download would otherwise hold shutdown open (the client sees a short body and fetches the image again; ✓ `an_image_body_ends_on_the_shutdown_token`). Without that, one open SSE stream keeps the process up forever (✓ verified in the HTTP research probe: `completed = false` without `take_until`, true with it). `cancelled_owned()` returns an owned, `'static` future, which is what `with_graceful_shutdown` and `take_until` need.
 
 Then `tracker.close()` and `tracker.wait()` with `SHUTDOWN_DRAIN_S` (30 s) as the deadline, and at the same time `DeleteQueue::drain` with `max(SHUTDOWN_DRAIN_S, 120 s)` as its deadline: pending `RustFS` deletes get at least one full attempt (the client's 120-second operation timeout, `blob::client::OPERATION_TIMEOUT`) even when the rest of the drain is shorter, because an interrupted delete can leak objects ([storage 4](../storage/README.md#4-writes-and-deletes)). The tracker holds the scheduler's loops (which end on the token), the writer actors (which drain and stop on the token), spawned follow-ups, and deletion cascades. Cascades don't watch the token, except an account cascade's Clerk retries, which stop on it (the tombstone resumes them); a cascade still running at the deadline is cut off with the process and resumes on the next start from `deleting_at` or the tombstone. Its object deletes belong to the delete queue, not to the cascade, so cutting the cascade off never interrupts one.
 
@@ -1064,7 +1066,8 @@ pub const SLOW_TIMEOUT: Duration = Duration::from_secs(60);
 /// Worker result bodies (perception masks and embeddings for every image).
 pub const WORKER_BODY_LIMIT: usize = 16 * 1024 * 1024;
 
-/// JSON bodies of app routes.
+/// JSON bodies of the app and claim routes. Each group sets its own limit, since a group without
+/// one gets axum's 2 MiB default.
 pub const JSON_BODY_LIMIT: usize = 1024 * 1024;
 
 /// Every route, grouped. A group's `.layer` wraps only the routes registered in it, which is why
@@ -1135,6 +1138,7 @@ pub fn routes(request_timeout: Duration) -> OpenApiRouter<SharedState> {
         .layer(timeout(SLOW_TIMEOUT));
     let claim = OpenApiRouter::new()
         .routes(routes!(internal::claim))
+        .layer(DefaultBodyLimit::max(JSON_BODY_LIMIT))
         .layer(timeout(CLAIM_TIMEOUT));
     let worker = OpenApiRouter::new()
         .routes(routes!(internal::heartbeat))
@@ -1204,7 +1208,7 @@ pub fn cors(origins: &[String]) -> CorsLayer {
 /// | `CompressionLayer` | after the error renderer has written its body; skips `text/event-stream` (frames would sit in the encoder) and images |
 /// | `render_errors` | writes every error body; everything below it, tower-http's own responses included, gets an `ErrorBody` |
 /// | `CatchPanicLayer` | inside the renderer, so a panic's `internal` body gets its `request_id` |
-/// | `RequestBodyLimitLayer` | the global byte cap; each group's `DefaultBodyLimit` is smaller and answers first |
+/// | `RequestBodyLimitLayer` | the global byte cap; each group's `DefaultBodyLimit` is no larger and answers with its own number |
 pub fn app(state: SharedState) -> Router {
     let cors = cors(&state.config.web_origins);
     let (router, api) = routes(state.config.request_timeout).split_for_parts();
@@ -3108,21 +3112,28 @@ pub async fn events(
 ```
 
 ```rust
+/// How long a live stream waits without an event before it reads the scan's state again. Some
+/// changes reach a resting point without an event (a step claim released with nothing to say),
+/// and deleting a scan emits none, so only a fresh read can close those streams.
+pub const REST_CHECK: Duration = Duration::from_secs(15);
+
 /// The stream body. It owns everything it uses (`'static`): the `Arc<AppState>`, the proof
 /// (`Copy`), the scan id and the receiver, because axum moves the body into hyper's connection
 /// task. In order:
 ///
 /// 1. subscribe to the scan's broadcast first, so an event stored during the replay is in the
 ///    replay or in the receiver, never in neither;
-/// 2. read the stream state, then replay every stored event after `last`; state first, because
-///    the writer stores an event before the state it leads to is read back, so a scan seen at
-///    rest has every event up to its resting point in the replay that follows;
+/// 2. read the stream state, then replay every stored event after `last`; state first, so every
+///    event stored before the read is replayed. A step commits its state before it emits its
+///    last events, so a stream can see the scan at rest without them and close early; the app
+///    refetches the scan on every close, which covers that gap;
 /// 3. at rest: end after the replay (a resting scan replays then closes);
 /// 4. live: drop `seq <= last`, but end on such a duplicate when it is flagged `rests`: the
 ///    resting event was stored after the state read and already went out in the replay, so
 ///    waiting for another event would keep a resting scan's stream open; a `seq` that skips
-///    ahead, or `Lagged`, goes back to 2;
-/// 5. end after an event flagged `rests`, when the channel closes, on a store error (the app
+///    ahead, or `Lagged`, goes back to 2, and so does [`REST_CHECK`] without an event;
+/// 5. end after an event flagged `rests`, when the scan is gone (being deleted: `stream_state`
+///    answers `NotFound`), when the channel closes, on a store error (the app
 ///    reconnects with `Last-Event-ID`), or on shutdown: `take_until` ends the stream when the
 ///    token fires, without which `axum::serve`'s graceful shutdown would wait on it forever.
 ///
@@ -3140,6 +3151,10 @@ pub fn scan_stream(
         'replay: loop {
             let at_rest = match state.ports.store.stream_state(scan).await {
                 Ok(s) => s.at_rest(),
+                Err(StoreError::NotFound) => {
+                    tracing::debug!(%scan, "event stream ended: scan gone");
+                    return;
+                }
                 Err(error) => {
                     tracing::warn!(%scan, error = %error, "event stream ended: state unreadable");
                     return;
@@ -3163,7 +3178,11 @@ pub fn scan_stream(
                 return;
             }
             loop {
-                match live.recv().await {
+                // `recv` is cancel-safe: a timed-out wait loses no message.
+                let Ok(received) = tokio::time::timeout(REST_CHECK, live.recv()).await else {
+                    continue 'replay;
+                };
+                match received {
                     Ok(published) => {
                         let seq = published.event.seq;
                         if seq <= last {
@@ -3205,12 +3224,12 @@ fn to_sse(state: &AppState, event: ScanEvent<Stored>) -> Event {
 The handler checks everything that can fail with an error body before the first byte: authentication, membership (`404` for non-members, [architecture 4](../architecture/README.md#authorization-model)) and `Last-Event-ID`. Then the body:
 
 1. **Subscribe first**, so an event stored while the replay runs is in the replay or in the receiver, never in neither.
-2. **Read the stream state, then replay** every stored event after `last` (a key-range read, `scan_event:[$scan, $after + 1]..=[$scan, ..]`). State first: the writer stores an event before it reads the state that event leads to, so a scan seen at rest has every event up to its resting point in the replay that follows.
+2. **Read the stream state, then replay** every stored event after `last` (a key-range read, `scan_event:[$scan, $after + 1]..=[$scan, ..]`). State first, so every event stored before the read is in the replay. That doesn't make the replay complete up to the resting point: a pipeline step commits its state and then emits its last events ([pipeline 10](pipeline.md#10-events)), so a stream that reads the state between the two sees the scan at rest, replays without those events (`plan_ready`, for example) and closes. The app covers the gap: on every close it refetches `GET /scans/{id}` ([frontend 10](../frontend/README.md#10-live-streams)), which already holds what the step committed, and push notifications go out from the writer either way.
 3. **At rest**: end after the replay; a scan at rest replays and closes (✓ `a_scan_at_rest_replays_and_closes`).
-4. **Live**: drop `seq <= last`, except that a duplicate flagged `rests` ends the stream: that resting event was stored after the state read, so it already went out in the replay, and waiting for another event would leave the stream of a resting scan open. A `seq` that skips ahead (`seq > last + 1`) or `Lagged` goes back to step 2, so the client never sees a gap.
-5. **End** after an event flagged `rests`, when the channel closes, on a store error (logged; the status is already 200, and the app reconnects with `Last-Event-ID`), or on shutdown through `take_until`.
+4. **Live**: drop `seq <= last`, except that a duplicate flagged `rests` ends the stream: that resting event was stored after the state read, so it already went out in the replay, and waiting for another event would leave the stream of a resting scan open. A `seq` that skips ahead (`seq > last + 1`) or `Lagged` goes back to step 2, so the client never sees a gap. So does `REST_CHECK` (15 s) without an event: some changes reach a resting point without one (a step claim released with nothing to say), and deleting a scan emits none, so only a fresh state read can close those streams. It costs each open stream one state read and one empty range read every 15 s.
+5. **End** after an event flagged `rests`, when the scan is gone (`stream_state` reads only scans without `deleting_at`, so a scan being deleted answers `NotFound`; a reconnect then gets `404`), when the channel closes, on a store error (logged; the status is already 200, and the app reconnects with `Last-Event-ID`), or on shutdown through `take_until`.
 
-✓ `sse_resume_replays_after_last_event_id_then_goes_live_without_duplicates`: with `Last-Event-ID: 1`, the replay sends 2 and 3; a live repeat of 3 is dropped; 4 and 5 follow, and the stream ends after 5. ✓ `a_resting_event_stored_during_the_replay_still_ends_the_stream`: the state read says `analysing`, the replay sends 2 and the resting 3, and the live copy of 3, flagged `rests`, ends the stream.
+✓ `sse_resume_replays_after_last_event_id_then_goes_live_without_duplicates`: with `Last-Event-ID: 1`, the replay sends 2 and 3; a live repeat of 3 is dropped; 4 and 5 follow, and the stream ends after 5. ✓ `a_resting_event_stored_during_the_replay_still_ends_the_stream`: the state read says `analysing`, the replay sends 2 and the resting 3, and the live copy of 3, flagged `rests`, ends the stream. ✓ `a_resting_point_reached_without_an_event_closes_the_stream` and `deleting_the_scan_closes_its_stream`: a live stream with no events re-reads the state after 15 s and closes, at rest after the replay, or on `NotFound`.
 
 **Signing on send.** Stored events hold image and mask ids; `to_sse` signs each one as it is sent, live or replayed, so a replay hours later carries fresh 15-minute URLs and species photos are filled in from `species_id` then ([contracts 4](../architecture/contracts.md#transport)). The `Signer<'_>` borrows the signer and photo ports from the `AppState` the generator owns, for the length of one call: it is built, used for one event's `sign`, and dropped before the next `.await`, so the stream holds no borrow across a suspension point.
 
@@ -3685,7 +3704,7 @@ pub async fn job_image(
         .job_image(&lease, ids.1, state.ports.clock.now())
         .await?
         .ok_or_else(ApiError::not_found)?;
-    media::stream_object(&*state.ports.blob, object).await
+    media::stream_object(&*state.ports.blob, object, &state.shutdown).await
 }
 ```
 
@@ -4257,10 +4276,18 @@ pub fn verify(state: &AppState, path: &ImagePath, query: &SignedQuery) -> Result
 }
 
 /// Streams an object. The body is the blob store's `'static` chunk stream handed straight to
-/// hyper: if the client goes away, dropping it closes the connection to `RustFS`.
-pub async fn stream_object(blob: &dyn BlobStore, object: ObjectRef) -> Result<Response, ApiError> {
+/// hyper: if the client goes away, dropping it closes the connection to `RustFS`. It ends when
+/// `shutdown` fires, because the route's `TimeoutLayer` bounds only the response head and a slow
+/// download would otherwise hold `axum::serve`'s graceful shutdown open; the client sees a short
+/// body and fetches the image again from the next process.
+pub async fn stream_object(
+    blob: &dyn BlobStore,
+    object: ObjectRef,
+    shutdown: &CancellationToken,
+) -> Result<Response, ApiError> {
     let fetched = blob.get(&object.key).await?;
-    let mut response = (StatusCode::OK, Body::from_stream(fetched.body)).into_response();
+    let body = fetched.body.take_until(shutdown.clone().cancelled_owned());
+    let mut response = (StatusCode::OK, Body::from_stream(body)).into_response();
     let headers = response.headers_mut();
     let content_type = HeaderValue::from_str(&fetched.content_type)
         .unwrap_or_else(|_| HeaderValue::from_static(object.content_type.as_str()));
@@ -4297,7 +4324,7 @@ pub async fn scan_image(
         .image_object(scan, image)
         .await?
         .ok_or_else(ApiError::not_found)?;
-    media::stream_object(&*state.ports.blob, object).await
+    media::stream_object(&*state.ports.blob, object, &state.shutdown).await
 }
 
 /// `GET /species/{id}/images/{hash}?exp=&sig=`: a species reference photo from `knowledge/`.
@@ -4324,7 +4351,7 @@ pub async fn species_photo(
         .species_photo_object(&species, hash)
         .await?
         .ok_or_else(ApiError::not_found)?;
-    media::stream_object(&*state.ports.blob, object).await
+    media::stream_object(&*state.ports.blob, object, &state.shutdown).await
 }
 ```
 
@@ -4343,7 +4370,10 @@ pub struct RateLimits {
     /// Every authenticated request: `RATE_PER_MINUTE` (default 120, a placeholder: the documents
     /// give no number).
     pub per_user: DefaultKeyedRateLimiter<UserId>,
-    /// `POST /invites/{code}/accept`: 10 a minute per user ([contracts 9]).
+    /// `POST /invites/{code}/accept`: at most 10 in any minute per user ([contracts 9]), as a
+    /// burst of 5 then one every 12 s. `Quota::per_minute(10)` would be a burst of 10 refilling one
+    /// every 6 s, which lets about 20 through in a fresh minute; a burst of `n / 2` refilling
+    /// `n / 2` a minute never lets more than `n` through in any 60 s.
     pub invite_accept: DefaultKeyedRateLimiter<UserId>,
 }
 
@@ -4360,7 +4390,7 @@ pub fn check(limiter: &DefaultKeyedRateLimiter<UserId>, user: UserId) -> Result<
 | Limit | Where | Answer |
 |---|---|---|
 | General: `RATE_PER_MINUTE` per user (120, a placeholder) | `AuthUser`, after the token | `429 rate_limited`, `retry_after_s` rounded up |
-| Invite codes: 10 per user per minute ([contracts 9](../architecture/contracts.md#members-and-invites)) | `accept_invite` | `429 rate_limited` (✓ `the_eleventh_invite_attempt_waits`: 6 s) |
+| Invite codes: at most 10 per user in any minute ([contracts 9](../architecture/contracts.md#members-and-invites)), held strictly as a burst of 5 then one every 12 s (`Quota::per_minute(5)`), because `per_minute(10)` would let about 20 through in a fresh minute (a burst of 10, then one every 6 s) | `accept_invite` | `429 rate_limited` (✓ `the_sixth_quick_invite_attempt_waits_12_seconds`) |
 | Daily scans: 30 per user | `ScanRepo::create_scan`, counted in the scan's transaction ([database 4](../database/README.md#limits-and-counters-)) | `429 budget_exceeded`, `budget: "scans"`, `resets_at` the next UTC midnight, `retryable: false` |
 | Daily chat tokens | The agent's `start_turn` | `429 budget_exceeded`, `budget: "chat_tokens"` |
 
@@ -4417,7 +4447,7 @@ The hub, writer and plan-lock maps use `std::sync::Mutex`: their critical sectio
 
 | What | How |
 |---|---|
-| Handlers | The real router (`router::app`), so layers, extractors, the renderer and request ids are under test, driven with `tower::ServiceExt::oneshot`. The ports are mockall mocks from `domain`'s `mock` feature; the store is `tests/fake_store.rs`, a `Store` made of one mock per repository trait with every method delegated, **generated** from `domain::ports::store` by `scratchpad/apigen/gen_fake_store.py` (regenerate when a store trait changes). The generator scans each trait body for `async fn` signatures that end in `;` or open a default body, skipping the body by brace matching, so a method with a default body (`live_lease`, `soil_profile_failed`, `gardens_due_soil_profile`, the account-tombstone methods) is delegated like any other and a test sets its expectations. The seams are small fakes: `NoPipeline` and `NoChat` (`unreachable!()`), `FixedImages` with a fixed answer |
+| Handlers | The real router (`router::app`), so layers, extractors, the renderer and request ids are under test, driven with `tower::ServiceExt::oneshot`. The ports are mockall mocks from `domain`'s `mock` feature; the store is `tests/fake_store.rs`, a `Store` made of one mock per repository trait with every method delegated, **generated** from `domain::ports::store` by `gen_fake_store.py`, which moves with the scaffold to `backend/tools/apigen/` (regenerate when a store trait changes). The generator scans each trait body for `async fn` signatures that end in `;` or open a default body, skipping the body by brace matching, so a method with a default body (`live_lease`, `soil_profile_failed`, `gardens_due_soil_profile`, the account-tombstone methods) is delegated like any other and a test sets its expectations. The seams are small fakes: `NoPipeline` and `NoChat` (`unreachable!()`), `FixedImages` with a fixed answer |
 | Time | `FixedClock`; tokio's paused clock (`start_paused = true`) for the broker's long poll |
 | Scheduler | `scheduler::fetch_soil_profile` called directly, with a mocked `SoilProvider` |
 | Pure parts | Config parsing, error mapping and statuses, the fallback renderer, canonical fingerprints, multipart fingerprints, the HMAC signer, the invite limiter, trigger rules, hour truncation, worker tokens |
@@ -4745,7 +4775,7 @@ async fn soil_failures_schedule_the_next_attempt_by_their_kind() {
 }
 ```
 
-The 28 tests: `an_upload_that_fails_the_quality_check_is_422_and_never_stored`, `a_repeated_key_replays_the_stored_response_without_running_the_handler`, `a_key_still_running_is_409_request_in_progress`, `a_non_member_gets_the_same_404_as_an_unknown_scan`, `a_viewer_is_403_with_the_required_role`, `unknown_paths_get_an_error_body_and_a_request_id`, `sse_resume_replays_after_last_event_id_then_goes_live_without_duplicates`, `a_resting_event_stored_during_the_replay_still_ends_the_stream`, `a_scan_at_rest_replays_and_closes`, `an_empty_queue_answers_none_at_the_deadline_after_polling`, `signed_urls_verify_until_they_expire`, `the_eleventh_invite_attempt_waits`, `key_order_doesnt_change_the_fingerprint`, `the_fingerprint_covers_bytes_not_boundaries`, `every_code_keeps_its_status_and_retryable`, `a_timeout_503_carries_retry_after_like_any_other`, `store_conflicts_map_to_their_codes`, `unknown_statuses_fall_back_to_a_contract_code`, `defaults_and_derived_values`, `short_signing_key_is_refused`, `frost_and_a_humid_stretch_fire_on_their_dates`, `hours_truncate`, `identifies_only_exact_tokens`, `ids_used_by_the_tests_parse`, `late_worker_events_after_complete_are_204_and_dropped`, `a_tombstoned_accounts_token_is_401_and_never_creates_a_user`, `a_second_delete_me_while_a_cascade_runs_starts_nothing`, `soil_failures_schedule_the_next_attempt_by_their_kind`.
+The 33 tests: `an_upload_that_fails_the_quality_check_is_422_and_never_stored`, `a_repeated_key_replays_the_stored_response_without_running_the_handler`, `a_key_still_running_is_409_request_in_progress`, `a_non_member_gets_the_same_404_as_an_unknown_scan`, `a_viewer_is_403_with_the_required_role`, `unknown_paths_get_an_error_body_and_a_request_id`, `sse_resume_replays_after_last_event_id_then_goes_live_without_duplicates`, `a_resting_event_stored_during_the_replay_still_ends_the_stream`, `a_resting_point_reached_without_an_event_closes_the_stream`, `deleting_the_scan_closes_its_stream`, `a_scan_at_rest_replays_and_closes`, `an_empty_queue_answers_none_at_the_deadline_after_polling`, `signed_urls_verify_until_they_expire`, `an_image_body_ends_on_the_shutdown_token`, `the_sixth_quick_invite_attempt_waits_12_seconds`, `key_order_doesnt_change_the_fingerprint`, `the_fingerprint_covers_bytes_not_boundaries`, `every_code_keeps_its_status_and_retryable`, `a_timeout_503_carries_retry_after_like_any_other`, `store_conflicts_map_to_their_codes`, `unknown_statuses_fall_back_to_a_contract_code`, `defaults_and_derived_values`, `short_signing_key_is_refused`, `frost_and_a_humid_stretch_fire_on_their_dates`, `hours_truncate`, `identifies_only_exact_tokens`, `ids_used_by_the_tests_parse`, `late_worker_events_after_complete_are_204_and_dropped`, `a_claim_body_over_the_json_limit_is_refused_before_the_handler`, `a_tombstoned_accounts_token_is_401_and_never_creates_a_user`, `a_second_delete_me_while_a_cascade_runs_starts_nothing`, `soil_failures_schedule_the_next_attempt_by_their_kind`, `a_signal_handler_that_fails_to_install_never_fires`.
 
 **Still to add once the crates are wired:** a graceful-shutdown test with an open stream (the research probe's), the writer actor's retire race, the chat stream's interrupt and replay, and an end-to-end run against `SurrealDB` and `RustFS` in containers (the project's `rust-testing` skill has the patterns).
 
@@ -4759,7 +4789,7 @@ The questions of [contracts 12](../architecture/contracts.md#12-open-questions) 
 |---|---|---|
 | 12, timestamp precision | Whole seconds on the wire (`domain::wire::Timestamp`), full precision in the database | domain 4; every response here |
 | 13, unknown fields in app requests | Rejected: `400 invalid_request` naming the field (`deny_unknown_fields` on the domain's request types, the path from `serde_path_to_error`). So the API is deployed before an app that sends a new field. Worker requests keep ignoring unknown fields | Sections 8, 10 |
-| 14, a malformed id | In a **path**: `404 not_found`, exactly like an unknown id: the app only builds paths from ids it received, so a garbled one is an unknown URL, and `404` reveals nothing. In a **body or query**: `400 invalid_request` naming the field, because the decoder fails on it like any wrong-typed field. The skills' error-responses.md says `400` for paths too; its own SKILL.md checklist says `404` | `extract.rs`, `From<PathRejection>`; section 8 |
+| 14, a malformed id | In a **path**: `404 not_found`, exactly like an unknown id: the app only builds paths from ids it received, so a garbled one is an unknown URL, and `404` reveals nothing. In a **body or query**: `400 invalid_request` naming the field, because the decoder fails on it like any wrong-typed field. | `extract.rs`, `From<PathRejection>`; section 8 |
 | 15, oversized JSON | `400 invalid_request`, `field: "body"`, the limit (1 MiB) in the message; `413 upload_too_large` stays for images | Sections 7, 8 |
 | 16, `405`, `408`, `504` | A method a route doesn't have is `404 not_found` without `Allow` (indistinguishable from an unknown path); `408` never occurs (timeouts answer as in 17); `504` isn't produced | `from_status` |
 | 17, timeouts and `retryable` | A request past its timeout is `503 upstream_unavailable` with `upstream: "api"`, `retryable: true`, `retry_after_s: 5`: such a request is almost always waiting on a slow dependency, every create call is idempotent, and the timeout drops the handler's future, which releases its idempotency key | `router::timeout`, `from_status` |
@@ -4787,7 +4817,7 @@ Also settled here, outside the numbered questions:
 
 ## 24. Sources
 
-The crate facts were checked against each crate's source at the pinned version (`~/.cargo/registry/src`) and in the research probes (`scratchpad/research/http-probe`, `auth-probe`); a ✓ means it compiled or ran in this crate or a probe. The links point at the same versions' documentation.
+The crate facts were checked against each crate's source at the pinned version (`~/.cargo/registry/src`) and in research probes run while writing this design (an HTTP probe and an auth probe, not kept in the repository); a ✓ means it compiled or ran in this crate or a probe. The links point at the same versions' documentation.
 
 **Rust**
 - [The Book, 18.2: trait objects](https://doc.rust-lang.org/book/ch18-02-trait-objects.html) · [16.4: `Send` and `Sync`](https://doc.rust-lang.org/book/ch16-04-extensible-concurrency-sync-and-send.html) · [17: async and await](https://doc.rust-lang.org/book/ch17-00-async-await.html)

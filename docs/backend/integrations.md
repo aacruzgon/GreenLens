@@ -1,6 +1,6 @@
 # PDM Backend: `integrations` crate
 
-> **Status:** Draft v0.3.1, 2026-10-16. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
+> **Status:** Draft v0.3.2, 2026-10-16. v0.3.2: section 4 says the worker builds its client with a 600 s read timeout, not the 60 s default, because its VLM and hosted LLM calls aren't streamed, and their 240 s and 300 s deadlines end a slow call; the skills table became a plain list of the extra dependencies. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
 
 Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate implements. Every listing below is copied from the compiled source of `crates/integrations`. `cargo check`, `cargo clippy -p integrations --all-targets` and `cargo test -p integrations` all pass: 58 tests, against `wiremock` servers and the live responses recorded on 2026-10-15.
 
@@ -47,14 +47,7 @@ Companion to the [backend architecture](README.md) and the [`domain` crate](doma
 
 **What it never does.** It reads no database and no object store, and it holds no business rule. A failed fetch is reported, and the caller decides what to do: skip the gardens in a weather cell, set `soil_profile_status`, answer `503 upstream_unavailable`. It never reads the system clock for domain time: adapters that stamp `fetched_at` take an `Arc<dyn Clock>`, and token checks take `now` as an argument. No `reqwest` type appears in a public signature. Errors leave as the port's enum ([domain 9](domain.md#9-boundary-traits)), or as the client's own enum for the two LLM clients. The library error is kept as the `source`.
 
-**Where it departs from the project skills.**
-
-| Topic | Skill | Here | Why |
-|---|---|---|---|
-| Crate list | `rust`: seven library crates | `integrations` added | One LLM client for `agent` and the worker; one place for provider adapters |
-| `reqwest` features | `versions.md`: `json` | `json`, `stream`, `query` | `bytes_stream()` for SSE needs `stream`; `RequestBuilder::query` needs `query` in 0.13 ✓ |
-| HMAC for the webhook | `versions.md`: `aws-lc-rs` | `aws-lc-rs` (`hmac`, `constant_time`) | Same as the skill; the research probe used `hmac` + `sha2` + `subtle`, which this crate doesn't need |
-| Test HTTP servers | not in `versions.md` | `wiremock` 0.6.5 (dev only) | Real HTTP through the real `reqwest` client, including headers, query strings and SSE bodies |
+**Dependencies beyond the common pins.** `reqwest` adds the `stream` feature (`bytes_stream()` for SSE) and `query` (`RequestBuilder::query` needs it in 0.13 ✓) to `json`. The webhook's HMAC and constant-time comparison use `aws-lc-rs` (`hmac`, `constant_time`), already in the tree. Tests run real HTTP through the real `reqwest` client against `wiremock` 0.6.5 (dev only), headers, query strings and SSE bodies included. The project's Rust skills follow this crate, the crate list included.
 
 ---
 
@@ -161,7 +154,7 @@ crates/integrations/
 
 ## 4. Shared HTTP: client, retries, pacing, SSE
 
-**One client.** `reqwest::Client` is an `Arc` inside, so `api` builds one at start and clones it into every adapter, and the worker does the same. The client has a 5 s connect timeout and a 60 s *read* timeout. The read timeout is the longest gap between two reads and restarts on every chunk. The client has no total timeout, because an LLM stream can last minutes. Each non-streaming call sets its own deadline with `RequestBuilder::timeout`.
+**One client.** `reqwest::Client` is an `Arc` inside, so `api` builds one at start and clones it into every adapter, and the worker does the same. The client has a 5 s connect timeout and, by default, a 60 s *read* timeout. The read timeout is the longest gap between two reads, restarts on every chunk, and also covers the wait for the response headers. The worker builds its client with a 600 s read timeout instead, because its VLM and hosted LLM calls aren't streamed: the server sends nothing until the answer is complete ([worker 1](worker.md#1-purpose-and-boundaries)). The client has no total timeout, because an LLM stream can last minutes. Each non-streaming call sets its own deadline with `RequestBuilder::timeout`; in the worker that is 240 s for a VLM call (`OpenAiCompatConfig.timeout`) and 300 s for a hosted LLM call (`AnthropicConfig.request_timeout`), both under the 600 s read timeout, so the deadline is what ends a slow call.
 
 ```rust
 /// The `User-Agent` of every request. Nominatim requires an identifying one; the others log it.
