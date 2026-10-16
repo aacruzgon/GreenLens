@@ -1,6 +1,6 @@
 # PDM Vision and ML
 
-> **Status:** Draft v0.2.4, 2026-10-16. v0.2.4: the SAM 2.1-T encoder's budget is 2.0 GB, from its measured fp16 export, and the 3070 total about 5.3 GB (review of PR #6). v0.2.3: section 5 says how `ort` loads ONNX Runtime (`load-dynamic`, `api-29`, `ORT_DYLIB_PATH`, `ORT_EP`) and why the CUDA 13.0.3 image needs it; section 12 says where the findings stand now that the backend design is on `main`. v0.2.2: section 6 lists the manifest entry names the worker reads. v0.2.1: finding 27 is taken up by the backend branch (contracts 6). v0.2: `model_versions` keys follow contracts 5 (manifest entry names, `sam_encoder` and `sam_decoder`, label versions as keys); section 12 says which findings the backend branch takes up and adds finding 27, the fallback's guided-check budget. v0.1, 2026-10-15: First vision and ML design: every model the system runs, where each one runs on the three GPUs of the rig and the control plane's CPU, VRAM budgets, runtimes and version pins, how model files are pinned and versioned, licences, the build plan, open decisions, and the points where the architecture and contracts need a change to match.
+> **Status:** Draft v0.2.5, 2026-10-16. v0.2.5: progress against the build plan is tracked in [roadmap.md](roadmap.md). v0.2.4: the SAM 2.1-T encoder's budget is 2.0 GB, from its measured fp16 export, and the 3070 total about 5.3 GB (review of PR #6). v0.2.3: section 5 says how `ort` loads ONNX Runtime (`load-dynamic`, `api-29`, `ORT_DYLIB_PATH`, `ORT_EP`) and why the CUDA 13.0.3 image needs it; section 12 says where the findings stand now that the backend design is on `main`. v0.2.2: section 6 lists the manifest entry names the worker reads. v0.2.1: finding 27 is taken up by the backend branch (contracts 6). v0.2: `model_versions` keys follow contracts 5 (manifest entry names, `sam_encoder` and `sam_decoder`, label versions as keys); section 12 says which findings the backend branch takes up and adds finding 27, the fallback's guided-check budget. v0.1, 2026-10-15: First vision and ML design: every model the system runs, where each one runs on the three GPUs of the rig and the control plane's CPU, VRAM budgets, runtimes and version pins, how model files are pinned and versioned, licences, the build plan, open decisions, and the points where the architecture and contracts need a change to match.
 > **Checked:** model cards, licences, configs, checkpoint sizes, package indexes and vLLM, xgrammar, ONNX Runtime and PyTorch sources were read on 2026-10-15 (✓). The ONNX exports of RF-DETR, SAM 2.1, MobileSAM, UperNet and BioCLIP, the PlantDoc probes, the text-embedder benchmark and YuNet were run on a Mac with ONNX Runtime 1.31 on CPU (✓ ran). Nothing has run on the rig's GPUs: every VRAM and GPU-speed figure is an *estimate* until the day-1 checks and day-2 benchmarks. Points from secondary sources are *unverified*.
 
 This is the design of PDM's models and the machine learning around them. It builds on the [system architecture](../architecture/README.md) (sections 2, 3, 5, 6, 8.4, 10, 13, 14 and 15) and the [data contracts](../architecture/contracts.md) (sections 5, 6, 7 and 10), which define every shape the models' outputs travel in. How the Rust code calls a model (sessions, batching, the VLM client, schema building, box conversion, face blurring, the embedder, the measurement code) is in [docs/backend](../backend/vision.md) and [the worker design](../backend/worker.md).
@@ -12,6 +12,7 @@ This is the design of PDM's models and the machine learning around them. It buil
 | [vlm.md](vlm.md) | The vision-language model: choice, quantization, serving, image preparation, memory, prompts, schemas, box formats, sampling and the fallback worker's hosted model |
 | [training.md](training.md) | Datasets and licences, data preparation, training, ONNX export, label lists, feedback, and the model steps of knowledge ingestion |
 | [evaluation.md](evaluation.md) | The evaluation set, metrics and targets, calibration, thresholds, day-1 checks and day-2 benchmarks |
+| [roadmap.md](roadmap.md) | Progress against the build plan (section 10): what is done, next and waiting, the open pull requests and the rig's state |
 
 ## Contents
 
@@ -298,7 +299,7 @@ Ultralytics YOLO and YOLOv10 (AGPL-3.0), YOLOv9 (GPL-3.0), DEIMv2 (non-commercia
 
 ## 10. Build plan
 
-The vision work, mapped onto [architecture 14](../architecture/README.md#14-build-plan):
+The vision work, mapped onto [architecture 14](../architecture/README.md#14-build-plan). Progress against it is tracked in [roadmap.md](roadmap.md):
 
 | Dates | Vision and ML |
 |---|---|
