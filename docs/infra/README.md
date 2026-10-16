@@ -40,7 +40,7 @@ PDM/
 │  ├─ workflows/
 │  │  ├─ backend.yml           checks on every pull request and on main (section 2)
 │  │  └─ images.yml            builds and pushes the images on merge to main (section 3)
-│  └─ dependabot.yml           weekly updates of the pinned action SHAs, nothing else
+│  └─ dependabot.yml           daily updates of the pinned action SHAs, nothing else
 ├─ backend/
 │  ├─ Dockerfile               multi-stage: api, worker, worker-cuda (section 3)
 │  ├─ docker-bake.hcl          the three targets, built in one BuildKit run
@@ -94,7 +94,7 @@ Whether the account allows spending past the included minutes, or whether a self
 | `docker/setup-buildx-action` | v4.4.1 (2026-09-16) | `f87e5991a6d7451dcb8d9637bfbc97413f497069` ✓ |
 | `docker/login-action` | v4.6.0 (2026-07-29) | `dbcb813823bdd20940b903addbd779551569679f` ✓ |
 
-Each is the latest release on 2026-10-16, and each commit is the one its tag points to (`gh api repos/<owner>/<repo>/commits/<tag>`). Workflows reference the full SHA with the version in a comment, so a moved tag changes nothing. Dependabot proposes updates weekly, grouped into one pull request, because a change to `backend.yml` runs every job. No other actions are used: images are built with `docker buildx bake` directly ([section 3](#3-images)).
+Each is the latest release on 2026-10-16, and each commit is the one its tag points to (`gh api repos/<owner>/<repo>/commits/<tag>`). Workflows reference the full SHA with the version in a comment, so a moved tag changes nothing. Dependabot checks daily and groups whatever it finds into one pull request, because a change to `backend.yml` runs every job; a day with no new release opens none. No other actions are used: images are built with `docker buildx bake` directly ([section 3](#3-images)).
 
 Rust needs no setup action: the runner image has rustup, and each Rust job installs 1.99.1 itself (see the toolchain paragraph below). The runner is `ubuntu-26.04` (✓ a listed label), because its `libheif-dev` is 1.21.2 ([setup 4](../setup/README.md#4-backend-rust)) and the `heic` feature needs 1.19 or newer; Ubuntu 24.04 ships 1.17.6.
 
