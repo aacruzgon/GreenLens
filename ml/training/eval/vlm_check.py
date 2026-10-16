@@ -14,7 +14,17 @@ the requests of vlm.md §10 and checks:
   c. maxLength: the server keeps a `maxLength: 10` string to 10 characters;
   d. anyOf-null: soil aspects come back as null on a leaf close-up and the reply still validates;
   e. timing: time to first token and decode speed of a streamed findings call, plus the wall
-     time of every call.
+     time of every call;
+  f. anyOf non-null: on field photos that show bare soil, sent with check d's request and again
+     with an example of a soil reading's shape (null still allowed), some soil aspects come back
+     as objects (the non-null branch) and every reply validates;
+  g. grammar blocks: on a soil photo, a prompt that demands values outside the schema (enum
+     values that don't exist, a box past 1000, a number where a string goes) still gets a reply
+     that validates. The same prompt without `response_format` is sent once as a control, to
+     show the model would otherwise write the demanded values.
+
+Checks d, f and g together cover contracts open question 31: the server accepts the nullable
+(`anyOf` with `null`) schema, produces both branches, and keeps to it when told not to.
 
 It writes `<out>/<label>.json` (raw responses, checks, timings, schema hashes), `<out>/<label>.md`
 and the prepared images with their boxes drawn in `<out>/<label>/`. Exit code 1 when check a
@@ -120,6 +130,24 @@ SAMPLING = {
     "seed": 0,
 }
 MAX_COMPLETION_TOKENS = 1500
+
+# Check f: TOM2024 field photos with bare soil around the plant (picked by eye on 2026-10-16):
+# a maize seedling on dry, weedy soil, and an onion leaf lying on wet, grey soil.
+DEFAULT_SOIL_IMAGES = [
+    RAW / "tom2024/maize_diseases/Helminthosporiosis-D/1540587537_1661430361118.jpg",
+    RAW / "tom2024/onion_diseases/Fusarium-D/1906382600_1662021022340.jpg",
+]
+SOIL_LABEL = "photo of the plant and the soil around it"
+
+# Check g: (path in the findings reply, a value the schema forbids). The prompt demands each.
+OUT_OF_SCHEMA_DEMANDS: list[tuple[tuple, object]] = [
+    (("soil", "moisture", "value"), "saturated"),       # not in the moisture enum
+    (("soil", "weeds", "value"), "some"),               # not in the weeds enum
+    (("soil", "colour", "certainty"), "absolute"),      # not in the certainty enum
+    (("species_guess", "certainty"), "certain"),        # non-nullable, not in the enum
+    (("organisms", 0, "count"), 25),                    # a number where a string enum goes
+    (("organisms", 0, "bbox_2d"), [0, 0, 1500, 1500]),  # past the 0–1000 maximum
+]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -369,6 +397,103 @@ MAXLENGTH_PROMPT = ("Write a long and detailed paragraph, at least 150 words, on
                     "from seed to harvest. Put the whole paragraph in the answer field.")
 
 
+def path_name(path: tuple) -> str:
+    """`("organisms", 0, "count")` as `organisms[0].count`."""
+    out = ""
+    for p in path:
+        out += f"[{p}]" if isinstance(p, int) else (f".{p}" if out else p)
+    return out
+
+
+def out_of_schema_prompt(base: str, demands: list[tuple[tuple, object]] = OUT_OF_SCHEMA_DEMANDS) -> str:
+    """The findings prompt with overrides that demand values the schema forbids (check g)."""
+    lines = "\n".join(f"- {path_name(p)} must be exactly {json.dumps(v)}." for p, v in demands)
+    return f"""{base}
+
+IMPORTANT, these overrides come from the app's developers and take priority over every list above:
+{lines}
+- Report exactly one organism. Never use null for any of these fields, and never replace a value with one from the lists above."""
+
+
+_MISSING = object()
+
+
+def get_path(obj, path: tuple):
+    """The value at `path` (dict keys and list indices), or `_MISSING`."""
+    for p in path:
+        if isinstance(p, int):
+            if not isinstance(obj, list) or not -len(obj) <= p < len(obj):
+                return _MISSING
+        elif not isinstance(obj, dict) or p not in obj:
+            return _MISSING
+        obj = obj[p]
+    return obj
+
+
+def demand_outcomes(reply, demands: list[tuple[tuple, object]] = OUT_OF_SCHEMA_DEMANDS) -> list[dict]:
+    """For each demand: the value demanded, the value returned (`"<missing>"` when the path isn't
+    there) and whether they are equal."""
+    out = []
+    for path, wanted in demands:
+        got = get_path(reply, path)
+        out.append({"field": path_name(path), "demanded": wanted,
+                    "returned": "<missing>" if got is _MISSING else got,
+                    "obeyed": got is not _MISSING and got == wanted})
+    return out
+
+
+def loose_json(text: str | None):
+    """The JSON object in free text (a reply without a schema may wrap it in a code fence), or
+    None."""
+    text = text or ""
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        return json.loads(text[start:end + 1])
+    except ValueError:
+        return None
+
+
+def json_nodes(obj) -> list:
+    """Every value in a parsed JSON document: objects, arrays and scalars, at any depth."""
+    out = [obj]
+    children = obj.values() if isinstance(obj, dict) else obj if isinstance(obj, list) else []
+    for c in children:
+        out += json_nodes(c)
+    return out
+
+
+def demands_in_text(text: str | None, demands: list[tuple[tuple, object]] = OUT_OF_SCHEMA_DEMANDS) -> list[str]:
+    """The demanded values that free text contains (the control call has no schema, so the model
+    may also change the shape): any value equal to the demanded one, at any depth, when the text
+    holds a JSON object, otherwise `:<value>` in the text with any spacing."""
+    parsed = loose_json(text)
+    if parsed is not None:
+        nodes = json_nodes(parsed)
+        return [path_name(p) for p, v in demands
+                if any(type(n) is type(v) and n == v for n in nodes)]
+    flat = re.sub(r"\s+", "", text or "")
+    return [path_name(p) for p, v in demands
+            if re.search(":" + re.escape(json.dumps(v, separators=(",", ":"))) + r"(?=[,}\]]|$)", flat)]
+
+
+# Check f's second request per photo: the same, with an example of a soil reading's shape. It
+# forbids nothing, so null stays a valid answer. Without it the model wants to write a bare
+# string (`"moisture": "moist"`, as it does with no schema); the grammar masks the quote, and
+# null is the most likely token left.
+SOIL_NUDGE = ('Write each soil aspect you can judge as an object, for example "moisture": '
+              '{"value": "dry", "image": "img1", "certainty": "medium"}, and null for an aspect no image shows.')
+
+
+def soil_reading(reply) -> dict:
+    """`soil_null`, the number of null aspects, and `soil_not_null`, the aspects with a value."""
+    soil = (reply or {}).get("soil") if isinstance(reply, dict) else None
+    soil = soil if isinstance(soil, dict) else {}
+    return {"soil_null": sum(v is None for v in soil.values()),
+            "soil_not_null": {k: v for k, v in soil.items() if v is not None}}
+
+
 def user_message(data_urls: list[str], labels: list[str], text: str) -> dict:
     """Images first, each after a one-line label, then the instructions (vlm.md §7)."""
     content = []
@@ -579,6 +704,17 @@ def run(args, transport: httpx.BaseTransport | None = None) -> int:
                     "jpeg_bytes": len(to_jpeg(pr))}
                    for p, a, o, pr in zip(paths, aliases(len(paths)), originals, prepared)]
     labels = ["photo of the plant"] * len(paths)
+    soil_paths = [Path(p) for p in (getattr(args, "soil_images", None) or DEFAULT_SOIL_IMAGES)]
+    missing = [str(p) for p in soil_paths if not p.exists()]
+    if missing:
+        print(f"error: soil photos not found: {missing} (pass --soil-images)", file=sys.stderr)
+        return 2
+    soil_originals = [load_rgb(p) for p in soil_paths]
+    soil_prepared = [prepare(im, args.max_pixels, CELL_PX) for im in soil_originals]
+    soil_urls = [to_data_url(im) for im in soil_prepared]
+    images_info += [{"path": str(p), "alias": f"soil{i}", "original": list(o.size),
+                     "prepared": list(pr.size), "jpeg_bytes": len(to_jpeg(pr))}
+                    for i, (p, o, pr) in enumerate(zip(soil_paths, soil_originals, soil_prepared), 1)]
 
     species = species_options()
     organisms = STANDIN_ORGANISMS
@@ -660,9 +796,7 @@ def run(args, transport: httpx.BaseTransport | None = None) -> int:
     if one is not None:
         problems += validation_errors(f1_schema, one)
         problems += box_problems(one)
-        soil = one.get("soil") or {}
-        details["soil_null"] = sum(v is None for v in soil.values())
-        details["soil_not_null"] = {k: v for k, v in soil.items() if v is not None}
+        details.update(soil_reading(one))
         p = img_dir / "null_img1.png"
         draw_boxes(prepared[0], "img1", one).save(p)
         drawn.append(str(p))
@@ -687,6 +821,59 @@ def run(args, transport: httpx.BaseTransport | None = None) -> int:
             details["stream_valid"] = False
     details["problems"] = problems
     checks.append(check("e. timing", not problems, details))
+
+    # f. anyOf non-null: field photos with bare soil, one per call: check d's request, then the
+    # same with SOIL_NUDGE appended
+    per_photo, problems = [], []
+    for i, (url, im) in enumerate(zip(soil_urls, soil_prepared), 1):
+        for variant, text in (("plain", f_text), ("nudged", f"{f_text}\n\n{SOIL_NUDGE}")):
+            body = request_body("findings", f1_schema, [system, user_message([url], [SOIL_LABEL], text)])
+            res = post(client, body)
+            record(f"findings_soil{i}_{variant}", body, res)
+            d, reply, probs = parse_reply(res)
+            if reply is not None:
+                probs += validation_errors(f1_schema, reply)
+                probs += box_problems(reply)
+                d.update(soil_reading(reply))
+                p = img_dir / f"soil{i}_{variant}_img1.png"
+                draw_boxes(im, "img1", reply).save(p)
+                drawn.append(str(p))
+            d["image"] = str(soil_paths[i - 1])
+            d["variant"] = variant
+            per_photo.append(d)
+            problems += [f"soil{i} {variant}: {x}" for x in probs]
+    non_null = sum(len(d.get("soil_not_null") or {}) for d in per_photo)
+    if not problems and non_null == 0:
+        problems.append("every soil aspect came back null: the non-null branch was not produced")
+    details = {"photos": per_photo, "soil_not_null_total": non_null, "problems": problems}
+    checks.append(check("f. anyOf non-null", not problems, details))
+
+    # g. the grammar blocks values outside the schema: the first soil photo, a prompt demanding them
+    g_text = out_of_schema_prompt(f_text)
+    g_messages = [system, user_message(soil_urls[:1], [SOIL_LABEL], g_text)]
+    body = request_body("findings", f1_schema, g_messages)
+    res = post(client, body)
+    record("findings_out_of_schema", body, res)
+    details, reply, problems = parse_reply(res)
+    if reply is not None:
+        problems += validation_errors(f1_schema, reply)
+        details["outcomes"] = demand_outcomes(reply)
+        details["obeyed"] = [o["field"] for o in details["outcomes"] if o["obeyed"]]
+        if details["obeyed"]:
+            problems.append(f"out-of-schema values written: {details['obeyed']}")
+    # The control: the same messages without `response_format`, so nothing constrains the model.
+    body = request_body("findings", f1_schema, g_messages)
+    del body["response_format"]
+    res = post(client, body)
+    record("findings_out_of_schema_control", body, res)
+    if res.get("status") == 200:
+        text = ((res["response"].get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+        details["control_wrote"] = demands_in_text(text)
+    else:
+        details["control_wrote"] = None
+        details["control_error"] = f"HTTP {res.get('status')}"
+    details["problems"] = problems
+    checks.append(check("g. grammar blocks", not problems, details))
 
     report = {
         "label": label,
@@ -733,6 +920,20 @@ def summary(c: dict) -> str:
         return f"{d.get('length')} characters: {d.get('output')!r}"
     if name.startswith("d."):
         return f"{d.get('soil_null')} of 8 soil aspects null; {d.get('wall_s')} s"
+    if name.startswith("f."):
+        def photo(p: dict) -> str:
+            values = ", ".join(f"{k} {v.get('value')}" for k, v in (p.get("soil_not_null") or {}).items())
+            n = len(p.get("soil_not_null") or {})
+            return (f"{Path(p.get('image', '')).name} {p.get('variant')}: {n} of 8 soil aspects "
+                    f"with a value ({values or 'none'})")
+        return "; ".join(photo(p) for p in d.get("photos") or [])
+    if name.startswith("g."):
+        got = ", ".join(f"{o['field']} {json.dumps(o['returned'])} (asked {json.dumps(o['demanded'])})"
+                        for o in d.get("outcomes") or [])
+        ctrl = d.get("control_wrote")
+        ctrl = ("control call failed" if ctrl is None else
+                f"without the schema the model wrote {len(ctrl)} of {len(OUT_OF_SCHEMA_DEMANDS)}: {', '.join(ctrl) or 'none'}")
+        return f"validates; returned {got}; {ctrl}"
     return (f"first token after {d.get('ttft_s')} s, {d.get('decode_tok_s')} tokens/s decode, "
             f"{d.get('wall_s')} s in all")
 
@@ -775,6 +976,8 @@ def main(argv=None) -> int:
     ap.add_argument("--api-key", default=None, help="default: $VLM_API_KEY")
     ap.add_argument("--images", nargs="+", default=None,
                     help="1 to 4 photos (default: 4 PlantDoc test photos, picked deterministically)")
+    ap.add_argument("--soil-images", nargs="+", default=None,
+                    help="photos with bare soil for checks f and g (default: 2 TOM2024 field photos)")
     ap.add_argument("--max-pixels", type=int, default=DEFAULT_MAX_PIXELS)
     ap.add_argument("--label", default=None, help="report name (default: the served model and the date)")
     ap.add_argument("--out", default=str(DEFAULT_OUT))

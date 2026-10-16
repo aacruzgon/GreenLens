@@ -152,6 +152,83 @@ def test_norm1000_to_px():
     assert vc.norm1000_to_px([0, 0, 1000, 1000], 800, 576) == (0, 0, 800, 576)
 
 
+# --- checks f and g ---------------------------------------------------------------------------
+
+
+def one_image_findings() -> dict:
+    f = valid_findings()
+    f["soil"]["moisture"]["image"] = "img1"
+    f["organisms"][0]["image"] = "img1"
+    f["damage"] = []
+    return f
+
+
+def put(obj, path, value):
+    for p in path[:-1]:
+        obj = obj[p]
+    obj[path[-1]] = value
+
+
+@pytest.mark.parametrize("path,value", vc.OUT_OF_SCHEMA_DEMANDS)
+def test_every_demand_is_outside_the_schema(path, value):
+    """Check g proves something only if each demanded value fails validation."""
+    schema = vc.findings_schema(1, SPECIES, ORGANISMS)
+    f = one_image_findings()
+    f["soil"]["weeds"] = {"value": "few", "image": "img1", "certainty": "low"}
+    f["soil"]["colour"] = {"value": "dark", "image": "img1", "certainty": "low"}
+    assert vc.validation_errors(schema, f) == []
+    put(f, path, value)
+    assert vc.validation_errors(schema, f)
+
+
+def test_path_name_and_get_path():
+    f = one_image_findings()
+    assert vc.path_name(("organisms", 0, "bbox_2d")) == "organisms[0].bbox_2d"
+    assert vc.path_name(("soil", "moisture", "value")) == "soil.moisture.value"
+    assert vc.get_path(f, ("organisms", 0, "count")) == "few"
+    assert vc.get_path(f, ("soil", "weeds", "value")) is vc._MISSING  # weeds is null
+    assert vc.get_path(f, ("organisms", 3, "count")) is vc._MISSING
+    assert vc.get_path(None, ("soil",)) is vc._MISSING
+
+
+def test_demand_outcomes():
+    f = one_image_findings()
+    f["soil"]["moisture"]["value"] = "saturated"
+    out = {o["field"]: o for o in vc.demand_outcomes(f)}
+    assert out["soil.moisture.value"]["obeyed"] is True
+    assert out["soil.weeds.value"] == {"field": "soil.weeds.value", "demanded": "some",
+                                       "returned": "<missing>", "obeyed": False}
+    assert out["organisms[0].count"]["returned"] == "few" and not out["organisms[0].count"]["obeyed"]
+
+
+def test_demands_in_text():
+    f = one_image_findings()
+    f["species_guess"]["certainty"] = "certain"
+    f["organisms"][0]["bbox_2d"] = [0, 0, 1500, 1500]
+    f["organisms"][0]["count"] = "25"  # a string, not the demanded number
+    fenced = "```json\n" + json.dumps(f, indent=2) + "\n```"
+    assert vc.demands_in_text(fenced) == ["species_guess.certainty", "organisms[0].bbox_2d"]
+    reshaped = '{"soil": {"moisture": "saturated", "weeds": "some"}, "count": 25}'  # shape changed too
+    assert vc.demands_in_text(reshaped) == ["soil.moisture.value", "soil.weeds.value", "organisms[0].count"]
+    broken = '{"certainty": "certain", "bbox_2d": [0, 0,\n 1500, 1500], "count": "25", "x": 250'
+    assert vc.demands_in_text(broken) == ["species_guess.certainty", "organisms[0].bbox_2d"]
+    assert vc.demands_in_text("") == [] and vc.demands_in_text(None) == []
+
+
+def test_out_of_schema_prompt_names_every_demand():
+    text = vc.out_of_schema_prompt("BASE")
+    assert text.startswith("BASE\n")
+    assert 'soil.moisture.value must be exactly "saturated".' in text
+    assert "organisms[0].bbox_2d must be exactly [0, 0, 1500, 1500]." in text
+    assert "organisms[0].count must be exactly 25." in text
+
+
+def test_soil_reading():
+    f = one_image_findings()
+    assert vc.soil_reading(f) == {"soil_null": 7, "soil_not_null": {"moisture": f["soil"]["moisture"]}}
+    assert vc.soil_reading(None) == {"soil_null": 0, "soil_not_null": {}}
+
+
 # --- an offline run against a mocked server --------------------------------------------------
 
 
@@ -159,15 +236,21 @@ def mock_server(request: httpx.Request) -> httpx.Response:
     if request.url.path.endswith("/models"):
         return httpx.Response(200, json={"data": [{"id": "vlm", "root": "/models/Qwen3-VL-8B-Instruct-FP8"}]})
     body = json.loads(request.content)
-    name = body["response_format"]["json_schema"]["name"]
     assert body["max_completion_tokens"] and body["temperature"] == 0 and "max_tokens" not in body
+    if "response_format" not in body:  # check g's control: the model obeys the overrides
+        text = '{"soil": {"moisture": {"value": "saturated"}}, "organisms": [{"bbox_2d": [0, 0, 1500, 1500]}]}'
+        return httpx.Response(200, json={"choices": [{"message": {"content": text}, "finish_reason": "stop"}]})
+    name = body["response_format"]["json_schema"]["name"]
     if name == "findings":
         content = valid_findings()
-        n = sum(p["type"] == "image_url" for p in body["messages"][1]["content"])
-        if n == 1:
-            content["soil"] = {k: None for k in content["soil"]}
+        parts = body["messages"][1]["content"]
+        if sum(p["type"] == "image_url" for p in parts) == 1:
             content["organisms"][0]["image"] = "img1"
             content["damage"] = []
+            if parts[0]["text"].endswith(vc.SOIL_LABEL) and vc.SOIL_NUDGE in parts[-1]["text"]:
+                content["soil"]["moisture"]["image"] = "img1"
+            else:  # the leaf close-up, and the soil photos with check d's request
+                content["soil"] = {k: None for k in content["soil"]}
     elif name == "indicators":
         content = valid_answers()
     else:
@@ -187,22 +270,29 @@ def mock_server(request: httpx.Request) -> httpx.Response:
 
 def test_offline_run(tmp_path):
     paths = []
-    for i, size in enumerate([(2048, 1536), (800, 600), (1200, 1600), (640, 480)]):
+    for i, size in enumerate([(2048, 1536), (800, 600), (1200, 1600), (640, 480), (493, 493), (485, 485)]):
         p = tmp_path / f"p{i}.jpg"
         Image.new("RGB", size, (60 + i * 30, 120, 50)).save(p)
         paths.append(str(p))
     out = tmp_path / "reports"
-    args = vc.argparse.Namespace(base_url="http://vlm.test/v1", api_key="k", images=paths,
-                                 max_pixels=1_003_520, label=None, out=str(out))
+    args = vc.argparse.Namespace(base_url="http://vlm.test/v1", api_key="k", images=paths[:4],
+                                 soil_images=paths[4:], max_pixels=1_003_520, label=None, out=str(out))
     assert vc.run(args, transport=httpx.MockTransport(mock_server)) == 0
     [report] = out.glob("*.json")
     r = json.loads(report.read_text())
     assert r["label"].startswith("Qwen3-VL-8B-Instruct-FP8-")
-    assert [c["pass"] for c in r["checks"]] == [True] * 5
+    assert [c["name"][0] for c in r["checks"]] == list("abcdefg")
+    assert [c["pass"] for c in r["checks"]] == [True] * 7
     assert r["images"][0]["prepared"] == [1152, 864]
     assert r["checks"][3]["details"]["soil_null"] == 8
-    assert "base64" not in report.read_text()
-    assert (out / f"{r['label']}.md").exists() and len(r["drawn"]) == 5
+    f, g = r["checks"][5]["details"], r["checks"][6]["details"]
+    assert f["soil_not_null_total"] == 2 and [p["soil_null"] for p in f["photos"]] == [8, 7, 8, 7]
+    assert [p["variant"] for p in f["photos"]] == ["plain", "nudged"] * 2
+    assert g["obeyed"] == [] and g["control_wrote"] == ["soil.moisture.value", "organisms[0].bbox_2d"]
+    assert "response_format" not in r["calls"]["findings_out_of_schema_control"]["request"]
+    text = report.read_text()
+    assert "base64" not in text and '"k"' not in text
+    assert (out / f"{r['label']}.md").exists() and len(r["drawn"]) == 9
 
 
 def test_server_down_is_a_clear_error(capsys):
