@@ -1,0 +1,396 @@
+# PDM Vision and ML
+
+> **Status:** Draft v0.2.3, 2026-10-16. v0.2.3: section 5 says how `ort` loads ONNX Runtime (`load-dynamic`, `api-29`, `ORT_DYLIB_PATH`, `ORT_EP`) and why the CUDA 13.0.3 image needs it; section 12 says where the findings stand now that the backend design is on `main`. v0.2.2: section 6 lists the manifest entry names the worker reads. v0.2.1: finding 27 is taken up by the backend branch (contracts 6). v0.2: `model_versions` keys follow contracts 5 (manifest entry names, `sam_encoder` and `sam_decoder`, label versions as keys); section 12 says which findings the backend branch takes up and adds finding 27, the fallback's guided-check budget. v0.1, 2026-10-15: First vision and ML design: every model the system runs, where each one runs on the three GPUs of the rig and the control plane's CPU, VRAM budgets, runtimes and version pins, how model files are pinned and versioned, licences, the build plan, open decisions, and the points where the architecture and contracts need a change to match.
+> **Checked:** model cards, licences, configs, checkpoint sizes, package indexes and vLLM, xgrammar, ONNX Runtime and PyTorch sources were read on 2026-10-15 (✓). The ONNX exports of RF-DETR, SAM 2.1, MobileSAM, UperNet and BioCLIP, the PlantDoc probes, the text-embedder benchmark and YuNet were run on a Mac with ONNX Runtime 1.31 on CPU (✓ ran). Nothing has run on the rig's GPUs: every VRAM and GPU-speed figure is an *estimate* until the day-1 checks and day-2 benchmarks. Points from secondary sources are *unverified*.
+
+This is the design of PDM's models and the machine learning around them. It builds on the [system architecture](../architecture/README.md) (sections 2, 3, 5, 6, 8.4, 10, 13, 14 and 15) and the [data contracts](../architecture/contracts.md) (sections 5, 6, 7 and 10), which define every shape the models' outputs travel in. How the Rust code calls a model (sessions, batching, the VLM client, schema building, box conversion, face blurring, the embedder, the measurement code) is in [docs/backend](../backend/vision.md) and [the worker design](../backend/worker.md).
+
+| Document | What it holds |
+|---|---|
+| [README.md](README.md) (this one) | The model inventory, placement and VRAM, runtimes, pinning and versions, licences, build plan, open decisions and findings |
+| [models.md](models.md) | Every model outside the VLM: plant check, leaf detector, mask model, regions, BioCLIP 2, the disease head, image embeddings, the face detector and the text embedder |
+| [vlm.md](vlm.md) | The vision-language model: choice, quantization, serving, image preparation, memory, prompts, schemas, box formats, sampling and the fallback worker's hosted model |
+| [training.md](training.md) | Datasets and licences, data preparation, training, ONNX export, label lists, feedback, and the model steps of knowledge ingestion |
+| [evaluation.md](evaluation.md) | The evaluation set, metrics and targets, calibration, thresholds, day-1 checks and day-2 benchmarks |
+
+## Contents
+
+1. [Goals and principles](#1-goals-and-principles)
+2. [Scope and the split with docs/backend](#2-scope-and-the-split-with-docsbackend)
+3. [Model inventory](#3-model-inventory)
+4. [Placement and VRAM budgets](#4-placement-and-vram-budgets)
+5. [Runtimes and versions](#5-runtimes-and-versions)
+6. [Model files, versions and pinning](#6-model-files-versions-and-pinning)
+7. [Label lists and the knowledge base](#7-label-lists-and-the-knowledge-base)
+8. [The fallback path](#8-the-fallback-path)
+9. [Licences and notices](#9-licences-and-notices)
+10. [Build plan](#10-build-plan)
+11. [Open decisions](#11-open-decisions)
+12. [Findings for the architecture and contracts](#12-findings-for-the-architecture-and-contracts)
+13. [Sources](#13-sources)
+
+---
+
+## 1. Goals and principles
+
+- **Facts with a confidence, never a diagnosis.** Models produce observations; scoring and rules make the diagnosis ([architecture 2](../architecture/README.md#design-principles)). Every model output carries a calibrated confidence ([evaluation 5](evaluation.md#5-calibration)).
+- **One backbone where one will do.** BioCLIP 2 identifies the species, scores the plant check, embeds images for similar cases and gives the disease head its features: one session, four uses ([models 6](models.md#6-species-bioclip)).
+- **Permissive licences only in what ships.** The repository is public and the demo is a hosted service, so every model's weights are Apache-2.0 or MIT, and datasets with non-commercial or no-derivatives terms stay out of shipped weights ([section 9](#9-licences-and-notices)). That rules out Ultralytics YOLO (AGPL-3.0).
+- **Pinned by hash.** Every model file is named in one manifest with its SHA-256, and every result records the versions that made it ([section 6](#6-model-files-versions-and-pinning)).
+- **Measured, not assumed.** Each threshold is set on the evaluation set; each model has an acceptance target ([evaluation 4](evaluation.md#4-metrics-and-acceptance-targets)).
+- **Every model is replaceable behind its trait** (`VisionModel`, `SpeciesIdentifier`, `TextEmbedder`: [architecture 2](../architecture/README.md#design-principles)); swapping one is a manifest change plus, at most, an adapter.
+
+---
+
+## 2. Scope and the split with docs/backend
+
+| Topic | docs/vision | docs/backend |
+|---|---|---|
+| Which model, why, licence, alternatives | ✓ | |
+| Tensors, pre- and post-processing values, thresholds | ✓ (the values) | ✓ (the code) |
+| Datasets, training, ONNX export, label lists | ✓ | |
+| VRAM budgets per card, server flags for vLLM and llama.cpp | ✓ | Compose services |
+| Prompts and per-call schemas, from the model's side | ✓ | Schema building, box conversion |
+| ONNX Runtime sessions, batching, the VLM client, retries | | ✓ |
+| Face blurring, depth zeroing, the blur and exposure check | Model and thresholds | ✓ |
+| The text embedder's code | Model, files and recipe | ✓ |
+| Depth measurement | Thresholds from the evaluation | ✓ |
+| Evaluation set, metrics, calibration, benchmarks | ✓ | |
+| Knowledge ingestion | Its model steps | |
+
+---
+
+## 3. Model inventory
+
+| Task | Model | Licence | Runs on | Output | Section |
+|---|---|---|---|---|---|
+| Plant-present check | Leaf detector score OR a BioCLIP 2 plant probe | Apache-2.0 / MIT | RTX 3070 | `plant_present` | [models 2](models.md#2-plant-present-check) |
+| Leaf boxes | **RF-DETR-S**, fine-tuned to one class `leaf` | Apache-2.0 ✓ | RTX 3070 | `leaf` regions | [models 3](models.md#3-leaf-detector) |
+| Leaf masks, `plant` region | **SAM 2.1 Hiera-T**, prompted with boxes | Apache-2.0 ✓ | RTX 3070 | RLE masks | [models 4–5](models.md#4-mask-model) |
+| Species, organisms | **BioCLIP 2** (ViT-L/14) vision tower against a precomputed label matrix | MIT ✓ | RTX 3070 | Top 3 species | [models 6](models.md#6-species-bioclip) |
+| Disease per leaf | A head on BioCLIP 2 features of each leaf crop | Ours, from CC BY data | RTX 3070 (features), worker CPU (head) | Top 3 problems per crop | [models 7](models.md#7-disease-classifier) |
+| Image embeddings | BioCLIP 2's image embedding, 768 dimensions | MIT ✓ | RTX 3070 | One vector per image | [models 8](models.md#8-image-embeddings) |
+| Soil, organisms with boxes, damage, species cross-check, indicator answers, guided checks | **Qwen3-VL-8B-Instruct**, FP8 (primary) or **Qwen3.5-9B**, W4A16 (challenger) | Apache-2.0 ✓ | RTX 5070 Ti, and RX 9070 XT as a second VLM worker | `VlmFindings`, `VlmIndicatorAnswers`, `GuidedTexture` | [vlm.md](vlm.md) |
+| Face detection for blurring | **YuNet** (`2026may`, dynamic input) | MIT ✓ | Control plane CPU | Face boxes | [models 9](models.md#9-face-detector) |
+| Text embeddings | **snowflake-arctic-embed-xs**, fp32, 384 dimensions | Apache-2.0 ✓ | Control plane CPU, and the ingestion scripts | Query and document vectors | [models 10](models.md#10-text-embedder) |
+| Vision fallback | `claude-opus-5-5`, configurable | Hosted API | Fallback worker | The same shapes | [vlm.md 12](vlm.md#12-the-fallback-worker) |
+| Knowledge tagging, extraction | `claude-haiku-5-5` (or Jev), `claude-opus-5-5` | Hosted API | Dev machines | Seed drafts | [training 10](training.md#10-knowledge-ingestion-the-model-steps) |
+
+Not models: the blur and exposure check (Laplacian variance and a histogram) and the measurement stage (geometry and colour thresholds), both in `api` on CPU; their thresholds come from [evaluation 6](evaluation.md#6-thresholds-set-from-the-evaluation-set).
+
+---
+
+## 4. Placement and VRAM budgets
+
+### The rig
+
+| Card | Memory | Role | Capability |
+|---|---|---|---|
+| RTX 3070 | 8 GB GDDR6, sm_86 | perception-worker: every ONNX model | `perception` |
+| RTX 5070 Ti | 16 GB GDDR7, sm_120 | vlm-worker #1 with its vLLM sidecar; also the training card | `vlm` |
+| RX 9070 XT | 16 GB GDDR6, gfx1201 (RDNA 4) | vlm-worker #2 with its own vLLM ROCm sidecar (recommended; not yet decided) | `vlm` |
+
+**Why the 9070 XT takes the VLM.** The `vlm` job is the slow one: two calls of up to 4 images, 30–50 seconds of decoding each job *estimate*, and a `max_runtime` of 5 minutes, against about 5 GB of ONNX models that the 3070 already holds. The fallback worker takes any job still unclaimed 15 seconds after it was queued ([contracts 5](../architecture/contracts.md#leases-runs-and-attempts)), so whenever every VLM slot is busy, the overflow goes to the hosted model and costs API credits. A second VLM card doubles the scarce capacity, so far less work overflows, and gives the VLM redundancy when one card or sidecar is down. A second `--caps vlm` worker needs no contract change: the broker leases the oldest matching job to whichever worker claims first ([architecture 8.4](../architecture/README.md#84-job-leasing-and-fallback)). Running perception on it instead would bring in AMD's own ONNX Runtime build (1.29 against 1.31 *unverified*, from the AMD stack research shared by the backend docs' author) through MIGraphX, which compiles per input shape, for capacity that isn't needed.
+
+### RTX 3070: perception
+
+All five sessions stay loaded. Within a job they run one after another, but ONNX Runtime's arenas keep what they grew to, so the budget is the sum. Each session gets a `gpu_mem_limit` at its budget, `arena_extend_strategy = kSameAsRequested`, and a warm-up at its largest batch when the worker starts, so the footprint is fixed and known before the first job ([docs/backend](../backend/vision.md)).
+
+| Item | Precision | Batch cap | Weights | Budget *estimate* |
+|---|---|---|---|---|
+| CUDA context, cuDNN and cuBLAS workspaces | | | | 0.5 GB |
+| RF-DETR-S leaf detector | fp16, `GridSample` fp32 | 8 images | 57 MB | 1.0 GB (1.7 GB at a batch of 16 in fp32 on the CPU proxy ✓ ran) |
+| SAM 2.1-T encoder | fp16 | 2 images | 55 MB | 1.6 GB (1.4 GB per image in fp32 on the CPU proxy ✓ ran) |
+| SAM 2.1-T box decoder | fp16, fp32 logits | 16 boxes | 8 MB | 0.6 GB (38 MB per box in fp32 ✓ ran) |
+| BioCLIP 2 vision tower | fp16 | 16 images | 0.61 GB | 1.2 GB |
+| Heads and the plant probe | fp32 | | under 2 MB | On the worker's CPU |
+| **Total** | | | | **about 4.9 GB of 8 GB** |
+
+- At least 1 GB must stay free at peak ([evaluation 8](evaluation.md#8-day-2-benchmarks)). If the SAM encoder doesn't fit, MobileSAM replaces it (336 MB per image ✓ ran); if BioCLIP 2 doesn't, BioCLIP (0.17 GB) does, with 512-dimensional embeddings.
+- `PERCEPTION_MAX_BATCH` (16) stays the job-wide cap, with the per-model caps above as deployment configuration below it ([section 12](#12-findings-for-the-architecture-and-contracts), finding 8).
+- The architecture's "roughly 4 GB" for these models ([architecture 10](../architecture/README.md#10-models-and-gpu-placement)) becomes about 5 GB with activations, still well within the card.
+- The optional UperNet regions model ([models 5](models.md#option-a-scene-parsing-model)) would add about 0.5 GB with its argmax in the graph.
+
+### RTX 5070 Ti and RX 9070 XT: the VLM
+
+Each card runs one vLLM sidecar at `--gpu-memory-utilization 0.90` and nothing else while serving ([vlm.md 6](vlm.md#6-memory-and-vlm_slots)):
+
+| | RTX 5070 Ti | RX 9070 XT |
+|---|---|---|
+| Server | vLLM v0.31.0, image built on CUDA 13.0.3 ✓ (its Dockerfile; the published tag `vllm/vllm-openai:v0.31.0` is *unverified*) | `vllm/vllm-openai-rocm:v0.31.0` (ROCm 7.2.3 userspace, built for gfx1201), tag and digest read from the registry by the AMD research |
+| Checkpoint | The same checkpoint and revision on both | |
+| Weights | 9.9 GiB (Qwen3-VL FP8) or 7.0 GiB (W4A16) | Same |
+| KV for 2 jobs at 1 megapixel per image | About 2 GiB in BF16 (Qwen3-VL), 0.5 GiB (Qwen3.5) *estimate* | Same |
+| Memory bandwidth | 896 GB/s *unverified* | 640 GB/s *unverified*: decoding about 30% slower *estimate* |
+| `VLM_SLOTS` | From its own day-2 benchmark | From its own day-2 benchmark |
+| Fallback server | llama.cpp (CUDA) | llama.cpp `server-vulkan` |
+
+**One checkpoint on every VLM worker.** A scan's `vlm` job and its later `verify` and `guided` jobs can land on different cards, so both cards must serve the same weights with the same prompts, schemas and image preparation; their answers are then comparable, never bit-identical. vLLM's RDNA 4 FP8 support landed in August 2026 (vLLM #43615, from the AMD research *unverified*), and whether it covers Qwen3-VL's 128 × 128 block scales on gfx1201 is *unverified*. If it doesn't, **both cards run the W4A16 checkpoint** (`cyankiwi/Qwen3-VL-8B-Instruct-AWQ-4bit`, Marlin on NVIDIA, and on AMD the RDNA 4 W4A16 kernel of vLLM #40977, which was benchmarked on a Qwen2.5 AWQ checkpoint; whether this compressed-tensors checkpoint selects it on gfx1201 is *unverified*), and the 5070 Ti gives up FP8's small accuracy edge for consistency. Nothing has run Qwen3-VL or Qwen3.5 on ROCm yet, and Qwen3.5's Gated DeltaNet kernels there are an extra risk for the challenger. The day-1 check reads the kernel choice from vLLM's log ([evaluation 7](evaluation.md#7-day-1-checks)). If either card falls back to llama.cpp, both serve the same GGUF files, or only one VLM worker runs. A worker whose `vlm_model` differs from the others is a configuration error shown on `/status`.
+
+**Training** uses the 5070 Ti with vLLM stopped ([training 2](training.md#2-environment)), so long training runs happen before the VLM pipeline goes live. With two VLM cards, one can be taken out for training while the other serves.
+
+### Control plane (CPU)
+
+| Model | Memory | Time per call *estimate* |
+|---|---|---|
+| YuNet, two passes per upload | 230 KB file ✓, under 100 MB working *estimate* | 0.1–0.5 s per 12-megapixel photo (38 ms at 1280 px on one Apple M3 thread ✓ ran; expect 2–5 times slower per thread on a small VM) |
+| arctic-embed-xs | 90 MB file ✓, about 200 MB working *estimate* | 5–25 ms per query (4.7 ms on one M3 thread ✓ ran) |
+| Blur and exposure check | | Milliseconds on a 512-pixel downscale |
+
+Both models run on blocking threads in `api` with a small pool, so an upload burst doesn't stall chat ([docs/backend](../backend/vision.md)).
+
+---
+
+## 5. Runtimes and versions
+
+| Where | Runtime | Pin |
+|---|---|---|
+| Perception worker (3070) | ONNX Runtime **1.31.0** with the **CUDA 13** execution provider, through `ort` 2.0.0-rc.14 | The ORT 1.31.0 GPU build is for CUDA 13.0 and cuDNN 9 and has native code for sm_86 and sm_120 ✓. The CUDA 12.8 build (1.24.1) has no sm_120 code ✓. Image `nvidia/cuda:13.0.3-cudnn-runtime-ubuntu24.04` ✓ |
+| VLM on the 5070 Ti | vLLM **0.31.0** | Built on CUDA 13.0.3 with torch 2.13.0 and xgrammar 0.2.7 ✓ (Dockerfile and requirements at the tag); a `-cu129` image exists for older drivers ✓ (release notes) |
+| VLM on the 9070 XT | vLLM **0.31.0** ROCm image | ROCm 7.2.3 userspace; the host needs ROCm 10.1's `amdgpu` 31.60 on Ubuntu 24.04.5 HWE or 26.04.1; no `HSA_OVERRIDE_GFX_VERSION` (all from the AMD research, *unverified* until the day-1 check, which also confirms the 7.2.3 userspace works on the 10.1 driver) |
+| NVIDIA host | Driver **580.65.06 or later** | CUDA 13.0's minimum ✓; one driver serves the ORT and vLLM containers, since both are built for CUDA 13 |
+| Training | PyTorch **2.14.1**, torchvision 0.29.1, **cu130** wheels | cu126 has no sm_120 ✓; cu130 has it in the 2.12–2.13 support matrix ✓, *unverified* for 2.14.1 until day 1 ([training 2](training.md#2-environment)) |
+| Control plane | ONNX Runtime 1.31.0 CPU through `ort` | Microsoft's plain `x86_64-unknown-linux-gnu` build ✓, opened the same way (below) with `ORT_EP=cpu` |
+
+**How `ort` loads ONNX Runtime.** `ort` is built with `load-dynamic` and `api-29`, not linked to a fixed build ([backend vision 2](../backend/vision.md#2-dependencies), the `rust-workers` skill's `ort.md`):
+
+- At start, the binary opens the vendor's `libonnxruntime` named by `ORT_DYLIB_PATH`. On the perception worker that is Microsoft's 1.31 GPU build in the `nvidia/cuda:13.0.3-cudnn-runtime-ubuntu24.04` image; on `api`, Microsoft's 1.31 CPU build.
+- `ORT_EP` (`cuda`, `migraphx`, `webgpu` or `cpu`) chooses the execution provider at run time.
+- `api-29` is the lowest ONNX Runtime API the binary asks for, so AMD's 1.29 build would load too, if perception ever moved to the RX 9070 XT.
+
+The alternative, pyke's prebuilt 1.31 through `download-binaries`, needs CUDA 13.2 or newer and cuDNN 9.23 or newer (pyke's documentation, *unverified* here). So the 13.0.3 image works only with `load-dynamic`.
+
+**ONNX Runtime settings on the 3070** (from its CUDA execution provider documentation ✓, values to confirm on day 2):
+
+| Option | Value | Why |
+|---|---|---|
+| `gpu_mem_limit` | Each session's budget above | Caps that session's arena |
+| `arena_extend_strategy` | `kSameAsRequested` | The default doubles allocations, which can hold up to twice what is used ✓ |
+| `cudnn_conv_algo_search` | `HEURISTIC` | `EXHAUSTIVE` re-benchmarks every new input shape, and batches vary ✓ |
+| `cudnn_conv_use_max_workspace` | 0 | The default can add several GB of workspace ✓ |
+| `do_copy_in_default_stream` | true (default) | Recommended ✓ |
+| CUDA graphs, TensorRT | Not used | CUDA graphs need fixed shapes ✓; the TensorRT execution provider's documentation stops at ORT 1.22 and CUDA 12.8, and engines take minutes to build ✓ |
+| `error_on_failure` on the CUDA provider | Always | Otherwise a failed registration silently falls back to CPU ✓ |
+
+**Correction for the architecture.** Architecture 10's day-1 check says the 5070 Ti "needs CUDA 12.8+ builds of PyTorch, vLLM and ONNX Runtime". That holds for PyTorch and vLLM, but ONNX Runtime 1.31, the version `ort` rc.14 targets, ships CUDA 13 builds only, and the current PyTorch and vLLM default to CUDA 13 too. The whole rig is on CUDA 13 with a 580 driver ([section 12](#12-findings-for-the-architecture-and-contracts), finding 1). Architecture 10 on `main` now says so.
+
+---
+
+## 6. Model files, versions and pinning
+
+### The manifest
+
+`ml/models/manifest.toml` lists every file a worker or `api` loads. Rust reads TOML with the `toml` crate and Python with `tomllib`, so one file serves the workers, `api`, the export checks and the evaluation harness.
+
+```toml
+[[model]]
+name      = "leaf_detector"
+version   = "rfdetr-s-leaf-2026-10-18"
+file      = "leaf_detector/rfdetr-s-leaf-2026-10-18.onnx"
+sha256    = "<64 hex>"
+licence   = "Apache-2.0"
+source    = "RF-DETR-S COCO weights (Apache-2.0), fine-tuned by ml/training/detector at <git sha>"
+runs_on   = "perception"                 # perception | api
+opset     = 17
+precision = "fp16"                       # fp16 with GridSample in fp32
+
+  [model.input]
+  name   = "input"
+  shape  = ["batch", 3, 512, 512]
+  colour = "rgb"
+  resize = "squash"                      # squash | shortest_side_crop | longest_side_pad
+  mean   = [0.485, 0.456, 0.406]
+  std    = [0.229, 0.224, 0.225]
+
+  [model.outputs]
+  boxes  = "dets"
+  logits = "labels"
+
+  [model.config]                         # thresholds and caps, set from the evaluation
+  score_threshold  = 0.35
+  max_batch        = 8
+  max_per_image    = 40
+  gpu_mem_limit_mb = 1024
+
+  [model.check]                          # written by ml/training/export/check.py
+  map50_onnx  = 0.0
+  map50_torch = 0.0
+```
+
+- Entries also exist for SAM's two graphs (`sam_encoder` and `sam_decoder`), BioCLIP 2's vision tower (`bioclip`), each label matrix (`bioclip_labels*`, one per `label_set_version`), the disease heads (`disease_head*`, one per `classifier_labels_version`, with their temperature), the plant probe (`plant_probe`), YuNet (`yunet`) and the text embedder with its tokenizer (`text_embedder`, `text_embedder_tokenizer`): the names the worker reads ([backend vision 5](../backend/vision.md#5-the-model-manifest)). The species head would be `species_head`; the worker doesn't load it until the dev split shows it helps (`SPECIES_HEAD_ENABLED`). Heads and label matrices are JSON files with base64 `f32` matrices ([training 6](training.md#6-disease-and-species-heads)).
+- **The model store.** Upstream files are fetched from their pinned Hugging Face revision or release URL; our own files (the fine-tuned detector, the heads, the label matrices) are published as release assets of the repository, once the team accepts section 9's licence reading (item 2); until then they live in a private bucket. `ml/models/fetch.py` downloads every file and checks its hash.
+- **Workers verify** each file's SHA-256 against the manifest at start-up and refuse to start on a mismatch. The VLM checkpoint is pinned the same way: by Hugging Face revision in the sidecar's command, and by the `vlm_model` key the worker reports.
+
+### Versions in results
+
+- `model_versions` in every `complete` and the heartbeat's `versions` ([contracts 5](../architecture/contracts.md#post-internalworkersheartbeat)) carry, for a perception worker: each model the job used under its manifest entry name, with its manifest `version` as the value (`leaf_detector`, `sam_encoder`, `sam_decoder`, `bioclip`, `disease_head`, `species_head`, `plant_probe`; SAM's two graphs are two entries), `ort_ep`, `worker_id`, and `perception_config`, the first 16 hex digits of the SHA-256 of every `[model.config]` table in the manifest (thresholds, temperatures, caps), so a result can be traced to the exact settings. `label_set_version` and `classifier_labels_version` are keys too: in `complete`, the ones that job used; in the heartbeat, every loaded one, comma-separated. A VLM worker reports the keys of [vlm.md 11](vlm.md#11-validation-retries-and-versions). The keys and value formats are fixed in [contracts 5](../architecture/contracts.md#post-internalworkersheartbeat) as agreed with docs/backend ([worker 17](../backend/worker.md#17-open-questions)).
+- Each observation's `model_version` ([contracts 7](../architecture/contracts.md#observation)) is the version of the model that produced it: `bioclip-2@<revision>+species_head@<version>` for a species candidate, `rfdetr-s-leaf-2026-10-18` for a leaf region.
+- Every stored vector carries `embedding_model`: `bioclip-2@<revision>` on `scan_image`, `snowflake-arctic-embed-xs@d8c86521` on `memory` and `knowledge_chunk` ([database 5](../database/README.md#5-reads-indexes-and-vector-search)).
+
+### Changing a model
+
+| Change | What follows |
+|---|---|
+| A new detector, SAM or head version | A manifest change; the dev split is rerun before merging ([evaluation 9](evaluation.md#9-harness-and-reports)). Old observations keep their `model_version` |
+| A new BioCLIP version | New label matrices, a new `label_set_version`, retrained heads, and the garden's image embeddings re-embedded from storage |
+| A new text-embedding model | Every chunk and memory re-embedded, and the HNSW index redefined if the dimension changes ([database README](../database/README.md)). A migration, never a silent swap |
+| A new VLM checkpoint or prompt | New `vlm_model` or `vlm_prompts`; the dev split rerun; every VLM worker changed together |
+
+---
+
+## 7. Label lists and the knowledge base
+
+The models and the knowledge base can't drift, because the loader generates or checks every label list from the seed ([contracts 10](../architecture/contracts.md#checks-and-generated-files)):
+
+- **The BioCLIP label matrix**: every species' and organism's `bioclip_label`, embedded offline with BioCLIP 2's text tower into an `N × 768` matrix under the loader's `label_set_version` ([training 8](training.md#8-label-lists)).
+- **`classifier_labels.yaml`**: written by training into the seed directory from the disease head's classes, then validated and loaded by the loader like any seed file, which checks it against each species' `classifier_supported` ([training 8](training.md#8-label-lists)).
+- **`species_options` and `organism_options`**: the enums of the VLM's schema, generated from the same seed ([contracts 5](../architecture/contracts.md#payloads)).
+
+Each perception payload names the `label_set_version` and `classifier_labels_version` it expects. The worker loads the versions its manifest lists (the current one, and the previous one during a change-over) and fails a job that names another with a non-retryable error ([section 12](#12-findings-for-the-architecture-and-contracts), finding 23).
+
+---
+
+## 8. The fallback path
+
+The fallback worker covers every job kind with a hosted model: any job left unclaimed for 15 seconds, so both when the rig is offline and when every slot of a capability is busy ([architecture 8.4](../architecture/README.md#84-job-leasing-and-fallback)):
+
+| Stage | Fallback |
+|---|---|
+| Plant check, species, disease | The hosted model, with the same schemas restricted to the payload's options; confidences from certainty words ([models 7](models.md#fallback-worker)) |
+| Leaf regions | One whole-image `leaf` region per close-up that shows leaves, no masks ([contracts 5](../architecture/contracts.md#results)) |
+| Image embeddings | None |
+| VLM calls | The same prompts and schemas, with the schema keywords the hosted API rejects stripped and enforced after decoding ([vlm.md 12](vlm.md#12-the-fallback-worker)) |
+| Measurement | Only plant height and canopy width, since there are no masks ([contracts 7](../architecture/contracts.md#measurement)) |
+
+The evaluation scores the fallback path separately ([evaluation 8](evaluation.md#fallback-worker)).
+
+---
+
+## 9. Licences and notices
+
+### What ships
+
+| Component | Licence | Notes |
+|---|---|---|
+| RF-DETR-S weights and code | Apache-2.0 ✓ | Only the N, S, M and L sizes; the others are PML 1.0 ✓ |
+| SAM 2.1 Hiera-T | Apache-2.0 ✓ | |
+| MobileSAM (if used) | Apache-2.0 ✓ | |
+| BioCLIP 2 | MIT ✓ | Trained on TreeOfLife-200M, tagged CC0 as a compilation ✓. Its predecessor TreeOfLife-10M states that its images keep their own terms, some CC BY-NC-SA ✓; the same likely holds for 200M *unverified* |
+| Qwen3-VL-8B-Instruct, Qwen3.5-9B | Apache-2.0 ✓ | Community quantizations inherit the base licence; checked per checkpoint |
+| YuNet | MIT ✓ | Trained on WIDER FACE, CC BY-NC-ND 4.0 ✓ |
+| snowflake-arctic-embed-xs | Apache-2.0 (README) ✓ | The Hub's licence tag is empty ✓ |
+| Our disease and species heads, detector fine-tune | Trained on PlantDoc (CC BY 4.0), TOM2024, Tomato-Pakistan (CC BY 4.0), iBean (MIT), CC0 / CC BY iNaturalist photos, and PlantVillage (CC BY-SA 3.0) at a low weight | Attribution for each in the notices |
+
+### Excluded
+
+Ultralytics YOLO and YOLOv10 (AGPL-3.0), YOLOv9 (GPL-3.0), DEIMv2 (non-commercial), EdgeSAM (non-commercial), SegFormer (NVIDIA non-commercial), SCRFD's weights (non-commercial), YOLO-face variants (GPL or AGPL), DINOv3 (custom licence with a mandatory notice), ConvNeXt V2 FCMAE weights (CC BY-NC), jina-embeddings-v3 (CC BY-NC), PlantWild and Agri-Foundation-145k (NC-ND), and PlantSeg until its conflicting licences are settled ([training 3](training.md#3-datasets-and-licences)). All ✓ from their licence files or cards.
+
+### For the team to decide
+
+1. **The project's own licence.** The repository has no `LICENSE` file yet ✓. The shipped models' own licences (Apache-2.0 and MIT) allow an Apache-2.0 or MIT project *unverified* legal reading; items 2 and 3 are the open questions.
+2. **Weights trained on restricted data.** YuNet (WIDER FACE, NC-ND), BioCLIP 2 (likely some NC images in TreeOfLife), our heads (PlantVillage's CC BY-SA 3.0, whose ShareAlike may or may not reach weights) and the optional UperNet regions model (ADE20K, non-commercial research) all carry MIT weights from their authors. Whether a dataset's terms reach a trained model is unsettled; every face detector shares the WIDER FACE question. The notices state it plainly.
+3. **PlantDoc's and PlantSeg's scraped images.** CC BY 4.0 covers the annotations; the photos' owners keep their copyright *unverified*. Fine for training; the images are never redistributed.
+4. **Kaggle terms** for Plant Pathology 2020/2021, before any of its images are used.
+
+`ml/models/NOTICES.md` lists every model and dataset with its licence, its authors' required citation and these caveats, and the app's About screen links to it.
+
+---
+
+## 10. Build plan
+
+The vision work, mapped onto [architecture 14](../architecture/README.md#14-build-plan):
+
+| Dates | Vision and ML |
+|---|---|
+| Oct 16–17 | Day-1 checks on all three cards ([evaluation 7](evaluation.md#7-day-1-checks)): ORT 1.31 CUDA on the 3070 and 5070 Ti, vLLM on the 5070 Ti, vLLM ROCm on the 9070 XT. Text embedder pinned. Datasets fetched and deduplicated. BioCLIP 2, SAM 2.1-T and YuNet exported and checked. **5070 Ti:** RF-DETR-S first fine-tune on Oct 17 (1–2 hours), then vLLM back up for prompt work. Disease head v0 (CPU). Evaluation photos start (Oct 16–23). Ask a local extension office about confirming cases |
+| Oct 18–19 | Leaf relabelling pass (people, Oct 18). The BioCLIP label matrix from the species and organism seed files, which need only names, not reviewed problem profiles. The VLM prompts and schemas on real photos. **The benchmark the contracts call "day 2"** runs on Oct 18, once the models are on the rig: both VLM candidates on both VLM cards, and the perception batch caps ([evaluation 8](evaluation.md#8-day-2-benchmarks)). **5070 Ti, night of Oct 18:** second detector run with vLLM stopped, while the 9070 XT serves. Oct 19: crops from our detector; disease and species heads v1. Knowledge extraction and discrimination running |
+| Oct 20–21 | VLM chosen; `VLM_SLOTS` per card; `VLM_MAX_PIXELS`. Heads retrained as profiles are reviewed. Fallback worker checked with one live box call. Spot colour thresholds from hand-drawn lesions |
+| Oct 22–23 | Calibration on the dev split: certainty values, temperatures, BioCLIP agreement, the diagnosis margin, the measurement thresholds ([evaluation 5–6](evaluation.md#5-calibration)). Final manifests |
+| Oct 24 | Test split scored once; numbers for Devpost |
+| Oct 25 | Model notices and the Devpost write-up |
+
+---
+
+## 11. Open decisions
+
+1. **Which VLM:** Qwen3-VL-8B FP8 or Qwen3.5-9B W4A16, from the day-2 benchmark (architecture open decision 4; [vlm.md 2](vlm.md#2-model-choice)).
+2. **The 9070 XT's role and stack:** a second VLM worker (recommended) on vLLM ROCm, or llama.cpp Vulkan if vLLM fails the day-1 check; and FP8 or W4A16 on both VLM cards (section 4).
+3. **SAM 2.1-T or MobileSAM**, and BioCLIP 2 or BioCLIP, from VRAM on the 3070 (section 4).
+4. **The disease head or ConvNeXt-Tiny**, if the head stays below 75% top-1 ([models 7](models.md#7-disease-classifier)).
+5. **The species head**: on only if it improves the dev split ([models 6](models.md#a-trained-species-head-for-the-supported-crops)).
+6. **`VLM_MAX_PIXELS`, `VLM_SLOTS`, the perception batch caps** (contracts open questions 1 and 9).
+7. **Text embedder:** arctic-embed-xs (recommended) or arctic-embed-s, both 384 dimensions, after 50 real question–chunk pairs; and whether French is needed, which would mean a 768-dimensional multilingual model chosen before ingestion (architecture open decision 13; [models 10](models.md#10-text-embedder)).
+8. **The licence questions** of section 9.
+9. **Soil and surroundings regions:** only if a stage needs them and the ADE20K question is accepted ([models 5](models.md#5-plant-soil-and-surroundings-regions)).
+10. **The calibration values** (contracts open questions 2 and 3), on Oct 22–23.
+
+---
+
+## 12. Findings for the architecture and contracts
+
+These are points where the existing documents are wrong, out of date or ambiguous given the choices above. **This branch changes none of `contracts.md`, the architecture or `schema.surql`**: they are proposals for the team, to apply in one pull request as the source-of-truth rules require ([AGENTS.md](../../AGENTS.md#sources-of-truth)).
+
+**Where they stand (2026-10-16).** The backend design, now on `main`, took up all but three of them: contracts v0.10.2, architecture v0.7.2 and database v1.4.2. Still open:
+
+- 12 is [contracts open question 36](../architecture/contracts.md#12-open-questions).
+- 15 is part of contracts open question 2.
+- 13 isn't in contracts 12. It stays with [vlm.md 14](vlm.md#14-open-questions), question 2, to propose after the day-2 benchmark.
+
+| # | Where | What it says | Proposed |
+|---|---|---|---|
+| 1 | Architecture 10, day-1 check | The 5070 Ti "needs CUDA 12.8+ builds of PyTorch, vLLM and ONNX Runtime" | ONNX Runtime 1.31 (`ort` rc.14) ships CUDA 13 builds only ✓; PyTorch 2.14 cu130 and vLLM 0.31 default to CUDA 13 ✓. The rig needs driver 580.65.06 or later (section 5) |
+| 2 | Contracts 6, image preparation | Each side "rounded to a multiple of 28", vLLM's `min_pixels` and `max_pixels` | That is Qwen2.5-VL. Qwen3-VL and Qwen3.5 use 32-pixel cells and the processor's `size.longest_edge` ✓. The cell size and the server's pixel keyword are properties of the model adapter, next to `box_format` ([vlm.md 5](vlm.md#5-image-preparation-and-tokens)) |
+| 3 | Contracts 6, box formats | `abs_px_prepared` for "Qwen2.5-VL on vLLM"; `norm_1000` is "divide by 1000" | The chosen models are `norm_1000` ✓, which needs no new format. State that `bbox_2d` is corners `[x1, y1, x2, y2]` and the worker converts to `[x, y, w, h]` for every format, and that `box_format` belongs to the adapter instance (model, server and preparation) |
+| 4 | Contracts 6, box-format table and after decoding | `norm_1000` is "used by hosted LLMs on the fallback worker", which requests `norm_1000` boxes | Claude's documentation says it returns pixel coordinates of the image as it sees it after its own resize ✓. Send images it won't resize and use `abs_px_prepared`; settle with one live call on day 2 ([vlm.md 12](vlm.md#12-the-fallback-worker)) |
+| 5 | Contracts 6, per-job schema and after decoding | "vLLM's structured-output (guided decoding) option"; `max_tokens` | `guided_json` was removed in vLLM 0.12 ✓: the option is `response_format` with a JSON schema (or `structured_outputs`), and vLLM 0.31 uses `max_completion_tokens` ✓. Add that xgrammar's length-limited strings can't contain quotes, backslashes or line breaks ✓, and that `pattern` can't be combined with `maxLength` ✓ |
+| 6 | Contracts 12, open question 1 | Whether vLLM enforces `maxLength` and `maxItems` | xgrammar 0.2.7, pinned by vLLM 0.31, enforces both and integer bounds, from its source ✓. The day-2 check confirms it in practice; the worker's truncation stays |
+| 7 | Contracts 5, batching | "the SAM-class model over every leaf box of an image in one prompt" | Several boxes in one SAM prompt produce one merged mask ✓. Say "in one decoder call, one prompt per box" ([models 4](models.md#4-mask-model)) |
+| 8 | Contracts 5, batching; architecture 10 | One `PERCEPTION_MAX_BATCH` (16) for every model | The SAM encoder needs about 1.4 GB per image in fp32 ✓ ran, so it needs its own cap (about 2) and the decoder a box cap (16). Per-model caps as deployment configuration below the job-wide one |
+| 9 | Architecture 3 (training row), 6.1 and 10; contracts 5 | "YOLO detector + SAM-class model" and "the YOLO leaf detector" (architecture 6.1, 10); "fine-tunes the disease classifier" (architecture 3, 10); a "classifier fine-tuned on PlantDoc-style field images" (contracts 5); the 3070 models "need roughly 4 GB" (architecture 10) | The detector is RF-DETR-S, because Ultralytics YOLO is AGPL-3.0 and Ultralytics states its trained models are too ✓. The disease classifier is a head on BioCLIP 2 features of each leaf crop; on BioCLIP v1 features it already matched published full fine-tunes on PlantDoc ✓ ran, and the BioCLIP 2 head is measured on day 2. About 5 GB with activations *estimate* |
+| 10 | Architecture 10 and open decision 13; database open question 1 | Text embeddings "`fastembed`-style"; the model and dimension open; `DIMENSION 384` a placeholder | arctic-embed-xs, CLS pooling, 384 dimensions, fp32. The placeholder becomes the real value; `fastembed` is out because it pins `ort` rc.13 ✓ ([models 10](models.md#10-text-embedder)) |
+| 11 | Database open question 2; `schema.surql` comment on `scan_image.embedding` | The image-embedding model and dimension are fixed on day 1 | BioCLIP 2's 768-dimensional embedding. The field has no fixed length, so the schema needs only its comment updated; `embedding_model` already exists ✓ |
+| 12 | Contracts 5, `VlmPayload.organism_options` | Only `id` and `name` | Optionally add each organism's `recognition` line, so the findings prompt can describe every option and not only the beneficials it lists itself ([vlm.md 7](vlm.md#7-prompts)) |
+| 13 | Contracts 5, photo routing | The indicator call's images are chosen by score; their send order isn't fixed | Send them in the findings order when possible, so vLLM's prefix cache reuses more of the findings call. A proposal after the day-2 benchmark ([vlm.md 14](vlm.md#14-open-questions)) |
+| 14 | Contracts 5, slots table; contracts 12, open questions 1 and 9; architecture 2, 3, 8.4, 10, 12, 15 | One vlm-worker on the 5070 Ti | Each vlm-worker (5070 Ti and 9070 XT) has its own `VLM_SLOTS` from its own benchmark; every vlm-worker serves the same checkpoint; the `model_versions` keys of [vlm.md 11](vlm.md#11-validation-retries-and-versions); a third card in the diagram, components, compose files and open decisions. docs/backend covers the worker configuration and compose services |
+| 15 | Contracts 7, measurement confidence | Measurements map to "the VLM's values" 0.4 / 0.65 / 0.85 | If calibration moves the VLM's values, the measurements' move too. Decide whether that coupling is intended ([evaluation 5](evaluation.md#5-calibration)) |
+| 16 | Contracts 10 and architecture 5 | Chunk embeddings "computed at load time" (contracts) and "embedded in batches" by the ingestion scripts (architecture) | Say which program embeds them: the Python loader, with the same ONNX file, when it generates the migration ([training 10](training.md#embedding-step-3)) |
+| 17 | Architecture 6.2, step 3 | "If both agree with a high score" | Define it: BioCLIP's top-1 in the high band and the VLM naming the same species with medium or high certainty, with the threshold raised from the evaluation if needed ([evaluation 5](evaluation.md#bioclip)) |
+| 18 | Architecture 6.5 | "Qwen2.5-VL-class models do this grounding natively" | True of the chosen Qwen3-VL and Qwen3.5 too; small insects are about one 32-pixel token at 1 megapixel, so recall on tiny pests is the risk to measure, with a detail crop of the leaf underside as the lever ([vlm.md 5](vlm.md#small-organisms)) |
+| 19 | Contracts 6, after decoding; contracts 12, open question 2 | The mapping exists "so a VLM finding can never show more than high (0.85)"; calibrate "on Oct 24" | Calibration keeps each word inside its band and never above 0.85; if the dev split shows a word belongs in another band, that is reported, not applied, since it changes what the app shows. Calibration runs on the dev split on Oct 22–23, and Oct 24 is the single test-split scoring ([evaluation 5](evaluation.md#5-calibration)) |
+| 20 | Contracts 10, `SpeciesSeed` and `OrganismSeed` | `bioclip_label`: "the text prompt BioCLIP scores against" | Define it as the class text that pybioclip's 80 templates wrap ("a photo of {label}."), written in the seed as `<scientific name> with common name <common name>` (`Solanum lycopersicum with common name tomato`; `Coccinellidae larva with common name ladybug larva` for a life stage) ([training 8](training.md#8-label-lists)) |
+| 21 | Contracts 10, files and generated files; `schema.surql` `classifier_label` | `classifier_labels.yaml` is a seed file; the loader generates `label_set_version` and `classifier_labels_version` | Agreed, and stated as a flow: training writes `classifier_labels.yaml` into `ml/knowledge/seed/` in the same pull request as the head; the loader validates it, loads the `classifier_label` rows keyed by `[model_version, index]`, and uses `model_version` as `classifier_labels_version`. To compute `label_set_version`, the loader also needs the BioCLIP revision and the template list, and it runs the text tower (or reads the matrix training produced) ([training 8](training.md#8-label-lists)) |
+| 22 | Architecture 13; AGENTS.md planned layout | `ml/training`, `ml/knowledge`; `docs/` without `vision/` | Add `ml/pdm_vision/` (shared pre-processing), `ml/models/` (the manifest and notices), `ml/training/eval/`, and `docs/vision/` ([training 1](training.md#1-layout)). This branch adds `docs/vision` to AGENTS.md's document index only |
+| 23 | Contracts 1, versioning; contracts 2 | Only `unsupported_version` exists for a payload the worker can't handle | Add an error code, for example `unknown_label_version`, non-retryable, for a payload whose `label_set_version` or `classifier_labels_version` the worker hasn't loaded. As a run job's non-retryable failure it would fail the scan, so the API should never queue a version no live worker reports in its heartbeat `versions` |
+| 24 | Contracts 6, after decoding | The hosted structured-output feature "ignores" `maxLength` and `maxItems` | It rejects them with a 400, and `minimum` and `maximum` too ✓. The fallback adapter strips them, then truncates strings and clamps numbers and boxes after decoding ([vlm.md 12](vlm.md#12-the-fallback-worker)) |
+| 25 | Architecture 6.1; contracts 5 | "Whether a plant is present comes from segmentation"; the plant check runs "over every image" | The check is the leaf detector's score **or** a plant probe on the BioCLIP 2 embedding, over the plant shots only, so a soil close-up never counts against it and an unusual plant isn't failed for lacking PlantDoc-like leaves ([models 2](models.md#2-plant-present-check)) |
+| 26 | Architecture 6.1; contracts 5, batching | The disease classifier runs on "each leaf region"; BioCLIP and the image-embedding model run "over every plant image" | The classifier runs on `leaf_closeup` and `leaf_underside` regions only, since whole-plant leaves are too small at 224 pixels. BioCLIP 2 makes two passes: every plant and soil image (soil is embedded for similar cases but left out of species scoring), then the leaf crops ([models 6–8](models.md#6-species-bioclip)) |
+| 27 | Contracts 6, the fallback's token budget (backend branch) | 8,000 output tokens per call, "findings and indicators alike" | The guided check on the fallback needs the same budget: its 100 tokens leave no room for the thinking the hosted model always does ([vlm.md 12](vlm.md#12-the-fallback-worker)) |
+
+---
+
+## 13. Sources
+
+Read on 2026-10-15.
+
+**Models**
+- RF-DETR: [repository and README](https://github.com/roboflow/rf-detr), [ONNX export](https://raw.githubusercontent.com/roboflow/rf-detr/develop/docs/exports/onnx.md), [dataset formats](https://raw.githubusercontent.com/roboflow/rf-detr/develop/docs/learn/train/dataset-formats.md)
+- D-FINE: [repository](https://github.com/Peterande/D-FINE); Ultralytics: [licence](https://www.ultralytics.com/license), [LICENSE](https://raw.githubusercontent.com/ultralytics/ultralytics/main/LICENSE)
+- SAM 2: [repository](https://github.com/facebookresearch/sam2); MobileSAM: [repository](https://github.com/ChaoningZhang/MobileSAM); SAM 3: [LICENSE](https://raw.githubusercontent.com/facebookresearch/sam3/main/LICENSE); EdgeSAM: [LICENSE](https://raw.githubusercontent.com/chongzhou96/EdgeSAM/master/LICENSE)
+- BioCLIP: [card](https://huggingface.co/imageomics/bioclip), [paper](https://arxiv.org/html/2311.18803); BioCLIP 2: [card](https://huggingface.co/imageomics/bioclip-2), [paper](https://arxiv.org/html/2505.23883); [pybioclip](https://github.com/Imageomics/pybioclip/blob/main/src/bioclip/predict.py)
+- Qwen3-VL: [repository](https://github.com/QwenLM/Qwen3-VL), [grounding cookbook](https://github.com/QwenLM/Qwen3-VL/blob/main/cookbooks/2d_grounding.ipynb), [technical report](https://arxiv.org/html/2511.21631), [FP8 checkpoint](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-FP8); Qwen3.5: [repository](https://github.com/QwenLM/Qwen3.5), [card](https://huggingface.co/Qwen/Qwen3.5-9B)
+- YuNet: [OpenCV Zoo](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet), [libfacedetection](https://github.com/ShiqiYu/libfacedetection); WIDER FACE: [card](https://huggingface.co/datasets/CUHK-CSE/wider_face)
+- snowflake-arctic-embed-xs: [card](https://huggingface.co/Snowflake/snowflake-arctic-embed-xs)
+- UperNet ConvNeXt: [card](https://huggingface.co/openmmlab/upernet-convnext-tiny); ADE20K: [terms](https://ade20k.csail.mit.edu/terms/)
+
+**Datasets**
+- PlantDoc: [classification](https://github.com/pratikkayal/PlantDoc-Dataset), [detection](https://github.com/pratikkayal/PlantDoc-Object-Detection-Dataset), [paper](https://arxiv.org/abs/1911.10317), [Roboflow's fixes](https://roboflow.com/blog/introducing-an-improved-plantdoc-dataset-for-plant-disease-object-detection)
+- [PlantVillage](https://huggingface.co/datasets/mohanty/PlantVillage), [TOM2024](https://data.mendeley.com/datasets/3d4yg89rtr/1), [Tomato Pakistan](https://data.mendeley.com/datasets/3mbnb82mxd), [iBean](https://github.com/AI-Lab-Makerere/ibean), [DiaMOS](https://zenodo.org/records/5557313), [PlantWild](https://tqwei05.github.io/PlantWild), PlantSeg ([13958858](https://zenodo.org/records/13958858), [14935094](https://zenodo.org/records/14935094)), [PhenoBench](https://www.phenobench.org/dataset.html), [iNaturalist licences](https://help.inaturalist.org/en/support/solutions/articles/151000173511)
+- [Ghrieb et al. 2026, PlantDoc benchmarks](https://www.informatica.si/index.php/informatica/article/download/10277/6526); [Mohanty et al. 2016](https://pmc.ncbi.nlm.nih.gov/articles/PMC5032846/)
+
+**Runtimes**
+- ONNX Runtime 1.31: [release](https://github.com/microsoft/onnxruntime/releases/tag/v1.31.0), [kernel table](https://raw.githubusercontent.com/microsoft/onnxruntime/v1.31.0/docs/OperatorKernels.md), [CUDA execution provider](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html), [fp16](https://onnxruntime.ai/docs/performance/model-optimizations/float16.html)
+- vLLM 0.31.0: [release](https://github.com/vllm-project/vllm/releases/tag/v0.31.0), [Dockerfile versions](https://github.com/vllm-project/vllm/blob/v0.31.0/docker/versions.json), [xgrammar backend](https://github.com/vllm-project/vllm/blob/v0.31.0/vllm/v1/structured_output/backend_xgrammar.py), [Qwen3.5 recipe](https://recipes.vllm.ai/Qwen/Qwen3.5-9B); xgrammar 0.2.7: [JSON Schema converter](https://github.com/mlc-ai/xgrammar/blob/v0.2.7/cpp/json_schema_converter.cc)
+- llama.cpp: [server](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md), [multimodal](https://github.com/ggml-org/llama.cpp/blob/master/docs/multimodal.md), [JSON schema to grammar](https://github.com/ggml-org/llama.cpp/blob/master/common/json-schema-to-grammar.cpp)
+- PyTorch 2.14.1: [support matrix](https://raw.githubusercontent.com/pytorch/pytorch/v2.14.1/RELEASE.md), [ONNX export](https://docs.pytorch.org/docs/2.14/onnx_export.html); [CUDA 13.0 release notes](https://docs.nvidia.com/cuda/archive/13.0.0/cuda-toolkit-release-notes/index.html)
+- ROCm: [10.1.0 release notes](https://rocm.docs.amd.com/en/latest/about/release-notes.html), [compatibility matrix](https://rocm.docs.amd.com/en/latest/compatibility/compatibility-matrix.html); vLLM RDNA 4 work: [#40977](https://github.com/vllm-project/vllm/pull/40977), [#43615](https://github.com/vllm-project/vllm/pull/43615)
+- Claude: [vision coordinates](https://platform.claude.com/docs/en/build-with-claude/vision-coordinates), [structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs)
