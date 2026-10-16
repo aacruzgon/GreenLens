@@ -65,8 +65,12 @@ precision = "fp16"
   image_embed      = "image_embed"       # [batch, 256, 64, 64]
 
   [model.config]
-  max_batch        = 2                   # 2178 MiB peak at batch 2 in fp16, measured on the 5070 Ti
-  gpu_mem_limit_mb = 1638
+  max_batch        = 2
+  # gpu_mem_limit caps the session's memory pool. Measured on the 5070 Ti in fp16 at batch 2:
+  # 1,872 MiB above the loaded session (peak_minus_loaded_mib in sam2/check.json; 2,178 MiB for
+  # the whole process with the CUDA context and weights). 1,638 would fail the warm-up (review
+  # of PR #6, item 5); 2,048 leaves 176 MiB of margin. Recheck on the 3070 (evaluation.md §8).
+  gpu_mem_limit_mb = 2048
 
   [model.check]
   mean_mask_iou_fp16 = 0.99966
@@ -108,21 +112,25 @@ runs_on           = "perception"
 label_set_version = "233482ce598f591b"
 
 [[model]]
-name                      = "disease_head_v1b"
-version                   = "disease-head-v1b-2026-10-16"
-file                      = "disease_head/disease-head-v1b-2026-10-16.json"
-sha256                    = "11d817f3659ea06012c065990a14758e7f8c11835743e9f9b7581abb98bab3ed"
+name                      = "disease_head_v1c"
+version                   = "disease-head-v1c-2026-10-16"
+file                      = "disease_head/disease-head-v1c-2026-10-16.json"
+sha256                    = "a83c7473d7ceb6ece1391ad4523d06aa47e5924b80bd0de86b39464997238c9a"
 licence                   = "Data CC BY 4.0 (PlantDoc, TOM2024, Tomato-Pakistan 2026) and MIT (iBean); weights ours"
-source                    = "logistic regression (C=100, each dataset weighted equally within a class) on BioCLIP 2 fp16 features of whole images from PlantDoc, TOM2024, Tomato-Pakistan 2026 and iBean, ml/training/heads/train_disease.py --balance-sources"
+source                    = "logistic regression (C=500, each dataset weighted equally within a class) on BioCLIP 2 fp16 features of whole images from PlantDoc, TOM2024, Tomato-Pakistan 2026 and iBean; ml/training/heads/train_disease.py --balance-sources; report in ml/training/heads/reports/"
 runs_on                   = "perception"
-classifier_labels_version = "disease-head-v1b-2026-10-16"
+classifier_labels_version = "disease-head-v1c-2026-10-16"
 
   [model.config]
-  temperature = 0.7417                   # T_disease, fitted on validation (restricted softmax)
+  temperature = 1.0428                   # T_disease, fitted on validation (restricted softmax)
   crop_grow   = 0.10
 
-  [model.check]                          # restricted softmax; test = PlantDoc test + iBean test (353)
-  test_restricted_top1 = 0.875
-  test_restricted_top3 = 0.989
-  test_ece_after_t     = 0.047
-  val_restricted_top1  = 0.889           # val is mostly the field sets (1,707)
+  # Restricted to the true species, a crop with k or fewer classes is right at top-k by
+  # construction, so each top-k counts only crops with more than k classes, and calibration
+  # only crops with 2 or more. Trained and scored on WHOLE images; the worker feeds it leaf
+  # crops, so these numbers won't carry over until heads train on detector crops.
+  [model.check]
+  test_top1_multiclass_crops = 0.837     # 295 of the 354 test images (PlantDoc + iBean test)
+  test_top3_over_3_classes   = 0.933     # 90 images: tomato and corn
+  test_ece_multiclass        = 0.076     # target 0.05 (evaluation.md §4): not met
+  val_top1_multiclass_crops  = 0.887     # 1,685 images, mostly the field sets

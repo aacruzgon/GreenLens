@@ -35,6 +35,7 @@ ROOT = Path(__file__).resolve().parents[3]
 SPLITS = ROOT / "ml/training/data/splits"
 RAW = ROOT / "ml/training/data/raw"
 RUNS = ROOT / "ml/training/runs/heads"
+REPORTS = ROOT / "ml/training/heads/reports"   # committed (training.md §6, Report)
 BIOCLIP = "bioclip-2@2957b322"
 
 
@@ -154,7 +155,8 @@ def main() -> None:
         clf = LogisticRegression(C=C, max_iter=3000)
         clf.fit(Xtr, ytr, sample_weight=sample_w)
         lv = restricted_logits(clf.decision_function(feats["val"]), species_of_class, sp["val"])
-        acc = topk_acc(softmax(lv), ys["val"], 1)
+        multi = np.asarray([(species_of_class == s).sum() > 1 for s in sp["val"]])
+        acc = topk_acc(softmax(lv[multi]), ys["val"][multi], 1)
         print(f"C={C}: restricted val top-1 {acc:.3f}")
         if best is None or acc > best[0]:
             best = (acc, C, clf)
@@ -169,19 +171,31 @@ def main() -> None:
         res = softmax(restricted_logits(raw, species_of_class, sp[name]) / T)
         res_untempered = softmax(restricted_logits(raw, species_of_class, sp[name]))
         y = ys[name]
+        spn = np.asarray(sp[name])
+        # Restricted to the true species, a crop with k or fewer classes is right at top-k by
+        # construction (review of PR #6, item 1). Each top-k is reported only over crops with
+        # more than k classes, and calibration only over crops with 2 or more.
+        n_cls = {s: int((species_of_class == s).sum()) for s in set(spn)}
+        k_of = np.asarray([n_cls[s] for s in spn])
         per_crop = {}
-        for s in sorted(set(sp[name])):
-            m = np.asarray(sp[name]) == s
-            per_crop[s] = {"n": int(m.sum()), "top1": topk_acc(res[m], y[m], 1), "top3": topk_acc(res[m], y[m], 3)}
+        for s in sorted(set(spn)):
+            m = spn == s
+            per_crop[s] = {"n": int(m.sum()), "classes": n_cls[s], "top1": topk_acc(res[m], y[m], 1), "top3": topk_acc(res[m], y[m], 3)}
+
+        def over(mask, f):
+            return {"value": f(mask), "n": int(mask.sum())} if mask.any() else {"value": None, "n": 0}
+
         return {
             "n": int(len(y)),
             "full_top1": topk_acc(full, y, 1),
             "full_top3": topk_acc(full, y, 3),
-            "restricted_top1": topk_acc(res, y, 1),
-            "restricted_top3": topk_acc(res, y, 3),
-            "ece_before_T": ece(res_untempered, y),
-            "ece_after_T": ece(res, y),
+            "restricted_top1_multiclass": over(k_of > 1, lambda m: topk_acc(res[m], y[m], 1)),
+            "restricted_top3_over_3_classes": over(k_of > 3, lambda m: topk_acc(res[m], y[m], 3)),
+            "ece_before_T_multiclass": over(k_of > 1, lambda m: ece(res_untempered[m], y[m])),
+            "ece_after_T_multiclass": over(k_of > 1, lambda m: ece(res[m], y[m])),
+            "trivial_share": float((k_of == 1).mean()),
             "per_crop": per_crop,
+            "note": "Restricted metrics assume the species is right. The head is trained and scored on whole images; the worker feeds it leaf crops.",
         }
 
     out = RUNS / args.version
@@ -219,12 +233,17 @@ def main() -> None:
         "test": report("test"),
     }
     (out / "report.json").write_text(json.dumps(summary, indent=2) + "\n")
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    (REPORTS / f"{args.version}.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps({k: v for k, v in summary.items() if k not in ("val", "test")}, indent=2))
     for n in ("val", "test"):
         r = summary[n]
-        print(f"{n}: n={r['n']} full top1 {r['full_top1']:.3f} top3 {r['full_top3']:.3f} | restricted top1 {r['restricted_top1']:.3f} top3 {r['restricted_top3']:.3f} | ECE {r['ece_before_T']:.3f} -> {r['ece_after_T']:.3f}")
+        t1, t3 = r["restricted_top1_multiclass"], r["restricted_top3_over_3_classes"]
+        e0, e1 = r["ece_before_T_multiclass"], r["ece_after_T_multiclass"]
+        fmt = lambda d: "n/a" if d["value"] is None else f"{d['value']:.3f} (n={d['n']})"
+        print(f"{n}: n={r['n']} | restricted top-1 on multi-class crops {fmt(t1)} | top-3 on crops with >3 classes {fmt(t3)} | ECE {fmt(e0)} -> {fmt(e1)} | trivial share {r['trivial_share']:.2f}")
         for s, v in r["per_crop"].items():
-            print(f"   {s:11s} n={v['n']:3d} top1 {v['top1']:.2f} top3 {v['top3']:.2f}")
+            print(f"   {s:11s} classes={v['classes']} n={v['n']:4d} top1 {v['top1']:.2f} top3 {v['top3']:.2f}")
 
 
 if __name__ == "__main__":
