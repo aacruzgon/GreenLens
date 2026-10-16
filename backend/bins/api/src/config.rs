@@ -211,7 +211,7 @@ impl Config {
             },
             storage: StorageConfig {
                 endpoint: env.or("RUSTFS_ENDPOINT", "http://rustfs:9000"),
-                bucket: env.or("RUSTFS_BUCKET", "pdm"),
+                bucket: env.or("RUSTFS_BUCKET", "pdm-images"),
                 access_key: env.required("RUSTFS_ACCESS_KEY")?,
                 secret_key: env.secret("RUSTFS_SECRET_KEY")?,
             },

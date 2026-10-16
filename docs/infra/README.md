@@ -1,6 +1,6 @@
 # PDM Infrastructure and CI
 
-> **Status:** Draft v0.1, 2026-10-16. v0.1: first design of the CI workflows, the container images, the three compose files, ingress, secrets, deploys by digest, operations hooks and the infrastructure work items of the [backend roadmap](../backend/roadmap.md). Design only: nothing here exists yet.
+> **Status:** Draft v0.1.1, 2026-10-16. v0.1.1: `api`'s bucket default is now `pdm-images`, so section 4's note no longer flags it. v0.1: first design of the CI workflows, the container images, the three compose files, ingress, secrets, deploys by digest, operations hooks and the infrastructure work items of the [backend roadmap](../backend/roadmap.md). Design only: nothing here exists yet.
 
 This document turns [architecture 12](../architecture/README.md#12-deployment) and [backend 12](../backend/README.md#12-builds-and-deployment) into files: what goes in `.github/` and `infra/`, how each image is built and pinned, and how the control plane and the rig are started, deployed and rolled back. It closes [roadmap gap 3](../backend/roadmap.md#12-gaps-found-while-writing-this-roadmap).
 
@@ -421,7 +421,7 @@ volumes: { models: {}, surrealdb-data: {}, rustfs-data: {}, rustfs-logs: {}, cad
 - **Stop order** is the reverse, so `api` drains its deletes into a running RustFS. `docker compose down` waits up to each service's grace period.
 - **Networks.** `data` holds the stateful services; `edge` holds what talks to the internet. Only `api` is on both. `data` isn't `internal: true`, because the backups reach SurrealDB and RustFS through their host-only ports (`127.0.0.1:8000`, `127.0.0.1:9000`, as database 1 and storage 1 publish them).
 - **Root credentials.** Database 1 and storage 1 interpolate the root credentials (`${SURREAL_ROOT_PASS:?}`, `${RUSTFS_ROOT_SECRET_KEY:?}`) into their services. Here they come from `env_file` instead, so they never sit in `.env.compose`, which every compose command reads.
-- **`api`'s bucket.** `RUSTFS_BUCKET` defaults to `pdm` in `api`'s configuration, but the bucket is `pdm-images` ([storage 2](../storage/README.md#2-bucket-keys-and-access)); `.env.api` sets it explicitly.
+- **`api`'s bucket.** `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket of [storage 2](../storage/README.md#2-bucket-keys-and-access); `.env.api` still sets it explicitly.
 - **`/models`** is the named volume `models`. Only `model-fetch` mounts it read-write; it runs `ml/models/fetch.py` from the host's checkout ([vision 6, how files reach `/models`](../vision/README.md#how-files-reach-models)), which downloads only what changed and checks every hash. A failed fetch keeps `api` down with its old files untouched, so a bad manifest is never deployed. Our own files come from the private Hugging Face repository `pdm-models` with the host's `HF_TOKEN`.
 
 ### `infra/rig.compose.yml`
