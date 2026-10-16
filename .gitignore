@@ -4,7 +4,7 @@
 .DS_Store
 .AppleDouble
 .LSOverride
-Icon
+Icon
 
 # Resource forks and thumbnails
 ._*
@@ -131,3 +131,21 @@ yarn-error.*
 
 # TypeScript
 *.tsbuildinfo
+
+# ---------------------------------------------------------------------------
+# Python / ML (ml/): datasets, caches, runs and model files never go in git
+# ---------------------------------------------------------------------------
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+ml/training/data/raw/
+ml/training/data/cache/
+ml/training/runs/
+ml/models/files/
+ml/training/eval/photos/
+*.onnx
+*.onnx.data
+*.safetensors
+*.pt
+*.pth
