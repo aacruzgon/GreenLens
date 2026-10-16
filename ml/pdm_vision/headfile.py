@@ -1,8 +1,7 @@
 """The JSON files for the heads and label matrices (training.md §6 and §8; backend vision.md §5).
 
-The backend fixes only "JSON with base64 little-endian f32"; the field names below are the
-proposal in ml/models/FORMATS.md, to be confirmed with the Rust perception worker. Matrices
-are row-major. Every file names its format and version so the worker can refuse what it
+The field names below are those of ml/models/FORMATS.md, which the Rust perception worker
+reads (backend/crates/vision/src/perception/heads.rs). Matrices are row-major. Every file names its format and version so the worker can refuse what it
 doesn't know.
 """
 
