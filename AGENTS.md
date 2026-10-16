@@ -10,7 +10,7 @@ A user photographs a plant. Computer vision on a home GPU rig assesses the plant
 
 **Stack:** Expo SDK 57 / React Native app with Clerk authentication (and a Swift LiDAR module), Rust backend (axum, tokio) in a Cargo workspace, SurrealDB 3.3.4, RustFS 1.0.1 for images, pull-based GPU workers (`ort`/CUDA and a vLLM or llama.cpp VLM sidecar), Python for model training and knowledge ingestion.
 
-**Current state:** the repository holds design documents only. No code exists yet. When code lands, follow the planned layout below and update this file.
+**Current state:** the repository holds the design documents and the Rust backend workspace in `backend/` ([docs/backend §6](docs/backend/README.md#6-workspace-layout)), from which the crate documents in `docs/backend` are generated. The app, `ml/` and `infra/` don't exist yet. When they land, follow the layout below and update this file.
 
 ## Where to find things
 
@@ -77,9 +77,9 @@ All design lives in `docs/`. Each document has a status line at the top with its
 - **Version pins** (SurrealDB `v3.3.4`, RustFS `1.0.1`, both with image digests) were verified by running them. Don't change a pin without re-verifying the patterns that depend on it.
 - **App pins** (Expo SDK 57, `@clerk/expo` 4.x) are in docs/frontend §3. Before moving the SDK, check that `@clerk/expo`'s `peerDependencies` include it.
 
-## Planned repository layout
+## Repository layout
 
-From architecture §13. None of these directories exist yet.
+From architecture §13. `backend/` exists, with `tools/` beside its crates for the `docs/backend` generator and `api`'s test-store generator; `app/`, `ml/` and `infra/` don't exist yet.
 
 ```
 PDM/
@@ -110,6 +110,7 @@ What each crate does is in architecture §3 (Rust crates); how each is built is 
 
 ### Documents
 
+- The crate documents in `docs/backend` (all but `README.md` and `flows.md`) are generated. Change the source or the template in `backend/tools/docgen/<doc>.md.tpl`, run `backend/tools/docgen/regen_all.sh`, and commit the documents with the change; don't edit a generated document by hand.
 - Keep the status line current: bump the version, set the date, and prepend a one-sentence summary of what changed.
 - In the database and storage documents, mark a claim ✓ only if you ran it against the pinned version. Mark anything taken from vendor docs, source or issues as *unverified*.
 - In the vision documents, ✓ marks a fact read in its primary source on the date given, and ✓ ran a check that was executed; nothing there has run on the rig's GPUs until a day-1 check or day-2 benchmark records it.
