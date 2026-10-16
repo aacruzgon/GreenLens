@@ -149,7 +149,7 @@ pub struct PerceptionArgs {
 #[derive(Debug, Args)]
 pub struct VlmArgs {
     /// The sidecar, without `/v1`: `http://vllm-nv:8000`.
-    #[arg(long, env = "VLM_BASE_URL", default_value = "http://vlm:8000")]
+    #[arg(long, env = "VLM_BASE_URL", default_value = "http://vllm-nv:8000")]
     pub base_url: String,
     /// The sidecar's `--api-key`.
     #[arg(long, env = "VLM_API_KEY", hide_env_values = true)]
