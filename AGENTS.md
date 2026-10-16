@@ -26,6 +26,8 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | [`docs/frontend/flows.md`](docs/frontend/flows.md) | Sequence diagrams for every user flow and the app's state machines | You are implementing a flow end to end, or a reducer or state machine in a feature's `model/` |
 | [`docs/frontend/screens.md`](docs/frontend/screens.md) | Navigation map, screen inventory with data, actions and roles, wireframes, screen rules, shared components and wording rules | You are building or changing a screen |
 | [`docs/storage/README.md`](docs/storage/README.md) | RustFS notes: version pin and setup, bucket and key layout, how images are served through signed API URLs, writes and deletes, the Rust client (`aws-sdk-s3`), operations, caveats and the fallback | You are touching image or depth-map storage, the `blob` crate, or upload handling |
+| [`docs/backend/README.md`](docs/backend/README.md) | The Rust backend design: goals, the crate graph and dependency rules, workspace layout, Rust conventions, runtime composition, configuration, testing, builds, build plan. Links a document per crate (`domain`, `domain-types`, `store`, `blob`, `integrations`, `vision`, `knowledge`, `agent`, `pipeline`, `api`, `worker`) with every struct, enum, trait, generic and lifetime, compiled on Rust 1.99.1 | You write or review any Rust, a `Cargo.toml`, a repository method, an endpoint, a worker or a background task |
+| [`docs/backend/flows.md`](docs/backend/flows.md) | Server-side sequence diagrams across crates (request pipeline, uploads, a scan from submit to plan, claims and the sweep, SSE, job leases, chat turns, deletion, the scheduler, start-up and shutdown) and the server's state machines | You implement or debug a flow end to end on the server |
 
 ### Topic index
 
@@ -53,7 +55,11 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | App flows and state machines | frontend flows |
 | App screens, wireframes and wording | frontend screens |
 | Build plan by day | architecture §14; frontend §18 |
-| Open decisions and open questions | architecture §15; contracts §12; database §9; frontend §19 |
+| Rust crates, their dependency rules and conventions | backend README §5–7; architecture §3 |
+| A crate's types, traits and modules | backend `<crate>.md` (domain, store, blob, integrations, vision, knowledge, agent, pipeline, api, worker) |
+| Server-side flows and state machines | backend flows |
+| Weather and trigger thresholds | backend domain §7 (weather thresholds); contracts §7 |
+| Open decisions and open questions | architecture §15; contracts §12; database §9; frontend §19; backend README §15 and each crate document's open questions |
 
 ## Sources of truth
 
@@ -71,7 +77,7 @@ From architecture §13. None of these directories exist yet.
 PDM/
 ├─ app/                Expo app (layout in docs/frontend §6); app/modules/lidar is the native LiDAR module (Swift)
 ├─ backend/
-│  ├─ crates/{domain, store, blob, agent, vision, knowledge, pipeline}
+│  ├─ crates/{domain, store, blob, integrations, agent, vision, knowledge, pipeline}
 │  ├─ bins/{api, worker}
 │  └─ migrations/*.surql
 ├─ ml/
@@ -81,7 +87,7 @@ PDM/
 └─ docs/
 ```
 
-What each crate does is in architecture §3 (Rust crates).
+What each crate does is in architecture §3 (Rust crates); how each is built is in [`docs/backend`](docs/backend/README.md).
 
 ## Working conventions
 
