@@ -1,0 +1,191 @@
+{
+  "findings_images": [
+    {
+      "image_id": "01JAX6AAAAAAAAAAAAAAAAAAA1",
+      "kind": "whole_plant",
+      "width": 1200,
+      "height": 1600,
+      "url": "/internal/jobs/01JAX5AAAAAAAAAAAAAAAAAAAA/images/01JAX6AAAAAAAAAAAAAAAAAAA1"
+    },
+    {
+      "image_id": "01JAX6AAAAAAAAAAAAAAAAAAA2",
+      "kind": "leaf_closeup",
+      "width": 1600,
+      "height": 1200,
+      "url": "/internal/jobs/01JAX5AAAAAAAAAAAAAAAAAAAA/images/01JAX6AAAAAAAAAAAAAAAAAAA2"
+    },
+    {
+      "image_id": "01JAX6AAAAAAAAAAAAAAAAAAA3",
+      "kind": "soil_surface",
+      "width": 1600,
+      "height": 1200,
+      "url": "/internal/jobs/01JAX5AAAAAAAAAAAAAAAAAAAA/images/01JAX6AAAAAAAAAAAAAAAAAAA3"
+    }
+  ],
+  "indicator_images": [
+    {
+      "image_id": "01JAX6AAAAAAAAAAAAAAAAAAA2",
+      "kind": "leaf_closeup",
+      "width": 1600,
+      "height": 1200,
+      "url": "/internal/jobs/01JAX5AAAAAAAAAAAAAAAAAAAA/images/01JAX6AAAAAAAAAAAAAAAAAAA2"
+    },
+    {
+      "image_id": "01JAX6AAAAAAAAAAAAAAAAAAA1",
+      "kind": "whole_plant",
+      "width": 1200,
+      "height": 1600,
+      "url": "/internal/jobs/01JAX5AAAAAAAAAAAAAAAAAAAA/images/01JAX6AAAAAAAAAAAAAAAAAAA1"
+    }
+  ],
+  "working_species": {
+    "id": "tomato",
+    "name": "Tomato"
+  },
+  "species_options": [
+    {
+      "id": "tomato",
+      "name": "Tomato"
+    },
+    {
+      "id": "potato",
+      "name": "Potato"
+    },
+    {
+      "id": "pepper",
+      "name": "Pepper"
+    },
+    {
+      "id": "corn",
+      "name": "Corn"
+    },
+    {
+      "id": "squash",
+      "name": "Squash"
+    },
+    {
+      "id": "bean",
+      "name": "Bean"
+    },
+    {
+      "id": "strawberry",
+      "name": "Strawberry"
+    }
+  ],
+  "organism_options": [
+    {
+      "id": "aphid",
+      "name": "Aphid"
+    },
+    {
+      "id": "whitefly",
+      "name": "Whitefly"
+    },
+    {
+      "id": "ladybug_adult",
+      "name": "Ladybug (adult)"
+    },
+    {
+      "id": "ladybug_larva",
+      "name": "Ladybug (larva)"
+    },
+    {
+      "id": "tomato_hornworm",
+      "name": "Tomato hornworm"
+    }
+  ],
+  "candidates": [
+    {
+      "problem_id": "tomato_early_blight",
+      "name": "Early blight",
+      "indicators": [
+        {
+          "indicator_id": "tomato_early_blight.concentric_rings",
+          "question": "Do the brown spots have rings inside them, like a target?",
+          "where": "lower_leaves",
+          "image_kinds": [
+            "leaf_closeup"
+          ]
+        },
+        {
+          "indicator_id": "tomato_early_blight.lower_leaves_first",
+          "question": "Are the spots mostly on the lowest leaves of the plant?",
+          "where": "whole_plant",
+          "image_kinds": [
+            "whole_plant"
+          ]
+        },
+        {
+          "indicator_id": "tomato_early_blight.yellow_halo",
+          "question": "Is there a yellow ring around the brown spots?",
+          "where": "lower_leaves",
+          "image_kinds": [
+            "leaf_closeup"
+          ]
+        }
+      ]
+    },
+    {
+      "problem_id": "tomato_septoria_leaf_spot",
+      "name": "Septoria leaf spot",
+      "indicators": [
+        {
+          "indicator_id": "tomato_septoria_leaf_spot.small_spots",
+          "question": "Are the spots small, about the size of a pinhead or a little bigger?",
+          "where": "lower_leaves",
+          "image_kinds": [
+            "leaf_closeup"
+          ]
+        },
+        {
+          "indicator_id": "tomato_septoria_leaf_spot.dark_specks_in_centre",
+          "question": "Do the spots have pale centres with tiny black specks in them?",
+          "where": "lower_leaves",
+          "image_kinds": [
+            "leaf_closeup"
+          ]
+        },
+        {
+          "indicator_id": "tomato_septoria_leaf_spot.many_spots_per_leaf",
+          "question": "Are there dozens of spots on each affected leaf?",
+          "where": "lower_leaves",
+          "image_kinds": [
+            "leaf_closeup",
+            "whole_plant"
+          ]
+        }
+      ]
+    },
+    {
+      "problem_id": "tomato_late_blight",
+      "name": "Late blight",
+      "indicators": [
+        {
+          "indicator_id": "tomato_late_blight.water_soaked_patches",
+          "question": "Are there large dark patches that look wet or greasy, not small round spots?",
+          "where": "upper_leaves",
+          "image_kinds": [
+            "leaf_closeup",
+            "whole_plant"
+          ]
+        },
+        {
+          "indicator_id": "tomato_late_blight.white_mould_underside",
+          "question": "Is there white fuzzy mould on the underside of the leaves, at the edge of the dark patches?",
+          "where": "leaf_underside",
+          "image_kinds": [
+            "leaf_underside"
+          ]
+        },
+        {
+          "indicator_id": "tomato_late_blight.dark_stem_lesions",
+          "question": "Are there dark brown or black patches on the stems?",
+          "where": "stem",
+          "image_kinds": [
+            "whole_plant"
+          ]
+        }
+      ]
+    }
+  ]
+}

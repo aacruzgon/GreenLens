@@ -1,6 +1,6 @@
 """Check every relative link and #anchor in the given Markdown files.
 
-usage: checklinks.py docs/backend/*.md
+usage: checklinks.py docs/backend/*.md   (exits 1 if any link is broken)
 """
 import re, sys
 from pathlib import Path
@@ -34,3 +34,4 @@ for doc in sys.argv[1:]:
             if frag and tp.suffix == '.md' and frag not in anchors(tp):
                 print(f'{p.name}:{i}: missing anchor {target}'); bad += 1
 print('bad links:', bad)
+sys.exit(1 if bad else 0)

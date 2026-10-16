@@ -53,6 +53,7 @@ Measured on 2026-10-16:
 | Desktop | 0.78 | Qwen3-VL-8B **AWQ** only | 2.93 GiB, 21,344 tokens at 16,384 max length | Day-1 checks and prompt work, one job at a time |
 | Desktop | 0.78 | Qwen3-VL-8B FP8 | **Doesn't start:** 10.37 GiB of weights leave 0.99 GiB of KV (0.59 GiB with an FP8 cache) | — |
 | Headless | 0.90 | Qwen3-VL-8B FP8 (the primary) | 2.4 GiB, 17,440 tokens; 16,528 with `VLM_MAX_NUM_SEQS=2` | Full-size runs and benchmarks |
+| Headless | 0.90 | Qwen3.5-9B AWQ (the challenger), `VLM_MAX_NUM_SEQS=2` ✓ ran | 115,550 tokens (7.05 times the concurrency at 16,384); 8.41 GiB of weights; 13,686 of 16,303 MiB used; healthy after 150 s | Full-size runs and benchmarks |
 
 ### Going headless
 
@@ -76,6 +77,14 @@ Set both variables together in `infra/.env`, then `down` and `up -d vllm`. A rev
 | Challenger, Qwen3.5 | `cyankiwi/Qwen3.5-9B-AWQ-4bit` | `156edc4bbeb8d1910ee7be9196bafaf1bc052156` |
 
 Qwen3.5 also needs `VLM_EXTRA_ARGS='--default-chat-template-kwargs "{\"enable_thinking\": false}"'`. Clear it again for the Qwen3-VL checkpoints.
+
+To try a checkpoint without editing `infra/.env`, pass the variables from the shell (they win over the file). The Qwen3.5 check of 2026-10-16 ran this way:
+
+```bash
+VLM_MODEL=cyankiwi/Qwen3.5-9B-AWQ-4bit VLM_REVISION=156edc4bbeb8d1910ee7be9196bafaf1bc052156 \
+VLM_EXTRA_ARGS='--default-chat-template-kwargs "{\"enable_thinking\": false}"' \
+VLM_GPU_MEM_UTIL=0.90 VLM_MAX_NUM_SEQS=2 docker compose -f infra/rig.compose.yml up -d vllm
+```
 
 Every VLM worker must serve the same checkpoint, because a scan's jobs can land on either card ([vision/vlm.md 4](../docs/vision/vlm.md#4-serving), [vision README 4](../docs/vision/README.md#4-placement-and-vram-budgets)).
 

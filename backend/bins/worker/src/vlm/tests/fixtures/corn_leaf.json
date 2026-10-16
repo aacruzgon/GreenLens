@@ -1,0 +1,184 @@
+{
+  "findings_images": [
+    {
+      "image_id": "01JAX6AAAAAAAAAAAAAAAAAAA4",
+      "kind": "whole_plant",
+      "width": 1200,
+      "height": 1600,
+      "url": "/internal/jobs/01JAX5AAAAAAAAAAAAAAAAAAAA/images/01JAX6AAAAAAAAAAAAAAAAAAA4"
+    },
+    {
+      "image_id": "01JAX6AAAAAAAAAAAAAAAAAAA5",
+      "kind": "leaf_closeup",
+      "width": 1600,
+      "height": 1200,
+      "url": "/internal/jobs/01JAX5AAAAAAAAAAAAAAAAAAAA/images/01JAX6AAAAAAAAAAAAAAAAAAA5"
+    }
+  ],
+  "indicator_images": [
+    {
+      "image_id": "01JAX6AAAAAAAAAAAAAAAAAAA5",
+      "kind": "leaf_closeup",
+      "width": 1600,
+      "height": 1200,
+      "url": "/internal/jobs/01JAX5AAAAAAAAAAAAAAAAAAAA/images/01JAX6AAAAAAAAAAAAAAAAAAA5"
+    },
+    {
+      "image_id": "01JAX6AAAAAAAAAAAAAAAAAAA4",
+      "kind": "whole_plant",
+      "width": 1200,
+      "height": 1600,
+      "url": "/internal/jobs/01JAX5AAAAAAAAAAAAAAAAAAAA/images/01JAX6AAAAAAAAAAAAAAAAAAA4"
+    }
+  ],
+  "working_species": {
+    "id": "corn",
+    "name": "Corn"
+  },
+  "species_options": [
+    {
+      "id": "tomato",
+      "name": "Tomato"
+    },
+    {
+      "id": "potato",
+      "name": "Potato"
+    },
+    {
+      "id": "pepper",
+      "name": "Pepper"
+    },
+    {
+      "id": "corn",
+      "name": "Corn"
+    },
+    {
+      "id": "squash",
+      "name": "Squash"
+    },
+    {
+      "id": "bean",
+      "name": "Bean"
+    },
+    {
+      "id": "strawberry",
+      "name": "Strawberry"
+    }
+  ],
+  "organism_options": [
+    {
+      "id": "aphid",
+      "name": "Aphid"
+    },
+    {
+      "id": "whitefly",
+      "name": "Whitefly"
+    },
+    {
+      "id": "ladybug_adult",
+      "name": "Ladybug (adult)"
+    },
+    {
+      "id": "ladybug_larva",
+      "name": "Ladybug (larva)"
+    },
+    {
+      "id": "fall_armyworm",
+      "name": "Fall armyworm"
+    }
+  ],
+  "candidates": [
+    {
+      "problem_id": "corn_northern_leaf_blight",
+      "name": "Northern leaf blight",
+      "indicators": [
+        {
+          "indicator_id": "corn_northern_leaf_blight.cigar_shaped_lesions",
+          "question": "Are there long grey-green or tan lesions shaped like a cigar, several centimetres long?",
+          "where": "lower_leaves",
+          "image_kinds": [
+            "leaf_closeup",
+            "whole_plant"
+          ]
+        },
+        {
+          "indicator_id": "corn_northern_leaf_blight.lesions_cross_veins",
+          "question": "Do the lesions have smooth edges that are not limited by the leaf veins?",
+          "where": "lower_leaves",
+          "image_kinds": [
+            "leaf_closeup"
+          ]
+        },
+        {
+          "indicator_id": "corn_northern_leaf_blight.lower_leaves_first",
+          "question": "Are the lesions mostly on the lowest leaves of the plant?",
+          "where": "whole_plant",
+          "image_kinds": [
+            "whole_plant"
+          ]
+        }
+      ]
+    },
+    {
+      "problem_id": "corn_common_rust",
+      "name": "Common rust",
+      "indicators": [
+        {
+          "indicator_id": "corn_common_rust.raised_pustules",
+          "question": "Are there small raised reddish-brown bumps, like powder, scattered on the leaf?",
+          "where": "upper_leaves",
+          "image_kinds": [
+            "leaf_closeup"
+          ]
+        },
+        {
+          "indicator_id": "corn_common_rust.pustules_both_sides",
+          "question": "Are the bumps on both the top and the underside of the leaf?",
+          "where": "leaf_underside",
+          "image_kinds": [
+            "leaf_closeup",
+            "leaf_underside"
+          ]
+        },
+        {
+          "indicator_id": "corn_common_rust.elongated_pustules",
+          "question": "Are the bumps oval or slightly long, a few millimetres across?",
+          "where": "upper_leaves",
+          "image_kinds": [
+            "leaf_closeup"
+          ]
+        }
+      ]
+    },
+    {
+      "problem_id": "corn_gray_leaf_spot",
+      "name": "Gray leaf spot",
+      "indicators": [
+        {
+          "indicator_id": "corn_gray_leaf_spot.rectangular_lesions",
+          "question": "Are the lesions narrow rectangles with straight sides?",
+          "where": "lower_leaves",
+          "image_kinds": [
+            "leaf_closeup"
+          ]
+        },
+        {
+          "indicator_id": "corn_gray_leaf_spot.bounded_by_veins",
+          "question": "Do the lesions stop at the leaf veins, so their sides run along them?",
+          "where": "lower_leaves",
+          "image_kinds": [
+            "leaf_closeup"
+          ]
+        },
+        {
+          "indicator_id": "corn_gray_leaf_spot.grey_tan_colour",
+          "question": "Are the lesions grey or tan rather than brown with a dark border?",
+          "where": "lower_leaves",
+          "image_kinds": [
+            "leaf_closeup"
+          ]
+        }
+      ]
+    }
+  ]
+}
