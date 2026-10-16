@@ -1,6 +1,6 @@
 """Report rust fences whose strings or brackets don't balance, or that rustfmt can't parse.
 
-usage: check_fences.py docs/backend [-v]
+usage: check_fences.py docs/backend [-v]   (exits 1 if any fence is unbalanced)
 """
 import re, subprocess, sys
 from pathlib import Path
@@ -43,3 +43,4 @@ for f in sorted(Path(sys.argv[1]).glob('*.md')):
             unparsed+=1
             if '-v' in sys.argv: print(f'{f.name}:{line}: rustfmt: {p.stderr.splitlines()[0]}')
 print(f'{total} rust fences, {bad} unbalanced, {unparsed} not parseable by rustfmt')
+sys.exit(1 if bad else 0)
