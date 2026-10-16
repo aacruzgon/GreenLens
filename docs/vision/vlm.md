@@ -1,6 +1,6 @@
 # PDM Vision-Language Model
 
-> **Status:** Draft v0.2.1, 2026-10-16. v0.2.1: the fallback's 8,000-token budget covers the guided check, as contracts 6 now says. v0.2: aligned with the backend design: sides rounded down to the cell, prompt versions as `findings@1`, the contracts 5 value formats for `model_versions`, box bounds for pixel formats, and the fallback's 1.15-megapixel cap, 8,000-token budget, full list of rejected schema keywords and cost. v0.1, 2026-10-15: First VLM design: Qwen3-VL-8B-Instruct (FP8) as the primary candidate and Qwen3.5-9B as the challenger, the vLLM v0.31 and llama.cpp configurations, image preparation and token counts, the KV-cache budget and `VLM_SLOTS`, the prompts for every call, the schemas from the model's side, box formats, sampling, and the fallback worker's hosted model.
+> **Status:** Draft v0.2.2, 2026-10-16. v0.2.2: section 4 records the day-1 results on the RTX 5070 Ti (image, kernels, memory, schemas, boxes, speed, two slots). v0.2.1: the fallback's 8,000-token budget covers the guided check, as contracts 6 now says. v0.2: aligned with the backend design: sides rounded down to the cell, prompt versions as `findings@1`, the contracts 5 value formats for `model_versions`, box bounds for pixel formats, and the fallback's 1.15-megapixel cap, 8,000-token budget, full list of rejected schema keywords and cost. v0.1, 2026-10-15: First VLM design: Qwen3-VL-8B-Instruct (FP8) as the primary candidate and Qwen3.5-9B as the challenger, the vLLM v0.31 and llama.cpp configurations, image preparation and token counts, the KV-cache budget and `VLM_SLOTS`, the prompts for every call, the schemas from the model's side, box formats, sampling, and the fallback worker's hosted model.
 > **Checked:** model cards, `config.json` files, checkpoint sizes, vLLM v0.31.0 source and xgrammar v0.2.7 source were read on 2026-10-15 (marked ✓). No GPU was available, so nothing here has run on one: every memory and speed figure is arithmetic from the published configs and is marked *estimate*. Points from community sources are *unverified*.
 
 The VLM is the part of the pipeline that sees what the small models can't: soil, organisms with their boxes, damage patterns, a second opinion on the species, and the answers to each candidate's indicator questions ([architecture 6.1](../architecture/README.md#61-stages), [contracts 6](../architecture/contracts.md#6-vlm-structured-output)). This document covers the model side: which model, how it is served, what it is asked and how. How the worker builds the request, calls the server and converts the result is in [docs/backend](../backend/vision.md) and the job flow in [the worker design](../backend/worker.md).
@@ -150,6 +150,20 @@ The second VLM worker's sidecar runs the same vLLM version from its ROCm image, 
 | Checkpoint | FP8 if vLLM's RDNA 4 FP8 path (vLLM #43615) handles Qwen3-VL's 128 × 128 block scales on gfx1201, otherwise W4A16 on **both** cards | *unverified*; the day-1 check reads the kernel vLLM picks from its log |
 
 Its fallback is llama.cpp's Vulkan build (`server-vulkan`) with the same GGUF files as below. **If either card falls back to llama.cpp, both serve the same GGUF**, or only one VLM worker runs, so the weights stay the same on every worker.
+
+### Day-1 results on the RTX 5070 Ti (2026-10-16, ✓ ran)
+
+The compose file and the two modes (the card also draws a desktop) are in [`infra/README.md`](../../infra/README.md). The check client is `ml/training/eval/vlm_check.py`; its reports are in `ml/training/eval/reports/`.
+
+- **Image:** `vllm/vllm-openai:v0.31.0` exists, digest `sha256:c1c9f6fd…67c3`, entrypoint `vllm serve`, built on CUDA **13.0.2** (not 13.0.3), 32.2 GB. It runs on driver 615.78.08 with the NVIDIA Container Toolkit 1.20.1 on Fedora 44.
+- **Checkpoints, pinned:** `Qwen/Qwen3-VL-8B-Instruct-FP8@9cdc6310`, `cyankiwi/Qwen3-VL-8B-Instruct-AWQ-4bit@87196f77`, `cyankiwi/Qwen3.5-9B-AWQ-4bit@156edc4b` (the challenger, downloaded, not yet started).
+- **Kernels:** FP8 selects `DeepGemmFp8BlockScaledMMKernel`, a native block-FP8 kernel on sm_120, not a dequantising fallback; AWQ selects Marlin; attention is FlashAttention (FlashInfer with an FP8 KV cache).
+- **Memory, FP8 at 0.90, headless:** weights 10.37 GiB (the estimate above was 9.86); KV 2.4 GiB = **17,440 tokens** at `--max-num-seqs 1` and 16,528 at 2 (estimate: 2.97 GiB, 21,600). Start-up 205 s, mostly CUDA graph capture. At 0.78 next to a desktop, FP8 doesn't start; AWQ does (KV 21,344 tokens).
+- **Structured output:** xgrammar enforces the per-call schema, `maxLength` (10 characters held) and `anyOf` with `null` (contracts open question 31: yes). All five checks pass on both FP8 and AWQ.
+- **Boxes:** `bbox_2d` comes back on the 0–1000 scale and lands on the spot it names when drawn on the prepared image, so `norm_1000` is right for Qwen3-VL.
+- **Speed, FP8:** first token after 0.06 s, **84 tokens/s** decoding (AWQ: 115), a 4-image findings call in about 3.2 s with 160 output tokens.
+- **Two slots, FP8:** two 4-image findings calls ran at once with no preemptions and 34% peak KV usage, in 5.3 s together against 3.2 s alone. `VLM_SLOTS = 2` looks feasible; the day-2 benchmark confirms it with full-length outputs and p95 timings ([section 6](#6-memory-and-vlm_slots)).
+- **For the prompts (section 7):** with a stand-in prompt, the model answered `species: "other"` with `other_name: "apple"` while `apple` was in the enum, called a fungal spot `leaf_mines`, and a length-capped string switched to Chinese mid-word (`Growing西红柿`). The production prompts should map names to slugs explicitly and ask for short English reasons.
 
 ### llama.cpp (fallback)
 
