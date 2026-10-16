@@ -8,6 +8,11 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = []
+# HEIC uploads through the system libheif (>= 1.19); the api image builds with it.
+heic = ["vision/heic"]
+
 [dependencies]
 # the workspace: domain for every type and port; the library crates only in wiring.rs
 domain.workspace = true
