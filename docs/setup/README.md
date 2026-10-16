@@ -1,6 +1,6 @@
 # PDM Developer Setup
 
-> **Status:** v0.1, 2026-10-16. First version: what each team member installs on macOS, Windows and Linux, by role, with the versions the other documents pin.
+> **Status:** v0.1.1, 2026-10-16. v0.1.1: Debian 13's libheif is 1.23.4, as the `api` image build installed it. v0.1: first version: what each team member installs on macOS, Windows and Linux, by role, with the versions the other documents pin.
 > **Checked:** on 2026-10-16. The release files of ONNX Runtime 1.31.0 on GitHub, libheif's versions in Ubuntu and Debian, and the Node versions that React Native 0.86.3 and EAS CLI accept were read from their sources (✓). Items marked *unverified* weren't tried on that platform.
 
 ## Contents
@@ -110,7 +110,7 @@ The pins are in [backend 4](../backend/README.md#4-stack-and-version-pins) and t
 **libheif by platform:**
 - **macOS:** `brew install libheif pkg-config`. Homebrew's 1.23.1 built here ✓.
 - **Ubuntu 26.04 LTS:** ships 1.21.2 ✓, so `sudo apt install libheif-dev` is enough.
-- **Debian 13 (trixie):** ships 1.19.8 ✓, which is enough.
+- **Debian 13 (trixie):** ships 1.23.4 (✓ `1.23.4-1~deb13u1` from trixie's updates, installed by the `api` image build on 2026-10-16), which is enough.
 - **Ubuntu 24.04 LTS:** ships only 1.17.6 ✓, which is too old. Use Ubuntu 26.04 instead, or build libheif 1.19 or newer from source. In WSL, pick the 26.04 image from `wsl --list --online`.
 - **Fedora, Arch:** check that the packaged version is 1.19 or newer.
 

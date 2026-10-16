@@ -58,6 +58,8 @@ Companion to the [backend architecture](README.md), the [`domain` crate](domain.
 
 @@file ../Cargo.toml@@
 
+The `heic` feature turns on `vision`'s HEIC decoder, which links the system libheif (1.19 or newer). The `api` image builds with it ([infra 3](../infra/README.md#3-images)); without it, a HEIC upload is refused as an unsupported type.
+
 | Dependency | Why |
 |---|---|
 | `domain` | Every type and port |

@@ -1,6 +1,6 @@
 # PDM Infrastructure and CI
 
-> **Status:** Draft v0.2, 2026-10-16. v0.2: `backend.yml` and `dependabot.yml` exist; the `test` job adds the doc tests nextest skips, the `examples` job runs only when the Rust skills change and on pushes to `main`, every Rust job installs 1.99.1 and sets `RUSTUP_TOOLCHAIN`, `checklinks.py` and `check_fences.py` now exit non-zero, and open question 1 is answered. Its audit added: no `--health-cmd` for distroless SurrealDB; `ml/`'s manifest and templates trigger `test`; the examples cache keyed on `versions.md`; `changes` as a required check; one concurrency group per commit on `main`; grouped Dependabot updates. v0.1.2: section 4's vLLM health check is verified on the rig, and the running `vllm` service is mapped to `vllm-nv`. v0.1.1: `api`'s bucket default is now `pdm-images`, so section 4's note no longer flags it. v0.1: first design of the CI workflows, the container images, the three compose files, ingress, secrets, deploys by digest, operations hooks and the infrastructure work items of the [backend roadmap](../backend/roadmap.md). Design only: nothing here exists yet.
+> **Status:** Draft v0.3, 2026-10-16. v0.3: `backend/Dockerfile`, `docker-bake.hcl` and `.dockerignore` exist and section 3 records the first build. `api` gains its own `heic` feature, which answers open question 7, and the full SHA-256 of both ONNX Runtime archives is recorded. Its audit added: the label arguments after the cached steps, the rustup components installed once, the build files out of the context, and GID 10100. v0.2: `backend.yml` and `dependabot.yml` exist; the `test` job adds the doc tests nextest skips, the `examples` job runs only when the Rust skills change and on pushes to `main`, every Rust job installs 1.99.1 and sets `RUSTUP_TOOLCHAIN`, `checklinks.py` and `check_fences.py` now exit non-zero, and open question 1 is answered. Its audit added: no `--health-cmd` for distroless SurrealDB; `ml/`'s manifest and templates trigger `test`; the examples cache keyed on `versions.md`; `changes` as a required check; one concurrency group per commit on `main`; grouped Dependabot updates. v0.1.2: section 4's vLLM health check is verified on the rig, and the running `vllm` service is mapped to `vllm-nv`. v0.1.1: `api`'s bucket default is now `pdm-images`, so section 4's note no longer flags it. v0.1: first design of the CI workflows, the container images, the three compose files, ingress, secrets, deploys by digest, operations hooks and the infrastructure work items of the [backend roadmap](../backend/roadmap.md). Design only: nothing here exists yet.
 
 This document turns [architecture 12](../architecture/README.md#12-deployment) and [backend 12](../backend/README.md#12-builds-and-deployment) into files: what goes in `.github/` and `infra/`, how each image is built and pinned, and how the control plane and the rig are started, deployed and rolled back. It closes [roadmap gap 3](../backend/roadmap.md#12-gaps-found-while-writing-this-roadmap).
 
@@ -156,70 +156,42 @@ The `main` ruleset ("Require PRs for main and master") gets a `required_status_c
 | Runtime for `worker-cuda` | `nvidia/cuda:13.0.3-cudnn-runtime-ubuntu24.04` | `sha256:14f6d08d1cd4a96effbfe3101d0b56326f552c199d05e4979ee0bd616df5811b` |
 | Runtime for `seed-upload` | `python:3.12-slim-trixie` | `sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1` |
 
-**Why two builders.** `api` links the system libheif for HEIC uploads, which needs 1.19 or newer: Debian 13 (trixie) ships 1.19.8, Debian 12 doesn't ([setup 4](../setup/README.md#4-backend-rust)). The worker binary must also run in the CUDA image, which is Ubuntu 24.04 with glibc 2.39, while trixie's glibc is 2.41; a binary built against a newer glibc fails to start on an older one. So `worker` is built on Debian 12 (glibc 2.36), which runs on both trixie and Ubuntu 24.04, and it doesn't use libheif.
+**Why two builders.** `api` links the system libheif for HEIC uploads, which needs 1.19 or newer: Debian 13 (trixie) ships it (✓ 1.23.4-1~deb13u1, installed by the build on 2026-10-16), Debian 12 doesn't ([setup 4](../setup/README.md#4-backend-rust)). The worker binary must also run in the CUDA image, which is Ubuntu 24.04 with glibc 2.39, while trixie's glibc is 2.41; a binary built against a newer glibc fails to start on an older one. So `worker` is built on Debian 12 (glibc 2.36), which runs on both trixie and Ubuntu 24.04, and it doesn't use libheif.
 
-The `rust` tags are a day old, so re-check their digests when the Dockerfile lands. Docker Hub's digest for a multi-architecture tag is the image index, so the same pin serves amd64 and arm64.
+✓ All four digests were re-checked with `docker buildx imagetools inspect` on 2026-10-16, when the Dockerfile landed. Docker Hub's digest for a multi-architecture tag is the image index, so the same pin serves amd64 and arm64.
 
 ### `backend/Dockerfile`
 
-One file, four stages per binary: `cargo-chef` plans the dependency graph, a cached layer builds only the dependencies, then the workspace builds, then a slim runtime copies the binary. `cargo-chef` 0.1.78 (✓ crates.io) is installed with `cargo install --locked` in the official Rust image rather than taken from a third-party builder image. No `# syntax=` line: the frontend built into BuildKit handles cache mounts.
+One file, four stages per binary: `cargo-chef` plans the dependency graph, a cached layer builds only the dependencies, then the workspace builds, then a slim runtime copies the binary. `cargo-chef` 0.1.78 (✓ crates.io) is installed with `cargo install --locked` in the official Rust image rather than taken from a third-party builder image. No `# syntax=` line and no cache mounts: the layers alone carry the cache, in the Actions cache in CI.
 
-```dockerfile
-ARG RUST_TRIXIE=rust:1.99.1-slim-trixie@sha256:4df2ae8cfdfebdfc13a65da7f253b73d68983dc0339f2719bc17a279c913b13d
-ARG RUST_BOOKWORM=rust:1.99.1-slim-bookworm@sha256:a24e292b4af7bdee351a31d3a6379972a5652f0ea22a1b6d6883324ac4f5097c
-ARG DEBIAN=debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f
-ARG CUDA=nvidia/cuda:13.0.3-cudnn-runtime-ubuntu24.04@sha256:14f6d08d1cd4a96effbfe3101d0b56326f552c199d05e4979ee0bd616df5811b
+- **The chef stages** also run `rustup component add rustfmt clippy`. `rust-toolchain.toml` asks for both, and the slim image has neither, so without this every later `cargo` call downloads them.
+- **`REVISION` and `CREATED`** are declared after each runtime stage's `RUN` and `COPY` steps. They change on every commit, and an `ARG` in scope of a `RUN` invalidates its cache. Declared before, every build would rerun `apt-get` and the ONNX Runtime downloads, and every deploy would pull new base layers.
+- **`.dockerignore`** also leaves out `Dockerfile`, `docker-bake.hcl`, `.dockerignore` itself, and `.env` files at any depth. An edit to the build files then doesn't change the context and force a full recompile.
 
-# --- api: built on trixie for libheif 1.19 ---
-FROM ${RUST_TRIXIE} AS chef-api
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      build-essential pkg-config cmake clang libheif-dev && rm -rf /var/lib/apt/lists/*
-RUN cargo install cargo-chef --version 0.1.78 --locked
-WORKDIR /src
+The file is [`backend/Dockerfile`](../../backend/Dockerfile), built by [`backend/docker-bake.hcl`](../../backend/docker-bake.hcl) with the context `backend/`; [`backend/.dockerignore`](../../backend/.dockerignore) leaves out `target/`, `tools/` and `.git`. Its stages:
 
-FROM chef-api AS plan-api
-COPY . .
-RUN cargo chef prepare --recipe-path recipe.json
+| Stage | Base | What it does |
+|---|---|---|
+| `chef-api`, `plan-api`, `build-api` | `rust:1.99.1-slim-trixie` with `libheif-dev` | `cargo chef cook`, then `cargo build --release --locked -p api --features heic` |
+| `chef-worker`, `plan-worker`, `build-worker` | `rust:1.99.1-slim-bookworm` | the same for `-p worker --features cuda,migraphx,webgpu` |
+| `api` | `debian:trixie-slim` | `libheif1`, `curl`, ONNX Runtime 1.31.0 CPU in `/opt/onnxruntime`, `ORT_EP=cpu`, port 8080 |
+| `worker` | `debian:trixie-slim` | CA certificates and the binary |
+| `worker-cuda` | `nvidia/cuda:13.0.3-cudnn-runtime-ubuntu24.04` | ONNX Runtime 1.31.0 `gpu_cuda13` in `/opt/onnxruntime`, `ORT_EP=cuda`; `curl` is removed after the download |
 
-FROM chef-api AS build-api
-COPY --from=plan-api /src/recipe.json .
-RUN cargo chef cook --release --locked -p api --features vision/heic --recipe-path recipe.json
-COPY . .
-RUN cargo build --release --locked -p api --features vision/heic
-
-# --- worker: built on bookworm so it runs on trixie and Ubuntu 24.04 ---
-FROM ${RUST_BOOKWORM} AS chef-worker
-#   same three stages; the build line is:
-#   cargo build --release --locked -p worker --features cuda,migraphx,webgpu
-
-# --- runtimes ---
-FROM ${DEBIAN} AS api
-ARG ORT_SHA256=cc5c72baf5ae5c8238a6841f0897227be2d02826b9cf98eaf02fdefaeeb03a57
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl libheif1 \
- && curl -fsSL -o /tmp/ort.tgz https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/onnxruntime-linux-x64-1.31.0.tgz \
- && echo "${ORT_SHA256}  /tmp/ort.tgz" | sha256sum -c - \
- && mkdir -p /opt/onnxruntime && tar -xzf /tmp/ort.tgz -C /opt/onnxruntime --strip-components=1 \
- && rm /tmp/ort.tgz && rm -rf /var/lib/apt/lists/* \
- && useradd --system --uid 10100 --no-create-home pdm
-COPY --from=build-api /src/target/release/api /usr/local/bin/api
-ENV ORT_DYLIB_PATH=/opt/onnxruntime/lib/libonnxruntime.so.1.31.0 ORT_EP=cpu
-USER 10100
-EXPOSE 8080
-ENTRYPOINT ["/usr/local/bin/api"]
-```
+✓ Built for `linux/amd64` on 2026-10-16, on an Apple-silicon laptop under emulation (OrbStack): `api` 96 MB, `worker` 45 MB, `worker-cuda` 2.26 GB. With no environment, `api` exits 1 with `CLERK_ISSUER is required`. All three run as UID 10100. The worker binary built on bookworm starts in the CUDA image. In the CUDA provider library, `ldd` finds every dependency but `libcuda.so.1`, which the NVIDIA container runtime mounts from the host driver.
 
 - **Release profile.** The images build with the workspace's `[profile.release]` unchanged: `lto = "thin"`, `codegen-units = 1`, `panic = "unwind"`, `debug = "line-tables-only"`, `overflow-checks = true`, and no `strip`, so a panic's backtrace keeps its frames ([backend 12](../backend/README.md#12-builds-and-deployment)).
 - **One worker binary for every image.** With `load-dynamic`, the `cuda`, `migraphx` and `webgpu` features can be enabled together; only `download-binaries` forbids that ([versions.md](../../.claude/skills/rust/versions.md#notes-and-things-not-confirmed)). The worker is compiled once per BuildKit run, and each worker image copies the same file. `ORT_EP` picks the provider at start.
-- **Non-root.** Every image runs as UID 10100, `pdm`, with no home and no shell login. Compose adds `read_only: true`, a 512 MB tmpfs on `/tmp`, `cap_drop: [ALL]` and `no-new-privileges`. RustFS's UID 10001 and SurrealDB's 65532 are unaffected, since each container owns its own volume.
+- **Non-root.** Every image runs as UID and GID 10100, `pdm`, with the home directory `/nonexistent` and no shell login (`/usr/sbin/nologin`). Compose adds `read_only: true`, a 512 MB tmpfs on `/tmp`, `cap_drop: [ALL]` and `no-new-privileges`. RustFS's UID 10001 and SurrealDB's 65532 are unaffected, since each container owns its own volume.
 - **PID 1.** The binaries handle SIGTERM themselves and spawn no children, so no init process is added; the exec-form `ENTRYPOINT` delivers the signal directly.
-- **ONNX Runtime archives** are fetched from Microsoft's v1.31.0 release (published 2026-10-09) and checked against the SHA-256 the release lists for each asset (✓ GitHub API): CPU `cc5c72ba…eb03a57`, 11.4 MB; CUDA 13 `2867dec9…2c81135`, 244.6 MB. A changed archive fails the build.
+- **ONNX Runtime archives** are fetched from Microsoft's v1.31.0 release (published 2026-10-09) and checked against the SHA-256 the release lists for each asset (✓ GitHub API): CPU `cc5c72baf5ae5c8238a6841f0897227be2d02826b9cf98eaf02fdefaeeb03a57`, 11.4 MB; CUDA 13 `2867dec99c6a4926e8142361b9d4d1518c16c85b854b4d41d28d65d3b2c81135`, 244.6 MB. A changed archive fails the build.
 - **Labels.** `org.opencontainers.image.source=https://github.com/aacruzgon/GreenLens` links each package to the repository (✓ GHCR docs), plus `revision` (the commit) and `created`.
 
 ### The images
 
 | Image | Runtime base | Binary and features | ONNX Runtime | Runs |
 |---|---|---|---|---|
-| `api` | trixie-slim + `libheif1`, CA certificates, `curl` for the health check | `api`, `vision/heic` | 1.31.0 CPU, `ORT_EP=cpu` | Control plane |
+| `api` | trixie-slim + `libheif1`, CA certificates, `curl` for the health check | `api`, `heic` | 1.31.0 CPU, `ORT_EP=cpu` | Control plane |
 | `worker` | trixie-slim + CA certificates | `worker`, `cuda,migraphx,webgpu` | none | The VLM workers on the rig and the fallback worker: they call HTTP servers and load no ONNX model ([worker 11](../backend/worker.md#11-multi-vendor-gpus)) |
 | `worker-cuda` | CUDA 13.0.3 + cuDNN 9 runtime, Ubuntu 24.04 | the same file | 1.31.0 `gpu_cuda13`, its provider libraries beside `libonnxruntime.so.1.31.0` in `/opt/onnxruntime/lib`; `ORT_EP=cuda` | The 3070's perception worker; host driver 580.65.06 or newer ([vision 5](../vision/README.md#5-runtimes-and-versions)) |
 | `seed-upload` | `python:3.12-slim-trixie` | the knowledge loader's upload step | none | Control plane, once per deploy ([contracts 10](../architecture/contracts.md#10-knowledge-seed-format)) |
@@ -599,7 +571,7 @@ Each item belongs to a slice of the [backend roadmap](../backend/roadmap.md). It
 4. **The off-host backup remote**: an S3-compatible bucket from a provider the team already has credits with, and who holds its key.
 5. **An external uptime check** on `/healthz` during judging, and who gets its alert.
 6. **Where the deployed digests are recorded.** `deploy.log` on each host (this design) or a committed file in `infra/`, which would put deploys through pull requests.
-7. **`api` and HEIC.** `api` decodes uploads, but only `worker` has a `heic` feature today; the `api` image builds with `--features vision/heic`. Should `api`'s own manifest declare the feature instead?
+7. **`api` and HEIC.** *Answered on 2026-10-16:* `api`'s manifest declares `heic = ["vision/heic"]`, like `worker`'s, and the image builds with `--features heic`.
 
 ---
 
