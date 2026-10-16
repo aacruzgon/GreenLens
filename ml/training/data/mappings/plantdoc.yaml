@@ -1,0 +1,44 @@
+# PlantDoc class name → (species_id, problem_id | healthy)  (training.md §4, step 3)
+#
+# PROPOSED slugs, in the seed convention of contracts §10 (species: `tomato`; problems:
+# `<crop>_<problem>`). They must match the knowledge base's species/ and problems/ files once
+# those exist; the knowledge-base owner confirms or renames them. A class whose problem has
+# no knowledge-base profile is dropped (problem_id: null), never guessed.
+# Used for both the classification split and the detection split (whose classes are the same
+# names; the detector collapses them all to `leaf`).
+
+dataset: plantdoc
+source: plantdoc_cls                 # data/raw/<source>/
+root: PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8
+splits: { train: train, test: test } # split → folder under root; the class is the image's folder
+reviewed_by: null
+
+classes:
+  "Apple leaf":                         { species_id: apple,      problem_id: healthy }
+  "Apple rust leaf":                    { species_id: apple,      problem_id: apple_cedar_apple_rust }
+  "Apple Scab Leaf":                    { species_id: apple,      problem_id: apple_scab }
+  "Bell_pepper leaf":                   { species_id: pepper,     problem_id: healthy }
+  "Bell_pepper leaf spot":              { species_id: pepper,     problem_id: pepper_bacterial_leaf_spot }
+  "Blueberry leaf":                     { species_id: blueberry,  problem_id: healthy }
+  "Cherry leaf":                        { species_id: cherry,     problem_id: healthy }
+  "Corn Gray leaf spot":                { species_id: corn,       problem_id: corn_gray_leaf_spot }
+  "Corn leaf blight":                   { species_id: corn,       problem_id: corn_northern_leaf_blight }
+  "Corn rust leaf":                     { species_id: corn,       problem_id: corn_common_rust }
+  "grape leaf":                         { species_id: grape,      problem_id: healthy }
+  "grape leaf black rot":               { species_id: grape,      problem_id: grape_black_rot }
+  "Peach leaf":                         { species_id: peach,      problem_id: healthy }
+  "Potato leaf early blight":           { species_id: potato,     problem_id: potato_early_blight }
+  "Potato leaf late blight":            { species_id: potato,     problem_id: potato_late_blight }
+  "Raspberry leaf":                     { species_id: raspberry,  problem_id: healthy }
+  "Soyabean leaf":                      { species_id: soybean,    problem_id: healthy }
+  "Squash Powdery mildew leaf":         { species_id: squash,     problem_id: squash_powdery_mildew }
+  "Strawberry leaf":                    { species_id: strawberry, problem_id: healthy }
+  "Tomato Early blight leaf":           { species_id: tomato,     problem_id: tomato_early_blight }
+  "Tomato leaf":                        { species_id: tomato,     problem_id: healthy }
+  "Tomato leaf bacterial spot":         { species_id: tomato,     problem_id: tomato_bacterial_spot }
+  "Tomato leaf late blight":            { species_id: tomato,     problem_id: tomato_late_blight }
+  "Tomato leaf mosaic virus":           { species_id: tomato,     problem_id: tomato_mosaic_virus }
+  "Tomato leaf yellow virus":           { species_id: tomato,     problem_id: tomato_yellow_leaf_curl_virus }
+  "Tomato mold leaf":                   { species_id: tomato,     problem_id: tomato_leaf_mold }
+  "Tomato Septoria leaf spot":          { species_id: tomato,     problem_id: tomato_septoria_leaf_spot }
+  "Tomato two spotted spider mites leaf": { species_id: tomato,   problem_id: tomato_two_spotted_spider_mite }

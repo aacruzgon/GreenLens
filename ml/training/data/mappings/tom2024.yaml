@@ -1,0 +1,41 @@
+# TOM2024 class folder → (species_id, problem_id | healthy)  (training.md §4, step 3)
+#
+# PROPOSED slugs, as in plantdoc.yaml; the knowledge-base owner confirms them. Only leaf
+# classes of tomato and maize (corn) are mapped. Dropped (problem_id: null): fruit classes
+# (the heads classify leaf crops), pests on fruit, abiotic classes, mixed classes, onion (not a
+# supported crop yet), and "virosis"/"stripe", which name no single problem.
+# Every class here has no published split, so dedupe.py holds out 15% for validation.
+
+dataset: tom2024
+source: tom2024
+root: .
+splits: { train: . }
+reviewed_by: null
+
+classes:
+  # tomato
+  "tomato_diseases/healthy_leaf":            { species_id: tomato, problem_id: healthy }
+  "tomato_diseases/alternaria_d":            { species_id: tomato, problem_id: tomato_early_blight }   # Alternaria; check by eye: A. solani (early blight) vs A. alternata
+  "tomato_diseases/tomato_late_blight_d":    { species_id: tomato, problem_id: tomato_late_blight }
+  "tomato_diseases/Mite_d":                  { species_id: tomato, problem_id: tomato_two_spotted_spider_mite }  # mite damage; species in Burkina Faso may be T. evansi
+  "tomato_diseases/Bacterial_floundering_d": { species_id: tomato, problem_id: tomato_bacterial_wilt }   # "floundering" is the dataset's word for wilt
+  "tomato_diseases/virosis_d":               { species_id: tomato, problem_id: null }
+  "tomato_diseases/healthy_fruit":           { species_id: tomato, problem_id: null }
+  "tomato_diseases/Blossom_end_rot_d":       { species_id: tomato, problem_id: null }
+  "tomato_diseases/sunburn_d":               { species_id: tomato, problem_id: null }
+  "tomato_diseases/exces_nitrogen_d":        { species_id: tomato, problem_id: null }
+  "tomato_diseases/fusarium_d":              { species_id: tomato, problem_id: null }
+  "tomato_diseases/alternaria_mite_d":       { species_id: tomato, problem_id: null }
+  "tomato_pests/helicoverpa_armigera_p":     { species_id: tomato, problem_id: null }
+  "tomato_pests/tuta_absoluta_p":            { species_id: tomato, problem_id: null }
+  # maize
+  "maize_diseases/Healthy_leaf":             { species_id: corn, problem_id: healthy }
+  "maize_diseases/Rust-D":                   { species_id: corn, problem_id: corn_common_rust }
+  "maize_diseases/Helminthosporiosis-D":     { species_id: corn, problem_id: corn_northern_leaf_blight }   # Helminthosporium (Exserohilum) turcicum
+  "maize_diseases/Curvularia-D":             { species_id: corn, problem_id: corn_curvularia_leaf_spot }
+  "maize_diseases/Stripe-D":                 { species_id: corn, problem_id: null }
+  "maize_diseases/Virosis-D":                { species_id: corn, problem_id: null }
+  "maize_diseases/Abiotic_disease-D":        { species_id: corn, problem_id: null }
+  "maize_pests/Aphids-P":                    { species_id: corn, problem_id: null }
+  "maize_pests/Spodoptera_frugiperda-P":     { species_id: corn, problem_id: null }
+  "maize_pests_activities/Spodotera_frugiperda- A": { species_id: corn, problem_id: null }

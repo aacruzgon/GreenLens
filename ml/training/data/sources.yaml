@@ -1,0 +1,86 @@
+# Every dataset and upstream model the training uses (docs/vision/training.md §3).
+# fetch.py downloads each one, checks its SHA-256 and unpacks it under data/raw/<name>/.
+# A null sha256 means "not pinned yet": fetch.py prints the hash so it can be filled in.
+# Only sources with `ship: true` may go into weights we ship (licence allows commercial use).
+
+datasets:
+  - name: plantdoc_cls
+    description: PlantDoc classification split, 13 crops, 28 classes, in-the-wild photos
+    kind: github_archive
+    repo: pratikkayal/PlantDoc-Dataset
+    commit: 5467f6012d78d1c446145d5f582da6096f852ae8
+    sha256: 94e2b99a500a63efbd48923ed48588fbb01f9b1db66a2d3b5c24eed6466da20f
+    licence: CC BY 4.0
+    citation: "Singh et al., PlantDoc: A Dataset for Visual Plant Disease Detection, CoDS-COMAD 2020"
+    ship: true
+    use: disease and species heads
+
+  - name: plantdoc_det
+    description: PlantDoc detection split, VOC boxes and CSVs, 29 classes
+    kind: github_archive
+    repo: pratikkayal/PlantDoc-Object-Detection-Dataset
+    commit: 4730a233a555b30ee98e0879c63ad25d82407455
+    sha256: 45811ced89d3e40fac185dbe56eb7935745aad34c5c1402d937f0281eae0d813
+    licence: CC BY 4.0 (annotations); scraped photos keep their owners' copyright (unverified)
+    citation: "Singh et al., PlantDoc: A Dataset for Visual Plant Disease Detection, CoDS-COMAD 2020"
+    ship: true
+    use: leaf detector (every class collapsed to leaf)
+
+  # Field sets from training.md §3. URLs and hashes are filled in when each is fetched.
+  - name: tom2024
+    description: >-
+      Tomato, onion, maize field photos (Samsung Galaxy M11), Burkina Faso, Jul 2022 to Jul 2023,
+      30 classes, 12,227 labelled. Only CATEGORY A in English is fetched: category B is
+      pre-augmented copies (they would leak across our splits) and CATA-French repeats A.
+      Images are small (about 10 KB each).
+    kind: mendeley_folder
+    dataset: 3d4yg89rtr
+    version: 1
+    prefix: CATEGORY A/CATA-English/
+    url: https://data.mendeley.com/datasets/3d4yg89rtr/1
+    sha256: null              # SHA-256 of the sorted "path sha256" listing, per fetch.py
+    licence: CC BY 4.0
+    citation: >-
+      Appiah O. et al. (2024) TOM2024, Mendeley Data V1, doi:10.17632/3d4yg89rtr.1;
+      Data in Brief 59, 111357, doi:10.1016/j.dib.2025.111357
+    ship: true
+    use: tomato and corn field data
+
+  - name: tomato_pakistan_2026
+    description: >-
+      Tomato Leaf Disease Classification Dataset in Pakistan: 7,200 smartphone photos under
+      natural light, 6 classes (early blight, late blight, Septoria leaf spot, leaf mould,
+      yellow leaf curl virus, healthy). Sukkur IBA. No Data in Brief paper found
+    kind: direct
+    url: https://data.mendeley.com/public-files/datasets/3mbnb82mxd/files/0a6c3bb6-5241-43e3-bc3a-f2e4be91fcfe/file_downloaded
+    sha256: 66380c1621a1b9fc6d60413f8ad41ec565778d1ef2c06729949387218c244c3c   # from Mendeley's API
+    landing: https://data.mendeley.com/datasets/3mbnb82mxd/1
+    licence: CC BY 4.0
+    citation: "Malik M.N., Ali S.H., Ali H. (2026) Mendeley Data V1, doi:10.17632/3mbnb82mxd.1"
+    ship: true
+    use: tomato field data
+
+  - name: ibean
+    description: >-
+      Bean leaves, Uganda, smartphone field photos annotated by NaCRRI: healthy, angular leaf
+      spot, bean rust. 1,295 rows on Hugging Face against 1,296 stated on GitHub
+    kind: huggingface
+    repo_type: dataset
+    repo: AI-Lab-Makerere/beans
+    revision: 27aa014ce09b193e1a6f58112d4a66e0eddb69c5
+    files: [train.zip, validation.zip, test.zip]
+    landing: https://github.com/AI-Lab-Makerere/ibean
+    licence: MIT
+    citation: "Makerere AI Lab (2020) Bean disease dataset, https://github.com/AI-Lab-Makerere/ibean/"
+    ship: true
+    use: bean, only if beans become supported
+
+models:
+  - name: bioclip2
+    description: BioCLIP 2, CLIP ViT-L/14, 768-dimensional embedding
+    kind: huggingface
+    repo: imageomics/bioclip-2
+    revision: 2957b322090f9cb17ae72c71981c7218a28d81e0
+    files: [open_clip_config.json, open_clip_model.safetensors, tokenizer.json, tokenizer_config.json, special_tokens_map.json, vocab.json, merges.txt]
+    licence: MIT
+    use: species zero-shot, image embeddings, features for the heads
