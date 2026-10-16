@@ -3709,6 +3709,42 @@ pub const TASKS: [Task; 8] = [
         every: Duration::from_secs(5),
         first_after: Duration::from_secs(5),
     },
+    Task {
+        name: "sweep",
+        every: Duration::from_secs(30),
+        first_after: Duration::from_secs(10),
+    },
+    Task {
+        name: "idle",
+        every: Duration::from_mins(1),
+        first_after: Duration::from_mins(1),
+    },
+    Task {
+        name: "cleanup",
+        every: Duration::from_mins(10),
+        first_after: Duration::from_mins(1),
+    },
+    Task {
+        name: "weather",
+        every: Duration::from_hours(1),
+        first_after: Duration::from_secs(30),
+    },
+    Task {
+        name: "soil",
+        every: Duration::from_mins(15),
+        first_after: Duration::from_mins(2),
+    },
+    Task {
+        name: "receipts",
+        every: Duration::from_mins(15),
+        first_after: Duration::from_mins(15),
+    },
+    Task {
+        name: "orphans",
+        every: Duration::from_hours(24),
+        first_after: Duration::from_hours(1),
+    },
+];
 
 /// Starts every task on the tracker.
 pub fn start(state: &Arc<AppState>) {

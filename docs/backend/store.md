@@ -1153,12 +1153,28 @@ impl IdentityRepo for SurrealStore {
 /// ✓: a `(lon, lat)` literal doesn't take binds (a parse error on 3.3.4). Statements:
 /// 0 `BEGIN`, 1 `CREATE`, 2 `INSERT RELATION`, 3 the garden read, 4 `COMMIT`.
 pub const CREATE_GARDEN: &str = "BEGIN;
+CREATE $garden SET name = $name, centroid = type::point([$lon, $lat]), location_precision = $precision,
+  location_label = $label, time_zone = $time_zone;
+INSERT RELATION INTO member_of { id: type::record('member_of', [$user, $garden]), in: $user, out: $garden, role: 'owner' };
+SELECT *, 'owner' AS my_role, 1 AS member_count FROM ONLY $garden;
+COMMIT;";
 
 /// `POST /invites/{code}/accept` ([database 4], membership ✓): a live invite of a live
 /// garden, then `INSERT RELATION` unless the caller is a member already, whose role is
 /// never changed. Statements: 0 `BEGIN`, 1 `LET $inv`, 2 `IF` (unknown → `not_found`),
 /// 3 `LET $member`, 4 `LET $joined`, 5 the result, 6 `COMMIT`.
 pub const ACCEPT_INVITE: &str = "BEGIN;
+LET $inv = (SELECT id, garden, role FROM invite WHERE code = $code AND used_at = NONE AND revoked_at = NONE
+            AND expires_at > $now AND garden.deleting_at = NONE LIMIT 1)[0];
+IF $inv = NONE { THROW 'not_found' };
+LET $member = type::record('member_of', [$user, $inv.garden]);
+LET $joined = IF array::len(SELECT VALUE id FROM $member) > 0 { false } ELSE {
+  INSERT RELATION INTO member_of { id: $member, in: $user, out: $inv.garden, role: $inv.role };
+  UPDATE $inv.id SET used_at = $now, used_by = $user;
+  true
+};
+RETURN { garden: $inv.garden, joined: $joined };
+COMMIT;";
 ```
 
 The centroid is `type::point([$lon, $lat])`: ✓ a `($lon, $lat)` literal doesn't take parameters (a parse error on 3.3.4), `type::point($lon, $lat)` wants one argument, and a GeoJSON-shaped object isn't coerced ([database 8, caveat 17](../database/README.md#8-caveats)).
@@ -1174,6 +1190,24 @@ The centroid is `type::point([$lon, $lat])`: ✓ a `($lon, $lat)` literal doesn'
 /// maps deleted, and every plant's `position` set or unset. Two concurrent uploads conflict
 /// on the garden row; the retry then fails the version check.
 pub const PUT_MAP: &str = "BEGIN;
+LET $g = (SELECT map_version FROM ONLY $garden WHERE deleting_at = NONE);
+IF $g = NONE { THROW 'not_found' };
+IF $g.map_version != $base { THROW 'stale_map' };
+IF array::len(array::filter($existing, |$p| array::len(SELECT VALUE id FROM $p WHERE garden = $garden) = 0)) > 0 { THROW 'unknown_plants' };
+LET $dropped = (SELECT VALUE id FROM plant WHERE id IN $existing AND deleting_at != NONE);
+FOR $n IN $new_plants {
+  CREATE $n.id SET garden = $garden, name = $n.name, species = $n.species,
+    species_status = IF $n.species != NONE { 'confirmed' } ELSE { 'unknown' }, created_at = $now;
+};
+LET $version = $g.map_version + 1;
+LET $pins = array::filter($pins_in, |$p| !($p.plant IN $dropped));
+UPDATE $garden SET map_version = $version;
+CREATE garden_map SET garden = $garden, version = $version, beds = $beds, pins = $pins,
+  north_deg = $north, created_by = $user, created_at = $now;
+DELETE garden_map WHERE garden = $garden AND version < $version;
+UPDATE plant SET position = NONE WHERE garden = $garden AND position != NONE AND !(id IN $pins.plant);
+FOR $p IN $pins { UPDATE $p.plant SET position = { map_version: $version, x_m: $p.x_m, y_m: $p.y_m }; };
+COMMIT;";
 ```
 
 ```rust
@@ -1398,6 +1432,17 @@ impl EventRepo for SurrealStore {
 /// and the `THROW` over 30 rolls the scan back). Statements: 0 `BEGIN`, 1 the plant `IF`,
 /// 2 `CREATE` scan, 3 `LET $count`, 4 the limit `IF`, 5 the scan read, 6 `COMMIT`.
 pub const CREATE_SCAN: &str = "BEGIN;
+IF $new_plant != NONE {
+  CREATE $plant SET garden = $garden, name = $new_plant.name, species = $new_plant.species,
+    species_status = IF $new_plant.species != NONE { 'confirmed' } ELSE { 'unknown' }, created_at = $now;
+} ELSE IF array::len(SELECT VALUE id FROM $plant WHERE garden = $garden AND deleting_at = NONE) = 0 {
+  THROW 'not_found';
+};
+CREATE $scan SET garden = $garden, plant = $plant, created_by = $user, created_at = $now;
+LET $count = (UPSERT ONLY $usage SET scans += 1 RETURN VALUE scans);
+IF $count > $limit { THROW 'budget_exceeded' };
+SELECT *, created_by.display_name AS creator_name FROM ONLY $scan;
+COMMIT;";
 ```
 
 The daily limit is counted in the scan's transaction, so a `THROW` over 30 rolls the scan and the count back together ✓; the error is built with `domain::rules::limits::check_daily_scans`, so its `resets_at` follows the rule.
@@ -2099,6 +2144,25 @@ impl SurrealStore {
 /// 2 `LET $perception_alive`, 3 `LET $claimed`, 4 `LET $job`, 5 `LET $started`,
 /// 6 the result, 7 `COMMIT`.
 pub const CLAIM_JOB: &str = "BEGIN;
+LET $held = (SELECT count() AS n FROM job WHERE worker = $worker AND status = 'leased' GROUP ALL)[0].n ?? 0;
+LET $perception_alive = ((SELECT count() AS n FROM worker WHERE caps CONTAINS 'perception' AND last_heartbeat > $now - 30s GROUP ALL)[0].n ?? 0) > 0;
+LET $claimed = IF $held < $slots {
+  (UPDATE (SELECT VALUE id FROM job
+          WHERE status = 'queued' AND kind IN $kinds AND queued_at <= $eligible_before
+            AND (!$hold_question OR question = NONE OR !$perception_alive)
+          ORDER BY queued_at LIMIT 1)
+  SET status = 'leased', worker = $worker, lease_token = rand::ulid(),
+      claimed_at = $now, lease_until = $now + 2m,
+      max_runtime = IF $on_fallback { max_runtime * 2 } ELSE { max_runtime }
+  WHERE status = 'queued'
+  RETURN AFTER)
+} ELSE { [] };
+LET $job = $claimed[0];
+LET $started = IF $job != NONE AND $job.run != NONE {
+  array::len(UPDATE $job.scan SET status = 'analysing' WHERE status = 'queued' AND run = $job.run RETURN VALUE id) > 0
+} ELSE { false };
+RETURN { job: $job, started_analysing: $started };
+COMMIT;";
 
 /// Requeues expired leases (index `job_lease` ✓) and the jobs of workers silent for 30
 /// seconds, resetting `queued_at`, invalidating the token and counting attempts
@@ -2106,11 +2170,36 @@ pub const CLAIM_JOB: &str = "BEGIN;
 /// good instead, and a `guided` job out of attempts marks its check `failed` in the same
 /// transaction (contracts 5). Statements: 0 `BEGIN`, 1–3 `LET`, 4 `FOR`, 5 the requeued jobs, 6 `COMMIT`.
 pub const REQUEUE_STALE: &str = "BEGIN;
+LET $silent = (SELECT VALUE record::id(id)[0] FROM worker WHERE last_heartbeat < $now - 30s);
+LET $expired = (SELECT VALUE id FROM job WHERE status = 'leased' AND lease_until < $now);
+LET $orphaned = (SELECT VALUE id FROM job WHERE status = 'leased' AND worker IN $silent);
+FOR $j IN array::union($expired, $orphaned) {
+  LET $r = (SELECT requeues, attempts FROM ONLY $j);
+  LET $att = IF $r.requeues >= $free_requeues { $r.attempts + 1 } ELSE { $r.attempts };
+  UPDATE $j SET requeues = $r.requeues + 1, attempts = $att,
+    status = IF $att >= $max_attempts { 'failed' } ELSE { 'queued' },
+    finished_at = IF $att >= $max_attempts { $now } ELSE { NONE },
+    worker = NONE, lease_token = NONE, lease_until = NONE, claimed_at = NONE, queued_at = $now;
+  IF $att >= $max_attempts AND $j.kind = 'guided' {
+    UPDATE guided_check SET status = 'failed'
+      WHERE scan = $j.scan AND status = 'analysing' AND image = type::record('scan_image', $j.payload.image.image_id);
+  };
+};
+SELECT id, kind, scan, run, question, status FROM job WHERE id IN array::union($expired, $orphaned);
+COMMIT;";
 
 /// A heartbeat: upserts `worker:[worker_id]` with its `versions` verbatim, extends each
 /// listed lease whose token matches (never past `claimed_at + max_runtime`), and returns
 /// the listed jobs the worker must stop: cancelled, requeued or leased elsewhere.
 pub const HEARTBEAT: &str = "BEGIN;
+UPSERT $worker SET caps = $caps, slots = $slots, gpu = $gpu, versions = $versions, last_heartbeat = $now;
+FOR $h IN $held {
+  UPDATE $h.job SET lease_until = IF $now + 2m < claimed_at + max_runtime { $now + 2m } ELSE { claimed_at + max_runtime }
+    WHERE status = 'leased' AND lease_token = $h.token AND worker = $worker_id;
+};
+RETURN array::filter($held, |$h| array::len(SELECT VALUE id FROM $h.job
+    WHERE status = 'leased' AND lease_token = $h.token AND worker = $worker_id) = 0).map(|$h| $h.job);
+COMMIT;";
 ```
 
 - **The claim** is database 4's statement with `$now` for `time::now()`, the fallback's filter `(!$hold_question OR question = NONE OR !$perception_alive)`, and two additions: the fallback's `max_runtime` doubled at claim ([contracts 5](../architecture/contracts.md#leases-runs-and-attempts)), and a run's first job moving the scan `queued → analysing` in the same transaction (`ClaimedJob.started_analysing`). ✓ Two workers that pick the same job conflict, and the loser's retry gets the next one.
@@ -2137,6 +2226,24 @@ pub const COMPLETE_DONE_CLAIM: &str = concat!(
 /// job's check is marked `failed` in the same transaction (contracts 5). Returns whether it
 /// failed for good.
 pub const COMPLETE_FAILED: &str = "BEGIN;
+LET $j = (SELECT status, lease_token, worker, lease_until, attempts, kind, scan, payload FROM ONLY $job);
+IF $j = NONE OR $j.status != 'leased' OR $j.lease_token != $lease_token OR $j.worker != $worker OR $j.lease_until < $now { THROW 'lease_lost' };
+LET $att = IF $retryable { $j.attempts + 1 } ELSE { $j.attempts };
+LET $final = !$retryable OR $att >= $max_attempts;
+UPDATE $job SET attempts = $att, error = $error,
+  status = IF $final { 'failed' } ELSE { 'queued' },
+  finished_at = IF $final { $now } ELSE { NONE },
+  worker = IF $final { worker } ELSE { NONE },
+  lease_token = IF $final { lease_token } ELSE { NONE },
+  lease_until = NONE,
+  claimed_at = IF $final { claimed_at } ELSE { NONE },
+  queued_at = IF $final { queued_at } ELSE { $now };
+IF $final AND $j.kind = 'guided' {
+  UPDATE guided_check SET status = 'failed'
+    WHERE scan = $j.scan AND status = 'analysing' AND image = type::record('scan_image', $j.payload.image.image_id);
+};
+RETURN $final;
+COMMIT;";
 ```
 
 ```rust
@@ -2368,12 +2475,12 @@ impl IdempotencyRepo for SurrealStore {
 | `KnowledgeRepo::load_knowledge` | `LOAD_KNOWLEDGE`: one statement per table, projected into the seed shapes, with `affects`, `caused_by`, `looks_like`, `treatments` and `preys_on` from the graph; the species photos from `reference_images`; the newest classifier label set; `label_set_version` derived (section 22) |
 
 ```rust
-    /// `search_memory` ([database 5] ✓): exact cosine within one garden, the shared memories
-    /// and the caller's own, never another member's private ones; with a plant, that plant's
-    /// and the garden-level facts. A garden has at most a few thousand memories, so an exact
-    /// search is cheap and always correct, and it avoids the filtered-KNN bug after deletes
-    /// (#7423).
-    pub const SEARCH: &str = "SELECT *, vector::similarity::cosine(embedding, $query) AS similarity FROM memory
+/// `search_memory` ([database 5] ✓): exact cosine within one garden, the shared memories
+/// and the caller's own, never another member's private ones; with a plant, that plant's
+/// and the garden-level facts. A garden has at most a few thousand memories, so an exact
+/// search is cheap and always correct, and it avoids the filtered-KNN bug after deletes
+/// (#7423).
+pub const SEARCH: &str = "SELECT *, vector::similarity::cosine(embedding, $query) AS similarity FROM memory
 WHERE garden = $garden AND (shared = true OR author = $user) AND ($plant = NONE OR plant = $plant OR plant = NONE)
   AND plant.deleting_at = NONE
 ORDER BY similarity DESC LIMIT $k;";
