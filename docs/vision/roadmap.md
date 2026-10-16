@@ -1,9 +1,9 @@
 # PDM Vision Roadmap
 
-> **Status:** v0.1, 2026-10-16 (evening). v0.1: First tracker of the vision and ML work against the build plan in [README 10](README.md#10-build-plan), with what is done, what is next and what waits on whom.
+> **Status:** v0.2, 2026-10-16 (night). v0.2: the PR #6 reviews are answered: Tomato-Pakistan reworked, disease head v1d, the detector retrained on a grouped split; the whole-ML plan with the integration track moves to [dev-roadmap.md](dev-roadmap.md). v0.1: First tracker of the vision and ML work against the build plan in [README 10](README.md#10-build-plan), with what is done, what is next and what waits on whom.
 > **How to use it:** read this first when picking up the ML work. Update it at the end of every work session: change the state of each item you touched, add the commit or report that proves it, and bump the status line. The plan itself stays in [README 10](README.md#10-build-plan); this file only tracks progress against it.
 
-Owner of the vision and ML work: Sam (models, training, export, evaluation, calibration; the RTX 5070 Ti). The Rust perception pipeline that runs the models is a teammate's ([docs/backend/vision.md](../backend/vision.md), [worker.md](../backend/worker.md)).
+Owner of the vision and ML work: Sam (models, training, export, evaluation, calibration; the RTX 5070 Ti). Running the models in the backend is Sara's track ([docs/backend/vision.md](../backend/vision.md), [worker.md](../backend/worker.md)); the plan both tracks share, with owners, hand-offs and the integration gaps, is [dev-roadmap.md](dev-roadmap.md). This file tracks the models.
 
 States: **Done**, **Done, rework** (done but a review found a problem), **In progress**, **Next**, **Not started**, **Waiting** (on a person or a decision), **Not ours** (another owner's, listed because ours depends on it).
 
@@ -20,18 +20,19 @@ States: **Done**, **Done, rework** (done but a review found a problem), **In pro
 
 ## 1. Where we are
 
-Day 1 of 10 (Oct 16). The work is **ahead of plan on models and serving, behind on data quality and the evaluation set**:
+Day 1 of 10 (Oct 16). The work is **ahead of plan on models and serving, behind on the evaluation set**:
 
-- Ahead: the detector's first fine-tune (planned Oct 17) is done and exported; the disease head is at v1c (v0 was planned for Oct 16–17, v1 for Oct 19); the VLM day-1 check passed with both Qwen3-VL-8B builds.
-- Rework needed: aacruzgon's follow-up review of PR #6 found that **Tomato-Pakistan is pre-augmented and partly scraped from PlantDoc**, so it leaks into validation and test. Disease head v1c's numbers are not trustworthy until that is fixed (section 5, step 1).
-- Behind: no evaluation photos taken yet (planned to start Oct 16), no field test split, no Python–Rust parity test.
+- Ahead: the detector is on its second clean fine-tune (planned Oct 17); the disease head is at v1d (v1 was planned for Oct 19); the VLM day-1 check passed with both Qwen3-VL-8B builds.
+- Fixed tonight (PR #6 reviews): Tomato-Pakistan's 7,200 files are copies of about 934 photos, 302 of them PlantDoc's web photos. Copies are now grouped by original photo, the PlantDoc copies dropped, TOM2024 grouped by field visit, and the field sets have their own test split. Validation images with a near-copy in train fell from 925 of 1,792 to 287 of 1,152. Disease head v1d: test top-1 0.814 without bean (val 0.819), ECE 0.032.
+- Behind: no evaluation photos yet (planned from Oct 16), no Python–Rust parity test.
+- Found tonight: the Rust loaders on `main` don't read our head, label-matrix and manifest formats yet (dev-roadmap gaps G1–G8). Sara's first task.
 
 ## 2. Branches and pull requests
 
 | PR | Branch | Into | State | Holds |
 |---|---|---|---|---|
-| [#6](https://github.com/aacruzgon/GreenLens/pull/6) | `feat/ml-training` | `main` | Draft, review required; **follow-up review open** | Training environment, `pdm_vision`, data pipeline, exports, detector, disease head v1c, manifest |
-| [#7](https://github.com/aacruzgon/GreenLens/pull/7) | `feat/vlm-serving` | `feat/ml-training` | Draft | `infra/` vLLM service, the day-1 check client and reports, vlm.md §4 results, this file |
+| [#6](https://github.com/aacruzgon/GreenLens/pull/6) | `feat/ml-training` | `main` | Draft, review required; both reviews answered (efa6c4b–a2ebaa9) | Training environment, `pdm_vision`, data pipeline, exports, disease head v1d, manifest |
+| [#7](https://github.com/aacruzgon/GreenLens/pull/7) | `feat/vlm-serving` | `feat/ml-training` | Draft | `infra/` vLLM service, the day-1 check client and reports, vlm.md §4 results, the detector, this file and dev-roadmap.md |
 
 ## 3. Tracker by build-plan period
 
@@ -43,13 +44,13 @@ Day 1 of 10 (Oct 16). The work is **ahead of plan on models and serving, behind 
 | PyTorch training step on the 5070 Ti | Done | Detector training ran on it |
 | ONNX Runtime 1.31 CUDA on the 5070 Ti | Done | `features.cuda_session()` runs BioCLIP on CUDA and fails loudly otherwise |
 | ONNX Runtime 1.31 CUDA on the RTX 3070 | Not started | Needs the 3070's host; same check as the 5070 Ti |
-| Datasets fetched, pinned, mapped, deduplicated, split | Done, rework | 3369353, 34d83d6, af4b0e2. Tomato-Pakistan must be grouped by original photo and its PlantDoc copies dropped (PR #6 follow-up) |
+| Datasets fetched, pinned, mapped, deduplicated, split | Done | 3369353, 34d83d6, af4b0e2; reworked in efa6c4b: copies grouped by original photo, PlantDoc copies dropped, field visits grouped, field test splits. Train 5,102, val 1,152, test 854 |
 | BioCLIP 2 vision tower exported and checked (fp16) | Done | b37e8df; manifest `bioclip` |
 | SAM 2.1-T encoder and box decoder exported and checked | Done | b37e8df; manifest `sam_encoder`, `sam_decoder`; encoder budget 2.0 GB |
 | YuNet face detector export | Not started | Ran on a Mac with ORT CPU in the design phase; not in the manifest |
 | Text embedder pinned and checked (Rust vs Python to 1e-5, ≤ 20 ms) | Not started | Choice recorded in architecture open decision 13; the Rust side is the backend's |
-| RF-DETR-S leaf detector, first fine-tune, exported | Done | 51d052f, 97a06f3 (train deduplicated against test), 4d2da5e; mAP50 0.934 ONNX vs 0.933 PyTorch. `prepare.py` still splits train/valid by file-name hash (review leftover) |
-| Disease head v0 | Done | cc884dd; superseded by v1b (c1c9c37), then v1c |
+| RF-DETR-S leaf detector, fine-tuned and exported | Done | `rfdetr-s-leaf-2026-10-16b`: pinned COCO weights, train/valid grouped by same plant, train at ≥ 0.97 to test dropped (a5518f9). mAP50 0.937 fp16 ONNX vs 0.937 PyTorch, mAP50-95 0.729, on the 236 test images (the first run: 0.934, 0.722) |
+| Disease head v0 → v1d | Done | cc884dd, c1c9c37, then v1d (3c10ae9): C = 50, T = 0.821; test top-1 0.814 without bean (PlantDoc 0.743, TOM2024 0.845, Tomato-Pakistan 0.800), top-3 0.964, ECE 0.032 |
 | BioCLIP label matrix and `label_set_version` | Done (stand-in) | Format in `ml/models/FORMATS.md`, test vector `129f0395e8d89bd5` (confirmed by aacruzgon); stand-in labels until the seed files exist |
 | vLLM serves Qwen3-VL-8B FP8 on the 5070 Ti, day-1 check | Done | 97b0f9a, fe1e639, 01aea25; reports in `ml/training/eval/reports/`. FP8 headless at 0.90 (84 tok/s, 2 slots fit); AWQ in desktop mode at 0.78 (115 tok/s) |
 | Qwen3.5-9B AWQ challenger loads | Next | Weights downloaded and pinned (infra README 4); not yet started once |
@@ -67,10 +68,10 @@ Day 1 of 10 (Oct 16). The work is **ahead of plan on models and serving, behind 
 | Perception batch caps benchmark | Not started | On the 3070, with every session loaded |
 | Leaf relabelling pass (people, Oct 18) | Not started | |
 | Real BioCLIP label matrix from the species and organism seed files | Waiting | On the knowledge-base seed files and decision #4 |
-| VLM prompts and schemas on real photos | Waiting | The prompts are the VLM owner's; day-1 found issues to pass on (vlm.md §4) |
+| VLM prompts and schemas on real photos | Waiting | The prompts are in Sara's worker code (dev-roadmap P5); day-1 found three issues (vlm.md §4) |
 | Second detector run (night of Oct 18, vLLM stopped) | Not started | After relabelling |
-| Disease and species heads v1 on crops from our detector (Oct 19) | Not started | After the data rework |
-| Python–Rust pre-processing parity test | Waiting | On the Rust `to_tensor`; `crop_box` rounding is a guess until then |
+| Disease and species heads on crops from our detector (Oct 19) | Not started | The data rework is done; needs the second detector run |
+| Python–Rust pre-processing parity test | Waiting | dev-roadmap J1, after Sara's loader fixes (P1); `crop_box` rounding is a guess until then |
 
 ### Oct 20–25
 
@@ -87,20 +88,21 @@ Day 1 of 10 (Oct 16). The work is **ahead of plan on models and serving, behind 
 | Decision | State | Waits on |
 |---|---|---|
 | [#2](https://github.com/aacruzgon/GreenLens/issues/2) Resize filter | Closed: Lanczos3 | — |
-| [#3](https://github.com/aacruzgon/GreenLens/issues/3) Head and label-matrix JSON format, `label_set_version` | Open; all four review points done in ebc3c36 | The team agreeing to close it |
+| [#3](https://github.com/aacruzgon/GreenLens/issues/3) Head and label-matrix JSON format, `label_set_version` | Open; the Rust loaders on `main` read different field names (dev-roadmap G1–G3) | Sam and Sara agreeing the format |
 | [#4](https://github.com/aacruzgon/GreenLens/issues/4) Supported crops and class-to-slug mapping | Open | The knowledge-base owner. Bean's place decides whether iBean counts in the headline |
 | [#5](https://github.com/aacruzgon/GreenLens/issues/5) Duplicate threshold and conflicting PlantDoc groups | Open | A reviewer of the sampled pairs; mostly answered by the Tomato-Pakistan finding |
 | Which VLM (README 11.1) | Open | The day-2 benchmark |
-| Disease head or ConvNeXt-Tiny (README 11.4) | Open | Honest numbers after the data rework (the 75% top-1 bar) |
+| Disease head or ConvNeXt-Tiny (README 11.4) | Open | v1d is 0.814 on whole images; decided on detector crops (the 75% top-1 bar) |
 
 ## 5. Next steps, in order
 
-1. **Answer the PR #6 follow-up review.** Group Tomato-Pakistan by original photo (strip `_aug_N`, `_change_N`, `.rf.<hash>`) for dedupe and split; drop its copies of PlantDoc photos; hold out a field test set (a TOM2024 collection or a slice of Tomato-Pakistan by original); report the headline without bean; widen the C grid past 500; correct the dataset's description and its `ship` flag in `sources.yaml`; fix the manifest header ("v1b"); group the detector's train/valid split by cosine. Then retrain the head as v1d.
-2. **Start the Qwen3.5 challenger once** and run the day-1 check on it, so the day-2 benchmark can't be blocked by a load failure.
-3. **Start the evaluation photos** and the 20 dev cases the day-2 benchmark needs (Oct 18).
-4. **YuNet export** and the face-detector check; BioCLIP zero-shot on team photos.
-5. Day-2 VLM benchmark on Oct 18; leaf relabelling; second detector run that night.
+1. **Merge PRs #6 and #7** once reviewed, so Sara builds against `main`.
+2. **Unblock Sara** (dev-roadmap M5, M6, M9): a readable copy of the model files in `/srv/pdm/models/`, Rust test fixtures, a CPU manifest; agree the formats in issue #3.
+3. **Start the Qwen3.5 challenger once** and run the day-1 check on it.
+4. **Start the evaluation photos** and the 20 dev cases the day-2 benchmark needs (Oct 18).
+5. **YuNet and the text embedder pinned** (dev-roadmap M7, M8); BioCLIP zero-shot on team photos.
+6. Day-2 VLM benchmark on Oct 18 with Sara's worker; leaf relabelling; second detector run that night.
 
 ## 6. The rig right now
 
-As of 2026-10-16 evening: **headless** (desktop stopped), vLLM serving Qwen3-VL-8B FP8 at 0.90 with 2 slots (`infra-vllm-1`, about 14.6 of 16.3 GB used). To get the desktop back: `docker compose -f infra/rig.compose.yml down`, `sudo systemctl isolate graphical.target`, log in, and run vLLM with the AWQ build at 0.78 ([infra README 3](../../infra/README.md#3-desktop-mode-and-headless-mode)). After the desktop is back, run `gh auth login` again so the token moves into the keyring.
+As of 2026-10-16 night: **headless** (desktop stopped), vLLM serving Qwen3-VL-8B FP8 at 0.90 with 2 slots (`infra-vllm-1`, about 14.6 of 16.3 GB used); it was stopped for the detector retrain and started again with `docker start infra-vllm-1`. To get the desktop back: `docker compose -f infra/rig.compose.yml down`, `sudo systemctl isolate graphical.target`, log in, and run vLLM with the AWQ build at 0.78 ([infra README 3](../../infra/README.md#3-desktop-mode-and-headless-mode)). After the desktop is back, run `gh auth login` again so the token moves into the keyring.
