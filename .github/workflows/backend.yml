@@ -1,0 +1,229 @@
+# The backend's checks, designed in docs/infra/README.md section 2.
+# A job whose inputs didn't change is skipped by its `if:`, which reports success, so every job
+# can be a required check. Actions are pinned by commit; Dependabot proposes updates.
+name: backend
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # check_examples.py builds outside backend/, where rust-toolchain.toml doesn't apply.
+  RUSTUP_TOOLCHAIN: "1.99.1"
+
+jobs:
+  changes:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.diff.outputs.rust }}
+      docs: ${{ steps.diff.outputs.docs }}
+      skills: ${{ steps.diff.outputs.skills }}
+      infra: ${{ steps.diff.outputs.infra }}
+      live: ${{ steps.diff.outputs.live }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          case "$EVENT" in
+            pull_request) base=$PR_BASE ;;
+            push) base=$PUSH_BEFORE ;;
+            *) base= ;;
+          esac
+          all=false
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            all=true   # a manual run, a new branch or a rewritten history: run everything
+            files=
+          else
+            files=$(git diff --name-only "$base"...HEAD)
+          fi
+          printf '%s\n' "$files"
+          if printf '%s\n' "$files" | grep -qx '.github/workflows/backend.yml'; then all=true; fi
+          has() { [ "$all" = true ] || printf '%s\n' "$files" | grep -Eq "$1"; }
+          out() { if has "$2"; then echo "$1=true"; else echo "$1=false"; fi >> "$GITHUB_OUTPUT"; }
+          out rust   '^backend/(crates|bins|migrations)/|^backend/(Cargo\.toml|Cargo\.lock|clippy\.toml|rust-toolchain\.toml|openapi\.json)$'
+          out docs   '\.md$|^backend/tools/docgen/'
+          out skills '^\.claude/skills/rust'
+          out infra  '^infra/|^\.github/'
+          out live   '^backend/crates/(store|blob)/|^backend/migrations/|^backend/Cargo\.(toml|lock)$|^\.claude/skills/rust'
+          cat "$GITHUB_OUTPUT"
+
+  lint:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust 1.99.1 with rustfmt and Clippy
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
+      - name: Install libheif (vision's heic feature needs 1.19 or newer)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libheif-dev
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: "backend -> target"
+          shared-key: lint
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # The GPU features need no GPU: ort loads ONNX Runtime at run time (load-dynamic).
+      - run: cargo check -p worker --features cuda --locked
+      - run: cargo check -p vision --features cuda,migraphx,webgpu --locked
+      - run: cargo check -p vision --features heic --locked
+
+  test:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust 1.99.1 with rustfmt and Clippy
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: "backend -> target"
+          shared-key: test
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: cargo-nextest@0.9.148
+      # Includes the api test that fails when backend/openapi.json is stale.
+      - run: cargo nextest run --workspace --locked
+      # nextest doesn't run doc tests; the compile-fail tests of the proofs and URL states are doc tests.
+      - run: cargo test --doc --workspace --locked
+
+  examples:
+    needs: changes
+    # The examples compile against versions.md, not the workspace, so backend changes don't affect them.
+    if: needs.changes.outputs.skills == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust 1.99.1 with rustfmt and Clippy
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: "backend -> target"
+          shared-key: examples
+          cache-targets: false
+          cache-directories: ~/.cache/pdm-rust-skills-check/target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: python3 .claude/skills/rust/scripts/check_examples.py
+
+  docs:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust 1.99.1 with rustfmt and Clippy
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
+      - name: The crate documents match the source
+        run: |
+          backend/tools/docgen/regen_all.sh
+          git diff --exit-code docs/backend || {
+            echo "::error::docs/backend is stale: run backend/tools/docgen/regen_all.sh and commit the result"
+            exit 1
+          }
+      - run: python3 backend/tools/docgen/check_fences.py docs/backend
+      - name: Every relative link and anchor resolves
+        run: |
+          shopt -s globstar
+          python3 backend/tools/docgen/checklinks.py AGENTS.md CLAUDE.md docs/**/*.md
+
+  infra:
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Every compose file renders against the example env file
+        run: |
+          shopt -s nullglob
+          for f in infra/*.compose.yml; do
+            echo "$f"
+            docker compose -f "$f" --env-file infra/env/.env.example config -q
+          done
+      - name: Shell scripts parse and pass shellcheck
+        run: |
+          shopt -s nullglob globstar
+          scripts=(infra/**/*.sh)
+          if [ ${#scripts[@]} -eq 0 ]; then echo "no scripts"; exit 0; fi
+          for s in "${scripts[@]}"; do bash -n "$s"; done
+          shellcheck "${scripts[@]}"
+
+  live:
+    needs: changes
+    if: needs.changes.outputs.live == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    services:
+      surrealdb:
+        image: surrealdb/surrealdb:v3.3.4@sha256:649a60a3b9c0177d9923c938e1c2563e48cde2a9d06ac2c0519714be719b02af
+        command: start --user root --pass root memory
+        ports: ["127.0.0.1:18000:8000"]
+        options: >-
+          --health-cmd "/surreal is-ready --endpoint http://127.0.0.1:8000"
+          --health-interval 5s --health-retries 12
+      rustfs:
+        image: rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
+        env:
+          RUSTFS_VOLUMES: /data
+          RUSTFS_ACCESS_KEY: TESTROOT # the test's hard-coded key; CI only
+          RUSTFS_SECRET_KEY: testrootsecret
+          RUSTFS_CONSOLE_ENABLE: "false"
+          RUSTFS_CHECK_UPDATE: "false"
+        ports: ["127.0.0.1:19000:9000"]
+        options: >-
+          --health-cmd "curl -fsS http://127.0.0.1:9000/health/ready"
+          --health-interval 5s --health-retries 12 --health-start-period 30s
+    env:
+      PDM_TEST_SURREALDB_URL: ws://127.0.0.1:18000
+      PDM_TEST_RUSTFS_URL: http://127.0.0.1:19000
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust 1.99.1 with rustfmt and Clippy
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: "backend -> target"
+          shared-key: live
+          cache-directories: ~/.cache/pdm-rust-skills-check/target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: cargo-nextest@0.9.148
+      - run: cargo nextest run -p store -p blob --run-ignored only --locked
+        working-directory: backend
+      # Starts its own SurrealDB container on an ephemeral port.
+      - run: python3 .claude/skills/rust/scripts/check_examples.py --live

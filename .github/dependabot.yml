@@ -1,0 +1,10 @@
+# Weekly updates of the pinned action SHAs only (docs/infra/README.md section 2).
+# Cargo, Docker and Python pins move by hand, after re-verifying what depends on them.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore(ci)
