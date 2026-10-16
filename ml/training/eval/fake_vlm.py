@@ -16,13 +16,18 @@ Endpoints: GET /health (always open), GET /v1/models (lists --served-name), POST
 /v1/chat/completions. With --api-key, /v1/* answers 401 unless `Authorization: Bearer <key>`.
 
 A request's key is the SHA-256 of its schema name, its schema as canonical JSON (sorted keys,
-compact) and its number of images. The images themselves are not in the key.
+compact) and its number of images. The images themselves are not in the key. Two calls can share
+a key: the worker's analyse `indicators` call and its `verify` call send the same schema and
+differ only in their text.
 
 Modes:
 
   replay (default): --recordings FILE (default: recordings/worker-qwen3vl8b-fp8-2026-10-16.json
     next to this file). A key hit answers with the recorded status and body unchanged, header
-    `x-fake-vlm: replay`; with several recordings under one key, the first one that answered 200.
+    `x-fake-vlm: replay`. With several recordings under one key, it takes the one whose message
+    text (every text part, images left out) equals the request's, preferring status 200. When
+    no recording under the key has the request's text (a prompt change that kept the schema), it
+    still replays the first that answered 200 and logs a `text drift` line.
     A miss answers `x-fake-vlm: conformed`: the closest recording with the same schema name (most
     enum values shared with the request's schema, then the nearest image count, then the lowest
     key) has its JSON reply walked against the request's schema, keeping every value that fits
@@ -44,7 +49,7 @@ default 300, then answer). --fault-every N faults every Nth chat call (default 1
 
 --log-requests DIR writes each chat request, without image bytes, as DIR/NNNN-<schema name>.json.
 
-What it can't test: a prompt change (the reply depends only on the schema and the image count),
+What it can't test: a prompt change (it replays the old answer and logs `text drift`),
 real latency or throughput, and real image understanding (a conformed reply is valid, not
 right). Standard library only (Python 3.11+).
 """
@@ -109,6 +114,20 @@ def request_key(body: dict) -> str:
     name, schema = json_schema(body)
     text = f"{name}\n{canonical(schema)}\n{image_count(body)}"
     return hashlib.sha256(text.encode()).hexdigest()
+
+
+def message_text(body: dict) -> str:
+    """Each message's role and text parts, in order, without the images: what tells apart two
+    requests under one key. A recording's request is redacted, so only text is compared."""
+    out = []
+    for m in body.get("messages", []):
+        content = m.get("content")
+        if isinstance(content, list):
+            texts = [p.get("text", "") for p in content if p.get("type") == "text"]
+        else:
+            texts = [content or ""]
+        out.append([m.get("role", ""), texts])
+    return canonical(out)
 
 
 def redact(body: dict) -> dict:
@@ -512,7 +531,13 @@ class State:
         name, schema = json_schema(body)
         hits = [r for r in self.doc.get("recordings", []) if r.get("key") == key]
         if hits:
-            hit = next((r for r in hits if r.get("status") == 200), hits[0])
+            text = message_text(body)
+            same = [r for r in hits if message_text(r.get("request") or {}) == text]
+            if not same:
+                log(f"text drift: {name} matches key {key[:12]}, but none of its {len(hits)} "
+                    "recordings has this request's text; replaying the first")
+            pool = same or hits
+            hit = next((r for r in pool if r.get("status") == 200), pool[0])
             response = hit["response"]
             data = response.encode() if isinstance(response, str) else json.dumps(response).encode()
             return Reply(hit.get("status", 200), data), "replay"

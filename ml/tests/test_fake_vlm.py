@@ -228,6 +228,47 @@ def test_replay_on_a_key_hit(start, recordings, flavour):
     assert reply["choices"][0]["finish_reason"] == "stop"
 
 
+def with_text(body: dict, text: str) -> dict:
+    """The body with its first text part changed, as the worker's verify call differs from the
+    analyse indicators call: same schema and image count, other text."""
+    out = json.loads(json.dumps(body))
+    out["messages"][1]["content"][0]["text"] = text
+    return out
+
+
+def test_shared_key_replays_the_recording_with_the_same_text(start, tmp_path, capsys):
+    analyse = with_text(INDICATORS_BODY, "img1: close-up of a leaf")
+    verify = with_text(INDICATORS_BODY, "img1: new photo, taken to answer a question")
+    assert fv.request_key(analyse) == fv.request_key(verify)
+    verify_answers = {**recorded_answers(),
+                      "q1_concentric_rings": {"reason": "no rings on the new photo", "answer": "no",
+                                              "image": None}}
+    path = tmp_path / "rec.json"
+    path.write_text(json.dumps({"about": "synthetic", "recordings": [
+        entry(analyse, recorded_answers()), entry(verify, verify_answers)]}))
+    base = start(recordings=path)
+    for body, want in ((verify, verify_answers), (analyse, recorded_answers())):
+        status, headers, raw = call(base, "/v1/chat/completions", body)
+        assert status == 200 and headers["x-fake-vlm"] == "replay"
+        assert content_of(raw) == want
+    assert "text drift" not in capsys.readouterr().err
+
+    drifted = with_text(INDICATORS_BODY, "img1: a prompt neither recording has")
+    status, headers, raw = call(base, "/v1/chat/completions", drifted)
+    assert status == 200 and headers["x-fake-vlm"] == "replay"
+    assert content_of(raw) == recorded_answers()
+    assert "none of its 2 recordings has this request's text" in capsys.readouterr().err
+
+
+def test_a_prompt_change_on_a_single_recording_is_replayed_and_logged(start, recordings, capsys):
+    base = start(recordings=recordings)
+    status, headers, raw = call(base, "/v1/chat/completions", with_text(FINDINGS_BODY, "img1: soil"))
+    assert status == 200 and headers["x-fake-vlm"] == "replay"
+    assert content_of(raw) == recorded_findings()
+    assert "text drift: findings" in capsys.readouterr().err
+
+
+
 def test_findings_with_new_enums_and_an_extra_image_are_conformed(start, recordings):
     base = start(recordings=recordings)
     schema = vc.findings_schema(4, ["pepper", "cucumber"], ["spider_mite", "aphid", "caterpillar"])
