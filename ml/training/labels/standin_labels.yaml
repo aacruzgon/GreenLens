@@ -1,0 +1,23 @@
+# A stand-in label list until ml/knowledge/seed/species/ exists: PlantDoc's 13 crops plus
+# common garden plants the app would hold as `label_only` (evaluation.md §2). Slugs are
+# PROPOSED, as in data/mappings/. Labels follow "<scientific name> with common name <common>".
+- { id: apple,      table: species, label: "Malus domestica with common name apple" }
+- { id: blueberry,  table: species, label: "Vaccinium corymbosum with common name highbush blueberry" }
+- { id: cherry,     table: species, label: "Prunus avium with common name sweet cherry" }
+- { id: corn,       table: species, label: "Zea mays with common name corn" }
+- { id: grape,      table: species, label: "Vitis vinifera with common name grape" }
+- { id: peach,      table: species, label: "Prunus persica with common name peach" }
+- { id: pepper,     table: species, label: "Capsicum annuum with common name bell pepper" }
+- { id: potato,     table: species, label: "Solanum tuberosum with common name potato" }
+- { id: raspberry,  table: species, label: "Rubus idaeus with common name raspberry" }
+- { id: soybean,    table: species, label: "Glycine max with common name soybean" }
+- { id: squash,     table: species, label: "Cucurbita pepo with common name squash" }
+- { id: strawberry, table: species, label: "Fragaria × ananassa with common name strawberry" }
+- { id: tomato,     table: species, label: "Solanum lycopersicum with common name tomato" }
+- { id: basil,      table: species, label: "Ocimum basilicum with common name basil" }
+- { id: lettuce,    table: species, label: "Lactuca sativa with common name lettuce" }
+- { id: bean,       table: species, label: "Phaseolus vulgaris with common name common bean" }
+- { id: rose,       table: species, label: "Rosa with common name rose" }
+- { id: hosta,      table: species, label: "Hosta with common name hosta" }
+- { id: cucumber,   table: species, label: "Cucumis sativus with common name cucumber" }
+- { id: onion,      table: species, label: "Allium cepa with common name onion" }

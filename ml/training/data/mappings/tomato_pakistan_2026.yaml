@@ -1,0 +1,29 @@
+# Tomato Leaf Disease Classification Dataset in Pakistan (2026) → slugs  (training.md §4, step 3)
+# PROPOSED slugs, as in plantdoc.yaml (issue #4).
+#
+# The 7,200 files are augmented copies of about 934 photos (review of PR #6): the names carry
+# `_aug_N`, rotations (`_change_90/180/270`), `_mirror`, `_vertical`, `_lower`, `_hight`,
+# `_zoom`, and Roboflow export suffixes (`_jpg.rf.<hash>`). Stripping them gives the original's
+# name, so copies of one photo deduplicate to one and never straddle splits. 302 of the
+# originals carry PlantDoc file names (web photos PlantDoc scraped, 2,690 files); they add no
+# field data and some are PlantDoc test photos, so they are dropped. The rest look like phone
+# photos (IMG_2025…, WhatsApp IMG-2024…-WA…, EB_(n), HL_(n)), but that is read from the names.
+# No published split: dedupe.py holds out val and test shares by original photo.
+
+dataset: tomato_pakistan_2026
+source: tomato_pakistan_2026
+root: Tomato_Leaf_Dataset
+splits: { train: . }
+reviewed_by: null
+
+originals:
+  strip: '(_aug_\d+|_change_\d+|_vertical|_lower|_hight|_mirror|_zoom|_original|_(jpe?g|png)\.rf\.[0-9a-f]{32}|[-._](jpe?g|png))$'
+  drop_if_name_in: [plantdoc_cls, plantdoc_det]
+
+classes:
+  "Tomato_Healthy":                { species_id: tomato, problem_id: healthy }
+  "Tomato_Early_blight":           { species_id: tomato, problem_id: tomato_early_blight }
+  "Tomato_leaf_late_blight":       { species_id: tomato, problem_id: tomato_late_blight }
+  "Tomato_septora_leaf_spot":      { species_id: tomato, problem_id: tomato_septoria_leaf_spot }
+  "Tomato_mold_leaf":              { species_id: tomato, problem_id: tomato_leaf_mold }
+  "Tomato_leaf_yellow_curl_virus": { species_id: tomato, problem_id: tomato_yellow_leaf_curl_virus }

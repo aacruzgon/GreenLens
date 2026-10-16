@@ -1,0 +1,855 @@
+dataset	path	species_id	problem_id
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.0.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.1.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.10.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.11.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.12.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.13.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.14.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.15.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.16.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.17.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.18.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.19.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.2.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.20.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.21.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.22.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.23.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.24.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.25.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.26.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.27.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.28.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.29.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.3.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.30.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.31.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.32.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.33.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.34.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.35.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.36.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.37.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.38.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.39.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.4.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.40.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.41.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.42.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.5.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.6.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.7.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.8.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/angular_leaf_spot/angular_leaf_spot_test.9.jpg	bean	bean_angular_leaf_spot
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.0.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.1.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.10.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.11.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.12.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.13.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.14.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.15.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.16.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.17.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.18.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.19.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.2.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.20.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.21.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.22.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.23.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.24.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.25.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.26.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.27.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.28.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.29.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.3.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.30.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.31.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.32.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.33.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.34.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.35.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.36.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.37.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.38.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.39.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.4.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.40.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.41.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.42.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.5.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.6.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.7.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.8.jpg	bean	bean_rust
+ibean	ibean/data/test/test/bean_rust/bean_rust_test.9.jpg	bean	bean_rust
+ibean	ibean/data/test/test/healthy/healthy_test.0.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.1.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.10.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.11.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.12.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.13.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.14.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.15.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.16.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.17.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.18.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.19.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.2.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.20.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.21.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.22.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.23.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.24.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.25.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.26.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.27.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.28.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.29.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.3.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.30.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.31.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.32.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.33.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.34.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.35.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.36.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.37.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.38.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.39.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.4.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.40.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.41.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.5.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.6.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.7.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.8.jpg	bean	healthy
+ibean	ibean/data/test/test/healthy/healthy_test.9.jpg	bean	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple Scab Leaf/052609%20Hartman%20Crabapple%20scab%20single%20leaf.JPG.jpg	apple	apple_scab
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple Scab Leaf/1b321015-6e33-4f18-aade-888f4383fe92.jpeg.jpg	apple	apple_scab
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple Scab Leaf/28-500x375.jpg	apple	apple_scab
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple Scab Leaf/816.jpg	apple	apple_scab
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple Scab Leaf/apple%20scab%20leaf.jpg	apple	apple_scab
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple Scab Leaf/apple%20scabnew.jpg	apple	apple_scab
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple Scab Leaf/apple-scab-5366820.jpg	apple	apple_scab
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple Scab Leaf/apples_apple-scab_01_zoom.jpg	apple	apple_scab
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple Scab Leaf/apples_apple-scab_02_thm.jpg	apple	apple_scab
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple Scab Leaf/apples_apple-scab_10_zoom.jpg	apple	apple_scab
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple leaf/20180511_090912-14gtw8a-e1526047952754.jpg	apple	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple leaf/20180511_091133-24l1vhg-e1526047988236.jpg	apple	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple leaf/20180511_091252-1gy5xf5-e1526048000596.jpg	apple	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple leaf/4120978-single-green-leaf-of-apple-tree.jpg	apple	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple leaf/Apple-Leaf-Wallpaper-17.jpg	apple	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple leaf/apple-leaf-14319997.jpg	apple	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple leaf/apple-leaf-9834637.jpg	apple	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple leaf/apple-leaf-closeup-37636177.jpg	apple	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple leaf/apple-leaf-isolated-white-background-56631026.jpg	apple	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple rust leaf/02.-Rust-2017-207u24s.jpg	apple	apple_cedar_apple_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple rust leaf/0605_Rust-induced_leafspot.jpg	apple	apple_cedar_apple_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple rust leaf/185161-004-EAF28842.jpg	apple	apple_cedar_apple_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple rust leaf/2011-011.jpg	apple	apple_cedar_apple_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple rust leaf/20130519cedarapplerust.jpg	apple	apple_cedar_apple_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple rust leaf/20130610_110514.jpg	apple	apple_cedar_apple_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple rust leaf/20130802_111632.jpg	apple	apple_cedar_apple_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple rust leaf/4-apple-rust2_19011_matt-bertone.jpg	apple	apple_cedar_apple_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple rust leaf/9343310-small.jpg	apple	apple_cedar_apple_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Apple rust leaf/99e886623c2080c22f6519b0e708c531.jpg	apple	apple_cedar_apple_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Bell_pepper leaf spot/00.jpg	pepper	pepper_bacterial_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Bell_pepper leaf spot/000.jpg	pepper	pepper_bacterial_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Bell_pepper leaf spot/01.jpg	pepper	pepper_bacterial_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Bell_pepper leaf spot/Bacterial-spot-pepper2.jpg	pepper	pepper_bacterial_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Bell_pepper leaf spot/CMVpepperLeafShock-copy-50QUALITY-1ge8umw.jpg	pepper	pepper_bacterial_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Bell_pepper leaf spot/H5w92.jpg	pepper	pepper_bacterial_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Bell_pepper leaf spot/bacterial_leaf_spot_pepper_l.jpg	pepper	pepper_bacterial_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Bell_pepper leaf spot/pepper-spot.jpg	pepper	pepper_bacterial_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Bell_pepper leaf spot/pepper_bacterial-spot_03_zoom.jpg	pepper	pepper_bacterial_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Bell_pepper leaf/10148582-green-leaf-of-pepper.jpg	pepper	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Bell_pepper leaf/4825902504_5fa80b65b8_z.jpg	pepper	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Bell_pepper leaf/GREEN%20BELL%20PLANT%20YELLOW%20LEAF.JPG.jpg	pepper	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Bell_pepper leaf/IMG_1629.JPG?1507122477.jpg	pepper	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Bell_pepper leaf/RnGnC.jpg	pepper	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Bell_pepper leaf/e33155.jpg	pepper	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Bell_pepper leaf/pepper_leaf.jpg	pepper	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Bell_pepper leaf/why-are-my-pepper-plants-yellow-yellow-pepper-plants-yellow-leaves-green-veins-pepper-plants-yellow-veins.jpg	pepper	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Blueberry leaf/P1200665+Vaccinium+alaskaense+vs+ovalifolium+leaf+and++twig+cr.jpg	blueberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Blueberry leaf/P1200701+Vaccinium+ovalifolium+Oval-leaf+Blueberry+leaf+margin+Heather+Meadows+cr.jpg	blueberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Blueberry leaf/blueberry-leaves-normal-above-and-iron-deficient-below-bgahf8.jpg	blueberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Blueberry leaf/blueberrysilverleaf16-1372b.jpg	blueberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Blueberry leaf/leaf-blueberry-15281271.jpg	blueberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Blueberry leaf/northern-highbush-blueberry-blue-huckleberry-vaccinium-corymbosum-EHNXRR.jpg	blueberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Blueberry leaf/stock-photo-blueberry-leaf-closeup-isolated-on-white-306486470.jpg	blueberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Blueberry leaf/stock-photo-green-blueberry-leaf-isolated-with-clipping-path-550344304.jpg	blueberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Blueberry leaf/stock-photo-two-sides-of-blueberry-leaf-isolated-on-white-15582232.jpg	blueberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Blueberry leaf/vaccinium-angustifolium-low-bush-blueberry_0830_124221.jpg	blueberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Blueberry leaf/vaccinium_angustifolium_leaf2.JPG.jpg	blueberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Cherry leaf/d7b79dbc0bca0eb3e63fbe5dfb256ccd53d90a4eb1413_1260x1260.jpg	cherry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Cherry leaf/e52bbb9a08ede2948ba0c006f02fe7b053ad7831d1df6_1260x1260.jpg	cherry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Cherry leaf/ed12ff77ce021883de241830dee55e2e53d2c93231699_1260x1260.jpg	cherry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Cherry leaf/fc729af279e9087d00bd32d89a1552a756a3ad9de7f2b_1260x1260.jpg	cherry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Cherry leaf/five-cherry-tree-green-leaves-white-isolated-background-34493587.jpg	cherry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Cherry leaf/prunsero_leaf1.jpg	cherry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Cherry leaf/prunsero_leaf2.jpg	cherry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Cherry leaf/prunus-virginiana-le-gmittelhauser.jpg	cherry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Cherry leaf/red-cherry-tree-leaf-isolated-crisp-white-background-35742030.jpg	cherry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Cherry leaf/three-vibrant-leaves-bird-cherry-tree-13905898.jpg	cherry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn Gray leaf spot/rsz0803Figure6.jpg	corn	corn_gray_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn Gray leaf spot/show_picture.asp?id=aaaaaaaaaaogcqq&w2=420&h2=378&clip=center,420,378&meta=0.jpg	corn	corn_gray_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn Gray leaf spot/strom5.jpg	corn	corn_gray_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn leaf blight/02c.jpg	corn	corn_northern_leaf_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn leaf blight/0796.20graylssymt.jpg	corn	corn_northern_leaf_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn leaf blight/0c.jpg	corn	corn_northern_leaf_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn leaf blight/1321189.jpg	corn	corn_northern_leaf_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn leaf blight/160314_web.jpg	corn	corn_northern_leaf_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn leaf blight/2013Corn_GrayLeafSpot_0815_0003.JPG.jpg	corn	corn_northern_leaf_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn leaf blight/Common%20Diseases%20Figure%201.JPG.jpg	corn	corn_northern_leaf_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn leaf blight/Corn-SCLB-2017-1.jpg	corn	corn_northern_leaf_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn leaf blight/corn-disease-update-fig-3-gray-leaf-spot.jpg	corn	corn_northern_leaf_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn rust leaf/0796.39maizerust.jpg	corn	corn_common_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn rust leaf/0796.40comrust.jpg	corn	corn_common_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn rust leaf/0796.47southrust.jpg	corn	corn_common_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn rust leaf/0796.52srusttelia.jpg	corn	corn_common_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn rust leaf/12-19striprustJIM.jpg	corn	corn_common_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn rust leaf/1355.50commonrust.jpg	corn	corn_common_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn rust leaf/2256-body-1501555581-1.jpg	corn	corn_common_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn rust leaf/393.jpg	corn	corn_common_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn rust leaf/5496239405_d95bdb97d1_z.jpg	corn	corn_common_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn rust leaf/80104747.jpg	corn	corn_common_rust
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Peach leaf/00pe.jpg	peach	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Peach leaf/7190f27ead55c0f6e3ff8b982972810a5446a9713a49d_1260x1260.jpg	peach	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Peach leaf/depositphotos_3786198-Peach-leaf.jpg	peach	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Peach leaf/peach-leaf-10223898.jpg	peach	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Peach leaf/peach-leaf-16690421.jpg	peach	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Peach leaf/peach-leaf-isolated-white-background-42295220.jpg	peach	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Peach leaf/rose_tree_220430.jpg	peach	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Peach leaf/stock-photo-peach-leaf-isolated-on-white-background-281097503.jpg	peach	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Peach leaf/stock-photo-peach-tree-leaf-isolated-over-white-background-back-side-64472731.jpg	peach	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Potato leaf early blight/3023.jpg	potato	potato_early_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Potato leaf early blight/early-blight-alternaria-alternata-leaf-spotting-on-potato-leaf-X91XJE.jpg	potato	potato_early_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Potato leaf early blight/early-blight-or-target-spot-alternaria-solani-lesions-on-a-tomato-AXK6AY.jpg	potato	potato_early_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Potato leaf early blight/potato-blight-phytophthora-infestans-close-up-of-upper-surface-of-BMMRXC.jpg	potato	potato_early_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Potato leaf early blight/potato-early-blight-alternaria-alternata-lesion-on-a-potato-leaf-a1w1em.jpg	potato	potato_early_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Potato leaf early blight/potatobd001.jpg	potato	potato_early_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Potato leaf late blight/20090710-lateblight.jpg	potato	potato_late_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Potato leaf late blight/2540_600.jpg	potato	potato_late_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Potato leaf late blight/B2750109-Late_blight_on_a_potato_plant-SPL.jpg	potato	potato_late_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Potato leaf late blight/LateBlight04.jpg	potato	potato_late_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Potato leaf late blight/potato-late-blight.jpg	potato	potato_late_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Raspberry leaf/Raspberry-leaf.jpg	raspberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Raspberry leaf/depositphotos_1323264-Raspberry-leaf-on-white.jpg	raspberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Raspberry leaf/depositphotos_1323551-stock-photo-raspberry-leaves.jpg	raspberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Raspberry leaf/depositphotos_2795312-stock-photo-green-raspberry-leaf.jpg	raspberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Raspberry leaf/iron-deficiency-raspberry-leaf-chlorosis-isolated-32457798.jpg	raspberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Raspberry leaf/leaves-of-raspberry-stock-picture-2529053.jpg	raspberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Raspberry leaf/three-raspberry-green-leaves-isolated-white-background-62022932.jpg	raspberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Soyabean leaf/07feb_ma_sbr3.JPG.jpg	soybean	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Soyabean leaf/Soybean%20edamame%20leaf1.JPG.jpg	soybean	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Soyabean leaf/fresh-soy-leaves-isolated-on-260nw-667193923.jpg	soybean	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Soyabean leaf/leaf-raspberry-isolated-on-a-white-stock-photography-image-10106222-1625198.jpg	soybean	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Soyabean leaf/resistance1c.jpg	soybean	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Soyabean leaf/stock-photo-fresh-soy-leaves-isolated-on-white-94266130.jpg	soybean	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Soyabean leaf/stock-photo-fresh-soy-leaves-isolated-on-white-94700095.jpg	soybean	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Soyabean leaf/stock-photo-soy-leaf-isolated-on-white-background-120961801.jpg	soybean	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Squash Powdery mildew leaf/Powdery-Mildew-on-squash.jpg	squash	squash_powdery_mildew
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Squash Powdery mildew leaf/powdery-mildew-erysiphe-plantani-on-young-sycamore-leaves-b774tm.jpg	squash	squash_powdery_mildew
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Squash Powdery mildew leaf/powdery-mildew-on-pumpkin-leaves-close-up-2.jpg	squash	squash_powdery_mildew
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Squash Powdery mildew leaf/powdery-mildew-sphaerotheca-fuliginea-infection-on-pumpkin-leaves-ajdkkx.jpg	squash	squash_powdery_mildew
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Squash Powdery mildew leaf/squash-leave-w-powd-mild.jpg	squash	squash_powdery_mildew
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Squash Powdery mildew leaf/surface.jpg	squash	squash_powdery_mildew
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Strawberry leaf/strawberry-leaf--stock-photo-1431216.jpg	strawberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Strawberry leaf/strawberry-leaf-22360816.jpg	strawberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Strawberry leaf/strawberry-leaves-collection-white-background-36684676.jpg	strawberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Strawberry leaf/strawberry-leaves-isolated-white-17473157.jpg	strawberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Strawberry leaf/strawberry-leaves-isolated-white-34722259.jpg	strawberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Strawberry leaf/strawberry-leaves-stock-image-948674.jpg	strawberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Strawberry leaf/strawberry-leaves-stock-picture-948708.jpg	strawberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Strawberry leaf/wild-strawberry-leaf-top-view-rotated-KTBXCY.jpg	strawberry	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Early blight leaf/039b47d574bc4bb8a14259a1cd96a741.jpg	tomato	tomato_early_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Early blight leaf/100983448.jpg	tomato	tomato_early_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Early blight leaf/1234080-Early-Blight.jpg	tomato	tomato_early_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Early blight leaf/Shoemaker_7068.JPG.jpg	tomato	tomato_early_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Early blight leaf/bugs-and-blight-061.jpg	tomato	tomato_early_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Early blight leaf/dscn3175.jpg	tomato	tomato_early_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Early blight leaf/early_blight1-150x150.jpg	tomato	tomato_early_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Early blight leaf/earlyblight21_.jpg	tomato	tomato_early_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Early blight leaf/tomato_early-blight_01_zoom.jpg	tomato	tomato_early_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Septoria leaf spot/0.jpg	tomato	tomato_septoria_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Septoria leaf spot/2STEM.jpg	tomato	tomato_septoria_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Septoria leaf spot/2septoria-tomato.jpg	tomato	tomato_septoria_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Septoria leaf spot/55830b60a7cf2.image.jpg	tomato	tomato_septoria_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Septoria leaf spot/6134794031202304.jpeg.jpg	tomato	tomato_septoria_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Septoria leaf spot/636227737977191231-septoria-leaf-spot-VT.jpg	tomato	tomato_septoria_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Septoria leaf spot/6447731_orig.jpg	tomato	tomato_septoria_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Septoria leaf spot/7-17-Photo3_Septoria-MARY.jpg	tomato	tomato_septoria_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Septoria leaf spot/RARZ4.jpg	tomato	tomato_septoria_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Septoria leaf spot/early-blight-septoria-ls-fig-3.jpg	tomato	tomato_septoria_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Septoria leaf spot/sept4disease-019.jpg	tomato	tomato_septoria_leaf_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf bacterial spot/%2320+Bacterial+Spot+and+Speck.jpg	tomato	tomato_bacterial_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf bacterial spot/07.17.18-Common_Tomato_Diseases_Canker-258x300.jpg	tomato	tomato_bacterial_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf bacterial spot/Bacterial_spots563.jpg	tomato	tomato_bacterial_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf bacterial spot/Tom_Bact3.jpg	tomato	tomato_bacterial_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf bacterial spot/Tom_Bact7.jpg	tomato	tomato_bacterial_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf bacterial spot/Tomato%2BBacterial%2BSpot%2Bon%2BLeaves.jpg	tomato	tomato_bacterial_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf bacterial spot/bact-spot-fig-1.jpg	tomato	tomato_bacterial_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf bacterial spot/tomato_bacterial-speck_01_zoom.jpg	tomato	tomato_bacterial_spot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf late blight/110822-206-Tomato-blight.jpg	tomato	tomato_late_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf late blight/18c.jpg	tomato	tomato_late_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf late blight/636368370164094909-late-blight-15-.jpg	tomato	tomato_late_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf late blight/70.jpg	tomato	tomato_late_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf late blight/E%29Tomato-late-blight-foliar.jpg	tomato	tomato_late_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf late blight/IMG_5808.jpg	tomato	tomato_late_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf late blight/LateBlt09_06.jpg	tomato	tomato_late_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf late blight/dsc_8148cs.jpg	tomato	tomato_late_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf late blight/image.jpg	tomato	tomato_late_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf late blight/late_blight_tomato_leaf_spore1x1200.jpg	tomato	tomato_late_blight
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf mosaic virus/9511.img.jpg	tomato	tomato_mosaic_virus
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf mosaic virus/D%29AlfMov.jpg	tomato	tomato_mosaic_virus
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf mosaic virus/Tomato-Mosaic-1wdr2jx-300x225.jpg	tomato	tomato_mosaic_virus
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf mosaic virus/everystockphoto-21099455-l.jpg	tomato	tomato_mosaic_virus
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf mosaic virus/ill-tomato-of-tomato-mosaic-virus-DBE17N.jpg	tomato	tomato_mosaic_virus
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf mosaic virus/page_2.jpg	tomato	tomato_mosaic_virus
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf mosaic virus/tmv-tomato-34.jpg	tomato	tomato_mosaic_virus
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf mosaic virus/tmv-tomato-9.jpg	tomato	tomato_mosaic_virus
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf mosaic virus/toma_TMV.jpg	tomato	tomato_mosaic_virus
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf mosaic virus/tomato_virus_04_zoom.jpg	tomato	tomato_mosaic_virus
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf yellow virus/11-40580_5.jpg	tomato	tomato_yellow_leaf_curl_virus
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf yellow virus/17fc47.jpg	tomato	tomato_yellow_leaf_curl_virus
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf yellow virus/8226402877_9abf151b5b_b.jpg	tomato	tomato_yellow_leaf_curl_virus
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf yellow virus/fwa2013313115151.jpg	tomato	tomato_yellow_leaf_curl_virus
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf yellow virus/glyphosate.jpg	tomato	tomato_yellow_leaf_curl_virus
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf yellow virus/tylcv-seminar-1-638.jpg	tomato	tomato_yellow_leaf_curl_virus
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf/1684.jpg	tomato	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf/2013-08-20-06.jpg	tomato	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf/90e2c0.jpg	tomato	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf/DSCN1015.JPG.jpg	tomato	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf/IMG_1246.jpg	tomato	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf/Tomato59.JPG.jpg	tomato	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf/Tomato_leaf.jpg	tomato	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato leaf/main-qimg-d9c2a93f60568485c989670d9bbf703b.jpg	tomato	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato mold leaf/49%20Leafmold%20Bottom.jpg	tomato	tomato_leaf_mold
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato mold leaf/50%20Leafmold%20Top.jpg	tomato	tomato_leaf_mold
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato mold leaf/BIGSD.jpg	tomato	tomato_leaf_mold
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato mold leaf/black_leaf_mold_in_zina_tina.jpg	tomato	tomato_leaf_mold
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato mold leaf/dscn6689.jpg	tomato	tomato_leaf_mold
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato mold leaf/fungus-univ-of-minnesoeta.jpg	tomato	tomato_leaf_mold
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf black rot/03gb.jpg	grape	grape_black_rot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf black rot/35589125035_662dd5b258_b.jpg	grape	grape_black_rot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf black rot/5-29black-rot-chardRR.jpg	grape	grape_black_rot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf black rot/Black%20rot%20on%20foliage.jpg	grape	grape_black_rot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf black rot/Black%20rot%20on%20foliage2.jpg	grape	grape_black_rot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf black rot/brleaf2_zoom.jpg	grape	grape_black_rot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf black rot/grape_F15a.jpg	grape	grape_black_rot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf black rot/piano%20gully%20spray%20seed%20damage%2006%20%289%29.JPG.jpg	grape	grape_black_rot
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf/0000.jpg	grape	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf/730-grape-leaf-2560x1600-nature-wallpaper.jpg	grape	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf/DSCN7317.JPG.jpg	grape	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf/P1130286.jpg	grape	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf/depositphotos_3443387-stock-photo-the-green-grape-leaf-on.jpg	grape	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf/depositphotos_6898486-stock-photo-grape-leaves.jpg	grape	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf/grape-leaf-14309623.jpg	grape	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf/grape-leaf-picture-id119212425?k=6&m=119212425&s=612x612&w=0&h=8RZBWGcvXe4tAwhhvYZVFzWyRyiN5iTxKfWBpPT1FcU=.jpg	grape	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf/grapes-leaves.jpg	grape	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf/grapevine-leaf-7466071.jpg	grape	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf/latest?cb=20100621160325.jpg	grape	healthy
+plantdoc	plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/grape leaf/vitis-riparia-le-ahaines-b.jpg	grape	healthy
+tom2024	tom2024/maize_diseases/Curvularia-D/10761135_1677150973424_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/1143733222_1678616282292_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/1182149298_1662475178066.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/1199749458_1678616270614_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/1271622231_1662474696494.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/1305585477_1662474065011.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/1347589999_1678616282292_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/1358993706_1678616270614_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/1421516774_1678616270614_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/1587851955_1678616270614_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/1729299953_1662474398073.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/1745809463_1678616282292_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/191776680_1662473673678.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/1918982915_1677150973424_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/1923261700_1678616270614_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/1999085083_1678616295141_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/334358182_1678616295141_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/34013052_1662474599359.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/365905262_1678618264804_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/381205755_1678616295141_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/459675921_1662474801417.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/478131785_1662474312754.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/498667418_1678616212082_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/512135846_1678616295141_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/521175172_1678616295141_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/534641561_1662474352156.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/53711922_1677150965878_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/619305432_1677150973424_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/630623365_1678618264804_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/647208388_1678618264804_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/803426602_1678618264804_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/819895297_1678616270614_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/82030866_1678618264804_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Curvularia-D/887963884_1678618264804_640x480.jpg	corn	corn_curvularia_leaf_spot
+tom2024	tom2024/maize_diseases/Healthy_leaf/1006145303_1659770025315.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1018127430_1677151955571_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1020230927_1677151322579_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1066168972_1677151467390_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1075945415_1680593557570_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1086242647_1660041416578.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1101703399_1677151595007_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1105084649_1659346943504.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1129537025_1677152278402_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1141816877_1660045322364.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/117284960_1659770025315.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1173066758_1660040894597.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/118358493_1678616178844_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1183805231_1659185641576.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/121402446_1659174973995.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1222349720_1661182780426.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1241441219_1659684334126.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1283030426_1659346943504.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1305695996_1659185641576.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1359403823_1680594855061_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1431484918_1660040894597.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1443867851_1677151585448_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1493338479_1677151966213_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1512765303_1660132913663.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/151582271_1661178439224.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/155251341_1680594688411_640x480 - Copy.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1587292299_1677152270426_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1681233110_1677151955571_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/172115614_1659684052273.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1791559909_1660040894597.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/17923345_1659684937048.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1865916287_1680593936008_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1871929579_1680593482442_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1893527738_1659694685733.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/189485162_1660045680786.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1902961184_1662466020971.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/1946843434_1680594774744_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/2013950102_1660040894597.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/2065421514_1680594082939_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/2077842617_1677152278402_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/2104369166_1659770025315.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/2112269087_1680594082939_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/213266898_1660041416578.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/2145302395_1659684334126.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/229409915_1660045680786.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/232105129_1677152410806_640x480 - Copy.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/232857098_1659782357095.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/263729761_1677151966213_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/290078218_1680594017328_640x480 - Copy.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/317650960_1680593747937_640x480 - Copy.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/326655808_1677151585448_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/333029005_1680594566500_640x480 - Copy.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/348991151_1680594144069_640x480 - Copy.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/367069803_1680593872523_640x480 - Copy.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/432450792_1680593815836_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/448156358_1659782357095.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/518635950_1660045322364.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/564021067_1677151955571_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/592498182_1660041416578.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/601843382_1659684334126.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/627891120_1680594198705_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/67271970_1659694685733.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/729261300_1680593520334_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/744364846_1660041416578.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/791350682_1661162392453.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/831426768_1677151476311_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/8320328_1680593627082_640x480 - Copy.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/844941826_1660041822603.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/866247757_1677151309592_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/910173925_1659684937048.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/925593709_1661152780231.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/928707341_1659684937048.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/931688385_1660040894597.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/973423703_1678616197714_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/975060315_1677152399345_640x480.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Healthy_leaf/991319666_1659782357095.jpg	corn	healthy
+tom2024	tom2024/maize_diseases/Helminthosporiosis-D/1130114714_1660380036679.jpg	corn	corn_northern_leaf_blight
+tom2024	tom2024/maize_diseases/Helminthosporiosis-D/1212040850_1680800008181_640x480.jpg	corn	corn_northern_leaf_blight
+tom2024	tom2024/maize_diseases/Helminthosporiosis-D/1227458771_1660380136161.jpg	corn	corn_northern_leaf_blight
+tom2024	tom2024/maize_diseases/Helminthosporiosis-D/1454816794_1677151757685_640x480.jpg	corn	corn_northern_leaf_blight
+tom2024	tom2024/maize_diseases/Helminthosporiosis-D/1513788109_1660379690557.jpg	corn	corn_northern_leaf_blight
+tom2024	tom2024/maize_diseases/Helminthosporiosis-D/1694669359_1660380036679.jpg	corn	corn_northern_leaf_blight
+tom2024	tom2024/maize_diseases/Helminthosporiosis-D/197238952_1660379690557.jpg	corn	corn_northern_leaf_blight
+tom2024	tom2024/maize_diseases/Helminthosporiosis-D/2121371093_1660380086961.jpg	corn	corn_northern_leaf_blight
+tom2024	tom2024/maize_diseases/Helminthosporiosis-D/298193144_1660379690557.jpg	corn	corn_northern_leaf_blight
+tom2024	tom2024/maize_diseases/Helminthosporiosis-D/35255321_1660379690557.jpg	corn	corn_northern_leaf_blight
+tom2024	tom2024/maize_diseases/Helminthosporiosis-D/471528697_1660380036679.jpg	corn	corn_northern_leaf_blight
+tom2024	tom2024/maize_diseases/Helminthosporiosis-D/482555192_1660380136161.jpg	corn	corn_northern_leaf_blight
+tom2024	tom2024/maize_diseases/Helminthosporiosis-D/542468214_1660379926378.jpg	corn	corn_northern_leaf_blight
+tom2024	tom2024/maize_diseases/Helminthosporiosis-D/654448901_1660380036679.jpg	corn	corn_northern_leaf_blight
+tom2024	tom2024/maize_diseases/Helminthosporiosis-D/780891508_1677151724548_640x480.jpg	corn	corn_northern_leaf_blight
+tom2024	tom2024/maize_diseases/Helminthosporiosis-D/85957594_1680800057903_640x480.jpg	corn	corn_northern_leaf_blight
+tom2024	tom2024/maize_diseases/Helminthosporiosis-D/925667239_1677151757685_640x480.jpg	corn	corn_northern_leaf_blight
+tom2024	tom2024/maize_diseases/Helminthosporiosis-D/928245106_1660380260269.jpg	corn	corn_northern_leaf_blight
+tom2024	tom2024/maize_diseases/Helminthosporiosis-D/972682925_1677151724548_640x480.jpg	corn	corn_northern_leaf_blight
+tom2024	tom2024/maize_diseases/Rust-D/1075315388_1661172013086.jpg	corn	corn_common_rust
+tom2024	tom2024/maize_diseases/Rust-D/1340510036_1662473322189.jpg	corn	corn_common_rust
+tom2024	tom2024/maize_diseases/Rust-D/1984215534_1661181265653.jpg	corn	corn_common_rust
+tom2024	tom2024/maize_diseases/Rust-D/1996224872_1662480641046.jpg	corn	corn_common_rust
+tom2024	tom2024/maize_diseases/Rust-D/2045188951_1662480641046.jpg	corn	corn_common_rust
+tom2024	tom2024/maize_diseases/Rust-D/320290605_1662474654349.jpg	corn	corn_common_rust
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1016343380_1669566358326_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1030996558_1666264435753_640x360.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1055190492_1669566191805_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1066801088_1669566152472_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1079282436_1669565904346_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1086828133_1669565990092_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1088479327_1669564456528_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/117288769_1669564658787_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1253202090_1669566401616_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1261450677_1669564331862_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1347923751_1660132892667.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1469359752_1660132892667.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1544831282_1669565860762_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1600289843_1660132892667.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1652747321_1669564331862_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1666125596_1660132892667.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1700217771_1669564570133_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1860226991_1669565244809_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1896696713_1669566309883_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1928127465_1669565639757_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1961168174_1669566117628_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/1963403469_1669564229820_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/2004080185_1669565904346_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/2131100481_1669568216872_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/223620775_1660132892667.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/267349135_1669565149433_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/286337315_1669565206598_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/479648128_1669566269378_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/481584171_1660132892667.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/491078261_1660132892667.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/546106758_1669566456129_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/65882506_1669566044564_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/75819010_1660132892667.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/804447366_1669565788008_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/813941456_1669565788008_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/888687449_1669564229820_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/893829738_1669566226711_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/920286063_1669565374046_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/951249293_1669564694652_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/956699654_1666265007030_640x360.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Bacterial_floundering_d/998225952_1669566082927_640x480.jpg	tomato	tomato_bacterial_wilt
+tom2024	tom2024/tomato_diseases/Mite_d/1020120794_1678872275508_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1029705445_1678872159025_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1065226863_1678872478395_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1101060950_1678872016465_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1102541570_1678872275508_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1103632220_1678872016465_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1122568615_1678872262610_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1154454131_1678872181112_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1182521552_1677150285399_640x360.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1322867042_1678872016465_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1353881806_1678872016465_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1360933963_1678871797512_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1388049310_1670326586291_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/14357122_1678872181112_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1482266394_1678872478395_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1538789179_1678872027236_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/154537640_1678034620520_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1605458910_1678034560602_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1669719270_1678872016465_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1745620205_1678872429409_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1753117820_1660127259848.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1761089950_1677150285399_640x360.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1771089450_1678872016465_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1851107376_1673266252564_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/1868899707_1677149008371_640x360.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/202745293_1678872275508_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/2066949023_1670326586291_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/2069874118_1678872478395_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/2082236959_1677520579075_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/2116396264_1678872275508_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/256229035_1678872262610_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/260787474_1678872429409_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/261797941_1670326586291_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/2785302_1678872262610_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/296608552_1678872275508_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/300559388_1680606917918_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/3408179_1678872262610_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/405003549_1677149008371_640x360.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/491835581_1662454721026.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/536415744_1678872181112_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/598613692_1673266252564_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/714855061_1678872262610_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/725765228_1678872016465_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/73308831_1678872262610_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/746856905_1678872478395_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/766883950_1678872429409_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/881946668_1678034560602_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/882696880_1678871731478_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/905775726_1678872275508_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/912750638_1673266362117_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/921153771_1678872429409_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/924686354_1678872159025_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/930206106_1678872016465_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/948571409_1678872016465_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/Mite_d/94868281_1678872262610_640x480.jpg	tomato	tomato_two_spotted_spider_mite
+tom2024	tom2024/tomato_diseases/alternaria_d/1049004543_1662044374156.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1069486352_1662044328717.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1135528994_1662045460679.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1156010803_1662045346385.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1168235836_1666606180713_640x480.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1196777156_1661179148824.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1266368524_1662046006534.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1303941905_1662044328717.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/132503781_1661170840194.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1328278339_1661184669283.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1390492123_1662046269459.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1397869707_1662046311892.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1407325021_1662046269459.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1474896683_1661185800611.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1539345511_1662047345281.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1589528653_1661173403635.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1671224157_1662045957310.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1681255132_1666606330992_640x480.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1708204997_1666605568731_640x480.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1784191924_1662046311892.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1849092382_1662045294413.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1852516485_1662458654901.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1895287926_1661179342122.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1932877494_1671203337445_640x480.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/1960720700_1661172594254.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/196888066_1662018182851.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/2068911305_1662045177284.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/2081431429_1662045402452.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/211968534_1669569598949_640x480.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/213160169_1662046381282.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/2138357193_1662044491800.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/255543274_1660037704331.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/267153870_1660037704331.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/267820182_1659800766415.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/284825209_1661170840194.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/402815172_1659800766415.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/412351803_1661184561903.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/447757817_1662047273973.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/487059944_1662045460679.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/507541753_1662045346385.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/527371533_1661179050831.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/541119347_1666604431014_640x480.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/566653110_1669569691951_640x480.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/649975485_1661185521009.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/663305203_1662044545310.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/731111982_1661172594254.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/74487367_1661171009039.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/853148227_1662044611196.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/858771496_1666265114250_640x360.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/alternaria_d/889708510_1662046006534.jpg	tomato	tomato_early_blight
+tom2024	tom2024/tomato_diseases/healthy_leaf/1059325810_1677148817711_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1093538640_1670326187974_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1098270591_1673265812674_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1131124779_1670326499593_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1180660084_1675681133209_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1184093859_1680608767422_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1194154352_1659355796963.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1195588127_1680608696654_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1210387857_1675682849618_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1237624624_1675681435899_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1250535715_1662045631308.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1268510051_1675681708009_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1271112855_1672916411899_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1272722586_1669566937141_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1292847231_1661185309973.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1325467349_1672914203804_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1346424039_1670326499593_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1363156807_1673265812674_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1376268274_1675682747238_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1398774797_1659779810411.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1401346067_1659779810411.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1414402316_1670325320306_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1450121402_1660055430264.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1456117780_1675682849618_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1466319522_1680608617131_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1473224688_1670326499593_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1482718778_1670326499593_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1484899827_1670326499593_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1497120174_1675683208268_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1500230377_1660039860986.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1515382231_1659355796963.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1529202148_1670325320306_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1532958956_1659374659585.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1540903188_1675680579822_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1549981290_1675681793046_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1561839761_1675680579822_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1579591032_1662457803099.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1580929668_1677148721277_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1611650269_1660055430264.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1624298108_1659355541544.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1626604743_1666264864641_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1662175838_1680608459119_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1673430300_1659355541544.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1676223605_1675681793046_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1704576655_1670325320306_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1722097853_1662045556433.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1730174986_1670326187974_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1730322731_1673265812674_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1734681774_1675681793046_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/17428501_1659784086332.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1757297542_1659374659585.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1799110767_1659779810411.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1805621291_1675681073454_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/18132622_1675682849618_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1814197606_1680608767422_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1815115381_1675681133209_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1933984874_1680608459119_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1934856997_1662480838500.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1946148864_1659355796963.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1952505281_1680608789847_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1986884515_1680608696654_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/1995216189_1675683022093_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/2002126324_1659355541544.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/2003923696_1660039860986.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/203455983_1675682849618_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/2036466709_1675681503158_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/2053043485_1680608869335_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/206262487_1670326499593_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/2069032177_1669569299078_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/2087383943_1680608684211_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/2102535191_1659355796963.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/2131472225_1659355796963.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/2137386887_1680608357262_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/240522815_1675682747238_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/243225749_1670326187974_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/253492774_1662452468933.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/26922591_1659784086332.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/316741114_1659374659585.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/320723839_1659355796963.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/322105829_1680608767422_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/336166605_1675681503158_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/343009412_1675683483329_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/352120504_1680608853685_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/381401760_1675682849618_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/401179448_1659784086332.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/401715707_1675681503158_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/420249123_1675681435899_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/422345152_1669566889095_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/446327985_1675682747238_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/456916630_1660055430264.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/456954708_1662045690003.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/464710992_1659374659585.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/469002621_1659779810411.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/478625797_1659784086332.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/511292986_1675683208268_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/514298794_1669569299078_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/527878009_1675683208268_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/534594191_1675681242956_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/538749400_1675682364107_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/539333501_1675682162316_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/540898896_1680608501774_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/563934321_1670326187974_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/571095221_1669569299078_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/591103967_1675681435899_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/592238683_1669569431283_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/608598518_1675681793046_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/61761278_1662045820567.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/630325652_1661185119797.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/640085499_1659374659585.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/648386692_1672916411899_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/700281474_1662045631308.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/72358030_1675681899404_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/792049335_1662453168000.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/792154357_1675682162316_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/793247334_1670326187974_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/825910787_1659355541544.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/847470237_1659355796963.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/864668262_1662045751525.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/88723272_1670326187974_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/908602922_1675683022093_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/917697240_1662045556433.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/930462032_1675682162316_640x360.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/96052285_1669569299078_640x480.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/healthy_leaf/977730288_1659374659585.jpg	tomato	healthy
+tom2024	tom2024/tomato_diseases/tomato_late_blight_d/100814606_1661157183010.jpg	tomato	tomato_late_blight
+tom2024	tom2024/tomato_diseases/tomato_late_blight_d/1064176648_1660042929465.jpg	tomato	tomato_late_blight
+tom2024	tom2024/tomato_diseases/tomato_late_blight_d/1137872744_1662481081763.jpg	tomato	tomato_late_blight
+tom2024	tom2024/tomato_diseases/tomato_late_blight_d/1182368945_1662480710938.jpg	tomato	tomato_late_blight
+tom2024	tom2024/tomato_diseases/tomato_late_blight_d/1240917491_1660132053644.jpg	tomato	tomato_late_blight
+tom2024	tom2024/tomato_diseases/tomato_late_blight_d/128550722_1662480649002.jpg	tomato	tomato_late_blight
+tom2024	tom2024/tomato_diseases/tomato_late_blight_d/1428374537_1661186039539.jpg	tomato	tomato_late_blight
+tom2024	tom2024/tomato_diseases/tomato_late_blight_d/1601447430_1662480510921.jpg	tomato	tomato_late_blight
+tom2024	tom2024/tomato_diseases/tomato_late_blight_d/183944081_1662480414158.jpg	tomato	tomato_late_blight
+tom2024	tom2024/tomato_diseases/tomato_late_blight_d/294392363_1662480463488.jpg	tomato	tomato_late_blight
+tom2024	tom2024/tomato_diseases/tomato_late_blight_d/427335390_1662481162115.jpg	tomato	tomato_late_blight
+tom2024	tom2024/tomato_diseases/tomato_late_blight_d/508528160_1661157365948.jpg	tomato	tomato_late_blight
+tom2024	tom2024/tomato_diseases/tomato_late_blight_d/823035369_1662480771361.jpg	tomato	tomato_late_blight
+tom2024	tom2024/tomato_diseases/tomato_late_blight_d/919405355_1662480255865.jpg	tomato	tomato_late_blight
+tom2024	tom2024/tomato_diseases/tomato_late_blight_d/954135944_1669187991632_640x480.jpg	tomato	tomato_late_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/IMG_20251102_153119_aug_24.jpg	tomato	tomato_early_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/IMG_20251102_155209_aug_852.jpg	tomato	tomato_early_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/IMG_20251102_155212_aug_844.jpg	tomato	tomato_early_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/IMG_20251102_155721_aug_930.jpg	tomato	tomato_early_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/IMG_20251102_160039_aug_1049.jpg	tomato	tomato_early_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/IMG_20251102_160046_aug_1042.jpg	tomato	tomato_early_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/IMG_20251102_160551_aug_1128.jpg	tomato	tomato_early_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/IMG_20251102_161544_aug_1185.jpg	tomato	tomato_early_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/early-blight-tomatoes-1200x746-1_aug_649.jpg	tomato	tomato_early_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/HL_(110)_aug_988.jpg	tomato	healthy
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/HL_(54)_aug_829.jpg	tomato	healthy
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/HL_(66)_aug_816.jpg	tomato	healthy
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h1_aug_134.jpg	tomato	healthy
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h44_aug_420.jpg	tomato	healthy
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h45_aug_409.jpg	tomato	healthy
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h4_aug_449.jpg	tomato	healthy
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h64_aug_717.jpg	tomato	healthy
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h90_aug_1022.jpg	tomato	healthy
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_late_blight/Gls35_aug_1109.jpg	tomato	tomato_late_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_late_blight/Gls5_aug_1106.jpg	tomato	tomato_late_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_late_blight/Gls79_aug_1128.jpg	tomato	tomato_late_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_late_blight/IMG_20251102_161536_aug_1057.jpg	tomato	tomato_late_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_late_blight/LB_ (254)_aug_1151.jpg	tomato	tomato_late_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_late_blight/LB_ (256)_aug_1150.jpg	tomato	tomato_late_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_late_blight/Lb67_lower_aug_432_aug_232.jpg	tomato	tomato_late_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_late_blight/Lb69_aug_962_aug_762.jpg	tomato	tomato_late_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_late_blight/Lb84_mirror_vertical_aug_957_aug_757.jpg	tomato	tomato_late_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_late_blight/Lb95_lower_aug_857_aug_657.jpg	tomato	tomato_late_blight
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_yellow_curl_virus/IMG_20251102_155042_aug_1086.jpg	tomato	tomato_yellow_leaf_curl_virus
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_yellow_curl_virus/IMG_20251102_155103_aug_1105.jpg	tomato	tomato_yellow_leaf_curl_virus
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_yellow_curl_virus/IMG_20251102_155119_aug_1090.jpg	tomato	tomato_yellow_leaf_curl_virus
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_yellow_curl_virus/IMG_20251102_155449_aug_1172.jpg	tomato	tomato_yellow_leaf_curl_virus
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_yellow_curl_virus/IMG_20251102_155502_aug_1181.jpg	tomato	tomato_yellow_leaf_curl_virus
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/1723454500586_aug_0.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/1723454507847_aug_935.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/Fig._2015_opta_aug_48.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240724-WA0019_aug_201.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240724-WA0023_aug_157.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240724-WA0072_aug_256.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240725-WA0019_aug_331.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240725-WA0031_aug_346.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240725-WA0033_aug_333.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240725-WA0039_aug_341.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240727-WA0014_aug_455.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240727-WA0045_aug_477.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240727-WA0112_aug_382.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240727-WA0169_aug_671.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240727-WA0199_aug_662.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240728-WA0014_aug_608.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240728-WA0020_aug_626.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240728-WA0026_aug_641.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240728-WA0028_aug_573.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240728-WA0041_aug_584.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240728-WA0060_aug_521.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240728-WA0061_aug_499.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240728-WA0080_aug_769.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240728-WA0096_aug_739.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240729-WA0076_aug_884.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240812-WA0141_aug_824.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240812-WA0183_aug_838.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240812-WA0185_aug_854.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240812-WA0205_aug_846.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240812-WA0211_aug_823.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240812-WA0213_aug_807.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240812-WA0215_aug_797.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240812-WA0247_aug_1008.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240812-WA0351_aug_1034.jpg	tomato	tomato_leaf_mold
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/Gls22_aug_295.jpg	tomato	tomato_septoria_leaf_spot
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/Gls70_change_90_aug_680.jpg	tomato	tomato_septoria_leaf_spot
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/Gls73_mirror_vertical_aug_673.jpg	tomato	tomato_septoria_leaf_spot
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/IMG_0863_1500x1500_253E_aug_606.jpg	tomato	tomato_septoria_leaf_spot
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/Leaf_20spot_aug_535.jpg	tomato	tomato_septoria_leaf_spot
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/SS_ (37)_aug_870.jpg	tomato	tomato_septoria_leaf_spot
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/SS_ (975)1_aug_860.jpg	tomato	tomato_septoria_leaf_spot
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/SS_ (987)_aug_843.jpg	tomato	tomato_septoria_leaf_spot
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/Tomato-Plant-with-Septoria-Leaf-Spot_aug_1112.jpg	tomato	tomato_septoria_leaf_spot
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/Tomato-leaf-spot2_jpg.rf.b9057923147c8238b465a5077b3ba146_aug_795.jpg	tomato	tomato_septoria_leaf_spot
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/TomatoDisease_IMG_2744_2016Jul01_original-JPG-1472858324_jpg.rf.8c07f7a6afdc4253747a7bba05306e89_aug_1042.jpg	tomato	tomato_septoria_leaf_spot
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/TomatoDisease_IMG_2744_2016Jul01_original.JPG_1472858324_aug_428.jpg	tomato	tomato_septoria_leaf_spot
+tomato_pakistan_2026	tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/Tomato_20bacterial_20spot_20closeup-050S.JPG_aug_1123.jpg	tomato	tomato_septoria_leaf_spot

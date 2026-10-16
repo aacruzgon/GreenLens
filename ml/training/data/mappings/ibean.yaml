@@ -1,0 +1,14 @@
+# iBean → slugs  (training.md §4, step 3)
+# PROPOSED slugs (issue #4). Bean is used only if beans become a supported crop; until the
+# group decides, the classes train like any other and can be dropped by removing this file.
+
+dataset: ibean
+source: ibean
+root: data
+splits: { train: train/train, validation: validation/validation, test: test/test }
+reviewed_by: null
+
+classes:
+  "healthy":           { species_id: bean, problem_id: healthy }
+  "angular_leaf_spot": { species_id: bean, problem_id: bean_angular_leaf_spot }
+  "bean_rust":         { species_id: bean, problem_id: bean_rust }

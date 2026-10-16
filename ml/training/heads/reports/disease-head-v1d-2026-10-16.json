@@ -1,0 +1,361 @@
+{
+  "version": "disease-head-v1d-2026-10-16",
+  "classes": 34,
+  "left_out_below_min": {},
+  "C": 50,
+  "C_grid": [
+    1,
+    5,
+    20,
+    50,
+    100,
+    200,
+    500,
+    1000,
+    2000,
+    5000
+  ],
+  "C_at_grid_edge": false,
+  "temperature": 0.8207994192651659,
+  "views": 0,
+  "balance_sources": true,
+  "train_rows": 5102,
+  "val": {
+    "n": 1152,
+    "left_out_class_images": 0,
+    "headline": {
+      "excludes": [
+        "bean"
+      ],
+      "restricted_top1_multiclass": {
+        "value": 0.8190104166666666,
+        "n": 768
+      },
+      "restricted_top3_over_3_classes": {
+        "value": 0.974739970282318,
+        "n": 673
+      },
+      "ece_after_T_multiclass": {
+        "value": 0.041816676384769366,
+        "n": 768
+      }
+    },
+    "per_dataset": {
+      "ibean": {
+        "restricted_top1_multiclass": {
+          "value": 0.9377162629757786,
+          "n": 289
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.04296741580468147,
+          "n": 289
+        }
+      },
+      "plantdoc": {
+        "restricted_top1_multiclass": {
+          "value": 0.7448559670781894,
+          "n": 243
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.08111780023378597,
+          "n": 243
+        }
+      },
+      "tom2024": {
+        "restricted_top1_multiclass": {
+          "value": 0.8671171171171171,
+          "n": 444
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.05225819168058602,
+          "n": 444
+        }
+      },
+      "tomato_pakistan_2026": {
+        "restricted_top1_multiclass": {
+          "value": 0.7777777777777778,
+          "n": 81
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.09540887747281863,
+          "n": 81
+        }
+      }
+    },
+    "full_top1": 0.8472222222222222,
+    "full_top3": 0.9765625,
+    "restricted_top1_multiclass": {
+      "value": 0.8514664143803217,
+      "n": 1057
+    },
+    "restricted_top3_over_3_classes": {
+      "value": 0.974739970282318,
+      "n": 673
+    },
+    "ece_before_T_multiclass": {
+      "value": 0.04633184458246293,
+      "n": 1057
+    },
+    "ece_after_T_multiclass": {
+      "value": 0.02887826216254692,
+      "n": 1057
+    },
+    "trivial_share": 0.08246527777777778,
+    "per_crop": {
+      "apple": {
+        "n": 36,
+        "classes": 3,
+        "top1": 0.9444444444444444,
+        "top3": 1.0
+      },
+      "bean": {
+        "n": 289,
+        "classes": 3,
+        "top1": 0.9377162629757786,
+        "top3": 1.0
+      },
+      "blueberry": {
+        "n": 16,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "cherry": {
+        "n": 7,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "corn": {
+        "n": 180,
+        "classes": 5,
+        "top1": 0.8833333333333333,
+        "top3": 1.0
+      },
+      "grape": {
+        "n": 16,
+        "classes": 2,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "peach": {
+        "n": 15,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "pepper": {
+        "n": 16,
+        "classes": 2,
+        "top1": 0.8125,
+        "top3": 1.0
+      },
+      "potato": {
+        "n": 27,
+        "classes": 2,
+        "top1": 0.6666666666666666,
+        "top3": 1.0
+      },
+      "raspberry": {
+        "n": 17,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "soybean": {
+        "n": 9,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "squash": {
+        "n": 18,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "strawberry": {
+        "n": 13,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "tomato": {
+        "n": 493,
+        "classes": 10,
+        "top1": 0.7890466531440162,
+        "top3": 0.9655172413793104
+      }
+    },
+    "note": "Restricted metrics assume the species is right. The head is trained and scored on whole images; the worker feeds it leaf crops."
+  },
+  "test": {
+    "n": 854,
+    "left_out_class_images": 0,
+    "headline": {
+      "excludes": [
+        "bean"
+      ],
+      "restricted_top1_multiclass": {
+        "value": 0.8140929535232384,
+        "n": 667
+      },
+      "restricted_top3_over_3_classes": {
+        "value": 0.964406779661017,
+        "n": 590
+      },
+      "ece_after_T_multiclass": {
+        "value": 0.032488759757875484,
+        "n": 667
+      }
+    },
+    "per_dataset": {
+      "ibean": {
+        "restricted_top1_multiclass": {
+          "value": 0.9609375,
+          "n": 128
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.0607467123772949,
+          "n": 128
+        }
+      },
+      "plantdoc": {
+        "restricted_top1_multiclass": {
+          "value": 0.7425149700598802,
+          "n": 167
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.10443570924376303,
+          "n": 167
+        }
+      },
+      "tom2024": {
+        "restricted_top1_multiclass": {
+          "value": 0.8452380952380952,
+          "n": 420
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.03467821060192019,
+          "n": 420
+        }
+      },
+      "tomato_pakistan_2026": {
+        "restricted_top1_multiclass": {
+          "value": 0.8,
+          "n": 80
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.11285268813371657,
+          "n": 80
+        }
+      }
+    },
+    "full_top1": 0.8290398126463701,
+    "full_top3": 0.9660421545667447,
+    "restricted_top1_multiclass": {
+      "value": 0.8377358490566038,
+      "n": 795
+    },
+    "restricted_top3_over_3_classes": {
+      "value": 0.964406779661017,
+      "n": 590
+    },
+    "ece_before_T_multiclass": {
+      "value": 0.052975527895321624,
+      "n": 795
+    },
+    "ece_after_T_multiclass": {
+      "value": 0.027415195838460384,
+      "n": 795
+    },
+    "trivial_share": 0.06908665105386416,
+    "per_crop": {
+      "apple": {
+        "n": 29,
+        "classes": 3,
+        "top1": 0.9310344827586207,
+        "top3": 1.0
+      },
+      "bean": {
+        "n": 128,
+        "classes": 3,
+        "top1": 0.9609375,
+        "top3": 1.0
+      },
+      "blueberry": {
+        "n": 11,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "cherry": {
+        "n": 10,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "corn": {
+        "n": 157,
+        "classes": 5,
+        "top1": 0.8726114649681529,
+        "top3": 0.9872611464968153
+      },
+      "grape": {
+        "n": 20,
+        "classes": 2,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "peach": {
+        "n": 9,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "pepper": {
+        "n": 17,
+        "classes": 2,
+        "top1": 0.9411764705882353,
+        "top3": 1.0
+      },
+      "potato": {
+        "n": 11,
+        "classes": 2,
+        "top1": 0.6363636363636364,
+        "top3": 1.0
+      },
+      "raspberry": {
+        "n": 7,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "soybean": {
+        "n": 8,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "squash": {
+        "n": 6,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "strawberry": {
+        "n": 8,
+        "classes": 1,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "tomato": {
+        "n": 433,
+        "classes": 10,
+        "top1": 0.7759815242494227,
+        "top3": 0.9561200923787528
+      }
+    },
+    "note": "Restricted metrics assume the species is right. The head is trained and scored on whole images; the worker feeds it leaf crops."
+  }
+}
