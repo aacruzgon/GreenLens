@@ -1,6 +1,6 @@
 # PDM Backend Architecture
 
-> **Status:** Draft v0.2.4, 2026-10-16. v0.2.4: the schema now lives at `backend/migrations/schema.surql` and nowhere else, so section 6 no longer keeps two copies. v0.2.3: the workspace and the generator tools are now in `backend/`; section 6 lists `tools/`, and `migrations/schema.surql` is a copy of `docs/database/schema.surql` until the move. v0.2.2: section 7 says the Rust skills follow this design instead of listing departures; the generator tools move to `backend/tools/`; moving the scratch workspace into `backend/` is decided. v0.2.1: the release profile keeps symbols and adds line tables (stripping symbols empties panic backtraces, probed); the `api` container's `stop_grace_period` is 190 s; the scheduler tree lists the eight real tasks, with question continuation inside `sweep`; the database row names all four protected parameters. v0.2: the module trees, crate graph and configuration now match the compiled crates; adds the decisions on contracts open questions 12–24 and the changes to contracts v0.10, architecture v0.7 and database v1.4.
+> **Status:** Draft v0.2.6, 2026-10-16. v0.2.6: section 12 links [docs/infra](../infra/README.md), keeps model files out of every image (they come from the `/models` volume) and takes the base images from infra 3. v0.2.5: adds [roadmap.md](roadmap.md), the work as slices with exit checks, to section 3 and section 13. v0.2.4: the schema now lives at `backend/migrations/schema.surql` and nowhere else, so section 6 no longer keeps two copies. v0.2.3: the workspace and the generator tools are now in `backend/`; section 6 lists `tools/`, and `migrations/schema.surql` is a copy of `docs/database/schema.surql` until the move. v0.2.2: section 7 says the Rust skills follow this design instead of listing departures; the generator tools move to `backend/tools/`; moving the scratch workspace into `backend/` is decided. v0.2.1: the release profile keeps symbols and adds line tables (stripping symbols empties panic backtraces, probed); the `api` container's `stop_grace_period` is 190 s; the scheduler tree lists the eight real tasks, with question continuation inside `sweep`; the database row names all four protected parameters. v0.2: the module trees, crate graph and configuration now match the compiled crates; adds the decisions on contracts open questions 12–24 and the changes to contracts v0.10, architecture v0.7 and database v1.4.
 > v0.1: the Rust backend designed crate by crate, down to every struct, enum, trait, generic parameter and lifetime, with each definition compiled on Rust 1.99.1 against the pinned crates; it follows [contracts](../architecture/contracts.md) v0.9 and [architecture](../architecture/README.md) v0.6.
 
 Companion to the [system architecture](../architecture/README.md), the [data contracts](../architecture/contracts.md), the [database](../database/README.md) and [storage](../storage/README.md) notes, the [frontend](../frontend/README.md) and the [computer-vision design](../vision/README.md). Those documents decide **what** the system does; this directory decides **how the Rust code is built**: crates, modules, types, traits, tasks and errors.
@@ -89,6 +89,7 @@ The workers never touch the database or object storage: they only call the worke
 | [api.md](api.md) | The `api` binary: start-up, layers, auth and access, idempotency, every endpoint, uploads, SSE, the job broker, the scheduler, deletion, media | You add or change an endpoint or a background task |
 | [worker.md](worker.md) | The `worker` binary: leases, heartbeats, cancellation, the VLM adapters and per-job schemas, the fallback, multi-vendor GPUs and the rig's compose services | You touch a worker or the rig |
 | [flows.md](flows.md) | Server-side sequences across crates: a request, an upload, a scan from submit to plan, step claims and the sweep, SSE resume, a job's lease, a chat turn, deletion | You implement or debug a flow end to end |
+| [roadmap.md](roadmap.md) | The build-week work as nine slices (S0–S8): what each delivers, what it needs from the other tracks, its exit checks and the decisions it closes, plus the gaps still to design | You plan or pick up backend work, or need to know what "done" means for a capability |
 
 **How the listings stay true.** Each listing of a type or trait is copied from the compiled source by a small generator (section 11), so a document can be regenerated when the code changes.
 
@@ -298,15 +299,17 @@ Each binary reads typed configuration from the environment at start and refuses 
 
 ## 12. Builds and deployment
 
+The images, their bases and registry, the compose files, CI and deploys are designed in [docs/infra](../infra/README.md); this section keeps what the Rust build decides.
+
 | Image | Contents | Runs |
 |---|---|---|
-| `api` | Release build of `api`; the face-detector and text-embedder ONNX files; ONNX Runtime CPU; libheif ≥ 1.19 | Control plane ([architecture 12](../architecture/README.md#12-deployment)) |
-| `worker-cuda` | `worker` with the `cuda` feature; the ONNX Runtime 1.31 CUDA 13 library beside it (`ORT_DYLIB_PATH`); the perception models | The 3070's perception worker; also usable for a CUDA VLM worker |
+| `api` | Release build of `api`; ONNX Runtime CPU; libheif ≥ 1.19. No model files: the face detector and the text embedder are read from the `/models` volume ([vision 6](../vision/README.md#delivering-model-files-to-the-backend)) | Control plane ([architecture 12](../architecture/README.md#12-deployment)) |
+| `worker-cuda` | `worker` with the `cuda` feature; the ONNX Runtime 1.31 CUDA 13 library beside it (`ORT_DYLIB_PATH`); the perception models come from the `/models` volume, not the image | The 3070's perception worker; also usable for a CUDA VLM worker |
 | `worker` (no GPU) | `worker` without ONNX models | The VLM workers (the model runs in the vLLM sidecar) and the fallback worker |
 | `vllm` sidecars | `vllm/vllm-openai` (CUDA) and `vllm/vllm-openai-rocm` v0.31.0, pinned by digest | One beside each VLM worker |
 
 - **Release profile:** `lto = "thin"`, `codegen-units = 1`, `panic = "unwind"` (so `CatchPanicLayer` and task joins can contain a panic), `debug = "line-tables-only"`, `overflow-checks = true`, and no `strip`. `strip = "symbols"` would remove the symbol table, and a panic's backtrace then has no frames at all (`RUST_BACKTRACE=full` shows only `<unknown>` addresses). Without line tables, frames have function names but no file or line, because Cargo already strips debug info from a release build that requests none; line tables add them, at the cost of a larger binary (✓ rustc 1.99.1 on Linux in `rust:1.99.1-slim` and on macOS: a test binary went from 0.46 MB to 2.25 MB). The panic message's own `file:line:col` is kept either way ([Cargo profiles](https://doc.rust-lang.org/cargo/reference/profiles.html)).
-- **Docker builds** use `cargo-chef`-style dependency caching, a `debian:trixie-slim` runtime base (for libheif 1.19 and current CA certificates), and a non-root user.
+- **Docker builds** use `cargo-chef`-style dependency caching and a non-root user. `api` runs on `debian:trixie-slim` for libheif 1.19; the worker is built on bookworm so one binary runs on the trixie base and on the CUDA image's Ubuntu 24.04 ([infra 3](../infra/README.md#3-images)).
 - **The rig's compose services** pin NVIDIA cards by GPU UUID and the RX 9070 XT by its render node ([worker](worker.md)).
 - **The `api` service sets `stop_grace_period: 190s`** in `infra/control-plane.compose.yml`. Compose sends SIGKILL 10 s after SIGTERM unless a service sets it ([Compose file reference](https://docs.docker.com/reference/compose-file/services/#stop_grace_period)), which would cut the delete drain short and can leak objects on RustFS 1.0.1. 190 s covers the slowest in-flight request (60 s, the upload routes' timeout), then one full delete attempt (120 s), plus 10 s of margin. Raising `SHUTDOWN_DRAIN_S` above 120 s raises it by the difference ([api 4](api.md#4-start-up-and-shutdown)). The workers' services set theirs from `DRAIN_SECONDS` ([worker](worker.md)).
 
@@ -314,7 +317,7 @@ Each binary reads typed configuration from the environment at start and refuses 
 
 ## 13. Build plan
 
-The backend track of [architecture 14](../architecture/README.md#14-build-plan).
+The backend track of [architecture 14](../architecture/README.md#14-build-plan). [roadmap.md](roadmap.md) breaks it into slices with their dependencies and exit checks.
 
 | Dates | Backend goal |
 |---|---|

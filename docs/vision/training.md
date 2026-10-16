@@ -1,6 +1,6 @@
 # PDM Training, Export and Knowledge Ingestion
 
-> **Status:** Draft v0.2.3, 2026-10-16. v0.2.3: the schema link points to `backend/migrations/schema.surql` (merged from `main`). v0.2.2: data preparation groups augmented copies by their original photo, drops re-published copies of another source, groups the field sets by visit, and holds out a field test split, with one near-copy rule (0.97) for every split (review of PR #6). v0.2.1: the feature pre-processing resizes with Lanczos3, as the worker does (issue #2). v0.2: the heads and label matrices are written in the backend's JSON format (base64 `f32`), and an MLP head would need that format and the worker extended. v0.1, 2026-10-15: First training design: the Python environment, the datasets and their licences, data preparation with deduplication, the leaf detector fine-tune, the disease and species heads on BioCLIP 2 features, ONNX export and its checks, the label lists generated from the knowledge base, feedback as training data, and the model steps of knowledge ingestion.
+> **Status:** Draft v0.2.5, 2026-10-16. v0.2.5: section 1's layout shows what `ml/models/` holds since PR #6 (`FORMATS.md`, `templates/`) and marks README 6's files as planned. v0.2.4: section 1's layout lists `ml/models/`'s files from README 6 (`sources.toml`, `fetch.py`, `check.py`, the notices). v0.2.3: the schema link points to `backend/migrations/schema.surql` (merged from `main`). v0.2.2: data preparation groups augmented copies by their original photo, drops re-published copies of another source, groups the field sets by visit, and holds out a field test split, with one near-copy rule (0.97) for every split (review of PR #6). v0.2.1: the feature pre-processing resizes with Lanczos3, as the worker does (issue #2). v0.2: the heads and label matrices are written in the backend's JSON format (base64 `f32`), and an MLP head would need that format and the worker extended. v0.1, 2026-10-15: First training design: the Python environment, the datasets and their licences, data preparation with deduplication, the leaf detector fine-tune, the disease and species heads on BioCLIP 2 features, ONNX export and its checks, the label lists generated from the knowledge base, feedback as training data, and the model steps of knowledge ingestion.
 > **Checked:** ✓ means read in the primary source on that date; ✓ ran means executed. Dataset licences, package versions and wheel indexes were read on 2026-10-15 (✓). PlantDoc's duplicates and the BioCLIP probes were run on a Mac, on CPU and its Apple GPU (✓ ran). No training has run on the rig.
 
 Everything here lives in `ml/` ([architecture 13](../architecture/README.md#13-repository-layout)) and runs on dev machines or the rig, never in production. What it produces (ONNX files, label lists, temperatures, the knowledge seed) is consumed by the workers and `api` through the model manifest ([README 6](README.md#6-model-files-versions-and-pinning)).
@@ -39,12 +39,19 @@ ml/
 │  ├─ export/               section 7: ONNX export, fp16, checks
 │  ├─ labels/               section 8: classifier_labels.yaml, the BioCLIP label matrix
 │  └─ eval/                 the evaluation set and harness (evaluation 9)
-├─ models/
-│  └─ manifest.toml         every model file the system loads (README 6)
+├─ models/                 README 6, delivering model files
+│  ├─ manifest.toml         every model file the system loads, as the Rust code parses it
+│  ├─ FORMATS.md            the head and label-matrix JSON formats
+│  ├─ templates/            the 80 prompt templates of the label matrix
+│  ├─ sources.toml          planned: where each file is downloaded from, keyed by its SHA-256
+│  ├─ fetch.py              planned: fills a host's /models and checks every hash
+│  ├─ check.py              planned: checks the manifest, sources.toml and the files agree
+│  ├─ NOTICES.md            planned: the licence notices shipped with the files
+│  └─ licences/             planned
 └─ knowledge/               ingestion (section 10) and the reviewed seed
 ```
 
-Images and model files are never committed. Datasets are fetched by script with their checksums, and model files are published to the model store named in the manifest.
+Images and model files are never committed. Datasets are fetched by script with their checksums, and model files are published to the model store that `sources.toml` names ([README 6](README.md#delivering-model-files-to-the-backend)).
 
 ---
 
