@@ -27,3 +27,9 @@ pub mod testing;
 pub mod url;
 pub mod vlm;
 pub mod wire;
+
+/// S0 probe: a deliberate Clippy warning (`len_zero`). Never merged.
+#[must_use]
+pub fn s0_clippy_probe(v: &[u8]) -> bool {
+    v.len() == 0
+}
