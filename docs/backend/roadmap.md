@@ -1,6 +1,6 @@
 # PDM Backend Roadmap
 
-> **Status:** Draft v0.3, 2026-10-16. v0.3: gap 6, found when PR #6 merged: the Rust loader doesn't read `ml/models/FORMATS.md`; section 1 says what `ml/` holds now. v0.2: every gap in section 12 now has a design, and the slices link to them: [infra](../infra/README.md) for CI, images and compose files, [database 1](../database/README.md#1-version-and-setup) for applying the migrations, [worker 15.1](worker.md#151-stub-vision) for stub vision, and [vision 6](../vision/README.md#delivering-model-files-to-the-backend) for model files; two bugs found on the way (the vector search's `k`, the bucket default) are fixed. v0.1: the backend's work for build week, as nine slices (S0–S8) from the code merged on Oct 16 to the final deploy. Each slice has its goal, its work, what it needs from the other tracks, its exit checks and the decisions it closes. Section 12 lists the gaps found while writing it.
+> **Status:** Draft v0.4, 2026-10-16. v0.4: gap 6 is fixed: the loaders and `label_set_version` follow `ml/models/FORMATS.md`. v0.3: gap 6, found when PR #6 merged: the Rust loader doesn't read `ml/models/FORMATS.md`; section 1 says what `ml/` holds now. v0.2: every gap in section 12 now has a design, and the slices link to them: [infra](../infra/README.md) for CI, images and compose files, [database 1](../database/README.md#1-version-and-setup) for applying the migrations, [worker 15.1](worker.md#151-stub-vision) for stub vision, and [vision 6](../vision/README.md#delivering-model-files-to-the-backend) for model files; two bugs found on the way (the vector search's `k`, the bucket default) are fixed. v0.1: the backend's work for build week, as nine slices (S0–S8) from the code merged on Oct 16 to the final deploy. Each slice has its goal, its work, what it needs from the other tracks, its exit checks and the decisions it closes. Section 12 lists the gaps found while writing it.
 
 Companion to the [backend architecture](README.md). Its [build plan](README.md#13-build-plan) and [architecture 14](../architecture/README.md#14-build-plan) say what is done on each date. This document says how the backend gets there: the order of the work, what each step depends on, and how we know a step is finished.
 
@@ -191,7 +191,6 @@ Designed in [infra](../infra/README.md): CI in section 2, images in section 3, c
    - build the migration runner and apply the loader's `knowledge.surql` ([database 1](../database/README.md#1-version-and-setup), [store 4](store.md#4-connecting-and-the-schema));
    - add the `seed-upload` one-shot container before `api`;
    - load the first species and organism files;
-   - make the head and label-matrix loader read `ml/models/FORMATS.md` ([gap 6](#12-gaps-found-while-writing-this-roadmap)) before the first real perception job;
    - check vector search with the real chunks. A bound `k` failed to parse on 3.3.4; `search_chunks` now passes it as a literal, tested on the embedded engine ([store 22](store.md#22-open-questions), item 4).
 
 **Needs:** the manifest, the ONNX exports, the label matrices and `classifier_labels.yaml` (ml); the seed files (knowledge); the rig set up as in [setup](../setup/README.md).
@@ -343,7 +342,7 @@ Designed in [infra](../infra/README.md): CI in section 2, images in section 3, c
 
 ## 12. Gaps found while writing this roadmap
 
-Gaps 1 to 5 have a design; gap 6 needs a decision first. The designs are proposals until their slice builds them; each ends with numbered work items and exit checks.
+Gaps 1 to 5 have a design; gap 6 is fixed. The designs are proposals until their slice builds them; each ends with numbered work items and exit checks.
 
 | # | Gap | Slice | Designed in | Work items |
 |---|---|---|---|---|
@@ -352,7 +351,7 @@ Gaps 1 to 5 have a design; gap 6 needs a decision first. The designs are proposa
 | 3 | No CI, no containers, no `infra/` | S0, S1, S2, S3, S8 | [Infra](../infra/README.md): CI, images, the three compose files, ingress, secrets, deploys by digest, backups | [Infra 9](../infra/README.md#9-roadmap) |
 | 4 | Model files and seed data come from `ml/`, which had no delivery path | S1, S2, S3 | [Vision 6, delivering model files](../vision/README.md#delivering-model-files-to-the-backend): one manifest, our files in a private Hugging Face repository (the team's choice), `sources.toml` and `fetch.py` | [M1–M11](../vision/README.md#roadmap) |
 | 5 | Pipeline open question 3 was out of date | none | Resolved: the run's evidence fields are in the schema ([pipeline 17](pipeline.md#17-open-questions-and-decisions)) | none |
-| 6 | **The Rust loader doesn't read `ml/`'s file formats.** A label matrix and the plant probe fail to load, every disease class would silently load as `healthy`, and `store`'s `label_set_version` differs from `ml/`'s, so submit would answer `503` | S2, before the first real perception job | [Vision 6](../vision/README.md#delivering-model-files-to-the-backend) lists the four differences against [`ml/models/FORMATS.md`](../../ml/models/FORMATS.md). **Decision needed:** which side changes | Change `perception/heads.rs` and the label version to `FORMATS.md`, with a test that loads `ml/`'s own files |
+| 6 | The Rust loader didn't read `ml/`'s file formats: a label matrix and the plant probe failed to load, every disease class would have loaded as `healthy`, and `store`'s `label_set_version` differed | S2 | **Fixed:** the loaders read [`ml/models/FORMATS.md`](../../ml/models/FORMATS.md), heads must name the manifest's `bioclip` export, and `label_set_version` passes the format's test vector ([vision 6](../vision/README.md#delivering-model-files-to-the-backend)) | none |
 
 **Bugs found while designing,** both fixed with a test:
 - **The knowledge vector search could never run.** `SEARCH_CHUNKS` bound `k` into `<|k, 40|>`, which SurrealDB 3.3.4 refuses to parse. `search_chunks` now writes it as a literal, clamped to 1–40.

@@ -200,16 +200,30 @@ impl PerceptionPipeline {
             sam: input("sam_encoder")?,
             bioclip: input("bioclip")?,
         };
+        let bioclip = manifest.entry("bioclip")?;
+        let bioclip_version = bioclip_model_version(&bioclip.version);
+        let features = head_features(&bioclip_version, &bioclip.sha256);
         let mut labels = BTreeMap::new();
         for entry in manifest.entries_with_prefix("bioclip_labels") {
             manifest.verify(&[entry.name.as_str()])?;
             let m = LabelMatrix::load(&manifest.path(entry))?;
+            same_version(
+                "label matrix",
+                entry.label_set_version.as_deref(),
+                &m.version,
+            )?;
             labels.insert(m.version.clone(), Arc::new(m));
         }
         let mut disease = BTreeMap::new();
         for entry in manifest.entries_with_prefix("disease_head") {
             manifest.verify(&[entry.name.as_str()])?;
             let h = DiseaseHead::load(&manifest.path(entry))?;
+            same_version(
+                "disease head",
+                entry.classifier_labels_version.as_deref(),
+                &h.version,
+            )?;
+            same_features("disease head", &features, &h.features)?;
             versions.insert(entry.name.clone(), entry.version.clone());
             disease.insert(h.version.clone(), Arc::new(h));
         }
@@ -217,7 +231,9 @@ impl PerceptionPipeline {
             Ok(entry) => {
                 manifest.verify(&["plant_probe"])?;
                 versions.insert("plant_probe".to_owned(), entry.version.clone());
-                Some(PlantProbe::load(&manifest.path(entry))?)
+                let probe = PlantProbe::load(&manifest.path(entry))?;
+                same_features("plant probe", &features, &probe.features)?;
+                Some(probe)
             }
             Err(_) => None,
         };
@@ -230,7 +246,6 @@ impl PerceptionPipeline {
             domain::jobs::ModelVersionKey::CLASSIFIER_LABELS_VERSION.to_owned(),
             join(disease.keys().collect()),
         );
-        let bioclip_version = format!("bioclip-2@{}", manifest.entry("bioclip")?.version);
         let inference = Inference::start(runtime, specs).await?;
         Ok(Self {
             inference,
@@ -853,5 +868,85 @@ impl VisionModel for PerceptionPipeline {
             model: MODEL,
             what: "guided jobs",
         })
+    }
+}
+/// The `bioclip` value results report: `bioclip-2@<revision>`. A manifest `version` may give the
+/// revision alone or already prefixed.
+fn bioclip_model_version(version: &str) -> String {
+    if version.starts_with("bioclip-2@") {
+        version.to_owned()
+    } else {
+        format!("bioclip-2@{version}")
+    }
+}
+
+/// What a head's `features` must say to run on this export ([`ml/models/FORMATS.md`]): the
+/// `BioCLIP` version and the first 16 hex digits of the ONNX file's SHA-256.
+///
+/// [`ml/models/FORMATS.md`]: ../../../ml/models/FORMATS.md
+fn head_features(bioclip_version: &str, sha256: &str) -> String {
+    format!("{bioclip_version}+{}", &sha256[..sha256.len().min(16)])
+}
+
+/// A head trained on another export's features scores wrongly, so it is refused at start-up.
+fn same_features(what: &'static str, want: &str, got: &str) -> Result<(), VisionError> {
+    if got == want {
+        Ok(())
+    } else {
+        Err(VisionError::Shape {
+            model: what,
+            detail: format!("trained on {got:?}, but this manifest's export is {want:?}"),
+        })
+    }
+}
+
+/// The manifest entry's version, when it gives one, must be the file's own.
+fn same_version(what: &'static str, entry: Option<&str>, file: &str) -> Result<(), VisionError> {
+    match entry {
+        Some(e) if e != file => Err(VisionError::Shape {
+            model: what,
+            detail: format!("the manifest says version {e:?}, the file {file:?}"),
+        }),
+        _ => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{bioclip_model_version, head_features, same_features, same_version};
+
+    #[test]
+    fn the_bioclip_version_is_prefixed_once() {
+        assert_eq!(bioclip_model_version("2957b322"), "bioclip-2@2957b322");
+        assert_eq!(
+            bioclip_model_version("bioclip-2@2957b322"),
+            "bioclip-2@2957b322"
+        );
+    }
+
+    /// The committed manifest's `bioclip` entry gives the `features` string `ml/` heads carry
+    /// (`ml/models/FORMATS.md`).
+    #[test]
+    fn heads_must_name_this_export() {
+        let want = head_features(
+            &bioclip_model_version("bioclip-2@2957b322"),
+            "b9016a6865e188c0a1129c368d4d92e4f1f0961fe5f391c71ede45e06ed54097",
+        );
+        assert_eq!(want, "bioclip-2@2957b322+b9016a6865e188c0");
+        assert!(same_features("disease head", &want, &want).is_ok());
+        let other = same_features("disease head", &want, "bioclip-2@2957b322+0000000000000000");
+        assert!(
+            other
+                .unwrap_err()
+                .to_string()
+                .contains("this manifest's export")
+        );
+    }
+
+    #[test]
+    fn a_file_must_carry_its_entry_version() {
+        assert!(same_version("label matrix", None, "a").is_ok());
+        assert!(same_version("label matrix", Some("a"), "a").is_ok());
+        assert!(same_version("label matrix", Some("a"), "b").is_err());
     }
 }
