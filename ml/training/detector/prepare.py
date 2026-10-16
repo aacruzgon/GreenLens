@@ -1,12 +1,14 @@
 """Prepare the leaf detector's COCO dataset from PlantDoc's detection data.
 
-Collapses every class to `leaf`, cleans the boxes, holds out 15% of train as
-`valid` (seed 0, by image file name) and writes RF-DETR's COCO layout.
-Idempotent: rebuilds ml/training/data/cache/leaf-coco from scratch.
+    python -m ml.training.detector.prepare
+
+Collapses every class to `leaf`, cleans the boxes, drops training images that duplicate a
+test image, holds out 15% of train as `valid` by a hash of the file name, and writes
+RF-DETR's COCO layout. Idempotent: rebuilds ml/training/data/cache/leaf-coco from scratch.
 """
 import csv
+import hashlib
 import json
-import random
 import re
 import shutil
 import sys
@@ -14,6 +16,7 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 from pathlib import Path
 
+import torch
 from PIL import Image, ImageOps
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,20 +25,21 @@ CACHE = ROOT / "data/cache"
 OUT = CACHE / "leaf-coco"
 MIN_SIDE = 2.0
 VALID_FRACTION = 0.15
-SEED = 0
 
 
-csv_size = {}
+DUP_THRESHOLD = 0.98   # the classification sets' threshold (data/dedupe.py, issue #5)
 
 
 def load_csv(split):
-    rows = {}
+    """Boxes and the CSV's image size per file name, for one split. The sizes are per split:
+    a name in both splits can have different sizes in each (review of PR #6, item 4)."""
+    rows, sizes = {}, {}
     for r in csv.DictReader(open(RAW / f"{split}_labels.csv")):
-        csv_size[r["filename"]] = (int(r["width"]), int(r["height"]))
+        sizes[r["filename"]] = (int(r["width"]), int(r["height"]))
         rows.setdefault(r["filename"], []).append(
             (float(r["xmin"]), float(r["ymin"]), float(r["xmax"]), float(r["ymax"]))
         )
-    return rows
+    return rows, sizes
 
 
 def resolve_image(folder, name):
@@ -55,7 +59,7 @@ def resolve_image(folder, name):
     return None
 
 
-def clean(split, folder, rows, stats):
+def clean(split, folder, rows, csv_size, stats):
     out = []
     for name in sorted(rows):
         path = resolve_image(folder, name)
@@ -122,17 +126,33 @@ def write_split(split, items):
 def main():
     stats = {"boxes_raw": 0, "clipped_oob": 0, "dropped_zero_size": 0, "dropped_small": 0,
              "images_unresolved": [], "images_no_boxes": [], "exif_nontrivial": []}
-    tr_rows, te_rows = load_csv("train"), load_csv("test")
+    (tr_rows, tr_size), (te_rows, te_size) = load_csv("train"), load_csv("test")
     cross = sorted(set(tr_rows) & set(te_rows))
-    train = clean("train", RAW / "TRAIN", tr_rows, stats)
-    test = clean("test", RAW / "TEST", te_rows, stats)
+    train = clean("train", RAW / "TRAIN", tr_rows, tr_size, stats)
+    test = clean("test", RAW / "TEST", te_rows, te_size, stats)
 
-    names = sorted(it["name"] for it in train)
-    rng = random.Random(SEED)
-    rng.shuffle(names)
-    valid_names = set(names[: round(len(names) * VALID_FRACTION)])
-    valid = [it for it in train if it["name"] in valid_names]
-    train = [it for it in train if it["name"] not in valid_names]
+    # Deduplicate train against test (training.md §5, step 2): the test copy stays, and a
+    # training image goes when it shares a file name with a test image or is a near-copy of
+    # one (BioCLIP 2 cosine >= DUP_THRESHOLD, float32), so test mAP is never measured on
+    # training images.
+    from ml.pdm_vision.features import Embedder
+
+    emb = Embedder()
+    e_tr = torch.from_numpy(emb.files([it["path"] for it in train])).cuda().float()
+    e_te = torch.from_numpy(emb.files([it["path"] for it in test])).cuda().float()
+    near = (e_tr @ e_te.T).max(dim=1).values.cpu().numpy() >= DUP_THRESHOLD
+    drop = {i for i, it in enumerate(train) if it["name"] in te_rows or near[i]}
+    stats["train_dropped_as_test_duplicates"] = len(drop)
+    train = [it for i, it in enumerate(train) if i not in drop]
+
+    # Validation by a hash of the file name, so the split doesn't move when images are added
+    # or dropped.
+    def to_valid(name: str) -> bool:
+        h = hashlib.sha256(f"plantdoc_det|{name}".encode()).digest()
+        return int.from_bytes(h[:8], "big") / 2**64 < VALID_FRACTION
+
+    valid = [it for it in train if to_valid(it["name"])]
+    train = [it for it in train if not to_valid(it["name"])]
 
     if OUT.exists():
         shutil.rmtree(OUT)
