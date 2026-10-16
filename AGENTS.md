@@ -10,7 +10,7 @@ A user photographs a plant. Computer vision on a home GPU rig assesses the plant
 
 **Stack:** Expo SDK 57 / React Native app with Clerk authentication (and a Swift LiDAR module), Rust backend (axum, tokio) in a Cargo workspace, SurrealDB 3.3.4, RustFS 1.0.1 for images, pull-based GPU workers (`ort`/CUDA and a vLLM or llama.cpp VLM sidecar), Python for model training and knowledge ingestion.
 
-**Current state:** the repository holds design documents only. No code exists yet. When code lands, follow the planned layout below and update this file.
+**Current state:** the repository holds the design documents and the Rust backend workspace in `backend/` ([docs/backend §6](docs/backend/README.md#6-workspace-layout)), from which the crate documents in `docs/backend` are generated, and the training, export and evaluation code in `ml/` ([ml/README.md](ml/README.md)). The app and `infra/` don't exist yet. When they land, follow the layout below and update this file.
 
 ## Where to find things
 
@@ -21,7 +21,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | [`docs/architecture/README.md`](docs/architecture/README.md) | The architecture: goals and judging criteria, system diagram, components and Rust crates, users and authorization, data overview, the analysis pipeline, chat and agent core, main flows, API surface, models and GPU placement, security, deployment, repository layout, build plan and open decisions | You need the big picture, how parts fit together, or why a design choice was made |
 | [`docs/architecture/contracts.md`](docs/architecture/contracts.md) | The data contracts: every shape that crosses a boundary (app ↔ API, API ↔ workers, worker ↔ VLM, ingestion ↔ database), with error codes, endpoints, events, job payloads, VLM output and pipeline records | You are writing or calling an endpoint, a worker, a job, an SSE event, a VLM prompt, or any type in the `domain` crate |
 | [`docs/database/README.md`](docs/database/README.md) | SurrealDB notes: version pin and setup, conventions, tables, verified write patterns (event `seq`, compare-and-set, job claims, idempotency, deletion order), reads and vector search, the Rust SDK, operations and caveats | You are writing a query, a repository function in the `store` crate, or a migration |
-| [`docs/database/schema.surql`](docs/database/schema.surql) | The database schema itself. Idempotent; safe to run on every API start | You need a table's exact fields, types, indexes or references |
+| [`backend/migrations/schema.surql`](backend/migrations/schema.surql) | The database schema itself. Idempotent; the `store` crate embeds it and the API applies it on every start | You need a table's exact fields, types, indexes or references |
 | [`docs/frontend/README.md`](docs/frontend/README.md) | The frontend architecture: stack and pins, libraries, layers and import rules, directory layout, Clerk, the API and streaming layers, state, platform adapters (phone and in-app browsers, the LiDAR module's JS interface), UI system, mock mode, testing, builds, build plan, open decisions and sources | You are working on anything in `app/`, or need to know how the app consumes an endpoint or event |
 | [`docs/frontend/flows.md`](docs/frontend/flows.md) | Sequence diagrams for every user flow and the app's state machines | You are implementing a flow end to end, or a reducer or state machine in a feature's `model/` |
 | [`docs/frontend/screens.md`](docs/frontend/screens.md) | Navigation map, screen inventory with data, actions and roles, wireframes, screen rules, shared components and wording rules | You are building or changing a screen |
@@ -73,15 +73,16 @@ All design lives in `docs/`. Each document has a status line at the top with its
 
 ## Sources of truth
 
-- **Contracts** are defined in `contracts.md` until code exists. After that, the Rust types in the `domain` crate are the source of truth: `utoipa` generates the OpenAPI spec, `openapi-typescript` generates the app's types, and `schemars` generates JSON Schema for fixed shapes. A contract change updates the Rust type and `contracts.md` in the same pull request.
-- **Stored shapes** are defined in `docs/database/schema.surql`. Change it in the same pull request as any contract change that affects what is stored.
+- **Contracts:** the Rust types in the `domain` crate (`backend/crates/domain`) are the source of truth, and `contracts.md` explains them. Where the two disagree, the types win and the document is corrected. A contract change updates the Rust type, its exact-JSON test and `contracts.md` in the same pull request.
+- **Generated from the types:** `utoipa` generates the OpenAPI spec, committed as `backend/openapi.json` (an `api` test fails when it falls behind the types; regenerate it with `cargo run -p api -- openapi > openapi.json` in `backend/`). `openapi-typescript` generates the app's types from that file once `app/` exists. `schemars` generates JSON Schema for the fixed shapes.
+- **Stored shapes** are defined in `backend/migrations/schema.surql`. Change it in the same pull request as any contract change that affects what is stored.
 - **The architecture document follows the contracts.** When `contracts.md` changes, bring `docs/architecture/README.md` in line, bump both status lines, and add a row to contracts §11 listing the affected architecture sections.
 - **Version pins** (SurrealDB `v3.3.4`, RustFS `1.0.1`, both with image digests) were verified by running them. Don't change a pin without re-verifying the patterns that depend on it.
 - **App pins** (Expo SDK 57, `@clerk/expo` 4.x) are in docs/frontend §3. Before moving the SDK, check that `@clerk/expo`'s `peerDependencies` include it.
 
-## Planned repository layout
+## Repository layout
 
-From architecture §13. None of these directories exist yet.
+From architecture §13. `backend/` exists, with `tools/` beside its crates for the `docs/backend` generator and `api`'s test-store generator; `app/`, `ml/` and `infra/` don't exist yet.
 
 ```
 PDM/
@@ -101,7 +102,7 @@ PDM/
    ├─ backend/         the Rust backend, crate by crate, down to its types and traits
    ├─ vision/          the computer-vision models, training and evaluation
    ├─ frontend/        the app's architecture (README.md), flows (flows.md) and screens (screens.md)
-   ├─ database/        SurrealDB schema (schema.surql) and its notes
+   ├─ database/        SurrealDB notes (the schema itself is backend/migrations/schema.surql)
    ├─ storage/         RustFS setup and notes
    └─ setup/           what each team member installs, per OS
 ```
@@ -112,6 +113,7 @@ What each crate does is in architecture §3 (Rust crates); how each is built is 
 
 ### Documents
 
+- The crate documents in `docs/backend` (all but `README.md` and `flows.md`) are generated. Change the source or the template in `backend/tools/docgen/<doc>.md.tpl`, run `backend/tools/docgen/regen_all.sh`, and commit the documents with the change; don't edit a generated document by hand.
 - Keep the status line current: bump the version, set the date, and prepend a one-sentence summary of what changed.
 - In the database and storage documents, mark a claim ✓ only if you ran it against the pinned version. Mark anything taken from vendor docs, source or issues as *unverified*.
 - In the vision documents, ✓ marks a fact read in its primary source on the date given, and ✓ ran a check that was executed; nothing there has run on the rig's GPUs until a day-1 check or day-2 benchmark records it.

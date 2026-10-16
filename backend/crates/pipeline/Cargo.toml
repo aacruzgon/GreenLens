@@ -1,0 +1,36 @@
+[package]
+name = "pipeline"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Shapes, rules and every port the steps call.
+domain.workspace = true
+# Candidate ranking, scoring, status and the question rule.
+knowledge = { workspace = true }
+# The plan writer and the plan validation it runs (agent::plan_writer, agent::safety).
+agent.workspace = true
+# The measurement geometry (vision::measure), run on a blocking thread.
+vision.workspace = true
+async-trait.workspace = true
+bytes.workspace = true
+# Local dates in the garden's time zone (task due dates, memory summaries).
+chrono.workspace = true
+chrono-tz.workspace = true
+# Semaphore for bounded CPU work, spawn_blocking, the plan lock's OwnedMutexGuard.
+tokio.workspace = true
+# Raw job results (`serde_json::Value`) and the wire names of enums in observation labels.
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+domain = { workspace = true, features = ["mock", "test-util"] }
+tokio = { workspace = true, features = ["test-util"] }
+proptest.workspace = true
