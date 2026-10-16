@@ -10,7 +10,7 @@ A user photographs a plant. Computer vision on a home GPU rig assesses the plant
 
 **Stack:** Expo SDK 57 / React Native app with Clerk authentication (and a Swift LiDAR module), Rust backend (axum, tokio) in a Cargo workspace, SurrealDB 3.3.4, RustFS 1.0.1 for images, pull-based GPU workers (`ort`/CUDA and a vLLM or llama.cpp VLM sidecar), Python for model training and knowledge ingestion.
 
-**Current state:** the repository holds the design documents and the Rust backend workspace in `backend/` ([docs/backend §6](docs/backend/README.md#6-workspace-layout)), from which the crate documents in `docs/backend` are generated, and the training, export and evaluation code in `ml/` ([ml/README.md](ml/README.md)). CI runs from `.github/workflows/backend.yml` ([docs/infra §2](docs/infra/README.md#2-ci)). The app and `infra/` don't exist yet. When they land, follow the layout below and update this file.
+**Current state:** the repository holds the design documents and the Rust backend workspace in `backend/` ([docs/backend §6](docs/backend/README.md#6-workspace-layout)), from which the crate documents in `docs/backend` are generated, the training, export and evaluation code in `ml/` ([ml/README.md](ml/README.md)), and the rig's VLM server in `infra/` ([infra/README.md](infra/README.md)). CI runs from `.github/workflows/backend.yml` ([docs/infra §2](docs/infra/README.md#2-ci)). The app doesn't exist yet. When it lands, follow the layout below and update this file.
 
 ## Where to find things
 
@@ -31,7 +31,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | [`docs/backend/README.md`](docs/backend/README.md) | The Rust backend design: goals, the crate graph and dependency rules, workspace layout, Rust conventions, runtime composition, configuration, testing, builds, build plan. Links a document per crate (`domain`, `domain-types`, `store`, `blob`, `integrations`, `vision`, `knowledge`, `agent`, `pipeline`, `api`, `worker`) with every struct, enum, trait, generic and lifetime, compiled on Rust 1.99.1 | You write or review any Rust, a `Cargo.toml`, a repository method, an endpoint, a worker or a background task |
 | [`docs/backend/flows.md`](docs/backend/flows.md) | Server-side sequence diagrams across crates (request pipeline, uploads, a scan from submit to plan, claims and the sweep, SSE, job leases, chat turns, deletion, the scheduler, start-up and shutdown) and the server's state machines | You implement or debug a flow end to end on the server |
 | [`docs/backend/roadmap.md`](docs/backend/roadmap.md) | The backend's build-week work as nine slices (S0–S8), each with its goal, work, dependencies on other tracks, exit checks and the decisions it closes; and the gaps still to design | You plan, pick up or review backend work |
-| [`docs/vision/README.md`](docs/vision/README.md) | The vision and ML design: the model inventory, placement and VRAM budgets on the three GPUs, runtimes and pins, model files and versions, licences, open decisions and the proposed contract changes. Companions: [`models.md`](docs/vision/models.md) (every perception and CPU model), [`vlm.md`](docs/vision/vlm.md) (the VLM, its serving, prompts and schemas), [`training.md`](docs/vision/training.md) (datasets, training, ONNX export, label lists, knowledge-ingestion model steps) and [`evaluation.md`](docs/vision/evaluation.md) (evaluation set, metrics, calibration, benchmarks) | You are choosing, training, exporting, prompting or evaluating a model, setting a threshold or a VRAM budget, or working in `ml/` |
+| [`docs/vision/README.md`](docs/vision/README.md) | The vision and ML design: the model inventory, placement and VRAM budgets on the three GPUs, runtimes and pins, model files and versions, licences, open decisions and the proposed contract changes. Companions: [`models.md`](docs/vision/models.md) (every perception and CPU model), [`vlm.md`](docs/vision/vlm.md) (the VLM, its serving, prompts and schemas), [`training.md`](docs/vision/training.md) (datasets, training, ONNX export, label lists, knowledge-ingestion model steps) and [`evaluation.md`](docs/vision/evaluation.md) (evaluation set, metrics, calibration, benchmarks); the plan for the whole ML side, models and backend integration, with owners and phases, is [`dev-roadmap.md`](docs/vision/dev-roadmap.md), and model-by-model progress is in [`roadmap.md`](docs/vision/roadmap.md) | You are choosing, training, exporting, prompting or evaluating a model, setting a threshold or a VRAM budget, or working in `ml/` |
 
 ### Topic index
 
@@ -73,6 +73,8 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | Weather and trigger thresholds | backend domain §7 (weather thresholds); contracts §7 |
 | Build plan by day | architecture §14; frontend §18; vision README §10 |
 | Backend work as slices, their order and exit checks | backend roadmap |
+| The ML dev plan: who builds what, hand-offs between `ml/` and the Rust crates, integration gaps, phases to Oct 25 | vision dev-roadmap.md (update a task's state in the PR that finishes it) |
+| Model progress: done, next, waiting, open PRs, the rig's state | vision roadmap.md (update it at the end of each ML work session) |
 | Open decisions and open questions | architecture §15; contracts §12; database §9; frontend §19; backend README §15 and each crate document's open questions; vision README §11 |
 
 ## Sources of truth
@@ -88,7 +90,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 
 ## Repository layout
 
-From architecture §13. `backend/` exists, with `tools/` beside its crates for the `docs/backend` generator and `api`'s test-store generator; `ml/` holds the training and export code; `app/` and `infra/` don't exist yet.
+From architecture §13. `backend/` exists, with `tools/` beside its crates for the `docs/backend` generator and `api`'s test-store generator; `ml/` holds the training and export code; `infra/` holds the rig's VLM server so far; `app/` doesn't exist yet.
 
 ```
 PDM/

@@ -1,0 +1,82 @@
+# Where each model file is downloaded from, keyed by its SHA-256 (docs/vision/README.md §6).
+# The manifests (manifest.toml, manifest.cpu.toml) stay exactly what the Rust loaders parse;
+# moving a file changes only its row here, never `perception_config`.
+#
+# - Upstream files: their own source, at a pinned revision or commit.
+# - Ours: the private Hugging Face repository pdm-models, each file at its manifest path, pinned
+#   to the 40-hex commit it was uploaded in. `auth = "hf"` sends `Authorization: Bearer $HF_TOKEN`,
+#   a fine-grained read-only token for that repository (never committed).
+#
+# fetch.py reads this file. publish.py appends the rows for new files of ours; a path is never
+# overwritten in pdm-models, so a pinned URL always returns the same bytes.
+
+# --- upstream ---
+
+[[file]]                                  # text_embedder
+sha256 = "cf2698d30ff05da02c70a088313bad56e5c2f401d734cb24a8390d446111936c"
+url    = "https://huggingface.co/Snowflake/snowflake-arctic-embed-xs/resolve/d8c86521100d3556476a063fc2342036d45c106f/onnx/model.onnx"
+
+[[file]]                                  # text_embedder_tokenizer
+sha256 = "91f1def9b9391fdabe028cd3f3fcc4efd34e5d1f08c3bf2de513ebb5911a1854"
+url    = "https://huggingface.co/Snowflake/snowflake-arctic-embed-xs/resolve/d8c86521100d3556476a063fc2342036d45c106f/tokenizer.json"
+
+[[file]]                                  # yunet
+sha256 = "ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0"
+url    = "https://media.githubusercontent.com/media/opencv/opencv_zoo/26cc381e4d2594bb9f47a26eb8fd96c94a13660d/models/face_detection_yunet/face_detection_yunet_2026may.onnx"
+
+# --- ours (pdm-models), written by publish.py ---
+
+[[file]]                                  # bioclip
+sha256 = "b9016a6865e188c0a1129c368d4d92e4f1f0961fe5f391c71ede45e06ed54097"
+url    = "https://huggingface.co/GreenLens/pdm-models/resolve/767370eab27c66b94bdee6b0972f5856a04b3778/bioclip/bioclip-2-vision-fp16.onnx"
+auth   = "hf"
+
+[[file]]                                  # leaf_detector
+sha256 = "17bf8a8c410959db386a38ca16cfff5edc9b1d006c0584f334d306bee7f7b990"
+url    = "https://huggingface.co/GreenLens/pdm-models/resolve/767370eab27c66b94bdee6b0972f5856a04b3778/leaf_detector/rfdetr-s-leaf-2026-10-16b-fp16.onnx"
+auth   = "hf"
+
+[[file]]                                  # sam_encoder
+sha256 = "eb3d1a7b3894f8f7532a4d79ff883cb702ed050f4385bafe31553fc8d71433b2"
+url    = "https://huggingface.co/GreenLens/pdm-models/resolve/767370eab27c66b94bdee6b0972f5856a04b3778/sam2/sam2.1-hiera-tiny-encoder-fp16.onnx"
+auth   = "hf"
+
+[[file]]                                  # sam_decoder
+sha256 = "fda2d2366fda0657d95eb638c379815f8e79d505c5a08cc0c0245e5d3bd3a674"
+url    = "https://huggingface.co/GreenLens/pdm-models/resolve/767370eab27c66b94bdee6b0972f5856a04b3778/sam2/sam2.1-hiera-tiny-box-decoder-fp16.onnx"
+auth   = "hf"
+
+[[file]]                                  # bioclip_labels_233482ce598f591b
+sha256 = "ffec89c4bcbfc91bd72de19015de4f71541a79eb06ac10185180e65292d8066d"
+url    = "https://huggingface.co/GreenLens/pdm-models/resolve/767370eab27c66b94bdee6b0972f5856a04b3778/bioclip_labels/bioclip_labels_233482ce598f591b.json"
+auth   = "hf"
+
+[[file]]                                  # disease_head_disease-head-v1d-2026-10-16
+sha256 = "b6f92cc73982c6d07c148800c0c0b71380cba6e9e8de5818cf4c47a3537bd44f"
+url    = "https://huggingface.co/GreenLens/pdm-models/resolve/767370eab27c66b94bdee6b0972f5856a04b3778/disease_head/disease-head-v1d-2026-10-16.json"
+auth   = "hf"
+
+[[file]]                                  # bioclip
+sha256 = "a5d6dfac92c3a1ff46b41a7d93b1251aa990c95afc31509862b0b0a23cd2d10b"
+url    = "https://huggingface.co/GreenLens/pdm-models/resolve/767370eab27c66b94bdee6b0972f5856a04b3778/bioclip/bioclip-2-vision-fp32.onnx"
+auth   = "hf"
+
+[[file]]                                  # leaf_detector
+sha256 = "819c81509094a467e3c42afa02d8becf58dd7ed8b4d1a266157ea4e87c57831f"
+url    = "https://huggingface.co/GreenLens/pdm-models/resolve/767370eab27c66b94bdee6b0972f5856a04b3778/leaf_detector/rfdetr-s-leaf-2026-10-16b-fp32.onnx"
+auth   = "hf"
+
+[[file]]                                  # sam_encoder
+sha256 = "5fb9f8d84b87cfadd26e24b0de05ea3dd53c11376af08bc02fcd542b61b76234"
+url    = "https://huggingface.co/GreenLens/pdm-models/resolve/767370eab27c66b94bdee6b0972f5856a04b3778/sam2/sam2.1-hiera-tiny-encoder-fp32.onnx"
+auth   = "hf"
+
+[[file]]                                  # sam_decoder
+sha256 = "0871baea310fa97b5f32862c61ee244c16ecb560f128b073f4f3c6ac40ca5401"
+url    = "https://huggingface.co/GreenLens/pdm-models/resolve/767370eab27c66b94bdee6b0972f5856a04b3778/sam2/sam2.1-hiera-tiny-box-decoder-fp32.onnx"
+auth   = "hf"
+
+[[file]]                                  # disease_head_disease-head-v1d-2026-10-16
+sha256 = "3be5a96e3749b3bbad16dd1203a584a68477bb364a0fd99c4a84a53d39a318f3"
+url    = "https://huggingface.co/GreenLens/pdm-models/resolve/767370eab27c66b94bdee6b0972f5856a04b3778/disease_head/disease-head-v1d-2026-10-16.cpu.json"
+auth   = "hf"

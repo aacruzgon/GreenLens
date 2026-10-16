@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.5, 2026-10-16. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.6, 2026-10-16. Companion to the [architecture document](README.md).
+> **v0.10.6** settles open question 31: xgrammar in vLLM v0.31.0 enforces `anyOf` with `null`, producing both branches and blocking values outside the schema (section 12); no wire shape changed.
 > **v0.10.5**: section 10 states the loader's migration output: one regenerated, deterministic `backend/migrations/knowledge.surql` that replaces the whole knowledge set and records the generated versions in `knowledge_meta`; no wire shape changed.
 > **v0.10.4**: the `domain` crate's types are now the contracts' source of truth, since the code exists; this document explains them, and the generated OpenAPI spec is committed as `backend/openapi.json` (section 1, source of truth).
 > **v0.10.3**: section 1 links the stored shapes at their new place, `backend/migrations/schema.surql`; no contract changes.
@@ -2320,6 +2321,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.2: a deleted scan's stream, and one at a resting point reached without an event, closes within 15 seconds | none (section 9's SSE description is unchanged) |
 | v0.10.3: the schema link points to `backend/migrations/schema.surql` | 5 (schema) and 13 (layout), which say the same |
 | v0.10.4: the `domain` types are the source of truth and the OpenAPI spec is committed as `backend/openapi.json` | 9 |
+| v0.10.6: open question 31 settled: xgrammar enforces `anyOf` with `null` in the VLM schemas | none (the architecture document doesn't mention it) |
 
 ---
 
@@ -2355,7 +2357,7 @@ The contracts changed these parts of the architecture document, which has been u
 28. **Empty candidate sets.** A `label_only` species with no classifier result has no candidates, so "every candidate has at least 2 of its 3 indicators answered `no`" holds vacuously. The backend reads it as never `healthy` without the classifier's own `healthy` result, so such a scan is `uncertain`. Confirm ([backend knowledge 12](../backend/knowledge.md#12-open-questions)).
 29. **A plan-writer outage on a run's first plan** fails the scan with `upstream_unavailable` (section 3 lists "LLM API down"), which the user can resubmit. The alternative is to keep the scan `diagnosed` and let the sweep retry the `plan` step every 5 minutes, as it already does for a failing re-plan ([backend pipeline 17](../backend/pipeline.md#17-open-questions-and-decisions)).
 30. **Resuming a member's removal.** Deletions resume after a restart from the records marked `deleting_at`, but a member's removal leaves no marker: its `member_of` row is already gone when the cascade runs. A small pending-removal record (garden, user) would make it resumable ([backend store 22](../backend/store.md#22-open-questions)).
-31. **`anyOf` with `null` on xgrammar.** The worker's VLM schemas express nullable values (soil readings, `other_name`) as `anyOf` with `null`. Whether xgrammar 0.2.7 enforces this is *unverified*; the day-2 schema check confirms it ([backend worker 17](../backend/worker.md#17-open-questions), [vision 15](../backend/vision.md#15-open-questions)).
+31. **`anyOf` with `null` on xgrammar.** The worker's VLM schemas express nullable values (soil readings, `other_name`) as `anyOf` with `null`. **Settled (v0.10.6):** xgrammar 0.2.7 in vLLM v0.31.0 enforces it, from the day-1 check on 2026-10-16 with Qwen3-VL-8B-Instruct-FP8 ([vision vlm 4](../vision/vlm.md#4-serving)). The server accepts the schema. A leaf close-up gets `null` for every soil aspect. Field photos with bare soil get all 8 aspects as objects whose values validate. A prompt that demands values outside the schema (enum values that don't exist, a number for a string, a box past 1000) still gets a valid reply, while the same prompt with no schema writes 5 of the 6 demanded values. The prompt must show a soil reading's object shape. Without it, the model answers `null` for soil it can see, because it wants to write a bare string, which the grammar forbids ([backend worker 17](../backend/worker.md#17-open-questions), [vision 15](../backend/vision.md#15-open-questions)).
 32. **Apple's principal-point convention** and the exact use of the inverse-distortion table in `DepthMeta` are *unverified* until the LiDAR day-1 check (open question 11) ([backend vision 15](../backend/vision.md#15-open-questions)).
 33. **Cancelling a call on llama.cpp.** A worker stops a cancelled job by dropping its connection. Whether llama.cpp then frees the slot is *unverified*; it matters on the RX 9070 XT if it serves llama.cpp (open question 25) ([backend worker 17](../backend/worker.md#17-open-questions)).
 34. **Request limits.** The general rate limit (120 requests a minute per user) and the JSON body limit (1 MiB) are placeholders that no document gives. Confirm them, or set them from the build-week load ([backend api 23](../backend/api.md#23-open-questions)).

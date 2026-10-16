@@ -29,6 +29,13 @@ SAM2_BUILD_CUDA=0 uv pip sync ml/requirements.lock --index-strategy unsafe-best-
 | Disease head | `python -m ml.training.heads.train_disease --version <v> --balance-sources [--views 4]` | `training/runs/heads/<v>/`: head JSON and `classifier_labels.yaml`; the report also in `training/heads/reports/<v>.json` (committed) |
 | Label matrix | `python -m ml.training.labels.bioclip_text [--labels <yaml>]` | `models/files/bioclip_labels/` |
 | Zero-shot species check | `python -m ml.training.labels.zero_shot_check <matrix.json>` | printed |
+| Export the leaf detector and check it | `python -m ml.training.export.detector --run <run dir> [--fp16] [--version V]` | `models/files/` ONNX file; checks class-agnostic mAP50 against PyTorch |
+| Fetch the model files for a host | `python3 -m ml.models.fetch --for perception --dest ~/.cache/pdm-models [--cpu]` | The files of `manifest.toml` (`--cpu`: the fp32 set of `manifest.cpu.toml`) in `--dest`, each checked against its SHA-256. Downloads from the private Hugging Face repository `pdm-models` with `HF_TOKEN` ([vision 6](../docs/vision/README.md#6-model-files-versions-and-pinning)) |
+| Check the manifests | `python -m ml.models.check` | Passes when the manifests, `sources.toml` and `NOTICES.md` agree |
+| Publish new model files | `python -m ml.models.publish` | Uploads new model files to `pdm-models` and writes their `sources.toml` rows |
+| Write the CPU manifest | `python -m ml.models.cpu_manifest` | `models/manifest.cpu.toml` (fp32 files) and a `<stem>.cpu.json` twin of each head |
+| Check a VLM server (day 1) | `python -m ml.training.eval.vlm_check [--base-url …] [--images …]` | `<out>/<label>.json` and `.md` with the checks and timings ([vlm 4](../docs/vision/vlm.md#4-serving)) |
+| Reference outputs for the Rust heads | `python -m ml.tests.make_fixtures` | `tests/fixtures/perception_reference.json` |
 | Tests | `python -m pytest ml/tests` | the file formats, the `label_set_version` vector and original-photo names |
 
 Dataset sources, licences and hashes are in [`training/data/sources.yaml`](training/data/sources.yaml); class-to-slug mappings in [`training/data/mappings/`](training/data/mappings/). The slugs there are **proposed** until the knowledge base's seed files exist.
