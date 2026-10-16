@@ -1,6 +1,6 @@
 # PDM Backend Architecture
 
-> **Status:** Draft v0.2.2, 2026-10-16. v0.2.2: section 7 says the Rust skills follow this design instead of listing departures; the generator tools move to `backend/tools/`; moving the scratch workspace into `backend/` is decided. v0.2.1: the release profile keeps symbols and adds line tables (stripping symbols empties panic backtraces, probed); the `api` container's `stop_grace_period` is 190 s; the scheduler tree lists the eight real tasks, with question continuation inside `sweep`; the database row names all four protected parameters. v0.2: the module trees, crate graph and configuration now match the compiled crates; adds the decisions on contracts open questions 12–24 and the changes to contracts v0.10, architecture v0.7 and database v1.4.
+> **Status:** Draft v0.2.3, 2026-10-16. v0.2.3: the workspace and the generator tools are now in `backend/`; section 6 lists `tools/`, and `migrations/schema.surql` is a copy of `docs/database/schema.surql` until the move. v0.2.2: section 7 says the Rust skills follow this design instead of listing departures; the generator tools move to `backend/tools/`; moving the scratch workspace into `backend/` is decided. v0.2.1: the release profile keeps symbols and adds line tables (stripping symbols empties panic backtraces, probed); the `api` container's `stop_grace_period` is 190 s; the scheduler tree lists the eight real tasks, with question continuation inside `sweep`; the database row names all four protected parameters. v0.2: the module trees, crate graph and configuration now match the compiled crates; adds the decisions on contracts open questions 12–24 and the changes to contracts v0.10, architecture v0.7 and database v1.4.
 > v0.1: the Rust backend designed crate by crate, down to every struct, enum, trait, generic parameter and lifetime, with each definition compiled on Rust 1.99.1 against the pinned crates; it follows [contracts](../architecture/contracts.md) v0.9 and [architecture](../architecture/README.md) v0.6.
 
 Companion to the [system architecture](../architecture/README.md), the [data contracts](../architecture/contracts.md), the [database](../database/README.md) and [storage](../storage/README.md) notes, the [frontend](../frontend/README.md) and the [computer-vision design](../vision/README.md). Those documents decide **what** the system does; this directory decides **how the Rust code is built**: crates, modules, types, traits, tasks and errors.
@@ -176,12 +176,16 @@ backend/
 │  ├─ agent/               src/{config, deps, error, prompt, context, memory}.rs + safety/, model/, plan_writer/, tools/, turn/
 │  └─ pipeline/            src/{entry, writer, runs, payloads, results, findings, questions, fusion, replan, plan_author, error}.rs
 │                          + steps/, measure/
+├─ tools/
+│  ├─ docgen/              docgen.py, regen_all.sh, check_fences.py, checklinks.py and one <doc>.md.tpl per crate document
+│  └─ apigen/              gen_fake_store.py: api's test FakeStore, from the store traits
 ├─ bins/
 │  ├─ api/                 src/{main, config, wiring, state, seams, router, openapi, error, reply, limits, signing, uploads,
 │  │                       broker, workers, push, deletion, media}.rs + extract/, events/, routes/, scheduler/, tests/
 │  └─ worker/              src/{main, config, api, job, fallback}.rs + lifecycle/, vlm/
 └─ migrations/
-   └─ schema.surql         moved here from docs/database (database 1)
+   └─ schema.surql         a byte-for-byte copy of docs/database/schema.surql, which moves here (database 1)
+                           once the Rust skills' example checker reads it from here; keep the two identical
 ```
 
 Each crate document has its own module tree. Modules follow the `foo.rs` + `foo/` layout, without `mod.rs`.
@@ -289,7 +293,7 @@ Each binary reads typed configuration from the environment at start and refuses 
 
 **`domain`'s test helpers** are features: `mock` gives a `mockall` mock of every port except `ChatModel`, and `test-util` gives `FixedClock`, `SequentialIds`, `FakeSigner`, `FixedPhotos` and `ScriptedChat` ([domain 11](domain.md#11-testing)).
 
-**Regenerating the documents.** The listings in these documents are produced from the source by `docgen.py`. Templates (`<doc>.md.tpl`) hold the prose and directives (`@@items`, `@@file`, `@@impl`, `@@test`) that pull definitions by name, and `checklinks.py` checks every anchor. When the backend is scaffolded, the generator moves to `backend/tools/docgen/` with `regen_all.sh` (every document) and `check_fences.py` (every listing balanced), and runs in CI, so a listing that no longer matches its code fails the build. `gen_fake_store.py`, which writes `api`'s test `FakeStore` from the store traits, moves to `backend/tools/apigen/` ([api 21](api.md#21-testing)).
+**Regenerating the documents.** The listings in these documents are produced from the source by `docgen.py`. Templates (`<doc>.md.tpl`) hold the prose and directives (`@@items`, `@@file`, `@@impl`, `@@test`) that pull definitions by name, and `checklinks.py` checks every anchor. They live in `backend/tools/docgen/` with `regen_all.sh`, which rewrites every crate document in `docs/backend` (README.md and flows.md are written by hand), and `check_fences.py` (every listing balanced). After a change to the source, run `backend/tools/docgen/regen_all.sh` and commit the documents with the code; once a CI workflow exists it runs the generator and fails when a document differs, so a listing that no longer matches its code fails the build. `backend/tools/apigen/gen_fake_store.py` writes `api`'s test `FakeStore` from the store traits ([api 21](api.md#21-testing)).
 
 ---
 
