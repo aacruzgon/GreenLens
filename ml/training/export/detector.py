@@ -1,6 +1,6 @@
 """Export the leaf detector (RF-DETR-S, one class) to ONNX and check it (training.md §5 and §7).
 
-    python -m ml.training.export.detector --run ml/training/runs/leaf-rfdetr-s-20261016 [--fp16]
+    python -m ml.training.export.detector --run ml/training/runs/leaf-rfdetr-s-20261016 [--fp16] [--version V]
 
 The graph: `input` [batch, 3, 512, 512] → `dets` [batch, 300, 4] (normalised cx, cy, w, h) and
 `labels` [batch, 300, 2] (logits; `leaf` at index 0, background last). Pre-processing (squash
@@ -82,6 +82,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", type=Path, required=True)
     ap.add_argument("--fp16", action="store_true")
+    ap.add_argument("--version", help="the manifest version; default rfdetr-s-leaf-<today>, which a second run the same day would overwrite")
     args = ap.parse_args()
 
     from rfdetr import RFDETRSmall
@@ -93,7 +94,7 @@ def main() -> None:
         exported = Path(model.export(output_dir=str(tmp), format="onnx", dynamic_batch=True, fp16=False))
     if exported.is_dir():
         exported = next(exported.glob("*.onnx"))
-    version = f"rfdetr-s-leaf-{date.today():%Y-%m-%d}"
+    version = args.version or f"rfdetr-s-leaf-{date.today():%Y-%m-%d}"
     OUT.mkdir(parents=True, exist_ok=True)
     fp32 = OUT / f"{version}-fp32.onnx"
     m = onnx.load(str(exported), load_external_data=True)

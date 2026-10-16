@@ -42,11 +42,11 @@ precision = "fp16"                       # LayerNormalization, Softmax, ReduceMe
 
 [[model]]
 name      = "leaf_detector"
-version   = "rfdetr-s-leaf-2026-10-16"
-file      = "leaf_detector/rfdetr-s-leaf-2026-10-16-fp16.onnx"
-sha256    = "223a45a56c6653b6dede5358baba415eca21fa3e42bd29c482afbba00306741f"
+version   = "rfdetr-s-leaf-2026-10-16b"
+file      = "leaf_detector/rfdetr-s-leaf-2026-10-16b-fp16.onnx"
+sha256    = "17bf8a8c410959db386a38ca16cfff5edc9b1d006c0584f334d306bee7f7b990"
 licence   = "Apache-2.0 (RF-DETR-S weights and code); fine-tuned on PlantDoc boxes (CC BY 4.0)"
-source    = "RF-DETR-S COCO weights (rfdetr 1.11.2), fine-tuned 50 epochs at 512 px on PlantDoc's boxes collapsed to `leaf`, deduplicated against the test split; ml/training/detector, exported by ml/training/export/detector.py"
+source    = "RF-DETR-S COCO weights (rfdetr 1.11.2), pinned in sources.yaml (rfdetr_small), fine-tuned 50 epochs at 512 px on PlantDoc's boxes collapsed to `leaf`; training images at cosine >= 0.97 to a test image dropped, train/valid split by same-plant group; ml/training/detector, exported by ml/training/export/detector.py"
 runs_on   = "perception"
 opset     = 17
 precision = "fp16"                       # GridSample, Range, LayerNormalization, Softmax, ReduceMean kept fp32; fp32 I/O
@@ -72,9 +72,9 @@ precision = "fp16"                       # GridSample, Range, LayerNormalization
   gpu_mem_limit_mb = 1024
 
   [model.check]                          # deduplicated PlantDoc test split (236 images, 452 boxes), class-agnostic
-  map50_torch = 0.9334
-  map50_onnx  = 0.9340
-  map50_95    = 0.722                    # PlantDoc's boxes are incomplete, so mAP can't measure recall (training.md §5)
+  map50_torch = 0.9372
+  map50_onnx  = 0.9373
+  map50_95    = 0.729                    # PlantDoc's boxes are incomplete, so mAP can't measure recall (training.md §5)
 
 [[model]]
 name      = "sam_encoder"
