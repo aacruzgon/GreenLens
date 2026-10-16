@@ -4,9 +4,9 @@
     python -m ml.training.data.fetch plantdoc_det    # one source
     python -m ml.training.data.fetch --pin <name>    # a new source whose sha256 is still null
 
-Archives land in data/raw/<name>.zip and are unpacked to data/raw/<name>/. A source whose
-sha256 is null is refused, unless --pin is given: then it is downloaded and its hash printed,
-to be pinned in sources.yaml.
+Archives land in data/raw/<name>.zip and are unpacked to data/raw/<name>/; a single model file
+(`kind: file`) lands in models/files/<dest>. A source whose sha256 is null is refused, unless
+--pin is given: then it is downloaded and its hash printed, to be pinned in sources.yaml.
 """
 
 from __future__ import annotations
@@ -38,6 +38,30 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def unpack(archive: Path, target: Path) -> None:
+    """Unpack into a temporary folder and rename it, so an interrupted unpack never leaves a
+    partial target that later runs would take as complete."""
+    if target.exists():
+        return
+    tmp = target.with_name(target.name + ".unpacking")
+    if tmp.exists():
+        shutil.rmtree(tmp)
+    print(f"[{target.name}] unpacking")
+    with zipfile.ZipFile(archive) as z:
+        z.extractall(tmp)
+    tmp.rename(target)
+
+
+def check_pin(src: dict, digest: str, what: str = "sha256") -> None:
+    name = src["name"]
+    if src.get("sha256") is None:
+        print(f"[{name}] NOT PINNED: {what} {digest}  <- put this in sources.yaml")
+        if not PIN:
+            raise SystemExit(f"[{name}] refusing an unpinned source; rerun with --pin to fetch it anyway")
+    elif digest != src["sha256"]:
+        raise SystemExit(f"[{name}] {what} mismatch: expected {src['sha256']}, got {digest}")
+
+
 def fetch_github_archive(src: dict) -> None:
     name = src["name"]
     archive = RAW / f"{name}.zip"
@@ -49,17 +73,8 @@ def fetch_github_archive(src: dict) -> None:
         with urllib.request.urlopen(url, timeout=TIMEOUT) as r, tmp.open("wb") as f:
             shutil.copyfileobj(r, f, 1 << 20)
         tmp.rename(archive)
-    digest = sha256_file(archive)
-    if src.get("sha256") is None:
-        print(f"[{name}] NOT PINNED: sha256 {digest}  <- put this in sources.yaml")
-        if not PIN:
-            raise SystemExit(f"[{name}] refusing an unpinned source; rerun with --pin to fetch it anyway")
-    elif digest != src["sha256"]:
-        raise SystemExit(f"[{name}] sha256 mismatch: expected {src['sha256']}, got {digest}")
-    if not target.exists():
-        print(f"[{name}] unpacking")
-        with zipfile.ZipFile(archive) as z:
-            z.extractall(target)
+    check_pin(src, sha256_file(archive))
+    unpack(archive, target)
     print(f"[{name}] ok: {target}")
 
 
@@ -79,18 +94,20 @@ def fetch_direct(src: dict) -> None:
     if not archive.exists():
         print(f"[{name}] downloading {src['url']}")
         download(src["url"], archive)
-    digest = sha256_file(archive)
-    if src.get("sha256") is None:
-        print(f"[{name}] NOT PINNED: sha256 {digest}  <- put this in sources.yaml")
-        if not PIN:
-            raise SystemExit(f"[{name}] refusing an unpinned source; rerun with --pin to fetch it anyway")
-    elif digest != src["sha256"]:
-        raise SystemExit(f"[{name}] sha256 mismatch: expected {src['sha256']}, got {digest}")
+    check_pin(src, sha256_file(archive))
     target = RAW / name
-    if not target.exists():
-        with zipfile.ZipFile(archive) as z:
-            z.extractall(target)
+    unpack(archive, target)
     print(f"[{name}] ok: {target}")
+
+
+def fetch_file(src: dict) -> None:
+    """One model file at a fixed URL, checked against its pinned SHA-256."""
+    dest = MODELS / src["dest"]
+    if not dest.exists():
+        print(f"[{src['name']}] downloading {src['url']}")
+        download(src["url"], dest)
+    check_pin(src, sha256_file(dest))
+    print(f"[{src['name']}] ok: {dest}")
 
 
 def mendeley_listing(dataset: str, version: int) -> list[dict]:
@@ -130,13 +147,8 @@ def fetch_mendeley_folder(src: dict) -> None:
     name = src["name"]
     rows = [r for r in mendeley_listing(src["dataset"], src["version"]) if r["path"].startswith(src["prefix"])]
     listing = "".join(f"{r['path']} {r['sha256']}\n" for r in rows).encode()
-    digest = hashlib.sha256(listing).hexdigest()
-    if src.get("sha256") is None:
-        print(f"[{name}] NOT PINNED: listing sha256 {digest} ({len(rows)} files)  <- put this in sources.yaml")
-        if not PIN:
-            raise SystemExit(f"[{name}] refusing an unpinned source; rerun with --pin to fetch it anyway")
-    elif digest != src["sha256"]:
-        raise SystemExit(f"[{name}] listing changed: expected {src['sha256']}, got {digest}")
+    print(f"[{name}] {len(rows)} files listed")
+    check_pin(src, hashlib.sha256(listing).hexdigest(), "listing sha256")
     target = RAW / name
     with ThreadPoolExecutor(8) as pool:
         def one(r: dict) -> None:
@@ -187,6 +199,8 @@ def main(only: list[str]) -> None:
             fetch_mendeley_folder(src)
         elif kind == "huggingface":
             fetch_huggingface(src)
+        elif kind == "file":
+            fetch_file(src)
         else:
             print(f"[{src['name']}] skipped: kind {kind!r} needs a URL in sources.yaml")
 

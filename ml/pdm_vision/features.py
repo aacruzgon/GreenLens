@@ -52,9 +52,16 @@ class Embedder:
         self.model = Path(model)
         self.model_sha = file_sha256(self.model)[:16]
         self.batch = batch
-        self.sess = cuda_session(self.model)
+        self._sess = None
         self.cache_dir = CACHE / f"{self.model_sha}-{preprocess_key()}"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def sess(self) -> ort.InferenceSession:
+        """Opened on first use, so a run served entirely from the cache needs no GPU memory."""
+        if self._sess is None:
+            self._sess = cuda_session(self.model)
+        return self._sess
 
     def run(self, tensors: np.ndarray) -> np.ndarray:
         return self.sess.run(["embeddings"], {"images": tensors})[0]

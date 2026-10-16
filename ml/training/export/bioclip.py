@@ -22,11 +22,11 @@ from pathlib import Path
 
 import numpy as np
 import onnx
-import onnxruntime as ort
 import open_clip
 import torch
 
 from ml.pdm_vision import preprocess as pp
+from ml.pdm_vision.features import cuda_session
 
 ROOT = Path(__file__).resolve().parents[3]
 WEIGHTS = ROOT / "ml/models/files/bioclip2"
@@ -62,9 +62,10 @@ def photos(folder: Path, n: int) -> list[Path]:
     return files[:n]
 
 
-def check(onnx_path: Path, tower: VisionTower, images: list[Path], provider: str) -> dict:
-    sess = ort.InferenceSession(str(onnx_path), providers=[provider, "CPUExecutionProvider"])
-    used = sess.get_providers()[0]
+def check(onnx_path: Path, tower: VisionTower, images: list[Path]) -> dict:
+    """On the CUDA execution provider only: a CPU fallback would pass a check the worker's GPU
+    session never ran."""
+    sess = cuda_session(onnx_path)
     x = pp.batch([pp.load_rgb(p) for p in images], pp.BIOCLIP)
     with torch.no_grad():
         ref = tower(torch.from_numpy(x)).numpy()
@@ -75,7 +76,7 @@ def check(onnx_path: Path, tower: VisionTower, images: list[Path], provider: str
     cos = {b: (e * ref).sum(1) for b, e in per_batch.items()}
     spread = max(float(np.abs(per_batch[b] - per_batch[1]).max()) for b in per_batch)
     return {
-        "provider": used,
+        "provider": "CUDAExecutionProvider",
         "images": len(images),
         "min_cosine": {str(b): float(c.min()) for b, c in cos.items()},
         "max_diff_across_batches": spread,
@@ -106,7 +107,7 @@ def main() -> None:
     )
     onnx.checker.check_model(str(fp32))
     images = photos(args.images, args.n)
-    report = {"fp32": check(fp32, tower, images, "CUDAExecutionProvider")}
+    report = {"fp32": check(fp32, tower, images)}
     report["fp32"]["sha256"] = sha256(fp32)
     print(json.dumps(report, indent=2), flush=True)
 
@@ -122,7 +123,7 @@ def main() -> None:
             op_block_list=["LayerNormalization", "Softmax", "ReduceMean"],
         )
         onnx.save(m, str(fp16))
-        report["fp16"] = check(fp16, tower, images, "CUDAExecutionProvider")
+        report["fp16"] = check(fp16, tower, images)
         report["fp16"]["sha256"] = sha256(fp16)
 
     report["revision"] = REVISION

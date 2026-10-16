@@ -3,8 +3,8 @@
     python -m ml.training.detector.prepare
 
 Collapses every class to `leaf`, cleans the boxes, drops training images that duplicate a
-test image, holds out 15% of train as `valid` by a hash of the file name, and writes
-RF-DETR's COCO layout. Idempotent: rebuilds ml/training/data/cache/leaf-coco from scratch.
+test image, holds out 15% of train as `valid` by "same plant" group (near-copies at cosine ≥
+0.97 share a split, as in data/dedupe.py), and writes RF-DETR's COCO layout. Idempotent: rebuilds ml/training/data/cache/leaf-coco from scratch.
 """
 import csv
 import hashlib
@@ -20,21 +20,29 @@ import torch
 from PIL import Image, ImageOps
 
 ROOT = Path(__file__).resolve().parents[1]
-RAW = next((ROOT / "data/raw/plantdoc_det").glob("PlantDoc-*"))
 CACHE = ROOT / "data/cache"
 OUT = CACHE / "leaf-coco"
 MIN_SIDE = 2.0
 VALID_FRACTION = 0.15
 
 
-DUP_THRESHOLD = 0.98   # the classification sets' threshold (data/dedupe.py, issue #5)
+SPLIT_THRESHOLD = 0.97  # near-copies at or above it never straddle train, valid and test (data/dedupe.py)
+
+
+def raw_dir() -> Path:
+    found = sorted((ROOT / "data/raw/plantdoc_det").glob("PlantDoc-*"))
+    if not found:
+        raise SystemExit("PlantDoc detection data is missing: run python -m ml.training.data.fetch plantdoc_det")
+    return found[0]
 
 
 def load_csv(split):
     """Boxes and the CSV's image size per file name, for one split. The sizes are per split:
     a name in both splits can have different sizes in each (review of PR #6, item 4)."""
     rows, sizes = {}, {}
-    for r in csv.DictReader(open(RAW / f"{split}_labels.csv")):
+    with open(raw_dir() / f"{split}_labels.csv", newline="") as f:
+        table = list(csv.DictReader(f))
+    for r in table:
         sizes[r["filename"]] = (int(r["width"]), int(r["height"]))
         rows.setdefault(r["filename"], []).append(
             (float(r["xmin"]), float(r["ymin"]), float(r["xmax"]), float(r["ymax"]))
@@ -119,7 +127,8 @@ def write_split(split, items):
                          "bbox": [round(v, 2) for v in b], "area": round(b[2] * b[3], 2), "iscrowd": 0})
     coco = {"images": images, "annotations": anns,
             "categories": [{"id": 1, "name": "leaf", "supercategory": "none"}]}
-    json.dump(coco, open(d / "_annotations.coco.json", "w"))
+    with open(d / "_annotations.coco.json", "w") as f:
+        json.dump(coco, f)
     return len(images), len(anns)
 
 
@@ -128,37 +137,48 @@ def main():
              "images_unresolved": [], "images_no_boxes": [], "exif_nontrivial": []}
     (tr_rows, tr_size), (te_rows, te_size) = load_csv("train"), load_csv("test")
     cross = sorted(set(tr_rows) & set(te_rows))
-    train = clean("train", RAW / "TRAIN", tr_rows, tr_size, stats)
-    test = clean("test", RAW / "TEST", te_rows, te_size, stats)
+    train = clean("train", raw_dir() / "TRAIN", tr_rows, tr_size, stats)
+    test = clean("test", raw_dir() / "TEST", te_rows, te_size, stats)
 
     # Deduplicate train against test (training.md §5, step 2): the test copy stays, and a
     # training image goes when it shares a file name with a test image or is a near-copy of
-    # one (BioCLIP 2 cosine >= DUP_THRESHOLD, float32), so test mAP is never measured on
-    # training images.
+    # one (BioCLIP 2 cosine >= SPLIT_THRESHOLD, float32, the same rule as data/dedupe.py), so
+    # test mAP is never measured on training images.
     from ml.pdm_vision.features import Embedder
 
     emb = Embedder()
     e_tr = torch.from_numpy(emb.files([it["path"] for it in train])).cuda().float()
     e_te = torch.from_numpy(emb.files([it["path"] for it in test])).cuda().float()
-    near = (e_tr @ e_te.T).max(dim=1).values.cpu().numpy() >= DUP_THRESHOLD
+    near = (e_tr @ e_te.T).max(dim=1).values.cpu().numpy() >= SPLIT_THRESHOLD
     drop = {i for i, it in enumerate(train) if it["name"] in te_rows or near[i]}
     stats["train_dropped_as_test_duplicates"] = len(drop)
-    train = [it for i, it in enumerate(train) if i not in drop]
+    kept = [i for i in range(len(train)) if i not in drop]
+    train = [train[i] for i in kept]
 
-    # Validation by a hash of the file name, so the split doesn't move when images are added
-    # or dropped.
-    def to_valid(name: str) -> bool:
-        h = hashlib.sha256(f"plantdoc_det|{name}".encode()).digest()
-        return int.from_bytes(h[:8], "big") / 2**64 < VALID_FRACTION
+    # Validation by a hash of each "same plant" group (review of PR #6): near-copies inside
+    # PlantDoc's train never straddle train and valid, since valid picks the checkpoint. The
+    # group's key is its smallest file name, so the split doesn't move when unrelated images
+    # are added or dropped.
+    from ml.training.data.dedupe import components, duplicate_pairs
 
-    valid = [it for it in train if to_valid(it["name"])]
-    train = [it for it in train if not to_valid(it["name"])]
+    near = duplicate_pairs(e_tr[kept].cpu().numpy(), SPLIT_THRESHOLD)
+    groups = components(len(train), near)
+    stats["valid_groups"] = len(groups)
+    stats["valid_largest_group"] = max(len(g) for g in groups)
+    valid_idx = set()
+    for g in groups:
+        key = min(train[i]["name"] for i in g)
+        if int.from_bytes(hashlib.sha256(f"plantdoc_det|{key}".encode()).digest()[:8], "big") / 2**64 < VALID_FRACTION:
+            valid_idx.update(g)
+    valid = [it for i, it in enumerate(train) if i in valid_idx]
+    train = [it for i, it in enumerate(train) if i not in valid_idx]
 
     if OUT.exists():
         shutil.rmtree(OUT)
     res = {s: write_split(s, items) for s, items in (("train", train), ("valid", valid), ("test", test))}
     CACHE.mkdir(parents=True, exist_ok=True)
-    json.dump(cross, open(CACHE / "plantdoc_det_cross_split_names.json", "w"), indent=1)
+    with open(CACHE / "plantdoc_det_cross_split_names.json", "w") as f:
+        json.dump(cross, f, indent=1)
 
     print("splits (images, boxes):", res)
     print({k: (v if not isinstance(v, list) else len(v)) for k, v in stats.items()})

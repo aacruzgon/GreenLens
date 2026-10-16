@@ -48,16 +48,22 @@ datasets:
 
   - name: tomato_pakistan_2026
     description: >-
-      Tomato Leaf Disease Classification Dataset in Pakistan: 7,200 smartphone photos under
-      natural light, 6 classes (early blight, late blight, Septoria leaf spot, leaf mould,
-      yellow leaf curl virus, healthy). Sukkur IBA. No Data in Brief paper found
+      Tomato Leaf Disease Classification Dataset in Pakistan: 7,200 files in 6 classes (early
+      blight, late blight, Septoria leaf spot, leaf mould, yellow leaf curl virus, healthy),
+      Sukkur IBA. Described as smartphone field photos, but every file is an augmented copy
+      (about 934 originals) and 302 originals are PlantDoc's scraped web photos; the mapping
+      groups copies and drops the PlantDoc ones (review of PR #6). No Data in Brief paper found
     kind: direct
     url: https://data.mendeley.com/public-files/datasets/3mbnb82mxd/files/0a6c3bb6-5241-43e3-bc3a-f2e4be91fcfe/file_downloaded
     sha256: 66380c1621a1b9fc6d60413f8ad41ec565778d1ef2c06729949387218c244c3c   # from Mendeley's API
     landing: https://data.mendeley.com/datasets/3mbnb82mxd/1
-    licence: CC BY 4.0
+    licence: >-
+      CC BY 4.0 as published; it can't cover photos the authors didn't take. The PlantDoc copies
+      are dropped, and any other scraped photos keep their owners' copyright (unverified), the
+      same caveat as plantdoc_det. Shipping weights trained on it is a team decision
+      (docs/vision/README.md §9)
     citation: "Malik M.N., Ali S.H., Ali H. (2026) Mendeley Data V1, doi:10.17632/3mbnb82mxd.1"
-    ship: true
+    ship: true   # provisional, see licence
     use: tomato field data
 
   - name: ibean
@@ -84,3 +90,15 @@ models:
     files: [open_clip_config.json, open_clip_model.safetensors, tokenizer.json, tokenizer_config.json, special_tokens_map.json, vocab.json, merges.txt]
     licence: MIT
     use: species zero-shot, image embeddings, features for the heads
+
+  - name: rfdetr_small
+    description: >-
+      RF-DETR-S COCO weights, the leaf detector's starting point. rfdetr 1.11.2 downloads the
+      same file by itself and checks only its own MD5 (fb37061c1af7bace359c91b723a8d5c1);
+      detector/train.py loads this pinned copy instead
+    kind: file
+    url: https://storage.googleapis.com/rfdetr/small_coco/checkpoint_best_regular.pth
+    dest: rfdetr/rf-detr-small.pth
+    sha256: d81979a9213a2109345158ce9232668df4c1ae52e9b8db3f2ec0a8cbad959b33
+    licence: Apache-2.0
+    use: leaf detector fine-tuning

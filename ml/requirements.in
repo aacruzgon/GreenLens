@@ -10,15 +10,12 @@ timm==1.0.30
 onnx==1.22.0
 onnxscript==0.7.2
 onnxruntime-gpu==1.31.0
-onnxconverter-common==1.16.0
 rfdetr[train]==1.11.2
 scikit-learn
 scipy
 numpy
 pillow
 pyyaml
-tqdm
-imagehash
 huggingface_hub
 pytest
 # The VLM day-1 check (ml/training/eval/vlm_check.py)

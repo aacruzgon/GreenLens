@@ -3,10 +3,14 @@
     python -m ml.training.heads.train_disease --version disease-head-v0-2026-10-16
 
 - Classes: every (species, problem | healthy) with at least --min-train training images.
-- Multinomial logistic regression; C chosen on validation by restricted top-1.
+- Multinomial logistic regression; C chosen on validation by restricted top-1, from a grid
+  wide enough that the choice isn't at its edge (the report says if it is).
 - Class weights by inverse frequency, capped at 10 times the median weight.
 - Restricted softmax: at serving time the worker keeps only the working species' classes, so
   every accuracy and the temperature are computed on that restricted softmax.
+- The headline numbers leave out --not-supported species (bean, until issue #4 decides), and
+  every number is also reported per dataset, so the field sets' own test splits show apart
+  from PlantDoc's.
 - --views N adds N augmented views per training image (random resized crop 0.7–1.0, flip,
   colour jitter 0.2, mild blur).
 
@@ -108,6 +112,8 @@ def main() -> None:
     ap.add_argument("--version", required=True)
     ap.add_argument("--min-train", type=int, default=30)
     ap.add_argument("--views", type=int, default=0)
+    ap.add_argument("--not-supported", nargs="*", default=["bean"],
+                    help="species left out of the headline numbers (still trained and reported)")
     ap.add_argument("--balance-sources", action="store_true",
                     help="within each class, give every dataset the same total weight")
     args = ap.parse_args()
@@ -122,11 +128,13 @@ def main() -> None:
     def keep(rs):
         return [r for r in rs if f"{r['species_id']}/{r['problem_id']}" in cidx]
 
+    left_out_images = {n: len(rs) - len(keep(rs)) for n, rs in (("val", val), ("test", test))}
     train, val, test = keep(train), keep(val), keep(test)
     emb = Embedder()
     feats = {n: emb.files([r["path"] for r in rs]) for n, rs in (("train", train), ("val", val), ("test", test))}
     ys = {n: np.asarray([cidx[f"{r['species_id']}/{r['problem_id']}"] for r in rs]) for n, rs in (("train", train), ("val", val), ("test", test))}
     sp = {n: [r["species_id"] for r in rs] for n, rs in (("train", train), ("val", val), ("test", test))}
+    dsets = {n: np.asarray([r["dataset"] for r in rs]) for n, rs in (("train", train), ("val", val), ("test", test))}
 
     Xtr, ytr = feats["train"], ys["train"]
     if args.views:
@@ -151,7 +159,8 @@ def main() -> None:
         sample_w = sample_w * np.asarray([freq[y] / (n_src[y] * pair[(s, y)]) for s, y in zip(src, ytr)])
 
     best = None
-    for C in (1, 5, 20, 50, 100, 200, 500):
+    grid = (1, 5, 20, 50, 100, 200, 500, 1000, 2000, 5000)
+    for C in grid:
         clf = LogisticRegression(C=C, max_iter=3000)
         clf.fit(Xtr, ytr, sample_weight=sample_w)
         lv = restricted_logits(clf.decision_function(feats["val"]), species_of_class, sp["val"])
@@ -161,6 +170,9 @@ def main() -> None:
         if best is None or acc > best[0]:
             best = (acc, C, clf)
     _, C, clf = best
+    c_at_edge = C in (grid[0], grid[-1])
+    if c_at_edge:
+        print(f"WARNING: C={C} is at the edge of the grid {grid}")
 
     lv = restricted_logits(clf.decision_function(feats["val"]), species_of_class, sp["val"])
     T = fit_temperature(lv, ys["val"])
@@ -185,8 +197,26 @@ def main() -> None:
         def over(mask, f):
             return {"value": f(mask), "n": int(mask.sum())} if mask.any() else {"value": None, "n": 0}
 
+        supported = ~np.isin(spn, args.not_supported)
+        multi = supported & (k_of > 1)
+        per_dataset = {}
+        for d in sorted(set(dsets[name])):
+            m = (dsets[name] == d) & (k_of > 1)
+            per_dataset[d] = {
+                "restricted_top1_multiclass": over(m, lambda mm: topk_acc(res[mm], y[mm], 1)),
+                "ece_after_T_multiclass": over(m, lambda mm: ece(res[mm], y[mm])),
+            }
+
         return {
             "n": int(len(y)),
+            "left_out_class_images": left_out_images.get(name, 0),
+            "headline": {
+                "excludes": list(args.not_supported),
+                "restricted_top1_multiclass": over(multi, lambda m: topk_acc(res[m], y[m], 1)),
+                "restricted_top3_over_3_classes": over(supported & (k_of > 3), lambda m: topk_acc(res[m], y[m], 3)),
+                "ece_after_T_multiclass": over(multi, lambda m: ece(res[m], y[m])),
+            },
+            "per_dataset": per_dataset,
             "full_top1": topk_acc(full, y, 1),
             "full_top3": topk_acc(full, y, 3),
             "restricted_top1_multiclass": over(k_of > 1, lambda m: topk_acc(res[m], y[m], 1)),
@@ -225,6 +255,8 @@ def main() -> None:
         "classes": len(classes),
         "left_out_below_min": left_out,
         "C": C,
+        "C_grid": list(grid),
+        "C_at_grid_edge": c_at_edge,
         "temperature": T,
         "views": args.views,
         "balance_sources": args.balance_sources,
@@ -238,10 +270,13 @@ def main() -> None:
     print(json.dumps({k: v for k, v in summary.items() if k not in ("val", "test")}, indent=2))
     for n in ("val", "test"):
         r = summary[n]
-        t1, t3 = r["restricted_top1_multiclass"], r["restricted_top3_over_3_classes"]
-        e0, e1 = r["ece_before_T_multiclass"], r["ece_after_T_multiclass"]
+        h = r["headline"]
         fmt = lambda d: "n/a" if d["value"] is None else f"{d['value']:.3f} (n={d['n']})"
-        print(f"{n}: n={r['n']} | restricted top-1 on multi-class crops {fmt(t1)} | top-3 on crops with >3 classes {fmt(t3)} | ECE {fmt(e0)} -> {fmt(e1)} | trivial share {r['trivial_share']:.2f}")
+        print(f"{n}: n={r['n']} (+{r['left_out_class_images']} of left-out classes) | headline without {h['excludes']}: "
+              f"top-1 {fmt(h['restricted_top1_multiclass'])} | top-3 {fmt(h['restricted_top3_over_3_classes'])} | "
+              f"ECE {fmt(h['ece_after_T_multiclass'])}")
+        for d, v in r["per_dataset"].items():
+            print(f"   {d:22s} top-1 {fmt(v['restricted_top1_multiclass'])} ECE {fmt(v['ece_after_T_multiclass'])}")
         for s, v in r["per_crop"].items():
             print(f"   {s:11s} classes={v['classes']} n={v['n']:4d} top1 {v['top1']:.2f} top3 {v['top3']:.2f}")
 
