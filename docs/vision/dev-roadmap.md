@@ -1,6 +1,6 @@
 # PDM ML Dev Roadmap
 
-> **Status:** v0.3, 2026-10-16 (night). v0.3: checked against `main` after PR #6 and the backend roadmap merged: the GitHub release is an interim until our files move to the private Hugging Face repository the team chose ([vision 6](README.md#delivering-model-files-to-the-backend), new task M21 and decision D9); gap G9 (`store` computes a different `label_set_version`); the rig's services follow [infra 4](../infra/README.md#4-compose-files); task IDs of other documents are cited with their document. v0.2: the integration track runs on Sara's Windows laptop (WSL): model files from a GitHub release with `ml/models/fetch.py`, a CPU manifest, reference fixtures, and two ways to test the VLM worker locally (a fake server, or Qwen3-VL-2B on llama.cpp, which passed the day-1 checks on a CPU); real jobs run on Sam's machine, run by Sam. v0.1, 2026-10-16 (evening): First plan for the whole ML side, models and their integration into the backend, by phase from Oct 16 to Oct 25, with owners, dependencies and done conditions, the hand-offs between `ml/` and the Rust crates, the integration gaps found on `main`, and a getting-started guide for the integration work.
+> **Status:** v0.3, 2026-10-16 (night). v0.3: checked against `main` after PR #6 and the backend roadmap merged: the GitHub release is an interim until our files move to the private Hugging Face repository the team chose ([vision 6](README.md#delivering-model-files-to-the-backend), new task M21 and decision D9); gap G9 (`store` computes a different `label_set_version`); the rig's services follow [infra 4](../infra/README.md#4-compose-files); task IDs of other documents are cited with their document. v0.2.1: section 5 runs the perception worker on the laptop's RTX 3060 with the fp16 files and smaller batch caps, and says how the VLM jobs are covered meanwhile; section 8 points to it. v0.2: the integration track runs on Sara's Windows laptop (WSL): model files from a GitHub release with `ml/models/fetch.py`, a CPU manifest, reference fixtures, and two ways to test the VLM worker locally (a fake server, or Qwen3-VL-2B on llama.cpp, which passed the day-1 checks on a CPU); real jobs run on Sam's machine, run by Sam. v0.1, 2026-10-16 (evening): First plan for the whole ML side, models and their integration into the backend, by phase from Oct 16 to Oct 25, with owners, dependencies and done conditions, the hand-offs between `ml/` and the Rust crates, the integration gaps found on `main`, and a getting-started guide for the integration work.
 > **How to use it:** find your next task in section 6, check its "Needs" column, and when it is done, change its state and add the commit, PR or report that proves it, in the same pull request as the work. Bump this status line when you do. The model-by-model detail (datasets, exports, metrics) is in [roadmap.md](roadmap.md); this file is the plan the two tracks share.
 
 This covers everything between a photo and a diagnosis that involves a model: training and exporting the models (`ml/`), the files and formats that carry them, the Rust code that runs them (the [`vision`](../backend/vision.md) crate, the [`worker`](../backend/worker.md) binary) and the steps of the [`pipeline`](../backend/pipeline.md) that consume their outputs. The design lives in [docs/vision](README.md) and [docs/backend](../backend/README.md); this file says who builds what, in what order, and how to tell it is done.
@@ -157,6 +157,25 @@ Everything in the integration track runs on your laptop. You never log in to Sam
    `manifest.cpu.toml` is `manifest.toml` with each fp16 ONNX file swapped for its fp32 export, because ONNX Runtime's CPU provider runs fp32 graphs. Every fp32 graph runs on the CPU (BioCLIP: about 0.3 s per image), and its embeddings match the rig's fp16 ones to cosine 0.9997. Use it for development, not for measuring accuracy. Without `--cpu`, `fetch` gets the fp16 set the GPU workers load.
 4. **Reference outputs for your tests:** [`ml/tests/fixtures/perception_reference.json`](../../ml/tests/fixtures/perception_reference.json) holds six photos' BioCLIP embeddings with the species top 3 and the disease head's top 3 that Python computes. A Rust test that loads the same head and label-matrix files and feeds it these embeddings should get the same ids in the same order, with probabilities within 1e-4. `python -m ml.tests.make_fixtures` regenerates it.
 
+### The laptop's RTX 3060
+
+Your laptop's RTX 3060 is an Ampere card (sm_86), the same architecture as the RTX 3070 that runs the perception worker, and ONNX Runtime 1.31's CUDA 13 build has native code for it ([vision README 5](README.md#5-runtimes-and-versions)). So the perception worker can run on a GPU with the real fp16 files on your laptop, without the rig. Use it to check that the GPU path works and that its outputs match the CPU run; speed, memory and benchmark figures still come from the 3070 (J3). Nobody has run the worker on this card yet.
+
+1. **Driver.** NVIDIA's Windows driver 580.65.06 or newer, CUDA 13.0's minimum. WSL gets CUDA from the Windows driver, so don't install a Linux NVIDIA driver inside WSL; `nvidia-smi` in WSL should list the card.
+2. **ONNX Runtime's GPU build.** `onnxruntime-linux-x64-gpu-1.31.0.tgz` instead of the CPU tarball, with the CUDA 13.0 runtime and cuDNN 9 libraries in WSL: the same pieces as the perception image, `nvidia/cuda:13.0.3-cudnn-runtime-ubuntu24.04`. The package names in NVIDIA's WSL-Ubuntu repository are *unverified* here.
+3. **The fp16 files and smaller batches.**
+
+   ```bash
+   python3 -m ml.models.fetch                # the fp16 set and manifest.toml, as on the rig
+   export MODEL_MANIFEST=$PWD/ml/models/files/manifest.toml
+   export ORT_EP=cuda
+   export ORT_DYLIB_PATH=$HOME/onnxruntime-linux-x64-gpu-1.31.0/lib/libonnxruntime.so
+   export SAM_ENCODER_MAX_BATCH=1 DETECTOR_MAX_BATCH=4 BIOCLIP_MAX_BATCH=8
+   ```
+
+   Most RTX 3060 laptops have 6 GB, and the 3070's budget is about 5.3 GB at the planned caps ([vision README 4](README.md#4-placement-and-vram-budgets)). These caps should bring it to roughly 3.5–4 GB *estimate*; the SAM encoder at a batch of 1 saves the most. Caps change speed, not results: every export check confirms that per-image outputs agree across batch sizes. Check with `nvidia-smi` how much Windows' desktop holds on the card. On laptops whose integrated GPU draws the screen, the 3060 is nearly empty.
+4. **The VLM doesn't fit next to it.** Qwen3-VL-8B's weights alone are 7.5 GiB in the AWQ build (vlm.md 4). Run Qwen3-VL-2B (option 2 below) on the CPU while perception has the card, or on the card when perception isn't running. Once the full local stack runs (J4), there is a third way: the fallback worker (`--caps fallback` with `LLM_API_KEY`, [worker 4](../backend/worker.md#4-configuration)) takes any job left unclaimed for 15 seconds, so with no vlm-worker running, the `vlm` jobs go to the hosted model. That runs a whole scan end to end without a VLM card, but it costs API credits.
+
 ### Testing the VLM worker
 
 Two ways, both on your laptop. Neither needs Sam's machine.
@@ -298,7 +317,7 @@ Only Sam uses the rig (`sam-linux`, one RTX 5070 Ti, 16 GB, which also draws Sam
 | Detector training | Most of the card for about 30 minutes per run | M11, the night of Oct 18 |
 | The perception worker's GPU runs, until the RTX 3070's host is up | About 5.3 GB at the planned batch caps | P2's GPU run, J1, J3 |
 
-The perception worker and vLLM don't fit together on this card (vLLM leaves about 1.5 GB free at 0.90), so Sam stops vLLM for a perception run (`docker stop infra-vllm-1`, then `docker start infra-vllm-1`). To ask for a real run, push the branch and say in the pull request what to run; Sam posts the output there. Once the RTX 3070 and RX 9070 XT hosts are up, perception moves to the 3070 and this conflict ends ([vision README 4](README.md#4-placement-and-vram-budgets)).
+The perception worker and vLLM don't fit together on this card (vLLM leaves about 1.5 GB free at 0.90), so Sam stops vLLM for a perception run (`docker stop infra-vllm-1`, then `docker start infra-vllm-1`). To ask for a real run, push the branch and say in the pull request what to run; Sam posts the output there. A perception run that only checks the GPU path, not speed or memory, can run on Sara's RTX 3060 instead ([section 5](#the-laptops-rtx-3060)). Once the RTX 3070 and RX 9070 XT hosts are up, perception moves to the 3070 and this conflict ends ([vision README 4](README.md#4-placement-and-vram-budgets)).
 
 ---
 
