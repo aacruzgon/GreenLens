@@ -97,7 +97,7 @@ Day 1 of 10 (Oct 16). The work is **ahead of plan on models and serving, behind 
 ## 5. Next steps, in order
 
 1. **Merge PRs #6 and #7** once reviewed, so Sara builds against `main`.
-2. **Unblock Sara** (dev-roadmap M5, M6, M9): a readable copy of the model files in `/srv/pdm/models/`, Rust test fixtures, a CPU manifest; agree the formats in issue #3.
+2. **Unblock Sara:** the model release, `fetch.py`, the CPU manifest and the Rust fixtures are done (dev-roadmap M5, M6, M9); next, the fake VLM server (M20) and agreeing the formats in issue #3.
 3. **Start the Qwen3.5 challenger once** and run the day-1 check on it.
 4. **Start the evaluation photos** and the 20 dev cases the day-2 benchmark needs (Oct 18).
 5. **YuNet and the text embedder pinned** (dev-roadmap M7, M8); BioCLIP zero-shot on team photos.

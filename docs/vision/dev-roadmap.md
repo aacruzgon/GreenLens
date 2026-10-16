@@ -1,6 +1,6 @@
 # PDM ML Dev Roadmap
 
-> **Status:** v0.1, 2026-10-16 (evening). v0.1: First plan for the whole ML side, models and their integration into the backend, by phase from Oct 16 to Oct 25, with owners, dependencies and done conditions, the hand-offs between `ml/` and the Rust crates, the integration gaps found on `main`, and a getting-started guide for the integration work.
+> **Status:** v0.2, 2026-10-16 (night). v0.2: the integration track runs on Sara's Windows laptop (WSL): model files from a GitHub release with `ml/models/fetch.py`, a CPU manifest, reference fixtures, and two ways to test the VLM worker locally (a fake server, or Qwen3-VL-2B on llama.cpp, which passed the day-1 checks on a CPU); real jobs run on Sam's machine, run by Sam. v0.1, 2026-10-16 (evening): First plan for the whole ML side, models and their integration into the backend, by phase from Oct 16 to Oct 25, with owners, dependencies and done conditions, the hand-offs between `ml/` and the Rust crates, the integration gaps found on `main`, and a getting-started guide for the integration work.
 > **How to use it:** find your next task in section 6, check its "Needs" column, and when it is done, change its state and add the commit, PR or report that proves it, in the same pull request as the work. Bump this status line when you do. The model-by-model detail (datasets, exports, metrics) is in [roadmap.md](roadmap.md); this file is the plan the two tracks share.
 
 This covers everything between a photo and a diagnosis that involves a model: training and exporting the models (`ml/`), the files and formats that carry them, the Rust code that runs them (the [`vision`](../backend/vision.md) crate, the [`worker`](../backend/worker.md) binary) and the steps of the [`pipeline`](../backend/pipeline.md) that consume their outputs. The design lives in [docs/vision](README.md) and [docs/backend](../backend/README.md); this file says who builds what, in what order, and how to tell it is done.
@@ -26,7 +26,7 @@ States: **Done**, **In progress**, **Next** (start now), **Not started**, **Wait
 | Track | Owner | Owns | Code |
 |---|---|---|---|
 | **Models** | Sam | Datasets, training, ONNX export, the heads and label matrices, the model manifest, the VLM server (vLLM on the 5070 Ti), evaluation, benchmarks and calibration | `ml/`, `infra/rig.compose.yml` (the `vllm` service), `docs/vision` |
-| **Pipeline and integration** | Sara | Running the models in the backend: the `vision` crate's perception code, the perception and VLM workers, the VLM prompts and schemas in the worker, the workers' deployment on the rig, and wiring their results through the `pipeline` steps | `backend/crates/vision`, `backend/bins/worker`, `backend/crates/pipeline`, the worker services in `infra/` |
+| **Pipeline and integration** | Sara | Running the models in the backend: the `vision` crate's perception code, the perception and VLM workers, the VLM prompts and schemas in the worker, the worker services for the rig (Sam runs them there), and wiring their results through the `pipeline` steps. Works on her own laptop (section 5) | `backend/crates/vision`, `backend/bins/worker`, `backend/crates/pipeline`, the worker services in `infra/` |
 | Shared | Sam and Sara | The hand-offs of section 3: file formats, pre-processing parity, the day-2 benchmark, the end-to-end scan, calibration values reaching the code | both |
 | Not ML, but on our path | Other teammates | The knowledge seed (species, problems, organisms; issue #4), the `api`, the app, LiDAR measurement, the RTX 3070 and RX 9070 XT hosts | `ml/knowledge`, `backend/bins/api`, `app/` |
 
@@ -79,8 +79,8 @@ Every arrow in section 2 that crosses from `ml/` to `backend/` is a contract. Ea
 | ONNX files: tensor names, shapes, dtypes | Sam → perception-worker | [models 3–6](models.md#3-leaf-detector), the manifest | Exported in fp16 with fp32 I/O and checked on the 5070 Ti. BioCLIP's names differ (gap G4) |
 | Head and label-matrix JSON | Sam → `vision::perception::heads` | [`ml/models/FORMATS.md`](../../ml/models/FORMATS.md), [issue #3](https://github.com/aacruzgon/GreenLens/issues/3) | **Doesn't match the Rust loader** (gaps G1–G3) |
 | Pre-processing (resize, crop, normalise, crop boxes) | Both | [backend vision 6](../backend/vision.md#6-perception) `to_tensor`, [`ml/pdm_vision/preprocess.py`](../../ml/pdm_vision/preprocess.py) | Written to match; never compared on real images (gap G8) |
-| Model files on a machine | Sam → every worker host | `MODEL_MANIFEST` points at a folder holding the files | No fetch script yet; files exist only on the rig (task M5) |
-| The VLM server: URL, key, served name, checkpoint, flags | Sam → vlm-worker | [vlm.md 4](vlm.md#4-serving), [`infra/README.md`](../../infra/README.md) | Live on the 5070 Ti: Qwen3-VL-8B FP8, served as `vlm`, `VLM_MAX_PIXELS` 1003520, 2 slots headless |
+| Model files on a machine | Sam → every worker host and laptop | [`ml/models/fetch.py`](../../ml/models/fetch.py) downloads a manifest's files from the [`models-2026-10-16`](https://github.com/aacruzgon/GreenLens/releases/tag/models-2026-10-16) release, checks each SHA-256 and puts the manifest beside them; `MODEL_MANIFEST` points at that copy, since the worker resolves paths against the manifest's folder. [`manifest.cpu.toml`](../../ml/models/manifest.cpu.toml) names the fp32 files for `ORT_EP=cpu` | Done (tasks M5, M9) |
+| The VLM server: URL, key, served name, checkpoint, flags | Sam → vlm-worker | [vlm.md 4](vlm.md#4-serving), [`infra/README.md`](../../infra/README.md) | Live on the 5070 Ti: Qwen3-VL-8B FP8, served as `vlm`, `VLM_MAX_PIXELS` 1003520, 2 slots headless; used for real jobs, run by Sam. For testing: a fake server (M20) or Qwen3-VL-2B on llama.cpp on the laptop (section 5) |
 | VLM requests: image preparation, schemas, prompts, decoding | Sara (worker code) | [contracts 6](../architecture/contracts.md#6-vlm-structured-output), [vlm.md 5–11](vlm.md#5-image-preparation-and-tokens) | Worker code on `main`; a Python reference with passing day-1 results in [`ml/training/eval/vlm_check.py`](../../ml/training/eval/vlm_check.py) |
 | Thresholds, temperatures, certainty values | Sam (values) → workers and `api` (reading them) | [evaluation 5–6](evaluation.md#5-calibration) | Values are the docs' starting points until Oct 22–23 |
 | Text embedder file and reference vectors | Sam → `vision::embed` in `api` | [models 10](models.md#10-text-embedder) | Not pinned yet (task M8) |
@@ -131,33 +131,73 @@ When a Rust result looks wrong, run the same step in Python on the same file. Th
 | Species zero-shot against the label matrix | `ml/training/labels/zero_shot_check.py` |
 | VLM image preparation, schemas, a findings and an indicators call | `ml/training/eval/vlm_check.py` and its reports in `ml/training/eval/reports/` |
 
-### Access to the rig
+### Your machine: Windows with WSL
 
-The rig is Sam's machine (`sam-linux`, Fedora 44, RTX 5070 Ti), reachable over Tailscale at `100.121.8.122`. Ask Sam for an SSH account and to be added to the `docker` group.
+Everything in the integration track runs on your laptop. You never log in to Sam's machine: real GPU runs happen there, run by Sam (see [Real jobs](#real-jobs-on-the-rig) below).
 
-- **The VLM server** listens on the rig's `127.0.0.1:8000` only. From your machine, tunnel to it, then use the key Sam sends you (never commit it):
+1. **WSL with Ubuntu 26.04** (in PowerShell as administrator: `wsl --list --online`, then `wsl --install -d <the 26.04 name>`). 26.04 because the backend needs libheif 1.19 or newer ([setup 4](../setup/README.md#4-backend-rust)). Clone the repository inside WSL (`~/…`), not under `/mnt/c`, which is slow for builds.
+2. **In WSL**, follow [setup 2](../setup/README.md#2-everyone) (git, SSH signing) and [setup 4](../setup/README.md#4-backend-rust): Rust 1.99.1, cargo-nextest, the build tools, libheif, and ONNX Runtime 1.31.0's `onnxruntime-linux-x64-1.31.0.tgz`, with `ORT_DYLIB_PATH` pointing at its `lib/libonnxruntime.so`. Add the GitHub CLI (`sudo apt install gh`, then `gh auth login`); Python 3.11 or newer is already there.
+3. **Model files.** From the repository root:
 
-  ```bash
-  ssh -N -L 8000:127.0.0.1:8000 <you>@100.121.8.122
-  curl -H "Authorization: Bearer $VLM_API_KEY" http://127.0.0.1:8000/v1/models   # lists "vlm"
-  ```
+   ```bash
+   python3 -m ml.models.fetch --cpu
+   ```
 
-- **Model files** (about 0.9 GB for the fp16 set) live only on the rig until the fetch script exists (task M5). Until then Sam keeps a readable copy in `/srv/pdm/models/` (Sam's home folder isn't readable by other accounts). Copy it next to your manifest:
+   It downloads the fp32 files from the `models-2026-10-16` release (about 1.5 GB), checks each SHA-256, and puts `manifest.cpu.toml` beside them. The worker resolves file paths against the manifest's own folder, so point it at that copy:
 
-  ```bash
-  rsync -a --include='*/' --include='*-fp16.onnx' --include='*.json' --exclude='*' \
-    <you>@100.121.8.122:/srv/pdm/models/ ml/models/files/
-  ```
+   ```bash
+   export MODEL_MANIFEST=$PWD/ml/models/files/manifest.cpu.toml
+   export ORT_EP=cpu
+   export ORT_DYLIB_PATH=$HOME/onnxruntime-linux-x64-1.31.0/lib/libonnxruntime.so
+   ```
 
-  Then set `MODEL_MANIFEST=ml/models/manifest.toml`. The worker checks every file's SHA-256 against the manifest and refuses to start on a mismatch.
+   `manifest.cpu.toml` is `manifest.toml` with each fp16 ONNX file swapped for its fp32 export, because ONNX Runtime's CPU provider runs fp32 graphs. Every fp32 graph runs on the CPU (BioCLIP: about 0.3 s per image), and its embeddings match the rig's fp16 ones to cosine 0.9997. Use it for development, not for measuring accuracy. Without `--cpu`, `fetch` gets the fp16 set the GPU workers load.
+4. **Reference outputs for your tests:** [`ml/tests/fixtures/perception_reference.json`](../../ml/tests/fixtures/perception_reference.json) holds six photos' BioCLIP embeddings with the species top 3 and the disease head's top 3 that Python computes. A Rust test that loads the same head and label-matrix files and feeds it these embeddings should get the same ids in the same order, with probabilities within 1e-4. `python -m ml.tests.make_fixtures` regenerates it.
 
-- **GPU time:** the 5070 Ti serves the VLM most of the time. Running the perception worker on it means stopping vLLM; see section 8 before you do.
+### Testing the VLM worker
+
+Two ways, both on your laptop. Neither needs Sam's machine.
+
+**Option 1: the fake VLM server.** A small OpenAI-compatible server that answers with the real Qwen3-VL-8B responses recorded in the day-1 check (`ml/training/eval/reports/`). It tests request building, schemas, decoding, validation and box conversion against real model output, offline and instantly, but always gives the same answers, so it can't test a prompt change. Sam adds it (task M20).
+
+**Option 2: Qwen3-VL-2B on llama.cpp.** The same model family as production, with the same 0–1000 box format, small enough for a laptop's CPU. Its answers are weaker and slower, so use it to test the wiring and see a prompt's effect, not to judge accuracy. On 2026-10-16 it passed all five day-1 checks on a CPU ✓ ran (llama.cpp b11528, 2 PlantDoc photos, `ml/training/eval/vlm_check.py`): findings valid against the schema in 16 s, indicators, the `maxLength` cap, nullable soil readings, and 25 tokens per second of decoding. A laptop CPU will be slower. In WSL:
+
+```bash
+mkdir -p ~/vlm && cd ~/vlm
+curl -LO https://github.com/ggml-org/llama.cpp/releases/download/b11528/llama-b11528-bin-ubuntu-x64.tar.gz
+tar xzf llama-b11528-bin-ubuntu-x64.tar.gz          # unpacks llama-b11528/
+R=https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct-GGUF/resolve/52d6c8ffea26cc873ac5ad116f8631268d7eb503
+curl -LO $R/Qwen3VL-2B-Instruct-Q8_0.gguf           # 1.83 GB
+curl -LO $R/mmproj-Qwen3VL-2B-Instruct-F16.gguf     # 0.82 GB
+./llama-b11528/llama-server \
+  -m Qwen3VL-2B-Instruct-Q8_0.gguf --mmproj mmproj-Qwen3VL-2B-Instruct-F16.gguf \
+  -c 12288 -np 1 --image-min-tokens 256 --image-max-tokens 1024 --temp 0 --jinja \
+  --alias vlm --host 127.0.0.1 --port 8080 --api-key dev-key
+```
+
+Then the worker's VLM settings ([worker 4](../backend/worker.md#4-configuration)):
+
+```bash
+export VLM_BASE_URL=http://127.0.0.1:8080 VLM_API_KEY=dev-key VLM_SERVED_NAME=vlm
+export VLM_ADAPTER=llamacpp VLM_SERVER=llama.cpp@b11528 VLM_QUANT=gguf_q8_0
+export VLM_MODEL=Qwen/Qwen3-VL-2B-Instruct-GGUF@52d6c8ffea26cc873ac5ad116f8631268d7eb503
+export VLM_BOX_FORMAT=norm1000 VLM_CELL_PX=32 VLM_MAX_PIXELS=1003520 VLM_SLOTS=1
+```
+
+The SHA-256 of the two files are in `ml/models/dev-vlm.sha256`. If your laptop has an NVIDIA GPU, `llama-b11528-bin-ubuntu-cuda-12.8-x64.tar.gz` runs the same command on it through WSL's CUDA support.
+
+**Running one job without the API.** The worker only takes jobs from the API (`worker` claims, then `complete`s), so a test job needs either the whole local stack (API, SurrealDB, RustFS in Docker, a worker token and a queued scan) or a small harness that hands one job payload and its image files straight to the `VisionModel` (`PerceptionPipeline`, or `VlmAdapter` with the server above) and prints the result. The harness is part of tasks P2 and P3, and is the quicker route; the full stack comes with J4.
+
+### Real jobs on the rig
+
+Anything that needs the real models at full size runs on Sam's machine, and Sam runs it: the perception worker on a GPU, the VLM worker against Qwen3-VL-8B, the day-2 benchmark, the end-to-end scans. Push a branch and say what to run; Sam runs it and posts the output in the pull request. In deployment the workers need no access from outside either: they claim jobs from the API over outbound HTTPS and reach vLLM inside the same compose network ([worker 1](../backend/worker.md#1-purpose-and-boundaries)).
 
 ### A first useful session
 
-1. Fix G1, G2, G4 and G5 (they are small) and add a test that loads `disease-head-v1d-2026-10-16.json` and the stand-in label matrix and compares their top 3 with the Python references on a few saved embeddings (ask Sam for a fixture file, task M6).
-2. Fix G6 so the thresholds come from the manifest.
-3. Start `worker --caps perception` against the real manifest on the rig (with Sam, section 8) and run one fixture job.
+1. Set up WSL, fetch the CPU model files and start llama-server (above).
+2. Fix G1, G2, G4 and G5 (they are small) and add a test that loads `disease-head-v1d-2026-10-16.json` and the stand-in label matrix and checks them against `perception_reference.json`.
+3. Fix G6 so the thresholds come from the manifest.
+4. Start the harness for P2: load `PerceptionPipeline` from `manifest.cpu.toml` with `ORT_EP=cpu` and run it on a few of the fixture photos.
 
 ---
 
@@ -173,15 +213,17 @@ IDs: **M** = models track (Sam), **P** = pipeline and integration track (Sara), 
 | M2 | Leaf detector retrained on the grouped train/valid split, exported, manifest entry updated | Sam | GPU (vLLM stopped) | New ONNX within 0.5 points of PyTorch mAP50 on the test split; manifest hash updated | Done: `rfdetr-s-leaf-2026-10-16b`, mAP50 0.937 (PR #7) |
 | M3 | Qwen3.5-9B challenger starts and passes the day-1 check | Sam | M2 finished (GPU) | A report in `ml/training/eval/reports/` | Next |
 | M4 | Answer PR #6's reviews; merge PRs #6 and #7 | Sam | Reviews | Both merged into `main` | In progress: reviews answered (efa6c4b–a2ebaa9), merges wait on approval |
-| M5 | Model files for other machines. Now: a copy in `/srv/pdm/models/` on the rig, readable by Sara's account. Then `ml/models/fetch.py`: downloads the manifest's files from one place (a GitHub release's assets, for example) and checks each SHA-256 | Sam | M2 | Sara gets the files on a fresh machine with one command | Not started |
-| M6 | Fixtures for the Rust tests: a few saved BioCLIP embeddings with the Python head and zero-shot outputs (JSON) | Sam | M1 | Committed under `backend/crates/vision/testdata/` or `ml/tests/fixtures/` | Not started |
+| M5 | Model files for other machines: `ml/models/fetch.py` and the `models-2026-10-16` release (fp16 and fp32 sets) | Sam | M2 | Sara gets the files on a fresh machine with one command | Done (PR #7, a3fa16a): tested into an empty folder |
+| M6 | Fixtures for the Rust tests: a few saved BioCLIP embeddings with the Python head and zero-shot outputs (JSON) | Sam | M1 | Committed under `ml/tests/fixtures/` | Done (PR #7, 9ab7368): `perception_reference.json`, 6 photos |
 | M7 | YuNet pinned (file, SHA-256, manifest entry `yunet`) and the face check on 10 team photos ([evaluation 7](evaluation.md#7-day-1-checks)) | Sam | 10 photos with people | Every face found; manifest entry committed | Not started |
 | M8 | Text embedder pinned: arctic-embed-xs ONNX and tokenizer in the manifest (`text_embedder`, `text_embedder_tokenizer`), plus reference vectors from Python for 20 sentences | Sam | — | Files and vectors committed; P5 can compare | Not started |
-| M9 | A CPU development manifest (`manifest.cpu.toml`) pointing at the fp32 files, so the perception code runs on a laptop without a GPU | Sam | M2 | Sara runs `ORT_EP=cpu` locally | Not started |
-| P1 | Fix gaps G1–G6 in `vision` and `worker` (section 4) | Sara | M6 for the tests | `PerceptionPipeline::load` succeeds on the real manifest; tests load the real head and matrix and match the Python fixtures | Next |
+| M9 | A CPU development manifest (`manifest.cpu.toml`) pointing at the fp32 files, so the perception code runs on a laptop without a GPU | Sam | M2 | Sara runs `ORT_EP=cpu` locally | Done (PR #7, a3fa16a): every fp32 graph runs on the CPU provider |
+| M20 | The fake VLM server: OpenAI-compatible, answers with the recorded day-1 responses of Qwen3-VL-8B (option 1 in section 5) | Sam | — | Sara's VLM harness (P3) runs against it offline | Next |
+| P0 | Set up the laptop: WSL with Ubuntu 26.04, the backend tools, `fetch --cpu`, llama-server with Qwen3-VL-2B (section 5) | Sara | M5, M9 | `cargo nextest run` passes in `backend/`, and `curl` on `127.0.0.1:8080/v1/models` lists `vlm` | Next |
+| P1 | Fix gaps G1–G6 in `vision` and `worker` (section 4) | Sara | P0; M6 for the tests | `PerceptionPipeline::load` succeeds on the real manifest; tests load the real head and matrix and match the Python fixtures | Next |
 | J1 | Pre-processing parity (G8): Rust writes the tensors for 10 photos × 3 recipes and 5 leaf crops; Python compares | Sara (Rust dump), Sam (comparison) | P1 | Max absolute difference per tensor recorded; under 0.02 after normalisation, or the gap explained and fixed. `crop_box`'s rounding confirmed | Not started |
-| P2 | `worker --caps perception` on the rig against the real manifest, one fixture job of 6 shots | Sara | P1, M5 or rsync, GPU time (section 8) | The job returns leaf regions with masks, species top 3, disease top 3 per crop and embeddings; time per job and peak VRAM noted | Not started |
-| P3 | `worker --caps vlm` against the live vLLM (through the tunnel or on the rig), a findings and an indicators call with the worker's real prompts and schemas on 4 photos | Sara | The VLM server (up) | Both calls decode and validate; compared with `vlm_check`'s day-1 report | Not started |
+| P2 | A harness that runs one perception job without the API (a job payload and its images in, the result JSON out), first on the laptop with `manifest.cpu.toml`, then on a GPU by Sam with `manifest.toml` | Sara (harness, CPU run), Sam (GPU run) | P1 | On the CPU: leaf regions with masks, species top 3, disease top 3 per crop and embeddings for 6 shots. On the GPU: the same, with time per job and peak VRAM | Not started |
+| P3 | The same harness for a `vlm` job: the worker's real prompts and schemas through `VlmAdapter`, against the fake server and against Qwen3-VL-2B on the laptop; then Sam runs it against Qwen3-VL-8B | Sara (harness, local runs), Sam (real run) | P0; M20 for the fake server | Findings and indicators decode and validate on all three servers; compared with `vlm_check`'s day-1 report | Not started |
 | P4 | Decide where the text embedder and YuNet run in `api` and who wires them | Sara and the `api` owner | — | Owner named here | To assign |
 
 ### Phase 2, Oct 18–19: real models, the day-2 benchmark
@@ -195,7 +237,7 @@ IDs: **M** = models track (Sam), **P** = pipeline and integration track (Sara), 
 | M11 | Leaf relabelling pass (people, Oct 18), then the second detector run the night of Oct 18 | Sam and the team | GPU night slot | New detector exported and in the manifest | Not started |
 | M12 | The real BioCLIP label matrix from the species and organism seed files | Sam | The knowledge seed's `species/` and `organisms/` files; issue #4 | Manifest entry `bioclip_labels_<label_set_version>`; zero-shot check on team photos | Waiting |
 | M13 | Heads on our detector's crops (Oct 19): disease head v2, the species head, the plant probe (needs non-plant negatives: soil and surroundings photos) | Sam | M11, M12 | Manifest entries; the species head kept only if it improves the dev split | Not started |
-| P6 | The worker services in `infra/rig.compose.yml`: `perception-worker` and `vlm-worker`, each with its env file (`WORKER_TOKEN`, GPU by UUID, `ORT_DYLIB_PATH`, `MODEL_MANIFEST` mounted read-only, `VLM_BASE_URL=http://vllm:8000`) | Sara (Sam reviews; it's his machine) | P2, P3 | `docker compose -f infra/rig.compose.yml up` starts all three and the workers' heartbeats reach the API | Not started |
+| P6 | The worker services in `infra/rig.compose.yml` (Sara writes them, Sam runs them): `perception-worker` and `vlm-worker`, each with its env file (`WORKER_TOKEN`, GPU by UUID, `ORT_DYLIB_PATH`, `MODEL_MANIFEST` mounted read-only, `VLM_BASE_URL=http://vllm:8000`) | Sara (Sam reviews; it's his machine) | P2, P3 | `docker compose -f infra/rig.compose.yml up` starts all three and the workers' heartbeats reach the API | Not started |
 | P7 | Second VLM worker on the RX 9070 XT (AMD day-1 check, then the same checkpoint and flags) | The 9070 XT's owner | The card's host | Findings and indicators calls pass with our schema | To assign |
 
 ### Phase 3, Oct 20–21: end-to-end scans
@@ -244,22 +286,15 @@ If a milestone slips, the tasks that need it slip with it; say so in the team ch
 
 ## 8. GPU time on the rig
 
-`sam-linux` has one GPU, the RTX 5070 Ti (16 GB), and it also draws Sam's desktop. Three things want it:
+Only Sam uses the rig (`sam-linux`, one RTX 5070 Ti, 16 GB, which also draws Sam's desktop). Everything else runs on laptops (section 5). Three things want the card:
 
 | Use | VRAM | When |
 |---|---|---|
-| vLLM (VLM server) | 0.78 of the card with the desktop on (AWQ build), 0.90 headless (FP8, 2 slots) | Most of the day; needed by P3, P5, J2 and J4 |
-| Detector training | Most of the card for about 30 minutes per run | M2 now, M11 the night of Oct 18 |
-| The perception worker, until the RTX 3070's host is up | About 5.3 GB at the planned batch caps | P2, J1 |
+| vLLM (Qwen3-VL-8B) | 0.78 of the card with the desktop on (AWQ build), 0.90 headless (FP8, 2 slots) | Most of the day: the real VLM runs of P3, P5, J2 and J4 |
+| Detector training | Most of the card for about 30 minutes per run | M11, the night of Oct 18 |
+| The perception worker's GPU runs, until the RTX 3070's host is up | About 5.3 GB at the planned batch caps | P2's GPU run, J1, J3 |
 
-The perception worker and vLLM don't fit together on this card (vLLM keeps about 1.5 GB free at 0.90). Before you stop vLLM, ask in the team chat, then:
-
-```bash
-docker stop infra-vllm-1     # frees the card; settings are kept
-docker start infra-vllm-1    # back up in a few minutes; the health check turns "healthy"
-```
-
-The RTX 3070 (perception) and RX 9070 XT (second VLM worker) are on other teammates' hosts; once they're up, perception moves there and this conflict ends ([vision README 4](README.md#4-placement-and-vram-budgets)).
+The perception worker and vLLM don't fit together on this card (vLLM leaves about 1.5 GB free at 0.90), so Sam stops vLLM for a perception run (`docker stop infra-vllm-1`, then `docker start infra-vllm-1`). To ask for a real run, push the branch and say in the pull request what to run; Sam posts the output there. Once the RTX 3070 and RX 9070 XT hosts are up, perception moves to the 3070 and this conflict ends ([vision README 4](README.md#4-placement-and-vram-budgets)).
 
 ---
 
