@@ -6,9 +6,21 @@ The project guidance for all agents lives in AGENTS.md, so there is one copy to 
 
 ## Subagents (Claude Code only)
 
-- At most **6 subagents** may run at once.
+- At most **6 subagents** may run at once. The count includes every agent running, at every level, not only the ones you started.
 - They may do any type of work: research, audits, writing, code, verification.
 - They may be any combination of **Opus 5.5** (`claude-opus-5-5`), **Sonnet 5.5** (`claude-sonnet-5-5`) and **Haiku 5.5** (`claude-haiku-5-5`). In the Agent tool these are `model: "opus"`, `"sonnet"` and `"haiku"`.
+
+Use them sparingly. A new agent can't see your context, so it re-reads everything it needs, and the large documents here cost hundreds of thousands of tokens per agent. Resuming an agent reloads its whole transcript.
+
+- **Spawn only when it pays.** Do small or sequential work yourself. Spawn for work that is large and independent, or that must be checked by fresh eyes (an audit of work you or another agent wrote).
+- **Subagents don't spawn subagents.** Only the main session starts agents. Write "don't start subagents" into every brief, unless the user asked for a fan-out.
+- **One agent per job by default.** Split a job across agents only when the parts are independent and each is large, and say why in the brief.
+- **Pick the model for the job:**
+  - **Haiku:** mechanical checks, such as link checks, re-running a script, grep sweeps or counting.
+  - **Sonnet:** well-specified edits and fixes from an exact list, routine research, writing to a template.
+  - **Opus:** design, adversarial audits, and work that needs judgement across many documents.
+- **Narrow briefs.** Name the files and sections to read, with line ranges or a grep where possible, never "read docs/backend". Pass the facts the agent needs in the brief instead of making it rediscover them. Ask for a short report.
+- **Run expensive checks once.** Run the example checker and the link checks at the end of a job, not after every edit.
 
 ## Skills (Claude Code only)
 
