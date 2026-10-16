@@ -1,0 +1,337 @@
+# PDM Training, Export and Knowledge Ingestion
+
+> **Status:** Draft v0.2, 2026-10-16. v0.2: the heads and label matrices are written in the backend's JSON format (base64 `f32`), and an MLP head would need that format and the worker extended. v0.1, 2026-10-15: First training design: the Python environment, the datasets and their licences, data preparation with deduplication, the leaf detector fine-tune, the disease and species heads on BioCLIP 2 features, ONNX export and its checks, the label lists generated from the knowledge base, feedback as training data, and the model steps of knowledge ingestion.
+> **Checked:** ✓ means read in the primary source on that date; ✓ ran means executed. Dataset licences, package versions and wheel indexes were read on 2026-10-15 (✓). PlantDoc's duplicates and the BioCLIP probes were run on a Mac, on CPU and its Apple GPU (✓ ran). No training has run on the rig.
+
+Everything here lives in `ml/` ([architecture 13](../architecture/README.md#13-repository-layout)) and runs on dev machines or the rig, never in production. What it produces (ONNX files, label lists, temperatures, the knowledge seed) is consumed by the workers and `api` through the model manifest ([README 6](README.md#6-model-files-versions-and-pinning)).
+
+## Contents
+
+1. [Layout](#1-layout)
+2. [Environment](#2-environment)
+3. [Datasets and licences](#3-datasets-and-licences)
+4. [Data preparation](#4-data-preparation)
+5. [Leaf detector](#5-leaf-detector)
+6. [Disease and species heads](#6-disease-and-species-heads)
+7. [Export to ONNX](#7-export-to-onnx)
+8. [Label lists](#8-label-lists)
+9. [Feedback as training data](#9-feedback-as-training-data)
+10. [Knowledge ingestion: the model steps](#10-knowledge-ingestion-the-model-steps)
+11. [Schedule](#11-schedule)
+12. [Open questions](#12-open-questions)
+
+---
+
+## 1. Layout
+
+```
+ml/
+├─ pdm_vision/              shared Python package: pre-processing, label mapping, metrics
+│                           (the same numbers the Rust worker uses, checked by a parity test)
+├─ training/
+│  ├─ data/                 download scripts and manifests; no images in git
+│  │  ├─ sources.yaml       every dataset: URL, licence, version, SHA-256 of the archive
+│  │  ├─ fetch.py
+│  │  ├─ dedupe.py          section 4
+│  │  └─ splits/            the deduplicated train / val / test lists, committed
+│  ├─ detector/             section 5
+│  ├─ heads/                section 6: feature extraction, disease and species heads
+│  ├─ export/               section 7: ONNX export, fp16, checks
+│  ├─ labels/               section 8: classifier_labels.yaml, the BioCLIP label matrix
+│  └─ eval/                 the evaluation set and harness (evaluation 9)
+├─ models/
+│  └─ manifest.toml         every model file the system loads (README 6)
+└─ knowledge/               ingestion (section 10) and the reviewed seed
+```
+
+Images and model files are never committed. Datasets are fetched by script with their checksums, and model files are published to the model store named in the manifest.
+
+---
+
+## 2. Environment
+
+| Package | Pin | Note |
+|---|---|---|
+| Python | 3.12 | All wheels below exist for cp312 ✓ |
+| `torch`, `torchvision` | 2.14.1, 0.29.1 from the **cu130** index ✓ | cu126 has no sm_120 ✓. The cu130 and cu132 wheels include sm_120 (the 5070 Ti) and sm_86 (the 3070) in PyTorch's support matrix for 2.12 and 2.13 ✓; the matrix has no 2.14 row, so this is *unverified* for 2.14.1 until the day-1 check. The cu128 and cu129 indexes stop at torch 2.11 and 2.13 ✓. Needs a driver of 580.65.06 or later ✓ |
+| `open_clip_torch` | 3.3.0 ✓ | BioCLIP 2 loading and the text tower. MIT on PyPI; read its LICENSE file before relying on it, since its header reads oddly ✓ |
+| `timm` | 1.0.30, Apache-2.0 ✓ | Only for the ConvNeXt-Tiny runner-up |
+| `onnx`, `onnxscript` | 1.22.0, 0.7.2 | ONNX Runtime 1.31 builds against onnx 1.22.0 ✓; if the resolver refuses the pair, use onnx 1.23.2 and keep opset ≤ 23 |
+| `onnxruntime-gpu` | 1.31.0 (CUDA 13) ✓ | The same runtime the worker binds, for every numerical check |
+| `onnxconverter-common` | 1.16.0 ✓ | fp16 conversion |
+| `tokenizers` | the version matching the Rust crate | Text embedder parity (section 10) |
+| `scikit-learn` | latest | The heads' logistic regression and temperature fitting |
+
+```bash
+pip install torch==2.14.1 torchvision==0.29.1 --index-url https://download.pytorch.org/whl/cu130
+```
+
+The lock file is `ml/requirements.lock`, generated with hashes. vLLM pins its own torch (2.13.0 ✓) inside its image; the training environment never shares a Python with it.
+
+**Where training runs.** The 5070 Ti trains, because it has the memory and is sm_120-ready, but it also serves the VLM. Training on it means stopping vLLM, so long runs happen on Oct 17–18, before the VLM pipeline is live, and later runs are scheduled when the rig isn't serving the demo. The heads (section 6) train on CPU in seconds once features are extracted, so they don't need the GPU at all. Whether the third card can take training is open ([README 4](README.md#4-placement-and-vram-budgets)).
+
+---
+
+## 3. Datasets and licences
+
+The repository is public and the app is a hosted service, so a dataset is used for **shipped weights** only when its licence allows commercial use and adaptation. Download scripts and manifests are committed, never images.
+
+| Dataset | Content | Images | Licence | Use |
+|---|---|---|---|---|
+| **PlantDoc** (classification) | 13 crops, 28 classes; in-the-wild photos scraped from the web ✓ | 2,342 train, 236 test ✓ | **CC BY 4.0** ✓ | Core for the disease and species heads |
+| **PlantDoc** (detection) | The same photos with VOC boxes and CSVs: 2,345 train images with 8,469 boxes over 29 classes, 236 test images with 452 boxes ✓ ran | 2,581 ✓ | CC BY 4.0 for the annotations ✓; the scraped photos keep their owners' copyright *unverified* | Leaf detector |
+| **TOM2024** | Tomato, onion, maize field photos, Burkina Faso, 30 classes ✓ | 12,227 labelled ✓ | **CC BY 4.0** ✓ | Tomato and corn field data |
+| **Tomato Leaf Disease (Pakistan, 2026)** | Tomato: early blight, late blight, Septoria, leaf mould, yellow leaf curl, healthy; smartphone field photos ✓ | 7,200 ✓ | **CC BY 4.0** ✓ | Tomato field data |
+| **iBean** | Bean: healthy, angular leaf spot, rust; smartphone field photos ✓ | 1,296 ✓ | **MIT** ✓ | Bean, if beans become supported |
+| **DiaMOS Plant** | Pear leaf diseases ✓ | 3,505 ✓ | CC BY 4.0 ✓ | Only if pear is supported |
+| **Plant Pathology 2020 / 2021** | Apple field photos: scab, rust, frog-eye, powdery mildew ✓ | 3,651 / about 23,000 ✓ | Kaggle competition terms, **not confirmed** *unverified* | Only after a teammate reads the terms |
+| **PlantVillage** | 14 crops, 38 classes, one leaf on a plain background ✓ | 54,306 ✓ | CC BY-SA 3.0 ✓ | Minority source at a low sampling weight, for rare classes. Lab photos generalise poorly to the field ✓ ([Mohanty 2016](https://pmc.ncbi.nlm.nih.gov/articles/PMC5032846/): 31% on field images) |
+| iNaturalist / GBIF photos | Healthy foliage of each crop, pests, beneficials | as needed | Per photo; **only CC0 and CC BY** ✓ (the default is CC BY-NC) | Gap filling, with credit recorded per image |
+| **PlantWild** | In-the-wild disease photos, 89 classes ✓ | 18,542 ✓ | **CC BY-NC-ND 4.0** ✓ | **Not in shipped weights** |
+| **PlantSeg** | In-the-wild disease photos with lesion masks, 115 diseases ✓ | 11,458 ✓ | **Conflicting:** Zenodo record 13958858 says CC BY-NC-ND 4.0 ✓, record 14935094 says CC BY 4.0 ✓, and the GitHub repository has none ✓; the images are scraped from the web | Treated as NC-ND until a teammate settles it. Its lesion masks are the best check of the `SpotSegmenter` ([evaluation 6](evaluation.md#6-thresholds-set-from-the-evaluation-set)) as a private evaluation, never training |
+| **PhenoBench** | Top-down sugar-beet field images with complete leaf instance masks ✓ | 2,179 ✓ | CC BY-SA 4.0 ✓ | Complete leaf labels, but top-down field views; a possible extra for the detector, since ShareAlike binds redistributed data and its reach to weights is unsettled |
+| Agri-Foundation-145k | Aggregate of the above | 144,751 ✓ | Labelled CC BY 4.0, but repackages NC-ND and SA data ✓ | **Excluded**: its label can't be trusted |
+
+**PlantDoc's quality.** Its photos were scraped from the web, and its splits leak: 13 of its 236 test images have a training image at cosine similarity 0.98 or more in BioCLIP's embedding space, and only 4 of those 13 pairs carry the same label ✓ ran. Section 4 removes the duplicates and the conflicts before anything is trained or reported.
+
+**Coverage decides the crops** (architecture open decision 3). PlantDoc and the field sets give real disease classes for tomato, potato, pepper, apple, grape, corn and strawberry. Squash, raspberry, blueberry, cherry, peach and soybean have only healthy images or one disease ✓. The classifier supports what the data covers; the VLM's indicators carry the rest, and the knowledge base can still hold a crop's profiles without classifier support (`classifier_supported` is per species).
+
+Every dataset's licence and citation goes into `ml/training/data/sources.yaml` and the notices ([README 9](README.md#9-licences-and-notices)).
+
+---
+
+## 4. Data preparation
+
+1. **Fetch** each dataset by script, checking the archive's SHA-256.
+2. **Deduplicate across all sources and splits.** Embed every image with BioCLIP 2 (section 6). Pairs at cosine 0.98 or more are duplicates; check a sample by eye and adjust the threshold. In each group keep one image: the one in the test split if any (so the test set stays as published, minus conflicts), otherwise the largest. A group with **conflicting labels** is dropped entirely unless a teammate relabels it.
+3. **Map labels** from each dataset's class names to `(species_id, problem_id | healthy)` with one mapping file per dataset, reviewed like the knowledge base. A class that has no knowledge-base problem is dropped, not guessed.
+4. **Split by source and by plant where known**, so a model is never validated on a near-copy of its training data: the published PlantDoc test split stays test; validation is PlantDoc's training data held out by 15%, plus the field sets held out by source (for example all of one TOM2024 collection site).
+5. **Crops for the heads come from our own detector** (section 5), not from the datasets' boxes, so training sees the same crops the worker will. Until the detector is trained (Oct 18), PlantDoc's boxes stand in.
+6. **Never** use an evaluation-set photo; the evaluation harness checks this with perceptual hashes ([evaluation 9](evaluation.md#9-harness-and-reports)).
+
+---
+
+## 5. Leaf detector
+
+RF-DETR-S, one class `leaf` ([models 3](models.md#3-leaf-detector)). RF-DETR's trainer is Apache-2.0 and installs with `pip install rfdetr==1.11.2` ✓; it reads COCO JSON or YOLO folders ✓.
+
+### Data
+
+1. **PlantDoc's detection boxes**, every class collapsed to `leaf`: disease is a separate stage, and one class doubles the examples per class.
+2. **Clean them** the way Roboflow's fixed copy did ✓: clip the 4 out-of-bounds boxes, drop the 4 zero-sized ones, and drop the slides and collages (found by eye in the duplicate review of section 4). The 16 file names in both splits ✓ ran are resolved by the deduplication.
+3. **Fill in the missing leaves.** PlantDoc boxes mostly the leaves that mattered to its annotators ✓ ran, so after the first training run (Oct 17), the detector pseudo-labels the training images at a low threshold, and a teammate accepts, fixes or adds boxes on 300 images in CVAT or Label Studio (about 3 hours). The second run trains on the corrected set. This is the single change most likely to raise recall.
+4. **Add garden photos**: 150 or more of the team's own photos that are not in the evaluation set, labelled the same way, so the detector sees phone close-ups of local plants.
+5. Convert to COCO JSON (`train/_annotations.coco.json`, `valid/…`, `test/…`) ✓; about 20 lines from PlantDoc's CSVs.
+
+### Training
+
+```python
+from rfdetr import RFDETRSmall
+
+model = RFDETRSmall()                  # Apache-2.0 COCO weights
+model.train(
+    dataset_dir="data/leaf-coco",
+    epochs=50,
+    batch_size="auto",                 # probes the largest batch that fits ✓
+    grad_accum_steps=4,
+    lr=1e-4,
+    resolution=512,
+    output_dir="runs/leaf-rfdetr-s",
+)
+```
+
+`batch_size="auto"` and `grad_accum_steps` are from RF-DETR's training documentation ✓; the other argument names are *unverified* until the first run. On the 5070 Ti in mixed precision, 50 epochs of about 2,500 images should take 1–2 hours *estimate*.
+
+### Acceptance
+
+- Class-agnostic mAP50 on the deduplicated PlantDoc test split, as the floor for later runs.
+- **Recall of every visible leaf** at IoU 0.5 on the evaluation set's `leaf_closeup` shots, target 85% ([evaluation 4](evaluation.md#4-metrics-and-acceptance-targets)). PlantDoc's test boxes are incomplete, so its mAP can't measure recall.
+- The export check of section 7.
+
+If RF-DETR-S misses the targets, D-FINE-S (Apache-2.0) is trained on the same COCO files with its own trainer.
+
+---
+
+## 6. Disease and species heads
+
+Both heads sit on frozen BioCLIP 2 image features ([models 6–7](models.md#7-disease-classifier)). They are small, train in seconds on CPU, and are shipped as a JSON file holding the weight matrix and bias as base64 little-endian `f32`, which the worker applies in Rust ([backend vision 5](../backend/vision.md#5-the-model-manifest); the format is the backend's). The worker runs it on the embeddings it already has.
+
+### Features
+
+- Run BioCLIP 2's vision tower once over every training image and every leaf crop, with the **exact** pre-processing the worker uses (shortest side to 224, bicubic, centre crop, CLIP normalisation) from `pdm_vision`, and cache the L2-normalised 768-dimensional vectors by image hash.
+- About 60–70 seconds for 2,342 images on a Mac (Apple GPU through PyTorch's MPS backend) with BioCLIP v1 ✓ ran; BioCLIP 2 is roughly 3–4 times the compute *estimate*, a few minutes on the 5070 Ti.
+
+### Disease head
+
+- **Classes:** the rows of `classifier_labels.yaml` (section 8): every `(species, problem | healthy)` pair with at least 30 deduplicated training crops. A pair below that is left out and its problem left to the VLM.
+- **Model:** multinomial logistic regression (scikit-learn, `C` chosen on validation) first; a 2-layer MLP (768 → 512 → classes, dropout 0.2) if it beats it by more than 2 points top-1 on validation. The worker's head is one linear layer today, so an MLP also needs the file format and the worker extended to two layers.
+- **Class balance:** weight classes by inverse frequency, capped at 10 times the median weight.
+- **Augmentation:** for the logistic head, extract features of 4 augmented views per training crop (random resized crop at 0.7–1.0 scale, horizontal flip, colour jitter of 0.2, mild blur) and train on all of them. Cheap, and it makes the head robust to framing.
+- **Restricted softmax.** At serving time the worker restricts the logits to the working species before the softmax ([contracts 5](../architecture/contracts.md#results)). Validation reports both the full-label and the restricted accuracy; the restricted number is the one that matters (0.801 against 0.742 on BioCLIP v1 features ✓ ran).
+- **Temperature:** one scalar `T_disease`, fitted on validation by minimising the restricted softmax's negative log-likelihood ([evaluation 5](evaluation.md#5-calibration)). In the BioCLIP v1 probe, temperature scaling cut the expected calibration error from 0.150 to 0.093 with T = 0.71 ✓ ran.
+- **Report:** top-1 and top-3 per crop on the deduplicated PlantDoc test split and on the field sets' held-out source, the confusion matrix per crop, and the calibration error, in `ml/training/heads/reports/`.
+
+### Species head
+
+- **Classes:** the species with `classifier_supported: true`.
+- **Data:** whole-plant photos are what matters most for species, and the disease datasets are mostly leaves. Add CC0 and CC BY iNaturalist photos of each supported crop (whole plants, flowers, fruit), at least 100 per species.
+- **Model and temperature:** as the disease head. It is used only if it improves the dev split's species top-1 ([models 6](models.md#a-trained-species-head-for-the-supported-crops)).
+
+### Runner-up: ConvNeXt-Tiny
+
+If the disease head plateaus below 75% top-1 on the deduplicated field validation set, fine-tune `timm/convnext_tiny.fb_in22k_ft_in1k` (Apache-2.0 ✓) at 288 pixels on the same crops: AdamW, learning rate 2e-4 with cosine decay, 30 epochs, label smoothing 0.1, the augmentations above plus TrivialAugment, mixed precision on the 5070 Ti. A few hours *estimate*. It then becomes its own ONNX session on the 3070 ([README 4](README.md#4-placement-and-vram-budgets)).
+
+---
+
+## 7. Export to ONNX
+
+### Rules
+
+| Rule | Value |
+|---|---|
+| Exporter | The one each model's export was verified with: RF-DETR's `model.export(format="onnx", dynamic_batch=True)` ✓ ran, and `torch.onnx.export(..., dynamo=False)` with `dynamic_axes` for SAM 2.1, MobileSAM, UperNet and BioCLIP v1 ✓ ran. BioCLIP 2 uses the same open_clip code path as BioCLIP v1 and the heads are a single `Gemm`, but neither has been exported yet *unverified* until the day-1 export. The TorchScript exporter is deprecated but still in PyTorch 2.14.1 ✓; the dynamo exporter (`dynamo=True`, the default since 2.9 ✓) is tried first for any new model, and its large weights are written to a separate `.onnx.data` file ✓ ran |
+| Opset | **17**, set explicitly so a PyTorch upgrade can't change it. Every model exported so far was exported and checked at 17 (RF-DETR with its own exporter; SAM 2.1, MobileSAM, UperNet and BioCLIP v1 with the TorchScript exporter) ✓ ran, and it is the first opset with `LayerNormalization`, which the CUDA execution provider implements from 17 ✓. A new model may use up to 20 (the dynamo exporter's default ✓) when its export needs it, recorded in its manifest entry. Never 24 or later: PyTorch's exporter stops at 23 ✓ and ONNX Runtime 1.31 reads up to 26 ✓ |
+| Batch | A dynamic first axis on every input and output (`dynamic_axes={"images": {0: "batch"}, …}`, or `Dim("batch", min=1, max=64)` with the dynamo exporter). Check that nothing bakes the trace's batch size into the graph: MobileSAM's TinyViT does (`B = len(x)` in `PatchMerging`) and needs `x.reshape(-1, H, W, C)` before export ✓ ran. SAM 2's Hiera keeps H and W fixed at 1024, which is correct ✓ |
+| Graph | The raw network only: no NMS, no box decoding, no resize. L2 normalisation of embeddings is inside the graph |
+| Weights | A single file under 2 GB. The dynamo exporter writes large weights to a separate `.onnx.data` file ✓ ran; re-save as one file so the manifest's hash covers everything |
+| Names | Inputs and outputs named in the manifest (`images`, `embeddings`, `logits`, …), never positional |
+
+### fp16
+
+Convert with `onnxconverter_common.float16.convert_float_to_float16(model, keep_io_types=True)` ✓ and keep the fp16 file only if it passes the checks below; otherwise ship fp32. Always keep `GridSample` in fp32 through `op_block_list`: the CUDA execution provider implements it for float only ✓, and RF-DETR's deformable attention has 3 of them ✓ ran. Keep `LayerNormalization`, `Softmax` and `ReduceMean` in fp32 too if a ViT's embeddings drift. Every op in the exported RF-DETR, SAM 2.1, MobileSAM and UperNet graphs has a CUDA kernel in ONNX Runtime 1.31 ✓ ran (checked against its kernel table); BioCLIP 2's graph gets the same check after its export. The fp16 speed-up on the 3070's tensor cores is expected but unmeasured *estimate*; ORT's documentation names tensor-core GPUs as the ones that gain most ✓ without quantifying it. For ViT models (BioCLIP 2), run `onnxruntime.transformers.optimizer` with `model_type="vit"` ✓ at export and keep its output only if the checks pass and it is faster.
+
+### Checks before a file enters the manifest
+
+`ml/training/export/check.py` runs every exported file under ONNX Runtime 1.31 with the CUDA execution provider on the 3070, against the PyTorch model on 50 real photos:
+
+| Model | Pass condition |
+|---|---|
+| Embeddings (BioCLIP 2) | Cosine similarity 0.999 or more for every image; ran at batch 1, 3 and the maximum, with identical results per image across batch sizes (BioCLIP v1's export matched PyTorch within 1.2e-6 at batch 1 and 5 ✓ ran) |
+| Heads | Same top-1 on every image, probabilities within 1e-4 |
+| Detector | mAP50 on the PlantDoc test split within 0.5 points of PyTorch |
+| Mask model | Mean IoU of masks against PyTorch's 0.98 or more |
+
+Then it writes the manifest entry: file, SHA-256, opset, precision, input and output names and shapes, pre-processing values, and the check's numbers.
+
+---
+
+## 8. Label lists
+
+Two lists tie the models to the knowledge base. Both go through the knowledge loader, which validates them and generates their versions ([contracts 10](../architecture/contracts.md#checks-and-generated-files)); neither is edited by hand.
+
+### `classifier_labels.yaml`
+
+- **Written by training.** `ml/training/labels/` writes it from the disease head's class list into the seed directory, `ml/knowledge/seed/classifier_labels.yaml` ([contracts 10](../architecture/contracts.md#files)), in the same pull request as the head: `model_version`, then for each output `index`, the training `label`, `species_id` and `problem_id` or `healthy`.
+- **Loaded by the loader** like every seed file: every `species_id` and `problem_id` must exist, and each species' `classifier_supported` must agree with whether it has rows ([contracts 10](../architecture/contracts.md#checks-and-generated-files)). The rows go into the `classifier_label` table keyed by `[model_version, index]` ([schema](../database/schema.surql)), and the loader derives `classifier_labels_version` from `model_version` ([README 12](README.md#12-findings-for-the-architecture-and-contracts), finding 21).
+- `classifier_labels_version` in every perception payload names it. The head file and the seed change in one deploy; the worker keeps the previous head loaded during the change-over, and refuses a job naming a version it doesn't have with a non-retryable error ([README 12](README.md#12-findings-for-the-architecture-and-contracts), finding 23).
+
+### The BioCLIP label matrix
+
+- **The labels.** Every species' and organism's `bioclip_label`, written in the seed as `<scientific name> with common name <common name>` ([README 12](README.md#12-findings-for-the-architecture-and-contracts), finding 20).
+- **The matrix.** `ml/training/labels/bioclip_text.py` embeds each label with BioCLIP 2's text tower, wrapped in each of the 80 OpenAI ImageNet templates (`a photo of {label}.`, …), averaged and re-normalised ✓ (pybioclip's method). The output is an `N × 768` fp32 matrix with each row's `species_id` or `organism_id` and its table, about 0.6 MB for 200 labels, written in the same JSON format as the heads (base64 little-endian `f32`) as the manifest entry `bioclip_labels_<label_set_version>`.
+- **The version.** The loader generates `label_set_version` ([contracts 10](../architecture/contracts.md#checks-and-generated-files)) as the first 16 hex digits of the SHA-256 over the BioCLIP model revision, the template list and the sorted labels, so a change in any of them is a new version. It runs `bioclip_text.py` (or checks the matrix training produced against the same hash) in the same step.
+- The matrix is published to the model store and listed in the manifest. The perception worker loads the current matrix and, during a change-over, the previous one, and picks the payload's.
+- **It needs only names.** Species and organisms need no reviewed problem profile to have a label, so the matrix can be built from the species and organism seed files as soon as they exist (Oct 18), long before every profile is reviewed.
+
+**Label wording.** Text type matters by only about 4 points on leaf photos (✓ ran: 54–58% top-1 across five caption types), and the scientific name guards against ambiguous common names ("pepper"), so the label carries both. For organisms with stages (ladybug larva against adult), the label names the stage: `Coccinellidae larva with common name ladybug larva`.
+
+---
+
+## 9. Feedback as training data
+
+`POST /scans/{id}/feedback` stores a reviewer's verdict and corrected label ([contracts 3](../architecture/contracts.md#post-scansidfeedback)), and observations keep their `model_version`. After build week:
+
+1. `ml/training/data/feedback.py` exports scans with feedback `wrong` and a corrected label: the image, the regions, the predicted and corrected labels, the model versions. It runs against a database export, never production directly, and only on gardens whose owners agreed to contribute photos.
+2. A teammate reviews each one, as for the evaluation set ([evaluation 3](evaluation.md#3-labels)).
+3. Reviewed crops join the head's training data with source `feedback`; a few go to the evaluation dev split. They are deduplicated against everything else first.
+
+---
+
+## 10. Knowledge ingestion: the model steps
+
+The ingestion pipeline is in [architecture 5](../architecture/README.md#knowledge-base) and its seed format in [contracts 10](../architecture/contracts.md#10-knowledge-seed-format). Four of its steps use a model, and they are covered here. Fetching, cleaning, validation and the migration are plain code.
+
+```
+ml/knowledge/
+├─ fetch.py            step 1: sources.yaml → raw documents (not committed)
+├─ chunk.py            step 1: raw → chunk text
+├─ tag.py              step 2: tags each chunk (text classifier)
+├─ embed.py            step 3: embeds chunks with the pinned text model
+├─ extract.py          step 4: drafts profiles (strongest LLM)
+├─ discriminate.py     step 4: proposes the 3 discriminating indicators (text embedder)
+├─ validate.py         JSON Schema from the domain types, plus the loader's checks
+├─ build_migration.py  the .surql migration, with vectors
+└─ seed/               the reviewed seed files (committed)
+```
+
+### Chunking (step 1)
+
+- Split on the document's own headings first, then on paragraphs, into chunks of about 120–200 words. A chunk never crosses a heading, so its topic stays single.
+- No overlap: chunks are short excerpts shown with citations, and overlap would repeat text in the app.
+- `id` is `<source_id>.<n>` ([contracts 10](../architecture/contracts.md#other-entity-shapes)), stable while the source doesn't change.
+
+### Tagging (step 2)
+
+- Model: the `TextClassifier` route ([architecture 7](../architecture/README.md#router-and-safety-gate)): Jev when available, otherwise `claude-haiku-5-5` with structured output.
+- Output per chunk: `crop`, `problem`, `organism` (each a seed slug or null), `topic` (the `ChunkSeed` enum) and `relevant`. The enums are generated from the seed, so a tag can't name an unknown ID.
+- Irrelevant chunks (navigation, legal text, other crops) are dropped. A teammate spot-checks 10% of each source's tags; a source with more than 1 wrong tag in 10 is re-tagged with the strongest model.
+
+### Embedding (step 3)
+
+- Model: the **same ONNX file and tokenizer** as `api`'s `TextEmbedder` ([models 10](models.md#10-text-embedder)), run with `onnxruntime` on CPU. The `tokenizers` Python package wraps the same Rust core as the crate. Load `tokenizer.json` from the file (not `AutoTokenizer` or `SentenceTransformer`, which can differ in special tokens and truncation), enable truncation at 512 and padding with id 0, feed `input_ids`, `attention_mask` and zero `token_type_ids` as int64, take the CLS vector and L2-normalise it in fp32 ✓ ran. Documents get no prefix.
+- Batches of 64 ([architecture 5](../architecture/README.md#knowledge-base)). In fp32 a text's vector doesn't depend on its batch ✓ ran, so the batch size is free. A 200-word chunk is about 290 tokens, far below the 512 limit ✓ ran.
+- Each vector is cached under `(embedding_model, sha256(text))`, so a chunk whose text hasn't changed keeps its vector.
+- Vectors are not in the seed files ([contracts 10](../architecture/contracts.md#other-entity-shapes)). `build_migration.py` writes them into the migration with `embedding_model` on every row, so the database and the query side always name the same model.
+- Changing the model re-embeds every chunk and every memory, and a different dimension changes the HNSW index ([database README](../database/README.md)). That is a migration, never a silent swap.
+- The golden test of [models 10](models.md#the-pinned-recipe) runs in the ingestion tests too.
+
+### Profile extraction (step 4)
+
+- Model: the strongest LLM API model (`claude-opus-5-5`) with structured output. Extraction runs once per profile, so cost is small and quality matters most.
+- Input: the tagged chunks for one problem or organism from every source, each with its chunk id. Output: a draft `ProblemSeed` or `OrganismSeed`, plus, for every indicator, condition and look-alike, the chunk ids it came from. The ids go into a review file next to the draft, so the reviewer can check each line against its source.
+- The schema comes from the `domain` types through `schemars`, with the keywords the hosted API's structured output rejects (`maxLength`, `maxItems`, `minimum`, `maximum`) stripped ✓ ([vlm.md 12](vlm.md#12-the-fallback-worker)); `validate.py` then checks the full schema and the loader's checks.
+- The prompt's rules:
+  - use only the given excerpts;
+  - write each symptom as one checkable indicator, with a yes / no `question` a person could answer from a photo, in plain words a 7–8B VLM reads well ("Do the brown spots have rings inside them, like a target?");
+  - give a `measure` only when the source states a size, converted to the quantity's unit, and split a size that comes with other signs into a size indicator and a sign indicator ([contracts 10](../architecture/contracts.md#problem-profile));
+  - set `where` and `image_kinds` from where the symptom shows;
+  - propose a `weight`: 3 for a symptom the source calls characteristic or diagnostic, 2 for common, 1 for "may" or "sometimes";
+  - never write a dose, a rate or a mixing ratio;
+  - leave `discriminating` false everywhere: the next step proposes it.
+
+### Choosing the discriminating indicators (step 4, continued)
+
+Each problem asks exactly 3 indicators: "the highest-weighted ones that differ from its `looks_like` neighbours" ([architecture 5](../architecture/README.md#knowledge-base)). The script measures "differ", then a person decides:
+
+1. Embed every indicator's `text` with the pinned text embedder (as documents).
+2. An indicator's **overlap** is its highest cosine similarity to any indicator of any `looks_like` neighbour.
+3. It is **shared** when the overlap is 0.85 or more. That starting value is checked by reading the pairs for one crop and adjusted.
+4. Propose the top 3 non-shared indicators by weight, ties broken by lower overlap. Prefer a set where at least two indicators can be seen in a `leaf_closeup` or `whole_plant`, the shots most scans have. If fewer than 3 are non-shared, fill with the lowest-overlap shared ones and flag the profile.
+5. The reviewer sees each pair with its similarity and can override. The loader enforces exactly 3 ([contracts 10](../architecture/contracts.md#checks-and-generated-files)).
+
+### Review (step 5)
+
+The reviewer works from the draft, the source excerpts and the discrimination report, and signs the file with `reviewed_by` and `reviewed_at`. Model output is never loaded unreviewed: bad data here produces confident wrong advice ([architecture 5](../architecture/README.md#knowledge-base)).
+
+---
+
+## 11. Schedule
+
+| Date | Training and export |
+|---|---|
+| Oct 16 | Environment on the 5070 Ti (day-1 check, [evaluation 7](evaluation.md#7-day-1-checks)). Fetch and deduplicate the datasets. BioCLIP 2 exported and checked |
+| Oct 17 | Leaf detector first fine-tune on the 5070 Ti (section 5), then vLLM back up. Text embedder pinned. Disease head v0 on PlantDoc's boxes (CPU) |
+| Oct 18 | First detector exported and checked. Relabelling pass (people). The BioCLIP label matrix from the species and organism seed files. Night: second detector run on the 5070 Ti with vLLM stopped, while the 9070 XT serves |
+| Oct 19 | Crops re-extracted with the second detector; disease head v1, species head, `classifier_labels.yaml` |
+| Oct 20–21 | Heads retrained as profiles are reviewed and the label list grows. ConvNeXt-Tiny only if the head misses its target |
+| Oct 22–23 | Calibration on the dev split ([evaluation 5](evaluation.md#5-calibration)); final manifests |
+| Oct 24 | Test split scored once |
+
+---
+
+## 12. Open questions
+
+1. **Plant Pathology 2020/2021 terms**: a teammate reads the Kaggle rules before any apple photo from them is used.
+2. **The face detector's and BioCLIP's training data**: WIDER FACE is CC BY-NC-ND ✓; TreeOfLife-10M includes CC BY-NC-SA images ✓, and TreeOfLife-200M (BioCLIP 2's data, tagged CC0 as a compilation ✓) probably keeps per-image terms the same way *unverified*. Both models' weights are MIT. Recorded in the notices; a legal reading is the team's call ([README 9](README.md#9-licences-and-notices)).
+3. **Minimum crops per class** (30) and the head type (logistic or MLP): set from validation.
+4. **French chunks**: only if the knowledge sources include French guides, which would need a multilingual embedder decided before ingestion ([models 10](models.md#10-text-embedder)).
