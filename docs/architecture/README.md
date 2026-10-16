@@ -1,6 +1,6 @@
 # PDM Architecture
 
-> **Status:** Draft v0.7.1, 2026-10-16. v0.7.1 synced with [contracts.md](contracts.md) v0.10.1: the account tombstone keeps a deleted account's tokens out and the provider deletion running across restarts (4). v0.7 synced with [contracts.md](contracts.md) v0.10, which records the decisions of the [backend design](../backend/README.md):
+> **Status:** Draft v0.7.2, 2026-10-16. v0.7.2: section 12 gives the services' stop grace periods (190 s for `api`). v0.7.1 synced with [contracts.md](contracts.md) v0.10.1: the account tombstone keeps a deleted account's tokens out and the provider deletion running across restarts (4). v0.7 synced with [contracts.md](contracts.md) v0.10, which records the decisions of the [backend design](../backend/README.md):
 >   - the crate list matches the code: `integrations` holds every outbound HTTP adapter, and `knowledge` reads through a port without depending on `store` (3);
 >   - the user record is created by the first authenticated request, and the auth webhook only deletes users (4, 11);
 >   - the chat tools take no garden id, `view_image` and `revise_plan` name their scan, and model thinking is replayed only within a turn (7);
@@ -826,6 +826,8 @@ infra/rig.compose.yml             perception-worker · vlm-worker · vllm (NVIDI
 The rig may be one host or two. If the RX 9070 XT sits in a second machine, its two services move to their own compose file (`infra/rig-amd.compose.yml`) unchanged, because workers only pull.
 
 On the control plane, `seed-upload` runs after `rustfs` is healthy and exits; `api` starts only once it has completed (`depends_on` with `service_completed_successfully`), so the migration that references the species photos never runs before they exist.
+
+**Stop grace periods.** Compose sends SIGKILL 10 seconds after SIGTERM unless a service sets `stop_grace_period`. `api` sets 190 seconds: up to 60 seconds for the slowest request in flight, then one full 120-second attempt for pending RustFS deletes (an interrupted delete can leak objects, [storage 4](../storage/README.md#4-writes-and-deletes)), plus 10 seconds of margin ([backend api 4](../backend/api.md#4-start-up-and-shutdown)). Each worker service sets its own from its drain ([backend worker](../backend/worker.md)).
 
 ### Hosting the control plane
 

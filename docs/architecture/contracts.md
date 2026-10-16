@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.1, 2026-10-16. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.2, 2026-10-16. Companion to the [architecture document](README.md).
+> **v0.10.2**: deleting a scan closes its event stream within 15 seconds, and so does a resting point reached without an event (section 4, when the stream closes).
 > **v0.10.1** settles open question 40 with the account tombstone: the Clerk deletion survives a restart, and a deleted account's session tokens get `401` until 24 hours after Clerk confirms (section 9, account).
 > **v0.10** records what the [backend design](../backend/README.md) decided while writing the crates, and settles open questions 12–24 (section 12):
 >   - whole-second timestamps on the wire; unknown fields, malformed ids, oversized JSON, missing methods, timeouts, a missing `X-Lease-Token` and a location that can't be geocoded each get a fixed error, and `retry_after_s` has fixed values;
@@ -620,6 +621,8 @@ The server closes the stream when the scan reaches a resting point:
 | The scan fails while a guided check is `analysing` | Stays open until the last check's `guided_check_done` |
 
 **A held step claim keeps the stream open.** A scan is at rest only when no step holds its claim (section 3, steps between jobs) as well. The writer checks this (`step_claimed`) after the last event of each step's commit. A late answer's `question_resolved` or a guided check's `guided_check_done` is sent while the `score` step its transaction claimed is still running, so the stream stays open until that step's `diagnosis` and plan events ([backend pipeline 10](../backend/pipeline.md#10-events)).
+
+**Deleting the scan closes the stream** within 15 seconds, with no further event; reopening it then gets `404 not_found`. A resting point reached without an event (for example, a step finishing with nothing to report) also closes the stream within 15 seconds.
 
 The app may close the stream at any time and reopen it later with `Last-Event-ID`. The most important changes while it is closed are also sent as a push notification; section 9 (push notifications) lists which, and to whom. Everything else is on the scan when the app reads it again.
 
@@ -2301,6 +2304,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.9: the models of docs/vision (Qwen3-VL-class VLM with 32-pixel cells and `norm_1000` corner boxes, RF-DETR leaf detector, a disease head on BioCLIP 2, arctic-embed-xs text embeddings), the RX 9070 XT as a second VLM worker with its own `VLM_SLOTS`, the same checkpoint on every VLM worker, the `model_versions` keys, per-model perception batch caps, one SAM prompt per box, the plant check, the classifier on close-ups only, vLLM's `response_format`, the fallback's stripped schema keywords and its box format, `unknown_label_version`, ONNX Runtime 1.31 on CUDA 13, and the `integrations` crate | 2, 3, 6.1, 6.2, 6.5, 8.4, 10, 12, 13, 15 |
 | v0.10: the backend's decisions: the `integrations` crate and `knowledge` without a `store` dependency, the auth webhook that only deletes users, the error rules (unknown fields, malformed ids, timeouts as `503`, oversized JSON, geocoding), the job error codes and the label-version rule, no lease hand-back, kind-filtered claims, the writer's lifecycle and a held step claim keeping the stream open, photos without depth at 1600 px, the hosted model's size cap, token budget and rejected keywords, the chat tools without garden arguments, thinking replayed within a turn, SoilGrids retry rules, weather failure failing the run, embedding modes, the evidence fields kept server-side, the past week's longest humid run and the weather thresholds' one owner | 3, 4, 5, 6.1, 6.4, 6.7, 6.8, 7, 8.1, 8.2, 8.3, 8.4, 8.5, 10, 11, 12, 15 |
 | v0.10.1: the account tombstone settles open question 40: the provider deletion survives a restart, and a deleted account's session tokens get `401` until 24 hours after the provider confirms | 4 |
+| v0.10.2: a deleted scan's stream, and one at a resting point reached without an event, closes within 15 seconds | none (section 9's SSE description is unchanged) |
 
 ---
 
