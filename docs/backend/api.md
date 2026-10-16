@@ -67,6 +67,11 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = []
+# HEIC uploads through the system libheif (>= 1.19); the api image builds with it.
+heic = ["vision/heic"]
+
 [dependencies]
 # the workspace: domain for every type and port; the library crates only in wiring.rs
 domain.workspace = true
@@ -118,6 +123,8 @@ http-body-util.workspace = true
 mockall.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 ```
+
+The `heic` feature turns on `vision`'s HEIC decoder, which links the system libheif (1.19 or newer). The `api` image builds with it ([infra 3](../infra/README.md#3-images)); without it, a HEIC upload is refused as an unsupported type.
 
 | Dependency | Why |
 |---|---|
