@@ -1,0 +1,8 @@
+# The build context is backend/. Everything the crates embed (migrations/, openapi.json,
+# fixtures/, testdata/, bioclip_templates.json) lives inside it and must stay in the context.
+target/
+tools/
+.git
+**/*.rs.bk
+.env
+.env.*
