@@ -12,6 +12,11 @@ services:
     command: ["chown", "65532:65532", "/data"]
     volumes: ["surrealdb-dev:/data"]
     restart: "no"
+    network_mode: none              # root, so it gets nothing it doesn't need
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN]
+    security_opt: ["no-new-privileges:true"]
   surrealdb:
     image: surrealdb/surrealdb:v3.3.4@sha256:649a60a3b9c0177d9923c938e1c2563e48cde2a9d06ac2c0519714be719b02af
     depends_on: { surrealdb-volume: { condition: service_completed_successfully } }
