@@ -1,6 +1,6 @@
 # PDM Architecture
 
-> **Status:** Draft v0.7.5, 2026-10-16. v0.7.5: section 9 says the `domain` types are the contracts' source of truth and the spec is committed as `backend/openapi.json` (contracts v0.10.4). v0.7.4: sections 5 and 13 say the schema now lives at `backend/migrations/schema.surql`. v0.7.3: section 13 lists `docs/setup`, the developer setup. v0.7.2: section 12 gives the services' stop grace periods (190 s for `api`). v0.7.1 synced with [contracts.md](contracts.md) v0.10.1: the account tombstone keeps a deleted account's tokens out and the provider deletion running across restarts (4). v0.7 synced with [contracts.md](contracts.md) v0.10, which records the decisions of the [backend design](../backend/README.md):
+> **Status:** Draft v0.7.6, 2026-10-16. v0.7.6: section 12 links the infrastructure and CI design, [docs/infra](../infra/README.md). v0.7.5: section 9 says the `domain` types are the contracts' source of truth and the spec is committed as `backend/openapi.json` (contracts v0.10.4). v0.7.4: sections 5 and 13 say the schema now lives at `backend/migrations/schema.surql`. v0.7.3: section 13 lists `docs/setup`, the developer setup. v0.7.2: section 12 gives the services' stop grace periods (190 s for `api`). v0.7.1 synced with [contracts.md](contracts.md) v0.10.1: the account tombstone keeps a deleted account's tokens out and the provider deletion running across restarts (4). v0.7 synced with [contracts.md](contracts.md) v0.10, which records the decisions of the [backend design](../backend/README.md):
 >   - the crate list matches the code: `integrations` holds every outbound HTTP adapter, and `knowledge` reads through a port without depending on `store` (3);
 >   - the user record is created by the first authenticated request, and the auth webhook only deletes users (4, 11);
 >   - the chat tools take no garden id, `view_image` and `revise_plan` name their scan, and model thinking is replayed only within a turn (7);
@@ -822,6 +822,8 @@ infra/control-plane.compose.yml   caddy · api · surrealdb · rustfs · fallbac
 infra/rig.compose.yml             perception-worker · vlm-worker · vllm (NVIDIA GPUs pinned by UUID)
                                   · vlm-worker-amd · vllm-amd (the RX 9070 XT by its render node)
 ```
+
+The files themselves, the images and their registry, CI, ingress, secrets, deploys by digest and backups are designed in [docs/infra](../infra/README.md).
 
 The rig may be one host or two. If the RX 9070 XT sits in a second machine, its two services move to their own compose file (`infra/rig-amd.compose.yml`) unchanged, because workers only pull.
 

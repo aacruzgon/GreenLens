@@ -801,3 +801,40 @@ async fn engine_facts_behind_the_v1_4_notes() {
         "user is kept"
     );
 }
+
+/// A one-hot 384-dimension vector, the index's dimension.
+fn one_hot(i: usize) -> Vec<f32> {
+    let mut v = vec![0.0; 384];
+    v[i] = 1.0;
+    v
+}
+
+#[tokio::test]
+async fn knowledge_search_returns_the_nearest_chunks_first() {
+    use domain::ports::{ChunkFilter, Embedding, KnowledgeRepo};
+
+    let store = support::store().await;
+    exec(
+        &store,
+        "CREATE source:guide SET title = 'Guide', publisher = 'Extension', url = 'https://example.org/guide', retrieved_at = '2026-10-15';",
+    )
+    .await;
+    for i in 0..3 {
+        let v = serde_json::to_string(&one_hot(i)).unwrap();
+        exec(
+            &store,
+            &format!(
+                "CREATE knowledge_chunk:⟨guide.{i}⟩ SET source = source:guide, topic = 'symptoms', text = 'chunk {i}', text_hash = 'h{i}', embedding = {v}, embedding_model = 'test';"
+            ),
+        )
+        .await;
+    }
+    let mut query = one_hot(1);
+    query[2] = 0.5;
+    let hits = store
+        .search_chunks(&Embedding(query), ChunkFilter::default(), 2)
+        .await
+        .expect("the vector search runs");
+    let texts: Vec<_> = hits.iter().map(|h| h.text.as_str()).collect();
+    assert_eq!(texts, ["chunk 1", "chunk 2"], "nearest first, k of them");
+}

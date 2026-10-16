@@ -1,6 +1,6 @@
 # PDM Backend: `store` crate
 
-> **Status:** Draft v0.4.2, 2026-10-16. v0.4.2: the schema now lives at `backend/migrations/schema.surql` only, no longer a copy of a file in `docs/database`. v0.4.1: section 1 keeps only the `$now` difference from database 4, since the skills now follow this design; section 17 lists `TargetBinds`, which section 18 cites; research notes are no longer named by a path outside the repository. v0.4: the multi-line query listings are complete (a generator bug cut eight of them after their first line); the step-claim pair is described as conditional, as in database 4; the protected parameters are `auth`, `token`, `access` and `session`; a bound `$before` is overridden only in `RETURN`, and `Option` fails only from 2 ids; the closure-lifetime error has no code. v0.3: the account tombstone (`deleted_user`), SoilGrids retries, `live_lease`, and the store's `Notify` as the only claim wake-up (a requeue notifies too). v0.2: every repository method is real code (no `todo!()` left), reads decode straight into domain types through contract-shaped projections, and 12 more tests run on the embedded engine. v0.1: `SurrealStore`, which implements every repository of `domain::ports::store` and `MemoryStore` over SurrealDB 3.3.4, with every statement a named constant, one query per transaction with a conflict retry, one error classifier, and real code for each pattern that carries a guarantee, tested against the embedded 3.3.4 engine.
+> **Status:** Draft v0.4.4, 2026-10-16. v0.4.4: open question 4 is resolved: the vector search's bound `k` failed to parse on 3.3.4, so `search_chunks` writes it as a clamped literal, with a test on the embedded engine. v0.4.3: section 4 proposes the migration runner that applies the numbered migrations and the generated `knowledge.surql` after the schema, with its work items, tests and open questions. v0.4.2: the schema now lives at `backend/migrations/schema.surql` only, no longer a copy of a file in `docs/database`. v0.4.1: section 1 keeps only the `$now` difference from database 4, since the skills now follow this design; section 17 lists `TargetBinds`, which section 18 cites; research notes are no longer named by a path outside the repository. v0.4: the multi-line query listings are complete (a generator bug cut eight of them after their first line); the step-claim pair is described as conditional, as in database 4; the protected parameters are `auth`, `token`, `access` and `session`; a bound `$before` is overridden only in `RETURN`, and `Option` fails only from 2 ids; the closure-lifetime error has no code. v0.3: the account tombstone (`deleted_user`), SoilGrids retries, `live_lease`, and the store's `Notify` as the only claim wake-up (a requeue notifies too). v0.2: every repository method is real code (no `todo!()` left), reads decode straight into domain types through contract-shaped projections, and 12 more tests run on the embedded engine. v0.1: `SurrealStore`, which implements every repository of `domain::ports::store` and `MemoryStore` over SurrealDB 3.3.4, with every statement a named constant, one query per transaction with a conflict retry, one error classifier, and real code for each pattern that carries a guarantee, tested against the embedded 3.3.4 engine.
 
 Companion to the [backend architecture](README.md), the [database notes](../database/README.md) (v1.4) and [`schema.surql`](../../backend/migrations/schema.surql). The ports it implements are in [domain 9](domain.md#9-boundary-traits). Every listing is copied from the compiled source of `crates/store` with the docgen tool: `cargo check -p store`, `cargo clippy -p store --all-targets` (clean) and `cargo test -p store` (7 unit tests and 25 tests against the embedded engine) pass on Rust 1.99.1 with `surrealdb = "=3.3.4"`.
 
@@ -117,6 +117,66 @@ crates/store/
 @@lines lib.rs 22-31@@
 
 - The schema file is [`backend/migrations/schema.surql`](../../backend/migrations/schema.surql); `include_str!` embeds it, so the binary and its schema can't drift. ✓ The v1.4 file applies twice in a row on the embedded engine and, as root, on the pinned image by digest.
+
+### Migrations after the schema (proposed)
+
+Nothing applies the knowledge migration the loader generates yet ([roadmap 12](roadmap.md#12-gaps-found-while-writing-this-roadmap), gap 1). The design, its SurrealQL and the checks run on the pinned image are in [database 1](../database/README.md#1-version-and-setup) ("Applying the migrations"). In short: `schema.surql` on every start; then the hand-written `NNNN_<slug>.surql` files once each, in number order, hash-locked; then the generated `knowledge.surql`, which replaces the whole knowledge set and is applied again only when its hash changes. Each file runs in its own transaction with its row in the `migration` table.
+
+The crate's side, proposed (it doesn't compile yet):
+
+```text
+// Proposed. store/build.rs lists backend/migrations/*.surql, refuses a bad name or a duplicate
+// number, and writes MIGRATIONS (sorted: numbered files, then knowledge.surql) to OUT_DIR.
+pub struct Migration { pub name: &'static str, pub sql: &'static str }
+pub const MIGRATIONS: &[Migration];            // include!(concat!(env!("OUT_DIR"), "/migrations.rs"))
+
+pub enum MigrationError {
+    Changed { name: String, recorded: String, current: String },   // a recorded numbered file was edited
+    Missing { name: String },                                      // recorded, but not in this build
+    OutOfOrder { name: String, highest: String },                  // new, but sorts before an applied file
+    Failed { name: String, source: StoreError },                   // a statement failed; nothing committed
+}
+
+pub struct Applied { pub numbered: Vec<&'static str>, pub knowledge: bool }
+
+impl SurrealStore {
+    // Replaces apply_schema: the schema, then the migrations, over one short-lived root connection.
+    pub async fn migrate(url: &str, root_user: &str, root_pass: &str) -> Result<Applied, MigrationError>;
+}
+// The testable core: tests pass fixture files and the embedded engine.
+pub async fn migrate_with(root: &Surreal<Any>, files: &[Migration]) -> Result<Applied, MigrationError>;
+```
+
+- `migrate_with` sends each wrapped file through `run_tx`. A transaction conflict means the file committed nothing, so `run_tx` re-sends it; if another process applied it meanwhile, the second try throws "migration raced", and the runner re-reads the record and moves on.
+- `Failed` carries the file name and the statement index of the first real failure (`first_failure` skips `NotExecuted`), so the log names the line to fix.
+- `Applied` is logged at `info`: `migrations applied numbered=[…] knowledge=true`.
+
+**Work items**, for slice S2 of the [roadmap](roadmap.md#6-s2-perception-site-data-and-knowledge) (item 6, knowledge loading) and S0 for the live check:
+
+| # | Slice | Work | Exit check |
+|---|---|---|---|
+| M1 | S2 | Add the `migration` and `knowledge_meta` tables to `schema.surql`, and list them in database 3 | The schema applies twice in a row on the embedded engine and on the pinned image |
+| M2 | S2 | `store/build.rs` and `MIGRATIONS`: names, numbering, and the forbidden statements (`USE`, `BEGIN`, `COMMIT`, `CANCEL`, `OPTION`, `DEFINE NAMESPACE`, `DATABASE`, `USER`, `ACCESS`) | A duplicate number or a bad name fails `cargo build`; `migration_files_follow_the_rules` passes on the committed files |
+| M3 | S2 | `migrate_with` and `migrate`, replacing `apply_schema` and `apply_schema_with` | The embedded-engine tests below pass |
+| M4 | S2 | `api` start-up: step 3 calls `migrate`; after step 6, the embedder check against `knowledge_meta` ([api 4](api.md#4-start-up-and-shutdown)) | `api` starts twice against the dev compose; the second start logs `numbered=[] knowledge=false` |
+| M5 | S2 | `load_knowledge` reads `label_set_version` and `classifier_labels_version` from `knowledge_meta:current` instead of hashing the labels (section 22, item 7) | `knowledge_loads` asserts the stored version |
+| M6 | S2 | The loader (`ml/knowledge/`, with the knowledge track) writes `knowledge.surql` as [contracts 10](../architecture/contracts.md#checks-and-generated-files) says | The same seed twice gives identical bytes; S2's exit check passes: a knowledge search returns ranked chunks from the loaded seed |
+| M7 | S0 | The live CI job applies the committed migrations twice, as root, on the pinned image, and a generated 21 MB knowledge fixture over WebSocket | The live job is green |
+
+**Tests on the embedded engine** (`kv-mem`, one datastore each):
+- `committed_migrations_apply_twice`: `MIGRATIONS` apply, and a second run applies nothing.
+- `a_changed_recorded_file_stops_the_start`, `a_missing_recorded_file_stops_the_start`, `an_out_of_order_file_stops_the_start`.
+- `a_failing_file_commits_nothing`: no row and no record; the file before it stays applied.
+- `knowledge_replaces_the_set`: a fixture v1, then a v2 without one species and two chunks. The species, its edges and the chunks are gone, the rest are upserted, and a search finds no removed chunk.
+- `a_raced_file_is_skipped`: the record is written between the read and the apply; the runner re-reads and goes on.
+- The embedded engine has no WebSocket, so only M7 checks the 64 MiB message cap.
+
+**Open questions.**
+1. **Removed knowledge records.** User records keep a plain link to a deleted species or problem. What should the app show for a plant whose species was removed: unknown, with a prompt to confirm it again? No reader handles a missing record yet.
+2. **Memories after a text-model change.** The loader re-embeds chunks, but `memory.embedding` uses the same model and only `api` can re-embed it. A background job, or no model change once memories exist?
+3. **Stale photos.** `seed-upload` deletes photos no longer in the seed before the new `api` starts, so the old `api` can sign URLs to deleted photos for a short time. Delete only photos in neither the old nor the new seed, or delete after `api` is healthy?
+4. **Growth past 48 MiB.** Split the knowledge file by table (losing one transaction for the whole set), apply it over HTTP `/import` (limits *unverified*), or keep chunks out of Git?
+5. **Rollback.** An older build refuses a database that recorded a file it doesn't know. Is restoring the pre-deploy backup an acceptable rollback during build week?
 
 ---
 
@@ -440,7 +500,7 @@ The fragments that write observations (replacement per image, [database 5](../da
 | other memory methods | `MEMORIES`, `SHARED_FOR_PLAN`, `SHARE`, `DELETE` (the author of a chat memory; an owner for shared ones), `MEMORY_OWNER` |
 | `MemoryStore::remember`, `add_note`, `add_pipeline_memory` | `CREATE_MEMORY` with `source`, `shared` and `author` set by the method |
 | `MemoryStore::search` | `SEARCH`: exact cosine within one garden, the shared memories and the caller's own ([database 5](../database/README.md#5-reads-indexes-and-vector-search)) ✓ never another member's private ones |
-| `KnowledgeRepo::search_chunks` | `SEARCH_CHUNKS`: HNSW `<|k, 40|>` with indexed filters applied first |
+| `KnowledgeRepo::search_chunks` | `SEARCH_CHUNKS`: HNSW `<|k, 40|>` with indexed filters applied first; `k` is a literal, clamped to 1–40 |
 | `KnowledgeRepo::species_photo_object` | `SPECIES_PHOTO`: the key only if the species lists it |
 | `KnowledgeRepo::load_knowledge` | `LOAD_KNOWLEDGE`: one statement per table, projected into the seed shapes, with `affects`, `caused_by`, `looks_like`, `treatments` and `preys_on` from the graph; the species photos from `reference_images`; the newest classifier label set; `label_set_version` derived (section 22) |
 
@@ -603,10 +663,10 @@ Answers this crate settles, for [contracts 12](../architecture/contracts.md#12-o
 1. **The cascade's `Member` target leaves no marker.** `unfinished_deletions` can resume gardens, plants and pending scans after a restart, but not a member's removal. A `member_of` row is already gone when the cascade runs; a small `pending_removal` record (garden, user) would make it resumable. Belongs in [database 9](../database/README.md#9-open-questions).
 2. **`PlanRepo::write_plan` and `StepRepo::commit_step(Plan)` run the same transaction.** Both exist in the ports; one could go ([domain 9](domain.md#9-boundary-traits)).
 3. **The orphan sweep's key check scans tables.** `UNREFERENCED_KEYS` filters `storage_key`, `depth_key`, `depth_confidence_key` and the mask and chat image keys by `IN $keys` with no index on those fields. Once a day per garden this is cheap at hackathon scale; an index on each key field, or a garden filter in the port, would bound it.
-4. **`<|$k, 40|>` with a bound `k`** in `SEARCH_CHUNKS` is *unverified*: no test loads a 384-dimension chunk yet. If the operator refuses a parameter, the statement takes `k` as a literal from a fixed set (5 or 10).
+4. **Resolved: a bound `k` in `<|k, 40|>`** is a parse error on 3.3.4 ("expected an unsigned integer", ✓ [database 1](../database/README.md#1-version-and-setup)). `search_chunks` now writes `k` into the statement as a literal, clamped to 1–40 (`MAX_CHUNK_HITS`, the search's `ef`), and `knowledge_search_returns_the_nearest_chunks_first` runs the search on the embedded engine with 384-dimension vectors.
 5. **Four port methods pass no time.** `store_partial`, `finish_guided_check`, `create_plant` and `register_push_token` have no `now`. The store checks a partial result's lease by token, worker and status only (a requeue clears the token; `complete` checks expiry), `finish_guided_check` reads the database clock (`time::now()`) inside its transaction and returns the claim's stamp from the row, and the other two take the `created_at` default. Adding `now: Timestamp` to those four methods ([domain 9](domain.md#9-boundary-traits)) would put them back under the `Clock` port.
 6. **Resolved questions have no wire status.** `Question.status` is `open | answering`, so `ScanSnapshot.questions`, which holds every question of the run, reads an answered, superseded or dropped question as `open`; the live state is `scan.open_question`. A server-side status on the snapshot's questions would remove the ambiguity.
-7. **`label_set_version` isn't stored.** The schema keeps no generated files (contracts 10), so `load_knowledge` derives it from every species' and organism's `bioclip_label` (an FNV-1a hash); the knowledge loader and the worker must compute it the same way, or the loader stores it.
+7. **`label_set_version` isn't stored.** The schema keeps no generated files (contracts 10), so `load_knowledge` derives it from every species' and organism's `bioclip_label` (an FNV-1a hash); the knowledge loader and the worker must compute it the same way, or the loader stores it. Database 1 proposes the second: a `knowledge_meta` record written by `knowledge.surql`.
 8. **The snapshot is several reads.** `snapshot` runs `SNAPSHOT_PARTS` and the loaders as separate queries. Under the step claim nothing else writes the run's outputs, and new input only sets `rescore_pending`, so the reads agree in practice; one read-only `BEGIN … COMMIT` would make it a single snapshot.
 
 ---
