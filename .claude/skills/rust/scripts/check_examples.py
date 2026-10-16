@@ -20,6 +20,13 @@ throwaway Cargo crate in a temporary directory outside the repository, and runs,
      against the pinned surrealdb/surrealdb image (by digest, from docs/database section 1)
      in a container that is stopped afterwards.
 
+With --versions it checks no example: it builds a probe crate with every pin of versions.md,
+the third table ("Pinned by the design, not built by the check") included, and runs
+`cargo generate-lockfile` and `cargo check --all-targets` on it, so the whole set is proved to
+resolve and compile together. Rows of the third table whose "Used for" cell starts with
+"Dev-dependency" go under [dev-dependencies]. Native libraries must be installed (libheif >= 1.19
+for libheif-rs, found by pkg-config).
+
 Dependency versions come from the two crate tables in .claude/skills/rust/versions.md.
 Any warning or error in a block fails the run. There is no baseline of accepted failures.
 
@@ -48,6 +55,7 @@ items they never call. Nothing else is allowed.
 Usage:
   python3 .claude/skills/rust/scripts/check_examples.py [--skill NAME ...] [--no-test] [--live]
                                                         [--keep] [--fix-copies]
+  python3 .claude/skills/rust/scripts/check_examples.py --versions [--keep]
 
 The build cache lives in $PDM_RUST_SKILLS_TARGET_DIR, or ~/.cache/pdm-rust-skills-check/target.
 Python 3.11+ standard library only; --live also needs docker and cargo-nextest.
@@ -659,6 +667,52 @@ def run_live(root: Path, target_dir: Path, live: list[Block], versions: str) -> 
         stop_surrealdb(name)
 
 
+# ---------------------------------------------------------------- --versions
+
+DESIGN_TABLE = "Pinned by the design, not built by the check"
+
+
+def run_versions(versions: str, target_dir: Path, keep: bool) -> int:
+    deps = md_table_rows(versions, "Dependencies")
+    dev = md_table_rows(versions, "Dev-dependencies")
+    design = md_table_rows(versions, DESIGN_TABLE)
+    design_dev = [r for r in design if len(r) > 3 and r[3].startswith("Dev-dependency")]
+    design_deps = [r for r in design if r not in design_dev]
+    tmp = Path(tempfile.mkdtemp(prefix="pdm-rust-versions-probe-"))
+    if REPO in tmp.parents:
+        fail(f"temporary directory {tmp} is inside the repository")
+    try:
+        (tmp / "src").mkdir()
+        (tmp / "src" / "lib.rs").write_text("//! Empty: the dependency set is the point.\n")
+        (tmp / "Cargo.toml").write_text(
+            "[package]\nname = \"pdm-rust-versions-probe\"\nversion = \"0.0.0\"\nedition = \"2024\"\n"
+            "publish = false\n\n"
+            f"[dependencies]\n{dependency_toml(deps + design_deps)}\n"
+            f"[dev-dependencies]\n{dependency_toml(dev + design_dev)}"
+        )
+        env = cargo_env(target_dir)
+        started = time.monotonic()
+        lock = subprocess.run(["cargo", "generate-lockfile"], cwd=tmp, env=env, capture_output=True, text=True)
+        if lock.returncode != 0:
+            print(f"FAILED: cargo generate-lockfile\n{lock.stderr[-4000:]}")
+            return 1
+        packages = (tmp / "Cargo.lock").read_text().count("[[package]]")
+        check = subprocess.run(["cargo", "check", "--all-targets"], cwd=tmp, env=env, capture_output=True, text=True)
+        took = time.monotonic() - started
+        print(f"versions probe: {len(deps) + len(design_deps)} dependencies, {len(dev) + len(design_dev)} "
+              f"dev-dependencies, {packages} packages in the lock file, {took:.0f} s")
+        if check.returncode != 0:
+            print(f"FAILED: cargo check --all-targets\n{check.stderr[-4000:]}")
+            return 1
+        print("OK: every pin in versions.md resolves and compiles together")
+        return 0
+    finally:
+        if keep:
+            print(f"kept {tmp}")
+        else:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 # ---------------------------------------------------------------- main
 
 def main() -> int:
@@ -669,6 +723,8 @@ def main() -> int:
                     help="also run the #[ignore = \"needs SurrealDB\"] tests against the pinned image")
     ap.add_argument("--keep", action="store_true", help="keep the temporary crate and print its path")
     ap.add_argument("--fix-copies", action="store_true", help="rewrite every copy region from its canonical region")
+    ap.add_argument("--versions", action="store_true",
+                    help="check that every pin of versions.md, the design's third table included, builds together")
     args = ap.parse_args()
 
     target_dir = Path(os.environ.get("PDM_RUST_SKILLS_TARGET_DIR",
@@ -682,6 +738,8 @@ def main() -> int:
     m = re.match(r"rustc (\d+\.\d+)\.", rustc)
     if not m or m.group(1) != want:
         fail(f"versions.md pins Rust {want}, but `rustc --version` is {rustc!r}")
+    if args.versions:
+        return run_versions(versions, target_dir, args.keep)
     deps = dependency_toml(md_table_rows(versions, "Dependencies"))
     dev_deps = dependency_toml(md_table_rows(versions, "Dev-dependencies"))
     lints, clippy = lint_config()
