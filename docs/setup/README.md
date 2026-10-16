@@ -1,6 +1,6 @@
 # PDM Developer Setup
 
-> **Status:** v0.1.1, 2026-10-16. v0.1.1: Debian 13's libheif is 1.23.4, as the `api` image build installed it. v0.1: first version: what each team member installs on macOS, Windows and Linux, by role, with the versions the other documents pin.
+> **Status:** v0.1.2, 2026-10-16. v0.1.2: backend developers start SurrealDB and RustFS with `infra/dev.compose.yml`. v0.1.1: Debian 13's libheif is 1.23.4, as the `api` image build installed it. v0.1: first version: what each team member installs on macOS, Windows and Linux, by role, with the versions the other documents pin.
 > **Checked:** on 2026-10-16. The release files of ONNX Runtime 1.31.0 on GitHub, libheif's versions in Ubuntu and Debian, and the Node versions that React Native 0.86.3 and EAS CLI accept were read from their sources (✓). Items marked *unverified* weren't tried on that platform.
 
 ## Contents
@@ -105,7 +105,7 @@ The pins are in [backend 4](../backend/README.md#4-stack-and-version-pins) and t
 | Build tools | | macOS: `xcode-select --install`. Ubuntu or WSL: `sudo apt install build-essential pkg-config cmake clang` |
 | libheif | **1.19 or newer** | Needed by `libheif-rs`, through `pkg-config` |
 | ONNX Runtime | 1.31.0, the CPU build | Needed to run `api`, which loads it at run time from `ORT_DYLIB_PATH` |
-| SurrealDB and RustFS | the pinned images | Docker, as in [database 1](../database/README.md#1-version-and-setup) and [storage 1](../storage/README.md#1-version-and-setup) |
+| SurrealDB and RustFS | the pinned images | Docker: `docker compose -f infra/dev.compose.yml up -d` starts both, with the ports and throwaway credentials the ignored tests expect ([infra 4](../infra/README.md#infradevcomposeyml)) |
 
 **libheif by platform:**
 - **macOS:** `brew install libheif pkg-config`. Homebrew's 1.23.1 built here ✓.
@@ -128,7 +128,7 @@ There is no build for Intel Macs in this release ✓. A backend developer on an 
 - The Rust skills' example checker: `python3 .claude/skills/rust/scripts/check_examples.py`.
   - Add `--live` to also run the SurrealDB tests against the pinned container. It needs Docker and cargo-nextest at the pinned version.
   - Add `--versions` to build every pinned crate together. That needs libheif.
-- Store tests run on SurrealDB's embedded `kv-mem` engine, so `cargo nextest run` needs no server.
+- Store tests run on SurrealDB's embedded `kv-mem` engine, so `cargo nextest run` needs no server. With the dev services up, `cargo nextest run --workspace --run-ignored only` (in `backend/`) runs the two tests that need the real SurrealDB and RustFS.
 
 ## 5. Machine learning (Python)
 

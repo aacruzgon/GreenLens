@@ -1,0 +1,57 @@
+# SurrealDB and RustFS for a laptop and for the ignored tests (docs/infra/README.md section 4).
+# The ports and throwaway credentials are the ones the ignored tests and check_examples.py expect.
+# Nothing here is a secret, and nothing here is used anywhere else.
+#   docker compose -f infra/dev.compose.yml up -d
+#   docker compose -f infra/dev.compose.yml down -v      # resets both; -v is safe only in this file
+name: pdm-dev
+services:
+  surrealdb-volume:                 # gives the volume to SurrealDB's user, then exits (database 1)
+    # The image runs as UID 65532, but its /data is root-owned, so a new named volume is too and
+    # RocksDB can't create its directory.
+    image: busybox:1.38.0@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e
+    command: ["chown", "65532:65532", "/data"]
+    volumes: ["surrealdb-dev:/data"]
+    restart: "no"
+    network_mode: none              # root, so it gets nothing it doesn't need
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN]
+    security_opt: ["no-new-privileges:true"]
+  surrealdb:
+    image: surrealdb/surrealdb:v3.3.4@sha256:649a60a3b9c0177d9923c938e1c2563e48cde2a9d06ac2c0519714be719b02af
+    depends_on: { surrealdb-volume: { condition: service_completed_successfully } }
+    command: start --user root --pass root --log info rocksdb:/data/db
+    ports: ["127.0.0.1:18000:8000"]
+    volumes: ["surrealdb-dev:/data"]
+    healthcheck:
+      test: ["CMD", "/surreal", "is-ready", "--endpoint", "http://127.0.0.1:8000"]
+      interval: 5s
+      retries: 12
+  surrealdb-init:                   # the `api` database user (password `api`), then exits
+    image: surrealdb/surrealdb:v3.3.4@sha256:649a60a3b9c0177d9923c938e1c2563e48cde2a9d06ac2c0519714be719b02af
+    depends_on: { surrealdb: { condition: service_healthy } }
+    command: import --endpoint http://surrealdb:8000 --user root --pass root --ns pdm --db main /init/surrealdb-users.surql
+    volumes: ["./dev/surrealdb-users.surql:/init/surrealdb-users.surql:ro"]
+    restart: "no"
+  rustfs:
+    image: rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ACCESS_KEY: TESTROOT
+      RUSTFS_SECRET_KEY: testrootsecret
+      RUSTFS_CONSOLE_ENABLE: "false"
+      RUSTFS_CHECK_UPDATE: "false"
+      RUSTFS_OBS_LOG_STDOUT_ENABLED: "true"
+    ports: ["127.0.0.1:19000:9000"]
+    volumes: ["rustfs-dev:/data"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health/ready"]
+      interval: 5s
+      retries: 12
+      start_period: 30s
+  rustfs-init:                      # creates the bucket a local `api` uses, then exits
+    image: rustfs/rc:v0.1.36@sha256:ab024bfebee49a750ce886b4c70963ccd9ddaa03f491704a90710641d7a26699
+    depends_on: { rustfs: { condition: service_healthy } }
+    entrypoint: ["sh", "-c", "rc alias set dev http://rustfs:9000 TESTROOT testrootsecret && rc bucket create --ignore-existing dev/pdm-images"]
+    restart: "no"
+volumes: { surrealdb-dev: {}, rustfs-dev: {} }
