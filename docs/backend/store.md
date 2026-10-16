@@ -1,6 +1,6 @@
 # PDM Backend: `store` crate
 
-> **Status:** Draft v0.4, 2026-10-16. v0.4: the multi-line query listings are complete (a generator bug cut eight of them after their first line); the step-claim pair is described as conditional, as in database 4; the protected parameters are `auth`, `token`, `access` and `session`; a bound `$before` is overridden only in `RETURN`, and `Option` fails only from 2 ids; the closure-lifetime error has no code. v0.3: the account tombstone (`deleted_user`), SoilGrids retries, `live_lease`, and the store's `Notify` as the only claim wake-up (a requeue notifies too). v0.2: every repository method is real code (no `todo!()` left), reads decode straight into domain types through contract-shaped projections, and 12 more tests run on the embedded engine. v0.1: `SurrealStore`, which implements every repository of `domain::ports::store` and `MemoryStore` over SurrealDB 3.3.4, with every statement a named constant, one query per transaction with a conflict retry, one error classifier, and real code for each pattern that carries a guarantee, tested against the embedded 3.3.4 engine.
+> **Status:** Draft v0.4.1, 2026-10-16. v0.4.1: section 1 keeps only the `$now` difference from database 4, since the skills now follow this design; section 17 lists `TargetBinds`, which section 18 cites; research notes are no longer named by a path outside the repository. v0.4: the multi-line query listings are complete (a generator bug cut eight of them after their first line); the step-claim pair is described as conditional, as in database 4; the protected parameters are `auth`, `token`, `access` and `session`; a bound `$before` is overridden only in `RETURN`, and `Option` fails only from 2 ids; the closure-lifetime error has no code. v0.3: the account tombstone (`deleted_user`), SoilGrids retries, `live_lease`, and the store's `Notify` as the only claim wake-up (a requeue notifies too). v0.2: every repository method is real code (no `todo!()` left), reads decode straight into domain types through contract-shaped projections, and 12 more tests run on the embedded engine. v0.1: `SurrealStore`, which implements every repository of `domain::ports::store` and `MemoryStore` over SurrealDB 3.3.4, with every statement a named constant, one query per transaction with a conflict retry, one error classifier, and real code for each pattern that carries a guarantee, tested against the embedded 3.3.4 engine.
 
 Companion to the [backend architecture](README.md), the [database notes](../database/README.md) (v1.4) and [`schema.surql`](../database/schema.surql). The ports it implements are in [domain 9](domain.md#9-boundary-traits). Every listing is copied from the compiled source of `crates/store` with the docgen tool: `cargo check -p store`, `cargo clippy -p store --all-targets` (clean) and `cargo test -p store` (7 unit tests and 25 tests against the embedded engine) pass on Rust 1.99.1 with `surrealdb = "=3.3.4"`.
 
@@ -48,14 +48,10 @@ Companion to the [backend architecture](README.md), the [database notes](../data
 
 **Everything is real code.** Every method of every repository runs its `sql::` constant; there is no `todo!()` left. The patterns that carry the system's guarantees (the gap-free event append and range replay, the plan compare-and-set, the job claim, the requeue, idempotency, the daily scan limit, the membership insert, alert dedupe, the step claim, commit and sweep, question steps, map versioning, the deletion batches and cleanup) and the other non-trivial transactions (`complete_job`, uploads, run starts, answers, guided checks, the snapshot, chat cards, account deletion) are tested on the embedded engine (section 20).
 
-**Where it departs from the project skills** (the documents win; each row is in the final report's skill issues):
+**The project skills and the database notes.** The Rust skills follow this document: store tests run on the embedded `kv-mem` engine, with one ignored test against the pinned image (`rust-testing`, `database.md`; `rust-surrealdb`), failures leave the crate as the domain's `StoreError` through the crate-private `DbFailure` (`rust-surrealdb`, `errors-and-retries.md`; `rust-errors`), and every statement goes through `run_tx` (section 5). The module layout matches [backend README 6](README.md#6-workspace-layout). Where a skill and this document disagree, this document wins. One deliberate difference from [database 4](../database/README.md#4-write-patterns) remains:
 
-| Topic | Skill | Here | Why |
+| Topic | Database notes | Here | Why |
 |---|---|---|---|
-| Tests | `rust-surrealdb`, tests: "No embedded engine"; store tests use the container | The embedded engine (`kv-mem`) in `[dev-dependencies]` for the suite, plus one ignored test against the pinned image | The coordinator's brief asks for the embedded engine; it runs the same engine code, needs no Docker, and each test gets its own datastore, which fixes the isolation problem the skill describes |
-| `StoreError` | `rust-surrealdb/errors-and-retries.md` and `rust-errors`: a store-local enum with `TxConflict`, `Thrown(String)` | The domain's `StoreError` ([domain 6](domain.md#6-errors)); the SDK classification is a crate-private `DbFailure` (section 5) | The port's error is shared by every implementation and every caller |
-| Retry helper | `retry_conflicts(FnMut() -> Fut)` | `run_tx(db, sql, Fn(Query) -> Query)` (section 5) | The statement text is a constant, so only the binds vary; the closure rebuilds them from borrows on each attempt |
-| Layout | backend README 6: `src/{db, migrate, tx, rows/, repo/}.rs` | `src/{client, error, fragments, ids, rows, tx, repo/}.rs` (section 3) | Connecting and the schema are one small module; `ids` and `error` are shared by every area |
 | Clock | database 4 statements use `time::now()` | Bound `$now` everywhere (section 5) | Convention 10: time comes from the `Clock` port, so tests control lease and stamp times |
 
 ---
@@ -1766,7 +1762,7 @@ impl StepRepo for SurrealStore {
 ```
 
 - The two claim statements are conditional on each other, as in [database 4](../database/README.md#steps-between-jobs-): run unconditionally, the second (`SET rescore_pending = true WHERE pipeline_step != NONE`) also runs after a successful claim and flags the scan the caller just claimed (✓ on the pinned image, a fresh claim then reads `rescore_pending = true`).
-- **Stamps are compared exactly.** The stamp is the bound `$now`, stored with full precision, and the commit compares `pipeline_step_at != $stamp`. The domain's `Timestamp` keeps nanoseconds in memory and writes whole seconds only on the wire (open question 12, section 21).
+- **Stamps are compared exactly.** The stamp is the bound `$now`, stored with full precision, and the commit compares `pipeline_step_at != $stamp`. The domain's `Timestamp` keeps nanoseconds in memory and writes whole seconds only on the wire (contracts 12, question 12; section 21).
 - The diagnosis is written with a compare-and-set on `scan.diagnosis` (its `supersedes`, or `NONE`); under the claim nothing else writes it, so a loss throws `claim_lost`.
 - A job queued by a commit signals `jobs_queued` after the commit returns.
 
@@ -2563,6 +2559,68 @@ pub fn step_statements(target: DeletionTarget, step: CascadeStep) -> &'static [&
 | 4.6 conversations | pending actions, message feedback, messages, chat images, conversations |
 | 4.7 | memories, plants (a plant lost its pin at start), the garden map; then invites, memberships, the garden |
 
+**The target's binds.** `TargetBinds::of` picks the target's scope statement (`SCOPE_GARDEN`, `SCOPE_PLANT`, `SCOPE_SCAN` or `SCOPE_MEMBER`) and the record ids it binds; what the target lacks binds as `NONE`. `delete_batch` binds the same four values to the scope query and to every batch, adding `$scans` and `$conversations` from the scope's last two statements. `bind` is a function rather than a closure for the lifetime reason in section 18.
+
+```rust
+/// The target's binds for the scope query and every batch (`NONE` for what the target lacks).
+#[derive(Debug, Clone, Default)]
+pub struct TargetBinds {
+    garden: Option<RecordId>,
+    plant: Option<RecordId>,
+    scan: Option<RecordId>,
+    user: Option<RecordId>,
+}
+```
+
+```rust
+impl TargetBinds {
+    /// The scope statement and binds of a target.
+    pub fn of(target: DeletionTarget) -> (&'static str, Self) {
+        match target {
+            DeletionTarget::Garden(g) => (
+                sql::SCOPE_GARDEN,
+                Self {
+                    garden: Some(rid(&g)),
+                    ..Self::default()
+                },
+            ),
+            DeletionTarget::Plant(p) => (
+                sql::SCOPE_PLANT,
+                Self {
+                    plant: Some(rid(&p)),
+                    ..Self::default()
+                },
+            ),
+            DeletionTarget::PendingScan(s) => (
+                sql::SCOPE_SCAN,
+                Self {
+                    scan: Some(rid(&s)),
+                    ..Self::default()
+                },
+            ),
+            DeletionTarget::Member { garden, user } => (
+                sql::SCOPE_MEMBER,
+                Self {
+                    garden: Some(rid(&garden)),
+                    user: Some(rid(&user)),
+                    ..Self::default()
+                },
+            ),
+        }
+    }
+
+    /// Adds the binds. A function, not a closure: a closure's signature gets no lifetime
+    /// elision tying its returned `Query<'c, _>` to its argument's `'c` (the compiler infers
+    /// two unrelated lifetimes), while a function's `'c` names the one borrow both share.
+    pub fn bind<'c>(&self, q: Query<'c, Any>) -> Query<'c, Any> {
+        q.bind(("garden", self.garden.clone()))
+            .bind(("plant", self.plant.clone()))
+            .bind(("scan", self.scan.clone()))
+            .bind(("user", self.user.clone()))
+    }
+}
+```
+
 ✓ A garden with a scan, an event, a job, a plan with a task, an indicator answer and a map deletes cleanly in this order (section 20). A `Member` target runs the conversations step and the member's unshared chat memories.
 
 **Cleanup** (database 4, every 10 minutes, batches of 500): `IdempotencyRepo::delete_expired`, `WeatherCacheRepo::delete_before`, `ChatRepo::expire_pending_actions`, `JobRepo::delete_finished_jobs`, each a real method returning how many rows it touched.
@@ -2703,7 +2761,7 @@ Answers this crate settles, for [contracts 12](../architecture/contracts.md#12-o
 
 **Project documents, notes and skills**
 - [Database](../database/README.md) v1.4 and [schema](../database/schema.surql) · [contracts](../architecture/contracts.md) · [storage](../storage/README.md) · [domain](domain.md) · [knowledge](knowledge.md)
-- Research notes `surrealdb.md` (+ `surreal-probe/`) in the session scratchpad: the `untagged` enums, `take_errors()` minus `NotExecuted`, `is_thrown()` with the message, unique indexes as `Internal`, array keys, multi-thread retry tests
+- Research notes and a SurrealDB probe from writing this design (not kept in the repository): the `untagged` enums, `take_errors()` minus `NotExecuted`, `is_thrown()` with the message, unique indexes as `Internal`, array keys, multi-thread retry tests
 - Skills in the main checkout's `.claude/skills/`: `rust-surrealdb` (with `errors-and-retries.md` and `write-patterns.md`), `rust-errors`, `rust-testing`, `rust-async`, `rust/versions.md`
 
 The crate and SurrealQL links were checked against the pinned sources on 2026-10-16; the Rust language pages were opened on 2026-10-15 for the domain document.

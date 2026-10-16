@@ -1,6 +1,6 @@
 # PDM Backend: `blob` crate
 
-> **Status:** Draft v0.2, 2026-10-16. v0.2: a delete's only deadline is the client's 120-second operation timeout per attempt (storage v1.2.3), no task timeout around it. v0.1: `S3BlobStore`, the object store over `RustFS` 1.0.1 with `aws-sdk-s3` 1.152, a `DeleteQueue` that runs every delete detached so it is never cancelled, an in-memory store for tests and the orphan sweep's listing side, run against the pinned `RustFS` image.
+> **Status:** Draft v0.2.1, 2026-10-16. v0.2.1: the research notes are no longer named by a path outside the repository. v0.2: a delete's only deadline is the client's 120-second operation timeout per attempt (storage v1.2.3), no task timeout around it. v0.1: `S3BlobStore`, the object store over `RustFS` 1.0.1 with `aws-sdk-s3` 1.152, a `DeleteQueue` that runs every delete detached so it is never cancelled, an in-memory store for tests and the orphan sweep's listing side, run against the pinned `RustFS` image.
 
 Companion to the [backend architecture](README.md) and the [storage notes](../storage/README.md). The port it implements, `BlobStore`, and the key types `ObjectKey` and `ObjectPrefix` are in [domain 9](domain.md#9-boundary-traits). Every listing is copied from the compiled source of `crates/blob` with the docgen tool: `cargo check -p blob`, `cargo clippy -p blob --all-targets` and `cargo test -p blob` (4 unit tests) pass on Rust 1.99.1, and the ignored integration test passes against `rustfs/rustfs:1.0.1` by digest.
 
@@ -779,7 +779,7 @@ The integration test's file header has the `docker run` command; run it with `PD
 
 **Project documents, notes and skills**
 - [Storage](../storage/README.md) · [database](../database/README.md) · [domain](domain.md) · [store](store.md)
-- Research notes `http-s3.md` (+ `http-probe/`) in the session scratchpad: the 412 as `Unhandled`, the pinned behaviour version, `DisplayErrorContext`, pagination and batch deletes run against `RustFS` 1.0.1
+- Research notes and an HTTP probe from writing this design (not kept in the repository): the 412 as `Unhandled`, the pinned behaviour version, `DisplayErrorContext`, pagination and batch deletes run against `RustFS` 1.0.1
 - Skills in the main checkout's `.claude/skills/`: `rust/versions.md`, `rust-errors`, `rust-async`, `rust-testing`
 
 The crate pages were checked against the pinned sources on 2026-10-16.

@@ -1,6 +1,6 @@
 # PDM Backend: `domain` contract types
 
-> **Status:** Draft v0.3, 2026-10-16. v0.3: `PastWeather` gains `longest_humid_run_days` (contracts v0.10, section 7), the longest run of humid days in the past week, so a past humid stretch is detectable. v0.2: follows contracts v0.9 and v0.10 where they touch shapes: `JobError.code` is a `JobErrorCode` (`max_runtime_exceeded` and `unknown_label_version` included), the `model_versions` keys are `ModelVersionKey` constants, `Invite.created_by` is optional, worker payloads never carry a mask URL and `complete` results are read by the job's kind (both as v0.1 had them); `BoxFormat`'s comments name the models of each format. v0.1: every shape of [contracts.md](../architecture/contracts.md) v0.8.2 as compiled Rust, section by section, with the serde and schema decisions explained and a TypeScript → Rust map.
+> **Status:** Draft v0.3.1, 2026-10-16. v0.3.1: `JobErrorCode`'s comments follow contracts 5: `max_runtime_exceeded` is settled (question 18), and `unsupported_version` and `model_error` carry the contract's full meaning. v0.3: `PastWeather` gains `longest_humid_run_days` (contracts v0.10, section 7), the longest run of humid days in the past week, so a past humid stretch is detectable. v0.2: follows contracts v0.9 and v0.10 where they touch shapes: `JobError.code` is a `JobErrorCode` (`max_runtime_exceeded` and `unknown_label_version` included), the `model_versions` keys are `ModelVersionKey` constants, `Invite.created_by` is optional, worker payloads never carry a mask URL and `complete` results are read by the job's kind (both as v0.1 had them); `BoxFormat`'s comments name the models of each format. v0.1: every shape of [contracts.md](../architecture/contracts.md) v0.8.2 as compiled Rust, section by section, with the serde and schema decisions explained and a TypeScript → Rust map.
 
 Companion to the [backend architecture](README.md) and to the [`domain` crate](domain.md). Sections 1–10 follow [contracts.md](../architecture/contracts.md) 1–10, so "contracts 7" and "domain-types 7" describe the same shapes. Every listing is copied from the compiled source of `crates/domain` (`cargo check`, `cargo test` and `cargo clippy --all-targets` pass on Rust 1.99.1 with serde 1.0.229, utoipa 6.0.0, schemars 1.2.3, chrono 0.4.45 and ulid 3.0.0); the module paths are in [the map](#11-typescript-to-rust-map).
 
@@ -2463,17 +2463,19 @@ pub struct WorkerEvents {
 /// (from a newer worker) still decodes, as [`JobErrorCode::Other`], and is stored as written.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum JobErrorCode {
-    /// A payload or job `v` the worker doesn't support; `retryable: false`.
+    /// A payload or job `v` the worker doesn't support, a job kind it doesn't know, or a payload
+    /// it can't read; `retryable: false`.
     UnsupportedVersion,
     /// A `label_set_version` or `classifier_labels_version` the worker hasn't loaded;
     /// `retryable: false`.
     UnknownLabelVersion,
-    /// Inference failed, or its output failed validation twice; `retryable: true`.
+    /// Inference failed, or its output failed validation twice; `retryable: true`, except
+    /// `false` when the worker's adapter can't do the job's kind at all.
     ModelError,
     /// An image URL failed after retries; `retryable: true`.
     ImageFetchFailed,
-    /// The worker stopped the job itself before `max_runtime_s` (a hung or slow model);
-    /// `retryable: true`. Proposed for contracts open question 18.
+    /// The worker stopped the job itself at its soft deadline, before `max_runtime_s` (a hung
+    /// or slow model); `retryable: true`. Settled by contracts 12, question 18.
     MaxRuntimeExceeded,
     /// Any other code, kept verbatim.
     Other(String),

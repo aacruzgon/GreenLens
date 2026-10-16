@@ -1,6 +1,6 @@
 # PDM Backend Architecture
 
-> **Status:** Draft v0.2.1, 2026-10-16. v0.2.1: the release profile keeps symbols and adds line tables (stripping symbols empties panic backtraces, probed); the `api` container's `stop_grace_period` is 190 s; the scheduler tree lists the eight real tasks, with question continuation inside `sweep`; the database row names all four protected parameters. v0.2: the module trees, crate graph and configuration now match the compiled crates; adds the decisions on contracts open questions 12–24 and the changes to contracts v0.10, architecture v0.7 and database v1.4.
+> **Status:** Draft v0.2.2, 2026-10-16. v0.2.2: section 7 says the Rust skills follow this design instead of listing departures; the generator tools move to `backend/tools/`; moving the scratch workspace into `backend/` is decided. v0.2.1: the release profile keeps symbols and adds line tables (stripping symbols empties panic backtraces, probed); the `api` container's `stop_grace_period` is 190 s; the scheduler tree lists the eight real tasks, with question continuation inside `sweep`; the database row names all four protected parameters. v0.2: the module trees, crate graph and configuration now match the compiled crates; adds the decisions on contracts open questions 12–24 and the changes to contracts v0.10, architecture v0.7 and database v1.4.
 > v0.1: the Rust backend designed crate by crate, down to every struct, enum, trait, generic parameter and lifetime, with each definition compiled on Rust 1.99.1 against the pinned crates; it follows [contracts](../architecture/contracts.md) v0.9 and [architecture](../architecture/README.md) v0.6.
 
 Companion to the [system architecture](../architecture/README.md), the [data contracts](../architecture/contracts.md), the [database](../database/README.md) and [storage](../storage/README.md) notes, the [frontend](../frontend/README.md) and the [computer-vision design](../vision/README.md). Those documents decide **what** the system does; this directory decides **how the Rust code is built**: crates, modules, types, traits, tasks and errors.
@@ -206,15 +206,7 @@ The decisions every crate follows. Each links to where it is explained in full.
 | Async | tokio; `spawn_blocking` for CPU work behind a `Semaphore`; `mpsc` actors for per-scan writers; `broadcast` for the SSE hub; `Notify` for job inserts; `CancellationToken` and `TaskTracker` for shutdown | [api](api.md), [worker](worker.md) |
 | Names | Contract nouns for types; verbs on records for repository methods; no `get_` prefixes ([API Guidelines C-GETTER](https://rust-lang.github.io/api-guidelines/naming.html#getter-names-follow-rust-convention-c-getter)) | |
 
-**Where this design departs from the project's Rust skills.** The skills in `.claude/skills/rust-*` follow the documents; where a design choice here differs, the crate document says why. The main ones:
-- `#[async_trait]` instead of hand-written `BoxFuture` (`mockall` can't mock the latter when it borrows a named lifetime);
-- one generic `Id<T>` instead of a newtype per table;
-- the extra `integrations` crate;
-- SurrealDB's embedded `kv-mem` engine for store tests, with one test against the pinned image;
-- a request timeout answers `503 upstream_unavailable`, not `500 internal` (contracts 2, timeouts; settled in contracts v0.10, question 17);
-- access checks are extractors that produce proofs, not `route_layer` middleware.
-
-The full list, one row per skill rule, is kept for the skills' owners to fix on main.
+**The project's Rust skills.** The skills in `.claude/skills/rust-*` follow this design, including the choices that once differed from them: `#[async_trait]` on the ports, one generic `Id<T>`, the `integrations` crate, store tests on SurrealDB's embedded `kv-mem` engine, `503 upstream_unavailable` for a request timeout (contracts 2, timeouts; question 17), and access checks as extractors that produce proofs. Where a skill and these documents disagree, the documents win.
 
 ---
 
@@ -297,7 +289,7 @@ Each binary reads typed configuration from the environment at start and refuses 
 
 **`domain`'s test helpers** are features: `mock` gives a `mockall` mock of every port except `ChatModel`, and `test-util` gives `FixedClock`, `SequentialIds`, `FakeSigner`, `FixedPhotos` and `ScriptedChat` ([domain 11](domain.md#11-testing)).
 
-**Regenerating the documents.** The listings in these documents are produced from the source by `docgen.py`. Templates (`<doc>.md.tpl`) hold the prose and directives (`@@items`, `@@file`, `@@impl`, `@@test`) that pull definitions by name, and `checklinks.py` checks every anchor. When the backend is scaffolded, the generator moves to `backend/tools/docgen/` and runs in CI, so a listing that no longer matches its code fails the build.
+**Regenerating the documents.** The listings in these documents are produced from the source by `docgen.py`. Templates (`<doc>.md.tpl`) hold the prose and directives (`@@items`, `@@file`, `@@impl`, `@@test`) that pull definitions by name, and `checklinks.py` checks every anchor. When the backend is scaffolded, the generator moves to `backend/tools/docgen/` with `regen_all.sh` (every document) and `check_fences.py` (every listing balanced), and runs in CI, so a listing that no longer matches its code fails the build. `gen_fake_store.py`, which writes `api`'s test `FakeStore` from the store traits, moves to `backend/tools/apigen/` ([api 21](api.md#21-testing)).
 
 ---
 
@@ -353,7 +345,7 @@ The remaining questions each crate document found are in its "Open questions" se
 
 1. **The RX 9070 XT's VLM server:** vLLM on ROCm (proposed) or llama.cpp with Vulkan, after the AMD day-1 check ([architecture open decision 19](../architecture/README.md#15-open-decisions)).
 2. **Where the control plane runs** ([architecture open decision 2](../architecture/README.md#15-open-decisions)): the binaries are the same either way.
-3. **Moving the scratch workspace into `backend/`.** The compiled skeleton behind these documents can seed the real workspace on day 1, so the code starts from the reviewed design rather than being retyped.
+3. **Moving the scratch workspace into `backend/`:** decided. The compiled skeleton behind these documents becomes the real workspace on day 1 (Oct 16), so the code starts from the reviewed design rather than being retyped.
 4. **Weather and trigger thresholds:** one definition in [domain 7](domain.md#weather-thresholds), with defaults to confirm from the evaluation set ([architecture open decision 20](../architecture/README.md#15-open-decisions), contracts open question 27).
 5. **Running more than one `api` instance** would need SurrealDB live queries or a message bus for the SSE hub and the per-scan writers ([architecture 12, operations](../architecture/README.md#operations)). One instance is the design for build week.
 
