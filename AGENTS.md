@@ -124,8 +124,19 @@ The team builds with AI assistance and has the capacity for the full scope. Don'
 
 - Conventional Commits with a scope naming the area: `docs(architecture,database,storage): …`, `feat(api): …`, `fix(store): …`.
 - Imperative subject; a body that explains what changed and why for anything non-trivial.
-- Commits are signed (SSH signing is configured).
+- Commits are signed (SSH signing; [setup 2](docs/setup/README.md#2-everyone)). GitHub refuses an unverified commit on any branch.
 - One logical change per commit.
+
+### Branches and pull requests
+
+GitHub rulesets protect `main` (and `master`), the same as on the team's hfs-Cassandra fork:
+
+- **No direct pushes to `main`.** Work on a branch named for the change (`docs/…`, `feat/…`, `fix/…`, `chore/…`), push it, and open a pull request.
+- **A pull request needs 1 approving review,** and every review thread resolved. Pushing new commits dismisses earlier approvals, and a change pushed by someone other than its author needs an extra approval.
+- **No force-pushes to `main`, and it can't be deleted.** Merge, squash and rebase merges are allowed.
+- **Admins can bypass the review only through a pull request,** never by pushing to `main`.
+- **No required CI checks yet.** Add each one to the ruleset once its workflow exists.
+- **Agents** commit and push only when the user asks. They push branches, never `main`, and open the pull request with `gh pr create`.
 
 ### Secrets
 
