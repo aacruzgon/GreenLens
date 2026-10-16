@@ -26,6 +26,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | [`docs/frontend/flows.md`](docs/frontend/flows.md) | Sequence diagrams for every user flow and the app's state machines | You are implementing a flow end to end, or a reducer or state machine in a feature's `model/` |
 | [`docs/frontend/screens.md`](docs/frontend/screens.md) | Navigation map, screen inventory with data, actions and roles, wireframes, screen rules, shared components and wording rules | You are building or changing a screen |
 | [`docs/storage/README.md`](docs/storage/README.md) | RustFS notes: version pin and setup, bucket and key layout, how images are served through signed API URLs, writes and deletes, the Rust client (`aws-sdk-s3`), operations, caveats and the fallback | You are touching image or depth-map storage, the `blob` crate, or upload handling |
+| [`docs/setup/README.md`](docs/setup/README.md) | Developer setup: what each team member installs on macOS, Windows and Linux, by role (everyone, app, backend, ML, rig and control plane), with the pinned versions and a check list | You are setting up a machine, or a build fails for a missing tool |
 | [`docs/backend/README.md`](docs/backend/README.md) | The Rust backend design: goals, the crate graph and dependency rules, workspace layout, Rust conventions, runtime composition, configuration, testing, builds, build plan. Links a document per crate (`domain`, `domain-types`, `store`, `blob`, `integrations`, `vision`, `knowledge`, `agent`, `pipeline`, `api`, `worker`) with every struct, enum, trait, generic and lifetime, compiled on Rust 1.99.1 | You write or review any Rust, a `Cargo.toml`, a repository method, an endpoint, a worker or a background task |
 | [`docs/backend/flows.md`](docs/backend/flows.md) | Server-side sequence diagrams across crates (request pipeline, uploads, a scan from submit to plan, claims and the sweep, SSE, job leases, chat turns, deletion, the scheduler, start-up and shutdown) and the server's state machines | You implement or debug a flow end to end on the server |
 | [`docs/vision/README.md`](docs/vision/README.md) | The vision and ML design: the model inventory, placement and VRAM budgets on the three GPUs, runtimes and pins, model files and versions, licences, open decisions and the proposed contract changes. Companions: [`models.md`](docs/vision/models.md) (every perception and CPU model), [`vlm.md`](docs/vision/vlm.md) (the VLM, its serving, prompts and schemas), [`training.md`](docs/vision/training.md) (datasets, training, ONNX export, label lists, knowledge-ingestion model steps) and [`evaluation.md`](docs/vision/evaluation.md) (evaluation set, metrics, calibration, benchmarks) | You are choosing, training, exporting, prompting or evaluating a model, setting a threshold or a VRAM budget, or working in `ml/` |
@@ -51,6 +52,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | Knowledge base and seed file format | architecture §5 (Knowledge base); contracts §10 |
 | Security, privacy and safety (EXIF, face blurring, dose checks) | architecture §11 |
 | Deployment, hosting, app delivery, operations | architecture §12 |
+| Installing the tools on a dev machine, the rig or the control plane | setup |
 | App layers, layout, libraries and import rules | frontend §4–6 |
 | App auth (Clerk), API client, errors, idempotency, SSE handling | frontend §8–10 |
 | App flows and state machines | frontend flows |
@@ -98,7 +100,8 @@ PDM/
    ├─ vision/          the computer-vision models, training and evaluation
    ├─ frontend/        the app's architecture (README.md), flows (flows.md) and screens (screens.md)
    ├─ database/        SurrealDB schema (schema.surql) and its notes
-   └─ storage/         RustFS setup and notes
+   ├─ storage/         RustFS setup and notes
+   └─ setup/           what each team member installs, per OS
 ```
 
 What each crate does is in architecture §3 (Rust crates); how each is built is in [`docs/backend`](docs/backend/README.md).
