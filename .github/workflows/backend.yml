@@ -171,12 +171,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Every compose file renders against the example env file
+      - name: Every compose file renders with the example env file
         run: |
           shopt -s nullglob
+          # As infra/README.md says to on a host: the compose files read infra/.env.
+          if [ -f infra/.env.example ]; then cp infra/.env.example infra/.env; fi
           for f in infra/*.compose.yml; do
             echo "$f"
-            docker compose -f "$f" --env-file infra/env/.env.example config -q
+            docker compose -f "$f" config -q
           done
       - name: Shell scripts parse and pass shellcheck
         run: |
