@@ -6,7 +6,8 @@
 name: pdm
 x-logging: &logging
   driver: json-file
-  options: { max-size: "10m", max-file: "5" }     # 50 MB of logs per container at most
+  # The live file up to 10 MB, plus four rotated files gzipped (compress): from about 12 MB per container.
+  options: { max-size: "10m", max-file: "5", compress: "true" }
 x-hardened: &hardened
   read_only: true
   tmpfs: ["/tmp:size=512m"]
