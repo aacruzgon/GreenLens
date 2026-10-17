@@ -1,8 +1,9 @@
 //! The hosted fallback's schemas against the real Anthropic API, ignored by default. No images
 //! are sent: these check only that the API accepts each schema and answers inside it. The
-//! indicators call asks 27 questions by default, the most a call can ask (9 candidates × 3
-//! indicators); `LIVE_QUESTIONS` changes the count. One schema that large is refused, so this
-//! also checks the backend's split into parts.
+//! indicators test asks 27 questions by default, the most a call can ask (9 candidates × 3
+//! indicators), in parts of `MAX_QUESTIONS_PER_CALL` as the adapter sends them, with keys and
+//! image lists as long as production's. `LIVE_QUESTIONS` and `LIVE_PER_CALL` change the count
+//! and the part size, to probe the API's grammar limit.
 //!
 //! Run with the key in `infra/dev/.env` (gitignored), from `backend/`:
 //! `set -a; source ../infra/dev/.env; set +a; cargo nextest run -p worker --run-ignored only live_`
@@ -20,7 +21,8 @@ use integrations::anthropic::{AnthropicClient, AnthropicConfig};
 use serde_json::Value;
 
 use crate::vlm::{
-    backend::{AnthropicBackend, Stop, VlmBackend, VlmCall},
+    backend::{AnthropicBackend, MAX_QUESTIONS_PER_CALL, Stop, VlmBackend, VlmCall},
+    prompt,
     schema::{self, BoxRange, Limits},
 };
 
@@ -52,10 +54,16 @@ async fn ask(name: &str, schema: &Value, instructions: &str) -> Value {
 #[ignore = "calls the real Anthropic API"]
 async fn live_indicators_worst_case() {
     let n: usize = std::env::var("LIVE_QUESTIONS").map_or(27, |v| v.parse().unwrap());
+    let per_call: usize =
+        std::env::var("LIVE_PER_CALL").map_or(MAX_QUESTIONS_PER_CALL, |v| v.parse().unwrap());
+    // Slugs of 24 characters, the most a key keeps (`q27_` + 24), and 4 images, the most a
+    // call has, so every part is as large as production makes it.
     let indicators: Vec<Indicator> = (1..=n)
         .map(|i| Indicator {
-            indicator_id: format!("tomato_early_blight.sign_{i}").parse().unwrap(),
-            question: format!("Is sign {i} visible?"),
+            indicator_id: format!("tomato_early_blight.concentric_rings_on_{i:03}")
+                .parse()
+                .unwrap(),
+            question: format!("Are there brown spots with concentric rings, pattern {i}?"),
             r#where: IndicatorWhere::LowerLeaves,
             image_kinds: vec![ImageKind::LeafCloseup],
         })
@@ -64,16 +72,21 @@ async fn live_indicators_worst_case() {
         ImageKind::WholePlant,
         ImageKind::LeafCloseup,
         ImageKind::LeafCloseup,
+        ImageKind::LeafUnderside,
     ];
     let questions = schema::questions(&indicators, &kinds);
-    let schema = schema::indicators(kinds.len(), &questions, Limits::CONTRACT);
-    let answer = ask(
-        "indicators",
-        &schema,
-        "Answer every question with unsure and no image.",
-    )
-    .await;
-    assert_eq!(answer.as_object().map(serde_json::Map::len), Some(n));
+    let mut answered = 0;
+    for part in questions.chunks(per_call) {
+        let schema = schema::indicators(kinds.len(), part, Limits::CONTRACT);
+        let instructions = prompt::indicators(part, false);
+        let answer = ask("indicators", &schema, &instructions).await;
+        assert_eq!(
+            answer.as_object().map(serde_json::Map::len),
+            Some(part.len())
+        );
+        answered += part.len();
+    }
+    assert_eq!(answered, n);
 }
 
 #[tokio::test]

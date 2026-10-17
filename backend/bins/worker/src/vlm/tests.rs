@@ -25,14 +25,26 @@ use crate::vlm::{
 struct Scripted {
     replies: Mutex<VecDeque<VlmReply>>,
     calls: Mutex<u32>,
+    max_questions: Option<usize>,
+    /// The question keys each call's prompt named, in call order.
+    prompts: Mutex<Vec<Vec<String>>>,
 }
 
 impl VlmBackend for Scripted {
     fn name(&self) -> &'static str {
         "scripted"
     }
-    async fn call<'a>(&'a self, _call: &'a VlmCall<'a>) -> Result<VlmReply, ModelError> {
+    fn max_questions(&self) -> Option<usize> {
+        self.max_questions
+    }
+    async fn call<'a>(&'a self, call: &'a VlmCall<'a>) -> Result<VlmReply, ModelError> {
         *self.calls.lock().unwrap() += 1;
+        if let Some(props) = call.schema.get("properties").and_then(Value::as_object) {
+            self.prompts
+                .lock()
+                .unwrap()
+                .push(props.keys().cloned().collect());
+        }
         self.replies
             .lock()
             .unwrap()
@@ -62,6 +74,10 @@ fn reply(text: &str, stop: Stop) -> VlmReply {
 }
 
 fn adapter(replies: Vec<VlmReply>) -> VlmAdapter<Scripted> {
+    adapter_with(replies, None)
+}
+
+fn adapter_with(replies: Vec<VlmReply>, max_questions: Option<usize>) -> VlmAdapter<Scripted> {
     let profile = AdapterProfile {
         box_format: BoxFormat::Norm1000,
         cell_px: 32,
@@ -80,6 +96,8 @@ fn adapter(replies: Vec<VlmReply>) -> VlmAdapter<Scripted> {
         Scripted {
             replies: Mutex::new(replies.into()),
             calls: Mutex::new(0),
+            max_questions,
+            prompts: Mutex::new(Vec::new()),
         },
         profile,
         Arc::new(Semaphore::new(1)),
@@ -183,4 +201,66 @@ async fn images_are_prepared_on_the_cell_grid() {
     let a = adapter(vec![]);
     let prepared = a.prepare(&[png()]).await.unwrap();
     assert_eq!((prepared[0].width, prepared[0].height), (64, 32));
+}
+
+fn answers(keys: &[&str]) -> String {
+    let map: serde_json::Map<String, Value> = keys
+        .iter()
+        .map(|k| {
+            (
+                (*k).to_owned(),
+                serde_json::json!({"reason": "r", "answer": "no", "image": null}),
+            )
+        })
+        .collect();
+    Value::Object(map).to_string()
+}
+
+#[tokio::test]
+async fn questions_beyond_the_backend_limit_go_in_parts_each_retried_alone() {
+    let a = adapter_with(
+        vec![
+            reply(&answers(&["q1_a", "q2_b"]), Stop::Complete),
+            reply("{", Stop::Length),
+            reply(&answers(&["q3_c", "q4_d"]), Stop::Complete),
+            reply(&answers(&["q5_e"]), Stop::Complete),
+        ],
+        Some(2),
+    );
+    let candidates = [CandidatePrompt {
+        problem_id: "tomato_early_blight".parse().unwrap(),
+        name: "Early blight".to_owned(),
+        indicators: ["a", "b", "c", "d", "e"]
+            .iter()
+            .map(|slug| Indicator {
+                indicator_id: format!("tomato_early_blight.{slug}").parse().unwrap(),
+                question: "?".to_owned(),
+                r#where: domain::jobs::IndicatorWhere::LowerLeaves,
+                image_kinds: vec![ImageKind::WholePlant],
+            })
+            .collect(),
+    }];
+    let prepared = a.prepare(&[png()]).await.unwrap();
+    let result = a
+        .indicators(&candidates, &[&prepared[0]], false)
+        .await
+        .unwrap();
+    let slugs: Vec<&str> = result
+        .answers
+        .iter()
+        .map(|x| x.indicator_id.slug())
+        .collect();
+    assert_eq!(slugs, ["a", "b", "c", "d", "e"]);
+    // three parts, and only the cut-off one was asked again
+    assert_eq!(*a.backend.calls.lock().unwrap(), 4);
+    let prompts = a.backend.prompts.lock().unwrap().clone();
+    assert_eq!(
+        prompts,
+        [
+            vec!["q1_a", "q2_b"],
+            vec!["q3_c", "q4_d"],
+            vec!["q3_c", "q4_d"],
+            vec!["q5_e"]
+        ]
+    );
 }

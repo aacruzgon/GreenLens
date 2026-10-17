@@ -77,6 +77,11 @@ pub trait VlmBackend: Send + Sync + 'static {
         &'a self,
         call: &'a VlmCall<'a>,
     ) -> impl Future<Output = Result<VlmReply, ModelError>> + Send + 'a;
+    /// The most indicator questions one call may carry; the adapter splits a longer list into
+    /// calls of at most this many. `None`: no limit.
+    fn max_questions(&self) -> Option<usize> {
+        None
+    }
 }
 
 /// vLLM or llama.cpp through `integrations::openai_compat`.
@@ -152,10 +157,8 @@ impl VlmBackend for OpenAiBackend {
 ///
 /// The API also refuses a structured-output grammar that grows too large: an indicators schema
 /// of 20 question objects was refused live on 2026-10-16, while 16 passed, and a call can ask 27
-/// (9 candidates × 3 indicators). So an indicators call with more than
-/// [`MAX_QUESTIONS_PER_CALL`] questions is sent as parts of at most that many, in parallel, each
-/// with the same images and its share of the schema unchanged, and the answers are merged into
-/// one object. The decoder sees what one call would have returned.
+/// (9 candidates × 3 indicators). So this backend takes at most [`MAX_QUESTIONS_PER_CALL`]
+/// questions a call, and the adapter splits a longer list ([`VlmBackend::max_questions`]).
 #[derive(Debug, Clone)]
 pub struct AnthropicBackend {
     client: AnthropicClient,
@@ -170,21 +173,25 @@ impl AnthropicBackend {
     pub const fn new(client: AnthropicClient, model: String) -> Self {
         Self { client, model }
     }
+}
 
-    /// One request with this schema and these instructions.
-    async fn request(
-        &self,
-        call: &VlmCall<'_>,
-        schema: &Value,
-        instructions: &str,
-    ) -> Result<VlmReply, ModelError> {
-        let sanitized = anthropic::sanitize_schema(schema);
+impl VlmBackend for AnthropicBackend {
+    fn name(&self) -> &'static str {
+        "llm_fallback"
+    }
+
+    fn max_questions(&self) -> Option<usize> {
+        Some(MAX_QUESTIONS_PER_CALL)
+    }
+
+    async fn call<'a>(&'a self, call: &'a VlmCall<'a>) -> Result<VlmReply, ModelError> {
+        let sanitized = anthropic::sanitize_schema(call.schema);
         let mut content = Vec::with_capacity(call.images.len() * 2 + 1);
         for image in &call.images {
             content.push(ContentBlock::text(image.label));
             content.push(ContentBlock::image("image/jpeg", image.jpeg));
         }
-        content.push(ContentBlock::text(instructions));
+        content.push(ContentBlock::text(call.instructions));
         let mut request = MessagesRequest::new(
             self.model.as_str(),
             call.max_output_tokens,
@@ -216,134 +223,5 @@ impl AnthropicBackend {
                 _ => Stop::Complete,
             },
         })
-    }
-}
-
-impl VlmBackend for AnthropicBackend {
-    fn name(&self) -> &'static str {
-        "llm_fallback"
-    }
-
-    async fn call<'a>(&'a self, call: &'a VlmCall<'a>) -> Result<VlmReply, ModelError> {
-        let parts = if call.schema_name == "indicators" {
-            split_questions(call.schema, MAX_QUESTIONS_PER_CALL)
-        } else {
-            None
-        };
-        let Some(parts) = parts else {
-            return self.request(call, call.schema, call.instructions).await;
-        };
-        let prompts: Vec<String> = parts
-            .iter()
-            .map(|(_, keys)| {
-                format!(
-                    "{}\n\nThis part asks only {}. Answer exactly those.",
-                    call.instructions,
-                    keys.join(", ")
-                )
-            })
-            .collect();
-        let replies = futures::future::try_join_all(
-            parts
-                .iter()
-                .zip(&prompts)
-                .map(|((schema, _), prompt)| self.request(call, schema, prompt)),
-        )
-        .await?;
-        Ok(merge_replies(replies))
-    }
-}
-
-/// Splits an object schema's properties into parts of at most `max`, in order, each part the
-/// same object with only its properties and `required`. `None` when it fits in one call.
-fn split_questions(schema: &Value, max: usize) -> Option<Vec<(Value, Vec<String>)>> {
-    let properties = schema.get("properties")?.as_object()?;
-    if properties.len() <= max || max == 0 {
-        return None;
-    }
-    let keys: Vec<&String> = properties.keys().collect();
-    let parts = keys
-        .chunks(max)
-        .map(|chunk| {
-            let mut part = schema.clone();
-            let names: Vec<String> = chunk.iter().map(|k| (*k).clone()).collect();
-            let subset = names
-                .iter()
-                .map(|k| (k.clone(), properties[k.as_str()].clone()))
-                .collect();
-            part["properties"] = Value::Object(subset);
-            if let Some(required) = schema.get("required").and_then(Value::as_array) {
-                part["required"] = required
-                    .iter()
-                    .filter(|r| r.as_str().is_some_and(|r| names.iter().any(|n| n == r)))
-                    .cloned()
-                    .collect();
-            }
-            (part, names)
-        })
-        .collect();
-    Some(parts)
-}
-
-/// One reply from the parts: the first part that didn't complete, or didn't answer with a JSON
-/// object, is returned as is, so the adapter's validation sees the failure; otherwise the
-/// objects merged in part order.
-fn merge_replies(replies: Vec<VlmReply>) -> VlmReply {
-    let mut merged = serde_json::Map::new();
-    for reply in replies {
-        let object = (reply.stop == Stop::Complete)
-            .then(|| serde_json::from_str::<Value>(&reply.text).ok())
-            .flatten();
-        match object {
-            Some(Value::Object(map)) => merged.extend(map),
-            _ => return reply,
-        }
-    }
-    VlmReply {
-        text: Value::Object(merged).to_string(),
-        stop: Stop::Complete,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use serde_json::json;
-
-    use super::*;
-
-    fn questions(n: usize) -> Value {
-        let props: serde_json::Map<String, Value> = (1..=n)
-            .map(|i| (format!("q{i}_x"), json!({"type": "object"})))
-            .collect();
-        let required: Vec<String> = props.keys().cloned().collect();
-        json!({"type": "object", "properties": props, "required": required, "additionalProperties": false})
-    }
-
-    #[test]
-    fn a_large_indicators_schema_splits_in_order() {
-        let parts = split_questions(&questions(27), 12).unwrap();
-        let sizes: Vec<usize> = parts.iter().map(|(_, k)| k.len()).collect();
-        assert_eq!(sizes, [12, 12, 3]);
-        let (last, keys) = &parts[2];
-        assert_eq!(keys, &["q25_x", "q26_x", "q27_x"]);
-        assert_eq!(last["required"], json!(["q25_x", "q26_x", "q27_x"]));
-        assert_eq!(last["additionalProperties"], json!(false));
-        assert!(split_questions(&questions(12), 12).is_none());
-    }
-
-    #[test]
-    fn replies_merge_unless_a_part_failed() {
-        let ok = |t: &str| VlmReply {
-            text: t.to_owned(),
-            stop: Stop::Complete,
-        };
-        let merged = merge_replies(vec![ok(r#"{"q1":1}"#), ok(r#"{"q2":2}"#)]);
-        assert_eq!(merged.text, r#"{"q1":1,"q2":2}"#);
-        let cut = VlmReply {
-            text: "{".to_owned(),
-            stop: Stop::Length,
-        };
-        assert_eq!(merge_replies(vec![ok(r#"{"q1":1}"#), cut.clone()]), cut);
-        assert_eq!(merge_replies(vec![ok("not json")]), ok("not json"));
     }
 }

@@ -1,8 +1,8 @@
 # PDM Backend: `worker` binary
 
-> **Status:** Draft v0.5.4, 2026-10-16. v0.5.4: `AnthropicBackend` sends an indicators call with more than 12 questions as parallel parts of at most 12 and merges the answers, because the API refused one schema of 20 question objects as too large (a call can ask 27); two ignored live tests of the hosted schemas; 36 tests. v0.5.3: the perception worker reads its thresholds from the manifest with `PerceptionConfig::from_manifest`, the environment sets only the batch caps and never above the manifest's, and start-up refuses an fp16 model on `ORT_EP=cpu` or a file whose tensor names differ from the manifest (gaps G4, G6 and G11); `VLM_BASE_URL` defaults to `http://vllm-nv:8000`, the compose service's name (G7), all from [issue #12](https://github.com/aacruzgon/GreenLens/issues/12). v0.5.2: open question 3 is settled: xgrammar enforces `anyOf` with `null`. v0.5.1: section 12's image path is the registry's, `ghcr.io/aacruzgon/greenlens/worker` ([infra 3](../infra/README.md#3-images)). v0.5: section 15.1 designs stub vision (`--stub-vision`, refused in a release build without `PDM_ALLOW_STUB_VISION`), the canned `perception` result the API accepts, its marks in `model_versions` and logs, the tests, and seven work items for the roadmap's slice S1; section 17 has six new questions; no section number changes. v0.4.2: the rig's compose listing gives each worker an `env_file` with its own `WORKER_TOKEN` (the worker reads no `WORKER_TOKEN_FILE`). v0.4.1: section 17 keeps only the four questions still open, since docs/vision v0.2 and contracts 5–6 now agree on the rest; section 1 drops the image-fetch difference (the skill uses 30 s too); section 12 lists the fallback service with its `stop_grace_period`. v0.4: the SIGTERM shutdown ends within `DRAIN_SECONDS`, dropping a `complete` or heartbeat call in flight (it could take 20 + 10 + 5 = 35 s, past the 30 s grace); the worker API client retries by the error body's `retryable` and `retry_after_s` (contracts 2), not by status, and waits `retry_after_s`; section 1 states the HTTP timeouts and only the two skill differences that remain. v0.3.1: why the immediate re-claim after a `204` can't spin while the API shuts down (probed). v0.3: the hosted fallback gives the guided check the same 8,000-token budget as the other calls (docs/vision README 12 #27), and the fallback row points to the full list of stripped schema keywords. v0.2: the fallback worker reads its hosted-LLM key from `LLM_API_KEY`, the name `api` and the backend README §9 use (it was `ANTHROPIC_API_KEY`). v0.1: the worker process (`--caps perception|vlm|fallback`): configuration, the heartbeat and claim loops with slots, leases and the SIGTERM drain, cancellation by drop, the VLM adapter with its per-call schema builder and decoding, the hosted fallback, per-card settings for the RX 9070 XT, and the rig's compose services; compiled on Rust 1.99.1.
+> **Status:** Draft v0.5.4, 2026-10-16. v0.5.4: the adapter sends an indicators call as parallel parts when its backend limits the questions per call (`VlmBackend::max_questions`; 12 on the hosted model, because the API refuses a schema of 20 question objects as too large and a call can ask 27), each part with its own schema and prompt and retried on its own; two ignored live tests of the hosted schemas; 35 tests. v0.5.3: the perception worker reads its thresholds from the manifest with `PerceptionConfig::from_manifest`, the environment sets only the batch caps and never above the manifest's, and start-up refuses an fp16 model on `ORT_EP=cpu` or a file whose tensor names differ from the manifest (gaps G4, G6 and G11); `VLM_BASE_URL` defaults to `http://vllm-nv:8000`, the compose service's name (G7), all from [issue #12](https://github.com/aacruzgon/GreenLens/issues/12). v0.5.2: open question 3 is settled: xgrammar enforces `anyOf` with `null`. v0.5.1: section 12's image path is the registry's, `ghcr.io/aacruzgon/greenlens/worker` ([infra 3](../infra/README.md#3-images)). v0.5: section 15.1 designs stub vision (`--stub-vision`, refused in a release build without `PDM_ALLOW_STUB_VISION`), the canned `perception` result the API accepts, its marks in `model_versions` and logs, the tests, and seven work items for the roadmap's slice S1; section 17 has six new questions; no section number changes. v0.4.2: the rig's compose listing gives each worker an `env_file` with its own `WORKER_TOKEN` (the worker reads no `WORKER_TOKEN_FILE`). v0.4.1: section 17 keeps only the four questions still open, since docs/vision v0.2 and contracts 5–6 now agree on the rest; section 1 drops the image-fetch difference (the skill uses 30 s too); section 12 lists the fallback service with its `stop_grace_period`. v0.4: the SIGTERM shutdown ends within `DRAIN_SECONDS`, dropping a `complete` or heartbeat call in flight (it could take 20 + 10 + 5 = 35 s, past the 30 s grace); the worker API client retries by the error body's `retryable` and `retry_after_s` (contracts 2), not by status, and waits `retry_after_s`; section 1 states the HTTP timeouts and only the two skill differences that remain. v0.3.1: why the immediate re-claim after a `204` can't spin while the API shuts down (probed). v0.3: the hosted fallback gives the guided check the same 8,000-token budget as the other calls (docs/vision README 12 #27), and the fallback row points to the full list of stripped schema keywords. v0.2: the fallback worker reads its hosted-LLM key from `LLM_API_KEY`, the name `api` and the backend README §9 use (it was `ANTHROPIC_API_KEY`). v0.1: the worker process (`--caps perception|vlm|fallback`): configuration, the heartbeat and claim loops with slots, leases and the SIGTERM drain, cancellation by drop, the VLM adapter with its per-call schema builder and decoding, the hosted fallback, per-card settings for the RX 9070 XT, and the rig's compose services; compiled on Rust 1.99.1.
 
-Companion to the [backend architecture](README.md), the [`vision` crate](vision.md) (the perception models and image code it uses), the [`integrations` crate](integrations.md) (its HTTP clients for the VLM server and the LLM API) and the [`domain` crate](domain.md) (the job types and the `VisionModel` port). Every listing is copied from the compiled source of `bins/worker` by the docgen tool. `cargo check -p worker` (also `--features cuda`), `cargo clippy -p worker --all-targets` and `cargo test -p worker` pass: 36 tests, among them the loop on paused time against a fake broker and the VLM adapter against a scripted backend.
+Companion to the [backend architecture](README.md), the [`vision` crate](vision.md) (the perception models and image code it uses), the [`integrations` crate](integrations.md) (its HTTP clients for the VLM server and the LLM API) and the [`domain` crate](domain.md) (the job types and the `VisionModel` port). Every listing is copied from the compiled source of `bins/worker` by the docgen tool. `cargo check -p worker` (also `--features cuda`), `cargo clippy -p worker --all-targets` and `cargo test -p worker` pass: 35 tests, among them the loop on paused time against a fake broker and the VLM adapter against a scripted backend.
 
 ## Contents
 
@@ -1268,6 +1268,11 @@ pub trait VlmBackend: Send + Sync + 'static {
         &'a self,
         call: &'a VlmCall<'a>,
     ) -> impl Future<Output = Result<VlmReply, ModelError>> + Send + 'a;
+    /// The most indicator questions one call may carry; the adapter splits a longer list into
+    /// calls of at most this many. `None`: no limit.
+    fn max_questions(&self) -> Option<usize> {
+        None
+    }
 }
 
 /// vLLM or llama.cpp through `integrations::openai_compat`.
@@ -1284,10 +1289,8 @@ pub struct OpenAiBackend {
 ///
 /// The API also refuses a structured-output grammar that grows too large: an indicators schema
 /// of 20 question objects was refused live on 2026-10-16, while 16 passed, and a call can ask 27
-/// (9 candidates × 3 indicators). So an indicators call with more than
-/// [`MAX_QUESTIONS_PER_CALL`] questions is sent as parts of at most that many, in parallel, each
-/// with the same images and its share of the schema unchanged, and the answers are merged into
-/// one object. The decoder sees what one call would have returned.
+/// (9 candidates × 3 indicators). So this backend takes at most [`MAX_QUESTIONS_PER_CALL`]
+/// questions a call, and the adapter splits a longer list ([`VlmBackend::max_questions`]).
 #[derive(Debug, Clone)]
 pub struct AnthropicBackend {
     client: AnthropicClient,
@@ -1298,7 +1301,7 @@ pub struct AnthropicBackend {
 pub const MAX_QUESTIONS_PER_CALL: usize = 12;
 ```
 
-**Large indicators calls on the hosted model.** Anthropic compiles each structured-output schema into a grammar and refuses one that grows too large: live on 2026-10-16, an indicators schema of 20 question objects was refused ("The compiled grammar is too large") and 16 passed, with or without each question's `image` and `reason`. A call can ask 27 questions (9 candidates × 3 discriminating indicators, [contracts 5](../architecture/contracts.md#5-worker-api-and-jobs)). So `AnthropicBackend` sends an indicators call with more than `MAX_QUESTIONS_PER_CALL` (12) questions as parts of at most 12, in parallel, each with the same images, its share of the schema unchanged and a line naming its questions, and merges the answers in order into one object. A part that stops early or doesn't answer with an object is returned as the reply, so the adapter's validation retries the whole call. The adapter and the decoder see what one call would have returned; the worst case costs three calls, each sending the images again. vLLM and llama.cpp take the whole schema in one call.
+**Large indicators calls on the hosted model.** Anthropic compiles each structured-output schema into a grammar and refuses one that grows too large ("The compiled grammar is too large"). Live on 2026-10-16, with 9-character keys and 3 images, 16 question objects passed and 20 failed; with full-length keys (`q27_` + 24 slug characters) and 4 images, 18 passed and 20 failed; and at 27, dropping each question's `image` or `reason` didn't help. The number of question objects is what counts, so 12 leaves a margin of 6. A call can ask 27 (9 candidates × 3 discriminating indicators, [contracts 5](../architecture/contracts.md#5-worker-api-and-jobs)). So `VlmBackend::max_questions` says how many questions one call may carry: `MAX_QUESTIONS_PER_CALL` (12) for `AnthropicBackend`, no limit for `OpenAiBackend`. `VlmAdapter::indicators` splits a longer list into parts of at most that many, in question order, and sends them in parallel. Each part has its own schema and a prompt that lists only its questions, keeps the question keys of the whole list, and goes through `call_validated` on its own, so a cut-off or invalid part is asked again without the others. The answers are joined in question order, which is what one call would have returned. A worst-case scan on the hosted model makes 3 calls, each sending the images again, and up to 6 if every part needs its retry. vLLM and llama.cpp take the whole list in one call.
 
 **The adapter instance.** Box format, cell size and pixel budget belong to the adapter instance, the model, server and preparation together ([contracts 6, box formats](../architecture/contracts.md#box-formats-per-model-adapter)):
 
@@ -1590,7 +1593,10 @@ impl<B: VlmBackend> VlmAdapter<B> {
     }
 
     /// The indicators call (also the verify call) on the given images, for every indicator of
-    /// every candidate, in payload order.
+    /// every candidate, in payload order. A backend with a per-call limit
+    /// ([`VlmBackend::max_questions`]) gets the questions in parts of at most that many, in
+    /// parallel; each part has its own schema and prompt and is validated and retried on its
+    /// own, and the answers are joined in question order.
     pub async fn indicators(
         &self,
         candidates: &[CandidatePrompt],
@@ -1600,6 +1606,33 @@ impl<B: VlmBackend> VlmAdapter<B> {
         let all: Vec<&Indicator> = candidates.iter().flat_map(|c| &c.indicators).collect();
         let kinds: Vec<_> = images.iter().map(|p| p.kind).collect();
         let questions = schema::questions(all, &kinds);
+        let (labels, call_images) = Self::labelled(images, new_photo);
+        let per_call = self.backend.max_questions().unwrap_or(usize::MAX).max(1);
+        let parts: Vec<&[schema::Question<'_>]> = if questions.is_empty() {
+            vec![&questions[..]]
+        } else {
+            questions.chunks(per_call).collect()
+        };
+        let answers = futures::future::try_join_all(
+            parts
+                .into_iter()
+                .map(|part| self.indicators_part(part, images, &labels, &call_images, new_photo)),
+        )
+        .await?;
+        Ok(VlmIndicatorAnswers {
+            answers: answers.into_iter().flat_map(|a| a.answers).collect(),
+        })
+    }
+
+    /// One indicators call over some of the questions.
+    async fn indicators_part(
+        &self,
+        questions: &[schema::Question<'_>],
+        images: &[&PreparedImage],
+        labels: &[String],
+        call_images: &CallImages<'_>,
+        new_photo: bool,
+    ) -> Result<VlmIndicatorAnswers, ModelError> {
         let expected: Vec<Expected> = questions
             .iter()
             .map(|q| Expected {
@@ -1608,19 +1641,18 @@ impl<B: VlmBackend> VlmAdapter<B> {
                 unsure_only: q.images.is_empty(),
             })
             .collect();
-        let (labels, call_images) = Self::labelled(images, new_photo);
-        let schema = schema::indicators(images.len(), &questions, self.limits);
-        let instructions = prompt::indicators(&questions, new_photo);
+        let schema = schema::indicators(images.len(), questions, self.limits);
+        let instructions = prompt::indicators(questions, new_photo);
         let call = VlmCall {
             system: &self.system,
-            images: vlm_images(&labels, images),
+            images: vlm_images(labels, images),
             instructions: &instructions,
             schema_name: "indicators",
             schema: &schema,
             max_output_tokens: self.profile.budget.indicators,
         };
         self.call_validated(&call, |text| {
-            decode::indicators(text, &call_images, &expected, self.limits)
+            decode::indicators(text, call_images, &expected, self.limits)
         })
         .await
     }
@@ -2405,8 +2437,8 @@ The message is the error and its `source()` chain, `": "`-joined ([rust-errors](
 | `a_cut_off_answer_is_retried_once_then_succeeds` | `finish_reason: length`, then a valid answer; `vlm_indicators` skipped with `all_measured` |
 | `two_invalid_answers_fail_with_a_retryable_model_error` | Unparseable, then a refusal → `InvalidOutput`, retryable |
 | `images_are_prepared_on_the_cell_grid` | A 64 × 48 image becomes 64 × 32 on the 32-pixel grid |
-| `a_large_indicators_schema_splits_in_order`, `replies_merge_unless_a_part_failed` | 27 questions split 12, 12, 3 with their `required`; 12 not split; answers merged in order; a cut-off or non-JSON part returned as the reply |
-| `live_indicators_worst_case`, `live_findings` (ignored) | Against the real API, no images: 27 questions through the split, every one answered; the findings schema accepted |
+| `questions_beyond_the_backend_limit_go_in_parts_each_retried_alone` | A backend taking 2 questions a call gets 5 as parts of 2, 2 and 1, each schema with only its keys; the cut-off part alone is asked again; the answers come back in question order |
+| `live_indicators_worst_case`, `live_findings` (ignored) | Against the real API, no images: 27 questions with full-length keys and 4 images in parts of 12, every one answered (`LIVE_QUESTIONS` and `LIVE_PER_CALL` probe the limit); the findings schema accepted |
 | schema, decode, prepare unit tests | `reason` before `answer` in the serialised schema; `unsure`-only questions; payload enums and box bounds; one guided branch; aliases, boxes, truncation and certainty mapped; a zero-area organism box drops the organism; unknown species and missing keys fail; Qwen3 cells and the pixel budget; the hosted 1568-pixel cap |
 
 The stub's tests are in [section 15.1.5](#1515-tests) (proposed). All loop tests run on paused time (`start_paused = true`) against a fake `WorkerApi`; the fake answers an empty claim like a 25 s long poll, so the clock can advance. Contract tests of `HttpWorkerApi` against a live `api` belong to the end-to-end tests ([api](api.md)). The day-2 benchmark ([vision evaluation](../vision/evaluation.md)) checks the adapters against the real servers: valid output, xgrammar's enforcement of `maxLength` and `maxItems`, boxes drawn back on the prepared images, and the 9070 XT against the 5070 Ti.
