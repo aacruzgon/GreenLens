@@ -171,7 +171,9 @@ fn block(part: &ContentPart) -> ContentBlock<'_> {
 const fn stop(reason: Option<api::StopReason>) -> StopReason {
     match reason {
         Some(api::StopReason::ToolUse) => StopReason::ToolUse,
-        Some(api::StopReason::MaxTokens) => StopReason::MaxTokens,
+        Some(api::StopReason::MaxTokens | api::StopReason::ModelContextWindowExceeded) => {
+            StopReason::MaxTokens
+        }
         Some(api::StopReason::Refusal) => StopReason::Refusal,
         Some(
             api::StopReason::EndTurn

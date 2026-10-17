@@ -198,7 +198,10 @@ impl VlmBackend for AnthropicBackend {
         Ok(VlmReply {
             text: message.text(),
             stop: match message.stop_reason {
-                Some(anthropic::StopReason::MaxTokens) => Stop::Length,
+                Some(
+                    anthropic::StopReason::MaxTokens
+                    | anthropic::StopReason::ModelContextWindowExceeded,
+                ) => Stop::Length,
                 Some(anthropic::StopReason::Refusal) => Stop::Refusal,
                 _ => Stop::Complete,
             },

@@ -3,7 +3,7 @@
 
 use std::borrow::Cow;
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 
 use super::request::{ContentBlock, Role};
@@ -25,7 +25,8 @@ pub struct Message {
     /// The refusal category and similar details.
     #[serde(default)]
     pub stop_details: Option<Value>,
-    /// Token counts.
+    /// Token counts. Defaulted: a documented stream example sends `message_start` without it.
+    #[serde(default)]
     pub usage: Usage,
 }
 
@@ -153,28 +154,34 @@ pub enum StopReason {
     /// A safety classifier declined, with HTTP 200; `stop_details.category` says why. The
     /// output may not match the schema.
     Refusal,
+    /// The conversation filled the model's context window.
+    ModelContextWindowExceeded,
     /// A reason added after this client was written.
     #[serde(other)]
     Other,
 }
 
-/// Token counts. In a stream, `message_start` carries the input counts and a placeholder
+/// Token counts, each `number or null` in the API reference (a null reads as 0). In a stream, `message_start` carries the input counts and a placeholder
 /// `output_tokens`, and each `message_delta` carries **cumulative** counts: the accumulator
 /// replaces, never adds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 pub struct Usage {
     /// Uncached input tokens.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_zero")]
     pub input_tokens: u32,
     /// Output tokens, thinking included.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_zero")]
     pub output_tokens: u32,
     /// Input tokens written to the cache.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_zero")]
     pub cache_creation_input_tokens: u32,
     /// Input tokens read from the cache.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_zero")]
     pub cache_read_input_tokens: u32,
+}
+
+fn null_as_zero<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u32, D::Error> {
+    Option::<u32>::deserialize(deserializer).map(Option::unwrap_or_default)
 }
 
 impl Usage {
@@ -267,5 +274,24 @@ mod tests {
         assert_eq!(m.stop_reason, Some(StopReason::Refusal));
         assert_eq!(m.usage.total_input(), 15);
         assert_eq!(m.replay().len(), 2);
+    }
+
+    #[test]
+    fn null_counts_and_a_missing_usage_read_as_zero() {
+        let m: Message = serde_json::from_value(json!({
+            "id": "msg_1", "type": "message", "role": "assistant", "model": "claude-opus-5-5",
+            "content": [], "stop_reason": "model_context_window_exceeded",
+            "usage": {"input_tokens": 7, "output_tokens": 1,
+                      "cache_creation_input_tokens": null, "cache_read_input_tokens": null}
+        }))
+        .unwrap();
+        assert_eq!(m.usage.total_input(), 7);
+        assert_eq!(m.stop_reason, Some(StopReason::ModelContextWindowExceeded));
+        let start: Message = serde_json::from_value(json!({
+            "id": "msg_2", "type": "message", "role": "assistant", "model": "claude-opus-5-5",
+            "content": [], "stop_reason": null, "stop_sequence": null
+        }))
+        .unwrap();
+        assert_eq!(start.usage, Usage::default());
     }
 }
