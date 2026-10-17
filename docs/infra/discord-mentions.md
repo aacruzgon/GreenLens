@@ -1,8 +1,8 @@
 # Mention alerts on Discord
 
-> **Status:** Draft v0.2, 2026-10-17. v0.2 (with the fixes from #35's audit): a new comment by someone else also alerts the issue's or pull request's author, once even when it also mentions them; edits, the author's own comments and bots' comments don't (section 1). v0.1.1: after the audit of #34, code spans never cross a blank line, a closing fence may end in a tab, `_@mark_` and `@mark-` match, an edit's alert names the editor, and section 1 says indented code blocks still match. v0.1: first version of the workflow that posts a Discord alert to a team member's channel when a GitHub comment mentions them. Its tests have run against a mocked Discord; nothing has been sent to a real channel.
+> **Status:** Draft v0.3, 2026-10-17. v0.3: a mention in the description of an issue or pull request, when it is opened or an edit adds the mention, alerts too, through the `issues` and `pull_request_target` events; before, only comments did, so the mentions added to #14's description sent nothing (sections 1, 3 and 4). v0.2 (with the fixes from #35's audit): a new comment by someone else also alerts the issue's or pull request's author, once even when it also mentions them; edits, the author's own comments and bots' comments don't (section 1). v0.1.1: after the audit of #34, code spans never cross a blank line, a closing fence may end in a tab, `_@mark_` and `@mark-` match, an edit's alert names the editor, and section 1 says indented code blocks still match. v0.1: first version of the workflow that posts a Discord alert to a team member's channel when a GitHub comment mentions them. Its tests have run against a mocked Discord; nothing has been sent to a real channel.
 
-When an issue comment or a pull request conversation comment mentions a team member's GitHub username, or is a new comment on an issue or pull request they opened, [`.github/workflows/discord-mentions.yml`](../../.github/workflows/discord-mentions.yml) posts an alert in that person's Discord channel. The work is done by [`.github/scripts/discord_mentions.py`](../../.github/scripts/discord_mentions.py). It belongs with CI in [infra 2](README.md#2-ci).
+When an issue comment, a pull request conversation comment, or the description of an issue or pull request mentions a team member's GitHub username, or a comment is a new comment on an issue or pull request they opened, [`.github/workflows/discord-mentions.yml`](../../.github/workflows/discord-mentions.yml) posts an alert in that person's Discord channel. The work is done by [`.github/scripts/discord_mentions.py`](../../.github/scripts/discord_mentions.py). It belongs with CI in [infra 2](README.md#2-ci).
 
 ## Contents
 
@@ -23,11 +23,11 @@ When an issue comment or a pull request conversation comment mentions a team mem
 | Alan | `#github-alan` | `GH_USER_ALAN` | `DISCORD_WEBHOOK_ALAN` |
 | Mark | `#github-mark` | `GH_USER_MARK` | `DISCORD_WEBHOOK_MARK` |
 
-- **One alert per person mentioned.** A comment that mentions two of them sends two alerts, one to each channel. Mentioning someone twice sends one alert. Comments that mention no one in the table send nothing, unless they alert the author (next point).
+- **One alert per person mentioned.** A comment, or the description of a new issue or pull request, that mentions two of them sends two alerts, one to each channel. Mentioning someone twice sends one alert. Comments that mention no one in the table send nothing, unless they alert the author (next point).
 - **Comments on your issue or pull request.** A new comment alerts the issue's or pull request's author, if they are in the table, even without a mention: `**sara-lahourpour** commented on sam-michaels's pull request …`. It doesn't when the author wrote the comment, when a bot did (a GitHub account of type `Bot`, such as a CI report), or for an edit. An author who is also mentioned gets one alert, worded as a mention.
 - **Matching.** A mention is `@` and the whole username, in any case: `@Mark` matches `mark`, `@markus` and `@mark-2` don't. It doesn't match inside an email address (`mark@example.com`), a URL path, or a team mention (`@org/team`). Like GitHub, it ignores mentions in fenced code blocks, inline code and HTML comments; a trailing `_` or `-` is punctuation, so `_@mark_` matches `mark`. Unlike GitHub, it still matches inside an indented (four-space) code block, which costs an extra alert at worst.
-- **Edits.** An edit sends an alert only to people the edit newly mentions: the script compares the new text with the old, which GitHub sends with the event. Fixing a typo in a comment that already mentions someone sends nothing.
-- **The alert** shows the repository, whether it is an issue or a pull request, its number and title, the comment's author (for an edit, the person who edited it), the first 600 characters of the comment, and links to the comment, the issue or pull request, and the repository. It pings no one: the message sets `allowed_mentions` to none, so `@everyone`, `@here`, roles and users in a comment or title stay plain text.
+- **Edits.** An edit of a comment or of an issue's or pull request's description sends an alert only to people the edit newly mentions: the script compares the new text with the old, which GitHub sends with the event. Fixing a typo in text that already mentions someone sends nothing, and so does changing only a title.
+- **The alert** shows the repository, whether it is an issue or a pull request, its number and title, who wrote the text (for an edit, the person who edited it), the first 600 characters of the comment or description, and links to the comment (for a comment), the issue or pull request, and the repository: `**aacruzgon** mentioned marksmwl in issue …`, or `… in the edited description of issue …`. It pings no one: the message sets `allowed_mentions` to none, so `@everyone`, `@here`, roles and users in a comment or title stay plain text.
 - **Failures.** Discord's rate limits (HTTP 429) and server errors are retried up to 3 times. If an alert still fails, or the webhook secret of a person to alert is missing or malformed, the job fails with an error annotation naming the person and the HTTP status, and the other alerts are still sent. A person whose username variable is empty gets no alerts, and the run shows a warning.
 
 ## 2. Setup
@@ -53,13 +53,14 @@ The variables are named `GH_USER_*` because GitHub refuses a variable or secret 
 
 ### Activate and test
 
-GitHub runs an `issue_comment` workflow only from the default branch, so nothing happens until the workflow is merged into `main` through a pull request. Then:
+GitHub runs an `issue_comment`, `issues` or `pull_request_target` workflow only from the default branch, so nothing happens until the workflow is merged into `main` through a pull request. Then:
 
 1. Open **Actions** → **Discord mentions** to see that it is listed.
 2. On any issue or pull request, comment `test for @<username>` for one person. Their channel should get one alert within a minute, and the run should show `Sent <PERSON>'s alert.`
 3. Edit the comment's other text: no second alert. Edit it to add a second person: only that person gets an alert.
 4. On your own issue or pull request, comment something with no mention, or with `mark@example.com`: the run is skipped or sends nothing.
 5. Have a teammate comment on your pull request without mentioning you: your channel gets one `commented on <you>'s pull request` alert.
+6. Open an issue whose description mentions `@<username>`, then edit it to add a second person: one alert each, the second worded `in the edited description of issue`.
 
 A failed run's error annotation says what went wrong: `HTTP 404: Unknown Webhook` means the webhook was deleted or the secret holds the wrong URL; `is not set` means a secret is missing.
 
@@ -77,17 +78,19 @@ A GitHub-to-Discord webhook set up directly on the repository (**Settings** → 
 |---|---|---|
 | Issue comment | Yes | New and edited |
 | Pull request conversation comment | Yes | New and edited. Works on pull requests from forks too, because `issue_comment` always runs in this repository with its secrets |
+| Issue description | Yes | When the issue is opened, and edits that add a mention (`issues`) |
+| Pull request description | Yes | When the pull request is opened, and edits that add a mention (`pull_request_target`, so pull requests from forks work too; see section 4) |
 | Inline review comment (on a diff line) | No | See below |
 | Review summary (the text of an approve, comment or request-changes review) | No | See below |
 | Comments on commits, discussions | No | Not requested |
 
-**Why reviews aren't covered yet.** Review comments and summaries arrive as `pull_request_review_comment` and `pull_request_review` events. GitHub runs those from the pull request's merge commit, not from `main`, so the workflow file and script that run would be the pull request's own version, which the pull request can change. For a pull request from a fork, GitHub gives the run no secrets, so it couldn't reach any webhook. Adding them later means: a second workflow on those two events that checks out `main`'s script (never the pull request's), accepts that fork pull requests send nothing, and maps their payloads (`review.body`, `pull_request.title`) to the same alert. Until then, people see review mentions through GitHub's own notifications.
+**Why reviews aren't covered yet.** Review comments and summaries arrive as `pull_request_review_comment` and `pull_request_review` events. Unlike `pull_request_target`, which has no review events, GitHub runs those from the pull request's merge commit, not from `main`, so the workflow file and script that run would be the pull request's own version, which the pull request can change. For a pull request from a fork, GitHub gives the run no secrets, so it couldn't reach any webhook. Adding them later means: a second workflow on those two events that checks out `main`'s script (never the pull request's), accepts that fork pull requests send nothing, and maps their payloads (`review.body`, `pull_request.title`) to the same alert. Until then, people see review mentions through GitHub's own notifications.
 
 ## 4. Security
 
 - **Token:** `contents: read`, only for the checkout of the script. The alerts go out through the webhooks.
-- **No pull request code:** the job checks out only `discord_mentions.py`, from the default branch, without keeping the token in git's config.
-- **Comment text is data:** it reaches the script only through the event file (`$GITHUB_EVENT_PATH`), never through an `${{ }}` expression in a shell command, and is sent to Discord as JSON. The script never prints a comment, a title or any other text from the event, so a comment can't inject a workflow command such as `::add-mask::` into the log. The workflow's `if:` reads the comment only to skip, before a runner starts, comments that can alert no one: no `@`, and no configured author to alert (it compares the comment's and the issue's logins, the commenter's account type and the `GH_USER_*` variables).
+- **No pull request code:** the job checks out only `discord_mentions.py`, from the default branch, without keeping the token in git's config. Pull request descriptions come through `pull_request_target`, not `pull_request`, for this reason: it runs the default branch's workflow with the repository's secrets, even for a pull request from a fork. That is safe only while the job never checks out or runs the pull request's code; keep it that way.
+- **Comment and description text is data:** it reaches the script only through the event file (`$GITHUB_EVENT_PATH`), never through an `${{ }}` expression in a shell command, and is sent to Discord as JSON. The script never prints a comment, a title or any other text from the event, so a comment can't inject a workflow command such as `::add-mask::` into the log. The workflow's `if:` reads the text only to skip, before a runner starts, events that can alert no one: a description with no `@`, or a comment with no `@` and no configured author to alert (it compares the comment's and the issue's logins, the commenter's account type and the `GH_USER_*` variables).
 - **Webhook URLs:** only in secrets. GitHub masks them in logs, and the script never prints them, not even in an exception's text: a failure is reported by person, HTTP status and Discord's error message, or by exception type for a network error.
 
 ## 5. Testing
@@ -96,4 +99,4 @@ A GitHub-to-Discord webhook set up directly on the repository (**Settings** → 
 python3 -m unittest discover -s .github/scripts -v
 ```
 
-The tests replace the HTTP call with a fake Discord, so nothing is sent. They cover matching (case, prefixes, email addresses, URL paths, team mentions, code), routing (one alert per person, unconfigured people), edits (only new mentions), author alerts (pull request and issue authors, the author's own comments, bots, edits, an author who is also mentioned, null logins), the alert's content and `allowed_mentions`, retries on 429, 5xx and network errors, a refused `/github` URL, and that no webhook URL or comment text reaches the log. The `infra` job of [`ci.yml`](../../.github/workflows/ci.yml) runs them whenever `.github/` changes.
+The tests replace the HTTP call with a fake Discord, so nothing is sent. They cover matching (case, prefixes, email addresses, URL paths, team mentions, code), routing (one alert per person, unconfigured people), edits (only new mentions), issue and pull request descriptions (opened, edited, title-only edits, other actions), author alerts (pull request and issue authors, the author's own comments, bots, edits, an author who is also mentioned, null logins), the alert's content and `allowed_mentions`, retries on 429, 5xx and network errors, a refused `/github` URL, and that no webhook URL or comment text reaches the log. The `infra` job of [`ci.yml`](../../.github/workflows/ci.yml) runs them whenever `.github/` changes.
