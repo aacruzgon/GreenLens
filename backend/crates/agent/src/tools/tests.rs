@@ -195,3 +195,14 @@ fn write_tools_offer_only_to_editors() {
     assert!(ToolKind::Write.offered_to(Role::Editor));
     assert!(ToolKind::Memory.offered_to(Role::Viewer));
 }
+
+#[test]
+fn only_the_tools_that_propose_changes_are_strict() {
+    let strict: Vec<String> = ToolRegistry::standard()
+        .specs_for(Role::Owner)
+        .into_iter()
+        .filter(|s| s.strict)
+        .map(|s| s.name)
+        .collect();
+    assert_eq!(strict, ["complete_task", "create_task", "revise_plan"]);
+}

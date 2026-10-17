@@ -6,7 +6,8 @@
 //! `Cow::Borrowed` text, tool schemas and image bytes), serialised once by the client, and
 //! dropped. Responses are owned. Thinking is left at the models' default (adaptive, always on for
 //! Opus 5.5); depth is set with `effort` per purpose. Forced `tool_choice` is never sent (a 400
-//! on Opus 5.5); structured output uses `output_config.format`.
+//! on Opus 5.5); structured output uses `output_config.format`. A tool is `strict` only when its
+//! spec says so: nineteen strict tools make a grammar the API refuses as too large.
 
 use std::borrow::Cow;
 
@@ -86,7 +87,7 @@ impl AnthropicChat {
                 name: Cow::Borrowed(&t.name),
                 description: Cow::Borrowed(&t.description),
                 input_schema: sanitize_schema(&t.parameters).schema,
-                strict: true,
+                strict: t.strict,
                 cache_control: None,
             })
             .collect();
@@ -234,12 +235,19 @@ impl ChatModel for AnthropicChat {
                 .map_err(|e| e.into_model_error(label))?;
             drop(api_request);
             let mut acc = MessageAccumulator::default();
+            let mut stopped = false;
             while let Some(event) = events.next().await {
                 let event = event.map_err(|e| e.into_model_error(label))?;
                 let output = acc.apply(event).map_err(|e| e.into_model_error(label))?;
+                stopped |= matches!(output, Some(Output::Stop(_)));
                 if let Some(c) = output.and_then(chunk) {
                     yield c;
                 }
+            }
+            // A connection closed cleanly mid-answer ends the byte stream without an error;
+            // without a stop reason the answer is incomplete, not finished.
+            if !stopped {
+                Err(api::AnthropicError::Truncated.into_model_error(label))?;
             }
         }
         .boxed()
@@ -329,11 +337,13 @@ mod tests {
                     name: "z_tool".to_owned(),
                     description: "z".to_owned(),
                     parameters: json!({"type": "object", "properties": {"n": {"type": "integer", "minimum": 1}}}),
+                    strict: true,
                 },
                 ToolSpec {
                     name: "a_tool".to_owned(),
                     description: "a".to_owned(),
                     parameters: json!({"type": "object", "properties": {}}),
+                    strict: false,
                 },
             ],
             response_schema: None,
@@ -349,6 +359,10 @@ mod tests {
                 .is_none()
         );
         assert_eq!(body["tools"][1]["strict"], true);
+        assert!(
+            body["tools"][0].get("strict").is_none(),
+            "a non-strict tool sends no flag"
+        );
         assert!(
             body.get("tool_choice").is_none(),
             "forced tool_choice is a 400 on Opus 5.5"
@@ -388,5 +402,53 @@ mod tests {
         assert_eq!(schema["additionalProperties"], false);
         assert!(schema["properties"]["t"].get("maxLength").is_none());
         assert!(body.get("cache_control").is_none());
+    }
+
+    #[tokio::test]
+    async fn a_stream_cut_off_before_its_stop_reason_ends_in_an_error() {
+        use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};
+
+        let server = MockServer::start().await;
+        let body = concat!(
+            "event: message_start\n",
+            "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-opus-5-5\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":5,\"output_tokens\":1}}}\n\n",
+            "event: content_block_start\n",
+            "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+            "event: content_block_delta\n",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Water the\"}}\n\n",
+        );
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(body),
+            )
+            .mount(&server)
+            .await;
+        let mut config = AnthropicConfig::new("test-key".to_owned().into());
+        config.base_url = server.uri();
+        config.retry = integrations::http::RetryPolicy::NONE;
+        let a = AnthropicChat::new(AnthropicClient::new(
+            integrations::http::client(&integrations::http::HttpConfig::default()).unwrap(),
+            config,
+        ));
+        let request = ChatRequest {
+            purpose: ChatPurpose::Chat,
+            system: "s".to_owned(),
+            messages: vec![ChatMessage {
+                role: ChatRole::User,
+                content: vec![ContentPart::Text("hi".to_owned())],
+            }],
+            tools: vec![],
+            response_schema: None,
+            max_tokens: 100,
+        };
+        let items: Vec<_> = a.stream(&request).collect().await;
+        assert!(matches!(items[0], Ok(ChatChunk::Usage(_))));
+        assert!(matches!(&items[1], Ok(ChatChunk::TextDelta(t)) if t == "Water the"));
+        assert!(matches!(
+            items.last(),
+            Some(Err(ModelError::Unavailable { .. }))
+        ));
     }
 }
