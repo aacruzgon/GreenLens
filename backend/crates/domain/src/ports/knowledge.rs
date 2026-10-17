@@ -3,15 +3,17 @@
 
 use crate::{
     authz::{Editor, Membership, Viewer},
-    chat::{KnowledgeHit, Lookalike, Memory, MemoryKind, MemoryQuery, MemorySource},
+    chat::{KnowledgeHit, Lookalike, Memory, MemoryKind, MemoryQuery, MemorySource, MemoryTopic},
     garden::species::{SpeciesPhoto, SpeciesProfileKind},
-    id::{MemoryId, MessageId, OrganismId, PlantId, ProblemId, SourceId, SpeciesId, UserId},
+    id::{
+        GardenId, MemoryId, MessageId, OrganismId, PlantId, ProblemId, SourceId, SpeciesId, UserId,
+    },
     jobs::{OrganismOption, SpeciesOption},
     knowledge::{
         ChunkTopic, ClassifierLabels, OrganismSeed, ProblemSeed, ProductsSeed, SoilConditionSeed,
         SpeciesSeed, TreatmentSeed,
     },
-    ports::{Embedding, StoreError},
+    ports::{BeliefSubject, Embedding, StoreError},
     records::diagnosis::{Citation, Prey},
     scan::SpeciesRef,
     vlm::{DamagePattern, SoilAspect},
@@ -152,6 +154,8 @@ pub struct NewMemory {
     pub plant: Option<PlantId>,
     /// What kind.
     pub kind: MemoryKind,
+    /// What it is about; with the kind, its belief key in Agent Memory.
+    pub topic: MemoryTopic,
     /// The text, dose-checked when the model wrote it.
     pub text: String,
     /// The vector of `text`.
@@ -198,7 +202,7 @@ pub trait MemoryStore: Send + Sync {
     /// The pipeline's summary after a scan: `source: "pipeline"`, visible to every member.
     async fn add_pipeline_memory(
         &self,
-        garden: crate::id::GardenId,
+        garden: GardenId,
         memory: NewMemory,
     ) -> Result<Memory, StoreError>;
 
@@ -224,7 +228,7 @@ pub trait MemoryStore: Send + Sync {
     /// the garden-level ones.
     async fn shared_for_plan(
         &self,
-        garden: crate::id::GardenId,
+        garden: GardenId,
         plant: PlantId,
     ) -> Result<Vec<Memory>, StoreError>;
 
@@ -244,4 +248,26 @@ pub trait MemoryStore: Send + Sync {
         &self,
         memory: MemoryId,
     ) -> Result<Option<(MemorySource, Option<UserId>)>, StoreError>;
+
+    // ---- the belief sweep (architecture 7, memory): internal, no membership check ----
+    //
+    // Only `api`'s `beliefs` task talks to Agent Memory, so nothing records a memory while its
+    // subject is being erased. Requests only write rows: a shared memory is created with
+    // `belief_synced_at` unset, and deleting one (or starting a plant's or garden's cascade)
+    // queues its subject in `belief_forget` in the same transaction.
+
+    /// Shared memories not yet recorded in Agent Memory (`belief_synced_at` unset), oldest
+    /// `created_at` first, leaving out those of a plant or garden being deleted.
+    async fn unsynced_shared(&self, limit: u32) -> Result<Vec<Memory>, StoreError>;
+
+    /// Sets `belief_synced_at`.
+    async fn mark_synced(&self, memory: MemoryId, at: Timestamp) -> Result<(), StoreError>;
+
+    /// The subjects queued for erasure in Agent Memory, oldest first.
+    async fn belief_forgets(&self, limit: u32) -> Result<Vec<BeliefSubject>, StoreError>;
+
+    /// After the subject's scope was erased: unsets `belief_synced_at` on its shared memories
+    /// (a garden's take its plants'), so the sweep records the remaining ones again, and
+    /// removes it from the queue. One transaction.
+    async fn finish_belief_forget(&self, subject: BeliefSubject) -> Result<(), StoreError>;
 }

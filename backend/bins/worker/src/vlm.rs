@@ -160,7 +160,10 @@ impl<B: VlmBackend> VlmAdapter<B> {
     }
 
     /// The indicators call (also the verify call) on the given images, for every indicator of
-    /// every candidate, in payload order.
+    /// every candidate, in payload order. A backend with a per-call limit
+    /// ([`VlmBackend::max_questions`]) gets the questions in parts of at most that many, in
+    /// parallel; each part has its own schema and prompt and is validated and retried on its
+    /// own, and the answers are joined in question order.
     pub async fn indicators(
         &self,
         candidates: &[CandidatePrompt],
@@ -170,6 +173,33 @@ impl<B: VlmBackend> VlmAdapter<B> {
         let all: Vec<&Indicator> = candidates.iter().flat_map(|c| &c.indicators).collect();
         let kinds: Vec<_> = images.iter().map(|p| p.kind).collect();
         let questions = schema::questions(all, &kinds);
+        let (labels, call_images) = Self::labelled(images, new_photo);
+        let per_call = self.backend.max_questions().unwrap_or(usize::MAX).max(1);
+        let parts: Vec<&[schema::Question<'_>]> = if questions.is_empty() {
+            vec![&questions[..]]
+        } else {
+            questions.chunks(per_call).collect()
+        };
+        let answers = futures::future::try_join_all(
+            parts
+                .into_iter()
+                .map(|part| self.indicators_part(part, images, &labels, &call_images, new_photo)),
+        )
+        .await?;
+        Ok(VlmIndicatorAnswers {
+            answers: answers.into_iter().flat_map(|a| a.answers).collect(),
+        })
+    }
+
+    /// One indicators call over some of the questions.
+    async fn indicators_part(
+        &self,
+        questions: &[schema::Question<'_>],
+        images: &[&PreparedImage],
+        labels: &[String],
+        call_images: &CallImages<'_>,
+        new_photo: bool,
+    ) -> Result<VlmIndicatorAnswers, ModelError> {
         let expected: Vec<Expected> = questions
             .iter()
             .map(|q| Expected {
@@ -178,19 +208,18 @@ impl<B: VlmBackend> VlmAdapter<B> {
                 unsure_only: q.images.is_empty(),
             })
             .collect();
-        let (labels, call_images) = Self::labelled(images, new_photo);
-        let schema = schema::indicators(images.len(), &questions, self.limits);
-        let instructions = prompt::indicators(&questions, new_photo);
+        let schema = schema::indicators(images.len(), questions, self.limits);
+        let instructions = prompt::indicators(questions, new_photo);
         let call = VlmCall {
             system: &self.system,
-            images: vlm_images(&labels, images),
+            images: vlm_images(labels, images),
             instructions: &instructions,
             schema_name: "indicators",
             schema: &schema,
             max_output_tokens: self.profile.budget.indicators,
         };
         self.call_validated(&call, |text| {
-            decode::indicators(text, &call_images, &expected, self.limits)
+            decode::indicators(text, call_images, &expected, self.limits)
         })
         .await
     }

@@ -38,7 +38,7 @@ pub struct Task {
 
 /// Every task of the table in api.md section 16. The 10-minute question continuation is part
 /// of `sweep` (`Pipeline::sweep` owns it), not a task of its own.
-pub const TASKS: [Task; 8] = [
+pub const TASKS: [Task; 9] = [
     Task {
         name: "requeue",
         every: Duration::from_secs(5),
@@ -53,6 +53,11 @@ pub const TASKS: [Task; 8] = [
         name: "idle",
         every: Duration::from_mins(1),
         first_after: Duration::from_mins(1),
+    },
+    Task {
+        name: "beliefs",
+        every: Duration::from_secs(10),
+        first_after: Duration::from_secs(20),
     },
     Task {
         name: "cleanup",
@@ -88,6 +93,7 @@ pub fn start(state: &Arc<AppState>) {
             "requeue" => every(state, task, requeue),
             "sweep" => every(state, task, sweep),
             "idle" => every(state, task, idle),
+            "beliefs" => every(state, task, beliefs),
             "cleanup" => every(state, task, cleanup),
             "weather" => every(state, task, weather_and_triggers),
             "soil" => every(state, task, soil),
@@ -155,6 +161,33 @@ async fn idle(state: Arc<AppState>) -> Result<(), ApiError> {
     state.limits.retain_recent();
     state.hub.sweep_idle();
     state.writers.sweep_idle();
+    Ok(())
+}
+
+/// Shared memories per run of the belief sweep.
+const BELIEF_SYNC_BATCH: u32 = 50;
+
+/// The belief sweep, the only writer to Agent Memory (architecture 7, memory): erases the
+/// queued subjects, then records the unsynced shared memories. Every 10 s, so a new shared
+/// memory reaches Agent Memory within seconds and a deleted one is erased as fast. With Agent
+/// Memory off it only empties the erase queue.
+async fn beliefs(state: Arc<AppState>) -> Result<(), ApiError> {
+    let p = &state.ports;
+    let report = agent::beliefs::sync_pending(
+        p.memory.as_ref(),
+        p.beliefs.as_ref(),
+        p.clock.as_ref(),
+        BELIEF_SYNC_BATCH,
+    )
+    .await?;
+    if report != agent::beliefs::SweepReport::default() {
+        tracing::info!(
+            forgotten = report.forgotten,
+            recorded = report.recorded,
+            failed = report.failed,
+            "belief sweep"
+        );
+    }
     Ok(())
 }
 

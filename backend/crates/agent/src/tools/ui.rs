@@ -2,7 +2,7 @@
 //! ([contracts 8], `rescan_requested` and `memory_saved`).
 
 use domain::{
-    chat::{MemoryKind, RescanRequest, ToolName},
+    chat::{MemoryKind, MemoryTopic, RescanRequest, ToolName},
     id::PlantId,
     ports::{IdGenExt as _, NewMemory},
     scan::ImageKind,
@@ -63,7 +63,7 @@ impl Tool for RequestRescan {
     }
 }
 
-/// `remember(fact, plant_id?)`.
+/// `remember(fact, plant_id?, topic?)`.
 #[derive(Debug)]
 pub struct Remember;
 
@@ -76,6 +76,9 @@ pub struct RememberArgs {
     /// The plant it is about; omit for a fact about the whole garden.
     #[serde(default)]
     pub plant_id: Option<PlantId>,
+    /// What it is about; omit (`other`) when none of the topics fits.
+    #[serde(default)]
+    pub topic: Option<crate::memory::ExtractedTopic>,
 }
 
 impl Tool for Remember {
@@ -95,7 +98,9 @@ impl Tool for Remember {
         if let Some(plant) = args.plant_id {
             ctx.deps.stores.plants.plant(member, plant).await?;
         }
-        let memory = store_chat_memory(ctx, args.plant_id, MemoryKind::Fact, args.fact).await?;
+        let topic = args.topic.map_or(MemoryTopic::Other, MemoryTopic::from);
+        let memory =
+            store_chat_memory(ctx, args.plant_id, MemoryKind::Fact, topic, args.fact).await?;
         let mut out = ToolOutput::json(&memory);
         out.effects.push(ToolEffect::MemorySaved(memory));
         Ok(out)
@@ -108,6 +113,7 @@ pub async fn store_chat_memory(
     ctx: &ToolCtx<'_>,
     plant: Option<PlantId>,
     kind: MemoryKind,
+    topic: MemoryTopic,
     text: String,
 ) -> Result<domain::chat::Memory, ToolError> {
     let deps = ctx.deps;
@@ -124,6 +130,7 @@ pub async fn store_chat_memory(
         id: deps.ids.id(),
         plant,
         kind,
+        topic,
         text,
         embedding,
         embedding_model: deps.embedder.model().name,

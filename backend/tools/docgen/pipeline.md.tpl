@@ -1,6 +1,6 @@
 # PDM Backend: `pipeline` crate
 
-> **Status:** Draft v0.3.1, 2026-10-16. v0.3.1: open question 3 is resolved: the run's evidence fields are in the schema. v0.3: the cross-crate fixes: `ScanWriter` lost `job_queued` (the store's `Notify` is the only wake-up), `plan` releases its claim after 3 lost compare-and-sets, `worker_events` forwards a `guided` job's stage events on the scan's current run, `labels_loaded` splits the heartbeat's comma-separated lists, organism findings get `detail.length_mm` from the depth map before their `finding` events, and fusion counts a humid stretch in the past week (`past_7_days.longest_humid_run_days`). v0.2: fusion reads the shared `WeatherThresholds` (`PipelineConfig::weather`): a humid stretch is two days in a row with ≥ 10 hours over 90% each (the mean-humidity and past-week variants are gone), frost is a 2 m minimum ≤ 0.5 °C or the day's `frost_risk`, hard frost ≤ −2 °C; the memory summary is embedded with `EmbedMode::Document`; `PhotoAnswerStart::Segment` boxes its job. v0.1: `api`'s own work between a scan's jobs: the `retrieve`, `score` and `plan` steps under the scan's step claim, every entry point that claims them, measurable indicators, fusion, re-planning, runs and recovery, compiled on Rust 1.99.1 against the `domain`, `knowledge`, `agent` and `vision` crates.
+> **Status:** Draft v0.4, 2026-10-17. v0.4: `PipelineDeps` gains `beliefs` (Agent Memory) and `PipelineConfig` its `beliefs_read_timeout`; the plan step reads the plant's current beliefs beside its shared memories and passes them to the plan writer, and the scan summary memory has topic `health`, so each new summary supersedes the last in Agent Memory. v0.3.1: open question 3 is resolved: the run's evidence fields are in the schema. v0.3: the cross-crate fixes: `ScanWriter` lost `job_queued` (the store's `Notify` is the only wake-up), `plan` releases its claim after 3 lost compare-and-sets, `worker_events` forwards a `guided` job's stage events on the scan's current run, `labels_loaded` splits the heartbeat's comma-separated lists, organism findings get `detail.length_mm` from the depth map before their `finding` events, and fusion counts a humid stretch in the past week (`past_7_days.longest_humid_run_days`). v0.2: fusion reads the shared `WeatherThresholds` (`PipelineConfig::weather`): a humid stretch is two days in a row with ≥ 10 hours over 90% each (the mean-humidity and past-week variants are gone), frost is a 2 m minimum ≤ 0.5 °C or the day's `frost_risk`, hard frost ≤ −2 °C; the memory summary is embedded with `EmbedMode::Document`; `PhotoAnswerStart::Segment` boxes its job. v0.1: `api`'s own work between a scan's jobs: the `retrieve`, `score` and `plan` steps under the scan's step claim, every entry point that claims them, measurable indicators, fusion, re-planning, runs and recovery, compiled on Rust 1.99.1 against the `domain`, `knowledge`, `agent` and `vision` crates.
 
 Companion to the [backend architecture](README.md). It implements [contracts 3, steps between jobs](../architecture/contracts.md#scan-lifecycle), [contracts 4](../architecture/contracts.md#4-scan-events-sse) (event order), [contracts 7](../architecture/contracts.md#7-pipeline-records), [architecture 6](../architecture/README.md#6-analysis-pipeline), [8.1](../architecture/README.md#81-scan--diagnosis--plan) and [8.3](../architecture/README.md#83-forecast-alerts), and [database 4, steps between jobs](../database/README.md#steps-between-jobs-) and [plan writes](../database/README.md#plan-writes-compare-and-set-). The rules of retrieve-then-verify are in [knowledge](knowledge.md). Every listing is copied from `crates/pipeline` by the docgen tool. `cargo check --workspace`, `cargo clippy -p pipeline --all-targets` and `cargo test -p pipeline` pass.
 
@@ -61,7 +61,7 @@ Companion to the [backend architecture](README.md). It implements [contracts 3, 
 |---|---|
 | `domain` | Shapes, rules (`steps`, `questions`, `stages`, `scan_state`, `routing`, `limits`) and every port |
 | `knowledge` | Candidate ranking, scoring, status, the question choice ([knowledge](knowledge.md)) |
-| `agent` | `plan_writer::{PlanWriter, PlanInput, SharedMemories, WrittenPlan}` and `PlanWriterError` |
+| `agent` | `plan_writer::{PlanWriter, PlanInput, SharedMemories, WrittenPlan}`, `PlanWriterError` and `beliefs::current_beliefs` |
 | `vision` | `measure::Measurer`, behind [`ImageMeasurer`](#4-ports-and-construction) |
 | `tokio` | `spawn_blocking` for measurement, the CPU `Semaphore`, `OwnedMutexGuard` in `PlanGuard` |
 | `chrono`, `chrono-tz` | A garden's local date for task due dates (`chrono-tz` 0.10.4, added to the workspace) |
@@ -102,7 +102,7 @@ crates/pipeline/src/
 
 ## 4. Ports and construction
 
-Every external dependency is a trait object: runtime-swappable, dyn compatible and `Send + Sync`, as [README 7](README.md#7-rust-conventions) requires. `api` builds one `PipelineDeps` in its wiring and holds the `Pipeline` in an `Arc`.
+Every external dependency is a trait object: runtime-swappable, dyn compatible and `Send + Sync`, as [README 7](README.md#7-rust-conventions) requires. `api` builds one `PipelineDeps` in its wiring and holds the `Pipeline` in an `Arc`. Its `memory` is `agent::MirroredMemory`, so the pipeline's summary reaches Agent Memory without the pipeline knowing; `beliefs` is the `BeliefStore` itself (`NoBeliefs` when Agent Memory isn't configured), read only by the plan step.
 
 @@items lib.rs PipelineConfig PipelineDeps FollowUp Handled Pipeline@@
 
@@ -265,7 +265,7 @@ A **humid stretch** is two humid days in a row, a humid day having 10 or more ho
 | The texture differs, or the plan's diagnosis had none | `guided_check` |
 | Otherwise | Nothing to write |
 
-**What the plan writer reads** (`PlanInput<'_>`, agreed with the agent crate): the plan's problems (the primary, or every candidate scored zero or more for `uncertain`, none for `healthy`), their treatments, the organisms seen and the ones the problems are `caused_by`, the species, the shared memories (`SharedMemories::new` refuses a private one), the constraints carried from the current plan, the neighbours, the open question and the weather. `known_sources` is the union of their sources.
+**What the plan writer reads** (`PlanInput<'_>`, agreed with the agent crate): the plan's problems (the primary, or every candidate scored zero or more for `uncertain`, none for `healthy`), their treatments, the organisms seen and the ones the problems are `caused_by`, the species, the shared memories (`SharedMemories::new` refuses a private one), the plant's and its garden's current beliefs from Agent Memory (`agent::beliefs::current_beliefs`, read with `tokio::join!` beside `shared_for_plan` and bounded by `PipelineConfig::beliefs_read_timeout`, 1.5 s; empty when Agent Memory is off, failing or slow, and the plan is written without them), the constraints carried from the current plan, the neighbours, the open question and the weather. `known_sources` is the union of their sources.
 
 **Neighbours** ([contracts 7](../architecture/contracts.md#actionplan)): when the plant is pinned and a plan problem spreads, up to 5 pins within 1.5 m, nearest first, whose species is `susceptible_to` a spreading plan problem:
 
@@ -293,7 +293,7 @@ It then commits `StepOutput::Plan(PlanWrite { expected: current plan })`. The st
 
 @@items replan.rs tasks_for@@
 
-If the plan writer fails on a run's first plan (status `diagnosed`, no plan), the scan fails with `upstream_unavailable`. A failing re-plan keeps the current plan, and the sweep retries the step. After a first plan or a species-change plan, the pipeline stores a short memory with `source: pipeline` (best effort).
+If the plan writer fails on a run's first plan (status `diagnosed`, no plan), the scan fails with `upstream_unavailable`. A failing re-plan keeps the current plan, and the sweep retries the step. After a first plan or a species-change plan, the pipeline stores a short memory with `source: pipeline`, kind `summary` and topic `health` (best effort); its belief key is `scan_summary`, so each new summary supersedes the last one in Agent Memory.
 
 ---
 

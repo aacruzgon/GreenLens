@@ -65,6 +65,25 @@ pub struct ClerkConfig {
     pub webhook_secret: SecretString,
 }
 
+/// `SurrealDB` Agent Memory, where shared memories are mirrored (architecture 7, memory). All
+/// three variables or none.
+#[derive(Debug, Clone)]
+pub struct AgentMemorySettings {
+    /// `AGENT_MEMORY_URL`: the service's origin.
+    pub url: String,
+    /// `AGENT_MEMORY_CONTEXT_ID`: the context every call belongs to.
+    pub context_id: String,
+    /// `AGENT_MEMORY_API_KEY`.
+    pub api_key: SecretString,
+}
+
+/// The three Agent Memory variables, set together or not at all.
+const AGENT_MEMORY_VARS: [&str; 3] = [
+    "AGENT_MEMORY_URL",
+    "AGENT_MEMORY_CONTEXT_ID",
+    "AGENT_MEMORY_API_KEY",
+];
+
 /// Outbound providers, handed to the `integrations` and `agent` constructors.
 #[derive(Debug, Clone)]
 pub struct ProviderConfig {
@@ -83,6 +102,9 @@ pub struct ProviderConfig {
     pub expo_access_token: Option<SecretString>,
     /// `OPEN_METEO_API_KEY`: only for Open-Meteo's commercial endpoint.
     pub open_meteo_api_key: Option<SecretString>,
+    /// `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY`: shared
+    /// memories are mirrored into Agent Memory when all three are set; none set turns it off.
+    pub agent_memory: Option<AgentMemorySettings>,
 }
 
 /// Everything `api` reads from the environment. Built by [`Config::from_env`].
@@ -230,8 +252,36 @@ impl Config {
                 },
                 expo_access_token: env.get("EXPO_ACCESS_TOKEN").map(SecretString::from),
                 open_meteo_api_key: env.get("OPEN_METEO_API_KEY").map(SecretString::from),
+                agent_memory: agent_memory(&env)?,
             },
         })
+    }
+}
+
+/// All three Agent Memory variables, or none; a partial set names the first missing one.
+fn agent_memory<F: Fn(&str) -> Option<String>>(
+    env: &Env<F>,
+) -> Result<Option<AgentMemorySettings>, ConfigError> {
+    let [url, context, key] = AGENT_MEMORY_VARS.map(|name| env.get(name));
+    match (url, context, key) {
+        (None, None, None) => Ok(None),
+        (Some(url), Some(context_id), Some(key)) => Ok(Some(AgentMemorySettings {
+            url: url.trim().trim_end_matches('/').to_owned(),
+            context_id: context_id.trim().to_owned(),
+            api_key: SecretString::from(key),
+        })),
+        _ => {
+            let missing = AGENT_MEMORY_VARS
+                .into_iter()
+                .find(|name| env.get(name).is_none())
+                .unwrap_or(AGENT_MEMORY_VARS[0]);
+            Err(ConfigError::Invalid {
+                name: missing,
+                problem: "AGENT_MEMORY_URL, AGENT_MEMORY_CONTEXT_ID and AGENT_MEMORY_API_KEY \
+                          are set together or not at all"
+                    .to_owned(),
+            })
+        }
     }
 }
 
@@ -291,6 +341,43 @@ mod tests {
         assert_eq!(config.request_timeout, Duration::from_secs(10));
         assert_eq!(config.worker_tokens.len(), 1);
         assert!(!format!("{config:?}").contains(&"x".repeat(40)));
+    }
+
+    #[test]
+    fn agent_memory_is_off_without_its_variables() {
+        let vars = base();
+        let config = Config::from_lookup(|k| vars.get(k).cloned()).unwrap();
+        assert!(config.providers.agent_memory.is_none());
+    }
+
+    #[test]
+    fn agent_memory_takes_all_three_variables() {
+        let mut vars = base();
+        vars.insert("AGENT_MEMORY_URL", "https://memory.example.org/".to_owned());
+        vars.insert("AGENT_MEMORY_CONTEXT_ID", "pdm-dev".to_owned());
+        vars.insert("AGENT_MEMORY_API_KEY", "am_secret_key".to_owned());
+        let config = Config::from_lookup(|k| vars.get(k).cloned()).unwrap();
+        let memory = config.providers.agent_memory.as_ref().unwrap();
+        assert_eq!(memory.url, "https://memory.example.org");
+        assert_eq!(memory.context_id, "pdm-dev");
+        assert_eq!(memory.api_key.expose_secret(), "am_secret_key");
+        assert!(!format!("{config:?}").contains("am_secret_key"));
+    }
+
+    #[test]
+    fn a_partial_agent_memory_set_is_refused() {
+        let mut vars = base();
+        vars.insert("AGENT_MEMORY_URL", "https://memory.example.org".to_owned());
+        vars.insert("AGENT_MEMORY_API_KEY", "am_secret_key".to_owned());
+        let err = Config::from_lookup(|k| vars.get(k).cloned()).unwrap_err();
+        assert!(matches!(
+            err,
+            ConfigError::Invalid {
+                name: "AGENT_MEMORY_CONTEXT_ID",
+                ..
+            }
+        ));
+        assert!(err.to_string().contains("set together or not at all"));
     }
 
     #[test]

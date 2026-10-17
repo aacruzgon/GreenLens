@@ -195,3 +195,104 @@ fn write_tools_offer_only_to_editors() {
     assert!(ToolKind::Write.offered_to(Role::Editor));
     assert!(ToolKind::Memory.offered_to(Role::Viewer));
 }
+
+#[test]
+fn only_the_tools_that_propose_changes_are_strict() {
+    let strict: Vec<String> = ToolRegistry::standard()
+        .specs_for(Role::Owner)
+        .into_iter()
+        .filter(|s| s.strict)
+        .map(|s| s.name)
+        .collect();
+    assert_eq!(strict, ["complete_task", "create_task", "revise_plan"]);
+}
+
+mod search_memory {
+    use std::{sync::Arc, time::Duration};
+
+    use domain::{
+        chat::{Anchor, BeliefHit, MemorySearch},
+        ports::{MemoryHit, MockBeliefStore, MockMemoryStore},
+    };
+
+    use super::*;
+    use crate::testing::{GARDEN, SlowBeliefs, garden_deps, now, owner};
+
+    fn memory() -> MockMemoryStore {
+        let mut memory = MockMemoryStore::new();
+        memory.expect_search().returning(|_, _, _, _| {
+            Ok(vec![MemoryHit {
+                memory: fixtures::memory(
+                    "01JAX3K9T6R2B8V0QZ4M7D1E71",
+                    "user",
+                    true,
+                    "Watered every 3 days.",
+                ),
+                similarity: 0.8,
+            }])
+        });
+        memory
+    }
+
+    async fn run(deps: &AgentDeps) -> MemorySearch {
+        let ctx = ToolCtx {
+            deps,
+            owner: owner(Role::Viewer).await,
+            anchor: Anchor::Garden(GARDEN.parse().unwrap()),
+            plant: None,
+            message_id: "01JAX3K9T6R2B8V0QZ4M7D1E72".parse().unwrap(),
+            now: now(),
+        };
+        let out = Erased::new(read::SearchMemory)
+            .call(&ctx, json!({"query": "watering"}))
+            .await
+            .unwrap();
+        serde_json::from_value(out.content).unwrap()
+    }
+
+    #[tokio::test]
+    async fn belief_hits_are_merged_with_the_local_hits() {
+        let mut beliefs = MockBeliefStore::new();
+        beliefs.expect_enabled().return_const(true);
+        beliefs
+            .expect_search()
+            .withf(|_, plant, query, k| plant.is_none() && query == "watering" && *k == 5)
+            .times(1)
+            .returning(|_, _, _, _| {
+                Ok(vec![BeliefHit {
+                    key: "watering".to_owned(),
+                    text: "watering is every 2 days".to_owned(),
+                    about_plant: false,
+                    score: 0.9,
+                }])
+            });
+        let deps = garden_deps(memory(), Arc::new(beliefs));
+        let found = run(&deps).await;
+        assert_eq!(found.memories.len(), 1);
+        assert_eq!(found.memories[0].text, "Watered every 3 days.");
+        assert_eq!(found.beliefs.len(), 1);
+        assert_eq!(found.beliefs[0].key, "watering");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_slow_belief_store_gives_no_beliefs_within_the_timeout() {
+        let deps = garden_deps(memory(), Arc::new(SlowBeliefs));
+        let start = tokio::time::Instant::now();
+        let found = run(&deps).await;
+        assert_eq!(start.elapsed(), Duration::from_secs(4));
+        assert_eq!(found.memories.len(), 1);
+        assert_eq!(found.beliefs, []);
+    }
+}
+
+#[test]
+fn remember_takes_an_optional_topic() {
+    let specs = ToolRegistry::standard().specs_for(Role::Viewer);
+    let remember = specs.iter().find(|s| s.name == "remember").unwrap();
+    assert!(remember.parameters["properties"]["topic"].is_object());
+    let args: ui::RememberArgs = serde_json::from_value(json!({"fact": "x"})).unwrap();
+    assert!(args.topic.is_none());
+    let args: ui::RememberArgs =
+        serde_json::from_value(json!({"fact": "x", "topic": "watering"})).unwrap();
+    assert_eq!(args.topic, Some(crate::memory::ExtractedTopic::Watering));
+}

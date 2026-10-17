@@ -192,6 +192,9 @@ impl<T: Tool> Erased<T> {
                 name: tool_name(T::NAME).to_owned(),
                 description: T::DESCRIPTION.to_owned(),
                 parameters,
+                // A change proposed with wrong arguments would reach a card; reads are parsed
+                // and refused with a reason anyway.
+                strict: T::KIND == ToolKind::Write,
             },
         }
     }

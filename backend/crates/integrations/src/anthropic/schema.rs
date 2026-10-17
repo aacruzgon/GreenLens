@@ -6,8 +6,21 @@
 //! The contracts' schemas use those keywords because xgrammar on vLLM enforces them, so the
 //! fallback worker and the plan writer strip them here and enforce them after decoding
 //! (truncate strings and arrays, clamp numbers) from the list this returns.
+//!
+//! `oneOf` is refused too ("Schema type 'oneOf' is not supported", seen live on 2026-10-16), and
+//! `schemars` writes it for every enum with documented variants and every tagged union. A
+//! `oneOf` of constants becomes an `enum`, with the variants' descriptions moved into the
+//! parent's; any other `oneOf` becomes an `anyOf`, as the official Python SDK does with every
+//! `oneOf`. A `format` survives only on a string and only if the API lists it, so `schemars`'s
+//! `uint32` and `double` go.
+//!
+//! Strict schemas may hold at most 16 parameters with a union type (`anyOf` or a type array)
+//! across a request (refused live with 20). A nullable enum, `anyOf: [{enum: [...]}, {type:
+//! null}]`, becomes one `enum` with `null` among its values: the same answers, and no union. The
+//! fallback's indicators call has one such `image` per question, so it no longer grows into the
+//! limit.
 
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt::Write as _};
 
 use serde_json::{Map, Value};
 
@@ -23,6 +36,20 @@ pub const UNSUPPORTED_KEYWORDS: &[&str] = &[
     "maxItems",
     "minProperties",
     "maxProperties",
+];
+
+/// The string formats the API accepts (Anthropic's structured outputs docs, JSON Schema limitations).
+pub const SUPPORTED_FORMATS: &[&str] = &[
+    "date-time",
+    "time",
+    "date",
+    "duration",
+    "email",
+    "hostname",
+    "uri",
+    "ipv4",
+    "ipv6",
+    "uuid",
 ];
 
 /// One keyword the sanitiser removed, so the caller can enforce it after decoding.
@@ -55,7 +82,8 @@ pub fn sanitize_schema(schema: &Value) -> Sanitized<'_> {
     let mut copy = schema.clone();
     let (stripped, closed) = sanitize_in_place(&mut copy);
     Sanitized {
-        schema: if stripped.is_empty() && closed.is_empty() {
+        // Rewrites (`oneOf`) change the schema without stripping anything.
+        schema: if copy == *schema {
             Cow::Borrowed(schema)
         } else {
             Cow::Owned(copy)
@@ -100,11 +128,24 @@ fn walk(node: &mut Value, at: &mut String, stripped: &mut Vec<Stripped>, closed:
             value,
         });
     }
-    let is_object = obj.get("type").is_some_and(|t| {
-        t == "object"
-            || t.as_array()
-                .is_some_and(|a| a.iter().any(|x| x == "object"))
-    }) || obj.contains_key("properties");
+    let format_ok = obj.get("format").is_none_or(|f| {
+        has_type(obj, "string") && f.as_str().is_some_and(|f| SUPPORTED_FORMATS.contains(&f))
+    });
+    if !format_ok && let Some(value) = obj.remove("format") {
+        stripped.push(Stripped {
+            at: at.clone(),
+            keyword: "format",
+            value,
+        });
+    }
+    // A `oneOf` that isn't a list is malformed: left for the API to refuse with its reason.
+    if obj.get("oneOf").is_some_and(Value::is_array)
+        && let Some(Value::Array(variants)) = obj.remove("oneOf")
+    {
+        replace_one_of(obj, variants);
+    }
+    collapse_nullable_enum(obj);
+    let is_object = has_type(obj, "object") || obj.contains_key("properties");
     if is_object && !obj.contains_key("additionalProperties") {
         obj.insert("additionalProperties".to_owned(), Value::Bool(false));
         closed.push(at.clone());
@@ -129,6 +170,119 @@ fn walk(node: &mut Value, at: &mut String, stripped: &mut Vec<Stripped>, closed:
             }
         }
     }
+}
+
+/// Whether `type` is `name` or a list that holds it.
+fn has_type(obj: &Map<String, Value>, name: &str) -> bool {
+    obj.get("type")
+        .is_some_and(|t| t == name || t.as_array().is_some_and(|a| a.iter().any(|x| x == name)))
+}
+
+/// Whether a value may sit in an `enum`: the API refuses objects and arrays there.
+const fn is_scalar(v: &Value) -> bool {
+    !matches!(v, Value::Object(_) | Value::Array(_))
+}
+
+/// Puts the variants of a removed `oneOf` back as an `enum` when each is a documented scalar
+/// constant (`{"const": "open", "description": "…", "type": "string"}`), otherwise as an
+/// `anyOf`. A schema that already has an `enum` keeps it and gets the `anyOf`, so the two still
+/// both apply.
+fn replace_one_of(obj: &mut Map<String, Value>, variants: Vec<Value>) {
+    let constants: Option<Vec<&Map<String, Value>>> = variants
+        .iter()
+        .map(|v| {
+            v.as_object().filter(|v| {
+                v.get("const").is_some_and(is_scalar)
+                    && v.keys()
+                        .all(|k| matches!(k.as_str(), "const" | "description" | "type" | "title"))
+            })
+        })
+        .collect();
+    let constants = constants.filter(|c| !c.is_empty() && !obj.contains_key("enum"));
+    let Some(constants) = constants else {
+        if obj.contains_key("anyOf") {
+            let all_of = obj
+                .entry("allOf")
+                .or_insert_with(|| Value::Array(Vec::new()));
+            if let Value::Array(list) = all_of {
+                list.push(serde_json::json!({ "anyOf": variants }));
+            }
+        } else {
+            obj.insert("anyOf".to_owned(), Value::Array(variants));
+        }
+        return;
+    };
+    let types: Vec<&Value> = constants.iter().filter_map(|v| v.get("type")).collect();
+    if !obj.contains_key("type")
+        && types.len() == constants.len()
+        && types.windows(2).all(|w| w[0] == w[1])
+        && let Some(&t) = types.first()
+    {
+        obj.insert("type".to_owned(), t.clone());
+    }
+    let mut notes = String::new();
+    for v in &constants {
+        if let Some(d) = v.get("description").and_then(Value::as_str) {
+            let _ = write!(notes, "\n- {}: {d}", v["const"]);
+        }
+    }
+    if !notes.is_empty() {
+        let description = obj
+            .get("description")
+            .and_then(Value::as_str)
+            .map_or_else(|| notes.trim_start().to_owned(), |d| format!("{d}{notes}"));
+        obj.insert("description".to_owned(), Value::String(description));
+    }
+    let values = constants.iter().map(|v| v["const"].clone()).collect();
+    obj.insert("enum".to_owned(), Value::Array(values));
+}
+
+/// Turns `anyOf: [{enum: [...]}, {type: "null"}]` (either order) into one `enum` holding `null`,
+/// so a nullable enum isn't a union-typed parameter. The enum branch may carry only `type`,
+/// `description` and `title` besides its values; its description moves up if the parent has
+/// none.
+fn collapse_nullable_enum(obj: &mut Map<String, Value>) {
+    if obj.contains_key("type") || obj.contains_key("enum") {
+        return;
+    }
+    let Some(Value::Array(branches)) = obj.get("anyOf") else {
+        return;
+    };
+    let [a, b] = branches.as_slice() else {
+        return;
+    };
+    let is_null = |v: &Value| {
+        v.as_object()
+            .is_some_and(|o| o.len() == 1 && o["type"] == "null")
+    };
+    let choices = if is_null(b) {
+        a
+    } else if is_null(a) {
+        b
+    } else {
+        return;
+    };
+    let Some(choices) = choices.as_object().filter(|o| {
+        o.get("enum")
+            .and_then(Value::as_array)
+            .is_some_and(|e| !e.is_empty() && e.iter().all(is_scalar))
+            && o.keys()
+                .all(|k| matches!(k.as_str(), "enum" | "type" | "description" | "title"))
+    }) else {
+        return;
+    };
+    let mut values = choices["enum"].as_array().cloned().unwrap_or_default();
+    if !values.contains(&Value::Null) {
+        values.push(Value::Null);
+    }
+    let description = choices.get("description").cloned();
+    obj.remove("anyOf");
+    if let Some(d) = description
+        && !obj.contains_key("description")
+    {
+        obj.insert("description".to_owned(), d);
+    }
+    obj.insert("enum".to_owned(), Value::Array(values));
 }
 
 fn walk_map(
@@ -195,6 +349,99 @@ mod tests {
         assert!(kw.contains(&("/properties/summary", "maxLength")));
         assert!(kw.contains(&("/properties/boxes", "minItems")));
         assert!(kw.contains(&("/properties/nested/anyOf/0/properties/a", "multipleOf")));
+    }
+
+    #[test]
+    fn one_of_becomes_an_enum_or_an_any_of() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "state": {"description": "Which tasks.", "oneOf": [
+                    {"const": "open", "description": "Not done.", "type": "string"},
+                    {"const": "done", "description": "Done.", "type": "string"}
+                ]},
+                "when": {"oneOf": [
+                    {"type": "object", "properties": {"kind": {"const": "now", "type": "string"}}},
+                    {"type": "object", "properties": {"kind": {"const": "on", "type": "string"}}}
+                ]}
+            },
+            "additionalProperties": false
+        });
+        let out = sanitize_schema(&schema);
+        let s = out.schema.as_ref();
+        let state = &s["properties"]["state"];
+        assert_eq!(state["enum"], json!(["open", "done"]));
+        assert_eq!(state["type"], json!("string"));
+        assert_eq!(
+            state["description"],
+            json!("Which tasks.\n- \"open\": Not done.\n- \"done\": Done.")
+        );
+        assert!(state.get("oneOf").is_none());
+        let when = &s["properties"]["when"];
+        assert!(when.get("oneOf").is_none());
+        assert_eq!(when["anyOf"][1]["additionalProperties"], json!(false));
+    }
+
+    #[test]
+    fn formats_survive_only_on_strings_the_api_lists() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "days": {"type": "integer", "format": "uint32"},
+                "due": {"type": "string", "format": "date"},
+                "id": {"type": "string", "format": "ulid"}
+            },
+            "additionalProperties": false
+        });
+        let out = sanitize_schema(&schema);
+        let p = &out.schema["properties"];
+        assert!(p["days"].get("format").is_none());
+        assert_eq!(p["due"]["format"], json!("date"));
+        assert!(p["id"].get("format").is_none());
+        assert_eq!(out.stripped.len(), 2);
+    }
+
+    #[test]
+    fn a_rewrite_alone_is_not_borrowed() {
+        let schema = json!({"oneOf": [{"const": 1}, {"const": 2}]});
+        let out = sanitize_schema(&schema);
+        assert!(matches!(out.schema, Cow::Owned(_)));
+        assert_eq!(out.schema["enum"], json!([1, 2]));
+    }
+
+    #[test]
+    fn a_nullable_enum_becomes_one_enum_with_null() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "image": {"anyOf": [{"type": "string", "enum": ["img1", "img2"]}, {"type": "null"}]},
+                "note": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+            },
+            "required": ["image", "note"],
+            "additionalProperties": false
+        });
+        let out = sanitize_schema(&schema);
+        let p = &out.schema["properties"];
+        assert_eq!(p["image"], json!({"enum": ["img1", "img2", null]}));
+        assert!(
+            p["note"].get("anyOf").is_some(),
+            "a nullable string stays a union"
+        );
+    }
+
+    #[test]
+    fn one_of_keeps_an_existing_enum_and_refuses_complex_constants() {
+        let both = json!({"enum": ["a", "b"], "oneOf": [{"const": "a"}, {"const": "z"}]});
+        let both = sanitize_schema(&both);
+        assert_eq!(both.schema["enum"], json!(["a", "b"]));
+        assert_eq!(
+            both.schema["anyOf"],
+            json!([{"const": "a"}, {"const": "z"}])
+        );
+        let complex = json!({"oneOf": [{"const": {"k": 1}}]});
+        let complex = sanitize_schema(&complex);
+        assert!(complex.schema.get("enum").is_none());
+        assert_eq!(complex.schema["anyOf"], json!([{"const": {"k": 1}}]));
     }
 
     #[test]

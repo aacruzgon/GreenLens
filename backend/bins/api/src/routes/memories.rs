@@ -64,6 +64,7 @@ pub async fn create_memory(
             id: state.ports.ids.id(),
             plant: body.plant_id,
             kind: MemoryKind::Fact,
+            topic: body.topic,
             text,
             embedding,
             embedding_model: model.name,

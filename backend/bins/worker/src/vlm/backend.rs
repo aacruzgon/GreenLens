@@ -77,6 +77,11 @@ pub trait VlmBackend: Send + Sync + 'static {
         &'a self,
         call: &'a VlmCall<'a>,
     ) -> impl Future<Output = Result<VlmReply, ModelError>> + Send + 'a;
+    /// The most indicator questions one call may carry; the adapter splits a longer list into
+    /// calls of at most this many. `None`: no limit.
+    fn max_questions(&self) -> Option<usize> {
+        None
+    }
 }
 
 /// vLLM or llama.cpp through `integrations::openai_compat`.
@@ -149,11 +154,19 @@ impl VlmBackend for OpenAiBackend {
 /// rejects length, item-count and numeric-bound keywords with a 400 and needs
 /// `additionalProperties: false` on every object (contracts 6); the adapter's decoding truncates
 /// and clamps afterwards for every backend.
+///
+/// The API also refuses a structured-output grammar that grows too large: an indicators schema
+/// of 20 question objects was refused live on 2026-10-16, while 16 passed, and a call can ask 27
+/// (9 candidates × 3 indicators). So this backend takes at most [`MAX_QUESTIONS_PER_CALL`]
+/// questions a call, and the adapter splits a longer list ([`VlmBackend::max_questions`]).
 #[derive(Debug, Clone)]
 pub struct AnthropicBackend {
     client: AnthropicClient,
     model: String,
 }
+
+/// The most indicator questions one hosted call carries.
+pub const MAX_QUESTIONS_PER_CALL: usize = 12;
 
 impl AnthropicBackend {
     /// A backend calling `model` (`claude-opus-5-5`).
@@ -165,6 +178,10 @@ impl AnthropicBackend {
 impl VlmBackend for AnthropicBackend {
     fn name(&self) -> &'static str {
         "llm_fallback"
+    }
+
+    fn max_questions(&self) -> Option<usize> {
+        Some(MAX_QUESTIONS_PER_CALL)
     }
 
     async fn call<'a>(&'a self, call: &'a VlmCall<'a>) -> Result<VlmReply, ModelError> {
@@ -198,7 +215,10 @@ impl VlmBackend for AnthropicBackend {
         Ok(VlmReply {
             text: message.text(),
             stop: match message.stop_reason {
-                Some(anthropic::StopReason::MaxTokens) => Stop::Length,
+                Some(
+                    anthropic::StopReason::MaxTokens
+                    | anthropic::StopReason::ModelContextWindowExceeded,
+                ) => Stop::Length,
                 Some(anthropic::StopReason::Refusal) => Stop::Refusal,
                 _ => Stop::Complete,
             },

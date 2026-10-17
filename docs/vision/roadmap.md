@@ -1,6 +1,6 @@
 # PDM Vision Roadmap
 
-> **Status:** v0.7, 2026-10-16 (night). v0.7: the day-1 plant probe is built and the provisional `τ_leaf` 0.90 and `τ_plant` 0.67 replace 0.35; #25 is merged. v0.6: `τ_leaf` is provisionally 0.35; #7, #16 and Sara's #18 are merged, so sections 1, 2 and 5 are brought up to date. v0.5: the Qwen3.5-9B challenger passed its day-1 check and the fake VLM server is built, with the fixes from its review. v0.4: decisions now live only in dev-roadmap section 9; our model files moved from the interim GitHub release to `GreenLens/pdm-models`. v0.3: PR #6 merged; PR #7 has `main` merged in and targets `main`; our model files' GitHub release is an interim until `pdm-models` (dev-roadmap M21). v0.2: the PR #6 reviews are answered: Tomato-Pakistan reworked, disease head v1d, the detector retrained on a grouped split; the whole-ML plan with the integration track moves to [dev-roadmap.md](dev-roadmap.md). v0.1: First tracker of the vision and ML work against the build plan in [README 10](README.md#10-build-plan), with what is done, what is next and what waits on whom.
+> **Status:** v0.8, 2026-10-16 (night). v0.8: end of day 1: #26 merged, #30 drafted for Sara, #33 measured a detector trained with no-plant backgrounds, YuNet pinned, the rig's state. v0.7: the day-1 plant probe is built and the provisional `τ_leaf` 0.90 and `τ_plant` 0.67 replace 0.35; #25 is merged. v0.6: `τ_leaf` is provisionally 0.35; #7, #16 and Sara's #18 are merged, so sections 1, 2 and 5 are brought up to date. v0.5: the Qwen3.5-9B challenger passed its day-1 check and the fake VLM server is built, with the fixes from its review. v0.4: decisions now live only in dev-roadmap section 9; our model files moved from the interim GitHub release to `GreenLens/pdm-models`. v0.3: PR #6 merged; PR #7 has `main` merged in and targets `main`; our model files' GitHub release is an interim until `pdm-models` (dev-roadmap M21). v0.2: the PR #6 reviews are answered: Tomato-Pakistan reworked, disease head v1d, the detector retrained on a grouped split; the whole-ML plan with the integration track moves to [dev-roadmap.md](dev-roadmap.md). v0.1: First tracker of the vision and ML work against the build plan in [README 10](README.md#10-build-plan), with what is done, what is next and what waits on whom.
 > **How to use it:** read this first when picking up the ML work. Update it at the end of every work session: change the state of each item you touched, add the commit or report that proves it, and bump the status line. The plan itself stays in [README 10](README.md#10-build-plan); this file only tracks progress against it.
 
 Owner of the vision and ML work: Sam (models, training, export, evaluation, calibration; the RTX 5070 Ti). Running the models in the backend is Sara's track ([docs/backend/vision.md](../backend/vision.md), [worker.md](../backend/worker.md)); the plan both tracks share, with owners, hand-offs and the integration gaps, is [dev-roadmap.md](dev-roadmap.md). This file tracks the models.
@@ -20,13 +20,14 @@ States: **Done**, **Done, rework** (done but a review found a problem), **In pro
 
 ## 1. Where we are
 
-Day 1 of 10 (Oct 16). The work is **ahead of plan on models and serving, behind on the evaluation set**:
+Day 1 of 10 (Oct 16, end of day). The work is **ahead of plan on models and serving, behind on the evaluation set**:
 
 - Ahead: the detector is on its second clean fine-tune (planned Oct 17); the disease head is at v1d (v1 was planned for Oct 19); the VLM day-1 check passed with both Qwen3-VL-8B builds.
 - Fixed tonight (PR #6 reviews): Tomato-Pakistan's 7,200 files are copies of about 934 photos, 302 of them PlantDoc's web photos. Copies are now grouped by original photo, the PlantDoc copies dropped, TOM2024 grouped by field visit, and the field sets have their own test split. Validation images with a near-copy in train fell from 925 of 1,792 to 287 of 1,152. Disease head v1d: test top-1 0.814 without bean (val 0.819), ECE 0.032.
 - Behind: no evaluation photos yet (planned from Oct 16), no Python–Rust parity test.
-- Integration: the Rust loaders read our files. #11 and Sara's #18 fixed gaps G1–G11; `PerceptionPipeline::load` with the tensor-name check succeeds on the CPU set and on the fp16 set on CUDA (✓ ran 2026-10-16). Issue #12 can close.
-- Plant check: the day-1 zero-shot plant probe is built, with `τ_leaf` 0.90 and `τ_plant` 0.67 provisional. On the val split 0.8% of plant photos fail, and 11.4% of 4,758 COCO photos without a plant pass, just short of the 90% catch target. The leaf score alone passes 51.9% of them ([models 2](models.md#2-plant-present-check)).
+- Integration: the Rust loaders read our files. #11 and Sara's #18 fixed gaps G1–G11; `PerceptionPipeline::load` with the tensor-name check succeeds on the CPU set and on the fp16 set on CUDA (✓ ran 2026-10-16). Issue #12 is closed.
+- Plant check: the day-1 zero-shot plant probe is built, with `τ_leaf` 0.90 and `τ_plant` 0.67 provisional. On the val split 0.8% of plant photos fail, and 11.4% of 4,758 COCO photos without a plant pass, just short of the 90% catch target. The leaf score alone passes 51.9% of them ([models 2](models.md#2-plant-present-check)), so the second detector run trains with no-plant photos as background: a candidate trained with them (#33) lets 5.1% through instead of 51.9%.
+- Soil prompt: `findings@2` gives soil readings from a soil shot on both candidates and none from glimpsed soil; draft [#30](https://github.com/aacruzgon/GreenLens/pull/30) for Sara ([vlm 4](vlm.md#the-workers-own-prompts-on-both-candidates-2026-10-16--ran) once it merges).
 
 ## 2. Branches and pull requests
 
@@ -34,10 +35,13 @@ Day 1 of 10 (Oct 16). The work is **ahead of plan on models and serving, behind 
 |---|---|---|---|---|
 | [#6](https://github.com/aacruzgon/GreenLens/pull/6) | `feat/ml-training` (deleted) | `main` | Merged (749a6b1) | Training environment, `pdm_vision`, data pipeline, exports, disease head v1d, manifest |
 | [#7](https://github.com/aacruzgon/GreenLens/pull/7) | `feat/vlm-serving` (deleted) | `main` | Merged (d0db288) | `infra/` vLLM service, the day-1 check, the detector, model files from `pdm-models`, this file and dev-roadmap.md |
-| [#16](https://github.com/aacruzgon/GreenLens/pull/16) | `feat/vlm-fake-and-challenger` | `main` | Merged (59062ce) | The fake VLM server, the worker's recorded calls, the Qwen3.5-9B day-1 check |
+| [#16](https://github.com/aacruzgon/GreenLens/pull/16) | `feat/vlm-fake-and-challenger` (deleted) | `main` | Merged (59062ce) | The fake VLM server, the worker's recorded calls, the Qwen3.5-9B day-1 check |
 | [#18](https://github.com/aacruzgon/GreenLens/pull/18) (Sara) | `fix/perception-manifest` | `main` | Merged (bd21eb1) | Tensor names, thresholds and precision from the manifest (G4, G6, G7, G11) |
-| [#25](https://github.com/aacruzgon/GreenLens/pull/25) | `feat/provisional-tau-leaf` | `main` | Merged (fea1808) | Provisional `τ_leaf` = 0.35, `ml.training.eval.leaf_scores` and its val report |
-| this PR | `feat/plant-probe-zero-shot` | `main` | Open | Day-1 plant probe, the `τ_leaf` and `τ_plant` pair, COCO negatives |
+| [#25](https://github.com/aacruzgon/GreenLens/pull/25) | `feat/provisional-tau-leaf` (deleted) | `main` | Merged (fea1808) | Provisional `τ_leaf` = 0.35, `ml.training.eval.leaf_scores` and its val report |
+| [#26](https://github.com/aacruzgon/GreenLens/pull/26) | `feat/plant-probe-zero-shot` (deleted) | `main` | Merged (fd75210) | Day-1 plant probe, the `τ_leaf` and `τ_plant` pair, COCO negatives |
+| [#30](https://github.com/aacruzgon/GreenLens/pull/30) (for Sara) | `fix/findings-soil-shape` | `main` | Draft | `findings@2`: the soil part of P5, with both models re-recorded |
+| [#33](https://github.com/aacruzgon/GreenLens/pull/33) | `feat/detector-background` | `main` | Open | No-plant background images for the detector, and the candidate's measurements (not shipped) |
+| this PR | `docs/roadmap-day1-wrap` | `main` | Open | This file at the end of day 1 |
 
 ## 3. Tracker by build-plan period
 
@@ -52,7 +56,7 @@ Day 1 of 10 (Oct 16). The work is **ahead of plan on models and serving, behind 
 | Datasets fetched, pinned, mapped, deduplicated, split | Done | 3369353, 34d83d6, af4b0e2; reworked in efa6c4b: copies grouped by original photo, PlantDoc copies dropped, field visits grouped, field test splits. Train 5,102, val 1,152, test 854 |
 | BioCLIP 2 vision tower exported and checked (fp16) | Done | b37e8df; manifest `bioclip` |
 | SAM 2.1-T encoder and box decoder exported and checked | Done | b37e8df; manifest `sam_encoder`, `sam_decoder`; encoder budget 2.0 GB |
-| YuNet face detector export | Not started | Ran on a Mac with ORT CPU in the design phase; not in the manifest |
+| YuNet face detector | Pinned | Upstream `face_detection_yunet_2026may.onnx` is in the manifest (`yunet`, MIT); the check on 10 team photos waits for the photos |
 | Text embedder pinned and checked (Rust vs Python to 1e-5, ≤ 20 ms) | Not started | Choice recorded in architecture open decision 13; the Rust side is the backend's |
 | RF-DETR-S leaf detector, fine-tuned and exported | Done | `rfdetr-s-leaf-2026-10-16b`: pinned COCO weights, train/valid grouped by same plant, train at ≥ 0.97 to test dropped (a5518f9). mAP50 0.937 fp16 ONNX vs 0.937 PyTorch, mAP50-95 0.729, on the 236 test images (the first run: 0.934, 0.722) |
 | Disease head v0 → v1d | Done | cc884dd, c1c9c37, then v1d (3c10ae9): C = 50, T = 0.821; test top-1 0.814 without bean (PlantDoc 0.743, TOM2024 0.845, Tomato-Pakistan 0.800), top-3 0.964, ECE 0.032 |
@@ -76,8 +80,8 @@ Day 1 of 10 (Oct 16). The work is **ahead of plan on models and serving, behind 
 | Perception batch caps benchmark | Not started | On the 3070, with every session loaded |
 | Leaf relabelling pass (people, Oct 18) | Not started | |
 | Real BioCLIP label matrix from the species and organism seed files | Waiting | On the knowledge-base seed files and decision #4 |
-| VLM prompts and schemas on real photos | Waiting | The prompts are in Sara's worker code (dev-roadmap P5); day-1 found three issues (vlm.md §4) |
-| Second detector run (night of Oct 18, vLLM stopped) | Not started | After relabelling |
+| VLM prompts and schemas on real photos | In progress | Soil: `findings@2` in draft #30 (3 and 8 soil readings from the soil shot on FP8 and Qwen3.5, none from glimpsed soil); the other P5 issues are Sara's; real photos still needed |
+| Second detector run (night of Oct 18, vLLM stopped) | Not started | After relabelling, with the 400 no-plant background photos of [#33](https://github.com/aacruzgon/GreenLens/pull/33) (`prepare.py --background`). #33's candidate, trained on them alone, cut no-plant photos passing at 0.35 from 51.9% to 5.1% with PlantDoc mAP50 0.941 (current 0.937); it isn't shipped, so the manifest swaps the detector once, after this run, with a new threshold pair |
 | Disease and species heads on crops from our detector (Oct 19) | Not started | The data rework is done; needs the second detector run |
 | Python–Rust pre-processing parity test | Waiting | dev-roadmap J1, after Sara's loader fixes (P1); `crop_box` rounding is a guess until then |
 
@@ -98,10 +102,10 @@ Decisions are tracked in one table, [dev-roadmap section 9](dev-roadmap.md#9-dec
 ## 5. Next steps, in order
 
 1. **Start the evaluation photos** and the 20 dev cases the day-2 benchmark needs (Oct 18). This is the biggest risk: the benchmark, calibration (M16), the YuNet and zero-shot checks and the no-plant cases all wait on them.
-2. **The soil prompt (dev-roadmap P5) with Sara:** the findings prompt must show the shape of a soil reading; then re-record both models through the fake server's record mode.
+2. **Sara takes over draft #30** (`findings@2`, the soil part of P5) and the other P5 fixes.
 3. **YuNet and the text embedder pinned** (dev-roadmap M7, M8); BioCLIP zero-shot on team photos.
 4. Day-2 VLM benchmark on Oct 18 with Sara's worker; leaf relabelling; second detector run that night.
 
 ## 6. The rig right now
 
-As of 2026-10-16 night: **headless** (desktop stopped), vLLM serving Qwen3-VL-8B FP8 at 0.90 with 2 slots (`infra-vllm-1`, about 14.6 of 16.3 GB used), started again after the Qwen3.5 check with shell overrides (`infra/.env` unchanged); earlier it was stopped for the detector retrain and started with `docker start infra-vllm-1`. To get the desktop back: `docker compose -f infra/rig.compose.yml down`, `sudo systemctl isolate graphical.target`, log in, and run vLLM with the AWQ build at 0.78 ([infra README 3](../../infra/README.md#3-desktop-mode-and-headless-mode)). After the desktop is back, run `gh auth login` again so the token moves into the keyring.
+As of 2026-10-16, 23:40: **headless** (desktop stopped), vLLM serving Qwen3-VL-8B FP8 at 0.90 with 2 slots (`infra-vllm-1`, about 13.8 of 16.3 GB used), with shell overrides (`infra/.env` unchanged). Tonight it was swapped to Qwen3.5-9B AWQ and back twice for the `findings@2` recordings, and stopped briefly for the CUDA load checks of #18 and #26. To get the desktop back: `docker compose -f infra/rig.compose.yml down`, `sudo systemctl isolate graphical.target`, log in, and run vLLM with the AWQ build at 0.78 ([infra README 3](../../infra/README.md#3-desktop-mode-and-headless-mode)). After the desktop is back, run `gh auth login` again so the token moves into the keyring.

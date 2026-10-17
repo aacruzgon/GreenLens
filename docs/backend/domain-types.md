@@ -1,6 +1,6 @@
 # PDM Backend: `domain` contract types
 
-> **Status:** Draft v0.3.2, 2026-10-16. v0.3.2: the schema links point to `backend/migrations/schema.surql`. v0.3.1: `JobErrorCode`'s comments follow contracts 5: `max_runtime_exceeded` is settled (question 18), and `unsupported_version` and `model_error` carry the contract's full meaning. v0.3: `PastWeather` gains `longest_humid_run_days` (contracts v0.10, section 7), the longest run of humid days in the past week, so a past humid stretch is detectable. v0.2: follows contracts v0.9 and v0.10 where they touch shapes: `JobError.code` is a `JobErrorCode` (`max_runtime_exceeded` and `unknown_label_version` included), the `model_versions` keys are `ModelVersionKey` constants, `Invite.created_by` is optional, worker payloads never carry a mask URL and `complete` results are read by the job's kind (both as v0.1 had them); `BoxFormat`'s comments name the models of each format. v0.1: every shape of [contracts.md](../architecture/contracts.md) v0.8.2 as compiled Rust, section by section, with the serde and schema decisions explained and a TypeScript → Rust map.
+> **Status:** Draft v0.3.3, 2026-10-17. v0.3.3: memories gain a `topic`, and the beliefs mirrored into Agent Memory get their wire types (`Belief`, `PlantBeliefs`, `BeliefHit`, `MemorySearch`). v0.3.2: the schema links point to `backend/migrations/schema.surql`. v0.3.1: `JobErrorCode`'s comments follow contracts 5: `max_runtime_exceeded` is settled (question 18), and `unsupported_version` and `model_error` carry the contract's full meaning. v0.3: `PastWeather` gains `longest_humid_run_days` (contracts v0.10, section 7), the longest run of humid days in the past week, so a past humid stretch is detectable. v0.2: follows contracts v0.9 and v0.10 where they touch shapes: `JobError.code` is a `JobErrorCode` (`max_runtime_exceeded` and `unknown_label_version` included), the `model_versions` keys are `ModelVersionKey` constants, `Invite.created_by` is optional, worker payloads never carry a mask URL and `complete` results are read by the job's kind (both as v0.1 had them); `BoxFormat`'s comments name the models of each format. v0.1: every shape of [contracts.md](../architecture/contracts.md) v0.8.2 as compiled Rust, section by section, with the serde and schema decisions explained and a TypeScript → Rust map.
 
 Companion to the [backend architecture](README.md) and to the [`domain` crate](domain.md). Sections 1–10 follow [contracts.md](../architecture/contracts.md) 1–10, so "contracts 7" and "domain-types 7" describe the same shapes. Every listing is copied from the compiled source of `crates/domain` (`cargo check`, `cargo test` and `cargo clippy --all-targets` pass on Rust 1.99.1 with serde 1.0.229, utoipa 6.0.0, schemars 1.2.3, chrono 0.4.45 and ulid 3.0.0); the module paths are in [the map](#11-typescript-to-rust-map).
 
@@ -4931,6 +4931,39 @@ pub enum MemoryKind {
     Summary,
 }
 
+/// `Memory.topic`: what a memory is about, from a fixed list. With the kind it names the
+/// memory's belief key in Agent Memory ([`crate::ports::belief_key`]), so a newer memory on the
+/// same topic supersedes the older one instead of standing beside it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryTopic {
+    /// How and how often it is watered.
+    Watering,
+    /// Fertiliser and compost.
+    Feeding,
+    /// Sprays, treatments and pest control.
+    Treatment,
+    /// Pruning, pinching and staking.
+    Pruning,
+    /// Sowing, planting and transplanting.
+    Planting,
+    /// Where it grows: bed, balcony, indoors.
+    Location,
+    /// The pot or container.
+    Container,
+    /// Soil, mulch and pH.
+    Soil,
+    /// Sun and shade.
+    Light,
+    /// Health, symptoms and the scan summaries.
+    Health,
+    /// Harvests and yield.
+    Harvest,
+    /// Anything else; never supersedes another memory.
+    #[default]
+    Other,
+}
+
 /// `Memory.source` ([contracts 8], memory).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -4956,6 +4989,8 @@ pub struct Memory {
     pub plant_id: Option<PlantId>,
     /// What kind.
     pub kind: MemoryKind,
+    /// What it is about.
+    pub topic: MemoryTopic,
     /// The text.
     pub text: String,
     /// Where it came from.
@@ -4989,6 +5024,72 @@ pub struct CreateMemoryRequest {
     pub plant_id: Option<PlantId>,
     /// The note.
     pub text: String,
+    /// What the note is about; `other` when absent.
+    #[serde(default)]
+    pub topic: MemoryTopic,
+}
+```
+
+### Beliefs
+
+Shared memories as Agent Memory holds them ([agent-memory](../database/agent-memory.md)): `GET /plants/{plant_id}/beliefs` answers `PlantBeliefs`, and `search_memory` returns `MemorySearch`.
+
+```rust
+/// A shared memory as Agent Memory holds it ([contracts 8], beliefs): the current value of one
+/// key of a plant or of its garden, or, in `PlantBeliefs.history`, an earlier one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct Belief {
+    /// The belief key: `watering`, `last_treatment`, `scan_summary`, `note_<memory id>`.
+    pub key: String,
+    /// The memory's text.
+    pub value: String,
+    /// `false` for a garden-level fact.
+    pub about_plant: bool,
+    /// The memory it was recorded from; absent if Agent Memory lost the label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    pub memory_id: Option<MemoryId>,
+    /// When it was learned: the memory's `created_at`.
+    pub learned_at: Timestamp,
+    /// When a newer memory on the same key replaced it; absent while it is current.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    pub superseded_at: Option<Timestamp>,
+}
+
+/// `GET /plants/{plant_id}/beliefs`: what is believed about a plant now, and what was believed
+/// before. Shared memories only, so every member may read it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct PlantBeliefs {
+    /// `false` when Agent Memory isn't configured or didn't answer; both lists are then empty.
+    pub available: bool,
+    /// The plant's current beliefs and its garden's, one per key.
+    pub current: Vec<Belief>,
+    /// The plant's superseded beliefs, newest first.
+    pub history: Vec<Belief>,
+}
+
+/// A `search_memory` hit from Agent Memory: a current shared belief that matched the query.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BeliefHit {
+    /// The belief key.
+    pub key: String,
+    /// "watering is every 2 days".
+    pub text: String,
+    /// `false` for a garden-level fact.
+    pub about_plant: bool,
+    /// Agent Memory's fused score.
+    pub score: f32,
+}
+
+/// What `search_memory` returns: the local hits (shared memories and the caller's own chat
+/// memories) and, when Agent Memory answers in time, the matching current beliefs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MemorySearch {
+    /// From the database, exact within the garden.
+    pub memories: Vec<Memory>,
+    /// From Agent Memory; empty when it is off, slow or down.
+    pub beliefs: Vec<BeliefHit>,
 }
 ```
 
@@ -5005,7 +5106,7 @@ pub enum ToolName {
     ViewImage,
     /// `WeatherSummary["forecast"]`.
     GetForecast,
-    /// `Memory[]`.
+    /// [`MemorySearch`].
     SearchMemory,
     /// [`SimilarCase`] list.
     FindSimilarCases,
@@ -6610,7 +6711,8 @@ pub struct SoilProfile {
 | `SendMessageRequest`, message feedback | `SendMessageRequest`, `MessageFeedbackRequest`, `Rating` | `chat` |
 | chat SSE events | `ChatEvent` and one struct per event, `ChatRoute`, `Usage` | `chat` |
 | `PendingAction` | `PendingAction`, `WriteTool`, `PendingStatus`, `Card`, `Preview`, `ConfirmResponse`, `ConfirmResult`, `RejectResponse` | `chat` |
-| `Memory` | `Memory`, `MemoryKind`, `MemorySource`, `MemoryQuery`, `CreateMemoryRequest` | `chat` |
+| `Memory` | `Memory`, `MemoryKind`, `MemoryTopic`, `MemorySource`, `MemoryQuery`, `CreateMemoryRequest` | `chat` |
+| `Belief`, `PlantBeliefs`, `search_memory`'s result | `Belief`, `PlantBeliefs`, `BeliefHit`, `MemorySearch` | `chat` |
 | tool return shapes | `SimilarCase`, `ProblemRef`, `KnowledgeHit`, `Lookalike`, `SoilProfileView`, `GardenMapView`, `RescanRequest`, `ToolName` | `chat` |
 | `GardenLocationInput`, `Garden` | same names, `ConsentPrecision`, `LocationQuery`, `SoilProfileStatus`, `TimeZone`, `CreateGardenRequest`, `UpdateGardenRequest`, `GardenWeather` | `garden::gardens` |
 | members, `Invite` | `Member`, `Invite`, `CreateInviteRequest`, `UpdateMemberRequest` | `garden::members` |

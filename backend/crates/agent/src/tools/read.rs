@@ -4,7 +4,7 @@
 use std::io::Cursor;
 
 use domain::{
-    chat::{GardenMapView, Memory, SoilProfileView, ToolName},
+    chat::{GardenMapView, Memory, MemorySearch, SoilProfileView, ToolName},
     garden::{map::neighbours, plants::GrowthQuantity, tasks::TaskQuery},
     id::{ChatImageId, ImageId, OrganismId, PlantId, ProblemId, ScanId, SourceId, SpeciesId},
     knowledge::ChunkTopic,
@@ -16,7 +16,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::{Tool, ToolCtx, ToolEffect, ToolKind, ToolOutput};
-use crate::{context::garden_weather, error::ToolError};
+use crate::{beliefs::search_beliefs, context::garden_weather, error::ToolError};
 
 const fn page(limit: u32) -> PageRequest {
     PageRequest {
@@ -262,7 +262,9 @@ impl Tool for SearchMemory {
     type Args = SearchMemoryArgs;
     const NAME: ToolName = ToolName::SearchMemory;
     const DESCRIPTION: &'static str = "Search what is remembered about this garden's plants: \
-        shared facts and events, and your own private notes with this user.";
+        shared facts and events, and your own private notes with this user (memories), plus, \
+        when available, the matching current shared beliefs (beliefs). A belief is the latest \
+        value of its key and wins over an older memory that disagrees.";
     const LABEL: &'static str = "Checking what I remember";
     const KIND: ToolKind = ToolKind::Read;
 
@@ -271,20 +273,32 @@ impl Tool for SearchMemory {
         ctx: &ToolCtx<'_>,
         args: SearchMemoryArgs,
     ) -> Result<ToolOutput, ToolError> {
-        let query = embed(ctx, &args.query).await?;
-        // The store applies `shared = true OR author = $user` within the proof's garden.
-        let hits = ctx
-            .deps
-            .memory
-            .search(
-                ctx.owner.membership(),
-                &query,
-                args.plant_id,
-                ctx.deps.config.memory_hits,
-            )
-            .await?;
-        let memories: Vec<Memory> = hits.into_iter().map(|h| h.memory).collect();
-        Ok(ToolOutput::json(&memories))
+        let deps = ctx.deps;
+        let member = ctx.owner.membership();
+        let local = async {
+            let query = embed(ctx, &args.query).await?;
+            // The store applies `shared = true OR author = $user` within the proof's garden.
+            let hits = deps
+                .memory
+                .search(member, &query, args.plant_id, deps.config.memory_hits)
+                .await?;
+            Ok::<_, ToolError>(hits.into_iter().map(|h| h.memory).collect::<Vec<Memory>>())
+        };
+        // Agent Memory's search takes seconds; past its timeout the local hits answer alone. It
+        // is scoped by the proof's garden path, so a plant of another garden finds nothing.
+        let beliefs = search_beliefs(
+            deps.beliefs.as_ref(),
+            member.garden(),
+            args.plant_id,
+            &args.query,
+            deps.config.belief_hits,
+            deps.config.beliefs_search_timeout,
+        );
+        let (memories, beliefs) = tokio::join!(local, beliefs);
+        Ok(ToolOutput::json(&MemorySearch {
+            memories: memories?,
+            beliefs,
+        }))
     }
 }
 

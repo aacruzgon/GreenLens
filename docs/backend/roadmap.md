@@ -1,6 +1,6 @@
 # PDM Backend Roadmap
 
-> **Status:** Draft v0.9, 2026-10-16. v0.9: S1's hosting decision is made: the control plane runs on the rig behind Tailscale Funnel, with the ingress as a compose profile (section 5). v0.8: section 1 says the `images` job pushes to GHCR, now that its first run on `main` passed. v0.7: S0 is done; section 4 records its exit checks and the pull requests that closed it, and section 1 says what S0 added; section 13 says how S0 was tracked. v0.6: gap 6 adds that the perception worker reads its tensor names and thresholds from the manifest ([issue #12](https://github.com/aacruzgon/GreenLens/issues/12)). v0.5: S3's schema check is done: xgrammar enforces `anyOf` with `null`. v0.4: gap 6 is fixed: the loaders and `label_set_version` follow `ml/models/FORMATS.md`. v0.3: gap 6, found when PR #6 merged: the Rust loader doesn't read `ml/models/FORMATS.md`; section 1 says what `ml/` holds now. v0.2: every gap in section 12 now has a design, and the slices link to them: [infra](../infra/README.md) for CI, images and compose files, [database 1](../database/README.md#1-version-and-setup) for applying the migrations, [worker 15.1](worker.md#151-stub-vision) for stub vision, and [vision 6](../vision/README.md#delivering-model-files-to-the-backend) for model files; two bugs found on the way (the vector search's `k`, the bucket default) are fixed. v0.1: the backend's work for build week, as nine slices (S0–S8) from the code merged on Oct 16 to the final deploy. Each slice has its goal, its work, what it needs from the other tracks, its exit checks and the decisions it closes. Section 12 lists the gaps found while writing it.
+> **Status:** Draft v0.11, 2026-10-17. v0.11: adds S9, farm connectors (Slack and Google Drive) tested on Era by Eon's simulators, with the agent evaluation ([docs/connectors](../connectors/README.md)); the gaps and tracking sections become 13 and 14. v0.10: S5 adds the Agent Memory mirror (work 7, exit check). v0.9: S1's hosting decision is made: the control plane runs on the rig behind Tailscale Funnel, with the ingress as a compose profile (section 5). v0.8: section 1 says the `images` job pushes to GHCR, now that its first run on `main` passed. v0.7: S0 is done; section 4 records its exit checks and the pull requests that closed it, and section 1 says what S0 added; section 13 says how S0 was tracked. v0.6: gap 6 adds that the perception worker reads its tensor names and thresholds from the manifest ([issue #12](https://github.com/aacruzgon/GreenLens/issues/12)). v0.5: S3's schema check is done: xgrammar enforces `anyOf` with `null`. v0.4: gap 6 is fixed: the loaders and `label_set_version` follow `ml/models/FORMATS.md`. v0.3: gap 6, found when PR #6 merged: the Rust loader doesn't read `ml/models/FORMATS.md`; section 1 says what `ml/` holds now. v0.2: every gap in section 12 now has a design, and the slices link to them: [infra](../infra/README.md) for CI, images and compose files, [database 1](../database/README.md#1-version-and-setup) for applying the migrations, [worker 15.1](worker.md#151-stub-vision) for stub vision, and [vision 6](../vision/README.md#delivering-model-files-to-the-backend) for model files; two bugs found on the way (the vector search's `k`, the bucket default) are fixed. v0.1: the backend's work for build week, as nine slices (S0–S8) from the code merged on Oct 16 to the final deploy. Each slice has its goal, its work, what it needs from the other tracks, its exit checks and the decisions it closes. Section 12 lists the gaps found while writing it.
 
 Companion to the [backend architecture](README.md). Its [build plan](README.md#13-build-plan) and [architecture 14](../architecture/README.md#14-build-plan) say what is done on each date. This document says how the backend gets there: the order of the work, what each step depends on, and how we know a step is finished.
 
@@ -17,8 +17,9 @@ Companion to the [backend architecture](README.md). Its [build plan](README.md#1
 9. [S5. Chat and the garden map](#9-s5-chat-and-the-garden-map)
 10. [S6. Background work and resilience](#10-s6-background-work-and-resilience)
 11. [S7. Hardening and S8. Ship](#11-s7-hardening-and-s8-ship)
-12. [Gaps found while writing this roadmap](#12-gaps-found-while-writing-this-roadmap)
-13. [Tracking](#13-tracking)
+12. [S9. Farm connectors and Era](#12-s9-farm-connectors-and-era)
+13. [Gaps found while writing this roadmap](#13-gaps-found-while-writing-this-roadmap)
+14. [Tracking](#14-tracking)
 
 ---
 
@@ -46,7 +47,7 @@ What has **never run**:
 - the images on a host. S0 added CI (`.github/workflows/ci.yml`), the Dockerfile and `infra/dev.compose.yml`, so the code builds and runs its tests against the pinned SurrealDB and RustFS in CI, and every merge that changes the images pushes them to GHCR. No image has run on the control plane or the rig yet;
 - any model file or knowledge seed on a host. `ml/` (PR #6) has the training and export code, the manifest's perception entries and the head formats, but no fetch step yet, and `api` and the worker both read `/models/manifest.toml` at start.
 
-So the roadmap is mostly about **bringing the code up on real dependencies and proving it there**, plus filling the gaps in section 12. It isn't about writing the crates again.
+So the roadmap is mostly about **bringing the code up on real dependencies and proving it there**, plus filling the gaps in section 13. It isn't about writing the crates again.
 
 ---
 
@@ -73,6 +74,7 @@ So the roadmap is mostly about **bringing the code up on real dependencies and p
 | [S6](#10-s6-background-work-and-resilience) | Oct 23 | Alerts, push, deletion cascades, the rig-failure test | S1 (start), S4 (finish) | Development build for push (app) |
 | [S7](#11-s7-hardening-and-s8-ship) | Oct 24 | Security review, tuned limits and thresholds, evaluation run | S2–S6 | Evaluation set (vision) |
 | [S8](#11-s7-hardening-and-s8-ship) | Oct 25 | Final deploy | S7 | Demo video, Devpost |
+| [S9](#12-s9-farm-connectors-and-era) | Oct 21–23 | Farm connectors for Slack and Google Drive, tested on Era's simulators; the agent evaluation | S1 (start), S5 (finish) | Connectors screen (app); Slack app and Google OAuth client |
 
 ```mermaid
 flowchart LR
@@ -87,6 +89,9 @@ flowchart LR
   S4 --> S6
   S5 --> S7[S7 Hardening]
   S6 --> S7
+  S1 -.start.-> S9[S9 Farm connectors and Era]
+  S5 --> S9
+  S9 --> S7
   S7 --> S8[S8 Ship]
 ```
 
@@ -199,7 +204,7 @@ What S0 changed in the design, each found by running it:
 4. **Live site data:**
    - fresh fixtures for Open-Meteo, SoilGrids and the geocoders;
    - SoilGrids has no data in central Toronto, so decide its replacement there ([architecture open decision 10](../architecture/README.md#15-open-decisions));
-   - a fallback label when reverse geocoding fails ([integrations 17](integrations.md#17-open-questions), item 4).
+   - a fallback label when reverse geocoding fails ([integrations 18](integrations.md#18-open-questions), item 4).
 5. **Species confirmation** end to end: the perception top 3, the card, and the confirmed species on the scan.
 6. **Knowledge loading:**
    - build the migration runner and apply the loader's `knowledge.surql` ([database 1](../database/README.md#1-version-and-setup), [store 4](store.md#4-connecting-and-the-schema));
@@ -236,7 +241,7 @@ What S0 changed in the design, each found by running it:
 3. **The schema check:** done on 2026-10-16: xgrammar 0.2.7 enforces `anyOf` with `null` ([contracts open question 31](../architecture/contracts.md#12-open-questions); [worker 17](worker.md#17-open-questions), item 3; [vision 15](vision.md#15-open-questions), item 4). Had it failed, the nullable shapes would have changed before S4.
 4. **`VLM_SLOTS` for each card, from the benchmark** (open decision 15).
 5. **The fallback:**
-   - one live hosted call confirms the box format and the stripped schema keywords ([integrations 17](integrations.md#17-open-questions), item 6);
+   - one live hosted call confirms the box format and the stripped schema keywords ([integrations 18](integrations.md#18-open-questions), item 6);
    - time a full 8,000-token call against the doubled `max_runtime` ([worker 17](worker.md#17-open-questions), item 2).
 
 **Exit checks**
@@ -293,12 +298,14 @@ What S0 changed in the design, each found by running it:
 4. **The text classifier:** use Jev if early access arrived ([architecture open decision 8](../architecture/README.md#15-open-decisions)); otherwise the LLM fallback.
 5. **The garden map:** a mapping session, the neighbours and the spacing warnings.
 6. **Local poison-control numbers** in the deployment's configuration ([agent 18](agent.md#18-open-questions), item 10).
+7. **Agent Memory** ([database: Agent Memory](../database/agent-memory.md)): create the `pdm-dev` context and a key limited to `gardens/*`, set the three `AGENT_MEMORY_*` variables, and check that shared memories are recorded as beliefs, that a newer memory with the same topic supersedes the older one, that the chat context, the plan writer and `search_memory` read them, and that `GET /plants/{plant_id}/beliefs` and the deletion cascades work. Measure the cost on Studio's Usage page.
 
 **Exit checks**
 
 - A chat about the early-blight scan calls a tool, proposes a plan change as a card, and applies the change once confirmed.
 - A sentence with an unsafe dose never reaches the stream.
 - A memory saved in chat stays private until shared.
+- A shared watering note and a newer one about the same plant leave one current belief and one superseded in `GET /plants/{plant_id}/beliefs`. A private chat memory never appears in Agent Memory. With the three variables unset, `available` is `false` and chat works. Deleting the plant leaves nothing under its scope within one sweep (10 s), and deleting a shared memory removes it from the beliefs while its plant's others stay.
 
 **Decides:** open decisions 6 and 8.
 
@@ -354,7 +361,38 @@ What S0 changed in the design, each found by running it:
 
 ---
 
-## 12. Gaps found while writing this roadmap
+## 12. S9. Farm connectors and Era
+
+**Goal:** a garden owner connects the farm's Slack and Google Drive, the chosen channels and folder sync into the garden, and the chat and the plan writer cite them. Every part is tested against Era by Eon's simulators, and the agent is scored on a synthetic farm ([docs/connectors](../connectors/README.md)).
+
+**Already in code:** nothing. The scheduler, the text embedder, the vector search within a garden, the tool registry and the deletion runner it builds on are.
+
+**Work**
+
+1. **Contracts and schema** ([connectors 11](../connectors/README.md#11-changes-to-other-documents)): the `domain` types, the endpoints, `search_farm_records`, the deletion cascades, `connector` and `farm_record`, `backend/openapi.json` and contracts §8–9 in one pull request.
+2. **Adapters in `integrations`:** `SlackClient` and `DriveClient` over `reqwest`, read methods only, with a configurable base URL; the OAuth exchanges and revocations; Tier 1 pacing and `Retry-After` ([connectors 6](../connectors/README.md#6-sync)).
+3. **Tokens:** AES-256-GCM sealing under `CONNECTOR_KEY` with the connector id as associated data; the signed OAuth state and the device-bound `complete` step ([connectors 5](../connectors/README.md#5-connecting-and-tokens)).
+4. **Sync:** the `connectors` scheduler task, the per-team Slack pacer, the `users.info` cache, permalinks built at sync, chunking, embedding by `text_hash`, the daily trailing window, `changes.list`, the 180-day cleanup.
+5. **The agent:** the tool, the plan writer's farm-record hits, the `farm_citations` fields and their validation rule, and the dose rule for spray logs ([connectors 7](../connectors/README.md#7-the-agent)).
+6. **Era in dev and CI:** the `era` compose profile with the pinned images; the Maple Row Farm fixture; the `era` CI job in `ci`'s `needs` with the client, fault, `day1` → `day2` and read-only tests ([connectors 9.1–9.2](../connectors/README.md#91-the-farm-fixture)).
+7. **The agent evaluation:** `backend/tools/era-eval` over `answers.toml`, run on each candidate chat model ([connectors 9.3](../connectors/README.md#93-the-agent-evaluation)).
+8. **The demo garden:** the `demo` profile's simulators on a private network with `SIMCORE_ADMIN_TOKEN`, and the `era` connectors seeded at start-up ([connectors 9.4](../connectors/README.md#94-the-demo)).
+9. **Real accounts:** a Slack app with the five bot scopes, and a Google Cloud OAuth client in Testing with the team as test users; one real connect, sync and disconnect each.
+
+**Needs:** the **Farm connectors** screen and the connect flow (app); the Slack app and the Google OAuth client (whoever holds the team's accounts).
+
+**Exit checks**
+
+- On the deployed control plane, a scan of bed 3 in the demo garden gives a plan that cites the spray log. A chat question about the crew's reports cites a `#field-reports` message, links to it, and repeats no rate.
+- The `era` CI job passes, including a throttled sync that finishes on a later run and a `day2` sync that picks up the quarter's changes.
+- The evaluation has run on at least two models, and its table is in connectors 9.3.
+- A real Slack workspace and a real Drive folder connect, sync and disconnect. After disconnecting, the vendor's token is revoked and no `farm_record` of the connector remains.
+
+**Decides:** architecture open decision 6, with the evaluation's numbers, and connectors open questions 1 and 5.
+
+---
+
+## 13. Gaps found while writing this roadmap
 
 Gaps 1 to 5 have a design; gap 6 is fixed. The designs are proposals until their slice builds them; each ends with numbered work items and exit checks.
 
@@ -375,7 +413,7 @@ Gaps 1 to 5 have a design; gap 6 is fixed. The designs are proposals until their
 
 ---
 
-## 13. Tracking
+## 14. Tracking
 
 - Make one GitHub milestone per slice (`S0 Foundation`, `S1 Walking skeleton`, …).
 - Make one issue per numbered work item, labelled `backend`, linking this section.

@@ -13,7 +13,7 @@ use std::fmt::Write as _;
 
 use domain::{
     authz::{ConversationOwner, Viewer},
-    chat::{Memory, MemoryKind, MessageRole},
+    chat::{Memory, MemoryKind, MemoryTopic, MessageRole},
     ports::{
         ChatMessage, ChatPurpose, ChatRequest, ChatRole, ClassifierTask, ContentPart, StopReason,
     },
@@ -41,6 +41,8 @@ pub struct ExtractedMemory {
     pub kind: ExtractedKind,
     /// About the conversation's plant rather than the whole garden.
     pub about_plant: bool,
+    /// What the fact is about; `other` when no topic fits.
+    pub topic: ExtractedTopic,
 }
 
 /// `MemoryKind` without `summary`, which only the pipeline writes.
@@ -58,6 +60,56 @@ impl From<ExtractedKind> for MemoryKind {
         match k {
             ExtractedKind::Fact => Self::Fact,
             ExtractedKind::Event => Self::Event,
+        }
+    }
+}
+
+/// [`MemoryTopic`] with a JSON Schema for the extraction model (the domain type derives only
+/// `ToSchema`, for the API).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ExtractedTopic {
+    /// How and how often it is watered.
+    Watering,
+    /// Fertiliser and compost.
+    Feeding,
+    /// Sprays, treatments and pest control.
+    Treatment,
+    /// Pruning, pinching and staking.
+    Pruning,
+    /// Sowing, planting and transplanting.
+    Planting,
+    /// Where it grows.
+    Location,
+    /// The pot or container.
+    Container,
+    /// Soil, mulch and pH.
+    Soil,
+    /// Sun and shade.
+    Light,
+    /// Health and symptoms.
+    Health,
+    /// Harvests and yield.
+    Harvest,
+    /// Anything else.
+    Other,
+}
+
+impl From<ExtractedTopic> for MemoryTopic {
+    fn from(t: ExtractedTopic) -> Self {
+        match t {
+            ExtractedTopic::Watering => Self::Watering,
+            ExtractedTopic::Feeding => Self::Feeding,
+            ExtractedTopic::Treatment => Self::Treatment,
+            ExtractedTopic::Pruning => Self::Pruning,
+            ExtractedTopic::Planting => Self::Planting,
+            ExtractedTopic::Location => Self::Location,
+            ExtractedTopic::Container => Self::Container,
+            ExtractedTopic::Soil => Self::Soil,
+            ExtractedTopic::Light => Self::Light,
+            ExtractedTopic::Health => Self::Health,
+            ExtractedTopic::Harvest => Self::Harvest,
+            ExtractedTopic::Other => Self::Other,
         }
     }
 }
@@ -120,14 +172,20 @@ pub async fn after_turn(
     } else {
         None
     };
-    store_chat_memory(ctx, plant, extracted.kind.into(), fact.to_owned())
-        .await
-        .map(Some)
-        .map_err(|e| match e {
-            ToolError::Store(s) => MemoryError::Store(s),
-            ToolError::Model(m) => MemoryError::Model(m),
-            ToolError::Rejected(_) | ToolError::Blob(_) => MemoryError::Output,
-        })
+    store_chat_memory(
+        ctx,
+        plant,
+        extracted.kind.into(),
+        extracted.topic.into(),
+        fact.to_owned(),
+    )
+    .await
+    .map(Some)
+    .map_err(|e| match e {
+        ToolError::Store(s) => MemoryError::Store(s),
+        ToolError::Model(m) => MemoryError::Model(m),
+        ToolError::Rejected(_) | ToolError::Blob(_) => MemoryError::Output,
+    })
 }
 
 /// Whether a conversation with `count` messages just crossed a multiple of `every` (a turn
@@ -206,5 +264,28 @@ mod tests {
     fn the_extraction_schema_is_strict() {
         let s = serde_json::to_value(schemars::schema_for!(ExtractedMemory)).unwrap();
         assert_eq!(s["additionalProperties"], false);
+        assert!(s["required"].as_array().unwrap().contains(&"topic".into()));
+    }
+
+    #[test]
+    fn every_extracted_topic_maps_to_its_wire_name() {
+        for (wire, topic) in [
+            ("watering", ExtractedTopic::Watering),
+            ("feeding", ExtractedTopic::Feeding),
+            ("treatment", ExtractedTopic::Treatment),
+            ("pruning", ExtractedTopic::Pruning),
+            ("planting", ExtractedTopic::Planting),
+            ("location", ExtractedTopic::Location),
+            ("container", ExtractedTopic::Container),
+            ("soil", ExtractedTopic::Soil),
+            ("light", ExtractedTopic::Light),
+            ("health", ExtractedTopic::Health),
+            ("harvest", ExtractedTopic::Harvest),
+            ("other", ExtractedTopic::Other),
+        ] {
+            let parsed: ExtractedTopic = serde_json::from_value(wire.into()).unwrap();
+            assert_eq!(parsed, topic);
+            assert_eq!(MemoryTopic::from(topic).as_str(), wire);
+        }
     }
 }

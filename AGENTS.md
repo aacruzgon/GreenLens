@@ -20,17 +20,19 @@ All design lives in `docs/`. Each document has a status line at the top with its
 |---|---|---|
 | [`docs/architecture/README.md`](docs/architecture/README.md) | The architecture: goals and judging criteria, system diagram, components and Rust crates, users and authorization, data overview, the analysis pipeline, chat and agent core, main flows, API surface, models and GPU placement, security, deployment, repository layout, build plan and open decisions | You need the big picture, how parts fit together, or why a design choice was made |
 | [`docs/architecture/contracts.md`](docs/architecture/contracts.md) | The data contracts: every shape that crosses a boundary (app ↔ API, API ↔ workers, worker ↔ VLM, ingestion ↔ database), with error codes, endpoints, events, job payloads, VLM output and pipeline records | You are writing or calling an endpoint, a worker, a job, an SSE event, a VLM prompt, or any type in the `domain` crate |
+| [`docs/database/agent-memory.md`](docs/database/agent-memory.md) | SurrealDB Agent Memory, the hosted memory service that shared memories are mirrored into as beliefs: setup and the narrow API key, behaviour measured on the live service, the design (key mapping, scopes, sweep, reads, deletion), privacy, caveats | You touch `memory`, `Memory.topic`, the `BeliefStore` port, `integrations::agent_memory`, the beliefs endpoint or the `AGENT_MEMORY_*` settings |
 | [`docs/database/README.md`](docs/database/README.md) | SurrealDB notes: version pin and setup, conventions, tables, verified write patterns (event `seq`, compare-and-set, job claims, idempotency, deletion order), reads and vector search, the Rust SDK, operations and caveats | You are writing a query, a repository function in the `store` crate, or a migration |
 | [`backend/migrations/schema.surql`](backend/migrations/schema.surql) | The database schema itself. Idempotent; the `store` crate embeds it and the API applies it on every start | You need a table's exact fields, types, indexes or references |
 | [`docs/frontend/README.md`](docs/frontend/README.md) | The frontend architecture: stack and pins, libraries, layers and import rules, directory layout, Clerk, the API and streaming layers, state, platform adapters (phone and in-app browsers, the LiDAR module's JS interface), UI system, mock mode, testing, builds, build plan, open decisions and sources | You are working on anything in `app/`, or need to know how the app consumes an endpoint or event |
 | [`docs/frontend/flows.md`](docs/frontend/flows.md) | Sequence diagrams for every user flow and the app's state machines | You are implementing a flow end to end, or a reducer or state machine in a feature's `model/` |
 | [`docs/frontend/screens.md`](docs/frontend/screens.md) | Navigation map, screen inventory with data, actions and roles, wireframes, screen rules, shared components and wording rules | You are building or changing a screen |
 | [`docs/storage/README.md`](docs/storage/README.md) | RustFS notes: version pin and setup, bucket and key layout, how images are served through signed API URLs, writes and deletes, the Rust client (`aws-sdk-s3`), operations, caveats and the fallback | You are touching image or depth-map storage, the `blob` crate, or upload handling |
+| [`docs/connectors/README.md`](docs/connectors/README.md) | Farm connectors and Era by Eon: a garden's Slack channels and Google Drive folder synced for the chat and the plan writer, the data, OAuth and sealed tokens, the sync, the `search_farm_records` tool, privacy, and Era's simulators as the test bench in dev, CI, the agent evaluation and the demo, with their measured behaviour | You touch a connector, `farm_record`, the `connectors` scheduler task, the Slack or Drive adapters, the Era compose profiles or CI job, or the agent evaluation |
 | [`docs/setup/README.md`](docs/setup/README.md) | Developer setup: what each team member installs on macOS, Windows and Linux, by role (everyone, app, backend, ML, rig and control plane), with the pinned versions and a check list | You are setting up a machine, or a build fails for a missing tool |
 | [`docs/infra/README.md`](docs/infra/README.md) | Infrastructure and CI: the GitHub Actions workflow and required checks, the container images and registry, the dev, control-plane and rig compose files, ingress, secrets, deploys by digest and backups | You touch CI, a Dockerfile, a compose file, an env file, a deploy or a backup |
 | [`docs/backend/README.md`](docs/backend/README.md) | The Rust backend design: goals, the crate graph and dependency rules, workspace layout, Rust conventions, runtime composition, configuration, testing, builds, build plan. Links a document per crate (`domain`, `domain-types`, `store`, `blob`, `integrations`, `vision`, `knowledge`, `agent`, `pipeline`, `api`, `worker`) with every struct, enum, trait, generic and lifetime, compiled on Rust 1.99.1 | You write or review any Rust, a `Cargo.toml`, a repository method, an endpoint, a worker or a background task |
 | [`docs/backend/flows.md`](docs/backend/flows.md) | Server-side sequence diagrams across crates (request pipeline, uploads, a scan from submit to plan, claims and the sweep, SSE, job leases, chat turns, deletion, the scheduler, start-up and shutdown) and the server's state machines | You implement or debug a flow end to end on the server |
-| [`docs/backend/roadmap.md`](docs/backend/roadmap.md) | The backend's build-week work as nine slices (S0–S8), each with its goal, work, dependencies on other tracks, exit checks and the decisions it closes; and the gaps still to design | You plan, pick up or review backend work |
+| [`docs/backend/roadmap.md`](docs/backend/roadmap.md) | The backend's build-week work as ten slices (S0–S9), each with its goal, work, dependencies on other tracks, exit checks and the decisions it closes; and the gaps still to design | You plan, pick up or review backend work |
 | [`docs/vision/README.md`](docs/vision/README.md) | The vision and ML design: the model inventory, placement and VRAM budgets on the three GPUs, runtimes and pins, model files and versions, licences, open decisions and the proposed contract changes. Companions: [`models.md`](docs/vision/models.md) (every perception and CPU model), [`vlm.md`](docs/vision/vlm.md) (the VLM, its serving, prompts and schemas), [`training.md`](docs/vision/training.md) (datasets, training, ONNX export, label lists, knowledge-ingestion model steps) and [`evaluation.md`](docs/vision/evaluation.md) (evaluation set, metrics, calibration, benchmarks); the plan for the whole ML side, models and backend integration, with owners and phases, is [`dev-roadmap.md`](docs/vision/dev-roadmap.md), and model-by-model progress is in [`roadmap.md`](docs/vision/roadmap.md) | You are choosing, training, exporting, prompting or evaluating a model, setting a threshold or a VRAM budget, or working in `ml/` |
 
 ### Topic index
@@ -51,10 +53,13 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | Chat, tools, memory, pending actions | contracts §8; architecture §7, §8.2 |
 | Gardens, members, invites, plants, tasks, account, deletion cascades | contracts §9; database §4 (Deletion) |
 | Forecast alerts | architecture §8.3 |
+| Agent Memory: shared memories mirrored as beliefs (supersession, scopes, privacy, deletion) | database [agent-memory.md](docs/database/agent-memory.md); contracts §8 (Beliefs), §9; architecture §7 |
+| Farm connectors (Slack, Google Drive), Era by Eon's simulators, the farm fixture and the agent evaluation | [connectors](docs/connectors/README.md); backend roadmap S9 |
 | Knowledge base and seed file format | architecture §5 (Knowledge base); contracts §10 |
 | Security, privacy and safety (EXIF, face blurring, dose checks) | architecture §11 |
 | Deployment, hosting, app delivery, operations | architecture §12; infra |
 | CI, images, compose files, secrets, deploys | infra |
+| Discord alerts for GitHub mentions and comments on your issues and PRs: setup, secrets, what is covered | infra [discord-mentions.md](docs/infra/discord-mentions.md) |
 | Model files: the manifest, where weights live, how they reach the hosts | vision README §6 |
 | Applying the schema, migrations and the generated knowledge file | database §1 |
 | Installing the tools on a dev machine, the rig or the control plane | setup |
@@ -75,7 +80,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | Backend work as slices, their order and exit checks | backend roadmap |
 | The ML dev plan: who builds what, hand-offs between `ml/` and the Rust crates, integration gaps, phases to Oct 25 | vision dev-roadmap.md (update a task's state in the PR that finishes it) |
 | Model progress: done, next, waiting, open PRs, the rig's state | vision roadmap.md (update it at the end of each ML work session) |
-| Open decisions and open questions | architecture §15; contracts §12; database §9; frontend §19; backend README §15 and each crate document's open questions; vision README §11 |
+| Open decisions and open questions | architecture §15; contracts §12; connectors §12; database §9; frontend §19; backend README §15 and each crate document's open questions; vision README §11 |
 
 ## Sources of truth
 
@@ -112,6 +117,7 @@ PDM/
    ├─ frontend/        the app's architecture (README.md), flows (flows.md) and screens (screens.md)
    ├─ database/        SurrealDB notes (the schema itself is backend/migrations/schema.surql)
    ├─ storage/         RustFS setup and notes
+   ├─ connectors/      farm connectors (Slack, Google Drive) and Era by Eon as their test bench
    ├─ setup/           what each team member installs, per OS
    └─ infra/           CI, images, compose files, secrets and deploys
 ```

@@ -1,8 +1,8 @@
 # PDM Backend: `agent` crate
 
-> **Status:** Draft v0.2, 2026-10-16. v0.2: one `embedder` in `AgentDeps`, called with `EmbedMode::Query` for the user's message and searches and `EmbedMode::Document` for the memories it stores (`document_embedder` is gone). v0.1: the agent core (the chat turn and its stream, nineteen tools, the dose check, plan validation, the router and safety gate, the plan writer, the context builder, memory extraction and the Anthropic and classifier adapters), compiled on Rust 1.99.1 with 60 unit tests.
+> **Status:** Draft v0.4, 2026-10-17. v0.4: shared memories are recorded in `SurrealDB` Agent Memory through the new `beliefs` module (the `sync_pending` sweep, the only writer, and the reads `current_beliefs` and `search_beliefs`); memories and beliefs reach the model with their day; the context carries the current beliefs in their own `beliefs` block, `search_memory` returns `MemorySearch` with belief hits, the plan writer reads the plant's current beliefs, memories carry a `topic` (extraction and `remember`), and the chat, plan and extraction prompts moved to `2026-10-17.1`; 77 unit tests. v0.3: only the three tools that propose changes are `strict` (`ToolSpec::strict`), because all nineteen made a grammar the API refused as too large in the first live call; the Anthropic adapter maps `model_context_window_exceeded` to `MaxTokens` and ends a stream cut off before its stop reason with `Unavailable`; 62 unit tests and three ignored live tests (`tests/live_anthropic.rs`). v0.2: one `embedder` in `AgentDeps`, called with `EmbedMode::Query` for the user's message and searches and `EmbedMode::Document` for the memories it stores (`document_embedder` is gone). v0.1: the agent core (the chat turn and its stream, nineteen tools, the dose check, plan validation, the router and safety gate, the plan writer, the context builder, memory extraction and the Anthropic and classifier adapters), compiled on Rust 1.99.1 with 60 unit tests.
 
-Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate uses and implements. It implements [architecture 7](../architecture/README.md#7-chat-and-agent-core), [8.2](../architecture/README.md#82-chat-turn) and the safety rules of [architecture 11](../architecture/README.md#11-security-privacy-and-safety), over the shapes of [contracts 7](../architecture/contracts.md#7-pipeline-records) and [contracts 8](../architecture/contracts.md#8-chat-and-memory). Every listing below is copied from the compiled source of `crates/agent`: `cargo check --workspace`, `cargo clippy -p agent --all-targets` (no warnings in `agent`) and `cargo test -p agent` (60 tests) pass.
+Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate uses and implements. It implements [architecture 7](../architecture/README.md#7-chat-and-agent-core), [8.2](../architecture/README.md#82-chat-turn) and the safety rules of [architecture 11](../architecture/README.md#11-security-privacy-and-safety), over the shapes of [contracts 7](../architecture/contracts.md#7-pipeline-records) and [contracts 8](../architecture/contracts.md#8-chat-and-memory). Every listing below is copied from the compiled source of `crates/agent`: `cargo check --workspace`, `cargo clippy -p agent --all-targets` (no warnings in `agent`) and `cargo test -p agent` (83 tests) pass.
 
 ## Contents
 
@@ -40,6 +40,7 @@ Companion to the [backend architecture](README.md) and the [`domain` crate](doma
 | The plan writer | `plan_writer` | `pipeline` (the `plan` step), never the chat |
 | The context builder per anchor | `context` | the turn |
 | Memory extraction and conversation summaries | `memory` | the turn |
+| The belief mirror: shared memories into Agent Memory, the sweep, the bounded belief reads | `beliefs` | `api` (wraps its `MemoryStore`, runs the sweep), the context, `search_memory`, `pipeline` |
 | `ChatModel` over the Anthropic Messages API, and `TextClassifier`'s LLM fallback | `model` | `api` wires them into `AgentDeps` |
 | `apply_preview`, the pure half of confirming a `revise_plan` card | `tools::revise` | `api` (`POST /pending-actions/{id}/confirm`) |
 
@@ -84,7 +85,8 @@ Tests add `domain`'s `mock` and `test-util` features (one `mockall` mock per por
 ```
 crates/agent/src/
 ├─ lib.rs            re-exports: ChatAgent, TurnRequest, TurnStream, TurnOutcome, PlanWriter, PlanInput, …
-├─ config.rs         AgentConfig: limits, budgets, the poison-control text, the router's calibration
+├─ beliefs.rs        sync_pending (the belief sweep), SweepReport, current_beliefs, search_beliefs
+├─ config.rs         AgentConfig: limits, budgets, belief timeouts, the poison-control text, the router's calibration
 ├─ deps.rs           AgentDeps and AgentStores: every port, as Arc<dyn …>
 ├─ error.rs          TurnError, PlanWriterError, ToolError, MemoryError, PrivateMemory
 ├─ prompt.rs         versioned system prompts, the <data> wrapper, fixed reply texts
@@ -111,7 +113,7 @@ crates/agent/src/
 └─ memory.rs         after_turn (gate, extraction), summarise_if_due
 ```
 
-Each `foo.rs` with tests too long to sit at its end has `foo/tests.rs` (`safety/plan`, `plan_writer`, `tools`, `turn`). `fixtures.rs` and `testing.rs` are test-only.
+Each `foo.rs` with tests too long to sit at its end has `foo/tests.rs` (`safety/plan`, `plan_writer`, `tools`, `turn`, `beliefs`, `context`). `fixtures.rs` and `testing.rs` are test-only.
 
 ---
 
@@ -268,11 +270,13 @@ How it follows the Messages API (research notes, section 4; the `claude-api` ski
 | Rule | Here |
 |---|---|
 | Thinking can't be disabled on Opus 5.5; `budget_tokens` is a 400 | `thinking` is never sent (adaptive by default); depth is `output_config.effort` per purpose: chat `medium`, plan writer `high`, cheap calls `low` |
-| Forced `tool_choice` (`any`, `tool`) is a 400 on Opus 5.5 | Never sent; tools are `strict: true` and the plan writer uses `output_config.format` |
-| Structured-output schemas reject `minimum`, `maxLength`, `maxItems` … and need `additionalProperties: false` | Every tool schema and response schema goes through `integrations::anthropic::sanitize_schema` |
+| Forced `tool_choice` (`any`, `tool`) is a 400 on Opus 5.5 | Never sent; the plan writer uses `output_config.format` |
+| Strict tools share one compiled grammar per request; nineteen were refused live ("The compiled grammar is too large", 2026-10-16) | Only `ToolKind::Write` tools set `ToolSpec::strict` (`create_task`, `complete_task`, `revise_plan`); the others' arguments are parsed into their typed structs and a bad call is refused with the reason |
+| Structured-output schemas reject `minimum`, `maxLength`, `maxItems`, `oneOf` … and need `additionalProperties: false` | Every tool schema and response schema goes through `integrations::anthropic::sanitize_schema` |
 | Thinking blocks of the current tool loop must be replayed unchanged | `ChatChunk::Reasoning(ReasoningBlock)` carries each complete block; the turn replays it in place ([section 13](#13-the-chat-turn)) |
 | Tool results for parallel calls go in one user message; `is_error` marks a failed call | Domain `ChatRole::Tool` messages map to one user message; `ContentPart::ToolResult.is_error` maps to `is_error` |
 | `stop_reason: "refusal"` arrives with HTTP 200 | `StopReason::Refusal`; the turn ends with a fixed sentence and runs no tool of that call |
+| A clean close mid-answer ends the byte stream without an error | A stream without a stop reason ends with `ModelError::Unavailable`, so the turn ends with an `error` event instead of storing a cut-off answer as complete |
 | Prompt caching: tools render before the system prompt | One `cache_control` breakpoint on the system block caches both; chat adds top-level automatic caching for the growing tool loop |
 
 `stream<'a>` builds a `MessagesRequest<'a>` that borrows the domain request (text, tool schemas, image bytes as `Cow::Borrowed`), lets the client serialise it, and drops it; the client's `MessageStream` is `'static`, so the only borrows the returned `BoxStream<'a, …>` holds are the two the signature names. The client's `MessageAccumulator` assembles tool-call JSON and thinking blocks; each `Output` maps to one `ChatChunk`.
@@ -308,8 +312,9 @@ How it follows the Messages API (research notes, section 4; the `claude-api` ski
 | The open question | a provisional plan names it |
 | The forecast | the scan's weather |
 | Shared memories, in their own `memories` block | `MemoryStore::shared_for_plan` through `SharedMemories::new` |
+| The plant's and its garden's current beliefs, in their own `beliefs` block (`key`, `value`, `about_plant` only), as standing facts and constraints | `PlanInput::beliefs`, from `beliefs::current_beliefs` with the plan step's timeout; empty when Agent Memory is off or slow |
 
-**Shared memories only, by type.** `SharedMemories<'k>` has one constructor, which fails with `PrivateMemory` if any memory is a chat memory or unshared. A private chat memory therefore can't reach a prompt whose output every member sees (architecture 7, memory).
+**Shared memories only, by type.** `SharedMemories<'k>` has one constructor, which fails with `PrivateMemory` if any memory is a chat memory or unshared. A private chat memory therefore can't reach a prompt whose output every member sees (architecture 7, memory). The beliefs keep the rule by construction: Agent Memory only ever receives shared memories ([section 14](#beliefs-in-agent-memory)). The plan prompt says a belief wins over an older memory that disagrees.
 
 **Signatures agreed with `pipeline`.** `pipeline` calls only `PlanWriter::write`, through its own `#[async_trait] PlanAuthor` trait for tests; the future is `Send` (no guard lives across an `.await`). It resolves `WrittenPlan::citations` with `KnowledgeStore::citations` and assembles the `ActionPlan` (ids, version, `supersedes`, `provisional`, `open_question`, constraints, tasks, trigger rules).
 
@@ -326,11 +331,13 @@ How it follows the Messages API (research notes, section 4; the `claude-api` ski
 | `scan` | `ScanDetail<Stored>`: the scan, its images (ids and kinds), observations with regions, diagnosis, plan, open question, weather | `ScanRepo::scan_detail` |
 | `plant` | The plant, its scans (timeline, newest first), its open tasks, its growth curve, the garden's weather | `PlantRepo::plant`, `timeline`, `growth_series`; `PlanRepo::tasks` (filtered to the plant); `garden_weather` |
 | `garden` | The garden's name, every plant's summary, upcoming tasks, weather and forecast, the map's beds and neighbours | `GardenRepo::garden`, `PlantRepo::plants`, `PlanRepo::tasks`, `garden_weather`, `MapRepo::map` |
-| all | The summary and up to `recent_messages` (12) messages, text only; memory hits | `ChatRepo::context`; `MemoryStore::search` with the message's embedding, within the plant when there is one |
+| all | The summary and up to `recent_messages` (12) messages, text only; memory hits; the current beliefs of the plant and its garden (of the garden for a garden anchor) | `ChatRepo::context`; `MemoryStore::search` with the message's embedding, within the plant when there is one; `beliefs::current_beliefs`, run beside the search with `tokio::join!` and bounded by `beliefs_read_timeout` (1.5 s) |
 
 **Memory privacy.** `MemoryStore::search` takes the session's membership and applies `shared = true OR author = $user` within the garden ([database 5](../database/README.md#5-reads-indexes-and-vector-search)), so a member's context holds shared memories and their own chat memories, never another member's.
 
-**Where each part goes.** The summary and recent messages form the stable start of the conversation (earlier user messages wrapped as `user_message` data). The anchor's records, the memory hits, the user's images and the user's words go in the turn's last user message, each untrusted part in its own block. Rendering is synchronous, through borrowed views (`ScanView<'a>`, `PlantView<'a>`, `GardenView<'a>`, `'a` being the `AnchorData` being rendered), each record serialised once. The garden's location never goes to the model: `GardenView` carries the name only.
+**Beliefs.** The current beliefs are the latest shared facts, one per key. `turn_message` renders them as their own `beliefs` block, before the memories, with only `key`, `value` and `about_plant`; the chat prompt says a belief wins over an older memory hit that disagrees. Agent Memory off, failing or slower than the timeout leaves the block out; the turn never waits longer.
+
+**Where each part goes.** The summary and recent messages form the stable start of the conversation (earlier user messages wrapped as `user_message` data). The anchor's records, the current beliefs, the memory hits, the user's images and the user's words go in the turn's last user message, each untrusted part in its own block. Rendering is synchronous, through borrowed views (`ScanView<'a>`, `PlantView<'a>`, `GardenView<'a>`, `'a` being the `AnchorData` being rendered), each record serialised once. The garden's location never goes to the model: `GardenView` carries the name only.
 
 @@impl context.rs impl TurnContext@@
 
@@ -375,7 +382,7 @@ Viewers and reviewers are offered the read tools, `request_rescan` and `remember
 | `get_scan` | `GetScanArgs { scan_id }` | `ScanRepo::scan_detail(member, …)`: scans of the garden | `ScanDetail<Stored>`: ids, no URLs | read | all |
 | `view_image` | `ViewImageArgs { image_id, scan_id?, region? }` | with `scan_id`: the garden's scan and an image of it; without: `ChatRepo::chat_image_object` of this conversation | the image (or a PNG crop) to the model; `{ ok: true }` | read | all |
 | `get_forecast` | `GetForecastArgs { days }` (1–14) | the conversation's garden | `ForecastDay[]` | read | all |
-| `search_memory` | `SearchMemoryArgs { query, plant_id? }` | `MemoryStore::search(member, …)`: shared + own | `Memory[]` | read | all |
+| `search_memory` | `SearchMemoryArgs { query, plant_id? }` | `MemoryStore::search(member, …)`: shared + own; beside it `BeliefStore::search` within the garden's scope, bounded by `beliefs_search_timeout` (4 s) | `MemorySearch { memories, beliefs }`: `beliefs` empty when Agent Memory is off, failing or slow | read | all |
 | `find_similar_cases` | `FindSimilarCasesArgs { image_id }` | `AnalysisRepo::similar_cases(member, …, 5)` | `SimilarCase[]`, at most 5 | read | all |
 | `search_knowledge` | `SearchKnowledgeArgs { query, topic? }` | knowledge base | `{ text, citation }[]`; a `citation` event per source | read | all |
 | `get_species_profile` | `GetSpeciesProfileArgs { species }` | knowledge base | `{ profile, susceptible_to }`; citations | read | all |
@@ -387,7 +394,7 @@ Viewers and reviewers are offered the read tools, `request_rescan` and `remember
 | `get_garden_map` | `NoArgs` | the conversation's garden | `GardenMapView { map, neighbours }` | read | all |
 | `list_tasks` | `ListTasksArgs { state? }` (default open) | the garden | `Task[]` | read | all |
 | `request_rescan` | `RequestRescanArgs { plant_id, photo_kind, instructions }` | a live plant of the garden | `RescanRequest`; a `rescan_requested` event | ui | all |
-| `remember` | `RememberArgs { fact, plant_id? }` | the caller's own memory (`MemoryStore::remember(member, …)`) | `Memory` (`source: chat`); a `memory_saved` event | memory | all |
+| `remember` | `RememberArgs { fact, plant_id?, topic? }` (topic default `other`) | the caller's own memory (`MemoryStore::remember(member, …)`) | `Memory` (`source: chat`); a `memory_saved` event | memory | all |
 | `create_task` | `CreateTaskArgs { title, detail?, plant_id?, due?, repeat_every_days? }` | `require::<Editor>()`; a live plant | `PendingAction` (preview `task`); a `pending_action` event | write | editor, owner |
 | `complete_task` | `CompleteTaskArgs { task_id }` | an open task of the garden | `PendingAction` (preview `task` with `done_at`) | write | editor, owner |
 | `revise_plan` | `RevisePlanArgs { scan_id, summary, changed_steps, removed_step_ids, constraints }` | the scan's current plan | `PendingAction` (preview `plan`), only after full plan validation | write | editor, owner |
@@ -498,7 +505,35 @@ A model failure ends the stream with an `error` event: `upstream_unavailable` fo
 | The plan writer | Never: `SharedMemories::new` refuses any chat or unshared memory ([section 10](#10-the-plan-writer)) |
 | The model's own tools | `search_memory` and `remember` go through the same membership proof |
 
+**Topics.** Every memory has a `MemoryTopic` (watering, feeding, treatment, pruning, planting, location, container, soil, light, health, harvest, other). The extraction schema carries it as `ExtractedTopic`, a copy with a `JsonSchema` derive (the domain type derives only `ToSchema`), and the prompt asks for `other` whenever a fact doesn't clearly belong to one topic or should stand beside earlier facts, because a newer fact on the same topic supersedes the older one in Agent Memory. `remember` takes an optional `topic`, `other` when absent.
+
 **Summaries.** After the stream has closed, `summarise_if_due` asks `ChatRepo::message_count` and, when the count has just crossed a multiple of `summarise_every` (20), summarises the previous summary plus the last messages with the cheap model and stores it with `set_summary`. A summary that gives a dose is not stored.
+
+### Beliefs in Agent Memory
+
+[Architecture 7, memory](../architecture/README.md#memory): every **shared** memory (`pipeline` or `user`) is recorded in `SurrealDB` Agent Memory as one triple through the `BeliefStore` port ([domain](domain.md)); the `memory` table stays the system of record, and a private chat memory never leaves the database.
+
+@@items beliefs.rs SweepReport sync_pending current_beliefs search_beliefs@@
+
+**One writer.** No request waits on Agent Memory, and nothing records a memory while its subject is being erased, because only `sync_pending` calls it. `api`'s scheduler runs it every 10 s with a batch of 50. Requests only write rows ([store](store.md)):
+
+| Request | What it writes |
+|---|---|
+| A garden note, a pipeline summary, a share | The row, `belief_synced_at` unset |
+| `remember` | The row; a private chat memory is never recorded |
+| An owner deletes a shared memory | The row goes, and its subject (the plant, or the garden for a garden-level fact) is queued in `belief_forget`, in one transaction |
+| A plant's or garden's cascade starts | The subject is queued in `belief_forget` in the transaction that sets `deleting_at` |
+
+**A run of the sweep.**
+
+1. For each queued subject: `forget` it, then `finish_belief_forget`, which re-marks its remaining shared memories unsynced (a garden's take its plants') and removes it from the queue in one transaction. A failed erase stays queued.
+2. Record each unsynced shared memory, oldest first, and `mark_synced` it. `unsynced_shared` leaves out a plant or garden being deleted. A record under a subject whose erase just failed waits for the next run (a garden covers its plants), and any other failure is logged and retried next run without holding up the rest.
+
+Agent Memory supersedes by `observed_at`, the memory's `created_at`: a write older than its key's current value is dropped ([agent-memory 3](../database/agent-memory.md)). So a retry or a rebuild never brings an older value back, and nothing depends on the sweep's order. A memory recorded from a stale read just before its delete is erased by the next run, from the queue. With Agent Memory off, the sweep only empties the queue.
+
+**The reads.** `current_beliefs` (a direct entity read, about 0.4 s measured) and `search_beliefs` (`/query`, 2 to 10 s measured) return empty when Agent Memory is off, fails or outlasts its `tokio::time::timeout`, with a `warn` log. Neither ever fails a turn, a tool call or a plan.
+
+**Dates in the prompt.** `BeliefView` and `MemoryView` carry the UTC day (`date`) of the belief's `learned_at` and the memory's `created_at`. The prompts say the more recent of a belief and a memory wins, and that the model says which it is going by when a private note is newer than a shared fact.
 
 ---
 
@@ -555,7 +590,7 @@ A model failure ends the stream with an `error` event: `upstream_unavailable` fo
 
 ## 17. Testing
 
-60 unit tests, run with `cargo test -p agent` (or `cargo nextest run -p agent`):
+77 unit tests, run with `cargo test -p agent` (or `cargo nextest run -p agent`):
 
 | Module | Tests | What |
 |---|---|---|
@@ -565,14 +600,16 @@ A model failure ends the stream with an `error` event: `upstream_unavailable` fo
 | `safety::plan` | 9 | Every row of the validation table |
 | `safety::routes` | 5 | Calibration, the safety tie-break, the off-topic margin, poisoning whatever the scores (and three non-poisoning sentences), no scores |
 | `prompt` | 2 | A body can't close its `<data>` element; every system prompt passes its own dose check |
-| `model::anthropic` | 2 | The request body: sorted strict tools, stripped keywords, no `tool_choice` or `thinking`, effort, the reasoning block replayed, `tool_result` with `is_error` and an image after it, the cache breakpoint |
+| `model::anthropic` | 3 | A stream cut off before its stop reason ends in an error (`wiremock`). The request body: sorted tools, `strict` only where the spec says, stripped keywords, no `tool_choice` or `thinking`, effort, the reasoning block replayed, `tool_result` with `is_error` and an image after it, the cache breakpoint |
 | `model::classifier` | 3 | Parsing and clamping scores, the strict schema, a refusal routed as `safety_sensitive` |
-| `plan_writer` | 6 | Private memories refused; one call when clean; exactly one validation round-trip, append-only; one parse retry; a refusal; the prompt's data blocks |
-| `tools` | 6 | Nineteen tools, sorted, filtered by role; schemas from the argument types; `apply_preview`; crops |
+| `plan_writer` | 7 | Private memories refused; one call when clean; exactly one validation round-trip, append-only; one parse retry; a refusal; the prompt's data blocks, the beliefs block with `key`, `value`, `about_plant` and the day only; no beliefs, no block |
+| `tools` | 10 | Nineteen tools, sorted, filtered by role; only the three write tools strict; schemas from the argument types; `apply_preview`; crops; `remember`'s optional topic; `search_memory` merges belief hits, and a slow belief store gives empty `beliefs` after 4 s (paused time) |
+| `beliefs` | 8 | Queued erases run before any record; a failed record doesn't hold up the rest; a failed erase stays queued and holds back its plant's records; a failed garden erase holds back its plants'; a private memory is never recorded; with Agent Memory off the queue is emptied and nothing is called; reads empty on error and on timeout (paused time) |
+| `context` | 2 | The beliefs block, with each belief's day, between the context and the memories; a slow belief store leaves it out after 1.5 s (paused time) while the memory hits arrive |
 | `turn` | 10 | A dosed sentence replaced before streaming; the tool loop with the reasoning block replayed unchanged; a dose in tool arguments refused before the tool runs; a write tool unknown to a reviewer; the budget; validation; a disconnect stored as interrupted; poison control with no model call; a model failure as an `error` event |
-| `memory` | 2 | The summary trigger; the strict extraction schema |
+| `memory` | 3 | The summary trigger; the strict extraction schema with `topic` required; every `ExtractedTopic` maps to its wire name |
 
-**Fakes.** `domain`'s `mock` feature gives one `mockall` mock per port; the turn tests build a `ConversationOwner<Viewer>` the only way it can be built, through `authenticate` and `check_conversation` over mocked `AuthVerifier`, `IdentityRepo` and `AccessRepo`. `ChatModel` can't be mocked by `mockall` (its stream borrows the request), and `domain`'s `ScriptedChat` replays one script for every call, so `testing::ScriptedModel` pops one script per call, records every request, and turns an empty script into a provider failure.
+**Fakes.** `domain`'s `mock` feature gives one `mockall` mock per port (`MockMemoryStore` and `MockBeliefStore` for the mirror, whose call order is recorded through the mocks' closures); `testing::SlowBeliefs` answers every read after a minute, for the timeouts; `testing::garden_deps` builds a garden-anchored `AgentDeps` over mocks; the turn tests build a `ConversationOwner<Viewer>` the only way it can be built, through `authenticate` and `check_conversation` over mocked `AuthVerifier`, `IdentityRepo` and `AccessRepo`. `ChatModel` can't be mocked by `mockall` (its stream borrows the request), and `domain`'s `ScriptedChat` replays one script for every call, so `testing::ScriptedModel` pops one script per call, records every request, and turns an empty script into a provider failure.
 
 ---
 

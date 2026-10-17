@@ -130,7 +130,20 @@ pub fn diagnosis() -> domain::records::diagnosis::Diagnosis<domain::url::Stored>
 /// A memory of the given source.
 pub fn memory(id: &str, source: &str, shared: bool, text: &str) -> domain::chat::Memory {
     from(json!({
-        "id": id, "garden_id": NEIGHBOUR, "kind": "fact", "text": text, "source": source,
+        "id": id, "garden_id": NEIGHBOUR, "kind": "fact", "topic": "other", "text": text,
+        "source": source,
         "shared": shared, "created_at": "2026-10-16T10:00:00Z"
     }))
+}
+
+/// A current belief.
+pub fn belief(key: &str, value: &str, about_plant: bool) -> domain::chat::Belief {
+    domain::chat::Belief {
+        key: key.to_owned(),
+        value: value.to_owned(),
+        about_plant,
+        memory_id: None,
+        learned_at: "2026-10-16T10:00:00Z".parse().unwrap(),
+        superseded_at: None,
+    }
 }
