@@ -4,11 +4,12 @@
 # one alert to that person's channel. A new comment by someone else also alerts the issue's or pull
 # request's author.
 #
-# issue_comment, issues and pull_request_target run this file, and the checkout below, from the
-# default branch, never from a pull request, so no pull request's code runs here, fork or not. That
-# is why pull requests use pull_request_target, not pull_request; never check out the pull request's
-# head in this job. The text is untrusted: it reaches the script only through the event file, never
-# through an expression in a shell command.
+# issue_comment and issues run this file from the default branch, and pull_request_target from the
+# pull request's base branch, which the branches filter limits to main; the checkout below always
+# takes main's script. So no pull request's code runs here, fork or not, with the webhook secrets.
+# That is why pull requests use pull_request_target, not pull_request; never check out the pull
+# request's head in this job, and never drop the branches filter. The text is untrusted: it reaches
+# the script only through the event file, never through an expression in a shell command.
 name: Discord mentions
 
 on:
@@ -18,6 +19,7 @@ on:
     types: [opened, edited]
   pull_request_target:
     types: [opened, edited]
+    branches: [main]
 
 # Only for the checkout of the script; the alerts go out through the webhooks, not the token.
 permissions:
@@ -25,13 +27,15 @@ permissions:
 
 jobs:
   notify:
-    # Skip, before a runner starts, events that can alert no one: a description with no @, or a
-    # comment with no @ and no configured author to alert (not for an edit, the author's own comment
-    # or a bot's). The script does the matching. Expression comparisons ignore case; the second
+    # Skip, before a runner starts, events that can alert no one: a description with no @, Dependabot's
+    # pull requests (whose @dependabot commands are code spans), or a comment with no @ and no
+    # configured author to alert (not for an edit, the author's own comment or a bot's). The script
+    # does the matching. Expression comparisons ignore case; the second
     # contains() allows a variable written as @name.
     if: >-
       (github.event_name == 'issues' && contains(github.event.issue.body, '@')) ||
-      (github.event_name == 'pull_request_target' && contains(github.event.pull_request.body, '@')) ||
+      (github.event_name == 'pull_request_target' && contains(github.event.pull_request.body, '@') &&
+       github.event.pull_request.user.login != 'dependabot[bot]') ||
       (github.event_name == 'issue_comment' &&
        (contains(github.event.comment.body, '@') ||
         (github.event.action == 'created' &&

@@ -301,11 +301,21 @@ class Descriptions(unittest.TestCase):
         self.assertEqual(payload["embeds"][0]["footer"]["text"], "Edited issue description")
         self.assertEqual(payload["embeds"][0]["timestamp"], "2026-10-17T12:05:00Z")
 
-    def test_title_only_edit_sends_nothing(self):
-        e = description("@mark", "edited")
-        e["changes"] = {"title": {"from": "old title"}}
-        _, discord, _ = run(e)
-        self.assertEqual(discord.requests, [])
+    def test_pull_request_edit_alerts_only_people_it_newly_mentions(self):
+        _, discord, _ = run(description("@mark and @sarah-k", "edited", old="@mark", pr=True))
+        self.assertEqual(discord.urls(), [ENV["DISCORD_WEBHOOK_SARAH"]])
+        self.assertEqual(discord.payloads()[0]["embeds"][0]["footer"]["text"], "Edited pull request description")
+
+    def test_title_or_base_only_edit_sends_nothing(self):
+        for pr, changes in ((False, {"title": {"from": "old title"}}), (True, {"base": {"ref": {"from": "dev"}}})):
+            e = description("@mark", "edited", pr=pr)
+            e["changes"] = changes
+            _, discord, _ = run(e)
+            self.assertEqual(discord.requests, [], changes)
+
+    def test_edit_of_an_empty_description_alerts_everyone_it_mentions(self):
+        _, discord, _ = run(description("@mark", "edited", old=None, pr=True) | {"changes": {"body": {"from": None}}})
+        self.assertEqual(discord.urls(), [ENV["DISCORD_WEBHOOK_MARK"]])
 
     def test_no_mention_or_empty_body_sends_nothing(self):
         for body in ("no mentions", None, ""):
