@@ -260,6 +260,7 @@ class Follower:
         self.status = None
         self.killed_at = None  # seq of the event the kill came after
         self.kill_stage = None
+        self.starts = {}       # stage -> seq of every stage_started (a requeued job starts again)
         self.kill_done = not args.kill_cmd
         self.resume_checked = False
         self.dropped = False
@@ -295,6 +296,7 @@ class Follower:
             info(f"  [{seq}] {t} {json.dumps({k: v for k, v in d.items() if k not in ('v', 'seq', 'scan_id', 'type')})[:300]}")
         if t == "stage_started":
             self.started[d["stage"]] = seq
+            self.starts.setdefault(d["stage"], []).append(seq)
             if self.args.perception_only and not self.resting and d["stage"] == "context":
                 # The perception job completed, even if some of its stage events were lost
                 # (roadmap gap 7); the open-stage check below reports those.
@@ -492,11 +494,19 @@ def main():
     if args.kill_cmd:
         if f.killed_at is None:
             die("--kill-cmd never ran: no perception stage_started was seen")
+        # A stage_completed after the kill proves nothing on its own: the worker may have finished
+        # the stage before the kill landed. The job is requeued only if the stage starts again.
+        again = [q for q in f.starts.get(f.kill_stage, []) if q > f.killed_at]
+        if not again:
+            die(f"stage {f.kill_stage} never started again after the kill at seq {f.killed_at}: the "
+                f"job was not requeued (the kill may have landed after the stage finished; give the "
+                f"stub a longer STUB_STAGE_DELAY_MS)")
         done = f.completed.get(f.kill_stage)
         if done is None or done <= f.killed_at:
             die(f"stage {f.kill_stage} did not complete after the kill (started at seq {f.killed_at}, "
                 f"completed at {done})")
-        info(f"kill check: {f.kill_stage} started at seq {f.killed_at} and completed at seq {done}")
+        info(f"kill check: {f.kill_stage} started at seq {f.killed_at}, started again at seq "
+             f"{again[0]} after the requeue, and completed at seq {done}")
     if final == "failed" and not args.allow_failed:
         die("the scan ended failed (use --allow-failed if that is expected)")
 

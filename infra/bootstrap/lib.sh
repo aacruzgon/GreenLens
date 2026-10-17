@@ -7,11 +7,18 @@ PDM_PROJECT=${PDM_PROJECT:-pdm}
 
 die() { echo "error: $*" >&2; exit 1; }
 
-# env_value FILE KEY: the last KEY=value line of FILE, without evaluating the file. Fails if absent.
+# env_value FILE KEY: the last KEY=value line of FILE, without evaluating the file, read the way
+# compose's env_file reads it: matching quotes around the value are removed, and an unquoted value
+# loses a trailing ` # comment`. Fails if absent.
 env_value() {
   local file=$PDM_ENV/$1 key=$2 value
   [ -r "$file" ] || die "cannot read $file"
   value=$(sed -n "s/^${key}=//p" "$file" | tail -n 1)
+  case $value in
+    \"*\") value=${value#\"}; value=${value%\"} ;;
+    \'*\') value=${value#\'}; value=${value%\'} ;;
+    *) value=${value%% #*} ;;
+  esac
   [ -n "$value" ] || die "$key is empty or missing in $file"
   printf '%s' "$value"
 }

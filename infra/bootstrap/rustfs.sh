@@ -15,7 +15,9 @@ RC_IMAGE='rustfs/rc:v0.1.36@sha256:ab024bfebee49a750ce886b4c70963ccd9ddaa03f4917
 
 cid=$(container_of rustfs)
 
-# The secrets reach the container through the environment, never an argument.
+# The secrets reach the rc container through its environment, never a docker run argument. Inside
+# it, rc takes the keys as its own arguments (it has no other way), so they show in the host's `ps`
+# while each rc call runs, as storage 2's commands do.
 ROOT_AK=$(env_value .env.rustfs RUSTFS_ACCESS_KEY)
 ROOT_SK=$(env_value .env.rustfs RUSTFS_SECRET_KEY)
 API_SK=$(env_value .env.api RUSTFS_SECRET_KEY)

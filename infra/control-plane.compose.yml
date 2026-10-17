@@ -132,6 +132,9 @@ services:
       WORKER_ID: dev-stub-perception-1
       API_BASE_URL: "http://api:8080"
       PDM_ALLOW_STUB_VISION: "1"
+      # The kill check starts it slowed down so the kill lands mid-stage (worker 15.1.5):
+      #   STUB_STAGE_DELAY_MS=10000 docker compose ... up -d perception-stub-worker
+      STUB_STAGE_DELAY_MS: ${STUB_STAGE_DELAY_MS:-150}
     depends_on: { api: { condition: service_healthy } }
     stop_grace_period: 30s
     networks: [edge]

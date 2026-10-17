@@ -72,18 +72,26 @@ python3 tools/smoke/smoke.py --base-url https://<control-plane-host> --photo lea
 A worker killed mid-job. The job's lease lasts 2 minutes (contracts 5); the broker requeues it when the worker's heartbeat is 30 s old or the lease expires, so allow several minutes (the timeout defaults to 600).
 
 ```
-# laptop
+The killed stub must be slow, or it finishes the stage before the kill lands and nothing is
+requeued: start it with `STUB_STAGE_DELAY_MS=10000` (the default is 150 ms a stage). The replacement
+runs at the default.
+
+```
+# laptop: a slow stub (its own WORKER_ID and token, both in api's WORKER_TOKENS)
+STUB_STAGE_DELAY_MS=10000 cargo run -p worker -- --caps perception --stub-vision &
 python3 tools/smoke/smoke.py --photo leaf.jpg \
-  --kill-cmd "pkill -f 'worker.*stub-vision'" \
-  --restart-cmd "cd $PWD && cargo run -p worker -- --caps perception --stub-vision"
+  --kill-cmd "pkill -9 -f 'worker.*stub-vision'" \
+  --restart-cmd "WORKER_ID=dev-stub-perception-2 WORKER_TOKEN=... cargo run -p worker -- --caps perception --stub-vision"
 
 # rig
+ssh rig 'STUB_STAGE_DELAY_MS=10000 docker compose -f ... up -d perception-stub-worker'
 python3 tools/smoke/smoke.py --base-url https://<host> --photo leaf.jpg \
   --kill-cmd "ssh rig 'docker compose -f ... kill perception-stub-worker'" \
   --restart-cmd "ssh rig 'docker compose -f ... up -d perception-stub-worker'"
 ```
 
-The assert: the stream still reaches a resting point, and the stage that was running at the kill completes at a later seq.
+The assert: the stage that was running at the kill starts again at a later seq (the job was
+requeued) and completes, and the stream still reaches a resting point.
 
 An api restart mid-scan:
 

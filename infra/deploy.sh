@@ -68,16 +68,30 @@ if [ "$var" = API_IMAGE ]; then
     sleep 3
   done
 elif [ "$var" = WORKER_IMAGE ]; then
-  # Wait for each worker's heartbeat on /status (read from inside the api container).
+  # Each recreated worker must be running, must not have restarted, and must send a heartbeat
+  # newer than its container's start: the old container's heartbeat under the same WORKER_ID
+  # would otherwise pass at once (healthy = a heartbeat within 30 s).
+  config=$(compose config --format json)
   for s in "${running[@]}"; do
-    wid=$(compose exec -T "$s" printenv WORKER_ID 2>/dev/null | tr -d '\r') || true
-    [ -n "$wid" ] || { echo "warning: $s has no WORKER_ID, not checked" >&2; continue; }
+    wid=$(printf '%s' "$config" | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"][sys.argv[1]].get("environment", {}).get("WORKER_ID", ""))' "$s")
+    [ -n "$wid" ] || die "$s has no WORKER_ID in the compose file"
     while :; do
-      if compose exec -T api curl -fsS http://127.0.0.1:8080/status 2>/dev/null |
-        python3 -c 'import json,sys; w=sys.argv[1]; sys.exit(0 if any(x["worker_id"]==w and x["healthy"] for x in json.load(sys.stdin)["workers"]) else 1)' "$wid"; then
+      cid=$(compose ps -q "$s")
+      [ -n "$cid" ] || die "$s has no container after up"
+      read -r running_ restarting restarts started < <(docker inspect -f '{{.State.Running}} {{.State.Restarting}} {{.RestartCount}} {{.State.StartedAt}}' "$cid")
+      if [ "$restarting" = true ] || [ "$restarts" != 0 ]; then
+        die "$s is restarting (restart count $restarts): see docker compose logs $s; roll back with: infra/deploy.sh $var ${old:-<previous digest in $PDM_DEPLOY_LOG>}"
+      fi
+      if [ "$running_" = true ] && compose exec -T api curl -fsS http://127.0.0.1:8080/status 2>/dev/null |
+        python3 -c '
+import datetime as d, json, sys
+w, started = sys.argv[1], sys.argv[2]
+t0 = d.datetime.fromisoformat(started[:26].rstrip("Z") + "+00:00")  # StartedAt has nanoseconds
+seen = [x for x in json.load(sys.stdin)["workers"] if x["worker_id"] == w and x["healthy"]]
+sys.exit(0 if any(d.datetime.fromisoformat(x["last_heartbeat"].replace("Z", "+00:00")) > t0 for x in seen) else 1)' "$wid" "$started"; then
         break
       fi
-      [ $SECONDS -lt $deadline ] || die "worker $wid has no healthy heartbeat after ${DEPLOY_WAIT_S}s; roll back with: infra/deploy.sh $var ${old:-<previous digest in $PDM_DEPLOY_LOG>}"
+      [ $SECONDS -lt $deadline ] || die "worker $wid has no heartbeat since its container started, after ${DEPLOY_WAIT_S}s; roll back with: infra/deploy.sh $var ${old:-<previous digest in $PDM_DEPLOY_LOG>}"
       sleep 3
     done
   done

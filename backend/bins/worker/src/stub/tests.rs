@@ -482,19 +482,37 @@ fn the_command_definition_is_valid() {
 
 #[test]
 fn stub_module_has_no_io() {
-    let source = include_str!("../stub.rs");
+    // Every identifier in the code (comments stripped), so a grouped import such as
+    // `use std::{fs, net}` or a path such as `chrono::Utc::now` is caught as well.
+    let code: String = include_str!("../stub.rs")
+        .lines()
+        .map(|line| line.split("//").next().unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let identifiers: std::collections::BTreeSet<&str> = code
+        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .filter(|word| !word.is_empty())
+        .collect();
     for forbidden in [
+        "fs",
+        "net",
+        "env",
+        "process",
+        "File",
+        "TcpStream",
+        "UdpSocket",
+        "Command",
         "reqwest",
-        "std::fs",
-        "tokio::fs",
-        "std::net",
-        "tokio::net",
-        "ort::",
-        "rand::",
+        "integrations",
+        "ort",
+        "rand",
+        "chrono",
         "SystemTime",
-        "Instant::now",
+        "Instant",
+        "Utc",
+        "now",
     ] {
-        assert!(!source.contains(forbidden), "stub.rs uses {forbidden}");
+        assert!(!identifiers.contains(forbidden), "stub.rs uses {forbidden}");
     }
 }
 

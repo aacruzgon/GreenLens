@@ -679,8 +679,8 @@ async fn a_cancelled_stub_job_stops_at_its_delay() {
     );
     let shutdown = CancellationToken::new();
     let claims = spawn_claims(&w, &shutdown);
-    // Claimed at once; the heartbeat at 0 s lists it and the next one, at 10 s, is answered
-    // with its id in `cancel_job_ids`: the job ends while the first stage is still pausing.
+    // Claimed at once. The heartbeat loop starts at 3 s, and its first tick is answered with the
+    // job's id in `cancel_job_ids`: the job ends while the first stage is still in its 10 s pause.
     tokio::time::sleep(Duration::from_secs(3)).await;
     assert_eq!(w.running().current_jobs().len(), 1);
     let heartbeats = tokio::spawn({

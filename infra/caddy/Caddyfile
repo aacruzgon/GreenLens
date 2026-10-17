@@ -11,6 +11,12 @@
 	reverse_proxy api:8080
 	log {
 		output stdout
-		format json
+		# A signed image URL's sig is a 15-minute credential: never logged (rust-tracing's rule for api).
+		format filter {
+			request>uri query {
+				replace sig REDACTED
+			}
+			wrap json
+		}
 	}
 }

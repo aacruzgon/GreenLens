@@ -185,14 +185,14 @@ What S0 changed in the design, each found by running it:
 - ✓ `api` (release, `--features heic`) started in about 5 s with `MODELS_DIR` set to that directory and ONNX Runtime 1.31.0 on the CPU (osx-arm64). It checked the manifest hashes. ort 2.0.0-rc.14 logs that it was designed for ORT 1.29.
 - ✓ Clerk development instance: `api` verified Backend-API session tokens against `{CLERK_ISSUER}/.well-known/jwks.json` and upserted the user on the first request. A bad token got `401`. The tokens carry no `azp` and live 60 s.
 - ✓ Stub perception worker (`--caps perception --stub-vision`) with `STUB_LABEL_SET_VERSION=d4f0f0534fb74a8d` and an empty `STUB_CLASSIFIER_LABELS_VERSION`, the empty knowledge base's values: submit queued the perception job, all five perception stages streamed, and the scan went on to `context` (real Open-Meteo weather) and `retrieve`. The smoke script passed the full flow, then dropped the stream after 3 events and resumed with `Last-Event-ID` with no gaps and no repeats.
-- ✓ Kill check: the stub was killed at the first `stage_started` (30 s stage delay) and a second stub started. The job showed `requeues: 1`, `status: done`, `worker: dev-stub-perception-2`, and the stream finished the stage. Seq 1..19, no gaps or repeats, about 27 s end to end.
+- ✓ Kill check: a stub with a 30 s stage delay was killed at the first `stage_started`, and a second stub started at the default 150 ms. The job showed `requeues: 1`, `status: done`, `worker: dev-stub-perception-2`. The stream showed `plant_check` started again after the requeue (seq 4, then 6) and completed (seq 9), with seq 1..19 and no gaps or repeats, in about 27 s end to end, most of it waiting for the killed stub's heartbeat to go stale. The smoke script now fails the check unless the stage starts again, because a fast stub can finish the stage before the kill lands.
+- ✓ Face check: OpenCV's sample portrait (`samples/data/lena.jpg`) uploaded with `smoke.py --face-photo` was stored with its face found and blurred to a flat patch, checked by eye.
 - ✓ API restart check: the stream was dropped after seq 5 and `api` restarted (healthy in 3–4 s). The resume replayed every stored event once and none twice.
 - ✓ The control-plane compose file renders for the profiles none, `tailscale,stub,seed` and `cloudflare`. Both bootstrap scripts ran twice, and the second run changed nothing ([infra 7](../infra/README.md#first-time-bootstrap)).
 
 **Still to run on the rig:**
 - The deployed exit checks: Funnel, the Clerk webhook, images by digest, `deploy.sh`, the smoke script against the public URL, and `stop api` within 190 s.
 - The fallback worker and the full run to `planned`. The BioCLIP label files are in the private `GreenLens/pdm-models` repository and need an `HF_TOKEN`; M3 is still open.
-- A face photo: none was available on the laptop. The face-blur strength has a unit test.
 - Gap 7 ([section 13](#13-gaps-found-while-writing-this-roadmap)), to finish on the rig before the deployed restart check.
 
 **Decided before it started (2026-10-16):** where the control plane runs ([architecture open decision 2](../architecture/README.md#15-open-decisions)): on the rig, behind Tailscale Funnel. Everything in S1 except the deployed exit checks runs on a laptop against `infra/dev.compose.yml`, because the worker uses stub vision and `api`'s models run on the CPU; the 3070 is first needed in S2.
@@ -424,7 +424,7 @@ Gaps 1 to 5 have a design; gap 6 is fixed; gap 7 is open. The designs are propos
 
 **Bugs found running S1 on a laptop,** all fixed in the S1 branch:
 - **`blur_faces` took 48 s per upload.** It used `imageops::blur`, a direct convolution whose cost grows with sigma (a quarter of the face box). A 12 MP photo with a large false-positive box took 48 s in release, 52 s for HEIC. It now uses `imageops::fast_blur`: 0.9 s.
-- **The worker's `Cli::parse()` panicked in debug builds.** Flattened args gave duplicate clap ids. The VLM and fallback flags now have distinct ids and long names (`--vlm-*`, `--fallback-*`); the env names are unchanged.
+- **The worker's `Cli::parse()` panicked in debug builds.** Flattened args gave duplicate clap ids. The VLM and fallback flags now have distinct ids and long names (`--vlm-*`, `--fallback-*`, and `--llm-api-key` for the fallback's key); the env names are unchanged.
 - **Without `RUST_LOG` the worker logged only errors.** It now defaults to `info`, like `api`.
 - **CI's compose-render step would have failed** on `control-plane.compose.yml`, which needs image variables and env files under `/srv/pdm/env`. It now splits `infra/env/.env.example` into a temporary `PDM_ENV`.
 - **`CLERK_WEBHOOK_SECRET=whsec_yours` in `infra/dev/.env.example` isn't base64,** so `api` refused to start with it.
