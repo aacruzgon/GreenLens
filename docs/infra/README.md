@@ -154,7 +154,7 @@ The job is in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml). What
 
 ### Required checks
 
-The `main` ruleset ("Require PRs for main and master") will require one check, `ci`, from GitHub Actions (integration 15368). An admin adds it with `gh api -X PUT repos/aacruzgon/GreenLens/rulesets/25252788`, once a run of `ci.yml` on `main` is fully green.
+The `main` ruleset ("Require PRs for main and master") requires one check, `ci`, from GitHub Actions (integration 15368). An admin added it on 2026-10-16 with `gh api -X PUT repos/aacruzgon/GreenLens/rulesets/25252788`, after the first run of `ci.yml` on `main` passed.
 
 - **One check, not one per job.** A renamed or added job changes only `ci`'s `needs` list, never the ruleset. And `ci` fails when a job it waits for failed or was cancelled, so a failed `changes` or `lint`, whose dependent jobs then show "skipped", still blocks the merge.
 - **`live` joins `ci`'s `needs`** after it has passed on three consecutive pushes to `main`. Service containers are the likeliest source of flakes, so they're proved first.
@@ -542,8 +542,8 @@ Each item belongs to a slice of the [backend roadmap](../backend/roadmap.md). It
 
 | # | Work | Slice | Exit check |
 |---|---|---|---|
-| 1 | `.github/workflows/ci.yml` (first as `backend.yml`) with `changes`, `lint`, `test`, `examples`, `docs` and `infra`; `dependabot.yml` for the actions | [S0](../backend/roadmap.md#4-s0-foundation) | ✓ A pull request with a deliberate Clippy warning fails `lint` (#21, `clippy::len_zero`, 2026-10-16); a docs-only pull request finishes in under 3 minutes with the Rust jobs skipped |
-| 2 | Add the required check `ci` to the `main` ruleset | S0 | ✓ The ruleset requires `ci` (2026-10-16); a pull request whose `ci` fails can't be merged |
+| 1 | `.github/workflows/ci.yml` (first as `backend.yml`) with `changes`, `lint`, `test`, `examples`, `docs` and `infra`; `dependabot.yml` for the actions | [S0](../backend/roadmap.md#4-s0-foundation) | ✓ A pull request with a deliberate Clippy warning fails `lint` (#21, `clippy::len_zero`, 2026-10-16); ✓ a docs-only pull request finishes in under 3 minutes with the Rust jobs skipped (#27: 43 s, 2026-10-16) |
+| 2 | Add the required check `ci` to the `main` ruleset | S0 | ✓ The ruleset requires `ci` (2026-10-16). Not yet tested: a pull request with a failing `docs` job can't be merged |
 | 3 | The `live` job with SurrealDB and RustFS service containers | S0 | ✓ Both ignored tests and `check_examples.py --live --no-test` pass on a push to `main` (2026-10-16) |
 | 4 | `backend/Dockerfile` and `docker-bake.hcl` with `api`, `worker` and `worker-cuda` | S0 | ✓ `docker buildx bake` builds all three on a laptop; `docker run … api` exits with a configuration error naming a missing variable, as UID 10100 |
 | 5 | `infra/dev.compose.yml` and `infra/env/.env.example` | S0 | ✓ `docker compose -f infra/dev.compose.yml up -d`, then `cargo nextest run --workspace --run-ignored only`, passes on a laptop |

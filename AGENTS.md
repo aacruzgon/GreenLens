@@ -148,7 +148,7 @@ GitHub rulesets protect `main` (and `master`), the same as on the team's hfs-Cas
 - **A pull request needs 1 approving review,** and every review thread resolved. Pushing new commits dismisses earlier approvals, and a change pushed by someone other than its author needs an extra approval.
 - **No force-pushes to `main`, and it can't be deleted.** Merge, squash and rebase merges are allowed.
 - **Admins can bypass the review only through a pull request,** never by pushing to `main`.
-- **One required check, `ci`,** the last job of `.github/workflows/ci.yml` ([docs/infra §2](docs/infra/README.md#required-checks)). It fails if any check before it failed or was cancelled. Add a new check to `ci`'s `needs` in the workflow, not to the ruleset.
+- **One required check, `ci`,** the last job of `.github/workflows/ci.yml` ([docs/infra §2](docs/infra/README.md#required-checks)). It fails if any job in its `needs` failed or was cancelled. That is every check but `live`, which joins once it has passed on three consecutive pushes to `main`. Add a new check to `ci`'s `needs` in the workflow, not to the ruleset.
 - **Agents** commit and push only when the user asks. They push branches, never `main`, and open the pull request with `gh pr create`.
 
 ### Secrets
