@@ -30,9 +30,9 @@ use tokio::sync::Semaphore;
 use crate::{
     VisionError,
     imaging::{self, ImageView, PixelRect},
-    manifest::{Manifest, ModelInput},
+    manifest::{Manifest, ManifestError, ModelEntry, ModelInput},
     rle,
-    runtime::{OrtRuntime, SessionSettings},
+    runtime::{OrtEp, OrtRuntime, SessionSettings},
 };
 
 pub mod detector;
@@ -79,7 +79,9 @@ impl Default for BatchCaps {
     }
 }
 
-/// The perception settings, from the manifest's `[model.config]` tables and the environment.
+/// The perception settings: the batch caps from the environment, everything else from the
+/// manifest's `[model.config]` tables ([`PerceptionConfig::from_manifest`]). There is no
+/// default, so a worker can't run on thresholds the manifest and `perception_config` don't show.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PerceptionConfig {
     /// Batch caps.
@@ -90,25 +92,109 @@ pub struct PerceptionConfig {
     pub sam: SamConfig,
     /// `τ_leaf` of the plant check.
     pub tau_leaf: f32,
-    /// `τ_plant` of the plant check.
-    pub tau_plant: f32,
+    /// `τ_plant` of the plant check, from the `plant_probe` entry; `None` without a probe, and
+    /// then only the leaf score can find a plant.
+    pub tau_plant: Option<f32>,
     /// `T_species`.
     pub species_temperature: f32,
-    /// Leaf boxes grow by this share on each side before the disease crop.
+    /// Leaf boxes grow by this share on each side before the disease crop. Every disease head
+    /// entry gives it, and they must agree; 0 when there is no head, since nothing is cropped.
     pub crop_grow: f64,
 }
 
-impl Default for PerceptionConfig {
-    fn default() -> Self {
-        Self {
-            caps: BatchCaps::default(),
-            detector: DetectorConfig::default(),
-            sam: SamConfig::default(),
-            tau_leaf: 0.5,
-            tau_plant: 0.5,
-            species_temperature: 1.0,
-            crop_grow: 0.10,
+impl PerceptionConfig {
+    /// The `τ_plant` the plant check compares against. Without a probe every plant probability
+    /// is 0, so no threshold may let it through: only the leaf score can find a plant.
+    pub fn plant_threshold(&self) -> f32 {
+        self.tau_plant.unwrap_or(f32::INFINITY)
+    }
+
+    /// Reads every threshold from its entry's `[model.config]`; `caps` come from the
+    /// environment and may lower, never raise, each model's `max_batch` (`max_boxes` for the
+    /// SAM decoder), the batch its memory budget was measured at. A missing key, a cap above the
+    /// manifest's, or disease heads that disagree on `crop_grow` refuse to start, so the settings
+    /// in use are always the ones `perception_config` hashes.
+    ///
+    /// | Field | Entry |
+    /// |---|---|
+    /// | `detector.*`, `tau_leaf` | `leaf_detector` |
+    /// | `sam.*` | `sam_decoder` |
+    /// | `species_temperature` | `bioclip` |
+    /// | `crop_grow` | every `disease_head*` |
+    /// | `tau_plant` | `plant_probe`, when present |
+    /// | the caps' limits | `leaf_detector`, `sam_encoder`, `bioclip` (`max_batch`); `sam_decoder` (`max_boxes`) |
+    pub fn from_manifest(manifest: &Manifest, caps: BatchCaps) -> Result<Self, ManifestError> {
+        let det = manifest.entry("leaf_detector")?;
+        let dec = manifest.entry("sam_decoder")?;
+        let mut crop_grow: Option<(&ModelEntry, f64)> = None;
+        for head in manifest.entries_with_prefix("disease_head") {
+            let g = head.config_f64("crop_grow")?;
+            match crop_grow {
+                Some((first, value)) if value.to_bits() != g.to_bits() => {
+                    return Err(ManifestError::Conflict {
+                        key: "crop_grow",
+                        first: first.name.clone(),
+                        first_value: value.to_string(),
+                        second: head.name.clone(),
+                        second_value: g.to_string(),
+                    });
+                }
+                Some(_) => {}
+                None => crop_grow = Some((head, g)),
+            }
         }
+        let tau_plant = match manifest.entry("plant_probe") {
+            Ok(probe) => Some(probe.config_f32("tau_plant")?),
+            Err(_) => None,
+        };
+        for (variable, cap, name, key) in [
+            (
+                "DETECTOR_MAX_BATCH",
+                caps.detector,
+                "leaf_detector",
+                "max_batch",
+            ),
+            (
+                "SAM_ENCODER_MAX_BATCH",
+                caps.sam_encoder,
+                "sam_encoder",
+                "max_batch",
+            ),
+            ("SAM_MAX_BOXES", caps.sam_boxes, "sam_decoder", "max_boxes"),
+            ("BIOCLIP_MAX_BATCH", caps.bioclip, "bioclip", "max_batch"),
+        ] {
+            let limit = manifest.entry(name)?.config_usize(key)?;
+            if cap > limit {
+                return Err(ManifestError::CapAboveManifest {
+                    variable,
+                    cap,
+                    name: name.to_owned(),
+                    key,
+                    limit,
+                });
+            }
+        }
+        Ok(Self {
+            caps,
+            detector: DetectorConfig {
+                score_threshold: det.config_f32("score_threshold")?,
+                min_side_px: det.config_f32("min_side_px")?,
+                max_per_image: det.config_usize("max_per_image")?,
+                nms_iou: det.config_f32("nms_iou")?,
+            },
+            sam: SamConfig {
+                min_iou: dec.config_f32("min_iou")?,
+                plant_min_leaves: dec.config_usize("plant_min_leaves")?,
+                plant_grow: dec.config_f64("plant_grow")?,
+                plant_min_cover: dec.config_f64("plant_min_cover")?,
+            },
+            tau_leaf: det.config_f32("tau_leaf")?,
+            tau_plant,
+            species_temperature: manifest
+                .entry("bioclip")?
+                .config_f32("species_temperature")?,
+            crop_grow: crop_grow.map_or(0.0, |(_, g)| g),
+        })
     }
 }
 
@@ -128,11 +214,121 @@ struct Recipes {
     bioclip: ModelInput,
 }
 
+/// The SAM decoder's inputs. Its entry has no `[model.input]`: it takes one image's three
+/// encoder features and the box prompts, under the names `ml/training/export/sam2.py` gives them.
+const SAM_DECODER_INPUTS: [&str; 4] = [
+    "high_res_feats_0",
+    "high_res_feats_1",
+    "image_embed",
+    "boxes",
+];
+
+/// Every tensor name the GPU models are run with, from the manifest's `[model.input] name` and
+/// `[model.outputs]` ([vision 6]), never from literals that agree with an export only by chance.
+///
+/// [vision 6]: ../../../docs/vision/README.md#6-model-files-versions-and-pinning
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TensorNames {
+    /// The leaf detector's input.
+    pub detector_input: String,
+    /// Its outputs: boxes, then class logits.
+    pub detector_outputs: [String; 2],
+    /// The SAM encoder's input.
+    pub sam_encoder_input: String,
+    /// Its outputs, in the order the decoder takes them: `high_res_feats_0`,
+    /// `high_res_feats_1`, `image_embed`.
+    pub sam_encoder_outputs: [String; 3],
+    /// The SAM decoder's outputs: the single-mask logits, then its predicted `IoU`.
+    pub sam_decoder_outputs: [String; 2],
+    /// `BioCLIP`'s input.
+    pub bioclip_input: String,
+    /// `BioCLIP`'s embedding output.
+    pub bioclip_output: String,
+}
+
+impl TensorNames {
+    /// Reads the names from the manifest. An entry without the input or a logical output this
+    /// adapter runs is refused at start-up.
+    pub fn from_manifest(manifest: &Manifest) -> Result<Self, ManifestError> {
+        let detector = manifest.entry("leaf_detector")?;
+        let encoder = manifest.entry("sam_encoder")?;
+        let decoder = manifest.entry("sam_decoder")?;
+        let bioclip = manifest.entry("bioclip")?;
+        Ok(Self {
+            detector_input: input_name(detector)?,
+            detector_outputs: [output(detector, "boxes")?, output(detector, "logits")?],
+            sam_encoder_input: input_name(encoder)?,
+            sam_encoder_outputs: [
+                output(encoder, "high_res_feats_0")?,
+                output(encoder, "high_res_feats_1")?,
+                output(encoder, "image_embed")?,
+            ],
+            sam_decoder_outputs: [
+                output(decoder, "mask_single")?,
+                output(decoder, "iou_single")?,
+            ],
+            bioclip_input: input_name(bioclip)?,
+            bioclip_output: output(bioclip, "embeddings")?,
+        })
+    }
+}
+
+impl TensorNames {
+    /// The inputs a slot is fed and the outputs read from it, checked against the loaded
+    /// session at start-up.
+    fn for_slot(&self, slot: ModelSlot) -> (Vec<String>, Vec<String>) {
+        match slot {
+            ModelSlot::Detector => (
+                vec![self.detector_input.clone()],
+                self.detector_outputs.to_vec(),
+            ),
+            ModelSlot::SamEncoder => (
+                vec![self.sam_encoder_input.clone()],
+                self.sam_encoder_outputs.to_vec(),
+            ),
+            ModelSlot::SamDecoder => (
+                SAM_DECODER_INPUTS.map(str::to_owned).to_vec(),
+                self.sam_decoder_outputs.to_vec(),
+            ),
+            ModelSlot::Bioclip => (
+                vec![self.bioclip_input.clone()],
+                vec![self.bioclip_output.clone()],
+            ),
+        }
+    }
+}
+
+/// An entry's `[model.input]`: the image recipe and the input tensor's name.
+fn recipe(entry: &ModelEntry) -> Result<&ModelInput, ManifestError> {
+    entry.input.as_ref().ok_or_else(|| ManifestError::NoTensor {
+        name: entry.name.clone(),
+        what: "[model.input]".to_owned(),
+    })
+}
+
+/// An entry's `[model.input] name`.
+fn input_name(entry: &ModelEntry) -> Result<String, ManifestError> {
+    recipe(entry).map(|i| i.name.clone())
+}
+
+/// The tensor name of an entry's logical output in `[model.outputs]`.
+fn output(entry: &ModelEntry, logical: &str) -> Result<String, ManifestError> {
+    entry
+        .outputs
+        .get(logical)
+        .cloned()
+        .ok_or_else(|| ManifestError::NoTensor {
+            name: entry.name.clone(),
+            what: format!("output {logical} in [model.outputs]"),
+        })
+}
+
 /// The perception adapter: the inference thread, the recipes and the CPU heads.
 #[derive(Debug)]
 pub struct PerceptionPipeline {
     inference: Inference,
     recipes: Arc<Recipes>,
+    names: TensorNames,
     labels: BTreeMap<String, Arc<LabelMatrix>>,
     disease: BTreeMap<String, Arc<DiseaseHead>>,
     probe: Option<PlantProbe>,
@@ -153,14 +349,19 @@ impl PerceptionPipeline {
     ];
 
     /// Verifies every file's hash, loads the sessions on the inference thread (with warm-up at
-    /// the largest batch), and reads the heads. `cpu_permits` bounds image decoding and
-    /// pre-processing on the blocking pool.
+    /// the largest batch) and checks each one's tensor names against the manifest, and reads
+    /// the heads. The thresholds come from the manifest ([`PerceptionConfig::from_manifest`]),
+    /// so the settings in use are the ones `perception_config` reports; `caps` come from the
+    /// environment. `cpu_permits` bounds image decoding and pre-processing on the blocking pool.
     pub async fn load(
         runtime: OrtRuntime,
         manifest: &Manifest,
-        config: PerceptionConfig,
+        caps: BatchCaps,
         cpu_permits: usize,
     ) -> Result<Self, VisionError> {
+        check_precision(manifest, runtime.ep())?;
+        let config = PerceptionConfig::from_manifest(manifest, caps)?;
+        let tensor_names = TensorNames::from_manifest(manifest)?;
         let names: Vec<&str> = Self::GPU_MODELS.iter().map(|(n, _)| *n).collect();
         manifest.verify(&names)?;
         let mut versions = BTreeMap::new();
@@ -176,7 +377,11 @@ impl PerceptionPipeline {
         for (name, slot) in Self::GPU_MODELS {
             let entry = manifest.entry(name)?;
             versions.insert(name.to_owned(), entry.version.clone());
+            let (inputs, outputs) = tensor_names.for_slot(slot);
             specs.push(SessionSpec {
+                name,
+                inputs,
+                outputs,
                 slot,
                 path: manifest.path(entry),
                 settings: SessionSettings {
@@ -185,20 +390,10 @@ impl PerceptionPipeline {
                 warm_up: None,
             });
         }
-        let input = |name: &str| -> Result<ModelInput, VisionError> {
-            manifest
-                .entry(name)?
-                .input
-                .clone()
-                .ok_or_else(|| VisionError::Shape {
-                    model: "manifest",
-                    detail: format!("{name} has no [model.input]"),
-                })
-        };
         let recipes = Recipes {
-            detector: input("leaf_detector")?,
-            sam: input("sam_encoder")?,
-            bioclip: input("bioclip")?,
+            detector: recipe(manifest.entry("leaf_detector")?)?.clone(),
+            sam: recipe(manifest.entry("sam_encoder")?)?.clone(),
+            bioclip: recipe(manifest.entry("bioclip")?)?.clone(),
         };
         let bioclip = manifest.entry("bioclip")?;
         let bioclip_version = bioclip_model_version(&bioclip.version);
@@ -250,6 +445,7 @@ impl PerceptionPipeline {
         Ok(Self {
             inference,
             recipes: Arc::new(recipes),
+            names: tensor_names,
             labels,
             disease,
             probe,
@@ -324,6 +520,11 @@ impl PerceptionPipeline {
                 self.config.caps.detector,
             )
             .await?;
+        let names = &self.names;
+        let outputs = [
+            names.detector_outputs[0].as_str(),
+            names.detector_outputs[1].as_str(),
+        ];
         let mut out = Vec::new();
         let mut i = 0;
         for batch in batches {
@@ -332,8 +533,8 @@ impl PerceptionPipeline {
                 .inference
                 .run(
                     ModelSlot::Detector,
-                    vec![("input".to_owned(), batch.into_dyn())],
-                    &["dets", "labels"],
+                    vec![(names.detector_input.clone(), batch.into_dyn())],
+                    &outputs,
                 )
                 .await?;
             let (dets, logits) = (&res[0], &res[1]);
@@ -371,12 +572,23 @@ impl PerceptionPipeline {
         let Some(batch) = enc_batches.into_iter().next() else {
             return Ok(vec![None; boxes.len()]);
         };
+        let names = &self.names;
+        let enc_outputs: Vec<&str> = names
+            .sam_encoder_outputs
+            .iter()
+            .map(String::as_str)
+            .collect();
+        let dec_outputs: Vec<&str> = names
+            .sam_decoder_outputs
+            .iter()
+            .map(String::as_str)
+            .collect();
         let feats = self
             .inference
             .run(
                 ModelSlot::SamEncoder,
-                vec![("images".to_owned(), batch.into_dyn())],
-                &["high_res_feats_0", "high_res_feats_1", "image_embed"],
+                vec![(names.sam_encoder_input.clone(), batch.into_dyn())],
+                &enc_outputs,
             )
             .await?;
         let mut out = Vec::with_capacity(boxes.len());
@@ -384,19 +596,16 @@ impl PerceptionPipeline {
             self.config.caps.sam_boxes,
             self.config.caps.job,
         )) {
+            let [f0, f1, embed, boxes] = SAM_DECODER_INPUTS.map(str::to_owned);
             let inputs: Inputs = vec![
-                ("high_res_feats_0".to_owned(), feats[0].clone()),
-                ("high_res_feats_1".to_owned(), feats[1].clone()),
-                ("image_embed".to_owned(), feats[2].clone()),
-                ("boxes".to_owned(), sam::boxes_input(chunk).into_dyn()),
+                (f0, feats[0].clone()),
+                (f1, feats[1].clone()),
+                (embed, feats[2].clone()),
+                (boxes, sam::boxes_input(chunk).into_dyn()),
             ];
             let res = self
                 .inference
-                .run(
-                    ModelSlot::SamDecoder,
-                    inputs,
-                    &["mask_single", "iou_single"],
-                )
+                .run(ModelSlot::SamDecoder, inputs, &dec_outputs)
                 .await?;
             let (logits, iou) = (&res[0], &res[1]);
             for (k, _) in chunk.iter().enumerate() {
@@ -434,8 +643,8 @@ impl PerceptionPipeline {
                 .inference
                 .run(
                     ModelSlot::Bioclip,
-                    vec![("image".to_owned(), batch.into_dyn())],
-                    &["embedding"],
+                    vec![(self.names.bioclip_input.clone(), batch.into_dyn())],
+                    &[self.names.bioclip_output.as_str()],
                 )
                 .await?;
             out.extend(rows(&res[0]));
@@ -614,8 +823,11 @@ impl PerceptionPipeline {
                     (s.kind, leaf, plant)
                 })
                 .collect();
-            let present =
-                heads::plant_present(&per_shot, self.config.tau_leaf, self.config.tau_plant);
+            let present = heads::plant_present(
+                &per_shot,
+                self.config.tau_leaf,
+                self.config.plant_threshold(),
+            );
             result.plant_present = Some(present);
             clock
                 .finish(Some(PartialResult::PlantCheck {
@@ -870,6 +1082,29 @@ impl VisionModel for PerceptionPipeline {
         })
     }
 }
+/// ONNX Runtime's CPU provider segfaults on the fp16 graphs instead of returning an error, so
+/// an fp16 GPU model on `ORT_EP=cpu` refuses to start, before any file is hashed or loaded. An
+/// entry is fp16 when its `precision` says so (in any case) or, should the key be missing, when
+/// its file is an `-fp16.onnx` export.
+pub fn check_precision(manifest: &Manifest, ep: OrtEp) -> Result<(), VisionError> {
+    if ep != OrtEp::Cpu {
+        return Ok(());
+    }
+    for (name, _) in PerceptionPipeline::GPU_MODELS {
+        let entry = manifest.entry(name)?;
+        let fp16 = match entry.precision.as_deref() {
+            Some(p) => p.eq_ignore_ascii_case("fp16") || p.eq_ignore_ascii_case("float16"),
+            None => entry.file.to_string_lossy().ends_with("-fp16.onnx"),
+        };
+        if fp16 {
+            return Err(VisionError::Fp16OnCpu {
+                entry: entry.name.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
 /// The `bioclip` value results report: `bioclip-2@<revision>`. A manifest `version` may give the
 /// revision alone or already prefixed.
 fn bioclip_model_version(version: &str) -> String {

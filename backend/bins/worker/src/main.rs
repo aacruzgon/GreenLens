@@ -14,7 +14,7 @@ use integrations::{
 use tokio::sync::Semaphore;
 use vision::{
     manifest::Manifest,
-    perception::{BatchCaps, PerceptionConfig, PerceptionPipeline},
+    perception::{BatchCaps, PerceptionPipeline},
     runtime::{OrtRuntime, RuntimeConfig},
 };
 
@@ -87,17 +87,16 @@ async fn build_model(
                 intra_threads: p.ort_intra_threads,
                 name: "perception-worker",
             })?;
-            let config = PerceptionConfig {
-                caps: BatchCaps {
-                    job: p.max_batch,
-                    detector: p.detector_max_batch,
-                    sam_encoder: p.sam_encoder_max_batch,
-                    sam_boxes: p.sam_max_boxes,
-                    bioclip: p.bioclip_max_batch,
-                },
-                ..PerceptionConfig::default()
+            // Thresholds come from the manifest's [model.config] (PerceptionPipeline::load reads
+            // them); the environment sets only the caps, never above the manifest's.
+            let caps = BatchCaps {
+                job: p.max_batch,
+                detector: p.detector_max_batch,
+                sam_encoder: p.sam_encoder_max_batch,
+                sam_boxes: p.sam_max_boxes,
+                bioclip: p.bioclip_max_batch,
             };
-            Arc::new(PerceptionPipeline::load(runtime, &manifest, config, cli.cpu_permits).await?)
+            Arc::new(PerceptionPipeline::load(runtime, &manifest, caps, cli.cpu_permits).await?)
         }
         Caps::Vlm => {
             let v = &cli.vlm;

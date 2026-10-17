@@ -1,6 +1,6 @@
 # PDM Backend: `worker` binary
 
-> **Status:** Draft v0.5.2, 2026-10-16. v0.5.2: open question 3 is settled: xgrammar enforces `anyOf` with `null`. v0.5.1: section 12's image path is the registry's, `ghcr.io/aacruzgon/greenlens/worker` ([infra 3](../infra/README.md#3-images)). v0.5: section 15.1 designs stub vision (`--stub-vision`, refused in a release build without `PDM_ALLOW_STUB_VISION`), the canned `perception` result the API accepts, its marks in `model_versions` and logs, the tests, and seven work items for the roadmap's slice S1; section 17 has six new questions; no section number changes. v0.4.2: the rig's compose listing gives each worker an `env_file` with its own `WORKER_TOKEN` (the worker reads no `WORKER_TOKEN_FILE`). v0.4.1: section 17 keeps only the four questions still open, since docs/vision v0.2 and contracts 5–6 now agree on the rest; section 1 drops the image-fetch difference (the skill uses 30 s too); section 12 lists the fallback service with its `stop_grace_period`. v0.4: the SIGTERM shutdown ends within `DRAIN_SECONDS`, dropping a `complete` or heartbeat call in flight (it could take 20 + 10 + 5 = 35 s, past the 30 s grace); the worker API client retries by the error body's `retryable` and `retry_after_s` (contracts 2), not by status, and waits `retry_after_s`; section 1 states the HTTP timeouts and only the two skill differences that remain. v0.3.1: why the immediate re-claim after a `204` can't spin while the API shuts down (probed). v0.3: the hosted fallback gives the guided check the same 8,000-token budget as the other calls (docs/vision README 12 #27), and the fallback row points to the full list of stripped schema keywords. v0.2: the fallback worker reads its hosted-LLM key from `LLM_API_KEY`, the name `api` and the backend README §9 use (it was `ANTHROPIC_API_KEY`). v0.1: the worker process (`--caps perception|vlm|fallback`): configuration, the heartbeat and claim loops with slots, leases and the SIGTERM drain, cancellation by drop, the VLM adapter with its per-call schema builder and decoding, the hosted fallback, per-card settings for the RX 9070 XT, and the rig's compose services; compiled on Rust 1.99.1.
+> **Status:** Draft v0.5.3, 2026-10-16. v0.5.3: the perception worker reads its thresholds from the manifest with `PerceptionConfig::from_manifest`, the environment sets only the batch caps and never above the manifest's, and start-up refuses an fp16 model on `ORT_EP=cpu` or a file whose tensor names differ from the manifest (gaps G4, G6 and G11); `VLM_BASE_URL` defaults to `http://vllm-nv:8000`, the compose service's name (G7), all from [issue #12](https://github.com/aacruzgon/GreenLens/issues/12). v0.5.2: open question 3 is settled: xgrammar enforces `anyOf` with `null`. v0.5.1: section 12's image path is the registry's, `ghcr.io/aacruzgon/greenlens/worker` ([infra 3](../infra/README.md#3-images)). v0.5: section 15.1 designs stub vision (`--stub-vision`, refused in a release build without `PDM_ALLOW_STUB_VISION`), the canned `perception` result the API accepts, its marks in `model_versions` and logs, the tests, and seven work items for the roadmap's slice S1; section 17 has six new questions; no section number changes. v0.4.2: the rig's compose listing gives each worker an `env_file` with its own `WORKER_TOKEN` (the worker reads no `WORKER_TOKEN_FILE`). v0.4.1: section 17 keeps only the four questions still open, since docs/vision v0.2 and contracts 5–6 now agree on the rest; section 1 drops the image-fetch difference (the skill uses 30 s too); section 12 lists the fallback service with its `stop_grace_period`. v0.4: the SIGTERM shutdown ends within `DRAIN_SECONDS`, dropping a `complete` or heartbeat call in flight (it could take 20 + 10 + 5 = 35 s, past the 30 s grace); the worker API client retries by the error body's `retryable` and `retry_after_s` (contracts 2), not by status, and waits `retry_after_s`; section 1 states the HTTP timeouts and only the two skill differences that remain. v0.3.1: why the immediate re-claim after a `204` can't spin while the API shuts down (probed). v0.3: the hosted fallback gives the guided check the same 8,000-token budget as the other calls (docs/vision README 12 #27), and the fallback row points to the full list of stripped schema keywords. v0.2: the fallback worker reads its hosted-LLM key from `LLM_API_KEY`, the name `api` and the backend README §9 use (it was `ANTHROPIC_API_KEY`). v0.1: the worker process (`--caps perception|vlm|fallback`): configuration, the heartbeat and claim loops with slots, leases and the SIGTERM drain, cancellation by drop, the VLM adapter with its per-call schema builder and decoding, the hosted fallback, per-card settings for the RX 9070 XT, and the rig's compose services; compiled on Rust 1.99.1.
 
 Companion to the [backend architecture](README.md), the [`vision` crate](vision.md) (the perception models and image code it uses), the [`integrations` crate](integrations.md) (its HTTP clients for the VLM server and the LLM API) and the [`domain` crate](domain.md) (the job types and the `VisionModel` port). Every listing is copied from the compiled source of `bins/worker` by the docgen tool. `cargo check -p worker` (also `--features cuda`), `cargo clippy -p worker --all-targets` and `cargo test -p worker` pass: 34 tests, among them the loop on paused time against a fake broker and the VLM adapter against a scripted backend.
 
@@ -228,7 +228,7 @@ pub struct PerceptionArgs {
 #[derive(Debug, Args)]
 pub struct VlmArgs {
     /// The sidecar, without `/v1`: `http://vllm-nv:8000`.
-    #[arg(long, env = "VLM_BASE_URL", default_value = "http://vlm:8000")]
+    #[arg(long, env = "VLM_BASE_URL", default_value = "http://vllm-nv:8000")]
     pub base_url: String,
     /// The sidecar's `--api-key`.
     #[arg(long, env = "VLM_API_KEY", hide_env_values = true)]
@@ -312,8 +312,8 @@ pub struct Timings {
 | `CPU_PERMITS` | 2 | all | Blocking-pool permits for decode, resize, pre-processing |
 | `MODEL_MANIFEST` | `/models/manifest.toml` | perception, fallback | The manifest; the fallback reads its label lists |
 | `ORT_EP`, `ORT_DEVICE_ID`, `ORT_DYLIB_PATH`, `ORT_INTRA_THREADS` | `cuda`, 0, —, 2 | perception | Section 11 |
-| `PERCEPTION_MAX_BATCH`, `DETECTOR_MAX_BATCH`, `SAM_ENCODER_MAX_BATCH`, `SAM_MAX_BOXES`, `BIOCLIP_MAX_BATCH` | 16, 8, 2, 16, 16 | perception | Caps ([contracts 5, batching](../architecture/contracts.md#results)) |
-| `VLM_BASE_URL`, `VLM_API_KEY`, `VLM_SERVED_NAME` | `http://vlm:8000`, —, `vlm` | vlm | The sidecar |
+| `PERCEPTION_MAX_BATCH`, `DETECTOR_MAX_BATCH`, `SAM_ENCODER_MAX_BATCH`, `SAM_MAX_BOXES`, `BIOCLIP_MAX_BATCH` | 16, 8, 2, 16, 16 | perception | Caps ([contracts 5, batching](../architecture/contracts.md#results)). They change speed, not results, and none may exceed its model's `max_batch` (`max_boxes`) in the manifest; every threshold comes from the manifest's `[model.config]` ([vision 5](vision.md#5-the-model-manifest)) |
+| `VLM_BASE_URL`, `VLM_API_KEY`, `VLM_SERVED_NAME` | `http://vllm-nv:8000`, —, `vlm` | vlm | The sidecar |
 | `VLM_ADAPTER` | `vllm` | vlm | `vllm` or `llamacpp` |
 | `VLM_MODEL`, `VLM_QUANT`, `VLM_SERVER` | | vlm | `vlm_model`, `vlm_quant`, `vlm_server` in `model_versions` |
 | `VLM_BOX_FORMAT`, `VLM_CELL_PX`, `VLM_MAX_PIXELS` | `norm1000`, 32, 1,003,520 | vlm | The adapter instance ([contracts 6](../architecture/contracts.md#box-formats-per-model-adapter)) |
@@ -322,7 +322,7 @@ pub struct Timings {
 | `FALLBACK_SLOTS`, `FALLBACK_MAX_LONG_SIDE`, `FALLBACK_MAX_PIXELS` | 4, 1568, 1,150,000 | fallback | Slots, and the size the API won't resize |
 | `WORKER_STUB_VISION`, `PDM_ALLOW_STUB_VISION`, `STUB_*` | off, unset | perception | Canned results for the walking skeleton; refused in a release build without the allow variable ([section 15.1](#151-stub-vision), proposed) |
 
-Start-up fails before the first claim on a missing key, a file whose hash differs from the manifest, a provider that isn't compiled in or doesn't register, or a VLM server that doesn't serve `VLM_SERVED_NAME` (`GET /v1/models`).
+Start-up fails before the first claim on a missing key, a missing `[model.config]` threshold, a batch cap above the manifest's, an ONNX file whose tensor names differ from its entry, an fp16 model with `ORT_EP=cpu`, a file whose hash differs from the manifest, a provider that isn't compiled in or doesn't register, or a VLM server that doesn't serve `VLM_SERVED_NAME` (`GET /v1/models`).
 
 ```rust
 /// The model for `--caps`, loaded before the first claim so a missing driver, file or key fails
@@ -343,17 +343,16 @@ async fn build_model(
                 intra_threads: p.ort_intra_threads,
                 name: "perception-worker",
             })?;
-            let config = PerceptionConfig {
-                caps: BatchCaps {
-                    job: p.max_batch,
-                    detector: p.detector_max_batch,
-                    sam_encoder: p.sam_encoder_max_batch,
-                    sam_boxes: p.sam_max_boxes,
-                    bioclip: p.bioclip_max_batch,
-                },
-                ..PerceptionConfig::default()
+            // Thresholds come from the manifest's [model.config] (PerceptionPipeline::load reads
+            // them); the environment sets only the caps, never above the manifest's.
+            let caps = BatchCaps {
+                job: p.max_batch,
+                detector: p.detector_max_batch,
+                sam_encoder: p.sam_encoder_max_batch,
+                sam_boxes: p.sam_max_boxes,
+                bioclip: p.bioclip_max_batch,
             };
-            Arc::new(PerceptionPipeline::load(runtime, &manifest, config, cli.cpu_permits).await?)
+            Arc::new(PerceptionPipeline::load(runtime, &manifest, caps, cli.cpu_permits).await?)
         }
         Caps::Vlm => {
             let v = &cli.vlm;

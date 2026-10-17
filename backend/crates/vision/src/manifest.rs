@@ -51,6 +51,43 @@ pub enum ManifestError {
         /// The type expected.
         expected: &'static str,
     },
+    /// An entry lacks a tensor name the worker runs it with.
+    #[error("{name} has no {what}")]
+    NoTensor {
+        /// The entry.
+        name: String,
+        /// `[model.input]`, or the logical output missing from `[model.outputs]`.
+        what: String,
+    },
+    /// A batch cap from the environment is above the entry's own, the largest batch its memory
+    /// budget was measured at.
+    #[error("{variable}={cap} is above {name}'s {key} = {limit} in the manifest")]
+    CapAboveManifest {
+        /// The environment variable.
+        variable: &'static str,
+        /// Its value.
+        cap: usize,
+        /// The entry.
+        name: String,
+        /// Its key.
+        key: &'static str,
+        /// The manifest's value.
+        limit: usize,
+    },
+    /// Two entries give different values for a setting the worker holds once.
+    #[error("config key {key} is {first_value} in {first} but {second_value} in {second}")]
+    Conflict {
+        /// The key.
+        key: &'static str,
+        /// The first entry.
+        first: String,
+        /// Its value.
+        first_value: String,
+        /// The entry that differs.
+        second: String,
+        /// Its value.
+        second_value: String,
+    },
 }
 
 /// Where a model runs.
@@ -159,6 +196,9 @@ pub struct ModelEntry {
     /// For the disease head: its `classifier_labels_version`.
     #[serde(default)]
     pub classifier_labels_version: Option<String>,
+    /// `fp16` or `fp32` for ONNX files; the CPU provider runs only `fp32`.
+    #[serde(default)]
+    pub precision: Option<String>,
 }
 
 impl ModelEntry {
@@ -168,6 +208,14 @@ impl ModelEntry {
             .get(key)
             .and_then(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64)))
             .map(|v| v as f32)
+            .ok_or_else(|| self.config_error(key, "number"))
+    }
+
+    /// A float from `[model.config]`, at full precision (shares and growth factors).
+    pub fn config_f64(&self, key: &'static str) -> Result<f64, ManifestError> {
+        self.config
+            .get(key)
+            .and_then(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64)))
             .ok_or_else(|| self.config_error(key, "number"))
     }
 
