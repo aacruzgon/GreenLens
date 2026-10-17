@@ -294,9 +294,8 @@ jobs:
   # --- stage 3: the one required check -----------------------------------------------------------
 
   ci:
-    # live joins this list once it has passed on three consecutive pushes to main (infra §2). Until
-    # then a failing live leaves ci green, but images (which waits for live) doesn't run.
-    needs: [changes, lint, test, examples, docs, infra, security]
+    # live joined after it passed on four consecutive pushes to main (infra §2).
+    needs: [changes, lint, test, examples, docs, infra, security, live]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5
