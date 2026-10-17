@@ -2,6 +2,7 @@
 
 usage: python3 -m unittest discover -s .github/scripts
 """
+import http.client
 import io
 import json
 import os
@@ -102,6 +103,17 @@ class Mentions(unittest.TestCase):
     def test_unclosed_fence_hides_the_rest(self):
         self.assertEqual(dm.mentions("@a\n```\n@b"), {"a"})
 
+    def test_code_spans_never_cross_a_blank_line(self):
+        self.assertEqual(dm.mentions("Press ` then type.\n\n@mark see `x`"), {"mark"})
+        self.assertEqual(dm.mentions("a `code\n@sam` span"), set())
+
+    def test_closing_fence_may_end_in_a_tab(self):
+        self.assertEqual(dm.mentions("```\n@mark\n```\t\n@sam"), {"sam"})
+
+    def test_trailing_underscore_or_hyphen_is_punctuation(self):
+        self.assertEqual(dm.mentions("_@mark_ and _cc @sam_ and thanks @alan-"), {"mark", "sam", "alan"})
+        self.assertEqual(dm.mentions("@mark_x"), {"mark_x"})
+
 
 class Routing(unittest.TestCase):
     def test_one_alert_per_mentioned_person(self):
@@ -154,6 +166,14 @@ class Edits(unittest.TestCase):
     def test_moving_a_mention_out_of_code_is_new(self):
         _, discord, _ = run(event("@mark", "edited", old="`@mark`"))
         self.assertEqual(discord.urls(), [ENV["DISCORD_WEBHOOK_MARK"]])
+
+    def test_edit_credits_the_editor(self):
+        e = event("@mark", "edited", old="hi")
+        e["sender"] = {"login": "maintainer", "html_url": "https://github.com/maintainer"}
+        _, discord, _ = run(e)
+        payload = discord.payloads()[0]
+        self.assertIn("**maintainer** mentioned mark", payload["content"])
+        self.assertEqual(payload["embeds"][0]["author"]["name"], "maintainer")
 
     def test_edit_without_a_body_change_sends_nothing(self):
         _, discord, _ = run(event("@mark", "edited"))
@@ -229,6 +249,18 @@ class Delivery(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("network error (ValueError), after 3 attempts", out.getvalue())
         self.assertNotIn("tok-mark", out.getvalue())
+
+    def test_a_broken_error_body_still_reports_and_sends_the_rest(self):
+        class Broken(io.BytesIO):
+            def read(self, *_):
+                raise http.client.IncompleteRead(b"")
+
+        mark = ENV["DISCORD_WEBHOOK_MARK"]
+        err = urllib.error.HTTPError(mark, 400, "bad", {}, Broken())
+        with unittest.mock.patch("sys.stdout", io.StringIO()):
+            code, discord, _ = run(event("@sarah-k @mark"), discord=FakeDiscord({mark: [err]}))
+        self.assertEqual(code, 1)
+        self.assertIn(ENV["DISCORD_WEBHOOK_SARAH"], discord.urls())
 
     def test_github_suffix_is_refused_before_sending(self):
         env = {**ENV, "DISCORD_WEBHOOK_MARK": ENV["DISCORD_WEBHOOK_MARK"] + "/github"}

@@ -1,6 +1,6 @@
 # Mention alerts on Discord
 
-> **Status:** Draft v0.1, 2026-10-17. v0.1: first version of the workflow that posts a Discord alert to a team member's channel when a GitHub comment mentions them. Its tests have run against a mocked Discord; nothing has been sent to a real channel.
+> **Status:** Draft v0.1.1, 2026-10-17. v0.1.1: after the audit of #34, code spans never cross a blank line, a closing fence may end in a tab, `_@mark_` and `@mark-` match, an edit's alert names the editor, and section 1 says indented code blocks still match. v0.1: first version of the workflow that posts a Discord alert to a team member's channel when a GitHub comment mentions them. Its tests have run against a mocked Discord; nothing has been sent to a real channel.
 
 When an issue comment or a pull request conversation comment mentions a team member's GitHub username, [`.github/workflows/discord-mentions.yml`](../../.github/workflows/discord-mentions.yml) posts an alert in that person's Discord channel. The work is done by [`.github/scripts/discord_mentions.py`](../../.github/scripts/discord_mentions.py). It belongs with CI in [infra 2](README.md#2-ci).
 
@@ -24,9 +24,9 @@ When an issue comment or a pull request conversation comment mentions a team mem
 | Mark | `#github-mark` | `GH_USER_MARK` | `DISCORD_WEBHOOK_MARK` |
 
 - **One alert per person mentioned.** A comment that mentions two of them sends two alerts, one to each channel. Mentioning someone twice sends one alert. Comments that mention no one in the table send nothing.
-- **Matching.** A mention is `@` and the whole username, in any case: `@Mark` matches `mark`, `@markus` and `@mark-2` don't. It doesn't match inside an email address (`mark@example.com`), a URL path, or a team mention (`@org/team`). Like GitHub, it ignores mentions in code blocks, inline code and HTML comments.
+- **Matching.** A mention is `@` and the whole username, in any case: `@Mark` matches `mark`, `@markus` and `@mark-2` don't. It doesn't match inside an email address (`mark@example.com`), a URL path, or a team mention (`@org/team`). Like GitHub, it ignores mentions in fenced code blocks, inline code and HTML comments; a trailing `_` or `-` is punctuation, so `_@mark_` matches `mark`. Unlike GitHub, it still matches inside an indented (four-space) code block, which costs an extra alert at worst.
 - **Edits.** An edit sends an alert only to people the edit newly mentions: the script compares the new text with the old, which GitHub sends with the event. Fixing a typo in a comment that already mentions someone sends nothing.
-- **The alert** shows the repository, whether it is an issue or a pull request, its number and title, the comment's author, the first 600 characters of the comment, and links to the comment, the issue or pull request, and the repository. It pings no one: the message sets `allowed_mentions` to none, so `@everyone`, `@here`, roles and users in a comment or title stay plain text.
+- **The alert** shows the repository, whether it is an issue or a pull request, its number and title, the comment's author (for an edit, the person who edited it), the first 600 characters of the comment, and links to the comment, the issue or pull request, and the repository. It pings no one: the message sets `allowed_mentions` to none, so `@everyone`, `@here`, roles and users in a comment or title stay plain text.
 - **Failures.** Discord's rate limits (HTTP 429) and server errors are retried up to 3 times. If an alert still fails, or a mentioned person's webhook secret is missing or malformed, the job fails with an error annotation naming the person and the HTTP status, and the other alerts are still sent. A person whose username variable is empty gets no alerts, and the run shows a warning.
 
 ## 2. Setup

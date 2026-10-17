@@ -33,11 +33,14 @@ USERNAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,38}")
 
 # An @mention: not preceded by a character that would make it part of an email address, a URL path
 # or a longer word, and taken whole (the second lookahead stops the match backing off to a prefix,
-# so `@alanc` is never `@alan`). `@org/team` is a team mention, not a user.
-MENTION = re.compile(r"(?<![A-Za-z0-9_.+\-/=@])@([A-Za-z0-9_-]+)(?![A-Za-z0-9_-]|/[A-Za-z0-9])")
+# so `@alanc` is never `@alan`). `@org/team` is a team mention, not a user. A trailing `_` or `-`
+# is punctuation, as in `_@mark_` (italics) or `@mark-`: mentions() strips it.
+MENTION = re.compile(r"(?<![A-Za-z0-9.+\-/=@])@([A-Za-z0-9_-]+)(?![A-Za-z0-9_-]|/[A-Za-z0-9])")
 
 FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+# A code span may wrap lines but never crosses a blank line, so it is matched per paragraph.
 INLINE_CODE = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.DOTALL)
+PARAGRAPH_BREAK = re.compile(r"\n[ \t]*\n")
 HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 
 WEBHOOK_HOSTS = {"discord.com", "discordapp.com", "ptb.discord.com", "canary.discord.com"}
@@ -56,7 +59,11 @@ class Person:
 
 
 def strip_code(body: str) -> str:
-    """Remove what GitHub doesn't treat as a mention: code blocks, code spans and HTML comments."""
+    """Remove what GitHub doesn't treat as a mention: fenced code, code spans and HTML comments.
+
+    Indented code blocks are kept: telling them from a list item's continuation needs a full
+    Markdown parser, and the cost of keeping them is an extra alert, never a missed one.
+    """
     kept, fence = [], None
     for line in body.splitlines():
         m = FENCE.match(line)
@@ -65,18 +72,19 @@ def strip_code(body: str) -> str:
                 fence = m.group(1)
             else:
                 kept.append(line)
-        elif m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and not line.strip(" `~"):
+        elif m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and not line.strip(" \t`~"):
             fence = None  # the closing fence: the same character, at least as long, nothing after it
     text = "\n".join(kept)
     text = HTML_COMMENT.sub(" ", text)
-    return INLINE_CODE.sub(" ", text)
+    return "\n\n".join(INLINE_CODE.sub(" ", p) for p in PARAGRAPH_BREAK.split(text))
 
 
 def mentions(body: str | None) -> set[str]:
     """Every username mentioned in a comment, in lower case."""
     if not body:
         return set()
-    return {m.lower() for m in MENTION.findall(strip_code(body))}
+    found = (m.rstrip("_-").lower() for m in MENTION.findall(strip_code(body)))
+    return {m for m in found if m}
 
 
 def new_mentions(event: dict) -> set[str]:
@@ -138,8 +146,10 @@ def message(event: dict, person: Person) -> dict:
     """The Discord webhook payload for one alert."""
     comment, issue, repo = event["comment"], event["issue"], event["repository"]
     kind = "pull request" if issue.get("pull_request") else "issue"
-    author = comment.get("user", {}).get("login", "someone")
     edited = event.get("action") == "edited"
+    # An edit's mention is the editor's, who may not be the comment's author.
+    user = event.get("sender", {}) if edited else comment.get("user", {})
+    author = user.get("login") or comment.get("user", {}).get("login", "someone")
     number = issue.get("number")
     return {
         # No pings at all: not @everyone, @here, roles or users, whatever the comment says.
@@ -153,7 +163,7 @@ def message(event: dict, person: Person) -> dict:
             {
                 "title": truncate(f"{kind.capitalize()} #{number}: {issue.get('title', '')}", 256),
                 "url": comment["html_url"],
-                "author": {"name": truncate(author, 256), "url": comment.get("user", {}).get("html_url")},
+                "author": {"name": truncate(author, 256), "url": user.get("html_url")},
                 "description": excerpt(comment.get("body", "")),
                 "fields": [
                     {"name": "Repository", "value": f"[{escape(repo['full_name'])}]({repo['html_url']})", "inline": True},
@@ -210,7 +220,7 @@ def seconds(value) -> float:
 def discord_error(e: urllib.error.HTTPError) -> dict:
     try:
         body = json.loads(e.read() or b"{}")
-    except (ValueError, OSError):
+    except Exception:  # a bad body or a broken read (http.client.IncompleteRead is neither of the usual)
         return {}
     if not isinstance(body, dict):
         return {}
