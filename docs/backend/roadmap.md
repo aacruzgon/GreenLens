@@ -1,6 +1,6 @@
 # PDM Backend Roadmap
 
-> **Status:** Draft v0.11, 2026-10-17. v0.11: adds S9, farm connectors (Slack and Google Drive) tested on Era by Eon's simulators, with the agent evaluation ([docs/connectors](../connectors/README.md)); the gaps and tracking sections become 13 and 14. v0.10: S5 adds the Agent Memory mirror (work 7, exit check). v0.9: S1's hosting decision is made: the control plane runs on the rig behind Tailscale Funnel, with the ingress as a compose profile (section 5). v0.8: section 1 says the `images` job pushes to GHCR, now that its first run on `main` passed. v0.7: S0 is done; section 4 records its exit checks and the pull requests that closed it, and section 1 says what S0 added; section 13 says how S0 was tracked. v0.6: gap 6 adds that the perception worker reads its tensor names and thresholds from the manifest ([issue #12](https://github.com/aacruzgon/GreenLens/issues/12)). v0.5: S3's schema check is done: xgrammar enforces `anyOf` with `null`. v0.4: gap 6 is fixed: the loaders and `label_set_version` follow `ml/models/FORMATS.md`. v0.3: gap 6, found when PR #6 merged: the Rust loader doesn't read `ml/models/FORMATS.md`; section 1 says what `ml/` holds now. v0.2: every gap in section 12 now has a design, and the slices link to them: [infra](../infra/README.md) for CI, images and compose files, [database 1](../database/README.md#1-version-and-setup) for applying the migrations, [worker 15.1](worker.md#151-stub-vision) for stub vision, and [vision 6](../vision/README.md#delivering-model-files-to-the-backend) for model files; two bugs found on the way (the vector search's `k`, the bucket default) are fixed. v0.1: the backend's work for build week, as nine slices (S0–S8) from the code merged on Oct 16 to the final deploy. Each slice has its goal, its work, what it needs from the other tracks, its exit checks and the decisions it closes. Section 12 lists the gaps found while writing it.
+> **Status:** Draft v0.12, 2026-10-17. v0.12: S1's laptop half is done and recorded in section 5 (what passed, what is left for the rig); gap 7 (a stage the API never heard about stays open) and the six bugs found by running S1 are in section 13. v0.11: adds S9, farm connectors (Slack and Google Drive) tested on Era by Eon's simulators, with the agent evaluation ([docs/connectors](../connectors/README.md)); the gaps and tracking sections become 13 and 14. v0.10: S5 adds the Agent Memory mirror (work 7, exit check). v0.9: S1's hosting decision is made: the control plane runs on the rig behind Tailscale Funnel, with the ingress as a compose profile (section 5). v0.8: section 1 says the `images` job pushes to GHCR, now that its first run on `main` passed. v0.7: S0 is done; section 4 records its exit checks and the pull requests that closed it, and section 1 says what S0 added; section 13 says how S0 was tracked. v0.6: gap 6 adds that the perception worker reads its tensor names and thresholds from the manifest ([issue #12](https://github.com/aacruzgon/GreenLens/issues/12)). v0.5: S3's schema check is done: xgrammar enforces `anyOf` with `null`. v0.4: gap 6 is fixed: the loaders and `label_set_version` follow `ml/models/FORMATS.md`. v0.3: gap 6, found when PR #6 merged: the Rust loader doesn't read `ml/models/FORMATS.md`; section 1 says what `ml/` holds now. v0.2: every gap in section 12 now has a design, and the slices link to them: [infra](../infra/README.md) for CI, images and compose files, [database 1](../database/README.md#1-version-and-setup) for applying the migrations, [worker 15.1](worker.md#151-stub-vision) for stub vision, and [vision 6](../vision/README.md#delivering-model-files-to-the-backend) for model files; two bugs found on the way (the vector search's `k`, the bucket default) are fixed. v0.1: the backend's work for build week, as nine slices (S0–S8) from the code merged on Oct 16 to the final deploy. Each slice has its goal, its work, what it needs from the other tracks, its exit checks and the decisions it closes. Section 12 lists the gaps found while writing it.
 
 Companion to the [backend architecture](README.md). Its [build plan](README.md#13-build-plan) and [architecture 14](../architecture/README.md#14-build-plan) say what is done on each date. This document says how the backend gets there: the order of the work, what each step depends on, and how we know a step is finished.
 
@@ -66,7 +66,7 @@ So the roadmap is mostly about **bringing the code up on real dependencies and p
 | Slice | Dates | Goal | Needs first | Other tracks |
 |---|---|---|---|---|
 | [S0](#4-s0-foundation) ✓ done | Oct 16 | CI, containers, local services | PR #8 merged | none |
-| [S1](#5-s1-walking-skeleton) | Oct 16–17 | A scan runs app → API → worker → SSE on the control plane, with stub vision | S0 | Clerk dev instance; the embedder and face-detector files (ml) |
+| [S1](#5-s1-walking-skeleton) laptop half ✓ done | Oct 16–17 | A scan runs app → API → worker → SSE on the control plane, with stub vision. The laptop half is done and in a draft pull request; the deployed checks are next, on the rig | S0 | Clerk dev instance; the embedder and face-detector files (ml) |
 | [S2](#6-s2-perception-site-data-and-knowledge) | Oct 18–19 | Real perception on the 3070, real weather and soil, the first knowledge loaded | S1 | Model manifest and ONNX files (ml); seed files (knowledge); the rig |
 | [S3](#7-s3-vlm-workers-and-the-fallback) | Oct 18–21 | VLM jobs on the 5070 Ti and the 9070 XT, and the hosted fallback | S1 | VLM benchmark and choice (vision) |
 | [S4](#8-s4-the-diagnosis-loop) | Oct 20–21 | Photo → diagnosis → plan with citations, on real models | S2, S3 | Reviewed profiles (knowledge); results UI (app) |
@@ -170,14 +170,30 @@ What S0 changed in the design, each found by running it:
    - the `stop_grace_period` values from [README 12](README.md#12-builds-and-deployment).
 3. **Clerk's development instance:** the issuer, the JWKS and the Svix webhook to `POST /webhooks/auth`. Never use the production instance without asking.
 4. **The CPU models `api` loads:** the text embedder (`snowflake-arctic-embed-xs`, 384 dimensions, pinned by hash), its tokenizer and the face detector. The S1 manifest's three entries, with verified hashes, are in [vision 6](../vision/README.md#the-s1-manifest); the `model-fetch` step fills `/models` (work items M1–M4).
-5. **A smoke script in `backend/tools/smoke/`.** It signs in with a Clerk testing token, creates a garden, uploads a photo, submits, and follows the stream. Then it drops the connection and resumes with `Last-Event-ID`.
+5. **A smoke script in `backend/tools/smoke/`.** It mints a Clerk session token through the Backend API (`POST /v1/sessions`, then `/v1/sessions/{id}/tokens`) with an `sk_test_` key and refuses any other key. A Clerk testing token only bypasses bot detection on the Frontend API, so it can't sign in. It creates a garden, uploads a photo, submits, and follows the stream. Then it drops the connection and resumes with `Last-Event-ID`.
 
 **Exit checks**
 
 - The smoke script passes against the deployed control plane.
 - Killing the worker mid-job requeues the job once its lease runs out ([contracts 5](../architecture/contracts.md#5-worker-api-and-jobs)), and another worker finishes it.
 - Restarting `api` during a scan, then resuming the stream, replays every missed event once and no event twice.
-- A photo with a face fails the blur check where [architecture 11](../architecture/README.md#11-security-privacy-and-safety) says it must.
+- The stored copy of a photo with a face has the face blurred, where [architecture 11](../architecture/README.md#11-security-privacy-and-safety) says it must, checked by eye with `smoke.py --face-photo`. A face doesn't get the photo refused. Only a blurry or badly exposed photo gets `422 image_quality` (`crates/vision/src/upload.rs`).
+
+**Progress on 2026-10-17 (laptop),** against `infra/dev.compose.yml` with SurrealDB v3.3.4 and RustFS 1.0.1, on macOS arm64:
+
+- ✓ `python3 -m ml.models.fetch --for api` into an empty directory fetched the three S1 files with matching hashes. A second run downloaded nothing, and a locally corrupted file was fetched again.
+- ✓ `api` (release, `--features heic`) started in about 5 s with `MODELS_DIR` set to that directory and ONNX Runtime 1.31.0 on the CPU (osx-arm64). It checked the manifest hashes. ort 2.0.0-rc.14 logs that it was designed for ORT 1.29.
+- ✓ Clerk development instance: `api` verified Backend-API session tokens against `{CLERK_ISSUER}/.well-known/jwks.json` and upserted the user on the first request. A bad token got `401`. The tokens carry no `azp` and live 60 s.
+- ✓ Stub perception worker (`--caps perception --stub-vision`) with `STUB_LABEL_SET_VERSION=d4f0f0534fb74a8d` and an empty `STUB_CLASSIFIER_LABELS_VERSION`, the empty knowledge base's values: submit queued the perception job, all five perception stages streamed, and the scan went on to `context` (real Open-Meteo weather) and `retrieve`. The smoke script passed the full flow, then dropped the stream after 3 events and resumed with `Last-Event-ID` with no gaps and no repeats.
+- ✓ Kill check: the stub was killed at the first `stage_started` (30 s stage delay) and a second stub started. The job showed `requeues: 1`, `status: done`, `worker: dev-stub-perception-2`, and the stream finished the stage. Seq 1..19, no gaps or repeats, about 27 s end to end.
+- ✓ API restart check: the stream was dropped after seq 5 and `api` restarted (healthy in 3–4 s). The resume replayed every stored event once and none twice.
+- ✓ The control-plane compose file renders for the profiles none, `tailscale,stub,seed` and `cloudflare`. Both bootstrap scripts ran twice, and the second run changed nothing ([infra 7](../infra/README.md#first-time-bootstrap)).
+
+**Still to run on the rig:**
+- The deployed exit checks: Funnel, the Clerk webhook, images by digest, `deploy.sh`, the smoke script against the public URL, and `stop api` within 190 s.
+- The fallback worker and the full run to `planned`. The BioCLIP label files are in the private `GreenLens/pdm-models` repository and need an `HF_TOKEN`; M3 is still open.
+- A face photo: none was available on the laptop. The face-blur strength has a unit test.
+- Gap 7 ([section 13](#13-gaps-found-while-writing-this-roadmap)), to finish on the rig before the deployed restart check.
 
 **Decided before it started (2026-10-16):** where the control plane runs ([architecture open decision 2](../architecture/README.md#15-open-decisions)): on the rig, behind Tailscale Funnel. Everything in S1 except the deployed exit checks runs on a laptop against `infra/dev.compose.yml`, because the worker uses stub vision and `api`'s models run on the CPU; the 3070 is first needed in S2.
 
@@ -394,7 +410,7 @@ What S0 changed in the design, each found by running it:
 
 ## 13. Gaps found while writing this roadmap
 
-Gaps 1 to 5 have a design; gap 6 is fixed. The designs are proposals until their slice builds them; each ends with numbered work items and exit checks.
+Gaps 1 to 5 have a design; gap 6 is fixed; gap 7 is open. The designs are proposals until their slice builds them; each ends with numbered work items and exit checks.
 
 | # | Gap | Slice | Designed in | Work items |
 |---|---|---|---|---|
@@ -404,6 +420,15 @@ Gaps 1 to 5 have a design; gap 6 is fixed. The designs are proposals until their
 | 4 | Model files and seed data come from `ml/`, which had no delivery path | S1, S2, S3 | [Vision 6, delivering model files](../vision/README.md#delivering-model-files-to-the-backend): one manifest, our files in a private Hugging Face repository (the team's choice), `sources.toml` and `fetch.py` | [M1–M11](../vision/README.md#roadmap) |
 | 5 | Pipeline open question 3 was out of date | none | Resolved: the run's evidence fields are in the schema ([pipeline 17](pipeline.md#17-open-questions-and-decisions)) | none |
 | 6 | The Rust loader didn't read `ml/`'s file formats: a label matrix and the plant probe failed to load, every disease class would have loaded as `healthy`, and `store`'s `label_set_version` differed | S2 | **Fixed:** the loaders read [`ml/models/FORMATS.md`](../../ml/models/FORMATS.md), heads must name the manifest's `bioclip` export, and `label_set_version` passes the format's test vector ([vision 6](../vision/README.md#delivering-model-files-to-the-backend)). The perception worker takes its tensor names and thresholds from the manifest and refuses fp16 on the CPU ([issue #12](https://github.com/aacruzgon/GreenLens/issues/12)) | none |
+| 7 | While `api` is down, the worker's `POST /internal/jobs/{id}/events` calls fail. By design (`ApiProgress`) the worker drops them and goes on, because `complete` repeats every stage's output. `api` stores the findings from `complete` but emits no `stage_completed` for a stage it never heard about. Seen: `plant_check` started at seq 4, its `stage_completed` and every later perception stage event were lost, and `complete` gave findings at seq 6–9 and then `context`. An app following the scan shows `plant_check` running forever. The exit check as worded (every missed stored event replayed once) passes; the smoke script's open-stage check fails | S1 | **Proposed, not built:** on `complete`, `api` emits `stage_started` and `stage_completed` for each stage in the result that has no `stage_completed` in this run, before the findings. To finish on the rig before the deployed restart check | S1, one work item |
+
+**Bugs found running S1 on a laptop,** all fixed in the S1 branch:
+- **`blur_faces` took 48 s per upload.** It used `imageops::blur`, a direct convolution whose cost grows with sigma (a quarter of the face box). A 12 MP photo with a large false-positive box took 48 s in release, 52 s for HEIC. It now uses `imageops::fast_blur`: 0.9 s.
+- **The worker's `Cli::parse()` panicked in debug builds.** Flattened args gave duplicate clap ids. The VLM and fallback flags now have distinct ids and long names (`--vlm-*`, `--fallback-*`); the env names are unchanged.
+- **Without `RUST_LOG` the worker logged only errors.** It now defaults to `info`, like `api`.
+- **CI's compose-render step would have failed** on `control-plane.compose.yml`, which needs image variables and env files under `/srv/pdm/env`. It now splits `infra/env/.env.example` into a temporary `PDM_ENV`.
+- **`CLERK_WEBHOOK_SECRET=whsec_yours` in `infra/dev/.env.example` isn't base64,** so `api` refused to start with it.
+- **A worker token must be at least 32 bytes, and two worker ids can't share a token.** The stub worker setup needs this.
 
 **Bugs found while designing,** both fixed with a test:
 - **The knowledge vector search could never run.** `SEARCH_CHUNKS` bound `k` into `<|k, 40|>`, which SurrealDB 3.3.4 refuses to parse. `search_chunks` now writes it as a literal, clamped to 1–40.
