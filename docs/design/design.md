@@ -1,6 +1,6 @@
 # PDM Design
 
-> **Status:** Draft v0.1, 2026-10-17. v0.1: the app's design direction: product principles from the research, what Apple owns and what we own, four directions mocked across eight screens (the current F0 baseline and three researched directions), the five borrowed ideas built into the mockups, the 3D garden, the insights, and the decisions still open.
+> **Status:** Draft v0.2, 2026-10-17. v0.2: folds in the PR #43 audit: one demo story (Tomato 1 diagnosed on Oct 11 and recovering; today's live scan finds early blight on its neighbour Tomato 2), the capture tint rule, the wording sources, and 3D claims marked as not yet run. v0.1: the app's design direction: product principles from the research, what Apple owns and what we own, four directions mocked across eight screens (the current F0 baseline and three researched directions), the five borrowed ideas built into the mockups, the 3D garden, the insights, and the decisions still open.
 
 This document sets how PDM looks, moves and speaks, so the build-week slices (F1 to F8 in the frontend roadmap on PR #42) build to one direction instead of improvising one. It sits on top of the [frontend architecture](../frontend/README.md), its [flows](../frontend/flows.md) and the [screens](../frontend/screens.md), which stay the source for what each screen contains. This document decides how it looks.
 
@@ -55,7 +55,7 @@ Expo renders native iOS 26 components, so the chrome is Apple's whatever directi
 | System transitions and gestures | Motion inside content: stage ticks, the box draw, task checks, the 3D garden |
 | Lock Screen and Dynamic Island frames | What a Live Activity says and shows |
 
-- **Tint.** The accent tints the selected tab and one prominent button per screen (Analyse on capture, Done on a sheet). No tint over photos, the camera or the 3D view: glass that adapts to dark content would make a light-mode accent unreadable (philosophies §6, to check on the iPhone).
+- **Tint.** The accent tints the selected tab and one prominent button per screen (Analyse on capture, Done on a sheet). Nothing tinted sits over a photo, the camera preview or the 3D view: glass that adapts to dark content would make a light-mode accent unreadable (philosophies §6, to check on the iPhone). On capture, Analyse sits on the black control area below the preview, so it uses the dark-scheme accent.
 - **Android** gets Material chrome from the same components, with the same content layer.
 - **The web build** has no native chrome: we draw the header and tab bar as opaque `surface` with a hairline edge. The mockups imitate glass on every target only so the directions can be compared; the real web build does not.
 
@@ -91,25 +91,27 @@ Herbarium is the safe second: tasteful and quiet, but green. Seed Packet is the 
 
 ## 5. The demo, screen by screen
 
+**The story.** Tomato 1 was diagnosed with early blight on Oct 11 and is recovering under its plan. One of that plan's steps is a weekly check of Tomato 2, 40 cm away. Today's check is the demo's live scan: it catches early blight on Tomato 2 early. The data behind every screen is the mock fixture in [analytics §6](analytics.md#seeded-data-for-mock-mode).
+
 What each screen does in every direction. The borrowed ideas are credited to their source; the five strongest from [inspiration §13](inspiration.md#13-the-five-strongest-ideas-for-the-demo) are all in the mockups.
 
 | Screen | What it shows | Borrowed from |
 |---|---|---|
-| **Garden home** | Large title, the forecast (as days, or Instrument's line of lows with the 0 °C frost threshold), the frost alert, plants by health, today's tasks. The scan action is a round button beside the tab bar, so it never covers content | Camera first is table stakes ([landscape §5](landscape.md#5-table-stakes)) |
+| **Garden home** | Large title, the forecast (as days, or Instrument's line of lows with the 0 °C frost threshold), the frost alert, plants by health, today's tasks (among them the weekly check of Tomato 2). The scan action is a round button beside the tab bar, so it never covers content | Camera first is table stakes ([landscape §5](landscape.md#5-table-stakes)) |
 | **Capture** | Camera with a framing guide, the LiDAR distance ("32 cm · good distance"), a shot strip, and a **coverage dial** around the shutter that fills one segment per needed shot | Object Capture's coverage ring ([inspiration §7.1](inspiration.md#71-apple-object-capture)) |
 | **Live analysis** | The photo with the box drawn on the spots and the measured size, a **phase line** ("Checking telltale signs · 6 s · Next: weighing the evidence"), the stage list, "Not sure yet" with both candidates, and the **question card with picture answers**: two reference crops as Yes and No | Flighty's phase line ([inspiration §3.1](inspiration.md#31-flighty)); Merlin's picture answers ([inspiration §4.1](inspiration.md#41-merlin-bird-id)) |
 | **Live Activity** | The scan on the Lock Screen and in the Dynamic Island: stage, elapsed time, a nine-segment bar, what comes next. It alerts only for the question and the result | Flighty and Apple's Live Activity rules ([inspiration §3.2](inspiration.md#32-uber-and-the-live-activity-pattern)) |
-| **Diagnosis and plan** | The diagnosis worded from the evidence, what matched (with "measured" on the LiDAR indicator), the risk with its driver, the beneficial larva, the plan as a cited checklist | Agrio's lead-in phrase and Oura's words for every state ([landscape §7](landscape.md#7-ideas-to-borrow)) |
+| **Diagnosis and plan** | The diagnosis worded from the evidence, what matched (with "measured" on the LiDAR indicator), the risk with its driver, the beneficial larva, the plan as a cited checklist | Oura's words for every state ([landscape §7](landscape.md#7-ideas-to-borrow)); the diagnosis itself carries no confidence word (screens §6) |
 | **Plan, step by step** | One step per screen in large type: when, why, how, its source, and a time phrase turned into named tasks ("Adds 5 tasks: Oct 20, 23, 26, 29, Nov 1") | Crouton's step mode ([inspiration §9.2](inspiration.md#92-crouton)) |
-| **3D garden** | The garden built from the map, plants sized by measurement and coloured by health. The **date scrubber** runs from the first scan to today, Tomato 1 turns sick on Oct 11, and one step past today shows Thursday's frost with covers over the tender plants | Windy's and Moonlitt's timeline ([inspiration §5](inspiration.md#5-alerts-forecasts-and-time)); Polycam's measurement labels ([landscape §7](landscape.md#7-ideas-to-borrow)) |
-| **Insights** | Tomato 1's health over time, spot cover 14% → 9% → 5% with range bars and the dates plan steps were done, height with its noise band, humid hours before the diagnosis, the neighbour 40 cm away | [analytics §6](analytics.md#6-the-demos-analytics-moment) |
+| **3D garden** | The garden built from the map, plants sized by measurement and coloured by health. The **date scrubber** runs from the first scan to today, Tomato 1 turns sick on Oct 11, Tomato 2 on Oct 17 after the live scan, and one step past today shows Thursday's frost with covers over the tender plants | Windy's and Moonlitt's timeline ([inspiration §5](inspiration.md#5-alerts-forecasts-and-time)); Polycam's measurement labels ([landscape §7](landscape.md#7-ideas-to-borrow)) |
+| **Insights** | Tomato 1's health over time, spot cover 14% → 9% → 5% with range bars and the dates plan steps were done, height with its noise band, humid hours before the diagnosis, and Tomato 2, 40 cm away, where the same problem was also found today (worded "also found on", never "spread from") | [analytics §6](analytics.md#6-the-demos-analytics-moment) |
 
 **The demo flow** in the mockups ("Play the flow") runs home → capture → live analysis → the answer → diagnosis and plan → a checked step → the 3D garden scrubbed into the forecast → insights. It is about 50 seconds, a quarter of the video.
 
 ## 6. Rules every direction follows
 
 - **Status is a word, a colour and a shape:** healthy ● circle, watch ▲ triangle, sick ◆ diamond, dead □ hollow square, on chips, 3D labels and the legend ([philosophies §8](philosophies.md#8-rules-shared-by-all-three)).
-- **Wording** follows [screens §6](../frontend/screens.md#6-wording-for-uncertain-results): no number on a diagnosis; bands only on findings and measurements; "pattern, not cause" for weather; no extrapolation in charts.
+- **Wording** follows [screens §6](../frontend/screens.md#6-wording-for-uncertain-results): no number on a diagnosis, and bands only on findings and measurements. Charts follow [analytics §2](analytics.md#shared-rules) and [§7](analytics.md#7-privacy-and-wording): no extrapolation, trends only from enough points, and weather shown as a pattern, never a cause.
 - **Contrast** is WCAG 2.2 AA: 4.5:1 for text, 3:1 for marks and control edges. Touch targets are at least 44 pt.
 - **Every motion has a still version.** Reduced motion removes slides, springs, the grow-in and the auto-orbit; the stage state and the region box read in a still frame. The mockups have a Reduced switch to check this.
 - **Haptics** mark real events only: a selection tick per stage, success on a checked task, a tick per scan date on the 3D scrubber. None on the web.
@@ -118,9 +120,10 @@ What each screen does in every direction. The borrowed ideas are credited to the
 ## 7. The 3D garden
 
 - **Data:** only what the garden map stores: bed outlines, plant pins in metres, canopy radius, and each plant's measured height ([architecture §6.8](../architecture/README.md#68-garden-map-lidar)). No mesh, photo or coordinates; the sheet says so. A plant with no measurement is drawn as "not measured", never with an invented height.
-- **Stack:** `@react-three/fiber` 9.8.2 on `expo-gl` ~57.0.2 with `three`, procedural geometry, no GLB files or textures, labels as React Native views projected each frame. It runs in Expo Go and on the web ([garden-3d §6](garden-3d.md#6-recommendation)).
+- **Stack:** `@react-three/fiber` 9.8.2 on `expo-gl` ~57.0.2 with `three`, procedural geometry, no GLB files or textures, labels as React Native views projected each frame. It should run in Expo Go and on the web from one scene; neither has been run on SDK 57 yet ([garden-3d §6](garden-3d.md#6-recommendation)).
 - **Risk:** expo issue #51543: on expo-gl 57.0.2 a WebGL 2 context passes `instanceof WebGLRenderingContext`, and three r163 or later refuses to render. The first task is a one-day spike on the iPhone and a mid-range Android phone with the workaround applied ([garden-3d §1](garden-3d.md#known-issues)).
 - **Accessibility:** a plant list is the screen reader's view of the garden, and the 2D map stays the default and the fallback.
+- **Performance:** the direction specs describe iOS. On Android and slower phones, use Lambert materials and drop shadows ([garden-3d §2](garden-3d.md#2-performance-budget)).
 - **The mockup** uses three.js r128 as a browser global for convenience; the app uses the versions above.
 
 ## 8. Insights

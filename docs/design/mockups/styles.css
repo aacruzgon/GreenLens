@@ -738,3 +738,10 @@ html[data-scheme="dark"] .g3d-top .icon-btn, html[data-scheme="dark"] .g3d-seg {
 .phone.island-live .island { width: 150px; margin-left: -75px; }
 /* A focused control must never scroll the phone frame or a layer, only the viewport. */
 .phone, .layer { overflow: clip; }
+.chart .glyph circle, .chart .glyph path { fill: var(--c-surface); }
+/* The lasso keeps a dark halo so it reads at 3:1 on a mid-green leaf. */
+.phone[data-region="lasso"] .region rect { filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85)); }
+@keyframes modal-out { from { transform: none; } to { transform: translateY(100%); } }
+@keyframes modal-back { from { transform: scale(0.94); filter: brightness(0.7); border-radius: 40px; } to { transform: none; } }
+.layer.modal-out { animation: modal-out var(--m-push-dur) var(--m-push-ease) both; z-index: 2; }
+.layer.modal-back { animation: modal-back var(--m-push-dur) var(--m-push-ease) both; }

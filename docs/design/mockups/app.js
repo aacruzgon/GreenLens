@@ -147,7 +147,9 @@
     '<svg viewBox="0 0 27 12"><rect x=".5" y=".5" width="22" height="11" rx="3" fill="none" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="17" height="8" rx="1.6"/><rect x="24" y="4" width="2" height="4" rx="1" opacity=".4"/></svg></span>';
 
   let flowToken = 0;
-  const live3d = [];
+  const phones = [];
+  // The screens a deep screen sits on, so Back and Close lead where they would in the app.
+  const PARENTS = { live: ["home"], result: ["home"], step: ["home", "result"], garden3d: ["home"], insights: ["home", "garden3d"], capture: ["home"] };
 
   function buildPhone(dir, screenId, opts) {
     opts = opts || {};
@@ -196,23 +198,21 @@
       }
       if (id === "garden3d") {
         const stage = $("[data-g3d]", layer);
-        const h = window.PDMGarden3D.mount(stage, layer, { dir, scheme: state.scheme, reduced: state.motion === "reduce" });
-        live3d.push(h);
-        return h;
+        return window.PDMGarden3D.mount(stage, layer, { dir, scheme: state.scheme, reduced: state.motion === "reduce" });
       }
       return null;
     }
     function show(id, kind) {
       const old = P.layer, oldCtl = P.ctl;
       const layer = makeLayer(id);
-      if (kind === "pop" && old) phone.insertBefore(layer, old); else phone.insertBefore(layer, $(".island", phone));
+      if ((kind === "pop" || kind === "dismiss") && old) phone.insertBefore(layer, old); else phone.insertBefore(layer, $(".island", phone));
       P.layer = layer;
       phone.dataset.screen = id;
       phone.classList.toggle("on-dark", onDark(id));
       caption(id);
       P.ctl = initLayer(layer);
       if (old && kind) {
-        const pairs = { push: ["push-in", "push-out"], modal: ["modal-in", "modal-under"], pop: ["pop-in", "pop-out"] }[kind];
+        const pairs = { push: ["push-in", "push-out"], modal: ["modal-in", "modal-under"], pop: ["pop-in", "pop-out"], dismiss: ["modal-back", "modal-out"] }[kind];
         layer.classList.add(pairs[0]);
         old.classList.add(pairs[1]);
         const dur = parseFloat(getComputedStyle(phone).getPropertyValue("--m-push-dur")) || 350;
@@ -222,12 +222,14 @@
         if (oldCtl && oldCtl.dispose) oldCtl.dispose();
       }
     }
-    P.navigate = (id, kind) => { P.stack.push(id); show(id, kind); };
+    // Each stack entry remembers how it was presented, so a modal is dismissed, not popped.
+    P.navigate = (id, kind) => { P.stack.push({ id, kind }); show(id, kind); };
     P.back = () => {
-      if (P.stack.length > 1) P.stack.pop(); else P.stack = ["home"];
-      show(P.stack[P.stack.length - 1], "pop");
+      const top = P.stack.length > 1 ? P.stack.pop() : { kind: "push" };
+      if (!P.stack.length) P.stack = [{ id: "home" }];
+      show(P.stack[P.stack.length - 1].id, top.kind === "modal" ? "dismiss" : "pop");
     };
-    P.reset = (id, kind) => { P.stack = [id]; show(id, kind); };
+    P.reset = (id, kind) => { P.stack = [{ id }]; show(id, kind); };
 
     phone.addEventListener("click", (e) => {
       const a = e.target.closest("[data-act]");
@@ -251,8 +253,9 @@
       }
     });
 
-    P.stack = [screenId];
+    P.stack = (PARENTS[screenId] || []).map((id) => ({ id })).concat([{ id: screenId, kind: screenId === "capture" ? "modal" : "push" }]);
     show(screenId, null);
+    phones.push(P);
     return P;
   }
 
@@ -319,10 +322,10 @@
       why: "New spots on the upper leaves would mean it is still spreading.", tasks: ["Oct 20", "Oct 23", "Oct 26", "Oct 29", "Nov 1"] },
     { title: "After the next rain, remove splashed leaves", when: "When it next rains", cat: "Cultural", icon: "i-rain",
       why: "Rain splashes spores from the soil onto the low leaves.", trigger: "A task appears when the forecast shows rain." },
-    { title: "Apply a sulfur fungicide", when: "By Oct 22", cat: "Chemical", icon: "i-flask",
+    { title: "Apply a fungicide registered for early blight", when: "By Oct 22", cat: "Chemical", icon: "i-flask",
       why: "It protects leaves that aren't infected yet. It doesn't cure spots already there.", safety: "Use only a product registered for this use where you live, and follow its label exactly.", cite: "2", src: "Cornell Vegetable MD Online, Early blight" },
-    { title: "Check Tomato 2's lower leaves", when: "Today", cat: "Monitoring", icon: "i-pin",
-      why: "Tomato 2 is 40 cm away. Look for spots with rings on its lowest leaves." },
+    { title: "Tie up the lowest branches", when: "Today", cat: "Cultural", icon: "i-pin",
+      why: "Tomato 2 is 40 cm from Tomato 1, which has early blight. More air between them dries the leaves faster.", how: "Lift the branches off the soil and tie them to the stake." },
   ];
 
   function stepController(P, layer) {
@@ -368,9 +371,9 @@
   }
 
   const FLOW = [
-    ["Garden home", "Weather, the frost alert and every plant's health at a glance; tap Scan a plant."],
+    ["Garden home", "Weather, the frost alert and every plant's health. Today's tasks include the weekly check of Tomato 2, from Tomato 1's plan."],
     ["Capture", "The LiDAR distance hint while framing; each shot uploads as it is taken."],
-    ["Live analysis", "Each stage ticks, the box is drawn on the spots, and a question appears when the evidence is split."],
+    ["Live analysis", "Tomato 2's scan: each stage ticks, the box is drawn on the spots, and when the evidence is split between two problems, one question settles it."],
     ["Diagnosis and plan", "Worded from the evidence, with what matched, the risk, the beneficial larva and a cited checklist."],
     ["3D garden", "Built from the map: beds and plants sized by their measurements, coloured by health. Scrub back in time and watch Tomato 1 turn sick on Oct 11, then on into Thursday\'s frost forecast, with covers over the tender plants."],
     ["Insights", "Spots cover less of the leaves at each check since the infected leaves were removed; height with its noise band; the humid days before."],
@@ -402,7 +405,7 @@
     async function scrollTo(sel) {
       const vp = $(".viewport", P.layer), el = $(sel, P.layer);
       if (!el) return;
-      vp.scrollTo({ top: el.getBoundingClientRect().top - vp.getBoundingClientRect().top + vp.scrollTop - 110, behavior: "smooth" });
+      vp.scrollTo({ top: el.getBoundingClientRect().top - vp.getBoundingClientRect().top + vp.scrollTop - 110, behavior: state.motion === "reduce" ? "auto" : "smooth" });
       await wait(1100);
     }
     async function until(fn) { while (!fn()) { if (!alive()) throw 0; await wait(120); } }
@@ -427,7 +430,7 @@
 
   function render() {
     flowToken++;
-    live3d.splice(0).forEach((h) => h.dispose && h.dispose());
+    phones.splice(0).forEach((P) => { if (P.ctl && P.ctl.dispose) P.ctl.dispose(); P.ctl = null; });
     const grid = $("#grid");
     grid.innerHTML = "";
     const dir = DIRS.find((d) => d.id === state.dir);

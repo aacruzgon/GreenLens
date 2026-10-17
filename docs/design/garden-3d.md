@@ -1,6 +1,6 @@
 # PDM 3D Garden: Rendering Notes
 
-> **Status:** Draft v0.1, 2026-10-17. v0.1: how to render the stylised 3D garden on iOS, Android and web in Expo SDK 57 (react-three-fiber on expo-gl), the on-device ARKit mesh view, labels, interaction and accessibility, with one open expo-gl bug to patch.
+> **Status:** Draft v0.2, 2026-10-17. v0.2: folds in the PR #43 audit: fiber's optional peers, and status shapes and words as in design §6. v0.1: how to render the stylised 3D garden on iOS, Android and web in Expo SDK 57 (react-three-fiber on expo-gl), the on-device ARKit mesh view, labels, interaction and accessibility, with one open expo-gl bug to patch.
 
 This note covers how the app can draw the 3D garden view and the optional on-device LiDAR mesh view. It is a companion to [`design.md`](design.md) (same folder), [frontend README](../frontend/README.md) §13 and [architecture 6.8](../architecture/README.md#68-garden-map-lidar). The server holds only bed outlines, pin positions and canopy radii, so the stylised scene is built from that data on every platform. The ARKit mesh never leaves the phone.
 
@@ -24,7 +24,7 @@ Marks: ✓ means read in a primary source (named in the line). *unverified* mean
 |---|---|---|---|
 | `expo` | 57.0.30 | bundles `expo-gl ~57.0.2`, `react-native 0.86.3`, `react 19.2.3` | ✓ `bundledNativeModules.json` on branch `sdk-57` |
 | `expo-gl` | 57.0.2 for SDK 57 (npm `latest` is 58.0.3, for SDK 58) | none that matter | ✓ npm registry |
-| `@react-three/fiber` | 9.8.2 | `react >=19 <19.4`, `three >=0.156`, `expo-gl >=11`, `react-native >=0.78`, `expo-asset`, `expo-file-system` | ✓ npm `peerDependencies` |
+| `@react-three/fiber` | 9.8.2 | `react >=19 <19.4`, `three >=0.156`; optional: `expo-gl >=11`, `react-native >=0.78`, `expo >=43`, `expo-asset >=8.4`, `expo-file-system >=11`, `react-dom >=19 <19.4` | ✓ npm `peerDependencies` and `peerDependenciesMeta` |
 | `three` | 0.186.1 is latest; the expo-gl bug report used r181 | fiber wants `>=0.156` | ✓ npm; ✓ expo issue #51543 |
 | `@react-three/drei` | 10.7.9 | `react ^19`, `three >=0.159`, `fiber ^9` | ✓ npm |
 | `expo-three` | 8.0.0 | `three ^0.166.0` (older than fiber needs) | ✓ npm |
@@ -140,9 +140,9 @@ Recommendation: ship option 1 first, since it reuses the same `ARView` that the 
 - A GL canvas is one opaque element to VoiceOver and TalkBack. Fiber's native canvas exposes nothing per object. *unverified, but expected.*
 - Provide an equivalent accessible view, not a hidden one:
   - Mark the canvas `accessible={false}` and `importantForAccessibility="no-hide-descendants"` on Android, or give it a single `accessibilityLabel` such as "3D garden view, 10 beds and 40 plants. A list of plants follows."
-  - Next to it, render a plain list of beds and plants (React Native `FlatList`) sorted by bed, then by distance, each row with plant name, status in words ("Tomato 1, needs attention, 45 cm tall"), and `accessibilityRole="button"`. Selecting a row selects the plant (same store as tap-to-select) and moves the camera to it.
+  - Next to it, render a plain list of beds and plants (React Native `FlatList`) sorted by bed, then by distance, each row with plant name, status in words ("Tomato 1, sick, 62 cm tall"), and `accessibilityRole="button"`. Selecting a row selects the plant (same store as tap-to-select) and moves the camera to it.
   - When `isScreenReaderEnabled()` is true (✓ same page, event `'screenReaderChanged'`), show the list by default and the canvas second.
-- Do not carry status by colour alone: add a shape or icon per status (dot, triangle, cross) on labels and in the list, and keep contrast on labels against both light and dark ground colours. See the accessibility notes in `design.md`.
+- Do not carry status by colour alone: add a shape or icon per status (healthy ● circle, watch ▲ triangle, sick ◆ diamond, dead □ hollow square, as in [design §6](design.md#6-rules-every-direction-follows)) on labels and in the list, and keep contrast on labels against both light and dark ground colours. See the accessibility notes in `design.md`.
 - The scrubber (growth over time) is a standard `Slider` with an `accessibilityValue` text such as "12 March, 3 plants measured", and a stepper (previous and next scan date) as an alternative.
 - Provide a text summary line above the canvas ("Garden map version 4, 10 beds, 40 plants, 3 need attention").
 

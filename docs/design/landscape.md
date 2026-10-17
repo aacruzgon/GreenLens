@@ -1,6 +1,6 @@
 # PDM Design Landscape
 
-> **Status:** Draft v0.1, 2026-10-17. v0.1: first review of 12 plant and garden apps and 3 apps from other categories, with the patterns PDM should match, the gaps it can own, ideas to borrow and the looks to avoid.
+> **Status:** Draft v0.2, 2026-10-17. v0.2: folds in the PR #43 audit: the honest-diagnosis gap and the Agrio row no longer suggest confidence words on the diagnosis. v0.1: first review of 12 plant and garden apps and 3 apps from other categories, with the patterns PDM should match, the gaps it can own, ideas to borrow and the looks to avoid.
 
 This document reviews the design of products PDM will be compared with, so the app's look and flows are chosen with the category in view. It covers concrete products only. It is a companion to [design.md](design.md) (PDM's own design) and [philosophies.md](philosophies.md) (design philosophies in general), in the same folder, and to the [screens](../frontend/screens.md).
 
@@ -201,7 +201,7 @@ Every serious app in the category does these. Missing one will look like an omis
 
 The identifiers have solved honesty (Seek's ID meter, iNaturalist's genus fallback, PlantNet's ranked list). The diagnosers have not: PictureThis, Plantum, Blossom and Plantix give one answer with no hedge, and Agrio says "highly confident" without showing when it is not. Planta's Dr. Planta is a chat, so it probably asks questions (*unverified*), but there the chat is the whole diagnosis. None of the reviewed apps asks one targeted question inside a visual result to settle a specific doubt.
 
-PDM's follow-up question ("Do the spots have rings, like a target?") and its wording bands fill this. **In the demo:** let the question appear inside the live analysis, answer it with one tap, and show the diagnosis wording change from "may be" to "likely". Ten seconds that no competitor can show.
+PDM's follow-up question ("Do the spots have rings, like a target?") fills this, with the wording rules of [screens §6](../frontend/screens.md#6-wording-for-uncertain-results). **In the demo:** let the question appear inside the live analysis, answer it with one tap, and show the result change from "Not sure yet: early blight or Septoria leaf spot" to "Early blight" with its matched signs. Ten seconds that no competitor can show.
 
 ### 6.2 Showing the work
 
@@ -228,7 +228,7 @@ Weather apps know the forecast; plant apps know the plant; none joins them. Seed
 | # | Idea | From | Use in PDM |
 |---|---|---|---|
 | 1 | An ID meter whose dots fill as the model gets surer, with a tip when it stalls ("try looking at a flower") | Seek | Stage progress during analysis, and capture guidance when evidence is thin |
-| 2 | Confidence as a lead-in phrase before the name ("We're highly confident that it is:") | Agrio | The diagnosis headline: "Likely early blight", "Could be one of two things", never a percentage |
+| 2 | Confidence as a lead-in phrase before the name ("We're highly confident that it is:") | Agrio | Only as a contrast: PDM's diagnosis carries no confidence word or number (screens §6). It says "Not sure yet: early blight or Septoria leaf spot" with the question, or names the problem with its matched signs |
 | 3 | A coarser answer stated plainly ("pretty sure this is in the genus…") | iNaturalist | When species or disease is unclear, name what is known (fungal leaf spot) and what would settle it |
 | 4 | A leader line from a spot on the photo to its label and symptom | Plantix | Labels on the detection boxes; tap a label to scroll to that finding |
 | 5 | A loupe that magnifies the lesion | Plantum | Tap a box to zoom the crop in place |

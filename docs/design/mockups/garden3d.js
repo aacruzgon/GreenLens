@@ -17,10 +17,11 @@
       grow: [0.516, 0.661, 0.806, 0.935, 1],
       hist: [["healthy", "Looks healthy"], ["healthy", "Looks healthy"], ["healthy", "Looks healthy"], ["sick", "Early blight, after 3 humid days in a row"], ["sick", "Early blight, spots shrinking"]] },
     { id: "tomato2", name: "Tomato 2", kind: "tomato", bed: "east", x: -1.45, z: -0.62, h: 0.7, c: 0.5, tender: true,
-      grow: [0.5, 0.64, 0.78, 0.9, 1], hist: null, status: "healthy", note: "Looks healthy" },
+      grow: [0.5, 0.64, 0.78, 0.9, 1],
+      hist: [["healthy", "Looks healthy"], ["healthy", "Looks healthy"], ["healthy", "Looks healthy"], ["healthy", "Looks healthy"], ["sick", "Early blight, found early today; also on Tomato 1"]] },
     { id: "pepper", name: "Pepper", kind: "pepper", bed: "east", x: -0.3, z: -0.72, h: 0.45, c: 0.38, tender: true,
       grow: [0.6, 0.72, 0.84, 0.95, 1],
-      hist: [["healthy", "Looks healthy"], ["watch", "Aphids"], ["watch", "Ladybug larva eating the aphids"], ["healthy", "Looks healthy"], ["watch", "Yellow lower leaves"]] },
+      hist: [["healthy", "Looks healthy"], ["sick", "Aphids"], ["sick", "Aphids, with a ladybug larva eating them"], ["healthy", "Looks healthy"], ["watch", "Yellow lower leaves"]] },
     { id: "basil", name: "Basil", kind: "basil", pot: true, x: 2.35, z: -0.85, h: 0.3, c: 0.28, tender: true,
       grow: [0.45, 0.6, 0.75, 0.9, 1], hist: null, status: "healthy", note: "Looks healthy" },
     { id: "lettuce", name: "Lettuce", kind: "lettuce", bed: "south", x: 0.25, z: 0.95, h: 0.18, c: 0.32, tender: false,
@@ -301,7 +302,8 @@
       st.className = "status s-" + statusAt(p, dateIdx);
       st.textContent = STATUS_WORD[statusAt(p, dateIdx)];
       q("[data-g-height]").textContent = Math.round(p.h * growAt(p, dateIdx) * 100) + " cm";
-      q("[data-g-canopy]").textContent = Math.round(p.c * Math.min(1, 0.4 + 0.6 * growAt(p, dateIdx)) * 100) + " cm";
+      // Canopy width is only in the fixture for the latest scan; earlier dates say so rather than invent one.
+      q("[data-g-canopy]").textContent = last(dateIdx) === 4 ? Math.round(p.c * 100) + " cm" : "not measured";
       q("[data-g-note]").textContent = noteAt(p, dateIdx);
       q("[data-g-date]").textContent = dateIdx === FORECAST ? "Thu · forecast" : DATES[dateIdx];
     }
@@ -335,7 +337,7 @@
     const easeOutBack = (t) => { const c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
     const t0 = performance.now();
     const v = new T.Vector3(), v2 = new T.Vector3();
-    let raf = 0;
+    let raf = 0, disposed = false;
     function frame(now) {
       raf = requestAnimationFrame(frame);
       const w = stage.clientWidth, h = stage.clientHeight;
@@ -387,6 +389,8 @@
       scrubTo,
       dates: DATES.length,
       dispose() {
+        if (disposed) return;
+        disposed = true;
         cancelAnimationFrame(raf);
         ro.disconnect();
         scene.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });

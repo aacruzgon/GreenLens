@@ -1,6 +1,6 @@
 # PDM Analytics
 
-> **Status:** Draft v0.1, 2026-10-17. v0.1: the in-app insights for a plant, a garden and a farm, built only from data PDM already stores, with what each needs from the backend, the demo moment and its mock data, and the privacy and wording rules.
+> **Status:** Draft v0.2, 2026-10-17. v0.2: folds in the PR #43 audit: bands as in contracts §1, P3's exception to the 14-day trend rule, and a fixture with one diagnosis per plant and today's live scan of Tomato 2. v0.1: the in-app insights for a plant, a garden and a farm, built only from data PDM already stores, with what each needs from the backend, the demo moment and its mock data, and the privacy and wording rules.
 
 This note designs the insights the app shows its users: charts and short statements about their plants and gardens. It is a companion to [`design.md`](design.md) (same folder), [screens](../frontend/screens.md) and the 3D garden notes in [`garden-3d.md`](garden-3d.md). Every insight here uses data the contracts already define. Where an insight needs a new endpoint or field, section 5 names it. Where it would need data PDM doesn't capture, it is in the "later" list, not in the design.
 
@@ -23,7 +23,7 @@ Scans happen when a member takes them, so every series is **irregular**: some pl
 |---|---|---|---|---|---|
 | Scan: `created_at`, `created_by`, `status`, `failure.code` | Scan | Timestamp; creator's display name | When a member scans; at most 30 a day per user | Until its plant or garden is deleted. `created_by` is cleared when the user deletes their account | contracts §3; `scan` |
 | Scan images: `kind`, size, `uploaded_at`, signed thumbnail | Scan | 1 `whole_plant`, up to 2 `leaf_closeup`, 1 each of the other kinds. EXIF stripped, faces blurred | Per scan | With the scan | contracts §3; `scan_image` |
-| Observations: disease classifier labels, organisms (`role`, `count` one, few or many, `length_mm`), damage patterns, soil aspects | Scan (classifier, BioCLIP, VLM) | `confidence` 0–1 and a band: high 0.85, medium 0.65, low 0.4 | Per scan and run | With the scan. A rerun replaces a stage's observations; retracted ones carry `retracted_at` | contracts §7 Observation; `observation` |
+| Observations: disease classifier labels, organisms (`role`, `count` one, few or many, `length_mm`), damage patterns, soil aspects | Scan (classifier, BioCLIP, VLM) | `confidence` 0–1 and a band: high ≥ 0.8, medium ≥ 0.5, low below (contracts §1) | Per scan and run | With the scan. A rerun replaces a stage's observations; retracted ones carry `retracted_at` | contracts §7 Observation; `observation` |
 | Plant height, canopy width | LiDAR, `whole_plant` shot | cm, one value per shot; noise about 2 cm or 5% | Scans from a LiDAR iPhone or iPad only | With the scan. Medium confidence or more enters the growth series | contracts §7 Measurement, Growth |
 | Leaf length, leaf area | LiDAR, leaf close-ups | cm, cm²; median, min, max and `n` over the measured leaves | LiDAR close-ups with a leaf mask | With the scan | contracts §7 Measurement |
 | Spot diameter, spot count, affected area | LiDAR, leaf close-ups | mm (spots under 4 px are counted, not sized; about 0.2 mm per px at 30 cm), count per leaf, % of leaf area including yellowing | As above. Not on the fallback worker, which has no masks | With the scan | contracts §7 Measurement |
@@ -51,7 +51,7 @@ Scans happen when a member takes them, so every series is **irregular**: some pl
 
 These apply to every insight in sections 2 to 4.
 
-- **A trend needs 3 points spanning at least 14 days.** With fewer, show the points and no trend line or trend words. 14 days matches the `growth_stalled` rule (contracts §7, growth).
+- **A trend needs 3 points spanning at least 14 days.** With fewer, show the points and no trend line or trend words. 14 days matches the `growth_stalled` rule (contracts §7, growth). One exception: P3 (spots after treatment) checks every few days, so it needs 3 points and non-overlapping bands instead of 14 days (its own rule below is stricter about noise).
 - **Only medium confidence or more** enters a series, as the growth series already does. Low measurements show on their scan, not on charts.
 - **Show the noise.** Height and canopy width get a band of ±2 cm or ±5%, whichever is larger: the noise the `growth_stalled` rule uses. Leaf quantities get their own `min`–`max` over the measured leaves.
 - **Say "lower" or "higher" only when the bands don't overlap.** Otherwise say "about the same".
@@ -86,7 +86,7 @@ These apply to every insight in sections 2 to 4.
 - **Computation:** one point per scan and quantity, chosen as the growth series chooses: the highest-confidence current measurement of medium or more. Done plan-step tasks are ticks on the date axis.
 - **Chart:** line with `min`–`max` bands, affected area first; spot count and spot size as small multiples beneath. Step ticks labelled by their task title.
 - **Empty and low data:** no close-up measurements: "Take a leaf close-up on a LiDAR device to measure spots." One point: "Measured once: spots cover about 14% of the measured leaves."
-- **Uncertainty rule:** the caption names the leaves: "on the leaves in the close-ups, which may differ between scans". Say "lower" only with 3 points and when the last `max` is below the first `min`.
+- **Uncertainty rule:** the caption names the leaves: "on the leaves in the close-ups, which may differ between scans". Say "lower" only with 3 points and when the last `max` is below the first `min`; this replaces the 14-day span of the shared rules, because treatment is checked every few days.
 
 ### P4. What was done, and what happened next
 
@@ -238,7 +238,7 @@ Not proposed: recording who completed a task. It would enable per-member compari
 
 Two insights, about 20 seconds together:
 
-1. **G1, the garden over time.** Drag the slider from Sep 20 to Oct 17. The plants grow by their measured heights. Tomato 1 turns red on Oct 11. The caption reads "Early blight · in the week before: 3 humid days in a row". A line to Tomato 2 reads "40 cm away · checked Oct 13: looks healthy".
+1. **G1, the garden over time.** Drag the slider from Sep 20 to Oct 17. The plants grow by their measured heights. Tomato 1 turns red on Oct 11. The caption reads "Early blight · in the week before: 3 humid days in a row". One step on, Oct 17: Tomato 2, 40 cm away, turns red too. That is the demo's live scan, prompted by the check task from Tomato 1's plan; its label reads "also found on Tomato 2", never "spread from".
 2. **P3 with P4, the recovery.** Tap Tomato 1. The affected-area chart drops 14% → 9% → 5%, with bands, under the step lanes: leaves removed Oct 11, mulched Oct 12, checks Oct 14 and Oct 17. The caption: "After the infected leaves were removed, spots covered less of the measured leaves at each check."
 
 ### Seeded data for mock mode
@@ -247,15 +247,15 @@ The mock fixture store (frontend §15) needs these, using the mockup's garden. D
 
 | Fixture | Values |
 |---|---|
-| Garden and map | "Backyard", 2 beds (east, south) and a pot; 6 pinned plants as in the mockup: Tomato 1, Tomato 2, Pepper, Basil, Lettuce, Kale |
-| Scans | One per plant on Sep 20, Sep 27, Oct 4, Oct 11 and Oct 17, plus Tomato 1 on Oct 14. All LiDAR |
+| Garden and map | "Back garden", 2 beds (east, south) and a pot; 6 pinned plants as in the mockup: Tomato 1, Tomato 2, Pepper, Basil, Lettuce, Kale |
+| Scans | One per plant on Sep 20, Sep 27, Oct 4, Oct 11 and Oct 17, plus Tomato 1 on Oct 14 and Tomato 2 on Oct 13. Tomato 2's Oct 17 scan is the one the demo takes live. All LiDAR |
 | Heights and widths | Medium or high confidence. Tomato 1: 32, 41, 50, 58, 62 cm tall; 48 cm wide at the end. Others scaled from the mockup's `grow` arrays |
 | Tomato 1 diagnoses | Healthy Sep 20 to Oct 4; Oct 11 confirmed early blight, `weather_fit: favourable`, risk `fungal_spread` medium with the driver "3 humid days in a row" |
 | Weather snapshots | Oct 11: `hours_rh_over_90` 46, `longest_humid_run_days` 3. Earlier scans: 5 to 12 hours, 0 days |
 | Tomato 1 affected area | Oct 11: 14% (9–21, n 3); Oct 14: 9% (6–12, n 3); Oct 17: 5% (3–7, n 3). Spot counts fall the same way |
-| Plan and tasks | Plan v1 on Oct 11: remove leaves (done Oct 11), mulch by Oct 13 (done Oct 12), check every 3 days (done Oct 14 and Oct 17), a monitoring step on Tomato 2 (done Oct 13) |
-| Tomato 2 | Healthy at every scan, including an extra one on Oct 13 |
-| Pepper | Aphids confirmed Sep 27; ladybug larva (beneficial, eats aphids) Oct 4; healthy Oct 11; uncertain Oct 17 ("yellow lower leaves") |
+| Plan and tasks | Plan v1 on Oct 11: remove leaves (done Oct 11), mulch by Oct 13 (done Oct 12), check every 3 days (done Oct 14 and Oct 17), a weekly check of Tomato 2's lower leaves (done Oct 13, due Oct 17, which leads to the live scan) |
+| Tomato 2 | Healthy at every scan to Oct 13. Oct 17 (the live scan): uncertain between early blight and Septoria leaf spot until the rings question, then confirmed early blight; risk `fungal_spread` high, with the drivers "4 humid days in the forecast" and "crowded: 40 cm from Tomato 1" (the spacing rule of architecture §6.8). A ladybug larva (beneficial) on the same leaves |
+| Pepper | Aphids confirmed Sep 27 (status sick); aphids with a ladybug larva eating them Oct 4 (sick); healthy Oct 11; uncertain Oct 17, "yellow lower leaves" (watch). A confirmed problem is sick and an uncertain result is watch, as in P1 |
 | Alert | Frost on Oct 16: a `forecast_alert` task done Oct 15 |
 
 The mockup's `status` and `note` fields map to these fixtures; its `grow` fractions are replaced by the series.
