@@ -1,8 +1,8 @@
 # PDM Backend: `agent` crate
 
-> **Status:** Draft v0.2, 2026-10-16. v0.2: one `embedder` in `AgentDeps`, called with `EmbedMode::Query` for the user's message and searches and `EmbedMode::Document` for the memories it stores (`document_embedder` is gone). v0.1: the agent core (the chat turn and its stream, nineteen tools, the dose check, plan validation, the router and safety gate, the plan writer, the context builder, memory extraction and the Anthropic and classifier adapters), compiled on Rust 1.99.1 with 60 unit tests.
+> **Status:** Draft v0.3, 2026-10-16. v0.3: only the three tools that propose changes are `strict` (`ToolSpec::strict`), because all nineteen made a grammar the API refused as too large in the first live call; the Anthropic adapter maps `model_context_window_exceeded` to `MaxTokens` and ends a stream cut off before its stop reason with `Unavailable`; 62 unit tests and three ignored live tests (`tests/live_anthropic.rs`). v0.2: one `embedder` in `AgentDeps`, called with `EmbedMode::Query` for the user's message and searches and `EmbedMode::Document` for the memories it stores (`document_embedder` is gone). v0.1: the agent core (the chat turn and its stream, nineteen tools, the dose check, plan validation, the router and safety gate, the plan writer, the context builder, memory extraction and the Anthropic and classifier adapters), compiled on Rust 1.99.1 with 60 unit tests.
 
-Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate uses and implements. It implements [architecture 7](../architecture/README.md#7-chat-and-agent-core), [8.2](../architecture/README.md#82-chat-turn) and the safety rules of [architecture 11](../architecture/README.md#11-security-privacy-and-safety), over the shapes of [contracts 7](../architecture/contracts.md#7-pipeline-records) and [contracts 8](../architecture/contracts.md#8-chat-and-memory). Every listing below is copied from the compiled source of `crates/agent`: `cargo check --workspace`, `cargo clippy -p agent --all-targets` (no warnings in `agent`) and `cargo test -p agent` (60 tests) pass.
+Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate uses and implements. It implements [architecture 7](../architecture/README.md#7-chat-and-agent-core), [8.2](../architecture/README.md#82-chat-turn) and the safety rules of [architecture 11](../architecture/README.md#11-security-privacy-and-safety), over the shapes of [contracts 7](../architecture/contracts.md#7-pipeline-records) and [contracts 8](../architecture/contracts.md#8-chat-and-memory). Every listing below is copied from the compiled source of `crates/agent`: `cargo check --workspace`, `cargo clippy -p agent --all-targets` (no warnings in `agent`) and `cargo test -p agent` (62 tests) pass.
 
 ## Contents
 
@@ -91,6 +91,7 @@ tracing.workspace = true
 [dev-dependencies]
 domain = { workspace = true, features = ["mock", "test-util"] }
 tokio = { workspace = true, features = ["test-util"] }
+wiremock.workspace = true
 ```
 
 | Crate | Why |
@@ -1004,7 +1005,7 @@ impl AnthropicChat {
                 name: Cow::Borrowed(&t.name),
                 description: Cow::Borrowed(&t.description),
                 input_schema: sanitize_schema(&t.parameters).schema,
-                strict: true,
+                strict: t.strict,
                 cache_control: None,
             })
             .collect();
@@ -1051,12 +1052,19 @@ impl ChatModel for AnthropicChat {
                 .map_err(|e| e.into_model_error(label))?;
             drop(api_request);
             let mut acc = MessageAccumulator::default();
+            let mut stopped = false;
             while let Some(event) = events.next().await {
                 let event = event.map_err(|e| e.into_model_error(label))?;
                 let output = acc.apply(event).map_err(|e| e.into_model_error(label))?;
+                stopped |= matches!(output, Some(Output::Stop(_)));
                 if let Some(c) = output.and_then(chunk) {
                     yield c;
                 }
+            }
+            // A connection closed cleanly mid-answer ends the byte stream without an error;
+            // without a stop reason the answer is incomplete, not finished.
+            if !stopped {
+                Err(api::AnthropicError::Truncated.into_model_error(label))?;
             }
         }
         .boxed()
@@ -1091,11 +1099,13 @@ How it follows the Messages API (research notes, section 4; the `claude-api` ski
 | Rule | Here |
 |---|---|
 | Thinking can't be disabled on Opus 5.5; `budget_tokens` is a 400 | `thinking` is never sent (adaptive by default); depth is `output_config.effort` per purpose: chat `medium`, plan writer `high`, cheap calls `low` |
-| Forced `tool_choice` (`any`, `tool`) is a 400 on Opus 5.5 | Never sent; tools are `strict: true` and the plan writer uses `output_config.format` |
-| Structured-output schemas reject `minimum`, `maxLength`, `maxItems` … and need `additionalProperties: false` | Every tool schema and response schema goes through `integrations::anthropic::sanitize_schema` |
+| Forced `tool_choice` (`any`, `tool`) is a 400 on Opus 5.5 | Never sent; the plan writer uses `output_config.format` |
+| Strict tools share one compiled grammar per request; nineteen were refused live ("The compiled grammar is too large", 2026-10-16) | Only `ToolKind::Write` tools set `ToolSpec::strict` (`create_task`, `complete_task`, `revise_plan`); the others' arguments are parsed into their typed structs and a bad call is refused with the reason |
+| Structured-output schemas reject `minimum`, `maxLength`, `maxItems`, `oneOf` … and need `additionalProperties: false` | Every tool schema and response schema goes through `integrations::anthropic::sanitize_schema` |
 | Thinking blocks of the current tool loop must be replayed unchanged | `ChatChunk::Reasoning(ReasoningBlock)` carries each complete block; the turn replays it in place ([section 13](#13-the-chat-turn)) |
 | Tool results for parallel calls go in one user message; `is_error` marks a failed call | Domain `ChatRole::Tool` messages map to one user message; `ContentPart::ToolResult.is_error` maps to `is_error` |
 | `stop_reason: "refusal"` arrives with HTTP 200 | `StopReason::Refusal`; the turn ends with a fixed sentence and runs no tool of that call |
+| A clean close mid-answer ends the byte stream without an error | A stream without a stop reason ends with `ModelError::Unavailable`, so the turn ends with an `error` event instead of storing a cut-off answer as complete |
 | Prompt caching: tools render before the system prompt | One `cache_control` breakpoint on the system block caches both; chat adds top-level automatic caching for the growing tool loop |
 
 `stream<'a>` builds a `MessagesRequest<'a>` that borrows the domain request (text, tool schemas, image bytes as `Cow::Borrowed`), lets the client serialise it, and drops it; the client's `MessageStream` is `'static`, so the only borrows the returned `BoxStream<'a, …>` holds are the two the signature names. The client's `MessageAccumulator` assembles tool-call JSON and thinking blocks; each `Output` maps to one `ChatChunk`.
@@ -2652,7 +2662,7 @@ pub enum MemoryError {
 
 ## 17. Testing
 
-60 unit tests, run with `cargo test -p agent` (or `cargo nextest run -p agent`):
+62 unit tests, run with `cargo test -p agent` (or `cargo nextest run -p agent`):
 
 | Module | Tests | What |
 |---|---|---|
@@ -2662,10 +2672,10 @@ pub enum MemoryError {
 | `safety::plan` | 9 | Every row of the validation table |
 | `safety::routes` | 5 | Calibration, the safety tie-break, the off-topic margin, poisoning whatever the scores (and three non-poisoning sentences), no scores |
 | `prompt` | 2 | A body can't close its `<data>` element; every system prompt passes its own dose check |
-| `model::anthropic` | 2 | The request body: sorted strict tools, stripped keywords, no `tool_choice` or `thinking`, effort, the reasoning block replayed, `tool_result` with `is_error` and an image after it, the cache breakpoint |
+| `model::anthropic` | 3 | A stream cut off before its stop reason ends in an error (`wiremock`). The request body: sorted tools, `strict` only where the spec says, stripped keywords, no `tool_choice` or `thinking`, effort, the reasoning block replayed, `tool_result` with `is_error` and an image after it, the cache breakpoint |
 | `model::classifier` | 3 | Parsing and clamping scores, the strict schema, a refusal routed as `safety_sensitive` |
 | `plan_writer` | 6 | Private memories refused; one call when clean; exactly one validation round-trip, append-only; one parse retry; a refusal; the prompt's data blocks |
-| `tools` | 6 | Nineteen tools, sorted, filtered by role; schemas from the argument types; `apply_preview`; crops |
+| `tools` | 7 | Nineteen tools, sorted, filtered by role; only the three write tools strict; schemas from the argument types; `apply_preview`; crops |
 | `turn` | 10 | A dosed sentence replaced before streaming; the tool loop with the reasoning block replayed unchanged; a dose in tool arguments refused before the tool runs; a write tool unknown to a reviewer; the budget; validation; a disconnect stored as interrupted; poison control with no model call; a model failure as an `error` event |
 | `memory` | 2 | The summary trigger; the strict extraction schema |
 

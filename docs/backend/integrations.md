@@ -1,8 +1,8 @@
 # PDM Backend: `integrations` crate
 
-> **Status:** Draft v0.3.3, 2026-10-16. v0.3.3: the Clerk tests generate their RSA key pair at run time, so no key file is committed, and the Svix tests use a made-up secret. v0.3.2: section 4 says the worker builds its client with a 600 s read timeout, not the 60 s default, because its VLM and hosted LLM calls aren't streamed, and their 240 s and 300 s deadlines end a slow call; the skills table became a plain list of the extra dependencies. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
+> **Status:** Draft v0.4, 2026-10-16. v0.4: checked against Anthropic's documentation and the first live calls: the sanitiser turns `oneOf` into `enum` or `anyOf` (refused live), turns a nullable enum into one `enum` holding `null` so it isn't a union-typed parameter, and drops `format`s the API doesn't list; token counts that are `null` read as 0 and a missing `usage` defaults; `StopReason::ModelContextWindowExceeded`; 64 tests. v0.3.3: the Clerk tests generate their RSA key pair at run time, so no key file is committed, and the Svix tests use a made-up secret. v0.3.2: section 4 says the worker builds its client with a 600 s read timeout, not the 60 s default, because its VLM and hosted LLM calls aren't streamed, and their 240 s and 300 s deadlines end a slow call; the skills table became a plain list of the extra dependencies. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
 
-Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate implements. Every listing below is copied from the compiled source of `crates/integrations`. `cargo check`, `cargo clippy -p integrations --all-targets` and `cargo test -p integrations` all pass: 58 tests, against `wiremock` servers and the live responses recorded on 2026-10-15.
+Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate implements. Every listing below is copied from the compiled source of `crates/integrations`. `cargo check`, `cargo clippy -p integrations --all-targets` and `cargo test -p integrations` all pass: 64 tests, against `wiremock` servers and the live responses recorded on 2026-10-15.
 
 ## Contents
 
@@ -130,7 +130,7 @@ crates/integrations/
    │  ├─ request.rs            MessagesRequest<'a> and its borrowed blocks; Base64<'a>
    │  ├─ response.rs           Message, ResponseBlock, StopReason, Usage (owned)
    │  ├─ stream.rs             StreamEvent, MessageStream ('static), MessageAccumulator, Output
-   │  ├─ schema.rs             sanitize_schema: strips keywords structured output rejects
+   │  ├─ schema.rs             sanitize_schema: strips or rewrites what structured output rejects
    │  ├─ error.rs              AnthropicError, retry rules, → ModelError
    │  ├─ client.rs             AnthropicConfig, ModelIds, AnthropicClient
    │  └─ tests.rs              wiremock tests
@@ -714,7 +714,8 @@ pub struct Message {
     /// The refusal category and similar details.
     #[serde(default)]
     pub stop_details: Option<Value>,
-    /// Token counts.
+    /// Token counts. Defaulted: a documented stream example sends `message_start` without it.
+    #[serde(default)]
     pub usage: Usage,
 }
 
@@ -785,34 +786,37 @@ pub enum StopReason {
     /// A safety classifier declined, with HTTP 200; `stop_details.category` says why. The
     /// output may not match the schema.
     Refusal,
+    /// The conversation filled the model's context window.
+    ModelContextWindowExceeded,
     /// A reason added after this client was written.
     #[serde(other)]
     Other,
 }
 
-/// Token counts. In a stream, `message_start` carries the input counts and a placeholder
+/// Token counts. The API reference types the cache counts as `number or null`; a null reads as
+/// 0 in every field. In a stream, `message_start` carries the input counts and a placeholder
 /// `output_tokens`, and each `message_delta` carries **cumulative** counts: the accumulator
 /// replaces, never adds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 pub struct Usage {
     /// Uncached input tokens.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_zero")]
     pub input_tokens: u32,
     /// Output tokens, thinking included.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_zero")]
     pub output_tokens: u32,
     /// Input tokens written to the cache.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_zero")]
     pub cache_creation_input_tokens: u32,
     /// Input tokens read from the cache.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_zero")]
     pub cache_read_input_tokens: u32,
 }
 ```
 
 `Message::replay(&self) -> Vec<ContentBlock<'_>>` turns an answer into the assistant turn of the next request, borrowing from the message. The elided lifetime ties the blocks to `self`, so the borrow checker requires the message to outlive the next request, and no text or signature is copied. `ToolUse<'m>` is a borrowed view of one tool call, where `'m` is the message it points into.
 
-Unknown block types (`server_tool_use`, new ones) decode as `ResponseBlock::Unknown`. Unknown stop reasons decode as `StopReason::Other`, so a new API value never fails a call. `StopReason::Refusal` arrives with HTTP 200: the fallback adapter treats it as invalid output, and `agent` ends the turn with its refusal message.
+Unknown block types (`server_tool_use`, new ones) decode as `ResponseBlock::Unknown`. Unknown stop reasons decode as `StopReason::Other`, so a new API value never fails a call; `model_context_window_exceeded` has its own variant and callers treat it like `max_tokens`. The API reference types every cache count, and `input_tokens` in `message_delta`, as `number or null`, so a `null` reads as 0; `usage` itself defaults, because a documented stream example sends `message_start` without it. `StopReason::Refusal` arrives with HTTP 200: the fallback adapter treats it as invalid output, and `agent` ends the turn with its refusal message.
 
 ### Streaming
 
@@ -1304,7 +1308,7 @@ pub enum AnthropicError {
         #[source]
         source: BoxError,
     },
-    /// The stream ended before `message_start`.
+    /// The stream ended before `message_start`, or before a stop reason.
     #[error("Anthropic stream ended early")]
     Truncated,
     /// The request couldn't be serialised (a non-string map key in a schema).
@@ -1316,6 +1320,8 @@ pub enum AnthropicError {
 ### Structured output and the schema sanitiser
 
 `output_config.format = {type: "json_schema", schema}` makes the reply one text block holding JSON. The API compiles the schema to a grammar and **rejects with a 400** the keywords it can't enforce. [Contracts 6](../architecture/contracts.md#after-decoding) names `maxLength`, `maxItems`, `minimum` and `maximum`. Anthropic's documentation (research notes) also excludes `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf` and `minItems` above 1, and every object needs `additionalProperties: false`. The contracts' VLM schemas use these keywords because xgrammar enforces them on vLLM, so the fallback worker and the plan writer sanitise first. Afterwards they enforce the stripped limits themselves (truncate strings and arrays, clamp numbers and boxes) from the returned list.
+
+The first live calls (2026-10-16) added two rules. `oneOf` is refused (`Schema type 'oneOf' is not supported`), and `schemars` writes it for every enum with documented variants and every tagged union, so the sanitiser rewrites it: a `oneOf` of constants becomes an `enum`, with each variant's description appended to the parent's as a `- "value": …` line, and any other `oneOf` becomes an `anyOf`. The official Python SDK's `transform_schema` maps every `oneOf` to `anyOf`; the `enum` rewrite is this crate's own and keeps those parameters out of the union limit below. A `oneOf` beside an existing `enum` keeps the `enum` and becomes an `anyOf`, so both still apply, and only scalar constants become an `enum`, because the API refuses objects and arrays in one. A `format` survives only on a string and only if the API lists it (`SUPPORTED_FORMATS`), so `schemars`'s `uint32` and `double` are dropped and returned in `stripped`. Strict tools also share one grammar per request with its own size limit: the docs give 20 strict tools, 24 optional parameters and 16 union-typed parameters, and nineteen strict tools were refused as too large, so `agent` marks only its write tools strict ([agent 9](agent.md#9-model-adapters)). A nullable enum, `anyOf: [{enum: […]}, {type: "null"}]`, becomes one `enum` with `null` among its values: the same answers without a union, so the fallback's per-question `image` no longer counts toward the 16 (refused live at 20). The grammar's overall size has a limit of its own, which the worker meets by splitting a large indicators call ([worker 8](worker.md#8-the-vlm-adapters)).
 
 ```rust
 /// Keywords removed wherever they appear in a schema position.
@@ -1330,6 +1336,20 @@ pub const UNSUPPORTED_KEYWORDS: &[&str] = &[
     "maxItems",
     "minProperties",
     "maxProperties",
+];
+
+/// The string formats the API accepts (Anthropic's structured outputs docs, JSON Schema limitations).
+pub const SUPPORTED_FORMATS: &[&str] = &[
+    "date-time",
+    "time",
+    "date",
+    "duration",
+    "email",
+    "hostname",
+    "uri",
+    "ipv4",
+    "ipv6",
+    "uuid",
 ];
 
 /// One keyword the sanitiser removed, so the caller can enforce it after decoding.
@@ -1362,7 +1382,8 @@ pub fn sanitize_schema(schema: &Value) -> Sanitized<'_> {
     let mut copy = schema.clone();
     let (stripped, closed) = sanitize_in_place(&mut copy);
     Sanitized {
-        schema: if stripped.is_empty() && closed.is_empty() {
+        // Rewrites (`oneOf`) change the schema without stripping anything.
+        schema: if copy == *schema {
             Cow::Borrowed(schema)
         } else {
             Cow::Owned(copy)
@@ -1381,7 +1402,7 @@ pub fn sanitize_in_place(schema: &mut Value) -> (Vec<Stripped>, Vec<String>) {
 }
 ```
 
-`Sanitized<'a>` borrows the input schema when nothing had to change (`Cow::Borrowed`) and owns a cleaned copy otherwise. It plugs straight into `OutputFormat::JsonSchema` and `Tool::input_schema`, which take a `Cow<'a, Value>`. The walk visits only schema positions: the keys of `properties` are names, so a property named `maximum` is kept. The test checks exactly that.
+`Sanitized<'a>` borrows the input schema when nothing had to change (`Cow::Borrowed`) and owns a cleaned copy otherwise; a rewrite alone (`oneOf`) counts as a change. It plugs straight into `OutputFormat::JsonSchema` and `Tool::input_schema`, which take a `Cow<'a, Value>`. The walk visits only schema positions: the keys of `properties` are names, so a property named `maximum` is kept. The test checks exactly that.
 
 ---
 

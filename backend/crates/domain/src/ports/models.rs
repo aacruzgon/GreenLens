@@ -346,6 +346,10 @@ pub struct ToolSpec {
     pub description: String,
     /// JSON Schema of its arguments.
     pub parameters: serde_json::Value,
+    /// Ask the provider to guarantee the arguments match the schema. Each strict tool adds to a
+    /// grammar the provider compiles per request, and nineteen are too many for Anthropic's
+    /// (a 400), so only the tools that propose changes set it.
+    pub strict: bool,
 }
 
 /// One LLM call. Owned, so it can be built once and borrowed by the stream for its whole life.

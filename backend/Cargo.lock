@@ -53,6 +53,7 @@ dependencies = [
  "tokio-stream",
  "tokio-util",
  "tracing",
+ "wiremock",
 ]
 
 [[package]]
@@ -8261,6 +8262,7 @@ dependencies = [
  "bytes",
  "clap",
  "domain",
+ "futures",
  "image",
  "integrations",
  "rand 0.10.3",

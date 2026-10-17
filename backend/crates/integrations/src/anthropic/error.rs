@@ -53,7 +53,7 @@ pub enum AnthropicError {
         #[source]
         source: BoxError,
     },
-    /// The stream ended before `message_start`.
+    /// The stream ended before `message_start`, or before a stop reason.
     #[error("Anthropic stream ended early")]
     Truncated,
     /// The request couldn't be serialised (a non-string map key in a schema).
