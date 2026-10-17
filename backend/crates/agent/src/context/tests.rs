@@ -77,7 +77,7 @@ async fn current_beliefs_are_rendered_before_the_memories() {
     assert!(parts[0].starts_with("<data kind=\"context\">"));
     assert_eq!(
         parts[1],
-        "<data kind=\"beliefs\">\n[{\"key\":\"watering\",\"value\":\"Watered every 2 days.\",\"about_plant\":false}]\n</data>"
+        "<data kind=\"beliefs\">\n[{\"key\":\"watering\",\"value\":\"Watered every 2 days.\",\"about_plant\":false,\"date\":\"2026-10-16\"}]\n</data>"
     );
     assert!(parts[2].starts_with("<data kind=\"memories\">"));
     assert!(parts[2].contains("Watered every 3 days."));

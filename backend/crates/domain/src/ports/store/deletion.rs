@@ -171,11 +171,6 @@ pub trait DeletionRepo: Send + Sync {
     /// Deletions started but not finished (after a restart), to resume.
     async fn unfinished_deletions(&self) -> Result<Vec<DeletionTarget>, StoreError>;
 
-    /// A plant's garden, read even while the plant is being deleted (`garden_of` hides it): a
-    /// resumed plant cascade needs it for the plant's scope in Agent Memory. `None` once the
-    /// plant row is gone, which a cascade reaches only after that scope was erased.
-    async fn deleting_plant_garden(&self, plant: PlantId) -> Result<Option<GardenId>, StoreError>;
-
     /// Decides each garden's fate for `DELETE /me` and the `user.deleted` webhook.
     async fn plan_account_deletion(&self, user: UserId) -> Result<AccountDeletionPlan, StoreError>;
 

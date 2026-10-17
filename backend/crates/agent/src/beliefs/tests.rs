@@ -1,24 +1,22 @@
-//! The mirror over mocked ports: what reaches Agent Memory, in what order, and what happens
+//! The sweep over mocked ports: what reaches Agent Memory, in what order, and what happens
 //! when it fails.
 
 use std::sync::{Arc, Mutex};
 
 use domain::{
-    authz::{Editor, check_membership_of},
-    chat::{MemoryKind, MemoryTopic},
-    ports::{BELIEFS_PROVIDER, MockAccessRepo, MockBeliefStore, MockMemoryStore, ProviderError},
+    chat::{Memory, MemoryKind, MemorySource, MemoryTopic},
+    id::MemoryId,
+    ports::{BELIEFS_PROVIDER, MockBeliefStore, MockMemoryStore, ProviderError},
     testing::FixedClock,
-    wire::Role,
+    wire::Timestamp,
 };
 
 use super::*;
 use crate::testing::SlowBeliefs;
 
-const USER: &str = "01JAX3K9T6R2B8V0QZ4M7D1E50";
 const GARDEN: &str = "01JAX3K9T6R2B8V0QZ4M7D1E51";
 const PLANT: &str = "01JAX3K9T6R2B8V0QZ4M7D1E52";
-const MEMORY: &str = "01JAX3K9T6R2B8V0QZ4M7D1E53";
-const OTHER_GARDEN: &str = "01JAX3K9T6R2B8V0QZ4M7D1E54";
+const OTHER_PLANT: &str = "01JAX3K9T6R2B8V0QZ4M7D1E55";
 
 fn now() -> Timestamp {
     "2026-10-17T15:00:00Z".parse().unwrap()
@@ -32,60 +30,34 @@ fn plant() -> PlantId {
     PLANT.parse().unwrap()
 }
 
-fn id() -> MemoryId {
-    MEMORY.parse().unwrap()
+fn other_plant() -> PlantId {
+    OTHER_PLANT.parse().unwrap()
 }
 
-async fn member<R: domain::authz::MinRole>() -> Membership<R> {
-    let mut access = MockAccessRepo::new();
-    access
-        .expect_role_in()
-        .returning(|_, _| Ok(Some(Role::Owner)));
-    check_membership_of::<R>(&access, USER.parse().unwrap(), garden())
-        .await
-        .unwrap()
+fn on_plant() -> BeliefSubject {
+    BeliefSubject {
+        garden: garden(),
+        plant: Some(plant()),
+    }
 }
 
-fn stored(source: MemorySource, shared: bool, plant: Option<PlantId>) -> Memory {
+fn on_garden() -> BeliefSubject {
+    BeliefSubject {
+        garden: garden(),
+        plant: None,
+    }
+}
+
+fn shared(id: &str, plant: Option<PlantId>) -> Memory {
     Memory {
-        id: id(),
+        id: id.parse().unwrap(),
         garden_id: garden(),
         plant_id: plant,
         kind: MemoryKind::Fact,
         topic: MemoryTopic::Watering,
         text: "Watered every 2 days.".to_owned(),
-        source,
-        shared,
-        created_at: now(),
-    }
-}
-
-fn plant_path() -> String {
-    BeliefSubject {
-        garden: garden(),
-        plant: Some(plant()),
-    }
-    .scope_path()
-}
-
-fn garden_path() -> String {
-    BeliefSubject {
-        garden: garden(),
-        plant: None,
-    }
-    .scope_path()
-}
-
-fn new_memory() -> NewMemory {
-    NewMemory {
-        id: id(),
-        plant: Some(plant()),
-        kind: MemoryKind::Fact,
-        topic: MemoryTopic::Watering,
-        text: "Watered every 2 days.".to_owned(),
-        embedding: Embedding(vec![0.1; 4]),
-        embedding_model: "test-embed".to_owned(),
-        source_msg: None,
+        source: MemorySource::User,
+        shared: true,
         created_at: now(),
     }
 }
@@ -97,26 +69,6 @@ fn down() -> ProviderError {
     }
 }
 
-fn enabled() -> MockBeliefStore {
-    let mut b = MockBeliefStore::new();
-    b.expect_enabled().return_const(true);
-    b
-}
-
-fn disabled() -> MockBeliefStore {
-    let mut b = MockBeliefStore::new();
-    b.expect_enabled().return_const(false);
-    b
-}
-
-fn mirror(inner: MockMemoryStore, beliefs: MockBeliefStore) -> MirroredMemory {
-    MirroredMemory::new(
-        Arc::new(inner),
-        Arc::new(beliefs),
-        Arc::new(FixedClock::at(now())),
-    )
-}
-
 /// Every call, in order, across both mocks.
 type Calls = Arc<Mutex<Vec<String>>>;
 
@@ -124,317 +76,201 @@ fn log(calls: &Calls, call: impl Into<String>) {
     calls.lock().unwrap().push(call.into());
 }
 
-#[tokio::test]
-async fn a_private_chat_memory_is_never_recorded() {
-    let mut inner = MockMemoryStore::new();
-    inner
-        .expect_remember()
-        .returning(|_, _| Ok(stored(MemorySource::Chat, false, Some(plant()))));
-    inner.expect_mark_synced().never();
-    let mut beliefs = enabled();
-    beliefs.expect_record().never();
-    let m = mirror(inner, beliefs)
-        .remember(member::<Viewer>().await, new_memory())
-        .await
-        .unwrap();
-    assert!(!m.shared);
-}
-
-#[tokio::test]
-async fn a_note_is_recorded_then_marked_synced() {
-    let calls = Calls::default();
-    let mut inner = MockMemoryStore::new();
-    inner
-        .expect_add_note()
-        .returning(|_, _| Ok(stored(MemorySource::User, true, Some(plant()))));
-    let c = calls.clone();
-    inner
-        .expect_mark_synced()
-        .withf(|m, at| *m == id() && *at == now())
-        .times(1)
-        .returning(move |_, _| {
-            log(&c, "mark_synced");
-            Ok(())
-        });
-    let mut beliefs = enabled();
-    let c = calls.clone();
-    beliefs
-        .expect_record()
-        .withf(|w| {
-            w.key == "watering"
-                && w.subject.plant == Some(plant())
-                && w.value == "Watered every 2 days."
-        })
-        .times(1)
-        .returning(move |_| {
-            log(&c, "record");
-            Ok(())
-        });
-    mirror(inner, beliefs)
-        .add_note(member::<Editor>().await, new_memory())
-        .await
-        .unwrap();
-    assert_eq!(*calls.lock().unwrap(), ["record", "mark_synced"]);
-}
-
-#[tokio::test]
-async fn a_failed_record_leaves_the_memory_unsynced_and_the_write_succeeds() {
-    let mut inner = MockMemoryStore::new();
-    inner
-        .expect_add_pipeline_memory()
-        .returning(|_, _| Ok(stored(MemorySource::Pipeline, true, Some(plant()))));
-    inner.expect_mark_synced().never();
-    let mut beliefs = enabled();
-    beliefs.expect_record().times(1).returning(|_| Err(down()));
-    let m = mirror(inner, beliefs)
-        .add_pipeline_memory(garden(), new_memory())
-        .await
-        .unwrap();
-    assert_eq!(m.id, id());
-}
-
-#[tokio::test]
-async fn sharing_a_memory_records_it() {
-    let mut inner = MockMemoryStore::new();
-    inner
-        .expect_share()
-        .returning(|_, _| Ok(stored(MemorySource::User, true, None)));
-    inner.expect_mark_synced().times(1).returning(|_, _| Ok(()));
-    let mut beliefs = enabled();
-    beliefs
-        .expect_record()
-        .withf(|w| w.subject.plant.is_none())
-        .times(1)
-        .returning(|_| Ok(()));
-    mirror(inner, beliefs)
-        .share(member::<Editor>().await, id())
-        .await
-        .unwrap();
-}
-
-/// A delete's mocks: `memory` returns `found`; forget, `mark_unsynced` and delete log their
-/// calls.
-fn delete_mocks(
-    found: Memory,
-    forget: Result<(), fn() -> ProviderError>,
-    calls: &Calls,
-) -> (MockMemoryStore, MockBeliefStore) {
-    let mut inner = MockMemoryStore::new();
-    inner
-        .expect_memory()
-        .returning(move |_| Ok(Some(found.clone())));
-    let c = calls.clone();
-    inner.expect_mark_unsynced().returning(move |g, p| {
-        assert_eq!(g, garden());
-        log(
-            &c,
-            format!("mark_unsynced({})", p.map_or("none", |_| "plant")),
-        );
-        Ok(())
-    });
-    let c = calls.clone();
-    inner.expect_delete().returning(move |_, _| {
-        log(&c, "delete");
-        Ok(())
-    });
-    let mut beliefs = enabled();
-    let c = calls.clone();
-    beliefs.expect_forget().returning(move |s| {
-        log(&c, format!("forget({})", s.scope_path()));
-        forget.map_err(|e| e())
-    });
-    (inner, beliefs)
-}
-
-#[tokio::test]
-async fn deleting_a_shared_plant_memory_forgets_then_unsyncs_then_deletes() {
-    let calls = Calls::default();
-    let (inner, beliefs) = delete_mocks(
-        stored(MemorySource::User, true, Some(plant())),
-        Ok(()),
-        &calls,
-    );
-    mirror(inner, beliefs)
-        .delete(member::<Viewer>().await, id())
-        .await
-        .unwrap();
-    assert_eq!(
-        *calls.lock().unwrap(),
-        [
-            format!("forget({})", plant_path()),
-            "delete".to_owned(),
-            "mark_unsynced(plant)".to_owned(),
-        ]
-    );
-}
-
-#[tokio::test]
-async fn deleting_a_garden_memory_unsyncs_the_whole_garden() {
-    let calls = Calls::default();
-    let (inner, beliefs) = delete_mocks(stored(MemorySource::Pipeline, true, None), Ok(()), &calls);
-    mirror(inner, beliefs)
-        .delete(member::<Viewer>().await, id())
-        .await
-        .unwrap();
-    assert_eq!(
-        *calls.lock().unwrap(),
-        [
-            format!("forget({})", garden_path()),
-            "delete".to_owned(),
-            "mark_unsynced(none)".to_owned(),
-        ]
-    );
-}
-
-#[tokio::test]
-async fn a_failed_forget_is_a_503_and_keeps_the_row() {
-    let calls = Calls::default();
-    let (inner, beliefs) = delete_mocks(
-        stored(MemorySource::User, true, Some(plant())),
-        Err(down),
-        &calls,
-    );
-    let err = mirror(inner, beliefs)
-        .delete(member::<Viewer>().await, id())
-        .await
-        .unwrap_err();
-    assert!(matches!(err, StoreError::Unavailable(_)), "{err:?}");
-    assert_eq!(
-        *calls.lock().unwrap(),
-        [format!("forget({})", plant_path())]
-    );
-}
-
-#[tokio::test]
-async fn deleting_a_private_memory_never_forgets() {
-    let calls = Calls::default();
-    let (inner, mut beliefs) = delete_mocks(
-        stored(MemorySource::Chat, false, Some(plant())),
-        Ok(()),
-        &calls,
-    );
-    beliefs.checkpoint();
-    beliefs.expect_enabled().return_const(true);
-    beliefs.expect_forget().never();
-    mirror(inner, beliefs)
-        .delete(member::<Viewer>().await, id())
-        .await
-        .unwrap();
-    assert_eq!(*calls.lock().unwrap(), ["delete"]);
-}
-
-#[tokio::test]
-async fn a_memory_of_another_garden_is_never_forgotten() {
-    let calls = Calls::default();
-    let mut other = stored(MemorySource::User, true, Some(plant()));
-    other.garden_id = OTHER_GARDEN.parse().unwrap();
-    let (inner, mut beliefs) = delete_mocks(other, Ok(()), &calls);
-    beliefs.checkpoint();
-    beliefs.expect_enabled().return_const(true);
-    beliefs.expect_forget().never();
-    mirror(inner, beliefs)
-        .delete(member::<Viewer>().await, id())
-        .await
-        .unwrap();
-    assert_eq!(*calls.lock().unwrap(), ["delete"]);
-}
-
-#[tokio::test]
-async fn disabled_beliefs_are_never_called() {
-    let mut inner = MockMemoryStore::new();
-    inner
-        .expect_add_note()
-        .returning(|_, _| Ok(stored(MemorySource::User, true, Some(plant()))));
-    inner.expect_memory().never();
-    inner.expect_unsynced_shared().never();
-    inner.expect_mark_synced().never();
-    inner.expect_mark_unsynced().never();
-    inner.expect_delete().times(1).returning(|_, _| Ok(()));
-    let mut beliefs = disabled();
-    beliefs.expect_record().never();
-    beliefs.expect_forget().never();
-    beliefs.expect_current().never();
-    beliefs.expect_search().never();
-    let clock = FixedClock::at(now());
-    let m = mirror(inner, beliefs);
-    m.add_note(member::<Editor>().await, new_memory())
-        .await
-        .unwrap();
-    m.delete(member::<Viewer>().await, id()).await.unwrap();
-    assert_eq!(
-        sync_pending(&m, m.beliefs.as_ref(), &clock, 50)
-            .await
-            .unwrap(),
-        0
-    );
-    assert_eq!(
-        current_beliefs(m.beliefs.as_ref(), garden(), None, Duration::from_secs(1)).await,
-        []
-    );
-}
-
-#[tokio::test]
-async fn the_sweep_records_oldest_first_and_stops_at_the_first_failure() {
-    let ids = [
-        "01JAX3K9T6R2B8V0QZ4M7D1E60",
-        "01JAX3K9T6R2B8V0QZ4M7D1E61",
-        "01JAX3K9T6R2B8V0QZ4M7D1E62",
-    ];
-    let pending: Vec<Memory> = ids
-        .iter()
-        .map(|i| Memory {
-            id: i.parse().unwrap(),
-            ..stored(MemorySource::User, true, Some(plant()))
-        })
-        .collect();
-    let mut inner = MockMemoryStore::new();
-    inner
-        .expect_unsynced_shared()
-        .withf(|limit| *limit == 50)
+/// A store that queues `forgets` and holds `pending`, and logs finishes and marks.
+fn store(forgets: Vec<BeliefSubject>, pending: Vec<Memory>, calls: &Calls) -> MockMemoryStore {
+    let mut m = MockMemoryStore::new();
+    m.expect_belief_forgets()
+        .returning(move |_| Ok(forgets.clone()));
+    m.expect_unsynced_shared()
         .returning(move |_| Ok(pending.clone()));
-    let synced = Calls::default();
-    let s = synced.clone();
-    inner.expect_mark_synced().returning(move |m, _| {
-        log(&s, m.to_string());
+    let c = Arc::clone(calls);
+    m.expect_finish_belief_forget().returning(move |s| {
+        log(&c, format!("finish({})", s.scope_path()));
         Ok(())
     });
-    let mut beliefs = enabled();
-    let failing: MemoryId = ids[1].parse().unwrap();
-    beliefs.expect_record().times(2).returning(move |w| {
-        if w.memory == failing {
+    let c = Arc::clone(calls);
+    m.expect_mark_synced().returning(move |id: MemoryId, _| {
+        log(&c, format!("synced({id})"));
+        Ok(())
+    });
+    m
+}
+
+/// An enabled belief store whose forgets fail for `failing_forget` and whose records fail for
+/// `failing_record`, logging every call.
+fn beliefs(
+    failing_forget: Option<BeliefSubject>,
+    failing_record: Option<&'static str>,
+    calls: &Calls,
+) -> MockBeliefStore {
+    let mut b = MockBeliefStore::new();
+    b.expect_enabled().return_const(true);
+    let c = Arc::clone(calls);
+    b.expect_forget().returning(move |s| {
+        log(&c, format!("forget({})", s.scope_path()));
+        if Some(s) == failing_forget {
             Err(down())
         } else {
             Ok(())
         }
     });
-    let err = sync_pending(&inner, &beliefs, &FixedClock::at(now()), 50)
+    let c = Arc::clone(calls);
+    b.expect_record().returning(move |w| {
+        log(&c, format!("record({})", w.memory));
+        if failing_record == Some(w.memory.to_string().as_str()) {
+            Err(down())
+        } else {
+            Ok(())
+        }
+    });
+    b
+}
+
+async fn sweep(store: &MockMemoryStore, beliefs: &MockBeliefStore) -> SweepReport {
+    sync_pending(store, beliefs, &FixedClock::at(now()), 50)
         .await
-        .unwrap_err();
-    assert!(
-        matches!(err, BeliefSyncError::Record { synced: 1, .. }),
-        "{err:?}"
+        .unwrap()
+}
+
+const A: &str = "01JAX3K9T6R2B8V0QZ4M7D1E60";
+const B: &str = "01JAX3K9T6R2B8V0QZ4M7D1E61";
+const C: &str = "01JAX3K9T6R2B8V0QZ4M7D1E62";
+
+#[tokio::test]
+async fn queued_erases_run_before_any_record() {
+    let calls = Calls::default();
+    let store = store(vec![on_plant()], vec![shared(A, Some(plant()))], &calls);
+    let report = sweep(&store, &beliefs(None, None, &calls)).await;
+    assert_eq!(
+        *calls.lock().unwrap(),
+        [
+            format!("forget({})", on_plant().scope_path()),
+            format!("finish({})", on_plant().scope_path()),
+            format!("record({A})"),
+            format!("synced({A})"),
+        ]
     );
-    assert_eq!(*synced.lock().unwrap(), [ids[0]]);
+    assert_eq!(
+        report,
+        SweepReport {
+            forgotten: 1,
+            recorded: 1,
+            failed: 0
+        }
+    );
 }
 
 #[tokio::test]
-async fn the_sweep_counts_what_it_recorded() {
-    let mut inner = MockMemoryStore::new();
-    inner
-        .expect_unsynced_shared()
-        .returning(|_| Ok(vec![stored(MemorySource::User, true, None)]));
-    inner.expect_mark_synced().times(1).returning(|_, _| Ok(()));
-    let mut beliefs = enabled();
-    beliefs.expect_record().times(1).returning(|_| Ok(()));
-    let n = sync_pending(&inner, &beliefs, &FixedClock::at(now()), 50)
-        .await
-        .unwrap();
-    assert_eq!(n, 1);
+async fn a_failed_record_does_not_hold_up_the_rest() {
+    let calls = Calls::default();
+    let pending = vec![
+        shared(A, Some(plant())),
+        shared(B, Some(plant())),
+        shared(C, None),
+    ];
+    let store = store(Vec::new(), pending, &calls);
+    let report = sweep(&store, &beliefs(None, Some(A), &calls)).await;
+    assert_eq!(
+        *calls.lock().unwrap(),
+        [
+            format!("record({A})"),
+            format!("record({B})"),
+            format!("synced({B})"),
+            format!("record({C})"),
+            format!("synced({C})"),
+        ],
+        "A stays unsynced for the next run; B and C go on"
+    );
+    assert_eq!(report.failed, 1);
+    assert_eq!(report.recorded, 2);
+}
+
+#[tokio::test]
+async fn a_failed_erase_stays_queued_and_holds_back_its_subject() {
+    let calls = Calls::default();
+    let pending = vec![
+        shared(A, Some(plant())),
+        shared(B, Some(other_plant())),
+        shared(C, None),
+    ];
+    let store = store(vec![on_plant()], pending, &calls);
+    let report = sweep(&store, &beliefs(Some(on_plant()), None, &calls)).await;
+    assert_eq!(
+        *calls.lock().unwrap(),
+        [
+            format!("forget({})", on_plant().scope_path()),
+            format!("record({B})"),
+            format!("synced({B})"),
+            format!("record({C})"),
+            format!("synced({C})"),
+        ],
+        "no finish for the failed erase, and nothing recorded under its plant"
+    );
+    assert_eq!(report.failed, 1);
+}
+
+#[tokio::test]
+async fn a_failed_garden_erase_holds_back_its_plants_too() {
+    let calls = Calls::default();
+    let pending = vec![shared(A, Some(plant())), shared(B, None)];
+    let store = store(vec![on_garden()], pending, &calls);
+    let report = sweep(&store, &beliefs(Some(on_garden()), None, &calls)).await;
+    assert_eq!(
+        *calls.lock().unwrap(),
+        [format!("forget({})", on_garden().scope_path())]
+    );
+    assert_eq!(
+        report,
+        SweepReport {
+            forgotten: 0,
+            recorded: 0,
+            failed: 1
+        }
+    );
+}
+
+#[tokio::test]
+async fn a_private_memory_is_never_recorded() {
+    let calls = Calls::default();
+    let mut private = shared(A, Some(plant()));
+    private.shared = false;
+    private.source = MemorySource::Chat;
+    let store = store(Vec::new(), vec![private], &calls);
+    let report = sweep(&store, &beliefs(None, None, &calls)).await;
+    assert!(calls.lock().unwrap().is_empty());
+    assert_eq!(report, SweepReport::default());
+}
+
+#[tokio::test]
+async fn with_agent_memory_off_the_queue_is_emptied_and_nothing_is_called() {
+    let calls = Calls::default();
+    let mut store = store(vec![on_plant()], Vec::new(), &calls);
+    store.checkpoint();
+    store
+        .expect_belief_forgets()
+        .returning(|_| Ok(vec![on_plant()]));
+    let c = Arc::clone(&calls);
+    store.expect_finish_belief_forget().returning(move |s| {
+        log(&c, format!("finish({})", s.scope_path()));
+        Ok(())
+    });
+    store.expect_unsynced_shared().never();
+    let mut b = MockBeliefStore::new();
+    b.expect_enabled().return_const(false);
+    b.expect_forget().never();
+    b.expect_record().never();
+    let report = sweep(&store, &b).await;
+    assert_eq!(
+        *calls.lock().unwrap(),
+        [format!("finish({})", on_plant().scope_path())]
+    );
+    assert_eq!(report, SweepReport::default());
 }
 
 #[tokio::test]
 async fn current_beliefs_are_empty_on_error() {
-    let mut beliefs = enabled();
+    let mut beliefs = MockBeliefStore::new();
+    beliefs.expect_enabled().return_const(true);
     beliefs.expect_current().returning(|_, _| Err(down()));
     assert_eq!(
         current_beliefs(&beliefs, garden(), Some(plant()), Duration::from_secs(1)).await,

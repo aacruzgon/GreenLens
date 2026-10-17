@@ -5,9 +5,12 @@
 //! `user`) is also recorded in Agent Memory as one triple: entity `plant_<id>` or `garden_<id>`,
 //! a key from [`belief_key`], and the memory's text as the value. Agent Memory then supersedes the
 //! older value of the same key and keeps the history. A private chat memory never leaves the
-//! database.
+//! database. Only `api`'s belief sweep (`agent::beliefs::sync_pending`) calls `record` and
+//! `forget`, so no request waits on the service and nothing is recorded during an erase.
 //!
-//! Three facts measured against the hosted service on 2026-10-17 shape the port:
+//! Four facts measured against the hosted service on 2026-10-17 shape the port:
+//! - supersession follows `observed_at`, not arrival: a write older than its key's current
+//!   value is dropped, so a retry or a rebuild never brings an older value back;
 //! - entities are matched by **name across the whole context**, so the entity name is our own
 //!   id, never a name a model extracted;
 //! - a read at a scope path returns only facts tagged at that exact path, so a plant read asks

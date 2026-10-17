@@ -1,7 +1,7 @@
 # PDM Data Contracts
 
 > **Status:** Draft v0.10.7, 2026-10-17. Companion to the [architecture document](README.md).
-> **v0.10.7** adds `Memory.topic`, mirrors shared memories into SurrealDB Agent Memory as beliefs, adds `GET /plants/{plant_id}/beliefs` and gives `search_memory` the `MemorySearch` result; deleting a plant or garden also erases its Agent Memory scope (sections 8, 9).
+> **v0.10.7** adds `Memory.topic`, mirrors shared memories into SurrealDB Agent Memory as beliefs, adds `GET /plants/{plant_id}/beliefs` and gives `search_memory` the `MemorySearch` result (`BeliefHit` items); deleting a shared memory, a plant or a garden queues its Agent Memory scope for erasure by `api`'s belief sweep (sections 8, 9).
 > **v0.10.6** settles open question 31: xgrammar in vLLM v0.31.0 enforces `anyOf` with `null`, producing both branches and blocking values outside the schema (section 12); no wire shape changed.
 > **v0.10.5**: section 10 states the loader's migration output: one regenerated, deterministic `backend/migrations/knowledge.surql` that replaces the whole knowledge set and records the generated versions in `knowledge_meta`; no wire shape changed.
 > **v0.10.4**: the `domain` crate's types are now the contracts' source of truth, since the code exists; this document explains them, and the generated OpenAPI spec is committed as `backend/openapi.json` (section 1, source of truth).
@@ -1724,7 +1724,7 @@ A memory's text is embedded in document mode when it is written, and `search_mem
 
 #### Beliefs
 
-Shared memories (`source` `pipeline` or `user`) are also mirrored into SurrealDB Agent Memory, one triple each, so a newer fact about the same thing supersedes the older one and the history is kept ([database: Agent Memory](../database/agent-memory.md)). Private chat memories are never sent; sharing one is the consent to send it. The `memory` table stays the system of record.
+Shared memories (`source` `pipeline` or `user`) are also mirrored into SurrealDB Agent Memory, one triple each, so a newer fact about the same thing supersedes the older one and the history is kept ([database: Agent Memory](../database/agent-memory.md)). Private chat memories are never sent; sharing one is the consent to send it. The `memory` table stays the system of record, and no request waits on Agent Memory: `api`'s belief sweep records shared memories within seconds of their write. A belief's value and its memory's text are the same; Agent Memory keeps the newest by `learned_at`, so a shared memory older than its key's current value is not a belief.
 
 ```ts
 interface Belief {
@@ -1732,7 +1732,7 @@ interface Belief {
   value: string;                     // the memory's text
   about_plant: boolean;              // false: about the garden
   memory_id?: Id;                    // the memory it was mirrored from
-  learned_at: Timestamp;             // the memory's created_at
+  learned_at: Timestamp;             // the memory's created_at, sent as observed_at
   superseded_at?: Timestamp;         // set only on history entries
 }
 
@@ -1742,7 +1742,14 @@ interface PlantBeliefs {
   history: Belief[];                 // superseded beliefs, newest first
 }
 
-interface MemorySearch { memories: Memory[]; beliefs: Belief[] }
+interface BeliefHit {                // a current belief that matched a search_memory query
+  key: string;
+  text: string;                      // "watering is every 2 days"
+  about_plant: boolean;
+  score: number;                     // Agent Memory's fused score
+}
+
+interface MemorySearch { memories: Memory[]; beliefs: BeliefHit[] }
 ```
 
 | Endpoint | Who | Effect |
@@ -1975,7 +1982,7 @@ interface GardenMap {
 | A `pending` scan (`DELETE /scans/{id}`, section 3) | Its images with their depth maps, its guided checks with their observations and events, conversations anchored to it, and the tasks naming it (`Task.scan_id`) | Its guided jobs are cancelled |
 | A garden | Everything under `gardens/{garden_id}/` in RustFS, its scope subtree in Agent Memory, and every record of the garden: plants (as above), tasks, memories, conversations, invites, memberships, the garden map | All its jobs are cancelled, and every step claim and question step cleared |
 
-**Agent Memory.** The scope erase (`POST /scopes/forget`) is a step of the plant and garden cascades. A failure leaves the target marked `deleting_at`, so the cascade resumes on restart. When an owner deletes one shared memory, the mirror erases that plant's (or the garden's) scope, marks its remaining shared memories for re-recording and deletes the row; the sweep records them again in order. Account deletion needs nothing: shared memories stay with the garden, and private ones were never sent.
+**Agent Memory.** Starting a plant's or garden's cascade queues its Agent Memory scope for erasure in the same transaction, and `api`'s belief sweep erases it (`POST /scopes/forget`, permanent) within seconds while Agent Memory is up; nothing more of that plant or garden is recorded. When an owner deletes one shared memory, the row goes and its plant's (or the garden's) scope is queued in one transaction; the sweep erases the scope and records the remaining shared memories again. Erasure is eventual: while Agent Memory is down, the queued erase waits. Account deletion needs nothing: shared memories stay with the garden, and private ones were never sent.
 
 A deletion interrupted by a restart is resumed from its first step for every target still marked `deleting_at`. A garden's objects are deleted again by prefix; a resumed plant's or scan's objects, whose keys are gone with their records, are left to the daily orphan sweep, which deletes objects no record points to ([backend api 17](../backend/api.md#17-deletion); open question 41). A member's removal leaves no marker yet, so it can't be resumed (open question 30).
 

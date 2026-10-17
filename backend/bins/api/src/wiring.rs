@@ -392,20 +392,6 @@ fn agent_memory(config: &Config) -> Option<AgentMemoryConfig> {
     ))
 }
 
-/// The store's memories behind the belief mirror: every memory write in `api`, the agent and
-/// the pipeline goes through it, so shared memories reach Agent Memory.
-fn mirrored(
-    memory: Arc<dyn MemoryStore>,
-    beliefs: &Arc<dyn BeliefStore>,
-    clock: &Arc<dyn Clock>,
-) -> Arc<dyn MemoryStore> {
-    Arc::new(agent::MirroredMemory::new(
-        memory,
-        Arc::clone(beliefs),
-        Arc::clone(clock),
-    ))
-}
-
 /// The object store the config points at.
 fn blob_store(config: &Config) -> Arc<dyn BlobStore> {
     Arc::new(blob::S3BlobStore::new(&blob::BlobConfig {
@@ -505,7 +491,7 @@ pub async fn build(
     let store = dbs.store;
     let ports = Ports {
         store: Arc::clone(&store),
-        memory: mirrored(dbs.memory, &out.beliefs, &clock),
+        memory: dbs.memory,
         beliefs: Arc::clone(&out.beliefs),
         knowledge: dbs.knowledge,
         blob: Arc::clone(&blob),
@@ -559,7 +545,6 @@ pub async fn build(
     let deletions = DeletionRunner::new(
         store,
         deletes.clone(),
-        out.beliefs,
         out.auth_admin,
         pusher,
         clock,

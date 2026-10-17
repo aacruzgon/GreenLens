@@ -15,12 +15,9 @@ pub mod safety;
 pub mod tools;
 pub mod turn;
 
-pub use beliefs::MirroredMemory;
 pub use config::AgentConfig;
 pub use deps::{AgentDeps, AgentStores};
-pub use error::{
-    BeliefSyncError, MemoryError, PlanWriterError, PrivateMemory, ToolError, TurnError,
-};
+pub use error::{MemoryError, PlanWriterError, PrivateMemory, ToolError, TurnError};
 pub use plan_writer::{PlanInput, PlanWriter, SharedMemories, WrittenPlan};
 pub use turn::{ChatAgent, TurnOutcome, TurnRequest, TurnStream};
 

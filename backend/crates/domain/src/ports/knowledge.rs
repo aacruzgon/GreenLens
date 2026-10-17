@@ -13,7 +13,7 @@ use crate::{
         ChunkTopic, ClassifierLabels, OrganismSeed, ProblemSeed, ProductsSeed, SoilConditionSeed,
         SpeciesSeed, TreatmentSeed,
     },
-    ports::{Embedding, StoreError},
+    ports::{BeliefSubject, Embedding, StoreError},
     records::diagnosis::{Citation, Prey},
     scan::SpeciesRef,
     vlm::{DamagePattern, SoilAspect},
@@ -249,25 +249,25 @@ pub trait MemoryStore: Send + Sync {
         memory: MemoryId,
     ) -> Result<Option<(MemorySource, Option<UserId>)>, StoreError>;
 
-    // ---- the belief mirror (architecture 7, memory): internal, no membership check ----
-
-    /// One memory by id, whoever wrote it: the mirror reads it before a delete to know its
-    /// subject.
-    async fn memory(&self, memory: MemoryId) -> Result<Option<Memory>, StoreError>;
+    // ---- the belief sweep (architecture 7, memory): internal, no membership check ----
+    //
+    // Only `api`'s `beliefs` task talks to Agent Memory, so nothing records a memory while its
+    // subject is being erased. Requests only write rows: a shared memory is created with
+    // `belief_synced_at` unset, and deleting one (or starting a plant's or garden's cascade)
+    // queues its subject in `belief_forget` in the same transaction.
 
     /// Shared memories not yet recorded in Agent Memory (`belief_synced_at` unset), oldest
-    /// `created_at` first, so a rebuild replays the supersession order.
+    /// `created_at` first, leaving out those of a plant or garden being deleted.
     async fn unsynced_shared(&self, limit: u32) -> Result<Vec<Memory>, StoreError>;
 
     /// Sets `belief_synced_at`.
     async fn mark_synced(&self, memory: MemoryId, at: Timestamp) -> Result<(), StoreError>;
 
-    /// Unsets `belief_synced_at` on the shared memories of one plant, or of the whole garden
-    /// (its plants included) when `plant` is none: after the subject's scope is erased, the
-    /// sweep records them again.
-    async fn mark_unsynced(
-        &self,
-        garden: GardenId,
-        plant: Option<PlantId>,
-    ) -> Result<(), StoreError>;
+    /// The subjects queued for erasure in Agent Memory, oldest first.
+    async fn belief_forgets(&self, limit: u32) -> Result<Vec<BeliefSubject>, StoreError>;
+
+    /// After the subject's scope was erased: unsets `belief_synced_at` on its shared memories
+    /// (a garden's take its plants'), so the sweep records the remaining ones again, and
+    /// removes it from the queue. One transaction.
+    async fn finish_belief_forget(&self, subject: BeliefSubject) -> Result<(), StoreError>;
 }

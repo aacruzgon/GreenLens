@@ -56,7 +56,7 @@ pub const TASKS: [Task; 9] = [
     },
     Task {
         name: "beliefs",
-        every: Duration::from_mins(1),
+        every: Duration::from_secs(10),
         first_after: Duration::from_secs(20),
     },
     Task {
@@ -167,32 +167,28 @@ async fn idle(state: Arc<AppState>) -> Result<(), ApiError> {
 /// Shared memories per run of the belief sweep.
 const BELIEF_SYNC_BATCH: u32 = 50;
 
-/// Records shared memories not yet in Agent Memory, oldest first, stopping at the first failure
-/// (architecture 7, memory): writes whose mirror failed, and the memories a forget marked for
-/// re-recording. Nothing when Agent Memory is off.
+/// The belief sweep, the only writer to Agent Memory (architecture 7, memory): erases the
+/// queued subjects, then records the unsynced shared memories. Every 10 s, so a new shared
+/// memory reaches Agent Memory within seconds and a deleted one is erased as fast. With Agent
+/// Memory off it only empties the erase queue.
 async fn beliefs(state: Arc<AppState>) -> Result<(), ApiError> {
     let p = &state.ports;
-    match agent::beliefs::sync_pending(
+    let report = agent::beliefs::sync_pending(
         p.memory.as_ref(),
         p.beliefs.as_ref(),
         p.clock.as_ref(),
         BELIEF_SYNC_BATCH,
     )
-    .await
-    {
-        Ok(0) => Ok(()),
-        Ok(synced) => {
-            tracing::info!(synced, "shared memories recorded in agent memory");
-            Ok(())
-        }
-        Err(agent::BeliefSyncError::Store(e)) => Err(e.into()),
-        Err(agent::BeliefSyncError::Record { synced, source }) => {
-            if synced > 0 {
-                tracing::info!(synced, "shared memories recorded in agent memory");
-            }
-            Err(source.into())
-        }
+    .await?;
+    if report != agent::beliefs::SweepReport::default() {
+        tracing::info!(
+            forgotten = report.forgotten,
+            recorded = report.recorded,
+            failed = report.failed,
+            "belief sweep"
+        );
     }
+    Ok(())
 }
 
 /// No TTL in `SurrealDB` ([database 4], cleanup): expired idempotency keys, weather older than

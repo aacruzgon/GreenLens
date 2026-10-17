@@ -372,12 +372,6 @@ mod deletion_repo {
         async fn unfinished_deletions(&self) -> Result<Vec<DeletionTarget>, StoreError> {
             self.deletion_repo.unfinished_deletions().await
         }
-        async fn deleting_plant_garden(
-            &self,
-            plant: PlantId,
-        ) -> Result<Option<GardenId>, StoreError> {
-            self.deletion_repo.deleting_plant_garden(plant).await
-        }
         async fn plan_account_deletion(
             &self,
             user: UserId,

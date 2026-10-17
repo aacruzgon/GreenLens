@@ -39,8 +39,9 @@ use crate::{
 /// equality (`plant = $plant`, `garden = $garden`), never `scan IN $scans` (#7593 ✓).
 pub mod sql {
     /// `DELETE /gardens/{id}`: `deleting_at`, the jobs cancelled, every step claim and
-    /// question step cleared, so a running step fails its commit check. Returns the name and
-    /// the other members for the `garden_deleted` push.
+    /// question step cleared, so a running step fails its commit check, and the garden queued
+    /// for erasure in Agent Memory (`belief_forget`). Returns the name and the other members
+    /// for the `garden_deleted` push.
     pub const START_GARDEN: &str = "BEGIN;
 LET $g = (SELECT name, deleting_at FROM ONLY $garden);
 IF $g = NONE { THROW 'not_found' };
@@ -49,11 +50,13 @@ LET $scans = (SELECT VALUE id FROM scan WHERE garden = $garden);
 UPDATE job SET status = 'cancelled', finished_at = $now WHERE scan IN $scans AND status IN ['queued', 'leased'];
 UPDATE scan SET pipeline_step = NONE, pipeline_step_run = NONE, pipeline_step_at = NONE WHERE garden = $garden AND pipeline_step != NONE;
 UPDATE question SET step = NONE, step_at = NONE WHERE scan IN $scans AND step != NONE;
+IF array::len(SELECT VALUE id FROM belief_forget WHERE garden = $garden AND plant = NONE) = 0 { CREATE belief_forget SET garden = $garden, requested_at = $now };
 RETURN { name: $g.name, notify: (SELECT VALUE in FROM member_of WHERE out = $garden AND in != $user) };
 COMMIT;";
 
-    /// `DELETE /plants/{id}`: as for a garden, for the plant's scans, and its pin removed from
-    /// the current map in place (no new version, contracts 9). Returns the scans and the
+    /// `DELETE /plants/{id}`: as for a garden, for the plant's scans, its pin removed from the
+    /// current map in place (no new version, contracts 9), and the plant queued for erasure in
+    /// Agent Memory. Returns the scans and the
     /// conversations anchored to the plant or its scans, for their object prefixes.
     pub const START_PLANT: &str = "BEGIN;
 IF array::len(SELECT VALUE id FROM $plant WHERE garden = $garden) = 0 { THROW 'not_found' };
@@ -63,6 +66,7 @@ UPDATE job SET status = 'cancelled', finished_at = $now WHERE scan IN $scans AND
 UPDATE scan SET pipeline_step = NONE, pipeline_step_run = NONE, pipeline_step_at = NONE WHERE plant = $plant AND pipeline_step != NONE;
 UPDATE question SET step = NONE, step_at = NONE WHERE scan IN $scans AND step != NONE;
 UPDATE garden_map SET pins = array::filter(pins, |$p| $p.plant != $plant) WHERE garden = $garden;
+IF array::len(SELECT VALUE id FROM belief_forget WHERE garden = $garden AND plant = $plant) = 0 { CREATE belief_forget SET garden = $garden, plant = $plant, requested_at = $now };
 RETURN { scans: $scans, conversations: (SELECT VALUE id FROM conversation WHERE anchor = $plant OR anchor IN $scans) };
 COMMIT;";
 
@@ -200,8 +204,6 @@ WHERE id IN $scans AND (plan != NONE OR diagnosis != NONE OR open_question != NO
 
     /// Deletions started but not finished, to resume after a restart. A member's removal leaves
     /// no marker; its conversations are found again by `member_conversations`.
-    /// A plant's garden, whether or not it is being deleted.
-    pub const PLANT_GARDEN: &str = "SELECT VALUE garden FROM ONLY $plant;";
     pub const UNFINISHED: &str = "SELECT VALUE id FROM garden WHERE deleting_at != NONE;
 SELECT VALUE id FROM plant WHERE deleting_at != NONE AND garden.deleting_at = NONE;
 SELECT VALUE id FROM scan WHERE deleting_at != NONE AND plant.deleting_at = NONE AND garden.deleting_at = NONE;";
@@ -577,21 +579,6 @@ impl DeletionRepo for SurrealStore {
             targets.push(DeletionTarget::PendingScan(s));
         }
         Ok(targets)
-    }
-
-    async fn deleting_plant_garden(&self, plant: PlantId) -> Result<Option<GardenId>, StoreError> {
-        const WHAT: &str = "deleting plant's garden";
-        let mut results = run_tx(&self.db, sql::PLANT_GARDEN, |q| {
-            q.bind(("plant", rid(&plant)))
-        })
-        .await
-        .map_err(|f| f.into_store(WHAT))?;
-        let garden: Option<RecordId> = results.take(0).map_err(|e| take_failed(WHAT, e))?;
-        garden
-            .as_ref()
-            .map(from_rid)
-            .transpose()
-            .map_err(|e: RowError| e.into_store(WHAT))
     }
 
     /// Runs [`sql::ACCOUNT_GARDENS`] and decides each garden with architecture 5's rules: the

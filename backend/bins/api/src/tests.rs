@@ -264,7 +264,7 @@ fn state_with_beliefs(
         ports: Ports {
             store: store.clone(),
             memory: Arc::new(MockMemoryStore::new()),
-            beliefs: Arc::clone(&beliefs),
+            beliefs,
             knowledge: Arc::new(MockKnowledgeStore::new()),
             blob: blob.clone(),
             auth: Arc::new(auth),
@@ -288,7 +288,6 @@ fn state_with_beliefs(
         deletions: DeletionRunner::new(
             store,
             deletes.clone(),
-            beliefs,
             auth_admin,
             pusher,
             clock,

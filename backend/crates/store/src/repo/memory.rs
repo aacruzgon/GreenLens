@@ -7,7 +7,7 @@ use domain::{
     chat::{Memory, MemoryQuery, MemorySource},
     error::DomainError,
     id::{GardenId, MemoryId, PlantId, UserId},
-    ports::{Embedding, MemoryHit, MemoryStore, NewMemory, StoreError},
+    ports::{BeliefSubject, Embedding, MemoryHit, MemoryStore, NewMemory, StoreError},
     wire::{Page, PageRequest, Role, Timestamp},
 };
 use surrealdb::types::{RecordId, SurrealValue};
@@ -68,30 +68,50 @@ COMMIT;"
     );
     /// `DELETE /memories/{id}`: the author of a chat memory, or an owner for shared memories
     /// (contracts 8); anyone else's is `not_found` (a private memory) or `forbidden`.
+    ///
+    /// Deleting a shared memory queues its subject (the plant, or the garden for a garden-level
+    /// fact) for erasure in Agent Memory in the same transaction, so it can't outlive its row
+    /// there; the sweep erases the scope and records the subject's other memories again.
     pub const DELETE: &str = "BEGIN;
-LET $m = (SELECT source, author, shared FROM ONLY $memory WHERE garden = $garden);
+LET $m = (SELECT source, author, shared, plant FROM ONLY $memory WHERE garden = $garden);
 IF $m = NONE OR ($m.shared = false AND $m.author != $user) { THROW 'not_found' };
 IF $m.shared = true AND $role != 'owner' { THROW 'forbidden' };
+IF $m.shared = true AND array::len(SELECT VALUE id FROM belief_forget WHERE garden = $garden AND plant = $m.plant) = 0 { CREATE belief_forget SET garden = $garden, plant = $m.plant, requested_at = time::now() };
 DELETE $memory;
 COMMIT;";
-    /// One memory by id, whoever wrote it (the belief mirror).
-    pub const MEMORY: &str = concat!("SELECT ", memory_fields!(), " FROM ONLY $memory;");
-    /// The mirror sweep: shared memories not yet recorded in Agent Memory, oldest first
-    /// (index `memory_unsynced`).
+    /// The belief sweep: shared memories not yet recorded in Agent Memory, oldest first
+    /// (index `memory_unsynced`), leaving out a plant or garden being deleted: its scope is
+    /// queued for erasure, and its rows are going.
     pub const UNSYNCED_SHARED: &str = concat!(
         "SELECT ",
         memory_fields!(),
         " FROM memory WHERE shared = true AND belief_synced_at IS NONE
+AND garden.deleting_at = NONE AND (plant = NONE OR plant.deleting_at = NONE)
 ORDER BY created_at, id LIMIT $limit;"
     );
     /// Records a memory in Agent Memory. A missing memory is left alone (a `WHERE` on the id never creates one).
     pub const MARK_SYNCED: &str = "UPDATE memory SET belief_synced_at = $at WHERE id = $memory;";
-    /// Unsets the stamp on the shared memories of one plant, or of the whole garden when
-    /// `$plant` is NONE (the unset field is NONE, so the sweep picks them up again).
-    pub const MARK_UNSYNCED: &str = "UPDATE memory SET belief_synced_at = NONE
-WHERE garden = $garden AND shared = true AND ($plant = NONE OR plant = $plant);";
+    /// The subjects queued for erasure in Agent Memory, oldest first.
+    pub const BELIEF_FORGETS: &str =
+        "SELECT garden, plant FROM belief_forget ORDER BY requested_at, id LIMIT $limit;";
+    /// After the subject's scope was erased: its shared memories (a garden's take its plants')
+    /// are unsynced so the sweep records them again, and the subject leaves the queue.
+    pub const FINISH_BELIEF_FORGET: &str = "BEGIN;
+UPDATE memory SET belief_synced_at = NONE
+WHERE garden = $garden AND shared = true AND ($plant = NONE OR plant = $plant);
+DELETE belief_forget WHERE garden = $garden AND plant = $plant;
+COMMIT;";
     /// The memory's source and author.
     pub const MEMORY_OWNER: &str = "SELECT source, author FROM ONLY $memory;";
+}
+
+/// What [`sql::BELIEF_FORGETS`] reads.
+#[derive(Debug, Clone, SurrealValue)]
+pub struct BeliefForgetRow {
+    /// The garden.
+    pub garden: RecordId,
+    /// The plant; NONE for the whole garden.
+    pub plant: Option<RecordId>,
 }
 
 /// What [`sql::MEMORY_OWNER`] reads.
@@ -388,14 +408,6 @@ impl MemoryStore for SurrealStore {
             .map_err(|e: RowError| e.into_store(WHAT))
     }
 
-    async fn memory(&self, memory: MemoryId) -> Result<Option<Memory>, StoreError> {
-        const WHAT: &str = "memory";
-        let mut r = run_tx(&self.db, sql::MEMORY, |q| q.bind(("memory", rid(&memory))))
-            .await
-            .map_err(|f| f.into_store(WHAT))?;
-        take_one(&mut r, 0, WHAT)
-    }
-
     async fn unsynced_shared(&self, limit: u32) -> Result<Vec<Memory>, StoreError> {
         const WHAT: &str = "unsynced shared memories";
         let mut r = run_tx(&self.db, sql::UNSYNCED_SHARED, |q| {
@@ -416,15 +428,30 @@ impl MemoryStore for SurrealStore {
         .map_err(|f| f.into_store(WHAT))
     }
 
-    async fn mark_unsynced(
-        &self,
-        garden: GardenId,
-        plant: Option<PlantId>,
-    ) -> Result<(), StoreError> {
-        const WHAT: &str = "mark memories unsynced";
-        run_tx(&self.db, sql::MARK_UNSYNCED, |q| {
-            q.bind(("garden", rid(&garden)))
-                .bind(("plant", opt_rid(plant.as_ref())))
+    async fn belief_forgets(&self, limit: u32) -> Result<Vec<BeliefSubject>, StoreError> {
+        const WHAT: &str = "belief forgets";
+        let mut r = run_tx(&self.db, sql::BELIEF_FORGETS, |q| {
+            q.bind(("limit", i64::from(limit)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        let rows: Vec<BeliefForgetRow> = r.take(0).map_err(|e| take_failed(WHAT, e))?;
+        rows.iter()
+            .map(|row| {
+                Ok(BeliefSubject {
+                    garden: from_rid(&row.garden)?,
+                    plant: from_opt_rid(row.plant.as_ref())?,
+                })
+            })
+            .collect::<Result<_, RowError>>()
+            .map_err(|e| e.into_store(WHAT))
+    }
+
+    async fn finish_belief_forget(&self, subject: BeliefSubject) -> Result<(), StoreError> {
+        const WHAT: &str = "finish belief forget";
+        run_tx(&self.db, sql::FINISH_BELIEF_FORGET, |q| {
+            q.bind(("garden", rid(&subject.garden)))
+                .bind(("plant", opt_rid(subject.plant.as_ref())))
         })
         .await
         .map(drop)

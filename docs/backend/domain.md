@@ -1,6 +1,6 @@
 # PDM Backend: `domain` crate
 
-> **Status:** Draft v0.3.5, 2026-10-17. v0.3.5: the `BeliefStore` port mirrors shared memories into Agent Memory, and `MemoryStore` gains the mirror's four bookkeeping methods. v0.3.4: `ToolSpec` gains `strict`, set by `agent` for the tools that propose changes. v0.3.3: section 1 says these types are the contracts' source of truth now that the code exists. v0.3.2: the schema link points to `backend/migrations/schema.surql`. v0.3.1: the section 1 note says the Rust skills follow this design and keeps only the timestamp difference from the brief; section 10 no longer says `rust-async` prefers a hand-written `BoxFuture`. v0.3: the cross-crate fixes add `PastWeather.longest_humid_run_days` and the past-week humid-stretch rules, store methods with default bodies (`JobRepo::live_lease`, `GardenRepo::soil_profile_failed` and `gardens_due_soil_profile`, the account tombstone's `DeletionRepo` methods), `AuthError::AccountDeleted` for a tombstoned account, `soil_retry_after` and `TOMBSTONE_KEEP`, and make `QuestionState::after_failed_photo(false)` supersede the question as contracts 5 says. v0.2: one definition of the weather thresholds (`rules::weather::WeatherThresholds`: frost at a 2 m minimum ≤ 0.5 °C, hard frost ≤ −2 °C, a humid stretch of two days with ≥ 10 h over 90%), `TextEmbedder::embed` takes an `EmbedMode`, `PhotoAnswerStart::Segment` boxes its job, corrected `BoxFormat`, `JobRepo::check_lease` and `DeletionRepo::delete_batch` comments, every addition the other crates made since v0.1 (section 12), and the open questions that contracts v0.9 and database v1.3.3–v1.4 resolved marked as such. v0.1: the shared crate every other crate builds on: typed ids and wire primitives, the error codes, the pure rules, the authorization proofs, the signed-URL typing and every boundary trait, all compiled on Rust 1.99.1.
+> **Status:** Draft v0.3.5, 2026-10-17. v0.3.5: the `BeliefStore` port records shared memories in Agent Memory, and `MemoryStore` gains the belief sweep's four methods (`unsynced_shared`, `mark_synced`, `belief_forgets`, `finish_belief_forget`). v0.3.4: `ToolSpec` gains `strict`, set by `agent` for the tools that propose changes. v0.3.3: section 1 says these types are the contracts' source of truth now that the code exists. v0.3.2: the schema link points to `backend/migrations/schema.surql`. v0.3.1: the section 1 note says the Rust skills follow this design and keeps only the timestamp difference from the brief; section 10 no longer says `rust-async` prefers a hand-written `BoxFuture`. v0.3: the cross-crate fixes add `PastWeather.longest_humid_run_days` and the past-week humid-stretch rules, store methods with default bodies (`JobRepo::live_lease`, `GardenRepo::soil_profile_failed` and `gardens_due_soil_profile`, the account tombstone's `DeletionRepo` methods), `AuthError::AccountDeleted` for a tombstoned account, `soil_retry_after` and `TOMBSTONE_KEEP`, and make `QuestionState::after_failed_photo(false)` supersede the question as contracts 5 says. v0.2: one definition of the weather thresholds (`rules::weather::WeatherThresholds`: frost at a 2 m minimum ≤ 0.5 °C, hard frost ≤ −2 °C, a humid stretch of two days with ≥ 10 h over 90%), `TextEmbedder::embed` takes an `EmbedMode`, `PhotoAnswerStart::Segment` boxes its job, corrected `BoxFormat`, `JobRepo::check_lease` and `DeletionRepo::delete_batch` comments, every addition the other crates made since v0.1 (section 12), and the open questions that contracts v0.9 and database v1.3.3–v1.4 resolved marked as such. v0.1: the shared crate every other crate builds on: typed ids and wire primitives, the error codes, the pure rules, the authorization proofs, the signed-URL typing and every boundary trait, all compiled on Rust 1.99.1.
 
 Companion to the [backend architecture](README.md). The contract shapes themselves, section by section, are in [domain-types](domain-types.md). Every listing here is copied from the compiled source of `crates/domain`: `cargo check -p domain`, `cargo test -p domain` (95 unit tests, 5 compile-fail doc tests) and `cargo clippy -p domain --all-targets` pass, with and without the `mock` and `test-util` features.
 
@@ -3784,7 +3784,7 @@ use crate::{
         ChunkTopic, ClassifierLabels, OrganismSeed, ProblemSeed, ProductsSeed, SoilConditionSeed,
         SpeciesSeed, TreatmentSeed,
     },
-    ports::{Embedding, StoreError},
+    ports::{BeliefSubject, Embedding, StoreError},
     records::diagnosis::{Citation, Prey},
     scan::SpeciesRef,
     vlm::{DamagePattern, SoilAspect},
@@ -4020,33 +4020,33 @@ pub trait MemoryStore: Send + Sync {
         memory: MemoryId,
     ) -> Result<Option<(MemorySource, Option<UserId>)>, StoreError>;
 
-    // ---- the belief mirror (architecture 7, memory): internal, no membership check ----
-
-    /// One memory by id, whoever wrote it: the mirror reads it before a delete to know its
-    /// subject.
-    async fn memory(&self, memory: MemoryId) -> Result<Option<Memory>, StoreError>;
+    // ---- the belief sweep (architecture 7, memory): internal, no membership check ----
+    //
+    // Only `api`'s `beliefs` task talks to Agent Memory, so nothing records a memory while its
+    // subject is being erased. Requests only write rows: a shared memory is created with
+    // `belief_synced_at` unset, and deleting one (or starting a plant's or garden's cascade)
+    // queues its subject in `belief_forget` in the same transaction.
 
     /// Shared memories not yet recorded in Agent Memory (`belief_synced_at` unset), oldest
-    /// `created_at` first, so a rebuild replays the supersession order.
+    /// `created_at` first, leaving out those of a plant or garden being deleted.
     async fn unsynced_shared(&self, limit: u32) -> Result<Vec<Memory>, StoreError>;
 
     /// Sets `belief_synced_at`.
     async fn mark_synced(&self, memory: MemoryId, at: Timestamp) -> Result<(), StoreError>;
 
-    /// Unsets `belief_synced_at` on the shared memories of one plant, or of the whole garden
-    /// (its plants included) when `plant` is none: after the subject's scope is erased, the
-    /// sweep records them again.
-    async fn mark_unsynced(
-        &self,
-        garden: GardenId,
-        plant: Option<PlantId>,
-    ) -> Result<(), StoreError>;
+    /// The subjects queued for erasure in Agent Memory, oldest first.
+    async fn belief_forgets(&self, limit: u32) -> Result<Vec<BeliefSubject>, StoreError>;
+
+    /// After the subject's scope was erased: unsets `belief_synced_at` on its shared memories
+    /// (a garden's take its plants'), so the sweep records the remaining ones again, and
+    /// removes it from the queue. One transaction.
+    async fn finish_belief_forget(&self, subject: BeliefSubject) -> Result<(), StoreError>;
 }
 ```
 
 ### Beliefs (Agent Memory)
 
-Shared memories are mirrored into SurrealDB Agent Memory as triples, so a newer memory on the same key supersedes the older one and the history is kept ([agent-memory](../database/agent-memory.md); [architecture 7, memory](../architecture/README.md#memory)). The `memory` table stays the system of record: `agent::beliefs::MirroredMemory` wraps the `MemoryStore` and records each shared memory after it commits, and the `api` sweep retries what failed, oldest first. `integrations::agent_memory::AgentMemory` implements the port; `NoBeliefs` stands in when Agent Memory isn't configured, so nothing else changes.
+Shared memories are recorded in `SurrealDB` Agent Memory as triples, so a newer memory on the same key supersedes the older one and the history is kept ([agent-memory](../database/agent-memory.md); [architecture 7, memory](../architecture/README.md#memory)). The `memory` table stays the system of record. Requests only write rows: a shared memory is created unsynced, and a delete or a cascade queues its subject in `belief_forget` in the same transaction (the `MemoryStore` methods under "the belief sweep" above). `api`'s `beliefs` task, `agent::beliefs::sync_pending`, is the only caller of this port's writes: it erases the queued subjects first, then records what is unsynced. `integrations::agent_memory::AgentMemory` implements the port; `NoBeliefs` stands in when Agent Memory isn't configured, so nothing else changes.
 
 ```rust
 //! The belief store: shared memories mirrored into `SurrealDB` Agent Memory (architecture 7,
@@ -4056,9 +4056,12 @@ Shared memories are mirrored into SurrealDB Agent Memory as triples, so a newer 
 //! `user`) is also recorded in Agent Memory as one triple: entity `plant_<id>` or `garden_<id>`,
 //! a key from [`belief_key`], and the memory's text as the value. Agent Memory then supersedes the
 //! older value of the same key and keeps the history. A private chat memory never leaves the
-//! database.
+//! database. Only `api`'s belief sweep (`agent::beliefs::sync_pending`) calls `record` and
+//! `forget`, so no request waits on the service and nothing is recorded during an erase.
 //!
-//! Three facts measured against the hosted service on 2026-10-17 shape the port:
+//! Four facts measured against the hosted service on 2026-10-17 shape the port:
+//! - supersession follows `observed_at`, not arrival: a write older than its key's current
+//!   value is dropped, so a retry or a rebuild never brings an older value back;
 //! - entities are matched by **name across the whole context**, so the entity name is our own
 //!   id, never a name a model extracted;
 //! - a read at a scope path returns only facts tagged at that exact path, so a plant read asks
@@ -6799,11 +6802,6 @@ pub trait DeletionRepo: Send + Sync {
 
     /// Deletions started but not finished (after a restart), to resume.
     async fn unfinished_deletions(&self) -> Result<Vec<DeletionTarget>, StoreError>;
-
-    /// A plant's garden, read even while the plant is being deleted (`garden_of` hides it): a
-    /// resumed plant cascade needs it for the plant's scope in Agent Memory. `None` once the
-    /// plant row is gone, which a cascade reaches only after that scope was erased.
-    async fn deleting_plant_garden(&self, plant: PlantId) -> Result<Option<GardenId>, StoreError>;
 
     /// Decides each garden's fate for `DELETE /me` and the `user.deleted` webhook.
     async fn plan_account_deletion(&self, user: UserId) -> Result<AccountDeletionPlan, StoreError>;

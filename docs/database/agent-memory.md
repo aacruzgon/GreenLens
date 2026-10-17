@@ -1,6 +1,6 @@
 # PDM and SurrealDB Agent Memory
 
-> **Status:** v0.1, 2026-10-17. v0.1: first version. The design is implemented in `domain`, `integrations`, `agent`, `store` and `api`; the behaviour of the hosted service was measured on 2026-10-17 with a script of about 140 requests, and the adapter's ignored live test (`agent_memory::tests::live_round_trip_supersedes_and_forgets`) passed against the `pdm-dev` context.
+> **Status:** v0.2, 2026-10-17. v0.2: after the PR audit, the sweep is the only writer to Agent Memory, and deletes queue their erase in their own transaction, so no request waits on the service and a running sweep can't bring an erased memory back; supersession was measured to follow `observed_at` (point 11); beliefs and memories reach the model with their day. v0.1: first version. The design is implemented in `domain`, `integrations`, `agent`, `store` and `api`; the behaviour of the hosted service was measured on 2026-10-17 with a script of about 140 requests, and the adapter's ignored live test (`agent_memory::tests::live_round_trip_supersedes_and_forgets`) passed against the `pdm-dev` context.
 > **Verified:** a claim marked ✓ was run against the live hosted service on 2026-10-17. Anything taken from the vendor's documents is marked *unverified*. Companion to the [database notes](README.md); the wire shapes are in [contracts §8](../architecture/contracts.md#memory) and the design in [architecture §7](../architecture/README.md#memory).
 
 ## Contents
@@ -87,6 +87,7 @@ Run on 2026-10-17 against the hosted service, from a script with about 140 reque
 8. **Scopes.** ✓ Registering a scope path twice returns `201` both times. Writing to an unregistered path returns `400 unknown scope node — register it first`. Parent paths are created automatically. ✓ A path segment with an uppercase letter is refused with `400 invalid scope path: illegal character in segment`, so the ids in paths and entity names are lowercased; a ULID is case-insensitive, and the `memory=<id>` label keeps the uppercase id.
 9. **The narrowed key.** ✓ `GET /me` reported exactly the narrowed effective grants. Creating garden scopes, writing, reading, searching, deleting an entity and erasing a scope were allowed. Creating a scope outside `gardens/`, writing under `chats/`, tombstoning a scope and granting itself access got `403`. The key could mint a new key (`POST /keys`, `201`), but the minted key had the same narrow grants, so there is no escalation.
 10. **Cost.** The API reports no token counts. Check the Usage page in Studio.
+11. **Supersession follows `observed_at`, not arrival.** ✓ Writing "every 2 days" observed now, then "every 3 days" observed 3 days earlier, left "every 2 days" current. The older write was dropped: no attribute came back, and it isn't in the history. `createdAt` on an attribute is the `observed_at` that was sent.
 
 From the vendor's documents, not run: embeddings are fixed to `gemini-embedding-2` (*unverified*).
 
@@ -118,7 +119,11 @@ A newer memory with the same key on the same subject supersedes the older one, a
 
 **Port.** `BeliefStore` (`backend/crates/domain/src/ports/beliefs.rs`) has `record`, `current`, `history`, `search` and `forget`. `integrations::agent_memory::AgentMemory` implements it over REST. `NoBeliefs` stands in when Agent Memory isn't configured.
 
-**Writes and the sweep.** `agent::beliefs::MirroredMemory` wraps the SurrealDB `MemoryStore`. After a note, a pipeline summary or a share commits, it records the memory and sets `memory.belief_synced_at`. A failure is logged and left for the sweep. The scheduler task `beliefs` runs every minute and records unsynced shared memories oldest first, stopping at the first failure, so supersession order holds.
+**Writes and the sweep.** No request waits on Agent Memory: only the scheduler task `beliefs` (`agent::beliefs::sync_pending`) calls it, every 10 s with a batch of 50. Requests only write rows:
+- a note, a pipeline summary or a share leaves the row with `memory.belief_synced_at` unset;
+- an owner's delete of a shared memory, or the start of a plant's or garden's cascade, queues the subject in `belief_forget`, in the same transaction.
+
+Each run first erases the queued subjects (`POST /scopes/forget`). After each erase, one transaction re-marks the subject's remaining shared memories unsynced (a garden's take its plants') and removes it from the queue. Then the run records the unsynced shared memories, oldest first, skipping a plant or garden being deleted. A failure is logged and tried again next run without holding up the rest; a failed erase stays queued and holds back the records under its subject. Because supersession follows `observed_at` (section 3, point 11), a retry or a rebuild never brings an older value back. One writer also means nothing is recorded while its subject is being erased: a memory recorded from a stale read just before its delete is erased by the next run.
 
 **Reads**
 - The chat context gets the current beliefs of the plant (or garden) as their own data block, by a direct entity read, under a 1.5 s timeout (about 0.4 s measured).
@@ -127,11 +132,12 @@ A newer memory with the same key on the same subject supersedes the older one, a
 - `GET /plants/{plant_id}/beliefs` returns `PlantBeliefs { available, current, history }` for any member ([contracts §8](../architecture/contracts.md#beliefs)). `available` is `false` when Agent Memory is off or doesn't answer. It is never a `5xx`.
 
 **Deletion** ([contracts §9](../architecture/contracts.md#deletion-cascades))
-- Deleting a plant or garden erases its scope subtree with `POST /scopes/forget`, which is permanent, after the objects and before the records. A failure resumes the cascade on restart.
-- When an owner deletes one shared memory, the mirror erases that subject's scope, marks the subject's remaining shared memories unsynced and deletes the row. The sweep records them again in order. Semantic `/forget` isn't used, because it isn't scoped to a garden (section 3, point 5).
+- Starting a plant's or garden's cascade queues its subject in the transaction that sets `deleting_at`. The sweep erases the scope subtree (`POST /scopes/forget`, permanent) within seconds while Agent Memory is up, and records nothing of a plant or garden being deleted. The queued row is a plain link, so it outlives the records, and a resumed cascade needs nothing.
+- When an owner deletes one shared memory, the row goes and its subject is queued, in one transaction. The sweep erases the subject's scope and records its remaining shared memories again, which rebuilds the history without it. Semantic `/forget` isn't used, because it isn't scoped to a garden (section 3, point 5).
 - Account deletion needs nothing: shared memories stay with the garden, and private ones were never sent.
+- Erasure is eventual: while Agent Memory is down, the queued erase waits, and the deleted text stays there until it is back.
 
-**Disabled mode.** Without the three variables, `NoBeliefs` is used. Nothing is recorded, the context block and the plan writer get no beliefs, `search_memory` returns only `memories`, and the endpoint answers `available: false`. Chat and plans work on the `memory` table alone.
+**Disabled mode.** Without the three variables, `NoBeliefs` is used. Nothing is recorded, the sweep only empties the erase queue, the context block and the plan writer get no beliefs, `search_memory` returns only `memories`, and the endpoint answers `available: false`. Chat and plans work on the `memory` table alone.
 
 ## 5. Privacy
 
@@ -149,7 +155,9 @@ A newer memory with the same key on the same subject supersedes the older one, a
 - **A wrong topic supersedes the wrong fact.** A feeding note filed as `watering` replaces the watering belief. `other` is the safe default, because its `note_<id>` key supersedes nothing. The extraction prompt and the `remember` tool should pick a specific topic only when it is clear.
 - **Entity names are context-wide,** so a plant or garden id must never be reused or shared between environments' contexts.
 - **Latency:** `/query` is slow, so it only backs `search_memory`; the chat context uses the direct entity read.
-- **Sync lag.** A memory is a belief only after the commit and the next successful record; the sweep runs every minute.
+- **Sync lag.** A memory is a belief only after the next successful run of the sweep, every 10 s. A deleted shared memory stays in Agent Memory until the next run, or longer while the service is down.
+- **An older shared memory can be dropped.** Sharing a chat memory sends it with its own `created_at`. If its key already holds a newer value, Agent Memory drops it (section 3, point 11): it stays in our table and in `search_memory`'s local hits, but isn't a belief.
+- **Dates in the prompt.** Beliefs and memories reach the model with their day, and the prompts say the more recent one wins, so a private note newer than a shared fact isn't overruled by it.
 - **Open:** a conflict check against scan observations; a read of the history in the app beyond the endpoint; whether to raise `/query` timeouts once the real latency is known.
 
 ## 7. Sources

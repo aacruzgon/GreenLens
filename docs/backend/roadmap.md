@@ -300,7 +300,7 @@ What S0 changed in the design, each found by running it:
 - A chat about the early-blight scan calls a tool, proposes a plan change as a card, and applies the change once confirmed.
 - A sentence with an unsafe dose never reaches the stream.
 - A memory saved in chat stays private until shared.
-- A shared watering note and a newer one about the same plant leave one current belief and one superseded in `GET /plants/{plant_id}/beliefs`. A private chat memory never appears in Agent Memory. With the three variables unset, `available` is `false` and chat works. Deleting the plant leaves nothing under its scope.
+- A shared watering note and a newer one about the same plant leave one current belief and one superseded in `GET /plants/{plant_id}/beliefs`. A private chat memory never appears in Agent Memory. With the three variables unset, `available` is `false` and chat works. Deleting the plant leaves nothing under its scope within one sweep (10 s), and deleting a shared memory removes it from the beliefs while its plant's others stay.
 
 **Decides:** open decisions 6 and 8.
 

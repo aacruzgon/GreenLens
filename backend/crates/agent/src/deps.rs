@@ -62,8 +62,8 @@ impl AgentStores {
 pub struct AgentDeps {
     /// The store areas.
     pub stores: AgentStores,
-    /// Garden memory: in `api`, a [`crate::beliefs::MirroredMemory`], so shared writes reach
-    /// Agent Memory.
+    /// Garden memory. Its shared memories reach Agent Memory through `api`'s belief sweep
+    /// ([`crate::beliefs::sync_pending`]).
     pub memory: Arc<dyn MemoryStore>,
     /// Shared memories in Agent Memory, read for the context's current beliefs and
     /// `search_memory`; `NoBeliefs` when it isn't configured.

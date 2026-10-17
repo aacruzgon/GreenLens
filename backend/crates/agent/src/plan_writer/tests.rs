@@ -189,11 +189,11 @@ fn the_prompt_wraps_data_and_names_what_the_plan_may_use() {
     };
     assert!(beliefs.starts_with("<data kind=\"beliefs\">"));
     assert!(beliefs.contains(
-        r#"{"key":"container","value":"The tomato is in a 30 cm pot.","about_plant":true}"#
+        r#"{"key":"container","value":"The tomato is in a 30 cm pot.","about_plant":true,"date":"2026-10-16"}"#
     ));
     assert!(
-        !beliefs.contains("learned_at"),
-        "only key, value and about_plant"
+        !beliefs.contains("learned_at") && !beliefs.contains("memory_id"),
+        "key, value, about_plant and the day only"
     );
     assert_eq!(PLAN_SCHEMA["additionalProperties"], false);
 }

@@ -25,7 +25,7 @@ use domain::{
 use serde::Serialize;
 
 use crate::{
-    context::BeliefView,
+    context::{BeliefView, MemoryView},
     error::{PlanWriterError, PrivateMemory},
     prompt::{DataKind, PLAN_PROMPT_VERSION, data_json, plan_system},
     safety::{PlanDraft, ProductCatalogue, RuleFailure, ValidationContext, validate_plan},
@@ -229,11 +229,11 @@ impl PlanWriter {
             &PromptView::new(input),
         ))];
         if !input.memories.as_slice().is_empty() {
-            let texts: Vec<&str> = input
+            let texts: Vec<MemoryView<'_>> = input
                 .memories
                 .as_slice()
                 .iter()
-                .map(|m| m.text.as_str())
+                .map(MemoryView::new)
                 .collect();
             content.push(ContentPart::Text(data_json(DataKind::Memories, &texts)));
         }

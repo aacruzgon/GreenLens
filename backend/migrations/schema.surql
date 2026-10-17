@@ -499,6 +499,16 @@ DEFINE INDEX IF NOT EXISTS memory_unsynced ON memory FIELDS shared, belief_synce
 DEFINE INDEX IF NOT EXISTS memory_author ON memory FIELDS author;
 DEFINE INDEX IF NOT EXISTS memory_plant  ON memory FIELDS plant;
 
+-- Subjects queued for erasure in Agent Memory (docs/database/agent-memory.md): written in the
+-- transaction that deletes a shared memory or starts a plant's or garden's cascade, and
+-- removed by api's beliefs task once the subject's scope is erased. Plain links, not
+-- references: the row outlives its plant or garden until the erase is done.
+DEFINE TABLE OVERWRITE belief_forget SCHEMAFULL;
+DEFINE FIELD OVERWRITE garden       ON belief_forget TYPE record<garden>;
+DEFINE FIELD OVERWRITE plant        ON belief_forget TYPE option<record<plant>>;   -- NONE: the whole garden
+DEFINE FIELD OVERWRITE requested_at ON belief_forget TYPE datetime;
+DEFINE INDEX IF NOT EXISTS belief_forget_subject ON belief_forget FIELDS garden, plant;
+
 -- ---------------------------------------------------------------------------------------
 -- Knowledge base (loaded by migrations from ml/knowledge/seed; ids are slugs)
 -- ---------------------------------------------------------------------------------------

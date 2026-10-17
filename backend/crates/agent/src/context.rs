@@ -23,7 +23,7 @@ use std::collections::BTreeMap;
 
 use domain::{
     authz::{ConversationOwner, Viewer},
-    chat::{Anchor, Belief, MessageRole},
+    chat::{Anchor, Belief, Memory, MessageRole},
     garden::{
         gardens::Garden,
         map::{GardenMap, neighbours},
@@ -301,10 +301,7 @@ impl TurnContext {
             let texts: Vec<MemoryView<'_>> = self
                 .memories
                 .iter()
-                .map(|h| MemoryView {
-                    text: &h.memory.text,
-                    about_plant: h.memory.plant_id.is_some(),
-                })
+                .map(|h| MemoryView::new(&h.memory))
                 .collect();
             content.push(ContentPart::Text(data_json(DataKind::Memories, &texts)));
         }
@@ -330,19 +327,33 @@ impl TurnContext {
 // Borrowed views: `'a` is the lifetime of the `AnchorData` being rendered
 // ---------------------------------------------------------------------------------------------
 
+/// A memory as the model reads it, with its UTC day, so the model can weigh it against a
+/// belief by date.
 #[derive(Serialize)]
-struct MemoryView<'a> {
+pub(crate) struct MemoryView<'a> {
     text: &'a str,
     about_plant: bool,
+    date: String,
 }
 
-/// A belief as the model reads it: the key, the value and whether it is about the plant. The
-/// ids and dates stay out of the prompt.
+impl<'a> MemoryView<'a> {
+    pub(crate) fn new(m: &'a Memory) -> Self {
+        Self {
+            text: &m.text,
+            about_plant: m.plant_id.is_some(),
+            date: m.created_at.utc_day().to_string(),
+        }
+    }
+}
+
+/// A belief as the model reads it: the key, the value, whether it is about the plant, and the
+/// UTC day it was learned (its memory's `created_at`). The ids stay out of the prompt.
 #[derive(Serialize)]
 pub(crate) struct BeliefView<'a> {
     key: &'a str,
     value: &'a str,
     about_plant: bool,
+    date: String,
 }
 
 impl<'a> BeliefView<'a> {
@@ -351,6 +362,7 @@ impl<'a> BeliefView<'a> {
             key: &b.key,
             value: &b.value,
             about_plant: b.about_plant,
+            date: b.learned_at.utc_day().to_string(),
         }
     }
 }

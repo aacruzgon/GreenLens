@@ -170,8 +170,8 @@ pub struct PipelineDeps {
     pub knowledge: Arc<dyn KnowledgeStore>,
     /// Open-Meteo, behind the weather cache this crate reads first.
     pub weather: Arc<dyn WeatherProvider>,
-    /// Garden memory: shared memories for the plan writer, the pipeline's summary. In `api`, an
-    /// `agent::MirroredMemory`, so the summary reaches Agent Memory.
+    /// Garden memory: shared memories for the plan writer, the pipeline's summary. The summary
+    /// is shared, so `api`'s belief sweep records it in Agent Memory.
     pub memory: Arc<dyn MemoryStore>,
     /// Agent Memory: the plant's current beliefs for the plan writer; `NoBeliefs` when it
     /// isn't configured.

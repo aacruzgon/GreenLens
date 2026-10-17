@@ -72,10 +72,11 @@ pub fn chat_system() -> String {
          with the topic it is about.\n\n\
          Memory:\n\
          - The beliefs block holds the current shared facts about the plant and the garden, one \
-         per key, the latest value of each. When a belief and an older memory disagree, the \
-         belief wins.\n\
-         - search_memory returns memories and, when available, matching beliefs; the same rule \
-         applies.\n\n\
+         per key, the latest shared value of each, with the day it was learned. Memories carry \
+         their day too. When a belief and a memory disagree, the more recent one wins; if a \
+         private note is newer than a shared fact, say which you are going by.\n\
+         - search_memory returns memories and, when available, matching current beliefs; the \
+         same rule applies.\n\n\
          Style: short, plain sentences. Metric units. No headings."
     )
 }
@@ -95,8 +96,8 @@ pub fn plan_system() -> String {
          - Shared memories are facts about the garden (for example \"I garden organically\"); \
          treat garden-wide ones as constraints.\n\
          - Beliefs are the current shared facts about the plant and the garden, the latest value \
-         of each key. Treat them as standing facts and constraints; when a belief and an older \
-         memory disagree, the belief wins.\n\
+         of each key, with the day each was learned. Treat them as standing facts and \
+         constraints; when a belief and a shared memory disagree, the more recent one wins.\n\
          - A step about a neighbour sets plant_id, is a monitoring step, and targets one of that \
          neighbour's listed problems.\n\
          - When the diagnosis is uncertain, write a provisional plan: safe steps that help \

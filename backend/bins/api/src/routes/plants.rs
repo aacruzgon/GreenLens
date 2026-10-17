@@ -115,7 +115,7 @@ pub async fn delete_plant(
         .store
         .start_plant_deletion(access.member, access.id, state.ports.clock.now())
         .await?;
-    state.deletions.spawn_plant(access.member.garden(), started);
+    state.deletions.spawn(started);
     Ok(StatusCode::ACCEPTED)
 }
 

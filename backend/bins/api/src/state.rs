@@ -38,8 +38,7 @@ use crate::{
 pub struct Ports {
     /// `store`: every repository (`Store` is their supertrait).
     pub store: Arc<dyn Store>,
-    /// `store`: memories, behind `agent::MirroredMemory`, so every shared memory written in
-    /// `api`, the agent or the pipeline is mirrored into Agent Memory.
+    /// `store`: memories. The `beliefs` task records the shared ones in Agent Memory.
     pub memory: Arc<dyn MemoryStore>,
     /// `integrations`: `SurrealDB` Agent Memory, or `NoBeliefs` when it isn't configured.
     pub beliefs: Arc<dyn BeliefStore>,
