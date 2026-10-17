@@ -19,7 +19,7 @@
   <header class="page-head">
     <div>
       <h1>PDM design directions</h1>
-      <p>The demo's screens in each direction: garden home, capture, live analysis, diagnosis and plan, and the 3D garden. Every phone is clickable. Pick a direction, compare one screen across all of them, or play the demo flow. The written direction is in <a href="../design.md">design.md</a>.</p>
+      <p>The demo's screens in each direction: garden home, capture, live analysis, diagnosis and plan, the plan step by step, chat, the Live Activity, the 3D garden and insights. Every phone is clickable. Pick a direction, compare one screen across all of them, or play the demo flow. The written direction is in <a href="../design.md">design.md</a>.</p>
     </div>
   </header>
 
@@ -170,6 +170,8 @@
   <symbol id="i-repeat" viewBox="0 0 24 24"><path d="M17 3.5l3 3-3 3M4 11V9.5a3 3 0 0 1 3-3h13M7 20.5l-3-3 3-3M20 13v1.5a3 3 0 0 1-3 3H4"/></symbol>
   <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3.5c4 4.8 6 8 6 10.8a6 6 0 0 1-12 0c0-2.8 2-6 6-10.8z"/></symbol>
   <symbol id="i-photos" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3.5 15.5l4.5-4.5 4 4 3-3 5.5 5.5"/><circle cx="15.5" cy="9.5" r="1.4"/></symbol>
+  <symbol id="i-thumb" viewBox="0 0 24 24"><path d="M7.5 10.5v9.5H4v-9.5zM7.5 10.5l4-7c1.2 0 2 .9 2 2.1V9h5.2a1.8 1.8 0 0 1 1.8 2.1l-1.2 7.2A2 2 0 0 1 17.3 20H7.5"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><path d="M3.5 6.5l5.5-2 6 2 5.5-2v13l-5.5 2-6-2-5.5 2z"/><path d="M9 4.5v13M15 6.5v13"/></symbol>
   <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></symbol>
 </svg>
 
@@ -281,7 +283,7 @@
   <nav class="tabbar fixed" aria-label="Tabs">
     <div class="tab on"><svg class="i"><use href="#i-leaf"/></svg>Garden</div>
     <div class="tab"><svg class="i"><use href="#i-tasks"/></svg>Tasks</div>
-    <div class="tab"><svg class="i"><use href="#i-chat"/></svg>Chat</div>
+    <div class="tab" data-act="nav:chat:push"><svg class="i"><use href="#i-chat"/></svg>Chat</div>
     <div class="tab"><svg class="i"><use href="#i-gear"/></svg>Settings</div>
   </nav>
 </template>
@@ -505,7 +507,7 @@
       </ol>
     </section>
 
-    <div class="ask"><button class="btn btn-primary btn-xl"><svg class="i"><use href="#i-chat"/></svg>Ask about this result</button></div>
+    <div class="ask"><button class="btn btn-primary btn-xl" data-act="nav:chat:push"><svg class="i"><use href="#i-chat"/></svg>Ask about this result</button></div>
   </div>
 </template>
 
@@ -564,6 +566,26 @@
     </div>
     <div class="lock-foot t-cap">A Live Activity follows the scan on the Lock Screen and in the Dynamic Island. It alerts only for the question and the result.</div>
   </div>
+</template>
+
+<template id="t-chat">
+  <div class="scr chat">
+    <header class="bar">
+      <button class="icon-btn" data-act="back" aria-label="Back"><svg class="i"><use href="#i-back"/></svg></button>
+      <div class="grow"><span class="t-hl">Tomato 2</span><span class="t-fn muted">About today's scan</span></div>
+      <button class="icon-btn" data-act="chat-replay" aria-label="Replay the conversation"><svg class="i"><use href="#i-repeat"/></svg></button>
+    </header>
+    <div class="chat-log" data-chat-log aria-live="polite"></div>
+    <div class="suggest" data-suggest hidden>
+      <button class="sg">How do I tell it from Septoria?</button>
+      <button class="sg">How far apart should tomatoes be?</button>
+    </div>
+  </div>
+  <form class="composer fixed" data-composer onsubmit="return false">
+    <button type="button" class="cmp-btn" aria-label="Add a photo"><svg class="i"><use href="#i-camera"/></svg></button>
+    <input class="cmp-in" placeholder="Ask about your plants" aria-label="Message" maxlength="2000">
+    <button type="submit" class="cmp-send" aria-label="Send"><svg class="i" viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg></button>
+  </form>
 </template>
 
 <template id="t-insights">

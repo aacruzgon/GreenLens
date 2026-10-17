@@ -254,7 +254,7 @@ The mock fixture store (frontend §15) needs these, using the mockup's garden. D
 | Weather snapshots | Oct 11: `hours_rh_over_90` 46, `longest_humid_run_days` 3. Earlier scans: 5 to 12 hours, 0 days |
 | Tomato 1 affected area | Oct 11: 14% (9–21, n 3); Oct 14: 9% (6–12, n 3); Oct 17: 5% (3–7, n 3). Spot counts fall the same way |
 | Plan and tasks | Plan v1 on Oct 11: remove leaves (done Oct 11), mulch by Oct 13 (done Oct 12), check every 3 days (done Oct 14 and Oct 17), a weekly check of Tomato 2's lower leaves (done Oct 13, due Oct 17, which leads to the live scan) |
-| Tomato 2 | Healthy at every scan to Oct 13. Oct 17 (the live scan): uncertain between early blight and Septoria leaf spot until the rings question, then confirmed early blight; risk `fungal_spread` high, with the drivers "4 humid days in the forecast" and "crowded: 40 cm from Tomato 1" (the spacing rule of architecture §6.8). A ladybug larva (beneficial) on the same leaves |
+| Tomato 2 | Healthy at every scan to Oct 13. Oct 17 (the live scan): uncertain between early blight and Septoria leaf spot until the rings question, then confirmed early blight; risk `fungal_spread` high, with the drivers "4 humid days in the forecast" and "crowded: 40 cm from Tomato 1" (the spacing rule of architecture §6.8). A ladybug larva (beneficial) on the same leaves. Its weather snapshot: 3 humid days in a row, Oct 13 to 15 (20, 22 and 19 hours over 90% humidity) |
 | Pepper | Aphids confirmed Sep 27 (status sick); aphids with a ladybug larva eating them Oct 4 (sick); healthy Oct 11; uncertain Oct 17, "yellow lower leaves" (watch). A confirmed problem is sick and an uncertain result is watch, as in P1 |
 | Alert | Frost on Oct 16: a `forecast_alert` task done Oct 15 |
 

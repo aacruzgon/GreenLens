@@ -9,6 +9,7 @@
     { id: "live", label: "Live analysis" },
     { id: "result", label: "Diagnosis and plan" },
     { id: "step", label: "Plan, step by step" },
+    { id: "chat", label: "Chat" },
     { id: "activity", label: "Live Activity" },
     { id: "garden3d", label: "3D garden" },
     { id: "insights", label: "Insights" },
@@ -149,7 +150,7 @@
   let flowToken = 0;
   const phones = [];
   // The screens a deep screen sits on, so Back and Close lead where they would in the app.
-  const PARENTS = { live: ["home"], result: ["home"], step: ["home", "result"], garden3d: ["home"], insights: ["home", "garden3d"], capture: ["home"] };
+  const PARENTS = { live: ["home"], result: ["home"], step: ["home", "result"], chat: ["home", "result"], garden3d: ["home"], insights: ["home", "garden3d"], capture: ["home"] };
 
   function buildPhone(dir, screenId, opts) {
     opts = opts || {};
@@ -191,6 +192,7 @@
         return { dispose: () => clearInterval(t) };
       }
       if (id === "step") return stepController(P, layer);
+      if (id === "chat") return chatController(P, layer);
       if (id === "activity") {
         P.phone.classList.add("island-live");
         $(".island", P.phone).innerHTML = '<span class="il-l"><svg class="i sm"><use href="#i-leaf"/></svg></span><span class="il-r num">6/9</span>';
@@ -359,6 +361,151 @@
     };
   }
 
+  // The chat: text plus answer blocks, native components the API builds from the records its tools
+  // returned (design.md section 6). The model never writes UI code, and every number is a record's.
+  const ICON = (id, cls) => `<svg class="i ${cls || "sm"}"><use href="#${id}"/></svg>`;
+  const BLOCKS = {
+    map: `<div class="blk"><div class="blk-h">${ICON("i-map")}From your garden map</div>
+      <svg class="blk-map" viewBox="0 0 300 132" role="img" aria-label="East bed: Tomato 1 and Tomato 2 are 40 cm apart; Pepper is 1.5 m further along">
+        <rect class="bed" x="8" y="22" width="284" height="100" rx="4"/><text class="lbl" x="16" y="38">East bed</text>
+        <circle class="cano sick" cx="70" cy="74" r="24" data-pl="Tomato 1: early blight since Oct 11, 62 cm tall"/><circle class="cano sick" cx="113" cy="74" r="25" data-pl="Tomato 2: early blight found today, 70 cm tall"/><circle class="cano watch" cx="228" cy="74" r="19" data-pl="Pepper: yellow lower leaves, 45 cm tall"/>
+        <path class="pin sick" d="M70 69l5 5-5 5-5-5z"/><path class="pin sick" d="M113 69l5 5-5 5-5-5z"/><path class="pin watch" d="M228 69l5.5 9h-11z"/>
+        <text class="lbl" x="62" y="44" text-anchor="end">Tomato 1</text><text class="lbl" x="122" y="44">Tomato 2</text><text class="lbl" x="228" y="48" text-anchor="middle">Pepper</text>
+        <path class="dim" d="M70 108v8M113 108v8M70 112h43"/><text class="dimt" x="92" y="106" text-anchor="middle">40 cm</text><text class="lbl warn" x="122" y="116">under 45 cm: crowded</text>
+      </svg>
+      <div class="blk-cap t-fn muted" data-cap>Tap a plant.</div>
+      <div class="blk-f"><span class="t-cap muted">Pins from the map, sizes from your scans</span><button class="btn btn-plain btn-sm" data-act="nav:garden3d:push">Open in 3D</button></div></div>`,
+    humid: `<div class="blk"><div class="blk-h">${ICON("i-drop")}Hours over 90% humidity, last 7 days</div>
+      <div class="bars" role="img" aria-label="Hours over 90 percent humidity: 4, 6, 8, 20, 22, 19 and 7">
+        ${[["Sat", 4], ["Sun", 6], ["Mon", 8], ["Tue", 20], ["Wed", 22], ["Thu", 19], ["Fri", 7]].map(([d, h], k) => `<button class="bar-c ${h >= 18 ? "hi" : ""}" data-cap-text="${d}, Oct ${10 + k}: ${h} hours over 90% humidity"><i style="height:${Math.round(h * 3)}px"></i><span>${d}</span></button>`).join("")}
+      </div>
+      <div class="blk-cap t-fn muted" data-cap>Tue to Thu: 3 humid days in a row.</div>
+      <div class="blk-f"><span class="t-cap muted">The weather saved with today's scan · Open-Meteo</span></div></div>`,
+    cover: `<div class="blk"><div class="blk-h">${ICON("i-snow")}Frost cover for Thursday night</div>
+      <div class="cover-low"><span class="num">−1 °C</span><span class="t-fn muted">lowest, at 5 am Friday</span></div>
+      <div class="cover-list">${[["Tomato 1", "tender", 1], ["Tomato 2", "tender", 1], ["Pepper", "tender", 1], ["Basil", "tender · bring the pot inside", 1], ["Lettuce", "takes a light frost", 0], ["Kale", "hardy", 0]]
+        .map(([n, h, on]) => `<button class="cv ${on ? "on" : ""}" data-cv="${n}" aria-pressed="${!!on}"><span class="cv-box">${ICON("i-check")}</span><span class="grow"><span class="cv-n">${n}</span><span class="t-cap muted">${h}</span></span></button>`).join("")}</div>
+      <div class="cover-sum t-sub" data-cover-sum></div></div>`,
+    spots: `<div class="blk"><div class="blk-h">${ICON("i-leaf")}Tomato 1 · spots on the measured leaves</div>
+      <svg class="chart" viewBox="0 0 300 108" role="img" aria-label="Spot cover 14, 9 and 5 percent on Oct 11, 14 and 17">
+        <line class="grid" x1="30" y1="20" x2="296" y2="20"/><line class="grid" x1="30" y1="86" x2="296" y2="86"/>
+        <text x="24" y="23" text-anchor="end">20%</text><text x="24" y="89" text-anchor="end">0</text>
+        <rect class="band" x="41" y="16.7" width="16" height="39.6" rx="4"/><rect class="band" x="152" y="46.4" width="16" height="19.8" rx="4"/><rect class="band" x="267" y="63" width="16" height="13.2" rx="4"/>
+        <path class="line draw" pathLength="100" d="M49 39.8 L160 56.3 L275 69.5"/>
+        <circle class="pt" cx="49" cy="39.8" r="4.5"/><circle class="pt" cx="160" cy="56.3" r="4.5"/><circle class="pt" cx="275" cy="69.5" r="4.5"/>
+        <text x="49" y="104" text-anchor="middle">Oct 11</text><text x="160" y="104" text-anchor="middle">Oct 14</text><text x="275" y="104" text-anchor="middle">Oct 17</text>
+      </svg>
+      <div class="blk-f"><span class="t-cap muted">Bars: the range across 3 leaves</span><button class="btn btn-plain btn-sm" data-act="nav:insights:push">Open insights</button></div></div>`,
+  };
+  const CHAT = [
+    { user: "Why did Tomato 2 get it too? I planted them close because the east bed is small." },
+    { tool: "Reading the garden map" },
+    { tool: "Reading today's scan" },
+    { text: "Tomato 2 is 40 cm from Tomato 1, which has had early blight since Oct 11. That is closer than the 45 cm the spacing rule allows for tomatoes, so the leaves between them dry more slowly. Before today there were also 3 humid days in a row. Both favour early blight; neither proves where it came from." },
+    { block: "map" },
+    { block: "humid" },
+    { cite: "OMAFRA, Early blight of tomato · Open-Meteo" },
+    { memory: "The east bed is small, so the tomatoes are planted close together." },
+    { user: "Will Thursday's frost make it worse?" },
+    { tool: "Checking the forecast" },
+    { text: "Frost doesn't spread early blight, but it can kill tomato, pepper and basil leaves outright. Thursday night is forecast to reach −1 °C. Choose what to cover:" },
+    { block: "cover" },
+    { action: { title: "Add a task?", body: "Cover the tomatoes, pepper and basil, Thursday at 6 pm", confirm: "Add task", reject: "Not now" } },
+    { user: "And how is Tomato 1 doing?" },
+    { tool: "Reading Tomato 1's measurements" },
+    { text: "Better. Since the infected leaves came off on Oct 11, spots have covered less of the measured leaves at each check: 14%, then 9%, then 5%." },
+    { block: "spots" },
+    { cite: "Your scans of Tomato 1" },
+  ];
+
+  function chatController(P, layer) {
+    const log = $("[data-chat-log]", layer), vp = $(".viewport", layer), reduce = state.motion === "reduce";
+    let run = 0, dead = false;
+    const ctl = { done: false, dispose() { dead = true; run++; } };
+    const pace = (ms) => (reduce ? 0 : ms * (P.flow ? 0.7 : 1));
+    function add(html) {
+      log.insertAdjacentHTML("beforeend", html);
+      const el = log.lastElementChild;
+      el.classList.add("in");
+      vp.scrollTo({ top: vp.scrollHeight, behavior: reduce ? "auto" : "smooth" });
+      return el;
+    }
+    function coverSum(root) {
+      const on = $$(".cv.on", root).map((b) => b.dataset.cv);
+      $("[data-cover-sum]", root).textContent = on.length ? `Cover ${on.length} plant${on.length > 1 ? "s" : ""}: ${on.join(", ")}.` : "Nothing to cover.";
+    }
+    async function play() {
+      const my = ++run;
+      ctl.done = false;
+      log.innerHTML = "";
+      $("[data-suggest]", layer).hidden = true;
+      let msg = null;
+      for (const ev of CHAT) {
+        if (dead || my !== run) return;
+        if (ev.user) { msg = null; add(`<div class="msg-u">${ev.user}</div>`); await wait(pace(700)); }
+        else if (ev.tool) {
+          if (!msg) msg = add(`<div class="msg-a"></div>`);
+          msg.insertAdjacentHTML("beforeend", `<div class="tool"><span class="tspin"></span><span>${ev.tool}</span></div>`);
+          const chip = msg.lastElementChild;
+          await wait(pace(750));
+          chip.classList.add("ok");
+          chip.firstElementChild.outerHTML = ICON("i-check");
+        } else if (ev.text) {
+          if (!msg) msg = add(`<div class="msg-a"></div>`);
+          msg.insertAdjacentHTML("beforeend", "<p></p>");
+          const para = msg.lastElementChild, words = ev.text.split(" ");
+          if (reduce) para.textContent = ev.text;
+          else for (let k = 0; k < words.length; k++) { if (dead || my !== run) return; para.textContent += (k ? " " : "") + words[k]; if (k % 3 === 0) vp.scrollTop = vp.scrollHeight; await wait(pace(32)); }
+        } else if (ev.block) {
+          msg.insertAdjacentHTML("beforeend", BLOCKS[ev.block]);
+          const b = msg.lastElementChild;
+          b.classList.add("in");
+          if (ev.block === "cover") coverSum(b);
+          vp.scrollTo({ top: vp.scrollHeight, behavior: reduce ? "auto" : "smooth" });
+          await wait(pace(650));
+        } else if (ev.cite) {
+          msg.insertAdjacentHTML("beforeend", `<div class="cites t-fn">${ICON("i-book")}<span>${ev.cite}</span><span class="grow"></span><button class="fb" aria-label="Helpful">${ICON("i-thumb")}</button><button class="fb down" aria-label="Not helpful">${ICON("i-thumb")}</button></div>`);
+          await wait(pace(300));
+        } else if (ev.memory) {
+          add(`<div class="mem"><div class="t-fn">${ICON("i-check")}<b>Remembered:</b> ${ev.memory}</div><div class="mem-a"><button class="btn btn-plain btn-sm" data-act="mem-undo">Undo</button><button class="btn btn-plain btn-sm">Share with garden</button></div></div>`);
+          await wait(pace(500));
+        } else if (ev.action) {
+          const a = ev.action;
+          add(`<div class="pa"><div class="pa-t">${a.title}</div><div class="t-sub">${a.body}</div><div class="pa-a"><button class="btn btn-ghost btn-sm" data-act="pa-no">${a.reject}</button><button class="btn btn-primary btn-sm" data-act="pa-yes">${a.confirm}</button></div></div>`);
+          await wait(pace(900));
+        }
+      }
+      ctl.done = true;
+      $("[data-suggest]", layer).hidden = false;
+      vp.scrollTo({ top: vp.scrollHeight, behavior: reduce ? "auto" : "smooth" });
+    }
+    layer.addEventListener("click", (e) => {
+      const cv = e.target.closest(".cv");
+      if (cv) { cv.classList.toggle("on"); cv.setAttribute("aria-pressed", String(cv.classList.contains("on"))); coverSum(cv.closest(".blk")); return; }
+      const pl = e.target.closest("[data-pl]");
+      if (pl) { pl.closest(".blk").querySelector("[data-cap]").textContent = pl.dataset.pl; return; }
+      const bar = e.target.closest("[data-cap-text]");
+      if (bar) { bar.closest(".blk").querySelector("[data-cap]").textContent = bar.dataset.capText; return; }
+      const act = e.target.closest("[data-act]");
+      if (!act) return;
+      if (act.dataset.act === "pa-yes" || act.dataset.act === "pa-no") {
+        const yes = act.dataset.act === "pa-yes";
+        act.closest(".pa-a").outerHTML = `<div class="pa-done t-fn">${ICON(yes ? "i-check" : "i-x")}${yes ? "Task added for Thursday at 6 pm" : "Not added"}</div>`;
+      } else if (act.dataset.act === "mem-undo") act.closest(".mem").outerHTML = `<div class="mem t-fn muted">Forgotten.</div>`;
+      else if (act.dataset.act === "chat-replay") play();
+    });
+    $("[data-composer]", layer).addEventListener("submit", () => {
+      const inp = $(".cmp-in", layer);
+      if (!inp.value.trim()) return;
+      add(`<div class="msg-u"></div>`).textContent = inp.value.trim();
+      inp.value = "";
+      add(`<div class="msg-a"><p>This mockup plays a scripted conversation. In the app, the agent answers here with text, answer blocks and confirmation cards.</p></div>`);
+    });
+    $$(".sg", layer).forEach((b) => b.addEventListener("click", () => { $(".cmp-in", layer).value = b.textContent; }));
+    play();
+    return ctl;
+  }
+
   // ---------- Views ----------
 
   function brief(dir) {
@@ -375,6 +522,7 @@
     ["Capture", "The LiDAR distance hint while framing; each shot uploads as it is taken."],
     ["Live analysis", "Tomato 2's scan: each stage ticks, the box is drawn on the spots, and when the evidence is split between two problems, one question settles it."],
     ["Diagnosis and plan", "Worded from the evidence, with what matched, the risk, the beneficial larva and a cited checklist."],
+    ["Chat", "Ask about the result: the answer comes with blocks built from real records (the garden map, the weather, a frost-cover planner, a measured trend) and a card that adds a task only when you confirm."],
     ["3D garden", "Built from the map: beds and plants sized by their measurements, coloured by health. Scrub back in time and watch Tomato 1 turn sick on Oct 11, then on into Thursday\'s frost forecast, with covers over the tender plants."],
     ["Insights", "Spots cover less of the leaves at each check since the infected leaves were removed; height with its noise band; the humid days before."],
   ];
@@ -415,14 +563,16 @@
       step(2); await until(() => P.ctl && P.ctl.t >= 6); await wait(1500); await tap('[data-act="answer"]');
       await until(() => P.ctl && P.ctl.t >= 9); await wait(900); await tap('[data-act="nav:result:push"]');
       step(3); await wait(2000); await scrollTo("[data-plan]"); await wait(700); await tap("[data-plan] .task"); await wait(1500);
+      step(4); await tap('[data-act="nav:chat:push"]'); await until(() => P.ctl && P.ctl.done); await wait(600);
+      await scrollTo(".pa"); await tap('[data-act="pa-yes"]'); await wait(1600);
       P.reset("home", "pop"); await wait(900);
-      step(4); await tap('[data-act="nav:garden3d:push"]'); await wait(2400);
+      step(5); await tap('[data-act="nav:garden3d:push"]'); await wait(2400);
       for (let i = 0; i < 6 && P.ctl && P.ctl.scrubTo; i++) { if (!alive()) throw 0; P.ctl.scrubTo(i); await wait(i === 5 ? 2600 : 650); }
       if (P.ctl && P.ctl.scrubTo) P.ctl.scrubTo(4);
       await wait(900);
       if (P.ctl && P.ctl.select) { P.ctl.select("tomato1"); }
       await wait(800);
-      step(5); await tap('[data-act="nav:insights:push"]'); await wait(2600); await scrollTo(".chart"); await wait(3200);
+      step(6); await tap('[data-act="nav:insights:push"]'); await wait(2600); await scrollTo(".chart"); await wait(3200);
       step(-1);
       $("#c-replay").textContent = "Replay";
     } catch (e) { /* replaced by a newer render */ }

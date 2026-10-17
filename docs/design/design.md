@@ -1,6 +1,6 @@
 # PDM Design
 
-> **Status:** Draft v0.2, 2026-10-17. v0.2: folds in the PR #43 audit: one demo story (Tomato 1 diagnosed on Oct 11 and recovering; today's live scan finds early blight on its neighbour Tomato 2), the capture tint rule, the wording sources, and 3D claims marked as not yet run. v0.1: the app's design direction: product principles from the research, what Apple owns and what we own, four directions mocked across eight screens (the current F0 baseline and three researched directions), the five borrowed ideas built into the mockups, the 3D garden, the insights, and the decisions still open.
+> **Status:** Draft v0.3, 2026-10-17. v0.3: adds the chat: answers with interactive blocks after CopilotKit's Open Intelligent UI, built from the agent's tool results rather than generated code, and the contract change it needs. v0.2: folds in the PR #43 audit: one demo story (Tomato 1 diagnosed on Oct 11 and recovering; today's live scan finds early blight on its neighbour Tomato 2), the capture tint rule, the wording sources, and 3D claims marked as not yet run. v0.1: the app's design direction: product principles from the research, what Apple owns and what we own, four directions mocked across eight screens (the current F0 baseline and three researched directions), the five borrowed ideas built into the mockups, the 3D garden, the insights, and the decisions still open.
 
 This document sets how PDM looks, moves and speaks, so the build-week slices (F1 to F8 in the frontend roadmap on PR #42) build to one direction instead of improvising one. It sits on top of the [frontend architecture](../frontend/README.md), its [flows](../frontend/flows.md) and the [screens](../frontend/screens.md), which stay the source for what each screen contains. This document decides how it looks.
 
@@ -8,7 +8,7 @@ The folder holds the research behind it and the mockups:
 
 | File | What it is |
 |---|---|
-| [mockups/index.html](mockups/index.html) | Clickable mockups: eight screens in four directions, light and dark, full or reduced motion, a screen compared across directions, and the demo flow played with a simulated finger. Open the file in a browser; the 3D view loads three.js from cdnjs |
+| [mockups/index.html](mockups/index.html) | Clickable mockups: nine screens in four directions, light and dark, full or reduced motion, a screen compared across directions, and the demo flow played with a simulated finger. Open the file in a browser; the 3D view loads three.js from cdnjs |
 | [philosophies.md](philosophies.md) | Ten design philosophies, a taste section, what Apple owns, and the full specs of the three directions (palettes checked for contrast, type, shape, motion, 3D) |
 | [landscape.md](landscape.md) | Twelve plant and garden apps and three others: table stakes, the gaps PDM can own, ideas to borrow, what would look generic |
 | [inspiration.md](inspiration.md) | Sixteen non-competitor apps (Flighty, Merlin, Windy, Object Capture, Crouton and others) and the patterns worth borrowing, screen by screen |
@@ -61,7 +61,7 @@ Expo renders native iOS 26 components, so the chrome is Apple's whatever directi
 
 ## 3. The directions
 
-The mockups show four directions on the same eight screens. The baseline is what F0 built; the other three come from [philosophies §7](philosophies.md#7-three-directions-to-mock), deliberately far apart: one restrained, one expressive, one data-forward. Only one of them is green.
+The mockups show four directions on the same nine screens. The baseline is what F0 built; the other three come from [philosophies §7](philosophies.md#7-three-directions-to-mock), deliberately far apart: one restrained, one expressive, one data-forward. Only one of them is green.
 
 | | Current F0 | Herbarium | Seed Packet | Instrument |
 |---|---|---|---|---|
@@ -102,11 +102,35 @@ What each screen does in every direction. The borrowed ideas are credited to the
 | **Live analysis** | The photo with the box drawn on the spots and the measured size, a **phase line** ("Checking telltale signs · 6 s · Next: weighing the evidence"), the stage list, "Not sure yet" with both candidates, and the **question card with picture answers**: two reference crops as Yes and No | Flighty's phase line ([inspiration §3.1](inspiration.md#31-flighty)); Merlin's picture answers ([inspiration §4.1](inspiration.md#41-merlin-bird-id)) |
 | **Live Activity** | The scan on the Lock Screen and in the Dynamic Island: stage, elapsed time, a nine-segment bar, what comes next. It alerts only for the question and the result | Flighty and Apple's Live Activity rules ([inspiration §3.2](inspiration.md#32-uber-and-the-live-activity-pattern)) |
 | **Diagnosis and plan** | The diagnosis worded from the evidence, what matched (with "measured" on the LiDAR indicator), the risk with its driver, the beneficial larva, the plan as a cited checklist | Oura's words for every state ([landscape §7](landscape.md#7-ideas-to-borrow)); the diagnosis itself carries no confidence word (screens §6) |
+| **Chat** | Answers you can use, not only read: text with **answer blocks** built from the agent's tool results (the garden map with the 40 cm spacing, the humid hours before the scan, a frost-cover planner you toggle, Tomato 1's measured trend), tool chips while it works, sources, a remembered fact with Undo, and a card that adds a task only when you confirm. See [Chat: answers you can interact with](#chat-answers-you-can-interact-with) | CopilotKit's [Open Intelligent UI](https://github.com/CopilotKit/OpenIntelligentUI) |
 | **Plan, step by step** | One step per screen in large type: when, why, how, its source, and a time phrase turned into named tasks ("Adds 5 tasks: Oct 20, 23, 26, 29, Nov 1") | Crouton's step mode ([inspiration §9.2](inspiration.md#92-crouton)) |
 | **3D garden** | The garden built from the map, plants sized by measurement and coloured by health. The **date scrubber** runs from the first scan to today, Tomato 1 turns sick on Oct 11, Tomato 2 on Oct 17 after the live scan, and one step past today shows Thursday's frost with covers over the tender plants | Windy's and Moonlitt's timeline ([inspiration §5](inspiration.md#5-alerts-forecasts-and-time)); Polycam's measurement labels ([landscape §7](landscape.md#7-ideas-to-borrow)) |
 | **Insights** | Tomato 1's health over time, spot cover 14% → 9% → 5% with range bars and the dates plan steps were done, height with its noise band, humid hours before the diagnosis, and Tomato 2, 40 cm away, where the same problem was also found today (worded "also found on", never "spread from") | [analytics §6](analytics.md#6-the-demos-analytics-moment) |
 
-**The demo flow** in the mockups ("Play the flow") runs home → capture → live analysis → the answer → diagnosis and plan → a checked step → the 3D garden scrubbed into the forecast → insights. It is about 50 seconds, a quarter of the video.
+**The demo flow** in the mockups ("Play the flow") runs home → capture → live analysis → the answer → diagnosis and plan → a checked step → chat with its blocks and a confirmed task → the 3D garden scrubbed into the forecast → insights. It is about 65 seconds, a third of the video.
+
+### Chat: answers you can interact with
+
+[Open Intelligent UI](https://github.com/CopilotKit/OpenIntelligentUI) (CopilotKit, MIT, read on 2026-10-17) is a chat where, for each turn, the agent picks the presentation: a direct text answer, a native component (it uses A2UI for basic tables), or a custom interactive UI that the model writes as HTML, CSS and JavaScript and that runs in a sandboxed iframe. Its demos explain, compare and "make a tool for the moment": a 3D model with controls, a table that becomes a chart, a calculator, a map with pins. It is built for Next.js on the web with CopilotKit and AG-UI.
+
+**What PDM takes:** an answer can be something you use, and the agent chooses per turn whether text is enough or a component helps. **What PDM leaves:** model-written UI code. Instead, the API builds **answer blocks**, native components from a fixed set, out of records its tools already returned:
+
+- **Honesty.** Every number in a block is a record's (a measurement, a forecast hour, a map distance), never the model's arithmetic. The text answer cites the same records.
+- **Safety.** Every string the model writes passes the dose check (contracts §8). A block has no free text of the model's, so nothing reaches the screen around the check.
+- **The platform.** The app is React Native; a sandboxed HTML answer would need a WebView inside the chat on every platform.
+- **One design.** Blocks use the app's composites and tokens, so a chat answer looks like the rest of the app in every direction.
+
+| Block | Built from | What you can do in it |
+|---|---|---|
+| Garden map snippet | `get_garden_map`, `get_plant_measurements` | Tap a plant for its status and height; open the 3D garden |
+| Weather hours | `get_scan` (its weather snapshot) or `get_forecast` | Tap a day for its hours over 90% humidity |
+| Frost cover planner | `get_forecast`, `get_garden_map`, `get_species_profile` | Choose plants to cover; the summary updates; it leads to a `create_task` card |
+| Measurement trend | `get_plant_measurements` | Read the points and their bands; open Insights |
+| Candidates compared | `compare_lookalikes` | The two problems side by side with how to tell them apart |
+
+Interactions inside a block are local. Anything that changes data still goes through a confirmation card (`create_task`, `complete_task`, `revise_plan`), as today. Each block carries a text summary for screen readers, and the text answer makes sense without it.
+
+**Contract change needed (proposed, not in this PR):** today "tool calls and tool results are stored but never sent to the app" (contracts §8). Blocks need an `answer_block` SSE event `{ v: 1, block: AnswerBlock }`, `blocks: AnswerBlock[]` on `Message`, and `AnswerBlock` as a tagged union by `kind`, each holding the record it shows and the `call_id` of the tool result it came from. The agent picks a block with a read tool such as `show_block(kind, call_id)`, which the API validates against that turn's tool results. As AGENTS.md requires, this lands as a `domain` type change with its exact-JSON test and `contracts.md` in one pull request.
 
 ## 6. Rules every direction follows
 
@@ -144,8 +168,9 @@ Once a direction is chosen:
 2. **Fonts.** Load the chosen families with the `expo-font` config plugin (one `fontFamily` per weight); bar titles stay system.
 3. **New composites:** `StatusShape`, `PhaseLine`, `CandidateCompare` (plates or table), `PictureAnswer`, `CoverageDial`, `StepMode`, `StatusStrip`, `BandLine` and `StepLanes` (the last three from analytics §2).
 4. **Libraries to add, each with its reason in its pull request** (not in [frontend §4](../frontend/README.md#4-libraries) yet): `expo-symbols`, `expo-glass-effect`, `expo-gl`, `three`, `@react-three/fiber`.
-5. **Live Activity:** an ActivityKit widget extension, which needs a development build, and a decision on how it is added to the Expo project (open decision 4).
-6. **The frontend roadmap** (PR #42) gains this design as the first item of F1, and F8 Polish checks every screen against this document.
+5. **Chat blocks:** an `AnswerBlock` renderer in `features/chat` with one composite per kind, after the contract change in section 5.
+6. **Live Activity:** an ActivityKit widget extension, which needs a development build, and a decision on how it is added to the Expo project (open decision 4).
+7. **The frontend roadmap** (PR #42) gains this design as the first item of F1, and F8 Polish checks every screen against this document.
 
 ## 10. Open decisions
 
@@ -155,3 +180,4 @@ Once a direction is chosen:
 4. **Live Activity in Expo.** How the widget extension is added and whether it fits the build week; the Lock Screen design does not depend on it.
 5. **The 3D spike.** Run it first; if expo-gl blocks three r163 or later, pin three below r163 (garden-3d §6).
 6. **Fonts.** If Seed Packet is chosen, cut Fraunces instances with the soft axis set (philosophies §9).
+7. **Answer blocks in chat.** Take the `answer_block` contract change (section 5) into F6, and agree the first set of block kinds with the agent work in backend S5.
