@@ -102,7 +102,7 @@ precision = "fp16"                       # GridSample, Range, LayerNormalization
 
   [model.config]
   score_threshold  = 0.35                # τ_det, set on the evaluation set
-  tau_leaf         = 0.5                 # τ_leaf of the plant check (models.md 2): a placeholder, the old code default, until it is fitted Oct 22–23
+  tau_leaf         = 0.35                # τ_leaf of the plant check (models.md 2): provisional, = score_threshold (any kept leaf), from reports/tau-leaf-val-2026-10-16 (2.9% of val plant photos below, 5.6% at 0.5); fitted on the evaluation set Oct 22–23
   min_side_px      = 24
   max_per_image    = 40
   nms_iou          = 0.8
