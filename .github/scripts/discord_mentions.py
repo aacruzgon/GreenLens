@@ -55,8 +55,9 @@ MAX_WAIT_S = 30.0
 @dataclass(frozen=True)
 class Person:
     key: str  # SARAH, SAM, ...
-    login: str  # lower case
-    webhook: str  # may be empty: checked only when the person is mentioned
+    login: str  # lower case, for matching
+    name: str  # as the variable spells it, for the alert's text
+    webhook: str  # may be empty: checked only when the person is to be alerted
 
 
 def strip_code(body: str) -> str:
@@ -111,8 +112,8 @@ def author_to_alert(event: dict) -> str | None:
     if event.get("action") != "created":
         return None
     commenter = event.get("comment", {}).get("user") or {}
-    author = (event.get("issue", {}).get("user") or {}).get("login", "").lower()
-    if not author or author == commenter.get("login", "").lower() or commenter.get("type") == "Bot":
+    author = ((event.get("issue", {}).get("user") or {}).get("login") or "").lower()
+    if not author or author == (commenter.get("login") or "").lower() or commenter.get("type") == "Bot":
         return None
     return author
 
@@ -128,7 +129,7 @@ def people(env: dict[str, str]) -> tuple[list[Person], list[str]]:
         elif not USERNAME.fullmatch(login):
             warnings.append(f"GH_USER_{key} is not a valid GitHub username; {key} gets no alerts")
         else:
-            out.append(Person(key, login.lower(), webhook))
+            out.append(Person(key, login.lower(), login, webhook))
     return out, warnings
 
 
@@ -166,14 +167,15 @@ def message(event: dict, person: Person, mentioned: bool = True) -> dict:
     edited = event.get("action") == "edited"
     # An edit's mention is the editor's, who may not be the comment's author.
     user = event.get("sender", {}) if edited else comment.get("user", {})
-    author = user.get("login") or comment.get("user", {}).get("login", "someone")
+    author = user.get("login") or (comment.get("user") or {}).get("login") or "someone"
     number = issue.get("number")
     where = f"{escape(repo['full_name'])}#{number}"
     if mentioned:
-        what = f"mentioned {escape(person.login)} in {'an edited comment' if edited else 'a comment'} on {where}"
+        what = f"mentioned {escape(person.name)} in {'an edited comment' if edited else 'a comment'} on {where}"
         footer = "Edited comment" if edited else "New comment"
     else:
-        what = f"commented on {escape(person.login)}'s {kind} {where}"
+        owner = (issue.get("user") or {}).get("login") or person.name  # GitHub's spelling
+        what = f"commented on {escape(owner)}'s {kind} {where}"
         footer = f"New comment on your {kind}"
     return {
         # No pings at all: not @everyone, @here, roles or users, whatever the comment says.

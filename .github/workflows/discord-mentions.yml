@@ -18,13 +18,18 @@ permissions:
 
 jobs:
   notify:
-    # Skip, before a runner starts, comments that can alert no one: no @ and no author to alert (an
-    # edit, the author's own comment, or a bot's). The script does the matching.
+    # Skip, before a runner starts, comments that can alert no one: no @, and no configured author to
+    # alert (not for an edit, the author's own comment or a bot's). The script does the matching.
+    # Expression comparisons ignore case; the second contains() allows a variable written as @name.
     if: >-
       contains(github.event.comment.body, '@') ||
       (github.event.action == 'created' &&
        github.event.comment.user.login != github.event.issue.user.login &&
-       github.event.comment.user.type != 'Bot')
+       github.event.comment.user.type != 'Bot' &&
+       (contains(format(' {0} {1} {2} {3} ', vars.GH_USER_SARAH, vars.GH_USER_SAM, vars.GH_USER_ALAN, vars.GH_USER_MARK),
+                 format(' {0} ', github.event.issue.user.login)) ||
+        contains(format(' {0} {1} {2} {3} ', vars.GH_USER_SARAH, vars.GH_USER_SAM, vars.GH_USER_ALAN, vars.GH_USER_MARK),
+                 format(' @{0} ', github.event.issue.user.login))))
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -34,7 +39,7 @@ jobs:
           sparse-checkout: .github/scripts/discord_mentions.py
           sparse-checkout-cone-mode: false
           persist-credentials: false
-      - name: Send an alert to each newly mentioned person's channel
+      - name: Alert each newly mentioned person, and the author a new comment is on
         env:
           GH_USER_SARAH: ${{ vars.GH_USER_SARAH }}
           GH_USER_SAM: ${{ vars.GH_USER_SAM }}

@@ -187,7 +187,7 @@ class Authors(unittest.TestCase):
         code, discord, _ = run(event("Looks good to me", owner="SamDev"))
         self.assertEqual((code, discord.urls()), (0, [ENV["DISCORD_WEBHOOK_SAM"]]))
         payload = discord.payloads()[0]
-        self.assertEqual(payload["content"], "**commenter** commented on samdev's pull request aacruzgon/GreenLens#7")
+        self.assertEqual(payload["content"], "**commenter** commented on SamDev's pull request aacruzgon/GreenLens#7")
         self.assertEqual(payload["embeds"][0]["footer"]["text"], "New comment on your pull request")
         self.assertEqual(payload["allowed_mentions"], {"parse": []})
 
@@ -219,6 +219,23 @@ class Authors(unittest.TestCase):
         self.assertEqual(sorted(discord.urls()), sorted([ENV["DISCORD_WEBHOOK_MARK"], ENV["DISCORD_WEBHOOK_SARAH"]]))
         for payload in discord.payloads():
             self.assertIn(" mentioned ", payload["content"])
+
+    def test_configured_commenter_alerts_the_configured_author(self):
+        e = event("nice", owner="mark")
+        e["comment"]["user"]["login"] = "sarah-k"
+        _, discord, _ = run(e)
+        self.assertEqual(discord.urls(), [ENV["DISCORD_WEBHOOK_MARK"]])
+
+    def test_bot_comment_still_alerts_mentions(self):
+        _, discord, _ = run(event("@mark the build failed", owner="sarah-k", commenter_type="Bot"))
+        self.assertEqual(discord.urls(), [ENV["DISCORD_WEBHOOK_MARK"]])
+
+    def test_null_logins_alert_no_author_and_keep_mentions(self):
+        e = event("@mark", owner="sarah-k")
+        e["issue"]["user"]["login"] = None
+        e["comment"]["user"]["login"] = None
+        _, discord, _ = run(e)
+        self.assertEqual(discord.urls(), [ENV["DISCORD_WEBHOOK_MARK"]])
 
     def test_author_and_a_mention_alert_both(self):
         _, discord, _ = run(event("cc @sarah-k", owner="mark"))
