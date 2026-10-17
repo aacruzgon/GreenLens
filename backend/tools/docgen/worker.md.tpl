@@ -114,7 +114,7 @@ bins/worker/src/
 | `VLM_SLOTS` | 1 | vlm | Jobs held at once; the sidecar's `--max-num-seqs` (or `-np`) is the same |
 | `LLM_API_KEY`, `FALLBACK_VISION_MODEL` | —, `claude-opus-5-5` | fallback | The hosted model |
 | `FALLBACK_SLOTS`, `FALLBACK_MAX_LONG_SIDE`, `FALLBACK_MAX_PIXELS` | 4, 1568, 1,150,000 | fallback | Slots, and the size the API won't resize |
-| `WORKER_STUB_VISION`, `PDM_ALLOW_STUB_VISION`, `STUB_*` | off, unset | perception | Canned results for the walking skeleton; refused in a release build without the allow variable ([section 15.1](#151-stub-vision), proposed) |
+| `WORKER_STUB_VISION`, `PDM_ALLOW_STUB_VISION`, `STUB_*` | off, unset | perception | Canned results for the walking skeleton; refused in a release build without the allow variable ([section 15.1](#151-stub-vision)) |
 
 Start-up fails before the first claim on a missing key, a missing `[model.config]` threshold, a batch cap above the manifest's, an ONNX file whose tensor names differ from its entry, an fp16 model with `ORT_EP=cpu`, a file whose hash differs from the manifest, a provider that isn't compiled in or doesn't register, or a VLM server that doesn't serve `VLM_SERVED_NAME` (`GET /v1/models`).
 
@@ -515,13 +515,13 @@ The message is the error and its `source()` chain, `": "`-joined ([rust-errors](
 | `live_indicators_worst_case`, `live_findings` (ignored) | Against the real API, no images: 27 questions with full-length keys and 4 images in parts of 12, every one answered (`LIVE_QUESTIONS` and `LIVE_PER_CALL` probe the limit); the findings schema accepted |
 | schema, decode, prepare unit tests | `reason` before `answer` in the serialised schema; `unsure`-only questions; payload enums and box bounds; one guided branch; aliases, boxes, truncation and certainty mapped; a zero-area organism box drops the organism; unknown species and missing keys fail; Qwen3 cells and the pixel budget; the hosted 1568-pixel cap |
 
-The stub's tests are in [section 15.1.5](#1515-tests) (proposed). All loop tests run on paused time (`start_paused = true`) against a fake `WorkerApi`; the fake answers an empty claim like a 25 s long poll, so the clock can advance. Contract tests of `HttpWorkerApi` against a live `api` belong to the end-to-end tests ([api](api.md)). The day-2 benchmark ([vision evaluation](../vision/evaluation.md)) checks the adapters against the real servers: valid output, xgrammar's enforcement of `maxLength` and `maxItems`, boxes drawn back on the prepared images, and the 9070 XT against the 5070 Ti.
+The stub's tests are in [section 15.1.5](#1515-tests). All loop tests run on paused time (`start_paused = true`) against a fake `WorkerApi`; the fake answers an empty claim like a 25 s long poll, so the clock can advance. Contract tests of `HttpWorkerApi` against a live `api` belong to the end-to-end tests ([api](api.md)). The day-2 benchmark ([vision evaluation](../vision/evaluation.md)) checks the adapters against the real servers: valid output, xgrammar's enforcement of `maxLength` and `maxItems`, boxes drawn back on the prepared images, and the 9070 XT against the 5070 Ti.
 
 ### 15.1 Stub vision
 
 The roadmap's first slice (S1, [roadmap 5](roadmap.md#5-s1-walking-skeleton)) runs a scan from the app through the API and the broker to a worker and back over SSE, before any GPU or model file exists. The worker has only the real perception path and the hosted fallback, so S1 has nothing to claim a `perception` job ([roadmap gap 2](roadmap.md#13-gaps-found-while-writing-this-roadmap)). **Stub vision** is a `VisionModel` that answers `perception` jobs with canned, valid results. It is a development tool. It is off by default, it is refused in a release build unless the operator says so twice, and it marks everything it produces.
 
-Nothing in this section is compiled yet. The listings are labelled "Proposed (not compiled)", and the numbers in section 15.1.7 are the work items.
+ST1 to ST5 of section 15.1.7 are compiled and tested (`bins/worker/src/stub.rs`, `StubArgs` and `check_stub_allowed` in `config.rs`); ST6 and ST7 are not. The listings labelled "Proposed (not compiled)" are the design as first written.
 
 #### 15.1.1 Turning it on
 
@@ -640,11 +640,11 @@ All are part of S1's work item 1 ([roadmap 5](roadmap.md#5-s1-walking-skeleton))
 
 | # | Work | Exit check |
 |---|---|---|
-| ST1 | `StubArgs`, `check_stub_allowed`, the `build_model` branch, the start-up `warn!` and span field | The three refusal tests pass; `worker --caps perception --stub-vision` with the allow variable starts in a release build on a machine with no GPU and no `/models` |
-| ST2 | `StubModel` and its result builder | `stub_regions_follow_the_image_kinds`, `stub_result_decodes_as_the_jobs_kind`, `stub_follows_the_payloads_species_choice`, `stub_disease_is_sorted_and_skips_without_leaves` and `stub_never_sends_embeddings` pass; `cargo clippy -p worker --all-targets` is clean |
-| ST3 | The marks of section 15.1.3 and `stub_module_has_no_io` | `stub_marks_every_version` and `stub_module_has_no_io` pass; the heartbeat of a started stub lists both label versions |
-| ST4 | The stage events and the delay | `a_stub_job_completes_through_the_loop` and `a_cancelled_stub_job_stops_at_its_delay` pass on paused time |
-| ST5 | `pipeline`'s fixture test, and a check that the stub's output decodes against `contracts.md` | `a_stub_perception_result_stores_its_observations` passes |
+| ST1 ✓ done | `StubArgs`, `check_stub_allowed`, the `build_model` branch, the start-up `warn!` and span field | The three refusal tests pass; `worker --caps perception --stub-vision` with the allow variable starts in a release build on a machine with no GPU and no `/models` |
+| ST2 ✓ done | `StubModel` and its result builder | `stub_regions_follow_the_image_kinds`, `stub_result_decodes_as_the_jobs_kind`, `stub_follows_the_payloads_species_choice`, `stub_disease_is_sorted_and_skips_without_leaves` and `stub_never_sends_embeddings` pass; `cargo clippy -p worker --all-targets` is clean |
+| ST3 ✓ done | The marks of section 15.1.3 and `stub_module_has_no_io` | `stub_marks_every_version` and `stub_module_has_no_io` pass; the heartbeat of a started stub lists both label versions |
+| ST4 ✓ done | The stage events and the delay | `a_stub_job_completes_through_the_loop` and `a_cancelled_stub_job_stops_at_its_delay` pass on paused time |
+| ST5 ✓ done | `pipeline`'s fixture test, and a check that the stub's output decodes against `contracts.md` | `a_stub_perception_result_stores_its_observations` passes |
 | ST6 | A `perception-stub-worker` service in S1's `control-plane.compose.yml` (`--caps perception --stub-vision`, `PDM_ALLOW_STUB_VISION=1`, the `STUB_*` variables, its own `env_file` with `WORKER_TOKEN`) | The worker's first heartbeat shows on the API; a submitted scan's perception job is claimed within a second and the stage events reach the stream |
 | ST7 | The kill, restart and resume checks of section 15.1.5 in the S1 smoke script | S1's first three exit checks pass against the deployed control plane |
 

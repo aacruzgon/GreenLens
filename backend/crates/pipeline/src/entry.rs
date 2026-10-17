@@ -503,11 +503,7 @@ impl Pipeline {
         let snap = self.deps.store.snapshot(job.scan).await?;
         let run = job.run.unwrap_or(snap.scan.run);
         let fallback = versions.get("vlm_server").is_some_and(|s| s == "anthropic");
-        let model_version = versions
-            .get("vlm_model")
-            .or_else(|| versions.get("perception_config"))
-            .cloned()
-            .unwrap_or_default();
+        let model_version = observation_model_version(versions);
         let ctx = results::ObsContext {
             scan: job.scan,
             run,
@@ -928,6 +924,16 @@ fn empty_perception(plant_present: Option<bool>) -> domain::jobs::PerceptionResu
     }
 }
 
+/// The `model_version` stored on a result's observations: the VLM's model, else the
+/// perception configuration (`stub` for a stub worker).
+fn observation_model_version(versions: &std::collections::BTreeMap<String, String>) -> String {
+    versions
+        .get("vlm_model")
+        .or_else(|| versions.get("perception_config"))
+        .cloned()
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -971,5 +977,66 @@ mod tests {
             &[&ind],
             &AnswerSet::new(&measured)
         ));
+    }
+
+    /// The stub worker's full result for a five-photo scan (`worker`'s test
+    /// `stub_result_matches_the_pipeline_fixture` keeps the file equal to what the stub makes).
+    const STUB_RESULT: &str = include_str!("fixtures/stub_perception_result.json");
+
+    #[test]
+    fn a_stub_perception_result_stores_its_observations() {
+        use domain::{
+            records::observation::ObservationSource,
+            wire::{Run, Timestamp},
+        };
+        let decoded = JobResult::decode(
+            JobKind::Perception,
+            serde_json::from_str(STUB_RESULT).unwrap(),
+        )
+        .unwrap();
+        let JobResult::Perception(result) = decoded else {
+            panic!("a perception result")
+        };
+        // What `done` reads from `complete.model_versions` for a stub worker.
+        let versions = std::collections::BTreeMap::from([
+            ("stub".to_owned(), "1".to_owned()),
+            ("perception_config".to_owned(), "stub".to_owned()),
+        ]);
+        let model_version = observation_model_version(&versions);
+        assert_eq!(model_version, "stub");
+        let ctx = results::ObsContext {
+            scan: "01JAX3K9T6R2B8V0QZ4M7D1E50".parse().unwrap(),
+            run: Run(1),
+            vlm_source: ObservationSource::Vlm,
+            model_version: &model_version,
+            now: "2026-10-18T14:00:00Z".parse::<Timestamp>().unwrap(),
+        };
+        let names = std::collections::BTreeMap::new();
+        let lookups = results::Lookups {
+            problem_names: &names,
+            organisms: &[],
+        };
+        let mut n = 0_u32;
+        let writes = results::perception_writes(&ctx, &result, &[], &lookups, || {
+            n += 1;
+            format!("01JAX3K9T6R2B8V0QZ4M7D1E{n:02}").parse().unwrap()
+        });
+        let stages: Vec<_> = writes.iter().map(|w| w.stage).collect();
+        assert_eq!(
+            stages,
+            [
+                domain::events::Stage::PlantCheck,
+                domain::events::Stage::Segmentation,
+                domain::events::Stage::Species,
+                domain::events::Stage::Disease,
+            ],
+            "no embeddings, so no image_embedding write"
+        );
+        let stored: Vec<_> = writes.iter().flat_map(|w| &w.observations).collect();
+        assert!(stored.len() > 4, "observations of four stages");
+        assert!(stored.iter().all(|o| o.model_version == "stub"));
+        assert!(stored.iter().any(|o| o.label == "tomato (stub)"));
+        // `done` then hands a scan-level job to `retrieve` (`claim: Some(Retrieve)` when the
+        // job has no question): that line is not reachable without a full store.
     }
 }
