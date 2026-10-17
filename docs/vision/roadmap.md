@@ -1,6 +1,6 @@
 # PDM Vision Roadmap
 
-> **Status:** v0.8, 2026-10-16 (night). v0.8: the soil prompt is drafted as `findings@2` for Sara. v0.7: the day-1 plant probe is built and the provisional `τ_leaf` 0.90 and `τ_plant` 0.67 replace 0.35; #25 is merged. v0.6: `τ_leaf` is provisionally 0.35; #7, #16 and Sara's #18 are merged, so sections 1, 2 and 5 are brought up to date. v0.5: the Qwen3.5-9B challenger passed its day-1 check and the fake VLM server is built, with the fixes from its review. v0.4: decisions now live only in dev-roadmap section 9; our model files moved from the interim GitHub release to `GreenLens/pdm-models`. v0.3: PR #6 merged; PR #7 has `main` merged in and targets `main`; our model files' GitHub release is an interim until `pdm-models` (dev-roadmap M21). v0.2: the PR #6 reviews are answered: Tomato-Pakistan reworked, disease head v1d, the detector retrained on a grouped split; the whole-ML plan with the integration track moves to [dev-roadmap.md](dev-roadmap.md). v0.1: First tracker of the vision and ML work against the build plan in [README 10](README.md#10-build-plan), with what is done, what is next and what waits on whom.
+> **Status:** v0.7, 2026-10-16 (night). v0.7: the day-1 plant probe is built and the provisional `τ_leaf` 0.90 and `τ_plant` 0.67 replace 0.35; #25 is merged. v0.6: `τ_leaf` is provisionally 0.35; #7, #16 and Sara's #18 are merged, so sections 1, 2 and 5 are brought up to date. v0.5: the Qwen3.5-9B challenger passed its day-1 check and the fake VLM server is built, with the fixes from its review. v0.4: decisions now live only in dev-roadmap section 9; our model files moved from the interim GitHub release to `GreenLens/pdm-models`. v0.3: PR #6 merged; PR #7 has `main` merged in and targets `main`; our model files' GitHub release is an interim until `pdm-models` (dev-roadmap M21). v0.2: the PR #6 reviews are answered: Tomato-Pakistan reworked, disease head v1d, the detector retrained on a grouped split; the whole-ML plan with the integration track moves to [dev-roadmap.md](dev-roadmap.md). v0.1: First tracker of the vision and ML work against the build plan in [README 10](README.md#10-build-plan), with what is done, what is next and what waits on whom.
 > **How to use it:** read this first when picking up the ML work. Update it at the end of every work session: change the state of each item you touched, add the commit or report that proves it, and bump the status line. The plan itself stays in [README 10](README.md#10-build-plan); this file only tracks progress against it.
 
 Owner of the vision and ML work: Sam (models, training, export, evaluation, calibration; the RTX 5070 Ti). Running the models in the backend is Sara's track ([docs/backend/vision.md](../backend/vision.md), [worker.md](../backend/worker.md)); the plan both tracks share, with owners, hand-offs and the integration gaps, is [dev-roadmap.md](dev-roadmap.md). This file tracks the models.
@@ -76,7 +76,7 @@ Day 1 of 10 (Oct 16). The work is **ahead of plan on models and serving, behind 
 | Perception batch caps benchmark | Not started | On the 3070, with every session loaded |
 | Leaf relabelling pass (people, Oct 18) | Not started | |
 | Real BioCLIP label matrix from the species and organism seed files | Waiting | On the knowledge-base seed files and decision #4 |
-| VLM prompts and schemas on real photos | In progress | Soil: `findings@2` gives soil readings from a soil shot on both candidates and none from glimpsed soil (draft PR for Sara, vlm.md §4); the other P5 issues are Sara's; real photos still needed |
+| VLM prompts and schemas on real photos | Waiting | The prompts are in Sara's worker code (dev-roadmap P5); day-1 found three issues (vlm.md §4) |
 | Second detector run (night of Oct 18, vLLM stopped) | Not started | After relabelling |
 | Disease and species heads on crops from our detector (Oct 19) | Not started | The data rework is done; needs the second detector run |
 | Python–Rust pre-processing parity test | Waiting | dev-roadmap J1, after Sara's loader fixes (P1); `crop_box` rounding is a guess until then |
@@ -98,7 +98,7 @@ Decisions are tracked in one table, [dev-roadmap section 9](dev-roadmap.md#9-dec
 ## 5. Next steps, in order
 
 1. **Start the evaluation photos** and the 20 dev cases the day-2 benchmark needs (Oct 18). This is the biggest risk: the benchmark, calibration (M16), the YuNet and zero-shot checks and the no-plant cases all wait on them.
-2. **Sara takes over the soil prompt's draft PR** (`findings@2`, dev-roadmap P5) and the other P5 fixes.
+2. **The soil prompt (dev-roadmap P5) with Sara:** the findings prompt must show the shape of a soil reading; then re-record both models through the fake server's record mode.
 3. **YuNet and the text embedder pinned** (dev-roadmap M7, M8); BioCLIP zero-shot on team photos.
 4. Day-2 VLM benchmark on Oct 18 with Sara's worker; leaf relabelling; second detector run that night.
 
