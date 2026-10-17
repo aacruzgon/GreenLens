@@ -33,3 +33,14 @@ def test_manifests_sources_and_notices_agree(tmp_path):
     """check.py without local files: source rows, unique paths, versions and notices."""
     problems, _ = check.check(MODELS, tmp_path)
     assert problems == []
+
+
+def test_plant_probe_file_rules():
+    bioclip = {"sha256": "b9016a6865e188c0" + "0" * 48}
+    good = {"kind": "plant_probe", "classes": 1, "version": "p1", "features": "bioclip-2@2957b322+b9016a6865e188c0"}
+    assert check.features_problems("m: plant_probe", good, bioclip, "p1") == []
+    for bad, needle in (({"features": "bioclip-2@2957b322+0000000000000000"}, "would refuse"),
+                        ({"version": "p0"}, "version"),
+                        ({"classes": 2}, "one-class")):
+        problems = check.features_problems("m: plant_probe", {**good, **bad}, bioclip, "p1")
+        assert any(needle in p for p in problems), (bad, problems)

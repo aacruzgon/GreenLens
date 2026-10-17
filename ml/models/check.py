@@ -14,6 +14,8 @@ Fails (exit 1) unless:
 - for each file present locally: its SHA-256 matches; a label matrix's or head's own version
   equals its entry's; a head's `features` names that manifest's `bioclip` file
   (`<version>+<first 16 hex of its SHA-256>`, ml/models/FORMATS.md), as the worker requires;
+  a plant probe's file is a one-class `plant_probe` head with its entry's version and the same
+  `features` rule;
 - when the knowledge seed's classifier_labels.yaml exists, a head's labels equal its rows in
   index order (skipped, with a note, until it does).
 
@@ -84,6 +86,9 @@ def check(models: Path, files: Path) -> tuple[list[str], list[str]]:
             if hashes[e["file"]] != e["sha256"]:
                 problems.append(f"{where}: {path} doesn't match its SHA-256")
                 continue
+            if e["name"] == "plant_probe" and e["file"].endswith(".json"):
+                problems += features_problems(where, json.loads(path.read_text()), bioclip, e["version"])
+                continue
             if not e["file"].endswith(".json") or not key:
                 continue
             doc = json.loads(path.read_text())
@@ -97,6 +102,21 @@ def check(models: Path, files: Path) -> tuple[list[str], list[str]]:
                                     f"bioclip file is {want!r}; the worker would refuse it")
                 problems += seed_problems(where, doc, notes)
     return problems, notes
+
+
+def features_problems(where: str, head: dict, bioclip: dict | None, version: str) -> list[str]:
+    """A plant probe's own version and `features` against its entry and the manifest's bioclip."""
+    problems = []
+    if head.get("kind") != "plant_probe" or head.get("classes") != 1:
+        problems.append(f"{where}: not a one-class plant_probe head")
+    if head.get("version") != version:
+        problems.append(f"{where}: the file's version {head.get('version')!r} differs from the entry's {version!r}")
+    if bioclip:
+        want = f"{head['features'].split('+', 1)[0]}+{bioclip['sha256'][:16]}"
+        if head.get("features") != want:
+            problems.append(f"{where}: features {head.get('features')!r}, but this manifest's bioclip file "
+                            f"is {want!r}; the worker would refuse it")
+    return problems
 
 
 def seed_problems(where: str, head: dict, notes: list[str]) -> list[str]:
