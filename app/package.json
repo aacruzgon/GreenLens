@@ -67,7 +67,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
     "test": "jest",
-    "gen:api": "node scripts/gen-api.mjs"
+    "gen:api": "node scripts/gen-api.mjs",
+    "check:contrast": "node scripts/check-contrast.mjs"
   },
   "private": true,
   "overrides": {

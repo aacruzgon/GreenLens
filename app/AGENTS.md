@@ -1,41 +1,16 @@
-This is an Expo/React Native mobile application. Prioritize mobile-first patterns, performance, and cross-platform compatibility.
+# AGENTS.md (app/)
 
-## Expo has changed — do not trust your training data
+The PDM Expo app. The repository's [AGENTS.md](../AGENTS.md) applies here too; this file adds what is specific to `app/`.
 
-Expo ships breaking changes every SDK release. APIs you remember are likely renamed, moved, or removed. Before writing any code that touches an Expo, EAS, or React Native API:
+- **The project's documents win** over Expo's defaults, plugin skills and your training data. Read [docs/frontend](../docs/frontend/README.md) first: layers and import rules (§5), layout (§6), the API and streaming layers (§9–10), the UI system (§14), mock mode (§15). What to build next is in the [frontend roadmap](../docs/frontend/roadmap.md).
+- **Stay on Expo SDK 57.** The pins are in [docs/frontend §3](../docs/frontend/README.md#3-stack-and-version-pins). Install Expo and native packages with `npx expo install <pkg>`, never plain `npm install`, and don't run `expo-upgrade`. When an API is unclear, read the SDK 57 docs (`https://docs.expo.dev/versions/v57.0.0/`) or the installed package's types.
+- **Configuration is `app.config.ts`,** not `app.json`. `EXPO_PUBLIC_*` values are checked in `src/config/env.ts`; `.env.example` lists them.
+- **Builds:** Expo Go and the web build for most work; a local development build (`npx expo run:ios --device`, free Apple ID) for the LiDAR module. There is no paid Apple account, so no EAS cloud builds for iOS ([roadmap 2](../docs/frontend/roadmap.md#2-devices-and-builds)).
+- **Contract types are generated:** `npm run gen:api` from `backend/openapi.json`. Never edit `src/api/generated/schema.ts`.
+- **Screens follow Apple's guidelines:** use the `/hig` skill when building or reviewing one.
 
-1. Read the major version of the `expo` package in `package.json`.
-2. Fetch the matching versioned docs: `https://docs.expo.dev/versions/v<major>.0.0/`
-3. For anything else, fetch https://docs.expo.dev/llms.txt — an index of all Expo docs with corrections to common LLM misconceptions. Follow its links to the specific page you need; never answer from memory.
+Before saying a change is done, run:
 
-## Commands
-
-Use `bunx` instead of `npx` if the project uses bun (`bun.lock` present).
-
-```bash
-npx expo install <package>  # ALWAYS use instead of npm/yarn/pnpm/bun add — resolves SDK-compatible versions
-npx expo start              # start the dev server
-npx expo lint               # lint
-npx tsc --noEmit            # typecheck
-npx expo-doctor             # diagnose dependency and config issues
-npx expo install --fix      # fix incompatible package versions
+```sh
+npm run typecheck && npm run lint && npm test && npm run check:contrast && npx expo install --check
 ```
-
-Run lint and typecheck before declaring any task done.
-
-## Navigation & Routing
-
-- Use **Expo Router** for all navigation. Routes live in `src/app/` — every file there is a screen, `_layout.tsx` files define navigators. Keep non-route code (components, hooks, utils) outside `src/app/`.
-- Import `Link`, `router`, and `useLocalSearchParams` from `expo-router`.
-- Docs: https://docs.expo.dev/router/introduction.md
-
-## Building with EAS
-
-Use EAS to build, sign, and submit the app in the cloud (`eas build`, `eas submit`) and to ship over-the-air updates (`eas update`) — no local Xcode or Android Studio required. Run EAS CLI as `bunx eas-cli <command>` in Bun projects, or `npx eas-cli@latest <command>` otherwise; substitute that for bare `eas` in docs examples.
-Docs: https://docs.expo.dev/eas/index.md
-
-## Rules
-
-- If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
-- Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
-- Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
