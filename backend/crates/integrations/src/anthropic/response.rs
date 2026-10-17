@@ -161,7 +161,8 @@ pub enum StopReason {
     Other,
 }
 
-/// Token counts, each `number or null` in the API reference (a null reads as 0). In a stream, `message_start` carries the input counts and a placeholder
+/// Token counts. The API reference types the cache counts as `number or null`; a null reads as
+/// 0 in every field. In a stream, `message_start` carries the input counts and a placeholder
 /// `output_tokens`, and each `message_delta` carries **cumulative** counts: the accumulator
 /// replaces, never adds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
