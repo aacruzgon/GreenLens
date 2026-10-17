@@ -107,6 +107,7 @@ def main(argv=None) -> int:
     ap.add_argument("--label", default=None)
     ap.add_argument("--out", type=Path, default=ROOT / "ml/training/eval/reports")
     ap.add_argument("--rescore", type=Path, help="a previous report's JSON: re-analyse its per-photo scores")
+    ap.add_argument("--detector", type=Path, help="a candidate fp32 detector file instead of the manifest's")
     args = ap.parse_args(argv)
     if args.rescore:
         prev = json.loads(args.rescore.read_text())
@@ -117,8 +118,10 @@ def main(argv=None) -> int:
                  for n in prev["sets"]}
         tau_leaf, scale, embedder = prev["tau_leaf"], prev["logit_scale"], prev["embedder"]
     else:
-        pos, neg, pos_leaf, neg_leaf, probs, tau_leaf, scale, embedder = score(args.split)
+        pos, neg, pos_leaf, neg_leaf, probs, tau_leaf, scale, embedder = score(args.split, args.detector)
     report = analyse(args.split, args.label, pos, neg, pos_leaf, neg_leaf, probs, tau_leaf, scale, embedder)
+    report["detector"] = (prev.get("detector", "manifest.cpu.toml's leaf_detector") if args.rescore
+                          else str(args.detector.resolve().relative_to(ROOT)) if args.detector else "manifest.cpu.toml's leaf_detector")
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / f"{report['label']}.json").write_text(json.dumps(report, indent=1) + "\n")
     (args.out / f"{report['label']}.md").write_text(markdown(report))
@@ -126,12 +129,12 @@ def main(argv=None) -> int:
     return 0
 
 
-def score(split: str):
+def score(split: str, detector: Path | None = None):
     from ml.pdm_vision.features import Embedder
 
     pos = read_tsv(DATA / f"splits/{split}.tsv")
     neg = read_tsv(NEGATIVES)
-    scorer = LeafScorer()
+    scorer = LeafScorer(model_file=detector)
     tau_leaf = float(scorer.cfg["tau_leaf"])
     print(f"leaf scores: {len(pos)} positives, {len(neg)} negatives (CPU)", file=sys.stderr)
     pos_leaf = np.array([scorer.score(DATA / "raw" / r["path"]) for r in pos], np.float32)
@@ -207,7 +210,8 @@ def markdown(r: dict) -> str:
     out = [f"# The plant check on the {r['split']} split ({r['label']})\n\n",
            f"{r['n_positives']} plant photos (the split) and {r['n_negatives']} photos without a plant "
            f"(COCO val2017 without potted plant or broccoli). `τ_leaf` {r['tau_leaf']}; probe = zero-shot "
-           f"BioCLIP 2 at logit scale {r['logit_scale']:.0f} on the fp16 embedding ({r['embedder']}). "
+           f"BioCLIP 2 at logit scale {r['logit_scale']:.0f} on the fp16 embedding ({r['embedder']}); "
+           f"leaf detector: {r.get('detector', "manifest.cpu.toml's leaf_detector")}. "
            f"The manifest's pair comes from the joint search (below); the rule fixed before measuring, "
            f"{r['rule']}, is kept for the record.\n\n",
            f"**Leaf score alone:** false `no_plant_found` {pct(lo['positives_false_no_plant'])} "

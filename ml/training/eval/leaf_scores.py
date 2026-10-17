@@ -62,7 +62,7 @@ def leaf_score(dets: np.ndarray, logits: np.ndarray, stored: tuple[int, int], cf
 class LeafScorer:
     """The leaf detector from the manifest, scoring one photo file at a time as the worker does."""
 
-    def __init__(self, cuda: bool = False, files: Path = MODELS / "files"):
+    def __init__(self, cuda: bool = False, files: Path = MODELS / "files", model_file: Path | None = None):
         import onnxruntime as ort
 
         self.cuda = cuda
@@ -70,7 +70,9 @@ class LeafScorer:
         self.entry = detector_entry(self.manifest)
         self.cfg = self.entry["config"]
         self.providers = ["CUDAExecutionProvider"] if cuda else ["CPUExecutionProvider"]
-        self.sess = ort.InferenceSession(str(files / self.entry["file"]), providers=self.providers)
+        # A candidate detector (`model_file`) is scored with the manifest entry's thresholds and names.
+        self.model_file = Path(model_file) if model_file else files / self.entry["file"]
+        self.sess = ort.InferenceSession(str(self.model_file), providers=self.providers)
         inp = self.entry["input"]
         self.in_name = inp["name"]
         self.out_names = [self.entry["outputs"]["boxes"], self.entry["outputs"]["logits"]]
