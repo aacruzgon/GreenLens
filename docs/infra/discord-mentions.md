@@ -1,8 +1,8 @@
 # Mention alerts on Discord
 
-> **Status:** Draft v0.1.1, 2026-10-17. v0.1.1: after the audit of #34, code spans never cross a blank line, a closing fence may end in a tab, `_@mark_` and `@mark-` match, an edit's alert names the editor, and section 1 says indented code blocks still match. v0.1: first version of the workflow that posts a Discord alert to a team member's channel when a GitHub comment mentions them. Its tests have run against a mocked Discord; nothing has been sent to a real channel.
+> **Status:** Draft v0.2, 2026-10-17. v0.2: a new comment by someone else also alerts the issue's or pull request's author, once even when it also mentions them; edits, the author's own comments and bots' comments don't (section 1). v0.1.1: after the audit of #34, code spans never cross a blank line, a closing fence may end in a tab, `_@mark_` and `@mark-` match, an edit's alert names the editor, and section 1 says indented code blocks still match. v0.1: first version of the workflow that posts a Discord alert to a team member's channel when a GitHub comment mentions them. Its tests have run against a mocked Discord; nothing has been sent to a real channel.
 
-When an issue comment or a pull request conversation comment mentions a team member's GitHub username, [`.github/workflows/discord-mentions.yml`](../../.github/workflows/discord-mentions.yml) posts an alert in that person's Discord channel. The work is done by [`.github/scripts/discord_mentions.py`](../../.github/scripts/discord_mentions.py). It belongs with CI in [infra 2](README.md#2-ci).
+When an issue comment or a pull request conversation comment mentions a team member's GitHub username, or is a new comment on an issue or pull request they opened, [`.github/workflows/discord-mentions.yml`](../../.github/workflows/discord-mentions.yml) posts an alert in that person's Discord channel. The work is done by [`.github/scripts/discord_mentions.py`](../../.github/scripts/discord_mentions.py). It belongs with CI in [infra 2](README.md#2-ci).
 
 ## Contents
 
@@ -23,7 +23,8 @@ When an issue comment or a pull request conversation comment mentions a team mem
 | Alan | `#github-alan` | `GH_USER_ALAN` | `DISCORD_WEBHOOK_ALAN` |
 | Mark | `#github-mark` | `GH_USER_MARK` | `DISCORD_WEBHOOK_MARK` |
 
-- **One alert per person mentioned.** A comment that mentions two of them sends two alerts, one to each channel. Mentioning someone twice sends one alert. Comments that mention no one in the table send nothing.
+- **One alert per person mentioned.** A comment that mentions two of them sends two alerts, one to each channel. Mentioning someone twice sends one alert. Comments that mention no one in the table send nothing, unless they alert the author (next point).
+- **Comments on your issue or pull request.** A new comment alerts the issue's or pull request's author, if they are in the table, even without a mention: `**sara-lahourpour** commented on sam-michaels's pull request …`. It doesn't when the author wrote the comment, when a bot did (a GitHub account of type `Bot`, such as a CI report), or for an edit. An author who is also mentioned gets one alert, worded as a mention.
 - **Matching.** A mention is `@` and the whole username, in any case: `@Mark` matches `mark`, `@markus` and `@mark-2` don't. It doesn't match inside an email address (`mark@example.com`), a URL path, or a team mention (`@org/team`). Like GitHub, it ignores mentions in fenced code blocks, inline code and HTML comments; a trailing `_` or `-` is punctuation, so `_@mark_` matches `mark`. Unlike GitHub, it still matches inside an indented (four-space) code block, which costs an extra alert at worst.
 - **Edits.** An edit sends an alert only to people the edit newly mentions: the script compares the new text with the old, which GitHub sends with the event. Fixing a typo in a comment that already mentions someone sends nothing.
 - **The alert** shows the repository, whether it is an issue or a pull request, its number and title, the comment's author (for an edit, the person who edited it), the first 600 characters of the comment, and links to the comment, the issue or pull request, and the repository. It pings no one: the message sets `allowed_mentions` to none, so `@everyone`, `@here`, roles and users in a comment or title stay plain text.
@@ -57,7 +58,8 @@ GitHub runs an `issue_comment` workflow only from the default branch, so nothing
 1. Open **Actions** → **Discord mentions** to see that it is listed.
 2. On any issue or pull request, comment `test for @<username>` for one person. Their channel should get one alert within a minute, and the run should show `Sent <PERSON>'s alert.`
 3. Edit the comment's other text: no second alert. Edit it to add a second person: only that person gets an alert.
-4. Comment something with no mention, or with `mark@example.com`: the run is skipped or sends nothing.
+4. On your own issue or pull request, comment something with no mention, or with `mark@example.com`: the run is skipped or sends nothing.
+5. Have a teammate comment on your pull request without mentioning you: your channel gets one `commented on <you>'s pull request` alert.
 
 A failed run's error annotation says what went wrong: `HTTP 404: Unknown Webhook` means the webhook was deleted or the secret holds the wrong URL; `is not set` means a secret is missing.
 

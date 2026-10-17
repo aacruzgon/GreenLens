@@ -55,7 +55,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | Security, privacy and safety (EXIF, face blurring, dose checks) | architecture §11 |
 | Deployment, hosting, app delivery, operations | architecture §12; infra |
 | CI, images, compose files, secrets, deploys | infra |
-| Discord alerts for GitHub mentions: setup, secrets, what is covered | infra [discord-mentions.md](docs/infra/discord-mentions.md) |
+| Discord alerts for GitHub mentions and comments on your issues and PRs: setup, secrets, what is covered | infra [discord-mentions.md](docs/infra/discord-mentions.md) |
 | Model files: the manifest, where weights live, how they reach the hosts | vision README §6 |
 | Applying the schema, migrations and the generated knowledge file | database §1 |
 | Installing the tools on a dev machine, the rig or the control plane | setup |
