@@ -1,6 +1,6 @@
 # PDM Frontend Roadmap
 
-> **Status:** Draft v0.1, 2026-10-17. v0.1: the app's build-week work as ten slices (F0–F9), from the scaffold on `feat/app-scaffold` to the deployed web build. Each slice has its goal, its work, what it needs from the other tracks, its exit checks and the decisions it closes. Section 13 lists the gaps found while building F0.
+> **Status:** Draft v0.2, 2026-10-17. v0.2: applies the review of [PR #42](https://github.com/aacruzgon/GreenLens/pull/42): F0's exit checks now say which ran and which didn't; 401s refresh the token per request; the web build has a bottom tab bar; `EXPO_PUBLIC_API_MODE` is required and a misconfigured build says so; the contrast check is committed (`npm run check:contrast`). v0.1: the app's build-week work as ten slices (F0–F9), from the scaffold on `feat/app-scaffold` to the deployed web build. Each slice has its goal, its work, what it needs from the other tracks, its exit checks and the decisions it closes. Section 13 lists the gaps found while building F0.
 
 Companion to the [frontend architecture](README.md), its [flows](flows.md) and [screens](screens.md). The [build plan](README.md#18-build-plan) and [architecture 14](../architecture/README.md#14-build-plan) say what is done on each date. This document says how the app gets there: the order of the work, what each step depends on, and how we know a step is finished. It mirrors the [backend roadmap](../backend/roadmap.md).
 
@@ -25,19 +25,19 @@ Companion to the [frontend architecture](README.md), its [flows](flows.md) and [
 
 ## 1. Where the app stands
 
-On Oct 17, branch `feat/app-scaffold` holds the Expo project in `app/`: about 4,600 lines of TypeScript in 93 files, not counting the generated contract types. It follows the layout of [README 6](README.md#6-directory-layout) and runs on iOS, Android and the web.
+On Oct 17, branch `feat/app-scaffold` holds the Expo project in `app/`: about 4,900 lines of TypeScript in 97 files, not counting the generated contract types. It follows the layout of [README 6](README.md#6-directory-layout) and runs on iOS, Android and the web.
 
 | Layer | What exists | Tested by |
 |---|---|---|
-| Config | Expo SDK 57.0.30, React Native 0.86.3, Expo Router 57.0.28 with typed routes, `@clerk/expo` 4.13.0; `app.config.ts`; zod-validated `EXPO_PUBLIC_*` (`src/config/env.ts`) | `npx expo-doctor`: 21 of 21 checks pass; `npx expo install --check` |
+| Config | Expo SDK 57.0.30, React Native 0.86.3, Expo Router 57.0.28 with typed routes, `@clerk/expo` 4.13.0; `app.config.ts`; `EXPO_PUBLIC_*` checked at start-up (`src/config/env.ts`): the mode is required, live mode needs a URL and a Clerk key, and a misconfigured build shows what is wrong | `npx expo-doctor`: 21 of 21 checks pass; `npx expo install --check`; Jest: the config rules |
 | Lint | `eslint-config-expo` plus the layer rules of [README 5](README.md#5-layers-and-import-rules) as `import/no-restricted-paths` errors, deep feature imports blocked, Clerk only in `features/auth` | `npx expo lint`, clean |
 | `domain` | Generated contract types re-exported by name (245 schemas), the role matrix, scan statuses, stages and the resting rule, kind limits, the wording of [screens 6](screens.md#6-wording-for-uncertain-results), regions, units and local dates | Jest: role matrix, resting rule, wording |
-| `ui` | Tokens (the palette of section 12, a 4-point spacing scale, iOS text styles), light and dark themes; `Text`, `Button`, `IconButton`, `Card`, `Chip`, `Banner`, `TextField`, `ListItem`, `Skeleton`, `EmptyState`, `ErrorState`, `Screen`, `Section`; `StatusChip`, `ConfidenceBadge`, `StageProgress`, `PhotoWithRegions` | Contrast script: every text pair passes WCAG AA (4.5:1) in both schemes |
-| `api` | `openapi-fetch` client with the auth middleware, the error table and retry policy of [README 9](README.md#9-api-layer), idempotency keys per user action, the SSE parser and reader, query keys, resources for `me`, gardens, weather, plants, timeline, tasks and scans (multipart upload and the event stream) | Jest: the SSE parser at every chunk boundary |
-| `api/mock` | The fixture store (a garden, 4 plants, weather with a frost day, tasks and a forecast alert), every endpoint above, and three scripted scan runs streamed as SSE: the early-blight run of [contracts 4](../architecture/contracts.md#event-catalogue), a run that asks a question, and a healthy plant. Fault injection for a failed quality check | Jest: the garden home renders from it |
+| `ui` | Tokens (the palette of section 12, a 4-point spacing scale, iOS text styles), light and dark themes; `Text`, `Button`, `IconButton`, `Card`, `Chip`, `Banner`, `TextField`, `ListItem`, `Skeleton`, `EmptyState`, `ErrorState`, `Screen`, `Section`; `StatusChip`, `ConfidenceBadge`, `StageProgress`, `PhotoWithRegions` | `npm run check:contrast`: all 22 text and status pairs pass WCAG AA (4.5:1) in both schemes, lowest 5.05:1 light and 6.01:1 dark |
+| `api` | `openapi-fetch` client; a 401 refreshes the token and retries that request once, with one refresh shared by requests sent before it ([README 8](README.md#8-authentication-clerk)); the error table and retry policy of [README 9](README.md#9-api-layer), idempotency keys per user action, the SSE parser and reader, query keys, resources for `me`, gardens, weather, plants, timeline, tasks and scans (multipart upload and the event stream) | Jest: the SSE parser at every chunk boundary; the 401 refresh with parallel requests |
+| `api/mock` | The fixture store (a garden, 4 plants, weather with a frost day, tasks and a forecast alert), every endpoint above, and three scripted scan runs streamed as SSE: the early-blight run of [contracts 4](../architecture/contracts.md#event-catalogue), a run that asks a question, and a healthy plant. Fault injection for a failed quality check | Jest: the garden home renders from it; the demo controls select a scenario |
 | `platform` | Photos (system camera, library, HEIC to JPEG), haptics, location with consent, persisted storage | Manual |
 | Features | `auth` (Clerk email and password, sign-up code, TOTP and backup codes; a demo sign-in in mock mode without a Clerk key), `gardens` (session gate, onboarding, garden home with weather strip, alerts, today's tasks and plant cards), `account` (settings with demo controls), `shell` (the provider tree), `scans/model` (the event reducer and its effects) | Jest: the reducer against the contracts 4 run, replays with repeated `seq`, retractions, a species rerun, questions and late plans, failures |
-| Routes | `(auth)/sign-in`, `sign-up`, `verify`; `(app)` behind the session gate; tabs Garden and Settings | `npx expo export -p web` bundles |
+| Routes | `(auth)/sign-in`, `sign-up`, `verify`; `(app)` behind the session gate; tabs Garden and Settings: the system tab bar on iOS and Android, a bottom tab bar on the web (`(tabs)/_layout.web.tsx`) | `npx expo export -p web --clear` bundles, and renders in headless Chrome (section 5) |
 
 **Not built yet:** capture, the scan screen, the new-scan sheet, plant detail, tasks, chat, members, the map, push and the LiDAR module. Their entry points are hidden until they exist ([screens 4](screens.md#4-rules-every-screen-follows): never shown broken).
 
@@ -99,12 +99,16 @@ flowchart LR
 
 **Goal.** A project the rest of the build week can add screens to without changing its structure. Built on Oct 17 (section 1).
 
-**Exit checks, all passing on Oct 17.**
-- `npx tsc --noEmit`, `npx expo lint`, `npx jest` (19 tests) and `npx expo-doctor` are clean.
-- `npx expo export -p web` bundles.
-- In mock mode, the demo sign-in leads to the garden home, with the sample garden's weather, frost alert, today's tasks and 4 plants, in light and dark mode.
+**Exit checks.**
 
-**Still to check on a device:** the app in Expo Go on the 17 Pro Max, and the sign-in and onboarding screens with a real Clerk key (F2).
+| Check | Status |
+|---|---|
+| `npm run typecheck`, `npm run lint`, `npm test` (27 tests), `npm run check:contrast` and `npx expo-doctor` are clean | ✓ Oct 17 |
+| `npx expo export -p web --clear` bundles | ✓ Oct 17 |
+| Web build at phone size in headless Chrome, mock mode: the demo sign-in leads to the garden home with the weather, the frost alert, today's task and the plants; the tab bar is at the bottom and covers nothing; no console errors | ✓ Oct 17, light and dark mode |
+| Web build made with the `.env.example` placeholder key shows "This build isn't configured" with the reason, not a blank page | ✓ Oct 17 |
+| The same walkthrough in Expo Go on the 17 Pro Max | Not run yet |
+| Sign-in, sign-up and onboarding with a real Clerk key | Not run yet (F2) |
 
 ## 6. F1. The scan loop on mock data
 
@@ -128,7 +132,7 @@ flowchart LR
 
 **Goal.** The F1 screens on the real API, with real Clerk sessions.
 
-**Work.** A Clerk dev instance key in `.env`; `EXPO_PUBLIC_API_MODE=live`; check the token refresh on `401`; streaming SSE through `expo/fetch` on the phone and `fetch` in the browser; the web build's origin allowed by CORS ([README 17](README.md#17-builds-environments-and-delivery)); signed image URLs refetched on `invalid_signature`; an offline banner.
+**Work.** A Clerk dev instance key in `.env`; `EXPO_PUBLIC_API_MODE=live`; check the token refresh on `401` against real Clerk sessions; streaming SSE through `expo/fetch` on the phone and `fetch` in the browser; the web build's origin allowed by CORS ([README 17](README.md#17-builds-environments-and-delivery)); signed image URLs refetched on `invalid_signature`; an offline banner.
 
 **Needs.** Backend S1 on the control plane ([backend roadmap 5](../backend/roadmap.md#5-s1-walking-skeleton)).
 
@@ -167,18 +171,18 @@ flowchart LR
 | **F6. Chat** (Oct 22) | The Chat tab and conversation screen: the message reducer, streaming text, tool chips, citations, `PendingActionCard` with confirm and reject, remembered facts with Undo and Share, message feedback, photos in the composer, "Ask about this result" from a scan ([README 10](README.md#10-live-streams), [flows 9–10](flows.md#9-chat-turn)) | A scripted turn streams in mock mode; live, a "create a task" card confirms and the task appears; a dropped stream offers **Resend** |
 | **F7. Garden tools** (Oct 22–23) | The growth curve on plant detail; members, roles and invites with the share sheet and `invite/[code]`; garden create, edit and switch; the garden map view (SVG) and the mapping session on the 17 Pro Max; account deletion; push in a development build if the team buys an Apple account; the web manifest | An invite link accepted on a second account; a map drawn on the phone opens each plant; deleting an account shows what was removed |
 | **F8. Polish** (Oct 24) | Feature freeze. A `/hig` review of every screen; VoiceOver and Dynamic Type at the largest size; dark mode; Android back gestures; the web build on a phone, in Slack's and Instagram's in-app browsers, and on a desktop ([README 16, device checks](README.md#16-testing-and-tooling)); an app icon and splash in the palette | Every screen passes the device script; no **must** findings left in the review |
-| **F9. Ship** (Oct 25) | `npx expo export -p web` deployed as the live link; screens recorded for the 2-minute demo video | The live link works on a judge's phone with a fresh account |
+| **F9. Ship** (Oct 25) | `npx expo export -p web --clear` deployed as the live link (`--clear`, because Metro can keep an `EXPO_PUBLIC_*` value from an earlier build), with `EXPO_PUBLIC_API_MODE=live`; screens recorded for the 2-minute demo video | The live link works on a judge's phone with a fresh account |
 
 ## 12. Decisions taken in F0
 
 | Decision | What was chosen | Why |
 |---|---|---|
-| Palette | Leaf green accent (`#2F6B47` light, `#7CC59A` dark) on warm off-white, with status colours for healthy, watch, sick and dead, each with a soft background (`src/ui/tokens.ts`) | No palette existed. Every text and status pair passes WCAG AA (4.5:1) in both schemes, and status is always written as words too |
+| Palette | Leaf green accent (`#2F6B47` light, `#7CC59A` dark) on warm off-white, with status colours for healthy, watch, sick and dead, each with a soft background (`src/ui/tokens.ts`) | No palette existed. Every text and status pair passes WCAG AA (4.5:1) in both schemes (`npm run check:contrast`), and status is always written as words too |
 | Type | Apple's iOS text styles (34 to 12 points) in the system font, scaled with the system text size | [HIG typography](https://developer.apple.com/design/human-interface-guidelines/typography); no custom font to load |
 | Styling (open decision 2) | Tokens with `StyleSheet`, as proposed | No compiler or native dependency |
 | Clerk screens (open decision 3) | Custom screens with Clerk Core 3's `useSignIn` and `useSignUp` signals (`signIn.password`, `signIn.mfa.verifyTOTP`, `signUp.verifications.sendEmailCode`, `finalize`), checked against the installed 4.13.0 types | Matches the app and works on every target |
-| Demo sign-in | Mock mode with no Clerk key signs in a local demo user. It can't run against the live API | The app can be shown with no backend and no account |
-| Tabs | Expo Router's native tabs (`expo-router/unstable-native-tabs`), with SF Symbols on iOS and Material symbols on Android. Garden and Settings now; Tasks and Chat join in F1 and F6 | [HIG tab bars](https://developer.apple.com/design/human-interface-guidelines/tab-bars); a tab is never shown empty |
+| Demo sign-in | Mock mode with an empty Clerk key signs in a local demo user. Live mode refuses to start without a key, so it can't run against the live API | The app can be shown with no backend and no account |
+| Tabs | Expo Router's native tabs (`expo-router/unstable-native-tabs`), with SF Symbols on iOS and Material symbols on Android; the JavaScript `Tabs` with a bottom bar on the web, where native tabs float over the content. Garden and Settings now; Tasks and Chat join in F1 and F6 | [HIG tab bars](https://developer.apple.com/design/human-interface-guidelines/tab-bars); a tab is never shown empty |
 | App name | "PDM", scheme `pdm`, bundle `org.buildnorth.pdm` | As in the documents; change `app.config.ts` if the team picks another name |
 | Camera | The system camera first (F1), then an in-app `expo-camera` view on native | Ships the loop sooner; the framing guide is polish on top |
 
@@ -186,7 +190,7 @@ flowchart LR
 
 1. **`backend/openapi.json` references two schemas it doesn't define:** `AnchorType` (the `anchor_type` query of `GET /conversations`) and `TaskState` (the `state` query of `GET /tasks`). Both enums exist in `domain` with `ToSchema`, but aren't registered in `bins/api/src/openapi.rs`. `openapi-typescript` fails on them, so `scripts/gen-api.mjs` replaces each with a string and prints a warning. **Fix in the backend:** add both to the `components(schemas(...))` list and regenerate the spec.
 2. **utoipa emits description-only members inside `allOf`** (`{ "type": "object", "description": "…" }`, on `Observation`, `Region` and others). `openapi-typescript` renders each as `Record<string, never>`, which makes those types impossible to build. The gen script drops such members. A backend fix (no description-only `allOf` members) would remove the workaround.
-3. **`@clerk/expo` 4.13.0 now declares `expo: ">=54 <59"`,** so it supports SDK 58. [README 3](README.md#3-stack-and-version-pins) still says 4.12 with `<58`. Open decision 1 (moving to SDK 58) can now be taken; the app stays on 57 until the team decides.
+3. **`@clerk/expo` 4.13.0 now declares `expo: ">=54 <59"`,** so it supports SDK 58. [README 3](README.md#3-stack-and-version-pins) is updated. Open decision 1 (moving to SDK 58) can now be taken; the app stays on 57 until the team decides.
 4. **`expo-asset` was a missing peer of `expo-font`.** It is installed now; without it, icons failed to load.
 5. **TypeScript 6 no longer includes `@types` packages on its own,** so `tsconfig.json` lists `"types": ["jest"]`. `openapi-typescript` 7.13 declares `typescript ^5` as a peer; `package.json` overrides it to the project's TypeScript 6.
 6. **CI has no app job.** Add one that runs `npm ci`, `npm run gen:api` with a diff check, `npm run typecheck`, `npm run lint`, `npm test` and `npx expo install --check` ([README 16](README.md#16-testing-and-tooling); [infra 2](../infra/README.md#2-ci)).
@@ -196,10 +200,10 @@ flowchart LR
 ```sh
 cd app
 npm install
-cp .env.example .env          # leave the Clerk key empty to use the demo sign-in
+cp .env.example .env          # mock mode with an empty Clerk key: the demo sign-in
 npm start                     # then scan the QR code with Expo Go on the iPhone
 npm run web                   # or open it in a browser
-npm test && npm run typecheck && npm run lint
+npm run typecheck && npm run lint && npm test && npm run check:contrast
 ```
 
 In mock mode, Settings has demo controls: the outcome of the next scan (early blight, a question, or a healthy plant), a failed quality check on the next upload, and a reset of the sample data.

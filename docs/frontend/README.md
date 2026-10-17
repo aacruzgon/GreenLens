@@ -1,6 +1,6 @@
 # PDM Frontend Architecture
 
-> **Status:** Draft v0.4.2, 2026-10-16. v0.4.2: the backend's OpenAPI spec is committed, so the app uses generated contract types from day 1 instead of hand-written ones (section 9, generated types; build plan). v0.4.1: the schema links point to `backend/migrations/schema.surql`. v0.4 applies the third audit and contracts v0.8.2: species photo paths carry a content hash, a failed scan never holds a question, push coverage, invalidations for confirmed plan revisions, the closer-photo rule, the `SFSafariViewController` cookie note and the CORS preflight reason.
+> **Status:** Draft v0.5, 2026-10-17. v0.5: the app exists (`app/`, [roadmap](roadmap.md)): `@clerk/expo` 4.13.0 now supports SDK 58 (section 3); onboarding lives in `features/gardens` and the provider tree in `features/shell` (sections 6, 11); local development builds with a free Apple ID (section 17); open decisions 2 and 3 are decided (section 19). v0.4.2: the backend's OpenAPI spec is committed, so the app uses generated contract types from day 1 instead of hand-written ones (section 9, generated types; build plan). v0.4.1: the schema links point to `backend/migrations/schema.surql`. v0.4 applies the third audit and contracts v0.8.2: species photo paths carry a content hash, a failed scan never holds a question, push coverage, invalidations for confirmed plan revisions, the closer-photo rule, the `SFSafariViewController` cookie note and the CORS preflight reason.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Images:** event URLs arrive fresh, and the cache key is the image ID or the URL path; species photos carry their credit.
 >   - **Scan stream:** the resting rule counts guided checks on failed scans too.
@@ -116,17 +116,17 @@ This is the frontend's architecture. It is built on the [system architecture](..
 
 | Item | Pin | Why |
 |---|---|---|
-| Expo SDK | **57** (`expo@57.0.30`) ✓ | `@clerk/expo` 4.12.0, the latest release, declares `expo: ">=54 <58"`, and so does its current canary ✓. SDK 58 (released 2026-09-29) is outside Clerk's supported range. Move to 58 once Clerk widens it (open decision 1) |
+| Expo SDK | **57** (`expo@57.0.30`) ✓ | `@clerk/expo` 4.12.0 declared `expo: ">=54 <58"`; 4.13.0, installed on Oct 17, declares `">=54 <59"` ✓, so SDK 58 (released 2026-09-29) is now inside Clerk's range. The app stays on 57 until the team takes open decision 1 |
 | React Native | 0.86.3 ✓ | Bundled with SDK 57 |
 | React | 19.2.3 ✓ | Bundled with SDK 57 |
 | Expo Router | `~57.0.28` ✓ | File-based routes, typed routes, `Stack.Protected` guards ✓ |
-| Clerk | `@clerk/expo` `^4.12.0` ✓ | The current Expo SDK. `@clerk/clerk-expo` (2.20) is the old package name |
+| Clerk | `@clerk/expo` `^4.13.0` ✓ | The current Expo SDK. `@clerk/clerk-expo` (2.20) is the old package name |
 | TypeScript | The version the SDK 57 template pins, `strict: true` | The generated API types need strict null checks to be useful |
 | Package manager | npm, with `package-lock.json` committed | The Expo default |
 
 Expo and native packages are installed with `npx expo install <pkg>`, which picks the version bundled with the SDK (for example `react-native-reanimated` 4.5.1 and `react-native-svg` 15.15.4 for SDK 57 ✓, from the SDK's [`bundledNativeModules.json`](https://github.com/expo/expo/blob/sdk-57/packages/expo/bundledNativeModules.json)), never with a plain `npm install`. CI runs `npx expo install --check`.
 
-Docs: [Expo SDK 57 reference](https://docs.expo.dev/versions/v57.0.0/) · [SDK 57 changelog](https://expo.dev/changelog/sdk-57) · [`npx expo install`](https://docs.expo.dev/more/expo-cli/#install) · [`@clerk/expo` 4.12.0 on the npm registry](https://registry.npmjs.org/@clerk/expo/4.12.0).
+Docs: [Expo SDK 57 reference](https://docs.expo.dev/versions/v57.0.0/) · [SDK 57 changelog](https://expo.dev/changelog/sdk-57) · [`npx expo install`](https://docs.expo.dev/more/expo-cli/#install) · [`@clerk/expo` 4.13.0 on the npm registry](https://registry.npmjs.org/@clerk/expo/4.13.0).
 
 ---
 
@@ -268,12 +268,14 @@ app/
 │  ├─ ios/                        LidarCameraView, GardenMappingView, depth capture, ARWorldMap storage
 │  ├─ src/index.ts                the module's TypeScript surface and its fallback
 │  └─ expo-module.config.json
-├─ scripts/gen-api.ts             openapi-typescript on backend/openapi.json
+├─ scripts/gen-api.mjs            openapi-typescript on backend/openapi.json
+├─ scripts/check-contrast.mjs     WCAG AA check of every colour pair in ui/tokens.ts
 └─ src/
    ├─ app/                        routes only (screens.md 1)
    ├─ features/
-   │  ├─ auth/                    sign-in, sign-up, verification and MFA, onboarding, session bootstrap
-   │  ├─ gardens/                 garden home, create and edit, location consent, active garden, garden switcher
+   │  ├─ shell/                   the provider tree and the transport chosen at start-up (section 7)
+   │  ├─ auth/                    sign-in, sign-up, verification and MFA, the session and its sign-out
+   │  ├─ gardens/                 session gate, onboarding, garden home, create and edit, location consent, active garden, garden switcher
    │  ├─ members/                 members, roles, invites, invite acceptance
    │  ├─ plants/                  plant list and detail, timeline, growth curve, species confirmation, notes
    │  ├─ capture/                 guided capture, question photos, guided soil checks, upload queue
@@ -657,8 +659,8 @@ Each feature's `model/` is the logic that lives outside React and is tested on i
 
 | Feature | Screens and parts | Model (pure) | Endpoints |
 |---|---|---|---|
-| `auth` | Sign-in, sign-up, verify, onboarding | Sign-in step, onboarding step, which sign-in methods the browser allows | Clerk; `GET` / `PATCH /me` |
-| `gardens` | Garden home, create and edit, location consent, garden switcher, garden notes, weather strip | Location input from consent, a postal code or a city | `/gardens`, `GET /gardens/{id}/weather`, `GET /memories?garden_id=` |
+| `auth` | Sign-in, sign-up, verify | Sign-in step, which sign-in methods the browser allows | Clerk |
+| `gardens` | Session gate, onboarding, garden home, create and edit, location consent, garden switcher, garden notes, weather strip | Location input from consent, a postal code or a city | `/gardens`, `GET /gardens/{id}/weather`, `GET /memories?garden_id=` |
 | `members` | Members, role change, removal and leaving, invites with the share sheet, invite acceptance | Who may leave or be demoted (never the last owner) | `/gardens/{id}/members`, `/gardens/{id}/invites` (owner), `/invites/{code}/accept` |
 | `plants` | Plant list, new plant sheet, plant detail, timeline, growth curve, species confirmation card, species picker, plant notes | Growth series to chart points | `/plants`, `/plants/{id}/timeline`, `/plants/{id}/measurements`, `/plants/{id}/species`, `/species`, `/memories` |
 | `capture` | Guided capture, question photo, guided soil checks | Shot plan and upload state machine | `/scans`, `/scans/{id}/images`, `/scans/{id}/submit`, `DELETE /scans/{id}` (discard), `POST /tasks` with `scan_id` (jar test) |
@@ -919,11 +921,11 @@ The fixtures use the same types as the live client, so a contract change that br
 
 | Variable | Example | Notes |
 |---|---|---|
-| `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` | `pk_test_…` | Public by design; still kept in `.env`, out of git |
-| `EXPO_PUBLIC_API_URL` | `https://api.example.org` | No trailing slash |
-| `EXPO_PUBLIC_API_MODE` | `live` or `mock` | Section 15 |
+| `EXPO_PUBLIC_API_MODE` | `live` or `mock` | Required, with no default, so a build never ships the fixtures by accident. Section 15 |
+| `EXPO_PUBLIC_API_URL` | `https://api.example.org` | Required in live mode. No trailing slash |
+| `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` | `pk_test_…` | Required in live mode. Empty in mock mode means the demo sign-in. Public by design; still kept in `.env`, out of git |
 
-`EXPO_PUBLIC_*` values are compiled into the app and readable by anyone who has it, so nothing secret goes in one ([environment variables](https://docs.expo.dev/guides/environment-variables/)). `app/.env.example` lists them with placeholders.
+`EXPO_PUBLIC_*` values are compiled into the app and readable by anyone who has it, so nothing secret goes in one ([environment variables](https://docs.expo.dev/guides/environment-variables/)). `app/.env.example` lists them. `src/config/env.ts` checks them at start-up; a build with a missing or malformed value shows what is wrong instead of starting.
 
 ```
                         ┌─▶ Expo Go ─────────────────── UI work, mock mode (no LiDAR, no push)
@@ -936,9 +938,10 @@ The fixtures use the same types as the live client, so a contract change that br
 | Build | Used for | How |
 |---|---|---|
 | Expo Go | Fast UI work early on, mock mode | `npx expo start` |
-| Development build | LiDAR module, push, device testing | EAS `development` profile with `expo-dev-client`; the LiDAR iPhone registered for ad-hoc installs ([development builds](https://docs.expo.dev/develop/development-builds/introduction/)) |
-| Web build | The live link (architecture 12) | `npx expo export -p web` produces static files. Where they are served from is open decision 5 ([Expo for web](https://docs.expo.dev/workflow/web/)) |
-| Preview build | Teammates' phones | EAS `preview` profile ([EAS Build](https://docs.expo.dev/build/introduction/), [internal distribution](https://docs.expo.dev/build/internal-distribution/)) |
+| Development build | LiDAR module, device testing | Locally: `npx expo run:ios --device` from a Mac with Xcode, signed by a free Apple ID as a personal team; the app expires after 7 days. The team has an iPhone 17 Pro Max with LiDAR and no paid Apple account yet ([roadmap 2](roadmap.md#2-devices-and-builds); [development builds](https://docs.expo.dev/develop/development-builds/introduction/)) |
+| EAS development build | Push on iOS, installs over the air | EAS `development` profile with `expo-dev-client`. Needs a paid Apple Developer account for iOS (APNs keys, ad-hoc provisioning); Android needs none |
+| Web build | The live link (architecture 12) | `npx expo export -p web --clear` produces static files (`--clear`, because Metro can keep an `EXPO_PUBLIC_*` value inlined by an earlier build). Where they are served from is open decision 5 ([Expo for web](https://docs.expo.dev/workflow/web/)) |
+| Preview build | Teammates' phones | EAS `preview` profile; on iOS, needs the paid account ([EAS Build](https://docs.expo.dev/build/introduction/), [internal distribution](https://docs.expo.dev/build/internal-distribution/)) |
 
 If the web build has its own origin, the API must answer CORS for it, allowing the request headers `Authorization`, `Content-Type`, `Idempotency-Key` and `Last-Event-ID`, since every API call sends `Authorization` and JSON bodies use a non-simple `Content-Type`, so every call is [preflighted](https://developer.mozilla.org/en-US/docs/Glossary/Preflight_request) ([MDN CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS); open decision 5).
 
@@ -962,9 +965,9 @@ The frontend track of [architecture 14](../architecture/README.md#14-build-plan)
 
 ## 19. Open decisions
 
-1. **Expo SDK 58.** Move once `@clerk/expo`'s `peerDependencies` include it. Until then stay on 57.
-2. **Styling.** Tokens with `StyleSheet` are proposed. NativeWind or Unistyles would add a build-time or native dependency; choose one only if the team prefers utility classes.
-3. **Clerk screens.** Custom screens with Clerk's hooks are proposed, because they match the app's design and work on every target. Clerk's hosted pages (`useHostedAuth`) or its native components (`AuthView`, development builds only) are the alternatives.
+1. **Expo SDK 58.** `@clerk/expo` 4.13.0 includes it in its `peerDependencies` (section 3), so the move is now possible. Until the team decides, stay on 57.
+2. **Styling.** Decided on Oct 17: tokens with `StyleSheet` ([roadmap 12](roadmap.md#12-decisions-taken-in-f0)). NativeWind or Unistyles would add a build-time or native dependency.
+3. **Clerk screens.** Decided on Oct 17: custom screens with Clerk Core 3's `useSignIn` and `useSignUp` ([roadmap 12](roadmap.md#12-decisions-taken-in-f0)), because they match the app's design and work on every target.
 4. **Sign-in methods.** Email and password, Google and Apple are proposed. Apple sign-in is only required for an App Store release, which build week doesn't include.
 5. **Web build origin.** A subdomain beside the API (needs CORS) or the same origin under a path (doesn't). Decide with open decision 2 of the architecture document.
 6. **Upload progress.** `expo/fetch` has no upload progress events. For shots without depth, `expo-file-system`'s `File.createUploadTask` sends one file with string fields as multipart and reports progress (*unverified* beyond the package's types). It doesn't fit LiDAR shots, which have three file parts. Use it only if the day-1 check shows uploads are slow enough to need a percentage.
@@ -1025,7 +1028,7 @@ Every link was opened on 2026-10-15. The sections above link the page they rely 
 - Quality: [unit testing](https://docs.expo.dev/develop/unit-testing/) · [ESLint](https://docs.expo.dev/guides/using-eslint/)
 
 **Clerk**
-- [Expo quickstart](https://clerk.com/docs/expo/getting-started/quickstart) · [Expo SDK reference](https://clerk.com/docs/reference/expo/overview) · [Expo web support](https://clerk.com/docs/guides/development/web-support/overview) · [package source](https://github.com/clerk/javascript/tree/main/packages/expo) · [`@clerk/expo` 4.12.0 manifest](https://registry.npmjs.org/@clerk/expo/4.12.0)
+- [Expo quickstart](https://clerk.com/docs/expo/getting-started/quickstart) · [Expo SDK reference](https://clerk.com/docs/reference/expo/overview) · [Expo web support](https://clerk.com/docs/guides/development/web-support/overview) · [package source](https://github.com/clerk/javascript/tree/main/packages/expo) · [`@clerk/expo` 4.13.0 manifest](https://registry.npmjs.org/@clerk/expo/4.13.0)
 - Hooks: [`useAuth`](https://clerk.com/docs/reference/hooks/use-auth) · [`useSignIn`](https://clerk.com/docs/reference/hooks/use-sign-in) · [`useSignUp`](https://clerk.com/docs/reference/hooks/use-sign-up) · [`useUser`](https://clerk.com/docs/reference/hooks/use-user) · [`useSSO`](https://clerk.com/docs/reference/expo/native-hooks/use-sso) · [the `Clerk` object](https://clerk.com/docs/reference/objects/clerk)
 - Custom flows: [email and password](https://clerk.com/docs/guides/development/custom-flows/authentication/email-password) · [multi-factor sign-in](https://clerk.com/docs/guides/development/custom-flows/authentication/multi-factor-authentication) · [managing MFA](https://clerk.com/docs/guides/development/custom-flows/account-updates/manage-mfa)
 - Backend: [session tokens](https://clerk.com/docs/guides/sessions/session-tokens) · [manual JWT verification](https://clerk.com/docs/guides/sessions/manual-jwt-verification) · [customising session tokens](https://clerk.com/docs/guides/sessions/customize-session-tokens) · [`verifyToken`](https://clerk.com/docs/reference/backend/verify-token) · [webhooks](https://clerk.com/docs/guides/development/webhooks/overview) · [Svix signature verification](https://docs.svix.com/receiving/verifying-payloads/how)

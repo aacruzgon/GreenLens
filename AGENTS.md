@@ -96,7 +96,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 
 ## Repository layout
 
-From architecture §13. `backend/` exists, with `tools/` beside its crates for the `docs/backend` generator and `api`'s test-store generator; `ml/` holds the training and export code; `infra/` holds the rig's VLM server so far; `app/` doesn't exist yet.
+From architecture §13. `backend/` exists, with `tools/` beside its crates for the `docs/backend` generator and `api`'s test-store generator; `ml/` holds the training and export code; `infra/` holds the rig's VLM server so far; `app/` holds the Expo app ([docs/frontend/roadmap.md](docs/frontend/roadmap.md)).
 
 ```
 PDM/
