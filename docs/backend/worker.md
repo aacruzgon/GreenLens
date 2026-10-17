@@ -2445,7 +2445,7 @@ The stub's tests are in [section 15.1.5](#1515-tests) (proposed). All loop tests
 
 ### 15.1 Stub vision
 
-The roadmap's first slice (S1, [roadmap 5](roadmap.md#5-s1-walking-skeleton)) runs a scan from the app through the API and the broker to a worker and back over SSE, before any GPU or model file exists. The worker has only the real perception path and the hosted fallback, so S1 has nothing to claim a `perception` job ([roadmap gap 2](roadmap.md#12-gaps-found-while-writing-this-roadmap)). **Stub vision** is a `VisionModel` that answers `perception` jobs with canned, valid results. It is a development tool. It is off by default, it is refused in a release build unless the operator says so twice, and it marks everything it produces.
+The roadmap's first slice (S1, [roadmap 5](roadmap.md#5-s1-walking-skeleton)) runs a scan from the app through the API and the broker to a worker and back over SSE, before any GPU or model file exists. The worker has only the real perception path and the hosted fallback, so S1 has nothing to claim a `perception` job ([roadmap gap 2](roadmap.md#13-gaps-found-while-writing-this-roadmap)). **Stub vision** is a `VisionModel` that answers `perception` jobs with canned, valid results. It is a development tool. It is off by default, it is refused in a release build unless the operator says so twice, and it marks everything it produces.
 
 Nothing in this section is compiled yet. The listings are labelled "Proposed (not compiled)", and the numbers in section 15.1.7 are the work items.
 

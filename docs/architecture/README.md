@@ -1,6 +1,6 @@
 # PDM Architecture
 
-> **Status:** Draft v0.7.8, 2026-10-17. v0.7.8: SurrealDB Agent Memory is integrated (open decision 5): shared memories are mirrored into it as beliefs that supersede by topic, `memory` gains `topic`, and `GET /plants/{plant_id}/beliefs` is added, synced with [contracts.md](contracts.md) v0.10.7 (1, 5, 7, 8.2, 9, 10, 11, 15). v0.7.7: open decision 2 is settled: the control plane runs on the rig behind Tailscale Funnel, and the ingress is a compose profile, so moving to a Cloudflare Tunnel or a cloud VM needs no code change (12, 15). v0.7.6: section 12 links the infrastructure and CI design, [docs/infra](../infra/README.md). v0.7.5: section 9 says the `domain` types are the contracts' source of truth and the spec is committed as `backend/openapi.json` (contracts v0.10.4). v0.7.4: sections 5 and 13 say the schema now lives at `backend/migrations/schema.surql`. v0.7.3: section 13 lists `docs/setup`, the developer setup. v0.7.2: section 12 gives the services' stop grace periods (190 s for `api`). v0.7.1 synced with [contracts.md](contracts.md) v0.10.1: the account tombstone keeps a deleted account's tokens out and the provider deletion running across restarts (4). v0.7 synced with [contracts.md](contracts.md) v0.10, which records the decisions of the [backend design](../backend/README.md):
+> **Status:** Draft v0.7.9, 2026-10-17. v0.7.9: open decision 5 is settled for Eon: farm connectors sync a garden's Slack channels and Google Drive folder for the chat and the plan writer, with Era by Eon's simulators as the test bench in dev, CI, the agent evaluation and the demo, designed in [docs/connectors](../connectors/README.md); the contract changes land with the code (1, 2, 3, 7, 9, 11, 14, 15). v0.7.8: SurrealDB Agent Memory is integrated (open decision 5): shared memories are mirrored into it as beliefs that supersede by topic, `memory` gains `topic`, and `GET /plants/{plant_id}/beliefs` is added, synced with [contracts.md](contracts.md) v0.10.7 (1, 5, 7, 8.2, 9, 10, 11, 15). v0.7.7: open decision 2 is settled: the control plane runs on the rig behind Tailscale Funnel, and the ingress is a compose profile, so moving to a Cloudflare Tunnel or a cloud VM needs no code change (12, 15). v0.7.6: section 12 links the infrastructure and CI design, [docs/infra](../infra/README.md). v0.7.5: section 9 says the `domain` types are the contracts' source of truth and the spec is committed as `backend/openapi.json` (contracts v0.10.4). v0.7.4: sections 5 and 13 say the schema now lives at `backend/migrations/schema.surql`. v0.7.3: section 13 lists `docs/setup`, the developer setup. v0.7.2: section 12 gives the services' stop grace periods (190 s for `api`). v0.7.1 synced with [contracts.md](contracts.md) v0.10.1: the account tombstone keeps a deleted account's tokens out and the provider deletion running across restarts (4). v0.7 synced with [contracts.md](contracts.md) v0.10, which records the decisions of the [backend design](../backend/README.md):
 >   - the crate list matches the code: `integrations` holds every outbound HTTP adapter, and `knowledge` reads through a port without depending on `store` (3);
 >   - the user record is created by the first authenticated request, and the auth webhook only deletes users (4, 11);
 >   - the chat tools take no garden id, `view_image` and `revise_plan` name their scan, and model thinking is replayed only within a turn (7);
@@ -50,10 +50,10 @@ The judges score five criteria, with no weights published. This table shows wher
 
 | Criterion | How the architecture addresses it |
 |---|---|
-| Innovation | Combines vision findings, weather and per-plant memory. Checks each candidate diagnosis against curated disease profiles before giving advice. Sends forecast alerts before problems appear. Shows a health timeline for each plant, with a measured growth curve from LiDAR scans. Measures spot and hole sizes in millimetres to tell look-alikes apart. Chat can re-examine the photos. Shared memories become beliefs in SurrealDB Agent Memory, where a newer fact supersedes the older one and the history stays traceable. |
-| Real-World Impact | Clear users: home gardeners and small farms. Catches disease early. Fits the Canadian frost and short-season context. Recognizes beneficial insects so they aren't killed by mistake. Helps users report invasive species. User feedback improves the model over time. |
+| Innovation | Combines vision findings, weather and per-plant memory. Checks each candidate diagnosis against curated disease profiles before giving advice. Sends forecast alerts before problems appear. Shows a health timeline for each plant, with a measured growth curve from LiDAR scans. Measures spot and hole sizes in millimetres to tell look-alikes apart. Chat can re-examine the photos. Shared memories become beliefs in SurrealDB Agent Memory, where a newer fact supersedes the older one and the history stays traceable. Farm connectors bring a small farm's Slack crew reports and Drive spray log into the chat and the plan, with citations. |
+| Real-World Impact | Clear users: home gardeners and small farms. Catches disease early. Fits the Canadian frost and short-season context. Recognizes beneficial insects so they aren't killed by mistake. Helps users report invasive species. User feedback improves the model over time. A farm keeps using the Slack and Google Drive it already has. |
 | UI & Design | Guided capture with hints to retake bad photos. Live progress for each stage. Boxes drawn on the affected leaves. The plan appears as a checklist. Chat answers cite their sources. Optional guided soil checks. On LiDAR phones: live distance hints while framing, and a map of the garden's beds and plants. |
-| Tech & Deployment | Live public link. GPU workers pull jobs from the API, with a fallback to API credits. Public repository. Mobile build. |
+| Tech & Deployment | Live public link. GPU workers pull jobs from the API, with a fallback to API credits. Public repository. Mobile build. The farm connectors are tested in CI against Era by Eon's simulators, with injected records, faults and a quarter of changes. |
 | Security & Ethics | Managed authentication with MFA. Every garden-scoped query checks membership. Image storage is private. Photo metadata is stripped and faces are blurred before storage. Location needs consent and only the garden has one. Deleting an account removes the user's own data and any garden they alone use. Depth maps never leave the server and have face regions removed; the garden map holds no images, 3D mesh or coordinates. Wildlife advice is humane. Pesticide advice is limited, uncertain results are shown as uncertain, and advice cites its sources. |
 
 Submission requirements: a demo video of 2 minutes or less, a public GitHub repository, a live link, and a Devpost page listing the tech stack, the partner platforms used, and any prior work.
@@ -92,7 +92,8 @@ Submission requirements: a demo video of 2 minutes or less, a public GitHub repo
                           │      │  └─────────────────────────────┘         │──▶ Jev (optional)
                           │      ▼                                          │──▶ Weather / soil APIs
                           │ job broker · SSE hub · scheduler · text embed   │──▶ Push (Expo Push)
-                          │ depth measurement (CPU) · garden map            │
+                          │ depth measurement (CPU) · garden map            │──▶ Slack · Google Drive
+                          │ farm connector sync                             │    (farm connectors, read-only)
                           └────┬───────────────┬──────────────────▲─────────┘
                                │               │                  │
                       ┌────────▼─────────┐ ┌───▼──────────┐ ┌─────┴────────────┐
@@ -122,7 +123,7 @@ Submission requirements: a demo video of 2 minutes or less, a public GitHub repo
 - **Optional sensors add evidence; they never gate it.** LiDAR depth is used when the phone has it. Every stage works without it, and an indicator a measurement can't settle goes to the VLM as before.
 - **Use the cheapest model that can do the job.** Small classifiers make the routine decisions (routing, gating, tagging). The strongest LLM is kept for reasoning and writing.
 - **One agent core with two callers.** The plan writer, running after the pipeline, and the chat use the same context builder, tools and safety policy, so their answers can't contradict each other.
-- **A trait at every external boundary:** `VisionModel`, `SpeciesIdentifier`, `TextClassifier`, `TextEmbedder`, `ChatModel`, `KnowledgeStore`, `WeatherProvider`, `SoilProvider`, `BlobStore`, `Store`, `MemoryStore`, `Notifier`. Swapping a vendor or sponsor technology means writing one adapter.
+- **A trait at every external boundary:** `VisionModel`, `SpeciesIdentifier`, `TextClassifier`, `TextEmbedder`, `ChatModel`, `KnowledgeStore`, `WeatherProvider`, `SoilProvider`, `BlobStore`, `Store`, `MemoryStore`, `Notifier`, `FarmSource`. Swapping a vendor or sponsor technology means writing one adapter.
 - **Stream results, not video.** The app uploads a few still images (see 6.6). The progress and findings stream back over SSE, and every event is persisted so a phone that drops the connection can resume.
 - **Workers only pull.** Nothing in `api` waits on the rig synchronously. Anything a request needs right away (query embeddings, the blur check) runs on the control plane's CPU.
 
@@ -154,7 +155,7 @@ Each crate is designed in detail, down to its types and traits, in [docs/backend
 | `domain` | Shared types, IDs, errors, the scan state machine, and every boundary trait (`VisionModel`, `TextClassifier`, `TextEmbedder`, `KnowledgeStore`, …), so no crate depends on another just to see a trait |
 | `store` | SurrealDB repository layer and migrations; implements the domain's repository ports |
 | `blob` | RustFS client (custom endpoint, path-style addressing) |
-| `integrations` | Every outbound HTTP adapter: the LLM API client (shared by `agent` and the fallback worker), the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, geocoding, Expo Push, Clerk and Svix verification |
+| `integrations` | Every outbound HTTP adapter: the LLM API client (shared by `agent` and the fallback worker), the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, geocoding, Expo Push, Clerk and Svix verification, and the Slack and Google Drive farm connectors |
 | `agent` | Context builder, tool registry, safety policy, the plan writer, and the `ChatModel` and `TextClassifier` implementations (Jev, LLM fallback) over the clients in `integrations` |
 | `vision` | Perception stages and `ort` sessions for the workers; the CPU blur and exposure check, depth processing and measurement (plane fits, spot and hole sizing), and the `TextEmbedder` implementation for `api` |
 | `knowledge` | `KnowledgeStore` implementation over an in-memory index of the curated records, profile lookups, look-alike graph, chunk retrieval, deterministic verification scoring. It reads through the domain's `KnowledgeRepo` port, which `store` implements and `api` wires, so it doesn't depend on `store` |
@@ -586,6 +587,7 @@ The context is rebuilt from the database on every turn. It uses the conversation
 | `revise_plan(scan_id, summary, changed_steps, removed_step_ids, constraints)` | Proposes a new version of that scan's current plan (a plant or garden conversation has no single plan, so the scan is named); the card names the plan it is based on and says the plan is shared with the garden | **write: user confirms** |
 | `request_rescan(plant_id, photo_kind, instructions)` | Asks the user for a specific photo; the app offers to open the capture flow for a new scan | read (UI action) |
 | `remember(fact, plant_id?)` | Saves a private chat memory about the plant, or the garden when no plant is given; the app shows it with Undo, and Share with garden for editors and owners. Offered to every role, because it only writes the caller's own memory | write (automatic, shown to the user) |
+| `search_farm_records(query, kind?, since?)` | Searches the Slack messages and Drive documents synced from the garden's farm connectors; each hit cites its author, time and link. Offered when the garden has an active connector. Proposed: lands with the connector code ([connectors 7](../connectors/README.md#7-the-agent)) | read |
 
 No tool takes a garden id: the garden is always the conversation's, because identity and scope come from the session, never from the model (section 11). Tool arguments are strict: a call with an unknown field or a malformed id is refused with the reason, and the model corrects it.
 
@@ -607,6 +609,10 @@ Before the LLM runs, a fast text classifier (`TextClassifier`: Jev if available,
 | `off_topic` | A short, polite redirect, using the cheapest model |
 
 The scores are compared with each other rather than treated as certainties, and they are calibrated on a small labelled set of example messages. A classifier that doesn't answer within 3 seconds is not an error: the message is routed as a care question.
+
+### Farm connectors
+
+A garden owner can connect the farm's Slack and Google Drive ([docs/connectors](../connectors/README.md)). The owner picks the channels and one folder. A `connectors` scheduler task syncs them every 15 minutes into `farm_record`, paced to Slack's limits, and embeds the text like memories. The adapters only read. The chat searches the records with `search_farm_records`, and the plan writer passes its top 4 hits to the model so a plan doesn't repeat a treatment the spray log shows. Records are data, never instructions, and the dose check still applies, so a rate in the spray log is never repeated. Era by Eon's Slack and Google Drive simulators, loaded with a synthetic farm, are the test bench in dev, in CI, in the agent evaluation and behind the demo garden.
 
 ### Memory
 
@@ -729,6 +735,12 @@ GET    /memories · POST /memories   (garden note with optional topic, editor)
 POST   /memories/{id}/share · DELETE /memories/{id}
 GET    /plants/{plant_id}/beliefs   (current and superseded beliefs; available: false when Agent Memory is off)
 
+Farm connectors (proposed, docs/connectors; owner, except reading the list)
+GET    /gardens/{id}/connectors · POST /gardens/{id}/connectors
+GET    /connectors/oauth/callback   (signed state) · POST /connectors/{id}/complete   (device-bound)
+GET    /connectors/{id}/available-sources · PUT /connectors/{id}/sources
+POST   /connectors/{id}/sync · DELETE /connectors/{id}
+
 Chat (conversation owner + garden member)
 POST   /conversations · GET /conversations
 GET    /conversations/{id}
@@ -799,6 +811,7 @@ Notes:
 - `DELETE /me` runs the deletion cascade in section 5: gardens the user alone uses are removed from SurrealDB and RustFS, shared gardens keep their scans with the user reference cleared, and the account is deleted at the auth provider too. Removing a member from a garden deletes their private chats there.
 - Chat memories are private to their author until shared. The plan writer, whose output every member sees, reads only shared memories.
 - **Agent Memory** receives only shared memories (the text, its topic, its date and ids), over HTTPS with an API key that is limited to `gardens/*` and can't change grants. Private chat memories, photos and location never go there. SurrealDB Cloud, and Google for the embeddings, process the text ([database: Agent Memory, privacy](../database/agent-memory.md#5-privacy)). Deleting a shared memory, a plant or a garden queues its scope in the same transaction, and the belief sweep erases it for good within seconds while Agent Memory is up.
+- **Farm connectors** read only the channels and folder an owner picks, with read scopes. Tokens are sealed with AES-256-GCM, never returned or logged, and revoked on disconnect. PDM keeps the text, the author's display name, the time and the link for 180 days, and deletes them on disconnect, with the garden, or when the owner who connected them leaves or deletes the account ([connectors 8](../connectors/README.md#8-privacy-and-security)).
 - Withdrawing location consent rounds every garden the user owns to about 10 km.
 - Depth maps from LiDAR phones are stored only on the server, with face regions zeroed; no URL is issued for them and the workers never receive them. The garden map holds bed outlines and plant positions in metres on a local ground plane: no images, no 3D mesh and no coordinates. The mesh and the AR world map saved for later edits stay on the phone.
 
@@ -904,9 +917,9 @@ PDM/
 | Oct 16–17 | End-to-end skeleton: auth, upload with the CPU blur check, submit, scan state machine, job broker with stub vision and heartbeat requeue, resumable SSE, text embeddings in `api`, control plane deployed. Choose the crops and the text-embedding model, list the knowledge sources, request Jev access. LiDAR day-1 check (10) |
 | Oct 18–19 | Real models on the rig (BioCLIP, disease classifier, VLM). Species confirmation. Weather with soil moisture and temperature; garden soil profile. Face blurring on upload. Knowledge ingestion running. LiDAR module: depth capture, distance hint, depth upload and storage |
 | Oct 20–21 | Knowledge profiles reviewed and loaded. The single VLM pass: soil, organisms with boxes, damage, indicator answers. Deterministic verification, questions and the provisional plan. Fusion and plan writer with citations. Results UI with overlays. Measurement stage and measurable indicators |
-| Oct 22 | Chat with tools, router, memory, confirmation cards, timeline with the growth curve. Garden map: AR capture, map view, neighbour and spacing rules |
+| Oct 22 | Chat with tools, router, memory, confirmation cards, timeline with the growth curve. Garden map: AR capture, map view, neighbour and spacing rules. Farm connectors: Slack and Drive adapters tested on Era's simulators in CI |
 | Oct 23 | Forecast alerts with dedupe, alert inbox, push from a development build. Account deletion cascade. Test the fallback by killing the rig in the middle of a scan: hand-over must happen within about 45 seconds |
-| Oct 24 | Feature freeze, security review, UI polish, evaluation on field photos |
+| Oct 24 | Feature freeze, security review, UI polish, evaluation on field photos, agent evaluation on the Era farm |
 | Oct 25 | Demo video (2 minutes or less), Devpost page, README, final deploy |
 
 ---
@@ -917,7 +930,7 @@ PDM/
 2. **Where the control plane runs.** Decided on 2026-10-16: on the rig, behind Tailscale Funnel; the ingress is a compose profile, so a Cloudflare Tunnel or a cloud VM can replace it without a code change ([12](#hosting-the-control-plane), [infra 5](../infra/README.md#5-ingress)).
 3. **Which crops to support.** This sets the classifier's classes, BioCLIP's label list and the scope of the knowledge base. PlantDoc covers tomato, potato, pepper, apple, grape and others.
 4. **Which VLM runs on the VLM workers.** Qwen3-VL-8B-Instruct (FP8) is the primary and Qwen3.5-9B (4-bit AWQ) the challenger, benchmarked on day 2; Qwen2.5-VL-7B is a baseline only ([vision VLM](../vision/vlm.md)). Both cards serve the winner.
-5. **What Eon and SurrealDB Agent Memory offer.** **Agent Memory decided (v0.7.8):** integrated as described in section 7 and [database: Agent Memory](../database/agent-memory.md), for the "Best Use of SurrealDB Agent Memory" prize. Eon remains open: confirm what it offers.
+5. **What Eon and SurrealDB Agent Memory offer.** **Agent Memory decided (v0.7.8):** integrated as described in section 7 and [database: Agent Memory](../database/agent-memory.md), for the "Best Use of SurrealDB Agent Memory" prize. **Eon decided (v0.7.9):** Era by Eon is the test bench for the farm connectors (Slack and Google Drive): its simulators, loaded with a synthetic farm, run in dev, in CI, in the agent evaluation and behind the demo garden ([docs/connectors](../connectors/README.md)), for the "Best Use of Eon" prize.
 6. **Which LLM API models** to use for chat and plan writing, and for summaries and memory extraction.
 7. **Which knowledge sources** to ingest (extension and government guides), and whether their terms allow it.
 8. **Jev:** whether early access arrives by Oct 17. If not, every `TextClassifier` call uses the LLM fallback.
