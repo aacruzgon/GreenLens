@@ -129,6 +129,14 @@ stored_enum! {
 }
 
 stored_enum! {
+    /// `memory.topic`.
+    MemoryTopicRow <=> domain::chat::MemoryTopic {
+        Watering, Feeding, Treatment, Pruning, Planting, Location, Container, Soil, Light,
+        Health, Harvest, Other,
+    }
+}
+
+stored_enum! {
     /// `memory.source`.
     MemorySourceRow <=> domain::chat::MemorySource { Pipeline, Chat, User }
 }

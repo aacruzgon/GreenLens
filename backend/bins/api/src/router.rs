@@ -126,6 +126,7 @@ pub fn routes(request_timeout: Duration) -> OpenApiRouter<SharedState> {
             plants::delete_plant
         ))
         .routes(routes!(plants::timeline))
+        .routes(routes!(plants::plant_beliefs))
         .routes(routes!(plants::measurements))
         .routes(routes!(plants::confirm_species))
         .routes(routes!(species::list_species))

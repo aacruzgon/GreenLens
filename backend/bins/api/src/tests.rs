@@ -2,6 +2,7 @@
 //! mockall mocks of the domain ports (a [`fake_store::FakeStore`] of per-area mocks) and small
 //! fakes of the seams.
 
+mod beliefs;
 mod fake_store;
 
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
@@ -23,10 +24,10 @@ use domain::{
     id::{GardenId, PendingActionId, ScanId, UserId},
     jobs::{CompleteJob, WorkerEvent},
     ports::{
-        CompletionOutcome, IdempotencyBegin, Lease, LeasedJob, MockAuthAdmin, MockAuthVerifier,
-        MockBlobStore, MockGeocoder, MockKnowledgeStore, MockMemoryStore, MockNotifier,
-        MockSoilProvider, MockTextEmbedder, MockWeatherProvider, MockWebhookVerifier,
-        PhotoAnswerStart, PlanWrite, StoredResponse, VerifiedToken,
+        BeliefStore, CompletionOutcome, IdempotencyBegin, Lease, LeasedJob, MockAuthAdmin,
+        MockAuthVerifier, MockBlobStore, MockGeocoder, MockKnowledgeStore, MockMemoryStore,
+        MockNotifier, MockSoilProvider, MockTextEmbedder, MockWeatherProvider, MockWebhookVerifier,
+        NoBeliefs, PhotoAnswerStart, PlanWrite, StoredResponse, VerifiedToken,
     },
     records::plan::ActionPlan,
     rules::stream::StreamState,
@@ -220,6 +221,17 @@ fn state(
     blob: MockBlobStore,
     images: FixedImages,
 ) -> Arc<AppState> {
+    state_with_beliefs(store, auth, blob, images, Arc::new(NoBeliefs))
+}
+
+/// [`state`] with a belief store of the test's.
+fn state_with_beliefs(
+    store: FakeStore,
+    auth: MockAuthVerifier,
+    blob: MockBlobStore,
+    images: FixedImages,
+    beliefs: Arc<dyn BeliefStore>,
+) -> Arc<AppState> {
     let store: Arc<FakeStore> = Arc::new(store);
     let clock = Arc::new(FixedClock::at(NOW.parse().unwrap()));
     let tasks = TaskTracker::new();
@@ -252,6 +264,7 @@ fn state(
         ports: Ports {
             store: store.clone(),
             memory: Arc::new(MockMemoryStore::new()),
+            beliefs,
             knowledge: Arc::new(MockKnowledgeStore::new()),
             blob: blob.clone(),
             auth: Arc::new(auth),

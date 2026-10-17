@@ -1,8 +1,8 @@
 # PDM Backend: `integrations` crate
 
-> **Status:** Draft v0.4, 2026-10-16. v0.4: checked against Anthropic's documentation and the first live calls: the sanitiser turns `oneOf` into `enum` or `anyOf` (refused live), turns a nullable enum into one `enum` holding `null` so it isn't a union-typed parameter, and drops `format`s the API doesn't list; token counts that are `null` read as 0 and a missing `usage` defaults; `StopReason::ModelContextWindowExceeded`; 64 tests. v0.3.3: the Clerk tests generate their RSA key pair at run time, so no key file is committed, and the Svix tests use a made-up secret. v0.3.2: section 4 says the worker builds its client with a 600 s read timeout, not the 60 s default, because its VLM and hosted LLM calls aren't streamed, and their 240 s and 300 s deadlines end a slow call; the skills table became a plain list of the extra dependencies. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
+> **Status:** Draft v0.5, 2026-10-17. v0.5: adds `agent_memory`, the `BeliefStore` over `SurrealDB` Agent Memory's REST API (section 14; the sections after it moved down one), 13 tests; 77 in all. v0.4: checked against Anthropic's documentation and the first live calls: the sanitiser turns `oneOf` into `enum` or `anyOf` (refused live), turns a nullable enum into one `enum` holding `null` so it isn't a union-typed parameter, and drops `format`s the API doesn't list; token counts that are `null` read as 0 and a missing `usage` defaults; `StopReason::ModelContextWindowExceeded`; 64 tests. v0.3.3: the Clerk tests generate their RSA key pair at run time, so no key file is committed, and the Svix tests use a made-up secret. v0.3.2: section 4 says the worker builds its client with a 600 s read timeout, not the 60 s default, because its VLM and hosted LLM calls aren't streamed, and their 240 s and 300 s deadlines end a slow call; the skills table became a plain list of the extra dependencies. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
 
-Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate implements. Every listing below is copied from the compiled source of `crates/integrations`. `cargo check`, `cargo clippy -p integrations --all-targets` and `cargo test -p integrations` all pass: 64 tests, against `wiremock` servers and the live responses recorded on 2026-10-15.
+Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate implements. Every listing below is copied from the compiled source of `crates/integrations`. `cargo check`, `cargo clippy -p integrations --all-targets` and `cargo test -p integrations` all pass: 77 tests, against `wiremock` servers and the live responses recorded on 2026-10-15.
 
 ## Contents
 
@@ -19,11 +19,12 @@ Companion to the [backend architecture](README.md) and the [`domain` crate](doma
 11. [Svix and the auth webhook](#11-svix-and-the-auth-webhook)
 12. [Expo Push](#12-expo-push)
 13. [Jev](#13-jev)
-14. [Concurrency and lifetimes](#14-concurrency-and-lifetimes)
-15. [Errors](#15-errors)
-16. [Testing](#16-testing)
-17. [Open questions](#17-open-questions)
-18. [Sources](#18-sources)
+14. [Agent Memory](#14-agent-memory)
+15. [Concurrency and lifetimes](#15-concurrency-and-lifetimes)
+16. [Errors](#16-errors)
+17. [Testing](#17-testing)
+18. [Open questions](#18-open-questions)
+19. [Sources](#19-sources)
 
 ---
 
@@ -44,6 +45,7 @@ Companion to the [backend architecture](README.md) and the [`domain` crate](doma
 | Svix | `svix` | `WebhookVerifier` | `api` (`POST /webhooks/auth`) |
 | Expo Push | `expo_push` | `Notifier` | `api` |
 | Jev | `jev` | `TextClassifier` | `api`, when configured |
+| `SurrealDB` Agent Memory | `agent_memory` | `BeliefStore` | `api` (memory mirror, beliefs endpoint, `search_memory`), when configured |
 
 **What it never does.** It reads no database and no object store, and it holds no business rule. A failed fetch is reported, and the caller decides what to do: skip the gardens in a weather cell, set `soil_profile_status`, answer `503 upstream_unavailable`. It never reads the system clock for domain time: adapters that stamp `fetched_at` take an `Arc<dyn Clock>`, and token checks take `now` as an argument. No `reqwest` type appears in a public signature. Errors leave as the port's enum ([domain 9](domain.md#9-boundary-traits)), or as the client's own enum for the two LLM clients. The library error is kept as the `source`.
 
@@ -145,6 +147,7 @@ crates/integrations/
    ├─ geocode/tests.rs
    ├─ clerk.rs                 ClerkVerifier: AuthVerifier; ClerkAdmin: AuthAdmin
    ├─ svix.rs                  SvixVerifier: WebhookVerifier; map_clerk_event
+   ├─ agent_memory.rs          AgentMemory: BeliefStore (REST: scopes, facts, entities, query, forget)
    ├─ expo_push.rs             ExpoPush: Notifier (push, check_receipts)
    └─ jev.rs                   JevClassifier: TextClassifier (stub)
 ```
@@ -2584,7 +2587,67 @@ Any transport failure or error status is `ModelError::Unavailable { model: "jev"
 
 ---
 
-## 14. Concurrency and lifetimes
+## 14. Agent Memory
+
+**What it is.** `SurrealDB` Agent Memory is a hosted memory service on `SurrealDB` Cloud. The `memory` table stays the system of record; each **shared** memory is mirrored into the service as one triple, and the service supersedes the older value of the same key and keeps the history ([domain, the belief store](domain.md)). A private chat memory never leaves the database. `AgentMemory` implements `BeliefStore` over the REST API. Every call is `{base_url}/api/v1/{context_id}/…` with `Authorization: Bearer <key>`, JSON in and out.
+
+```rust
+/// Settings.
+#[derive(Debug, Clone)]
+pub struct AgentMemoryConfig {
+    /// The service's origin, such as `https://<instance>.agent-memory.surreal.cloud`.
+    pub base_url: String,
+    /// The context every call belongs to.
+    pub context_id: String,
+    /// The API key; never printed.
+    pub api_key: SecretString,
+    /// Deadline of an entity read (`current`, `history`): 3 s.
+    pub read_timeout: Duration,
+    /// Deadline of `/query`: 8 s, as it measured 2 to 10 s.
+    pub search_timeout: Duration,
+    /// Deadline of a write, a scope registration or a forget: 15 s.
+    pub write_timeout: Duration,
+}
+
+/// The adapter. One per process: the cache of registered scope paths is shared by every call.
+pub struct AgentMemory {
+    http: reqwest::Client,
+    config: AgentMemoryConfig,
+    /// Scope paths known to be registered.
+    scopes: Cache<String, ()>,
+}
+```
+
+**Endpoints** (all measured 2026-10-17 against the live service). The `/facts` write body is `snake_case`, the `/query` body `camelCase`, responses `camelCase`, and **unknown fields are ignored silently**, so the tests assert exact request bodies.
+
+| Port method | Call | Deadline | Notes |
+|---|---|---|---|
+| `record` | `POST /scopes {"path"}`, then `POST /facts` | `write_timeout` (15 s) | Registers the scope path first (`201`, idempotent, parents created). `/facts` body: `infer: "triples"`, `scopes: [[path]]`, `observed_at`, `labels: ["memory=<id>", "source=<pipeline\|user>"]`, `triples: [{entity: {type: "other", name}, key, value}]`. Labels sit at the top level of the body (measured to stick there). |
+| `current` | `GET /entities/other/{name}` for the plant and for the garden, at once | `read_timeout` (3 s) | `404` is an empty list. Only attributes with `supersededBy == null`. No retries. About 0.4 s. |
+| `history` | `GET /entities/other/{name}/history?limit=500` | `read_timeout` per page | Follows `page.nextCursor` with `&cursor=` until it is absent and **never stops on a short page**. `404` is empty. Sorted newest `learned_at` first. |
+| `search` | `POST /query {query, k, lens, include: ["facts"]}` | `search_timeout` (8 s) | `k` is capped at 50. `lens` is `[[plant path], [garden path]]`, or `[[garden path]]`. Keeps hits with `source == "attribute"` whose `resource.name` is one of the two entities; strips the leading `<name>'s ` from the text. Measured at 2 to 10 s, so callers add a shorter timeout of their own. |
+| `forget` | `POST /scopes/forget {"path": "<scope path>/"}` | `write_timeout` | Trailing slash. Hard-deletes every fact and entity in the subtree and answers `200 {"forgotten": n}`; `0` when there is nothing, so it is idempotent. |
+
+**Scope registration.** A write to an unregistered path answers `400 {"message": "unknown scope node — register it first"}`. The adapter keeps the registered paths in a `moka` cache (one hour), registers before the first write to a path, and on that `400` drops the entry, registers and retries the write once. A second `400` is a `BadResponse`. After a `forget` the whole cache is dropped, because a garden's forget takes its plants' paths with it and registering again is cheap.
+
+**No idempotency key.** The service replays a stored response for 24 hours for the same `Idempotency-Key`, which would swallow a rebuild that re-sends a memory after a forget, so none is sent. Triples reconcile by entity and key, so a re-send leaves one current value.
+
+**Mapping a read.** `createdAt` comes with or without nanoseconds (`2026-10-17T15:57:02.010341933+00:00`) and is parsed as RFC 3339. `Belief.memory_id` comes from the `memory=<ulid>` label (`None` when it is missing or doesn't parse); `superseded_at` is `validUntil` when `supersededBy` is set; `about_plant` is true for the plant's own entity.
+
+**Retries.** `record` retries twice (0.2 s then 0.4 s ceilings) after a connect error or a 5xx; a timeout is not retried. Reads are not retried: the caller falls back to the database.
+
+| Outcome | Result |
+|---|---|
+| `2xx` | `Ok` |
+| `404` on an entity read or history | an empty list |
+| Connect error, timeout, 5xx | `Unavailable` |
+| `429` | `RateLimited`, with `Retry-After` seconds |
+| `401`, `403` | `Unavailable`, a misconfigured key; the status is in the source error, the key never is |
+| Other `4xx`, an unparsable body, an unknown scope after registering | `BadResponse` |
+
+---
+
+## 15. Concurrency and lifetimes
 
 **What is shared.** Every adapter is `Send + Sync + 'static` and is held by `api` as `Arc<dyn Port>`. The clients are cheap to clone: an `Arc` around their configuration plus the shared `reqwest::Client`. State that must be one per process is behind an `Arc` inside:
 
@@ -2617,7 +2680,7 @@ The pattern is the brief's convention 4: borrowed views for the synchronous work
 
 ---
 
-## 15. Errors
+## 16. Errors
 
 Each module maps its failures to the port's error enum ([domain 9](domain.md#9-boundary-traits)). The library error is kept as the `source`, so `api`'s log prints the whole chain. Only `api` turns these into HTTP ([contracts 2](../architecture/contracts.md#2-errors)):
 
@@ -2635,7 +2698,7 @@ The two LLM clients keep their own enums (`AnthropicError`, `OpenAiCompatError`)
 
 ---
 
-## 16. Testing
+## 17. Testing
 
 | What | How |
 |---|---|
@@ -2650,13 +2713,14 @@ The two LLM clients keep their own enums (`AnthropicError`, `OpenAiCompatError`)
 | Geocoder | the live Open-Meteo fixture; Nominatim and Zippopotam shapes; the 0.01° reverse lookup; the cache (one request for two queries); `tzf-rs` on Toronto and Vancouver |
 | Clerk | tokens signed with a throwaway RSA key, generated once per test run with `aws-lc-rs` so no private key is committed, and served as a JWKS by `wiremock`: issuer, expiry, `nbf`, `azp`, leeway, missing `nbf`, refetch limit; `DELETE` 200, 404 and 429 |
 | Svix | the `svix` crate's `Webhook::sign` as the oracle; rotation (several entries), tampering, ±301 s |
+| Agent Memory | `wiremock`, exact request bodies (the service ignores unknown fields silently): `record` and the scope cache (one registration for two writes, none after the first), the `400 unknown scope node` re-register and single retry, a 5xx write retried twice, `current` (plant and garden merged, superseded dropped, label and both timestamp forms, 404 as empty), `history` (cursor followed through a short page, newest first), `search` (exact lens, hit filter, prefix stripped), `forget` (trailing slash, cache dropped), the 500, 429, 401, 403 and 422 mapping, `Debug` without the key |
 | Expo | ticket order, `DeviceNotRegistered` in tickets and receipts, batches of 100, a failed whole push |
 
 Paused time (`start_paused`) is used only where no real I/O runs: the retry and pacer tests. With a mock server in the loop, tokio's auto-advance would jump to the request's timeout while the server answers, which the Clerk refetch test showed. Not run: live calls to Anthropic, Clerk, Expo and Nominatim (no keys or accounts on 2026-10-15), and the VLM servers (no GPU here).
 
 ---
 
-## 17. Open questions
+## 18. Open questions
 
 1. **Frost threshold.** Settled in [domain 7](domain.md#weather-thresholds): one `WeatherThresholds` for `frost_risk`, the frost alert rule of [architecture 8.3](../architecture/README.md#83-forecast-alerts) and fusion, with frost at a 2 m minimum ≤ 0.5 °C. The number itself is still a proposal ([domain 12](domain.md#12-open-questions), item 17).
 2. **SoilGrids `NotFound` versus `Unavailable`.** Settled in contracts v0.10 ([contracts 9, the soil profile](../architecture/contracts.md#gardens)): one `unavailable` value on the wire, retried after 7 days for no data and after 15 minutes for an outage (section 8; `api`'s `soil` task). Still open: architecture 6.4's Soil Landscapes of Canada fallback for null pixels.
@@ -2669,7 +2733,7 @@ Paused time (`start_paused`) is used only where no real I/O runs: the retry and 
 
 ---
 
-## 18. Sources
+## 19. Sources
 
 **Rust language**
 - The Book: [10.1 generics](https://doc.rust-lang.org/book/ch10-01-syntax.html) · [10.3 lifetimes](https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html) · [18.2 trait objects](https://doc.rust-lang.org/book/ch18-02-trait-objects.html) · [17 async and await](https://doc.rust-lang.org/book/ch17-00-async-await.html)

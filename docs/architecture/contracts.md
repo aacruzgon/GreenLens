@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.6, 2026-10-16. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.7, 2026-10-17. Companion to the [architecture document](README.md).
+> **v0.10.7** adds `Memory.topic`, mirrors shared memories into SurrealDB Agent Memory as beliefs, adds `GET /plants/{plant_id}/beliefs` and gives `search_memory` the `MemorySearch` result (`BeliefHit` items); deleting a shared memory, a plant or a garden queues its Agent Memory scope for erasure by `api`'s belief sweep (sections 8, 9).
 > **v0.10.6** settles open question 31: xgrammar in vLLM v0.31.0 enforces `anyOf` with `null`, producing both branches and blocking values outside the schema (section 12); no wire shape changed.
 > **v0.10.5**: section 10 states the loader's migration output: one regenerated, deterministic `backend/migrations/knowledge.surql` that replaces the whole knowledge set and records the generated versions in `knowledge_meta`; no wire shape changed.
 > **v0.10.4**: the `domain` crate's types are now the contracts' source of truth, since the code exists; this document explains them, and the generated OpenAPI spec is committed as `backend/openapi.json` (section 1, source of truth).
@@ -1691,12 +1692,18 @@ interface Memory {
   garden_id: Id;
   plant_id?: Id;
   kind: "fact" | "event" | "summary";
+  topic: MemoryTopic;                // default "other"; picked by the extraction model and the `remember` tool
   text: string;
   source: "pipeline" | "chat" | "user";
   shared: boolean;                   // false for chat memories until their author shares them
   created_at: Timestamp;
 }
+
+type MemoryTopic = "watering" | "feeding" | "treatment" | "pruning" | "planting" | "location"
+                 | "container" | "soil" | "light" | "health" | "harvest" | "other";
 ```
+
+`topic` says what a memory is about. The chat extraction model and the `remember` tool pick it, a garden note takes the `topic` of `POST /memories` (default `other`), and the pipeline's scan summary uses `health`. A shared memory's topic decides which belief it replaces (Beliefs, below).
 
 | `source` | Written by | Visible to | Used by the plan writer |
 |---|---|---|---|
@@ -1707,13 +1714,49 @@ interface Memory {
 | Endpoint | Who | Effect |
 |---|---|---|
 | `GET /memories?garden_id=&plant_id=` | any member | `200 Page<Memory>`: shared memories, plus the caller's own chat memories; newest first |
-| `POST /memories` | editor | `{ garden_id, plant_id?, text }` → `201 Memory` with `source: "user"` (a garden note) |
+| `POST /memories` | editor | `{ garden_id, plant_id?, text, topic? }` → `201 Memory` with `source: "user"` (a garden note) |
 | `POST /memories/{id}/share` | the chat memory's author, if they are an editor or owner | `200 Memory` with `source: "user"`, `shared: true` |
 | `DELETE /memories/{id}` | the author of a chat memory; an owner for shared memories | `204` (the "Undo" of `memory_saved`) |
 
 Because the plan writer reads only shared memories, a plan that every member sees never quotes something a member said in a private chat. `evidence_basis.user_input` lists only shared memories.
 
 A memory's text is embedded in document mode when it is written, and `search_memory`'s query in query mode (section 10, chunk embeddings).
+
+#### Beliefs
+
+Shared memories (`source` `pipeline` or `user`) are also mirrored into SurrealDB Agent Memory, one triple each, so a newer fact about the same thing supersedes the older one and the history is kept ([database: Agent Memory](../database/agent-memory.md)). Private chat memories are never sent; sharing one is the consent to send it. The `memory` table stays the system of record, and no request waits on Agent Memory: `api`'s belief sweep records shared memories within seconds of their write. A belief's value and its memory's text are the same; Agent Memory keeps the newest by `learned_at`, so a shared memory older than its key's current value is not a belief.
+
+```ts
+interface Belief {
+  key: string;                       // "scan_summary", "watering", "last_treatment", "note_<memory id>"
+  value: string;                     // the memory's text
+  about_plant: boolean;              // false: about the garden
+  memory_id?: Id;                    // the memory it was mirrored from
+  learned_at: Timestamp;             // the memory's created_at, sent as observed_at
+  superseded_at?: Timestamp;         // set only on history entries
+}
+
+interface PlantBeliefs {
+  available: boolean;                // false when Agent Memory is off or doesn't answer
+  current: Belief[];
+  history: Belief[];                 // superseded beliefs, newest first
+}
+
+interface BeliefHit {                // a current belief that matched a search_memory query
+  key: string;
+  text: string;                      // "watering is every 2 days"
+  about_plant: boolean;
+  score: number;                     // Agent Memory's fused score
+}
+
+interface MemorySearch { memories: Memory[]; beliefs: BeliefHit[] }
+```
+
+| Endpoint | Who | Effect |
+|---|---|---|
+| `GET /plants/{plant_id}/beliefs` | any member | `200 PlantBeliefs`. Never a `5xx` for Agent Memory: when it is off, slow or down, `available` is `false` and both lists are empty |
+
+The key of a belief comes from the memory: a `summary` is `scan_summary`; a `fact` with topic `other` is `note_<memory id>`, so it never supersedes anything; any other `fact` is its topic (`watering`); an `event` is `last_<topic>` (`last_treatment`). A newer shared memory with the same key about the same plant (or garden) supersedes the older one.
 
 ### Tool return shapes and scope
 
@@ -1724,7 +1767,7 @@ The agent's tools return the same records the app sees. Every tool runs as the s
 | `get_scan` | `scan_id` | Scans of the garden | `ScanDetail` without image URLs |
 | `view_image` | `image_id`, `scan_id?`, `region?` | With `scan_id`: an image of that scan of the garden. Without: one of this conversation's own images. Nothing else | The image, or a crop of it, to the model; `{ ok: true }` to the log |
 | `get_forecast` | `days` (1–14) | The garden | `WeatherSummary["forecast"]` |
-| `search_memory` | `query`, `plant_id?` | Shared memories of the garden, plus the caller's own chat memories | `Memory[]` |
+| `search_memory` | `query`, `plant_id?` | Shared memories of the garden, plus the caller's own chat memories; beliefs from Agent Memory (shared only) | `MemorySearch`: local hits in `memories`, Agent Memory hits in `beliefs`, which is empty when Agent Memory is slow (4 s) or down |
 | `find_similar_cases` | `image_id` | Scans of the garden | `{ scan_id: Id; created_at: Timestamp; primary?: { problem_id: Slug; name: string }; similarity: number; thumbnail_image_id?: Id }[]`, at most 5 |
 | `search_knowledge` | `query`, `topic?` (a `ChunkSeed` topic) | Knowledge base | `{ text: string; citation: Citation }[]` |
 | `get_species_profile` | `species` | Knowledge base | `{ profile: SpeciesSeed; susceptible_to: Slug[] }`: the problems it is `susceptible_to` |
@@ -1935,9 +1978,11 @@ interface GardenMap {
 
 | Deleted | Also deleted | Jobs |
 |---|---|---|
-| A plant | Its scans with their images, depth maps, masks, observations, events, diagnoses, plans and questions; its tasks and plan trigger rules, including the neighbour tasks and trigger rules its plans made for other plants; the tasks and trigger rules other plants' plans made for it (those plans are not changed: section 7, when a neighbour is deleted); conversations anchored to the plant or its scans, with their messages, images, pending actions and feedback; memories about the plant; its pin on the garden map | Queued and leased jobs of its scans are cancelled, and their step claims and question steps cleared, so no running step can commit afterwards |
+| A plant | Its scans with their images, depth maps, masks, observations, events, diagnoses, plans and questions; its tasks and plan trigger rules, including the neighbour tasks and trigger rules its plans made for other plants; the tasks and trigger rules other plants' plans made for it (those plans are not changed: section 7, when a neighbour is deleted); conversations anchored to the plant or its scans, with their messages, images, pending actions and feedback; memories about the plant; its pin on the garden map; its scope subtree in Agent Memory (`gardens/{garden_id}/plants/{plant_id}`, erased for good after its objects and before its records) | Queued and leased jobs of its scans are cancelled, and their step claims and question steps cleared, so no running step can commit afterwards |
 | A `pending` scan (`DELETE /scans/{id}`, section 3) | Its images with their depth maps, its guided checks with their observations and events, conversations anchored to it, and the tasks naming it (`Task.scan_id`) | Its guided jobs are cancelled |
-| A garden | Everything under `gardens/{garden_id}/` in RustFS, and every record of the garden: plants (as above), tasks, memories, conversations, invites, memberships, the garden map | All its jobs are cancelled, and every step claim and question step cleared |
+| A garden | Everything under `gardens/{garden_id}/` in RustFS, its scope subtree in Agent Memory, and every record of the garden: plants (as above), tasks, memories, conversations, invites, memberships, the garden map | All its jobs are cancelled, and every step claim and question step cleared |
+
+**Agent Memory.** Starting a plant's or garden's cascade queues its Agent Memory scope for erasure in the same transaction, and `api`'s belief sweep erases it (`POST /scopes/forget`, permanent) within seconds while Agent Memory is up; nothing more of that plant or garden is recorded. When an owner deletes one shared memory, the row goes and its plant's (or the garden's) scope is queued in one transaction; the sweep erases the scope and records the remaining shared memories again. Erasure is eventual: while Agent Memory is down, the queued erase waits. Account deletion needs nothing: shared memories stay with the garden, and private ones were never sent.
 
 A deletion interrupted by a restart is resumed from its first step for every target still marked `deleting_at`. A garden's objects are deleted again by prefix; a resumed plant's or scan's objects, whose keys are gone with their records, are left to the daily orphan sweep, which deletes objects no record points to ([backend api 17](../backend/api.md#17-deletion); open question 41). A member's removal leaves no marker yet, so it can't be resumed (open question 30).
 
@@ -2322,6 +2367,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.3: the schema link points to `backend/migrations/schema.surql` | 5 (schema) and 13 (layout), which say the same |
 | v0.10.4: the `domain` types are the source of truth and the OpenAPI spec is committed as `backend/openapi.json` | 9 |
 | v0.10.6: open question 31 settled: xgrammar enforces `anyOf` with `null` in the VLM schemas | none (the architecture document doesn't mention it) |
+| v0.10.7: `Memory.topic`; shared memories mirrored into SurrealDB Agent Memory as beliefs; `GET /plants/{plant_id}/beliefs`; `search_memory` returns `MemorySearch`; scope erase in the plant and garden cascades | 1, 5, 7, 8.2, 9, 10, 11, 15 |
 
 ---
 
@@ -2352,7 +2398,7 @@ The contracts changed these parts of the architecture document, which has been u
 23. **A missing `X-Lease-Token`.** **Settled (v0.10):** `400 invalid_request` with `field: "X-Lease-Token"`; a wrong or stale token stays `409 lease_lost` (sections 1 and 2) ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions)).
 24. **Auth webhook failures.** **Settled (v0.10):** `401 unauthenticated` for a bad signature or a timestamp more than 5 minutes away in either direction; `204` for an unhandled event type or an unreadable signed body; `user.created` is a no-op and the user record is created by the first authenticated request, which narrows architecture 4 (section 9, auth webhook) ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions)).
 25. **The RX 9070 XT's VLM server:** vLLM on ROCm (`vllm-openai-rocm` v0.31.0, built for gfx1201) is proposed; llama.cpp with Vulkan is the fallback if the day-1 check fails. Whichever runs there, it serves the same checkpoint as the 5070 Ti: if the block-FP8 checkpoint doesn't run on gfx1201, both cards serve the 4-bit AWQ one. On day 2, its boxes and indicator answers on 10 evaluation photos are compared with the 5070 Ti's ([backend worker](../backend/worker.md)).
-26. **The fallback's box format:** `abs_px_prepared`, from the hosted LLM's documentation; one live call on day 2 confirms it before the fallback's organism boxes are trusted. The same call confirms the list of schema keywords the hosted API rejects (section 6), which also comes from its documentation, and the day-2 run measures whether calls with the 8,000-token thinking budget finish within the fallback's doubled `max_runtime` ([backend integrations 17](../backend/integrations.md#17-open-questions), [worker 17](../backend/worker.md#17-open-questions)).
+26. **The fallback's box format:** `abs_px_prepared`, from the hosted LLM's documentation; one live call on day 2 confirms it before the fallback's organism boxes are trusted. The same call confirms the list of schema keywords the hosted API rejects (section 6), which also comes from its documentation, and the day-2 run measures whether calls with the 8,000-token thinking budget finish within the fallback's doubled `max_runtime` ([backend integrations 18](../backend/integrations.md#18-open-questions), [worker 17](../backend/worker.md#17-open-questions)).
 27. **Weather and trigger thresholds.** The contracts fix the trigger vocabulary (`TriggerKind`) and the weather-fit values, not their numbers. The backend authors wrote different definitions: the frost threshold differs between the forecast's `frost_risk` and the frost alert rule, and the humid stretch differs between the alert rule and the fusion rule (two humid days in a row, or a count of hours over 90%). Give each threshold (frost, heat, humid stretch, heavy rain, after rain, dry soil, root-rot soil moisture, the weather-fit day counts and the fusion levels) one definition and one owner, and confirm the numbers from the evaluation set with open question 10. The weather thresholds now have one definition and one owner, [backend domain 7, weather thresholds](../backend/domain.md#weather-thresholds) (frost ≤ 0.5 °C at 2 m, hard frost ≤ −2 °C, heat ≥ 30 °C, a humid day ≥ 10 h over 90%, a humid stretch 2 such days in a row, forecast or in the past week, heavy rain ≥ 20 mm, after rain ≥ 5 mm in 24 h, dry soil < 0.15 m³/m³ with ET₀ ≥ 3 mm); the weather-fit day counts and fusion levels are in [knowledge 6](../backend/knowledge.md#6-weather-fit) and [pipeline 7](../backend/pipeline.md#7-score). The numbers still need confirming from the evaluation set.
 28. **Empty candidate sets.** A `label_only` species with no classifier result has no candidates, so "every candidate has at least 2 of its 3 indicators answered `no`" holds vacuously. The backend reads it as never `healthy` without the classifier's own `healthy` result, so such a scan is `uncertain`. Confirm ([backend knowledge 12](../backend/knowledge.md#12-open-questions)).
 29. **A plan-writer outage on a run's first plan** fails the scan with `upstream_unavailable` (section 3 lists "LLM API down"), which the user can resubmit. The alternative is to keep the scan `diagnosed` and let the sweep retry the `plan` step every 5 minutes, as it already does for a failing re-plan ([backend pipeline 17](../backend/pipeline.md#17-open-questions-and-decisions)).
@@ -2361,10 +2407,10 @@ The contracts changed these parts of the architecture document, which has been u
 32. **Apple's principal-point convention** and the exact use of the inverse-distortion table in `DepthMeta` are *unverified* until the LiDAR day-1 check (open question 11) ([backend vision 15](../backend/vision.md#15-open-questions)).
 33. **Cancelling a call on llama.cpp.** A worker stops a cancelled job by dropping its connection. Whether llama.cpp then frees the slot is *unverified*; it matters on the RX 9070 XT if it serves llama.cpp (open question 25) ([backend worker 17](../backend/worker.md#17-open-questions)).
 34. **Request limits.** The general rate limit (120 requests a minute per user) and the JSON body limit (1 MiB) are placeholders that no document gives. Confirm them, or set them from the build-week load ([backend api 23](../backend/api.md#23-open-questions)).
-35. **Jev's API.** The `TextClassifier` adapter for Jev is a placeholder until early access arrives; until then every call uses the LLM fallback ([backend integrations 17](../backend/integrations.md#17-open-questions)).
+35. **Jev's API.** The `TextClassifier` adapter for Jev is a placeholder until early access arrives; until then every call uses the LLM fallback ([backend integrations 18](../backend/integrations.md#18-open-questions)).
 36. **`organism_options` without recognition text.** The VLM payload's `organism_options` carry an id and a name only; adding each organism's `recognition` text to the prompt is a proposal of docs/vision, not yet in the contract ([backend worker 17](../backend/worker.md#17-open-questions)).
-37. **Reverse geocoding for a GPS garden.** A garden created from GPS needs a `location_label`, and a Nominatim failure today fails the request with `503 upstream_unavailable`. A fallback label (the time zone's city) would let creation go ahead ([backend integrations 17](../backend/integrations.md#17-open-questions)).
-38. **Zippopotam's terms** are unchecked. Confirm them, or switch it off and refuse a bare forward sortation area (section 9, geocoding) ([backend integrations 17](../backend/integrations.md#17-open-questions)).
-39. **Open-Meteo's licence.** The free API is for non-commercial use. Settle it before any public launch ([backend integrations 17](../backend/integrations.md#17-open-questions)).
+37. **Reverse geocoding for a GPS garden.** A garden created from GPS needs a `location_label`, and a Nominatim failure today fails the request with `503 upstream_unavailable`. A fallback label (the time zone's city) would let creation go ahead ([backend integrations 18](../backend/integrations.md#18-open-questions)).
+38. **Zippopotam's terms** are unchecked. Confirm them, or switch it off and refuse a bare forward sortation area (section 9, geocoding) ([backend integrations 18](../backend/integrations.md#18-open-questions)).
+39. **Open-Meteo's licence.** The free API is for non-commercial use. Settle it before any public launch ([backend integrations 18](../backend/integrations.md#18-open-questions)).
 40. **Clerk deletion after a restart.** **Settled (v0.10.1):** the account's deletion writes a durable tombstone (`deleted_user:[auth_id]`) before anything else. The API resumes unfinished account deletions at start, the Clerk retry included, and while the tombstone exists (until 24 hours after Clerk confirms) the account's still-valid session tokens get `401 unauthenticated` and never create a new user (section 9, account) ([backend api 17](../backend/api.md#17-deletion), [database 4](../database/README.md#deletion-)).
 41. **Objects of resumed deletions.** A resumed plant or scan deletion leaves its objects to the daily orphan sweep, up to a day later (section 9, deletion cascades). If that delay matters, the store can return each target's keys from the records still present ([backend api 23](../backend/api.md#23-open-questions)).

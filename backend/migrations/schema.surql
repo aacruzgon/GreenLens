@@ -480,6 +480,7 @@ DEFINE TABLE OVERWRITE memory SCHEMAFULL;
 DEFINE FIELD OVERWRITE garden     ON memory TYPE record<garden> REFERENCE ON DELETE REJECT;
 DEFINE FIELD OVERWRITE plant      ON memory TYPE option<record<plant>> REFERENCE ON DELETE REJECT;   -- NONE: a garden-level fact
 DEFINE FIELD OVERWRITE kind       ON memory TYPE "fact" | "event" | "summary";
+DEFINE FIELD OVERWRITE topic      ON memory TYPE "watering" | "feeding" | "treatment" | "pruning" | "planting" | "location" | "container" | "soil" | "light" | "health" | "harvest" | "other" DEFAULT "other";   -- with kind, the belief key in Agent Memory
 DEFINE FIELD OVERWRITE text       ON memory TYPE string;
 DEFINE FIELD OVERWRITE source     ON memory TYPE "pipeline" | "chat" | "user";
 DEFINE FIELD OVERWRITE shared     ON memory TYPE bool DEFAULT false;
@@ -490,9 +491,23 @@ DEFINE FIELD OVERWRITE source_msg ON memory TYPE option<record<message>>;   -- p
 DEFINE FIELD OVERWRITE embedding  ON memory TYPE array<float>;
 DEFINE FIELD OVERWRITE embedding_model ON memory TYPE string;
 DEFINE FIELD OVERWRITE created_at ON memory TYPE datetime DEFAULT time::now() READONLY;
+-- NONE: not yet recorded in Agent Memory. Only shared memories are mirrored; `share` leaves it unset.
+DEFINE FIELD OVERWRITE belief_synced_at ON memory TYPE option<datetime>;
 DEFINE INDEX IF NOT EXISTS memory_garden ON memory FIELDS garden, shared;
+-- The mirror sweep: shared and unsynced, oldest first.
+DEFINE INDEX IF NOT EXISTS memory_unsynced ON memory FIELDS shared, belief_synced_at, created_at;
 DEFINE INDEX IF NOT EXISTS memory_author ON memory FIELDS author;
 DEFINE INDEX IF NOT EXISTS memory_plant  ON memory FIELDS plant;
+
+-- Subjects queued for erasure in Agent Memory (docs/database/agent-memory.md): written in the
+-- transaction that deletes a shared memory or starts a plant's or garden's cascade, and
+-- removed by api's beliefs task once the subject's scope is erased. Plain links, not
+-- references: the row outlives its plant or garden until the erase is done.
+DEFINE TABLE OVERWRITE belief_forget SCHEMAFULL;
+DEFINE FIELD OVERWRITE garden       ON belief_forget TYPE record<garden>;
+DEFINE FIELD OVERWRITE plant        ON belief_forget TYPE option<record<plant>>;   -- NONE: the whole garden
+DEFINE FIELD OVERWRITE requested_at ON belief_forget TYPE datetime;
+DEFINE INDEX IF NOT EXISTS belief_forget_subject ON belief_forget FIELDS garden, plant;
 
 -- ---------------------------------------------------------------------------------------
 -- Knowledge base (loaded by migrations from ml/knowledge/seed; ids are slugs)

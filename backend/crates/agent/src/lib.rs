@@ -2,6 +2,7 @@
 //! plan writer, memory extraction and the model adapters. Runs inside `api`; `pipeline` calls the
 //! plan writer. Every boundary it crosses is a `domain` port.
 
+pub mod beliefs;
 pub mod config;
 pub mod context;
 pub mod deps;

@@ -11,6 +11,7 @@
 //! whose stream borrows its request.
 
 mod auth;
+mod beliefs;
 mod blob;
 mod errors;
 mod knowledge;
@@ -20,6 +21,7 @@ pub mod store;
 mod system;
 
 pub use auth::*;
+pub use beliefs::*;
 pub use blob::*;
 pub use errors::*;
 pub use knowledge::*;

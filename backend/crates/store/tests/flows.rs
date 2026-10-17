@@ -10,23 +10,24 @@ use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use domain::{
     authz::{Editor, Owner, Viewer, check_conversation, check_membership_of},
     chat::{
-        Anchor, Card, ConfirmResult, ConversationQuery, MemoryKind, MemoryQuery,
+        Anchor, Card, ConfirmResult, ConversationQuery, MemoryKind, MemoryQuery, MemoryTopic,
         MessageFeedbackRequest, MessageRole, PendingAction, PendingStatus, Preview, Rating,
         WriteTool,
     },
     events::{RunReason, Stage},
     id::{
-        AuthId, ChatImageId, GardenId, ImageId, JobId, LeaseToken, ObservationId, QuestionId,
-        TaskId,
+        AuthId, ChatImageId, GardenId, ImageId, JobId, LeaseToken, ObservationId, PlantId,
+        QuestionId, TaskId,
     },
     jobs::{Capability, JobError, JobKind, JobSpec, PerceptionPayload, PerceptionStage},
     ports::{
-        AccessRepo, AnalysisRepo, CascadeStep, ChatRepo, ClaimAttempt, CompletionOutcome, Conflict,
-        ContentPart, DeletionRepo, DeletionTarget, Embedding, EventRepo, GardenRepo, GuidedOutcome,
-        IdGenExt, IdentityRepo, ImageQuality, JobCompletion, JobRepo, KnowledgeRepo, Lease,
-        MemoryStore, NewChatImage, NewConversation, NewInvite, NewJob, NewMemory, NewMessage,
-        NewPendingAction, NewQuestion, NewScanImage, NewTask, ObjectKey, ObservationWrite,
-        PlanRepo, PlantRepo, RunStart, ScanRepo, StepOutput, StepRepo, StoreError,
+        AccessRepo, AnalysisRepo, BeliefSubject, CascadeStep, ChatRepo, ClaimAttempt,
+        CompletionOutcome, Conflict, ContentPart, DeletionRepo, DeletionTarget, Embedding,
+        EventRepo, GardenRepo, GuidedOutcome, IdGenExt, IdentityRepo, ImageQuality, JobCompletion,
+        JobRepo, KnowledgeRepo, Lease, MemoryStore, NewChatImage, NewConversation, NewInvite,
+        NewJob, NewMemory, NewMessage, NewPendingAction, NewQuestion, NewScanImage, NewTask,
+        ObjectKey, ObservationWrite, PlanRepo, PlantRepo, RunStart, ScanRepo, StepOutput, StepRepo,
+        StoreError,
     },
     records::{
         diagnosis::{EvidenceSource, IndicatorEvidence, Weight},
@@ -969,6 +970,7 @@ async fn memory_visibility() {
         id: f.ids.id(),
         plant: Some(f.plant),
         kind: MemoryKind::Fact,
+        topic: MemoryTopic::Other,
         text: text.into(),
         embedding: Embedding(v),
         embedding_model: "e5".into(),
@@ -1015,6 +1017,143 @@ async fn memory_visibility() {
         .delete(viewer, note.id)
         .await
         .expect("an owner deletes a shared memory");
+}
+
+/// The belief sweep's rows: only shared, unsynced memories, oldest first, and the erase queue.
+#[tokio::test]
+#[expect(clippy::too_many_lines, reason = "one flow, step by step")]
+async fn memory_belief_sync() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let viewer = check_membership_of::<Viewer>(&*store, f.user, f.garden)
+        .await
+        .unwrap();
+    let mem = |plant: Option<PlantId>, topic: MemoryTopic, text: &str, secs: u64| NewMemory {
+        id: f.ids.id(),
+        plant,
+        kind: MemoryKind::Fact,
+        topic,
+        text: text.into(),
+        embedding: Embedding(vec![1.0, 0.0]),
+        embedding_model: "e5".into(),
+        source_msg: None,
+        created_at: t0().plus(Duration::from_secs(secs)),
+    };
+    let chat = store
+        .remember(
+            viewer,
+            mem(Some(f.plant), MemoryTopic::Watering, "Waters on Sundays", 0),
+        )
+        .await
+        .unwrap();
+    assert_eq!(chat.topic, MemoryTopic::Watering, "topic round-trips");
+    let pipeline = store
+        .add_pipeline_memory(
+            f.garden,
+            mem(Some(f.plant), MemoryTopic::Health, "Scan: blight", 20),
+        )
+        .await
+        .unwrap();
+    let note = store
+        .add_note(f.editor, mem(None, MemoryTopic::Location, "Raised bed", 10))
+        .await
+        .unwrap();
+    assert_eq!(note.topic, MemoryTopic::Location);
+    let ids = |v: Vec<domain::chat::Memory>| v.into_iter().map(|m| m.id).collect::<Vec<_>>();
+
+    // A private chat memory never appears; the others come oldest first.
+    assert_eq!(
+        ids(store.unsynced_shared(10).await.unwrap()),
+        vec![note.id, pipeline.id]
+    );
+    assert_eq!(ids(store.unsynced_shared(1).await.unwrap()), vec![note.id]);
+
+    store.mark_synced(note.id, t0()).await.unwrap();
+    assert_eq!(
+        ids(store.unsynced_shared(10).await.unwrap()),
+        vec![pipeline.id]
+    );
+
+    // `share` makes the chat memory appear, unsynced.
+    store.share(f.editor, chat.id).await.unwrap();
+    assert_eq!(
+        ids(store.unsynced_shared(10).await.unwrap()),
+        vec![chat.id, pipeline.id]
+    );
+
+    store.mark_synced(chat.id, t0()).await.unwrap();
+    store.mark_synced(pipeline.id, t0()).await.unwrap();
+    assert_eq!(ids(store.unsynced_shared(10).await.unwrap()), vec![]);
+
+    assert_eq!(
+        store.belief_forgets(10).await.unwrap(),
+        Vec::<BeliefSubject>::new()
+    );
+
+    // Deleting a private memory queues nothing.
+    let private = store
+        .remember(viewer, mem(Some(f.plant), MemoryTopic::Other, "Secret", 30))
+        .await
+        .unwrap();
+    store.delete(viewer, private.id).await.unwrap();
+    assert_eq!(
+        store.belief_forgets(10).await.unwrap(),
+        Vec::<BeliefSubject>::new()
+    );
+
+    // Deleting a shared plant memory queues the plant, once, in the delete's transaction.
+    let on_plant = BeliefSubject {
+        garden: f.garden,
+        plant: Some(f.plant),
+    };
+    store.delete(viewer, pipeline.id).await.unwrap();
+    let extra = store
+        .add_pipeline_memory(
+            f.garden,
+            mem(Some(f.plant), MemoryTopic::Health, "Scan: fine", 40),
+        )
+        .await
+        .unwrap();
+    store.mark_synced(extra.id, t0()).await.unwrap();
+    store.delete(viewer, extra.id).await.unwrap();
+    assert_eq!(store.belief_forgets(10).await.unwrap(), vec![on_plant]);
+
+    // Finishing the erase brings back the plant's remaining shared memories, not the garden
+    // note, and empties the queue.
+    store.finish_belief_forget(on_plant).await.unwrap();
+    assert_eq!(ids(store.unsynced_shared(10).await.unwrap()), vec![chat.id]);
+    assert_eq!(
+        store.belief_forgets(10).await.unwrap(),
+        Vec::<BeliefSubject>::new()
+    );
+    store.mark_synced(chat.id, t0()).await.unwrap();
+
+    // A garden-level memory's subject is the garden: finishing it brings back every shared
+    // memory of the garden, plants included.
+    let on_garden = BeliefSubject {
+        garden: f.garden,
+        plant: None,
+    };
+    let note2 = store
+        .add_note(f.editor, mem(None, MemoryTopic::Light, "Full sun", 50))
+        .await
+        .unwrap();
+    store.delete(viewer, note2.id).await.unwrap();
+    assert_eq!(store.belief_forgets(10).await.unwrap(), vec![on_garden]);
+    store.finish_belief_forget(on_garden).await.unwrap();
+    assert_eq!(
+        ids(store.unsynced_shared(10).await.unwrap()),
+        vec![chat.id, note.id]
+    );
+    assert_eq!(
+        store.belief_forgets(10).await.unwrap(),
+        Vec::<BeliefSubject>::new()
+    );
+}
+
+/// A belief subject: the plant, or the garden when `plant` is none.
+const fn subject(garden: GardenId, plant: Option<PlantId>) -> BeliefSubject {
+    BeliefSubject { garden, plant }
 }
 
 /// The knowledge load resolves edges into seed shapes.
@@ -1127,6 +1266,8 @@ async fn remove_fail_feedback_and_plant_deletion() {
         .await
         .unwrap();
     assert_eq!(started.prefixes.len(), 1, "one scan prefix");
+    let queued = vec![subject(f.garden, Some(f.plant))];
+    assert_eq!(store.belief_forgets(10).await.unwrap(), queued, "queued");
     let target = DeletionTarget::Plant(f.plant);
     for step in CascadeStep::steps_for(target) {
         while store
@@ -1150,6 +1291,7 @@ async fn remove_fail_feedback_and_plant_deletion() {
         Some(1),
         "the garden stays"
     );
+    assert_eq!(store.belief_forgets(10).await.unwrap(), queued, "kept");
 }
 
 /// The account tombstone: one cascade, no sign-in back, the markers, finishing and cleanup.
@@ -1191,6 +1333,14 @@ async fn account_tombstone() {
     for step in CascadeStep::steps_for(target) {
         while store.delete_batch(target, *step).await.unwrap() > 0 {}
     }
+    assert_eq!(
+        store.belief_forgets(10).await.unwrap(),
+        vec![BeliefSubject {
+            garden: f.garden,
+            plant: None
+        }],
+        "the garden's erase stays queued after its records are gone"
+    );
     store.delete_user(f.user).await.unwrap();
     assert!(store.unfinished_account_deletions().await.unwrap()[0].user_deleted);
     assert!(

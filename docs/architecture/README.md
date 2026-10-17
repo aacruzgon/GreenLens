@@ -1,6 +1,6 @@
 # PDM Architecture
 
-> **Status:** Draft v0.7.7, 2026-10-16. v0.7.7: open decision 2 is settled: the control plane runs on the rig behind Tailscale Funnel, and the ingress is a compose profile, so moving to a Cloudflare Tunnel or a cloud VM needs no code change (12, 15). v0.7.6: section 12 links the infrastructure and CI design, [docs/infra](../infra/README.md). v0.7.5: section 9 says the `domain` types are the contracts' source of truth and the spec is committed as `backend/openapi.json` (contracts v0.10.4). v0.7.4: sections 5 and 13 say the schema now lives at `backend/migrations/schema.surql`. v0.7.3: section 13 lists `docs/setup`, the developer setup. v0.7.2: section 12 gives the services' stop grace periods (190 s for `api`). v0.7.1 synced with [contracts.md](contracts.md) v0.10.1: the account tombstone keeps a deleted account's tokens out and the provider deletion running across restarts (4). v0.7 synced with [contracts.md](contracts.md) v0.10, which records the decisions of the [backend design](../backend/README.md):
+> **Status:** Draft v0.7.8, 2026-10-17. v0.7.8: SurrealDB Agent Memory is integrated (open decision 5): shared memories are mirrored into it as beliefs that supersede by topic, `memory` gains `topic`, and `GET /plants/{plant_id}/beliefs` is added, synced with [contracts.md](contracts.md) v0.10.7 (1, 5, 7, 8.2, 9, 10, 11, 15). v0.7.7: open decision 2 is settled: the control plane runs on the rig behind Tailscale Funnel, and the ingress is a compose profile, so moving to a Cloudflare Tunnel or a cloud VM needs no code change (12, 15). v0.7.6: section 12 links the infrastructure and CI design, [docs/infra](../infra/README.md). v0.7.5: section 9 says the `domain` types are the contracts' source of truth and the spec is committed as `backend/openapi.json` (contracts v0.10.4). v0.7.4: sections 5 and 13 say the schema now lives at `backend/migrations/schema.surql`. v0.7.3: section 13 lists `docs/setup`, the developer setup. v0.7.2: section 12 gives the services' stop grace periods (190 s for `api`). v0.7.1 synced with [contracts.md](contracts.md) v0.10.1: the account tombstone keeps a deleted account's tokens out and the provider deletion running across restarts (4). v0.7 synced with [contracts.md](contracts.md) v0.10, which records the decisions of the [backend design](../backend/README.md):
 >   - the crate list matches the code: `integrations` holds every outbound HTTP adapter, and `knowledge` reads through a port without depending on `store` (3);
 >   - the user record is created by the first authenticated request, and the auth webhook only deletes users (4, 11);
 >   - the chat tools take no garden id, `view_image` and `revise_plan` name their scan, and model thinking is replayed only within a turn (7);
@@ -50,7 +50,7 @@ The judges score five criteria, with no weights published. This table shows wher
 
 | Criterion | How the architecture addresses it |
 |---|---|
-| Innovation | Combines vision findings, weather and per-plant memory. Checks each candidate diagnosis against curated disease profiles before giving advice. Sends forecast alerts before problems appear. Shows a health timeline for each plant, with a measured growth curve from LiDAR scans. Measures spot and hole sizes in millimetres to tell look-alikes apart. Chat can re-examine the photos. |
+| Innovation | Combines vision findings, weather and per-plant memory. Checks each candidate diagnosis against curated disease profiles before giving advice. Sends forecast alerts before problems appear. Shows a health timeline for each plant, with a measured growth curve from LiDAR scans. Measures spot and hole sizes in millimetres to tell look-alikes apart. Chat can re-examine the photos. Shared memories become beliefs in SurrealDB Agent Memory, where a newer fact supersedes the older one and the history stays traceable. |
 | Real-World Impact | Clear users: home gardeners and small farms. Catches disease early. Fits the Canadian frost and short-season context. Recognizes beneficial insects so they aren't killed by mistake. Helps users report invasive species. User feedback improves the model over time. |
 | UI & Design | Guided capture with hints to retake bad photos. Live progress for each stage. Boxes drawn on the affected leaves. The plan appears as a checklist. Chat answers cite their sources. Optional guided soil checks. On LiDAR phones: live distance hints while framing, and a map of the garden's beds and plants. |
 | Tech & Deployment | Live public link. GPU workers pull jobs from the API, with a fallback to API credits. Public repository. Mobile build. |
@@ -213,8 +213,8 @@ plans         action_plan (version, supersedes, diagnosis, provisional, constrai
 chat          conversation (user, garden, anchor: scan | plant | garden, summary) · message
               (role, content, tool_calls, model, prompt_version, tokens) · chat_image ·
               pending_action (proposed | confirmed | rejected | expired) · message_feedback
-memory        memory (garden, plant?, kind, text, embedding, source: pipeline | chat | user,
-              shared, author?, source_msg?)
+memory        memory (garden, plant?, kind, topic, text, embedding, source: pipeline | chat | user,
+              shared, author?, source_msg?, belief_synced_at?)
 knowledge     species (full | label_only, reference_images) · disease (every kind of problem, see below) · organism ·
               treatment · product (name, broad_spectrum) · classifier_label · soil_condition ·
               source (url, publisher, licence) ·
@@ -571,7 +571,7 @@ The context is rebuilt from the database on every turn. It uses the conversation
 | `get_scan(scan_id)` | Findings, confidence, regions | read |
 | `view_image(image_id, scan_id?, region?)` | Sends the photo, or a crop of it, back to the model. With `scan_id`, an image of that scan of the garden; without, one of this conversation's own images | read |
 | `get_forecast(days)` | Weather forecast | read |
-| `search_memory(query, plant_id?)` | Vector search over the plant's facts and events plus the garden-level ones | read |
+| `search_memory(query, plant_id?)` | Vector search over the plant's facts and events plus the garden-level ones, and Agent Memory's beliefs. Returns `MemorySearch { memories, beliefs }` | read |
 | `find_similar_cases(image_id)` | Embedding search over the garden's past scans | read |
 | `search_knowledge(query, topic?)` | Retrieval over curated guides, returned with citations | read |
 | `get_species_profile(species)` | Care needs, and the problems the species is susceptible to | read |
@@ -619,7 +619,11 @@ Each memory belongs to a garden and, usually, to one plant. Facts that apply to 
 
 Memories with `source = chat` are private to their author: chat recall returns them only in the author's own conversations. The author can share one with the garden from the "Remembered" card, which turns it into a `user` memory, or undo it. Pipeline memories and shared memories are visible to every member. **The plan writer reads only shared memories**, because every member sees the plan, so a plan never quotes something said in a private chat.
 
-A memory is embedded in document mode when it is written, and searched with a query embedded in query mode (section 10). Memory persists across conversations and scans, which keeps advice consistent over time. It sits behind a `MemoryStore` trait, so it can be mapped onto SurrealDB Agent Memory if we compete for that prize.
+A memory is embedded in document mode when it is written, and searched with a query embedded in query mode (section 10). Memory persists across conversations and scans, which keeps advice consistent over time. 
+
+**Topic.** Each memory has a `topic` (watering, feeding, treatment, pruning, planting, location, container, soil, light, health, harvest or other, default other). The chat extraction model and the `remember` tool pick it, a garden note may name it, and the pipeline's summary uses `health`.
+
+**Beliefs in SurrealDB Agent Memory.** The `memory` table stays the system of record. Only shared memories (`pipeline` or `user`) are mirrored, one triple each, into [SurrealDB Agent Memory](../database/agent-memory.md), the hosted memory product of the Build North sponsor pack. The entity is `plant_<id>` or `garden_<id>`, the scope path `gardens/<garden id>[/plants/<plant id>]`, with the ids lowercased because Agent Memory refuses uppercase path segments. A memory's key comes from its kind and topic (`scan_summary`, the topic, `last_<topic>`, or `note_<id>` for topic `other`), and a newer memory with the same key about the same subject supersedes the older one, with the history kept. Private chat memories never leave our database: sharing one is the consent to send it. A `BeliefStore` port in `domain`, implemented over REST in `integrations`, does the calls. Only one scheduler task in `api` writes to Agent Memory, every 10 s, so no request waits on it: requests write rows, and deleting a shared memory, a plant or a garden queues its scope for erasure in the same transaction. Each run erases the queued scopes first, then records the unsynced shared memories; Agent Memory keeps the newest value of a key by its date, so retries and rebuilds can't bring an older one back. The chat context, the plan writer (shared beliefs only) and `search_memory` read the beliefs, with their dates, and `GET /plants/{plant_id}/beliefs` shows them. Without the three `AGENT_MEMORY_*` settings nothing is recorded and nothing else changes.
 
 ---
 
@@ -649,7 +653,7 @@ The scan's status is the state machine above, and it only models waits that bloc
 ### 8.2 Chat turn
 
 1. The app sends `POST /conversations/{id}/messages`. The API checks auth, the conversation's owner, garden membership and the user's token budget. The text classifier labels the message (see section 7).
-2. The context builder loads the anchor's data, the conversation summary, recent messages and the top memory hits.
+2. The context builder loads the anchor's data, the conversation summary, recent messages, the top memory hits and, as their own data block, the current beliefs of the plant (or of the garden) from Agent Memory, read directly by entity under a 1.5 s timeout and left out when it is slow or down.
 3. The LLM call streams over SSE. Read tools run as the session user. Write tools, offered only to editors and owners, return confirmation cards. `request_rescan` lets the app offer flow 8.1. Every assistant reply, whatever its route, is checked one sentence at a time against the dose check before it is streamed. Every string the model writes into a tool call (task text, card text, plan revisions and constraints, rescan instructions, memories) is dose-checked before the tool runs, and a `revise_plan` preview also passes plan validation, so a card shows exactly what confirming stores; a failing call goes back to the model with the reason.
 4. The API stores the message with its model, prompt version and token counts. If the classifier finds a fact worth remembering, a cheap model extracts it into a private chat memory, sent as `memory_saved` before `message_completed`, and the app shows it with Undo and Share with garden. Long conversations are summarized. A turn that drops or fails before `message_completed` is stored as interrupted, and the app offers to resend it.
 
@@ -721,8 +725,9 @@ GET    /me · PATCH /me · DELETE /me
 POST   /me/push-tokens · DELETE /me/push-tokens/{token}
 
 Memory
-GET    /memories · POST /memories   (garden note, editor)
+GET    /memories · POST /memories   (garden note with optional topic, editor)
 POST   /memories/{id}/share · DELETE /memories/{id}
+GET    /plants/{plant_id}/beliefs   (current and superseded beliefs; available: false when Agent Memory is off)
 
 Chat (conversation owner + garden member)
 POST   /conversations · GET /conversations
@@ -751,6 +756,7 @@ Both SSE endpoints are consumed with a streaming `fetch` response (Expo SDK 52+ 
 | Plant-present check, segmentation, disease classification, image embeddings | RTX 3070, ONNX via `ort` | LLM API vision. Embeddings are skipped |
 | Species identification | RTX 3070, BioCLIP (ONNX), cross-checked with the VLM | LLM API vision. Optionally Pl@ntNet or Kindwise/plant.id |
 | Face detection (for blurring on upload) | `api`, CPU, small ONNX face detector | None. Fails closed: an image isn't stored until blurring succeeds |
+| Memory embeddings inside Agent Memory | Hosted by SurrealDB Cloud: fixed to `gemini-embedding-2`, so the text of shared memories is embedded by Google (*unverified*, vendor docs). Our own memory vectors still use the row below | None: when Agent Memory is down, chat and plans run on the `memory` table alone |
 | Text embeddings (queries, memory, knowledge chunks) | `api`, CPU: `snowflake-arctic-embed-xs` (384 dimensions, fp32) run with `ort` and `tokenizers` directly, pinned by file hash in `TextEmbedder` and recorded on every vector ([vision models](../vision/models.md)) | None. A different model would make the existing vectors incomparable, so the only acceptable substitute is a hosted endpoint serving the identical model |
 | Soil condition, organisms with bounding boxes, damage patterns, species cross-check, verification indicator answers, in one job of two calls | RTX 5070 Ti and RX 9070 XT, one vlm-worker each, both serving the same checkpoint: Qwen3-VL-8B-Instruct (FP8) with Qwen3.5-9B as the day-2 challenger, with structured output ([vision VLM](../vision/vlm.md)) | LLM API vision |
 | Depth measurement: plant, leaf, spot and hole sizes | `api`, CPU: plane fits over the LiDAR depth map and colour thresholding in the photo. No model | None: a scan without depth has no measurements, and its indicators go to the VLM |
@@ -792,6 +798,7 @@ Notes:
 - Location requires consent. Only the garden has one: its centroid, at the precision the user chooses (exact, or rounded to about 1 km, which is enough for weather). Scans store no coordinates. Without consent, the user types a postal code or city.
 - `DELETE /me` runs the deletion cascade in section 5: gardens the user alone uses are removed from SurrealDB and RustFS, shared gardens keep their scans with the user reference cleared, and the account is deleted at the auth provider too. Removing a member from a garden deletes their private chats there.
 - Chat memories are private to their author until shared. The plan writer, whose output every member sees, reads only shared memories.
+- **Agent Memory** receives only shared memories (the text, its topic, its date and ids), over HTTPS with an API key that is limited to `gardens/*` and can't change grants. Private chat memories, photos and location never go there. SurrealDB Cloud, and Google for the embeddings, process the text ([database: Agent Memory, privacy](../database/agent-memory.md#5-privacy)). Deleting a shared memory, a plant or a garden queues its scope in the same transaction, and the belief sweep erases it for good within seconds while Agent Memory is up.
 - Withdrawing location consent rounds every garden the user owns to about 10 km.
 - Depth maps from LiDAR phones are stored only on the server, with face regions zeroed; no URL is issued for them and the workers never receive them. The garden map holds bed outlines and plant positions in metres on a local ground plane: no images, no 3D mesh and no coordinates. The mesh and the AR world map saved for later edits stay on the phone.
 
@@ -910,7 +917,7 @@ PDM/
 2. **Where the control plane runs.** Decided on 2026-10-16: on the rig, behind Tailscale Funnel; the ingress is a compose profile, so a Cloudflare Tunnel or a cloud VM can replace it without a code change ([12](#hosting-the-control-plane), [infra 5](../infra/README.md#5-ingress)).
 3. **Which crops to support.** This sets the classifier's classes, BioCLIP's label list and the scope of the knowledge base. PlantDoc covers tomato, potato, pepper, apple, grape and others.
 4. **Which VLM runs on the VLM workers.** Qwen3-VL-8B-Instruct (FP8) is the primary and Qwen3.5-9B (4-bit AWQ) the challenger, benchmarked on day 2; Qwen2.5-VL-7B is a baseline only ([vision VLM](../vision/vlm.md)). Both cards serve the winner.
-5. **What Eon and SurrealDB Agent Memory offer.** Confirm at kickoff on Oct 16.
+5. **What Eon and SurrealDB Agent Memory offer.** **Agent Memory decided (v0.7.8):** integrated as described in section 7 and [database: Agent Memory](../database/agent-memory.md), for the "Best Use of SurrealDB Agent Memory" prize. Eon remains open: confirm what it offers.
 6. **Which LLM API models** to use for chat and plan writing, and for summaries and memory extraction.
 7. **Which knowledge sources** to ingest (extension and government guides), and whether their terms allow it.
 8. **Jev:** whether early access arrives by Oct 17. If not, every `TextClassifier` call uses the LLM fallback.
