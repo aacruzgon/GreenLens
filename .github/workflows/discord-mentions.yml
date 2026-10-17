@@ -1,6 +1,7 @@
 # Mention alerts on Discord, designed in docs/infra/discord-mentions.md. When an issue or pull
 # request conversation comment mentions a team member's GitHub username, or an edit adds such a
-# mention, .github/scripts/discord_mentions.py posts one alert to that person's channel.
+# mention, .github/scripts/discord_mentions.py posts one alert to that person's channel. A new
+# comment by someone else also alerts the issue's or pull request's author.
 #
 # issue_comment runs this file, and the checkout below, from the default branch, never from a pull
 # request, so no pull request's code runs here, fork or not. The comment is untrusted: it reaches the
@@ -17,8 +18,18 @@ permissions:
 
 jobs:
   notify:
-    # Most comments mention no one: skip them before a runner starts. The script does the matching.
-    if: contains(github.event.comment.body, '@')
+    # Skip, before a runner starts, comments that can alert no one: no @, and no configured author to
+    # alert (not for an edit, the author's own comment or a bot's). The script does the matching.
+    # Expression comparisons ignore case; the second contains() allows a variable written as @name.
+    if: >-
+      contains(github.event.comment.body, '@') ||
+      (github.event.action == 'created' &&
+       github.event.comment.user.login != github.event.issue.user.login &&
+       github.event.comment.user.type != 'Bot' &&
+       (contains(format(' {0} {1} {2} {3} ', vars.GH_USER_SARAH, vars.GH_USER_SAM, vars.GH_USER_ALAN, vars.GH_USER_MARK),
+                 format(' {0} ', github.event.issue.user.login)) ||
+        contains(format(' {0} {1} {2} {3} ', vars.GH_USER_SARAH, vars.GH_USER_SAM, vars.GH_USER_ALAN, vars.GH_USER_MARK),
+                 format(' @{0} ', github.event.issue.user.login))))
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -28,7 +39,7 @@ jobs:
           sparse-checkout: .github/scripts/discord_mentions.py
           sparse-checkout-cone-mode: false
           persist-credentials: false
-      - name: Send an alert to each newly mentioned person's channel
+      - name: Alert each newly mentioned person, and the author a new comment is on
         env:
           GH_USER_SARAH: ${{ vars.GH_USER_SARAH }}
           GH_USER_SAM: ${{ vars.GH_USER_SAM }}

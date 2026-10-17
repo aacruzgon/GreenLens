@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Send a Discord alert to each team member a GitHub comment newly mentions.
+"""Send a Discord alert to each team member a GitHub comment newly mentions, and to the author of
+the issue or pull request a new comment is on.
 
 usage: discord_mentions.py "$GITHUB_EVENT_PATH"
 
@@ -12,8 +13,8 @@ The routing comes from the environment, for each PERSON in PEOPLE:
 The comment, the title and every other field of the event are untrusted: they are parsed and sent to
 Discord as JSON, never run and never printed, so a comment can't inject a workflow command into the
 log. Webhook URLs are never printed either, not even inside an exception's text. Exits 1 if an alert
-could not be delivered or a mentioned person's webhook is missing or malformed; the other alerts are
-still sent.
+could not be delivered or the webhook of a person to alert is missing or malformed; the other alerts
+are still sent.
 """
 import json
 import os
@@ -54,8 +55,9 @@ MAX_WAIT_S = 30.0
 @dataclass(frozen=True)
 class Person:
     key: str  # SARAH, SAM, ...
-    login: str  # lower case
-    webhook: str  # may be empty: checked only when the person is mentioned
+    login: str  # lower case, for matching
+    name: str  # as the variable spells it, for the alert's text
+    webhook: str  # may be empty: checked only when the person is to be alerted
 
 
 def strip_code(body: str) -> str:
@@ -101,6 +103,21 @@ def new_mentions(event: dict) -> set[str]:
     return set()
 
 
+def author_to_alert(event: dict) -> str | None:
+    """The issue or pull request author a new comment alerts, in lower case, or None.
+
+    Not for an edit (the author was alerted when the comment was new), not for the author's own
+    comment, and not for a bot's, such as a CI report on every push.
+    """
+    if event.get("action") != "created":
+        return None
+    commenter = event.get("comment", {}).get("user") or {}
+    author = ((event.get("issue", {}).get("user") or {}).get("login") or "").lower()
+    if not author or author == (commenter.get("login") or "").lower() or commenter.get("type") == "Bot":
+        return None
+    return author
+
+
 def people(env: dict[str, str]) -> tuple[list[Person], list[str]]:
     """The configured people, and a warning for each one that can't be routed."""
     out, warnings = [], []
@@ -112,7 +129,7 @@ def people(env: dict[str, str]) -> tuple[list[Person], list[str]]:
         elif not USERNAME.fullmatch(login):
             warnings.append(f"GH_USER_{key} is not a valid GitHub username; {key} gets no alerts")
         else:
-            out.append(Person(key, login.lower(), webhook))
+            out.append(Person(key, login.lower(), login, webhook))
     return out, warnings
 
 
@@ -142,23 +159,28 @@ def excerpt(body: str) -> str:
     return truncate(text, EXCERPT_CHARS) or "(empty comment)"
 
 
-def message(event: dict, person: Person) -> dict:
-    """The Discord webhook payload for one alert."""
+def message(event: dict, person: Person, mentioned: bool = True) -> dict:
+    """The Discord webhook payload for one alert: for a mention, or for a comment on the person's
+    issue or pull request when they aren't mentioned in it."""
     comment, issue, repo = event["comment"], event["issue"], event["repository"]
-    kind = "pull request" if issue.get("pull_request") else "issue"
+    kind = "pull request" if "pull_request" in issue else "issue"
     edited = event.get("action") == "edited"
     # An edit's mention is the editor's, who may not be the comment's author.
     user = event.get("sender", {}) if edited else comment.get("user", {})
-    author = user.get("login") or comment.get("user", {}).get("login", "someone")
+    author = user.get("login") or (comment.get("user") or {}).get("login") or "someone"
     number = issue.get("number")
+    where = f"{escape(repo['full_name'])}#{number}"
+    if mentioned:
+        what = f"mentioned {escape(person.name)} in {'an edited comment' if edited else 'a comment'} on {where}"
+        footer = "Edited comment" if edited else "New comment"
+    else:
+        owner = (issue.get("user") or {}).get("login") or person.name  # GitHub's spelling
+        what = f"commented on {escape(owner)}'s {kind} {where}"
+        footer = f"New comment on your {kind}"
     return {
         # No pings at all: not @everyone, @here, roles or users, whatever the comment says.
         "allowed_mentions": {"parse": []},
-        "content": truncate(
-            f"**{escape(author)}** mentioned {escape(person.login)} in "
-            f"{'an edited comment' if edited else 'a comment'} on {escape(repo['full_name'])}#{number}",
-            2000,
-        ),
+        "content": truncate(f"**{escape(author)}** {what}", 2000),
         "embeds": [
             {
                 "title": truncate(f"{kind.capitalize()} #{number}: {issue.get('title', '')}", 256),
@@ -170,7 +192,7 @@ def message(event: dict, person: Person) -> dict:
                     {"name": kind.capitalize(), "value": f"[#{number}]({issue['html_url']})", "inline": True},
                     {"name": "Comment", "value": f"[Open the comment]({comment['html_url']})", "inline": True},
                 ],
-                "footer": {"text": "Edited comment" if edited else "New comment"},
+                "footer": {"text": footer},
                 "timestamp": comment.get("updated_at" if edited else "created_at"),
             }
         ],
@@ -236,12 +258,14 @@ def annotate(level: str, text: str) -> None:
 
 def run(event: dict, env: dict[str, str], opener=urllib.request.urlopen, sleep=time.sleep) -> int:
     mentioned = new_mentions(event)
+    author = author_to_alert(event)
     configured, warnings = people(env)
     for w in warnings:
         annotate("warning", w)
-    targets = [p for p in configured if p.login in mentioned]
+    # One alert per person, even when the comment both mentions them and is on their pull request.
+    targets = [p for p in configured if p.login in mentioned or p.login == author]
     if not targets:
-        print("No new mention of a configured username; nothing to send.")
+        print("No new mention of a configured username, and no configured author to alert; nothing to send.")
         return 0
 
     repo_url = event.get("repository", {}).get("html_url", "https://github.com")
@@ -254,7 +278,8 @@ def run(event: dict, env: dict[str, str], opener=urllib.request.urlopen, sleep=t
             failed += 1
             summary.append(f"- {person.key}: not sent, DISCORD_WEBHOOK_{person.key} {problem}")
             continue
-        reason = send(person.webhook, message(event, person), user_agent, opener, sleep)
+        payload = message(event, person, mentioned=person.login in mentioned)
+        reason = send(person.webhook, payload, user_agent, opener, sleep)
         if reason:
             annotate("error", f"Discord refused {person.key}'s alert: {reason}")
             failed += 1
@@ -265,7 +290,7 @@ def run(event: dict, env: dict[str, str], opener=urllib.request.urlopen, sleep=t
 
     if path := env.get("GITHUB_STEP_SUMMARY"):
         with open(path, "a", encoding="utf-8") as f:
-            f.write("### Discord mention alerts\n" + "\n".join(summary) + "\n")
+            f.write("### Discord alerts\n" + "\n".join(summary) + "\n")
     return 1 if failed else 0
 
 
