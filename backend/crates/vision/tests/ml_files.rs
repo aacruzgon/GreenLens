@@ -140,6 +140,23 @@ fn committed_manifest_text() -> String {
     std::fs::read_to_string(ml_models().join("manifest.toml")).expect("the manifest")
 }
 
+/// The manifest text without its `plant_probe` entry, for the tests that need no probe or add
+/// their own.
+fn without_probe(text: &str) -> String {
+    let mut parts = text.split("[[model]]");
+    let mut out = parts.next().unwrap_or_default().to_owned();
+    for part in parts {
+        let is_probe = part.lines().any(|l| {
+            l.split('#').next().unwrap_or_default().replace(' ', "") == "name=\"plant_probe\""
+        });
+        if !is_probe {
+            out.push_str("[[model]]");
+            out.push_str(part);
+        }
+    }
+    out
+}
+
 fn config_of(text: &str) -> Result<PerceptionConfig, vision::manifest::ManifestError> {
     PerceptionConfig::from_manifest(
         &Manifest::parse(text).expect("a manifest"),
@@ -162,14 +179,14 @@ fn the_thresholds_come_from_the_committed_manifests() {
         assert!((c.detector.min_side_px - 24.0).abs() < 1e-6, "{file}");
         assert_eq!(c.detector.max_per_image, 40, "{file}");
         assert!((c.detector.nms_iou - 0.8).abs() < 1e-6, "{file}");
-        assert!((c.tau_leaf - 0.35).abs() < 1e-6, "{file}");
+        assert!((c.tau_leaf - 0.90).abs() < 1e-6, "{file}");
         assert!((c.sam.min_iou - 0.6).abs() < 1e-6, "{file}");
         assert_eq!(c.sam.plant_min_leaves, 3, "{file}");
         assert!((c.sam.plant_grow - 0.05).abs() < 1e-12, "{file}");
         assert!((c.sam.plant_min_cover - 0.6).abs() < 1e-12, "{file}");
         assert!((c.species_temperature - 1.0).abs() < 1e-6, "{file}");
         assert!((c.crop_grow - 0.10).abs() < 1e-12, "{file}");
-        assert_eq!(c.tau_plant, None, "{file} has no plant probe yet");
+        assert_eq!(c.tau_plant, Some(0.67), "{file}: the day-1 plant probe's");
     }
 }
 
@@ -276,7 +293,7 @@ fn a_plant_probe_brings_its_own_tau_plant() {
         format!(
             "{}\n[[model]]\nname = \"plant_probe\"\nversion = \"p1\"\nfile = \"p1.json\"\n\
              sha256 = \"00\"\nlicence = \"MIT\"\nruns_on = \"perception\"\n\n  [model.config]\n{config}\n",
-            committed_manifest_text()
+            without_probe(&committed_manifest_text())
         )
     };
     let c = config_of(&probe("  tau_plant = 0.7")).expect("the probe gives tau_plant");
@@ -346,7 +363,8 @@ fn one_fp16_entry_is_enough_to_refuse_the_cpu() {
 fn without_a_probe_no_plant_probability_passes() {
     use domain::scan::ImageKind;
     use vision::perception::heads::plant_present;
-    let mut c = config_of(&committed_manifest_text()).expect("the committed manifest");
+    let mut c =
+        config_of(&without_probe(&committed_manifest_text())).expect("the committed manifest");
     assert!(c.plant_threshold().is_infinite());
     let shot = |leaf, plant| [(ImageKind::WholePlant, leaf, plant)];
     assert!(!plant_present(

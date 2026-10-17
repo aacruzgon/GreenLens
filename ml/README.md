@@ -37,6 +37,9 @@ SAM2_BUILD_CUDA=0 uv pip sync ml/requirements.lock --index-strategy unsafe-best-
 | Check a VLM server (day 1) | `python -m ml.training.eval.vlm_check [--base-url …] [--images …]` | `<out>/<label>.json` and `.md` with the checks and timings ([vlm 4](../docs/vision/vlm.md#4-serving)) |
 | Fake VLM server for the worker (replays recorded replies; `--record`, `--fault`) | `python3 -m ml.training.eval.fake_vlm [--port 8001] [--recordings …]` | An OpenAI-compatible server on port 8001, served name `vlm` ([dev-roadmap 5](../docs/vision/dev-roadmap.md#testing-the-vlm-worker)) |
 | Leaf score of the plant check on a split (provisional `τ_leaf`) | `python -m ml.training.eval.leaf_scores [--split val] [--cuda]` | `reports/<label>.json` (every photo's score) and `.md` (share below each `τ_leaf`, by dataset and species) ([models 2](../docs/vision/models.md#2-plant-present-check)) |
+| Zero-shot plant probe (day 1) | `python -m ml.training.heads.plant_probe --set A` | `models/files/plant_probe/` JSON in the `pdm-linear-head/1` form ([models 2](../docs/vision/models.md#2-plant-present-check)) |
+| Plant check on the val split and the COCO negatives (both thresholds) | `python -m ml.training.eval.plant_check [--rescore report.json]` | `reports/<label>.json` and `.md` ([report](training/eval/reports/plant-check-val-2026-10-16.md)) |
+| Fetch the COCO val2017 negatives (evaluation only) | `python -m ml.training.data.negatives` | `training/data/splits/negatives_coco.tsv` |
 | Reference outputs for the Rust heads | `python -m ml.tests.make_fixtures` | `tests/fixtures/perception_reference.json` |
 | Tests | `python -m pytest ml/tests` | the file formats, the `label_set_version` vector and original-photo names |
 

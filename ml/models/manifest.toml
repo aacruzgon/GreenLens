@@ -102,7 +102,7 @@ precision = "fp16"                       # GridSample, Range, LayerNormalization
 
   [model.config]
   score_threshold  = 0.35                # τ_det, set on the evaluation set
-  tau_leaf         = 0.35                # τ_leaf of the plant check (models.md 2): provisional, = score_threshold (any kept leaf), from reports/tau-leaf-val-2026-10-16 (2.9% of val plant photos below, 5.6% at 0.5); fitted on the evaluation set Oct 22–23
+  tau_leaf         = 0.90                # τ_leaf of the plant check (models.md 2): provisional, chosen with plant_probe's tau_plant against COCO photos without a plant (reports/plant-check-val-2026-10-16); fitted on the evaluation set Oct 22–23
   min_side_px      = 24
   max_per_image    = 40
   nms_iou          = 0.8
@@ -214,3 +214,15 @@ classifier_labels_version = "disease-head-v1d-2026-10-16"
   test_top1_tom2024          = 0.845     # 420 images from field visits never trained on
   test_top1_tomato_pakistan  = 0.800     # 80 images
   test_top1_ibean            = 0.961     # 128 images; bean is outside the headline
+
+[[model]]
+name      = "plant_probe"
+version   = "plant-probe-zs-2026-10-16"
+file      = "plant_probe/plant-probe-zs-2026-10-16.json"
+sha256    = "e9fbdf4053edfdf515b853c87e16cf515ccc26157b879af91cceda953d92d1a7"
+licence   = "MIT (BioCLIP 2 text tower); weights ours, made from prompts only, no training data"
+source    = "zero-shot: sigma(s * e . (t_plant - t_not)) with BioCLIP 2's text prototypes of prompt set A (plant: plant, leaves, garden plant; not: wall, person, pet, room, hand, car), 80 templates, s = 100; ml/training/heads/plant_probe.py --set A; report ml/training/eval/reports/plant-check-val-2026-10-16"
+runs_on   = "perception"
+
+  [model.config]
+  tau_plant = 0.67                       # τ_plant of the plant check (models.md 2): provisional, with tau_leaf 0.90 (reports/plant-check-val-2026-10-16: 0.8% of val plant photos fail, 11.4% of COCO photos without a plant pass); fitted on the evaluation set Oct 22–23

@@ -81,6 +81,26 @@ datasets:
     ship: true
     use: bean, only if beans become supported
 
+  - name: coco_val2017
+    description: COCO val2017, 5,000 images (about 778 MB); the source of photos with no plant for scoring the plant check
+    kind: direct
+    url: http://images.cocodataset.org/zips/val2017.zip
+    sha256: 4f7e2ccb2866ec5041993c9cf2a952bbed69647b115d0f74da7ce8f4bef82f05
+    licence: "COCO: annotations CC BY 4.0; images keep their Flickr licences (unverified per image)"
+    citation: "Lin et al., Microsoft COCO: Common Objects in Context, ECCV 2014"
+    ship: false
+    use: plant-check negatives (evaluation only, never training data)
+
+  - name: coco_annotations_2017
+    description: COCO 2017 train/val annotations (about 241 MB); instances_val2017.json says which val2017 images show a potted plant or broccoli
+    kind: direct
+    url: http://images.cocodataset.org/annotations/annotations_trainval2017.zip
+    sha256: 113a836d90195ee1f884e704da6304dfaaecff1f023f49b6ca93c4aaae470268
+    licence: "COCO: annotations CC BY 4.0; images keep their Flickr licences (unverified per image)"
+    citation: "Lin et al., Microsoft COCO: Common Objects in Context, ECCV 2014"
+    ship: false
+    use: plant-check negatives (evaluation only, never training data)
+
 models:
   - name: bioclip2
     description: BioCLIP 2, CLIP ViT-L/14, 768-dimensional embedding

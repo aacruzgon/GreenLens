@@ -80,3 +80,13 @@ auth   = "hf"
 sha256 = "3be5a96e3749b3bbad16dd1203a584a68477bb364a0fd99c4a84a53d39a318f3"
 url    = "https://huggingface.co/GreenLens/pdm-models/resolve/767370eab27c66b94bdee6b0972f5856a04b3778/disease_head/disease-head-v1d-2026-10-16.cpu.json"
 auth   = "hf"
+
+[[file]]                                  # plant_probe
+sha256 = "e9fbdf4053edfdf515b853c87e16cf515ccc26157b879af91cceda953d92d1a7"
+url    = "https://huggingface.co/GreenLens/pdm-models/resolve/e00434c9659f619602202122a6515a63eaf9caac/plant_probe/plant-probe-zs-2026-10-16.json"
+auth   = "hf"
+
+[[file]]                                  # plant_probe
+sha256 = "ffcea111c7c19a3458876f921ae45fc8bc889f5ed6005c51a4626e761c5b7aa8"
+url    = "https://huggingface.co/GreenLens/pdm-models/resolve/e00434c9659f619602202122a6515a63eaf9caac/plant_probe/plant-probe-zs-2026-10-16.cpu.json"
+auth   = "hf"

@@ -73,6 +73,13 @@ Full licence texts are in [`licences/`](licences/). The Apache-2.0 and CC-BY-4.0
 - **Training data:** PlantDoc (CC BY 4.0), TOM2024 (CC BY 4.0), Tomato-Pakistan 2026 (CC BY 4.0 as published) and iBean (MIT). Licence texts: `licences/CC-BY-4.0.txt`, `licences/MIT-ibean.txt`. Citations and caveats are in [Datasets](#datasets).
 - **Caveats:** the Tomato-Pakistan caveat below applies. The head was trained on BioCLIP 2 features, so the `bioclip` training-data caveat also applies.
 
+## plant_probe
+
+- **Model:** our zero-shot plant probe: the difference of two BioCLIP 2 text-prototype embeddings (prompts such as "plant" and "wall", in the openai-imagenet-80 templates), scaled by BioCLIP 2's logit scale. It is made from prompts only; no images were used to make it. The weights are ours.
+- **Licence:** the project's licence isn't chosen yet (§9 item 1). It is made with the BioCLIP 2 text tower: MIT, `licences/MIT-bioclip-2.txt`.
+- **Authors and citation:** as `bioclip`.
+- **Caveats:** as `bioclip` (TreeOfLife-200M). Its threshold was chosen on our validation split and on COCO val2017 photos without a plant (CC BY 4.0 annotations; images keep their Flickr licences), which are used for evaluation only and never redistributed.
+
 ## Datasets
 
 CC BY 4.0 requires attribution, a link to the licence, and a note of changes. Our weights are trained on these datasets and the images are never redistributed. Licence texts: `licences/CC-BY-4.0.txt` and `licences/MIT-ibean.txt`.
