@@ -24,6 +24,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | [`docs/database/README.md`](docs/database/README.md) | SurrealDB notes: version pin and setup, conventions, tables, verified write patterns (event `seq`, compare-and-set, job claims, idempotency, deletion order), reads and vector search, the Rust SDK, operations and caveats | You are writing a query, a repository function in the `store` crate, or a migration |
 | [`backend/migrations/schema.surql`](backend/migrations/schema.surql) | The database schema itself. Idempotent; the `store` crate embeds it and the API applies it on every start | You need a table's exact fields, types, indexes or references |
 | [`docs/frontend/README.md`](docs/frontend/README.md) | The frontend architecture: stack and pins, libraries, layers and import rules, directory layout, Clerk, the API and streaming layers, state, platform adapters (phone and in-app browsers, the LiDAR module's JS interface), UI system, mock mode, testing, builds, build plan, open decisions and sources | You are working on anything in `app/`, or need to know how the app consumes an endpoint or event |
+| [`docs/design/design.md`](docs/design/design.md) | The app's design direction: principles, what Apple's chrome owns and what we own, four directions compared (the F0 baseline, Herbarium, Seed Packet, Instrument), the demo screen by screen, status and motion rules, the 3D garden and the insights. Companions in the same folder: clickable mockups ([`mockups/index.html`](docs/design/mockups/index.html)), design philosophies, the plant-app landscape, cross-domain inspiration, in-app analytics and 3D rendering notes | You are choosing how a screen looks, moves or is worded, or building the 3D garden or the insights |
 | [`docs/frontend/flows.md`](docs/frontend/flows.md) | Sequence diagrams for every user flow and the app's state machines | You are implementing a flow end to end, or a reducer or state machine in a feature's `model/` |
 | [`docs/frontend/screens.md`](docs/frontend/screens.md) | Navigation map, screen inventory with data, actions and roles, wireframes, screen rules, shared components and wording rules | You are building or changing a screen |
 | [`docs/storage/README.md`](docs/storage/README.md) | RustFS notes: version pin and setup, bucket and key layout, how images are served through signed API URLs, writes and deletes, the Rust client (`aws-sdk-s3`), operations, caveats and the fallback | You are touching image or depth-map storage, the `blob` crate, or upload handling |
@@ -67,6 +68,9 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | App auth (Clerk), API client, errors, idempotency, SSE handling | frontend §8–10 |
 | App flows and state machines | frontend flows |
 | App screens, wireframes and wording | frontend screens |
+| Design direction, palettes, type, motion, the mockups | design [design.md](docs/design/design.md), [philosophies.md](docs/design/philosophies.md) |
+| In-app insights and charts from captured data | design [analytics.md](docs/design/analytics.md) |
+| 3D garden rendering | design [garden-3d.md](docs/design/garden-3d.md) |
 | Models, licences, placement and VRAM per GPU | vision README §3–4, §9 |
 | Proposed contract, architecture and schema changes from the vision design | vision README §12 |
 | VLM choice, serving, prompts, box formats | vision vlm.md |
@@ -115,6 +119,7 @@ PDM/
    ├─ backend/         the Rust backend, crate by crate, down to its types and traits
    ├─ vision/          the computer-vision models, training and evaluation
    ├─ frontend/        the app's architecture (README.md), flows (flows.md) and screens (screens.md)
+   ├─ design/          the design direction (design.md), its research and the clickable mockups
    ├─ database/        SurrealDB notes (the schema itself is backend/migrations/schema.surql)
    ├─ storage/         RustFS setup and notes
    ├─ connectors/      farm connectors (Slack, Google Drive) and Era by Eon as their test bench
