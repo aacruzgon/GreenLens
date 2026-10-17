@@ -121,7 +121,7 @@ crates/store/
 
 ### Migrations after the schema (proposed)
 
-Nothing applies the knowledge migration the loader generates yet ([roadmap 12](roadmap.md#12-gaps-found-while-writing-this-roadmap), gap 1). The design, its SurrealQL and the checks run on the pinned image are in [database 1](../database/README.md#1-version-and-setup) ("Applying the migrations"). In short: `schema.surql` on every start; then the hand-written `NNNN_<slug>.surql` files once each, in number order, hash-locked; then the generated `knowledge.surql`, which replaces the whole knowledge set and is applied again only when its hash changes. Each file runs in its own transaction with its row in the `migration` table.
+Nothing applies the knowledge migration the loader generates yet ([roadmap 13](roadmap.md#13-gaps-found-while-writing-this-roadmap), gap 1). The design, its SurrealQL and the checks run on the pinned image are in [database 1](../database/README.md#1-version-and-setup) ("Applying the migrations"). In short: `schema.surql` on every start; then the hand-written `NNNN_<slug>.surql` files once each, in number order, hash-locked; then the generated `knowledge.surql`, which replaces the whole knowledge set and is applied again only when its hash changes. Each file runs in its own transaction with its row in the `migration` table.
 
 The crate's side, proposed (it doesn't compile yet):
 
