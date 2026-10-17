@@ -1,0 +1,10 @@
+# A locally managed Cloudflare tunnel (docs/infra/README.md section 5). No secrets: the credentials
+# file is /srv/pdm/env/tunnel.json, mounted by the `cloudflare` profile.
+# Create it once: `cloudflared tunnel create pdm-cp`, then `cloudflared tunnel route dns pdm-cp api.<domain>`.
+# Replace api.example.org below with the real hostname.
+tunnel: pdm-cp
+credentials-file: /etc/cloudflared/tunnel.json
+ingress:
+  - hostname: api.example.org
+    service: http://caddy:80
+  - service: http_status:404

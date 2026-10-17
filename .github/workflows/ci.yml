@@ -203,9 +203,20 @@ jobs:
           shopt -s nullglob
           # As infra/README.md says to on a host: the compose files read infra/.env.
           if [ -f infra/.env.example ]; then cp infra/.env.example infra/.env; fi
+          # The control plane reads its env files from $PDM_ENV: split infra/env/.env.example into them.
+          export PDM_ENV="$RUNNER_TEMP/pdm-env"
+          mkdir -p "$PDM_ENV"
+          awk -v dir="$PDM_ENV" '/^# --- / { out = ""; if (match($3, /^\.env\.[a-z]+/)) out = dir "/" substr($3, 1, RLENGTH); next } out { print > out }' infra/env/.env.example
+          touch "$PDM_ENV/tunnel.json"
           for f in infra/*.compose.yml; do
             echo "$f"
-            docker compose -f "$f" config -q
+            if [ "$f" = infra/control-plane.compose.yml ]; then
+              for profiles in "" tailscale,stub,seed cloudflare; do
+                COMPOSE_PROFILES="$profiles" docker compose -f "$f" --env-file "$PDM_ENV/.env.compose" config -q
+              done
+            else
+              docker compose -f "$f" config -q
+            fi
           done
       - name: Shell scripts parse and pass shellcheck
         run: |
