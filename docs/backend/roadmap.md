@@ -1,6 +1,6 @@
 # PDM Backend Roadmap
 
-> **Status:** Draft v0.6, 2026-10-16. v0.6: gap 6 adds that the perception worker reads its tensor names and thresholds from the manifest ([issue #12](https://github.com/aacruzgon/GreenLens/issues/12)). v0.5: S3's schema check is done: xgrammar enforces `anyOf` with `null`. v0.4: gap 6 is fixed: the loaders and `label_set_version` follow `ml/models/FORMATS.md`. v0.3: gap 6, found when PR #6 merged: the Rust loader doesn't read `ml/models/FORMATS.md`; section 1 says what `ml/` holds now. v0.2: every gap in section 12 now has a design, and the slices link to them: [infra](../infra/README.md) for CI, images and compose files, [database 1](../database/README.md#1-version-and-setup) for applying the migrations, [worker 15.1](worker.md#151-stub-vision) for stub vision, and [vision 6](../vision/README.md#delivering-model-files-to-the-backend) for model files; two bugs found on the way (the vector search's `k`, the bucket default) are fixed. v0.1: the backend's work for build week, as nine slices (S0–S8) from the code merged on Oct 16 to the final deploy. Each slice has its goal, its work, what it needs from the other tracks, its exit checks and the decisions it closes. Section 12 lists the gaps found while writing it.
+> **Status:** Draft v0.7, 2026-10-16. v0.7: S0 is done; section 4 records its exit checks and the pull requests that closed it, and section 1 says what S0 added. v0.6: gap 6 adds that the perception worker reads its tensor names and thresholds from the manifest ([issue #12](https://github.com/aacruzgon/GreenLens/issues/12)). v0.5: S3's schema check is done: xgrammar enforces `anyOf` with `null`. v0.4: gap 6 is fixed: the loaders and `label_set_version` follow `ml/models/FORMATS.md`. v0.3: gap 6, found when PR #6 merged: the Rust loader doesn't read `ml/models/FORMATS.md`; section 1 says what `ml/` holds now. v0.2: every gap in section 12 now has a design, and the slices link to them: [infra](../infra/README.md) for CI, images and compose files, [database 1](../database/README.md#1-version-and-setup) for applying the migrations, [worker 15.1](worker.md#151-stub-vision) for stub vision, and [vision 6](../vision/README.md#delivering-model-files-to-the-backend) for model files; two bugs found on the way (the vector search's `k`, the bucket default) are fixed. v0.1: the backend's work for build week, as nine slices (S0–S8) from the code merged on Oct 16 to the final deploy. Each slice has its goal, its work, what it needs from the other tracks, its exit checks and the decisions it closes. Section 12 lists the gaps found while writing it.
 
 Companion to the [backend architecture](README.md). Its [build plan](README.md#13-build-plan) and [architecture 14](../architecture/README.md#14-build-plan) say what is done on each date. This document says how the backend gets there: the order of the work, what each step depends on, and how we know a step is finished.
 
@@ -43,7 +43,7 @@ What has **never run**:
 
 - the binaries against a real SurrealDB, RustFS, Clerk, Anthropic, Open-Meteo or SoilGrids;
 - an ONNX model, a VLM server or a GPU;
-- a container. There are no Dockerfiles, no `infra/` and no CI workflow;
+- the images on a host. S0 added CI (`.github/workflows/ci.yml`), the Dockerfile and `infra/dev.compose.yml`, so the code builds, runs its tests against the pinned SurrealDB and RustFS, and builds images in CI, but no image has run on the control plane or the rig yet;
 - any model file or knowledge seed on a host. `ml/` (PR #6) has the training and export code, the manifest's perception entries and the head formats, but no fetch step yet, and `api` and the worker both read `/models/manifest.toml` at start.
 
 So the roadmap is mostly about **bringing the code up on real dependencies and proving it there**, plus filling the gaps in section 12. It isn't about writing the crates again.
@@ -64,7 +64,7 @@ So the roadmap is mostly about **bringing the code up on real dependencies and p
 
 | Slice | Dates | Goal | Needs first | Other tracks |
 |---|---|---|---|---|
-| [S0](#4-s0-foundation) | Oct 16 | CI, containers, local services | PR #8 merged | none |
+| [S0](#4-s0-foundation) ✓ done | Oct 16 | CI, containers, local services | PR #8 merged | none |
 | [S1](#5-s1-walking-skeleton) | Oct 16–17 | A scan runs app → API → worker → SSE on the control plane, with stub vision | S0 | Clerk dev instance; the embedder and face-detector files (ml) |
 | [S2](#6-s2-perception-site-data-and-knowledge) | Oct 18–19 | Real perception on the 3070, real weather and soil, the first knowledge loaded | S1 | Model manifest and ONNX files (ml); seed files (knowledge); the rig |
 | [S3](#7-s3-vlm-workers-and-the-fallback) | Oct 18–21 | VLM jobs on the 5070 Ti and the 9070 XT, and the hosted fallback | S1 | VLM benchmark and choice (vision) |
@@ -123,6 +123,20 @@ Designed in [infra](../infra/README.md): CI in section 2, images in section 3, c
 - A pull request with a deliberate Clippy warning fails CI.
 - `docker compose -f infra/dev.compose.yml up`, then `cargo test --workspace -- --ignored`, passes on a laptop.
 - `docker build` produces the `api` image and the CUDA `worker` image.
+
+**Done on 2026-10-16,** in pull requests #17 (CI), #19 (images), #22 (dev compose and env files), #23 (CI disk) and #24 (CI in stages, with the `images` and `release` jobs). Each pull request had an independent review, and its findings were fixed before the merge.
+
+- ✓ A pull request with a deliberate `clippy::len_zero` warning failed `lint` (#21, closed).
+- ✓ `docker compose -f infra/dev.compose.yml up -d`, then `cargo nextest run --workspace --run-ignored only`, passed (2 of 2) on a laptop.
+- ✓ `docker buildx bake` built `api`, `worker` and `worker-cuda` for linux/amd64 on a laptop. `api` exits with `CLERK_ISSUER is required`, as UID 10100.
+- ✓ `live` passed on pushes to `main`, and the `main` ruleset requires the one check `ci` ([infra 2](../infra/README.md#required-checks)).
+
+What S0 changed in the design, each found by running it:
+- SurrealDB's named volume needs `surrealdb-volume` ([database 1](../database/README.md#1-version-and-setup)).
+- The workflow is `ci.yml`, in stages, with one required check ([infra 2](../infra/README.md#2-ci)).
+- `security` checks RustSec advisories with cargo-deny.
+- The `images` job pushes on `main`, and a `v*` tag reuses `main`'s digests in a GitHub Release.
+- `api` has its own `heic` feature.
 
 ---
 
@@ -348,7 +362,7 @@ Gaps 1 to 5 have a design; gap 6 is fixed. The designs are proposals until their
 |---|---|---|---|---|
 | 1 | Nothing applied the knowledge migration: `store` applied only `schema.surql`, and `api` only read the knowledge | S2 | [Database 1](../database/README.md#1-version-and-setup) (v1.5), with [store 4](store.md#4-connecting-and-the-schema) and [api 4](api.md#4-start-up-and-shutdown): numbered, hash-locked migrations plus the loader's regenerated `knowledge.surql`, each in its own transaction with a `migration` record | Database 1's runner; `schema.surql` gains the `migration` and `knowledge_meta` tables when it's built |
 | 2 | The worker had no stub vision for the walking skeleton | S1 | [Worker 15.1](worker.md#151-stub-vision): `--stub-vision`, refused in a release build without `PDM_ALLOW_STUB_VISION=1`, canned results marked `stub` | ST1–ST7 |
-| 3 | No CI, no containers, no `infra/` | S0, S1, S2, S3, S8 | [Infra](../infra/README.md): CI, images, the three compose files, ingress, secrets, deploys by digest, backups | [Infra 9](../infra/README.md#9-roadmap) |
+| 3 | No CI, no containers, no `infra/` (S0's part done: CI, images, dev compose) | S0, S1, S2, S3, S8 | [Infra](../infra/README.md): CI, images, the three compose files, ingress, secrets, deploys by digest, backups | [Infra 9](../infra/README.md#9-roadmap) |
 | 4 | Model files and seed data come from `ml/`, which had no delivery path | S1, S2, S3 | [Vision 6, delivering model files](../vision/README.md#delivering-model-files-to-the-backend): one manifest, our files in a private Hugging Face repository (the team's choice), `sources.toml` and `fetch.py` | [M1–M11](../vision/README.md#roadmap) |
 | 5 | Pipeline open question 3 was out of date | none | Resolved: the run's evidence fields are in the schema ([pipeline 17](pipeline.md#17-open-questions-and-decisions)) | none |
 | 6 | The Rust loader didn't read `ml/`'s file formats: a label matrix and the plant probe failed to load, every disease class would have loaded as `healthy`, and `store`'s `label_set_version` differed | S2 | **Fixed:** the loaders read [`ml/models/FORMATS.md`](../../ml/models/FORMATS.md), heads must name the manifest's `bioclip` export, and `label_set_version` passes the format's test vector ([vision 6](../vision/README.md#delivering-model-files-to-the-backend)). The perception worker takes its tensor names and thresholds from the manifest and refuses fp16 on the CPU ([issue #12](https://github.com/aacruzgon/GreenLens/issues/12)) | none |
