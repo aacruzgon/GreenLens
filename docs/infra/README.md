@@ -1,6 +1,6 @@
 # PDM Infrastructure and CI
 
-> **Status:** Draft v0.8, 2026-10-16. v0.8: `live` is in `ci`'s `needs` after four green pushes to `main` (item 9); the first `images` run on `main` pushed all three images in 32 minutes, cold (item 6). v0.7: S0's work items 2–5 are checked off; the `main` ruleset requires `ci`; open question 8 records that the hackathon needs no tag ruleset. v0.6: `backend.yml` becomes `ci.yml`, in stages after the team's Helios CI: `security` (cargo-deny) waits for `lint`, `live` waits for `lint` and `test`, one required check `ci` gates the merge, and on `main` and `v*` tags `images` builds and pushes the images, with `release` on tags. Section 2 records the disk measured on #23. Its audit added: a tag must be on `main` and a plain version, a tag reuses `main`'s images and digests, and the concurrency group includes the ref. v0.5: CI builds with line tables only (`CARGO_PROFILE_DEV_DEBUG`), `live` frees disk before it starts, and `live` and `examples` print the disk left at the end, after `live`'s first cache save on `main` ran the runner's disk out. Section 2 records the cache sizes measured on `main`. v0.4: `infra/dev.compose.yml` and `infra/env/.env.example` exist, and section 4 records the first run. Its changes from v0.1: `surrealdb-volume` gives the named volume to SurrealDB's user (database 1 had missed it), `surrealdb-init` creates the `api` user, and `rustfs-init` uses `rc bucket create`. Section 6 says how `infra/env/.env.example` differs from the rig's `infra/.env.example`. Its audit added: the local values moved to `infra/dev/.env.example`, with the worker's variables, because keys repeat across the catalogue's sections; `surrealdb-volume` hardened to `CHOWN` only, with no network. v0.3: `backend/Dockerfile`, `docker-bake.hcl` and `.dockerignore` exist and section 3 records the first build. `api` gains its own `heic` feature, which answers open question 7, and the full SHA-256 of both ONNX Runtime archives is recorded. Its audit added: the label arguments after the cached steps, the rustup components installed once, the build files out of the context, and GID 10100. v0.2: `backend.yml` and `dependabot.yml` exist; the `test` job adds the doc tests nextest skips, the `examples` job runs only when the Rust skills change and on pushes to `main`, every Rust job installs 1.99.1 and sets `RUSTUP_TOOLCHAIN`, `checklinks.py` and `check_fences.py` now exit non-zero, and open question 1 is answered. Its audit added: no `--health-cmd` for distroless SurrealDB; `ml/`'s manifest and templates trigger `test`; the examples cache keyed on `versions.md`; `changes` as a required check; one concurrency group per commit on `main`; grouped Dependabot updates. v0.1.2: section 4's vLLM health check is verified on the rig, and the running `vllm` service is mapped to `vllm-nv`. v0.1.1: `api`'s bucket default is now `pdm-images`, so section 4's note no longer flags it. v0.1: first design of the CI workflows, the container images, the three compose files, ingress, secrets, deploys by digest, operations hooks and the infrastructure work items of the [backend roadmap](../backend/roadmap.md). Design only: nothing here exists yet.
+> **Status:** Draft v0.9, 2026-10-16. v0.9: the control plane runs on the rig behind Tailscale Funnel, and the ingress provider is a compose profile (`tailscale`, `cloudflare`, or none on a VM), so switching providers changes two env values and no code (sections 1 and 4–7); a Funnel test on the 3070 host checked the certificate, an unbuffered SSE stream and upload speed (section 5). v0.8: `live` is in `ci`'s `needs` after four green pushes to `main` (item 9); the first `images` run on `main` pushed all three images in 32 minutes, cold (item 6). v0.7: S0's work items 2–5 are checked off; the `main` ruleset requires `ci`; open question 8 records that the hackathon needs no tag ruleset. v0.6: `backend.yml` becomes `ci.yml`, in stages after the team's Helios CI: `security` (cargo-deny) waits for `lint`, `live` waits for `lint` and `test`, one required check `ci` gates the merge, and on `main` and `v*` tags `images` builds and pushes the images, with `release` on tags. Section 2 records the disk measured on #23. Its audit added: a tag must be on `main` and a plain version, a tag reuses `main`'s images and digests, and the concurrency group includes the ref. v0.5: CI builds with line tables only (`CARGO_PROFILE_DEV_DEBUG`), `live` frees disk before it starts, and `live` and `examples` print the disk left at the end, after `live`'s first cache save on `main` ran the runner's disk out. Section 2 records the cache sizes measured on `main`. v0.4: `infra/dev.compose.yml` and `infra/env/.env.example` exist, and section 4 records the first run. Its changes from v0.1: `surrealdb-volume` gives the named volume to SurrealDB's user (database 1 had missed it), `surrealdb-init` creates the `api` user, and `rustfs-init` uses `rc bucket create`. Section 6 says how `infra/env/.env.example` differs from the rig's `infra/.env.example`. Its audit added: the local values moved to `infra/dev/.env.example`, with the worker's variables, because keys repeat across the catalogue's sections; `surrealdb-volume` hardened to `CHOWN` only, with no network. v0.3: `backend/Dockerfile`, `docker-bake.hcl` and `.dockerignore` exist and section 3 records the first build. `api` gains its own `heic` feature, which answers open question 7, and the full SHA-256 of both ONNX Runtime archives is recorded. Its audit added: the label arguments after the cached steps, the rustup components installed once, the build files out of the context, and GID 10100. v0.2: `backend.yml` and `dependabot.yml` exist; the `test` job adds the doc tests nextest skips, the `examples` job runs only when the Rust skills change and on pushes to `main`, every Rust job installs 1.99.1 and sets `RUSTUP_TOOLCHAIN`, `checklinks.py` and `check_fences.py` now exit non-zero, and open question 1 is answered. Its audit added: no `--health-cmd` for distroless SurrealDB; `ml/`'s manifest and templates trigger `test`; the examples cache keyed on `versions.md`; `changes` as a required check; one concurrency group per commit on `main`; grouped Dependabot updates. v0.1.2: section 4's vLLM health check is verified on the rig, and the running `vllm` service is mapped to `vllm-nv`. v0.1.1: `api`'s bucket default is now `pdm-images`, so section 4's note no longer flags it. v0.1: first design of the CI workflows, the container images, the three compose files, ingress, secrets, deploys by digest, operations hooks and the infrastructure work items of the [backend roadmap](../backend/roadmap.md). Design only: nothing here exists yet.
 
 This document turns [architecture 12](../architecture/README.md#12-deployment) and [backend 12](../backend/README.md#12-builds-and-deployment) into files: what goes in `.github/` and `infra/`, how each image is built and pinned, and how the control plane and the rig are started, deployed and rolled back. It closes [roadmap gap 3](../backend/roadmap.md#12-gaps-found-while-writing-this-roadmap).
 
@@ -24,7 +24,7 @@ This document turns [architecture 12](../architecture/README.md#12-deployment) a
 
 ## 1. Scope and layout
 
-**In scope:** CI on GitHub Actions, the backend's container images and their registry, the compose files for local work, the control plane and the rig, Caddy and the tunnel, env files, deploys, backups, logs and health checks.
+**In scope:** CI on GitHub Actions, the backend's container images and their registry, the compose files for local work, the control plane and the rig, Caddy and the ingress sidecars, env files, deploys, backups, logs and health checks.
 
 **Out of scope, owned elsewhere:**
 - How model files reach `/models` on the control plane and the rig: [vision 6](../vision/README.md#6-model-files-versions-and-pinning). This document only mounts the directory read-only.
@@ -32,7 +32,7 @@ This document turns [architecture 12](../architecture/README.md#12-deployment) a
 - The VLM sidecars' flags and the worker settings per card: [worker 11–12](../backend/worker.md#11-multi-vendor-gpus).
 - The app's builds (Expo, EAS): [frontend](../frontend/README.md).
 
-**Where the control plane runs is open** ([architecture open decision 2](../architecture/README.md#15-open-decisions), decided in [S1](../backend/roadmap.md#5-s1-walking-skeleton)). Everything below works in both cases: a small cloud VM with Caddy on ports 80 and 443, or the rig itself behind a Cloudflare Tunnel. The compose files are the same; one variable and one profile differ ([section 5](#5-ingress)).
+**Where the control plane runs** ([architecture open decision 2](../architecture/README.md#15-open-decisions), settled for [S1](../backend/roadmap.md#5-s1-walking-skeleton) on 2026-10-16): on the rig host with the RTX 3070, behind Tailscale Funnel, which gives a public HTTPS address without a domain or an open port. The ingress provider is a compose profile, so the same files also run behind a Cloudflare Tunnel (which needs a domain on Cloudflare) or on a cloud VM with Caddy on ports 80 and 443. Switching changes `COMPOSE_PROFILES`, `CADDY_SITE` and `API_PUBLIC_BASE`, never the code or the images ([section 5](#5-ingress)). The RTX 5070 Ti is in a second rig host, which runs only workers and reaches `api` through the public URL; how `rig.compose.yml` splits across the two hosts is settled when [S3](../backend/roadmap.md#7-s3-vlm-workers-and-the-fallback) sets up that host.
 
 ```
 PDM/
@@ -50,11 +50,12 @@ PDM/
 │  ├─ dev/surrealdb-users.surql the `api` user dev.compose.yml imports (throwaway password)
 │  ├─ dev/.env.example         the local environment for api and the fallback worker against dev.compose.yml
 │  ├─ .env.example             the rig's vLLM template today, copied to infra/.env (infra/README.md)
-│  ├─ control-plane.compose.yml caddy · api · surrealdb · rustfs · fallback-worker · seed-upload · cloudflared (profile)
+│  ├─ control-plane.compose.yml caddy · api · surrealdb · rustfs · fallback-worker · seed-upload · tailscale or cloudflared (profiles)
 │  ├─ rig.compose.yml          perception-worker · vllm-nv · vlm-worker-nv · vllm-amd · vlm-worker-amd
 │  ├─ rig-amd.compose.yml      only if the RX 9070 XT sits in a second host
 │  ├─ caddy/Caddyfile
-│  ├─ cloudflared/config.yml   the tunnel's ingress rules; its credentials are a secret
+│  ├─ ingress/tailscale/serve.json  Funnel's forwarding to caddy:80; the auth key is a secret
+│  ├─ ingress/cloudflare/config.yml the tunnel's ingress rules; its credentials are a secret
 │  ├─ env/.env.example         every variable of every env file, placeholders only (section 6)
 │  ├─ bootstrap/
 │  │  ├─ surrealdb-users.sh    namespace, database and the `api` user (section 7)
@@ -335,24 +336,39 @@ services:
   caddy:
     image: caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
     restart: unless-stopped
-    environment: { CADDY_SITE: "${CADDY_SITE:?}" }    # api.example.org on a VM; :80 behind the tunnel
-    ports: ["${CADDY_HTTP:-80}:80", "${CADDY_HTTPS:-443}:443"]   # host-only behind the tunnel
+    environment: { CADDY_SITE: "${CADDY_SITE:?}" }    # api.example.org on a VM; :80 behind an ingress profile
+    ports: ["${CADDY_HTTP:-80}:80", "${CADDY_HTTPS:-443}:443"]   # host-only behind an ingress profile
     volumes: ["./caddy/Caddyfile:/etc/caddy/Caddyfile:ro", "caddy-data:/data", "caddy-config:/config"]
     depends_on: { api: { condition: service_healthy } }
     networks: [edge]
     logging: *logging
-  cloudflared:
-    profiles: [tunnel]
+  tailscale:                        # section 5: Funnel, the default on the rig
+    profiles: [tailscale]
+    image: tailscale/tailscale:v1.104.1@sha256:87c55d6be56ad85b3d8bceca5f87f73de288c609131460dd1be1874c250cc41d
+    restart: unless-stopped
+    hostname: pdm-cp
+    env_file: ${PDM_ENV:-/srv/pdm/env}/.env.tailscale  # TS_AUTHKEY, used once to join the tailnet
+    environment:
+      TS_HOSTNAME: pdm-cp                             # the public URL is https://pdm-cp.<tailnet>.ts.net
+      TS_STATE_DIR: /var/lib/tailscale                # keeps the node's identity across restarts
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_USERSPACE: "true"                            # the default; no /dev/net/tun, no added capabilities
+    volumes: ["tailscale-state:/var/lib/tailscale", "./ingress/tailscale:/config:ro"]   # a directory, so edits are picked up
+    depends_on: [caddy]
+    networks: [edge]
+    logging: *logging
+  cloudflared:                      # section 5: needs a domain on Cloudflare
+    profiles: [cloudflare]
     image: cloudflare/cloudflared:2026.10.1@sha256:a15a3b50b8dabd57ac2090e9484c0247dba9dfa1f0df4d298d4317f9d69eb2d5
     restart: unless-stopped
     command: ["tunnel", "--no-autoupdate", "--config", "/etc/cloudflared/config.yml", "run"]
-    volumes: ["./cloudflared/config.yml:/etc/cloudflared/config.yml:ro",
+    volumes: ["./ingress/cloudflare/config.yml:/etc/cloudflared/config.yml:ro",
               "${PDM_ENV:-/srv/pdm/env}/tunnel.json:/etc/cloudflared/tunnel.json:ro"]
     depends_on: [caddy]
     networks: [edge]
     logging: *logging
 networks: { edge: {}, data: {} }
-volumes: { models: {}, surrealdb-data: {}, rustfs-data: {}, rustfs-logs: {}, caddy-data: {}, caddy-config: {} }
+volumes: { models: {}, surrealdb-data: {}, rustfs-data: {}, rustfs-logs: {}, caddy-data: {}, caddy-config: {}, tailscale-state: {} }
 ```
 
 - **Start order:** `model-fetch` exits 0, and `surrealdb` and `rustfs` are healthy → `seed-upload` exits 0 → `api` applies the schema and migrations ([database 1](../database/README.md#1-version-and-setup)) and turns healthy → `caddy` and `fallback-worker`. A failed `seed-upload` keeps `api` down, which is the point: the migration must not reference photos that aren't there.
@@ -416,12 +432,12 @@ volumes: { models: {} }
 
 ## 5. Ingress
 
-Architecture 12 chose Caddy in both hosting options, with a Cloudflare Tunnel when the control plane runs on the rig.
+Caddy fronts `api` in every case. What sits in front of Caddy is a compose profile, chosen per host with `COMPOSE_PROFILES` in `.env.compose`. The rig uses `tailscale` (decided 2026-10-16, [architecture 12](../architecture/README.md#hosting-the-control-plane)): it needs no domain and no open port, and anyone can reach the URL without joining the tailnet, so teammates test against it from their own phones and laptops.
 
 ```caddyfile
 {
 	servers {
-		trusted_proxies static private_ranges   # the tunnel connects from the edge network
+		trusted_proxies static private_ranges   # the ingress sidecar connects from the compose network
 	}
 }
 
@@ -434,19 +450,52 @@ Architecture 12 chose Caddy in both hosting options, with a Cloudflare Tunnel wh
 }
 ```
 
-| | Cloud VM | The rig, behind the tunnel |
-|---|---|---|
-| `CADDY_SITE` | `api.<domain>` | `:80` |
-| Ports published | 80 and 443 on the host | host-only: `CADDY_HTTP=127.0.0.1:8081`, `CADDY_HTTPS=127.0.0.1:8443` |
-| TLS | Caddy's automatic HTTPS from Let's Encrypt, certificates in `caddy-data` | Cloudflare's edge; the tunnel carries plain HTTP from Cloudflare to `caddy:80` |
-| Started with | `docker compose -f infra/control-plane.compose.yml up -d` | the same, plus `--profile tunnel` |
-| Workers on the rig reach `api` at | `https://api.<domain>` | `https://api.<domain>` through Cloudflare, the same as from anywhere |
+| | `tailscale` (the rig) | `cloudflare` | none (a cloud VM) |
+|---|---|---|---|
+| Public URL | `https://pdm-cp.<tailnet>.ts.net` | `https://api.<domain>` | `https://api.<domain>` |
+| Needs | A Tailscale account; MagicDNS, HTTPS certificates and the `funnel` attribute on the tailnet | A domain whose DNS is on Cloudflare | A domain and a public IP |
+| Where TLS ends | The `tailscale` sidecar, with a certificate Tailscale provisions | Cloudflare's edge | Caddy, with Let's Encrypt; certificates in `caddy-data` |
+| `CADDY_SITE` | `:80` | `:80` | `api.<domain>` |
+| Ports published | host-only: `CADDY_HTTP=127.0.0.1:8081`, `CADDY_HTTPS=127.0.0.1:8443` | the same | 80 and 443 on the host |
+| `COMPOSE_PROFILES` | `tailscale` | `cloudflare` | empty |
+| Secret | `.env.tailscale` (`TS_AUTHKEY`) | `tunnel.json` | none |
 
-- **SSE.** Caddy flushes `text/event-stream` responses immediately, whatever `flush_interval` says (✓ Caddy docs), so no proxy setting is needed. `api` already sends `Cache-Control: no-cache` and a keepalive comment every 15 seconds ([architecture 12](../architecture/README.md#12-deployment)), which keeps an idle stream under Cloudflare's idle timeout (100 s, *unverified*).
-- **Client addresses.** Caddy ignores incoming `X-Forwarded-For` unless the peer is a trusted proxy (✓ Caddy docs). Behind the tunnel the peer is `cloudflared` on a private address, so the header is trusted; on a VM, private ranges never reach Caddy directly.
-- **Upload size.** Caddy sets no body limit; `api` enforces its own. Cloudflare's Free plan caps a request body at 100 MB (*unverified*), far above a photo.
-- **The tunnel** is locally managed: `infra/cloudflared/config.yml` (committed, no secrets) names the tunnel and routes `api.<domain>` to `http://caddy:80`, with a final `http_status:404` rule. Its credentials file, `tunnel.json`, is created once with `cloudflared tunnel create` and lives only in `/srv/pdm/env/`.
-- **What is never published:** SurrealDB, RustFS, the vLLM sidecars and `api`'s port 8080. Only Caddy faces the internet.
+`api` doesn't know which row it runs under. Its rate limits are keyed by the signed-in user, not by a client address ([api limits](../../backend/bins/api/src/limits.rs)), and the only URL it needs is its own, `API_PUBLIC_BASE`, for signed image links.
+
+**Switching providers:** set `COMPOSE_PROFILES` and `CADDY_SITE` in `.env.compose` and `API_PUBLIC_BASE` in `.env.api`, then `docker compose up -d` (Compose removes nothing on its own, so `docker compose --profile <old> stop <old sidecar>` first). Then point two things at the new URL: the Clerk webhook (`POST /webhooks/auth`) and each rig worker's `API_BASE_URL`. Run the S1 smoke script against it. That Compose reads `COMPOSE_PROFILES` from the file `--env-file` names is *unverified*; `--profile <name>` on each command does the same.
+
+**`infra/ingress/tailscale/serve.json`** (committed, no secrets) forwards the Funnel address to Caddy:
+
+```json
+{
+  "TCP": { "443": { "HTTPS": true } },
+  "Web": { "${TS_CERT_DOMAIN}:443": { "Handlers": { "/": { "Proxy": "http://caddy:80" } } } },
+  "AllowFunnel": { "${TS_CERT_DOMAIN}:443": true }
+}
+```
+
+The container replaces `${TS_CERT_DOMAIN}` with its own `ts.net` name at start (✓ ran, 2026-10-16; Compose doesn't touch a mounted file). The file is mounted as a directory, because the container watches the directory for changes (✓ Tailscale docs).
+
+**Setting up Funnel**, once per tailnet, in the admin console:
+1. Turn on MagicDNS and HTTPS certificates (DNS page). Optionally rename the tailnet, because its name is part of the public URL.
+2. In the policy file, give the tag `tag:pdm-cp` an owner and the `funnel` node attribute: `"tagOwners": { "tag:pdm-cp": ["autogroup:admin"] }` and `"nodeAttrs": [{ "target": ["tag:pdm-cp"], "attr": ["funnel"] }]`.
+3. Create an auth key: one-off, not ephemeral, pre-approved, tagged `tag:pdm-cp`. Put it in `/srv/pdm/env/.env.tailscale` as `TS_AUTHKEY`. It's used once; after that the node's identity lives in the `tailscale-state` volume, so deleting that volume needs a new key. Tagged nodes don't expire (*unverified*).
+4. `docker compose up -d`, then from a phone on mobile data, outside the tailnet, `curl https://pdm-cp.<tailnet>.ts.net/healthz`. The first requests fail with a TLS error for a few seconds, while the node fetches its certificate.
+
+**Funnel test on the 3070 host** (✓ ran, 2026-10-16). The `tailscale` sidecar above, on `v1.104.1` with userspace networking and a `serve.json` like this one, in front of a small Python server instead of Caddy, reached from the host through public DNS (`curl --resolve` to the address `1.1.1.1` returned), so the traffic went through Funnel and not the tailnet:
+- the node joined with a tagged one-off key and Funnel turned on for `${TS_CERT_DOMAIN}:443`, with no extra capabilities or devices;
+- the certificate was Let's Encrypt's, for the node's `ts.net` name, issued about 30 s after start;
+- an SSE stream of 5 events sent 2 s apart arrived 2 s apart, so Funnel doesn't buffer `text/event-stream`;
+- uploads ran at 0.6–1.2 MB/s (4 MB in 7.3 s, 20 MB in 17.6 s). The path left the home connection and came back in, so this bounds the home upload and Funnel together; a phone's upload uses only the download direction.
+
+**Notes**
+- **SSE.** Caddy flushes `text/event-stream` responses immediately, whatever `flush_interval` says (✓ Caddy docs), so no proxy setting is needed. `api` already sends `Cache-Control: no-cache` and a keepalive comment every 15 seconds ([architecture 12](../architecture/README.md#12-deployment)). Funnel passes an SSE stream through unbuffered (✓ ran, the Funnel test above); its idle timeout, and Cloudflare's 100 s, are *unverified*, and the S1 smoke script's stream and resume steps test both. Cloudflare's quick tunnels (`trycloudflare.com`) don't support SSE (✓ Cloudflare docs), so they are not an option.
+- **Bandwidth.** Funnel traffic is subject to bandwidth limits that Tailscale doesn't publish and that can't be configured (✓ Tailscale docs). Photo uploads are a few MB, and the rig's workers download every scan's images through the same URL, so the S1 smoke run should time an upload; the Funnel test measured 0.6–1.2 MB/s through the home connection. If the limit bites, the rig's workers can reach `api` over the tailnet instead (`API_BASE_URL` on the tailnet name, which MagicDNS resolves to a tailnet address on any host in the tailnet), leaving Funnel to the app.
+- **Ports.** Funnel listens only on 443, 8443 and 10000 (✓ Tailscale docs); we use 443.
+- **Client addresses.** Caddy ignores incoming `X-Forwarded-For` unless the peer is a trusted proxy (✓ Caddy docs). Behind a sidecar the peer is on a private compose address, so the header is trusted; on a VM, private ranges never reach Caddy directly. Nothing in `api` depends on the client address today.
+- **Upload size.** Caddy sets no body limit; `api` enforces its own. Cloudflare's Free plan caps a request body at 100 MB (*unverified*); Funnel publishes no cap.
+- **The Cloudflare profile** is a locally managed tunnel: `infra/ingress/cloudflare/config.yml` (committed, no secrets) names the tunnel and routes `api.<domain>` to `http://caddy:80`, with a final `http_status:404` rule. Its credentials file, `tunnel.json`, is created once with `cloudflared tunnel create` and lives only in `/srv/pdm/env/`.
+- **What is never published:** SurrealDB, RustFS, the vLLM sidecars and `api`'s port 8080. Only Caddy faces the internet, through the sidecar or on a VM.
 
 ---
 
@@ -456,7 +505,7 @@ Architecture 12 chose Caddy in both hosting options, with a Cloudflare Tunnel wh
 
 | File, in `/srv/pdm/env/` (mode 0600) | Read by | Holds |
 |---|---|---|
-| `.env.compose` | `docker compose --env-file` | Image digests (`API_IMAGE`, `WORKER_IMAGE`, `WORKER_CUDA_IMAGE`, `SEED_UPLOAD_IMAGE`), `CADDY_SITE`, `CADDY_HTTP`, `CADDY_HTTPS`; on the rig the GPU UUIDs, the render node and group ids. Not secret, but host-specific |
+| `.env.compose` | `docker compose --env-file` | Image digests (`API_IMAGE`, `WORKER_IMAGE`, `WORKER_CUDA_IMAGE`, `SEED_UPLOAD_IMAGE`), `CADDY_SITE`, `CADDY_HTTP`, `CADDY_HTTPS`, `COMPOSE_PROFILES` (the ingress, section 5); on the rig the GPU UUIDs, the render node and group ids. Not secret, but host-specific |
 | `.env.surrealdb` | `surrealdb` | `SURREAL_USER`, `SURREAL_PASS`: the root user, created on first start |
 | `.env.rustfs` | `rustfs` | `RUSTFS_ACCESS_KEY`, `RUSTFS_SECRET_KEY`: the root identity |
 | `.env.api` | `api` | `SURREAL_PASS`, `SURREAL_ROOT_PASS` (the schema's namespace statement needs root, database 1), `RUSTFS_ACCESS_KEY=PDMAPI01`, `RUSTFS_SECRET_KEY`, `RUSTFS_BUCKET=pdm-images`, `API_PUBLIC_BASE`, `API_WEB_ORIGINS`, `API_URL_SIGNING_KEY` (32 bytes or more), `WORKER_TOKENS` (`worker_id=token` pairs), `CLERK_ISSUER`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET`, `LLM_API_KEY`, optional `EXPO_ACCESS_TOKEN`, `OPEN_METEO_API_KEY`, `JEV_URL` and `JEV_API_KEY` |
@@ -465,7 +514,8 @@ Architecture 12 chose Caddy in both hosting options, with a Cloudflare Tunnel wh
 | `.env.fallback` | `fallback-worker` | `WORKER_TOKEN`, `LLM_API_KEY` |
 | `.env.<worker id>` | each rig worker | `WORKER_TOKEN`; `VLM_API_KEY` for the VLM workers and their sidecar |
 | `.env.backup` | `ops/backup.sh` | `SURREAL_ROOT_PASS`, `PDMBACKUP01`'s keys, the off-host remote's credentials |
-| `tunnel.json` | `cloudflared` | The tunnel's credentials |
+| `.env.tailscale` | `tailscale` | `TS_AUTHKEY`: a one-off, tagged auth key, used once to join the tailnet (section 5) |
+| `tunnel.json` | `cloudflared` | The tunnel's credentials, with the `cloudflare` profile only |
 
 - **[`infra/env/.env.example`](../../infra/env/.env.example)** lists every variable of every file above, grouped under a `# --- .env.api ---` style heading, with placeholders only (`change-me`, `GPU-00000000-…`, `sk-placeholder`), and says never to load it whole, because a key repeats across sections and the last one wins. The local values for running `api` and the fallback worker against `dev.compose.yml` are in [`infra/dev/.env.example`](../../infra/dev/.env.example).
 - **`infra/.env.example`** is a different file: the rig's vLLM template from PR #7, which [infra/README.md](../../infra/README.md) copies to `infra/.env`, and which compose loads into the vLLM container. So `api`'s secrets never go in it. It folds into the per-service files when `rig.compose.yml` grows into section 4. The `infra` CI job renders each compose file with `infra/.env.example` copied to `infra/.env`, the file the rig's compose file reads, so a variable a compose file needs and that example lacks fails CI.
@@ -504,7 +554,7 @@ Once per environment, on the control-plane host:
    That `surreal sql` reads statements from standard input non-interactively is *unverified*.
 5. **Bucket and identities** ([storage 2](../storage/README.md#2-bucket-keys-and-access)): `infra/bootstrap/rustfs.sh` runs storage 2's setup script with `pdm-api.json` and `pdm-seed.json`, and adds a third identity, `PDMBACKUP01` with `pdm-backup.json` (`s3:ListBucket` and `s3:GetObject` on `pdm-images` only), for the backup that [storage 6](../storage/README.md#6-operations) says needs a read-only key.
 6. Put the host's own read-only `HF_TOKEN` in `.env.models`. `model-fetch` fills the `models` volume on every `up` ([vision 6](../vision/README.md#delivering-model-files-to-the-backend)).
-7. Set the digests in `.env.compose` and `docker compose up -d` (plus `--profile tunnel` on the rig). Then run `backend/tools/smoke/` against the public URL.
+7. Set the digests and the ingress (`COMPOSE_PROFILES`, `CADDY_SITE`, section 5) in `.env.compose`, and `docker compose up -d`. Then run `backend/tools/smoke/` against the public URL.
 
 The rig's bootstrap is steps 1, 2 (only its own env files, `.env.models` included) and 6, then `docker compose -f infra/rig.compose.yml up -d`. Its worker tokens must already be in `api`'s `WORKER_TOKENS`.
 
@@ -548,7 +598,7 @@ Each item belongs to a slice of the [backend roadmap](../backend/roadmap.md). It
 | 4 | `backend/Dockerfile` and `docker-bake.hcl` with `api`, `worker` and `worker-cuda` | S0 | ✓ `docker buildx bake` builds all three on a laptop; `docker run … api` exits with a configuration error naming a missing variable, as UID 10100 |
 | 5 | `infra/dev.compose.yml` and `infra/env/.env.example` | S0 | ✓ `docker compose -f infra/dev.compose.yml up -d`, then `cargo nextest run --workspace --run-ignored only`, passes on a laptop |
 | 6 | The `images` job of `ci.yml`, pushing to GHCR on merge (written in S0, first run on a merge to `main`) | [S1](../backend/roadmap.md#5-s1-walking-skeleton) | ✓ A merge to `main` publishes three images with `sha-` tags and prints their digests in the run summary (#24's merge, run 38987473159, 2026-10-16: `api` `sha256:3233f5a7db2eae06b90501ba403cb06987913fb97995a91efcc204311f173fb2`, `worker` `sha256:1d7324d1fdb70d1541054eb8915148bb29a79ad8286b55577cf47cf6e017f2c4`, `worker-cuda` `sha256:3d313397fe77a00cd48f945c66fe3de9dd61131e29bbd9217780b799bde1c5e1`). Not yet tested: a host pulls them with a `read:packages` token |
-| 7 | `infra/control-plane.compose.yml`, the Caddyfile, the tunnel config and `deploy.sh` | S1 | The roadmap's S1 smoke script passes against the public URL; `docker compose stop api` during an upload finishes within 190 s and the container exits with code 0, not 137 (SIGKILL) |
+| 7 | `infra/control-plane.compose.yml` with the `tailscale` and `cloudflare` profiles, the Caddyfile, `infra/ingress/` and `deploy.sh` | S1 | The roadmap's S1 smoke script passes against the public URL; `docker compose stop api` during an upload finishes within 190 s and the container exits with code 0, not 137 (SIGKILL) |
 | 8 | `infra/bootstrap/` scripts and the first bootstrap | S1 | Rerunning both scripts changes nothing; `api` signs in as `api`, not root, after start-up |
 | 9 | Add `live` to `ci`'s `needs` in `ci.yml` | S1 | ✓ Three consecutive green `live` runs on `main` (four: #23, #18, #25, #24) |
 | 10 | `infra/rig.compose.yml` with the perception worker on the 3070 | [S2](../backend/roadmap.md#6-s2-perception-site-data-and-knowledge) | The worker's heartbeat on `/status` shows `ort_ep=cuda` and the 3070's UUID in `nvidia-smi` inside the container, and nothing else |
@@ -581,8 +631,10 @@ Each item belongs to a slice of the [backend roadmap](../backend/roadmap.md). It
 - [Working with the Container registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry) (classic tokens, `read:packages`, the source label) ✓
 - Action releases: [checkout](https://github.com/actions/checkout/releases), [setup-python](https://github.com/actions/setup-python/releases), [rust-cache](https://github.com/Swatinem/rust-cache/releases), [install-action](https://github.com/taiki-e/install-action/releases), [setup-buildx-action](https://github.com/docker/setup-buildx-action/releases), [login-action](https://github.com/docker/login-action/releases) ✓
 - [ONNX Runtime v1.31.0 release](https://github.com/microsoft/onnxruntime/releases/tag/v1.31.0) (asset names and SHA-256) ✓
-- Docker Hub: [rust](https://hub.docker.com/_/rust), [debian](https://hub.docker.com/_/debian), [nvidia/cuda](https://hub.docker.com/r/nvidia/cuda), [python](https://hub.docker.com/_/python), [caddy](https://hub.docker.com/_/caddy), [cloudflare/cloudflared](https://hub.docker.com/r/cloudflare/cloudflared), [rclone/rclone](https://hub.docker.com/r/rclone/rclone), [rocm/onnxruntime](https://hub.docker.com/r/rocm/onnxruntime), [vllm/vllm-openai](https://hub.docker.com/r/vllm/vllm-openai), [rustfs/rc](https://hub.docker.com/r/rustfs/rc) ✓
+- Docker Hub: [rust](https://hub.docker.com/_/rust), [debian](https://hub.docker.com/_/debian), [nvidia/cuda](https://hub.docker.com/r/nvidia/cuda), [python](https://hub.docker.com/_/python), [caddy](https://hub.docker.com/_/caddy), [tailscale/tailscale](https://hub.docker.com/r/tailscale/tailscale), [cloudflare/cloudflared](https://hub.docker.com/r/cloudflare/cloudflared), [rclone/rclone](https://hub.docker.com/r/rclone/rclone), [rocm/onnxruntime](https://hub.docker.com/r/rocm/onnxruntime), [vllm/vllm-openai](https://hub.docker.com/r/vllm/vllm-openai), [rustfs/rc](https://hub.docker.com/r/rustfs/rc) ✓
 - [cargo-chef](https://github.com/LukeMathWalker/cargo-chef) 0.1.78 ✓
 - [Caddy `reverse_proxy`](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy) (SSE flushing, trusted proxies) ✓
+- [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) (plans, ports, bandwidth limits, where TLS ends) and [Docker configuration parameters](https://tailscale.com/docs/features/containers/docker/docker-params) (`TS_AUTHKEY`, `TS_STATE_DIR`, `TS_SERVE_CONFIG`, userspace networking) ✓
+- [Cloudflare quick tunnels](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/) (no SSE, changing hostname, no uptime guarantee) ✓
 - [Compose file reference: services](https://docs.docker.com/reference/compose-file/services/) (`stop_grace_period`, `depends_on` conditions, device reservations)
 - Project documents: [architecture 12](../architecture/README.md#12-deployment), [backend 12](../backend/README.md#12-builds-and-deployment), [worker 11–12](../backend/worker.md#11-multi-vendor-gpus), [database 1 and 7](../database/README.md#1-version-and-setup), [storage 1, 2 and 6](../storage/README.md#1-version-and-setup), [setup 4 and 6](../setup/README.md#6-the-gpu-rig-and-the-control-plane), [backend roadmap](../backend/roadmap.md), [vision 5 and 6](../vision/README.md#6-model-files-versions-and-pinning)
