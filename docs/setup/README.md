@@ -1,6 +1,6 @@
 # PDM Developer Setup
 
-> **Status:** v0.1.2, 2026-10-16. v0.1.2: backend developers start SurrealDB and RustFS with `infra/dev.compose.yml`. v0.1.1: Debian 13's libheif is 1.23.4, as the `api` image build installed it. v0.1: first version: what each team member installs on macOS, Windows and Linux, by role, with the versions the other documents pin.
+> **Status:** v0.1.3, 2026-10-16. v0.1.3: the control plane reaches the internet through Tailscale Funnel, run as a container, instead of a Cloudflare tunnel. v0.1.2: backend developers start SurrealDB and RustFS with `infra/dev.compose.yml`. v0.1.1: Debian 13's libheif is 1.23.4, as the `api` image build installed it. v0.1: first version: what each team member installs on macOS, Windows and Linux, by role, with the versions the other documents pin.
 > **Checked:** on 2026-10-16. The release files of ONNX Runtime 1.31.0 on GitHub, libheif's versions in Ubuntu and Debian, and the Node versions that React Native 0.86.3 and EAS CLI accept were read from their sources (✓). Items marked *unverified* weren't tried on that platform.
 
 ## Contents
@@ -156,8 +156,8 @@ Only the people who run these machines need this section. The design is in [arch
 
 | Machine | Installs |
 |---|---|
-| **The rig** (Linux: RTX 3070, RTX 5070 Ti, RX 9070 XT) | Ubuntu 24.04.5 with the HWE kernel, or 26.04.1. NVIDIA driver 580.65.06 or newer. [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). AMD's ROCm 10.1 `amdgpu` driver for the 9070 XT (*unverified* until the [day-1 check](../vision/evaluation.md#7-day-1-checks)). Docker Engine with Compose v2. The Cloudflare tunnel, as architecture 12 describes |
-| **The control plane** | Docker Engine with Compose v2, and the tunnel and Caddy configuration from `infra/` (architecture 12) |
+| **The rig** (Linux: RTX 3070, RTX 5070 Ti, RX 9070 XT) | Ubuntu 24.04.5 with the HWE kernel, or 26.04.1. NVIDIA driver 580.65.06 or newer. [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). AMD's ROCm 10.1 `amdgpu` driver for the 9070 XT (*unverified* until the [day-1 check](../vision/evaluation.md#7-day-1-checks)). Docker Engine with Compose v2. The control plane runs here too, with Tailscale Funnel as a container ([infra 5](../infra/README.md#5-ingress)), so the host itself needs nothing more for ingress |
+| **The control plane** | Docker Engine with Compose v2, and the Caddy and ingress configuration from `infra/` ([infra 5](../infra/README.md#5-ingress)): a Tailscale account with Funnel turned on for the rig, or a domain on Cloudflare or a VM for the other profiles |
 
 The containers bring everything else: CUDA 13.0.3 and ONNX Runtime in `worker-cuda`, vLLM 0.31.0 for CUDA and ROCm, SurrealDB and RustFS. Each is pinned by digest, so nothing else is installed on the host.
 

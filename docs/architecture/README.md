@@ -1,6 +1,6 @@
 # PDM Architecture
 
-> **Status:** Draft v0.7.6, 2026-10-16. v0.7.6: section 12 links the infrastructure and CI design, [docs/infra](../infra/README.md). v0.7.5: section 9 says the `domain` types are the contracts' source of truth and the spec is committed as `backend/openapi.json` (contracts v0.10.4). v0.7.4: sections 5 and 13 say the schema now lives at `backend/migrations/schema.surql`. v0.7.3: section 13 lists `docs/setup`, the developer setup. v0.7.2: section 12 gives the services' stop grace periods (190 s for `api`). v0.7.1 synced with [contracts.md](contracts.md) v0.10.1: the account tombstone keeps a deleted account's tokens out and the provider deletion running across restarts (4). v0.7 synced with [contracts.md](contracts.md) v0.10, which records the decisions of the [backend design](../backend/README.md):
+> **Status:** Draft v0.7.7, 2026-10-16. v0.7.7: open decision 2 is settled: the control plane runs on the rig behind Tailscale Funnel, and the ingress is a compose profile, so moving to a Cloudflare Tunnel or a cloud VM needs no code change (12, 15). v0.7.6: section 12 links the infrastructure and CI design, [docs/infra](../infra/README.md). v0.7.5: section 9 says the `domain` types are the contracts' source of truth and the spec is committed as `backend/openapi.json` (contracts v0.10.4). v0.7.4: sections 5 and 13 say the schema now lives at `backend/migrations/schema.surql`. v0.7.3: section 13 lists `docs/setup`, the developer setup. v0.7.2: section 12 gives the services' stop grace periods (190 s for `api`). v0.7.1 synced with [contracts.md](contracts.md) v0.10.1: the account tombstone keeps a deleted account's tokens out and the provider deletion running across restarts (4). v0.7 synced with [contracts.md](contracts.md) v0.10, which records the decisions of the [backend design](../backend/README.md):
 >   - the crate list matches the code: `integrations` holds every outbound HTTP adapter, and `knowledge` reads through a port without depending on `store` (3);
 >   - the user record is created by the first authenticated request, and the auth webhook only deletes users (4, 11);
 >   - the chat tools take no garden id, `view_image` and `revise_plan` name their scan, and model thinking is replayed only within a turn (7);
@@ -76,7 +76,7 @@ Submission requirements: a demo video of 2 minutes or less, a public GitHub repo
 └──────────────┬────────────────┘                       │
                │ HTTPS: REST + SSE                      │
 ═══════════════╪════════════════════════════════════════╪═════ CONTROL PLANE
-               ▼                                        ▼      (cloud VM, or rig + tunnel)
+               ▼                                        ▼      (rig + Funnel; or a VM)
         ┌─────────────┐   ┌─────────────────────────────────────────────────┐
         │ Caddy (TLS) │──▶│ api  (Rust · axum · tokio)                      │
         └─────────────┘   │                                                 │
@@ -833,16 +833,18 @@ On the control plane, `seed-upload` runs after `rustfs` is healthy and exits; `a
 
 ### Hosting the control plane
 
-| | All on the rig + Cloudflare Tunnel | Small cloud VM for the control plane, rig for GPUs (recommended) |
+**Decided on 2026-10-16:** the control plane runs on the rig host with the RTX 3070, behind Tailscale Funnel. The RTX 5070 Ti sits in a second rig host; its workers reach `api` through the same public URL, as any worker does, because workers only pull. Funnel gives the rig a public HTTPS address (`https://pdm-cp.<tailnet>.ts.net`) with no domain and no open port, free on every Tailscale plan. Anyone can reach it without joining the tailnet, so the whole team tests against one deployed URL.
+
+| | All on the rig + a tunnel (chosen) | Small cloud VM for the control plane, rig for GPUs |
 |---|---|---|
-| Cost | $0 | A few dollars a month, or partner credits |
+| Cost | $0 with Tailscale Funnel; a Cloudflare Tunnel also needs a domain (about $10 a year) | A few dollars a month, or partner credits, plus a domain |
 | Live link during judging | Goes down if home power, internet or the PC fails | Always up. Uses API vision while the rig is offline |
-| Uploads | Limited by home upload bandwidth | Fine |
-| Setup | Tunnel + Caddy | VM + Caddy. The rig runs only workers |
+| Uploads | Limited by home upload bandwidth, and Funnel's unpublished bandwidth limits | Fine |
+| Setup | Caddy + the `tailscale` (or `cloudflare`) compose profile | VM + Caddy. The rig runs only workers |
 
-The code is the same in both cases. We can start with everything on the rig and move the control plane to a VM before submitting.
+The ingress provider is a compose profile ([infra 5](../infra/README.md#5-ingress)), and `api` never sees it: switching from Funnel to a Cloudflare Tunnel or a VM changes three env values and two URLs (the Clerk webhook and the workers' `API_BASE_URL`), not the code. We can still move the control plane to a VM before submitting, if the live link's uptime during judging calls for it.
 
-If the control plane runs behind a tunnel, SSE responses need `Cache-Control: no-cache` and a keepalive comment every ~15 seconds, so idle connections are not dropped.
+Behind a tunnel, SSE responses need `Cache-Control: no-cache` and a keepalive comment every ~15 seconds, so idle connections are not dropped.
 
 ### App delivery
 
@@ -905,7 +907,7 @@ PDM/
 ## 15. Open decisions
 
 1. **Auth provider and app framework.** Decided: Expo and Clerk, each with its own prize. The app pins Expo SDK 57, because `@clerk/expo` doesn't support SDK 58 yet ([frontend 3](../frontend/README.md#3-stack-and-version-pins)).
-2. **Where the control plane runs:** a cloud VM or the rig.
+2. **Where the control plane runs.** Decided on 2026-10-16: on the rig, behind Tailscale Funnel; the ingress is a compose profile, so a Cloudflare Tunnel or a cloud VM can replace it without a code change ([12](#hosting-the-control-plane), [infra 5](../infra/README.md#5-ingress)).
 3. **Which crops to support.** This sets the classifier's classes, BioCLIP's label list and the scope of the knowledge base. PlantDoc covers tomato, potato, pepper, apple, grape and others.
 4. **Which VLM runs on the VLM workers.** Qwen3-VL-8B-Instruct (FP8) is the primary and Qwen3.5-9B (4-bit AWQ) the challenger, benchmarked on day 2; Qwen2.5-VL-7B is a baseline only ([vision VLM](../vision/vlm.md)). Both cards serve the winner.
 5. **What Eon and SurrealDB Agent Memory offer.** Confirm at kickoff on Oct 16.
