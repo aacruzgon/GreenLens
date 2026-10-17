@@ -14,7 +14,13 @@ export function useSessionGate(): Gate {
   // First sign-in: send Clerk's name when the API has none (docs/frontend 8, session lifecycle).
   const needsName = me.data && !me.data.display_name && session.suggestedName;
   useEffect(() => {
-    if (needsName) void meApi.update({ display_name: session.suggestedName! }).then(() => me.refetch());
+    // A failure here is harmless: the name stays empty, and onboarding or settings can set it.
+    if (needsName) {
+      meApi
+        .update({ display_name: session.suggestedName! })
+        .then(() => me.refetch())
+        .catch(() => undefined);
+    }
   }, [needsName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (me.isLoading || gardens.isLoading) return { state: "loading" };

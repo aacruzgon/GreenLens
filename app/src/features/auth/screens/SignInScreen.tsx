@@ -39,6 +39,9 @@ function ClerkSignIn() {
   return (
     <AuthShell title="Welcome back" subtitle="Sign in to check on your garden.">
       <View style={{ gap: t.space.lg }}>
+        {env.apiMode === "mock" ? (
+          <Banner tone="watch" title="Sample data" body="You're signing in with a real account, but this build shows sample data, not your garden." />
+        ) : null}
         <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" />
         <TextField label="Password" value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password" textContentType="password" onSubmitEditing={submit} />
         {error ? <Banner tone="danger" title={error} /> : null}

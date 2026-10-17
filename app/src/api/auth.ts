@@ -1,37 +1,65 @@
-// docs/frontend 8, token flow. The api layer never imports Clerk: AuthBridge registers these.
+import { transport } from "./transport";
+
+// docs/frontend 8, token flow. The api layer never imports Clerk: the auth feature registers these.
+// A 401 is handled per request: refresh the token, send that request again once, and sign out only
+// when the retry is rejected too. A request sent before a refresh reuses that refresh instead of
+// starting another, so requests rejected together refresh once.
 
 export type TokenProvider = (opts?: { skipCache?: boolean }) => Promise<string | null>;
 
 let provider: TokenProvider | null = null;
 let onSignedOut: (() => void) | null = null;
-let refreshNext = false;
+/** Counts refreshes; each request remembers the count it was sent at. */
+let generation = 0;
+let latest: Promise<string | null> | null = null;
 
 export function setTokenProvider(fn: TokenProvider | null, signOut?: () => void) {
   provider = fn;
   onSignedOut = signOut ?? null;
-  refreshNext = false;
+  generation += 1;
+  latest = null;
 }
 
-export async function getToken(): Promise<string | null> {
-  if (!provider) return null;
-  const skipCache = refreshNext;
-  refreshNext = false;
-  return provider(skipCache ? { skipCache } : undefined);
+async function token(): Promise<string | null> {
+  return provider ? provider() : null;
 }
 
-let unauthenticatedStreak = 0;
+function refreshedToken(sentAt: number): Promise<string | null> {
+  if (!provider) return Promise.resolve(null);
+  if (sentAt !== generation && latest) return latest;
+  generation += 1;
+  latest = provider({ skipCache: true }).catch(() => null);
+  return latest;
+}
 
-/** A 401: the first one refreshes the token for the retry; a second in a row signs out. */
-export function noteUnauthenticated() {
-  unauthenticatedStreak += 1;
-  if (unauthenticatedStreak >= 2) {
-    unauthenticatedStreak = 0;
+function withBearer(headers: Record<string, string>, t: string | null): Record<string, string> {
+  return t ? { ...headers, Authorization: `Bearer ${t}` } : headers;
+}
+
+/**
+ * Sends a request with the session token. `send` is called once, or twice when the first answer is
+ * a 401: the second time with a freshly fetched token. A second 401 signs the user out.
+ */
+export async function sendAuthed(send: (headers: Record<string, string>) => Promise<Response>, headers: Record<string, string> = {}): Promise<Response> {
+  const sentAt = generation;
+  const first = await send(withBearer(headers, await token()));
+  if (first.status !== 401 || !provider) return first;
+  const fresh = await refreshedToken(sentAt);
+  if (!fresh) {
     onSignedOut?.();
-  } else {
-    refreshNext = true;
+    return first;
   }
+  const second = await send(withBearer(headers, fresh));
+  if (second.status === 401) onSignedOut?.();
+  return second;
 }
 
-export function noteAuthenticated() {
-  unauthenticatedStreak = 0;
+/** The fetch openapi-fetch uses: a copy of the request for each attempt, since a body can be read once. */
+export function authedFetch(request: Request): Promise<Response> {
+  const copies = [request.clone(), request];
+  return sendAuthed((headers) => {
+    const r = copies.shift()!;
+    for (const [k, v] of Object.entries(headers)) r.headers.set(k, v);
+    return transport().fetch(r);
+  });
 }

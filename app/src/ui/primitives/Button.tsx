@@ -12,9 +12,11 @@ export interface ButtonProps extends Omit<PressableProps, "children"> {
   icon?: keyof typeof Ionicons.glyphMap;
   loading?: boolean;
   fullWidth?: boolean;
+  /** For a button in a set of choices: announced as selected. */
+  selected?: boolean;
 }
 
-export function Button({ label, variant = "primary", size = "regular", icon, loading, fullWidth, disabled, style, ...rest }: ButtonProps) {
+export function Button({ label, variant = "primary", size = "regular", icon, loading, fullWidth, selected, disabled, style, ...rest }: ButtonProps) {
   const t = useTheme();
   const c = t.colors;
   const palette = {
@@ -29,7 +31,6 @@ export function Button({ label, variant = "primary", size = "regular", icon, loa
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled: !!inactive, busy: !!loading }}
       disabled={inactive}
       hitSlop={4}
       style={(state) => [
@@ -46,6 +47,7 @@ export function Button({ label, variant = "primary", size = "regular", icon, loa
         typeof style === "function" ? style(state) : style,
       ]}
       {...rest}
+      accessibilityState={{ ...rest.accessibilityState, disabled: !!inactive, busy: !!loading, ...(selected !== undefined ? { selected } : {}) }}
     >
       <View style={styles.row}>
         {loading ? (

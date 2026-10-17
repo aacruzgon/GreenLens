@@ -2,7 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 
 import type { AnswerRequest, CreateScanRequest, ImageKind, UploadImageResponse } from "@/domain/types";
 
-import { apiUrl, authHeaders, call, check, client, idempotent } from "../client";
+import { sendAuthed } from "../auth";
+import { apiUrl, call, check, client, idempotent } from "../client";
 import { networkError, toApiError } from "../errors";
 import { qk } from "../queryKeys";
 import { SIGNED_STALE_MS } from "../queryClient";
@@ -31,7 +32,7 @@ export const scans = {
     ];
     let response: Response;
     try {
-      response = await transport().upload(apiUrl(`/scans/${id}/images`), parts, await authHeaders(idempotent(key)));
+      response = await sendAuthed((headers) => transport().upload(apiUrl(`/scans/${id}/images`), parts, headers), idempotent(key));
     } catch {
       throw networkError();
     }
@@ -41,10 +42,10 @@ export const scans = {
 
   /** The scan's event stream (contracts 4). Without lastEventId the server replays the whole history. */
   async openEvents(id: string, lastEventId: number | undefined, signal: AbortSignal): Promise<Response> {
-    const headers = await authHeaders({ Accept: "text/event-stream", ...(lastEventId ? { "Last-Event-ID": String(lastEventId) } : {}) });
+    const base = { Accept: "text/event-stream", ...(lastEventId ? { "Last-Event-ID": String(lastEventId) } : {}) };
     let response: Response;
     try {
-      response = await transport().fetch(apiUrl(`/scans/${id}/events`), { headers, signal });
+      response = await sendAuthed((headers) => transport().fetch(apiUrl(`/scans/${id}/events`), { headers, signal }), base);
     } catch (e) {
       if (signal.aborted) throw e;
       throw networkError();

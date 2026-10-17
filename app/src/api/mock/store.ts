@@ -1,5 +1,6 @@
 import type { Garden, Me, Plant, ScanDetail, ScanEvent, ScanEventBody, Task, WeatherSummary } from "@/domain/types";
 import { isAtRest } from "@/domain/scan";
+import { create } from "zustand";
 
 import { seedGarden, seedMe, seedPlants, seedTasks, seedWeather } from "./fixtures";
 import { ts } from "./util";
@@ -7,6 +8,12 @@ import { ts } from "./util";
 // The mock's in-memory database: the records the REST endpoints read, and each scan's event log.
 
 export type Scenario = "early_blight" | "question" | "healthy";
+
+/** The demo controls' choice, as React state so Settings re-renders when it changes. */
+export const useMockScenario = create<{ scenario: Scenario; setScenario: (s: Scenario) => void }>()((set) => ({
+  scenario: "early_blight",
+  setScenario: (scenario) => set({ scenario }),
+}));
 
 interface ScanEntry {
   detail: ScanDetail;
@@ -22,7 +29,10 @@ class MockDb {
   tasks: Task[] = [];
   weather: WeatherSummary = seedWeather();
   scans = new Map<string, ScanEntry>();
-  scenario: Scenario = "early_blight";
+  /** What the next scan shows; set from Settings' demo controls. */
+  get scenario(): Scenario {
+    return useMockScenario.getState().scenario;
+  }
   /** Fault injection: the next upload fails the quality gate (docs/frontend 15). */
   failNextUpload = false;
   /** Milliseconds per scripted step; tests set it to 0. */

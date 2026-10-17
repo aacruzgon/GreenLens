@@ -2,7 +2,7 @@ import { Platform, View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useMe } from "@/api";
-import { mockDb, type Scenario } from "@/api/mock/transport";
+import { mockDb, useMockScenario, type Scenario } from "@/api/mock/transport";
 import { env } from "@/config/env";
 import { useSession } from "@/features/auth";
 import { useActiveGarden } from "@/features/gardens";
@@ -21,6 +21,7 @@ export function SettingsScreen() {
   const me = useMe();
   const { garden } = useActiveGarden();
   const queryClient = useQueryClient();
+  const { scenario, setScenario } = useMockScenario();
 
   return (
     <Screen>
@@ -42,11 +43,9 @@ export function SettingsScreen() {
                 <Button
                   key={s.id}
                   label={s.label}
-                  variant={mockDb.scenario === s.id ? "primary" : "secondary"}
-                  onPress={() => {
-                    mockDb.scenario = s.id;
-                    void queryClient.invalidateQueries();
-                  }}
+                  variant={scenario === s.id ? "primary" : "secondary"}
+                  selected={scenario === s.id}
+                  onPress={() => setScenario(s.id)}
                 />
               ))}
             </View>

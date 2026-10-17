@@ -1,7 +1,7 @@
 import { View } from "react-native";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { qk, tasks as tasksApi, usePlants, useTasks, useWeather } from "@/api";
+import { describeError, qk, tasks as tasksApi, usePlants, useTasks, useWeather } from "@/api";
 import { can } from "@/domain/permissions";
 import { localToday } from "@/domain/dates";
 import { Banner, Button, Card, EmptyState, ErrorState, ListItem, Screen, Section, Skeleton, Text, useTheme } from "@/ui";
@@ -28,10 +28,12 @@ export function GardenHomeScreen() {
   const refreshing = plants.isRefetching || weather.isRefetching;
   const refresh = () => void Promise.all([plants.refetch(), weather.refetch(), openTasks.refetch()]);
 
-  async function complete(id: string) {
-    await tasksApi.update(id, { done: true });
-    await queryClient.invalidateQueries({ queryKey: qk.tasks(garden!.id) });
-  }
+  const completeTask = useMutation({
+    mutationFn: (id: string) => tasksApi.update(id, { done: true }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.tasks(garden!.id) }),
+  });
+  const complete = (id: string) => completeTask.mutate(id);
+  const taskError = completeTask.error ? describeError(completeTask.error) : undefined;
 
   return (
     <Screen
@@ -44,8 +46,10 @@ export function GardenHomeScreen() {
         <Skeleton height={150} radius={t.radius.lg} />
       ) : null}
 
+      {taskError ? <Banner tone="danger" title="We couldn't mark that done" body={taskError.message} action={{ label: "Dismiss", onPress: () => completeTask.reset() }} /> : null}
+
       {alerts.map((a) => (
-        <Banner key={a.id} tone="info" icon="snow" title={a.title} body={a.detail} action={canTask ? { label: "Done", onPress: () => void complete(a.id) } : undefined} />
+        <Banner key={a.id} tone="info" icon="snow" title={a.title} body={a.detail} action={canTask ? { label: "Done", onPress: () => complete(a.id) } : undefined} />
       ))}
 
       {dueToday.length > 0 ? (
@@ -58,7 +62,7 @@ export function GardenHomeScreen() {
                 subtitle={task.detail}
                 chevron={false}
                 trailing={
-                  canTask ? <Button label="Done" variant="secondary" onPress={() => void complete(task.id)} accessibilityLabel={`Mark done: ${task.title}`} /> : undefined
+                  canTask ? <Button label="Done" variant="secondary" onPress={() => complete(task.id)} accessibilityLabel={`Mark done: ${task.title}`} /> : undefined
                 }
               />
             ))}

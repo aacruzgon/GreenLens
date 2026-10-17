@@ -306,4 +306,4 @@ export const mockTransport: Transport = {
 };
 
 export { db as mockDb } from "./store";
-export type { Scenario } from "./store";
+export { useMockScenario, type Scenario } from "./store";

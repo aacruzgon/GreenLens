@@ -44,11 +44,11 @@ export function isApiError(e: unknown): e is ApiError {
 
 const RETRY_LIMIT = 3;
 
-/** TanStack retry policy: 409 in progress, 429 rate limited and retryable 5xx, at most 3 times; never budget_exceeded. */
+/** TanStack retry policy: 409 in progress, 429 rate limited and retryable 5xx, at most 3 times; never budget_exceeded.
+ * A 401 is not retried here: the client has already refreshed the token and retried once (auth.ts). */
 export function shouldRetry(failureCount: number, error: unknown): boolean {
   if (failureCount >= RETRY_LIMIT) return false;
   if (!isApiError(error)) return false;
-  if (error.code === "unauthenticated") return failureCount < 1;
   if (error.code === "budget_exceeded") return false;
   if (error.code === "request_in_progress" || error.code === "rate_limited") return true;
   if (error.status === 0) return true;
