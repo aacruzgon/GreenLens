@@ -587,7 +587,7 @@ The context is rebuilt from the database on every turn. It uses the conversation
 | `revise_plan(scan_id, summary, changed_steps, removed_step_ids, constraints)` | Proposes a new version of that scan's current plan (a plant or garden conversation has no single plan, so the scan is named); the card names the plan it is based on and says the plan is shared with the garden | **write: user confirms** |
 | `request_rescan(plant_id, photo_kind, instructions)` | Asks the user for a specific photo; the app offers to open the capture flow for a new scan | read (UI action) |
 | `remember(fact, plant_id?)` | Saves a private chat memory about the plant, or the garden when no plant is given; the app shows it with Undo, and Share with garden for editors and owners. Offered to every role, because it only writes the caller's own memory | write (automatic, shown to the user) |
-| `search_farm_records(query, kind?, since?)` | Searches the Slack messages and Drive documents synced from the garden's farm connectors; each hit cites its author, time and link. Offered when the garden has an active connector | read |
+| `search_farm_records(query, kind?, since?)` | Searches the Slack messages and Drive documents synced from the garden's farm connectors; each hit cites its author, time and link. Offered when the garden has an active connector. Proposed: lands with the connector code ([connectors 7](../connectors/README.md#7-the-agent)) | read |
 
 No tool takes a garden id: the garden is always the conversation's, because identity and scope come from the session, never from the model (section 11). Tool arguments are strict: a call with an unknown field or a malformed id is refused with the reason, and the model corrects it.
 
@@ -735,9 +735,9 @@ GET    /memories · POST /memories   (garden note with optional topic, editor)
 POST   /memories/{id}/share · DELETE /memories/{id}
 GET    /plants/{plant_id}/beliefs   (current and superseded beliefs; available: false when Agent Memory is off)
 
-Farm connectors (docs/connectors; owner, except reading the list)
+Farm connectors (proposed, docs/connectors; owner, except reading the list)
 GET    /gardens/{id}/connectors · POST /gardens/{id}/connectors
-GET    /connectors/oauth/callback   (signed state)
+GET    /connectors/oauth/callback   (signed state) · POST /connectors/{id}/complete   (device-bound)
 GET    /connectors/{id}/available-sources · PUT /connectors/{id}/sources
 POST   /connectors/{id}/sync · DELETE /connectors/{id}
 
