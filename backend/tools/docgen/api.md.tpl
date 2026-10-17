@@ -1,8 +1,8 @@
 # PDM Backend: `api` binary
 
-> **Status:** Draft v0.6.5, 2026-10-16. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
+> **Status:** Draft v0.7, 2026-10-17. v0.7: shared memories are mirrored into `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs` and `Ports.memory` behind `agent::MirroredMemory`, the new `GET /plants/{id}/beliefs` (never a 5xx), a deletion step that erases a garden's or plant's scope in Agent Memory before the records, the `beliefs` scheduler task that records unsynced shared memories every minute, and `POST /memories` taking a `topic`; 44 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
 
-Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports and types `api` wires, and [domain-types](domain-types.md) for every wire shape. Every listing below is copied from the compiled source of `bins/api` by the docgen tool. `cargo check -p api`, `cargo clippy -p api --all-targets` (no warning in `api`) and `cargo test -p api` pass: 33 tests, among them handler tests that drive the real router with `tower::ServiceExt::oneshot`. `cargo check --workspace` passes, the binary links, and `api openapi` writes the document.
+Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports and types `api` wires, and [domain-types](domain-types.md) for every wire shape. Every listing below is copied from the compiled source of `bins/api` by the docgen tool. `cargo check -p api`, `cargo clippy -p api --all-targets` (no warning in `api`) and `cargo test -p api` pass: 44 tests, among them handler tests that drive the real router with `tower::ServiceExt::oneshot`. `cargo check --workspace` passes, the binary links, and `api openapi` writes the document.
 
 ## Contents
 
@@ -108,7 +108,7 @@ bins/api/src/
 ├─ push.rs           Pusher: who gets which push
 ├─ scheduler.rs      the background tasks
 │  └─ triggers.rs    the trigger rules (frost, heat, humid stretch, heavy rain, after rain, dry soil)
-├─ deletion.rs       DeletionRunner: cascades, account deletion, resume
+├─ deletion.rs       DeletionRunner: cascades (objects, Agent Memory, records), account deletion, resume
 ├─ media.rs          signature check, object streaming
 ├─ routes.rs
 │  └─ routes/        scans, gardens, plants, species, tasks, account, memories, chat, internal, media, ops
@@ -152,7 +152,9 @@ Then `tracker.close()` and `tracker.wait()` with `SHUTDOWN_DRAIN_S` (30 s) as th
 
 ## 5. Configuration
 
-@@items config.rs Config DatabaseConfig StorageConfig ClerkConfig ProviderConfig@@
+@@items config.rs Config DatabaseConfig StorageConfig ClerkConfig AgentMemorySettings AGENT_MEMORY_VARS ProviderConfig@@
+
+@@items config.rs agent_memory@@
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -188,6 +190,7 @@ Then `tracker.close()` and `tracker.wait()` with `SHUTDOWN_DRAIN_S` (30 s) as th
 | `JEV_API_KEY`, `JEV_URL` | unset | The optional classifier; both or neither; the LLM classifier otherwise |
 | `EXPO_ACCESS_TOKEN` | unset | Only with enhanced push security |
 | `OPEN_METEO_API_KEY` | unset | Only for Open-Meteo's commercial endpoint |
+| `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID`, `AGENT_MEMORY_API_KEY` | unset | `SurrealDB` Agent Memory, where shared memories are mirrored ([architecture 7, memory](../architecture/README.md#memory)). All three or none: a partial set stops start-up with `ConfigError::Invalid` naming the first missing variable. The key is a `SecretString`; unset turns the mirror off (`NoBeliefs`) |
 
 Every secret is a `SecretString`: `Debug` prints `[REDACTED]` (the test checks the signing key never appears in the formatted config). `Config::from_lookup` takes any variable source, so tests build a config from a map.
 
@@ -224,7 +227,9 @@ It has no wake-up method: the store signals the claim long poll itself after eve
 
 and builds everything in the order of section 4:
 
-@@items wiring.rs SystemClock UlidGen Models load_models Databases connect_databases Outbound outbound build@@
+@@items wiring.rs SystemClock UlidGen Models load_models Databases connect_databases Outbound outbound agent_memory mirrored build@@
+
+**Agent Memory.** `outbound` builds `integrations::agent_memory::AgentMemory` over the shared `reqwest` client when the three variables are set, and `NoBeliefs` otherwise, logging which at start (the URL and context, never the key). `Ports.beliefs` holds it, and `Ports.memory` is the store's `MemoryStore` behind `agent::MirroredMemory` (`mirrored`), so every memory write in `api`, the agent and the pipeline is mirrored without the callers knowing ([agent 14](agent.md#the-belief-mirror)). The same `beliefs` goes to the agent's and the pipeline's deps and to the deletion runner.
 
 **One embedder, two modes.** The text embedder (snowflake-arctic-embed-xs) embeds queries and documents differently, and every `TextEmbedder::embed` call names its `EmbedMode` ([domain 9](domain.md#9-boundary-traits)). So `api` loads one embedder and shares one `Arc<dyn TextEmbedder>` (`Ports.embedder`): garden notes are embedded as `Document`, the pipeline's memory summaries as `Document`, and the agent embeds the user's message and its searches as `Query` and the memories it writes as `Document`.
 
@@ -445,6 +450,7 @@ Every endpoint of [architecture 9](../architecture/README.md#9-api-surface) and 
 | GET, POST | `/plants` | `plants::list_plants`, `create_plant` | viewer, editor | POST ✓ | [9](../architecture/contracts.md#plants) |
 | GET, PATCH, DELETE | `/plants/{id}` | `get_plant`, `update_plant`, `delete_plant` | viewer, editor, owner | | [9](../architecture/contracts.md#plants) |
 | GET | `/plants/{id}/timeline` | `plants::timeline` | viewer | | [9](../architecture/contracts.md#plants) |
+| GET | `/plants/{id}/beliefs` | `plants::plant_beliefs` | viewer | | [8](../architecture/contracts.md#memory) |
 | GET | `/plants/{id}/measurements` | `plants::measurements` | viewer | | [9](../architecture/contracts.md#plants) |
 | POST | `/plants/{id}/species` | `plants::confirm_species` | editor | | [3](../architecture/contracts.md#post-plantsidspecies) |
 | GET | `/species` | `species::list_species` | signed in | | [9](../architecture/contracts.md#species) |
@@ -497,6 +503,10 @@ Locations are geocoded once, at the precision the user chose, with the time zone
 The webhook:
 
 @@items routes/ops.rs auth_webhook healthz@@
+
+A plant's beliefs: Agent Memory's current beliefs of the plant and its garden, and the plant's superseded ones, read together under the adapter's entity-read deadline. Agent Memory off, failing or slow answers `200` with `available: false`, never a `5xx`, because the screen has the memories list to fall back on:
+
+@@items routes/plants.rs BELIEFS_TIMEOUT plant_beliefs@@
 
 ---
 
@@ -626,6 +636,8 @@ The confirm on a plan card applies the preview to its base plan exactly as the c
 
 @@items scheduler.rs Task TASKS start every@@
 
+@@items scheduler.rs BELIEF_SYNC_BATCH beliefs@@
+
 Each task is a loop on the process `TaskTracker`: `interval_at` with a first delay (so start-up isn't one burst of queries), `MissedTickBehavior::Delay` (a run that overran doesn't cause catch-up runs), and a `select!` on the shutdown token. A failed run is logged and the next tick tries again. `every` is generic over the task body: `F: Fn(Arc<AppState>) -> Fut` and `Fut: Future<Output = Result<(), ApiError>>`, both `Send + 'static` because the loop is spawned and owns them; plain `async fn`s are passed directly.
 
 | Task | Interval | What | Database pattern |
@@ -633,6 +645,7 @@ Each task is a loop on the process `TaskTracker`: `interval_at` with a first del
 | `requeue` | 5 s | Expired leases and jobs of workers silent for 30 s back to `queued` with `queued_at` reset; a job out of attempts fails for good through the pipeline; the store wakes the claims after its commit | `UPDATE job SET status = 'queued' … WHERE status = 'leased' AND lease_until < time::now()` on the `job_lease` index ([database 4](../database/README.md#job-claim-with-slots-)) |
 | `sweep` | 30 s | `Pipeline::sweep`, the one owner of recovery and continuation: stale steps (2 min; 5 for `plan`) and question photos stuck in `measuring` for 2 min, re-claimed and re-run; questions unanswered for 10 minutes, continued with the best candidate marked uncertain (skipped while a photo for it is analysing). Follow-ups spawned | Compare-and-set on the old stamp and run ([database 4](../database/README.md#steps-between-jobs-)); the `score` claim |
 | `idle` | 60 s | Limiter keys (`retain_recent`, `shrink_to_fit`), idle broadcast channels, unheld plan locks | In memory |
+| `beliefs` | 60 s | `agent::beliefs::sync_pending(…, 50)`: shared memories not yet in Agent Memory (a failed mirror, or the subject's memories after a forget), oldest first, each recorded and marked synced; stops at the first failure to keep supersession order; the count is logged when above 0. Nothing when Agent Memory is off | `memory.belief_synced_at` (`unsynced_shared`, `mark_synced`) |
 | `cleanup` | 10 min | Expired idempotency keys, weather older than 2 hours, expired pending actions, finished jobs older than 7 days, account tombstones 24 h after Clerk confirmed the deletion (`TOMBSTONE_KEEP`) | Batches of 500; `weather_cache` by key range ([database 4](../database/README.md#cleanup-no-ttl)) |
 | `weather` | 1 h | Group gardens by cell, fetch each missing cell once (batches of 50, a failed batch retried once, then cell by cell, `integrations::open_meteo::fetch_cells`), cache them; fire forecast alerts (task + push to every member) and plan triggers (task on the rule's plant) | `weather_cache:[hour, cell]`; tasks deduplicated by the unique `alert_key` ([database 4](../database/README.md#alert-dedupe-)) |
 | `soil` | 15 min | `SoilGrids` for due gardens, at most 4 a run (its limit is 5 calls a minute): `pending`, or `unavailable` past `soil_retry_at`. A failure stores `unavailable` with the next attempt `soil_retry_after` it ([contracts 9](../architecture/contracts.md#gardens)): 15 minutes after an outage (timeout, connection error, `5xx`, `429`), 7 days after `NotFound` (null pixels at the point and the 8 nearby probes). So a null-pixel garden costs its 9 paced calls once a week, not every 15 minutes; an outage stops at the first call. `POST /gardens` makes the first attempt the same way (`fetch_soil_profile`) | `garden.soil_profile`, `garden.soil_retry_at`; `gardens_due_soil_profile`, `soil_profile_failed` |
@@ -664,6 +677,8 @@ Each task is a loop on the process `TaskTracker`: `interval_at` with a first del
 | A pending scan (`DELETE /scans/{id}`, editor) | `start_scan_deletion` (`pending` only, `409` otherwise); `204` | Its prefix; its own short step list |
 | A member leaving or removed | `remove_member` (the last owner can't) | Their conversations' image prefixes; their conversations and unshared chat memories in that garden |
 | An account (`DELETE /me`, or `user.deleted`) | The plan, for the `202` body; then `start_account_deletion`, the tombstone's compare-and-set: a second request, or the webhook during a `DELETE /me` cascade, starts nothing | Transfers; each solely used garden as above; each shared garden left as a member; scan feedback; the user; the account at Clerk, retried with back-off up to an hour until it succeeds; then `finish_account_deletion` |
+
+**Agent Memory before the records.** After the objects and before the records, a garden or plant target erases its scope in Agent Memory (`BeliefStore::forget`; a garden's scope holds its plants'). A failure stops the cascade with `DeletionError::Beliefs`, the records stay marked, and the next start retries it, the same rule as the objects; forgetting is idempotent. `DeletionTarget::Plant` doesn't name the garden, which is part of the plant's scope path, so `DELETE /plants/{id}` passes it with `spawn_plant`. A plant cascade resumed after a restart doesn't know its garden (`garden_of` hides a plant being deleted) and skips the step with a `warn`; the first run erased the scope unless it failed exactly there. Account deletion needs nothing: shared memories stay with the garden (a garden deleted with the account forgets its scope as above) and private ones were never sent.
 
 The record steps are `CascadeStep::steps_for(target)` in [database 4](../database/README.md#deletion-) order, each a batch of 500 repeated until it deletes nothing; a missed step fails loudly on `REFERENCE ON DELETE REJECT` instead of orphaning.
 
@@ -773,6 +788,12 @@ The paths added in v0.3 each have a test. A worker's events after its job comple
 @@test tests.rs a_tombstoned_accounts_token_is_401_and_never_creates_a_user@@
 
 @@test tests.rs a_second_delete_me_while_a_cascade_runs_starts_nothing@@
+
+Agent Memory (`tests/beliefs.rs`, over `MockBeliefStore` and a hand-written `SlowBeliefs`): `GET /plants/{id}/beliefs` answers `available: false` without Agent Memory, on an error and after 3 s of a slow store (paused time); returns the current beliefs and only the superseded history; is `404` to a non-member. A plant cascade forgets its scope before the first record batch, and a failed forget stops it with `DeletionError::Beliefs` before any record. The config tests cover the three variables: none set, all set (the key never in the formatted config), and a partial set refused naming the missing one.
+
+@@test tests/beliefs.rs a_member_reads_current_beliefs_and_the_superseded_history@@
+
+@@test tests/beliefs.rs a_failed_forget_stops_the_cascade_before_the_records@@
 
 @@test tests.rs soil_failures_schedule_the_next_attempt_by_their_kind@@
 

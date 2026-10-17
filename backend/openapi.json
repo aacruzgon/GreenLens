@@ -2272,6 +2272,45 @@
         }
       }
     },
+    "/plants/{id}/beliefs": {
+      "get": {
+        "tags": [
+          "plants"
+        ],
+        "summary": "`GET /plants/{id}/beliefs`: what is believed about the plant now (its current beliefs and its\ngarden's) and its superseded beliefs, newest first, from Agent Memory. Shared memories only,\nso any member. Never a 5xx: Agent Memory off, failing or slower than 3 s is\n`available: false` with empty lists.",
+        "operationId": "plant_beliefs",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlantBeliefs"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/plants/{id}/measurements": {
       "get": {
         "tags": [
@@ -4002,6 +4041,42 @@
         },
         "additionalProperties": false
       },
+      "Belief": {
+        "type": "object",
+        "description": "A shared memory as Agent Memory holds it ([contracts 8], beliefs): the current value of one\nkey of a plant or of its garden, or, in `PlantBeliefs.history`, an earlier one.",
+        "required": [
+          "key",
+          "value",
+          "about_plant",
+          "learned_at"
+        ],
+        "properties": {
+          "about_plant": {
+            "type": "boolean",
+            "description": "`false` for a garden-level fact."
+          },
+          "key": {
+            "type": "string",
+            "description": "The belief key: `watering`, `last_treatment`, `scan_summary`, `note_<memory id>`."
+          },
+          "learned_at": {
+            "$ref": "#/components/schemas/Timestamp",
+            "description": "When it was learned: the memory's `created_at`."
+          },
+          "memory_id": {
+            "$ref": "#/components/schemas/Id",
+            "description": "The memory it was recorded from; absent if Agent Memory lost the label."
+          },
+          "superseded_at": {
+            "$ref": "#/components/schemas/Timestamp",
+            "description": "When a newer memory on the same key replaced it; absent while it is current."
+          },
+          "value": {
+            "type": "string",
+            "description": "The memory's text."
+          }
+        }
+      },
       "Budget": {
         "type": "string",
         "description": "`details.budget` of `budget_exceeded`.",
@@ -4565,6 +4640,10 @@
           "text": {
             "type": "string",
             "description": "The note."
+          },
+          "topic": {
+            "$ref": "#/components/schemas/MemoryTopic",
+            "description": "What the note is about; `other` when absent."
           }
         },
         "additionalProperties": false
@@ -6859,6 +6938,7 @@
           "id",
           "garden_id",
           "kind",
+          "topic",
           "text",
           "source",
           "shared",
@@ -6896,6 +6976,10 @@
           "text": {
             "type": "string",
             "description": "The text."
+          },
+          "topic": {
+            "$ref": "#/components/schemas/MemoryTopic",
+            "description": "What it is about."
           }
         }
       },
@@ -6933,6 +7017,24 @@
           "pipeline",
           "chat",
           "user"
+        ]
+      },
+      "MemoryTopic": {
+        "type": "string",
+        "description": "`Memory.topic`: what a memory is about, from a fixed list. With the kind it names the\nmemory's belief key in Agent Memory ([`crate::ports::belief_key`]), so a newer memory on the\nsame topic supersedes the older one instead of standing beside it.",
+        "enum": [
+          "watering",
+          "feeding",
+          "treatment",
+          "pruning",
+          "planting",
+          "location",
+          "container",
+          "soil",
+          "light",
+          "health",
+          "harvest",
+          "other"
         ]
       },
       "MessageCompleted": {
@@ -7566,6 +7668,7 @@
                 "id",
                 "garden_id",
                 "kind",
+                "topic",
                 "text",
                 "source",
                 "shared",
@@ -7603,6 +7706,10 @@
                 "text": {
                   "type": "string",
                   "description": "The text."
+                },
+                "topic": {
+                  "$ref": "#/components/schemas/MemoryTopic",
+                  "description": "What it is about."
                 }
               }
             },
@@ -8654,6 +8761,35 @@
           "status": {
             "$ref": "#/components/schemas/PlantStatus",
             "description": "Health status."
+          }
+        }
+      },
+      "PlantBeliefs": {
+        "type": "object",
+        "description": "`GET /plants/{plant_id}/beliefs`: what is believed about a plant now, and what was believed\nbefore. Shared memories only, so every member may read it.",
+        "required": [
+          "available",
+          "current",
+          "history"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "`false` when Agent Memory isn't configured or didn't answer; both lists are then empty."
+          },
+          "current": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Belief"
+            },
+            "description": "The plant's current beliefs and its garden's, one per key."
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Belief"
+            },
+            "description": "The plant's superseded beliefs, newest first."
           }
         }
       },

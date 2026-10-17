@@ -4,7 +4,7 @@
 use domain::{
     error::{DomainError, ErrorCode},
     id::MemoryId,
-    ports::{BlobError, ModelError, StoreError},
+    ports::{BlobError, ModelError, ProviderError, StoreError},
 };
 
 /// Why a chat turn could not start. Returned before the stream exists, so `api` answers with an
@@ -90,6 +90,24 @@ pub enum MemoryError {
     /// The cheap model's answer did not parse.
     #[error("memory extraction output unusable")]
     Output,
+}
+
+/// Why the belief sweep ([`crate::beliefs::sync_pending`]) stopped. Nothing is lost: the
+/// memories not yet recorded stay unsynced for the next run.
+#[derive(Debug, thiserror::Error)]
+pub enum BeliefSyncError {
+    /// Reading the unsynced memories or marking one synced failed.
+    #[error("memory store failed in the belief sweep")]
+    Store(#[from] StoreError),
+    /// Agent Memory refused or missed a record; the sweep stopped there to keep the order.
+    #[error("agent memory failed after {synced} records")]
+    Record {
+        /// Memories recorded before the failure.
+        synced: usize,
+        /// The provider's error.
+        #[source]
+        source: ProviderError,
+    },
 }
 
 /// The `error` event's code and text for a model failure after the stream started

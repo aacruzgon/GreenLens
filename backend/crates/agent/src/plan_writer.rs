@@ -3,13 +3,13 @@
 //! validation checks them, the failures go back once, and the passing steps are returned.
 //!
 //! It stores nothing. `pipeline` builds the [`PlanInput`] (diagnosis, problems, treatments,
-//! organisms, shared memories, constraints, neighbours), calls [`PlanWriter::write`] and
+//! organisms, shared memories, the plant's current beliefs, constraints, neighbours), calls [`PlanWriter::write`] and
 //! assembles and stores the `ActionPlan` under the scan's plan lock.
 
 use std::sync::{Arc, LazyLock};
 
 use domain::{
-    chat::{Memory, MemorySource, Usage},
+    chat::{Belief, Memory, MemorySource, Usage},
     id::{OrganismId, ProblemId, SourceId, TreatmentId},
     knowledge::{OrganismSeed, ProblemSeed, SeedOrganismRole, SpeciesSeed, TreatmentSeed},
     ports::{ChatMessage, ChatModel, ChatPurpose, ChatRequest, ChatRole, ContentPart, StopReason},
@@ -25,6 +25,7 @@ use domain::{
 use serde::Serialize;
 
 use crate::{
+    context::BeliefView,
     error::{PlanWriterError, PrivateMemory},
     prompt::{DataKind, PLAN_PROMPT_VERSION, data_json, plan_system},
     safety::{PlanDraft, ProductCatalogue, RuleFailure, ValidationContext, validate_plan},
@@ -93,6 +94,11 @@ pub struct PlanInput<'k> {
     pub organisms: &'k [OrganismSeed],
     /// Shared memories of the plant and the garden.
     pub memories: SharedMemories<'k>,
+    /// The current beliefs of the plant and its garden from Agent Memory
+    /// ([`crate::beliefs::current_beliefs`]): the latest value of each key, rendered as standing
+    /// facts and constraints. Agent Memory holds only shared memories, so the rule that the plan
+    /// writer reads only shared memories still holds. Empty when Agent Memory is off or slow.
+    pub beliefs: &'k [Belief],
     /// Constraints carried forward from the current plan.
     pub constraints: &'k [PlanConstraint],
     /// Up to 5 neighbours, nearest first ([contracts 7], neighbours for the plan writer).
@@ -230,6 +236,10 @@ impl PlanWriter {
                 .map(|m| m.text.as_str())
                 .collect();
             content.push(ContentPart::Text(data_json(DataKind::Memories, &texts)));
+        }
+        if !input.beliefs.is_empty() {
+            let beliefs: Vec<BeliefView<'_>> = input.beliefs.iter().map(BeliefView::new).collect();
+            content.push(ContentPart::Text(data_json(DataKind::Beliefs, &beliefs)));
         }
         content.push(ContentPart::Text(
             "Write the action plan for this plant as the JSON object the schema describes."

@@ -224,6 +224,7 @@ fn harness(setup: Setup) -> (ChatAgent, Arc<ScriptedModel>, Arc<Seen>) {
             weather_cache: Arc::new(MockWeatherCacheRepo::new()),
         },
         memory: Arc::new(setup.memory),
+        beliefs: Arc::new(domain::ports::NoBeliefs),
         knowledge: Arc::new(MockKnowledgeStore::new()),
         chat: model.clone(),
         classifier: Arc::new(classifier),

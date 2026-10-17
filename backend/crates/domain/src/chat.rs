@@ -579,6 +579,59 @@ pub enum MemoryKind {
     Summary,
 }
 
+/// `Memory.topic`: what a memory is about, from a fixed list. With the kind it names the
+/// memory's belief key in Agent Memory ([`crate::ports::belief_key`]), so a newer memory on the
+/// same topic supersedes the older one instead of standing beside it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryTopic {
+    /// How and how often it is watered.
+    Watering,
+    /// Fertiliser and compost.
+    Feeding,
+    /// Sprays, treatments and pest control.
+    Treatment,
+    /// Pruning, pinching and staking.
+    Pruning,
+    /// Sowing, planting and transplanting.
+    Planting,
+    /// Where it grows: bed, balcony, indoors.
+    Location,
+    /// The pot or container.
+    Container,
+    /// Soil, mulch and pH.
+    Soil,
+    /// Sun and shade.
+    Light,
+    /// Health, symptoms and the scan summaries.
+    Health,
+    /// Harvests and yield.
+    Harvest,
+    /// Anything else; never supersedes another memory.
+    #[default]
+    Other,
+}
+
+impl MemoryTopic {
+    /// The wire name, also the belief key's stem.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Watering => "watering",
+            Self::Feeding => "feeding",
+            Self::Treatment => "treatment",
+            Self::Pruning => "pruning",
+            Self::Planting => "planting",
+            Self::Location => "location",
+            Self::Container => "container",
+            Self::Soil => "soil",
+            Self::Light => "light",
+            Self::Health => "health",
+            Self::Harvest => "harvest",
+            Self::Other => "other",
+        }
+    }
+}
+
 /// `Memory.source` ([contracts 8], memory).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -604,6 +657,8 @@ pub struct Memory {
     pub plant_id: Option<PlantId>,
     /// What kind.
     pub kind: MemoryKind,
+    /// What it is about.
+    pub topic: MemoryTopic,
     /// The text.
     pub text: String,
     /// Where it came from.
@@ -637,6 +692,66 @@ pub struct CreateMemoryRequest {
     pub plant_id: Option<PlantId>,
     /// The note.
     pub text: String,
+    /// What the note is about; `other` when absent.
+    #[serde(default)]
+    pub topic: MemoryTopic,
+}
+
+/// A shared memory as Agent Memory holds it ([contracts 8], beliefs): the current value of one
+/// key of a plant or of its garden, or, in `PlantBeliefs.history`, an earlier one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct Belief {
+    /// The belief key: `watering`, `last_treatment`, `scan_summary`, `note_<memory id>`.
+    pub key: String,
+    /// The memory's text.
+    pub value: String,
+    /// `false` for a garden-level fact.
+    pub about_plant: bool,
+    /// The memory it was recorded from; absent if Agent Memory lost the label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    pub memory_id: Option<MemoryId>,
+    /// When it was learned: the memory's `created_at`.
+    pub learned_at: Timestamp,
+    /// When a newer memory on the same key replaced it; absent while it is current.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    pub superseded_at: Option<Timestamp>,
+}
+
+/// `GET /plants/{plant_id}/beliefs`: what is believed about a plant now, and what was believed
+/// before. Shared memories only, so every member may read it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct PlantBeliefs {
+    /// `false` when Agent Memory isn't configured or didn't answer; both lists are then empty.
+    pub available: bool,
+    /// The plant's current beliefs and its garden's, one per key.
+    pub current: Vec<Belief>,
+    /// The plant's superseded beliefs, newest first.
+    pub history: Vec<Belief>,
+}
+
+/// A `search_memory` hit from Agent Memory: a current shared belief that matched the query.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BeliefHit {
+    /// The belief key.
+    pub key: String,
+    /// "watering is every 2 days".
+    pub text: String,
+    /// `false` for a garden-level fact.
+    pub about_plant: bool,
+    /// Agent Memory's fused score.
+    pub score: f32,
+}
+
+/// What `search_memory` returns: the local hits (shared memories and the caller's own chat
+/// memories) and, when Agent Memory answers in time, the matching current beliefs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MemorySearch {
+    /// From the database, exact within the garden.
+    pub memories: Vec<Memory>,
+    /// From Agent Memory; empty when it is off, slow or down.
+    pub beliefs: Vec<BeliefHit>,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -653,7 +768,7 @@ pub enum ToolName {
     ViewImage,
     /// `WeatherSummary["forecast"]`.
     GetForecast,
-    /// `Memory[]`.
+    /// [`MemorySearch`].
     SearchMemory,
     /// [`SimilarCase`] list.
     FindSimilarCases,
@@ -803,6 +918,57 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&e).unwrap(),
             r#"{"v":1,"message_id":"01JAX3K9T6R2B8V0QZ4M7D1E5F","usage":{"tokens_in":812,"tokens_out":140}}"#
+        );
+    }
+
+    #[test]
+    fn memories_carry_their_topic() {
+        let m = Memory {
+            id: "01JAX3K9T6R2B8V0QZ4M7D1E5F".parse().unwrap(),
+            garden_id: "01JAX3K9T6R2B8V0QZ4M7D1E5G".parse().unwrap(),
+            plant_id: None,
+            kind: MemoryKind::Fact,
+            topic: MemoryTopic::Container,
+            text: "Everything is in containers.".to_owned(),
+            source: MemorySource::User,
+            shared: true,
+            created_at: "2026-10-17T15:00:00Z".parse().unwrap(),
+        };
+        assert_eq!(
+            serde_json::to_string(&m).unwrap(),
+            r#"{"id":"01JAX3K9T6R2B8V0QZ4M7D1E5F","garden_id":"01JAX3K9T6R2B8V0QZ4M7D1E5G","kind":"fact","topic":"container","text":"Everything is in containers.","source":"user","shared":true,"created_at":"2026-10-17T15:00:00Z"}"#
+        );
+        let note: CreateMemoryRequest = serde_json::from_str(
+            r#"{"garden_id":"01JAX3K9T6R2B8V0QZ4M7D1E5G","text":"Organic only."}"#,
+        )
+        .unwrap();
+        assert_eq!(note.topic, MemoryTopic::Other);
+    }
+
+    #[test]
+    fn plant_beliefs_write_current_and_history() {
+        let b = PlantBeliefs {
+            available: true,
+            current: vec![Belief {
+                key: "watering".to_owned(),
+                value: "Watered every 2 days.".to_owned(),
+                about_plant: true,
+                memory_id: Some("01JAX3K9T6R2B8V0QZ4M7D1E5F".parse().unwrap()),
+                learned_at: "2026-10-17T15:00:00Z".parse().unwrap(),
+                superseded_at: None,
+            }],
+            history: vec![Belief {
+                key: "watering".to_owned(),
+                value: "Watered every 3 days.".to_owned(),
+                about_plant: true,
+                memory_id: None,
+                learned_at: "2026-10-14T15:00:00Z".parse().unwrap(),
+                superseded_at: Some("2026-10-17T15:00:00Z".parse().unwrap()),
+            }],
+        };
+        assert_eq!(
+            serde_json::to_string(&b).unwrap(),
+            r#"{"available":true,"current":[{"key":"watering","value":"Watered every 2 days.","about_plant":true,"memory_id":"01JAX3K9T6R2B8V0QZ4M7D1E5F","learned_at":"2026-10-17T15:00:00Z"}],"history":[{"key":"watering","value":"Watered every 3 days.","about_plant":true,"learned_at":"2026-10-14T15:00:00Z","superseded_at":"2026-10-17T15:00:00Z"}]}"#
         );
     }
 

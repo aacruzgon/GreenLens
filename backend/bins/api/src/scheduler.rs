@@ -38,7 +38,7 @@ pub struct Task {
 
 /// Every task of the table in api.md section 16. The 10-minute question continuation is part
 /// of `sweep` (`Pipeline::sweep` owns it), not a task of its own.
-pub const TASKS: [Task; 8] = [
+pub const TASKS: [Task; 9] = [
     Task {
         name: "requeue",
         every: Duration::from_secs(5),
@@ -53,6 +53,11 @@ pub const TASKS: [Task; 8] = [
         name: "idle",
         every: Duration::from_mins(1),
         first_after: Duration::from_mins(1),
+    },
+    Task {
+        name: "beliefs",
+        every: Duration::from_mins(1),
+        first_after: Duration::from_secs(20),
     },
     Task {
         name: "cleanup",
@@ -88,6 +93,7 @@ pub fn start(state: &Arc<AppState>) {
             "requeue" => every(state, task, requeue),
             "sweep" => every(state, task, sweep),
             "idle" => every(state, task, idle),
+            "beliefs" => every(state, task, beliefs),
             "cleanup" => every(state, task, cleanup),
             "weather" => every(state, task, weather_and_triggers),
             "soil" => every(state, task, soil),
@@ -156,6 +162,37 @@ async fn idle(state: Arc<AppState>) -> Result<(), ApiError> {
     state.hub.sweep_idle();
     state.writers.sweep_idle();
     Ok(())
+}
+
+/// Shared memories per run of the belief sweep.
+const BELIEF_SYNC_BATCH: u32 = 50;
+
+/// Records shared memories not yet in Agent Memory, oldest first, stopping at the first failure
+/// (architecture 7, memory): writes whose mirror failed, and the memories a forget marked for
+/// re-recording. Nothing when Agent Memory is off.
+async fn beliefs(state: Arc<AppState>) -> Result<(), ApiError> {
+    let p = &state.ports;
+    match agent::beliefs::sync_pending(
+        p.memory.as_ref(),
+        p.beliefs.as_ref(),
+        p.clock.as_ref(),
+        BELIEF_SYNC_BATCH,
+    )
+    .await
+    {
+        Ok(0) => Ok(()),
+        Ok(synced) => {
+            tracing::info!(synced, "shared memories recorded in agent memory");
+            Ok(())
+        }
+        Err(agent::BeliefSyncError::Store(e)) => Err(e.into()),
+        Err(agent::BeliefSyncError::Record { synced, source }) => {
+            if synced > 0 {
+                tracing::info!(synced, "shared memories recorded in agent memory");
+            }
+            Err(source.into())
+        }
+    }
 }
 
 /// No TTL in `SurrealDB` ([database 4], cleanup): expired idempotency keys, weather older than

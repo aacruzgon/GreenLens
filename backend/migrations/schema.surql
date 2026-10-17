@@ -480,6 +480,7 @@ DEFINE TABLE OVERWRITE memory SCHEMAFULL;
 DEFINE FIELD OVERWRITE garden     ON memory TYPE record<garden> REFERENCE ON DELETE REJECT;
 DEFINE FIELD OVERWRITE plant      ON memory TYPE option<record<plant>> REFERENCE ON DELETE REJECT;   -- NONE: a garden-level fact
 DEFINE FIELD OVERWRITE kind       ON memory TYPE "fact" | "event" | "summary";
+DEFINE FIELD OVERWRITE topic      ON memory TYPE "watering" | "feeding" | "treatment" | "pruning" | "planting" | "location" | "container" | "soil" | "light" | "health" | "harvest" | "other" DEFAULT "other";   -- with kind, the belief key in Agent Memory
 DEFINE FIELD OVERWRITE text       ON memory TYPE string;
 DEFINE FIELD OVERWRITE source     ON memory TYPE "pipeline" | "chat" | "user";
 DEFINE FIELD OVERWRITE shared     ON memory TYPE bool DEFAULT false;
@@ -490,7 +491,11 @@ DEFINE FIELD OVERWRITE source_msg ON memory TYPE option<record<message>>;   -- p
 DEFINE FIELD OVERWRITE embedding  ON memory TYPE array<float>;
 DEFINE FIELD OVERWRITE embedding_model ON memory TYPE string;
 DEFINE FIELD OVERWRITE created_at ON memory TYPE datetime DEFAULT time::now() READONLY;
+-- NONE: not yet recorded in Agent Memory. Only shared memories are mirrored; `share` leaves it unset.
+DEFINE FIELD OVERWRITE belief_synced_at ON memory TYPE option<datetime>;
 DEFINE INDEX IF NOT EXISTS memory_garden ON memory FIELDS garden, shared;
+-- The mirror sweep: shared and unsynced, oldest first.
+DEFINE INDEX IF NOT EXISTS memory_unsynced ON memory FIELDS shared, belief_synced_at, created_at;
 DEFINE INDEX IF NOT EXISTS memory_author ON memory FIELDS author;
 DEFINE INDEX IF NOT EXISTS memory_plant  ON memory FIELDS plant;
 

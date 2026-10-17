@@ -200,6 +200,8 @@ WHERE id IN $scans AND (plan != NONE OR diagnosis != NONE OR open_question != NO
 
     /// Deletions started but not finished, to resume after a restart. A member's removal leaves
     /// no marker; its conversations are found again by `member_conversations`.
+    /// A plant's garden, whether or not it is being deleted.
+    pub const PLANT_GARDEN: &str = "SELECT VALUE garden FROM ONLY $plant;";
     pub const UNFINISHED: &str = "SELECT VALUE id FROM garden WHERE deleting_at != NONE;
 SELECT VALUE id FROM plant WHERE deleting_at != NONE AND garden.deleting_at = NONE;
 SELECT VALUE id FROM scan WHERE deleting_at != NONE AND plant.deleting_at = NONE AND garden.deleting_at = NONE;";
@@ -575,6 +577,21 @@ impl DeletionRepo for SurrealStore {
             targets.push(DeletionTarget::PendingScan(s));
         }
         Ok(targets)
+    }
+
+    async fn deleting_plant_garden(&self, plant: PlantId) -> Result<Option<GardenId>, StoreError> {
+        const WHAT: &str = "deleting plant's garden";
+        let mut results = run_tx(&self.db, sql::PLANT_GARDEN, |q| {
+            q.bind(("plant", rid(&plant)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        let garden: Option<RecordId> = results.take(0).map_err(|e| take_failed(WHAT, e))?;
+        garden
+            .as_ref()
+            .map(from_rid)
+            .transpose()
+            .map_err(|e: RowError| e.into_store(WHAT))
     }
 
     /// Runs [`sql::ACCOUNT_GARDENS`] and decides each garden with architecture 5's rules: the

@@ -17,10 +17,10 @@ use domain::{
     id::{PendingActionId, PlantId, QuestionId, ScanId},
     jobs::{CompleteJob, WorkerEvent},
     ports::{
-        AuthAdmin, AuthVerifier, BlobStore, ChatModel, Clock, CompletionOutcome, Geocoder, IdGen,
-        KnowledgeRepo, KnowledgeStore, Lease, LeasedJob, MemoryStore, Notifier, PhotoAnswerStart,
-        PlanWrite, QuestionStepClaim, SoilProvider, Store, TextClassifier, TextEmbedder,
-        WeatherProvider, WebhookVerifier,
+        AuthAdmin, AuthVerifier, BeliefStore, BlobStore, ChatModel, Clock, CompletionOutcome,
+        Geocoder, IdGen, KnowledgeRepo, KnowledgeStore, Lease, LeasedJob, MemoryStore, NoBeliefs,
+        Notifier, PhotoAnswerStart, PlanWrite, QuestionStepClaim, SoilProvider, Store,
+        TextClassifier, TextEmbedder, WeatherProvider, WebhookVerifier,
     },
     records::plan::ActionPlan,
     scan::{AnswerRequest, Plant, Scan, SpeciesChoice},
@@ -28,6 +28,7 @@ use domain::{
     wire::Timestamp,
 };
 use integrations::{
+    agent_memory::{AgentMemory, AgentMemoryConfig},
     anthropic::{AnthropicClient, AnthropicConfig, ModelIds},
     clerk::{ClerkAdmin, ClerkAdminConfig, ClerkVerifier, ClerkVerifierConfig},
     expo_push::{ExpoPush, ExpoPushConfig},
@@ -277,6 +278,7 @@ struct Outbound {
     notifier: Arc<dyn Notifier>,
     chat_model: Arc<dyn ChatModel>,
     classifier: Arc<dyn TextClassifier>,
+    beliefs: Arc<dyn BeliefStore>,
 }
 
 async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Outbound> {
@@ -326,6 +328,10 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
             256,
         )),
     };
+    let beliefs: Arc<dyn BeliefStore> = match agent_memory(config) {
+        Some(c) => Arc::new(AgentMemory::new(http.clone(), c)),
+        None => Arc::new(NoBeliefs),
+    };
     Ok(Outbound {
         auth: Arc::new(ClerkVerifier::new(http.clone(), verifier)),
         webhooks: Arc::new(
@@ -367,7 +373,37 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         )),
         chat_model,
         classifier,
+        beliefs,
     })
+}
+
+/// Agent Memory's settings when it is configured, logging whether it is on; the key is never
+/// logged.
+fn agent_memory(config: &Config) -> Option<AgentMemoryConfig> {
+    let Some(m) = &config.providers.agent_memory else {
+        tracing::info!("agent memory off: AGENT_MEMORY_URL is not set");
+        return None;
+    };
+    tracing::info!(url = %m.url, context = %m.context_id, "agent memory on");
+    Some(AgentMemoryConfig::new(
+        m.url.clone(),
+        m.context_id.clone(),
+        m.api_key.clone(),
+    ))
+}
+
+/// The store's memories behind the belief mirror: every memory write in `api`, the agent and
+/// the pipeline goes through it, so shared memories reach Agent Memory.
+fn mirrored(
+    memory: Arc<dyn MemoryStore>,
+    beliefs: &Arc<dyn BeliefStore>,
+    clock: &Arc<dyn Clock>,
+) -> Arc<dyn MemoryStore> {
+    Arc::new(agent::MirroredMemory::new(
+        memory,
+        Arc::clone(beliefs),
+        Arc::clone(clock),
+    ))
 }
 
 /// The object store the config points at.
@@ -396,6 +432,7 @@ fn pipeline_api(
         knowledge: Arc::clone(&ports.knowledge),
         weather: Arc::clone(&ports.weather),
         memory: Arc::clone(&ports.memory),
+        beliefs: Arc::clone(&ports.beliefs),
         embedder: Arc::clone(&ports.embedder),
         blobs: Arc::clone(&ports.blob),
         measurer,
@@ -409,6 +446,7 @@ fn pipeline_api(
             diagnosis_margin: config.diagnosis_margin,
             weather: config.weather,
             cpu_permits: Arc::new(Semaphore::new(config.measure_permits.max(1))),
+            beliefs_read_timeout: agent::config::BELIEFS_READ_TIMEOUT,
         },
     }))
 }
@@ -425,6 +463,7 @@ fn chat_turns(
         agent::AgentDeps {
             stores: agent::AgentStores::from_store(&ports.store),
             memory: Arc::clone(&ports.memory),
+            beliefs: Arc::clone(&ports.beliefs),
             knowledge: Arc::clone(&ports.knowledge),
             chat,
             classifier,
@@ -466,7 +505,8 @@ pub async fn build(
     let store = dbs.store;
     let ports = Ports {
         store: Arc::clone(&store),
-        memory: dbs.memory,
+        memory: mirrored(dbs.memory, &out.beliefs, &clock),
+        beliefs: Arc::clone(&out.beliefs),
         knowledge: dbs.knowledge,
         blob: Arc::clone(&blob),
         auth: out.auth,
@@ -519,6 +559,7 @@ pub async fn build(
     let deletions = DeletionRunner::new(
         store,
         deletes.clone(),
+        out.beliefs,
         out.auth_admin,
         pusher,
         clock,

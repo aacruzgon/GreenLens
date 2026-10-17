@@ -3,9 +3,12 @@
 
 use std::time::Instant;
 
-use agent::plan_writer::{PlanInput, SharedMemories};
+use agent::{
+    beliefs::current_beliefs,
+    plan_writer::{PlanInput, SharedMemories},
+};
 use domain::{
-    chat::MemoryKind,
+    chat::{Belief, MemoryKind, MemoryTopic},
     events::{ScanEventBody, Stage},
     id::{OrganismId, SourceId, SpeciesId},
     knowledge::{OrganismSeed, SpeciesSeed},
@@ -38,6 +41,8 @@ struct PlanContext {
     organisms: Vec<OrganismSeed>,
     species: Option<SpeciesSeed>,
     memories: Vec<domain::chat::Memory>,
+    /// The plant's and its garden's current beliefs: shared memories only.
+    beliefs: Vec<Belief>,
     constraints: Vec<domain::records::plan::PlanConstraint>,
     neighbours: Vec<domain::records::plan::PlanNeighbour>,
     known_sources: Vec<SourceId>,
@@ -110,6 +115,7 @@ impl Pipeline {
             treatments: &ctx.treatments,
             organisms: &ctx.organisms,
             memories,
+            beliefs: &ctx.beliefs,
             constraints: &ctx.constraints,
             neighbours: &ctx.neighbours,
             open_question: snap.scan.open_question.as_ref(),
@@ -238,11 +244,20 @@ impl Pipeline {
             Some(s) => k.species(s).await?,
             None => None,
         };
-        let memories = self
-            .deps
-            .memory
-            .shared_for_plan(snap.garden.id, snap.plant.id)
-            .await?;
+        // The belief read runs beside the memory read and never fails: Agent Memory off, down
+        // or slower than its timeout gives no beliefs, and the plan is written without them.
+        let (memories, beliefs) = tokio::join!(
+            self.deps
+                .memory
+                .shared_for_plan(snap.garden.id, snap.plant.id),
+            current_beliefs(
+                self.deps.beliefs.as_ref(),
+                snap.garden.id,
+                Some(snap.plant.id),
+                self.deps.config.beliefs_read_timeout,
+            ),
+        );
+        let memories = memories?;
         let constraints = snap
             .plan
             .as_ref()
@@ -296,6 +311,7 @@ impl Pipeline {
             organisms,
             species,
             memories,
+            beliefs,
             constraints,
             neighbours,
             known_sources,
@@ -350,6 +366,7 @@ impl Pipeline {
             id: self.deps.ids.id(),
             plant: Some(snap.plant.id),
             kind: MemoryKind::Summary,
+            topic: MemoryTopic::Health,
             text,
             embedding,
             embedding_model: model.name,

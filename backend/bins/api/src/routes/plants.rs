@@ -1,17 +1,20 @@
 //! Plants, their timeline and growth series, and species confirmation ([contracts 9], plants;
 //! [contracts 3], `POST /plants/{id}/species`).
 
+use std::time::Duration;
+
 use axum::{extract::State, http::StatusCode, response::Response};
 
 use domain::{
     authz::{Editor, Owner, Viewer},
+    chat::PlantBeliefs,
     error::ErrorBody,
     garden::plants::{
         CreatePlantRequest, MeasurementPoint, MeasurementsQuery, PlantsQuery, TimelineEntry,
         UpdatePlantRequest,
     },
     id::table,
-    ports::{IdGenExt, NewPlant},
+    ports::{BeliefSubject, IdGenExt, NewPlant},
     scan::{ConfirmSpeciesRequest, Plant},
     url::Sign,
     wire::{Page, PageRequest},
@@ -112,7 +115,7 @@ pub async fn delete_plant(
         .store
         .start_plant_deletion(access.member, access.id, state.ports.clock.now())
         .await?;
-    state.deletions.spawn(started);
+    state.deletions.spawn_plant(access.member.garden(), started);
     Ok(StatusCode::ACCEPTED)
 }
 
@@ -130,6 +133,61 @@ pub async fn timeline(
         .timeline(access.member, access.id, page)
         .await?;
     Ok(Wire::ok(entries.sign((), &state.signer())))
+}
+
+/// How long `GET /plants/{id}/beliefs` waits for Agent Memory: the adapter's own deadline of an
+/// entity read, for both reads together.
+const BELIEFS_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// `GET /plants/{id}/beliefs`: what is believed about the plant now (its current beliefs and its
+/// garden's) and its superseded beliefs, newest first, from Agent Memory. Shared memories only,
+/// so any member. Never a 5xx: Agent Memory off, failing or slower than 3 s is
+/// `available: false` with empty lists.
+#[utoipa::path(get, path = "/plants/{id}/beliefs", tag = "plants", params(("id" = String, Path)),
+    responses((status = 200, body = PlantBeliefs), (status = 404, body = ErrorBody)))]
+pub async fn plant_beliefs(
+    State(state): State<SharedState>,
+    access: Access<Viewer, table::Plant>,
+) -> Result<Wire<PlantBeliefs>, ApiError> {
+    let unavailable = PlantBeliefs {
+        available: false,
+        current: Vec::new(),
+        history: Vec::new(),
+    };
+    let beliefs = &state.ports.beliefs;
+    if !beliefs.enabled() {
+        return Ok(Wire::ok(unavailable));
+    }
+    let garden = access.member.garden();
+    let plant = access.id;
+    let subject = BeliefSubject {
+        garden,
+        plant: Some(plant),
+    };
+    let reads = async {
+        tokio::try_join!(
+            beliefs.current(garden, Some(plant)),
+            beliefs.history(subject)
+        )
+    };
+    match tokio::time::timeout(BELIEFS_TIMEOUT, reads).await {
+        Ok(Ok((current, history))) => Ok(Wire::ok(PlantBeliefs {
+            available: true,
+            current,
+            history: history
+                .into_iter()
+                .filter(|b| b.superseded_at.is_some())
+                .collect(),
+        })),
+        Ok(Err(e)) => {
+            tracing::warn!(%plant, error = %crate::error::chain(&e), "plant beliefs unavailable");
+            Ok(Wire::ok(unavailable))
+        }
+        Err(_) => {
+            tracing::warn!(%plant, "plant beliefs timed out");
+            Ok(Wire::ok(unavailable))
+        }
+    }
 }
 
 /// `GET /plants/{id}/measurements?quantity=`: the growth series, oldest first. Any member.

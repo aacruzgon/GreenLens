@@ -8,8 +8,14 @@
 //! (`…View<'a>` structs of `&'a` fields), serialising each record once with no copies.
 //!
 //! **Where each part goes.** The summary and recent messages form the stable start of the
-//! conversation; the anchor's data, the memory hits and the user's message go in the turn's last
-//! user message, each in a `<data>` block. The system prompt and tools stay byte-identical across
+//! conversation; the anchor's data, the current beliefs, the memory hits and the user's message
+//! go in the turn's last user message, each in a `<data>` block.
+//!
+//! **Beliefs.** The current beliefs of the anchor's plant and its garden (or of the garden for a
+//! garden anchor) come from Agent Memory ([`crate::beliefs::current_beliefs`]), loaded at the
+//! same time as the memory search and bounded by `beliefs_read_timeout`: Agent Memory off, down
+//! or slow leaves the block out. They hold only shared memories, the latest value of each key,
+//! and the system prompt says they win over an older memory hit that disagrees. The system prompt and tools stay byte-identical across
 //! turns, so the provider's prompt cache keeps them, and nothing earlier in the conversation is
 //! ever edited inside a turn's tool loop (the thinking blocks the loop replays stay valid).
 
@@ -17,7 +23,7 @@ use std::collections::BTreeMap;
 
 use domain::{
     authz::{ConversationOwner, Viewer},
-    chat::{Anchor, MessageRole},
+    chat::{Anchor, Belief, MessageRole},
     garden::{
         gardens::Garden,
         map::{GardenMap, neighbours},
@@ -39,6 +45,7 @@ use domain::{
 use serde::Serialize;
 
 use crate::{
+    beliefs::current_beliefs,
     deps::AgentDeps,
     prompt::{DataKind, data, data_json},
 };
@@ -98,6 +105,9 @@ pub struct TurnContext {
     pub data: AnchorData,
     /// The top memory hits: shared memories and the caller's own chat memories only.
     pub memories: Vec<MemoryHit>,
+    /// The current shared beliefs of the plant and its garden, or of the garden; empty when
+    /// Agent Memory is off, down or slow.
+    pub beliefs: Vec<Belief>,
 }
 
 /// How many open tasks and timeline entries the context carries.
@@ -187,15 +197,26 @@ pub async fn load(
         }
     };
 
-    // Without a query vector (the embedder failed) the turn goes on without memory hits.
-    let memories = match query {
-        Some(q) => {
-            deps.memory
-                .search(member, q, plant, deps.config.memory_hits)
-                .await?
+    // Without a query vector (the embedder failed) the turn goes on without memory hits. The
+    // belief read runs beside the search; it never fails, only comes back empty.
+    let search = async {
+        match query {
+            Some(q) => {
+                deps.memory
+                    .search(member, q, plant, deps.config.memory_hits)
+                    .await
+            }
+            None => Ok(Vec::new()),
         }
-        None => Vec::new(),
     };
+    let beliefs = current_beliefs(
+        deps.beliefs.as_ref(),
+        member.garden(),
+        plant,
+        deps.config.beliefs_read_timeout,
+    );
+    let (memories, beliefs) = tokio::join!(search, beliefs);
+    let memories = memories?;
 
     Ok(TurnContext {
         anchor,
@@ -203,6 +224,7 @@ pub async fn load(
         history,
         data,
         memories,
+        beliefs,
     })
 }
 
@@ -267,10 +289,14 @@ pub async fn garden_weather(
 }
 
 impl TurnContext {
-    /// The turn's last user message: the anchor's data, the memory hits, the user's images and
-    /// the user's words, each untrusted part in its own `<data>` block.
+    /// The turn's last user message: the anchor's data, the current beliefs, the memory hits,
+    /// the user's images and the user's words, each untrusted part in its own `<data>` block.
     pub fn turn_message(&self, user_text: &str, images: Vec<ContentPart>) -> ChatMessage {
         let mut content = vec![ContentPart::Text(self.render())];
+        if !self.beliefs.is_empty() {
+            let beliefs: Vec<BeliefView<'_>> = self.beliefs.iter().map(BeliefView::new).collect();
+            content.push(ContentPart::Text(data_json(DataKind::Beliefs, &beliefs)));
+        }
         if !self.memories.is_empty() {
             let texts: Vec<MemoryView<'_>> = self
                 .memories
@@ -308,6 +334,25 @@ impl TurnContext {
 struct MemoryView<'a> {
     text: &'a str,
     about_plant: bool,
+}
+
+/// A belief as the model reads it: the key, the value and whether it is about the plant. The
+/// ids and dates stay out of the prompt.
+#[derive(Serialize)]
+pub(crate) struct BeliefView<'a> {
+    key: &'a str,
+    value: &'a str,
+    about_plant: bool,
+}
+
+impl<'a> BeliefView<'a> {
+    pub(crate) fn new(b: &'a Belief) -> Self {
+        Self {
+            key: &b.key,
+            value: &b.value,
+            about_plant: b.about_plant,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -447,3 +492,6 @@ impl<'a> GardenView<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

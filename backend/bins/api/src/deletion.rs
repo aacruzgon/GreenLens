@@ -11,8 +11,13 @@
 //!    operation timeout, retried 5 times, drained at shutdown. When the objects can't all be
 //!    deleted, the records stay marked and the cascade resumes on the next start ("a failure
 //!    partway is retried from the start");
-//! 2. delete the records bottom-up in batches of 500, in `CascadeStep` order (database 4);
-//! 3. send `garden_deleted` pushes.
+//! 2. for a garden or a plant, erase its scope in Agent Memory (`BeliefStore::forget`; a
+//!    garden's takes its plants'), so no shared memory outlives its row there. A failure stops
+//!    the cascade with the records still marked, and it resumes on the next start, the same
+//!    rule as the objects. Account deletion needs nothing: shared memories stay with the garden
+//!    and private ones were never sent;
+//! 3. delete the records bottom-up in batches of 500, in `CascadeStep` order (database 4);
+//! 4. send `garden_deleted` pushes.
 //!
 //! **Resumable.** After a restart, `DeletionRepo::unfinished_deletions` lists every target still
 //! marked `deleting_at`, and the runner deletes its records again from the first step (each step
@@ -33,10 +38,10 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use domain::{
     authz::{self, AccessError, Owner, Viewer},
     garden::{account::AccountDeletion, push::PushPayload},
-    id::{AuthId, UserId},
+    id::{AuthId, GardenId, UserId},
     ports::{
-        AccountDeletionMarker, AuthAdmin, CascadeStep, Clock, DeletionStarted, DeletionTarget,
-        ObjectKey, ObjectPrefix, Store, StoreError,
+        AccountDeletionMarker, AuthAdmin, BeliefStore, BeliefSubject, CascadeStep, Clock,
+        DeletionStarted, DeletionTarget, ObjectKey, ObjectPrefix, ProviderError, Store, StoreError,
     },
     wire::V1,
 };
@@ -59,6 +64,10 @@ pub enum DeletionError {
     /// deletes the objects first.
     #[error("objects not deleted; the records stay for a resumed run")]
     Objects,
+    /// Agent Memory didn't erase the target's scope: the records stay so a later run erases it
+    /// first.
+    #[error("agent memory not erased; the records stay for a resumed run")]
+    Beliefs(#[source] ProviderError),
     /// Shutdown interrupted the Clerk retries; the tombstone resumes them.
     #[error("shut down before the Clerk account was deleted")]
     ShutDown,
@@ -69,6 +78,7 @@ pub enum DeletionError {
 pub struct DeletionRunner {
     store: Arc<dyn Store>,
     deletes: DeleteQueue,
+    beliefs: Arc<dyn BeliefStore>,
     auth_admin: Arc<dyn AuthAdmin>,
     pusher: Pusher,
     clock: Arc<dyn Clock>,
@@ -78,9 +88,14 @@ pub struct DeletionRunner {
 
 impl DeletionRunner {
     /// A runner over the ports and `AppState`'s delete queue.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "one parameter per port the cascade touches"
+    )]
     pub fn new(
         store: Arc<dyn Store>,
         deletes: DeleteQueue,
+        beliefs: Arc<dyn BeliefStore>,
         auth_admin: Arc<dyn AuthAdmin>,
         pusher: Pusher,
         clock: Arc<dyn Clock>,
@@ -90,6 +105,7 @@ impl DeletionRunner {
         Self {
             store,
             deletes,
+            beliefs,
             auth_admin,
             pusher,
             clock,
@@ -101,20 +117,37 @@ impl DeletionRunner {
     /// Runs a started cascade in the background. Not tied to the shutdown token: shutdown waits
     /// for it up to its drain deadline, and a cascade cut off there resumes on the next start.
     pub fn spawn(&self, started: DeletionStarted) {
+        self.spawn_in(started, None);
+    }
+
+    /// [`Self::spawn`] for a plant: `DeletionTarget::Plant` doesn't name the garden, and the
+    /// garden is part of the plant's scope path in Agent Memory.
+    pub fn spawn_plant(&self, garden: GardenId, started: DeletionStarted) {
+        self.spawn_in(started, Some(garden));
+    }
+
+    fn spawn_in(&self, started: DeletionStarted, garden: Option<GardenId>) {
         let runner = self.clone();
         self.tasks.spawn(async move {
             let target = started.target;
-            if let Err(error) = runner.run(started).await {
+            if let Err(error) = runner.run(started, garden).await {
                 tracing::error!(?target, error = %error, "deletion failed; it resumes on restart");
             }
         });
     }
 
-    /// Objects, then records, then pushes. Records go only after every object is gone.
-    pub async fn run(&self, started: DeletionStarted) -> Result<(), DeletionError> {
+    /// Objects, then the target's scope in Agent Memory, then records, then pushes. Records go
+    /// only after every object is gone and the scope is erased. `garden` is a plant's garden,
+    /// which its target doesn't carry.
+    pub async fn run(
+        &self,
+        started: DeletionStarted,
+        garden: Option<GardenId>,
+    ) -> Result<(), DeletionError> {
         if !self.delete_objects(started.prefixes, started.keys).await {
             return Err(DeletionError::Objects);
         }
+        self.forget_beliefs(started.target, garden).await?;
         self.delete_records(started.target).await?;
         if let Some(name) = started.garden_name
             && !started.notify.is_empty()
@@ -133,6 +166,48 @@ impl DeletionRunner {
                 .await;
         }
         Ok(())
+    }
+
+    /// Erases a garden's or a plant's scope in Agent Memory. Forgetting is idempotent, so a
+    /// resumed run repeats it.
+    async fn forget_beliefs(
+        &self,
+        target: DeletionTarget,
+        garden: Option<GardenId>,
+    ) -> Result<(), DeletionError> {
+        let subject = match (target, garden) {
+            (DeletionTarget::Garden(garden), _) => BeliefSubject {
+                garden,
+                plant: None,
+            },
+            (DeletionTarget::Plant(plant), Some(garden)) => BeliefSubject {
+                garden,
+                plant: Some(plant),
+            },
+            (DeletionTarget::Plant(plant), None) => {
+                // A resumed plant cascade: the target doesn't name the garden, and `garden_of`
+                // hides a plant being deleted. With no row left, an earlier run already passed
+                // this step, since the records go only after it.
+                if !self.beliefs.enabled() {
+                    return Ok(());
+                }
+                match self.store.deleting_plant_garden(plant).await? {
+                    Some(garden) => BeliefSubject {
+                        garden,
+                        plant: Some(plant),
+                    },
+                    None => return Ok(()),
+                }
+            }
+            (DeletionTarget::PendingScan(_) | DeletionTarget::Member { .. }, _) => return Ok(()),
+        };
+        if !self.beliefs.enabled() {
+            return Ok(());
+        }
+        self.beliefs
+            .forget(subject)
+            .await
+            .map_err(DeletionError::Beliefs)
     }
 
     /// The object deletes, submitted to the delete queue and awaited. Dropping this future (the
@@ -242,7 +317,7 @@ impl DeletionRunner {
             for garden in plan.delete {
                 let owner = authz::check_membership_of::<Owner>(&*self.store, user, garden).await?;
                 let started = self.store.start_garden_deletion(owner, now).await?;
-                self.run(started).await?;
+                self.run(started, None).await?;
             }
             for garden in plan.leave {
                 let member =

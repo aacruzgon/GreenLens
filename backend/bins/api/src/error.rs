@@ -240,7 +240,7 @@ impl IntoResponse for ApiError {
 }
 
 /// Renders an error's `source()` chain on one line: `a: b: c`.
-fn chain(error: &(dyn std::error::Error + 'static)) -> String {
+pub(crate) fn chain(error: &(dyn std::error::Error + 'static)) -> String {
     let mut out = error.to_string();
     let mut next = error.source();
     while let Some(e) = next {

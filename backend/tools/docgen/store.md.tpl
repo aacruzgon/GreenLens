@@ -499,7 +499,11 @@ The fragments that write observations (replacement per image, [database 5](../da
 | `ChatRepo::message_count` | `MESSAGE_COUNT`, for the summary trigger (a domain addition, section 21) |
 | other chat methods | `CREATE_CONVERSATION` (a live anchor of the garden), `CONVERSATIONS`, `CONVERSATION` + `MESSAGES` (newest first, with their cards), `STORE_MESSAGE` (attachments must be the conversation's; text, tool-call and tool-result parts only), `CONTEXT` (oldest first, with tool calls), `CREATE_PENDING_ACTION`, `MARK_CONFIRMED` (a retry keeps the result), `REJECT_PENDING_ACTION`, `RATE_MESSAGE` |
 | other memory methods | `MEMORIES`, `SHARED_FOR_PLAN`, `SHARE`, `DELETE` (the author of a chat memory; an owner for shared ones), `MEMORY_OWNER` |
-| `MemoryStore::remember`, `add_note`, `add_pipeline_memory` | `CREATE_MEMORY` with `source`, `shared` and `author` set by the method |
+| `MemoryStore::remember`, `add_note`, `add_pipeline_memory` | `CREATE_MEMORY` with `topic` from the `NewMemory`, and `source`, `shared` and `author` set by the method |
+| `MemoryStore::memory` | `MEMORY`: one memory by id, no garden check (the belief mirror) |
+| `MemoryStore::unsynced_shared` | `UNSYNCED_SHARED`: `shared = true AND belief_synced_at IS NONE`, by `created_at` then id, limited; the index `memory_unsynced` serves it. A private chat memory is never listed, and `SHARE` leaves `belief_synced_at` unset, so a shared one is listed afterwards |
+| `MemoryStore::mark_synced` | `MARK_SYNCED`: sets `belief_synced_at`; a missing id is a no-op |
+| `MemoryStore::mark_unsynced` | `MARK_UNSYNCED`: sets `belief_synced_at` to `NONE` on the shared memories of one plant, or of the whole garden (plants included) when no plant is given |
 | `MemoryStore::search` | `SEARCH`: exact cosine within one garden, the shared memories and the caller's own ([database 5](../database/README.md#5-reads-indexes-and-vector-search)) ✓ never another member's private ones |
 | `KnowledgeRepo::search_chunks` | `SEARCH_CHUNKS`: HNSW `<|k, 40|>` with indexed filters applied first; `k` is a literal, clamped to 1–40 |
 | `KnowledgeRepo::species_photo_object` | `SPECIES_PHOTO`: the key only if the species lists it |
@@ -619,6 +623,7 @@ The store returns the domain's `StoreError` ([domain 6](domain.md#6-errors)); `a
 | `plants_tasks_and_growth` | The plants page with `latest_scan`, the timeline, task create/list/complete/delete, the growth series and the timeline's height |
 | `chat_flow` | A conversation, a message with an attachment and one with a tool call, a card confirmed twice and then refused a reject, the context oldest first, the detail, feedback, the list |
 | `memory_visibility` | A private memory and a shared note, search, the page, the plan writer's shared read, share, an owner's delete |
+| `memory_belief_sync` | `topic` round-trips; `unsynced_shared` skips private memories and lists notes and pipeline memories oldest first; `mark_synced`; `share` makes a chat memory appear; `mark_unsynced` for a plant, then for the garden |
 | `knowledge_loads` | Seeded rows load into seed shapes with photos, `affects` and `preys_on` |
 | `account_tombstone` | The tombstone starts one cascade, refuses a sign-in before and after the user is deleted, reports `user_deleted`, finishes, and is cleaned up after 24 hours |
 | `soil_profile_retries` | A failure waits until its retry time, then the garden is due again |

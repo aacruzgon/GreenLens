@@ -1,8 +1,8 @@
 # PDM Backend: `api` binary
 
-> **Status:** Draft v0.6.5, 2026-10-16. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
+> **Status:** Draft v0.7, 2026-10-17. v0.7: shared memories are mirrored into `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs` and `Ports.memory` behind `agent::MirroredMemory`, the new `GET /plants/{id}/beliefs` (never a 5xx), a deletion step that erases a garden's or plant's scope in Agent Memory before the records, the `beliefs` scheduler task that records unsynced shared memories every minute, and `POST /memories` taking a `topic`; 44 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
 
-Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports and types `api` wires, and [domain-types](domain-types.md) for every wire shape. Every listing below is copied from the compiled source of `bins/api` by the docgen tool. `cargo check -p api`, `cargo clippy -p api --all-targets` (no warning in `api`) and `cargo test -p api` pass: 33 tests, among them handler tests that drive the real router with `tower::ServiceExt::oneshot`. `cargo check --workspace` passes, the binary links, and `api openapi` writes the document.
+Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports and types `api` wires, and [domain-types](domain-types.md) for every wire shape. Every listing below is copied from the compiled source of `bins/api` by the docgen tool. `cargo check -p api`, `cargo clippy -p api --all-targets` (no warning in `api`) and `cargo test -p api` pass: 44 tests, among them handler tests that drive the real router with `tower::ServiceExt::oneshot`. `cargo check --workspace` passes, the binary links, and `api openapi` writes the document.
 
 ## Contents
 
@@ -174,7 +174,7 @@ bins/api/src/
 ├─ push.rs           Pusher: who gets which push
 ├─ scheduler.rs      the background tasks
 │  └─ triggers.rs    the trigger rules (frost, heat, humid stretch, heavy rain, after rain, dry soil)
-├─ deletion.rs       DeletionRunner: cascades, account deletion, resume
+├─ deletion.rs       DeletionRunner: cascades (objects, Agent Memory, records), account deletion, resume
 ├─ media.rs          signature check, object streaming
 ├─ routes.rs
 │  └─ routes/        scans, gardens, plants, species, tasks, account, memories, chat, internal, media, ops
@@ -409,6 +409,25 @@ pub struct ClerkConfig {
     pub webhook_secret: SecretString,
 }
 
+/// `SurrealDB` Agent Memory, where shared memories are mirrored (architecture 7, memory). All
+/// three variables or none.
+#[derive(Debug, Clone)]
+pub struct AgentMemorySettings {
+    /// `AGENT_MEMORY_URL`: the service's origin.
+    pub url: String,
+    /// `AGENT_MEMORY_CONTEXT_ID`: the context every call belongs to.
+    pub context_id: String,
+    /// `AGENT_MEMORY_API_KEY`.
+    pub api_key: SecretString,
+}
+
+/// The three Agent Memory variables, set together or not at all.
+const AGENT_MEMORY_VARS: [&str; 3] = [
+    "AGENT_MEMORY_URL",
+    "AGENT_MEMORY_CONTEXT_ID",
+    "AGENT_MEMORY_API_KEY",
+];
+
 /// Outbound providers, handed to the `integrations` and `agent` constructors.
 #[derive(Debug, Clone)]
 pub struct ProviderConfig {
@@ -427,6 +446,38 @@ pub struct ProviderConfig {
     pub expo_access_token: Option<SecretString>,
     /// `OPEN_METEO_API_KEY`: only for Open-Meteo's commercial endpoint.
     pub open_meteo_api_key: Option<SecretString>,
+    /// `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY`: shared
+    /// memories are mirrored into Agent Memory when all three are set; none set turns it off.
+    pub agent_memory: Option<AgentMemorySettings>,
+}
+```
+
+```rust
+/// All three Agent Memory variables, or none; a partial set names the first missing one.
+fn agent_memory<F: Fn(&str) -> Option<String>>(
+    env: &Env<F>,
+) -> Result<Option<AgentMemorySettings>, ConfigError> {
+    let [url, context, key] = AGENT_MEMORY_VARS.map(|name| env.get(name));
+    match (url, context, key) {
+        (None, None, None) => Ok(None),
+        (Some(url), Some(context_id), Some(key)) => Ok(Some(AgentMemorySettings {
+            url: url.trim().trim_end_matches('/').to_owned(),
+            context_id: context_id.trim().to_owned(),
+            api_key: SecretString::from(key),
+        })),
+        _ => {
+            let missing = AGENT_MEMORY_VARS
+                .into_iter()
+                .find(|name| env.get(name).is_none())
+                .unwrap_or(AGENT_MEMORY_VARS[0]);
+            Err(ConfigError::Invalid {
+                name: missing,
+                problem: "AGENT_MEMORY_URL, AGENT_MEMORY_CONTEXT_ID and AGENT_MEMORY_API_KEY \
+                          are set together or not at all"
+                    .to_owned(),
+            })
+        }
+    }
 }
 ```
 
@@ -464,6 +515,7 @@ pub struct ProviderConfig {
 | `JEV_API_KEY`, `JEV_URL` | unset | The optional classifier; both or neither; the LLM classifier otherwise |
 | `EXPO_ACCESS_TOKEN` | unset | Only with enhanced push security |
 | `OPEN_METEO_API_KEY` | unset | Only for Open-Meteo's commercial endpoint |
+| `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID`, `AGENT_MEMORY_API_KEY` | unset | `SurrealDB` Agent Memory, where shared memories are mirrored ([architecture 7, memory](../architecture/README.md#memory)). All three or none: a partial set stops start-up with `ConfigError::Invalid` naming the first missing variable. The key is a `SecretString`; unset turns the mirror off (`NoBeliefs`) |
 
 Every secret is a `SecretString`: `Debug` prints `[REDACTED]` (the test checks the signing key never appears in the formatted config). `Config::from_lookup` takes any variable source, so tests build a config from a map.
 
@@ -477,8 +529,11 @@ Every secret is a `SecretString`: `Debug` prints `[REDACTED]` (the test checks t
 pub struct Ports {
     /// `store`: every repository (`Store` is their supertrait).
     pub store: Arc<dyn Store>,
-    /// `store`: memories.
+    /// `store`: memories, behind `agent::MirroredMemory`, so every shared memory written in
+    /// `api`, the agent or the pipeline is mirrored into Agent Memory.
     pub memory: Arc<dyn MemoryStore>,
+    /// `integrations`: `SurrealDB` Agent Memory, or `NoBeliefs` when it isn't configured.
+    pub beliefs: Arc<dyn BeliefStore>,
     /// `knowledge`: profiles, species list, chunk search.
     pub knowledge: Arc<dyn KnowledgeStore>,
     /// `blob`: `RustFS`.
@@ -827,6 +882,7 @@ struct Outbound {
     notifier: Arc<dyn Notifier>,
     chat_model: Arc<dyn ChatModel>,
     classifier: Arc<dyn TextClassifier>,
+    beliefs: Arc<dyn BeliefStore>,
 }
 
 async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Outbound> {
@@ -876,6 +932,10 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
             256,
         )),
     };
+    let beliefs: Arc<dyn BeliefStore> = match agent_memory(config) {
+        Some(c) => Arc::new(AgentMemory::new(http.clone(), c)),
+        None => Arc::new(NoBeliefs),
+    };
     Ok(Outbound {
         auth: Arc::new(ClerkVerifier::new(http.clone(), verifier)),
         webhooks: Arc::new(
@@ -917,7 +977,37 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         )),
         chat_model,
         classifier,
+        beliefs,
     })
+}
+
+/// Agent Memory's settings when it is configured, logging whether it is on; the key is never
+/// logged.
+fn agent_memory(config: &Config) -> Option<AgentMemoryConfig> {
+    let Some(m) = &config.providers.agent_memory else {
+        tracing::info!("agent memory off: AGENT_MEMORY_URL is not set");
+        return None;
+    };
+    tracing::info!(url = %m.url, context = %m.context_id, "agent memory on");
+    Some(AgentMemoryConfig::new(
+        m.url.clone(),
+        m.context_id.clone(),
+        m.api_key.clone(),
+    ))
+}
+
+/// The store's memories behind the belief mirror: every memory write in `api`, the agent and
+/// the pipeline goes through it, so shared memories reach Agent Memory.
+fn mirrored(
+    memory: Arc<dyn MemoryStore>,
+    beliefs: &Arc<dyn BeliefStore>,
+    clock: &Arc<dyn Clock>,
+) -> Arc<dyn MemoryStore> {
+    Arc::new(agent::MirroredMemory::new(
+        memory,
+        Arc::clone(beliefs),
+        Arc::clone(clock),
+    ))
 }
 
 /// Builds every port and the state, in order: the databases (schema as root, then connect as
@@ -946,7 +1036,8 @@ pub async fn build(
     let store = dbs.store;
     let ports = Ports {
         store: Arc::clone(&store),
-        memory: dbs.memory,
+        memory: mirrored(dbs.memory, &out.beliefs, &clock),
+        beliefs: Arc::clone(&out.beliefs),
         knowledge: dbs.knowledge,
         blob: Arc::clone(&blob),
         auth: out.auth,
@@ -999,6 +1090,7 @@ pub async fn build(
     let deletions = DeletionRunner::new(
         store,
         deletes.clone(),
+        out.beliefs,
         out.auth_admin,
         pusher,
         clock,
@@ -1024,6 +1116,8 @@ pub async fn build(
     }))
 }
 ```
+
+**Agent Memory.** `outbound` builds `integrations::agent_memory::AgentMemory` over the shared `reqwest` client when the three variables are set, and `NoBeliefs` otherwise, logging which at start (the URL and context, never the key). `Ports.beliefs` holds it, and `Ports.memory` is the store's `MemoryStore` behind `agent::MirroredMemory` (`mirrored`), so every memory write in `api`, the agent and the pipeline is mirrored without the callers knowing ([agent 14](agent.md#the-belief-mirror)). The same `beliefs` goes to the agent's and the pipeline's deps and to the deletion runner.
 
 **One embedder, two modes.** The text embedder (snowflake-arctic-embed-xs) embeds queries and documents differently, and every `TextEmbedder::embed` call names its `EmbedMode` ([domain 9](domain.md#9-boundary-traits)). So `api` loads one embedder and shares one `Arc<dyn TextEmbedder>` (`Ports.embedder`): garden notes are embedded as `Document`, the pipeline's memory summaries as `Document`, and the agent embeds the user's message and its searches as `Query` and the memories it writes as `Document`.
 
@@ -1111,6 +1205,7 @@ pub fn routes(request_timeout: Duration) -> OpenApiRouter<SharedState> {
             plants::delete_plant
         ))
         .routes(routes!(plants::timeline))
+        .routes(routes!(plants::plant_beliefs))
         .routes(routes!(plants::measurements))
         .routes(routes!(plants::confirm_species))
         .routes(routes!(species::list_species))
@@ -2006,6 +2101,7 @@ Every endpoint of [architecture 9](../architecture/README.md#9-api-surface) and 
 | GET, POST | `/plants` | `plants::list_plants`, `create_plant` | viewer, editor | POST ✓ | [9](../architecture/contracts.md#plants) |
 | GET, PATCH, DELETE | `/plants/{id}` | `get_plant`, `update_plant`, `delete_plant` | viewer, editor, owner | | [9](../architecture/contracts.md#plants) |
 | GET | `/plants/{id}/timeline` | `plants::timeline` | viewer | | [9](../architecture/contracts.md#plants) |
+| GET | `/plants/{id}/beliefs` | `plants::plant_beliefs` | viewer | | [8](../architecture/contracts.md#memory) |
 | GET | `/plants/{id}/measurements` | `plants::measurements` | viewer | | [9](../architecture/contracts.md#plants) |
 | POST | `/plants/{id}/species` | `plants::confirm_species` | editor | | [3](../architecture/contracts.md#post-plantsidspecies) |
 | GET | `/species` | `species::list_species` | signed in | | [9](../architecture/contracts.md#species) |
@@ -2376,6 +2472,65 @@ pub async fn healthz(State(state): State<SharedState>) -> Result<Wire<Healthz>, 
     let probe = ObjectPrefix::garden(domain::id::Id::from_ulid(ulid::Ulid::nil()));
     state.ports.blob.list(&probe).await?;
     Ok(Wire::ok(Healthz { ok: BoolLit }))
+}
+```
+
+A plant's beliefs: Agent Memory's current beliefs of the plant and its garden, and the plant's superseded ones, read together under the adapter's entity-read deadline. Agent Memory off, failing or slow answers `200` with `available: false`, never a `5xx`, because the screen has the memories list to fall back on:
+
+```rust
+/// How long `GET /plants/{id}/beliefs` waits for Agent Memory: the adapter's own deadline of an
+/// entity read, for both reads together.
+const BELIEFS_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// `GET /plants/{id}/beliefs`: what is believed about the plant now (its current beliefs and its
+/// garden's) and its superseded beliefs, newest first, from Agent Memory. Shared memories only,
+/// so any member. Never a 5xx: Agent Memory off, failing or slower than 3 s is
+/// `available: false` with empty lists.
+#[utoipa::path(get, path = "/plants/{id}/beliefs", tag = "plants", params(("id" = String, Path)),
+    responses((status = 200, body = PlantBeliefs), (status = 404, body = ErrorBody)))]
+pub async fn plant_beliefs(
+    State(state): State<SharedState>,
+    access: Access<Viewer, table::Plant>,
+) -> Result<Wire<PlantBeliefs>, ApiError> {
+    let unavailable = PlantBeliefs {
+        available: false,
+        current: Vec::new(),
+        history: Vec::new(),
+    };
+    let beliefs = &state.ports.beliefs;
+    if !beliefs.enabled() {
+        return Ok(Wire::ok(unavailable));
+    }
+    let garden = access.member.garden();
+    let plant = access.id;
+    let subject = BeliefSubject {
+        garden,
+        plant: Some(plant),
+    };
+    let reads = async {
+        tokio::try_join!(
+            beliefs.current(garden, Some(plant)),
+            beliefs.history(subject)
+        )
+    };
+    match tokio::time::timeout(BELIEFS_TIMEOUT, reads).await {
+        Ok(Ok((current, history))) => Ok(Wire::ok(PlantBeliefs {
+            available: true,
+            current,
+            history: history
+                .into_iter()
+                .filter(|b| b.superseded_at.is_some())
+                .collect(),
+        })),
+        Ok(Err(e)) => {
+            tracing::warn!(%plant, error = %crate::error::chain(&e), "plant beliefs unavailable");
+            Ok(Wire::ok(unavailable))
+        }
+        Err(_) => {
+            tracing::warn!(%plant, "plant beliefs timed out");
+            Ok(Wire::ok(unavailable))
+        }
+    }
 }
 ```
 
@@ -3750,7 +3905,7 @@ pub struct Task {
 
 /// Every task of the table in api.md section 16. The 10-minute question continuation is part
 /// of `sweep` (`Pipeline::sweep` owns it), not a task of its own.
-pub const TASKS: [Task; 8] = [
+pub const TASKS: [Task; 9] = [
     Task {
         name: "requeue",
         every: Duration::from_secs(5),
@@ -3765,6 +3920,11 @@ pub const TASKS: [Task; 8] = [
         name: "idle",
         every: Duration::from_mins(1),
         first_after: Duration::from_mins(1),
+    },
+    Task {
+        name: "beliefs",
+        every: Duration::from_mins(1),
+        first_after: Duration::from_secs(20),
     },
     Task {
         name: "cleanup",
@@ -3800,6 +3960,7 @@ pub fn start(state: &Arc<AppState>) {
             "requeue" => every(state, task, requeue),
             "sweep" => every(state, task, sweep),
             "idle" => every(state, task, idle),
+            "beliefs" => every(state, task, beliefs),
             "cleanup" => every(state, task, cleanup),
             "weather" => every(state, task, weather_and_triggers),
             "soil" => every(state, task, soil),
@@ -3836,6 +3997,39 @@ where
 }
 ```
 
+```rust
+/// Shared memories per run of the belief sweep.
+const BELIEF_SYNC_BATCH: u32 = 50;
+
+/// Records shared memories not yet in Agent Memory, oldest first, stopping at the first failure
+/// (architecture 7, memory): writes whose mirror failed, and the memories a forget marked for
+/// re-recording. Nothing when Agent Memory is off.
+async fn beliefs(state: Arc<AppState>) -> Result<(), ApiError> {
+    let p = &state.ports;
+    match agent::beliefs::sync_pending(
+        p.memory.as_ref(),
+        p.beliefs.as_ref(),
+        p.clock.as_ref(),
+        BELIEF_SYNC_BATCH,
+    )
+    .await
+    {
+        Ok(0) => Ok(()),
+        Ok(synced) => {
+            tracing::info!(synced, "shared memories recorded in agent memory");
+            Ok(())
+        }
+        Err(agent::BeliefSyncError::Store(e)) => Err(e.into()),
+        Err(agent::BeliefSyncError::Record { synced, source }) => {
+            if synced > 0 {
+                tracing::info!(synced, "shared memories recorded in agent memory");
+            }
+            Err(source.into())
+        }
+    }
+}
+```
+
 Each task is a loop on the process `TaskTracker`: `interval_at` with a first delay (so start-up isn't one burst of queries), `MissedTickBehavior::Delay` (a run that overran doesn't cause catch-up runs), and a `select!` on the shutdown token. A failed run is logged and the next tick tries again. `every` is generic over the task body: `F: Fn(Arc<AppState>) -> Fut` and `Fut: Future<Output = Result<(), ApiError>>`, both `Send + 'static` because the loop is spawned and owns them; plain `async fn`s are passed directly.
 
 | Task | Interval | What | Database pattern |
@@ -3843,6 +4037,7 @@ Each task is a loop on the process `TaskTracker`: `interval_at` with a first del
 | `requeue` | 5 s | Expired leases and jobs of workers silent for 30 s back to `queued` with `queued_at` reset; a job out of attempts fails for good through the pipeline; the store wakes the claims after its commit | `UPDATE job SET status = 'queued' … WHERE status = 'leased' AND lease_until < time::now()` on the `job_lease` index ([database 4](../database/README.md#job-claim-with-slots-)) |
 | `sweep` | 30 s | `Pipeline::sweep`, the one owner of recovery and continuation: stale steps (2 min; 5 for `plan`) and question photos stuck in `measuring` for 2 min, re-claimed and re-run; questions unanswered for 10 minutes, continued with the best candidate marked uncertain (skipped while a photo for it is analysing). Follow-ups spawned | Compare-and-set on the old stamp and run ([database 4](../database/README.md#steps-between-jobs-)); the `score` claim |
 | `idle` | 60 s | Limiter keys (`retain_recent`, `shrink_to_fit`), idle broadcast channels, unheld plan locks | In memory |
+| `beliefs` | 60 s | `agent::beliefs::sync_pending(…, 50)`: shared memories not yet in Agent Memory (a failed mirror, or the subject's memories after a forget), oldest first, each recorded and marked synced; stops at the first failure to keep supersession order; the count is logged when above 0. Nothing when Agent Memory is off | `memory.belief_synced_at` (`unsynced_shared`, `mark_synced`) |
 | `cleanup` | 10 min | Expired idempotency keys, weather older than 2 hours, expired pending actions, finished jobs older than 7 days, account tombstones 24 h after Clerk confirmed the deletion (`TOMBSTONE_KEEP`) | Batches of 500; `weather_cache` by key range ([database 4](../database/README.md#cleanup-no-ttl)) |
 | `weather` | 1 h | Group gardens by cell, fetch each missing cell once (batches of 50, a failed batch retried once, then cell by cell, `integrations::open_meteo::fetch_cells`), cache them; fire forecast alerts (task + push to every member) and plan triggers (task on the rule's plant) | `weather_cache:[hour, cell]`; tasks deduplicated by the unique `alert_key` ([database 4](../database/README.md#alert-dedupe-)) |
 | `soil` | 15 min | `SoilGrids` for due gardens, at most 4 a run (its limit is 5 calls a minute): `pending`, or `unavailable` past `soil_retry_at`. A failure stores `unavailable` with the next attempt `soil_retry_after` it ([contracts 9](../architecture/contracts.md#gardens)): 15 minutes after an outage (timeout, connection error, `5xx`, `429`), 7 days after `NotFound` (null pixels at the point and the 8 nearby probes). So a null-pixel garden costs its 9 paced calls once a week, not every 15 minutes; an outage stops at the first call. `POST /gardens` makes the first attempt the same way (`fetch_soil_profile`) | `garden.soil_profile`, `garden.soil_retry_at`; `gardens_due_soil_profile`, `soil_profile_failed` |
@@ -4028,6 +4223,10 @@ pub enum DeletionError {
     /// deletes the objects first.
     #[error("objects not deleted; the records stay for a resumed run")]
     Objects,
+    /// Agent Memory didn't erase the target's scope: the records stay so a later run erases it
+    /// first.
+    #[error("agent memory not erased; the records stay for a resumed run")]
+    Beliefs(#[source] ProviderError),
     /// Shutdown interrupted the Clerk retries; the tombstone resumes them.
     #[error("shut down before the Clerk account was deleted")]
     ShutDown,
@@ -4038,6 +4237,7 @@ pub enum DeletionError {
 pub struct DeletionRunner {
     store: Arc<dyn Store>,
     deletes: DeleteQueue,
+    beliefs: Arc<dyn BeliefStore>,
     auth_admin: Arc<dyn AuthAdmin>,
     pusher: Pusher,
     clock: Arc<dyn Clock>,
@@ -4049,9 +4249,14 @@ pub struct DeletionRunner {
 ```rust
 impl DeletionRunner {
     /// A runner over the ports and `AppState`'s delete queue.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "one parameter per port the cascade touches"
+    )]
     pub fn new(
         store: Arc<dyn Store>,
         deletes: DeleteQueue,
+        beliefs: Arc<dyn BeliefStore>,
         auth_admin: Arc<dyn AuthAdmin>,
         pusher: Pusher,
         clock: Arc<dyn Clock>,
@@ -4061,6 +4266,7 @@ impl DeletionRunner {
         Self {
             store,
             deletes,
+            beliefs,
             auth_admin,
             pusher,
             clock,
@@ -4072,20 +4278,37 @@ impl DeletionRunner {
     /// Runs a started cascade in the background. Not tied to the shutdown token: shutdown waits
     /// for it up to its drain deadline, and a cascade cut off there resumes on the next start.
     pub fn spawn(&self, started: DeletionStarted) {
+        self.spawn_in(started, None);
+    }
+
+    /// [`Self::spawn`] for a plant: `DeletionTarget::Plant` doesn't name the garden, and the
+    /// garden is part of the plant's scope path in Agent Memory.
+    pub fn spawn_plant(&self, garden: GardenId, started: DeletionStarted) {
+        self.spawn_in(started, Some(garden));
+    }
+
+    fn spawn_in(&self, started: DeletionStarted, garden: Option<GardenId>) {
         let runner = self.clone();
         self.tasks.spawn(async move {
             let target = started.target;
-            if let Err(error) = runner.run(started).await {
+            if let Err(error) = runner.run(started, garden).await {
                 tracing::error!(?target, error = %error, "deletion failed; it resumes on restart");
             }
         });
     }
 
-    /// Objects, then records, then pushes. Records go only after every object is gone.
-    pub async fn run(&self, started: DeletionStarted) -> Result<(), DeletionError> {
+    /// Objects, then the target's scope in Agent Memory, then records, then pushes. Records go
+    /// only after every object is gone and the scope is erased. `garden` is a plant's garden,
+    /// which its target doesn't carry.
+    pub async fn run(
+        &self,
+        started: DeletionStarted,
+        garden: Option<GardenId>,
+    ) -> Result<(), DeletionError> {
         if !self.delete_objects(started.prefixes, started.keys).await {
             return Err(DeletionError::Objects);
         }
+        self.forget_beliefs(started.target, garden).await?;
         self.delete_records(started.target).await?;
         if let Some(name) = started.garden_name
             && !started.notify.is_empty()
@@ -4104,6 +4327,48 @@ impl DeletionRunner {
                 .await;
         }
         Ok(())
+    }
+
+    /// Erases a garden's or a plant's scope in Agent Memory. Forgetting is idempotent, so a
+    /// resumed run repeats it.
+    async fn forget_beliefs(
+        &self,
+        target: DeletionTarget,
+        garden: Option<GardenId>,
+    ) -> Result<(), DeletionError> {
+        let subject = match (target, garden) {
+            (DeletionTarget::Garden(garden), _) => BeliefSubject {
+                garden,
+                plant: None,
+            },
+            (DeletionTarget::Plant(plant), Some(garden)) => BeliefSubject {
+                garden,
+                plant: Some(plant),
+            },
+            (DeletionTarget::Plant(plant), None) => {
+                // A resumed plant cascade: the target doesn't name the garden, and `garden_of`
+                // hides a plant being deleted. With no row left, an earlier run already passed
+                // this step, since the records go only after it.
+                if !self.beliefs.enabled() {
+                    return Ok(());
+                }
+                match self.store.deleting_plant_garden(plant).await? {
+                    Some(garden) => BeliefSubject {
+                        garden,
+                        plant: Some(plant),
+                    },
+                    None => return Ok(()),
+                }
+            }
+            (DeletionTarget::PendingScan(_) | DeletionTarget::Member { .. }, _) => return Ok(()),
+        };
+        if !self.beliefs.enabled() {
+            return Ok(());
+        }
+        self.beliefs
+            .forget(subject)
+            .await
+            .map_err(DeletionError::Beliefs)
     }
 
     /// The object deletes, submitted to the delete queue and awaited. Dropping this future (the
@@ -4213,7 +4478,7 @@ impl DeletionRunner {
             for garden in plan.delete {
                 let owner = authz::check_membership_of::<Owner>(&*self.store, user, garden).await?;
                 let started = self.store.start_garden_deletion(owner, now).await?;
-                self.run(started).await?;
+                self.run(started, None).await?;
             }
             for garden in plan.leave {
                 let member =
@@ -4252,6 +4517,8 @@ impl DeletionRunner {
 | A pending scan (`DELETE /scans/{id}`, editor) | `start_scan_deletion` (`pending` only, `409` otherwise); `204` | Its prefix; its own short step list |
 | A member leaving or removed | `remove_member` (the last owner can't) | Their conversations' image prefixes; their conversations and unshared chat memories in that garden |
 | An account (`DELETE /me`, or `user.deleted`) | The plan, for the `202` body; then `start_account_deletion`, the tombstone's compare-and-set: a second request, or the webhook during a `DELETE /me` cascade, starts nothing | Transfers; each solely used garden as above; each shared garden left as a member; scan feedback; the user; the account at Clerk, retried with back-off up to an hour until it succeeds; then `finish_account_deletion` |
+
+**Agent Memory before the records.** After the objects and before the records, a garden or plant target erases its scope in Agent Memory (`BeliefStore::forget`; a garden's scope holds its plants'). A failure stops the cascade with `DeletionError::Beliefs`, the records stay marked, and the next start retries it, the same rule as the objects; forgetting is idempotent. `DeletionTarget::Plant` doesn't name the garden, which is part of the plant's scope path, so `DELETE /plants/{id}` passes it with `spawn_plant`. A plant cascade resumed after a restart doesn't know its garden (`garden_of` hides a plant being deleted) and skips the step with a `warn`; the first run erased the scope unless it failed exactly there. Account deletion needs nothing: shared memories stay with the garden (a garden deleted with the account forgets its scope as above) and private ones were never sent.
 
 The record steps are `CascadeStep::steps_for(target)` in [database 4](../database/README.md#deletion-) order, each a batch of 500 repeated until it deletes nothing; a missed step fails loudly on `REFERENCE ON DELETE REJECT` instead of orphaning.
 
@@ -4747,6 +5014,66 @@ async fn a_second_delete_me_while_a_cascade_runs_starts_nothing() {
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::ACCEPTED);
     assert_eq!(app_state.tasks.len(), 0, "no second cascade was spawned");
+}
+```
+
+Agent Memory (`tests/beliefs.rs`, over `MockBeliefStore` and a hand-written `SlowBeliefs`): `GET /plants/{id}/beliefs` answers `available: false` without Agent Memory, on an error and after 3 s of a slow store (paused time); returns the current beliefs and only the superseded history; is `404` to a non-member. A plant cascade forgets its scope before the first record batch, and a failed forget stops it with `DeletionError::Beliefs` before any record. The config tests cover the three variables: none set, all set (the key never in the formatted config), and a partial set refused naming the missing one.
+
+```rust
+#[tokio::test]
+async fn a_member_reads_current_beliefs_and_the_superseded_history() {
+    let mut beliefs = MockBeliefStore::new();
+    beliefs.expect_enabled().return_const(true);
+    beliefs
+        .expect_current()
+        .withf(|g, p| *g == garden() && *p == Some(plant()))
+        .times(1)
+        .returning(|_, _| Ok(vec![belief("watering", "Watered every 2 days.", None)]));
+    beliefs
+        .expect_history()
+        .withf(|s| s.garden == garden() && s.plant == Some(plant()))
+        .times(1)
+        .returning(|_| {
+            Ok(vec![
+                belief("watering", "Watered every 2 days.", None),
+                belief(
+                    "watering",
+                    "Watered every 3 days.",
+                    Some("2026-10-17T15:00:00Z"),
+                ),
+            ])
+        });
+    let (status, body) = get_beliefs(Some(Role::Viewer), Arc::new(beliefs)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        body,
+        serde_json::json!({
+            "available": true,
+            "current": [{
+                "key": "watering", "value": "Watered every 2 days.", "about_plant": true,
+                "learned_at": "2026-10-14T15:00:00Z"
+            }],
+            "history": [{
+                "key": "watering", "value": "Watered every 3 days.", "about_plant": true,
+                "learned_at": "2026-10-14T15:00:00Z", "superseded_at": "2026-10-17T15:00:00Z"
+            }]
+        })
+    );
+}
+```
+
+```rust
+#[tokio::test]
+async fn a_failed_forget_stops_the_cascade_before_the_records() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let app_state = deletion_state(Err(down), &calls);
+    let err = app_state
+        .deletions
+        .run(plant_deletion(), Some(garden()))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, DeletionError::Beliefs(_)), "{err:?}");
+    assert_eq!(*calls.lock().unwrap(), ["forget"]);
 }
 ```
 

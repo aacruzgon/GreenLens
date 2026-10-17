@@ -1,8 +1,8 @@
 # PDM Backend: `domain` crate
 
-> **Status:** Draft v0.3.4, 2026-10-16. v0.3.4: `ToolSpec` gains `strict`, set by `agent` for the tools that propose changes. v0.3.3: section 1 says these types are the contracts' source of truth now that the code exists. v0.3.2: the schema link points to `backend/migrations/schema.surql`. v0.3.1: the section 1 note says the Rust skills follow this design and keeps only the timestamp difference from the brief; section 10 no longer says `rust-async` prefers a hand-written `BoxFuture`. v0.3: the cross-crate fixes add `PastWeather.longest_humid_run_days` and the past-week humid-stretch rules, store methods with default bodies (`JobRepo::live_lease`, `GardenRepo::soil_profile_failed` and `gardens_due_soil_profile`, the account tombstone's `DeletionRepo` methods), `AuthError::AccountDeleted` for a tombstoned account, `soil_retry_after` and `TOMBSTONE_KEEP`, and make `QuestionState::after_failed_photo(false)` supersede the question as contracts 5 says. v0.2: one definition of the weather thresholds (`rules::weather::WeatherThresholds`: frost at a 2 m minimum ≤ 0.5 °C, hard frost ≤ −2 °C, a humid stretch of two days with ≥ 10 h over 90%), `TextEmbedder::embed` takes an `EmbedMode`, `PhotoAnswerStart::Segment` boxes its job, corrected `BoxFormat`, `JobRepo::check_lease` and `DeletionRepo::delete_batch` comments, every addition the other crates made since v0.1 (section 12), and the open questions that contracts v0.9 and database v1.3.3–v1.4 resolved marked as such. v0.1: the shared crate every other crate builds on: typed ids and wire primitives, the error codes, the pure rules, the authorization proofs, the signed-URL typing and every boundary trait, all compiled on Rust 1.99.1.
+> **Status:** Draft v0.3.5, 2026-10-17. v0.3.5: the `BeliefStore` port mirrors shared memories into Agent Memory, and `MemoryStore` gains the mirror's four bookkeeping methods. v0.3.4: `ToolSpec` gains `strict`, set by `agent` for the tools that propose changes. v0.3.3: section 1 says these types are the contracts' source of truth now that the code exists. v0.3.2: the schema link points to `backend/migrations/schema.surql`. v0.3.1: the section 1 note says the Rust skills follow this design and keeps only the timestamp difference from the brief; section 10 no longer says `rust-async` prefers a hand-written `BoxFuture`. v0.3: the cross-crate fixes add `PastWeather.longest_humid_run_days` and the past-week humid-stretch rules, store methods with default bodies (`JobRepo::live_lease`, `GardenRepo::soil_profile_failed` and `gardens_due_soil_profile`, the account tombstone's `DeletionRepo` methods), `AuthError::AccountDeleted` for a tombstoned account, `soil_retry_after` and `TOMBSTONE_KEEP`, and make `QuestionState::after_failed_photo(false)` supersede the question as contracts 5 says. v0.2: one definition of the weather thresholds (`rules::weather::WeatherThresholds`: frost at a 2 m minimum ≤ 0.5 °C, hard frost ≤ −2 °C, a humid stretch of two days with ≥ 10 h over 90%), `TextEmbedder::embed` takes an `EmbedMode`, `PhotoAnswerStart::Segment` boxes its job, corrected `BoxFormat`, `JobRepo::check_lease` and `DeletionRepo::delete_batch` comments, every addition the other crates made since v0.1 (section 12), and the open questions that contracts v0.9 and database v1.3.3–v1.4 resolved marked as such. v0.1: the shared crate every other crate builds on: typed ids and wire primitives, the error codes, the pure rules, the authorization proofs, the signed-URL typing and every boundary trait, all compiled on Rust 1.99.1.
 
-Companion to the [backend architecture](README.md). The contract shapes themselves, section by section, are in [domain-types](domain-types.md). Every listing here is copied from the compiled source of `crates/domain`: `cargo check -p domain`, `cargo test -p domain` (90 unit tests, 5 compile-fail doc tests) and `cargo clippy -p domain --all-targets` pass, with and without the `mock` and `test-util` features.
+Companion to the [backend architecture](README.md). The contract shapes themselves, section by section, are in [domain-types](domain-types.md). Every listing here is copied from the compiled source of `crates/domain`: `cargo check -p domain`, `cargo test -p domain` (95 unit tests, 5 compile-fail doc tests) and `cargo clippy -p domain --all-targets` pass, with and without the `mock` and `test-util` features.
 
 ## Contents
 
@@ -123,7 +123,8 @@ crates/domain/src/
 │                      stream, limits, routing, weather
 ├─ authz.rs            MinRole markers, Membership<R>, ConversationOwner<R>, checks
 ├─ ports.rs            boundary traits
-│  ├─ ports/           errors, system, auth, blob, models, providers, knowledge
+│  ├─ ports/           errors, system, auth, blob, models, providers, knowledge,
+│  │                   beliefs
 │  └─ ports/store/     access, identity, gardens, plants, scans, events, analysis,
 │                      steps, plans, chat, knowledge, jobs, idempotency, weather,
 │                      deletion, map
@@ -2734,6 +2735,7 @@ pub async fn check_conversation<R: MinRole>(
 //! whose stream borrows its request.
 
 mod auth;
+mod beliefs;
 mod blob;
 mod errors;
 mod knowledge;
@@ -2743,6 +2745,7 @@ pub mod store;
 mod system;
 
 pub use auth::*;
+pub use beliefs::*;
 pub use blob::*;
 pub use errors::*;
 pub use knowledge::*;
@@ -3771,9 +3774,11 @@ pub trait Notifier: Send + Sync {
 
 use crate::{
     authz::{Editor, Membership, Viewer},
-    chat::{KnowledgeHit, Lookalike, Memory, MemoryKind, MemoryQuery, MemorySource},
+    chat::{KnowledgeHit, Lookalike, Memory, MemoryKind, MemoryQuery, MemorySource, MemoryTopic},
     garden::species::{SpeciesPhoto, SpeciesProfileKind},
-    id::{MemoryId, MessageId, OrganismId, PlantId, ProblemId, SourceId, SpeciesId, UserId},
+    id::{
+        GardenId, MemoryId, MessageId, OrganismId, PlantId, ProblemId, SourceId, SpeciesId, UserId,
+    },
     jobs::{OrganismOption, SpeciesOption},
     knowledge::{
         ChunkTopic, ClassifierLabels, OrganismSeed, ProblemSeed, ProductsSeed, SoilConditionSeed,
@@ -3920,6 +3925,8 @@ pub struct NewMemory {
     pub plant: Option<PlantId>,
     /// What kind.
     pub kind: MemoryKind,
+    /// What it is about; with the kind, its belief key in Agent Memory.
+    pub topic: MemoryTopic,
     /// The text, dose-checked when the model wrote it.
     pub text: String,
     /// The vector of `text`.
@@ -3966,7 +3973,7 @@ pub trait MemoryStore: Send + Sync {
     /// The pipeline's summary after a scan: `source: "pipeline"`, visible to every member.
     async fn add_pipeline_memory(
         &self,
-        garden: crate::id::GardenId,
+        garden: GardenId,
         memory: NewMemory,
     ) -> Result<Memory, StoreError>;
 
@@ -3992,7 +3999,7 @@ pub trait MemoryStore: Send + Sync {
     /// the garden-level ones.
     async fn shared_for_plan(
         &self,
-        garden: crate::id::GardenId,
+        garden: GardenId,
         plant: PlantId,
     ) -> Result<Vec<Memory>, StoreError>;
 
@@ -4012,6 +4019,238 @@ pub trait MemoryStore: Send + Sync {
         &self,
         memory: MemoryId,
     ) -> Result<Option<(MemorySource, Option<UserId>)>, StoreError>;
+
+    // ---- the belief mirror (architecture 7, memory): internal, no membership check ----
+
+    /// One memory by id, whoever wrote it: the mirror reads it before a delete to know its
+    /// subject.
+    async fn memory(&self, memory: MemoryId) -> Result<Option<Memory>, StoreError>;
+
+    /// Shared memories not yet recorded in Agent Memory (`belief_synced_at` unset), oldest
+    /// `created_at` first, so a rebuild replays the supersession order.
+    async fn unsynced_shared(&self, limit: u32) -> Result<Vec<Memory>, StoreError>;
+
+    /// Sets `belief_synced_at`.
+    async fn mark_synced(&self, memory: MemoryId, at: Timestamp) -> Result<(), StoreError>;
+
+    /// Unsets `belief_synced_at` on the shared memories of one plant, or of the whole garden
+    /// (its plants included) when `plant` is none: after the subject's scope is erased, the
+    /// sweep records them again.
+    async fn mark_unsynced(
+        &self,
+        garden: GardenId,
+        plant: Option<PlantId>,
+    ) -> Result<(), StoreError>;
+}
+```
+
+### Beliefs (Agent Memory)
+
+Shared memories are mirrored into SurrealDB Agent Memory as triples, so a newer memory on the same key supersedes the older one and the history is kept ([agent-memory](../database/agent-memory.md); [architecture 7, memory](../architecture/README.md#memory)). The `memory` table stays the system of record: `agent::beliefs::MirroredMemory` wraps the `MemoryStore` and records each shared memory after it commits, and the `api` sweep retries what failed, oldest first. `integrations::agent_memory::AgentMemory` implements the port; `NoBeliefs` stands in when Agent Memory isn't configured, so nothing else changes.
+
+```rust
+//! The belief store: shared memories mirrored into `SurrealDB` Agent Memory (architecture 7,
+//! memory; docs/database/agent-memory.md).
+//!
+//! The `memory` table stays the system of record. Each **shared** memory (`pipeline` and
+//! `user`) is also recorded in Agent Memory as one triple: entity `plant_<id>` or `garden_<id>`,
+//! a key from [`belief_key`], and the memory's text as the value. Agent Memory then supersedes the
+//! older value of the same key and keeps the history. A private chat memory never leaves the
+//! database.
+//!
+//! Three facts measured against the hosted service on 2026-10-17 shape the port:
+//! - entities are matched by **name across the whole context**, so the entity name is our own
+//!   id, never a name a model extracted;
+//! - a read at a scope path returns only facts tagged at that exact path, so a plant read asks
+//!   for the plant's path **or** the garden's;
+//! - `/query` takes 2 to 10 s, so only `search` uses it, behind a timeout; the context builder
+//!   and the plan writer use `current`, a direct entity read of about 0.4 s.
+
+use crate::{
+    chat::{Belief, BeliefHit, Memory, MemoryKind, MemorySource, MemoryTopic},
+    id::{GardenId, MemoryId, PlantId},
+    ports::ProviderError,
+    wire::Timestamp,
+};
+
+/// The provider name on every [`ProviderError`] of the belief store.
+pub const BELIEFS_PROVIDER: &str = "agent_memory";
+
+/// What a belief is about: one plant, or its garden as a whole.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BeliefSubject {
+    /// The garden.
+    pub garden: GardenId,
+    /// The plant; none for a garden-level fact.
+    pub plant: Option<PlantId>,
+}
+
+impl BeliefSubject {
+    /// The subject a memory belongs to.
+    pub const fn of(memory: &Memory) -> Self {
+        Self {
+            garden: memory.garden_id,
+            plant: memory.plant_id,
+        }
+    }
+
+    /// `gardens/<garden>` or `gardens/<garden>/plants/<plant>`: the scope path its facts are
+    /// tagged with, and the subtree a forget erases. Ids are lowercased: Agent Memory refuses an
+    /// uppercase letter in a path segment (`400 illegal character in segment`, measured
+    /// 2026-10-17), and a ULID is case-insensitive.
+    pub fn scope_path(&self) -> String {
+        let garden = self.garden.to_string().to_ascii_lowercase();
+        match self.plant {
+            Some(p) => format!(
+                "gardens/{garden}/plants/{}",
+                p.to_string().to_ascii_lowercase()
+            ),
+            None => format!("gardens/{garden}"),
+        }
+    }
+
+    /// `plant_<id>` or `garden_<id>`, lowercased like the path: unique in the context, because
+    /// Agent Memory matches entities by name across every scope.
+    pub fn entity_name(&self) -> String {
+        match self.plant {
+            Some(p) => format!("plant_{p}"),
+            None => format!("garden_{}", self.garden),
+        }
+        .to_ascii_lowercase()
+    }
+}
+
+/// The belief key of a memory. A newer memory with the same key on the same subject supersedes
+/// the older one; `other` facts get a key of their own, so they never supersede anything.
+///
+/// | kind | key |
+/// |---|---|
+/// | `summary` | `scan_summary` |
+/// | `fact`, topic `other` | `note_<memory id>` |
+/// | `fact` | the topic: `watering`, `container`, … |
+/// | `event` | `last_<topic>`: `last_treatment`, `last_other`, … |
+pub fn belief_key(kind: MemoryKind, topic: MemoryTopic, id: MemoryId) -> String {
+    match (kind, topic) {
+        (MemoryKind::Summary, _) => "scan_summary".to_owned(),
+        (MemoryKind::Fact, MemoryTopic::Other) => format!("note_{id}"),
+        (MemoryKind::Fact, t) => t.as_str().to_owned(),
+        (MemoryKind::Event, t) => format!("last_{}", t.as_str()),
+    }
+}
+
+/// One shared memory, ready to record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BeliefWrite {
+    /// The plant or garden.
+    pub subject: BeliefSubject,
+    /// From [`belief_key`].
+    pub key: String,
+    /// The memory's text.
+    pub value: String,
+    /// The memory, sent as the label `memory=<id>` so a belief traces back to its row.
+    pub memory: MemoryId,
+    /// `pipeline` or `user`, sent as the label `source=<source>`.
+    pub source: MemorySource,
+    /// The memory's `created_at`, sent as `observed_at`, so a rebuild replays the history in
+    /// its original order.
+    pub observed_at: Timestamp,
+}
+
+impl BeliefWrite {
+    /// The write for a memory; `None` for a private chat memory, which is never recorded.
+    pub fn from_memory(memory: &Memory) -> Option<Self> {
+        if !memory.shared {
+            return None;
+        }
+        Some(Self {
+            subject: BeliefSubject::of(memory),
+            key: belief_key(memory.kind, memory.topic, memory.id),
+            value: memory.text.clone(),
+            memory: memory.id,
+            source: memory.source,
+            observed_at: memory.created_at,
+        })
+    }
+}
+
+/// Shared memories in `SurrealDB` Agent Memory. `integrations` implements it over the REST API;
+/// [`NoBeliefs`] stands in when it isn't configured. Every method is scoped to one garden by
+/// its scope paths, and the caller has already checked membership.
+#[cfg_attr(feature = "mock", mockall::automock)]
+#[async_trait::async_trait]
+pub trait BeliefStore: Send + Sync {
+    /// `false` for [`NoBeliefs`]: callers skip the work, and `GET /plants/{id}/beliefs` answers
+    /// `available: false`.
+    fn enabled(&self) -> bool;
+
+    /// Records one shared memory as a triple, registering its scope path first. Idempotent:
+    /// re-sending the same write leaves one current value.
+    async fn record(&self, write: &BeliefWrite) -> Result<(), ProviderError>;
+
+    /// The current beliefs of a plant and of its garden, or of the garden alone: one per key.
+    async fn current(
+        &self,
+        garden: GardenId,
+        plant: Option<PlantId>,
+    ) -> Result<Vec<Belief>, ProviderError>;
+
+    /// Every belief of one subject, current and superseded, newest first.
+    async fn history(&self, subject: BeliefSubject) -> Result<Vec<Belief>, ProviderError>;
+
+    /// The `k` current beliefs of the plant and its garden (or the garden alone) closest to a
+    /// query. Slow (2 to 10 s measured), so callers bound it with a timeout.
+    async fn search(
+        &self,
+        garden: GardenId,
+        plant: Option<PlantId>,
+        query: &str,
+        k: usize,
+    ) -> Result<Vec<BeliefHit>, ProviderError>;
+
+    /// Erases everything under the subject's scope path, permanently: a garden takes its
+    /// plants with it. Idempotent.
+    async fn forget(&self, subject: BeliefSubject) -> Result<(), ProviderError>;
+}
+
+/// The belief store when Agent Memory isn't configured: records nothing, knows nothing.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoBeliefs;
+
+#[async_trait::async_trait]
+impl BeliefStore for NoBeliefs {
+    fn enabled(&self) -> bool {
+        false
+    }
+
+    async fn record(&self, _write: &BeliefWrite) -> Result<(), ProviderError> {
+        Ok(())
+    }
+
+    async fn current(
+        &self,
+        _garden: GardenId,
+        _plant: Option<PlantId>,
+    ) -> Result<Vec<Belief>, ProviderError> {
+        Ok(Vec::new())
+    }
+
+    async fn history(&self, _subject: BeliefSubject) -> Result<Vec<Belief>, ProviderError> {
+        Ok(Vec::new())
+    }
+
+    async fn search(
+        &self,
+        _garden: GardenId,
+        _plant: Option<PlantId>,
+        _query: &str,
+        _k: usize,
+    ) -> Result<Vec<BeliefHit>, ProviderError> {
+        Ok(Vec::new())
+    }
+
+    async fn forget(&self, _subject: BeliefSubject) -> Result<(), ProviderError> {
+        Ok(())
+    }
 }
 ```
 
@@ -6560,6 +6799,11 @@ pub trait DeletionRepo: Send + Sync {
 
     /// Deletions started but not finished (after a restart), to resume.
     async fn unfinished_deletions(&self) -> Result<Vec<DeletionTarget>, StoreError>;
+
+    /// A plant's garden, read even while the plant is being deleted (`garden_of` hides it): a
+    /// resumed plant cascade needs it for the plant's scope in Agent Memory. `None` once the
+    /// plant row is gone, which a cascade reaches only after that scope was erased.
+    async fn deleting_plant_garden(&self, plant: PlantId) -> Result<Option<GardenId>, StoreError>;
 
     /// Decides each garden's fate for `DELETE /me` and the `user.deleted` webhook.
     async fn plan_account_deletion(&self, user: UserId) -> Result<AccountDeletionPlan, StoreError>;

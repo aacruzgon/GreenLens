@@ -8,7 +8,7 @@ use domain::{
     error::DomainError,
     id::{GardenId, MemoryId, PlantId, UserId},
     ports::{Embedding, MemoryHit, MemoryStore, NewMemory, StoreError},
-    wire::{Page, PageRequest, Role},
+    wire::{Page, PageRequest, Role, Timestamp},
 };
 use surrealdb::types::{RecordId, SurrealValue};
 
@@ -17,7 +17,7 @@ use crate::{
     error::{RowError, take_failed},
     ids::{from_opt_rid, from_rid, opt_rid, rid},
     read::{page as page_of, take_all, take_one},
-    rows::{MemoryKindRow, MemorySourceRow, RoleRow, dt, ts},
+    rows::{MemoryKindRow, MemorySourceRow, MemoryTopicRow, RoleRow, dt, ts},
     tx::run_tx,
 };
 
@@ -40,7 +40,7 @@ ORDER BY similarity DESC LIMIT $k;";
     /// The projection of a `memory` into `Memory`.
     macro_rules! memory_fields {
         () => {
-            "id, garden AS garden_id, plant AS plant_id, kind, text, source, shared, created_at"
+            "id, garden AS garden_id, plant AS plant_id, kind, topic, text, source, shared, created_at"
         };
     }
 
@@ -74,6 +74,22 @@ IF $m = NONE OR ($m.shared = false AND $m.author != $user) { THROW 'not_found' }
 IF $m.shared = true AND $role != 'owner' { THROW 'forbidden' };
 DELETE $memory;
 COMMIT;";
+    /// One memory by id, whoever wrote it (the belief mirror).
+    pub const MEMORY: &str = concat!("SELECT ", memory_fields!(), " FROM ONLY $memory;");
+    /// The mirror sweep: shared memories not yet recorded in Agent Memory, oldest first
+    /// (index `memory_unsynced`).
+    pub const UNSYNCED_SHARED: &str = concat!(
+        "SELECT ",
+        memory_fields!(),
+        " FROM memory WHERE shared = true AND belief_synced_at IS NONE
+ORDER BY created_at, id LIMIT $limit;"
+    );
+    /// Records a memory in Agent Memory. A missing memory is left alone (a `WHERE` on the id never creates one).
+    pub const MARK_SYNCED: &str = "UPDATE memory SET belief_synced_at = $at WHERE id = $memory;";
+    /// Unsets the stamp on the shared memories of one plant, or of the whole garden when
+    /// `$plant` is NONE (the unset field is NONE, so the sweep picks them up again).
+    pub const MARK_UNSYNCED: &str = "UPDATE memory SET belief_synced_at = NONE
+WHERE garden = $garden AND shared = true AND ($plant = NONE OR plant = $plant);";
     /// The memory's source and author.
     pub const MEMORY_OWNER: &str = "SELECT source, author FROM ONLY $memory;";
 }
@@ -96,6 +112,8 @@ pub struct MemoryRow {
     pub plant: Option<RecordId>,
     /// `fact`, `event` or `summary`.
     pub kind: MemoryKindRow,
+    /// What it is about.
+    pub topic: MemoryTopicRow,
     /// The text.
     pub text: String,
     /// `pipeline`, `chat` or `user`.
@@ -125,6 +143,8 @@ pub struct MemoryReadRow {
     pub plant: Option<RecordId>,
     /// Its kind.
     pub kind: MemoryKindRow,
+    /// What it is about.
+    pub topic: MemoryTopicRow,
     /// The text.
     pub text: String,
     /// Its source.
@@ -146,6 +166,7 @@ impl TryFrom<MemoryReadRow> for Memory {
             garden_id: from_rid(&row.garden)?,
             plant_id: from_opt_rid(row.plant.as_ref())?,
             kind: row.kind.into(),
+            topic: row.topic.into(),
             text: row.text,
             source: row.source.into(),
             shared: row.shared,
@@ -166,6 +187,7 @@ impl MemoryRow {
             garden: rid(&garden),
             plant: opt_rid(memory.plant.as_ref()),
             kind: memory.kind.into(),
+            topic: memory.topic.into(),
             text: memory.text.clone(),
             source: source.into(),
             shared,
@@ -364,5 +386,48 @@ impl MemoryStore for SurrealStore {
         row.map(|row| Ok((row.source.into(), from_opt_rid(row.author.as_ref())?)))
             .transpose()
             .map_err(|e: RowError| e.into_store(WHAT))
+    }
+
+    async fn memory(&self, memory: MemoryId) -> Result<Option<Memory>, StoreError> {
+        const WHAT: &str = "memory";
+        let mut r = run_tx(&self.db, sql::MEMORY, |q| q.bind(("memory", rid(&memory))))
+            .await
+            .map_err(|f| f.into_store(WHAT))?;
+        take_one(&mut r, 0, WHAT)
+    }
+
+    async fn unsynced_shared(&self, limit: u32) -> Result<Vec<Memory>, StoreError> {
+        const WHAT: &str = "unsynced shared memories";
+        let mut r = run_tx(&self.db, sql::UNSYNCED_SHARED, |q| {
+            q.bind(("limit", i64::from(limit)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        take_all(&mut r, 0, WHAT)
+    }
+
+    async fn mark_synced(&self, memory: MemoryId, at: Timestamp) -> Result<(), StoreError> {
+        const WHAT: &str = "mark memory synced";
+        run_tx(&self.db, sql::MARK_SYNCED, |q| {
+            q.bind(("memory", rid(&memory))).bind(("at", dt(at)))
+        })
+        .await
+        .map(drop)
+        .map_err(|f| f.into_store(WHAT))
+    }
+
+    async fn mark_unsynced(
+        &self,
+        garden: GardenId,
+        plant: Option<PlantId>,
+    ) -> Result<(), StoreError> {
+        const WHAT: &str = "mark memories unsynced";
+        run_tx(&self.db, sql::MARK_UNSYNCED, |q| {
+            q.bind(("garden", rid(&garden)))
+                .bind(("plant", opt_rid(plant.as_ref())))
+        })
+        .await
+        .map(drop)
+        .map_err(|f| f.into_store(WHAT))
     }
 }

@@ -5,6 +5,10 @@ use std::time::Duration;
 
 use crate::safety::{Calibration, POISON_CONTROL_TEXT};
 
+/// The default of [`AgentConfig::beliefs_read_timeout`], also the plan step's: a direct entity
+/// read in Agent Memory measured about 0.4 s.
+pub const BELIEFS_READ_TIMEOUT: Duration = Duration::from_millis(1_500);
+
 /// Limits and texts for chat, the plan writer and memory.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AgentConfig {
@@ -36,6 +40,14 @@ pub struct AgentConfig {
     pub calibration: Calibration,
     /// The memory gate's minimum calibrated margin of `remember` over `skip`.
     pub memory_gate_margin: f64,
+    /// How long the context builder waits for the current beliefs (a direct entity read,
+    /// about 0.4 s measured) before going on without them.
+    pub beliefs_read_timeout: Duration,
+    /// How long `search_memory` waits for Agent Memory's search (2 to 10 s measured) before
+    /// answering with the local hits alone.
+    pub beliefs_search_timeout: Duration,
+    /// Belief hits `search_memory` asks Agent Memory for.
+    pub belief_hits: usize,
 }
 
 impl Default for AgentConfig {
@@ -54,6 +66,9 @@ impl Default for AgentConfig {
             poison_control_text: POISON_CONTROL_TEXT.to_owned(),
             calibration: Calibration::default(),
             memory_gate_margin: 0.1,
+            beliefs_read_timeout: BELIEFS_READ_TIMEOUT,
+            beliefs_search_timeout: Duration::from_secs(4),
+            belief_hits: 5,
         }
     }
 }

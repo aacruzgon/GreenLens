@@ -9,6 +9,7 @@ struct Loaded {
     treatments: Vec<TreatmentSeed>,
     organisms: Vec<OrganismSeed>,
     memories: Vec<Memory>,
+    beliefs: Vec<Belief>,
     neighbours: Vec<PlanNeighbour>,
     sources: Vec<SourceId>,
 }
@@ -26,6 +27,11 @@ impl Loaded {
                 true,
                 "I garden organically",
             )],
+            beliefs: vec![fixtures::belief(
+                "container",
+                "The tomato is in a 30 cm pot.",
+                true,
+            )],
             neighbours: fixtures::neighbours(),
             sources: fixtures::sources(),
         }
@@ -40,6 +46,7 @@ impl Loaded {
             treatments: &self.treatments,
             organisms: &self.organisms,
             memories: SharedMemories::new(&self.memories).unwrap(),
+            beliefs: &self.beliefs,
             constraints: &[],
             neighbours: &self.neighbours,
             open_question: None,
@@ -177,5 +184,29 @@ fn the_prompt_wraps_data_and_names_what_the_plan_may_use() {
         panic!("memories second");
     };
     assert!(memories.contains("I garden organically"));
+    let ContentPart::Text(beliefs) = &request.messages[0].content[2] else {
+        panic!("beliefs third");
+    };
+    assert!(beliefs.starts_with("<data kind=\"beliefs\">"));
+    assert!(beliefs.contains(
+        r#"{"key":"container","value":"The tomato is in a 30 cm pot.","about_plant":true}"#
+    ));
+    assert!(
+        !beliefs.contains("learned_at"),
+        "only key, value and about_plant"
+    );
     assert_eq!(PLAN_SCHEMA["additionalProperties"], false);
+}
+
+#[test]
+fn no_beliefs_means_no_beliefs_block() {
+    let mut loaded = Loaded::new();
+    loaded.beliefs.clear();
+    let model = Arc::new(ScriptedModel::default());
+    let request = writer(&model).request(&loaded.input());
+    assert!(
+        request.messages[0].content.iter().all(
+            |c| !matches!(c, ContentPart::Text(t) if t.starts_with("<data kind=\"beliefs\">"))
+        )
+    );
 }

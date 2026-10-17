@@ -17,8 +17,8 @@ use domain::{
     events::ScanEventBody,
     id::ScanId,
     ports::{
-        BlobStore, Clock, IdGen, KnowledgeStore, MemoryStore, QuestionStepClaim, StepClaim, Store,
-        TextEmbedder, WeatherProvider,
+        BeliefStore, BlobStore, Clock, IdGen, KnowledgeStore, MemoryStore, QuestionStepClaim,
+        StepClaim, Store, TextEmbedder, WeatherProvider,
     },
     url::Stored,
     wire::{LocalDate, Run, Timestamp},
@@ -57,6 +57,9 @@ pub struct PipelineConfig {
     pub weather: domain::rules::weather::WeatherThresholds,
     /// Bounds concurrent measurement on the blocking pool: one permit per core.
     pub cpu_permits: Arc<tokio::sync::Semaphore>,
+    /// How long the plan step waits for the plant's current beliefs from Agent Memory before
+    /// writing the plan without them. `api` sets it from the agent's `beliefs_read_timeout`.
+    pub beliefs_read_timeout: std::time::Duration,
 }
 
 impl Default for PipelineConfig {
@@ -67,6 +70,7 @@ impl Default for PipelineConfig {
             cpu_permits: Arc::new(tokio::sync::Semaphore::new(
                 std::thread::available_parallelism().map_or(2, std::num::NonZero::get),
             )),
+            beliefs_read_timeout: agent::config::BELIEFS_READ_TIMEOUT,
         }
     }
 }
@@ -83,8 +87,12 @@ pub struct PipelineDeps {
     pub knowledge: Arc<dyn KnowledgeStore>,
     /// Open-Meteo, behind the weather cache this crate reads first.
     pub weather: Arc<dyn WeatherProvider>,
-    /// Garden memory: shared memories for the plan writer, the pipeline's summary.
+    /// Garden memory: shared memories for the plan writer, the pipeline's summary. In `api`, an
+    /// `agent::MirroredMemory`, so the summary reaches Agent Memory.
     pub memory: Arc<dyn MemoryStore>,
+    /// Agent Memory: the plant's current beliefs for the plan writer; `NoBeliefs` when it
+    /// isn't configured.
+    pub beliefs: Arc<dyn BeliefStore>,
     /// Text embeddings for the pipeline's memory summary, embedded as
     /// [`EmbedMode::Document`](domain::ports::EmbedMode::Document): the pipeline only stores
     /// memories and never searches.

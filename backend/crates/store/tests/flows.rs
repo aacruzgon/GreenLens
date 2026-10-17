@@ -10,14 +10,14 @@ use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use domain::{
     authz::{Editor, Owner, Viewer, check_conversation, check_membership_of},
     chat::{
-        Anchor, Card, ConfirmResult, ConversationQuery, MemoryKind, MemoryQuery,
+        Anchor, Card, ConfirmResult, ConversationQuery, MemoryKind, MemoryQuery, MemoryTopic,
         MessageFeedbackRequest, MessageRole, PendingAction, PendingStatus, Preview, Rating,
         WriteTool,
     },
     events::{RunReason, Stage},
     id::{
-        AuthId, ChatImageId, GardenId, ImageId, JobId, LeaseToken, ObservationId, QuestionId,
-        TaskId,
+        AuthId, ChatImageId, GardenId, ImageId, JobId, LeaseToken, ObservationId, PlantId,
+        QuestionId, TaskId,
     },
     jobs::{Capability, JobError, JobKind, JobSpec, PerceptionPayload, PerceptionStage},
     ports::{
@@ -969,6 +969,7 @@ async fn memory_visibility() {
         id: f.ids.id(),
         plant: Some(f.plant),
         kind: MemoryKind::Fact,
+        topic: MemoryTopic::Other,
         text: text.into(),
         embedding: Embedding(v),
         embedding_model: "e5".into(),
@@ -1015,6 +1016,91 @@ async fn memory_visibility() {
         .delete(viewer, note.id)
         .await
         .expect("an owner deletes a shared memory");
+}
+
+/// The belief mirror's reads and stamps: only shared, unsynced memories, oldest first.
+#[tokio::test]
+async fn memory_belief_sync() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let viewer = check_membership_of::<Viewer>(&*store, f.user, f.garden)
+        .await
+        .unwrap();
+    let mem = |plant: Option<PlantId>, topic: MemoryTopic, text: &str, secs: u64| NewMemory {
+        id: f.ids.id(),
+        plant,
+        kind: MemoryKind::Fact,
+        topic,
+        text: text.into(),
+        embedding: Embedding(vec![1.0, 0.0]),
+        embedding_model: "e5".into(),
+        source_msg: None,
+        created_at: t0().plus(Duration::from_secs(secs)),
+    };
+    let chat = store
+        .remember(
+            viewer,
+            mem(Some(f.plant), MemoryTopic::Watering, "Waters on Sundays", 0),
+        )
+        .await
+        .unwrap();
+    assert_eq!(chat.topic, MemoryTopic::Watering, "topic round-trips");
+    let pipeline = store
+        .add_pipeline_memory(
+            f.garden,
+            mem(Some(f.plant), MemoryTopic::Health, "Scan: blight", 20),
+        )
+        .await
+        .unwrap();
+    let note = store
+        .add_note(f.editor, mem(None, MemoryTopic::Location, "Raised bed", 10))
+        .await
+        .unwrap();
+    assert_eq!(note.topic, MemoryTopic::Location);
+    let ids = |v: Vec<domain::chat::Memory>| v.into_iter().map(|m| m.id).collect::<Vec<_>>();
+
+    // A private chat memory never appears; the others come oldest first.
+    assert_eq!(
+        ids(store.unsynced_shared(10).await.unwrap()),
+        vec![note.id, pipeline.id]
+    );
+    assert_eq!(ids(store.unsynced_shared(1).await.unwrap()), vec![note.id]);
+    let one = store.memory(pipeline.id).await.unwrap().expect("found");
+    assert_eq!(one.topic, MemoryTopic::Health);
+    assert_eq!(store.memory(f.ids.id()).await.unwrap(), None);
+
+    store.mark_synced(note.id, t0()).await.unwrap();
+    assert_eq!(
+        ids(store.unsynced_shared(10).await.unwrap()),
+        vec![pipeline.id]
+    );
+
+    // `share` makes the chat memory appear, unsynced.
+    store.share(f.editor, chat.id).await.unwrap();
+    assert_eq!(
+        ids(store.unsynced_shared(10).await.unwrap()),
+        vec![chat.id, pipeline.id]
+    );
+
+    store.mark_synced(chat.id, t0()).await.unwrap();
+    store.mark_synced(pipeline.id, t0()).await.unwrap();
+    assert_eq!(ids(store.unsynced_shared(10).await.unwrap()), vec![]);
+
+    // One plant's memories come back; the garden-level note does not.
+    store.mark_unsynced(f.garden, Some(f.plant)).await.unwrap();
+    assert_eq!(
+        ids(store.unsynced_shared(10).await.unwrap()),
+        vec![chat.id, pipeline.id]
+    );
+    store.mark_synced(chat.id, t0()).await.unwrap();
+    store.mark_synced(pipeline.id, t0()).await.unwrap();
+
+    // The whole garden: every shared memory, plants included.
+    store.mark_unsynced(f.garden, None).await.unwrap();
+    assert_eq!(
+        ids(store.unsynced_shared(10).await.unwrap()),
+        vec![chat.id, note.id, pipeline.id]
+    );
 }
 
 /// The knowledge load resolves edges into seed shapes.
@@ -1127,6 +1213,11 @@ async fn remove_fail_feedback_and_plant_deletion() {
         .await
         .unwrap();
     assert_eq!(started.prefixes.len(), 1, "one scan prefix");
+    assert_eq!(
+        store.deleting_plant_garden(f.plant).await.unwrap(),
+        Some(f.garden),
+        "a plant being deleted still names its garden"
+    );
     let target = DeletionTarget::Plant(f.plant);
     for step in CascadeStep::steps_for(target) {
         while store
@@ -1136,6 +1227,11 @@ async fn remove_fail_feedback_and_plant_deletion() {
             > 0
         {}
     }
+    assert_eq!(
+        store.deleting_plant_garden(f.plant).await.unwrap(),
+        None,
+        "no garden once the row is gone"
+    );
     for table in ["plant", "scan", "scan_feedback"] {
         let mut r = exec(
             &store,

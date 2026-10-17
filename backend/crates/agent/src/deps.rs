@@ -9,9 +9,9 @@
 use std::sync::Arc;
 
 use domain::ports::{
-    AnalysisRepo, BlobStore, ChatModel, ChatRepo, Clock, GardenRepo, IdGen, KnowledgeStore,
-    MapRepo, MemoryStore, PlanRepo, PlantRepo, ScanRepo, Store, TextClassifier, TextEmbedder,
-    UsageRepo, WeatherCacheRepo, WeatherProvider,
+    AnalysisRepo, BeliefStore, BlobStore, ChatModel, ChatRepo, Clock, GardenRepo, IdGen,
+    KnowledgeStore, MapRepo, MemoryStore, PlanRepo, PlantRepo, ScanRepo, Store, TextClassifier,
+    TextEmbedder, UsageRepo, WeatherCacheRepo, WeatherProvider,
 };
 
 use crate::{config::AgentConfig, safety::ProductCatalogue};
@@ -62,8 +62,12 @@ impl AgentStores {
 pub struct AgentDeps {
     /// The store areas.
     pub stores: AgentStores,
-    /// Garden memory.
+    /// Garden memory: in `api`, a [`crate::beliefs::MirroredMemory`], so shared writes reach
+    /// Agent Memory.
     pub memory: Arc<dyn MemoryStore>,
+    /// Shared memories in Agent Memory, read for the context's current beliefs and
+    /// `search_memory`; `NoBeliefs` when it isn't configured.
+    pub beliefs: Arc<dyn BeliefStore>,
     /// The knowledge base.
     pub knowledge: Arc<dyn KnowledgeStore>,
     /// The LLM API.
