@@ -214,6 +214,9 @@ jobs:
           if [ ${#scripts[@]} -eq 0 ]; then echo "no scripts"; exit 0; fi
           for s in "${scripts[@]}"; do bash -n "$s"; done
           shellcheck "${scripts[@]}"
+      # Mention parsing, routing and delivery for discord-mentions.yml, against a mocked Discord.
+      - name: The Discord mention script's tests pass
+        run: python3 -m unittest discover -s .github/scripts -b
 
   # --- stage 2: only after lint (and test) pass --------------------------------------------------
   # `!cancelled() && !failure()` lets a job run when a job it needs was skipped for having no
