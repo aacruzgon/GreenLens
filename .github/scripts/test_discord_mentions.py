@@ -49,6 +49,29 @@ def event(body, action="created", old=None, pr=True, owner=None, commenter_type=
     return e
 
 
+def description(body, action="opened", old=None, pr=False):
+    """An issues or pull_request_target event: the text is the issue's or pull request's own."""
+    kind = "pull" if pr else "issues"
+    item = {
+        "number": 14,
+        "title": "Decision: licences",
+        "body": body,
+        "html_url": f"https://github.com/aacruzgon/GreenLens/{kind}/14",
+        "created_at": "2026-10-17T12:00:00Z",
+        "updated_at": "2026-10-17T12:05:00Z",
+        "user": {"login": "opener", "html_url": "https://github.com/opener", "type": "User"},
+    }
+    e = {
+        "action": action,
+        "pull_request" if pr else "issue": item,
+        "sender": {"login": "editor", "html_url": "https://github.com/editor"},
+        "repository": {"full_name": "aacruzgon/GreenLens", "html_url": "https://github.com/aacruzgon/GreenLens"},
+    }
+    if action == "edited" and old is not None:
+        e["changes"] = {"body": {"from": old}}
+    return e
+
+
 class FakeDiscord:
     """Stands in for urlopen: records each request and replays scripted responses per URL."""
 
@@ -244,6 +267,61 @@ class Authors(unittest.TestCase):
             "**commenter** mentioned sarah-k in a comment on aacruzgon/GreenLens#7",
             "**commenter** commented on mark's pull request aacruzgon/GreenLens#7",
         })
+
+
+class Descriptions(unittest.TestCase):
+    def test_new_issue_alerts_each_person_it_mentions(self):
+        code, discord, _ = run(description("@mark @sarah-k please decide; not `@samdev`"))
+        self.assertEqual(code, 0)
+        self.assertEqual(sorted(discord.urls()), sorted([ENV["DISCORD_WEBHOOK_MARK"], ENV["DISCORD_WEBHOOK_SARAH"]]))
+        self.assertEqual({p["content"] for p in discord.payloads()}, {
+            "**opener** mentioned mark in issue aacruzgon/GreenLens#14",
+            "**opener** mentioned sarah-k in issue aacruzgon/GreenLens#14",
+        })
+        payload = discord.payloads()[0]
+        embed = payload["embeds"][0]
+        self.assertEqual(embed["title"], "Issue #14: Decision: licences")
+        self.assertEqual(embed["url"], "https://github.com/aacruzgon/GreenLens/issues/14")
+        self.assertEqual(embed["footer"]["text"], "New issue")
+        self.assertEqual([f["name"] for f in embed["fields"]], ["Repository", "Issue"])
+        self.assertEqual(payload["allowed_mentions"], {"parse": []})
+
+    def test_new_pull_request_alerts_each_person_it_mentions(self):
+        _, discord, _ = run(description("cc @Mark", pr=True))
+        self.assertEqual(discord.urls(), [ENV["DISCORD_WEBHOOK_MARK"]])
+        payload = discord.payloads()[0]
+        self.assertEqual(payload["content"], "**opener** mentioned mark in pull request aacruzgon/GreenLens#14")
+        self.assertEqual(payload["embeds"][0]["footer"]["text"], "New pull request")
+
+    def test_edit_alerts_only_people_it_newly_mentions_and_credits_the_editor(self):
+        _, discord, _ = run(description("@mark and now @samdev", "edited", old="@mark"))
+        self.assertEqual(discord.urls(), [ENV["DISCORD_WEBHOOK_SAM"]])
+        payload = discord.payloads()[0]
+        self.assertEqual(payload["content"], "**editor** mentioned SamDev in the edited description of issue aacruzgon/GreenLens#14")
+        self.assertEqual(payload["embeds"][0]["footer"]["text"], "Edited issue description")
+        self.assertEqual(payload["embeds"][0]["timestamp"], "2026-10-17T12:05:00Z")
+
+    def test_title_only_edit_sends_nothing(self):
+        e = description("@mark", "edited")
+        e["changes"] = {"title": {"from": "old title"}}
+        _, discord, _ = run(e)
+        self.assertEqual(discord.requests, [])
+
+    def test_no_mention_or_empty_body_sends_nothing(self):
+        for body in ("no mentions", None, ""):
+            code, discord, _ = run(description(body))
+            self.assertEqual((code, discord.requests), (0, []), body)
+
+    def test_opening_never_alerts_the_author(self):
+        e = description("plain text")
+        e["issue"]["user"]["login"] = "mark"
+        _, discord, _ = run(e)
+        self.assertEqual(discord.requests, [])
+
+    def test_other_actions_send_nothing(self):
+        for action in ("closed", "reopened", "synchronize"):
+            _, discord, _ = run(description("@mark", action))
+            self.assertEqual(discord.requests, [], action)
 
 
 class Payload(unittest.TestCase):

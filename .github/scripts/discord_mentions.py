@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Send a Discord alert to each team member a GitHub comment newly mentions, and to the author of
-the issue or pull request a new comment is on.
+"""Send a Discord alert to each team member a GitHub comment, issue or pull request newly mentions,
+and to the author of the issue or pull request a new comment is on.
 
 usage: discord_mentions.py "$GITHUB_EVENT_PATH"
 
-Run by .github/workflows/discord-mentions.yml on issue_comment events (docs/infra/discord-mentions.md).
+Run by .github/workflows/discord-mentions.yml on issue_comment, issues and pull_request_target events
+(docs/infra/discord-mentions.md).
 The routing comes from the environment, for each PERSON in PEOPLE:
 
   GH_USER_<PERSON>          their GitHub username (a repository variable)
@@ -89,11 +90,20 @@ def mentions(body: str | None) -> set[str]:
     return {m for m in found if m}
 
 
+def written(event: dict) -> tuple[dict, dict, str]:
+    """What an event is about: the text written (a comment, or the description of an issue or pull
+    request), the issue or pull request it is on, and that one's kind."""
+    item = event.get("pull_request") or event.get("issue") or {}
+    kind = "pull request" if "pull_request" in event or "pull_request" in item else "issue"
+    return event.get("comment") or item, item, kind
+
+
 def new_mentions(event: dict) -> set[str]:
-    """The mentions an event adds: all of them for a new comment, only new ones for an edit."""
-    body = event.get("comment", {}).get("body")
+    """The mentions an event adds: all of them for a new comment, issue or pull request, only new
+    ones for an edit."""
+    body = written(event)[0].get("body")
     action = event.get("action")
-    if action == "created":
+    if action in ("created", "opened"):
         return mentions(body)
     if action == "edited":
         changes = event.get("changes") or {}
@@ -109,7 +119,7 @@ def author_to_alert(event: dict) -> str | None:
     Not for an edit (the author was alerted when the comment was new), not for the author's own
     comment, and not for a bot's, such as a CI report on every push.
     """
-    if event.get("action") != "created":
+    if event.get("action") != "created" or "comment" not in event:
         return None
     commenter = event.get("comment", {}).get("user") or {}
     author = ((event.get("issue", {}).get("user") or {}).get("login") or "").lower()
@@ -154,29 +164,39 @@ def truncate(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
-def excerpt(body: str) -> str:
+def excerpt(body: str, empty: str) -> str:
     text = re.sub(r"\n{3,}", "\n\n", (body or "").strip())
-    return truncate(text, EXCERPT_CHARS) or "(empty comment)"
+    return truncate(text, EXCERPT_CHARS) or empty
 
 
 def message(event: dict, person: Person, mentioned: bool = True) -> dict:
     """The Discord webhook payload for one alert: for a mention, or for a comment on the person's
     issue or pull request when they aren't mentioned in it."""
-    comment, issue, repo = event["comment"], event["issue"], event["repository"]
-    kind = "pull request" if "pull_request" in issue else "issue"
+    text, issue, kind = written(event)
+    repo = event["repository"]
+    comment = "comment" in event
     edited = event.get("action") == "edited"
-    # An edit's mention is the editor's, who may not be the comment's author.
-    user = event.get("sender", {}) if edited else comment.get("user", {})
-    author = user.get("login") or (comment.get("user") or {}).get("login") or "someone"
+    # An edit's mention is the editor's, who may not be the author.
+    user = event.get("sender", {}) if edited else text.get("user", {})
+    author = user.get("login") or (text.get("user") or {}).get("login") or "someone"
     number = issue.get("number")
     where = f"{escape(repo['full_name'])}#{number}"
-    if mentioned:
+    if mentioned and comment:
         what = f"mentioned {escape(person.name)} in {'an edited comment' if edited else 'a comment'} on {where}"
         footer = "Edited comment" if edited else "New comment"
+    elif mentioned:
+        what = f"mentioned {escape(person.name)} in {'the edited description of ' if edited else ''}{kind} {where}"
+        footer = f"Edited {kind} description" if edited else f"New {kind}"
     else:
         owner = (issue.get("user") or {}).get("login") or person.name  # GitHub's spelling
         what = f"commented on {escape(owner)}'s {kind} {where}"
         footer = f"New comment on your {kind}"
+    fields = [
+        {"name": "Repository", "value": f"[{escape(repo['full_name'])}]({repo['html_url']})", "inline": True},
+        {"name": kind.capitalize(), "value": f"[#{number}]({issue['html_url']})", "inline": True},
+    ]
+    if comment:
+        fields.append({"name": "Comment", "value": f"[Open the comment]({text['html_url']})", "inline": True})
     return {
         # No pings at all: not @everyone, @here, roles or users, whatever the comment says.
         "allowed_mentions": {"parse": []},
@@ -184,16 +204,12 @@ def message(event: dict, person: Person, mentioned: bool = True) -> dict:
         "embeds": [
             {
                 "title": truncate(f"{kind.capitalize()} #{number}: {issue.get('title', '')}", 256),
-                "url": comment["html_url"],
+                "url": text["html_url"],
                 "author": {"name": truncate(author, 256), "url": user.get("html_url")},
-                "description": excerpt(comment.get("body", "")),
-                "fields": [
-                    {"name": "Repository", "value": f"[{escape(repo['full_name'])}]({repo['html_url']})", "inline": True},
-                    {"name": kind.capitalize(), "value": f"[#{number}]({issue['html_url']})", "inline": True},
-                    {"name": "Comment", "value": f"[Open the comment]({comment['html_url']})", "inline": True},
-                ],
+                "description": excerpt(text.get("body", ""), "(empty comment)" if comment else "(no description)"),
+                "fields": fields,
                 "footer": {"text": footer},
-                "timestamp": comment.get("updated_at" if edited else "created_at"),
+                "timestamp": text.get("updated_at" if edited else "created_at"),
             }
         ],
     }
