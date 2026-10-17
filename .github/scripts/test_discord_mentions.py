@@ -23,7 +23,7 @@ ENV = {
 }
 
 
-def event(body, action="created", old=None, pr=True):
+def event(body, action="created", old=None, pr=True, owner=None, commenter_type="User"):
     e = {
         "action": action,
         "comment": {
@@ -31,7 +31,7 @@ def event(body, action="created", old=None, pr=True):
             "html_url": "https://github.com/aacruzgon/GreenLens/pull/7#issuecomment-1",
             "created_at": "2026-10-17T12:00:00Z",
             "updated_at": "2026-10-17T12:05:00Z",
-            "user": {"login": "commenter", "html_url": "https://github.com/commenter"},
+            "user": {"login": "commenter", "html_url": "https://github.com/commenter", "type": commenter_type},
         },
         "issue": {
             "number": 7,
@@ -41,7 +41,9 @@ def event(body, action="created", old=None, pr=True):
         "repository": {"full_name": "aacruzgon/GreenLens", "html_url": "https://github.com/aacruzgon/GreenLens"},
     }
     if pr:
-        e["issue"]["pull_request"] = {"url": "…"}
+        e["issue"]["pull_request"] = {}  # GitHub fills it in; only its presence matters
+    if owner:
+        e["issue"]["user"] = {"login": owner}
     if action == "edited" and old is not None:
         e["changes"] = {"body": {"from": old}}
     return e
@@ -178,6 +180,53 @@ class Edits(unittest.TestCase):
     def test_edit_without_a_body_change_sends_nothing(self):
         _, discord, _ = run(event("@mark", "edited"))
         self.assertEqual(discord.requests, [])
+
+
+class Authors(unittest.TestCase):
+    def test_new_comment_alerts_the_pull_request_author(self):
+        code, discord, _ = run(event("Looks good to me", owner="SamDev"))
+        self.assertEqual((code, discord.urls()), (0, [ENV["DISCORD_WEBHOOK_SAM"]]))
+        payload = discord.payloads()[0]
+        self.assertEqual(payload["content"], "**commenter** commented on samdev's pull request aacruzgon/GreenLens#7")
+        self.assertEqual(payload["embeds"][0]["footer"]["text"], "New comment on your pull request")
+        self.assertEqual(payload["allowed_mentions"], {"parse": []})
+
+    def test_new_comment_alerts_the_issue_author(self):
+        _, discord, _ = run(event("Can't reproduce", owner="mark", pr=False))
+        self.assertEqual(discord.urls(), [ENV["DISCORD_WEBHOOK_MARK"]])
+        self.assertEqual(discord.payloads()[0]["embeds"][0]["footer"]["text"], "New comment on your issue")
+
+    def test_own_comment_alerts_no_one(self):
+        e = event("pushed a fix", owner="mark")
+        e["comment"]["user"]["login"] = "Mark"
+        _, discord, _ = run(e)
+        self.assertEqual(discord.requests, [])
+
+    def test_bot_comment_alerts_no_author(self):
+        _, discord, _ = run(event("Coverage report", owner="mark", commenter_type="Bot"))
+        self.assertEqual(discord.requests, [])
+
+    def test_edit_alerts_no_author(self):
+        _, discord, _ = run(event("typo fixed", "edited", old="typo fixd", owner="mark"))
+        self.assertEqual(discord.requests, [])
+
+    def test_unconfigured_author_alerts_no_one(self):
+        _, discord, _ = run(event("hi", owner="outside-contributor"))
+        self.assertEqual(discord.requests, [])
+
+    def test_author_who_is_also_mentioned_gets_one_alert_as_a_mention(self):
+        _, discord, _ = run(event("@mark can you rebase? cc @sarah-k", owner="mark"))
+        self.assertEqual(sorted(discord.urls()), sorted([ENV["DISCORD_WEBHOOK_MARK"], ENV["DISCORD_WEBHOOK_SARAH"]]))
+        for payload in discord.payloads():
+            self.assertIn(" mentioned ", payload["content"])
+
+    def test_author_and_a_mention_alert_both(self):
+        _, discord, _ = run(event("cc @sarah-k", owner="mark"))
+        contents = {p["content"] for p in discord.payloads()}
+        self.assertEqual(contents, {
+            "**commenter** mentioned sarah-k in a comment on aacruzgon/GreenLens#7",
+            "**commenter** commented on mark's pull request aacruzgon/GreenLens#7",
+        })
 
 
 class Payload(unittest.TestCase):
