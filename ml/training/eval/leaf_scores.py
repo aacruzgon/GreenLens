@@ -59,6 +59,33 @@ def leaf_score(dets: np.ndarray, logits: np.ndarray, stored: tuple[int, int], cf
     return float(kept.max()) if kept.size else 0.0
 
 
+class LeafScorer:
+    """The leaf detector from the manifest, scoring one photo file at a time as the worker does."""
+
+    def __init__(self, cuda: bool = False, files: Path = MODELS / "files"):
+        import onnxruntime as ort
+
+        self.cuda = cuda
+        self.manifest = MODELS / ("manifest.toml" if cuda else "manifest.cpu.toml")
+        self.entry = detector_entry(self.manifest)
+        self.cfg = self.entry["config"]
+        self.providers = ["CUDAExecutionProvider"] if cuda else ["CPUExecutionProvider"]
+        self.sess = ort.InferenceSession(str(files / self.entry["file"]), providers=self.providers)
+        inp = self.entry["input"]
+        self.in_name = inp["name"]
+        self.out_names = [self.entry["outputs"]["boxes"], self.entry["outputs"]["logits"]]
+        self.recipe = pp.Recipe(inp["shape"][-1], pp.Resize(inp["resize"]), tuple(inp["mean"]), tuple(inp["std"]))
+
+    def score(self, path: Path) -> float:
+        im = pp.load_rgb(path)
+        stored = pp.fit_long_side(im.size, STORED_LONG_SIDE)
+        x = pp.batch([pp.resize(im, *stored)], self.recipe)
+        if self.cuda:
+            x = x.astype(np.float16)
+        dets, logits = self.sess.run(self.out_names, {self.in_name: x})
+        return leaf_score(dets[0].astype(np.float32), logits[0], stored, self.cfg)
+
+
 def rates(values, thresholds=THRESHOLDS) -> dict:
     v = np.asarray(values)
     return {f"{t:g}": round(float(np.mean(v < t)), 4) for t in thresholds}
@@ -77,30 +104,12 @@ def main(argv=None) -> int:
         print("note: the test split is scored once (evaluation 2); use it only for the final run",
               file=sys.stderr)
 
-    import onnxruntime as ort
-
-    manifest = MODELS / ("manifest.toml" if args.cuda else "manifest.cpu.toml")
-    entry = detector_entry(manifest)
-    cfg = entry["config"]
-    providers = ["CUDAExecutionProvider"] if args.cuda else ["CPUExecutionProvider"]
-    sess = ort.InferenceSession(str(args.files / entry["file"]), providers=providers)
-    in_name = entry["input"]["name"]
-    out_names = [entry["outputs"]["boxes"], entry["outputs"]["logits"]]
-    recipe = pp.Recipe(entry["input"]["shape"][-1], pp.Resize(entry["input"]["resize"]),
-                       tuple(entry["input"]["mean"]), tuple(entry["input"]["std"]))
-
+    scorer = LeafScorer(cuda=args.cuda, files=args.files)
+    entry, cfg, providers, manifest = scorer.entry, scorer.cfg, scorer.providers, scorer.manifest
     rows = [line.split("\t") for line in (DATA / f"splits/{args.split}.tsv").read_text().splitlines()[1:]]
-    photos = []
-    for dataset, path, species, problem in rows:
-        im = pp.load_rgb(DATA / "raw" / path)
-        stored = pp.fit_long_side(im.size, STORED_LONG_SIDE)
-        im = pp.resize(im, *stored)
-        x = pp.batch([im], recipe)
-        if args.cuda:
-            x = x.astype(np.float16)
-        dets, logits = sess.run(out_names, {in_name: x})
-        photos.append({"dataset": dataset, "path": path, "species_id": species, "problem_id": problem,
-                       "score": round(leaf_score(dets[0].astype(np.float32), logits[0], stored, cfg), 4)})
+    photos = [{"dataset": dataset, "path": path, "species_id": species, "problem_id": problem,
+               "score": round(scorer.score(DATA / "raw" / path), 4)}
+              for dataset, path, species, problem in rows]
 
     groups = {"dataset": defaultdict(list), "species_id": defaultdict(list)}
     for p in photos:
