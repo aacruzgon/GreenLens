@@ -23,8 +23,9 @@ permissions:
   contents: read
 
 concurrency:
-  # One group per pull request; on main and tags, one per commit, so a burst of merges never drops a run.
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  # One group per pull request; otherwise one per ref and commit, so a burst of merges, or a tag on
+  # a commit main is still building, never cancels a waiting run.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}', github.ref, github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -293,7 +294,8 @@ jobs:
   # --- stage 3: the one required check -----------------------------------------------------------
 
   ci:
-    # live joins this list once it has passed on three consecutive pushes to main (infra §2).
+    # live joins this list once it has passed on three consecutive pushes to main (infra §2). Until
+    # then a failing live leaves ci green, but images (which waits for live) doesn't run.
     needs: [changes, lint, test, examples, docs, infra, security]
     if: always()
     runs-on: ubuntu-26.04
@@ -323,6 +325,19 @@ jobs:
       digests: ${{ steps.digests.outputs.lines }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: A tag must name a reviewed commit and a plain version
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          # Every commit on main came through a reviewed pull request; a tag elsewhere did not.
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+            || { echo "::error::$REF_NAME is not on main"; exit 1; }
+          # The name becomes an image tag, so no commas (TAGS is comma-separated) and no "latest".
+          [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] \
+            || { echo "::error::$REF_NAME is not vMAJOR.MINOR.PATCH[-pre]"; exit 1; }
       # Three images, two Rust builds and worker-cuda's 2.3 GB of layers.
       - uses: ./.github/actions/free-disk
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -331,7 +346,28 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # On a tag, reuse the images main built for this commit, so the release lists the digests that
+      # main's run summary already showed. A rebuild would change them (the created label at least).
+      - id: reuse
+        name: Reuse main's images for a tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          sha_tag="sha-${GITHUB_SHA::12}"
+          for t in api worker worker-cuda; do
+            docker buildx imagetools inspect "$REGISTRY/$t:$sha_tag" >/dev/null 2>&1 \
+              || { echo "No $t:$sha_tag from main; building instead"; echo "done=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          done
+          echo '{}' > meta.json
+          for t in api worker worker-cuda; do
+            docker buildx imagetools create -t "$REGISTRY/$t:$REF_NAME" "$REGISTRY/$t:$sha_tag"
+            digest=$(docker buildx imagetools inspect "$REGISTRY/$t:$sha_tag" --format '{{json .Manifest.Digest}}' | tr -d '"')
+            jq --arg t "$t" --arg d "$digest" '.[$t] = {"containerimage.digest": $d}' meta.json > meta.tmp && mv meta.tmp meta.json
+          done
+          echo "done=true" >> "$GITHUB_OUTPUT"
       - name: Build and push api, worker and worker-cuda
+        if: steps.reuse.outputs.done != 'true'
         env:
           REF_NAME: ${{ github.ref_name }}
           IS_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
@@ -344,7 +380,8 @@ jobs:
             cache+=(--set "$t.cache-from=type=registry,ref=$REGISTRY/buildcache:$t"
                     --set "$t.cache-to=type=registry,ref=$REGISTRY/buildcache:$t,mode=max")
           done
-          TAGS="$tags" REVISION="$GITHUB_SHA" CREATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          # The commit's time, not the build's, so the label is the same whenever this commit is built.
+          TAGS="$tags" REVISION="$GITHUB_SHA" CREATED="$(git log -1 --format=%cI)" \
             docker buildx bake -f backend/docker-bake.hcl --push --metadata-file meta.json "${cache[@]}"
       - id: digests
         name: Record the digests
