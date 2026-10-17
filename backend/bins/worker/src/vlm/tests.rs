@@ -86,6 +86,7 @@ fn adapter(replies: Vec<VlmReply>) -> VlmAdapter<Scripted> {
     )
 }
 
+mod live;
 mod record;
 
 const IMG: &str = "01JAX6BBBBBBBBBBBBBBBBBBBB";

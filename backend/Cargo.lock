@@ -8262,6 +8262,7 @@ dependencies = [
  "bytes",
  "clap",
  "domain",
+ "futures",
  "image",
  "integrations",
  "rand 0.10.3",
