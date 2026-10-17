@@ -1,0 +1,14 @@
+# cargo-deny, run by CI's security job (docs/infra/README.md section 2):
+# `cargo deny --locked check advisories` in backend/.
+
+[graph]
+# Only what ships. SurrealDB's embedded kv-mem engine, a dev-dependency for store's tests, brings in
+# bincode (unmaintained), quick-xml (RUSTSEC-2026-0194, -0195) and rsa (RUSTSEC-2023-0071), none of
+# which reaches a binary. To see them, run cargo-deny with exclude-dev removed.
+exclude-dev = true
+
+[advisories]
+ignore = [
+  # Unmaintained, with no vulnerability; it reaches vision and api through tokenizers 0.23.
+  { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained, not vulnerable; it comes through tokenizers" },
+]

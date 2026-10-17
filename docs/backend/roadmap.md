@@ -101,7 +101,7 @@ flowchart LR
 1. Merge PR #8, the workspace.
 Designed in [infra](../infra/README.md): CI in section 2, images in section 3, compose files in section 4, with its own work items in [section 9](../infra/README.md#9-roadmap).
 
-2. Add a CI workflow, `.github/workflows/backend.yml`, with these steps:
+2. Add a CI workflow, `.github/workflows/ci.yml` (first named `backend.yml`), with these steps:
    - `cargo fmt --all --check`;
    - `cargo clippy --workspace --all-targets -- -D warnings`;
    - `cargo test --workspace`, with cargo-nextest 0.9.148;
