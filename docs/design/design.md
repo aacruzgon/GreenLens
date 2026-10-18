@@ -1,6 +1,6 @@
 # PDM Design
 
-> **Status:** Draft v0.4, 2026-10-18. v0.4: adds a fifth direction, Conservatory, in F0's palette, after a premium furniture concept, the Camera app's visual intelligence mode and Apple Music's artist profiles: photos that dissolve into the ground, a capture with a camera mode bar of shots, a live analysis that drops its cards over the photo just taken, a diagnosis tinted from its photo with the name centred over it, a plan mini player, and a turntable 3D garden in the camera's language, with Health, Growth and Frost modes. v0.3: adds the chat: answers with interactive blocks after CopilotKit's Open Intelligent UI, built from the agent's tool results rather than generated code, and the contract change it needs. v0.2: folds in the PR #43 audit: one demo story (Tomato 1 diagnosed on Oct 11 and recovering; today's live scan finds early blight on its neighbour Tomato 2), the capture tint rule, the wording sources, and 3D claims marked as not yet run. v0.1: the app's design direction: product principles from the research, what Apple owns and what we own, four directions mocked across eight screens (the current F0 baseline and three researched directions), the five borrowed ideas built into the mockups, the 3D garden, the insights, and the decisions still open.
+> **Status:** Draft v0.5, 2026-10-18. v0.5: the 3D garden moves to RealityKit on Metal in the LiDAR module, since the app is iPhone only, with react-three-fiber on expo-gl as the fallback (section 7, open decision 5, garden-3d v0.3). v0.4: adds a fifth direction, Conservatory, in F0's palette, after a premium furniture concept, the Camera app's visual intelligence mode and Apple Music's artist profiles: photos that dissolve into the ground, a capture with a camera mode bar of shots, a live analysis that drops its cards over the photo just taken, a diagnosis tinted from its photo with the name centred over it, a plan mini player, and a turntable 3D garden in the camera's language, with Health, Growth and Frost modes. v0.3: adds the chat: answers with interactive blocks after CopilotKit's Open Intelligent UI, built from the agent's tool results rather than generated code, and the contract change it needs. v0.2: folds in the PR #43 audit: one demo story (Tomato 1 diagnosed on Oct 11 and recovering; today's live scan finds early blight on its neighbour Tomato 2), the capture tint rule, the wording sources, and 3D claims marked as not yet run. v0.1: the app's design direction: product principles from the research, what Apple owns and what we own, four directions mocked across eight screens (the current F0 baseline and three researched directions), the five borrowed ideas built into the mockups, the 3D garden, the insights, and the decisions still open.
 
 This document sets how PDM looks, moves and speaks, so the build-week slices (F1 to F8 in the frontend roadmap on PR #42) build to one direction instead of improvising one. It sits on top of the [frontend architecture](../frontend/README.md), its [flows](../frontend/flows.md) and the [screens](../frontend/screens.md), which stay the source for what each screen contains. This document decides how it looks.
 
@@ -13,7 +13,7 @@ The folder holds the research behind it and the mockups:
 | [landscape.md](landscape.md) | Twelve plant and garden apps and three others: table stakes, the gaps PDM can own, ideas to borrow, what would look generic |
 | [inspiration.md](inspiration.md) | Sixteen non-competitor apps (Flighty, Merlin, Windy, Object Capture, Crouton and others) and the patterns worth borrowing, screen by screen |
 | [analytics.md](analytics.md) | Every data source we capture, the insights per plant and per garden they allow, what is buildable now, and the backend gaps |
-| [garden-3d.md](garden-3d.md) | How to render the 3D garden in Expo SDK 57 (react-three-fiber on expo-gl), the on-device LiDAR mesh view, and one open expo-gl bug |
+| [garden-3d.md](garden-3d.md) | How to render the 3D garden on the iPhone (RealityKit on Metal, in the LiDAR module), the fallback (react-three-fiber on expo-gl, with one open bug), and the on-device LiDAR mesh view |
 
 ## Contents
 
@@ -217,11 +217,11 @@ Interactions inside a block are local. Anything that changes data still goes thr
 ## 7. The 3D garden
 
 - **Data:** only what the garden map stores: bed outlines, plant pins in metres, canopy radius, and each plant's measured height ([architecture §6.8](../architecture/README.md#68-garden-map-lidar)). No mesh, photo or coordinates; the sheet says so. A plant with no measurement is drawn as "not measured", never with an invented height.
-- **Stack:** `@react-three/fiber` 9.8.2 on `expo-gl` ~57.0.2 with `three`, procedural geometry, no GLB files or textures, labels as React Native views projected each frame. It should run in Expo Go and on the web from one scene; neither has been run on SDK 57 yet ([garden-3d §6](garden-3d.md#6-recommendation)).
-- **Risk:** expo issue #51543: on expo-gl 57.0.2 a WebGL 2 context passes `instanceof WebGLRenderingContext`, and three r163 or later refuses to render. The first task is a one-day spike on the iPhone and a mid-range Android phone with the workaround applied ([garden-3d §1](garden-3d.md#known-issues)).
+- **Stack:** RealityKit on Metal, as a native `GardenView` in the LiDAR module: an `ARView` with the camera off, procedural meshes, no model files or textures, and UIKit labels placed from the 3D positions each frame. The app's store drives it through props (date, mode, selection). The app is iPhone only, so it needs no cross-platform renderer; Expo Go and the web build show the 2D map instead. Nothing has run on the device yet ([garden-3d §7](garden-3d.md#7-recommendation)).
+- **Risk:** the Swift work shares the LiDAR module's owner. The first task is a one-day spike on the iPhone. The fallback is react-three-fiber on expo-gl, which runs in Expo Go but has an open bug with three r163 or later, expo issue #51543 ([garden-3d §2](garden-3d.md#known-issues)).
 - **Accessibility:** a plant list is the screen reader's view of the garden, and the 2D map stays the default and the fallback.
-- **Performance:** the direction specs describe iOS. On Android and slower phones, use Lambert materials and drop shadows ([garden-3d §2](garden-3d.md#2-performance-budget)).
-- **The mockup** uses three.js r128 as a browser global for convenience; the app uses the versions above.
+- **Performance:** about 10 beds and 40 plants, flat materials, one light, a contact shadow per plant, and no frames drawn while idle ([garden-3d §3](garden-3d.md#3-performance-budget)).
+- **The mockup** uses three.js r128 as a browser global for convenience; the app draws the same scene with RealityKit.
 
 ## 8. Insights
 
@@ -240,7 +240,7 @@ Once a direction is chosen:
 1. **Tokens.** Replace the values in `app/src/ui/tokens.ts` with the chosen palette; add the display and number font families and the motion values as tokens.
 2. **Fonts.** Load the chosen families with the `expo-font` config plugin (one `fontFamily` per weight); bar titles stay system.
 3. **New composites:** `StatusShape`, `PhaseLine`, `CandidateCompare` (plates or table), `PictureAnswer`, `CoverageDial`, `StepMode`, `StatusStrip`, `BandLine` and `StepLanes` (the last three from analytics §2).
-4. **Libraries to add, each with its reason in its pull request** (not in [frontend §4](../frontend/README.md#4-libraries) yet): `expo-symbols`, `expo-glass-effect`, `expo-gl`, `three`, `@react-three/fiber`.
+4. **Libraries to add, each with its reason in its pull request** (not in [frontend §4](../frontend/README.md#4-libraries) yet): `expo-symbols` and `expo-glass-effect`. The 3D garden adds no library: RealityKit is part of iOS, and the view lives in the LiDAR module.
 5. **Chat blocks:** an `AnswerBlock` renderer in `features/chat` with one composite per kind, after the contract change in section 5.
 6. **Live Activity:** an ActivityKit widget extension, which needs a development build, and a decision on how it is added to the Expo project (open decision 4).
 7. **The frontend roadmap** (PR #42) gains this design as the first item of F1, and F8 Polish checks every screen against this document.
@@ -251,7 +251,7 @@ Once a direction is chosen:
 2. **The scan action's place.** A round button beside the native tab bar, as in the mockups, or a tab of its own. Check what `NativeTabs` offers on SDK 57 before building.
 3. **Glass tint over photos.** Check on the iPhone whether a tinted control stays readable when the glass adapts to dark content (philosophies §9).
 4. **Live Activity in Expo.** How the widget extension is added and whether it fits the build week; the Lock Screen design does not depend on it.
-5. **The 3D spike.** Run it first; if expo-gl blocks three r163 or later, pin three below r163 (garden-3d §6).
+5. **The 3D spike.** Run the RealityKit `GardenView` spike first, beside the LiDAR day-1 check. If it slips, fall back to fiber on expo-gl, and pin three below r163 if expo-gl still blocks it (garden-3d §7).
 6. **Fonts.** If Seed Packet is chosen, cut Fraunces instances with the soft axis set (philosophies §9).
 7. **Answer blocks in chat.** Take the `answer_block` contract change (section 5) into F6, and agree the first set of block kinds with the agent work in backend S5.
 8. **Conservatory and real photos.** If Conservatory is chosen, try the melt and the photo tint on ten real photos of sick leaves taken in the garden, not on the mockups' drawings, before building them, and check the tint's contrast on each.
