@@ -38,13 +38,139 @@
     return p.hist ? p.hist[i][1] : p.note;
   };
 
-  function mount(stage, screen, opts) {
-    if (!window.THREE) {
-      stage.innerHTML = '<div class="g3d-fallback">The 3D view needs three.js from cdnjs. Connect to the internet and reload.</div>';
-      return { dispose() {}, select() {}, scrubTo() {} };
+  // The 2D map (screens 3.8): the same beds, pins and measurements drawn flat in metres, north up,
+  // x to the east and z to the south. It needs no WebGL, so it is also the fallback when the 3D view can't draw.
+  const MAP = { x0: -2.45, x1: 2.62, z0: -1.55, z1: 1.62 };
+  const BED_NAME = { east: "East bed", south: "South bed" };
+  // Where each label sits from its pin (metres), chosen so labels clear their neighbours even with heights on.
+  const LABEL_AT = {
+    tomato1: [-0.12, -0.2, "start"], tomato2: [-0.12, 0.31, "start"], pepper: [0.17, 0.06, "start"],
+    basil: [0.17, 0.4, "end"], lettuce: [-0.17, 0.06, "end"], kale: [0, 0.38, "middle"],
+  };
+  const PIN = 0.08, FONT = 0.18;
+  const nearest = (p) => PLANTS.filter((q) => q !== p)
+    .map((q) => ({ q, d: Math.hypot(q.x - p.x, q.z - p.z) }))
+    .sort((a, b) => a.d - b.d)[0];
+  // Pins are tapped in AR, so distances between them are given to the nearest 5 cm.
+  const nearText = (p) => { const n = nearest(p); return Math.round(n.d * 20) * 5 + " cm to " + n.q.name; };
+  function pinShape(st, x, z) {
+    const r = PIN;
+    if (st === "watch") return `<path class="pin-shape" d="M${x} ${z - r * 1.2}L${x + r * 1.15} ${z + r * 0.85}L${x - r * 1.15} ${z + r * 0.85}Z"/>`;
+    if (st === "sick") return `<path class="pin-shape" d="M${x} ${z - r * 1.25}L${x + r * 1.25} ${z}L${x} ${z + r * 1.25}L${x - r * 1.25} ${z}Z"/>`;
+    if (st === "dead") return `<rect class="pin-shape hollow" x="${x - r}" y="${z - r}" width="${2 * r}" height="${2 * r}"/>`;
+    return `<circle class="pin-shape" cx="${x}" cy="${z}" r="${r}"/>`;
+  }
+  function drawMap(el, m) {
+    const W = MAP.x1 - MAP.x0, H = MAP.z1 - MAP.z0, f = (n) => +n.toFixed(3);
+    let out = `<svg viewBox="${MAP.x0} ${MAP.z0} ${W} ${H}" role="img" aria-label="Map of Back garden, north up">`;
+    for (const b of BEDS) {
+      const x = b.x - b.w / 2, z = b.z - b.d / 2;
+      out += `<rect class="bed" x="${f(x)}" y="${f(z)}" width="${b.w}" height="${b.d}" rx="0.05"/>`;
+      out += `<text class="bed-name" x="${f(x)}" y="${f(z - 0.07)}" font-size="${FONT * 0.9}">${BED_NAME[b.id]} · ${(b.w * b.d).toFixed(1)} m²</text>`;
     }
-    const T = window.THREE;
+    for (const p of PLANTS) {
+      const st = statusAt(p, m.dateIdx), sel = p.id === m.selected;
+      const h = Math.round(p.h * growAt(p, m.dateIdx) * 100);
+      let gr = `<g class="pin s-${st}${sel ? " sel" : ""}" data-plant="${p.id}" role="button" tabindex="0" aria-label="${p.name}, ${STATUS_WORD[st]}">`;
+      gr += `<circle class="hit" cx="${p.x}" cy="${p.z}" r="0.22"/>`;
+      if (p.pot) gr += `<circle class="pot" cx="${p.x}" cy="${p.z}" r="0.17"/>`;
+      // The canopy ring only where it was measured: the latest scan (contracts 9, garden map).
+      if (last(m.dateIdx) === 4) gr += `<circle class="canopy" cx="${p.x}" cy="${p.z}" r="${p.c / 2}"/>`;
+      if (m.dateIdx === FORECAST && p.tender) gr += `<circle class="cover" cx="${p.x}" cy="${p.z}" r="${f(p.c / 2 + 0.07)}"/>`;
+      if (sel) gr += `<circle class="sel-ring" cx="${p.x}" cy="${p.z}" r="0.14"/>`;
+      gr += pinShape(st, p.x, p.z);
+      const [dx, dz, anchor] = LABEL_AT[p.id] || [0.17, 0.06, "start"];
+      gr += `<text class="pin-label" x="${f(p.x + dx)}" y="${f(p.z + dz)}" text-anchor="${anchor}" font-size="${FONT}">${p.name}${m.heights ? ` · ${h} cm` : ""}</text></g>`;
+      out += gr;
+    }
+    const sx = MAP.x0 + 0.12, sz = MAP.z1 - 0.12;
+    out += `<g class="scale"><path d="M${sx} ${sz - 0.06}V${sz}H${sx + 1}V${sz - 0.06}"/><text x="${f(sx + 1.08)}" y="${f(sz)}" font-size="${FONT * 0.85}">1 m</text></g>`;
+    const nx = MAP.x1 - 0.12, nz = MAP.z0 + 0.06;
+    out += `<g class="north"><path d="M${nx} ${nz}l0.08 0.22l-0.08 -0.05l-0.08 0.05z"/><text x="${f(nx - 0.14)}" y="${f(nz + 0.2)}" text-anchor="end" font-size="${FONT * 0.8}">N</text></g>`;
+    el.innerHTML = out + "</svg>";
+  }
+
+  function mount(stage, screen, opts) {
+    const mapEl = screen.querySelector("[data-g2d]");
     const g = opts.dir.garden3d;
+    // The date, the selection, the plant sheet and the map belong to the garden, not to the 3D scene,
+    // so they work without it. The scene, when it draws, hooks in through scene3d.
+    let dateIdx = 4, selected = null, showHeights = !!g.labelHeights, scene3d = null, disposed = false;
+    function redrawMap() {
+      if (mapEl) drawMap(mapEl, { dateIdx, selected: selected && selected.id, heights: showHeights });
+    }
+    function updateSheet() {
+      if (!selected) return;
+      const p = selected, q = (s) => screen.querySelector(s);
+      q("[data-g-name]").textContent = p.name;
+      const st = q("[data-g-status]");
+      st.className = "status s-" + statusAt(p, dateIdx);
+      st.textContent = STATUS_WORD[statusAt(p, dateIdx)];
+      q("[data-g-height]").textContent = Math.round(p.h * growAt(p, dateIdx) * 100) + " cm";
+      // Canopy width is only in the fixture for the latest scan; earlier dates say so rather than invent one.
+      q("[data-g-canopy]").textContent = last(dateIdx) === 4 ? Math.round(p.c * 100) + " cm" : "not measured";
+      q("[data-g-note]").textContent = noteAt(p, dateIdx);
+      const near = q("[data-g-near]");
+      if (near) near.textContent = nearText(p);
+      q("[data-g-date]").textContent = dateIdx === FORECAST ? "Thu · forecast" : DATES[dateIdx];
+    }
+    function select(id) {
+      selected = PLANTS.find((p) => p.id === id) || null;
+      if (scene3d) scene3d.select(selected);
+      redrawMap();
+      updateSheet();
+    }
+    function scrubTo(i) {
+      dateIdx = i;
+      const range = screen.querySelector("[data-g-range]");
+      if (range) range.value = String(i);
+      if (scene3d) scene3d.recolor();
+      redrawMap();
+      updateSheet();
+    }
+    // Shows or hides the measured height on every label (the camera layout's Growth mode).
+    function heights(on) {
+      showHeights = !!on;
+      if (scene3d) scene3d.labels();
+      redrawMap();
+    }
+    if (mapEl) {
+      const pinOf = (e) => e.target.closest("[data-plant]");
+      mapEl.addEventListener("click", (e) => { const pin = pinOf(e); if (pin) select(pin.dataset.plant); });
+      // Pins are buttons, so Enter and Space choose them too. Selecting redraws the map, so focus goes back to the pin.
+      mapEl.addEventListener("keydown", (e) => {
+        const pin = pinOf(e);
+        if (!pin || (e.key !== "Enter" && e.key !== " ")) return;
+        e.preventDefault();
+        select(pin.dataset.plant);
+        const again = mapEl.querySelector(`[data-plant="${pin.dataset.plant}"]`);
+        if (again) again.focus({ preventScroll: true });
+      });
+    }
+    const range = screen.querySelector("[data-g-range]");
+    if (range) range.addEventListener("input", () => scrubTo(Number(range.value)));
+    const api = {
+      select,
+      scrubTo,
+      heights,
+      dates: DATES.length,
+      dispose() {
+        if (disposed) return;
+        disposed = true;
+        if (scene3d) scene3d.dispose();
+        if (mapEl) mapEl.innerHTML = "";
+      },
+    };
+    // Without three.js or WebGL the garden opens on the map, which keeps everything but the 3D view.
+    function fallback(msg) {
+      stage.innerHTML = `<div class="g3d-fallback">${msg}</div>`;
+      screen.classList.add("map-view");
+      screen.querySelectorAll(".g3d-seg button").forEach((b) => { const on = b.dataset.view === "map"; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); });
+      select("tomato1");
+      return api;
+    }
+    if (!window.THREE) return fallback("The 3D view needs three.js from cdnjs. Connect to the internet and reload. The map works without it.");
+    const T = window.THREE;
     const pal = g[opts.scheme];
     const roles = opts.dir.colors[opts.scheme];
     const dark = opts.scheme === "dark";
@@ -56,7 +182,9 @@
       return c;
     };
 
-    const renderer = new T.WebGLRenderer({ antialias: true });
+    let renderer;
+    try { renderer = new T.WebGLRenderer({ antialias: true }); }
+    catch (err) { return fallback("This browser can't draw 3D. The map shows the same garden."); }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.shadowMap.enabled = !!g.shadows;
     renderer.shadowMap.type = T.PCFSoftShadowMap;
@@ -68,7 +196,7 @@
     const persp = new T.PerspectiveCamera(g.fov || 32, 1, 0.1, 100);
     const ortho = new T.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
     const camera = g.ortho ? ortho : persp;
-    const orbit = { az: g.ortho ? 0.785 : 0.42, polar: g.ortho ? 0.96 : 0.9, r: g.ortho ? 10.8 : 12.6, target: new T.Vector3(0.3, 0.15, 0.1) };
+    const orbit = { az: g.ortho ? 0.785 : 0.42, polar: g.ortho ? 0.96 : 0.9, r: g.ortho ? 10.8 : opts.dist || g.dist || 12.6, target: new T.Vector3(0.3, 0.15, 0.1) };
     const intro = { polar: reduced ? orbit.polar : 0.32 };
 
     const L = g.lights;
@@ -249,11 +377,10 @@
       screen.querySelector(".g3d").append(scaleEl, northEl);
     }
 
-    let dateIdx = 4, selected = null;
     function drawLabel(x) {
       const st = statusAt(x.p, dateIdx);
       const h = Math.round(x.p.h * growAt(x.p, dateIdx) * 100);
-      x.label.innerHTML = `<span class="sh sh-${st}" style="background:${roles[st]}"></span>${x.p.name}${g.labelHeights ? ` · <span class="num">${h} cm</span>` : ""}`;
+      x.label.innerHTML = `<span class="sh sh-${st}" style="background:${roles[st]}"></span>${x.p.name}${showHeights ? ` · <span class="num">${h} cm</span>` : ""}`;
       x.label.classList.toggle("frost", dateIdx === FORECAST && x.p.tender);
     }
     function recolor() {
@@ -284,7 +411,7 @@
       lastInteract = performance.now();
     });
     el.addEventListener("pointerup", (e) => { if (down && down.moved < 6) pick(e); down = null; });
-    el.addEventListener("wheel", (e) => { e.preventDefault(); orbit.r = Math.min(14, Math.max(5, orbit.r + e.deltaY * 0.004)); }, { passive: false });
+    el.addEventListener("wheel", (e) => { e.preventDefault(); orbit.r = Math.min(Math.max(14, (g.dist || 0) + 2), Math.max(5, orbit.r + e.deltaY * 0.004)); }, { passive: false });
 
     const ray = new T.Raycaster();
     function pick(e) {
@@ -294,40 +421,15 @@
       if (hit) select(hit.object.userData.plantId);
     }
 
-    function updateSheet() {
-      if (!selected) return;
-      const p = selected.p, q = (s) => screen.querySelector(s);
-      q("[data-g-name]").textContent = p.name;
-      const st = q("[data-g-status]");
-      st.className = "status s-" + statusAt(p, dateIdx);
-      st.textContent = STATUS_WORD[statusAt(p, dateIdx)];
-      q("[data-g-height]").textContent = Math.round(p.h * growAt(p, dateIdx) * 100) + " cm";
-      // Canopy width is only in the fixture for the latest scan; earlier dates say so rather than invent one.
-      q("[data-g-canopy]").textContent = last(dateIdx) === 4 ? Math.round(p.c * 100) + " cm" : "not measured";
-      q("[data-g-note]").textContent = noteAt(p, dateIdx);
-      q("[data-g-date]").textContent = dateIdx === FORECAST ? "Thu · forecast" : DATES[dateIdx];
-    }
-    function select(id) {
-      selected = plants.find((x) => x.p.id === id) || null;
-      plants.forEach((x) => x.label.classList.toggle("sel", x === selected));
-      updateSheet();
-    }
-    function scrubTo(i) {
-      dateIdx = i;
-      plants.forEach((x) => { x.goal = growAt(x.p, i); if (reduced) x.scale = x.goal; });
-      const range = screen.querySelector("[data-g-range]");
-      if (range) range.value = String(i);
-      recolor();
-      updateSheet();
-    }
-    const range = screen.querySelector("[data-g-range]");
-    if (range) range.addEventListener("input", () => scrubTo(Number(range.value)));
 
     function resize() {
       const w = stage.clientWidth, h = stage.clientHeight;
       if (!w || !h) return;
       renderer.setSize(w, h, false);
       persp.aspect = w / h;
+      // A full-screen scene with cards over it (the camera layout) passes the clear band as px insets
+      // [top, bottom], and the view shifts so the garden centres in that band rather than on the screen.
+      if (opts.band) persp.setViewOffset(w, h, 0, (opts.band[1] - opts.band[0]) / 2, w, h);
       persp.updateProjectionMatrix();
     }
     const ro = new ResizeObserver(resize);
@@ -337,10 +439,11 @@
     const easeOutBack = (t) => { const c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
     const t0 = performance.now();
     const v = new T.Vector3(), v2 = new T.Vector3();
-    let raf = 0, disposed = false;
+    let raf = 0;
     function frame(now) {
       raf = requestAnimationFrame(frame);
       const w = stage.clientWidth, h = stage.clientHeight;
+      if (!w || !h) return; // the map view hides the stage; nothing to draw until it returns
       if (g.autoRotate && !reduced && now - lastInteract > 3500) orbit.az += 0.0016;
       if (!down) intro.polar += (orbit.polar - intro.polar) * (reduced ? 1 : 0.05);
       const s = Math.sin(intro.polar);
@@ -380,17 +483,14 @@
       }
       renderer.render(scene, camera);
     }
-    recolor();
-    raf = requestAnimationFrame(frame);
-    select("tomato1");
-
-    return {
-      select,
-      scrubTo,
-      dates: DATES.length,
+    scene3d = {
+      select(p) { plants.forEach((x) => x.label.classList.toggle("sel", x.p === p)); },
+      recolor() {
+        plants.forEach((x) => { x.goal = growAt(x.p, dateIdx); if (reduced) x.scale = x.goal; });
+        recolor();
+      },
+      labels() { plants.forEach(drawLabel); },
       dispose() {
-        if (disposed) return;
-        disposed = true;
         cancelAnimationFrame(raf);
         ro.disconnect();
         scene.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
@@ -400,6 +500,10 @@
         if (scaleEl) { scaleEl.remove(); northEl.remove(); }
       },
     };
+    recolor();
+    raf = requestAnimationFrame(frame);
+    select("tomato1");
+    return api;
   }
 
   window.PDMGarden3D = { mount };

@@ -1,6 +1,6 @@
 # PDM Design
 
-> **Status:** Draft v0.3, 2026-10-17. v0.3: adds the chat: answers with interactive blocks after CopilotKit's Open Intelligent UI, built from the agent's tool results rather than generated code, and the contract change it needs. v0.2: folds in the PR #43 audit: one demo story (Tomato 1 diagnosed on Oct 11 and recovering; today's live scan finds early blight on its neighbour Tomato 2), the capture tint rule, the wording sources, and 3D claims marked as not yet run. v0.1: the app's design direction: product principles from the research, what Apple owns and what we own, four directions mocked across eight screens (the current F0 baseline and three researched directions), the five borrowed ideas built into the mockups, the 3D garden, the insights, and the decisions still open.
+> **Status:** Draft v0.5, 2026-10-18. v0.5: Conservatory's camera screens keep the full-screen photo and the 3D garden runs full screen, with neutral controls (white shutters, the chosen tab and mode in the text colour) on them and on home; and the 3D garden moves to RealityKit on Metal in the LiDAR module, since the app is iPhone only, with react-three-fiber on expo-gl as the fallback (section 7, open decision 5, garden-3d v0.3). v0.4: adds a fifth direction, Conservatory, in F0's palette, after a premium furniture concept, the Camera app's visual intelligence mode and Apple Music's artist profiles: photos that dissolve into the ground, a capture with a camera mode bar of shots, a live analysis that drops its cards over the photo just taken, a diagnosis tinted from its photo with the name centred over it, a plan mini player, and a turntable 3D garden in the camera's language, with Health, Growth and Frost modes. v0.3: adds the chat: answers with interactive blocks after CopilotKit's Open Intelligent UI, built from the agent's tool results rather than generated code, and the contract change it needs. v0.2: folds in the PR #43 audit: one demo story (Tomato 1 diagnosed on Oct 11 and recovering; today's live scan finds early blight on its neighbour Tomato 2), the capture tint rule, the wording sources, and 3D claims marked as not yet run. v0.1: the app's design direction: product principles from the research, what Apple owns and what we own, four directions mocked across eight screens (the current F0 baseline and three researched directions), the five borrowed ideas built into the mockups, the 3D garden, the insights, and the decisions still open.
 
 This document sets how PDM looks, moves and speaks, so the build-week slices (F1 to F8 in the frontend roadmap on PR #42) build to one direction instead of improvising one. It sits on top of the [frontend architecture](../frontend/README.md), its [flows](../frontend/flows.md) and the [screens](../frontend/screens.md), which stay the source for what each screen contains. This document decides how it looks.
 
@@ -8,12 +8,12 @@ The folder holds the research behind it and the mockups:
 
 | File | What it is |
 |---|---|
-| [mockups/index.html](mockups/index.html) | Clickable mockups: nine screens in four directions, light and dark, full or reduced motion, a screen compared across directions, and the demo flow played with a simulated finger. Open the file in a browser; the 3D view loads three.js from cdnjs |
+| [mockups/index.html](mockups/index.html) | Clickable mockups: nine screens in five directions, light and dark, full or reduced motion, a screen compared across directions, and the demo flow played with a simulated finger. Open the file in a browser; the 3D view loads three.js from cdnjs |
 | [philosophies.md](philosophies.md) | Ten design philosophies, a taste section, what Apple owns, and the full specs of the three directions (palettes checked for contrast, type, shape, motion, 3D) |
 | [landscape.md](landscape.md) | Twelve plant and garden apps and three others: table stakes, the gaps PDM can own, ideas to borrow, what would look generic |
 | [inspiration.md](inspiration.md) | Sixteen non-competitor apps (Flighty, Merlin, Windy, Object Capture, Crouton and others) and the patterns worth borrowing, screen by screen |
 | [analytics.md](analytics.md) | Every data source we capture, the insights per plant and per garden they allow, what is buildable now, and the backend gaps |
-| [garden-3d.md](garden-3d.md) | How to render the 3D garden in Expo SDK 57 (react-three-fiber on expo-gl), the on-device LiDAR mesh view, and one open expo-gl bug |
+| [garden-3d.md](garden-3d.md) | How to render the 3D garden on the iPhone (RealityKit on Metal, in the LiDAR module), the fallback (react-three-fiber on expo-gl, with one open bug), and the on-device LiDAR mesh view |
 
 ## Contents
 
@@ -61,21 +61,94 @@ Expo renders native iOS 26 components, so the chrome is Apple's whatever directi
 
 ## 3. The directions
 
-The mockups show four directions on the same nine screens. The baseline is what F0 built; the other three come from [philosophies §7](philosophies.md#7-three-directions-to-mock), deliberately far apart: one restrained, one expressive, one data-forward. Only one of them is green.
+The mockups show five directions on the same nine screens. The baseline is what F0 built; three come from [philosophies §7](philosophies.md#7-three-directions-to-mock), deliberately far apart: one restrained, one expressive, one data-forward. The fifth, Conservatory, was added after the team liked the premium look of a furniture shopping concept, the Camera app's visual intelligence mode and Apple Music's artist profiles ([section 3.1](#31-conservatory)); it keeps F0's palette. Two of them are green.
 
-| | Current F0 | Herbarium | Seed Packet | Instrument |
-|---|---|---|---|---|
-| **In three words** | Baseline, as built | Restrained, precise, considered | Warm, crafted, generous | Exact, legible, candid |
-| **Idea** | Apple defaults, leaf green on off-white | A pressed specimen sheet: paper and ink, the plant is the colour | An heirloom seed catalogue: printed colour, a soft serif | A field instrument that shows its working: black, white, colour only for status and data |
-| **Accent** | `#2F6B47` green | `#2C5C3E` herbarium green, darker than every status | `#7D2B63` beet plum | Ink `#111814`, paper `#EEF2F0` in dark; no hue |
-| **Display face** | System | Newsreader (OFL) | Fraunces (OFL) | Atkinson Hyperlegible Next and Mono (OFL) |
-| **Region box** | White box | Paper outline, like a pencil | Plum lasso with a pulse | Reticle corners with the size in mm |
-| **"Not sure yet"** | Two plates | Two equal plates, in italics | Two equal packets, in italics | A comparison table of the marks that separate the candidates |
-| **Motion** | Fades | Ink: 200 to 480 ms, no overshoot | Springs with 8 to 25% overshoot, a stamp on check | Cuts and critically damped readouts |
-| **3D garden** | Organic plants, species greens | Architect's model, ink outlines, orthographic | Clay diorama, warm low light, long shadows | Survey model on a grid, height labels, no shadows |
-| **Known issues** | Accent and healthy are one green; watch and sick look alike to colour-blind users | Green accent is the category colour, held back by depth and restraint | Fraunces' soft axis needs our own font cut; plum near sick in dark mode | Can feel cold; depends on good photos for warmth |
+| | Current F0 | Herbarium | Seed Packet | Instrument | Conservatory |
+|---|---|---|---|---|---|
+| **In three words** | Baseline, as built | Restrained, precise, considered | Warm, crafted, generous | Exact, legible, candid | Soft, sculptural, quietly premium |
+| **Idea** | Apple defaults, leaf green on off-white | A pressed specimen sheet: paper and ink, the plant is the colour | An heirloom seed catalogue: printed colour, a soft serif | A field instrument that shows its working: black, white, colour only for status and data | A glasshouse showroom: each plant presented like a piece of design furniture, in F0's colours |
+| **Accent** | `#2F6B47` green | `#2C5C3E` herbarium green, darker than every status | `#7D2B63` beet plum | Ink `#111814`, paper `#EEF2F0` in dark; no hue | F0's `#2F6B47` green, unchanged, plus a pale sage wash `#E3EBDC` behind heroes |
+| **Display face** | System | Newsreader (OFL) | Fraunces (OFL) | Atkinson Hyperlegible Next and Mono (OFL) | Urbanist (OFL), large and tight |
+| **Region box** | White box | Paper outline, like a pencil | Plum lasso with a pulse | Reticle corners with the size in mm | A soft oval with a white hotspot dot, the size in its label |
+| **"Not sure yet"** | Two plates | Two equal plates, in italics | Two equal packets, in italics | A comparison table of the marks that separate the candidates | Two plates |
+| **Motion** | Fades | Ink: 200 to 480 ms, no overshoot | Springs with 8 to 25% overshoot, a stamp on check | Cuts and critically damped readouts | Slow, critically damped springs on the iOS sheet curve; the hotspot breathes |
+| **3D garden** | Organic plants, species greens | Architect's model, ink outlines, orthographic | Clay diorama, warm low light, long shadows | Survey model on a grid, height labels, no shadows | A showroom plinth: plaster beds, terracotta pots, studio light, long lens, slow turntable |
+| **Known issues** | Accent and healthy are one green; watch and sick look alike to colour-blind users | Green accent is the category colour, held back by depth and restraint | Fraunces' soft axis needs our own font cut; plum near sick in dark mode | Can feel cold; depends on good photos for warmth | F0's two colour issues; leans on the top photo, and a user's photo of a sick leaf is rarely a studio shot |
 
-All six new palettes pass 4.5:1 on every text pair, and their status colours stay apart under simulated colour blindness (smallest ΔE 11, against 4 in the current palette). The hex values are in [philosophies §7.4](philosophies.md#74-palettes) and in [mockups/directions.js](mockups/directions.js).
+All six new palettes pass 4.5:1 on every text pair, and their status colours stay apart under simulated colour blindness (smallest ΔE 11, against 4 in the current palette). Conservatory reuses F0's palette, so it keeps F0's results, good and bad. The hex values are in [philosophies §7.4](philosophies.md#74-palettes), section 3.1 and [mockups/directions.js](mockups/directions.js).
+
+### 3.1 Conservatory
+
+**Source.** [Premium Furniture E-commerce App Concept](https://dribbble.com/shots/27161604-Premium-Furniture-E-commerce-App-Concept) on Dribbble: three screens (a welcome over a lifestyle photo, a home with collections, a product page for a velvet sofa). It sells sofas, not diagnoses, so the direction takes its surface and leaves its shopping habits.
+
+**What it takes.**
+
+| In the concept | In PDM |
+|---|---|
+| One saturated object on a calm ground; the interface stays quiet | F0's own palette, unchanged: leaf green on warm off-white `#F6F7F2`. The interface uses the green only for the one action per screen, so the plant photo and the status marks carry the colour |
+| The welcome photo dissolves into the ground instead of sitting in a frame | **Melt:** the garden home's photo fades into a clay wash, and every screen starts with that wash at the top. Plant cards fade the plant into the card, with the name in ink below |
+| Huge, tight geometric display type ("Live in Comfort") | Urbanist 600 at −0.03 em: the garden name at 54 pt, the diagnosis at 40 pt. Body, numbers and all chrome stay SF Pro |
+| A white hotspot dot on the sofa marks a detail | **Hotspot:** the lesion is a soft oval inside the detector's box with a white dot at its centre and a label below ("Early blight · 8–12 mm"). The dot settles in 520 ms and then breathes |
+| The angle thumbnails under the product | The three photos of the scan as rounded thumbnails, the one being read ringed in the text colour |
+| "Add to cart": a black pill with the icon in a white disc | **Pill:** one green pill per screen ("See the diagnosis and plan", "Done"); with an icon, the icon sits in a white disc at the left end. Secondary buttons are pale surface pills, like the concept's selected size chip |
+| The Camera app's white shutter and plain mode bar | **Controls are neutral, content is green.** The shutters are white everywhere: capture, the 3D garden and home's scan button. The chosen tab, mode and view are in the text colour on a solid or glass pill, never green, so the camera, the garden and home read as one tool |
+| Large continuous radii, white cards with a long soft shadow | Cards and photos at 28 pt, a two-layer warm shadow in light mode, a border in dark |
+
+**What it leaves.**
+
+- **Frosted glass on content.** The concept's "Get Started" pill and card captions are glass over photos. Our rule is glass in the chrome only ([philosophies §5](philosophies.md#5-taste), tell 3, and §6), so the round buttons over the photo are the system's own bar buttons and nothing in the content is frosted.
+- **Shopping devices.** Prices, discount carousels, "Top Trends" and ratings have no counterpart. The colour swatch rail has none either: a plant's colour is evidence, not an option.
+- **Confidence styling.** The concept's large price sits where our diagnosis name sits; the diagnosis gets the size, never a number (section 6).
+
+**Capture and the live analysis, after the Camera app.** Both follow the Camera app's visual intelligence mode (from screenshots the team shared): the camera fills the screen, the answer drops down from the top as a card with a grabber, a chip names what it sees on the subject, and a mode bar switches PHOTO, SIRI and PORTRAIT.
+
+| In the Camera app | In PDM |
+|---|---|
+| The mode bar: PHOTO · SIRI · PORTRAIT in a glass pill, the chosen one centred | **Modes:** the capture's shots become the mode bar: WHOLE PLANT · CLOSE-UP · UNDERSIDE · SOIL · FRUIT, the `ImageKind`s taken as photos (the squeeze and jar tests stay in guided mode). A dot marks a stored shot, and the dial around the shutter still counts the needed ones. It replaces the row of shot chips in [screens §3.2](../frontend/screens.md#32-capture) |
+| The answer as a card dropping from the top | On capture, the chosen shot's instruction ("Fill the frame with one affected leaf, about 30 cm away"). On the live analysis, the running stage with its time and the next one; tapping the card opens the full run log under it |
+| "Maybe: Philodendron", a chip on the subject | Findings as chips on the photo: the lesion's dot with "Leaf spots · 8–12 mm", and "Tomato · Change" for the species check. **Never a guess at the diagnosis:** no "Maybe: early blight" chip. The name waits for the result, as the wording rules require (section 6) |
+| The shutter glows while it looks | The shutter becomes a glowing ring while the analysis runs, and gives way to "See the diagnosis and plan" when the plan is ready |
+| | "Not sure yet" drops down under the stage card. The one question sits low and compact, with small picture answers, so the spots it asks about stay in view between the cards |
+
+The live analysis shows the photo just taken, held still, not a live camera feed: the analysis runs on the uploaded photos on the rig, and the screen doesn't pretend otherwise. The three photos sit in a strip at the bottom. Both screens are always dark, like the camera. The cards and the mode bar are ours, drawn over `LidarCameraView` or `expo-camera`; iOS has no API for the Camera app's mode picker. The photo fills the screen, so the controls on it are neutral: the shutter, the glowing ring and Analyse are white, and the mode bar and the photo strip are solid dark pills with the chosen mode in white. Nothing tinted sits on the photo (section 2); the accent stays on the solid cards. The cards and chips carry content, so they are solid dark, not frosted like the Camera app's card: no content card is glass (section 6).
+
+**The 3D garden, in the same language.** The garden takes the camera's pieces so the three screens feel like one tool:
+
+- **A mode bar:** HEALTH · GROWTH · FROST. Health colours each plant's ring by status. Growth adds each plant's measured height to its label ("Kale · 55 cm"). Frost jumps to Thursday's forecast and puts frost covers on the four tender plants.
+- **A card from the top** says what the mode shows ("Frost on Thursday night. Low of −1 °C. Cover the 4 tender plants by Thursday evening") and carries the status legend, so every label's shape has its word on screen.
+- **The plant labels are chips** on the scene, the selected one outlined: nothing tinted sits on the 3D view (section 2).
+- **The selected plant's card rests as a pill** ("Tomato 1 · ◆ Sick") above the shutter row, so the garden keeps the room. A tap grows it into the full card, like the question on the live analysis: height, width, note, the distance to the nearest plant on the map, and the timeline from Sep 20 to Thursday's forecast. A tap on its header or grabber shrinks it back.
+- **A shutter row:** Insights, **Scan** and Ask, all for the selected plant. The shutter scans it, which is the most common next step from the garden.
+- **Full screen, like a viewfinder.** The scene runs edge to edge behind the card and the controls, framed so the plants sit in the clear band between them. The Map view keeps its own band, because a flat drawing needs its edges clear.
+
+- **3D or Map.** The switch at the top right swaps the scene for the 2D garden map ([screens §3.8](../frontend/screens.md#38-garden-map)): beds with their names and areas, a pin per plant in its status shape and colour, the canopy ring where it was measured, a 1 m scale bar and north, and **Edit** for editors. The map shares the selection, the date and the modes, so Growth puts heights on the pins and Frost rings the tender plants in the info colour. It draws without WebGL, so when the 3D view can't draw (no WebGL, or three.js didn't load) the garden opens on the map. Distances between pins are given to the nearest 5 cm because pins are tapped in AR. The map works in every direction, not only Conservatory.
+
+Unlike capture and the live analysis, the 3D garden follows the light or dark scheme, because it is not a camera. Its cards are solid, and its controls are neutral, as on the camera: a white shutter, and solid mode and view switches with the chosen one in the text colour. The modes follow the date: Health and Growth show the latest scan, Frost shows Thursday, and dragging the date to Thursday chooses Frost. The demo flow taps FROST when it reaches the forecast.
+
+**The diagnosis, after Apple Music.** The diagnosis follows Apple Music's reimagined artist profiles (iOS 27, from a screenshot the team shared) instead of the furniture concept's product page.
+
+| In Apple Music | In PDM |
+|---|---|
+| The artist photo runs into a page colour taken from the photo | **Photo tint:** the scan photo fades into a ground tinted from it, so every scan has its own colour. Only Back and In the garden (a map, where Apple Music has More) float over the photo, as clear glass bar buttons |
+| The name, centred over the photo's faded edge | The diagnosis and its basis ("Tomato 2 · from 3 photos, your answer and the weather"), in Urbanist at 40 pt |
+| Three round buttons: favourite, play, more | Left out. Step by step and Ask are already in the mini player, and In the garden is the bar button at the top right |
+| The featured album, a card with the next one peeking | The risk of spread ("Crowded: 40 cm from Tomato 1") and "Also found: ladybug larva", scrolling sideways |
+| "Top Songs ›" on the tint, without cards | "Your plan ›" and the other lists on translucent cards over the tint, with no shadows |
+| The mini player above the tab bar | "Up next · step 1 of 5: Remove the lowest infected leaves", with play (step by step) and Ask. It is chrome, the iOS 26 tab bar's bottom accessory, so it may be glass. Whether `NativeTabs` exposes the accessory on SDK 57 is *unverified*; without it, the bar is ours and not glass |
+
+The cards are solid fills, not glass: glass stays in the chrome.
+
+**Photo tint rule.** The tint takes the photo's dominant hue and holds its lightness and chroma fixed: about OKLCH L 0.93 in light and 0.24 in dark, chroma at most 0.03. That keeps the ground in one narrow band, so F0's text and status colours stay readable on any photo. For the mockups' leaf the tint is the sage wash (`#E3EBDC`, `#18231D`). Checked on it: every text and status colour passes 4.5:1 on the tint and on the translucent cards (lowest 4.74:1, `healthy` on a light card). Other hues have not been checked; a tomato-red photo gives a faint pink ground, still near the same lightness.
+
+**Palette.** F0's palette unchanged (`app/src/ui/tokens.ts` on `feat/app-scaffold`; `F0_COLORS` in [mockups/directions.js](mockups/directions.js), which both directions share so they cannot drift). The only addition is `wash`, the pale sage behind hero photos and the tint of the mockups' scan screens: `#E3EBDC` in light, `#18231D` in dark. Text on it is 13.5:1 and `textMuted` 5.22:1 in light (13.6:1 and 7.05:1 in dark). Conservatory also inherits F0's two known issues: accent and healthy are nearly one green, and watch and sick look alike to colour-blind users. The status shapes (section 6) carry the difference.
+
+**Glass tint.** As in F0: the green tints the selected tab and the one prominent button; nothing tinted sits over a photo.
+
+**Motion.** Slow and damped, never bouncy, because premium reads as unhurried: screens enter on a critically damped spring (stiffness 170, damping 26) rising 24 pt; stage ticks take 300 ms; pushes and sheets use the iOS sheet curve `bezier(0.32, 0.72, 0, 1)` over 420 ms. Reduced: fades, and the hotspot doesn't breathe.
+
+**3D garden: the showroom.** The garden on a pale sage plinth over F0's off-white, framed between the top card and the plant card: plaster beds, terracotta-brown soil and pots, plants in their species greens with a status ring under each, a warm key light with soft shadows, a 24° long lens (from 16.8 m, so the model doesn't distort) and a slow turntable rotation when idle.
+
+**Risks.** It depends on the top photo more than any other direction: the melt and the photo tint look their best over a clean, well-lit leaf, and users photograph sick plants in shade and clutter. Luxury can also read as "for someone else" to a community-garden member ([philosophies §3.2](philosophies.md#32-editorial-and-luxury)); the plain wording rules (section 6) are what keep it friendly. Urbanist is used only at 22 pt and above, where its geometric shapes stay legible.
 
 ## 4. Recommendation
 
@@ -88,6 +161,8 @@ All six new palettes pass 4.5:1 on every text pair, and their status colours sta
 - **Its risk is coldness.** Warmth comes from the user's own photos, the 3D garden and the plain, kind wording of the plan ("This week: two small jobs"), which Seed Packet's research supplies.
 
 Herbarium is the safe second: tasteful and quiet, but green. Seed Packet is the most memorable and the most work.
+
+Conservatory is the most premium-looking and the closest to what the team liked. It is a different kind of choice: a surface more than a structure. The strongest combination may be **Conservatory's surface with Instrument's evidence**: the melt, the camera-style capture and analysis, the tinted diagnosis, the pill and the mini player, carrying Instrument's run log with stage times, measured sizes and the comparison table for "Not sure yet". The palette is a separate choice: Conservatory keeps F0's green, which keeps F0's two colour issues; Instrument's ink would fix them.
 
 ## 5. The demo, screen by screen
 
@@ -144,11 +219,11 @@ Interactions inside a block are local. Anything that changes data still goes thr
 ## 7. The 3D garden
 
 - **Data:** only what the garden map stores: bed outlines, plant pins in metres, canopy radius, and each plant's measured height ([architecture §6.8](../architecture/README.md#68-garden-map-lidar)). No mesh, photo or coordinates; the sheet says so. A plant with no measurement is drawn as "not measured", never with an invented height.
-- **Stack:** `@react-three/fiber` 9.8.2 on `expo-gl` ~57.0.2 with `three`, procedural geometry, no GLB files or textures, labels as React Native views projected each frame. It should run in Expo Go and on the web from one scene; neither has been run on SDK 57 yet ([garden-3d §6](garden-3d.md#6-recommendation)).
-- **Risk:** expo issue #51543: on expo-gl 57.0.2 a WebGL 2 context passes `instanceof WebGLRenderingContext`, and three r163 or later refuses to render. The first task is a one-day spike on the iPhone and a mid-range Android phone with the workaround applied ([garden-3d §1](garden-3d.md#known-issues)).
+- **Stack:** RealityKit on Metal, as a native `GardenView` in the LiDAR module: an `ARView` with the camera off, procedural meshes, no model files or textures, and UIKit labels placed from the 3D positions each frame. The app's store drives it through props (date, mode, selection). The app is iPhone only, so it needs no cross-platform renderer; Expo Go and the web build show the 2D map instead. Nothing has run on the device yet ([garden-3d §7](garden-3d.md#7-recommendation)).
+- **Risk:** the Swift work shares the LiDAR module's owner. The first task is a one-day spike on the iPhone. The fallback is react-three-fiber on expo-gl, which runs in Expo Go but has an open bug with three r163 or later, expo issue #51543 ([garden-3d §2](garden-3d.md#known-issues)).
 - **Accessibility:** a plant list is the screen reader's view of the garden, and the 2D map stays the default and the fallback.
-- **Performance:** the direction specs describe iOS. On Android and slower phones, use Lambert materials and drop shadows ([garden-3d §2](garden-3d.md#2-performance-budget)).
-- **The mockup** uses three.js r128 as a browser global for convenience; the app uses the versions above.
+- **Performance:** about 10 beds and 40 plants, flat materials, one light, a contact shadow per plant, and no frames drawn while idle ([garden-3d §3](garden-3d.md#3-performance-budget)).
+- **The mockup** uses three.js r128 as a browser global for convenience; the app draws the same scene with RealityKit.
 
 ## 8. Insights
 
@@ -167,17 +242,20 @@ Once a direction is chosen:
 1. **Tokens.** Replace the values in `app/src/ui/tokens.ts` with the chosen palette; add the display and number font families and the motion values as tokens.
 2. **Fonts.** Load the chosen families with the `expo-font` config plugin (one `fontFamily` per weight); bar titles stay system.
 3. **New composites:** `StatusShape`, `PhaseLine`, `CandidateCompare` (plates or table), `PictureAnswer`, `CoverageDial`, `StepMode`, `StatusStrip`, `BandLine` and `StepLanes` (the last three from analytics §2).
-4. **Libraries to add, each with its reason in its pull request** (not in [frontend §4](../frontend/README.md#4-libraries) yet): `expo-symbols`, `expo-glass-effect`, `expo-gl`, `three`, `@react-three/fiber`.
+4. **Libraries to add, each with its reason in its pull request** (not in [frontend §4](../frontend/README.md#4-libraries) yet): `expo-symbols` and `expo-glass-effect`. The 3D garden adds no library: RealityKit is part of iOS, and the view lives in the LiDAR module.
 5. **Chat blocks:** an `AnswerBlock` renderer in `features/chat` with one composite per kind, after the contract change in section 5.
 6. **Live Activity:** an ActivityKit widget extension, which needs a development build, and a decision on how it is added to the Expo project (open decision 4).
 7. **The frontend roadmap** (PR #42) gains this design as the first item of F1, and F8 Polish checks every screen against this document.
 
 ## 10. Open decisions
 
-1. **The direction.** Instrument is recommended (section 4). The team picks one, or one direction's structure with another's detail.
+1. **The direction.** Instrument is recommended (section 4), with Conservatory's surface on Instrument's evidence as the hybrid to consider. The team picks one, or one direction's structure with another's detail.
 2. **The scan action's place.** A round button beside the native tab bar, as in the mockups, or a tab of its own. Check what `NativeTabs` offers on SDK 57 before building.
 3. **Glass tint over photos.** Check on the iPhone whether a tinted control stays readable when the glass adapts to dark content (philosophies §9).
 4. **Live Activity in Expo.** How the widget extension is added and whether it fits the build week; the Lock Screen design does not depend on it.
-5. **The 3D spike.** Run it first; if expo-gl blocks three r163 or later, pin three below r163 (garden-3d §6).
+5. **The 3D spike.** Run the RealityKit `GardenView` spike first, beside the LiDAR day-1 check. If it slips, fall back to fiber on expo-gl, and pin three below r163 if expo-gl still blocks it (garden-3d §7).
 6. **Fonts.** If Seed Packet is chosen, cut Fraunces instances with the soft axis set (philosophies §9).
 7. **Answer blocks in chat.** Take the `answer_block` contract change (section 5) into F6, and agree the first set of block kinds with the agent work in backend S5.
+8. **Conservatory and real photos.** If Conservatory is chosen, try the melt and the photo tint on ten real photos of sick leaves taken in the garden, not on the mockups' drawings, before building them, and check the tint's contrast on each.
+9. **Where the photo tint is computed.** On the phone from the first photo (a library such as `react-native-image-colors`, not yet in frontend §4), or by the API at upload as a field on the photo, which is a contract change.
+10. **Camera-style capture for every direction?** The mode bar, the analysis over the photo and the 3D garden's modes are Conservatory's in the mockups, but these screens are mostly chrome, so they could go with whichever direction is chosen. If the team takes them, update [screens §3.2, §3.3 and §3.8](../frontend/screens.md#32-capture).

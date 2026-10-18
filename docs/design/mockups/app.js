@@ -129,12 +129,12 @@
     phone.dataset.buttons = L.buttons;
     phone.dataset.times = String(!!L.times);
     phone.dataset.illus = String(!!L.illus);
+    phone.dataset.melt = String(!!L.melt);
     phone.dataset.italic = String(!!dir.italicUnsure);
     phone.dataset.heroNames = String(!!dir.heroNames);
     phone.dataset.mat = String(!!s.mat);
     phone.dataset.home = dir.layout.home;
     phone.dataset.plants = dir.layout.plants;
-    phone.dataset.scan = dir.layout.scan;
     phone.dataset.card = s.cardStyle;
     phone.dataset.sec = dir.sections;
     phone.classList.toggle("reduce", state.motion === "reduce");
@@ -165,8 +165,12 @@
 
     const P = { dir, phone, fig, stack: [], layer: null, ctl: null, flow: !!opts.flow };
 
+    // The live analysis may have its own layout (layout.live); the diagnosis follows layout.scan.
+    function scanOf(id) {
+      return id === "live" && dir.layout.live ? dir.layout.live : dir.layout.scan;
+    }
     function onDark(id) {
-      return id === "capture" || id === "activity" || (id === "home" && dir.layout.home === "hero") || ((id === "live" || id === "result") && dir.layout.scan === "hero");
+      return id === "capture" || id === "activity" || (id === "home" && dir.layout.home === "hero") || ((id === "live" || id === "result") && ["hero", "profile", "camera"].includes(scanOf(id)));
     }
     function caption(id) {
       const s = SCREENS.find((x) => x.id === id);
@@ -181,12 +185,21 @@
       const frag = document.getElementById("t-" + id).content.cloneNode(true);
       Array.from(frag.children).forEach((n) => (n.classList.contains("fixed") ? layer : vp).appendChild(n));
       layer.dataset.screen = id;
+      layer.dataset.scan = scanOf(id);
+      layer.dataset.capture = dir.layout.capture || "strip";
+      layer.dataset.garden = dir.layout.garden || "sheet";
       return layer;
     }
     function initLayer(layer) {
       const id = layer.dataset.screen;
-      if (id === "live") return liveController(P, layer);
+      if (id === "live") {
+        // The camera layout is always dark, like the camera it continues.
+        if (layer.dataset.scan === "camera") Object.keys(dir.colors.dark).forEach((k) => layer.style.setProperty("--c-" + kebab(k), dir.colors.dark[k]));
+        return liveController(P, layer);
+      }
       if (id === "capture") {
+        const on = $(".mode.on", layer);
+        if (on) requestAnimationFrame(() => centreMode(on, false));
         const d = $("[data-dist]", layer);
         const t = setInterval(() => { d.textContent = 30 + Math.round(Math.random() * 4) + " cm"; }, 900);
         return { dispose: () => clearInterval(t) };
@@ -200,7 +213,16 @@
       }
       if (id === "garden3d") {
         const stage = $("[data-g3d]", layer);
-        return window.PDMGarden3D.mount(stage, layer, { dir, scheme: state.scheme, reduced: state.motion === "reduce" });
+        // The camera layout runs the scene full screen behind its cards, so the garden is framed in the clear band between them.
+        const cam = layer.dataset.garden === "camera";
+        const ctl = window.PDMGarden3D.mount(stage, layer, { dir, scheme: state.scheme, reduced: state.motion === "reduce", dist: cam ? 27 : 0, band: cam ? [214, 250] : null });
+        // The mode bar follows the date: dragging to Thursday's forecast is Frost, and leaving it is Health.
+        const range = $("[data-g-range]", layer), bar = $(".g3d-modes", layer);
+        if (range && bar) range.addEventListener("input", () => {
+          const frost = range.value === "5", on = $(".mode.on", bar);
+          if (frost !== (on && on.dataset.mode === "frost")) setG3dMode(layer, $(`[data-mode="${frost ? "frost" : "health"}"]`, bar), false);
+        });
+        return ctl;
       }
       return null;
     }
@@ -240,13 +262,32 @@
       if (act.startsWith("nav:")) { const [, id, kind] = act.split(":"); P.navigate(id, kind); }
       else if (act === "back") P.back();
       else if (act === "check") a.classList.toggle("done");
+      else if (act === "toggle-log") P.layer.classList.toggle("log-open");
+      else if (act === "g3d-sheet") {
+        const open = P.layer.classList.toggle("sheet-open");
+        $$(".g3d-sheet .head", P.layer).forEach((h) => h.setAttribute("aria-expanded", String(open)));
+      }
+      else if (act === "g3d-view") {
+        $$(".g3d-seg button", P.layer).forEach((b) => { b.classList.toggle("on", b === a); b.setAttribute("aria-pressed", String(b === a)); });
+        P.layer.classList.toggle("map-view", a.dataset.view === "map");
+      }
+      else if (act === "g3d-mode") setG3dMode(P.layer, a, true);
+      else if (act === "mode") {
+        $$(".mode", P.layer).forEach((m) => { m.classList.toggle("on", m === a); m.setAttribute("aria-pressed", String(m === a)); });
+        $(".cap-sheet h2", P.layer).textContent = a.dataset.title;
+        $(".cap-sheet p", P.layer).textContent = a.dataset.hint;
+        centreMode(a, true);
+      }
       else if (act === "answer" && P.ctl && P.ctl.answer) P.ctl.answer();
       else if ((act === "step-done" || act === "step-next") && P.ctl && P.ctl.advance) P.ctl.advance(act === "step-done");
       else if (act === "shutter") {
         const fl = $(".flash", P.layer);
         fl.classList.remove("go"); void fl.offsetWidth; fl.classList.add("go");
+        const mode = $(".mode.on", P.layer);
+        if (mode) mode.classList.add("done");
         const seg = $("[data-dial]", P.layer);
-        if (seg) { seg.classList.add("done"); $("[data-dial-count]", P.layer).textContent = "2 of 2"; }
+        // Only a needed shot fills the dial; extra shots (underside, soil, fruit) are added to the strip.
+        if (seg && (!mode || "need" in mode.dataset)) { seg.classList.add("done"); $("[data-dial-count]", P.layer).textContent = "2 of 2"; }
         const shot = $("[data-shot]", P.layer);
         if (shot && !shot.querySelector(".ok, .spin")) {
           shot.insertAdjacentHTML("beforeend", '<span class="spin"></span>');
@@ -254,6 +295,23 @@
         }
       }
     });
+
+    // Switches the 3D garden's mode bar. Health and Growth describe the latest scan, so a tap on one
+    // goes to Oct 17; Frost goes to Thursday's forecast. From the slider, only the bar changes.
+    function setG3dMode(layer, a, scrub) {
+      $$(".g3d-modes .mode", layer).forEach((m) => { m.classList.toggle("on", m === a); m.setAttribute("aria-pressed", String(m === a)); });
+      $("[data-g3d-title]", layer).textContent = a.dataset.title;
+      $("[data-g3d-text]", layer).textContent = a.dataset.hint;
+      if (!P.ctl || !P.ctl.scrubTo) return;
+      P.ctl.heights(a.dataset.mode === "growth");
+      if (scrub) P.ctl.scrubTo(a.dataset.mode === "frost" ? 5 : 4);
+    }
+
+    // Keeps the chosen shot centred in the capture's mode bar, as the Camera app does.
+    function centreMode(m, smooth) {
+      const bar = m.parentElement;
+      bar.scrollTo({ left: m.offsetLeft - (bar.clientWidth - m.offsetWidth) / 2, behavior: smooth && state.motion !== "reduce" ? "smooth" : "auto" });
+    }
 
     P.stack = (PARENTS[screenId] || []).map((id) => ({ id })).concat([{ id: screenId, kind: screenId === "capture" ? "modal" : "push" }]);
     show(screenId, null);
@@ -536,9 +594,12 @@
     P.phone.appendChild(touch);
     async function tap(sel) {
       if (!alive()) throw 0;
-      const el = $$(sel, P.layer).find((x) => x.getClientRects().length && getComputedStyle(x).visibility !== "hidden");
+      const pr = P.phone.getBoundingClientRect();
+      const shown = $$(sel, P.layer).filter((x) => x.getClientRects().length && getComputedStyle(x).visibility !== "hidden");
+      // Prefer a match on screen: some layouts repeat an action (a button row at the top, a bar at the bottom).
+      const el = shown.find((x) => { const q = x.getBoundingClientRect(); return q.top >= pr.top && q.bottom <= pr.bottom; }) || shown[0];
       if (!el) return;
-      const pr = P.phone.getBoundingClientRect(), r = el.getBoundingClientRect();
+      const r = el.getBoundingClientRect();
       touch.style.opacity = "1";
       touch.style.left = r.left - pr.left + r.width / 2 + "px";
       touch.style.top = r.top - pr.top + r.height / 2 + "px";
@@ -567,8 +628,16 @@
       await scrollTo(".pa"); await tap('[data-act="pa-yes"]'); await wait(1600);
       P.reset("home", "pop"); await wait(900);
       step(5); await tap('[data-act="nav:garden3d:push"]'); await wait(2400);
-      for (let i = 0; i < 6 && P.ctl && P.ctl.scrubTo; i++) { if (!alive()) throw 0; P.ctl.scrubTo(i); await wait(i === 5 ? 2600 : 650); }
-      if (P.ctl && P.ctl.scrubTo) P.ctl.scrubTo(4);
+      // With a mode bar, the forecast is its Frost mode, so the finger taps it instead of scrubbing there.
+      const frost = $$('[data-mode="frost"]', P.layer).find((x) => x.getClientRects().length);
+      for (let i = 0; i < 6 && P.ctl && P.ctl.scrubTo; i++) {
+        if (!alive()) throw 0;
+        if (i === 5 && frost) await tap('[data-mode="frost"]'); else P.ctl.scrubTo(i);
+        await wait(i === 5 ? 2600 : 650);
+      }
+      if (frost) await tap('[data-mode="health"]'); else if (P.ctl && P.ctl.scrubTo) P.ctl.scrubTo(4);
+      // In the camera layout the plant card rests as a pill; the finger opens it before moving on.
+      if (P.layer.dataset.garden === "camera") { await wait(500); await tap(".g3d-sheet .head"); }
       await wait(900);
       if (P.ctl && P.ctl.select) { P.ctl.select("tomato1"); }
       await wait(800);
