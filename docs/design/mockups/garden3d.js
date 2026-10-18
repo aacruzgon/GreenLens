@@ -39,7 +39,7 @@
   };
 
   // The 2D map (screens 3.8): the same beds, pins and measurements drawn flat in metres, north up,
-  // x to the east and z to the south. It needs no WebGL, so it is also the fallback.
+  // x to the east and z to the south. It needs no WebGL, so it is also the fallback when the 3D view can't draw.
   const MAP = { x0: -2.45, x1: 2.62, z0: -1.55, z1: 1.62 };
   const BED_NAME = { east: "East bed", south: "South bed" };
   // Where each label sits from its pin (metres), chosen so labels clear their neighbours even with heights on.
@@ -92,14 +92,85 @@
 
   function mount(stage, screen, opts) {
     const mapEl = screen.querySelector("[data-g2d]");
-    if (!window.THREE) {
-      stage.innerHTML = '<div class="g3d-fallback">The 3D view needs three.js from cdnjs. Connect to the internet and reload.</div>';
-      // The map still works without WebGL.
-      if (mapEl) drawMap(mapEl, { dateIdx: 4, selected: "tomato1", heights: false });
-      return { dispose() {}, select() {}, scrubTo() {}, heights() {} };
-    }
-    const T = window.THREE;
     const g = opts.dir.garden3d;
+    // The date, the selection, the plant sheet and the map belong to the garden, not to the 3D scene,
+    // so they work without it. The scene, when it draws, hooks in through scene3d.
+    let dateIdx = 4, selected = null, showHeights = !!g.labelHeights, scene3d = null, disposed = false;
+    function redrawMap() {
+      if (mapEl) drawMap(mapEl, { dateIdx, selected: selected && selected.id, heights: showHeights });
+    }
+    function updateSheet() {
+      if (!selected) return;
+      const p = selected, q = (s) => screen.querySelector(s);
+      q("[data-g-name]").textContent = p.name;
+      const st = q("[data-g-status]");
+      st.className = "status s-" + statusAt(p, dateIdx);
+      st.textContent = STATUS_WORD[statusAt(p, dateIdx)];
+      q("[data-g-height]").textContent = Math.round(p.h * growAt(p, dateIdx) * 100) + " cm";
+      // Canopy width is only in the fixture for the latest scan; earlier dates say so rather than invent one.
+      q("[data-g-canopy]").textContent = last(dateIdx) === 4 ? Math.round(p.c * 100) + " cm" : "not measured";
+      q("[data-g-note]").textContent = noteAt(p, dateIdx);
+      const near = q("[data-g-near]");
+      if (near) near.textContent = nearText(p);
+      q("[data-g-date]").textContent = dateIdx === FORECAST ? "Thu · forecast" : DATES[dateIdx];
+    }
+    function select(id) {
+      selected = PLANTS.find((p) => p.id === id) || null;
+      if (scene3d) scene3d.select(selected);
+      redrawMap();
+      updateSheet();
+    }
+    function scrubTo(i) {
+      dateIdx = i;
+      const range = screen.querySelector("[data-g-range]");
+      if (range) range.value = String(i);
+      if (scene3d) scene3d.recolor();
+      redrawMap();
+      updateSheet();
+    }
+    // Shows or hides the measured height on every label (the camera layout's Growth mode).
+    function heights(on) {
+      showHeights = !!on;
+      if (scene3d) scene3d.labels();
+      redrawMap();
+    }
+    if (mapEl) {
+      const pinOf = (e) => e.target.closest("[data-plant]");
+      mapEl.addEventListener("click", (e) => { const pin = pinOf(e); if (pin) select(pin.dataset.plant); });
+      // Pins are buttons, so Enter and Space choose them too. Selecting redraws the map, so focus goes back to the pin.
+      mapEl.addEventListener("keydown", (e) => {
+        const pin = pinOf(e);
+        if (!pin || (e.key !== "Enter" && e.key !== " ")) return;
+        e.preventDefault();
+        select(pin.dataset.plant);
+        const again = mapEl.querySelector(`[data-plant="${pin.dataset.plant}"]`);
+        if (again) again.focus({ preventScroll: true });
+      });
+    }
+    const range = screen.querySelector("[data-g-range]");
+    if (range) range.addEventListener("input", () => scrubTo(Number(range.value)));
+    const api = {
+      select,
+      scrubTo,
+      heights,
+      dates: DATES.length,
+      dispose() {
+        if (disposed) return;
+        disposed = true;
+        if (scene3d) scene3d.dispose();
+        if (mapEl) mapEl.innerHTML = "";
+      },
+    };
+    // Without three.js or WebGL the garden opens on the map, which keeps everything but the 3D view.
+    function fallback(msg) {
+      stage.innerHTML = `<div class="g3d-fallback">${msg}</div>`;
+      screen.classList.add("map-view");
+      screen.querySelectorAll(".g3d-seg button").forEach((b) => { const on = b.dataset.view === "map"; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); });
+      select("tomato1");
+      return api;
+    }
+    if (!window.THREE) return fallback("The 3D view needs three.js from cdnjs. Connect to the internet and reload. The map works without it.");
+    const T = window.THREE;
     const pal = g[opts.scheme];
     const roles = opts.dir.colors[opts.scheme];
     const dark = opts.scheme === "dark";
@@ -111,7 +182,9 @@
       return c;
     };
 
-    const renderer = new T.WebGLRenderer({ antialias: true });
+    let renderer;
+    try { renderer = new T.WebGLRenderer({ antialias: true }); }
+    catch (err) { return fallback("This browser can't draw 3D. The map shows the same garden."); }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.shadowMap.enabled = !!g.shadows;
     renderer.shadowMap.type = T.PCFSoftShadowMap;
@@ -304,7 +377,6 @@
       screen.querySelector(".g3d").append(scaleEl, northEl);
     }
 
-    let dateIdx = 4, selected = null, showHeights = !!g.labelHeights;
     function drawLabel(x) {
       const st = statusAt(x.p, dateIdx);
       const h = Math.round(x.p.h * growAt(x.p, dateIdx) * 100);
@@ -322,12 +394,7 @@
         drawLabel(x);
       });
       frostGroup.visible = dateIdx === FORECAST;
-      redrawMap();
     }
-    function redrawMap() {
-      if (mapEl) drawMap(mapEl, { dateIdx, selected: selected && selected.p.id, heights: showHeights });
-    }
-    if (mapEl) mapEl.addEventListener("click", (e) => { const pin = e.target.closest("[data-plant]"); if (pin) select(pin.dataset.plant); });
 
     // Interaction: drag to orbit, wheel to zoom, tap to select.
     let down = null, lastInteract = performance.now();
@@ -354,37 +421,6 @@
       if (hit) select(hit.object.userData.plantId);
     }
 
-    function updateSheet() {
-      if (!selected) return;
-      const p = selected.p, q = (s) => screen.querySelector(s);
-      q("[data-g-name]").textContent = p.name;
-      const st = q("[data-g-status]");
-      st.className = "status s-" + statusAt(p, dateIdx);
-      st.textContent = STATUS_WORD[statusAt(p, dateIdx)];
-      q("[data-g-height]").textContent = Math.round(p.h * growAt(p, dateIdx) * 100) + " cm";
-      // Canopy width is only in the fixture for the latest scan; earlier dates say so rather than invent one.
-      q("[data-g-canopy]").textContent = last(dateIdx) === 4 ? Math.round(p.c * 100) + " cm" : "not measured";
-      q("[data-g-note]").textContent = noteAt(p, dateIdx);
-      const near = q("[data-g-near]");
-      if (near) near.textContent = nearText(p);
-      q("[data-g-date]").textContent = dateIdx === FORECAST ? "Thu · forecast" : DATES[dateIdx];
-    }
-    function select(id) {
-      selected = plants.find((x) => x.p.id === id) || null;
-      plants.forEach((x) => x.label.classList.toggle("sel", x === selected));
-      redrawMap();
-      updateSheet();
-    }
-    function scrubTo(i) {
-      dateIdx = i;
-      plants.forEach((x) => { x.goal = growAt(x.p, i); if (reduced) x.scale = x.goal; });
-      const range = screen.querySelector("[data-g-range]");
-      if (range) range.value = String(i);
-      recolor();
-      updateSheet();
-    }
-    const range = screen.querySelector("[data-g-range]");
-    if (range) range.addEventListener("input", () => scrubTo(Number(range.value)));
 
     function resize() {
       const w = stage.clientWidth, h = stage.clientHeight;
@@ -400,7 +436,7 @@
     const easeOutBack = (t) => { const c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
     const t0 = performance.now();
     const v = new T.Vector3(), v2 = new T.Vector3();
-    let raf = 0, disposed = false;
+    let raf = 0;
     function frame(now) {
       raf = requestAnimationFrame(frame);
       const w = stage.clientWidth, h = stage.clientHeight;
@@ -444,29 +480,27 @@
       }
       renderer.render(scene, camera);
     }
-    recolor();
-    raf = requestAnimationFrame(frame);
-    select("tomato1");
-
-    return {
-      select,
-      scrubTo,
-      // Shows or hides the measured height on every label (the camera layout's Growth mode).
-      heights(on) { showHeights = !!on; plants.forEach(drawLabel); redrawMap(); },
-      dates: DATES.length,
+    scene3d = {
+      select(p) { plants.forEach((x) => x.label.classList.toggle("sel", x.p === p)); },
+      recolor() {
+        plants.forEach((x) => { x.goal = growAt(x.p, dateIdx); if (reduced) x.scale = x.goal; });
+        recolor();
+      },
+      labels() { plants.forEach(drawLabel); },
       dispose() {
-        if (disposed) return;
-        disposed = true;
         cancelAnimationFrame(raf);
         ro.disconnect();
         scene.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
         renderer.dispose();
         if (renderer.forceContextLoss) renderer.forceContextLoss();
         stage.innerHTML = "";
-        if (mapEl) mapEl.innerHTML = "";
         if (scaleEl) { scaleEl.remove(); northEl.remove(); }
       },
     };
+    recolor();
+    raf = requestAnimationFrame(frame);
+    select("tomato1");
+    return api;
   }
 
   window.PDMGarden3D = { mount };

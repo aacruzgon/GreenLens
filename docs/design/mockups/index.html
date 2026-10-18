@@ -316,12 +316,12 @@
       <div class="shot add">+ Soil</div>
       <div class="shot add">+ Fruit</div>
     </div>
-    <div class="modes" aria-label="Shot">
-      <button class="mode done" data-act="mode" data-title="Whole plant" data-hint="Step back about 1 m and get the whole plant in the frame.">Whole plant</button>
-      <button class="mode on" data-act="mode" data-title="Leaf close-up" data-hint="Fill the frame with one affected leaf, about 30 cm away. Tap the leaf to focus.">Close-up</button>
-      <button class="mode" data-act="mode" data-title="Leaf underside" data-hint="Suspect pests? Turn a leaf over and photograph the underside.">Underside</button>
-      <button class="mode" data-act="mode" data-title="Soil" data-hint="Add the soil around the base, from about 40 cm.">Soil</button>
-      <button class="mode" data-act="mode" data-title="Flower or fruit" data-hint="Something wrong with a flower or fruit? Fill the frame with it.">Fruit</button>
+    <div class="modes" role="group" aria-label="Shot">
+      <button class="mode done" data-act="mode" data-need aria-pressed="false" data-title="Whole plant" data-hint="Step back about 1 m and get the whole plant in the frame.">Whole plant</button>
+      <button class="mode on" data-act="mode" data-need aria-pressed="true" data-title="Leaf close-up" data-hint="Fill the frame with one affected leaf, about 30 cm away. Tap the leaf to focus.">Close-up</button>
+      <button class="mode" data-act="mode" aria-pressed="false" data-title="Leaf underside" data-hint="Suspect pests? Turn a leaf over and photograph the underside.">Underside</button>
+      <button class="mode" data-act="mode" aria-pressed="false" data-title="Soil" data-hint="Add the soil around the base, from about 40 cm.">Soil</button>
+      <button class="mode" data-act="mode" aria-pressed="false" data-title="Flower or fruit" data-hint="Something wrong with a flower or fruit? Fill the frame with it.">Fruit</button>
     </div>
     <div class="cap-hint"><span class="num" data-dial-count>1 of 2</span> needed shots · Suspect pests? Photograph the underside of a leaf.</div>
     <div class="cap-ctrl">
@@ -476,6 +476,7 @@
       <article class="feat-card"><span class="feat-th"><svg class="i"><use href="#i-map"/></svg></span><span class="grow"><span class="feat-eye">Risk of spread: high</span><span class="feat-title">Crowded: <span class="num">40 cm</span> from Tomato 1</span><span class="t-fn muted">Tomato 1 has early blight · 4 humid days ahead</span></span></article>
       <article class="feat-card"><span class="feat-th ok"><svg class="i"><use href="#i-bug"/></svg></span><span class="grow"><span class="feat-eye">Also found</span><span class="feat-title">Ladybug larva</span><span class="t-fn muted">Beneficial. Leave it: it eats aphids.</span></span></article>
     </div>
+    <div class="basis feat-basis t-fn muted"><svg class="i sm"><use href="#i-book"/></svg><span>Sources: OMAFRA, Cornell Vegetable MD Online</span></div>
 
     <div class="diag-block enter">
       <div class="diag-label">Diagnosis</div>
@@ -565,7 +566,7 @@
     </div>
     <div class="g3d-card" aria-live="polite">
       <div class="t-hl" data-g3d-title>Back garden · 6 plants</div>
-      <div class="t-fn muted" data-g3d-text>1 sick, 1 to watch, 4 healthy. Mapped Oct 12.</div>
+      <div class="t-fn muted" data-g3d-text>2 sick, 1 to watch, 3 healthy. Mapped Oct 12.</div>
       <div class="g3d-legend-in"><span class="status s-healthy">Healthy</span><span class="status s-watch">Watch</span><span class="status s-sick">Sick</span></div>
     </div>
     <div class="g3d-ctrl">
@@ -573,10 +574,10 @@
       <button class="g3d-shutter" data-act="nav:capture:modal" aria-label="Scan this plant"><svg class="i"><use href="#i-camera"/></svg></button>
       <button class="glass-btn" data-act="nav:chat:push" aria-label="Ask about this plant"><svg class="i"><use href="#i-chat"/></svg></button>
     </div>
-    <div class="modes g3d-modes" aria-label="View">
-      <button class="mode on" data-act="g3d-mode" data-mode="health" data-title="Back garden · 6 plants" data-hint="1 sick, 1 to watch, 4 healthy. Mapped Oct 12.">Health</button>
-      <button class="mode" data-act="g3d-mode" data-mode="growth" data-title="Heights, measured Oct 17" data-hint="From each scan's LiDAR depth. Tomato 2 is the tallest at 70 cm.">Growth</button>
-      <button class="mode" data-act="g3d-mode" data-mode="frost" data-title="Frost on Thursday night" data-hint="Low of −1 °C. Cover the 4 tender plants by Thursday evening.">Frost</button>
+    <div class="modes g3d-modes" role="group" aria-label="Mode">
+      <button class="mode on" data-act="g3d-mode" aria-pressed="true" data-mode="health" data-title="Back garden · 6 plants" data-hint="2 sick, 1 to watch, 3 healthy. Mapped Oct 12.">Health</button>
+      <button class="mode" data-act="g3d-mode" aria-pressed="false" data-mode="growth" data-title="Heights, measured Oct 17" data-hint="From each scan's LiDAR depth. Tomato 2 is the tallest at 70 cm.">Growth</button>
+      <button class="mode" data-act="g3d-mode" aria-pressed="false" data-mode="frost" data-title="Frost on Thursday night" data-hint="Low of −1 °C. Cover the 4 tender plants by Thursday evening.">Frost</button>
     </div>
   </div>
 </template>

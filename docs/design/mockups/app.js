@@ -214,7 +214,14 @@
       if (id === "garden3d") {
         const stage = $("[data-g3d]", layer);
         // The camera layout gives the scene a shorter band, so the camera comes closer.
-        return window.PDMGarden3D.mount(stage, layer, { dir, scheme: state.scheme, reduced: state.motion === "reduce", dist: layer.dataset.garden === "camera" ? 12 : 0 });
+        const ctl = window.PDMGarden3D.mount(stage, layer, { dir, scheme: state.scheme, reduced: state.motion === "reduce", dist: layer.dataset.garden === "camera" ? 12 : 0 });
+        // The mode bar follows the date: dragging to Thursday's forecast is Frost, and leaving it is Health.
+        const range = $("[data-g-range]", layer), bar = $(".g3d-modes", layer);
+        if (range && bar) range.addEventListener("input", () => {
+          const frost = range.value === "5", on = $(".mode.on", bar);
+          if (frost !== (on && on.dataset.mode === "frost")) setG3dMode(layer, $(`[data-mode="${frost ? "frost" : "health"}"]`, bar), false);
+        });
+        return ctl;
       }
       return null;
     }
@@ -263,14 +270,9 @@
         $$(".g3d-seg button", P.layer).forEach((b) => { b.classList.toggle("on", b === a); b.setAttribute("aria-pressed", String(b === a)); });
         P.layer.classList.toggle("map-view", a.dataset.view === "map");
       }
-      else if (act === "g3d-mode") {
-        $$(".mode", P.layer).forEach((m) => m.classList.toggle("on", m === a));
-        $("[data-g3d-title]", P.layer).textContent = a.dataset.title;
-        $("[data-g3d-text]", P.layer).textContent = a.dataset.hint;
-        if (P.ctl && P.ctl.scrubTo) { P.ctl.heights(a.dataset.mode === "growth"); P.ctl.scrubTo(a.dataset.mode === "frost" ? 5 : 4); }
-      }
+      else if (act === "g3d-mode") setG3dMode(P.layer, a, true);
       else if (act === "mode") {
-        $$(".mode", P.layer).forEach((m) => m.classList.toggle("on", m === a));
+        $$(".mode", P.layer).forEach((m) => { m.classList.toggle("on", m === a); m.setAttribute("aria-pressed", String(m === a)); });
         $(".cap-sheet h2", P.layer).textContent = a.dataset.title;
         $(".cap-sheet p", P.layer).textContent = a.dataset.hint;
         centreMode(a, true);
@@ -283,7 +285,8 @@
         const mode = $(".mode.on", P.layer);
         if (mode) mode.classList.add("done");
         const seg = $("[data-dial]", P.layer);
-        if (seg) { seg.classList.add("done"); $("[data-dial-count]", P.layer).textContent = "2 of 2"; }
+        // Only a needed shot fills the dial; extra shots (underside, soil, fruit) are added to the strip.
+        if (seg && (!mode || "need" in mode.dataset)) { seg.classList.add("done"); $("[data-dial-count]", P.layer).textContent = "2 of 2"; }
         const shot = $("[data-shot]", P.layer);
         if (shot && !shot.querySelector(".ok, .spin")) {
           shot.insertAdjacentHTML("beforeend", '<span class="spin"></span>');
@@ -291,6 +294,17 @@
         }
       }
     });
+
+    // Switches the 3D garden's mode bar. Health and Growth describe the latest scan, so a tap on one
+    // goes to Oct 17; Frost goes to Thursday's forecast. From the slider, only the bar changes.
+    function setG3dMode(layer, a, scrub) {
+      $$(".g3d-modes .mode", layer).forEach((m) => { m.classList.toggle("on", m === a); m.setAttribute("aria-pressed", String(m === a)); });
+      $("[data-g3d-title]", layer).textContent = a.dataset.title;
+      $("[data-g3d-text]", layer).textContent = a.dataset.hint;
+      if (!P.ctl || !P.ctl.scrubTo) return;
+      P.ctl.heights(a.dataset.mode === "growth");
+      if (scrub) P.ctl.scrubTo(a.dataset.mode === "frost" ? 5 : 4);
+    }
 
     // Keeps the chosen shot centred in the capture's mode bar, as the Camera app does.
     function centreMode(m, smooth) {

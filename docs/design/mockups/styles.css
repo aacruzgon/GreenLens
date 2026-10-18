@@ -867,6 +867,9 @@ html[data-scheme="dark"] .g3d-top .icon-btn, html[data-scheme="dark"] .g3d-seg {
 .layer[data-scan="profile"] .scr:is(.live, .result) .card.list > * + * { border-top-color: color-mix(in srgb, var(--c-text) 10%, transparent); }
 .layer[data-scan="profile"] .result .hero-h::after { content: "›"; margin-left: 6px; color: var(--c-text-muted); font-weight: 500; }
 
+/* The risk banner's cards replace it here, so its sources line moves under them. */
+.feat-basis { display: none; }
+.layer[data-scan="profile"] .feat-basis { display: flex; margin: 10px 20px 0; }
 .layer[data-scan="profile"] .feat { display: flex; gap: 10px; margin-top: 24px; padding: 2px 16px 4px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
 .feat::-webkit-scrollbar { display: none; }
 .feat-card { flex: 0 0 84%; scroll-snap-align: start; display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 22px; background: var(--p-fill); }
@@ -898,7 +901,7 @@ html[data-scheme="dark"] .g3d-top .icon-btn, html[data-scheme="dark"] .g3d-seg {
 @keyframes breathe { 50% { box-shadow: 0 0 0 11px rgba(255, 255, 255, 0.12), 0 1px 4px rgba(0, 0, 0, 0.4); } }
 @keyframes enter-x { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translateX(-50%); } }
 
-/* Pill: one ink pill per screen; with an icon, the icon sits in a white disc at its left end. */
+/* Pill: one accent pill per screen; with an icon, the icon sits in a white disc at its left end. */
 .phone[data-buttons="pill"] .btn-xl { min-height: 60px; box-shadow: 0 18px 36px -16px rgba(20, 14, 10, 0.55); }
 .phone[data-buttons="pill"] .btn-xl:has(> svg.i) { justify-content: flex-start; gap: 14px; padding: 0 24px 0 6px; }
 .phone[data-buttons="pill"] .btn-xl > svg.i { width: 48px; height: 48px; padding: 12px; border-radius: 50%; background: var(--c-accent-text); color: var(--c-accent); }
@@ -909,25 +912,25 @@ html[data-scheme="dark"] .g3d-top .icon-btn, html[data-scheme="dark"] .g3d-seg {
 .phone[data-region="hotspot"] .ruler { display: none; }
 
 /* Camera: the live analysis after the Camera app's visual intelligence mode. The photo just taken stays full screen,
-   the analysis drops down from the top as glass cards, findings sit on the photo as chips, and a glowing ring
-   replaces the shutter while it runs. The layer takes the dark palette (app.js), like the capture it continues. */
+   the analysis drops down from the top as solid cards, findings sit on the photo as solid chips, and a glowing ring
+   replaces the shutter while it runs, on black below the photo. The layer takes the dark palette (app.js), like the capture it continues. */
 .cam, .cam-chip { display: none; }
 .layer[data-scan="camera"] .scr.live { position: relative; height: 100%; min-height: 0; overflow: hidden; padding: 140px 12px 0; display: flex; flex-direction: column; gap: 8px; background: #000; }
 .layer[data-scan="camera"] .live > .bar, .layer[data-scan="camera"] .live :is(.scan-hero, .profile-head, .photo-cap, .ruler) { display: none; }
-.layer[data-scan="camera"] .live .photo-block { position: absolute; inset: 0; padding: 0; overflow: hidden; z-index: 0; }
+.layer[data-scan="camera"] .live .photo-block { position: absolute; inset: 0 0 172px; padding: 0; overflow: hidden; z-index: 0; border-radius: 0 0 28px 28px; }
 /* The photo keeps its 4:3 box at full height, centred on the lesion, so the regions stay on the spots. */
 .layer[data-scan="camera"] .live .pwr { position: absolute; top: 0; left: 50%; height: 100%; width: auto; aspect-ratio: 4 / 3; transform: translateX(-44%); border-radius: 0; overflow: visible; }
-.layer[data-scan="camera"] .live .pwr::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.04) 32%, rgba(0, 0, 0, 0.04) 64%, rgba(0, 0, 0, 0.5)); }
+.layer[data-scan="camera"] .live .pwr::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.04) 32%, rgba(0, 0, 0, 0.04) 72%, rgba(0, 0, 0, 0.3)); }
 .layer[data-scan="camera"] .live .region { z-index: 1; background: none; box-shadow: none; }
-.layer[data-scan="camera"] .live .region-tag { top: calc(50% + 18px); padding: 7px 12px; background: rgba(28, 28, 30, 0.88); color: #fff; font-size: 14px; }
-.layer[data-scan="camera"] .live .cam-chip { display: inline-flex; position: absolute; z-index: 2; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; white-space: nowrap; font-size: 14px; font-weight: 600; color: #fff; background: rgba(28, 28, 30, 0.88); }
+.layer[data-scan="camera"] .live .region-tag { top: calc(50% + 18px); padding: 7px 12px; background: #1C1C1E; color: #fff; font-size: 14px; }
+.layer[data-scan="camera"] .live .cam-chip { display: inline-flex; position: absolute; z-index: 2; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; white-space: nowrap; font-size: 14px; font-weight: 600; color: #fff; background: #1C1C1E; }
 .cam-chip-act { margin-left: 4px; color: var(--cap-accent); }
 .cam-chip.hidden { display: none !important; }
 
 /* The phase line is the top card; tapping it opens the full run log below it. */
 .layer[data-scan="camera"] .live .phase { position: absolute; top: 54px; left: 12px; right: 12px; z-index: 3; margin: 0; padding: 14px 18px 22px; cursor: pointer; }
 .layer[data-scan="camera"] .live .phase::after { content: ""; position: absolute; left: 50%; bottom: 8px; width: 36px; height: 5px; margin-left: -18px; border-radius: 3px; background: rgba(255, 255, 255, 0.35); }
-/* Cards and chips carry content, so they are solid, not glass (design.md 6); the mode bar and the photo strip are controls and may be glass. */
+/* Cards and chips carry content, so they are solid, not glass (design.md 6). */
 .layer[data-scan="camera"] .live :is(.phase, > .sec .card) { border-radius: 26px; color: var(--c-text); background: rgba(28, 28, 30, 0.92); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.6); }
 .layer[data-scan="camera"] .live > .sec { position: relative; z-index: 1; margin: 0; padding: 0; }
 .layer[data-scan="camera"] .live > .sec.in { animation-name: drop; }
@@ -939,33 +942,34 @@ html[data-scheme="dark"] .g3d-top .icon-btn, html[data-scheme="dark"] .g3d-seg {
 .layer[data-scan="camera"] .live .unsure :is(.plates, .ctable) { display: none !important; }
 .layer[data-scan="camera"] .live .unsure .u-title { font-size: 17px; line-height: 22px; margin-bottom: 4px; }
 .layer[data-scan="camera"] .live .ask { position: absolute; left: 76px; right: 76px; bottom: 96px; margin: 0; padding: 0; z-index: 5; }
-.layer[data-scan="camera"] .live .pstrip { position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 3; margin: 0; padding: 6px; gap: 6px; border-radius: 999px; background: rgba(28, 28, 30, 0.55); border: 1px solid rgba(255, 255, 255, 0.1); -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6); }
+.layer[data-scan="camera"] .live .pstrip { position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 3; margin: 0; padding: 6px; gap: 6px; border-radius: 999px; background: #1C1C1E; border: 1px solid rgba(255, 255, 255, 0.1); }
 .layer[data-scan="camera"] .live .pstrip span { width: 46px; height: 34px; border-radius: 17px; }
 .layer[data-scan="camera"] .live .pstrip span.on { outline: 2px solid #fff; outline-offset: 1px; }
 
-.layer[data-scan="camera"] .cam { display: flex; position: absolute; left: 0; right: 0; bottom: 92px; z-index: 6; align-items: center; justify-content: space-between; padding: 0 24px; pointer-events: none; }
+.layer[data-scan="camera"] .cam { display: flex; position: absolute; left: 0; right: 0; bottom: 86px; z-index: 6; align-items: center; justify-content: space-between; padding: 0 24px; pointer-events: none; }
 .cam > * { pointer-events: auto; }
 .cam-ring { position: relative; width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: rgba(28, 28, 30, 0.5); box-shadow: 0 0 28px color-mix(in srgb, var(--cap-accent) 45%, transparent); }
 .cam-ring svg.i { width: 28px; height: 28px; }
 .cam-ring::before { content: ""; position: absolute; inset: -3px; border-radius: 50%; padding: 3px; background: conic-gradient(var(--cap-accent), transparent 35%, var(--cap-accent) 65%, transparent); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); animation: spin 2.4s linear infinite; }
 .cam-ring.hidden { display: none !important; }
 
-/* Modes: the capture's shots as the Camera app's mode bar. The preview fills the screen, the instruction drops from the top. */
+/* Modes: the capture's shots as the Camera app's mode bar. The preview runs from the top to the controls, the instruction
+   drops from the top, and the shutter and the mode bar sit on black below the preview, so no tint sits on it (design.md 2). */
 .modes { display: none; }
-.layer[data-capture="modes"] .scr.capture { height: 100%; min-height: 0; overflow: hidden; }
-.layer[data-capture="modes"] .cap-preview { position: absolute; inset: 0; height: auto; border-radius: 0; }
+.layer[data-capture="modes"] .scr.capture { height: 100%; min-height: 0; overflow: hidden; background: #000; }
+.layer[data-capture="modes"] .cap-preview { position: absolute; inset: 0 0 172px; height: auto; border-radius: 0 0 28px 28px; }
 .layer[data-capture="modes"] .cap-preview > .ph { position: absolute; top: 0; left: 50%; height: 100%; width: auto; aspect-ratio: 4 / 3; transform: translateX(-44%); }
 .layer[data-capture="modes"] .guide { top: 32%; bottom: 39%; left: 14%; right: 14%; }
 .layer[data-capture="modes"] .dist { bottom: auto; top: calc(61% + 12px); }
 .layer[data-capture="modes"] .cap-sheet { position: absolute; top: 104px; left: 12px; right: 12px; z-index: 4; padding: 14px 18px 24px; border-radius: 26px; background: rgba(28, 28, 30, 0.92); border: 1px solid rgba(255, 255, 255, 0.1); }
 .layer[data-capture="modes"] .cap-sheet::after { content: ""; position: absolute; left: 50%; bottom: 8px; width: 36px; height: 5px; margin-left: -18px; border-radius: 3px; background: rgba(255, 255, 255, 0.35); }
 .layer[data-capture="modes"] .shots { display: none; }
-.layer[data-capture="modes"] .cap-hint { position: absolute; left: 50%; bottom: 182px; transform: translateX(-50%); z-index: 4; width: max-content; max-width: calc(100% - 32px); padding: 6px 12px; border-radius: 999px; text-align: center; color: #fff; background: rgba(28, 28, 30, 0.88); }
+.layer[data-capture="modes"] .cap-hint { position: absolute; left: 50%; bottom: 182px; transform: translateX(-50%); z-index: 4; width: max-content; max-width: calc(100% - 32px); padding: 6px 12px; border-radius: 999px; text-align: center; color: #fff; background: #1C1C1E; }
 .layer[data-capture="modes"] .cap-ctrl { position: absolute; left: 0; right: 0; bottom: 84px; z-index: 4; }
-.layer[data-capture="modes"] .modes { display: flex; position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 4; max-width: calc(100% - 40px); gap: 2px; padding: 4px; border-radius: 999px; overflow-x: auto; scrollbar-width: none; background: rgba(28, 28, 30, 0.55); border: 1px solid rgba(255, 255, 255, 0.1); -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6); }
+.layer[data-capture="modes"] .modes { display: flex; position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 4; max-width: calc(100% - 40px); gap: 2px; padding: 4px; border-radius: 999px; overflow-x: auto; scrollbar-width: none; background: #1C1C1E; border: 1px solid rgba(255, 255, 255, 0.1); }
 .modes::-webkit-scrollbar { display: none; }
 .mode { flex: none; display: flex; align-items: center; gap: 6px; padding: 10px 14px; border: 0; border-radius: 999px; background: none; color: rgba(255, 255, 255, 0.86); font: 600 13px/1 var(--font-body); letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; }
-.mode.on { background: rgba(255, 255, 255, 0.16); color: var(--cap-accent); }
+.mode.on { background: #3A3A3C; color: var(--cap-accent); }
 .mode.done::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--cap-accent); }
 /* The question asks about the spots, so it sits low and compact and the photo of the spots stays in view between the cards. */
 .layer[data-scan="camera"] .live > .sec[data-at="6"] { position: absolute; left: 12px; right: 12px; bottom: 180px; z-index: 4; }
@@ -989,7 +993,7 @@ html[data-scheme="dark"] .g3d-top .icon-btn, html[data-scheme="dark"] .g3d-seg {
 .layer[data-garden="camera"] .g3d-card { display: block; position: absolute; top: 102px; left: 12px; right: 12px; z-index: 5; padding: 14px 18px 14px; border-radius: 26px; background: var(--c-surface); border: var(--card-border); box-shadow: 0 12px 30px -14px rgba(0, 0, 0, 0.35); }
 .g3d-legend-in { display: flex; gap: 6px; margin-top: 10px; }
 .layer[data-garden="camera"] .g3d-label { padding: 6px 12px 6px 10px; font-size: 13px; background: var(--c-surface); box-shadow: 0 6px 18px -6px rgba(0, 0, 0, 0.35); }
-.layer[data-garden="camera"] .g3d-label.sel { background: var(--c-accent); color: var(--c-accent-text); }
+.layer[data-garden="camera"] .g3d-label.sel { color: var(--c-text); box-shadow: 0 0 0 2px var(--c-text), 0 6px 18px -6px rgba(0, 0, 0, 0.35); }
 /* The plant card rests as a pill with the plant's name and status; a tap grows it into the full card, and a tap on its header or grabber shrinks it back. */
 .layer[data-garden="camera"] .g3d-sheet { left: 72px; right: 72px; bottom: 172px; max-height: 52px; overflow: hidden; padding: 10px 12px 10px 20px; border-radius: 26px; border: var(--card-border); box-shadow: 0 12px 30px -14px rgba(0, 0, 0, 0.35);
   transition: left var(--m-push-dur) var(--m-push-ease), right var(--m-push-dur) var(--m-push-ease), max-height var(--m-push-dur) var(--m-push-ease), padding var(--m-push-dur) var(--m-push-ease); }
@@ -1015,7 +1019,7 @@ html[data-scheme="dark"] .g3d-top .icon-btn, html[data-scheme="dark"] .g3d-seg {
 .layer.map-view .g2d { display: block; }
 .layer.map-view :is(.g3d-stage, .g3d-scale, .g3d-north) { display: none; }
 .layer.map-view .g-near { display: block; margin-top: 2px; }
-.layer.map-view .g2d-edit { display: inline-flex; position: absolute; z-index: 5; right: 12px; top: 562px; }
+.layer.map-view .g2d-edit { display: inline-flex; position: absolute; z-index: 5; right: 12px; top: 146px; }
 .layer[data-garden="camera"] .g2d { top: 210px; bottom: 244px; height: auto; }
 .layer[data-garden="camera"].sheet-open .g2d { bottom: 330px; }
 .layer[data-garden="camera"].map-view .g2d-edit { top: auto; bottom: 236px; }

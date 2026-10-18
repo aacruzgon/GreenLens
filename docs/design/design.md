@@ -63,7 +63,7 @@ Expo renders native iOS 26 components, so the chrome is Apple's whatever directi
 
 The mockups show five directions on the same nine screens. The baseline is what F0 built; three come from [philosophies §7](philosophies.md#7-three-directions-to-mock), deliberately far apart: one restrained, one expressive, one data-forward. The fifth, Conservatory, was added after the team liked the premium look of a furniture shopping concept, the Camera app's visual intelligence mode and Apple Music's artist profiles ([section 3.1](#31-conservatory)); it keeps F0's palette. Two of them are green.
 
-| | Current F0 | Herbarium | Seed Packet | Instrument || Conservatory |
+| | Current F0 | Herbarium | Seed Packet | Instrument | Conservatory |
 |---|---|---|---|---|---|
 | **In three words** | Baseline, as built | Restrained, precise, considered | Warm, crafted, generous | Exact, legible, candid | Soft, sculptural, quietly premium |
 | **Idea** | Apple defaults, leaf green on off-white | A pressed specimen sheet: paper and ink, the plant is the colour | An heirloom seed catalogue: printed colour, a soft serif | A field instrument that shows its working: black, white, colour only for status and data | A glasshouse showroom: each plant presented like a piece of design furniture, in F0's colours |
@@ -109,19 +109,19 @@ All six new palettes pass 4.5:1 on every text pair, and their status colours sta
 | The shutter glows while it looks | The shutter becomes a glowing ring while the analysis runs, and gives way to "See the diagnosis and plan" when the plan is ready |
 | | "Not sure yet" drops down under the stage card. The one question sits low and compact, with small picture answers, so the spots it asks about stay in view between the cards |
 
-The live analysis shows the photo just taken, held still, not a live camera feed: the analysis runs on the uploaded photos on the rig, and the screen doesn't pretend otherwise. The three photos sit in a strip at the bottom. Both screens are always dark, like the camera. The cards and the mode bar are ours, drawn over `LidarCameraView` or `expo-camera`; iOS has no API for the Camera app's mode picker. The mode bar and the photo strip are controls, so they are glass, untinted, with the dark-scheme accent on the chosen mode (section 2). The cards and chips carry content, so they are solid dark, not frosted like the Camera app's card: no content card is glass (section 6).
+The live analysis shows the photo just taken, held still, not a live camera feed: the analysis runs on the uploaded photos on the rig, and the screen doesn't pretend otherwise. The three photos sit in a strip at the bottom. Both screens are always dark, like the camera. The cards and the mode bar are ours, drawn over `LidarCameraView` or `expo-camera`; iOS has no API for the Camera app's mode picker. As in the Camera app, the photo stops above the controls: the shutter, the mode bar and the photo strip sit on black, so the dark-scheme accent on the chosen mode and the glowing ring never sit on the photo (section 2). The cards and chips carry content, so they are solid dark, not frosted like the Camera app's card: no content card is glass (section 6).
 
 **The 3D garden, in the same language.** The garden takes the camera's pieces so the three screens feel like one tool:
 
 - **A mode bar:** HEALTH · GROWTH · FROST. Health colours each plant's ring by status. Growth adds each plant's measured height to its label ("Kale · 55 cm"). Frost jumps to Thursday's forecast and puts frost covers on the four tender plants.
 - **A card from the top** says what the mode shows ("Frost on Thursday night. Low of −1 °C. Cover the 4 tender plants by Thursday evening") and carries the status legend, so every label's shape has its word on screen.
-- **The plant labels are chips** on the scene, the selected one in the accent.
+- **The plant labels are chips** on the scene, the selected one outlined: nothing tinted sits on the 3D view (section 2).
 - **The selected plant's card rests as a pill** ("Tomato 1 · ◆ Sick") above the shutter row, so the garden keeps the room. A tap grows it into the full card, like the question on the live analysis: height, width, note, the distance to the nearest plant on the map, and the timeline from Sep 20 to Thursday's forecast. A tap on its header or grabber shrinks it back.
 - **A shutter row:** Insights, **Scan** and Ask, all for the selected plant. The shutter scans it, which is the most common next step from the garden.
 
-- **3D or Map.** The switch at the top right swaps the scene for the 2D garden map ([screens §3.8](../frontend/screens.md#38-garden-map)): beds with their names and areas, a pin per plant in its status shape and colour, the canopy ring where it was measured, a 1 m scale bar and north, and **Edit** for editors. The map shares the selection, the date and the modes, so Growth puts heights on the pins and Frost rings the tender plants in the info colour. It needs no WebGL, which makes it the fallback too, and distances between pins are given to the nearest 5 cm because pins are tapped in AR. The map works in every direction, not only Conservatory.
+- **3D or Map.** The switch at the top right swaps the scene for the 2D garden map ([screens §3.8](../frontend/screens.md#38-garden-map)): beds with their names and areas, a pin per plant in its status shape and colour, the canopy ring where it was measured, a 1 m scale bar and north, and **Edit** for editors. The map shares the selection, the date and the modes, so Growth puts heights on the pins and Frost rings the tender plants in the info colour. It draws without WebGL, so when the 3D view can't draw (no WebGL, or three.js didn't load) the garden opens on the map. Distances between pins are given to the nearest 5 cm because pins are tapped in AR. The map works in every direction, not only Conservatory.
 
-Unlike capture and the live analysis, the 3D garden follows the light or dark scheme, because it is not a camera. Its controls use the bars' surface glass, and its cards are solid. The demo flow taps FROST when it reaches the forecast.
+Unlike capture and the live analysis, the 3D garden follows the light or dark scheme, because it is not a camera. Its controls use the bars' surface glass, and its cards are solid. The modes follow the date: Health and Growth show the latest scan, Frost shows Thursday, and dragging the date to Thursday chooses Frost. The demo flow taps FROST when it reaches the forecast.
 
 **The diagnosis, after Apple Music.** The diagnosis follows Apple Music's reimagined artist profiles (iOS 27, from a screenshot the team shared) instead of the furniture concept's product page.
 
@@ -134,7 +134,7 @@ Unlike capture and the live analysis, the 3D garden follows the light or dark sc
 | "Top Songs ›" on the tint, without cards | "Your plan ›" and the other lists on translucent cards over the tint, with no shadows |
 | The mini player above the tab bar | "Up next · step 1 of 5: Remove the lowest infected leaves", with play (step by step) and Ask. It is chrome, the iOS 26 tab bar's bottom accessory, so it may be glass. Whether `NativeTabs` exposes the accessory on SDK 57 is *unverified*; without it, the bar is ours and not glass |
 
-The round buttons and the cards are translucent fills, not glass: glass stays in the chrome.
+The cards are solid fills, not glass: glass stays in the chrome.
 
 **Photo tint rule.** The tint takes the photo's dominant hue and holds its lightness and chroma fixed: about OKLCH L 0.93 in light and 0.24 in dark, chroma at most 0.03. That keeps the ground in one narrow band, so F0's text and status colours stay readable on any photo. For the mockups' leaf the tint is the sage wash (`#E3EBDC`, `#18231D`). Checked on it: every text and status colour passes 4.5:1 on the tint and on the translucent cards (lowest 4.74:1, `healthy` on a light card). Other hues have not been checked; a tomato-red photo gives a faint pink ground, still near the same lightness.
 
