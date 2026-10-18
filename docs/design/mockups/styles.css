@@ -913,18 +913,18 @@ html[data-scheme="dark"] .g3d-top .icon-btn, html[data-scheme="dark"] .g3d-seg {
 
 /* Camera: the live analysis after the Camera app's visual intelligence mode. The photo just taken stays full screen,
    the analysis drops down from the top as solid cards, findings sit on the photo as solid chips, and a glowing ring
-   replaces the shutter while it runs, on black below the photo. The layer takes the dark palette (app.js), like the capture it continues. */
+   replaces the shutter while it runs. The layer takes the dark palette (app.js), like the capture it continues. */
 .cam, .cam-chip { display: none; }
 .layer[data-scan="camera"] .scr.live { position: relative; height: 100%; min-height: 0; overflow: hidden; padding: 140px 12px 0; display: flex; flex-direction: column; gap: 8px; background: #000; }
 .layer[data-scan="camera"] .live > .bar, .layer[data-scan="camera"] .live :is(.scan-hero, .profile-head, .photo-cap, .ruler) { display: none; }
-.layer[data-scan="camera"] .live .photo-block { position: absolute; inset: 0 0 172px; padding: 0; overflow: hidden; z-index: 0; border-radius: 0 0 28px 28px; }
+.layer[data-scan="camera"] .live .photo-block { position: absolute; inset: 0; padding: 0; overflow: hidden; z-index: 0; }
 /* The photo keeps its 4:3 box at full height, centred on the lesion, so the regions stay on the spots. */
 .layer[data-scan="camera"] .live .pwr { position: absolute; top: 0; left: 50%; height: 100%; width: auto; aspect-ratio: 4 / 3; transform: translateX(-44%); border-radius: 0; overflow: visible; }
-.layer[data-scan="camera"] .live .pwr::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.04) 32%, rgba(0, 0, 0, 0.04) 72%, rgba(0, 0, 0, 0.3)); }
+.layer[data-scan="camera"] .live .pwr::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.04) 32%, rgba(0, 0, 0, 0.04) 64%, rgba(0, 0, 0, 0.5)); }
 .layer[data-scan="camera"] .live .region { z-index: 1; background: none; box-shadow: none; }
 .layer[data-scan="camera"] .live .region-tag { top: calc(50% + 18px); padding: 7px 12px; background: #1C1C1E; color: #fff; font-size: 14px; }
 .layer[data-scan="camera"] .live .cam-chip { display: inline-flex; position: absolute; z-index: 2; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; white-space: nowrap; font-size: 14px; font-weight: 600; color: #fff; background: #1C1C1E; }
-.cam-chip-act { margin-left: 4px; color: var(--cap-accent); }
+.cam-chip-act { margin-left: 4px; color: var(--cap-accent); text-decoration: underline; text-underline-offset: 3px; }
 .cam-chip.hidden { display: none !important; }
 
 /* The phase line is the top card; tapping it opens the full run log below it. */
@@ -946,18 +946,20 @@ html[data-scheme="dark"] .g3d-top .icon-btn, html[data-scheme="dark"] .g3d-seg {
 .layer[data-scan="camera"] .live .pstrip span { width: 46px; height: 34px; border-radius: 17px; }
 .layer[data-scan="camera"] .live .pstrip span.on { outline: 2px solid #fff; outline-offset: 1px; }
 
-.layer[data-scan="camera"] .cam { display: flex; position: absolute; left: 0; right: 0; bottom: 86px; z-index: 6; align-items: center; justify-content: space-between; padding: 0 24px; pointer-events: none; }
+.layer[data-scan="camera"] .cam { display: flex; position: absolute; left: 0; right: 0; bottom: 92px; z-index: 6; align-items: center; justify-content: space-between; padding: 0 24px; pointer-events: none; }
 .cam > * { pointer-events: auto; }
 .cam-ring { position: relative; width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: rgba(28, 28, 30, 0.5); box-shadow: 0 0 28px color-mix(in srgb, var(--cap-accent) 45%, transparent); }
 .cam-ring svg.i { width: 28px; height: 28px; }
 .cam-ring::before { content: ""; position: absolute; inset: -3px; border-radius: 50%; padding: 3px; background: conic-gradient(var(--cap-accent), transparent 35%, var(--cap-accent) 65%, transparent); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); animation: spin 2.4s linear infinite; }
 .cam-ring.hidden { display: none !important; }
 
-/* Modes: the capture's shots as the Camera app's mode bar. The preview runs from the top to the controls, the instruction
-   drops from the top, and the shutter and the mode bar sit on black below the preview, so no tint sits on it (design.md 2). */
+/* Modes: the capture's shots as the Camera app's mode bar. The preview fills the screen and the instruction drops from the top. */
 .modes { display: none; }
-.layer[data-capture="modes"] .scr.capture { height: 100%; min-height: 0; overflow: hidden; background: #000; }
-.layer[data-capture="modes"] .cap-preview { position: absolute; inset: 0 0 172px; height: auto; border-radius: 0 0 28px 28px; }
+.layer[data-capture="modes"] .scr.capture { height: 100%; min-height: 0; overflow: hidden; }
+.layer[data-capture="modes"] .cap-preview { position: absolute; inset: 0; height: auto; border-radius: 0; }
+/* The camera screens' controls sit on the photo, so they are neutral: white, and solid dark where they carry text.
+   Nothing tinted sits over the photo (design.md 2); the accent stays on the solid cards. */
+.layer[data-capture="modes"], .layer[data-scan="camera"] { --cap-accent: #FFFFFF; --cap-accent-text: #0B0E0D; }
 .layer[data-capture="modes"] .cap-preview > .ph { position: absolute; top: 0; left: 50%; height: 100%; width: auto; aspect-ratio: 4 / 3; transform: translateX(-44%); }
 .layer[data-capture="modes"] .guide { top: 32%; bottom: 39%; left: 14%; right: 14%; }
 .layer[data-capture="modes"] .dist { bottom: auto; top: calc(61% + 12px); }
