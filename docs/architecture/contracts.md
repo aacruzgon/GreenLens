@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.8, 2026-10-17. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.9, 2026-10-17. Companion to the [architecture document](README.md).
+> **v0.10.9**: the prompts are `system@2`, `findings@3`, `indicators@2` and `verify@2` (vision vlm.md 7, task P5), so `vlm_prompts` reads `system@2,findings@3,indicators@2,verify@2,guided@1`; no wire shape changed.
 > **v0.10.8**: the findings prompt is `findings@2` (it shows the shape of a soil reading, vision vlm.md 7), so `vlm_prompts` reads `system@1,findings@2,indicators@1,verify@1,guided@1`; no wire shape changed.
 > **v0.10.7** adds `Memory.topic`, mirrors shared memories into SurrealDB Agent Memory as beliefs, adds `GET /plants/{plant_id}/beliefs` and gives `search_memory` the `MemorySearch` result (`BeliefHit` items); deleting a shared memory, a plant or a garden queues its Agent Memory scope for erasure by `api`'s belief sweep (sections 8, 9).
 > **v0.10.6** settles open question 31: xgrammar in vLLM v0.31.0 enforces `anyOf` with `null`, producing both branches and blocking values outside the schema (section 12); no wire shape changed.
@@ -938,7 +939,7 @@ type JobErrorCode =
 | `vlm_server` | `vllm@v0.31.0`, `vllm-rocm@v0.31.0`, `llama.cpp@b7123`, `anthropic` | VLM and fallback workers |
 | `vlm_box_format` | `norm_1000` (VLM workers), `abs_px_prepared` (fallback) | VLM and fallback workers (section 6) |
 | `vlm_max_pixels` | `1003520` | VLM and fallback workers |
-| `vlm_prompts` | `system@1,findings@2,indicators@1,verify@1,guided@1`: every prompt's name and version, comma-separated | VLM and fallback workers |
+| `vlm_prompts` | `system@2,findings@3,indicators@2,verify@2,guided@1`: every prompt's name and version, comma-separated | VLM and fallback workers |
 | `vlm_certainty` | `0.4/0.65/0.85`: the low, medium and high values, slash-separated | VLM and fallback workers |
 | `label_set_version` | the job's own in `complete`; every loaded one, comma-separated, in the heartbeat | Perception and fallback workers |
 | `classifier_labels_version` | as `label_set_version` | Perception and fallback workers |
@@ -2370,6 +2371,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.6: open question 31 settled: xgrammar enforces `anyOf` with `null` in the VLM schemas | none (the architecture document doesn't mention it) |
 | v0.10.7: `Memory.topic`; shared memories mirrored into SurrealDB Agent Memory as beliefs; `GET /plants/{plant_id}/beliefs`; `search_memory` returns `MemorySearch`; scope erase in the plant and garden cascades | 1, 5, 7, 8.2, 9, 10, 11, 15 |
 | v0.10.8: `vlm_prompts` names `findings@2` | none (the architecture document doesn't list prompt versions) |
+| v0.10.9: `vlm_prompts` names `system@2`, `findings@3`, `indicators@2` and `verify@2` | none (the architecture document doesn't list prompt versions) |
 
 ---
 
