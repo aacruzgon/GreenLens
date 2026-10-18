@@ -26,6 +26,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | [`docs/frontend/README.md`](docs/frontend/README.md) | The frontend architecture: stack and pins, libraries, layers and import rules, directory layout, Clerk, the API and streaming layers, state, platform adapters (phone and in-app browsers, the LiDAR module's JS interface), UI system, mock mode, testing, builds, build plan, open decisions and sources | You are working on anything in `app/`, or need to know how the app consumes an endpoint or event |
 | [`docs/frontend/flows.md`](docs/frontend/flows.md) | Sequence diagrams for every user flow and the app's state machines | You are implementing a flow end to end, or a reducer or state machine in a feature's `model/` |
 | [`docs/frontend/screens.md`](docs/frontend/screens.md) | Navigation map, screen inventory with data, actions and roles, wireframes, screen rules, shared components and wording rules | You are building or changing a screen |
+| [`docs/design/design.md`](docs/design/design.md) | The app's design direction: principles, what Apple's chrome owns and what we own, four directions compared (the F0 baseline, Herbarium, Seed Packet, Instrument), the demo screen by screen, status and motion rules, the 3D garden and the insights. Companions in the same folder: clickable mockups ([`mockups/index.html`](docs/design/mockups/index.html)), design philosophies, the plant-app landscape, cross-domain inspiration, in-app analytics and 3D rendering notes | You are choosing how a screen looks, moves or is worded, or building the 3D garden or the insights |
 | [`docs/storage/README.md`](docs/storage/README.md) | RustFS notes: version pin and setup, bucket and key layout, how images are served through signed API URLs, writes and deletes, the Rust client (`aws-sdk-s3`), operations, caveats and the fallback | You are touching image or depth-map storage, the `blob` crate, or upload handling |
 | [`docs/connectors/README.md`](docs/connectors/README.md) | Farm connectors and Era by Eon: a garden's Slack channels and Google Drive folder synced for the chat and the plan writer, the data, OAuth and sealed tokens, the sync, the `search_farm_records` tool, privacy, and Era's simulators as the test bench in dev, CI, the agent evaluation and the demo, with their measured behaviour | You touch a connector, `farm_record`, the `connectors` scheduler task, the Slack or Drive adapters, the Era compose profiles or CI job, or the agent evaluation |
 | [`docs/setup/README.md`](docs/setup/README.md) | Developer setup: what each team member installs on macOS, Windows and Linux, by role (everyone, app, backend, ML, rig and control plane), with the pinned versions and a check list | You are setting up a machine, or a build fails for a missing tool |
@@ -67,6 +68,9 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | App auth (Clerk), API client, errors, idempotency, SSE handling | frontend §8–10 |
 | App flows and state machines | frontend flows |
 | App screens, wireframes and wording | frontend screens |
+| Design direction, palettes, type, motion, the mockups | design [design.md](docs/design/design.md), [philosophies.md](docs/design/philosophies.md) |
+| In-app insights and charts from captured data | design [analytics.md](docs/design/analytics.md) |
+| 3D garden rendering | design [garden-3d.md](docs/design/garden-3d.md) |
 | Models, licences, placement and VRAM per GPU | vision README §3–4, §9 |
 | Proposed contract, architecture and schema changes from the vision design | vision README §12 |
 | VLM choice, serving, prompts, box formats | vision vlm.md |
@@ -80,7 +84,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | Backend work as slices, their order and exit checks | backend roadmap |
 | The ML dev plan: who builds what, hand-offs between `ml/` and the Rust crates, integration gaps, phases to Oct 25 | vision dev-roadmap.md (update a task's state in the PR that finishes it) |
 | Model progress: done, next, waiting, open PRs, the rig's state | vision roadmap.md (update it at the end of each ML work session) |
-| Open decisions and open questions | architecture §15; contracts §12; connectors §12; database §9; frontend §19; backend README §15 and each crate document's open questions; vision README §11 |
+| Open decisions and open questions | architecture §15; contracts §12; connectors §12; database §9; frontend §19; backend README §15 and each crate document's open questions; vision README §11; design §10 |
 
 ## Sources of truth
 
@@ -115,6 +119,7 @@ PDM/
    ├─ backend/         the Rust backend, crate by crate, down to its types and traits
    ├─ vision/          the computer-vision models, training and evaluation
    ├─ frontend/        the app's architecture (README.md), flows (flows.md) and screens (screens.md)
+   ├─ design/          the design direction (design.md), its research and the clickable mockups
    ├─ database/        SurrealDB notes (the schema itself is backend/migrations/schema.surql)
    ├─ storage/         RustFS setup and notes
    ├─ connectors/      farm connectors (Slack, Google Drive) and Era by Eon as their test bench
