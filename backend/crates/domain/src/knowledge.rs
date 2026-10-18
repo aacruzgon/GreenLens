@@ -652,4 +652,64 @@ mod tests {
         assert_eq!(schema["additionalProperties"], serde_json::json!(false));
         assert_eq!(schema["$defs"]["LocalDate"]["format"], "date");
     }
+
+    /// The seed's JSON Schemas and the `measure` rule, as `ml/knowledge/validate.py` reads them.
+    fn seed_schema_file() -> String {
+        use std::collections::BTreeMap;
+
+        use schemars::schema_for;
+
+        let schemas: BTreeMap<&str, serde_json::Value> = [
+            ("ChunkSeed", schema_for!(ChunkSeed)),
+            ("ClassifierLabels", schema_for!(ClassifierLabels)),
+            ("OrganismSeed", schema_for!(OrganismSeed)),
+            ("ProblemSeed", schema_for!(ProblemSeed)),
+            ("ProductsSeed", schema_for!(ProductsSeed)),
+            ("SoilConditionSeed", schema_for!(SoilConditionSeed)),
+            ("SourceSeed", schema_for!(SourceSeed)),
+            ("SpeciesSeed", schema_for!(SpeciesSeed)),
+            ("TreatmentSeed", schema_for!(TreatmentSeed)),
+        ]
+        .into_iter()
+        .map(|(name, s)| (name, serde_json::to_value(s).unwrap()))
+        .collect();
+        let measurable_from: BTreeMap<MeasureQuantity, Vec<ImageKind>> = MeasureQuantity::ALL
+            .into_iter()
+            .map(|q| {
+                let kinds = ImageKind::ALL
+                    .into_iter()
+                    .filter(|&k| q.measurable_from(k))
+                    .collect();
+                (q, kinds)
+            })
+            .collect();
+        let file = serde_json::json!({
+            "about": "Generated from the domain crate's seed types by its test \
+                      the_seed_schema_file_is_current; set UPDATE_SEED_SCHEMA=1 to rewrite it.",
+            "measurable_from": measurable_from,
+            "schemas": schemas,
+        });
+        serde_json::to_string_pretty(&file).unwrap() + "\n"
+    }
+
+    /// `ml/knowledge/schema/seed.schema.json` follows these types, as `backend/openapi.json`
+    /// follows the API's.
+    #[test]
+    fn the_seed_schema_file_is_current() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../ml/knowledge/schema/seed.schema.json");
+        let expected = seed_schema_file();
+        if std::env::var_os("UPDATE_SEED_SCHEMA").is_some() {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, &expected).unwrap();
+        }
+        let committed = std::fs::read_to_string(&path)
+            .unwrap_or_default()
+            .replace("\r\n", "\n");
+        assert!(
+            committed == expected,
+            "ml/knowledge/schema/seed.schema.json is stale: run \
+             UPDATE_SEED_SCHEMA=1 cargo test -p domain the_seed_schema_file_is_current"
+        );
+    }
 }
