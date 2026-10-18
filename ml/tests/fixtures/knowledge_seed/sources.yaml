@@ -1,0 +1,13 @@
+# A test fixture in the seed format of contracts 10. The content illustrates the format; it is
+# not reviewed advice.
+- id: example_extension_tomato_diseases
+  title: Tomato diseases (example)
+  publisher: Example Extension
+  url: https://example.org/tomato-diseases
+  retrieved_at: 2026-10-15
+- id: example_photos
+  title: Example photos
+  publisher: Example Photos
+  url: https://example.org/photos
+  licence: CC BY 4.0
+  retrieved_at: 2026-10-15

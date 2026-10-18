@@ -1,0 +1,10 @@
+id: ladybug_larva
+name: Ladybug larva
+scientific_name: Coccinellidae
+taxon_group: insect
+role: beneficial
+recognition: Long, dark grey, spiky, with orange spots, like a small alligator.
+preys_on: [aphid]
+bioclip_label: Coccinellidae larva with common name ladybug larva
+sources: [example_extension_tomato_diseases]
+reviewed_by: fixture

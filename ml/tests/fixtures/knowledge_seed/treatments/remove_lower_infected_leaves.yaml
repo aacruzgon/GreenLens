@@ -1,0 +1,4 @@
+id: remove_lower_infected_leaves
+kind: cultural
+text: "Remove the lowest spotted leaves and put them in the trash, not the compost."
+sources: [example_extension_tomato_diseases]

@@ -1,0 +1,20 @@
+id: tomato
+scientific_name: Solanum lycopersicum
+common_names: [Tomato]
+profile: full
+care:
+  water: medium
+  light: full_sun
+  soil_ph: { min: 6.2, max: 6.8 }
+  hardiness_zones: annual
+  spacing_cm: 60
+  mature_height_cm: 150
+  notes: Water at the base, not on the leaves.
+classifier_supported: true
+bioclip_label: Solanum lycopersicum with common name tomato
+sources: [example_extension_tomato_diseases]
+reference_images:
+  - file: species/tomato-1.png
+    source_id: example_photos
+    credit: "Photo: A. Example, CC BY 4.0"
+reviewed_by: fixture

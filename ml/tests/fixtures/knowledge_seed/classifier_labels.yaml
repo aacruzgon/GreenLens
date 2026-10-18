@@ -1,0 +1,4 @@
+model_version: fixture_v1
+labels:
+  - { index: 0, label: Tomato___healthy, species_id: tomato, problem_id: healthy }
+  - { index: 1, label: Tomato___Early_blight, species_id: tomato, problem_id: tomato_early_blight }
