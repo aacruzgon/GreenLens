@@ -8,10 +8,10 @@ use domain::{
     jobs::{OrganismOption, SpeciesOption},
     scan::{Answer, GuidedKind},
     vlm::{
-        BoxFormat, DamageFinding, DamageRaw, GuidedTexture, ImageAlias, IndicatorAnswer, OTHER,
-        OrganismFinding, OrganismRaw, SoilAspect, SoilFinding, SoilRaw, SoilReadingValue,
-        SpeciesGuess, VlmFindings, VlmFindingsRaw, VlmGuidedRaw, VlmIndicatorAnswers,
-        VlmIndicatorsRaw,
+        BoxFormat, DamageFinding, DamagePattern, DamageRaw, GuidedTexture, ImageAlias,
+        IndicatorAnswer, OTHER, OrganismFinding, OrganismRaw, SoilAspect, SoilFinding, SoilRaw,
+        SoilReadingValue, SpeciesGuess, VlmFindings, VlmFindingsRaw, VlmGuidedRaw,
+        VlmIndicatorAnswers, VlmIndicatorsRaw,
     },
     wire::{BBox, Region},
 };
@@ -252,10 +252,14 @@ fn damage_findings(
             .map(|bbox| Region::unmasked(image.image_id, bbox, None));
         damage_findings.push(DamageFinding {
             pattern: d.pattern,
-            other_description: d
-                .other_description
-                .as_deref()
-                .map(|t| truncate(t, limits.other_description)),
+            // Only `other` keeps its description, as `other_name` with a known id.
+            other_description: (d.pattern == DamagePattern::Other)
+                .then(|| {
+                    d.other_description
+                        .as_deref()
+                        .map(|t| truncate(t, limits.other_description))
+                })
+                .flatten(),
             region,
             image_id: image.image_id,
             confidence: certainty.confidence(d.certainty),
@@ -494,6 +498,36 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, Invalid::Species(_)));
+    }
+
+    #[test]
+    fn only_other_damage_keeps_its_description() {
+        let a = prepared(IMG1, 100, 100);
+        let json = findings_json("[0,0,10,10]").replace(
+            r#""damage":[{"pattern":"shot_holes","other_description":null,"#,
+            r#""damage":[{"pattern":"leaf_mines","other_description":"brown spots","image":"img1","bbox_2d":null,"certainty":"medium"},
+              {"pattern":"other","other_description":"bark stripped","#,
+        );
+        let b = prepared(IMG2, 100, 100);
+        let f = findings(
+            &json,
+            &CallImages::new(vec![&a, &b]),
+            &[SpeciesOption {
+                id: "tomato".parse().unwrap(),
+                name: "Tomato".to_owned(),
+            }],
+            &[],
+            BoxFormat::Norm1000,
+            &CertaintyMap::default(),
+            Limits::CONTRACT,
+        )
+        .unwrap();
+        assert_eq!(f.damage.len(), 2);
+        assert_eq!(f.damage[0].other_description, None);
+        assert_eq!(
+            f.damage[1].other_description.as_deref(),
+            Some("bark stripped")
+        );
     }
 
     #[test]
