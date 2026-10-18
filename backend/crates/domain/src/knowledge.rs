@@ -689,7 +689,23 @@ mod tests {
             "measurable_from": measurable_from,
             "schemas": schemas,
         });
-        serde_json::to_string_pretty(&file).unwrap() + "\n"
+        serde_json::to_string_pretty(&sorted(file)).unwrap() + "\n"
+    }
+
+    /// Object keys in sorted order at every depth. `serde_json` keeps insertion order when another
+    /// crate in the build turns on `preserve_order`, so the file's bytes would depend on how cargo
+    /// is invoked.
+    fn sorted(v: serde_json::Value) -> serde_json::Value {
+        use serde_json::Value;
+        match v {
+            Value::Object(map) => {
+                let mut entries: Vec<_> = map.into_iter().collect();
+                entries.sort_by(|a, b| a.0.cmp(&b.0));
+                Value::Object(entries.into_iter().map(|(k, v)| (k, sorted(v))).collect())
+            }
+            Value::Array(items) => Value::Array(items.into_iter().map(sorted).collect()),
+            other => other,
+        }
     }
 
     /// `ml/knowledge/schema/seed.schema.json` follows these types, as `backend/openapi.json`

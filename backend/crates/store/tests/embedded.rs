@@ -875,7 +875,10 @@ async fn the_knowledge_loaders_file_loads_and_reads_back() {
         .unwrap()
         .1;
     assert_eq!(tomato_photos.len(), 1);
-    assert_eq!(tomato_photos[0].credit, "Photo: A. Example, CC BY 4.0");
+    assert_eq!(
+        tomato_photos[0].credit,
+        "Generated test image, not a real photo"
+    );
     assert_eq!(k.treatments.len(), 4);
     assert!(
         k.treatments

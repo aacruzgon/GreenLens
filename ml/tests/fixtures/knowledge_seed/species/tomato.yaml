@@ -14,7 +14,8 @@ classifier_supported: true
 bioclip_label: Solanum lycopersicum with common name tomato
 sources: [example_extension_tomato_diseases]
 reference_images:
+  # A generated stand-in (a solid 1600×1200 rectangle), not a photo, so nothing needs a licence.
   - file: species/tomato-1.png
     source_id: example_photos
-    credit: "Photo: A. Example, CC BY 4.0"
+    credit: "Generated test image, not a real photo"
 reviewed_by: fixture
