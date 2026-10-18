@@ -427,6 +427,9 @@
       if (!w || !h) return;
       renderer.setSize(w, h, false);
       persp.aspect = w / h;
+      // A full-screen scene with cards over it (the camera layout) passes the clear band as px insets
+      // [top, bottom], and the view shifts so the garden centres in that band rather than on the screen.
+      if (opts.band) persp.setViewOffset(w, h, 0, (opts.band[1] - opts.band[0]) / 2, w, h);
       persp.updateProjectionMatrix();
     }
     const ro = new ResizeObserver(resize);

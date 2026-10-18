@@ -213,8 +213,9 @@
       }
       if (id === "garden3d") {
         const stage = $("[data-g3d]", layer);
-        // The camera layout gives the scene a shorter band, so the camera comes closer.
-        const ctl = window.PDMGarden3D.mount(stage, layer, { dir, scheme: state.scheme, reduced: state.motion === "reduce", dist: layer.dataset.garden === "camera" ? 12 : 0 });
+        // The camera layout runs the scene full screen behind its cards, so the garden is framed in the clear band between them.
+        const cam = layer.dataset.garden === "camera";
+        const ctl = window.PDMGarden3D.mount(stage, layer, { dir, scheme: state.scheme, reduced: state.motion === "reduce", dist: cam ? 27 : 0, band: cam ? [214, 250] : null });
         // The mode bar follows the date: dragging to Thursday's forecast is Frost, and leaving it is Health.
         const range = $("[data-g-range]", layer), bar = $(".g3d-modes", layer);
         if (range && bar) range.addEventListener("input", () => {

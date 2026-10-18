@@ -732,6 +732,10 @@ html[data-scheme="dark"] .g3d-top .icon-btn, html[data-scheme="dark"] .g3d-seg {
 .scan-fab svg.i { width: 28px; height: 28px; }
 .scan-fab:active { transform: scale(0.94); }
 .phone[data-buttons="block"] .scan-fab { box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.28), 0 10px 26px -8px rgba(0, 0, 0, 0.4); }
+/* Conservatory's chosen tab is neutral too, like the chosen mode on the camera and the 3D garden. */
+.phone[data-buttons="pill"] .tab.on { color: var(--c-text); background: color-mix(in srgb, var(--c-text) 12%, transparent); }
+/* Conservatory's scan button matches the camera shutters: white with a dark icon and a white ring, so the shutter looks the same everywhere. */
+.phone[data-buttons="pill"] .scan-fab { background: #FFFFFF; color: #0B0E0D; box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.28), 0 0 0 6px #FFFFFF, 0 12px 28px -10px rgba(0, 0, 0, 0.45); }
 
 .g3d-label.sel { z-index: 4; }
 .lock-clock { font-family: var(--font-chrome) !important; }
@@ -990,8 +994,7 @@ html[data-scheme="dark"] .g3d-top .icon-btn, html[data-scheme="dark"] .g3d-seg {
 .layer[data-garden="camera"] .g3d::before, .layer[data-garden="camera"] :is(.g3d-top .grow, .g3d-legend) { display: none; }
 .layer[data-garden="camera"] .g3d-top { justify-content: space-between; }
 .layer[data-garden="camera"] .scr.g3d { background: var(--c-background); }
-.layer[data-garden="camera"] .g3d-stage { top: 196px; bottom: 236px; height: auto; }
-.layer[data-garden="camera"].sheet-open .g3d-stage { bottom: 318px; }
+.layer[data-garden="camera"] .g3d-stage { top: 0; bottom: 0; height: auto; }
 .layer[data-garden="camera"] .g3d-card { display: block; position: absolute; top: 102px; left: 12px; right: 12px; z-index: 5; padding: 14px 18px 14px; border-radius: 26px; background: var(--c-surface); border: var(--card-border); box-shadow: 0 12px 30px -14px rgba(0, 0, 0, 0.35); }
 .g3d-legend-in { display: flex; gap: 6px; margin-top: 10px; }
 .layer[data-garden="camera"] .g3d-label { padding: 6px 12px 6px 10px; font-size: 13px; background: var(--c-surface); box-shadow: 0 6px 18px -6px rgba(0, 0, 0, 0.35); }
@@ -1004,16 +1007,23 @@ html[data-scheme="dark"] .g3d-top .icon-btn, html[data-scheme="dark"] .g3d-seg {
 .layer[data-garden="camera"] .g3d-sheet .grabber { display: none; cursor: pointer; margin-bottom: 8px; }
 .layer[data-garden="camera"].sheet-open .g3d-sheet .grabber { display: block; }
 .layer[data-garden="camera"] .g3d-sheet .head { min-height: 32px; cursor: pointer; }
+/* As a pill, only the head shows; the rest fades in as the card grows. */
+.layer[data-garden="camera"] .g3d-sheet > :not(.head) { transition: opacity var(--m-push-dur) var(--m-push-ease); }
+.layer[data-garden="camera"]:not(.sheet-open) .g3d-sheet > :not(.head) { opacity: 0; visibility: hidden; }
 .layer[data-garden="camera"] .g3d-sheet .facts { margin: 4px 0 4px; }
+.layer[data-garden="camera"] .g3d-sheet .facts > span:not([data-g-note]) { white-space: nowrap; }
 .layer[data-garden="camera"] .g3d-note { margin-top: 6px; }
 .layer[data-garden="camera"] .g3d-ctrl { display: flex; position: absolute; left: 0; right: 0; bottom: 84px; z-index: 6; align-items: center; justify-content: space-between; padding: 0 30px; }
 .layer[data-garden="camera"] .g3d-ctrl .glass-btn { color: var(--c-text); background: color-mix(in srgb, var(--c-surface) 72%, transparent); border: 1px solid color-mix(in srgb, var(--c-border) 70%, transparent); }
 .g3d-shutter { width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; padding: 0; cursor: pointer; color: var(--c-accent-text); background: var(--c-accent); border: 0; box-shadow: 0 0 0 4px var(--c-background), 0 0 0 7px var(--c-accent), 0 12px 28px -10px rgba(0, 0, 0, 0.45); transition: transform 140ms ease; }
 .g3d-shutter:active { transform: scale(0.94); }
 .g3d-shutter svg.i { width: 28px; height: 28px; }
-.layer[data-garden="camera"] .g3d-modes { display: flex; position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 6; gap: 2px; padding: 4px; border-radius: 999px; background: color-mix(in srgb, var(--c-surface) 78%, transparent); border: 1px solid color-mix(in srgb, var(--c-border) 70%, transparent); -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6); box-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.3); }
+.layer[data-garden="camera"] .g3d-modes { display: flex; position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 6; gap: 2px; padding: 4px; border-radius: 999px; background: var(--c-surface); border: 1px solid color-mix(in srgb, var(--c-border) 70%, transparent); box-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.3); }
 .layer[data-garden="camera"] .g3d-modes .mode { color: var(--c-text-muted); }
-.layer[data-garden="camera"] .g3d-modes .mode.on { background: var(--c-accent-soft); color: var(--c-accent); }
+.layer[data-garden="camera"] .g3d-modes .mode.on { background: color-mix(in srgb, var(--c-text) 12%, var(--c-surface)); color: var(--c-text); }
+/* The scene runs behind the controls, so they are neutral like the camera's: nothing tinted sits on the 3D view (design.md 2). */
+.layer[data-garden="camera"] .g3d-shutter { color: #0B0E0D; background: #FFFFFF; box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.28), 0 0 0 7px #FFFFFF, 0 12px 28px -10px rgba(0, 0, 0, 0.45); }
+.layer[data-garden="camera"] .g3d-seg button.on { background: var(--c-surface); color: var(--c-text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18); }
 
 /* The 2D map: the garden flat and north up, in the 3D view's place. It shares the selection, the date and the modes. */
 .g2d, .g2d-edit, .g-near { display: none; }
