@@ -1158,7 +1158,7 @@ impl JobRunner {
 | `label_set_version`, `classifier_labels_version` | ✓: the job's in `complete`; every loaded one, comma-separated, in the heartbeat | | |
 | `<model name>` (manifest entry names: `leaf_detector`, `sam_encoder`, `sam_decoder`, `bioclip`, `disease_head…`, `plant_probe`) | ✓ | | |
 
-`vlm_prompts` is `system@1,findings@2,indicators@1,verify@1,guided@1`, in the contract's `name@n` form with the prompt versions of [vision vlm 7](../vision/vlm.md#7-prompts); `vlm_certainty` is `0.4/0.65/0.85`.
+`vlm_prompts` is `system@2,findings@3,indicators@2,verify@2,guided@1`, in the contract's `name@n` form with the prompt versions of [vision vlm 7](../vision/vlm.md#7-prompts); `vlm_certainty` is `0.4/0.65/0.85`.
 
 ---
 
@@ -1316,7 +1316,7 @@ pub const MAX_QUESTIONS_PER_CALL: usize = 12;
 /// The prompt versions ([vision vlm 7]), in the contract's `name@n` form.
 ///
 /// [vision vlm 7]: ../../../docs/vision/vlm.md#7-prompts
-pub const PROMPTS: &str = "system@1,findings@2,indicators@1,verify@1,guided@1";
+pub const PROMPTS: &str = "system@2,findings@3,indicators@2,verify@2,guided@1";
 
 /// Certainty words to confidences ([contracts 6], after decoding): 0.4 / 0.65 / 0.85 until
 /// calibration moves each value within its band, never above 0.85.
@@ -1921,13 +1921,13 @@ pub fn findings(
         }
         None => s.push_str("The plant's species is not known.\n\n"),
     }
-    s.push_str("1. species_guess: the species you see, from this list, or \"other\" with its common name in other_name.\n");
+    s.push_str("1. species_guess: the species you see. If it is one of the species in this list, answer its id, the word before the colon, even when you know it by another or a more specific name, such as a variety. Answer \"other\" only when it is none of them, with its common name in other_name in two or three words; other_name is null otherwise.\n");
     for o in species {
         let _ = writeln!(s, "- {}: {}", o.id, o.name);
     }
     s.push('\n');
     s.push_str(SOIL);
-    s.push_str("\n\n3. organisms: every insect, mite, spider, slug, snail, worm, bird or other animal you can see, up to 10. Choose the label from this list, or \"other\" with a short name in other_name. Box each one, or the group when there are many of the same kind close together. count is one, few (2 to 10) or many.\n");
+    s.push_str("\n\n3. organisms: every insect, mite, spider, slug, snail, worm, bird or other animal you can see, up to 10. Choose its id from this list, even when you know the animal by another name, or \"other\" with a name of two or three words in other_name (null otherwise). Box each one, or the group when there are many of the same kind close together. count is one, few (2 to 10) or many.\n");
     for o in organisms {
         let _ = writeln!(s, "- {}: {}", o.id, o.name);
     }
@@ -1943,7 +1943,7 @@ pub fn findings(
 pub fn indicators(questions: &[Question<'_>], new_photo: bool) -> String {
     let mut s = String::from(
         "Answer each question about this plant from the photos. For each one:
-- reason: first, at most 60 characters on what you see that decides it.
+- reason: first, a few words on what you see that decides it, under 40 characters.
 - answer: yes, no, or unsure. Answer unsure when the photos don't show it clearly; that is better than a guess.
 - image: the image that decided it, or null.
 ",
