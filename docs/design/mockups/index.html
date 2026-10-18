@@ -172,6 +172,9 @@
   <symbol id="i-photos" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3.5 15.5l4.5-4.5 4 4 3-3 5.5 5.5"/><circle cx="15.5" cy="9.5" r="1.4"/></symbol>
   <symbol id="i-thumb" viewBox="0 0 24 24"><path d="M7.5 10.5v9.5H4v-9.5zM7.5 10.5l4-7c1.2 0 2 .9 2 2.1V9h5.2a1.8 1.8 0 0 1 1.8 2.1l-1.2 7.2A2 2 0 0 1 17.3 20H7.5"/></symbol>
   <symbol id="i-map" viewBox="0 0 24 24"><path d="M3.5 6.5l5.5-2 6 2 5.5-2v13l-5.5 2-6-2-5.5 2z"/><path d="M9 4.5v13M15 6.5v13"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 19.5h16M7 16v-4M12 16V7M17 16v-6"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.2v13.6L18.6 12z"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18.5" cy="12" r="1.2"/></symbol>
   <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></symbol>
 </svg>
 
@@ -313,6 +316,13 @@
       <div class="shot add">+ Soil</div>
       <div class="shot add">+ Fruit</div>
     </div>
+    <div class="modes" aria-label="Shot">
+      <button class="mode done" data-act="mode" data-title="Whole plant" data-hint="Step back about 1 m and get the whole plant in the frame.">Whole plant</button>
+      <button class="mode on" data-act="mode" data-title="Leaf close-up" data-hint="Fill the frame with one affected leaf, about 30 cm away. Tap the leaf to focus.">Close-up</button>
+      <button class="mode" data-act="mode" data-title="Leaf underside" data-hint="Suspect pests? Turn a leaf over and photograph the underside.">Underside</button>
+      <button class="mode" data-act="mode" data-title="Soil" data-hint="Add the soil around the base, from about 40 cm.">Soil</button>
+      <button class="mode" data-act="mode" data-title="Flower or fruit" data-hint="Something wrong with a flower or fruit? Fill the frame with it.">Fruit</button>
+    </div>
     <div class="cap-hint"><span class="num" data-dial-count>1 of 2</span> needed shots · Suspect pests? Photograph the underside of a leaf.</div>
     <div class="cap-ctrl">
       <span class="lib"><svg class="ph"><use href="#ph-basil"/></svg></span>
@@ -341,15 +351,18 @@
         <div class="scanline" data-until="3"></div>
         <div class="region" data-at="3" style="left:28%;top:33%;width:32%;height:36%"><svg viewBox="0 0 100 100" preserveAspectRatio="none"><rect x="1" y="1" width="98" height="98" rx="4" pathLength="100" vector-effect="non-scaling-stroke"/></svg><i class="rc"></i><i class="rc"></i><i class="rc"></i><i class="rc"></i><span class="region-tag">Leaf spots<span class="rsize num"> · 8–12 mm</span></span></div>
         <div class="ruler" data-at="4" style="left:31%;top:73%"><span class="num">8–12 mm</span></div>
+        <span class="cam-chip" data-at="2" style="left:33%;top:73%"><svg class="i sm"><use href="#i-leaf"/></svg>Tomato<span class="cam-chip-act">Change</span></span>
         <div class="scan-hero">
           <button class="glass-btn" data-act="back" aria-label="Back"><svg class="i"><use href="#i-back"/></svg></button>
           <div class="grow"><span class="t-hl">Tomato 2</span><span class="t-fn" style="opacity:.85">Today, 10:42</span></div>
           <span class="status s-info" data-until="6">Analysing</span><span class="status s-watch" data-at="6" data-until="7">Needs your answer</span><span class="status s-info" data-at="7" data-until="9">Analysing</span><span class="status s-ready" data-at="9">Plan ready</span>
+          <button class="glass-btn more" data-act="nav:garden3d:push" aria-label="In the garden"><svg class="i"><use href="#i-map"/></svg></button>
         </div>
+        <div class="profile-head enter"><h1>Tomato 2</h1><div class="ph-sub"><span class="status s-info" data-until="6">Analysing</span><span class="status s-watch" data-at="6" data-until="7">Needs your answer</span><span class="status s-info" data-at="7" data-until="9">Analysing</span><span class="status s-ready" data-at="9">Plan ready</span><span class="t-fn muted">Today, 10:42</span></div></div>
       </div>
       <div class="photo-cap t-cap"><span>Tomato 2 · close-up · <span class="num">32 cm</span> away</span><span class="scalebar"><i></i><span class="num">10 mm</span></span></div>
       <div class="pstrip"><span><svg class="ph"><use href="#ph-tomato"/></svg></span><span class="on"><svg class="ph"><use href="#ph-leaf"/></svg></span><span><svg class="ph"><use href="#ph-tomato"/></svg></span></div>
-      <div class="phase" aria-live="polite"><span class="ph-now" data-phase-now>Finding the plant</span><span class="ph-time num" data-phase-time>0 s</span><span class="ph-next" data-phase-next>Next: identifying the species</span></div>
+      <div class="phase" aria-live="polite" data-act="toggle-log"><span class="ph-now" data-phase-now>Finding the plant</span><span class="ph-time num" data-phase-time>0 s</span><span class="ph-next" data-phase-next>Next: identifying the species</span></div>
     </div>
 
     <section class="sec" style="margin-top:14px">
@@ -429,6 +442,11 @@
 
     <div class="ask" data-at="9" data-focus><button class="btn btn-primary btn-xl" data-act="nav:result:push">See the diagnosis and plan</button></div>
   </div>
+  <div class="cam fixed">
+    <button class="glass-btn" data-act="back" aria-label="Back"><svg class="i"><use href="#i-back"/></svg></button>
+    <div class="cam-ring" data-until="9" aria-label="Analysing"><svg class="i"><use href="#i-leaf"/></svg></div>
+    <button class="glass-btn" aria-label="More"><svg class="i"><use href="#i-more"/></svg></button>
+  </div>
 </template>
 
 <template id="t-result">
@@ -446,10 +464,17 @@
           <button class="glass-btn" data-act="back" aria-label="Back"><svg class="i"><use href="#i-back"/></svg></button>
           <div class="grow"><span class="t-hl">Tomato 2</span><span class="t-fn" style="opacity:.85">Today, 10:42</span></div>
           <span class="status s-ready">Plan ready</span>
+          <button class="glass-btn more" data-act="nav:garden3d:push" aria-label="In the garden"><svg class="i"><use href="#i-map"/></svg></button>
         </div>
+        <div class="profile-head enter"><h1>Early blight</h1><div class="ph-sub"><span class="t-fn muted">Tomato 2 · from 3 photos, your answer and the weather</span></div></div>
         <div class="diag-hero enter"><h1>Early blight</h1><div class="t-sub" style="opacity:.92">From 3 photos, your answer and the weather</div></div>
       </div>
       <div class="photo-cap t-cap"><span>Tomato 2 · close-up · <span class="num">32 cm</span> away</span><span class="scalebar"><i></i><span class="num">10 mm</span></span></div>
+    </div>
+
+    <div class="feat enter" style="--i:2">
+      <article class="feat-card"><span class="feat-th"><svg class="i"><use href="#i-map"/></svg></span><span class="grow"><span class="feat-eye">Risk of spread: high</span><span class="feat-title">Crowded: <span class="num">40 cm</span> from Tomato 1</span><span class="t-fn muted">Tomato 1 has early blight · 4 humid days ahead</span></span></article>
+      <article class="feat-card"><span class="feat-th ok"><svg class="i"><use href="#i-bug"/></svg></span><span class="grow"><span class="feat-eye">Also found</span><span class="feat-title">Ladybug larva</span><span class="t-fn muted">Beneficial. Leave it: it eats aphids.</span></span></article>
     </div>
 
     <div class="diag-block enter">
@@ -468,7 +493,7 @@
       </div>
     </section>
 
-    <section class="sec enter" style="--i:2">
+    <section class="sec enter risk-sec" style="--i:2">
       <div class="banner">
         <svg class="i"><use href="#i-drop"/></svg>
         <div class="grow"><div class="t-hl">Risk of spread: high</div><div class="t-sub">Crowded: <span class="num">40 cm</span> from Tomato 1, which has early blight. 4 humid days in the forecast.</div></div>
@@ -476,7 +501,7 @@
       <div class="basis t-fn muted"><svg class="i sm"><use href="#i-book"/></svg><span>Sources: OMAFRA, Cornell Vegetable MD Online</span></div>
     </section>
 
-    <section class="sec enter" style="--i:3">
+    <section class="sec enter also-sec" style="--i:3">
       <div class="sec-h"><h2>Also found</h2></div>
       <div class="card row"><span class="ico" style="background:var(--c-healthy-soft);color:var(--c-healthy)"><svg class="i sm"><use href="#i-bug"/></svg></span><div class="grow"><div class="t-hl">Ladybug larva</div><div class="t-fn muted">Beneficial. Leave it: it eats aphids.</div></div><span class="band high"><span class="bars"><i></i><i></i><i></i></span>high</span></div>
     </section>
@@ -509,25 +534,49 @@
 
     <div class="ask"><button class="btn btn-primary btn-xl" data-act="nav:chat:push"><svg class="i"><use href="#i-chat"/></svg>Ask about this result</button></div>
   </div>
+  <div class="mini fixed" aria-label="Up next">
+    <span class="mini-th"><svg class="ph"><use href="#ph-leaf"/></svg></span>
+    <span class="grow" data-act="nav:step:push"><span class="t-cap muted">Up next · step 1 of 5</span><span class="mini-title">Remove the lowest infected leaves</span></span>
+    <button class="mini-btn" data-act="nav:step:push" aria-label="Start step by step"><svg class="i"><use href="#i-play"/></svg></button>
+    <button class="mini-btn" data-act="nav:chat:push" aria-label="Ask about this result"><svg class="i"><use href="#i-chat"/></svg></button>
+  </div>
 </template>
 
 <template id="t-garden3d">
   <div class="scr g3d">
     <div class="g3d-stage" data-g3d></div>
+    <div class="g2d" data-g2d></div>
+    <button class="btn btn-ghost btn-sm g2d-edit">Edit</button>
     <div class="g3d-top">
       <button class="icon-btn" data-act="back" aria-label="Back"><svg class="i"><use href="#i-back"/></svg></button>
       <div class="grow"><span class="t-hl">Back garden</span><span class="t-fn muted">Mapped Oct 12 · 6 plants</span></div>
-      <div class="g3d-seg" aria-label="View"><span class="on">3D</span><span>Map</span></div>
+      <div class="g3d-seg" role="group" aria-label="View"><button class="on" data-act="g3d-view" data-view="3d" aria-pressed="true">3D</button><button data-act="g3d-view" data-view="map" aria-pressed="false">Map</button></div>
     </div>
     <div class="g3d-legend"><span class="status s-healthy">Healthy</span><span class="status s-watch">Watch</span><span class="status s-sick">Sick</span></div>
     <div class="g3d-sheet">
-      <div class="grabber"></div>
-      <div class="head"><span class="t-t3" data-g-name>Tomato 1</span><span class="status s-sick" data-g-status>Sick</span></div>
+      <div class="grabber" data-act="g3d-sheet" aria-hidden="true"></div>
+      <div class="head" data-act="g3d-sheet" role="button" aria-expanded="false"><span class="t-t3" data-g-name>Tomato 1</span><span class="status s-sick" data-g-status>Sick</span></div>
       <div class="facts t-sub"><span><span class="num" data-g-height>62 cm</span> <span class="muted">tall</span></span><span><span class="num" data-g-canopy>48 cm</span> <span class="muted">across</span></span><span class="muted" data-g-note>Early blight</span></div>
+      <div class="g-near t-fn muted" data-g-near>40 cm to Tomato 2</div>
       <div class="growth"><input type="range" min="0" max="5" step="1" value="4" aria-label="Date" data-g-range><span class="t-fn num" data-g-date>Oct 17</span></div>
       <div class="ticks t-cap"><span>Sep 20</span><span>27</span><span>Oct 4</span><span>11</span><span>17</span><span class="fc">Thu</span></div>
       <div class="g3d-actions"><button class="btn btn-secondary btn-sm" data-act="nav:insights:push">Insights</button><button class="btn btn-plain btn-sm">Scan again</button></div>
       <p class="g3d-note t-cap muted">Drawn from your garden map and plant measurements. The camera scan of your yard stays on your phone.</p>
+    </div>
+    <div class="g3d-card" aria-live="polite">
+      <div class="t-hl" data-g3d-title>Back garden · 6 plants</div>
+      <div class="t-fn muted" data-g3d-text>1 sick, 1 to watch, 4 healthy. Mapped Oct 12.</div>
+      <div class="g3d-legend-in"><span class="status s-healthy">Healthy</span><span class="status s-watch">Watch</span><span class="status s-sick">Sick</span></div>
+    </div>
+    <div class="g3d-ctrl">
+      <button class="glass-btn" data-act="nav:insights:push" aria-label="Insights for this plant"><svg class="i"><use href="#i-chart"/></svg></button>
+      <button class="g3d-shutter" data-act="nav:capture:modal" aria-label="Scan this plant"><svg class="i"><use href="#i-camera"/></svg></button>
+      <button class="glass-btn" data-act="nav:chat:push" aria-label="Ask about this plant"><svg class="i"><use href="#i-chat"/></svg></button>
+    </div>
+    <div class="modes g3d-modes" aria-label="View">
+      <button class="mode on" data-act="g3d-mode" data-mode="health" data-title="Back garden · 6 plants" data-hint="1 sick, 1 to watch, 4 healthy. Mapped Oct 12.">Health</button>
+      <button class="mode" data-act="g3d-mode" data-mode="growth" data-title="Heights, measured Oct 17" data-hint="From each scan's LiDAR depth. Tomato 2 is the tallest at 70 cm.">Growth</button>
+      <button class="mode" data-act="g3d-mode" data-mode="frost" data-title="Frost on Thursday night" data-hint="Low of −1 °C. Cover the 4 tender plants by Thursday evening.">Frost</button>
     </div>
   </div>
 </template>
