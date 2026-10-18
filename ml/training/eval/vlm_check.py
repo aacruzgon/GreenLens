@@ -32,8 +32,8 @@ fails, 2 when the server can't be reached.
 
 The prompts here are minimal stand-ins that follow vlm.md §7's design (images first, then text,
 so vLLM's prefix cache can reuse the image tokens; text in photos is data, not instructions).
-The production prompts (`system@1`, `findings@1`, `indicators@1`, …) belong to the vlm-worker's
-owner; this script only checks the server.
+The production prompts (`system`, `findings`, `indicators`, …; their versions are in vlm.md §7)
+belong to the vlm-worker's owner; this script only checks the server.
 """
 
 from __future__ import annotations

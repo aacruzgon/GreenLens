@@ -1,4 +1,4 @@
-//! The prompts of [vision vlm 7] (`system@1`, `findings@1`, `indicators@1`, `verify@1`,
+//! The prompts of [vision vlm 7] (`system@1`, `findings@2`, `indicators@1`, `verify@1`,
 //! `guided@1`), filled from the payload. They borrow the payload and return owned strings;
 //! nothing here allocates more than the text itself.
 //!
@@ -67,7 +67,7 @@ const BENEFICIALS: &str = "Many helpful insects look like pests. Check these bef
 - A swollen, bronze or papery aphid is a mummy: a parasitic wasp has used it. Report it as other, with the name aphid mummy.
 Only choose a pest label when you can see the features of that pest.";
 
-const SOIL: &str = "2. soil: for each aspect, the value you see in the image that shows the soil best, or null if no image shows it clearly. Soil under mulch can't be judged for moisture, surface or structure.
+const SOIL: &str = "2. soil: for each aspect, the value you see in the image that shows the soil best, or null if no image shows it clearly. Soil glimpsed between leaves or blurred in the background doesn't count. Soil under mulch can't be judged for moisture, surface or structure. Write each aspect you can judge as an object, for example \"moisture\": {\"value\": \"moist\", \"image\": \"img1\", \"certainty\": \"medium\"}, and each one you can't as null, for example \"erosion\": null.
 - moisture: dry (light-coloured, dusty), moist (darker, holds together), wet (shiny, sticky), waterlogged (standing water)
 - surface: normal, crusted (a hard skin), cracked
 - structure: crumbly, cloddy (hard lumps), compacted (dense, smooth, no crumbs), unclear
