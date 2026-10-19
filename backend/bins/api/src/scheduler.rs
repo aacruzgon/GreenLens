@@ -87,6 +87,10 @@ pub const TASKS: [Task; 9] = [
 ];
 
 /// Starts every task on the tracker.
+///
+/// The farm connectors' `connectors` task (roadmap E4.1) isn't here yet. When it comes, it
+/// starts only when [`AppState::connector_key`] is `Some`, so with connectors off (no
+/// `CONNECTOR_KEY`, decision 9) it never runs, and it takes that key to unseal the tokens.
 pub fn start(state: &Arc<AppState>) {
     for task in &TASKS {
         match task.name {

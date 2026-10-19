@@ -47,6 +47,7 @@ ulid.workspace = true
 uuid.workspace = true
 # crypto and secrets
 hmac.workspace = true
+aes-gcm.workspace = true
 sha2.workspace = true
 secrecy.workspace = true
 rand.workspace = true

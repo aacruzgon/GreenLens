@@ -170,8 +170,13 @@ impl ImageProcessing for FixedImages {
 }
 
 fn config() -> Config {
+    config_with(&[])
+}
+
+/// [`config`] with extra variables of the test's.
+fn config_with(extra: &[(&'static str, &str)]) -> Config {
     let long = "x".repeat(40);
-    let vars = BTreeMap::from([
+    let mut vars = BTreeMap::from([
         ("CLERK_ISSUER", "https://clerk.example.org".to_owned()),
         ("API_URL_SIGNING_KEY", long.clone()),
         ("API_PUBLIC_BASE", "https://api.example.org".to_owned()),
@@ -187,6 +192,7 @@ fn config() -> Config {
         ("LLM_CHEAP_MODEL", "small".to_owned()),
         ("API_WEB_ORIGINS", "https://app.example.org".to_owned()),
     ]);
+    vars.extend(extra.iter().map(|&(k, v)| (k, v.to_owned())));
     Config::from_lookup(|k| vars.get(k).cloned()).unwrap()
 }
 
@@ -233,11 +239,23 @@ fn state_with_beliefs(
     images: FixedImages,
     beliefs: Arc<dyn BeliefStore>,
 ) -> Arc<AppState> {
+    state_with_config(store, auth, blob, images, beliefs, config())
+}
+
+/// [`state`] with a belief store and a configuration of the test's.
+fn state_with_config(
+    store: FakeStore,
+    auth: MockAuthVerifier,
+    blob: MockBlobStore,
+    images: FixedImages,
+    beliefs: Arc<dyn BeliefStore>,
+    config: Config,
+) -> Arc<AppState> {
     let store: Arc<FakeStore> = Arc::new(store);
     let clock = Arc::new(FixedClock::at(NOW.parse().unwrap()));
     let tasks = TaskTracker::new();
     let shutdown = CancellationToken::new();
-    let config = Arc::new(config());
+    let config = Arc::new(config);
     let blob: Arc<MockBlobStore> = Arc::new(blob);
     let notifier = Arc::new(MockNotifier::new());
     let hub = Arc::new(EventHub::default());

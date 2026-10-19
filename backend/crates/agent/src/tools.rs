@@ -38,7 +38,7 @@ use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::{deps::AgentDeps, error::ToolError, safety::dose_check_all};
+use crate::{deps::AgentDeps, error::ToolError, prompt::DataKind, safety::dose_check_all};
 
 /// What a tool does, which decides who is offered it ([contracts 1], roles and access).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -133,6 +133,9 @@ pub trait Tool: Send + Sync + 'static {
     const LABEL: &'static str;
     /// Who may be offered it.
     const KIND: ToolKind;
+    /// The `data` block its successful results reach the model in ([`crate::prompt::tool_result`]).
+    /// `search_farm_records` (roadmap E5.2) will set `FarmRecords`.
+    const DATA_KIND: DataKind = DataKind::ToolResult;
 
     /// Every string the model wrote into the call, borrowed from the arguments, for the dose
     /// check. The returned references live as long as the borrow of `args` (elided `'_`), which
@@ -160,6 +163,8 @@ pub trait DynTool: Send + Sync {
     fn kind(&self) -> ToolKind;
     /// The UI label.
     fn label(&self) -> &'static str;
+    /// The `data` block its results are framed in.
+    fn data_kind(&self) -> DataKind;
     /// The spec sent to the model.
     fn spec(&self) -> &ToolSpec;
     /// Parses, dose-checks and runs a call.
@@ -211,6 +216,10 @@ impl<T: Tool> DynTool for Erased<T> {
 
     fn label(&self) -> &'static str {
         T::LABEL
+    }
+
+    fn data_kind(&self) -> DataKind {
+        T::DATA_KIND
     }
 
     fn spec(&self) -> &ToolSpec {
