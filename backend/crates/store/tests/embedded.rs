@@ -72,7 +72,7 @@ async fn farm_connectors_store_and_go_with_their_garden() {
                 created_by = $user, endpoint = 'vendor', sources = [{ id: 'C024BE91L', name: 'field-reports' }],
                 sync_requested_at = $now, last_error = 'rate_limited';
              CREATE $record SET garden = $garden, connector = $connector, kind = 'message',
-                vendor_id = 'C024BE91L/1729000000.000100', title = '#field-reports', author = 'Sam',
+                vendor_id = 'C024BE91L/1729000000.000100', source = 'C024BE91L', title = '#field-reports', author = 'Sam',
                 link = 'https://maplerow.slack.com/archives/C024BE91L/p1729000000000100',
                 text = 'Rings on bed 3 again.', text_hash = 'h1', embedding = [0.1, 0.2],
                 embedding_model = 'test', at = $now;

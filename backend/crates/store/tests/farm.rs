@@ -122,6 +122,10 @@ fn record(
         } else {
             FarmRecordKind::Document
         },
+        source: vendor_id
+            .split_once('/')
+            .map_or("folder-1", |(channel, _)| channel)
+            .to_owned(),
         title: "#field-reports".into(),
         author: Some("Sam".into()),
         link: format!("https://maplerow.slack.com/archives/{vendor_id}"),
@@ -290,6 +294,7 @@ async fn connectors_and_the_due_query() {
                     ("C1".to_owned(), SyncCursor("1729000000.000100".into())),
                     ("C9".to_owned(), SyncCursor("dropped meanwhile".into())),
                 ]),
+                due_at: t0(),
                 synced_at: Some(at(2)),
                 next_sync_at: at(17),
                 last_error: Some(SyncErrorCode::TooLarge),
@@ -1003,4 +1008,238 @@ async fn plans_and_messages_carry_farm_citations() {
     let (_, context) = store.context(owner, 10).await.unwrap();
     assert_eq!(context.len(), 2);
     assert!(context.iter().all(|m| m.message.farm_citations.is_empty()));
+}
+
+/// Two or three creates racing on a garden that holds one connector: the limit is 2, so the
+/// losers conflict, retry and meet it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn racing_creates_respect_the_connector_limit() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let existing = new_connector(&f, ConnectorKind::Slack);
+    store.create_connector(owner, existing).await.unwrap();
+
+    let (a, b, c) = (
+        new_connector(&f, ConnectorKind::GoogleDrive),
+        new_connector(&f, ConnectorKind::GoogleDrive),
+        new_connector(&f, ConnectorKind::GoogleDrive),
+    );
+    let (ra, rb, rc) = tokio::join!(
+        store.create_connector(owner, a),
+        store.create_connector(owner, b),
+        store.create_connector(owner, c),
+    );
+    let accepted = [&ra, &rb, &rc].iter().filter(|r| r.is_ok()).count();
+    assert_eq!(accepted, 1, "{ra:?} {rb:?} {rc:?}");
+    for r in [ra, rb, rc].into_iter().filter(Result::is_err) {
+        assert!(matches!(
+            r,
+            Err(StoreError::Rejected(DomainError::InvalidState(_)))
+        ));
+    }
+    let viewer: Membership<Viewer> = owner.at_least();
+    assert_eq!(store.connectors(viewer).await.unwrap().len(), 2);
+}
+
+/// Sync now on a connector stopped until new sources is refused, because the due query would
+/// skip it; new sources lift the wait.
+#[tokio::test]
+async fn sync_now_is_refused_on_a_stopped_connector() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let c = active_slack(&store, &f, f.garden).await;
+    for code in [SyncErrorCode::TooLarge, SyncErrorCode::SourceMissing] {
+        store
+            .set_status(c, ConnectorStatus::Active, Some(code))
+            .await
+            .unwrap();
+        assert!(matches!(
+            store.request_sync(owner, c, at(100)).await,
+            Err(StoreError::Rejected(DomainError::InvalidState(_)))
+        ));
+        assert_eq!(
+            store
+                .connector_row(c)
+                .await
+                .unwrap()
+                .unwrap()
+                .sync_requested_at,
+            None
+        );
+    }
+    store
+        .set_sources(owner, c, vec![source("C2", "spray-log")], at(101))
+        .await
+        .unwrap();
+    assert_eq!(
+        store.request_sync(owner, c, at(102)).await.unwrap(),
+        SyncRequest::Accepted
+    );
+    // A transient failure doesn't stop the sync.
+    store
+        .set_status(c, ConnectorStatus::Active, Some(SyncErrorCode::RateLimited))
+        .await
+        .unwrap();
+    assert_eq!(
+        store.request_sync(owner, c, at(200)).await.unwrap(),
+        SyncRequest::Accepted
+    );
+}
+
+/// Two Sync now requests at once: one is accepted, the other is too soon.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn racing_sync_requests_accept_exactly_one() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let c = active_slack(&store, &f, f.garden).await;
+    let (a, b) = tokio::join!(
+        store.request_sync(owner, c, at(100)),
+        store.request_sync(owner, c, at(100)),
+    );
+    let (a, b) = (a.unwrap(), b.unwrap());
+    let accepted = [a, b]
+        .iter()
+        .filter(|r| **r == SyncRequest::Accepted)
+        .count();
+    assert_eq!(accepted, 1, "{a:?} {b:?}");
+    assert!(
+        [a, b]
+            .iter()
+            .any(|r| matches!(r, SyncRequest::TooSoon { .. }))
+    );
+}
+
+fn outcome(due_at: Timestamp, next: Timestamp, last_error: Option<SyncErrorCode>) -> SyncOutcome {
+    SyncOutcome {
+        due_at,
+        cursors: BTreeMap::new(),
+        synced_at: Some(next),
+        next_sync_at: next,
+        last_error,
+    }
+}
+
+/// A run that ends after a Sync now or a `set_sources` landed keeps their `next_sync_at`, and
+/// a stopping failure of the old sources isn't stored over the new ones.
+#[tokio::test]
+async fn finish_sync_keeps_what_landed_during_the_run() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let c = active_slack(&store, &f, f.garden).await;
+
+    // Nothing landed: the run's times and failure are stored.
+    let due = store.due_connectors(at(1), 10).await.unwrap();
+    let due_at = due[0].next_sync_at;
+    store
+        .finish_sync(c, outcome(due_at, at(16), Some(SyncErrorCode::RateLimited)))
+        .await
+        .unwrap();
+    let row = store.connector_row(c).await.unwrap().unwrap();
+    assert_eq!(row.next_sync_at, at(16));
+    assert_eq!(row.last_error, Some(SyncErrorCode::RateLimited));
+
+    // A Sync now lands during the next run: its next_sync_at (now) stays.
+    let due_at = at(16);
+    store.request_sync(owner, c, at(20)).await.unwrap();
+    store
+        .finish_sync(c, outcome(due_at, at(36), None))
+        .await
+        .unwrap();
+    let row = store.connector_row(c).await.unwrap().unwrap();
+    assert_eq!(row.next_sync_at, at(20), "the Sync now is not pushed out");
+    assert_eq!(row.last_error, None);
+    assert_eq!(row.connector.synced_at, Some(at(36)));
+
+    // New sources land during a run that stops on `too_large`: the wait isn't stored.
+    let due_at = row.next_sync_at;
+    store
+        .set_sources(owner, c, vec![source("C2", "spray-log")], at(40))
+        .await
+        .unwrap();
+    store
+        .finish_sync(c, outcome(due_at, at(55), Some(SyncErrorCode::TooLarge)))
+        .await
+        .unwrap();
+    let row = store.connector_row(c).await.unwrap().unwrap();
+    assert_eq!(row.next_sync_at, at(40));
+    assert_eq!(row.last_error, None, "the new sources run first");
+    assert_eq!(
+        store.due_connectors(at(41), 10).await.unwrap().len(),
+        1,
+        "still due"
+    );
+
+    // Without anything landing, too_large is stored and stops the connector.
+    store
+        .finish_sync(c, outcome(at(40), at(60), Some(SyncErrorCode::TooLarge)))
+        .await
+        .unwrap();
+    let row = store.connector_row(c).await.unwrap().unwrap();
+    assert_eq!(row.last_error, Some(SyncErrorCode::TooLarge));
+    assert_eq!(store.due_connectors(at(61), 10).await.unwrap().len(), 0);
+}
+
+/// Dropping one Drive folder keeps another folder's records, as when the owner swaps folders
+/// and the new folder's first sync runs before the delete.
+#[tokio::test]
+async fn dropping_a_drive_folder_keeps_the_new_folders_records() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let mut d = new_connector(&f, ConnectorKind::GoogleDrive);
+    d.status = ConnectorStatus::Active;
+    d.oauth = None;
+    d.sources = vec![source("folder-2", "New records")];
+    let c = d.id;
+    store.seed_connector(f.garden, d).await.unwrap();
+    let mut old = record(c, "1aBcD", 0, "old", Some(one_hot(0)), t0());
+    old.source = "folder-1".into();
+    let mut new = record(c, "2eFgH", 0, "new", Some(one_hot(1)), t0());
+    new.source = "folder-2".into();
+    store.upsert_records(c, vec![old, new]).await.unwrap();
+    assert_eq!(
+        store
+            .delete_source_records(c, "folder-1".into())
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        store
+            .source_vendor_ids_since(c, "folder-2".into(), t0())
+            .await
+            .unwrap(),
+        vec!["2eFgH".to_owned()]
+    );
+    assert_eq!(store.garden_record_count(f.garden).await.unwrap(), 1);
+}
+
+/// The 180-day cleanup deletes old Slack messages only; an old Drive document stays.
+#[tokio::test]
+async fn the_cleanup_leaves_old_drive_documents() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let c = active_slack(&store, &f, f.garden).await;
+    store
+        .upsert_records(
+            c,
+            vec![
+                record(c, "C1/1.000100", 0, "old message", Some(one_hot(0)), t0()),
+                record(c, "1aBcD", 0, "old spray log", Some(one_hot(1)), t0()),
+            ],
+        )
+        .await
+        .unwrap();
+    let cutoff = t0().plus(FARM_RECORD_KEEP);
+    assert_eq!(store.delete_records_before(cutoff).await.unwrap(), 1);
+    assert_eq!(store.delete_records_before(cutoff).await.unwrap(), 0);
+    let left = store
+        .record_hashes(c, vec!["C1/1.000100".into(), "1aBcD".into()])
+        .await
+        .unwrap();
+    assert_eq!(left.len(), 1);
+    assert_eq!(left[0].0.vendor_id.to_string(), "1aBcD");
 }

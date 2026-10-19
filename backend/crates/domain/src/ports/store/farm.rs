@@ -118,6 +118,11 @@ pub struct CompletedConnect {
 /// What a sync run stores when it stops, finished or not.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncOutcome {
+    /// The connector's `next_sync_at` as [`due_connectors`](FarmRecordStore::due_connectors)
+    /// returned it. If the stored value is later when the run ends, a **Sync now** or a new set
+    /// of sources landed during the run: the store keeps that time, and doesn't store a
+    /// stopping failure (`too_large`, `source_missing`) over it.
+    pub due_at: Timestamp,
     /// Each source's cursor after the run.
     pub cursors: BTreeMap<String, SyncCursor>,
     /// Set when every source was read to its end.
@@ -157,6 +162,9 @@ pub struct NewFarmRecord {
     pub id: FarmRecordId,
     /// A message or a document chunk.
     pub kind: FarmRecordKind,
+    /// The connector source it came from: the Slack channel id or the Drive folder id.
+    /// Dropping the source deletes by it.
+    pub source: String,
     /// `"#field-reports"`, `"Spray log 2026"`.
     pub title: String,
     /// The author's display name.
@@ -247,7 +255,8 @@ pub trait FarmRecordStore: Send + Sync {
     /// accepted when it is unset or [`SYNC_NOW_INTERVAL`] old (`next_sync_at` becomes now);
     /// [`SyncRequest::TooSoon`] within it, with the instant the next is allowed, so the route
     /// can answer `429 rate_limited` with `retry_after_s`. Only an `active` connector syncs; any
-    /// other status is `Rejected(InvalidState)`.
+    /// other status, and a connector stopped until new sources (`too_large`, `source_missing`),
+    /// is `Rejected(InvalidState)`.
     ///
     /// [`SYNC_NOW_INTERVAL`]: crate::rules::limits::SYNC_NOW_INTERVAL
     async fn request_sync(
@@ -260,7 +269,8 @@ pub trait FarmRecordStore: Send + Sync {
     /// The `connectors` task: connectors whose `next_sync_at` has passed, `active` only
     /// (never `pending`, `reauth_needed` or `deleting`), on the `connector_due` index, earliest
     /// first. A connector stopped with `too_large` or `source_missing` waits until the owner
-    /// changes its sources ([`set_sources`](Self::set_sources) clears the failure).
+    /// changes its sources ([`set_sources`](Self::set_sources) clears the failure), and
+    /// [`request_sync`](Self::request_sync) refuses it with `invalid_state`.
     async fn due_connectors(
         &self,
         now: Timestamp,
@@ -341,8 +351,8 @@ pub trait FarmRecordStore: Send + Sync {
     ) -> Result<u32, StoreError>;
 
     /// The vendor ids a source holds from `since` on (by `at`), for the daily 7-day re-read to
-    /// find what is gone at the vendor ([connectors 6]). The source as in
-    /// [`delete_source_records`](Self::delete_source_records).
+    /// find what is gone at the vendor ([connectors 6]). The source is the id stored on each
+    /// record (`NewFarmRecord::source`).
     async fn source_vendor_ids_since(
         &self,
         connector: ConnectorId,
@@ -350,9 +360,9 @@ pub trait FarmRecordStore: Send + Sync {
         since: Timestamp,
     ) -> Result<Vec<String>, StoreError>;
 
-    /// One batch of 500 of a source's records, after the owner dropped it: Slack's whose
-    /// `vendor_id` starts with `"<channel>/"`, and for Drive (one folder) all of the
-    /// connector's.
+    /// One batch of 500 of a source's records, after the owner dropped it: those of the
+    /// connector whose stored `source` is this channel or folder id. Another source's records,
+    /// a new Drive folder's among them, stay.
     async fn delete_source_records(
         &self,
         connector: ConnectorId,
@@ -372,8 +382,9 @@ pub trait FarmRecordStore: Send + Sync {
         k: usize,
     ) -> Result<Vec<FarmRecordMatch>, StoreError>;
 
-    /// The cleanup: one batch of 500 records older than the cutoff (180 days), on the
-    /// `farm_record_at` index.
+    /// The cleanup: one batch of 500 Slack messages older than the cutoff (180 days), on the
+    /// `farm_record_kind_at` index. Documents are not deleted by age: Drive's sync removes a
+    /// file when `changes.list` says it is gone.
     async fn delete_records_before(&self, cutoff: Timestamp) -> Result<u32, StoreError>;
 }
 

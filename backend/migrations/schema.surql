@@ -92,6 +92,7 @@ DEFINE FIELD OVERWRITE soil_profile_status ON garden TYPE "pending" | "ready" | 
 DEFINE FIELD OVERWRITE soil_retry_at       ON garden TYPE option<datetime>;   -- earliest next SoilGrids attempt after a failure (15 min outage, 7 days no data)
 DEFINE FIELD OVERWRITE map_version         ON garden TYPE int DEFAULT 0;      -- the current garden_map version, 0 for none
 DEFINE FIELD OVERWRITE deleting_at         ON garden TYPE option<datetime>;  -- set when DELETE starts; hides the garden
+DEFINE FIELD OVERWRITE connector_rev       ON garden TYPE int DEFAULT 0;      -- bumped by every connector create, so two racing creates conflict and the limit holds
 DEFINE FIELD OVERWRITE created_at          ON garden TYPE datetime DEFAULT time::now() READONLY;
 DEFINE INDEX IF NOT EXISTS garden_cell    ON garden FIELDS weather_cell;
 DEFINE INDEX IF NOT EXISTS garden_geohash ON garden FIELDS geohash;
@@ -544,6 +545,7 @@ DEFINE FIELD OVERWRITE garden     ON farm_record TYPE record<garden> REFERENCE O
 DEFINE FIELD OVERWRITE connector  ON farm_record TYPE record<connector> REFERENCE ON DELETE REJECT;
 DEFINE FIELD OVERWRITE kind       ON farm_record TYPE "message" | "document";
 DEFINE FIELD OVERWRITE vendor_id  ON farm_record TYPE string;   -- Slack "<channel>/<ts>", Drive file id
+DEFINE FIELD OVERWRITE source     ON farm_record TYPE string;   -- the connector source it came from: the Slack channel id or the Drive folder id
 DEFINE FIELD OVERWRITE title      ON farm_record TYPE string;   -- "#field-reports", "Spray log 2026"
 DEFINE FIELD OVERWRITE author     ON farm_record TYPE option<string>;   -- display name only
 DEFINE FIELD OVERWRITE link       ON farm_record TYPE string;   -- built at sync time: Slack permalink or Drive webViewLink
@@ -554,7 +556,11 @@ DEFINE FIELD OVERWRITE embedding_model ON farm_record TYPE string;
 DEFINE FIELD OVERWRITE at         ON farm_record TYPE datetime;   -- the message's time, or the document's modifiedTime
 DEFINE INDEX IF NOT EXISTS farm_record_garden    ON farm_record FIELDS garden;
 DEFINE INDEX IF NOT EXISTS farm_record_connector ON farm_record FIELDS connector, vendor_id;
-DEFINE INDEX IF NOT EXISTS farm_record_at        ON farm_record FIELDS at;   -- the 180-day cleanup
+DEFINE INDEX IF NOT EXISTS farm_record_source    ON farm_record FIELDS connector, source;   -- dropping a source
+-- The 180-day cleanup of Slack messages. It replaces farm_record_at (at); an IF NOT EXISTS
+-- redefinition would not rebuild it, so the old one is removed first.
+REMOVE INDEX IF EXISTS farm_record_at ON farm_record;
+DEFINE INDEX IF NOT EXISTS farm_record_kind_at   ON farm_record FIELDS kind, at;
 
 -- ---------------------------------------------------------------------------------------
 -- Knowledge base (loaded by migrations from ml/knowledge/seed; ids are slugs)

@@ -56,7 +56,8 @@ pub const MAX_FARM_RECORDS_PER_GARDEN: u32 = 10_000;
 /// **Sync now** is accepted once per connector in this window (EON decision 12; contracts 2,
 /// `rate_limited`).
 pub const SYNC_NOW_INTERVAL: Duration = Duration::from_mins(5);
-/// Farm records older than this are deleted by the cleanup ([connectors 6]).
+/// Slack messages older than this are deleted by the cleanup; Drive files stay while they are
+/// under the folder ([connectors 6]).
 pub const FARM_RECORD_KEEP: Duration = Duration::from_hours(180 * 24);
 /// A `pending` connector the owner didn't finish is deleted by the cleanup after this
 /// ([connectors 5]).

@@ -82,9 +82,13 @@ pub mod sql {
     }
 
     /// `POST /gardens/{id}/connectors`: a `pending` connector, at most
-    /// `MAX_CONNECTORS_PER_GARDEN` per garden besides those being deleted.
+    /// `MAX_CONNECTORS_PER_GARDEN` per garden besides those being deleted. The first
+    /// statement bumps the garden's `connector_rev`, so two creates racing on one garden write
+    /// the same key and one conflicts; its retry then counts the other's connector. (A count
+    /// alone doesn't conflict under snapshot isolation: the creates write different keys.)
     pub const CREATE_CONNECTOR: &str = concat!(
         "BEGIN;
+UPDATE $garden SET connector_rev += 1;
 IF count(SELECT VALUE id FROM connector WHERE garden = $garden AND status != 'deleting') >= $max { THROW 'connector_limit' };
 CREATE $connector CONTENT $row;
 SELECT ", connector_fields!(), " FROM ONLY $connector;
@@ -138,13 +142,14 @@ SELECT ",
         " FROM ONLY $connector;
 COMMIT;"
     );
-    /// `POST /connectors/{id}/sync` (EON decision 12): the conditional `UPDATE` is the
-    /// compare-and-set. It returns the connector's id when it was accepted and nothing within
+    /// `POST /connectors/{id}/sync` (EON decision 12): a connector stopped until new sources
+    /// (`too_large`, `source_missing`) is `invalid_state`, because the due query skips it. The
+    /// conditional `UPDATE` is the compare-and-set. It returns the connector's id when it was accepted and nothing within
     /// 5 minutes of the last accepted request; the last statement returns that request's time.
     pub const REQUEST_SYNC: &str = "BEGIN;
-LET $c = (SELECT status, sync_requested_at FROM ONLY $connector WHERE garden = $garden);
+LET $c = (SELECT status, sync_requested_at, last_error FROM ONLY $connector WHERE garden = $garden);
 IF $c = NONE OR $c.status = 'deleting' { THROW 'not_found' };
-IF $c.status != 'active' { THROW 'invalid_state' };
+IF $c.status != 'active' OR $c.last_error IN ['too_large', 'source_missing'] { THROW 'invalid_state' };
 UPDATE $connector SET sync_requested_at = $now, next_sync_at = $now
   WHERE sync_requested_at = NONE OR sync_requested_at <= $cutoff RETURN VALUE id;
 RETURN $c.sync_requested_at;
@@ -160,13 +165,21 @@ WHERE status = 'active' AND next_sync_at <= $now AND !(last_error IN ['too_large
 ORDER BY next_sync_at, id LIMIT $limit;"
     );
     /// A sync run's end: the cursors of sources still chosen, the times and the failure. A
-    /// connector being deleted is left alone, and a missing one is never created.
+    /// connector being deleted is left alone, and a missing one is never created. When the
+    /// connector's `next_sync_at` moved past `$due_at` (the value the run started from) while
+    /// the run was going, a **Sync now** or a new set of sources landed: that time stays, and
+    /// a stopping failure of the old sources isn't stored over the owner's change.
     pub const FINISH_SYNC: &str = concat!(
-        "UPDATE $connector SET cursor = ",
+        "BEGIN;
+LET $moved = (SELECT VALUE next_sync_at FROM ONLY $connector) > $due_at;
+UPDATE $connector SET cursor = ",
         kept_cursor!("$cursor", "sources.id"),
         ",
-  synced_at = $synced_at ?? synced_at, next_sync_at = $next, last_error = $last_error
-WHERE status != 'deleting';"
+  synced_at = $synced_at ?? synced_at,
+  next_sync_at = IF $moved { next_sync_at } ELSE { $next },
+  last_error = IF $moved AND $last_error IN ['too_large', 'source_missing'] { last_error } ELSE { $last_error }
+WHERE status != 'deleting';
+COMMIT;"
     );
     /// The status and failure; a connector being deleted stays so.
     pub const SET_STATUS: &str = "UPDATE $connector SET status = $status, last_error = $last_error WHERE status != 'deleting';";
@@ -208,11 +221,11 @@ IF $c = NONE OR !($c.status IN ['active', 'reauth_needed']) { THROW 'not_found' 
 FOR $r IN $records {
   IF $r.embedding = NONE {
     IF (SELECT VALUE text_hash FROM ONLY $r.id) != $r.text_hash { THROW 'missing_vector' };
-    UPDATE $r.id SET kind = $r.kind, title = $r.title, author = $r.author, link = $r.link,
+    UPDATE $r.id SET kind = $r.kind, source = $r.source, title = $r.title, author = $r.author, link = $r.link,
       text = $r.text, at = $r.at;
   } ELSE {
     UPSERT $r.id CONTENT { garden: $c.garden, connector: $connector, kind: $r.kind,
-      vendor_id: $r.vendor_id, title: $r.title, author: $r.author, link: $r.link, text: $r.text,
+      vendor_id: $r.vendor_id, source: $r.source, title: $r.title, author: $r.author, link: $r.link, text: $r.text,
       text_hash: $r.text_hash, embedding: $r.embedding, embedding_model: $r.embedding_model,
       at: $r.at };
   };
@@ -223,26 +236,12 @@ COMMIT;";
     /// A document's chunks numbered `$from` and up: a key range on
     /// `farm_record:[connector, vendor_id, n]`.
     pub const DELETE_CHUNKS_FROM: &str = "DELETE farm_record:[$connector, $vendor_id, $from]..=[$connector, $vendor_id, ..] RETURN VALUE $before.id;";
-    /// A source's records: Slack's by the `"<channel>/"` prefix, all of a Drive connector's.
-    macro_rules! source_filter {
-        () => {
-            "connector = $connector AND ($kind = 'google_drive' OR string::starts_with(vendor_id, $prefix))"
-        };
-    }
-    /// The vendor ids a source holds from `$since` on, each once.
-    pub const SOURCE_VENDOR_IDS_SINCE: &str = concat!(
-        "LET $kind = (SELECT VALUE kind FROM ONLY $connector);
-RETURN array::distinct(SELECT VALUE vendor_id FROM farm_record WHERE ",
-        source_filter!(),
-        " AND at >= $since);"
-    );
-    /// One batch of a dropped source's records.
-    pub const DELETE_SOURCE_RECORDS: &str = concat!(
-        "LET $kind = (SELECT VALUE kind FROM ONLY $connector);
-DELETE (SELECT VALUE id FROM farm_record WHERE ",
-        source_filter!(),
-        " LIMIT 500) RETURN VALUE $before.id;"
-    );
+    /// The vendor ids a source holds from `$since` on, each once (index
+    /// `farm_record_source`).
+    pub const SOURCE_VENDOR_IDS_SINCE: &str = "RETURN array::distinct(SELECT VALUE vendor_id FROM farm_record WHERE connector = $connector AND source = $source AND at >= $since);";
+    /// One batch of a dropped source's records, by the source stored on each record (index
+    /// `farm_record_source`), so another source's records, a new folder's among them, stay.
+    pub const DELETE_SOURCE_RECORDS: &str = "DELETE (SELECT VALUE id FROM farm_record WHERE connector = $connector AND source = $source LIMIT 500) RETURN VALUE $before.id;";
     /// A garden's records (index `farm_record_garden`), for the 10,000 limit.
     pub const GARDEN_RECORD_COUNT: &str =
         "RETURN count(SELECT VALUE id FROM farm_record WHERE garden = $garden);";
@@ -253,8 +252,9 @@ DELETE (SELECT VALUE id FROM farm_record WHERE ",
 WHERE garden = $garden AND ($kind = NONE OR kind = $kind) AND ($since = NONE OR at >= $since)
   AND connector.status != 'deleting'
 ORDER BY similarity DESC LIMIT $k;";
-    /// The cleanup: one batch of records older than the cutoff (index `farm_record_at`).
-    pub const DELETE_RECORDS_BEFORE: &str = "DELETE (SELECT VALUE id FROM farm_record WHERE at < $cutoff LIMIT 500) RETURN VALUE $before.id;";
+    /// The cleanup: one batch of Slack messages older than the cutoff (index
+    /// `farm_record_kind_at`). Documents stay while they are under the Drive folder.
+    pub const DELETE_RECORDS_BEFORE: &str = "DELETE (SELECT VALUE id FROM farm_record WHERE kind = 'message' AND at < $cutoff LIMIT 500) RETURN VALUE $before.id;";
 }
 
 /// `connector.sources[*]`.
@@ -336,6 +336,8 @@ pub struct FarmRecordWriteRow {
     pub kind: FarmRecordKindRow,
     /// The vendor's id.
     pub vendor_id: String,
+    /// The Slack channel id or the Drive folder id.
+    pub source: String,
     /// The channel or document title.
     pub title: String,
     /// The author's display name.
@@ -439,6 +441,7 @@ impl FarmRecordWriteRow {
             id: farm_record_rid(&r.id),
             kind: r.kind.into(),
             vendor_id: r.id.vendor_id.to_string(),
+            source: r.source.clone(),
             title: r.title.clone(),
             author: r.author.clone(),
             link: r.link.clone(),
@@ -537,11 +540,6 @@ fn farm_failure(f: DbFailure, what: &'static str) -> StoreError {
         Some("connect_lost") => StoreError::Conflict(Conflict::AlreadyExists),
         _ => f.into_store(what),
     }
-}
-
-/// A Slack source's `vendor_id` prefix (`"<channel>/"`); Drive ignores it.
-fn source_prefix(source: &str) -> String {
-    format!("{source}/")
 }
 
 #[async_trait::async_trait]
@@ -664,7 +662,7 @@ impl FarmRecordStore for SurrealStore {
         })
         .await
         .map_err(|f| farm_failure(f, WHAT))?;
-        // BEGIN, LET, IF, IF, UPDATE (the compare-and-set), RETURN, COMMIT.
+        // BEGIN, LET, IF, IF, UPDATE (the compare-and-set), RETURN, COMMIT (counted from the end).
         let n = r.num_statements();
         let accepted: Vec<RecordId> = r
             .take(n.saturating_sub(3))
@@ -710,6 +708,7 @@ impl FarmRecordStore for SurrealStore {
             q.bind(("connector", rid(&connector)))
                 .bind(("cursor", cursor.clone()))
                 .bind(("synced_at", outcome.synced_at.map(dt)))
+                .bind(("due_at", dt(outcome.due_at)))
                 .bind(("next", dt(outcome.next_sync_at)))
                 .bind(("last_error", outcome.last_error.map(SyncErrorCodeRow::from)))
         })
@@ -892,12 +891,12 @@ impl FarmRecordStore for SurrealStore {
         const WHAT: &str = "source vendor ids";
         let mut r = run_tx(&self.db, sql::SOURCE_VENDOR_IDS_SINCE, |q| {
             q.bind(("connector", rid(&connector)))
-                .bind(("prefix", source_prefix(&source)))
+                .bind(("source", source.clone()))
                 .bind(("since", dt(since)))
         })
         .await
         .map_err(|f| f.into_store(WHAT))?;
-        r.take(1).map_err(|e| take_failed(WHAT, e))
+        r.take(0).map_err(|e| take_failed(WHAT, e))
     }
 
     async fn delete_source_records(
@@ -908,11 +907,11 @@ impl FarmRecordStore for SurrealStore {
         const WHAT: &str = "delete a source's farm records";
         let mut r = run_tx(&self.db, sql::DELETE_SOURCE_RECORDS, |q| {
             q.bind(("connector", rid(&connector)))
-                .bind(("prefix", source_prefix(&source)))
+                .bind(("source", source.clone()))
         })
         .await
         .map_err(|f| f.into_store(WHAT))?;
-        deleted(&mut r, 1, WHAT)
+        deleted(&mut r, 0, WHAT)
     }
 
     async fn garden_record_count(&self, garden: GardenId) -> Result<u32, StoreError> {
