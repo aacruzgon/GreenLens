@@ -95,6 +95,7 @@ Whether the account allows spending past the included minutes, or whether a self
 |---|---|---|
 | `actions/checkout` | v7.0.1 (2026-07-20) | `3d3c42e5aac5ba805825da76410c181273ba90b1` ✓ |
 | `actions/setup-python` | v7.0.0 (2026-07-20) | `5fda3b95a4ea91299a34e894583c3862153e4b97` ✓ |
+| `actions/setup-node` | v7.1.0 (2026-10-08) | `949feb2413d6458794dcd2491c4babbbce0c15c1` ✓ |
 | `Swatinem/rust-cache` | v2.9.2 (2026-08-06) | `6323deb102c322ba6fcbdcafc7e3dddab59af2b6` ✓ |
 | `taiki-e/install-action` | v2.87.29 (2026-10-16) | `8cca0918f8471c33515202b73f56ab27f2bed283` ✓ |
 | `docker/setup-buildx-action` | v4.4.1 (2026-09-16) | `f87e5991a6d7451dcb8d9637bfbc97413f497069` ✓ |
@@ -112,7 +113,7 @@ Rust needs no setup action: the runner image has rustup, and each Rust job insta
 
 | Stage | Jobs | Waits for |
 |---|---|---|
-| 1 | `changes`, then `lint`, `test`, `examples`, `docs`, `infra` | `changes` |
+| 1 | `changes`, then `lint`, `test`, `examples`, `docs`, `infra`, `app` | `changes` |
 | 2 | `security` | `lint` |
 | 2 | `live` | `lint` and `test` |
 | 3 | `ci`, the one required check | every job of stages 1 and 2 |
@@ -128,6 +129,7 @@ A job in stage 2 or 4 has `if: !cancelled() && !failure() && …`: it runs when 
 | `test` | `rust` | install cargo-nextest 0.9.148 with `taiki-e/install-action` (`tool: cargo-nextest@0.9.148`); `cargo nextest run --workspace --locked`. This includes the `api` test that fails when `backend/openapi.json` is stale. Then `cargo test --doc --workspace --locked`, because nextest doesn't run doc tests and the compile-fail tests of the proofs and URL states are doc tests ([backend 11](../backend/README.md#11-testing-and-tooling)) | 7 / 12 min |
 | `examples` | the Rust skills changed, or a push to `main` | `setup-python` 3.12; `python3 .claude/skills/rust/scripts/check_examples.py`. The examples compile against `versions.md` and a copy of `backend/migrations/schema.surql` in a crate of their own, not against the workspace crates, so only the skills and the schema can break them | 3 / 13 min |
 | `docs` | `rust` or `docs` (any `.md` file, or the generator) | `backend/tools/docgen/regen_all.sh` then `git diff --exit-code docs/backend`; `check_fences.py docs/backend`; `checklinks.py` over `AGENTS.md`, `CLAUDE.md` and `docs/**/*.md`. Both checkers exit 1 on a broken link or an unbalanced listing; a listing rustfmt can't parse is reported, not failed | under 1 min ✓ |
+| `app` | `app` (`app/` or `backend/openapi.json`) | Node 22 with `setup-node` and the npm cache; in `app/`: `npm ci`; `npm run gen:api` then `git diff --exit-code src/api/generated/schema.ts`; `npm run typecheck`; `npm run lint`; `npm test -- --ci`; `npm run check:contrast`; `npx expo install --check` | not yet measured |
 | `live` | `live`, or a push to `main` | service containers below; `cargo nextest run -p store -p blob --run-ignored only --locked`; `check_examples.py --live --no-test`, since `examples` already runs the examples' own tests | 5 / 15 min |
 | `infra` | `infra` | copy `infra/.env.example` to `infra/.env`, as [infra/README.md](../../infra/README.md) tells a host to, then `docker compose -f <file> config -q` for each compose file; `bash -n` and `shellcheck` on `infra/**/*.sh`; the tests of `.github/scripts/` ([discord-mentions 5](discord-mentions.md#5-testing)). `caddy validate` in the pinned Caddy image joins it with the Caddyfile in S1 | under 1 min ✓ |
 | `security` | `rust`, or a push to `main`; after `lint` | `cargo deny --locked check advisories` with cargo-deny 0.20.2, against [`backend/deny.toml`](../../backend/deny.toml). It checks what ships (`exclude-dev`): SurrealDB's embedded engine, a dev-dependency, brings `bincode`, `quick-xml` (RUSTSEC-2026-0194, -0195) and `rsa` (RUSTSEC-2023-0071), and none reaches a binary. One advisory is accepted: `paste` (RUSTSEC-2024-0436) is unmaintained, not vulnerable, and comes through `tokenizers`. ✓ Passes on the workspace, 2026-10-16 | about 1 min |
