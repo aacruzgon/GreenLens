@@ -172,6 +172,13 @@ pub struct PlanRow {
     pub watch_for: Vec<String>,
     /// `Citation[]`.
     pub citations: Vec<serde_json::Value>,
+    /// `FarmCitation[]`, every farm record the steps cite ([connectors 7]). `DEFAULT []`
+    /// applies only on write, so a plan stored before connectors has none: it reads as empty
+    /// here and in `ActionPlan`.
+    ///
+    /// [connectors 7]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#7-the-agent
+    #[surreal(default)]
+    pub farm_records: Vec<serde_json::Value>,
     /// The plan writer's model.
     pub llm_model: String,
     /// The prompt version.
@@ -236,6 +243,11 @@ impl PlanWriteRow {
                     .citations
                     .iter()
                     .map(|c| to_json("citations", c))
+                    .collect::<Result<_, _>>()?,
+                farm_records: plan
+                    .farm_records
+                    .iter()
+                    .map(|c| to_json("farm_records", c))
                     .collect::<Result<_, _>>()?,
                 llm_model: plan.llm_model.clone(),
                 prompt_version: plan.prompt_version.clone(),

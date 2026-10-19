@@ -2395,6 +2395,7 @@ impl ChatAgent {
                     text: text.clone(),
                     attachments: image_ids,
                     citations: Vec::new(),
+                    farm_citations: Vec::new(),
                     tool_calls: Vec::new(),
                     route: Some(decision.route()),
                     interrupted: false,
