@@ -17,6 +17,10 @@
 //! **Disconnects.** Dropping the stream (the client went away) closes the channel. The task
 //! notices at its next send or while waiting for the model (`Sender::closed`), stops the model
 //! call by dropping its stream, and stores the message with `interrupted: true`.
+//!
+//! **Tool results are data.** A successful result goes back to the model inside a `data` block
+//! ([`crate::prompt::tool_result`]), like every other text the server didn't write; the stored
+//! copy keeps the tool's JSON. A refusal stays plain: the server wrote it for the model to act on.
 
 use std::sync::Arc;
 
@@ -50,7 +54,7 @@ use crate::{
     memory,
     prompt::{
         BUDGET_TEXT, CHAT_PROMPT_VERSION, DataKind, LOOP_CAP_TEXT, OFF_TOPIC_PROMPT_VERSION,
-        POISON_CONTROL_VERSION, REFUSAL_TEXT, chat_system, data, off_topic_system,
+        POISON_CONTROL_VERSION, REFUSAL_TEXT, chat_system, data, off_topic_system, tool_result,
     },
     safety::{
         REPLACED_SENTENCE, RouteDecision, SAFETY_POLICY, SentenceSplitter, decide_route, dose_check,
@@ -829,12 +833,24 @@ async fn run_tool(
             )
         }
     };
-    let part = ContentPart::ToolResult {
+    // The model reads a successful result inside a `data` block (gap G1); the stored copy keeps
+    // the tool's JSON as the app's records have it. A refusal is the server's own text.
+    let framed = if is_error {
+        content.clone()
+    } else {
+        let kind = tool.map_or(DataKind::ToolResult, crate::tools::DynTool::data_kind);
+        tool_result(kind, &content)
+    };
+    reply.tool_calls.push(ContentPart::ToolResult {
         call_id: call_id.clone(),
         content,
         is_error,
+    });
+    let part = ContentPart::ToolResult {
+        call_id: call_id.clone(),
+        content: framed,
+        is_error,
     };
-    reply.tool_calls.push(part.clone());
     let finished = ToolFinished {
         v: V1,
         call_id,
