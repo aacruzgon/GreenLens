@@ -8,6 +8,7 @@ import { mockDb, mockTransport } from "@/api/mock/transport";
 import { GardenHomeScreen } from "./GardenHomeScreen";
 
 jest.mock("@/features/auth", () => ({ onSignOut: () => () => {} }));
+jest.mock("expo-router", () => ({ useFocusEffect: () => {} }));
 
 beforeAll(() => {
   mockDb.pace = 0;
@@ -19,7 +20,7 @@ const metrics = { frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top:
 const queryClient = makeQueryClient();
 afterAll(() => queryClient.clear());
 
-it("renders the sample garden's plants, weather and today's tasks", async () => {
+it("renders the demo garden: its name, plants, weather and today's tasks", async () => {
   await render(
     <SafeAreaProvider initialMetrics={metrics}>
       <QueryClientProvider client={queryClient}>
@@ -27,8 +28,9 @@ it("renders the sample garden's plants, weather and today's tasks", async () => 
       </QueryClientProvider>
     </SafeAreaProvider>,
   );
-  expect(await screen.findByText("Tomato by the fence")).toBeOnTheScreen();
-  expect(await screen.findByText("14°C")).toBeOnTheScreen();
-  expect(await screen.findByText("Check the lower leaves for new spots")).toBeOnTheScreen();
-  expect(screen.getByLabelText("Status: Needs care")).toBeOnTheScreen();
+  expect(await screen.findByText("Tomato 1")).toBeOnTheScreen();
+  expect(await screen.findByLabelText("14 degrees")).toBeOnTheScreen();
+  expect(await screen.findByText("Check Tomato 2's lower leaves")).toBeOnTheScreen();
+  expect(screen.getByLabelText("Status: Sick")).toBeOnTheScreen();
+  expect(screen.getByText("Back garden")).toBeOnTheScreen();
 });
