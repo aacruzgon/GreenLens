@@ -809,6 +809,112 @@ fn one_hot(i: usize) -> Vec<f32> {
     v
 }
 
+/// The knowledge loader's output on the real schema: `knowledge_fixture.surql` is what
+/// `ml/knowledge/build_migration.py` writes for the fixture seed in `ml/tests/fixtures/` (its
+/// test keeps the copy current), with one-hot vectors in chunk order.
+#[tokio::test]
+async fn the_knowledge_loaders_file_loads_and_reads_back() {
+    use domain::ports::{ChunkFilter, Embedding, KnowledgeRepo};
+
+    const FILE: &str = include_str!("embedded/knowledge_fixture.surql");
+    let store = support::store().await;
+    // Twice: the file replaces the whole set, so a second run changes nothing.
+    exec(&store, FILE).await;
+    exec(&store, FILE).await;
+
+    let k = store.load_knowledge().await.expect("the knowledge loads");
+    let ids = |v: Vec<String>| v.join(",");
+    assert_eq!(
+        ids(k.species.iter().map(|s| s.id.to_string()).collect()),
+        "strawberry,tomato"
+    );
+    assert_eq!(k.problems.len(), 3);
+    let blight = k
+        .problems
+        .iter()
+        .find(|p| p.id.as_str() == "tomato_early_blight")
+        .unwrap();
+    assert_eq!(blight.discriminating().count(), 3);
+    assert_eq!(
+        blight.affects.len(),
+        1,
+        "affects comes back from susceptible_to"
+    );
+    assert_eq!(
+        blight.treatments.len(),
+        3,
+        "treatments come back from manages"
+    );
+    assert!(
+        (blight.conditions.temp_c.unwrap().min - 24.0).abs() < 1e-9,
+        "an integer in the seed reads as f64"
+    );
+    let septoria = k
+        .problems
+        .iter()
+        .find(|p| p.id.as_str() == "tomato_septoria_leaf_spot")
+        .unwrap();
+    assert!(septoria.indicators[0].measure.is_some());
+    assert_eq!(k.lookalikes.len(), 2, "looks_like is written both ways");
+    let aphids = k
+        .problems
+        .iter()
+        .find(|p| p.id.as_str() == "tomato_aphids")
+        .unwrap();
+    assert_eq!(aphids.caused_by.len(), 1);
+    let larva = k
+        .organisms
+        .iter()
+        .find(|o| o.id.as_str() == "ladybug_larva")
+        .unwrap();
+    assert_eq!(larva.preys_on.as_ref().map(Vec::len), Some(1));
+    let tomato_photos = &k
+        .species_photos
+        .iter()
+        .find(|(s, _)| s.as_str() == "tomato")
+        .unwrap()
+        .1;
+    assert_eq!(tomato_photos.len(), 1);
+    assert_eq!(
+        tomato_photos[0].credit,
+        "Generated test image, not a real photo"
+    );
+    assert_eq!(k.treatments.len(), 4);
+    assert!(
+        k.treatments
+            .iter()
+            .any(|t| t.text.contains("it's an 'easy' first step")),
+        "quotes survive the escaping"
+    );
+    assert_eq!(k.products.products.len(), 2);
+    assert_eq!(k.classifier_labels.model_version, "fixture_v1");
+    assert_eq!(k.classifier_labels.labels.len(), 2);
+    assert_eq!(k.soil_conditions.len(), 1);
+
+    // The loader and the store compute label_set_version the same way.
+    let mut meta = exec(
+        &store,
+        "SELECT VALUE label_set_version FROM ONLY knowledge_meta:current;",
+    )
+    .await;
+    let written: Option<String> = meta.take(0).unwrap();
+    assert_eq!(
+        written.as_deref(),
+        Some(k.vlm_options.label_set_version.as_str())
+    );
+
+    // Chunk i has the one-hot vector i, in id order.
+    let hits = store
+        .search_chunks(&Embedding(one_hot(2)), ChunkFilter::default(), 1)
+        .await
+        .expect("the vector search runs");
+    assert_eq!(
+        hits[0].text,
+        "Water at the base of the plant and mulch the soil.\nRemove infected leaves."
+    );
+    assert_eq!(hits[0].citation.title, "Tomato diseases (example)");
+}
+
 #[tokio::test]
 async fn knowledge_search_returns_the_nearest_chunks_first() {
     use domain::ports::{ChunkFilter, Embedding, KnowledgeRepo};

@@ -1,0 +1,4 @@
+id: mulch_soil_surface
+kind: cultural
+text: "Mulch the soil so rain doesn't splash it onto the leaves."
+sources: [example_extension_tomato_diseases]

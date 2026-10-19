@@ -1,0 +1,4 @@
+id: spray_aphids_off_with_water
+kind: mechanical
+text: "Knock aphids off with a strong spray of water; it's an 'easy' first step."
+sources: [example_extension_tomato_diseases]

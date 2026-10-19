@@ -617,6 +617,14 @@ DEFINE TABLE OVERWRITE looks_like TYPE RELATION IN disease OUT disease ENFORCED 
 DEFINE FIELD OVERWRITE id          ON looks_like TYPE [record<disease>, record<disease>];
 DEFINE FIELD OVERWRITE how_to_tell ON looks_like TYPE string;
 
+-- The generated values of the current knowledge set: one record, knowledge_meta:current,
+-- written first by knowledge.surql (docs/database, the knowledge file).
+DEFINE TABLE OVERWRITE knowledge_meta SCHEMAFULL;
+DEFINE FIELD OVERWRITE label_set_version         ON knowledge_meta TYPE string;
+DEFINE FIELD OVERWRITE classifier_labels_version ON knowledge_meta TYPE string;
+DEFINE FIELD OVERWRITE embedding_model           ON knowledge_meta TYPE string;
+DEFINE FIELD OVERWRITE embedding_dimension       ON knowledge_meta TYPE int;
+
 -- ---------------------------------------------------------------------------------------
 -- Operations
 -- ---------------------------------------------------------------------------------------

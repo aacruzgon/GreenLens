@@ -1,0 +1,9 @@
+id: aphid
+name: Aphid
+scientific_name: Aphidoidea
+taxon_group: insect
+role: pest
+recognition: Small, soft, pear-shaped insects, green, black or pink, often in clusters.
+bioclip_label: Aphidoidea with common name aphid
+sources: [example_extension_tomato_diseases]
+reviewed_by: fixture

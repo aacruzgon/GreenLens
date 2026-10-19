@@ -1,0 +1,5 @@
+products:
+  - name: neem oil
+    broad_spectrum: false
+  - name: pyrethrin
+    broad_spectrum: true

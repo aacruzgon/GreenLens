@@ -1,0 +1,81 @@
+{
+  "about": "The text embedder's golden test (docs/vision/models.md §10): the model's input text (queries already carry the query prefix), and the first 8 values of its vector from snowflake-arctic-embed-xs@d8c86521, recorded by ml/knowledge/embed.py on 2026-10-18.",
+  "model": "snowflake-arctic-embed-xs@d8c86521",
+  "cases": [
+    {
+      "mode": "query",
+      "text": "Why are my tomato leaves turning yellow?",
+      "input": "Represent this sentence for searching relevant passages: Why are my tomato leaves turning yellow?",
+      "first_8": [
+        -0.033419,
+        0.060024,
+        -0.028166,
+        0.022163,
+        -0.024336,
+        0.052776,
+        -0.064344,
+        -0.030822
+      ]
+    },
+    {
+      "mode": "query",
+      "text": "brown spots with rings on lower leaves",
+      "input": "Represent this sentence for searching relevant passages: brown spots with rings on lower leaves",
+      "first_8": [
+        -0.055326,
+        0.041614,
+        0.021865,
+        -0.022783,
+        0.011084,
+        -0.038758,
+        -0.012938,
+        -0.024275
+      ]
+    },
+    {
+      "mode": "document",
+      "text": "Early blight starts as small brown spots on the lower leaves. The spots grow and form rings like a target.",
+      "input": "Early blight starts as small brown spots on the lower leaves. The spots grow and form rings like a target.",
+      "first_8": [
+        0.01245,
+        0.05206,
+        0.007166,
+        -0.011173,
+        -0.021344,
+        -0.012216,
+        -0.030749,
+        -0.051535
+      ]
+    },
+    {
+      "mode": "document",
+      "text": "Water at the base of the plant, early in the day, so the leaves stay dry.",
+      "input": "Water at the base of the plant, early in the day, so the leaves stay dry.",
+      "first_8": [
+        0.028261,
+        0.090712,
+        0.024326,
+        0.021517,
+        -0.018474,
+        0.003464,
+        -0.04987,
+        -0.033691
+      ]
+    },
+    {
+      "mode": "document",
+      "text": "Ladybug larvae are long, dark grey, spiky, with orange spots, and eat aphids.",
+      "input": "Ladybug larvae are long, dark grey, spiky, with orange spots, and eat aphids.",
+      "first_8": [
+        0.054455,
+        0.046882,
+        0.012006,
+        -0.016264,
+        0.011803,
+        -0.0102,
+        -0.07243,
+        -0.120638
+      ]
+    }
+  ]
+}
