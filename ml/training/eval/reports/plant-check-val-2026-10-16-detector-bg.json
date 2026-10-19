@@ -12,38 +12,153 @@
   "no_leaf": 481,
   "negatives_pass": 0.0008406893652795292
  },
- "winner": "A",
- "shipped": {
-  "set": "A",
-  "tau_leaf": 0.9,
-  "tau_plant": 0.67,
-  "positives_false_no_plant": 0.006076388888888889,
-  "no_leaf_rescued": 0.9854469854469855,
-  "negatives_pass_probe": 0.09983186212694409,
-  "negatives_pass_check": 0.10046237915090374,
-  "by_group": {
-   "indoor": {
-    "n": 1722,
-    "probe": 0.10394889663182347,
-    "check": 0.10394889663182347
-   },
-   "outdoor": {
-    "n": 1152,
-    "probe": 0.1345486111111111,
-    "check": 0.1362847222222222
-   },
-   "people_pets": {
-    "n": 1836,
-    "probe": 0.07352941176470588,
-    "check": 0.07407407407407407
-   },
-   "unlabelled": {
-    "n": 48,
-    "probe": 0.125,
-    "check": 0.125
+ "leaf_only_sweep": [
+  {
+   "tau_leaf": 0.35,
+   "positives_false_no_plant": 0.028645833333333332,
+   "negatives_pass": 0.05086170659941152,
+   "by_dataset": {
+    "ibean": {
+     "n": 289,
+     "false_no_plant": 0.0
+    },
+    "plantdoc": {
+     "n": 338,
+     "false_no_plant": 0.0
+    },
+    "tom2024": {
+     "n": 444,
+     "false_no_plant": 0.07432432432432433
+    },
+    "tomato_pakistan_2026": {
+     "n": 81,
+     "false_no_plant": 0.0
+    }
+   }
+  },
+  {
+   "tau_leaf": 0.5,
+   "positives_false_no_plant": 0.05642361111111111,
+   "negatives_pass": 0.024169819251786465,
+   "by_dataset": {
+    "ibean": {
+     "n": 289,
+     "false_no_plant": 0.0
+    },
+    "plantdoc": {
+     "n": 338,
+     "false_no_plant": 0.005917159763313609
+    },
+    "tom2024": {
+     "n": 444,
+     "false_no_plant": 0.1373873873873874
+    },
+    "tomato_pakistan_2026": {
+     "n": 81,
+     "false_no_plant": 0.024691358024691357
+    }
+   }
+  },
+  {
+   "tau_leaf": 0.7,
+   "positives_false_no_plant": 0.11805555555555555,
+   "negatives_pass": 0.010508617065994116,
+   "by_dataset": {
+    "ibean": {
+     "n": 289,
+     "false_no_plant": 0.010380622837370242
+    },
+    "plantdoc": {
+     "n": 338,
+     "false_no_plant": 0.026627218934911243
+    },
+    "tom2024": {
+     "n": 444,
+     "false_no_plant": 0.26576576576576577
+    },
+    "tomato_pakistan_2026": {
+     "n": 81,
+     "false_no_plant": 0.07407407407407407
+    }
+   }
+  },
+  {
+   "tau_leaf": 0.9,
+   "positives_false_no_plant": 0.4175347222222222,
+   "negatives_pass": 0.0008406893652795292,
+   "by_dataset": {
+    "ibean": {
+     "n": 289,
+     "false_no_plant": 0.1522491349480969
+    },
+    "plantdoc": {
+     "n": 338,
+     "false_no_plant": 0.39349112426035504
+    },
+    "tom2024": {
+     "n": 444,
+     "false_no_plant": 0.5900900900900901
+    },
+    "tomato_pakistan_2026": {
+     "n": 81,
+     "false_no_plant": 0.5185185185185185
+    }
    }
   }
- },
+ ],
+ "winner": "A",
+ "fixed_pairs": [
+  {
+   "name": "manifest pair (current detector's)",
+   "set": "A",
+   "tau_leaf": 0.9,
+   "tau_plant": 0.67,
+   "positives_false_no_plant": 0.006076388888888889,
+   "no_leaf_rescued": 0.9854469854469855,
+   "negatives_pass_probe": 0.09983186212694409,
+   "negatives_pass_check": 0.10046237915090374,
+   "by_group": {
+    "indoor": {
+     "n": 1722,
+     "probe": 0.10394889663182347,
+     "check": 0.10394889663182347
+    },
+    "outdoor": {
+     "n": 1152,
+     "probe": 0.1345486111111111,
+     "check": 0.1362847222222222
+    },
+    "people_pets": {
+     "n": 1836,
+     "probe": 0.07352941176470588,
+     "check": 0.07407407407407407
+    },
+    "unlabelled": {
+     "n": 48,
+     "probe": 0.125,
+     "check": 0.125
+    }
+   },
+   "by_dataset": {
+    "ibean": {
+     "n": 289,
+     "false_no_plant": 0.0034602076124567475
+    },
+    "plantdoc": {
+     "n": 338,
+     "false_no_plant": 0.0
+    },
+    "tom2024": {
+     "n": 444,
+     "false_no_plant": 0.013513513513513514
+    },
+    "tomato_pakistan_2026": {
+     "n": 81,
+     "false_no_plant": 0.0
+    }
+   }
+  }
+ ],
  "sets": {
   "A": {
    "labels": {
@@ -270,7 +385,49 @@
     "tau_leaf": 0.48,
     "tau_plant": 0.96,
     "positives_false_no_plant": 0.009548611111111112,
-    "negatives_pass_check": 0.043085329970575875
+    "negatives_pass_check": 0.04329550231189575,
+    "by_dataset": {
+     "ibean": {
+      "n": 289,
+      "false_no_plant": 0.0
+     },
+     "plantdoc": {
+      "n": 338,
+      "false_no_plant": 0.0
+     },
+     "tom2024": {
+      "n": 444,
+      "false_no_plant": 0.024774774774774775
+     },
+     "tomato_pakistan_2026": {
+      "n": 81,
+      "false_no_plant": 0.0
+     }
+    }
+   },
+   "joint_every_dataset": {
+    "tau_leaf": 0.42,
+    "tau_plant": 0.88,
+    "positives_false_no_plant": 0.003472222222222222,
+    "negatives_pass_check": 0.06935687263556116,
+    "by_dataset": {
+     "ibean": {
+      "n": 289,
+      "false_no_plant": 0.0
+     },
+     "plantdoc": {
+      "n": 338,
+      "false_no_plant": 0.0
+     },
+     "tom2024": {
+      "n": 444,
+      "false_no_plant": 0.009009009009009009
+     },
+     "tomato_pakistan_2026": {
+      "n": 81,
+      "false_no_plant": 0.0
+     }
+    }
    }
   },
   "B": {
@@ -297,8 +454,8 @@
     "tau_plant": 0.96,
     "positives_false_no_plant": 0.029513888888888888,
     "no_leaf_rescued": 0.9293139293139293,
-    "negatives_pass_probe": 0.04791929382093316,
-    "negatives_pass_check": 0.048549810844892814,
+    "negatives_pass_probe": 0.04812946616225305,
+    "negatives_pass_check": 0.0487599831862127,
     "by_group": {
      "indoor": {
       "n": 1722,
@@ -307,8 +464,8 @@
      },
      "outdoor": {
       "n": 1152,
-      "probe": 0.08159722222222222,
-      "check": 0.08333333333333333
+      "probe": 0.08246527777777778,
+      "check": 0.0842013888888889
      },
      "people_pets": {
       "n": 1836,
@@ -356,8 +513,8 @@
      "tau_plant": 0.6,
      "positives_false_no_plant": 0.0026041666666666665,
      "no_leaf_rescued": 0.9937629937629938,
-     "negatives_pass_probe": 0.2818411097099622,
-     "negatives_pass_check": 0.2822614543926019,
+     "negatives_pass_probe": 0.28205128205128205,
+     "negatives_pass_check": 0.28247162673392184,
      "by_group": {
       "indoor": {
        "n": 1722,
@@ -366,8 +523,8 @@
       },
       "outdoor": {
        "n": 1152,
-       "probe": 0.4088541666666667,
-       "check": 0.4097222222222222
+       "probe": 0.4097222222222222,
+       "check": 0.4105902777777778
       },
       "people_pets": {
        "n": 1836,
@@ -385,13 +542,13 @@
      "tau_plant": 0.7,
      "positives_false_no_plant": 0.003472222222222222,
      "no_leaf_rescued": 0.9916839916839917,
-     "negatives_pass_probe": 0.22194199243379573,
-     "negatives_pass_check": 0.22236233711643547,
+     "negatives_pass_probe": 0.2221521647751156,
+     "negatives_pass_check": 0.22257250945775536,
      "by_group": {
       "indoor": {
        "n": 1722,
-       "probe": 0.18466898954703834,
-       "check": 0.18466898954703834
+       "probe": 0.18524970963995355,
+       "check": 0.18524970963995355
       },
       "outdoor": {
        "n": 1152,
@@ -443,8 +600,8 @@
      "tau_plant": 0.9,
      "positives_false_no_plant": 0.010416666666666666,
      "no_leaf_rescued": 0.975051975051975,
-     "negatives_pass_probe": 0.09983186212694409,
-     "negatives_pass_check": 0.10046237915090374,
+     "negatives_pass_probe": 0.10004203446826397,
+     "negatives_pass_check": 0.10067255149222362,
      "by_group": {
       "indoor": {
        "n": 1722,
@@ -458,8 +615,8 @@
       },
       "people_pets": {
        "n": 1836,
-       "probe": 0.07461873638344227,
-       "check": 0.07516339869281045
+       "probe": 0.07516339869281045,
+       "check": 0.07570806100217865
       },
       "unlabelled": {
        "n": 48,
@@ -502,7 +659,49 @@
     "tau_leaf": 0.64,
     "tau_plant": 0.97,
     "positives_false_no_plant": 0.009548611111111112,
-    "negatives_pass_check": 0.04791929382093316
+    "negatives_pass_check": 0.04791929382093316,
+    "by_dataset": {
+     "ibean": {
+      "n": 289,
+      "false_no_plant": 0.0
+     },
+     "plantdoc": {
+      "n": 338,
+      "false_no_plant": 0.0
+     },
+     "tom2024": {
+      "n": 444,
+      "false_no_plant": 0.024774774774774775
+     },
+     "tomato_pakistan_2026": {
+      "n": 81,
+      "false_no_plant": 0.0
+     }
+    }
+   },
+   "joint_every_dataset": {
+    "tau_leaf": 0.4,
+    "tau_plant": 0.96,
+    "positives_false_no_plant": 0.003472222222222222,
+    "negatives_pass_check": 0.07965531736023539,
+    "by_dataset": {
+     "ibean": {
+      "n": 289,
+      "false_no_plant": 0.0
+     },
+     "plantdoc": {
+      "n": 338,
+      "false_no_plant": 0.0
+     },
+     "tom2024": {
+      "n": 444,
+      "false_no_plant": 0.009009009009009009
+     },
+     "tomato_pakistan_2026": {
+      "n": 81,
+      "false_no_plant": 0.0
+     }
+    }
    }
   }
  },
@@ -43122,5 +43321,6 @@
    "p_B": 0.9951
   }
  ],
- "detector": "ml/models/files/leaf_detector/rfdetr-s-leaf-2026-10-16c-bg-fp32.onnx"
+ "detector": "ml/models/files/leaf_detector/rfdetr-s-leaf-2026-10-16c-bg-fp32.onnx",
+ "negatives_source": "negatives_coco.tsv"
 }
