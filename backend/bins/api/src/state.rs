@@ -29,6 +29,7 @@ use crate::{
     error::ApiError,
     events::{hub::EventHub, writer::ScanWriters},
     limits::RateLimits,
+    sealing::ConnectorKey,
     seams::{ChatTurns, ImageProcessing, PipelineApi},
     workers::WorkerTokens,
 };
@@ -126,6 +127,14 @@ impl AppState {
         garden: GardenId,
     ) -> Result<Membership<R>, ApiError> {
         Ok(authz::check_membership::<R>(&*self.ports.store, user, garden).await?)
+    }
+
+    /// Whether farm connectors are on, and the key that seals their tokens: the one switch
+    /// (decision 9 of docs/EON). `None` without `CONNECTOR_KEY`: the list answers
+    /// `available: false`, every owner write `409 invalid_state`, and the `connectors` scheduler
+    /// task (E4.1) and start-up seeding (E4.6) must do nothing.
+    pub fn connector_key(&self) -> Option<&ConnectorKey> {
+        self.config.connectors.key.as_ref()
     }
 
     /// Spawns a follow-up on the tracker; failures are logged, the sweep recovers them.
