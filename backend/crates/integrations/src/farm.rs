@@ -25,6 +25,9 @@ pub enum FarmErrorCode {
     AuthRefused,
     /// Over the garden's record limit. Set by the sync, never by a client.
     TooLarge,
+    /// A chosen channel or folder is gone or no longer visible to the token: nothing more runs
+    /// until the owner changes the sources.
+    SourceMissing,
 }
 
 impl FarmErrorCode {
@@ -35,6 +38,7 @@ impl FarmErrorCode {
             Self::VendorUnavailable => "vendor_unavailable",
             Self::AuthRefused => "auth_refused",
             Self::TooLarge => "too_large",
+            Self::SourceMissing => "source_missing",
         }
     }
 }
@@ -42,8 +46,9 @@ impl FarmErrorCode {
 /// A failed call to Slack or Google Drive.
 #[derive(Debug, thiserror::Error)]
 pub enum FarmClientError {
-    /// The token is missing, wrong, expired or revoked (Slack `not_authed`, `invalid_auth`,
-    /// `token_revoked`, `account_inactive`; Google `401`, or `invalid_grant` on a refresh).
+    /// The token is missing, wrong, expired, revoked or lacks a scope (Slack `not_authed`,
+    /// `invalid_auth`, `token_revoked`, `account_inactive`, `missing_scope`; Google `401`, a
+    /// `403` for an insufficient scope, or `invalid_grant` on a refresh).
     #[error("{vendor}: token refused ({code})")]
     AuthRefused {
         /// `"slack"` or `"google_drive"`.
@@ -98,17 +103,18 @@ pub enum FarmClientError {
 }
 
 impl FarmClientError {
-    /// The `last_error` code this failure leaves on a connector. `NotFound` and `Refused` are
-    /// `vendor_unavailable`: the sync can't go on, and nothing the owner does to the token
-    /// fixes it.
+    /// The `last_error` code this failure leaves on a connector when it stops a sync. A
+    /// `NotFound` on a chosen source is `source_missing`. A `Refused` is `vendor_unavailable`:
+    /// nothing the owner does to the token fixes it, and the sync skips a refused single file
+    /// rather than stopping.
     pub const fn code(&self) -> FarmErrorCode {
         match self {
             Self::AuthRefused { .. } => FarmErrorCode::AuthRefused,
             Self::RateLimited { .. } => FarmErrorCode::RateLimited,
-            Self::Unavailable { .. }
-            | Self::NotFound { .. }
-            | Self::Refused { .. }
-            | Self::Malformed { .. } => FarmErrorCode::VendorUnavailable,
+            Self::NotFound { .. } => FarmErrorCode::SourceMissing,
+            Self::Unavailable { .. } | Self::Refused { .. } | Self::Malformed { .. } => {
+                FarmErrorCode::VendorUnavailable
+            }
         }
     }
 }
