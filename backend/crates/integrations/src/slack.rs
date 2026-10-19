@@ -8,7 +8,8 @@
 //! **Errors.** Slack refuses with HTTP 200 and `{"ok": false, "error": "<code>"}`; that is
 //! always an error, never success. `not_authed`, `invalid_auth`, `token_revoked`,
 //! `token_expired` and `account_inactive` are [`FarmClientError::AuthRefused`], and so are
-//! `missing_scope` and `no_permission`: the owner must reconnect to grant the scope;
+//! `missing_scope`, `no_permission`, `team_access_not_granted`, `ekm_access_denied`,
+//! `not_allowed_token_type` and `org_login_required`: the owner must reconnect to grant the scope;
 //! `channel_not_found`, `not_in_channel`, `thread_not_found` and `user_not_found` are
 //! [`FarmClientError::NotFound`]; `ratelimited` or HTTP `429` is retried after the
 //! `Retry-After` the server sent, then [`FarmClientError::RateLimited`]; a 5xx, `internal_error`
@@ -78,7 +79,7 @@ const UNRECOGNISED: &str = "unrecognised";
 const MIN_PACER_IDLE: Duration = Duration::from_mins(10);
 
 /// The token is refused, or lacks a scope: either way only the owner reconnecting fixes it.
-const AUTH_CODES: [&str; 7] = [
+const AUTH_CODES: [&str; 11] = [
     "not_authed",
     "invalid_auth",
     "token_revoked",
@@ -86,6 +87,10 @@ const AUTH_CODES: [&str; 7] = [
     "account_inactive",
     "missing_scope",
     "no_permission",
+    "team_access_not_granted",
+    "ekm_access_denied",
+    "not_allowed_token_type",
+    "org_login_required",
 ];
 
 const NOT_FOUND_CODES: [&str; 4] = [

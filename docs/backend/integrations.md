@@ -3264,8 +3264,8 @@ pub enum ExportFormat {
 pub struct DriveClient {
     http: reqwest::Client,
     config: Arc<DriveConfig>,
-    /// `Some(config.timeout)`. Tests with paused time clear it: tokio would otherwise
-    /// auto-advance to the deadline while the mock server answers.
+    /// `Some(config.timeout)`. Only the unit tests clear it (paused time: tokio would otherwise
+    /// auto-advance to the deadline while the mock server answers); production never does.
     request_timeout: Option<Duration>,
 }
 ```
@@ -3398,13 +3398,19 @@ impl DriveClient {
         };
         let mut seen: HashSet<String> = HashSet::from([folder_id.to_owned()]);
         let mut next = 0;
+        let mut pages = 0_u32;
         let fields = format!("nextPageToken,files({FILE_FIELDS})");
         let page_size = self.page_size();
         'folders: while let Some(folder) = listing.folders.get(next).cloned() {
             next += 1;
             let q = format!("'{}' in parents and trashed=false", quote(&folder));
             let mut page_token: Option<String> = None;
+            let mut tokens: HashSet<String> = HashSet::new();
             loop {
+                pages += 1;
+                if pages > MAX_PAGES {
+                    return Err(malformed("files.list"));
+                }
                 let page: wire::FileList = self
                     .json("files.list", self.config.retry, || {
                         let mut query = vec![
@@ -3439,7 +3445,13 @@ impl DriveClient {
                     }
                 }
                 match page.next_page_token {
-                    Some(t) if !t.is_empty() => page_token = Some(t),
+                    // A token seen before in this folder is a cycle.
+                    Some(t) if !t.is_empty() => {
+                        if !tokens.insert(t.clone()) {
+                            return Err(malformed("files.list"));
+                        }
+                        page_token = Some(t);
+                    }
                     _ => break,
                 }
             }
@@ -3514,7 +3526,11 @@ impl DriveClient {
         let mut current = page_token.to_owned();
         let mut changes = Vec::new();
         let mut pages = 0_u32;
+        let mut tokens: HashSet<String> = HashSet::from([page_token.to_owned()]);
         loop {
+            if pages == MAX_PAGES {
+                return Err(malformed("changes.list"));
+            }
             let page: wire::ChangeList = self
                 .json("changes.list", self.config.retry, || {
                     self.get(token, "/drive/v3/changes").query(&[
@@ -3543,8 +3559,8 @@ impl DriveClient {
                 });
             }
             match page.next_page_token {
-                // A page that points to itself would loop for ever.
-                Some(next) if !next.is_empty() && next != current => current = next,
+                // A token seen before (a page pointing to itself, or a cycle) would loop for ever.
+                Some(next) if !next.is_empty() && tokens.insert(next.clone()) => current = next,
                 _ => return Err(malformed("changes.list")),
             }
         }

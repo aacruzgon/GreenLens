@@ -5,8 +5,8 @@
 //! [`Tenant::token`] as the client's bearer token: the credential selects the tenant, so no
 //! `X-Sim-Tenant` header and no test-only constructor exist, and the request journal is on.
 //! `close` is best effort and there is no async `Drop`; a leaked tenant is harmless because ids
-//! are unique. Faults are global to a simulator, so tests that set them must not run in parallel
-//! (the nextest group `era-faults`, for tests named `era_fault_*`).
+//! are unique. Faults are global to a simulator, so every test named `era_*` runs alone, in the
+//! nextest group `era` (`backend/.config/nextest.toml`).
 //!
 //! Every failure panics with the status and body: this is test support, and the bodies are the
 //! simulator's own, never user data.

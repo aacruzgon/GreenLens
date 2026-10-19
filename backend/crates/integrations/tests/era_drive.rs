@@ -7,13 +7,12 @@
 //!   cargo nextest run -p integrations --run-ignored only -E 'test(/era/) & binary(era_drive)'
 //! ```
 //!
-//! Faults are global to the simulator. The `era_fault_*` tests hold [`sim_lock`] exclusively
-//! and every other test here holds it shared, so no test of this binary sees another's fault,
-//! even though nextest runs each test in its own process.
+//! Faults are global to the simulator. The nextest group `era` runs every `era_` test one at a
+//! time, so no test sees another's fault. A fault test clears the faults when it ends, also
+//! when it fails.
 
 use std::{
     collections::HashSet,
-    fs::{File, OpenOptions},
     time::{Duration, Instant},
 };
 
@@ -24,28 +23,6 @@ use integrations::{
     http::{RetryPolicy, SecretString},
 };
 use serde_json::{Value, json};
-
-/// Locks the Drive simulator against the fault tests of this binary: `exclusive` for a test
-/// that sets faults, shared for the rest. Unlocked when the file drops.
-async fn sim_lock(exclusive: bool) -> File {
-    tokio::task::spawn_blocking(move || {
-        let path = std::env::temp_dir().join("pdm-era-drive-faults.lock");
-        let file = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(&path)
-            .expect("lock file opens");
-        if exclusive {
-            file.lock().expect("exclusive lock");
-        } else {
-            file.lock_shared().expect("shared lock");
-        }
-        file
-    })
-    .await
-    .expect("lock task")
-}
 
 fn maple_row() -> Value {
     fixture("maple-row", "google-drive.json")
@@ -69,10 +46,10 @@ async fn token(tenant: &Tenant) -> SecretString {
     SecretString::from(tenant.token().await)
 }
 
-/// Sets `faults` on the Drive simulator, runs `body`, and resets the faults whether or not
-/// `body` panicked.
+/// Resets the Drive simulator's faults, sets `faults`, runs `body`, and resets the faults
+/// whether or not `body` panicked.
 async fn with_faults(faults: Value, body: impl Future<Output = ()> + Send + 'static) {
-    let _lock = sim_lock(true).await;
+    Faults::reset(SimKind::Drive).await;
     Faults::set(SimKind::Drive, faults).await;
     let outcome = tokio::spawn(body).await;
     Faults::reset(SimKind::Drive).await;
@@ -88,7 +65,6 @@ async fn with_faults(faults: Value, body: impl Future<Output = ()> + Send + 'sta
 #[tokio::test]
 #[ignore = "needs Era's simulators"]
 async fn era_drive_reads_the_farm_folder_and_its_changes() {
-    let _lock = sim_lock(false).await;
     let tenant = Tenant::create(SimKind::Drive, Some(&maple_row())).await;
     // Two files a page, so the folder's five files take three pages.
     let client = drive(&tenant, RetryPolicy::STANDARD, 2);
@@ -188,7 +164,6 @@ async fn era_drive_reads_the_farm_folder_and_its_changes() {
 #[tokio::test]
 #[ignore = "needs Era's simulators"]
 async fn era_drive_refusals_map_and_are_not_retried() {
-    let _lock = sim_lock(false).await;
     let tenant = Tenant::create(SimKind::Drive, Some(&maple_row())).await;
     let client = drive(&tenant, RetryPolicy::STANDARD, 1000);
 
@@ -276,6 +251,71 @@ async fn era_fault_error_rate_is_unavailable() {
             "{error:?}"
         );
         assert_eq!(error.code(), FarmErrorCode::VendorUnavailable);
+        tenant.close().await;
+    })
+    .await;
+}
+
+/// T-E2.5: `throttle` answers `429` with `Retry-After: 1` on every call (measured), so the
+/// client waits it out on each retry, then gives up with `RateLimited` and the wait.
+#[tokio::test]
+#[ignore = "needs Era's simulators"]
+async fn era_fault_throttle_is_rate_limited_after_the_retries() {
+    let tenant = Tenant::create(SimKind::Drive, Some(&maple_row())).await;
+    let t = token(&tenant).await;
+    let policy = RetryPolicy {
+        max_retries: 1,
+        base: Duration::from_millis(50),
+        cap: Duration::from_millis(200),
+        max_retry_after: Duration::from_secs(5),
+    };
+    let client = drive(&tenant, policy, 1000);
+    with_faults(json!({"throttle": true}), async move {
+        let start = Instant::now();
+        let error = client.start_page_token(&t).await.unwrap_err();
+        assert!(
+            matches!(
+                error,
+                FarmClientError::RateLimited { retry_after: Some(d), .. } if d == Duration::from_secs(1)
+            ),
+            "{error:?}"
+        );
+        assert_eq!(error.code(), FarmErrorCode::RateLimited);
+        assert!(
+            start.elapsed() >= Duration::from_secs(1),
+            "Retry-After honoured before the retry: {:?}",
+            start.elapsed()
+        );
+        tenant.close().await;
+    })
+    .await;
+}
+
+/// T-E2.5: `quota_limit: 1` lets the first call pass, then answers `429` with
+/// `Retry-After: 60`; a client that won't wait that long returns `RateLimited` at once.
+#[tokio::test]
+#[ignore = "needs Era's simulators"]
+async fn era_fault_quota_limit_paces_to_a_minute() {
+    let tenant = Tenant::create(SimKind::Drive, Some(&maple_row())).await;
+    let t = token(&tenant).await;
+    let policy = RetryPolicy {
+        max_retry_after: Duration::from_secs(10),
+        ..RetryPolicy::STANDARD
+    };
+    let client = drive(&tenant, policy, 1000);
+    with_faults(json!({"quota_limit": 1}), async move {
+        client.start_page_token(&t).await.unwrap();
+        let start = Instant::now();
+        let error = client.start_page_token(&t).await.unwrap_err();
+        assert!(
+            matches!(
+                error,
+                FarmClientError::RateLimited { retry_after: Some(d), .. } if d == Duration::from_secs(60)
+            ),
+            "{error:?}"
+        );
+        assert_eq!(error.code(), FarmErrorCode::RateLimited);
+        assert!(start.elapsed() < Duration::from_secs(5), "it didn't wait");
         tenant.close().await;
     })
     .await;

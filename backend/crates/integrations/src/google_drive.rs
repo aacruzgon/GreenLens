@@ -72,6 +72,10 @@ const FILE_FIELDS: &str = "id,name,mimeType,parents,modifiedTime,webViewLink,siz
 /// Drive's largest `pageSize` for `files.list` and `changes.list`.
 const MAX_PAGE_SIZE: u32 = 1000;
 
+/// Pages read by one call that reads every page, before the answer is treated as malformed
+/// (a page token that cycles, or never ends).
+const MAX_PAGES: u32 = 1_000;
+
 /// Settings.
 #[derive(Debug, Clone)]
 pub struct DriveConfig {
@@ -127,8 +131,8 @@ impl ExportFormat {
 pub struct DriveClient {
     http: reqwest::Client,
     config: Arc<DriveConfig>,
-    /// `Some(config.timeout)`. Tests with paused time clear it: tokio would otherwise
-    /// auto-advance to the deadline while the mock server answers.
+    /// `Some(config.timeout)`. Only the unit tests clear it (paused time: tokio would otherwise
+    /// auto-advance to the deadline while the mock server answers); production never does.
     request_timeout: Option<Duration>,
 }
 
@@ -252,13 +256,19 @@ impl DriveClient {
         };
         let mut seen: HashSet<String> = HashSet::from([folder_id.to_owned()]);
         let mut next = 0;
+        let mut pages = 0_u32;
         let fields = format!("nextPageToken,files({FILE_FIELDS})");
         let page_size = self.page_size();
         'folders: while let Some(folder) = listing.folders.get(next).cloned() {
             next += 1;
             let q = format!("'{}' in parents and trashed=false", quote(&folder));
             let mut page_token: Option<String> = None;
+            let mut tokens: HashSet<String> = HashSet::new();
             loop {
+                pages += 1;
+                if pages > MAX_PAGES {
+                    return Err(malformed("files.list"));
+                }
                 let page: wire::FileList = self
                     .json("files.list", self.config.retry, || {
                         let mut query = vec![
@@ -293,7 +303,13 @@ impl DriveClient {
                     }
                 }
                 match page.next_page_token {
-                    Some(t) if !t.is_empty() => page_token = Some(t),
+                    // A token seen before in this folder is a cycle.
+                    Some(t) if !t.is_empty() => {
+                        if !tokens.insert(t.clone()) {
+                            return Err(malformed("files.list"));
+                        }
+                        page_token = Some(t);
+                    }
                     _ => break,
                 }
             }
@@ -368,7 +384,11 @@ impl DriveClient {
         let mut current = page_token.to_owned();
         let mut changes = Vec::new();
         let mut pages = 0_u32;
+        let mut tokens: HashSet<String> = HashSet::from([page_token.to_owned()]);
         loop {
+            if pages == MAX_PAGES {
+                return Err(malformed("changes.list"));
+            }
             let page: wire::ChangeList = self
                 .json("changes.list", self.config.retry, || {
                     self.get(token, "/drive/v3/changes").query(&[
@@ -397,8 +417,8 @@ impl DriveClient {
                 });
             }
             match page.next_page_token {
-                // A page that points to itself would loop for ever.
-                Some(next) if !next.is_empty() && next != current => current = next,
+                // A token seen before (a page pointing to itself, or a cycle) would loop for ever.
+                Some(next) if !next.is_empty() && tokens.insert(next.clone()) => current = next,
                 _ => return Err(malformed("changes.list")),
             }
         }
@@ -596,14 +616,26 @@ async fn read_text(mut response: Response) -> Result<FileText, FarmClientError> 
     })
 }
 
-/// UTF-8 text from bytes: a character cut at the end is dropped, invalid bytes become U+FFFD.
+/// UTF-8 text from bytes: an incomplete character at the end (a cut) is dropped first, then
+/// invalid bytes become U+FFFD. A replacement is 3 bytes for 1 invalid byte, so the text is cut
+/// again on a character boundary if it grew past [`MAX_TEXT_BYTES`].
 fn into_text(mut bytes: Vec<u8>) -> String {
-    if let Err(e) = std::str::from_utf8(&bytes)
+    // Only the last 3 bytes can start an incomplete character.
+    let tail = bytes.len().saturating_sub(3);
+    if let Err(e) = std::str::from_utf8(&bytes[tail..])
         && e.error_len().is_none()
     {
-        bytes.truncate(e.valid_up_to());
+        bytes.truncate(tail + e.valid_up_to());
     }
-    String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
+    let mut text = String::from_utf8_lossy(&bytes).into_owned();
+    if text.len() > MAX_TEXT_BYTES {
+        let mut end = MAX_TEXT_BYTES;
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        text.truncate(end);
+    }
+    text
 }
 
 /// A string inside single quotes of a Drive query: `\` and `'` are escaped with `\`.

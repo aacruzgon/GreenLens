@@ -8,13 +8,11 @@
 //!   cargo nextest run -p integrations --run-ignored only -E 'test(/era/) & binary(era_slack)'
 //! ```
 //!
-//! Faults are global to the simulator. The nextest group `era-faults` keeps the `era_fault_*`
-//! tests from running beside each other, but not beside this binary's other tests, so every
-//! test here also takes a file lock: exclusive for a fault test, shared for the others. A fault
-//! test clears the faults when it ends, also when it fails.
+//! Faults are global to the simulator. The nextest group `era` runs every `era_` test one at a
+//! time, so no test sees another's fault. A fault test clears the faults when it ends, also
+//! when it fails.
 
 use std::{
-    fs::File,
     future::Future,
     panic::AssertUnwindSafe,
     time::{Duration, Instant},
@@ -28,28 +26,6 @@ use integrations::{
     slack::{SlackClient, SlackConfig, SlackMessage, permalink},
 };
 use serde_json::{Value, json};
-
-/// Holds the fault lock until dropped (or the process exits).
-async fn fault_lock(exclusive: bool) -> File {
-    tokio::task::spawn_blocking(move || {
-        let path = std::env::temp_dir().join("pdm-era-slack-faults.lock");
-        let file = File::options()
-            .create(true)
-            .write(true)
-            .truncate(false)
-            .open(&path)
-            .expect("open the fault lock file");
-        if exclusive {
-            file.lock()
-        } else {
-            file.lock_shared()
-        }
-        .expect("take the fault lock");
-        file
-    })
-    .await
-    .expect("the lock task ran")
-}
 
 fn client(base: &str, edit: impl FnOnce(&mut SlackConfig)) -> SlackClient {
     let mut config = SlackConfig::era(base);
@@ -92,7 +68,6 @@ async fn history(
 #[tokio::test]
 #[ignore = "needs Era's simulators"]
 async fn era_slack_reads_the_maple_row_farm() {
-    let _lock = fault_lock(false).await;
     let (tenant, token) = farm().await;
     let slack = client(tenant.base(), |c| c.list_limit = 5);
 
@@ -179,7 +154,6 @@ async fn era_slack_reads_the_maple_row_farm() {
 #[tokio::test]
 #[ignore = "needs Era's simulators"]
 async fn era_slack_refusals_at_http_200_are_auth_refused() {
-    let _lock = fault_lock(false).await;
     let slack = client(&base_url(SimKind::Slack), |_| {});
     // No token at all: `not_authed`. Open mode accepts any `xoxb-` token, so the wrong token
     // is one without the prefix: `invalid_auth`.
@@ -199,7 +173,6 @@ async fn era_slack_refusals_at_http_200_are_auth_refused() {
 #[tokio::test]
 #[ignore = "needs Era's simulators"]
 async fn era_slack_a_missing_channel_is_not_found() {
-    let _lock = fault_lock(false).await;
     let (tenant, token) = farm().await;
     let slack = client(tenant.base(), |_| {});
     let error = slack
@@ -218,7 +191,6 @@ async fn era_slack_a_missing_channel_is_not_found() {
 #[tokio::test]
 #[ignore = "needs Era's simulators"]
 async fn era_slack_oauth_code_exchange() {
-    let _lock = fault_lock(false).await;
     let base = base_url(SimKind::Slack);
     let redirect_uri = "https://api.example/connectors/oauth/callback";
     let browser = reqwest::Client::builder()
@@ -269,7 +241,6 @@ async fn era_slack_oauth_code_exchange() {
 
 /// Runs `test` with `faults` set on the Slack simulator, and always clears them afterwards.
 async fn with_faults(faults: Value, test: impl Future<Output = ()>) {
-    let _lock = fault_lock(true).await;
     Faults::reset(SimKind::Slack).await;
     Faults::set(SimKind::Slack, faults).await;
     let outcome = AssertUnwindSafe(test).catch_unwind().await;

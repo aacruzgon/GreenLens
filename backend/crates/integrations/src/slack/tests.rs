@@ -119,6 +119,10 @@ async fn ok_false_auth_codes_are_auth_refused_and_never_retried() {
         "account_inactive",
         "missing_scope",
         "no_permission",
+        "team_access_not_granted",
+        "ekm_access_denied",
+        "not_allowed_token_type",
+        "org_login_required",
     ] {
         let server = answering("auth.test", refused(code)).await;
         let error = client(&server).auth_test(&token()).await.unwrap_err();

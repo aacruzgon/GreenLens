@@ -168,6 +168,20 @@ fn text_is_cut_on_a_character_boundary() {
     assert_eq!(into_text(vec![b'a', 0xFF, b'b']), "a\u{FFFD}b");
 }
 
+#[test]
+fn a_character_straddling_the_limit_is_dropped_not_replaced() {
+    // An invalid byte early on, then "é" cut after its first byte at exactly 1 MB.
+    let mut bytes = vec![b'a', 0xFF];
+    bytes.resize(MAX_TEXT_BYTES - 1, b'b');
+    bytes.push(0xC3);
+    assert_eq!(bytes.len(), MAX_TEXT_BYTES);
+    let text = into_text(bytes);
+    assert!(text.len() <= MAX_TEXT_BYTES, "{}", text.len());
+    assert!(text.starts_with("a\u{FFFD}b"));
+    assert!(text.ends_with('b'), "the cut character became U+FFFD");
+    assert_eq!(text.matches('\u{FFFD}').count(), 1);
+}
+
 // ---------------------------------------------------------------------------------------------
 // Error shapes and retries
 // ---------------------------------------------------------------------------------------------
@@ -681,6 +695,50 @@ async fn a_change_page_without_a_way_on_is_malformed() {
         .await;
     assert!(matches!(
         client(&server).changes(&token(), "100").await,
+        Err(FarmClientError::Malformed { .. })
+    ));
+}
+
+#[tokio::test]
+async fn a_change_page_cycle_is_malformed() {
+    let server = MockServer::start().await;
+    for (from, to) in [("100", "200"), ("200", "100")] {
+        Mock::given(method("GET"))
+            .and(path("/drive/v3/changes"))
+            .and(query_param("pageToken", from))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"nextPageToken": to, "changes": []})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    assert!(matches!(
+        client(&server).changes(&token(), "100").await,
+        Err(FarmClientError::Malformed { .. })
+    ));
+}
+
+#[tokio::test]
+async fn a_folder_page_cycle_is_malformed() {
+    let server = MockServer::start().await;
+    // The first page (no token) points to p1, p1 to p2, and p2 back to p1.
+    for (from, to) in [(None, "p1"), (Some("p1"), "p2"), (Some("p2"), "p1")] {
+        let mock = Mock::given(method("GET")).and(path("/drive/v3/files"));
+        let mock = match from {
+            Some(t) => mock.and(query_param("pageToken", t)),
+            None => mock.and(query_param_is_missing("pageToken")),
+        };
+        mock.respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"nextPageToken": to, "files": []})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    }
+    assert!(matches!(
+        client(&server).list_folder(&token(), "F_ROOT").await,
         Err(FarmClientError::Malformed { .. })
     ));
 }
