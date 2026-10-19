@@ -288,7 +288,7 @@ Keys are prefixed by garden, except the species reference photos under `knowledg
 
 **Deleting a scan before it is submitted** (`DELETE /scans/{id}`) removes its photos, guided checks, events, the conversations anchored to it and its jar-test task; a submitted scan is history and goes only with its plant or garden.
 
-**Deleting a plant or a garden** cascades to everything under it, including conversations anchored to it, a garden's farm records and then its farm connectors (their tokens are revoked first), tasks (with the neighbour tasks a plant's plans created on other plants), plan trigger rules, its pin or the garden map, invites and memberships (for a garden), and cancels its queued and leased jobs. The full list is in [contracts.md](contracts.md#deletion-cascades).
+**Deleting a plant or a garden** cascades to everything under it, including conversations anchored to it, a garden's farm records and then its farm connectors (`api` revokes their tokens after the store step commits), tasks (with the neighbour tasks a plant's plans created on other plants), plan trigger rules, its pin or the garden map, invites and memberships (for a garden), and cancels its queued and leased jobs. The full list is in [contracts.md](contracts.md#deletion-cascades).
 
 The judging claim is therefore "deleting an account removes the user's own data and any garden they alone use", not "everything".
 

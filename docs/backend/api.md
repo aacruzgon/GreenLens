@@ -2560,15 +2560,18 @@ pub async fn list_connectors(
 
 /// `POST /gardens/{id}/connectors`: starts a connect, `pending`, and returns the vendor's consent
 /// URL. Owner. `409 invalid_state` while connectors are off.
-#[utoipa::path(post, path = "/gardens/{id}/connectors", tag = "connectors", params(("id" = String, Path)),
+#[utoipa::path(post, path = "/gardens/{id}/connectors", tag = "connectors",
+    params(("id" = String, Path), ("Idempotency-Key" = Option<String>, Header, description = "UUID per user action")),
     request_body = CreateConnectorRequest,
     responses((status = 201, body = CreateConnectorResponse), (status = 400, body = ErrorBody),
         (status = 403, body = ErrorBody), (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)))]
 pub async fn create_connector(
     _access: Access<Owner, table::Garden>,
-    ApiJson(_request): ApiJson<CreateConnectorRequest>,
-) -> Result<Wire<CreateConnectorResponse>, ApiError> {
-    Err(connectors_off())
+    request: IdemJson<CreateConnectorRequest>,
+) -> Response {
+    let IdemJson { begun, .. } = request;
+    let result: Result<Wire<CreateConnectorResponse>, ApiError> = Err(connectors_off());
+    begun.finish(result).await
 }
 ```
 

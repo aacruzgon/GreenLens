@@ -197,7 +197,8 @@ WHERE id IN $scans AND (plan != NONE OR diagnosis != NONE OR open_question != NO
 
     /// A garden's farm records (each holds a `REFERENCE ON DELETE REJECT` to its connector).
     pub const FARM_RECORDS_OF_GARDEN: &str = "DELETE (SELECT VALUE id FROM farm_record WHERE garden = $garden LIMIT 500) RETURN VALUE $before.id;";
-    /// A garden's farm connectors. Revoking their tokens is the runner's, before this step.
+    /// A garden's farm connectors. Revoking their tokens is `api`'s, after this step commits (EON E3.6, not built yet): the store step
+    /// holds no vendor client.
     pub const CONNECTORS_OF_GARDEN: &str = "DELETE (SELECT VALUE id FROM connector WHERE garden = $garden LIMIT 500) RETURN VALUE $before.id;";
 
     // ---- step 4.7 (cont.): invites, memberships and the garden ----

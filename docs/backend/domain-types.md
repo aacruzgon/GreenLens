@@ -6245,7 +6245,7 @@ pub struct CreateConnectorResponse {
 
 /// `GET /connectors/oauth/callback?code&state` (public): what the vendor sends back. Not
 /// `deny_unknown_fields`: the vendors add their own parameters (Google's `scope`, `authuser`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::IntoParams)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct OAuthCallbackQuery {
     /// The authorization code; absent when the owner declined.
@@ -6260,7 +6260,7 @@ pub struct OAuthCallbackQuery {
 }
 
 /// `POST /connectors/{id}/complete` (the owner who started it): exchanges the code.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CompleteConnectorRequest {
     /// The vendor's authorization code, from the redirect to the app.
@@ -6312,6 +6312,9 @@ pub enum SyncErrorCode {
     AuthRefused,
     /// The garden would exceed 10,000 records: nothing runs until the sources change.
     TooLarge,
+    /// A chosen channel or folder is gone or no longer visible to the token: nothing runs until
+    /// the owner changes the sources.
+    SourceMissing,
 }
 
 /// `farm_record.kind`, and `search_farm_records`' `kind?` filter.

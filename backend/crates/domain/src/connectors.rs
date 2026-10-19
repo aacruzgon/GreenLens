@@ -8,6 +8,8 @@
 //!
 //! [connectors]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md
 
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -193,7 +195,7 @@ pub struct CreateConnectorResponse {
 
 /// `GET /connectors/oauth/callback?code&state` (public): what the vendor sends back. Not
 /// `deny_unknown_fields`: the vendors add their own parameters (Google's `scope`, `authuser`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::IntoParams)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct OAuthCallbackQuery {
     /// The authorization code; absent when the owner declined.
@@ -207,8 +209,18 @@ pub struct OAuthCallbackQuery {
     pub error: Option<String>,
 }
 
+impl fmt::Debug for OAuthCallbackQuery {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OAuthCallbackQuery")
+            .field("code", &self.code.as_ref().map(|_| "[redacted]"))
+            .field("state", &self.state)
+            .field("error", &self.error)
+            .finish()
+    }
+}
+
 /// `POST /connectors/{id}/complete` (the owner who started it): exchanges the code.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CompleteConnectorRequest {
     /// The vendor's authorization code, from the redirect to the app.
@@ -217,6 +229,16 @@ pub struct CompleteConnectorRequest {
     pub state: String,
     /// The 32 random bytes whose hash started the connect.
     pub device_verifier: DeviceVerifier,
+}
+
+impl fmt::Debug for CompleteConnectorRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CompleteConnectorRequest")
+            .field("code", &"[redacted]")
+            .field("state", &"[redacted]")
+            .field("device_verifier", &"[redacted]")
+            .finish()
+    }
 }
 
 /// `GET /connectors/{id}/available-sources` (owner): the channels the bot is a member of, or
@@ -256,6 +278,9 @@ pub enum SyncErrorCode {
     AuthRefused,
     /// The garden would exceed 10,000 records: nothing runs until the sources change.
     TooLarge,
+    /// A chosen channel or folder is gone or no longer visible to the token: nothing runs until
+    /// the owner changes the sources.
+    SourceMissing,
 }
 
 impl SyncErrorCode {
@@ -266,6 +291,7 @@ impl SyncErrorCode {
             Self::VendorUnavailable => "vendor_unavailable",
             Self::AuthRefused => "auth_refused",
             Self::TooLarge => "too_large",
+            Self::SourceMissing => "source_missing",
         }
     }
 }
@@ -429,9 +455,44 @@ mod tests {
             SyncErrorCode::VendorUnavailable,
             SyncErrorCode::AuthRefused,
             SyncErrorCode::TooLarge,
+            SyncErrorCode::SourceMissing,
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), json!(code.as_str()));
         }
+    }
+
+    #[test]
+    fn source_missing_is_its_own_stored_code() {
+        assert_eq!(
+            serde_json::to_value(SyncErrorCode::SourceMissing).unwrap(),
+            json!("source_missing")
+        );
+        assert_eq!(
+            serde_json::from_value::<SyncErrorCode>(json!("source_missing")).unwrap(),
+            SyncErrorCode::SourceMissing
+        );
+    }
+
+    #[test]
+    fn the_connect_secrets_stay_out_of_debug() {
+        let verifier = "v".repeat(43);
+        let complete = CompleteConnectorRequest {
+            code: "the-auth-code".into(),
+            state: "the-signed-state".into(),
+            device_verifier: verifier.parse().unwrap(),
+        };
+        let shown = format!("{complete:?}");
+        for secret in ["the-auth-code", "the-signed-state", verifier.as_str()] {
+            assert!(!shown.contains(secret), "{shown}");
+        }
+        let query = OAuthCallbackQuery {
+            code: Some("the-auth-code".into()),
+            state: Some("s".into()),
+            error: None,
+        };
+        assert!(!format!("{query:?}").contains("the-auth-code"));
+        let verifier: DeviceVerifier = "w".repeat(43).parse().unwrap();
+        assert!(!format!("{verifier:?}").contains(&"w".repeat(43)));
     }
 
     #[test]

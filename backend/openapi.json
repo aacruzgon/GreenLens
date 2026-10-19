@@ -194,6 +194,18 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID per user action",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           }
         ],
         "requestBody": {
@@ -336,7 +348,7 @@
         "tags": [
           "connectors"
         ],
-        "summary": "`POST /connectors/{id}/sync`: **Sync now**, `202`; `429` within 5 minutes of the last. Owner.\n`409 invalid_state` while connectors are off.",
+        "summary": "`POST /connectors/{id}/sync`: **Sync now**, `202`; `429` within 5 minutes of the last. Owner.\n`409 invalid_state` while connectors are off. It has no body, and no body-less route holds an\nidempotency record yet, so `Idempotency-Key` is documented here and honoured with the handler\n(E3): sync-now is naturally idempotent, since a repeat inside 5 minutes is the `429`.",
         "operationId": "sync_connector",
         "parameters": [
           {
@@ -345,6 +357,18 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID per user action",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           }
         ],
@@ -1102,6 +1126,18 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID per user action",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           }
         ],

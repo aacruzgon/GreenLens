@@ -31,7 +31,7 @@ impl fmt::Debug for Sealed {
 }
 
 /// A pending connect's `oauth` field: kept until the exchange clears it, so a state works once.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct PendingConnect {
     /// The nonce the signed `state` carries.
     pub nonce: String,
@@ -41,6 +41,17 @@ pub struct PendingConnect {
     pub verifier: Option<Sealed>,
     /// 10 minutes after the start.
     pub expires_at: Timestamp,
+}
+
+impl fmt::Debug for PendingConnect {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PendingConnect")
+            .field("nonce", &"[redacted]")
+            .field("device_hash", &self.device_hash)
+            .field("verifier", &self.verifier)
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
 }
 
 /// A connector to create.
@@ -334,5 +345,16 @@ mod tests {
     fn sealed_bytes_never_print() {
         let sealed = Sealed(bytes::Bytes::from_static(b"ciphertext"));
         assert_eq!(format!("{sealed:?}"), "Sealed(10 bytes)");
+    }
+
+    #[test]
+    fn the_pending_connects_nonce_never_prints() {
+        let pending = PendingConnect {
+            nonce: "the-secret-nonce".into(),
+            device_hash: "h".repeat(43).parse().unwrap(),
+            verifier: None,
+            expires_at: Timestamp::from(chrono::DateTime::UNIX_EPOCH),
+        };
+        assert!(!format!("{pending:?}").contains("the-secret-nonce"));
     }
 }

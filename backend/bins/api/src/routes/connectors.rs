@@ -9,7 +9,7 @@
 //! [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
 //! [connectors 11]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#11-changes-to-other-documents
 
-use axum::http::StatusCode;
+use axum::{http::StatusCode, response::Response};
 
 use domain::{
     authz::{Owner, Viewer},
@@ -23,7 +23,7 @@ use domain::{
 
 use crate::{
     error::ApiError,
-    extract::{ApiJson, ApiQuery, access::Access},
+    extract::{ApiJson, ApiQuery, access::Access, idempotency::IdemJson},
     reply::Wire,
 };
 
@@ -45,15 +45,18 @@ pub async fn list_connectors(
 
 /// `POST /gardens/{id}/connectors`: starts a connect, `pending`, and returns the vendor's consent
 /// URL. Owner. `409 invalid_state` while connectors are off.
-#[utoipa::path(post, path = "/gardens/{id}/connectors", tag = "connectors", params(("id" = String, Path)),
+#[utoipa::path(post, path = "/gardens/{id}/connectors", tag = "connectors",
+    params(("id" = String, Path), ("Idempotency-Key" = Option<String>, Header, description = "UUID per user action")),
     request_body = CreateConnectorRequest,
     responses((status = 201, body = CreateConnectorResponse), (status = 400, body = ErrorBody),
         (status = 403, body = ErrorBody), (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)))]
 pub async fn create_connector(
     _access: Access<Owner, table::Garden>,
-    ApiJson(_request): ApiJson<CreateConnectorRequest>,
-) -> Result<Wire<CreateConnectorResponse>, ApiError> {
-    Err(connectors_off())
+    request: IdemJson<CreateConnectorRequest>,
+) -> Response {
+    let IdemJson { begun, .. } = request;
+    let result: Result<Wire<CreateConnectorResponse>, ApiError> = Err(connectors_off());
+    begun.finish(result).await
 }
 
 /// `GET /connectors/oauth/callback?code&state`: the vendor's redirect. Public: it checks only the
@@ -71,15 +74,18 @@ pub async fn oauth_callback(
 
 /// `POST /connectors/{id}/complete`: exchanges the code. The owner who started the connect, with
 /// the `device_verifier` whose hash started it. `409 invalid_state` while connectors are off.
-#[utoipa::path(post, path = "/connectors/{id}/complete", tag = "connectors", params(("id" = String, Path)),
+#[utoipa::path(post, path = "/connectors/{id}/complete", tag = "connectors",
+    params(("id" = String, Path), ("Idempotency-Key" = Option<String>, Header, description = "UUID per user action")),
     request_body = CompleteConnectorRequest,
     responses((status = 200, body = Connector), (status = 400, body = ErrorBody),
         (status = 403, body = ErrorBody), (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)))]
 pub async fn complete_connector(
     _access: Access<Owner, table::Connector>,
-    ApiJson(_request): ApiJson<CompleteConnectorRequest>,
-) -> Result<Wire<Connector>, ApiError> {
-    Err(connectors_off())
+    request: IdemJson<CompleteConnectorRequest>,
+) -> Response {
+    let IdemJson { begun, .. } = request;
+    let result: Result<Wire<Connector>, ApiError> = Err(connectors_off());
+    begun.finish(result).await
 }
 
 /// `GET /connectors/{id}/available-sources`: the channels the bot is in, or the folders. Owner.
@@ -107,8 +113,11 @@ pub async fn set_sources(
 }
 
 /// `POST /connectors/{id}/sync`: **Sync now**, `202`; `429` within 5 minutes of the last. Owner.
-/// `409 invalid_state` while connectors are off.
-#[utoipa::path(post, path = "/connectors/{id}/sync", tag = "connectors", params(("id" = String, Path)),
+/// `409 invalid_state` while connectors are off. It has no body, and no body-less route holds an
+/// idempotency record yet, so `Idempotency-Key` is documented here and honoured with the handler
+/// (E3): sync-now is naturally idempotent, since a repeat inside 5 minutes is the `429`.
+#[utoipa::path(post, path = "/connectors/{id}/sync", tag = "connectors",
+    params(("id" = String, Path), ("Idempotency-Key" = Option<String>, Header, description = "UUID per user action")),
     responses((status = 202), (status = 403, body = ErrorBody), (status = 404, body = ErrorBody),
         (status = 409, body = ErrorBody), (status = 429, body = ErrorBody)))]
 pub async fn sync_connector(

@@ -747,6 +747,13 @@ impl FromStr for FarmRecordId {
         let connector = connector
             .parse()
             .map_err(|_| IdParseError::new("farm record id", "connector part is not a ULID"))?;
+        // Canonical digits only: a leading zero would give one record two spellings.
+        if n.len() > 1 && n.starts_with('0') {
+            return Err(IdParseError::new(
+                "farm record id",
+                "number part has a leading zero",
+            ));
+        }
         let n = n
             .parse()
             .map_err(|_| IdParseError::new("farm record id", "number part is not an integer"))?;
@@ -777,13 +784,34 @@ string_schema!(
 
 /// Declares an opaque string newtype with a checking constructor, serde as a bare string and a
 /// string schema.
+///
+/// `secret` before the doc comment gives the type a `Debug` that prints `"[redacted]"`.
 macro_rules! opaque_string {
+    (
+        secret
+        $(#[$doc:meta])*
+        $name:ident, $kind:literal, $pattern:expr, $check:expr
+    ) => {
+        opaque_string!(@build () $(#[$doc])* $name, $kind, $pattern, $check);
+        impl fmt::Debug for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, concat!(stringify!($name), "([redacted])"))
+            }
+        }
+    };
     (
         $(#[$doc:meta])*
         $name:ident, $kind:literal, $pattern:expr, $check:expr
     ) => {
+        opaque_string!(@build (Debug,) $(#[$doc])* $name, $kind, $pattern, $check);
+    };
+    (
+        @build ($($derive:ident,)*)
+        $(#[$doc:meta])*
+        $name:ident, $kind:literal, $pattern:expr, $check:expr
+    ) => {
         $(#[$doc])*
-        #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+        #[derive($($derive,)* Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
         pub struct $name(Arc<str>);
 
         impl $name {
@@ -924,6 +952,7 @@ fn base64url_43(s: &str) -> Result<(), &'static str> {
 }
 
 opaque_string!(
+    secret
     /// A connect's device binding ([connectors 5]): the app's 32 random bytes, base64url without
     /// padding. Never leaves the device that started the connect until `complete`.
     ///
@@ -1034,6 +1063,15 @@ mod tests {
             "01JAX3K9T6R2B8V0QZ4M7D1E5C.0"
                 .parse::<FarmRecordId>()
                 .is_err()
+        );
+        for spelled in [".01.", ".00.", ".007."] {
+            let text = format!("01JAX3K9T6R2B8V0QZ4M7D1E5C{spelled}file");
+            assert!(text.parse::<FarmRecordId>().is_err(), "{text}");
+        }
+        assert!(
+            "01JAX3K9T6R2B8V0QZ4M7D1E5C.0.file"
+                .parse::<FarmRecordId>()
+                .is_ok()
         );
         assert!(
             "01JAX3K9T6R2B8V0QZ4M7D1E5C.x.file"

@@ -532,7 +532,7 @@ DEFINE FIELD OVERWRITE synced_at  ON connector TYPE option<datetime>;
 DEFINE FIELD OVERWRITE next_sync_at ON connector TYPE datetime DEFAULT time::now();
 -- Sync now: one accepted request per connector in 5 minutes, a compare-and-set on this field.
 DEFINE FIELD OVERWRITE sync_requested_at ON connector TYPE option<datetime>;
-DEFINE FIELD OVERWRITE last_error ON connector TYPE option<"rate_limited" | "vendor_unavailable" | "auth_refused" | "too_large">;   -- a fixed code, never the vendor's text
+DEFINE FIELD OVERWRITE last_error ON connector TYPE option<"rate_limited" | "vendor_unavailable" | "auth_refused" | "too_large" | "source_missing">;   -- a fixed code, never the vendor's text
 DEFINE FIELD OVERWRITE created_at ON connector TYPE datetime DEFAULT time::now() READONLY;
 DEFINE INDEX IF NOT EXISTS connector_garden ON connector FIELDS garden;
 DEFINE INDEX IF NOT EXISTS connector_due    ON connector FIELDS status, next_sync_at;
