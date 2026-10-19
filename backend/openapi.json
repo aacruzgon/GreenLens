@@ -4454,6 +4454,15 @@
         ],
         "description": "`anchor`: `{ type: \"scan\" | \"plant\" | \"garden\"; id: Id }`, adjacently tagged."
       },
+      "AnchorType": {
+        "type": "string",
+        "description": "`anchor_type` query values.",
+        "enum": [
+          "scan",
+          "plant",
+          "garden"
+        ]
+      },
       "Answer": {
         "type": "string",
         "description": "`\"yes\" | \"no\" | \"unsure\"`: question options, indicator answers and evidence.",
@@ -11553,6 +11562,15 @@
           "forecast_alert",
           "chat",
           "user"
+        ]
+      },
+      "TaskState": {
+        "type": "string",
+        "description": "`?state=open|done|dismissed`, stored as `task.state` ([database 3]).",
+        "enum": [
+          "open",
+          "done",
+          "dismissed"
         ]
       },
       "TaskTrigger": {
