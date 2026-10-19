@@ -422,6 +422,11 @@ jobs:
         run: >-
           cargo nextest run -p integrations -p api --run-ignored only --locked
           -E 'test(/(^|::)era_strict_/)'
+      - name: Disk left
+        if: always()
+        run: |
+          df -h /
+          du -sh backend/target 2>/dev/null || true
 
   # --- stage 3: the one required check -----------------------------------------------------------
 

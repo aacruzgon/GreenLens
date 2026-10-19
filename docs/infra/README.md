@@ -152,7 +152,10 @@ A job in stage 2 or 4 has `if: !cancelled() && !failure() && …`: it runs when 
 - **One job, three steps.** The steps share one build and one runner's minutes, and the pairs are separate containers, so a fault set in the second step can't reach a test in the first. The second and third steps run even when an earlier one failed. Separate jobs would each rebuild the tests for no isolation the containers don't already give.
 - **Health** is checked on `GET /_admin/tenants`, which faults never touch, with `python3` (the images have no `curl`). Actions waits for every service to be healthy before the first step.
 - **Same toolchain, caching (`shared-key: era`) and stage as `live`.** The job is not yet in `ci`'s `needs`; it joins after four green runs on `main`, as `live` did (roadmap E6.3).
-- Run locally with the compose `era` profile for the first pair. Faults need their own pair, and so does strict mode: `docker run` the two images with `AUTH_MODE=strict` on other ports.
+- Run locally with the compose `era` profile for the first pair. Faults need their own pair, and so does strict mode: `docker run` the two images (each setting its own `-e`, with `AUTH_MODE=strict` for the strict pair) on other ports. From `backend/`, with `--run-ignored only -p integrations -p api` on each:
+  - open: `ERA_SLACK_BASE=… ERA_GOOGLE_BASE=… cargo nextest run … -E 'test(/(^|::)era_/) and not test(/(^|::)era_fault_/) and not test(/(^|::)era_strict_/)'`
+  - fault (own pair, same variables): `-E 'test(/(^|::)era_fault_/)'`
+  - strict: `ERA_STRICT_SLACK_BASE=… ERA_STRICT_GOOGLE_BASE=… cargo nextest run … -E 'test(/(^|::)era_strict_/)'`
 
 
 **The toolchain.** Every Rust job runs `rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy`, and the workflow sets `RUSTUP_TOOLCHAIN=1.99.1`. `check_examples.py` builds its crate in a temporary directory outside `backend/`, where `rust-toolchain.toml` doesn't apply, and refuses any `rustc` but the one `versions.md` pins.

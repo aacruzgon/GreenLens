@@ -130,13 +130,13 @@ async fn era_strict_slack_code_exchange_then_a_reused_code_is_refused() {
     let auth = client.auth_test(&access.access_token).await.unwrap();
     assert_eq!(auth.team_id, access.team_id);
 
-    // Slack refuses a spent code at HTTP 200 with `invalid_code`, which is a plain refusal.
+    // Slack refuses a spent code at HTTP 200 with `invalid_code`, which is `AuthRefused`: a bad user code.
     let error = client
         .oauth_v2_access(&code, REDIRECT_URI, "pdm-test", &secret)
         .await
         .unwrap_err();
     assert!(
-        matches!(&error, FarmClientError::Refused { code, .. } if code == "invalid_code"),
+        matches!(&error, FarmClientError::AuthRefused { code, .. } if code == "invalid_code"),
         "{error:?}"
     );
 }
@@ -155,7 +155,7 @@ async fn era_strict_slack_an_unknown_code_is_refused() {
         .await
         .unwrap_err();
     assert!(
-        matches!(&error, FarmClientError::Refused { code, .. } if code == "invalid_code"),
+        matches!(&error, FarmClientError::AuthRefused { code, .. } if code == "invalid_code"),
         "{error:?}"
     );
 }

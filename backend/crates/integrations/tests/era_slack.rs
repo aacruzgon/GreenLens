@@ -234,7 +234,7 @@ async fn era_slack_oauth_code_exchange() {
         .await
         .unwrap_err();
     assert!(
-        matches!(&error, FarmClientError::Refused { code, .. } if code == "invalid_code"),
+        matches!(&error, FarmClientError::AuthRefused { code, .. } if code == "invalid_code"),
         "{error:?}"
     );
 }
@@ -253,7 +253,7 @@ async fn with_faults(faults: Value, test: impl Future<Output = ()>) {
 #[tokio::test]
 #[ignore = "needs Era's simulators"]
 async fn era_fault_fail_next_is_retried_after_retry_after() {
-    // The inject call counts against `fail_next` and `quota_limit`, so the farm comes first.
+    // Set up first, so only the call under test meets the fault.
     let (tenant, token) = farm().await;
     with_faults(json!({ "fail_next": 1, "retry_after_seconds": 1 }), async {
         let slack = client(tenant.base(), |_| {});
@@ -273,10 +273,10 @@ async fn era_fault_fail_next_is_retried_after_retry_after() {
 #[tokio::test]
 #[ignore = "needs Era's simulators"]
 async fn era_fault_throttle_is_honoured_until_it_lifts() {
+    let (tenant, token) = farm().await;
     with_faults(
         json!({ "throttle": true, "retry_after_seconds": 1 }),
         async {
-            let (tenant, token) = farm().await;
             let slack = client(tenant.base(), |c| c.retry.max_retries = 5);
             let start = Instant::now();
             let lift = async {
@@ -300,8 +300,8 @@ async fn era_fault_throttle_is_honoured_until_it_lifts() {
 #[tokio::test]
 #[ignore = "needs Era's simulators"]
 async fn era_fault_error_rate_is_unavailable() {
+    let (tenant, token) = farm().await;
     with_faults(json!({ "error_rate": 1 }), async {
-        let (tenant, token) = farm().await;
         let slack = client(tenant.base(), |_| {});
         let error = slack.users_info(&token, "U_MARIA").await.unwrap_err();
         assert!(
@@ -317,7 +317,7 @@ async fn era_fault_error_rate_is_unavailable() {
 #[tokio::test]
 #[ignore = "needs Era's simulators"]
 async fn era_fault_quota_limit_paces_to_a_minute() {
-    // The inject call counts against `quota_limit`, so the farm comes first.
+    // Set up first, so only the call under test meets the fault.
     let (tenant, token) = farm().await;
     with_faults(json!({ "quota_limit": 1 }), async {
         // Gives up on a `Retry-After` over 10 s instead of sleeping the minute.
