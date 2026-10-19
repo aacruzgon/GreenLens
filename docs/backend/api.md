@@ -703,10 +703,7 @@ impl ConnectorKey {
 
     /// The key that signs the OAuth `state` (E3.3): HMAC-SHA256 of the raw key under a fixed
     /// label, so it differs from the AES key and rotating `CONNECTOR_KEY` rotates both.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "signs the OAuth state (E3.3)")
-    )]
+    #[cfg_attr(not(test), expect(dead_code, reason = "signs the OAuth state (E3.3)"))]
     pub fn state_key(&self) -> &[u8; 32] {
         self.state_key.expose_secret()
     }
