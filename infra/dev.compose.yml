@@ -54,4 +54,28 @@ services:
     depends_on: { rustfs: { condition: service_healthy } }
     entrypoint: ["sh", "-c", "rc alias set dev http://rustfs:9000 TESTROOT testrootsecret && rc bucket create --ignore-existing dev/pdm-images"]
     restart: "no"
+  # Era by Eon's Slack and Google Drive simulators, the farm connectors' test bench (docs/EON section 2).
+  # Only with the profile: docker compose -f infra/dev.compose.yml --profile era up -d
+  # The day is fixed at SIMCORE_TODAY; the tests pin api's clock to it. Health is checked on /_admin,
+  # which faults never touch (/_meta is faulted). The image has python3 but no curl.
+  era-slack:
+    profiles: [era]
+    image: erabyeon/slack:189e10c16ec66ee1ca24ac5f7962cd7637174d0f@sha256:33382931f381da5dca51c45ad4ad7c7bfc07644d3240465bfd41e7b7ea2cb75f
+    environment: &era-env
+      SIMCORE_SEED: "42"
+      SIMCORE_TODAY: "2026-10-15"
+      SIMCORE_FIDELITY: high
+      AUTH_MODE: open
+    ports: ["127.0.0.1:8091:8080"]
+    healthcheck: &era-health
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/_admin/tenants', timeout=3)"]
+      interval: 5s
+      retries: 12
+      start_period: 10s
+  era-drive:
+    profiles: [era]
+    image: erabyeon/google-drive:189e10c16ec66ee1ca24ac5f7962cd7637174d0f@sha256:2b9cd2a79def5cac0c325bf0a325a83842eb41edf766b2b9a362e0ee33fa9424
+    environment: *era-env
+    ports: ["127.0.0.1:8092:8080"]
+    healthcheck: *era-health
 volumes: { surrealdb-dev: {}, rustfs-dev: {} }

@@ -2,6 +2,8 @@
 # fixtures/, testdata/, bioclip_templates.json) lives inside it and must stay in the context.
 target/
 tools/
+# tests/ holds the Era fixtures, which tests read at run time and nothing embeds.
+tests/
 .git
 **/*.rs.bk
 **/.env
