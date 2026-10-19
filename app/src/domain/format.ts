@@ -9,7 +9,7 @@ export const BAND_LABEL: Record<ConfidenceBand, string> = { high: "High", medium
 export const PLANT_STATUS_LABEL: Record<PlantStatus, string> = {
   healthy: "Healthy",
   watch: "Watch",
-  sick: "Needs care",
+  sick: "Sick",
   dead: "Dead",
 };
 

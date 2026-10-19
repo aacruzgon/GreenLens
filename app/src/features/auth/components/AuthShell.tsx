@@ -12,12 +12,12 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
       <Screen padTop contentContainerStyle={{ maxWidth: 440, paddingTop: t.space.xxxl, gap: t.space.xl }}>
         <View style={{ gap: t.space.md }}>
           <View
-            style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: t.colors.accent, alignItems: "center", justifyContent: "center" }}
+            style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: t.colors.accent, alignItems: "center", justifyContent: "center" }}
             accessibilityElementsHidden
           >
             <Ionicons name="leaf" size={30} color={t.colors.accentText} />
           </View>
-          <Text variant="largeTitle" accessibilityRole="header">
+          <Text variant="display" accessibilityRole="header">
             {title}
           </Text>
           {subtitle ? <Text color="textMuted">{subtitle}</Text> : null}

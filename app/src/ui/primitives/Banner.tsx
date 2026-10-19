@@ -29,17 +29,17 @@ export function Banner({ title, body, tone = "info", icon, action }: BannerProps
   return (
     <View
       accessibilityRole="summary"
-      style={{ flexDirection: "row", gap: t.space.md, backgroundColor: t.colors[r.bg], borderRadius: t.radius.md, padding: t.space.md }}
+      style={{ flexDirection: "row", gap: t.space.md, backgroundColor: t.colors[r.bg], borderRadius: t.radius.card, paddingVertical: t.space.lg, paddingHorizontal: t.space.lg + 2 }}
     >
       <Ionicons name={icon ?? r.icon} size={22} color={t.colors[r.fg]} />
       <View style={{ flex: 1, gap: t.space.xs }}>
-        <Text variant="subhead" weight="600" color={r.fg}>
+        <Text variant="headline" color={r.fg}>
           {title}
         </Text>
         {body ? <Text variant="subhead">{body}</Text> : null}
         {action ? (
-          <View style={{ alignItems: "flex-start", marginLeft: -t.space.sm }}>
-            <Button label={action.label} variant="plain" onPress={action.onPress} />
+          <View style={{ alignItems: "flex-start", marginTop: t.space.sm }}>
+            <Button label={action.label} variant="secondary" onPress={action.onPress} />
           </View>
         ) : null}
       </View>

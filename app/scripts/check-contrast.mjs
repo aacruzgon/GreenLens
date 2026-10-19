@@ -28,6 +28,8 @@ const pairs = [
   ["text", "background"],
   ["text", "surface"],
   ["text", "surfaceMuted"],
+  ["text", "wash"],
+  ["textMuted", "wash"],
   ["textMuted", "background"],
   ["textMuted", "surface"],
   ["textMuted", "surfaceMuted"],

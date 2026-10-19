@@ -74,7 +74,7 @@ export function OnboardingScreen() {
         }
       >
         <View style={{ gap: t.space.sm, paddingTop: t.space.xl }}>
-          <Text variant="largeTitle" accessibilityRole="header">
+          <Text variant="display" accessibilityRole="header">
             Set up your garden
           </Text>
           <Text color="textMuted">We use its location for the weather and soil, which shape every diagnosis.</Text>
