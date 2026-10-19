@@ -1,6 +1,7 @@
 """The plant-check negatives list: which COCO images are kept and how they are grouped."""
 
 from ml.training.data.negatives import select
+from ml.training.data.negatives_holdout import pick as holdout_pick
 
 CATS = [
     {"id": 1, "name": "person", "supercategory": "person"},
@@ -41,3 +42,11 @@ def test_unannotated_image_is_unlabelled():
 def test_output_is_sorted_by_file_name():
     names = [n for n, _ in select(coco({3: [4], 1: [4], 2: [4]}))]
     assert names == sorted(names)
+
+
+def test_the_holdout_leaves_out_excluded_photos_and_is_deterministic():
+    rows = [(f"{i:012d}.jpg", "indoor") for i in range(50)]
+    first = holdout_pick(rows, 10, exclude=set())
+    assert first == holdout_pick(list(reversed(rows)), 10, exclude=set()) == sorted(first)
+    without = holdout_pick(rows, 10, exclude={first[0][0]})
+    assert first[0] not in without and len(without) == 10
