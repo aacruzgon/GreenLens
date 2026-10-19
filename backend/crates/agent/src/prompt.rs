@@ -210,10 +210,11 @@ impl DataKind {
     }
 }
 
-/// Wraps untrusted text in a `<data kind="…">` element. Any `<data` or `</data` inside the body,
-/// in any case and with spaces after the `<` or the `/`, is escaped as `&lt;`, so the body cannot
-/// close the element and pose as instructions after it. Already-escaped text has no `<` left to
-/// escape, so nothing is ever escaped twice.
+/// Wraps untrusted text in a `<data kind="…">` element. A `<`, fullwidth `＜` or small `﹤` that is
+/// followed by `data` or `/data`, in any case, is escaped as `&lt;`. Unicode whitespace and the
+/// zero-width characters U+200B to U+200D, U+2060 and U+FEFF are skipped after the `<` and after
+/// the `/`. So the body cannot close the element and pose as instructions after it.
+/// Already-escaped text has no `<` left to escape, so nothing is ever escaped twice.
 pub fn data(kind: DataKind, body: &str) -> String {
     let escaped = escape_tags(body);
     format!("<data kind=\"{}\">\n{escaped}\n</data>", kind.as_str())
@@ -234,14 +235,14 @@ pub fn data_json<T: Serialize + ?Sized>(kind: DataKind, value: &T) -> String {
 /// names, knowledge-base passages and, from `search_farm_records` on, Slack messages and Drive
 /// files written by people outside PDM. Framing all of them means a new tool can't forget to, and
 /// the model has one rule for every result. The JSON keeps its shape: the escape only turns a `<`
-/// before `data` into `&lt;`, which is valid inside a JSON string, so the model reads the same
+/// before `data` into `&lt;` (in every string and key, before the JSON is written), which is valid inside a JSON string, so the model reads the same
 /// fields the app sees. A string result is wrapped as it is, as the provider would send it.
 /// Refusals (`is_error`) stay unframed: the server writes them, and the model is told to act on
 /// them.
 pub fn tool_result(kind: DataKind, content: &Value) -> Value {
     let body = match content {
         Value::String(s) => data(kind, s),
-        other => data(kind, &other.to_string()),
+        other => data(kind, &escape_value(other).to_string()),
     };
     Value::String(body)
 }
@@ -249,22 +250,54 @@ pub fn tool_result(kind: DataKind, content: &Value) -> Value {
 fn escape_tags(body: &str) -> String {
     let mut out = String::with_capacity(body.len());
     let mut rest = body;
-    while let Some(i) = rest.find('<') {
+    while let Some(i) = rest.find(is_open) {
         out.push_str(&rest[..i]);
-        let tail = &rest[i + 1..];
-        out.push_str(if names_data(tail) { "&lt;" } else { "<" });
+        let opener = rest[i..].chars().next().unwrap_or('<');
+        let tail = &rest[i + opener.len_utf8()..];
+        out.push_str(if names_data(tail) {
+            "&lt;"
+        } else {
+            &rest[i..i + opener.len_utf8()]
+        });
         rest = tail;
     }
     out.push_str(rest);
     out
 }
 
-/// Whether the text after a `<` names a `data` element: `data` or `/data` in any case, with ASCII
-/// whitespace allowed before and after the `/`. Compared as bytes, so a tail shorter than the tag
-/// or a multi-byte character right after `data` can't slip past.
+/// `<`, fullwidth `＜` (U+FF1C) and small `﹤` (U+FE64).
+const fn is_open(c: char) -> bool {
+    matches!(c, '<' | '\u{FF1C}' | '\u{FE64}')
+}
+
+/// Whitespace for the tag check: Unicode whitespace plus the zero-width characters U+200B to
+/// U+200D, U+2060 and U+FEFF, which are not whitespace but are invisible.
+fn is_blank(c: char) -> bool {
+    c.is_whitespace() || matches!(c, '\u{200B}'..='\u{200D}' | '\u{2060}' | '\u{FEFF}')
+}
+
+/// Escapes every string and object key of a JSON value, so the escaper sees the real characters
+/// and not their JSON escapes (`\t`, `\n`, `\u000b`).
+fn escape_value(value: &Value) -> Value {
+    match value {
+        Value::String(s) => Value::String(escape_tags(s)),
+        Value::Array(items) => Value::Array(items.iter().map(escape_value).collect()),
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(k, v)| (escape_tags(k), escape_value(v)))
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
+/// Whether the text after a `<` names a `data` element: `data` or `/data` in any case, with
+/// Unicode whitespace or zero-width characters allowed before and after the `/`. Compared as
+/// bytes, so a tail shorter than the tag or a multi-byte character right after `data` can't slip
+/// past.
 fn names_data(tail: &str) -> bool {
     fn skip(t: &str) -> &str {
-        t.trim_start_matches(|c: char| c.is_ascii_whitespace())
+        t.trim_start_matches(is_blank)
     }
     let t = skip(tail);
     let t = t.strip_prefix('/').map_or(t, skip);
@@ -315,6 +348,37 @@ mod tests {
             assert_eq!(body(&wrapped), expected, "{input:?}");
             assert_eq!(wrapped.matches("</data>").count(), 1, "{wrapped}");
         }
+    }
+
+    #[test]
+    fn tool_results_catch_whitespace_and_lookalikes_between_the_bracket_and_the_tag() {
+        for gap in ["\t", "\n", "\u{000B}", "\u{00A0}", "\u{200B}", "\u{FEFF}"] {
+            for tag in ["/data", "data", "/ DATA", "Data"] {
+                for open in ["<", "\u{FF1C}", "\u{FE64}"] {
+                    let input = serde_json::json!({ format!("k{open}{gap}{tag}"): [format!("a{open}{gap}{tag}>")] });
+                    let Value::String(out) = tool_result(DataKind::ToolResult, &input) else {
+                        panic!("a string");
+                    };
+                    assert_eq!(out.matches("</data>").count(), 1, "{out:?}");
+                    assert_eq!(out.matches("<data").count(), 1, "{out:?}");
+                    assert!(out.contains("&lt;"), "{out:?}");
+                    let inner: Value = serde_json::from_str(body(&out)).expect("valid JSON");
+                    assert!(inner.is_object(), "{out:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tool_results_stay_valid_json_and_are_not_escaped_twice() {
+        let input = serde_json::json!({"t": "<\t/data>", "n": 3, "ok": true, "e": "&lt;/data>"});
+        let Value::String(out) = tool_result(DataKind::ToolResult, &input) else {
+            panic!("a string");
+        };
+        let inner: Value = serde_json::from_str(body(&out)).expect("valid JSON");
+        assert_eq!(inner["t"], "&lt;\t/data>");
+        assert_eq!(inner["n"], 3);
+        assert_eq!(inner["e"], "&lt;/data>");
     }
 
     #[test]
