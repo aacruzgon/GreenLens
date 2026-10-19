@@ -15,6 +15,7 @@ mod media;
 mod openapi;
 mod push;
 mod reply;
+mod revoke;
 mod router;
 mod routes;
 mod scheduler;
