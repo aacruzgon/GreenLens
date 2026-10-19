@@ -3118,6 +3118,7 @@ dependencies = [
  "data-encoding",
  "domain",
  "futures",
+ "integrations",
  "jsonwebtoken 11.1.0",
  "moka",
  "rand 0.10.3",
