@@ -204,7 +204,7 @@ What S0 changed in the design, each found by running it:
 4. **Live site data:**
    - fresh fixtures for Open-Meteo, SoilGrids and the geocoders;
    - SoilGrids has no data in central Toronto, so decide its replacement there ([architecture open decision 10](../architecture/README.md#15-open-decisions));
-   - a fallback label when reverse geocoding fails ([integrations 18](integrations.md#18-open-questions), item 4).
+   - a fallback label when reverse geocoding fails ([integrations 19](integrations.md#19-open-questions), item 4).
 5. **Species confirmation** end to end: the perception top 3, the card, and the confirmed species on the scan.
 6. **Knowledge loading:**
    - build the migration runner and apply the loader's `knowledge.surql` ([database 1](../database/README.md#1-version-and-setup), [store 4](store.md#4-connecting-and-the-schema));
@@ -241,7 +241,7 @@ What S0 changed in the design, each found by running it:
 3. **The schema check:** done on 2026-10-16: xgrammar 0.2.7 enforces `anyOf` with `null` ([contracts open question 31](../architecture/contracts.md#12-open-questions); [worker 17](worker.md#17-open-questions), item 3; [vision 15](vision.md#15-open-questions), item 4). Had it failed, the nullable shapes would have changed before S4.
 4. **`VLM_SLOTS` for each card, from the benchmark** (open decision 15).
 5. **The fallback:**
-   - one live hosted call confirms the box format and the stripped schema keywords ([integrations 18](integrations.md#18-open-questions), item 6);
+   - one live hosted call confirms the box format and the stripped schema keywords ([integrations 19](integrations.md#19-open-questions), item 6);
    - time a full 8,000-token call against the doubled `max_runtime` ([worker 17](worker.md#17-open-questions), item 2).
 
 **Exit checks**
