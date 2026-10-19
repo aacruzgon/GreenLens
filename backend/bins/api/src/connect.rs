@@ -135,11 +135,18 @@ pub fn device_matches(verifier: &DeviceVerifier, hash: &DeviceHash) -> bool {
         .is_ok()
 }
 
-/// A connector's vendor tokens, as they are sealed in `connector.secret`: JSON
-/// `{"access_token", "refresh_token"?, "expires_at"?}`, sealed with [`SealPurpose::Token`].
-/// Slack's bot token has neither a refresh token nor an expiry; Google's access token has both.
-/// A sealed value that isn't JSON is read as a bare access token, so a seeded connector's
-/// fixed token (roadmap E4.6) may be sealed as it is.
+/// A connector's vendor tokens, as they are sealed in `connector.secret` with
+/// [`SealPurpose::Token`]. Two forms, which the deletion's revoke (E3.6) and the sync (E4)
+/// read too:
+///
+/// - **A plain string**, the token's own bytes: Slack's `xoxb-…` bot token, which has neither a
+///   refresh token nor an expiry, and a seeded connector's fixed token (roadmap E4.6).
+/// - **A JSON object** `{"access_token", "refresh_token"?, "expires_at"?}`: Google's grant.
+///   `expires_at` is RFC 3339. A revoke prefers `refresh_token`, which ends the whole grant.
+///
+/// [`seal`](Self::seal) writes the plain string exactly when there is no refresh token and no
+/// expiry; [`unseal`](Self::unseal) reads a value that starts with `{` as JSON, anything else
+/// as a plain token.
 pub struct StoredTokens {
     /// Slack's `xoxb-…` bot token, or Google's access token.
     pub access_token: SecretString,
@@ -189,8 +196,16 @@ impl StoredTokens {
         }
     }
 
-    /// Seals the tokens for `connector`.
+    /// Seals the tokens for `connector`: a bare bearer token as its plain string, a grant
+    /// with a refresh token or an expiry as JSON.
     pub fn seal(&self, key: &ConnectorKey, connector: ConnectorId) -> Sealed {
+        if self.refresh_token.is_none() && self.expires_at.is_none() {
+            return key.seal(
+                SealPurpose::Token,
+                connector,
+                self.access_token.expose_secret().as_bytes(),
+            );
+        }
         let json = TokensJson {
             access_token: self.access_token.expose_secret().to_owned(),
             refresh_token: self
@@ -325,6 +340,9 @@ pub trait ConnectVendors: Send + Sync {
 /// and the records are deleted anyway ([connectors 8]): the token is gone from our side either
 /// way. Runs on the task tracker; a store failure stops it, logged, and leaves the connector
 /// `deleting`, hidden from the list and the sync.
+///
+/// The owner's `DELETE /connectors/{id}` calls only this after the store marks the connector,
+/// so the deletion cascades' revoke-then-delete step (E3.6) can take its place in one line.
 ///
 /// [connectors 8]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#8-privacy-and-security
 pub async fn disconnect(state: &AppState, row: ConnectorRow) {
@@ -491,6 +509,33 @@ mod tests {
             StoredTokens::unseal(&key(), other, &sealed),
             Err(TokensError::Unseal(_))
         ));
+    }
+
+    #[test]
+    fn a_slack_token_is_sealed_as_its_plain_string() {
+        let sealed = StoredTokens::bearer(SecretString::from("xoxb-1234-bot")).seal(&key(), id());
+        let plain = key().unseal(SealPurpose::Token, id(), &sealed).unwrap();
+        assert_eq!(plain.expose_secret(), b"xoxb-1234-bot");
+    }
+
+    #[test]
+    fn a_google_grant_is_sealed_as_json() {
+        let tokens = StoredTokens {
+            access_token: SecretString::from("ya29.access"),
+            refresh_token: Some(SecretString::from("1//refresh")),
+            expires_at: Some("2026-10-19T10:00:00Z".parse().unwrap()),
+        };
+        let sealed = tokens.seal(&key(), id());
+        let plain = key().unseal(SealPurpose::Token, id(), &sealed).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(plain.expose_secret()).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "access_token": "ya29.access",
+                "refresh_token": "1//refresh",
+                "expires_at": "2026-10-19T10:00:00Z"
+            })
+        );
     }
 
     #[test]
