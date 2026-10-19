@@ -78,22 +78,30 @@ COMMIT;";
     pub const ACCEPT_INVITE_RESULT: usize = 5;
 
     /// `PATCH /gardens/{id}/members/{user_id}`; demoting the last owner throws
-    /// `invalid_state`.
+    /// `invalid_state`. Demoting an owner marks the connectors they created in the garden
+    /// `deleting` in the same transaction ([connectors 8]: the consent was theirs); `api`
+    /// revokes their tokens and deletes them after the commit (EON E3.6).
+    ///
+    /// [connectors 8]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#8-privacy-and-security
     pub const CHANGE_ROLE: &str = "BEGIN;
 LET $owners = count(SELECT VALUE id FROM member_of WHERE out = $garden AND role = 'owner');
 LET $current = (SELECT VALUE role FROM ONLY $member);
 IF $current = NONE { THROW 'not_found' };
 IF $current = 'owner' AND $role != 'owner' AND $owners <= 1 { THROW 'invalid_state' };
 UPDATE $member SET role = $role;
+IF $current = 'owner' AND $role != 'owner' { UPDATE connector SET status = 'deleting' WHERE garden = $garden AND created_by = $user AND status != 'deleting' };
 SELECT in AS user_id, in.display_name AS display_name, role, since FROM ONLY $member;
 COMMIT;";
 
-    /// `DELETE /gardens/{id}/members/{user_id}`; the last owner can't leave.
+    /// `DELETE /gardens/{id}/members/{user_id}`; the last owner can't leave. The member's
+    /// connectors in the garden are marked `deleting` in the same transaction, as for a
+    /// demotion; the `Member` cascade revokes and deletes them.
     pub const REMOVE_MEMBER: &str = "BEGIN;
 LET $current = (SELECT VALUE role FROM ONLY $member);
 IF $current = NONE { THROW 'not_found' };
 IF $current = 'owner' AND count(SELECT VALUE id FROM member_of WHERE out = $garden AND role = 'owner') <= 1 { THROW 'invalid_state' };
 DELETE $member;
+UPDATE connector SET status = 'deleting' WHERE garden = $garden AND created_by = $user AND status != 'deleting';
 SELECT VALUE id FROM conversation WHERE garden = $garden AND user = $user;
 COMMIT;";
 
@@ -590,6 +598,7 @@ impl GardenRepo for SurrealStore {
         let mut r = run_tx(&self.db, sql::CHANGE_ROLE, |q| {
             q.bind(("garden", rid(&owner.garden())))
                 .bind(("member", member_rid(member, owner.garden())))
+                .bind(("user", rid(&member)))
                 .bind(("role", RoleRow::from(role)))
         })
         .await

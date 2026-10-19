@@ -205,6 +205,21 @@ COMMIT;";
     /// The connectors a member created in a garden.
     pub const CREATED_BY: &str =
         "SELECT VALUE id FROM connector WHERE garden = $garden AND created_by = $user ORDER BY id;";
+    /// A garden's connectors marked `deleting` (index `connector_garden`), for a cascade or a
+    /// demotion to revoke and delete.
+    pub const DELETING_OF_GARDEN: &str = concat!(
+        "SELECT ",
+        row_fields!(),
+        " FROM connector WHERE garden = $garden AND status = 'deleting' ORDER BY id;"
+    );
+    /// Every connector marked `deleting` outside a garden being deleted, to resume after a
+    /// restart (index `connector_due`, whose first field is `status`). A garden being deleted
+    /// finishes its own connectors in its resumed cascade.
+    pub const DELETING_TO_RESUME: &str = concat!(
+        "SELECT ",
+        row_fields!(),
+        " FROM connector WHERE status = 'deleting' AND garden.deleting_at = NONE ORDER BY id;"
+    );
     /// The cleanup: one batch of `pending` connectors started before the cutoff. A pending
     /// connector holds no records.
     pub const DELETE_EXPIRED_PENDING: &str = "DELETE (SELECT VALUE id FROM connector WHERE status = 'pending' AND created_at < $cutoff LIMIT 500) RETURN VALUE $before.id;";
@@ -790,6 +805,24 @@ impl FarmRecordStore for SurrealStore {
             .map(from_rid)
             .collect::<Result<_, RowError>>()
             .map_err(|e| e.into_store(WHAT))
+    }
+
+    async fn deleting_connectors(
+        &self,
+        garden: Option<GardenId>,
+    ) -> Result<Vec<ConnectorRow>, StoreError> {
+        const WHAT: &str = "deleting connectors";
+        let statement = if garden.is_some() {
+            sql::DELETING_OF_GARDEN
+        } else {
+            sql::DELETING_TO_RESUME
+        };
+        let mut r = run_tx(&self.db, statement, |q| {
+            q.bind(("garden", garden.as_ref().map(rid)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        take_rows(&mut r, 0, WHAT)
     }
 
     async fn delete_expired_pending(&self, before: Timestamp) -> Result<u32, StoreError> {
