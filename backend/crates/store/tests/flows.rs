@@ -384,6 +384,7 @@ async fn guided_check_finishes() {
                 status: GuidedCheckStatus::Done,
                 observation: Some(texture.clone()),
             },
+            now,
         )
         .await
         .expect("finished");
