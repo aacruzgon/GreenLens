@@ -38,5 +38,12 @@
     "batch1_vs_batch8_max_diff": 0.024418652057647705,
     "sha256": "030416b2ebbbab96039e64033558266cd5509b1c1490ff06c4431cb151b19304",
     "pass": true
+  },
+  "fp16": {
+    "map50_95": 0.7259523578401516,
+    "map50": 0.9375638297249609,
+    "mar100": 0.8205752212389381,
+    "sha256": "8b6bdf2e7a4ec496514f0de99b4bd83c3bbc6eeefeda220ac1fc54954eafe26c",
+    "pass": true
   }
 }
