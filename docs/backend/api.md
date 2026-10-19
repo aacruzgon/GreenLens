@@ -1,6 +1,6 @@
 # PDM Backend: `api` binary
 
-> **Status:** Draft v0.7, 2026-10-17. v0.7: shared memories are recorded in `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs`, the new `GET /plants/{id}/beliefs` (never a 5xx), the `beliefs` scheduler task every 10 s (the only writer to Agent Memory: queued erases, then unsynced shared memories), deletions that queue their erase in their first transaction, and `POST /memories` taking a `topic`; 42 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
+> **Status:** Draft v0.7.1, 2026-10-19. v0.7.1: the farm connector routes are declared (roadmap E1.4): `GET /gardens/{id}/connectors` answers `available: false`, and the owner routes and the public OAuth callback answer `409 invalid_state` until connectors are configured; `Access<R, table::Connector>` resolves a connector's garden. v0.7: shared memories are recorded in `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs`, the new `GET /plants/{id}/beliefs` (never a 5xx), the `beliefs` scheduler task every 10 s (the only writer to Agent Memory: queued erases, then unsynced shared memories), deletions that queue their erase in their first transaction, and `POST /memories` taking a `topic`; 42 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
 
 Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports and types `api` wires, and [domain-types](domain-types.md) for every wire shape. Every listing below is copied from the compiled source of `bins/api` by the docgen tool. `cargo check -p api`, `cargo clippy -p api --all-targets` (no warning in `api`) and `cargo test -p api` pass: 42 tests, among them handler tests that drive the real router with `tower::ServiceExt::oneshot`. `cargo check --workspace` passes, the binary links, and `api openapi` writes the document.
 
@@ -177,9 +177,12 @@ bins/api/src/
 ├─ deletion.rs       DeletionRunner: cascades (objects, Agent Memory, records), account deletion, resume
 ├─ media.rs          signature check, object streaming
 ├─ routes.rs
-│  └─ routes/        scans, gardens, plants, species, tasks, account, memories, chat, internal, media, ops
+│  └─ routes/        scans, gardens, plants, species, tasks, account, memories, chat, connectors,
+│                    internal, media, ops
 └─ tests.rs          handler tests
-   └─ tests/fake_store.rs  generated: a Store of per-area mockall mocks
+   ├─ tests/fake_store.rs  generated: a Store of per-area mockall mocks
+   ├─ tests/beliefs.rs     the beliefs route and the deletion runner's Agent Memory step
+   └─ tests/connectors.rs  the connector routes while connectors are off
 ```
 
 ---
@@ -1214,6 +1217,16 @@ pub fn routes(request_timeout: Duration) -> OpenApiRouter<SharedState> {
         .routes(routes!(chat::message_feedback))
         .routes(routes!(chat::confirm_pending_action))
         .routes(routes!(chat::reject_pending_action))
+        .routes(routes!(
+            connectors::list_connectors,
+            connectors::create_connector
+        ))
+        .routes(routes!(connectors::oauth_callback))
+        .routes(routes!(connectors::complete_connector))
+        .routes(routes!(connectors::available_sources))
+        .routes(routes!(connectors::set_sources))
+        .routes(routes!(connectors::sync_connector))
+        .routes(routes!(connectors::delete_connector))
         .routes(routes!(ops::healthz))
         .routes(routes!(ops::status))
         .routes(routes!(ops::auth_webhook))
@@ -1375,6 +1388,7 @@ pub fn app(state: SharedState) -> Router {
         (name = "account", description = "contracts 9, account"),
         (name = "memories", description = "contracts 8, memory"),
         (name = "chat", description = "contracts 8"),
+        (name = "connectors", description = "farm connectors, docs/connectors 5 and 11"),
         (name = "media", description = "signed image URLs, storage 3"),
         (name = "worker", description = "contracts 5; worker token"),
         (name = "ops", description = "contracts 9, ops and auth webhook"),
@@ -2107,6 +2121,13 @@ Every endpoint of [architecture 9](../architecture/README.md#9-api-surface) and 
 | POST | `/messages/{id}/feedback` | `chat::message_feedback` | conversation owner | | [8](../architecture/contracts.md#endpoints) |
 | POST | `/pending-actions/{id}/confirm` | `chat::confirm_pending_action` | conversation owner, editor | | [8](../architecture/contracts.md#pending-actions-confirmation-cards) |
 | POST | `/pending-actions/{id}/reject` | `chat::reject_pending_action` | conversation owner, editor | | [8](../architecture/contracts.md#pending-actions-confirmation-cards) |
+| GET, POST | `/gardens/{id}/connectors` | `connectors::list_connectors`, `create_connector` | viewer, owner | | [connectors 11](../connectors/README.md#11-changes-to-other-documents) |
+| GET | `/connectors/oauth/callback` | `connectors::oauth_callback` | none; the signed `state` | | [connectors 5](../connectors/README.md#5-connecting-and-tokens) |
+| POST | `/connectors/{id}/complete` | `connectors::complete_connector` | owner who started it | | [connectors 5](../connectors/README.md#5-connecting-and-tokens) |
+| GET | `/connectors/{id}/available-sources` | `connectors::available_sources` | owner | | [connectors 11](../connectors/README.md#11-changes-to-other-documents) |
+| PUT | `/connectors/{id}/sources` | `connectors::set_sources` | owner | | [connectors 11](../connectors/README.md#11-changes-to-other-documents) |
+| POST | `/connectors/{id}/sync` | `connectors::sync_connector` | owner; one in 5 minutes | | [connectors 6](../connectors/README.md#6-sync) |
+| DELETE | `/connectors/{id}` | `connectors::delete_connector` | owner | | [connectors 8](../connectors/README.md#8-privacy-and-security) |
 | POST | `/internal/workers/heartbeat` | `internal::heartbeat` | worker token | | [5](../architecture/contracts.md#post-internalworkersheartbeat) |
 | POST | `/internal/jobs/claim` | `internal::claim` | worker token | | [5](../architecture/contracts.md#post-internaljobsclaim) |
 | POST | `/internal/jobs/{id}/events` | `internal::job_events` | worker token + lease | | [5](../architecture/contracts.md#post-internaljobsidevents) |
@@ -2515,6 +2536,42 @@ pub async fn plant_beliefs(
             Ok(Wire::ok(unavailable))
         }
     }
+}
+```
+
+The farm connector routes are declared ahead of their work (roadmap E1.4). Until connectors are configured, the list answers `available: false` and everything else `409 invalid_state`, not `503`, which clients retry (decision 9 of [docs/EON](../EON/README.md)); the access checks already run, so a non-member gets `404` and a non-owner `403`:
+
+```rust
+/// The answer of every connector write while connectors are off.
+fn connectors_off() -> ApiError {
+    ApiError::invalid_state(InvalidStateDetails::default())
+        .message("Farm connectors aren't available on this server yet.")
+}
+
+/// `GET /gardens/{id}/connectors`: the garden's connectors with their sources, last sync and
+/// record counts. Any member. `available: false` with an empty list while connectors are off.
+#[utoipa::path(get, path = "/gardens/{id}/connectors", tag = "connectors", params(("id" = String, Path)),
+    responses((status = 200, body = ConnectorList), (status = 404, body = ErrorBody)))]
+pub async fn list_connectors(
+    _access: Access<Viewer, table::Garden>,
+) -> Result<Wire<ConnectorList>, ApiError> {
+    Ok(Wire::ok(ConnectorList::unavailable()))
+}
+
+/// `POST /gardens/{id}/connectors`: starts a connect, `pending`, and returns the vendor's consent
+/// URL. Owner. `409 invalid_state` while connectors are off.
+#[utoipa::path(post, path = "/gardens/{id}/connectors", tag = "connectors",
+    params(("id" = String, Path), ("Idempotency-Key" = Option<String>, Header, description = "UUID per user action")),
+    request_body = CreateConnectorRequest,
+    responses((status = 201, body = CreateConnectorResponse), (status = 400, body = ErrorBody),
+        (status = 403, body = ErrorBody), (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)))]
+pub async fn create_connector(
+    _access: Access<Owner, table::Garden>,
+    request: IdemJson<CreateConnectorRequest>,
+) -> Response {
+    let IdemJson { begun, .. } = request;
+    let result: Result<Wire<CreateConnectorResponse>, ApiError> = Err(connectors_off());
+    begun.finish(result).await
 }
 ```
 
@@ -3601,6 +3658,18 @@ async fn confirm_revision(
         .knowledge
         .citations(&revised.citation_ids)
         .await?;
+    // The base's farm records that the revised steps still cite (connectors 7).
+    let farm_records = base
+        .farm_records
+        .iter()
+        .filter(|c| {
+            revised
+                .steps
+                .iter()
+                .any(|s| s.farm_citations.contains(&c.record_id))
+        })
+        .cloned()
+        .collect();
     let plan = ActionPlan {
         id: state.ports.ids.id(),
         scan_id: base.scan_id,
@@ -3615,6 +3684,7 @@ async fn confirm_revision(
         steps: revised.steps,
         watch_for: revised.watch_for,
         citations,
+        farm_records,
         task_ids: Vec::new(),
         llm_model: base.llm_model.clone(),
         prompt_version: base.prompt_version.clone(),

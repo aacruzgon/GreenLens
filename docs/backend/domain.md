@@ -1,8 +1,8 @@
 # PDM Backend: `domain` crate
 
-> **Status:** Draft v0.3.6, 2026-10-19. v0.3.6: `AnalysisRepo::finish_guided_check` takes `now`, like `complete_job`, so the lease check and the `score` claim follow the `Clock` port instead of the database clock. v0.3.5: the `BeliefStore` port records shared memories in Agent Memory, and `MemoryStore` gains the belief sweep's four methods (`unsynced_shared`, `mark_synced`, `belief_forgets`, `finish_belief_forget`). v0.3.4: `ToolSpec` gains `strict`, set by `agent` for the tools that propose changes. v0.3.3: section 1 says these types are the contracts' source of truth now that the code exists. v0.3.2: the schema link points to `backend/migrations/schema.surql`. v0.3.1: the section 1 note says the Rust skills follow this design and keeps only the timestamp difference from the brief; section 10 no longer says `rust-async` prefers a hand-written `BoxFuture`. v0.3: the cross-crate fixes add `PastWeather.longest_humid_run_days` and the past-week humid-stretch rules, store methods with default bodies (`JobRepo::live_lease`, `GardenRepo::soil_profile_failed` and `gardens_due_soil_profile`, the account tombstone's `DeletionRepo` methods), `AuthError::AccountDeleted` for a tombstoned account, `soil_retry_after` and `TOMBSTONE_KEEP`, and make `QuestionState::after_failed_photo(false)` supersede the question as contracts 5 says. v0.2: one definition of the weather thresholds (`rules::weather::WeatherThresholds`: frost at a 2 m minimum ≤ 0.5 °C, hard frost ≤ −2 °C, a humid stretch of two days with ≥ 10 h over 90%), `TextEmbedder::embed` takes an `EmbedMode`, `PhotoAnswerStart::Segment` boxes its job, corrected `BoxFormat`, `JobRepo::check_lease` and `DeletionRepo::delete_batch` comments, every addition the other crates made since v0.1 (section 12), and the open questions that contracts v0.9 and database v1.3.3–v1.4 resolved marked as such. v0.1: the shared crate every other crate builds on: typed ids and wire primitives, the error codes, the pure rules, the authorization proofs, the signed-URL typing and every boundary trait, all compiled on Rust 1.99.1.
+> **Status:** Draft v0.3.7, 2026-10-19. v0.3.7: the farm connectors' ports (roadmap E1.2): `FarmSource` for the Slack and Drive adapters with `FarmSourceError`, and `FarmRecordStore` for the `connector` and `farm_record` tables, part of `Store`; `GardenResource::Connector`; the garden cascade's `FarmRecordsAndConnectors` step before `Garden`; a new `connectors` module of wire types. v0.3.6: `AnalysisRepo::finish_guided_check` takes `now`, like `complete_job`, so the lease check and the `score` claim follow the `Clock` port instead of the database clock. v0.3.5: the `BeliefStore` port records shared memories in Agent Memory, and `MemoryStore` gains the belief sweep's four methods (`unsynced_shared`, `mark_synced`, `belief_forgets`, `finish_belief_forget`). v0.3.4: `ToolSpec` gains `strict`, set by `agent` for the tools that propose changes. v0.3.3: section 1 says these types are the contracts' source of truth now that the code exists. v0.3.2: the schema link points to `backend/migrations/schema.surql`. v0.3.1: the section 1 note says the Rust skills follow this design and keeps only the timestamp difference from the brief; section 10 no longer says `rust-async` prefers a hand-written `BoxFuture`. v0.3: the cross-crate fixes add `PastWeather.longest_humid_run_days` and the past-week humid-stretch rules, store methods with default bodies (`JobRepo::live_lease`, `GardenRepo::soil_profile_failed` and `gardens_due_soil_profile`, the account tombstone's `DeletionRepo` methods), `AuthError::AccountDeleted` for a tombstoned account, `soil_retry_after` and `TOMBSTONE_KEEP`, and make `QuestionState::after_failed_photo(false)` supersede the question as contracts 5 says. v0.2: one definition of the weather thresholds (`rules::weather::WeatherThresholds`: frost at a 2 m minimum ≤ 0.5 °C, hard frost ≤ −2 °C, a humid stretch of two days with ≥ 10 h over 90%), `TextEmbedder::embed` takes an `EmbedMode`, `PhotoAnswerStart::Segment` boxes its job, corrected `BoxFormat`, `JobRepo::check_lease` and `DeletionRepo::delete_batch` comments, every addition the other crates made since v0.1 (section 12), and the open questions that contracts v0.9 and database v1.3.3–v1.4 resolved marked as such. v0.1: the shared crate every other crate builds on: typed ids and wire primitives, the error codes, the pure rules, the authorization proofs, the signed-URL typing and every boundary trait, all compiled on Rust 1.99.1.
 
-Companion to the [backend architecture](README.md). The contract shapes themselves, section by section, are in [domain-types](domain-types.md). Every listing here is copied from the compiled source of `crates/domain`: `cargo check -p domain`, `cargo test -p domain` (95 unit tests, 5 compile-fail doc tests) and `cargo clippy -p domain --all-targets` pass, with and without the `mock` and `test-util` features.
+Companion to the [backend architecture](README.md). The contract shapes themselves, section by section, are in [domain-types](domain-types.md). Every listing here is copied from the compiled source of `crates/domain`: `cargo check -p domain`, `cargo test -p domain` (112 unit tests, 5 compile-fail doc tests) and `cargo clippy -p domain --all-targets` pass, with and without the `mock` and `test-util` features.
 
 ## Contents
 
@@ -114,6 +114,7 @@ crates/domain/src/
 │  └─ records/         observation, measurement, weather, diagnosis, plan, task
 ├─ chat.rs             conversations, messages, chat events, pending actions,
 │                      memory, tool return shapes                                    (contracts 8)
+├─ connectors.rs       farm connectors, the connect requests, FarmCitation          (connectors 4–7)
 ├─ garden.rs           gardens, plants, tasks and account                            (contracts 9)
 │  └─ garden/          gardens, members, plants, species, map, tasks, account,
 │                      push, webhook, ops
@@ -124,10 +125,10 @@ crates/domain/src/
 ├─ authz.rs            MinRole markers, Membership<R>, ConversationOwner<R>, checks
 ├─ ports.rs            boundary traits
 │  ├─ ports/           errors, system, auth, blob, models, providers, knowledge,
-│  │                   beliefs
+│  │                   beliefs, farm
 │  └─ ports/store/     access, identity, gardens, plants, scans, events, analysis,
 │                      steps, plans, chat, knowledge, jobs, idempotency, weather,
-│                      deletion, map
+│                      deletion, map, farm
 ├─ testing.rs          FixedClock, SequentialIds, FakeSigner, FixedPhotos,
 │                      ScriptedChat (feature test-util)
 └─ schema_util.rs      hand-written string schemas for utoipa and schemars
@@ -232,6 +233,8 @@ pub mod table {
         Memory => "memory",
         /// `job`
         Job => "job",
+        /// `connector`
+        Connector => "connector",
     }
 }
 ```
@@ -857,6 +860,7 @@ One enum per kind of port instead of an associated `Error` per trait, because `A
 //! `source` for the log.
 
 use crate::{
+    connectors::{ConnectorKind, SyncErrorCode},
     error::DomainError,
     id::{JobId, PlanId},
 };
@@ -1002,6 +1006,72 @@ impl ProviderError {
     }
 }
 
+/// A farm connector vendor's error ([connectors 6]): Slack or Google Drive. Each maps to the
+/// fixed code stored in `connector.last_error`; the vendor's response text is never kept,
+/// because it may echo record text.
+///
+/// [connectors 6]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#6-sync
+#[derive(Debug, thiserror::Error)]
+pub enum FarmSourceError {
+    /// The vendor refused the token (Slack's `invalid_auth` or `token_revoked`, Google's
+    /// `invalid_grant`): the connector becomes `reauth_needed`.
+    #[error("{vendor}: token refused")]
+    AuthRefused {
+        /// The vendor.
+        vendor: ConnectorKind,
+    },
+    /// A chosen channel or folder is gone or no longer visible to the token (Slack's
+    /// `channel_not_found`, Drive's `404`): nothing runs until the owner changes the sources. A
+    /// scope refusal (Slack's `missing_scope`, Drive's `insufficientPermissions`) is
+    /// [`Self::AuthRefused`], not this.
+    #[error("{vendor}: source {source_id} is missing")]
+    SourceMissing {
+        /// The vendor.
+        vendor: ConnectorKind,
+        /// The channel or folder id from the owner's choice.
+        source_id: String,
+    },
+    /// `429` past the pacer: the cursor is saved and the next run continues.
+    #[error("{vendor}: rate limited")]
+    RateLimited {
+        /// The vendor.
+        vendor: ConnectorKind,
+        /// The vendor's `Retry-After`.
+        retry_after_s: Option<u32>,
+    },
+    /// Down, timed out or answering 5xx: the next attempt is 15 minutes later.
+    #[error("{vendor}: unavailable")]
+    Unavailable {
+        /// The vendor.
+        vendor: ConnectorKind,
+        /// The client error, without the response body.
+        #[source]
+        source: BoxError,
+    },
+    /// The response didn't parse.
+    #[error("{vendor}: bad response")]
+    BadResponse {
+        /// The vendor.
+        vendor: ConnectorKind,
+        /// The parse error, without the response body.
+        #[source]
+        source: BoxError,
+    },
+}
+
+impl FarmSourceError {
+    /// The `connector.last_error` code. A response that didn't parse counts as the vendor being
+    /// unavailable: the sync tries again later either way.
+    pub const fn code(&self) -> SyncErrorCode {
+        match self {
+            Self::AuthRefused { .. } => SyncErrorCode::AuthRefused,
+            Self::SourceMissing { .. } => SyncErrorCode::SourceMissing,
+            Self::RateLimited { .. } => SyncErrorCode::RateLimited,
+            Self::Unavailable { .. } | Self::BadResponse { .. } => SyncErrorCode::VendorUnavailable,
+        }
+    }
+}
+
 /// A model's error: the LLM API, the VLM sidecar, `ort` sessions, the text embedder.
 #[derive(Debug, thiserror::Error)]
 pub enum ModelError {
@@ -1066,6 +1136,37 @@ pub enum AuthError {
     /// unauthenticated`, never a new user.
     #[error("account deleted")]
     AccountDeleted,
+}
+
+#[cfg(test)]
+mod farm_source_tests {
+    use super::*;
+
+    #[test]
+    fn each_farm_source_error_has_its_stored_code() {
+        let missing = FarmSourceError::SourceMissing {
+            vendor: ConnectorKind::Slack,
+            source_id: "C024BE91L".into(),
+        };
+        assert_eq!(missing.code(), SyncErrorCode::SourceMissing);
+        assert_eq!(missing.code().as_str(), "source_missing");
+        let limited = FarmSourceError::RateLimited {
+            vendor: ConnectorKind::GoogleDrive,
+            retry_after_s: Some(30),
+        };
+        assert_eq!(limited.code(), SyncErrorCode::RateLimited);
+        assert!(matches!(
+            limited,
+            FarmSourceError::RateLimited {
+                retry_after_s: Some(30),
+                ..
+            }
+        ));
+        let refused = FarmSourceError::AuthRefused {
+            vendor: ConnectorKind::Slack,
+        };
+        assert_eq!(refused.code(), SyncErrorCode::AuthRefused);
+    }
 }
 ```
 
@@ -2738,6 +2839,7 @@ mod auth;
 mod beliefs;
 mod blob;
 mod errors;
+mod farm;
 mod knowledge;
 mod models;
 mod providers;
@@ -2748,6 +2850,7 @@ pub use auth::*;
 pub use beliefs::*;
 pub use blob::*;
 pub use errors::*;
+pub use farm::*;
 pub use knowledge::*;
 pub use models::*;
 pub use providers::*;
@@ -4257,6 +4360,137 @@ impl BeliefStore for NoBeliefs {
 }
 ```
 
+### Farm connectors' vendors
+
+The Slack and Google Drive adapters behind the farm connectors ([connectors 5–6](../connectors/README.md#6-sync)). `integrations` implements `FarmSource` once per vendor, each client built with a base URL so tests point it at Era's simulators; `api` picks one by the connector's `kind` and hands it a token it unsealed. Chunking, embedding and the record limit happen in the sync, outside the adapter. The OAuth exchanges are not part of the port: they run once per connect in `api`'s routes.
+
+```rust
+//! The farm connectors' vendor port ([connectors 5], [connectors 6]): what the `connectors`
+//! scheduler task and the owner routes ask Slack or Google Drive. `integrations` implements it
+//! once per vendor (`SlackClient`, `DriveClient`), each built with a base URL so tests point it
+//! at Era's simulators; `api` picks the implementation by the connector's `kind`.
+//!
+//! The adapter is handed a token already unsealed by `api` and never sees the database. It
+//! reads raw items (a message with its thread, a document's text); chunking, embedding,
+//! `text_hash` and the 10,000-record limit happen in the sync, outside it. The OAuth exchanges
+//! are not part of this port: they run once per connect in `api`'s routes (E3).
+//!
+//! [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
+//! [connectors 6]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#6-sync
+
+use std::{fmt, sync::Arc};
+
+use crate::{
+    connectors::{ConnectorAccount, ConnectorKind, ConnectorSource, FarmRecordKind},
+    ports::FarmSourceError,
+    wire::Timestamp,
+};
+
+/// A vendor access token (Slack's bot token, Google's access token), unsealed for one call.
+/// `Debug` never prints it, so a token can't reach a log through a derived `Debug`.
+#[derive(Clone, PartialEq, Eq)]
+pub struct VendorToken(Arc<str>);
+
+impl VendorToken {
+    /// Wraps an unsealed token.
+    pub fn new(token: &str) -> Self {
+        Self(Arc::from(token))
+    }
+
+    /// The token, for the `Authorization` header only.
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for VendorToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("VendorToken(..)")
+    }
+}
+
+/// Where a source's sync stands, opaque outside its adapter: Slack's newest `ts` and page
+/// cursor, Drive's page token or `changes.getStartPageToken`. Stored per source in
+/// `connector.cursor`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SyncCursor(pub String);
+
+/// One page to read from one source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FarmPageRequest {
+    /// The connected workspace or account (Slack permalinks are built from its URL).
+    pub account: ConnectorAccount,
+    /// The channel or folder.
+    pub source: ConnectorSource,
+    /// Where the last page stopped; `None` for a first sync.
+    pub cursor: Option<SyncCursor>,
+    /// The oldest item wanted: 180 days back on a first sync, 7 days back for the daily
+    /// re-read of Slack's trailing window.
+    pub oldest: Timestamp,
+}
+
+/// One item as the vendor holds it, before chunking.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FarmItem {
+    /// Slack `"<channel>/<ts>"` or a Drive file id.
+    pub vendor_id: String,
+    /// A message or a document.
+    pub kind: FarmRecordKind,
+    /// `"#field-reports"`, `"Spray log 2026"`.
+    pub title: String,
+    /// The author's display name, from the per-team `users.info` cache.
+    pub author: Option<String>,
+    /// The permalink or `webViewLink`.
+    pub link: String,
+    /// A message with its replies joined, or a document's text (cut at 1 MB). Empty for a file
+    /// listed by name only.
+    pub text: String,
+    /// The message's time, or the document's `modifiedTime`.
+    pub at: Timestamp,
+}
+
+/// What one page returned.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FarmPage {
+    /// New or changed items.
+    pub items: Vec<FarmItem>,
+    /// Vendor ids that are gone (deleted, trashed, moved out of the folder), whose records the
+    /// sync deletes.
+    pub removed: Vec<String>,
+    /// The cursor to save after this page.
+    pub cursor: SyncCursor,
+    /// `true` when another page follows; the sync reads it now or on its next run.
+    pub more: bool,
+}
+
+/// A vendor behind the farm connectors (Slack or Google Drive).
+#[cfg_attr(feature = "mock", mockall::automock)]
+#[async_trait::async_trait]
+pub trait FarmSource: Send + Sync {
+    /// Which vendor this adapter speaks to.
+    fn kind(&self) -> ConnectorKind;
+
+    /// `GET /connectors/{id}/available-sources`: the channels the bot is a member of
+    /// (`is_member`), or the folders the account can open.
+    async fn available_sources(
+        &self,
+        token: &VendorToken,
+    ) -> Result<Vec<ConnectorSource>, FarmSourceError>;
+
+    /// One page of one source, from `request.cursor`. Honours `Retry-After`; a `429` that
+    /// outlasts the pacer is [`FarmSourceError::RateLimited`], so the sync saves its cursor.
+    async fn read_page(
+        &self,
+        token: &VendorToken,
+        request: FarmPageRequest,
+    ) -> Result<FarmPage, FarmSourceError>;
+
+    /// Revokes the token on disconnect (`auth.revoke`, Google's `revoke`). A failure is logged
+    /// by the caller and the records are deleted anyway.
+    async fn revoke(&self, token: &VendorToken) -> Result<(), FarmSourceError>;
+}
+```
+
 ### The store
 
 The store's area traits, `Store` as the supertrait of all of them, and the claim and lease tokens the write patterns of [database 4](../database/README.md#4-write-patterns) need.
@@ -4284,6 +4518,7 @@ mod analysis;
 mod chat;
 mod deletion;
 mod events;
+mod farm;
 mod gardens;
 mod idempotency;
 mod identity;
@@ -4301,6 +4536,7 @@ pub use analysis::*;
 pub use chat::*;
 pub use deletion::*;
 pub use events::*;
+pub use farm::*;
 pub use gardens::*;
 pub use idempotency::*;
 pub use identity::*;
@@ -4407,6 +4643,7 @@ pub trait Store:
     + WeatherCacheRepo
     + DeletionRepo
     + MapRepo
+    + FarmRecordStore
 {
 }
 
@@ -4428,6 +4665,7 @@ impl<T> Store for T where
         + WeatherCacheRepo
         + DeletionRepo
         + MapRepo
+        + FarmRecordStore
 {
 }
 ```
@@ -4454,8 +4692,8 @@ impl<T> Store for T where
 
 use crate::{
     id::{
-        ConversationId, GardenId, InviteId, MemoryId, PendingActionId, PlanId, PlantId, ScanId,
-        TaskId, UserId,
+        ConnectorId, ConversationId, GardenId, InviteId, MemoryId, PendingActionId, PlanId,
+        PlantId, ScanId, TaskId, UserId,
     },
     ports::StoreError,
     wire::Role,
@@ -4476,6 +4714,8 @@ pub enum GardenResource {
     Memory(MemoryId),
     /// An invite.
     Invite(InviteId),
+    /// A farm connector; one being deleted (`status: deleting`) reads as missing.
+    Connector(ConnectorId),
 }
 
 /// A conversation's owner and garden.
@@ -6628,6 +6868,351 @@ pub trait MapRepo: Send + Sync {
 }
 ```
 
+#### Farm connectors and records
+
+The `connector` and `farm_record` tables ([connectors 4](../connectors/README.md#4-data)). The store answers every method with `StoreError::Query` until roadmap task E1.6 implements them; no route reaches them before then.
+
+```rust
+//! Farm connectors and their synced records ([connectors 4], [connectors 6]): the `connector`
+//! and `farm_record` tables. Owner routes take a `Membership<Owner>` from the connector's
+//! garden (`GardenResource::Connector`); the `connectors` scheduler task, the cleanup and the
+//! deletion runner call the internal methods, which take no proof.
+//!
+//! [connectors 4]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#4-data
+//! [connectors 6]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#6-sync
+
+use std::{collections::BTreeMap, fmt};
+
+use crate::{
+    authz::{Membership, Owner, Viewer},
+    connectors::{
+        Connector, ConnectorAccount, ConnectorEndpoint, ConnectorKind, ConnectorSource,
+        ConnectorStatus, FarmRecordHit, FarmRecordKind, SyncErrorCode,
+    },
+    id::{ConnectorId, DeviceHash, FarmRecordId, GardenId, UserId},
+    ports::{Embedding, StoreError, SyncCursor},
+    wire::Timestamp,
+};
+
+/// A value sealed with AES-256-GCM under `CONNECTOR_KEY`, the connector's id as associated
+/// data (`connector.secret`, the PKCE verifier in `oauth`). `Debug` never prints the bytes.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Sealed(pub bytes::Bytes);
+
+impl fmt::Debug for Sealed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Sealed({} bytes)", self.0.len())
+    }
+}
+
+/// A pending connect's `oauth` field: kept until the exchange clears it, so a state works once.
+#[derive(Clone, PartialEq, Eq)]
+pub struct PendingConnect {
+    /// The nonce the signed `state` carries.
+    pub nonce: String,
+    /// `SHA-256(device_verifier)` from the app that started the connect.
+    pub device_hash: DeviceHash,
+    /// Google's PKCE verifier, sealed; `None` for Slack.
+    pub verifier: Option<Sealed>,
+    /// 10 minutes after the start.
+    pub expires_at: Timestamp,
+}
+
+impl fmt::Debug for PendingConnect {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PendingConnect")
+            .field("nonce", &"[redacted]")
+            .field("device_hash", &self.device_hash)
+            .field("verifier", &self.verifier)
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
+}
+
+/// A connector to create.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewConnector {
+    /// Its id.
+    pub id: ConnectorId,
+    /// Slack or Google Drive.
+    pub kind: ConnectorKind,
+    /// `pending` for an owner's connect; `active` for the seeded demo connectors.
+    pub status: ConnectorStatus,
+    /// `vendor` for every route; `era` only from start-up seeding.
+    pub endpoint: ConnectorEndpoint,
+    /// The owner who consented.
+    pub created_by: UserId,
+    /// Known at once only for a seeded connector.
+    pub account: Option<ConnectorAccount>,
+    /// The sealed tokens; `None` until the exchange.
+    pub secret: Option<Sealed>,
+    /// A pending connect's state; `None` for a seeded connector.
+    pub oauth: Option<PendingConnect>,
+    /// The chosen sources; empty for an owner's connect.
+    pub sources: Vec<ConnectorSource>,
+    /// Now.
+    pub created_at: Timestamp,
+}
+
+/// A connector with everything the sync and the routes need beside its wire shape. Never sent:
+/// it holds the sealed tokens.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectorRow {
+    /// The wire shape, with its record count.
+    pub connector: Connector,
+    /// The owner who consented; the connector goes when they stop being an owner.
+    pub created_by: UserId,
+    /// The sealed tokens.
+    pub secret: Option<Sealed>,
+    /// The pending connect's state.
+    pub oauth: Option<PendingConnect>,
+    /// Each source's sync cursor, by source id.
+    pub cursors: BTreeMap<String, SyncCursor>,
+    /// When the sync is due.
+    pub next_sync_at: Timestamp,
+    /// The last sync's failure, a fixed code.
+    pub last_error: Option<SyncErrorCode>,
+    /// The last accepted **Sync now** (decision 12): one per connector in 5 minutes.
+    pub sync_requested_at: Option<Timestamp>,
+}
+
+/// What a successful exchange stores: `status: active`, `oauth` cleared, `next_sync_at` now.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompletedConnect {
+    /// The nonce the state carried: the write is a compare-and-set on the stored one, so a
+    /// state works once.
+    pub nonce: String,
+    /// The connected workspace or account.
+    pub account: ConnectorAccount,
+    /// The sealed tokens.
+    pub secret: Sealed,
+    /// Now: also the first `next_sync_at`.
+    pub now: Timestamp,
+}
+
+/// What a sync run stores when it stops, finished or not.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyncOutcome {
+    /// Each source's cursor after the run.
+    pub cursors: BTreeMap<String, SyncCursor>,
+    /// Set when every source was read to its end.
+    pub synced_at: Option<Timestamp>,
+    /// 15 minutes after a finished sync or an outage; now when pages are left.
+    pub next_sync_at: Timestamp,
+    /// The failure that stopped it, if any.
+    pub last_error: Option<SyncErrorCode>,
+}
+
+/// A chunk's vector, sent only when its `text_hash` changed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FarmVector {
+    /// The vector, embedded in document mode with the pinned text embedder.
+    pub embedding: Embedding,
+    /// The embedding model's name.
+    pub model: String,
+}
+
+/// One chunk to upsert by `(connector, vendor_id, n)`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewFarmRecord {
+    /// `farm_record:[connector, vendor_id, n]`.
+    pub id: FarmRecordId,
+    /// A message or a document chunk.
+    pub kind: FarmRecordKind,
+    /// `"#field-reports"`, `"Spray log 2026"`.
+    pub title: String,
+    /// The author's display name.
+    pub author: Option<String>,
+    /// The permalink or `webViewLink`.
+    pub link: String,
+    /// At most 2,000 characters.
+    pub text: String,
+    /// The hash of `text`: an unchanged hash keeps the stored vector.
+    pub text_hash: String,
+    /// `None` when `text_hash` is unchanged, so the stored vector stays; required for a new
+    /// record.
+    pub vector: Option<FarmVector>,
+    /// The message's time, or the document's `modifiedTime`.
+    pub at: Timestamp,
+}
+
+/// `search_farm_records`' filters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct FarmRecordFilter {
+    /// Messages or documents only.
+    pub kind: Option<FarmRecordKind>,
+    /// Records at or after this instant (the tool's `since` date at the garden's midnight).
+    pub since: Option<Timestamp>,
+}
+
+/// A search hit with its similarity to the query.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FarmRecordMatch {
+    /// The text and its citation.
+    pub hit: FarmRecordHit,
+    /// Cosine similarity.
+    pub similarity: f32,
+}
+
+/// The `connector` and `farm_record` tables.
+#[cfg_attr(feature = "mock", mockall::automock)]
+#[async_trait::async_trait]
+pub trait FarmRecordStore: Send + Sync {
+    // ---- connectors ----
+
+    /// `POST /gardens/{id}/connectors`: a `pending` connector with its `oauth` state. A garden
+    /// holds at most 2 connectors (`Rejected`).
+    async fn create_connector(
+        &self,
+        owner: Membership<Owner>,
+        connector: NewConnector,
+    ) -> Result<Connector, StoreError>;
+
+    /// Start-up seeding of the demo garden's `era` connectors: idempotent by the fixed id.
+    async fn seed_connector(
+        &self,
+        garden: GardenId,
+        connector: NewConnector,
+    ) -> Result<Connector, StoreError>;
+
+    /// `GET /gardens/{id}/connectors`: the garden's connectors with their record counts,
+    /// oldest first, leaving out those being deleted.
+    async fn connectors(&self, member: Membership<Viewer>) -> Result<Vec<Connector>, StoreError>;
+
+    /// One connector with its sealed tokens and sync state; `None` when it doesn't exist.
+    async fn connector_row(
+        &self,
+        connector: ConnectorId,
+    ) -> Result<Option<ConnectorRow>, StoreError>;
+
+    /// `POST /connectors/{id}/complete`: a compare-and-set on `status = 'pending'` and the
+    /// stored nonce; `Conflict` when either no longer holds.
+    async fn complete_connect(
+        &self,
+        owner: Membership<Owner>,
+        connector: ConnectorId,
+        done: CompletedConnect,
+    ) -> Result<Connector, StoreError>;
+
+    /// `PUT /connectors/{id}/sources`: replaces the sources, drops the cursors of sources no
+    /// longer chosen and makes the sync due now.
+    async fn set_sources(
+        &self,
+        owner: Membership<Owner>,
+        connector: ConnectorId,
+        sources: Vec<ConnectorSource>,
+        now: Timestamp,
+    ) -> Result<Connector, StoreError>;
+
+    /// `POST /connectors/{id}/sync` (decision 12): a compare-and-set on `sync_requested_at`.
+    /// `true` when accepted (it is unset or 5 minutes old; `next_sync_at` becomes now),
+    /// `false` within 5 minutes of the last.
+    async fn request_sync(
+        &self,
+        owner: Membership<Owner>,
+        connector: ConnectorId,
+        now: Timestamp,
+    ) -> Result<bool, StoreError>;
+
+    /// The `connectors` task: connectors whose `next_sync_at` has passed, `active` only
+    /// (never `pending`, `reauth_needed` or `deleting`), on the `connector_due` index.
+    async fn due_connectors(
+        &self,
+        now: Timestamp,
+        limit: u32,
+    ) -> Result<Vec<ConnectorRow>, StoreError>;
+
+    /// Stores a sync run's cursors, times and failure.
+    async fn finish_sync(
+        &self,
+        connector: ConnectorId,
+        outcome: SyncOutcome,
+    ) -> Result<(), StoreError>;
+
+    /// Sets `status` and `last_error` (a refused token: `reauth_needed` with `auth_refused`).
+    async fn set_status(
+        &self,
+        connector: ConnectorId,
+        status: ConnectorStatus,
+        last_error: Option<SyncErrorCode>,
+    ) -> Result<(), StoreError>;
+
+    /// `DELETE /connectors/{id}`: `status: deleting`, so the sync and the list skip it.
+    /// Returns the row, whose tokens the caller revokes before deleting the records.
+    async fn start_connector_deletion(
+        &self,
+        owner: Membership<Owner>,
+        connector: ConnectorId,
+    ) -> Result<ConnectorRow, StoreError>;
+
+    /// One batch of a connector's deletion: its farm records, 500 at a time, then the connector
+    /// itself. The caller repeats it until 0.
+    async fn delete_connector_batch(&self, connector: ConnectorId) -> Result<u32, StoreError>;
+
+    /// The connectors a member created in a garden: deleted when that member stops being an
+    /// owner (demoted, removed, leaving or deleting the account).
+    async fn connectors_created_by(
+        &self,
+        garden: GardenId,
+        user: UserId,
+    ) -> Result<Vec<ConnectorId>, StoreError>;
+
+    /// The cleanup: deletes `pending` connectors created before the cutoff (10 minutes ago).
+    async fn delete_expired_pending(&self, before: Timestamp) -> Result<u32, StoreError>;
+
+    // ---- farm records ----
+
+    /// The stored `text_hash` of every chunk of these items, so the sync embeds only changed
+    /// text.
+    async fn record_hashes(
+        &self,
+        connector: ConnectorId,
+        vendor_ids: Vec<String>,
+    ) -> Result<Vec<(FarmRecordId, String)>, StoreError>;
+
+    /// Upserts chunks by `(connector, vendor_id, n)`, keeping the stored vector when
+    /// `vector` is `None`. Returns how many were written.
+    async fn upsert_records(
+        &self,
+        connector: ConnectorId,
+        records: Vec<NewFarmRecord>,
+    ) -> Result<u32, StoreError>;
+
+    /// Deletes every chunk of these items (gone at the vendor, or re-chunked into fewer).
+    async fn delete_records(
+        &self,
+        connector: ConnectorId,
+        vendor_ids: Vec<String>,
+    ) -> Result<u32, StoreError>;
+
+    /// One batch of 500 of a source's records, after the owner dropped it: Slack's whose
+    /// `vendor_id` starts with `"<channel>/"`, and for Drive (one folder) all of the
+    /// connector's.
+    async fn delete_source_records(
+        &self,
+        connector: ConnectorId,
+        source: String,
+    ) -> Result<u32, StoreError>;
+
+    /// A garden's record count, for the 10,000 limit.
+    async fn garden_record_count(&self, garden: GardenId) -> Result<u32, StoreError>;
+
+    /// `search_farm_records`: the `k` closest records of the proof's garden, searched exactly
+    /// (no HNSW index, gap G7), each with its citation.
+    async fn search_records(
+        &self,
+        member: Membership<Viewer>,
+        query: &Embedding,
+        filter: FarmRecordFilter,
+        k: usize,
+    ) -> Result<Vec<FarmRecordMatch>, StoreError>;
+
+    /// The cleanup: one batch of 500 records older than the cutoff (180 days), on the
+    /// `farm_record_at` index.
+    async fn delete_records_before(&self, cutoff: Timestamp) -> Result<u32, StoreError>;
+}
+```
+
 #### Deletion cascades
 
 ```rust
@@ -6682,13 +7267,18 @@ pub enum CascadeStep {
     Conversations,
     /// Memories, then plants (a single plant first loses its pin), then the garden map.
     MemoriesPlantsMap,
+    /// Farm records, then the farm connectors ([connectors 8], deletion): a record holds a
+    /// reference to its connector, and both to the garden. A garden's only.
+    ///
+    /// [connectors 8]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#8-privacy-and-security
+    FarmRecordsAndConnectors,
     /// Invites, memberships and the garden itself.
     Garden,
 }
 
 impl CascadeStep {
     /// Every step, in order.
-    pub const ORDER: [Self; 9] = [
+    pub const ORDER: [Self; 10] = [
         Self::EventsAndJobs,
         Self::TasksAndTriggers,
         Self::PlansAndDiagnoses,
@@ -6697,6 +7287,7 @@ impl CascadeStep {
         Self::ImagesAndScans,
         Self::Conversations,
         Self::MemoriesPlantsMap,
+        Self::FarmRecordsAndConnectors,
         Self::Garden,
     ];
 

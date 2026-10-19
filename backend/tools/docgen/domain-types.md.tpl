@@ -1,6 +1,6 @@
 # PDM Backend: `domain` contract types
 
-> **Status:** Draft v0.3.3, 2026-10-17. v0.3.3: memories gain a `topic`, and the beliefs mirrored into Agent Memory get their wire types (`Belief`, `PlantBeliefs`, `BeliefHit`, `MemorySearch`). v0.3.2: the schema links point to `backend/migrations/schema.surql`. v0.3.1: `JobErrorCode`'s comments follow contracts 5: `max_runtime_exceeded` is settled (question 18), and `unsupported_version` and `model_error` carry the contract's full meaning. v0.3: `PastWeather` gains `longest_humid_run_days` (contracts v0.10, section 7), the longest run of humid days in the past week, so a past humid stretch is detectable. v0.2: follows contracts v0.9 and v0.10 where they touch shapes: `JobError.code` is a `JobErrorCode` (`max_runtime_exceeded` and `unknown_label_version` included), the `model_versions` keys are `ModelVersionKey` constants, `Invite.created_by` is optional, worker payloads never carry a mask URL and `complete` results are read by the job's kind (both as v0.1 had them); `BoxFormat`'s comments name the models of each format. v0.1: every shape of [contracts.md](../architecture/contracts.md) v0.8.2 as compiled Rust, section by section, with the serde and schema decisions explained and a TypeScript → Rust map.
+> **Status:** Draft v0.3.4, 2026-10-19. v0.3.4: the farm connectors' wire types ([connectors](../connectors/README.md), roadmap E1.1): `Connector` and its enums, the connect requests, `FarmCitation`, `FarmRecordId` and `ConnectorId`; `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations`, absent when empty; the `search_farm_records` tool. v0.3.3: memories gain a `topic`, and the beliefs mirrored into Agent Memory get their wire types (`Belief`, `PlantBeliefs`, `BeliefHit`, `MemorySearch`). v0.3.2: the schema links point to `backend/migrations/schema.surql`. v0.3.1: `JobErrorCode`'s comments follow contracts 5: `max_runtime_exceeded` is settled (question 18), and `unsupported_version` and `model_error` carry the contract's full meaning. v0.3: `PastWeather` gains `longest_humid_run_days` (contracts v0.10, section 7), the longest run of humid days in the past week, so a past humid stretch is detectable. v0.2: follows contracts v0.9 and v0.10 where they touch shapes: `JobError.code` is a `JobErrorCode` (`max_runtime_exceeded` and `unknown_label_version` included), the `model_versions` keys are `ModelVersionKey` constants, `Invite.created_by` is optional, worker payloads never carry a mask URL and `complete` results are read by the job's kind (both as v0.1 had them); `BoxFormat`'s comments name the models of each format. v0.1: every shape of [contracts.md](../architecture/contracts.md) v0.8.2 as compiled Rust, section by section, with the serde and schema decisions explained and a TypeScript → Rust map.
 
 Companion to the [backend architecture](README.md) and to the [`domain` crate](domain.md). Sections 1–10 follow [contracts.md](../architecture/contracts.md) 1–10, so "contracts 7" and "domain-types 7" describe the same shapes. Every listing is copied from the compiled source of `crates/domain` (`cargo check`, `cargo test` and `cargo clippy --all-targets` pass on Rust 1.99.1 with serde 1.0.229, utoipa 6.0.0, schemars 1.2.3, chrono 0.4.45 and ulid 3.0.0); the module paths are in [the map](#11-typescript-to-rust-map).
 
@@ -82,17 +82,17 @@ Every wire type derives `Debug, Clone, PartialEq, Serialize, Deserialize, utoipa
 
 @@items id.rs mod:table@@
 
-@@items id.rs UserId GardenId InviteId PlantId GardenMapId ScanId ImageId MaskId ObservationId QuestionId GuidedCheckId DiagnosisId FeedbackId PlanId PlanTriggerId TaskId ConversationId ChatImageId MessageId PendingActionId MemoryId JobId@@
+@@items id.rs UserId GardenId InviteId PlantId GardenMapId ScanId ImageId MaskId ObservationId QuestionId GuidedCheckId DiagnosisId FeedbackId PlanId PlanTriggerId TaskId ConversationId ChatImageId MessageId PendingActionId MemoryId JobId ConnectorId@@
 
 Knowledge ids are slugs, typed by table. `"healthy"` is reserved: it can't be a problem slug, because it takes a problem id's place in `problem_id: Slug | "healthy"`.
 
 @@items id.rs SlugKind Slug SLUG_PATTERN ProblemOrHealthy@@
 
-Compound ids check both parts:
+Compound ids check both parts. A farm record's key is `farm_record:[connector, vendor_id, n]`, and its wire form puts the vendor id last, because a Slack `ts` holds a dot:
 
-@@items id.rs IndicatorId RegionId ChunkId@@
+@@items id.rs IndicatorId RegionId ChunkId FarmRecordId@@
 
-The opaque strings (`WorkerId`, `LeaseToken`, `AuthId`, `InviteCode`, `PushToken`, `Cursor`, `StepId`) come from one macro with a check per type, and `IdempotencyKey` wraps a `uuid::Uuid`:
+The opaque strings (`WorkerId`, `LeaseToken`, `AuthId`, `InviteCode`, `PushToken`, `Cursor`, `StepId`, `DeviceVerifier`, `DeviceHash`) come from one macro with a check per type, and `IdempotencyKey` wraps a `uuid::Uuid`:
 
 @@items id.rs IdempotencyKey@@
 
@@ -428,6 +428,22 @@ These go to the model, never to the app, so they derive serde only. `get_scan` r
 
 @@items garden/ops.rs WorkerStatus QueueCounts Status Healthz@@
 
+### Farm connectors
+
+[Connectors 4–7](../connectors/README.md#4-data); contracts 8–9 gain them with roadmap E1.5. Module `connectors`. The sealed tokens (`connector.secret`), a pending connect's `oauth` state and the sync cursors are on no wire type: they stay in the store's rows (`ConnectorRow` in [domain](domain.md)). The statuses are the schema's four; `endpoint` is `era` only for the demo garden's seeded connectors.
+
+@@items connectors.rs ConnectorKind ConnectorStatus ConnectorEndpoint ConnectorAccount ConnectorSource Connector ConnectorList@@
+
+The connect flow's requests. App requests deny unknown fields; the vendor's callback doesn't, because Slack and Google add their own parameters:
+
+@@items connectors.rs CreateConnectorRequest CreateConnectorResponse OAuthCallbackQuery CompleteConnectorRequest AvailableSources SourceChoice SetSourcesRequest@@
+
+A synced record's citation, which plans and messages keep as it was when the record is deleted. `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations` are omitted when empty and read as empty from rows stored before connectors:
+
+@@items connectors.rs SyncErrorCode FarmRecordKind FarmCitation FarmRecordHit@@
+
+@@test connectors.rs a_farm_citation_is_exactly_its_contract@@
+
 ---
 
 ## 10. Knowledge seed format
@@ -467,6 +483,8 @@ The contract's example profile, as the JSON its YAML parses to, round-trips:
 | `Slug` | `Slug<K>` (`SpeciesId`, `ProblemId`, `OrganismId`, `TreatmentId`, `SourceId`) | `id` |
 | `Slug \| "healthy"` | `ProblemOrHealthy` | `id` |
 | `"<problem_id>.<slug>"`, `"<image_id>.<n>"`, `"<source_id>.<n>"` | `IndicatorId`, `RegionId`, `ChunkId` | `id` |
+| `"<connector_id>.<n>.<vendor_id>"` (a farm record) | `FarmRecordId` | `id` |
+| `Connector`, `FarmCitation` and the connect requests | `Connector`, `FarmCitation`, … | `connectors` |
 | `Timestamp`, `LocalDate` | `Timestamp`, `LocalDate` | `wire` |
 | `Confidence`, `ConfidenceBand` | `Confidence`, `ConfidenceBand`; the pair as `Rated` | `wire` |
 | `BBox`, `Region`, `Page<T>` | `BBox`, `Region<U>`, `Page<T>` | `wire` |

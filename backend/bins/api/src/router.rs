@@ -32,7 +32,8 @@ use crate::{
     error::{panic_response, render_errors},
     openapi::ApiDoc,
     routes::{
-        account, chat, gardens, internal, media, memories, ops, plants, scans, species, tasks,
+        account, chat, connectors, gardens, internal, media, memories, ops, plants, scans, species,
+        tasks,
     },
     state::SharedState,
     uploads::UPLOAD_BODY_LIMIT,
@@ -151,6 +152,16 @@ pub fn routes(request_timeout: Duration) -> OpenApiRouter<SharedState> {
         .routes(routes!(chat::message_feedback))
         .routes(routes!(chat::confirm_pending_action))
         .routes(routes!(chat::reject_pending_action))
+        .routes(routes!(
+            connectors::list_connectors,
+            connectors::create_connector
+        ))
+        .routes(routes!(connectors::oauth_callback))
+        .routes(routes!(connectors::complete_connector))
+        .routes(routes!(connectors::available_sources))
+        .routes(routes!(connectors::set_sources))
+        .routes(routes!(connectors::sync_connector))
+        .routes(routes!(connectors::delete_connector))
         .routes(routes!(ops::healthz))
         .routes(routes!(ops::status))
         .routes(routes!(ops::auth_webhook))

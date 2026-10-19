@@ -100,6 +100,7 @@ fn stored_message(m: &NewMessage) -> Message<Stored> {
         text: m.text.clone(),
         attachments: Vec::new(),
         citations: m.citations.clone(),
+        farm_citations: Vec::new(),
         pending_actions: Vec::new(),
         interrupted: m.interrupted,
         created_at: m.created_at,

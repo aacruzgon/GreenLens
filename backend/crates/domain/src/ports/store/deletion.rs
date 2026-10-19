@@ -49,13 +49,18 @@ pub enum CascadeStep {
     Conversations,
     /// Memories, then plants (a single plant first loses its pin), then the garden map.
     MemoriesPlantsMap,
+    /// Farm records, then the farm connectors ([connectors 8], deletion): a record holds a
+    /// reference to its connector, and both to the garden. A garden's only.
+    ///
+    /// [connectors 8]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#8-privacy-and-security
+    FarmRecordsAndConnectors,
     /// Invites, memberships and the garden itself.
     Garden,
 }
 
 impl CascadeStep {
     /// Every step, in order.
-    pub const ORDER: [Self; 9] = [
+    pub const ORDER: [Self; 10] = [
         Self::EventsAndJobs,
         Self::TasksAndTriggers,
         Self::PlansAndDiagnoses,
@@ -64,6 +69,7 @@ impl CascadeStep {
         Self::ImagesAndScans,
         Self::Conversations,
         Self::MemoriesPlantsMap,
+        Self::FarmRecordsAndConnectors,
         Self::Garden,
     ];
 
@@ -256,5 +262,20 @@ mod tests {
         let steps = CascadeStep::steps_for(DeletionTarget::Plant(p));
         assert_eq!(steps.last(), Some(&CascadeStep::MemoriesPlantsMap));
         assert!(CascadeStep::ORDER.windows(2).all(|w| w[0] < w[1]));
+    }
+
+    #[test]
+    fn a_garden_deletes_its_farm_records_and_connectors_before_itself() {
+        let g: GardenId = "01JAX3K9T6R2B8V0QZ4M7D1E5G".parse().unwrap();
+        let steps = CascadeStep::steps_for(DeletionTarget::Garden(g));
+        assert_eq!(
+            &steps[steps.len() - 2..],
+            &[CascadeStep::FarmRecordsAndConnectors, CascadeStep::Garden]
+        );
+        let p: PlantId = "01JAX3K9T6R2B8V0QZ4M7D1E5P".parse().unwrap();
+        assert!(
+            !CascadeStep::steps_for(DeletionTarget::Plant(p))
+                .contains(&CascadeStep::FarmRecordsAndConnectors)
+        );
     }
 }

@@ -6,9 +6,9 @@
 
 use domain::ports::{
     MockAccessRepo, MockAnalysisRepo, MockChatRepo, MockDeletionRepo, MockEventRepo,
-    MockGardenRepo, MockIdempotencyRepo, MockIdentityRepo, MockJobRepo, MockKnowledgeRepo,
-    MockMapRepo, MockPlanRepo, MockPlantRepo, MockScanRepo, MockStepRepo, MockUsageRepo,
-    MockWeatherCacheRepo,
+    MockFarmRecordStore, MockGardenRepo, MockIdempotencyRepo, MockIdentityRepo, MockJobRepo,
+    MockKnowledgeRepo, MockMapRepo, MockPlanRepo, MockPlantRepo, MockScanRepo, MockStepRepo,
+    MockUsageRepo, MockWeatherCacheRepo,
 };
 
 /// Every store trait, mocked.
@@ -19,6 +19,7 @@ pub struct FakeStore {
     pub chat_repo: MockChatRepo,
     pub deletion_repo: MockDeletionRepo,
     pub event_repo: MockEventRepo,
+    pub farm_record_store: MockFarmRecordStore,
     pub garden_repo: MockGardenRepo,
     pub idempotency_repo: MockIdempotencyRepo,
     pub usage_repo: MockUsageRepo,
@@ -37,8 +38,8 @@ mod access_repo {
     #![allow(unused_imports, reason = "copied from the trait's module")]
     use domain::{
         id::{
-            ConversationId, GardenId, InviteId, MemoryId, PendingActionId, PlanId, PlantId, ScanId,
-            TaskId, UserId,
+            ConnectorId, ConversationId, GardenId, InviteId, MemoryId, PendingActionId, PlanId,
+            PlantId, ScanId, TaskId, UserId,
         },
         ports::StoreError,
         wire::Role,
@@ -470,6 +471,191 @@ mod event_repo {
         }
         async fn stream_state(&self, scan: ScanId) -> Result<StreamState, StoreError> {
             self.event_repo.stream_state(scan).await
+        }
+    }
+}
+
+mod farm_record_store {
+    #![allow(unused_imports, reason = "copied from the trait's module")]
+    use domain::{
+        authz::{Membership, Owner, Viewer},
+        connectors::{
+            Connector, ConnectorAccount, ConnectorEndpoint, ConnectorKind, ConnectorSource,
+            ConnectorStatus, FarmRecordHit, FarmRecordKind, SyncErrorCode,
+        },
+        id::{ConnectorId, DeviceHash, FarmRecordId, GardenId, UserId},
+        ports::{Embedding, StoreError, SyncCursor},
+        wire::Timestamp,
+    };
+    use std::{collections::BTreeMap, fmt};
+
+    use domain::ports::*;
+
+    #[async_trait::async_trait]
+    impl FarmRecordStore for super::FakeStore {
+        async fn create_connector(
+            &self,
+            owner: Membership<Owner>,
+            connector: NewConnector,
+        ) -> Result<Connector, StoreError> {
+            self.farm_record_store
+                .create_connector(owner, connector)
+                .await
+        }
+        async fn seed_connector(
+            &self,
+            garden: GardenId,
+            connector: NewConnector,
+        ) -> Result<Connector, StoreError> {
+            self.farm_record_store
+                .seed_connector(garden, connector)
+                .await
+        }
+        async fn connectors(
+            &self,
+            member: Membership<Viewer>,
+        ) -> Result<Vec<Connector>, StoreError> {
+            self.farm_record_store.connectors(member).await
+        }
+        async fn connector_row(
+            &self,
+            connector: ConnectorId,
+        ) -> Result<Option<ConnectorRow>, StoreError> {
+            self.farm_record_store.connector_row(connector).await
+        }
+        async fn complete_connect(
+            &self,
+            owner: Membership<Owner>,
+            connector: ConnectorId,
+            done: CompletedConnect,
+        ) -> Result<Connector, StoreError> {
+            self.farm_record_store
+                .complete_connect(owner, connector, done)
+                .await
+        }
+        async fn set_sources(
+            &self,
+            owner: Membership<Owner>,
+            connector: ConnectorId,
+            sources: Vec<ConnectorSource>,
+            now: Timestamp,
+        ) -> Result<Connector, StoreError> {
+            self.farm_record_store
+                .set_sources(owner, connector, sources, now)
+                .await
+        }
+        async fn request_sync(
+            &self,
+            owner: Membership<Owner>,
+            connector: ConnectorId,
+            now: Timestamp,
+        ) -> Result<bool, StoreError> {
+            self.farm_record_store
+                .request_sync(owner, connector, now)
+                .await
+        }
+        async fn due_connectors(
+            &self,
+            now: Timestamp,
+            limit: u32,
+        ) -> Result<Vec<ConnectorRow>, StoreError> {
+            self.farm_record_store.due_connectors(now, limit).await
+        }
+        async fn finish_sync(
+            &self,
+            connector: ConnectorId,
+            outcome: SyncOutcome,
+        ) -> Result<(), StoreError> {
+            self.farm_record_store.finish_sync(connector, outcome).await
+        }
+        async fn set_status(
+            &self,
+            connector: ConnectorId,
+            status: ConnectorStatus,
+            last_error: Option<SyncErrorCode>,
+        ) -> Result<(), StoreError> {
+            self.farm_record_store
+                .set_status(connector, status, last_error)
+                .await
+        }
+        async fn start_connector_deletion(
+            &self,
+            owner: Membership<Owner>,
+            connector: ConnectorId,
+        ) -> Result<ConnectorRow, StoreError> {
+            self.farm_record_store
+                .start_connector_deletion(owner, connector)
+                .await
+        }
+        async fn delete_connector_batch(&self, connector: ConnectorId) -> Result<u32, StoreError> {
+            self.farm_record_store
+                .delete_connector_batch(connector)
+                .await
+        }
+        async fn connectors_created_by(
+            &self,
+            garden: GardenId,
+            user: UserId,
+        ) -> Result<Vec<ConnectorId>, StoreError> {
+            self.farm_record_store
+                .connectors_created_by(garden, user)
+                .await
+        }
+        async fn delete_expired_pending(&self, before: Timestamp) -> Result<u32, StoreError> {
+            self.farm_record_store.delete_expired_pending(before).await
+        }
+        async fn record_hashes(
+            &self,
+            connector: ConnectorId,
+            vendor_ids: Vec<String>,
+        ) -> Result<Vec<(FarmRecordId, String)>, StoreError> {
+            self.farm_record_store
+                .record_hashes(connector, vendor_ids)
+                .await
+        }
+        async fn upsert_records(
+            &self,
+            connector: ConnectorId,
+            records: Vec<NewFarmRecord>,
+        ) -> Result<u32, StoreError> {
+            self.farm_record_store
+                .upsert_records(connector, records)
+                .await
+        }
+        async fn delete_records(
+            &self,
+            connector: ConnectorId,
+            vendor_ids: Vec<String>,
+        ) -> Result<u32, StoreError> {
+            self.farm_record_store
+                .delete_records(connector, vendor_ids)
+                .await
+        }
+        async fn delete_source_records(
+            &self,
+            connector: ConnectorId,
+            source: String,
+        ) -> Result<u32, StoreError> {
+            self.farm_record_store
+                .delete_source_records(connector, source)
+                .await
+        }
+        async fn garden_record_count(&self, garden: GardenId) -> Result<u32, StoreError> {
+            self.farm_record_store.garden_record_count(garden).await
+        }
+        async fn search_records(
+            &self,
+            member: Membership<Viewer>,
+            query: &Embedding,
+            filter: FarmRecordFilter,
+            k: usize,
+        ) -> Result<Vec<FarmRecordMatch>, StoreError> {
+            self.farm_record_store
+                .search_records(member, query, filter, k)
+                .await
+        }
+        async fn delete_records_before(&self, cutoff: Timestamp) -> Result<u32, StoreError> {
+            self.farm_record_store.delete_records_before(cutoff).await
         }
     }
 }

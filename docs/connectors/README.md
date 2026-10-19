@@ -1,6 +1,6 @@
 # PDM Farm Connectors and Era
 
-> **Status:** Draft v0.2, 2026-10-19. v0.2: Era's behaviour re-checked on Oct 19 and the vendors' documents read ([EON 3](../EON/README.md#3-era-what-we-checked-on-oct-19), [EON 9](../EON/README.md#9-vendor-facts-checked-on-oct-19)): section 10 gains the inject formats, tenants, tenant-bound credentials and the request journal, faults, points in time, read-only answers and strict mode's OAuth paths; tests mint a tenant-bound credential instead of sending `X-Sim-Tenant`; the Google account's email comes from `about.get` and the Google client is a Web application; the invalid-state error is `400 invalid_request`; open questions 4 and 5 are answered. v0.1: first version. A garden owner connects the farm's Slack and Google Drive, PDM syncs the chosen channels and folder into the garden, and the chat and the plan writer search them with citations. Era by Eon is the test bench: its Slack and Google Drive simulators run in dev, in CI and behind the demo garden, with our own farm records injected, and an agent evaluation is scored against them. An independent audit's findings are folded in: the connect flow is bound to the device that started it, the Slack sync is paced for Tier 1, author names and permalinks come from the sync, and farm citations are their own optional fields. Nothing here is built yet; section 11 lists the changes the implementing pull requests make to the contracts, the schema and the other documents.
+> **Status:** Draft v0.3.1, 2026-10-19. v0.3.1: `last_error` gains `source_missing` (a chosen channel or folder that is gone), and a scope refusal is `auth_refused` (section 6). v0.3: the contracts pull request (E1) built the types, schema and routes, and this document now follows them: `FarmRecordId` is the compound string `"<connector>.<n>.<vendor_id>"`, `FarmSource` is a port in `domain/src/ports/farm.rs` outside `Store`, `last_error` is a fixed literal union, `PUT sources` takes `{ sources: [{ id }] }`, **Sync now** and disconnect answer `202` with no body, `sync_requested_at` is in the schema, and a connector has one `record_count` (sections 4, 5, 7, 11). v0.2: Era's behaviour re-checked on Oct 19 and the vendors' documents read ([EON 3](../EON/README.md#3-era-what-we-checked-on-oct-19), [EON 9](../EON/README.md#9-vendor-facts-checked-on-oct-19)): section 10 gains the inject formats, tenants, tenant-bound credentials and the request journal, faults, points in time, read-only answers and strict mode's OAuth paths; tests mint a tenant-bound credential instead of sending `X-Sim-Tenant`; the Google account's email comes from `about.get` and the Google client is a Web application; the invalid-state error is `400 invalid_request`; open questions 4 and 5 are answered. v0.1: first version. A garden owner connects the farm's Slack and Google Drive, PDM syncs the chosen channels and folder into the garden, and the chat and the plan writer search them with citations. Era by Eon is the test bench: its Slack and Google Drive simulators run in dev, in CI and behind the demo garden, with our own farm records injected, and an agent evaluation is scored against them. An independent audit's findings are folded in: the connect flow is bound to the device that started it, the Slack sync is paced for Tier 1, author names and permalinks come from the sync, and farm citations are their own optional fields. Nothing here is built yet; section 11 lists the changes the implementing pull requests make to the contracts, the schema and the other documents.
 > **Verified:** a claim marked ✓ ran against Era's simulator images at tag `189e10c16ec66ee1ca24ac5f7962cd7637174d0f` on 2026-10-17, on Docker 29.8.2 (arm64), or is marked "ran 2026-10-19" ([EON 3](../EON/README.md#3-era-what-we-checked-on-oct-19)). A vendor fact read in the vendor's own documents on 2026-10-19 says so and links [EON 9](../EON/README.md#9-vendor-facts-checked-on-oct-19). Anything else taken from a vendor's documents (Era, Slack, Google, Clerk) is marked *unverified*. Companion to [architecture §7](../architecture/README.md#7-chat-and-agent-core) and [contracts §8](../architecture/contracts.md#8-chat-and-memory).
 
 ## Contents
@@ -75,7 +75,7 @@ Only owners connect, choose the sources, sync by hand or disconnect. Every membe
 
 ## 4. Data
 
-Two new tables, garden-scoped like the rest. These are the proposed shapes, not yet run against SurrealDB 3.3.4; the implementing pull request checks them and adds them to `backend/migrations/schema.surql`.
+Two new tables, garden-scoped like the rest. They are in `backend/migrations/schema.surql`, which is the source; the block below follows it. They have run on the embedded 3.3.4 engine only (the `farm_connectors_store_and_go_with_their_garden` test, [database 3](../database/README.md#3-tables)), not on the server image.
 
 ```sql
 DEFINE TABLE OVERWRITE connector SCHEMAFULL;
@@ -91,7 +91,9 @@ DEFINE FIELD OVERWRITE endpoint   ON connector TYPE "vendor" | "era";   -- set b
 DEFINE FIELD OVERWRITE cursor     ON connector TYPE option<object> FLEXIBLE;   -- per source: Slack's newest ts, Drive's page token
 DEFINE FIELD OVERWRITE synced_at  ON connector TYPE option<datetime>;
 DEFINE FIELD OVERWRITE next_sync_at ON connector TYPE datetime DEFAULT time::now();
-DEFINE FIELD OVERWRITE last_error ON connector TYPE option<string>;   -- a fixed code, never the vendor's text
+-- Sync now: one accepted request per connector in 5 minutes, a compare-and-set on this field (decision 12)
+DEFINE FIELD OVERWRITE sync_requested_at ON connector TYPE option<datetime>;
+DEFINE FIELD OVERWRITE last_error ON connector TYPE option<"rate_limited" | "vendor_unavailable" | "auth_refused" | "too_large" | "source_missing">;   -- a fixed code, never the vendor's text
 DEFINE FIELD OVERWRITE created_at ON connector TYPE datetime DEFAULT time::now() READONLY;
 DEFINE INDEX IF NOT EXISTS connector_garden ON connector FIELDS garden;
 DEFINE INDEX IF NOT EXISTS connector_due    ON connector FIELDS status, next_sync_at;
@@ -102,7 +104,7 @@ DEFINE FIELD OVERWRITE connector  ON farm_record TYPE record<connector> REFERENC
 DEFINE FIELD OVERWRITE kind       ON farm_record TYPE "message" | "document";
 DEFINE FIELD OVERWRITE vendor_id  ON farm_record TYPE string;   -- Slack "<channel>/<ts>", Drive file id
 DEFINE FIELD OVERWRITE title      ON farm_record TYPE string;   -- "#field-reports", "Spray log 2026"
-DEFINE FIELD OVERWRITE author     ON farm_record TYPE option<string>;   -- display name only, from the sync's users.info cache
+DEFINE FIELD OVERWRITE author     ON farm_record TYPE option<string>;   -- display name only
 DEFINE FIELD OVERWRITE link       ON farm_record TYPE string;   -- built at sync time: Slack permalink or Drive webViewLink
 DEFINE FIELD OVERWRITE text       ON farm_record TYPE string;   -- one chunk, at most 2,000 characters
 DEFINE FIELD OVERWRITE text_hash  ON farm_record TYPE string;   -- unchanged text keeps its vector
@@ -114,6 +116,9 @@ DEFINE INDEX IF NOT EXISTS farm_record_connector ON farm_record FIELDS connector
 DEFINE INDEX IF NOT EXISTS farm_record_at        ON farm_record FIELDS at;   -- the 180-day cleanup
 ```
 
+- **The record id.** `farm_record:[connector, vendor_id, n]` is an array key. On the wire it is `FarmRecordId`, one string `"<connector>.<n>.<vendor_id>"`, not an `Id`: `01JAX3K9T6R2B8V0QZ4M7D1E5C.0.C024BE91L/1729000000.000100`. The vendor id goes last because it holds dots and slashes, so the first two dots split the string ([contracts 9](../architecture/contracts.md#farm-connectors)).
+- **One count.** The app gets one `record_count` per connector, the records it holds for the garden, not a count per source.
+- **`last_error` is a literal union** (`rate_limited`, `vendor_unavailable`, `auth_refused`, `too_large`, `source_missing`) in the schema and `SyncErrorCode` in `domain`. It is stored, never sent to the app.
 - **Searched exactly within one garden,** like `memory`: no HNSW index, because a garden holds hundreds or a few thousand chunks ([database, vector search](../database/README.md)).
 - **A message is one record.** A thread's replies are joined to their parent, up to the chunk limit. A document is split on paragraphs into chunks of at most 2,000 characters, the way knowledge chunks are.
 - **The `secret`** holds the vendor's tokens (Slack's bot token, Google's access and refresh tokens) sealed with AES-256-GCM. The key is `CONNECTOR_KEY`, 32 random bytes in the control plane's secrets ([infra, secrets](../infra/README.md)), and the connector's id is the associated data, so a sealed value can't be moved to another connector. Without `CONNECTOR_KEY`, connectors are off, as the Agent Memory mirror is without its variables.
@@ -162,6 +167,8 @@ These vendor facts were read in the vendors' documents on 2026-10-19 ([EON 9](..
 
 **The state** is an HMAC over the connector id, the nonce and the expiry, keyed with a key derived from `CONNECTOR_KEY`. The nonce, the device hash and Google's PKCE verifier (sealed) are kept in the pending connector's `oauth` field and cleared by the exchange, so a state works once. A callback or a `complete` with a bad, expired or reused state gets `400 invalid_request` ([contracts §2](../architecture/contracts.md#2-errors) has no `validation_failed`; [EON gap G8](../EON/README.md#8-design-gaps-found-on-main)). A `complete` from anyone but the starter, or with the wrong `device_verifier`, gets `404 not_found` and deletes the pending connector. The `cleanup` scheduler task deletes pending connectors older than 10 minutes.
 
+**The routes are declared, not working.** `domain` and `api` carry the eight routes of section 11 with their types. Until E3 configures connectors (`CONNECTOR_KEY`), the list answers `available: false` and every other route answers `409 invalid_state` after its access checks ([contracts 9](../architecture/contracts.md#farm-connectors)). The OAuth exchanges are not on the `FarmSource` port: they run in `api`'s routes (E3). `FarmSource` (with `VendorToken`, `SyncCursor` and the page types) is in `domain/src/ports/farm.rs`, outside the `Store` trait, because it talks to the vendors and never to the database; the store side is `FarmRecordStore` in `ports/store/farm.rs`.
+
 **A token the vendor refuses** (Slack's `invalid_auth` or `token_revoked`, Google's `invalid_grant`) sets `status: reauth_needed`, stops the sync and shows **Reconnect** to owners. Records already synced stay searchable until the owner reconnects or disconnects.
 
 ---
@@ -190,7 +197,7 @@ A new scheduler task, `connectors`, runs every minute and syncs the connectors w
 
 **Records older than 180 days** are deleted by the `cleanup` task, which runs every 10 minutes, on the `farm_record_at` index.
 
-**Errors** are stored in `last_error` as a fixed code: `rate_limited`, `vendor_unavailable`, `auth_refused` or `too_large`. A Drive `403` with reason `userRateLimitExceeded` or `rateLimitExceeded` is treated like `429`, and no other `403` is ([Drive limits](https://developers.google.com/workspace/drive/api/guides/limits), read 2026-10-19). The vendor's response text is never stored or logged, because it may echo record text. The next attempt follows the `soil` task's pattern: 15 minutes after an outage. After `auth_refused` nothing more runs until the owner reconnects, and after `too_large` nothing more runs until the owner changes the sources.
+**Errors** are stored in `last_error` as a fixed code: `rate_limited`, `vendor_unavailable`, `auth_refused`, `too_large` or `source_missing`. A scope refusal, such as Slack's `missing_scope` or Drive's `insufficientPermissions`, is `auth_refused`. A Drive `403` with reason `userRateLimitExceeded` or `rateLimitExceeded` is treated like `429`, and no other `403` is ([Drive limits](https://developers.google.com/workspace/drive/api/guides/limits), read 2026-10-19). The vendor's response text is never stored or logged, because it may echo record text. The next attempt follows the `soil` task's pattern: 15 minutes after an outage. After `auth_refused` nothing more runs until the owner reconnects, and after `too_large` or `source_missing` (a chosen channel or folder that is gone or no longer visible to the token) nothing more runs until the owner changes the sources.
 
 ---
 
@@ -204,7 +211,7 @@ A new scheduler task, `connectors`, runs every minute and syncs the connectors w
 
 ```ts
 interface FarmCitation {
-  record_id: Id;          // the farm_record cited
+  record_id: FarmRecordId;   // the farm_record cited: "<connector>.<n>.<vendor_id>" (section 4)
   system: "slack" | "google_drive";
   title: string;          // "#field-reports", "Spray log 2026"
   author?: string;        // display name
@@ -215,8 +222,8 @@ interface FarmCitation {
 
 **Citing a farm record.** Today `PlanStep.citations` is `Slug[]` of knowledge sources (at least one), `ActionPlan.citations` and `Message.citations` are `Citation[]`, and plan validation checks that every step's sources appear in `ActionPlan.citations` ([contracts §7](../architecture/contracts.md#actionplan)). Farm records get their own optional fields beside them, so no existing shape changes:
 
-- `PlanStep.farm_citations?: Id[]`: farm record ids. A step still needs at least one knowledge source; farm records add the farm's history, not the advice.
-- `ActionPlan.farm_records?: FarmCitation[]`: every farm record the steps cite, resolved. Validation gains the matching rule: every id in a step's `farm_citations` appears here.
+- `PlanStep.farm_citations?: FarmRecordId[]`: farm record ids. A step still needs at least one knowledge source; farm records add the farm's history, not the advice.
+- `ActionPlan.farm_records?: FarmCitation[]`: every farm record the steps cite, resolved. Validation gains the matching rule: every id in a step's `farm_citations` appears here (the rule comes with the plan writer's search, E5).
 - `Message.farm_citations?: FarmCitation[]`: the farm records an assistant message cites.
 
 A deleted farm record leaves its citation in a stored plan or message as it was, with the link, as a removed knowledge record does.
@@ -357,17 +364,17 @@ This document is the design. The pull requests that build it make these changes,
 | [docs/infra](../infra/README.md) | The `era` and `demo` compose profiles, the `era` CI job, `ERA_SLACK_BASE` and `ERA_GOOGLE_BASE`, the secrets `CONNECTOR_KEY` and the Slack and Google client ids and secrets |
 | [docs/setup](../setup/README.md) | Docker images for the `era` profile |
 
-Proposed endpoints:
+Endpoints (declared in E1.4; [contracts 9](../architecture/contracts.md#farm-connectors) has the shapes):
 
 ```
-GET    /gardens/{id}/connectors            (any member: kind, status, account, sources, synced_at, record counts)
-POST   /gardens/{id}/connectors            (owner; { kind, device_hash } → { connector, authorize_url })
+GET    /gardens/{id}/connectors            (any member: → { available, connectors } with kind, status, endpoint, account, sources, synced_at, record_count)
+POST   /gardens/{id}/connectors            (owner; { kind, device_hash } → 201 { connector, authorize_url })
 GET    /connectors/oauth/callback          (public; checks the state's signature; 302 to the app with code and state)
 POST   /connectors/{id}/complete           (the owner who started it; { code, state, device_verifier } → Connector)
-GET    /connectors/{id}/available-sources  (owner; channels the bot is in, or folders)
-PUT    /connectors/{id}/sources            (owner; [{ id }]; Slack up to 10 channels, Drive 1 folder)
-POST   /connectors/{id}/sync               (owner; 202; 429 within 5 minutes of the last)
-DELETE /connectors/{id}                    (owner; revoke, then delete its records)
+GET    /connectors/{id}/available-sources  (owner; → { sources: [{ id, name }] }: channels the bot is in, or folders)
+PUT    /connectors/{id}/sources            (owner; { sources: [{ id }] } → Connector; Slack up to 10 channels, Drive 1 folder)
+POST   /connectors/{id}/sync               (owner; 202, no body; 429 rate_limited with retry_after_s within 5 minutes of the last)
+DELETE /connectors/{id}                    (owner; 202, no body; revoke, then delete its records)
 ```
 
 ---

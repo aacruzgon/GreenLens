@@ -193,6 +193,14 @@ WHERE id IN $scans AND (plan != NONE OR diagnosis != NONE OR open_question != NO
     /// The garden map ([database 4] ✓: `DELETE garden` is rejected while a map exists).
     pub const MAPS: &str = "DELETE (SELECT VALUE id FROM garden_map WHERE garden = $garden LIMIT 500) RETURN VALUE $before.id;";
 
+    // ---- farm records, then farm connectors ([connectors 8], deletion) ----
+
+    /// A garden's farm records (each holds a `REFERENCE ON DELETE REJECT` to its connector).
+    pub const FARM_RECORDS_OF_GARDEN: &str = "DELETE (SELECT VALUE id FROM farm_record WHERE garden = $garden LIMIT 500) RETURN VALUE $before.id;";
+    /// A garden's farm connectors. Revoking their tokens is `api`'s, after this step commits (EON E3.6, not built yet): the store step
+    /// holds no vendor client.
+    pub const CONNECTORS_OF_GARDEN: &str = "DELETE (SELECT VALUE id FROM connector WHERE garden = $garden LIMIT 500) RETURN VALUE $before.id;";
+
     // ---- step 4.7 (cont.): invites, memberships and the garden ----
 
     /// Invites (they also `CASCADE`).
@@ -290,10 +298,13 @@ pub fn step_statements(target: DeletionTarget, step: CascadeStep) -> &'static [&
             &[sql::MEMORIES_OF_GARDEN, sql::PLANTS_OF_GARDEN, sql::MAPS]
         }
         (T::Plant(_), S::MemoriesPlantsMap) => &[sql::MEMORIES_OF_PLANT, sql::PLANT],
+        (T::Garden(_), S::FarmRecordsAndConnectors) => {
+            &[sql::FARM_RECORDS_OF_GARDEN, sql::CONNECTORS_OF_GARDEN]
+        }
         (T::Garden(_), S::Garden) => &[sql::INVITES, sql::MEMBERSHIPS, sql::GARDEN],
-        // A pending scan has no tasks, plans, diagnoses, memories or garden step
-        // (CascadeStep::steps_for never asks for them).
-        (T::PendingScan(_), _) | (T::Plant(_), S::Garden) => &[],
+        // A pending scan has no tasks, plans, diagnoses, memories or garden step, and a plant no
+        // connectors (CascadeStep::steps_for never asks for them).
+        (T::PendingScan(_), _) | (T::Plant(_), S::FarmRecordsAndConnectors | S::Garden) => &[],
     }
 }
 

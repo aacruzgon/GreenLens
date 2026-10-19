@@ -3,6 +3,7 @@
 //! fakes of the seams.
 
 mod beliefs;
+mod connectors;
 mod fake_store;
 
 use std::{collections::BTreeMap, sync::Arc, time::Duration};

@@ -1,6 +1,8 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.8, 2026-10-17. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.10, 2026-10-19. Companion to the [architecture document](README.md).
+> **v0.10.10**: the connector routes accept `Idempotency-Key`, and section 2 lists connectors under `invalid_state` and Sync now under `rate_limited`; no wire shape changed.
+> **v0.10.9** declares the farm connectors' contract ([connectors](../connectors/README.md)): the `Connector` types and eight routes (section 9), `search_farm_records` and `FarmCitation` (section 8), `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations` as optional fields (sections 7, 8), the `FarmRecordId` wire form, the roles rows and the deletion step. The routes answer `409 invalid_state` until E3 turns connectors on.
 > **v0.10.8**: the findings prompt is `findings@2` (it shows the shape of a soil reading, vision vlm.md 7), so `vlm_prompts` reads `system@1,findings@2,indicators@1,verify@1,guided@1`; no wire shape changed.
 > **v0.10.7** adds `Memory.topic`, mirrors shared memories into SurrealDB Agent Memory as beliefs, adds `GET /plants/{plant_id}/beliefs` and gives `search_memory` the `MemorySearch` result (`BeliefHit` items); deleting a shared memory, a plant or a garden queues its Agent Memory scope for erasure by `api`'s belief sweep (sections 8, 9).
 > **v0.10.6** settles open question 31: xgrammar in vLLM v0.31.0 enforces `anyOf` with `null`, producing both branches and blocking values outside the schema (section 12); no wire shape changed.
@@ -143,7 +145,7 @@ interface Page<T> {
 
 ### Idempotency
 
-Every create call accepts: `POST /gardens`, `POST /gardens/{id}/invites`, `POST /plants`, `POST /scans`, `POST /scans/{id}/images`, `POST /scans/{id}/answers`, `POST /scans/{id}/feedback`, `POST /conversations`, `POST /conversations/{id}/images`, `POST /conversations/{id}/messages`, `POST /memories`, `POST /tasks` and `PUT /gardens/{id}/map` accept an `Idempotency-Key` header (a UUID the app generates per user action and reuses only when retrying that action).
+Every create call accepts: `POST /gardens`, `POST /gardens/{id}/invites`, `POST /plants`, `POST /scans`, `POST /scans/{id}/images`, `POST /scans/{id}/answers`, `POST /scans/{id}/feedback`, `POST /conversations`, `POST /conversations/{id}/images`, `POST /conversations/{id}/messages`, `POST /memories`, `POST /tasks`, `PUT /gardens/{id}/map`, `POST /gardens/{id}/connectors`, `POST /connectors/{id}/complete` and `POST /connectors/{id}/sync` accept an `Idempotency-Key` header (a UUID the app generates per user action and reuses only when retrying that action).
 
 | Rule | Behaviour |
 |---|---|
@@ -171,6 +173,8 @@ A user who is not a member of the garden, or not the owner of the conversation, 
 | Create and edit plants | | | ✓ | ✓ |
 | Share their own chat memories with the garden, add garden notes | | | ✓ | ✓ |
 | Rename the garden, manage invites and members, change roles, delete plants or the garden, delete shared memories | | | | ✓ |
+| Read the garden's connectors (`GET /gardens/{id}/connectors`), and chat with `search_farm_records` | ✓ | ✓ | ✓ | ✓ |
+| Connect, choose sources, sync now and disconnect a farm connector (`POST /gardens/{id}/connectors`, `POST /connectors/{id}/complete`, `GET /connectors/{id}/available-sources`, `PUT /connectors/{id}/sources`, `POST /connectors/{id}/sync`, `DELETE /connectors/{id}`) | | | | ✓ |
 
 The agent's tool list is filtered by role before each turn: viewers and reviewers get the read tools and `remember`, never the write tools, so they never receive a confirmation card. A garden may have several owners. The last owner can't leave or be demoted.
 
@@ -200,7 +204,7 @@ interface ErrorBody {
 | 403 | `forbidden` | A member whose role is too low (section 1) | `{ required_role }` |
 | 403 | `invalid_signature` | Expired or tampered signed image URL. Only signed URLs: a webhook signature failure is `401` | |
 | 404 | `not_found` | Unknown ID, or one the caller may not see; a malformed ID in a path, which can name no record; a method the route doesn't have (no `Allow` header, so it reads like an unknown path) | |
-| 409 | `invalid_state` | The scan, question, plan, task, invite, pending action or garden map isn't in a state that allows this call | `{ status?, allowed?: string[], current_plan_id?, current_map_version?, hint?: "new_scan" \| "neighbour_removed" \| "plant_removed" }` |
+| 409 | `invalid_state` | The scan, question, plan, task, invite, pending action, garden map or connector isn't in a state that allows this call, including any connector write while connectors are off (and a connector on `era`, not `vendor`, where a vendor-only call is refused) | `{ status?, allowed?: string[], current_plan_id?, current_map_version?, hint?: "new_scan" \| "neighbour_removed" \| "plant_removed" }` |
 | 409 | `request_in_progress` | Same `Idempotency-Key` while the first request is still running | |
 | 409 | `lease_lost` | Worker call for a job whose lease was requeued, expired or cancelled, including jobs of an older run | `{ job_id }` |
 | 413 | `upload_too_large` | Image over 12 MB | `{ max_bytes }` |
@@ -209,7 +213,7 @@ interface ErrorBody {
 | 422 | `missing_required_shot` | Submit without a `whole_plant` image | `{ missing: ImageKind[] }` |
 | 422 | `too_many_images` | Kind limit reached (section 3) | `{ kind, max }` |
 | 422 | `idempotency_conflict` | Reused `Idempotency-Key` with a different body | |
-| 429 | `rate_limited` | Request rate limit (per user, a placeholder of 120 requests a minute: open question 34), including invite-code attempts. `retryable: true`, with `retry_after_s` | |
+| 429 | `rate_limited` | Request rate limit (per user, a placeholder of 120 requests a minute: open question 34), including invite-code attempts and **Sync now**'s per-connector limit (one accepted request per 5 minutes). `retryable: true`, with `retry_after_s` | |
 | 429 | `budget_exceeded` | Daily chat token budget or daily scan limit used up. `retryable: false`: it lasts until `resets_at` | `{ budget: "chat_tokens" \| "scans", resets_at }` |
 | 500 | `internal` | Bug. Logged with `request_id` | |
 | 503 | `processing_unavailable` | Face blurring or another required upload step failed. The image was not stored (fails closed) | |
@@ -1443,6 +1447,7 @@ interface PlanStep {
   targets: { table: "disease" | "organism"; id: Slug }[];  // what the step acts on; may be empty
   plant_id?: Id;                     // a neighbour this monitoring step is about (garden map); its task goes to that plant
   citations: Slug[];                 // source ids; at least one
+  farm_citations?: FarmRecordId[];   // farm records the step cites (section 9, farm connectors); omitted when empty
   safety_note?: string;              // added by the server to every chemical step (below)
 }
 
@@ -1464,12 +1469,15 @@ interface ActionPlan {
   steps: PlanStep[];
   watch_for: string[];               // "New spots on upper leaves within 5 days"
   citations: Citation[];             // every source the steps cite, resolved
+  farm_records?: FarmCitation[];     // every farm record the steps cite, resolved; omitted when empty
   task_ids: Id[];
   llm_model: string;
   prompt_version: string;
   created_at: Timestamp;
 }
 ```
+
+**Farm records in a plan.** `farm_citations` and `farm_records` are optional and omitted when empty, and a plan stored before connectors reads as citing none. A step still needs at least one knowledge source in `citations`: farm records add the farm's history, never the advice. Every id in a step's `farm_citations` must appear in `ActionPlan.farm_records` (the validation rule is written with the plan writer's search, [EON E5](../EON/README.md#e5-the-agent)). A deleted record leaves its `FarmCitation` in a stored plan as it was.
 
 **Steps to tasks.**
 
@@ -1594,6 +1602,7 @@ interface Message {
   text: string;
   attachments: { image_id: Id; url: string }[];
   citations: Citation[];
+  farm_citations?: FarmCitation[];   // farm records an assistant message cites; omitted when empty (section 9, farm connectors)
   pending_actions: PendingAction[];
   interrupted: boolean;              // the stream dropped before message_completed
   created_at: Timestamp;
@@ -1779,6 +1788,7 @@ The agent's tools return the same records the app sees. Every tool runs as the s
 | `get_plant_measurements` | `plant_id`, `quantity?` | Plants of the garden | `MeasurementPoint[]` (section 9): the latest 50, oldest first |
 | `get_garden_map` | none | The garden | `{ map: GardenMap \| null; neighbours: Record<Id, Id[]> }` (section 9) |
 | `list_tasks` | `state?`: `open` (default), `done` or `dismissed` | The garden | `Task[]` |
+| `search_farm_records` | `query`, `kind?` (`message` or `document`), `since?` (a date) | The garden's synced farm records; every role | `{ text: string; citation: FarmCitation }[]`, at most 8 (`FarmRecordHit`). Lands with the agent work, [EON E5.2](../EON/README.md#e5-the-agent) |
 | `remember` | `fact`, `plant_id?` | The garden | `Memory` with `source: "chat"`, and a `memory_saved` event |
 | `request_rescan` | `plant_id`, `photo_kind`, `instructions` | Live plants of the garden | `{ plant_id: Id; photo_kind: ImageKind; instructions: string }`, and a `rescan_requested` event |
 | `create_task` | `title`, `detail?`, `plant_id?`, `due?`, `repeat_every_days?` | The garden; editors and owners only | `PendingAction` (preview `task`) |
@@ -1928,6 +1938,69 @@ interface SpeciesSummary extends SpeciesRef {
 
 `SpeciesCandidate.reference_image` is the first of these, with its credit, so the confirmation card needs no second call. It is computed from `species_id` each time a candidate is read or sent in an event, never stored with the candidate, so a reseed shows the new photo everywhere. Each photo's storage key carries a hash of its content (section 10), so its URL changes when the photo does.
 
+### Farm connectors
+
+A garden owner connects the farm's Slack channels or one Google Drive folder; a scheduler task syncs them into `farm_record` for the chat and the plan writer ([connectors](../connectors/README.md)). The types are `domain`'s `connectors` module.
+
+```ts
+type ConnectorKind = "slack" | "google_drive";
+type ConnectorStatus = "pending" | "active" | "reauth_needed" | "deleting";
+type ConnectorEndpoint = "vendor" | "era";   // "era": the demo garden's synthetic data, seeded by server configuration; no route creates one
+
+type ConnectorAccount =                       // whose workspace or Drive; absent while pending
+  | { kind: "slack"; team_id: string; team_name: string; url: string }
+  | { kind: "google_drive"; email: string };
+
+interface ConnectorSource { id: string; name: string }   // a Slack channel id ("C024BE91L") or a Drive folder id
+
+interface Connector {
+  id: Id;
+  garden_id: Id;
+  kind: ConnectorKind;
+  status: ConnectorStatus;
+  endpoint: ConnectorEndpoint;
+  account?: ConnectorAccount;
+  sources: ConnectorSource[];        // Slack up to 10 channels, Drive 1 folder; empty until chosen
+  synced_at?: Timestamp;             // when the last sync finished; absent before the first
+  record_count: number;              // synced records (chunks) this connector holds for the garden
+  created_at: Timestamp;
+}
+
+interface ConnectorList { available: boolean; connectors: Connector[] }   // oldest first
+
+type FarmRecordId = string;           // "<connector_id>.<n>.<vendor_id>", below
+
+interface FarmCitation {
+  record_id: FarmRecordId;
+  system: ConnectorKind;
+  title: string;                     // "#field-reports", "Spray log 2026"
+  author?: string;                   // display name
+  at: Timestamp;                     // the message's time, or the document's modifiedTime
+  link: string;                      // opens Slack or Drive (for an "era" connector, the simulator)
+}
+```
+
+Tokens (`connector.secret`), the pending connect's `oauth` state, the sync cursor, the last error and the record vectors are never part of a response.
+
+| Endpoint | Role | Body | Response |
+|---|---|---|---|
+| `GET /gardens/{id}/connectors` | any | | `200 ConnectorList`. `{ available: false, connectors: [] }` when connectors are off on this server (no `CONNECTOR_KEY`), as for beliefs |
+| `POST /gardens/{id}/connectors` | owner | `{ kind, device_hash }`, `device_hash` = `SHA-256(device_verifier)` as 43 base64url characters; `device_verifier` has the same shape | `201 { connector: Connector, authorize_url: string }`: the `pending` connector and the vendor's consent URL |
+| `GET /connectors/oauth/callback?code&state&error` | public | | `302` to the app with `code` and `state`. Checks only the state's signature and expiry and stores nothing; unknown query parameters (Google's `scope`, `authuser`) are ignored. A bad, expired or reused state gets `400 invalid_request` |
+| `POST /connectors/{id}/complete` | owner who started it | `{ code, state, device_verifier }` | `200 Connector` (`active`) |
+| `GET /connectors/{id}/available-sources` | owner | | `200 { sources: ConnectorSource[] }`: the channels the bot is a member of, or the folders |
+| `PUT /connectors/{id}/sources` | owner | `{ sources: { id: string }[] }`, replacing the previous choice | `200 Connector` |
+| `POST /connectors/{id}/sync` | owner | | `202`, no body. **Sync now**; `429 rate_limited` with `retry_after_s` within 5 minutes of the last accepted request |
+| `DELETE /connectors/{id}` | owner | | `202`, no body. The tokens are revoked, then the connector's records and the connector are deleted in the background |
+
+The request bodies refuse unknown fields (`400 invalid_request`, section 2). A non-member gets `404 not_found`; a member who is not an owner gets `403 forbidden` (section 1). The `/connectors/{id}` routes check the membership of the connector's garden, so an unknown connector is `404` too.
+
+**While connectors are off, and for demo data.** Until connectors are configured (E3, with `CONNECTOR_KEY`: [EON E3](../EON/README.md#e3-configuration-tokens-and-connecting)), `GET /gardens/{id}/connectors` answers `available: false` with an empty list, and every other route runs its access checks and then answers `409 invalid_state` (never `503`, which clients retry) with no details. Once they are on, `409 invalid_state` also answers a write to a connector whose `endpoint` is `era`.
+
+**`FarmRecordId`.** The `farm_record` key is the array `[connector, vendor_id, n]` ([database 3](../database/README.md#3-tables)). On the wire it is one string, `"<connector_id>.<n>.<vendor_id>"`: for example `01JAX3K9T6R2B8V0QZ4M7D1E5C.0.C024BE91L/1729000000.000100` for a Slack message (`vendor_id` is `"<channel>/<ts>"`) or `01JAX3K9T6R2B8V0QZ4M7D1E5C.0.1aBcD` for chunk 0 of a Drive file. The vendor id goes last because it may hold dots and slashes, so the first two dots split the string and the rest is the vendor id (1–255 printable bytes). `n` is 0 for a message and 0, 1, … for a document's chunks.
+
+**Deleting.** A garden's cascade (below) deletes its farm records, then its connectors, before the garden (`api` revokes their tokens after the step commits). Removing a member does not yet delete the connectors they created; that is [EON E3.6](../EON/README.md#e3-configuration-tokens-and-connecting).
+
 ### Garden map
 
 Made on a LiDAR device (architecture 6.8). Viewing it needs no LiDAR.
@@ -1981,7 +2054,7 @@ interface GardenMap {
 |---|---|---|
 | A plant | Its scans with their images, depth maps, masks, observations, events, diagnoses, plans and questions; its tasks and plan trigger rules, including the neighbour tasks and trigger rules its plans made for other plants; the tasks and trigger rules other plants' plans made for it (those plans are not changed: section 7, when a neighbour is deleted); conversations anchored to the plant or its scans, with their messages, images, pending actions and feedback; memories about the plant; its pin on the garden map; its scope subtree in Agent Memory (`gardens/{garden_id}/plants/{plant_id}`, erased for good after its objects and before its records) | Queued and leased jobs of its scans are cancelled, and their step claims and question steps cleared, so no running step can commit afterwards |
 | A `pending` scan (`DELETE /scans/{id}`, section 3) | Its images with their depth maps, its guided checks with their observations and events, conversations anchored to it, and the tasks naming it (`Task.scan_id`) | Its guided jobs are cancelled |
-| A garden | Everything under `gardens/{garden_id}/` in RustFS, its scope subtree in Agent Memory, and every record of the garden: plants (as above), tasks, memories, conversations, invites, memberships, the garden map | All its jobs are cancelled, and every step claim and question step cleared |
+| A garden | Everything under `gardens/{garden_id}/` in RustFS, its scope subtree in Agent Memory, and every record of the garden: plants (as above), tasks, memories, conversations, invites, memberships, the garden map, its farm records and then its farm connectors (`api` revokes the tokens after the store step commits, [EON E3.6](../EON/README.md#e3-configuration-tokens-and-connecting)) | All its jobs are cancelled, and every step claim and question step cleared |
 
 **Agent Memory.** Starting a plant's or garden's cascade queues its Agent Memory scope for erasure in the same transaction, and `api`'s belief sweep erases it (`POST /scopes/forget`, permanent) within seconds while Agent Memory is up; nothing more of that plant or garden is recorded. When an owner deletes one shared memory, the row goes and its plant's (or the garden's) scope is queued in one transaction; the sweep erases the scope and records the remaining shared memories again. Erasure is eventual: while Agent Memory is down, the queued erase waits. Account deletion needs nothing: shared memories stay with the garden, and private ones were never sent.
 
@@ -2370,6 +2443,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.6: open question 31 settled: xgrammar enforces `anyOf` with `null` in the VLM schemas | none (the architecture document doesn't mention it) |
 | v0.10.7: `Memory.topic`; shared memories mirrored into SurrealDB Agent Memory as beliefs; `GET /plants/{plant_id}/beliefs`; `search_memory` returns `MemorySearch`; scope erase in the plant and garden cascades | 1, 5, 7, 8.2, 9, 10, 11, 15 |
 | v0.10.8: `vlm_prompts` names `findings@2` | none (the architecture document doesn't list prompt versions) |
+| v0.10.9: the farm connectors' contract: `Connector` and its eight routes, `FarmCitation` and `FarmRecordId`, `search_farm_records`, `PlanStep.farm_citations`, `ActionPlan.farm_records`, `Message.farm_citations`, the owner-only roles rows and the garden cascade's connector step | 5 (tables, deletion), 7 (tools), 9 (API surface) |
 
 ---
 

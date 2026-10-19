@@ -419,6 +419,7 @@ fn check_step(
         targets: draft.targets,
         plant_id: draft.plant_id,
         citations: draft.citations,
+        farm_citations: Vec::new(),
         safety_note,
     })
 }

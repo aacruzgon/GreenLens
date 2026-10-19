@@ -5,6 +5,7 @@
 //! `source` for the log.
 
 use crate::{
+    connectors::{ConnectorKind, SyncErrorCode},
     error::DomainError,
     id::{JobId, PlanId},
 };
@@ -150,6 +151,72 @@ impl ProviderError {
     }
 }
 
+/// A farm connector vendor's error ([connectors 6]): Slack or Google Drive. Each maps to the
+/// fixed code stored in `connector.last_error`; the vendor's response text is never kept,
+/// because it may echo record text.
+///
+/// [connectors 6]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#6-sync
+#[derive(Debug, thiserror::Error)]
+pub enum FarmSourceError {
+    /// The vendor refused the token (Slack's `invalid_auth` or `token_revoked`, Google's
+    /// `invalid_grant`): the connector becomes `reauth_needed`.
+    #[error("{vendor}: token refused")]
+    AuthRefused {
+        /// The vendor.
+        vendor: ConnectorKind,
+    },
+    /// A chosen channel or folder is gone or no longer visible to the token (Slack's
+    /// `channel_not_found`, Drive's `404`): nothing runs until the owner changes the sources. A
+    /// scope refusal (Slack's `missing_scope`, Drive's `insufficientPermissions`) is
+    /// [`Self::AuthRefused`], not this.
+    #[error("{vendor}: source {source_id} is missing")]
+    SourceMissing {
+        /// The vendor.
+        vendor: ConnectorKind,
+        /// The channel or folder id from the owner's choice.
+        source_id: String,
+    },
+    /// `429` past the pacer: the cursor is saved and the next run continues.
+    #[error("{vendor}: rate limited")]
+    RateLimited {
+        /// The vendor.
+        vendor: ConnectorKind,
+        /// The vendor's `Retry-After`.
+        retry_after_s: Option<u32>,
+    },
+    /// Down, timed out or answering 5xx: the next attempt is 15 minutes later.
+    #[error("{vendor}: unavailable")]
+    Unavailable {
+        /// The vendor.
+        vendor: ConnectorKind,
+        /// The client error, without the response body.
+        #[source]
+        source: BoxError,
+    },
+    /// The response didn't parse.
+    #[error("{vendor}: bad response")]
+    BadResponse {
+        /// The vendor.
+        vendor: ConnectorKind,
+        /// The parse error, without the response body.
+        #[source]
+        source: BoxError,
+    },
+}
+
+impl FarmSourceError {
+    /// The `connector.last_error` code. A response that didn't parse counts as the vendor being
+    /// unavailable: the sync tries again later either way.
+    pub const fn code(&self) -> SyncErrorCode {
+        match self {
+            Self::AuthRefused { .. } => SyncErrorCode::AuthRefused,
+            Self::SourceMissing { .. } => SyncErrorCode::SourceMissing,
+            Self::RateLimited { .. } => SyncErrorCode::RateLimited,
+            Self::Unavailable { .. } | Self::BadResponse { .. } => SyncErrorCode::VendorUnavailable,
+        }
+    }
+}
+
 /// A model's error: the LLM API, the VLM sidecar, `ort` sessions, the text embedder.
 #[derive(Debug, thiserror::Error)]
 pub enum ModelError {
@@ -214,4 +281,35 @@ pub enum AuthError {
     /// unauthenticated`, never a new user.
     #[error("account deleted")]
     AccountDeleted,
+}
+
+#[cfg(test)]
+mod farm_source_tests {
+    use super::*;
+
+    #[test]
+    fn each_farm_source_error_has_its_stored_code() {
+        let missing = FarmSourceError::SourceMissing {
+            vendor: ConnectorKind::Slack,
+            source_id: "C024BE91L".into(),
+        };
+        assert_eq!(missing.code(), SyncErrorCode::SourceMissing);
+        assert_eq!(missing.code().as_str(), "source_missing");
+        let limited = FarmSourceError::RateLimited {
+            vendor: ConnectorKind::GoogleDrive,
+            retry_after_s: Some(30),
+        };
+        assert_eq!(limited.code(), SyncErrorCode::RateLimited);
+        assert!(matches!(
+            limited,
+            FarmSourceError::RateLimited {
+                retry_after_s: Some(30),
+                ..
+            }
+        ));
+        let refused = FarmSourceError::AuthRefused {
+            vendor: ConnectorKind::Slack,
+        };
+        assert_eq!(refused.code(), SyncErrorCode::AuthRefused);
+    }
 }
