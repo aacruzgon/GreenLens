@@ -1,8 +1,8 @@
 # PDM Design
 
-> **Status:** Draft v0.5, 2026-10-18. v0.5: Conservatory's camera screens keep the full-screen photo and the 3D garden runs full screen, with neutral controls (white shutters, the chosen tab and mode in the text colour) on them and on home; and the 3D garden moves to RealityKit on Metal in the LiDAR module, since the app is iPhone only, with react-three-fiber on expo-gl as the fallback (section 7, open decision 5, garden-3d v0.3). v0.4: adds a fifth direction, Conservatory, in F0's palette, after a premium furniture concept, the Camera app's visual intelligence mode and Apple Music's artist profiles: photos that dissolve into the ground, a capture with a camera mode bar of shots, a live analysis that drops its cards over the photo just taken, a diagnosis tinted from its photo with the name centred over it, a plan mini player, and a turntable 3D garden in the camera's language, with Health, Growth and Frost modes. v0.3: adds the chat: answers with interactive blocks after CopilotKit's Open Intelligent UI, built from the agent's tool results rather than generated code, and the contract change it needs. v0.2: folds in the PR #43 audit: one demo story (Tomato 1 diagnosed on Oct 11 and recovering; today's live scan finds early blight on its neighbour Tomato 2), the capture tint rule, the wording sources, and 3D claims marked as not yet run. v0.1: the app's design direction: product principles from the research, what Apple owns and what we own, four directions mocked across eight screens (the current F0 baseline and three researched directions), the five borrowed ideas built into the mockups, the 3D garden, the insights, and the decisions still open.
+> **Status:** Draft v0.6, 2026-10-19. v0.6: the team chose Conservatory on Oct 19 (section 4, open decisions 1 and 10); the document points to the app roadmap, [`docs/frontend/roadmap.md`](../frontend/roadmap.md) (slices F0 to F9, the design layer is F0 item 7), and no longer to a pull request; section 2 and 3.1 agree on the neutral controls, the app is iPhone only, and the accessibility note follows the 3D-first garden. v0.5: Conservatory's camera screens keep the full-screen photo and the 3D garden runs full screen, with neutral controls (white shutters, the chosen tab and mode in the text colour) on them and on home; and the 3D garden moves to RealityKit on Metal in the LiDAR module, since the app is iPhone only, with react-three-fiber on expo-gl as the fallback (section 7, open decision 5, garden-3d v0.3). v0.4: adds a fifth direction, Conservatory, in F0's palette, after a premium furniture concept, the Camera app's visual intelligence mode and Apple Music's artist profiles: photos that dissolve into the ground, a capture with a camera mode bar of shots, a live analysis that drops its cards over the photo just taken, a diagnosis tinted from its photo with the name centred over it, a plan mini player, and a turntable 3D garden in the camera's language, with Health, Growth and Frost modes. v0.3: adds the chat: answers with interactive blocks after CopilotKit's Open Intelligent UI, built from the agent's tool results rather than generated code, and the contract change it needs. v0.2: folds in the PR #43 audit: one demo story (Tomato 1 diagnosed on Oct 11 and recovering; today's live scan finds early blight on its neighbour Tomato 2), the capture tint rule, the wording sources, and 3D claims marked as not yet run. v0.1: the app's design direction: product principles from the research, what Apple owns and what we own, four directions mocked across eight screens (the current F0 baseline and three researched directions), the five borrowed ideas built into the mockups, the 3D garden, the insights, and the decisions still open.
 
-This document sets how PDM looks, moves and speaks, so the build-week slices (F1 to F8 in the frontend roadmap on PR #42) build to one direction instead of improvising one. It sits on top of the [frontend architecture](../frontend/README.md), its [flows](../frontend/flows.md) and the [screens](../frontend/screens.md), which stay the source for what each screen contains. This document decides how it looks.
+This document sets how PDM looks, moves and speaks, so the build-week slices (F0 to F9 in the [frontend roadmap](../frontend/roadmap.md)) build to one direction instead of improvising one. It sits on top of the [frontend architecture](../frontend/README.md), its [flows](../frontend/flows.md) and the [screens](../frontend/screens.md), which stay the source for what each screen contains. This document decides how it looks.
 
 The folder holds the research behind it and the mockups:
 
@@ -20,7 +20,7 @@ The folder holds the research behind it and the mockups:
 1. [Principles](#1-principles)
 2. [What Apple owns and what we own](#2-what-apple-owns-and-what-we-own)
 3. [The directions](#3-the-directions)
-4. [Recommendation](#4-recommendation)
+4. [Decision](#4-decision)
 5. [The demo, screen by screen](#5-the-demo-screen-by-screen)
 6. [Rules every direction follows](#6-rules-every-direction-follows)
 7. [The 3D garden](#7-the-3d-garden)
@@ -55,8 +55,8 @@ Expo renders native iOS 26 components, so the chrome is Apple's whatever directi
 | System transitions and gestures | Motion inside content: stage ticks, the box draw, task checks, the 3D garden |
 | Lock Screen and Dynamic Island frames | What a Live Activity says and shows |
 
-- **Tint.** The accent tints the selected tab and one prominent button per screen (Analyse on capture, Done on a sheet). Nothing tinted sits over a photo, the camera preview or the 3D view: glass that adapts to dark content would make a light-mode accent unreadable (philosophies §6, to check on the iPhone). On capture, Analyse sits on the black control area below the preview, so it uses the dark-scheme accent.
-- **Android** gets Material chrome from the same components, with the same content layer.
+- **Tint.** Controls are neutral (see 3.1): the chosen tab and mode are drawn in the text colour, not the accent. The accent tints one prominent button per screen where it sits on a plain surface (Done on a sheet). Nothing tinted sits over a photo, the camera preview or the 3D view: glass that adapts to dark content would make a light-mode accent unreadable (philosophies §6, to check on the iPhone). On capture, Analyse is white on the black control area below the preview.
+- **iPhone only** for now. Android is out of scope; the components could give it Material chrome with the same content layer later.
 - **The web build** has no native chrome: we draw the header and tab bar as opaque `surface` with a hairline edge. The mockups imitate glass on every target only so the directions can be compared; the real web build does not.
 
 ## 3. The directions
@@ -140,9 +140,9 @@ The cards are solid fills, not glass: glass stays in the chrome.
 
 **Photo tint rule.** The tint takes the photo's dominant hue and holds its lightness and chroma fixed: about OKLCH L 0.93 in light and 0.24 in dark, chroma at most 0.03. That keeps the ground in one narrow band, so F0's text and status colours stay readable on any photo. For the mockups' leaf the tint is the sage wash (`#E3EBDC`, `#18231D`). Checked on it: every text and status colour passes 4.5:1 on the tint and on the translucent cards (lowest 4.74:1, `healthy` on a light card). Other hues have not been checked; a tomato-red photo gives a faint pink ground, still near the same lightness.
 
-**Palette.** F0's palette unchanged (`app/src/ui/tokens.ts` on `feat/app-scaffold`; `F0_COLORS` in [mockups/directions.js](mockups/directions.js), which both directions share so they cannot drift). The only addition is `wash`, the pale sage behind hero photos and the tint of the mockups' scan screens: `#E3EBDC` in light, `#18231D` in dark. Text on it is 13.5:1 and `textMuted` 5.22:1 in light (13.6:1 and 7.05:1 in dark). Conservatory also inherits F0's two known issues: accent and healthy are nearly one green, and watch and sick look alike to colour-blind users. The status shapes (section 6) carry the difference.
+**Palette.** F0's palette unchanged: `F0_COLORS` in [mockups/directions.js](mockups/directions.js), which every direction shares so they cannot drift, until the app roadmap's F0 creates `app/src/ui/tokens.ts`. The only addition is `wash`, the pale sage behind hero photos and the tint of the mockups' scan screens: `#E3EBDC` in light, `#18231D` in dark. Text on it is 13.5:1 and `textMuted` 5.22:1 in light (13.6:1 and 7.05:1 in dark). Conservatory also inherits F0's two known issues: accent and healthy are nearly one green, and watch and sick look alike to colour-blind users. The status shapes (section 6) carry the difference.
 
-**Glass tint.** As in F0: the green tints the selected tab and the one prominent button; nothing tinted sits over a photo.
+**Glass tint.** Controls are neutral: the chosen tab and mode are drawn in the text colour, not the green; nothing tinted sits over a photo.
 
 **Motion.** Slow and damped, never bouncy, because premium reads as unhurried: screens enter on a critically damped spring (stiffness 170, damping 26) rising 24 pt; stage ticks take 300 ms; pushes and sheets use the iOS sheet curve `bezier(0.32, 0.72, 0, 1)` over 420 ms. Reduced: fades, and the hotspot doesn't breathe.
 
@@ -150,9 +150,9 @@ The cards are solid fills, not glass: glass stays in the chrome.
 
 **Risks.** It depends on the top photo more than any other direction: the melt and the photo tint look their best over a clean, well-lit leaf, and users photograph sick plants in shade and clutter. Luxury can also read as "for someone else" to a community-garden member ([philosophies §3.2](philosophies.md#32-editorial-and-luxury)); the plain wording rules (section 6) are what keep it friendly. Urbanist is used only at 22 pt and above, where its geometric shapes stay legible.
 
-## 4. Recommendation
+## 4. Decision
 
-**Instrument, with Seed Packet's warmth in the words, not the colours.** The decision is the team's; this is the case for it.
+**The team chose Conservatory on Oct 19.** The app is built in its direction, in F0's palette ([the roadmap](../frontend/roadmap.md) builds its design layer in F0). The reasoning below is kept as history: it recommended Instrument, with Seed Packet's warmth in the words, and the case for it was as follows.
 
 - **It owns the gaps.** Showing the work and honesty are PDM's two strongest claims ([landscape §6](landscape.md#6-gaps-pdm-can-own)). Instrument's run log with stage times, the reticle with the measured size, and the comparison table for "Not sure yet" say both without a word of explanation.
 - **It is the furthest from the category.** Every competitor is green or mint ([landscape §8](landscape.md#8-what-would-make-pdm-look-generic)). With no brand hue, every colour on screen means a status or a measurement, so the sick tomato is the one red thing in the 3D garden on video.
@@ -162,7 +162,7 @@ The cards are solid fills, not glass: glass stays in the chrome.
 
 Herbarium is the safe second: tasteful and quiet, but green. Seed Packet is the most memorable and the most work.
 
-Conservatory is the most premium-looking and the closest to what the team liked. It is a different kind of choice: a surface more than a structure. The strongest combination may be **Conservatory's surface with Instrument's evidence**: the melt, the camera-style capture and analysis, the tinted diagnosis, the pill and the mini player, carrying Instrument's run log with stage times, measured sizes and the comparison table for "Not sure yet". The palette is a separate choice: Conservatory keeps F0's green, which keeps F0's two colour issues; Instrument's ink would fix them.
+Conservatory was the most premium-looking and the closest to what the team liked. It is a different kind of choice: a surface more than a structure. The combination considered was **Conservatory's surface with Instrument's evidence**: the melt, the camera-style capture and analysis, the tinted diagnosis, the pill and the mini player, carrying Instrument's run log with stage times, measured sizes and the comparison table for "Not sure yet". The palette is a separate choice: Conservatory keeps F0's green, which keeps F0's two colour issues; Instrument's ink would fix them.
 
 ## 5. The demo, screen by screen
 
@@ -221,7 +221,7 @@ Interactions inside a block are local. Anything that changes data still goes thr
 - **Data:** only what the garden map stores: bed outlines, plant pins in metres, canopy radius, and each plant's measured height ([architecture §6.8](../architecture/README.md#68-garden-map-lidar)). No mesh, photo or coordinates; the sheet says so. A plant with no measurement is drawn as "not measured", never with an invented height.
 - **Stack:** RealityKit on Metal, as a native `GardenView` in the LiDAR module: an `ARView` with the camera off, procedural meshes, no model files or textures, and UIKit labels placed from the 3D positions each frame. The app's store drives it through props (date, mode, selection). The app is iPhone only, so it needs no cross-platform renderer; Expo Go and the web build show the 2D map instead. Nothing has run on the device yet ([garden-3d §7](garden-3d.md#7-recommendation)).
 - **Risk:** the Swift work shares the LiDAR module's owner. The first task is a one-day spike on the iPhone. The fallback is react-three-fiber on expo-gl, which runs in Expo Go but has an open bug with three r163 or later, expo issue #51543 ([garden-3d §2](garden-3d.md#known-issues)).
-- **Accessibility:** a plant list is the screen reader's view of the garden, and the 2D map stays the default and the fallback.
+- **Accessibility:** a plant list is the screen reader's view of the garden, and the 3D scene opens on the iPhone with a 3D/Map switch; the 2D map is what Expo Go, the web build and a device that can't draw the scene show.
 - **Performance:** about 10 beds and 40 plants, flat materials, one light, a contact shadow per plant, and no frames drawn while idle ([garden-3d §3](garden-3d.md#3-performance-budget)).
 - **The mockup** uses three.js r128 as a browser global for convenience; the app draws the same scene with RealityKit.
 
@@ -245,17 +245,17 @@ Once a direction is chosen:
 4. **Libraries to add, each with its reason in its pull request** (not in [frontend §4](../frontend/README.md#4-libraries) yet): `expo-symbols` and `expo-glass-effect`. The 3D garden adds no library: RealityKit is part of iOS, and the view lives in the LiDAR module.
 5. **Chat blocks:** an `AnswerBlock` renderer in `features/chat` with one composite per kind, after the contract change in section 5.
 6. **Live Activity:** an ActivityKit widget extension, which needs a development build, and a decision on how it is added to the Expo project (open decision 4).
-7. **The frontend roadmap** (PR #42) gains this design as the first item of F1, and F8 Polish checks every screen against this document.
+7. **The frontend roadmap** ([`docs/frontend/roadmap.md`](../frontend/roadmap.md)) takes this design as item 7 of F0, the design layer, and F8 Polish checks every screen against this document.
 
 ## 10. Open decisions
 
-1. **The direction.** Instrument is recommended (section 4), with Conservatory's surface on Instrument's evidence as the hybrid to consider. The team picks one, or one direction's structure with another's detail.
+1. **The direction.** Taken: the team chose Conservatory on Oct 19 (section 4). From the hybrid of Conservatory's surface with Instrument's evidence, the build takes the run log with stage times and measured sizes in the hotspot labels, but shows "Not sure yet" as two plates, not Instrument's comparison table, and keeps F0's palette.
 2. **The scan action's place.** A round button beside the native tab bar, as in the mockups, or a tab of its own. Check what `NativeTabs` offers on SDK 57 before building.
 3. **Glass tint over photos.** Check on the iPhone whether a tinted control stays readable when the glass adapts to dark content (philosophies §9).
 4. **Live Activity in Expo.** How the widget extension is added and whether it fits the build week; the Lock Screen design does not depend on it.
 5. **The 3D spike.** Run the RealityKit `GardenView` spike first, beside the LiDAR day-1 check. If it slips, fall back to fiber on expo-gl, and pin three below r163 if expo-gl still blocks it (garden-3d §7).
 6. **Fonts.** If Seed Packet is chosen, cut Fraunces instances with the soft axis set (philosophies §9).
 7. **Answer blocks in chat.** Take the `answer_block` contract change (section 5) into F6, and agree the first set of block kinds with the agent work in backend S5.
-8. **Conservatory and real photos.** If Conservatory is chosen, try the melt and the photo tint on ten real photos of sick leaves taken in the garden, not on the mockups' drawings, before building them, and check the tint's contrast on each.
+8. **Conservatory and real photos.** Conservatory is chosen, so try the melt and the photo tint on ten real photos of sick leaves taken in the garden, not on the mockups' drawings, before building them, and check the tint's contrast on each.
 9. **Where the photo tint is computed.** On the phone from the first photo (a library such as `react-native-image-colors`, not yet in frontend §4), or by the API at upload as a field on the photo, which is a contract change.
-10. **Camera-style capture for every direction?** The mode bar, the analysis over the photo and the 3D garden's modes are Conservatory's in the mockups, but these screens are mostly chrome, so they could go with whichever direction is chosen. If the team takes them, update [screens §3.2, §3.3 and §3.8](../frontend/screens.md#32-capture).
+10. **Camera-style capture for every direction?** Taken: the camera-style capture, the live analysis and the 3D garden come with Conservatory, which the team chose on Oct 19. [Screens §3.2, §3.3 and §3.8](../frontend/screens.md#32-capture) follow in the app roadmap's slices.
