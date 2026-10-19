@@ -14,7 +14,7 @@
         "tags": [
           "connectors"
         ],
-        "summary": "`GET /connectors/oauth/callback?code&state`: the vendor's redirect. Public: it checks only the\nstate's signature and expiry, stores nothing, and answers `302` to the app with the code and\nstate. `409 invalid_state` while connectors are off.",
+        "summary": "`GET /connectors/oauth/callback?code&state&error`: the vendor's redirect. Public: no session\ncan say who consented, so it checks the state (signature, expiry, and that the pending\nconnector still holds its nonce), stores nothing, and answers `302` to the app with the\ncode and state, or the vendor's `error` (the owner declined). `400 invalid_request` for a\nbad, expired or used state; `409 invalid_state` while connectors are off.",
         "operationId": "oauth_callback",
         "parameters": [
           {
@@ -47,7 +47,7 @@
         ],
         "responses": {
           "302": {
-            "description": "To the app with `code` and `state`"
+            "description": "To the app with `code` and `state`, or `error` and `state`"
           },
           "400": {
             "content": {
@@ -78,7 +78,7 @@
         "tags": [
           "connectors"
         ],
-        "summary": "`DELETE /connectors/{id}`: `202`; the tokens are revoked, then the records deleted. Owner.\n`409 invalid_state` while connectors are off.",
+        "summary": "`DELETE /connectors/{id}`: `202`. The store marks the connector `deleting` (the list and the\nsync skip it), then a background task revokes the tokens with the vendor and deletes the\nrecords and the connector. Owner. `409 invalid_state` while connectors are off and for a\ndemo connector.",
         "operationId": "delete_connector",
         "parameters": [
           {
@@ -127,7 +127,7 @@
         "tags": [
           "connectors"
         ],
-        "summary": "`GET /connectors/{id}/available-sources`: the channels the bot is in, or the folders. Owner.\n`409 invalid_state` while connectors are off.",
+        "summary": "`GET /connectors/{id}/available-sources`: the channels the bot is in, or the folders. Owner.\n`409 invalid_state` while connectors are off, for a demo connector, or one with no token\nyet; a token the vendor refuses makes the connector `reauth_needed` and is `409` too.",
         "operationId": "available_sources",
         "parameters": [
           {
@@ -175,6 +175,15 @@
                 }
               }
             }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         }
       }
@@ -184,7 +193,7 @@
         "tags": [
           "connectors"
         ],
-        "summary": "`POST /connectors/{id}/complete`: exchanges the code. The owner who started the connect, with\nthe `device_verifier` whose hash started it. `409 invalid_state` while connectors are off.",
+        "summary": "`POST /connectors/{id}/complete`: exchanges the code. The owner who started the connect, with\nthe `device_verifier` whose hash started it; anyone else, or a wrong verifier, gets\n`404 not_found` and the pending connector is deleted. `400 invalid_request` for a bad,\nexpired or used state, or a code the vendor refused; `409 invalid_state` while connectors are\noff.",
         "operationId": "complete_connector",
         "parameters": [
           {
@@ -263,6 +272,15 @@
                 }
               }
             }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         }
       }
@@ -272,7 +290,7 @@
         "tags": [
           "connectors"
         ],
-        "summary": "`PUT /connectors/{id}/sources`: Slack up to 10 channels, Drive 1 folder. Owner.\n`409 invalid_state` while connectors are off.",
+        "summary": "`PUT /connectors/{id}/sources`: Slack up to 10 channels, Drive 1 folder, each from\n`available-sources` (its name comes from there). Owner. The records of a source no longer\nchosen are deleted before the answer. `409 invalid_state` while connectors are off, for a\ndemo connector, or one with no token yet.",
         "operationId": "set_sources",
         "parameters": [
           {
@@ -339,6 +357,15 @@
                 }
               }
             }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         }
       }
@@ -348,7 +375,7 @@
         "tags": [
           "connectors"
         ],
-        "summary": "`POST /connectors/{id}/sync`: **Sync now**, `202`; `429` within 5 minutes of the last. Owner.\n`409 invalid_state` while connectors are off. It has no body, and no body-less route holds an\nidempotency record yet, so `Idempotency-Key` is documented here and honoured with the handler\n(E3): sync-now is naturally idempotent, since a repeat inside 5 minutes is the `429`.",
+        "summary": "`POST /connectors/{id}/sync`: **Sync now**, `202`; `429 rate_limited` with `retry_after_s`\nwithin 5 minutes of the last accepted request (decision 12, a compare-and-set in the store).\nOwner. `409 invalid_state` while connectors are off, for a demo connector, one that isn't\n`active`, or one stopped until its sources change. It has no body and holds no idempotency\nrecord: a repeat inside 5 minutes is the `429`, so it is naturally idempotent.",
         "operationId": "sync_connector",
         "parameters": [
           {
@@ -1117,7 +1144,7 @@
         "tags": [
           "connectors"
         ],
-        "summary": "`POST /gardens/{id}/connectors`: starts a connect, `pending`, and returns the vendor's consent\nURL. Owner. `409 invalid_state` while connectors are off.",
+        "summary": "`POST /gardens/{id}/connectors`: starts a connect, `pending`, and returns the vendor's consent\nURL. Owner. `409 invalid_state` while connectors are off, when this server has no OAuth\nclient for the vendor, or when the garden already has 2 connectors.",
         "operationId": "create_connector",
         "parameters": [
           {

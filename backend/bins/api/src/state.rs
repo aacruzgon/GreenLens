@@ -25,6 +25,7 @@ use domain::{
 use crate::{
     broker::JobBroker,
     config::Config,
+    connect::ConnectVendors,
     deletion::DeletionRunner,
     error::ApiError,
     events::{hub::EventHub, writer::ScanWriters},
@@ -100,6 +101,9 @@ pub struct AppState {
     /// The one path to `RustFS` deletes ([storage 4]): detached, never cancelled, retried, and
     /// drained at shutdown for at least one full attempt. Shared with `deletions`.
     pub deletes: blob::DeleteQueue,
+    /// The farm connectors' vendor calls (the code exchange, the source picker, the revoke), on
+    /// the vendors' fixed hosts; a seam like `pipeline`, so route tests mock it.
+    pub connect: Arc<dyn ConnectVendors>,
     /// Cancelled once on SIGTERM / Ctrl-C.
     pub shutdown: CancellationToken,
     /// Every background task and spawned follow-up; waited on at shutdown.

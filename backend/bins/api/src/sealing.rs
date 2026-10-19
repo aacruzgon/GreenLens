@@ -44,10 +44,6 @@ pub struct ConnectorKey {
 /// What a sealed value is for. It is part of the associated data, so a value sealed as one
 /// purpose never opens as another (the token can't be swapped for the PKCE verifier).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "chosen by the connect routes (E3.3, E3.4)")
-)]
 pub enum SealPurpose {
     /// The vendor's access token, in `connector.secret`.
     Token,
@@ -128,20 +124,12 @@ impl ConnectorKey {
 
     /// The key that signs the OAuth `state` (E3.3): HMAC-SHA256 of the raw key under a fixed
     /// label, so it differs from the AES key and rotating `CONNECTOR_KEY` rotates both.
-    #[cfg_attr(not(test), expect(dead_code, reason = "signs the OAuth state (E3.3)"))]
     pub fn state_key(&self) -> &[u8; 32] {
         self.state_key.expose_secret()
     }
 
     /// Seals `plaintext` for `connector`, with a fresh random nonce, so sealing the same token
     /// twice gives two different values.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "sealed by the code exchange (E3.4) and seeding (E4.6)"
-        )
-    )]
     pub fn seal(&self, purpose: SealPurpose, connector: ConnectorId, plaintext: &[u8]) -> Sealed {
         let nonce = Nonce::generate();
         let mut body = Vec::with_capacity(plaintext.len() + TAG_LEN);
@@ -163,10 +151,6 @@ impl ConnectorKey {
 
     /// Opens a value sealed for `connector`. The plaintext comes back as a secret, wiped when
     /// dropped.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "opened by the routes (E3.4) and the sync (E4.1)")
-    )]
     pub fn unseal(
         &self,
         purpose: SealPurpose,

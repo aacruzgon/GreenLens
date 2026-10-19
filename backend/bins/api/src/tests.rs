@@ -3,6 +3,7 @@
 //! fakes of the seams.
 
 mod beliefs;
+mod connect;
 mod connectors;
 mod fake_store;
 
@@ -251,6 +252,23 @@ fn state_with_config(
     beliefs: Arc<dyn BeliefStore>,
     config: Config,
 ) -> Arc<AppState> {
+    state_with_vendors(
+        store,
+        auth,
+        config,
+        crate::connect::MockConnectVendors::new(),
+        (blob, images, beliefs),
+    )
+}
+
+/// [`state_with_config`] with the farm connectors' vendor calls of the test's.
+fn state_with_vendors(
+    store: FakeStore,
+    auth: MockAuthVerifier,
+    config: Config,
+    vendors: crate::connect::MockConnectVendors,
+    (blob, images, beliefs): (MockBlobStore, FixedImages, Arc<dyn BeliefStore>),
+) -> Arc<AppState> {
     let store: Arc<FakeStore> = Arc::new(store);
     let clock = Arc::new(FixedClock::at(NOW.parse().unwrap()));
     let tasks = TaskTracker::new();
@@ -314,6 +332,7 @@ fn state_with_config(
             shutdown.clone(),
         ),
         deletes,
+        connect: Arc::new(vendors),
         shutdown,
         tasks,
     })

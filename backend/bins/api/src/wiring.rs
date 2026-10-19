@@ -2,6 +2,8 @@
 //! configuration and assembles `AppState`, in the start-up order of api.md section 4, and it
 //! implements `api`'s seam traits for the library crates' types.
 
+mod connect;
+
 use std::{path::Path, sync::Arc, time::Duration};
 
 use anyhow::Context as _;
@@ -33,9 +35,11 @@ use integrations::{
     clerk::{ClerkAdmin, ClerkAdminConfig, ClerkVerifier, ClerkVerifierConfig},
     expo_push::{ExpoPush, ExpoPushConfig},
     geocode::{CompositeGeocoder, GeocoderConfig, TimeZoneFinder},
+    google_drive::DriveClient,
     http::{HttpConfig, client},
     jev::{JevClassifier, JevConfig},
     open_meteo::{OpenMeteo, OpenMeteoConfig},
+    slack::SlackClient,
     soilgrids::{SoilGrids, SoilGridsConfig},
     svix::SvixVerifier,
 };
@@ -43,6 +47,7 @@ use integrations::{
 use crate::{
     broker::JobBroker,
     config::Config,
+    connect::ConnectVendors,
     deletion::DeletionRunner,
     events::{hub::EventHub, writer::ScanWriters},
     limits::RateLimits,
@@ -279,8 +284,13 @@ struct Outbound {
     chat_model: Arc<dyn ChatModel>,
     classifier: Arc<dyn TextClassifier>,
     beliefs: Arc<dyn BeliefStore>,
+    connect: Arc<dyn ConnectVendors>,
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "every outbound adapter is built here, one after another, over one HTTP client"
+)]
 async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Outbound> {
     let http = client(&HttpConfig::default()).context("HTTP client")?;
     let mut verifier = ClerkVerifierConfig::new(config.clerk.issuer.clone());
@@ -328,6 +338,12 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
             256,
         )),
     };
+    let connect: Arc<dyn ConnectVendors> = Arc::new(connect::VendorClients::new(
+        |c| SlackClient::new(http.clone(), c),
+        |c| DriveClient::new(http.clone(), c),
+        &config.connectors,
+        Arc::clone(clock),
+    ));
     let beliefs: Arc<dyn BeliefStore> = match agent_memory(config) {
         Some(c) => Arc::new(AgentMemory::new(http.clone(), c)),
         None => Arc::new(NoBeliefs),
@@ -374,6 +390,7 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         chat_model,
         classifier,
         beliefs,
+        connect,
     })
 }
 
@@ -596,6 +613,7 @@ pub async fn build(
         broker,
         deletions,
         deletes,
+        connect: out.connect,
         shutdown,
         tasks,
     }))
