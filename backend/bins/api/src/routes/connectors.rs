@@ -1,15 +1,16 @@
 //! Farm connectors ([connectors 5], [connectors 11]): connect, choose sources, sync now and
 //! disconnect, owner-only; the list for any member.
 //!
-//! Declared ahead of their work (roadmap E1.4): until connectors are configured (E3, with
-//! `CONNECTOR_KEY`), the list answers `available: false` and every other route answers
-//! `409 invalid_state`, never `503`, which clients retry (decision 9). The access checks already
-//! run, so a non-member gets `404` and a non-owner `403` as they will then.
+//! Without `CONNECTOR_KEY` connectors are off (roadmap E3.1, decision 9): the list answers
+//! `available: false` and every other route `409 invalid_state`, never `503`, which clients
+//! retry. With it, the list comes from the store; the other routes still answer
+//! `409 invalid_state` until the OAuth state and the routes are built (E3.3, E3.4). The access
+//! checks already run, so a non-member gets `404` and a non-owner `403` as they will then.
 //!
 //! [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
 //! [connectors 11]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#11-changes-to-other-documents
 
-use axum::{http::StatusCode, response::Response};
+use axum::{extract::State, http::StatusCode, response::Response};
 
 use domain::{
     authz::{Owner, Viewer},
@@ -25,6 +26,7 @@ use crate::{
     error::ApiError,
     extract::{ApiJson, ApiQuery, access::Access, idempotency::IdemJson},
     reply::Wire,
+    state::SharedState,
 };
 
 /// The answer of every connector write while connectors are off.
@@ -38,9 +40,19 @@ fn connectors_off() -> ApiError {
 #[utoipa::path(get, path = "/gardens/{id}/connectors", tag = "connectors", params(("id" = String, Path)),
     responses((status = 200, body = ConnectorList), (status = 404, body = ErrorBody)))]
 pub async fn list_connectors(
-    _access: Access<Viewer, table::Garden>,
+    State(state): State<SharedState>,
+    access: Access<Viewer, table::Garden>,
 ) -> Result<Wire<ConnectorList>, ApiError> {
-    Ok(Wire::ok(ConnectorList::unavailable()))
+    // Off without `CONNECTOR_KEY` (the one switch, `AppState::connector_key`): the store isn't
+    // asked.
+    if state.connector_key().is_none() {
+        return Ok(Wire::ok(ConnectorList::unavailable()));
+    }
+    let connectors = state.ports.store.connectors(access.member).await?;
+    Ok(Wire::ok(ConnectorList {
+        available: true,
+        connectors,
+    }))
 }
 
 /// `POST /gardens/{id}/connectors`: starts a connect, `pending`, and returns the vendor's consent
