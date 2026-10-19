@@ -3,9 +3,11 @@
 //! - [`Id<T>`]: the ULID key of a `SurrealDB` record, typed by its table, sent as the bare
 //!   26-character string (`"01JAX3K9T6R2B8V0QZ4M7D1E5F"`).
 //! - [`Slug<K>`]: a knowledge-base id (`"tomato_early_blight"`), typed by its table.
-//! - [`IndicatorId`], [`RegionId`], [`ChunkId`]: compound string ids with a checked format.
+//! - [`IndicatorId`], [`RegionId`], [`ChunkId`], [`FarmRecordId`]: compound string ids with a
+//!   checked format.
 //! - [`WorkerId`], [`LeaseToken`], [`IdempotencyKey`], [`AuthId`], [`InviteCode`],
-//!   [`PushToken`], [`Cursor`], [`StepId`]: opaque strings with a checked format.
+//!   [`PushToken`], [`Cursor`], [`StepId`], [`DeviceVerifier`], [`DeviceHash`]: opaque strings
+//!   with a checked format.
 //!
 //! `domain` never depends on `surrealdb`: the `store` crate maps `Id<T>` to
 //! `RecordId::new(T::NAME, id.to_string())` and back ([database 2]).
@@ -244,6 +246,8 @@ pub mod table {
         Memory => "memory",
         /// `job`
         Job => "job",
+        /// `connector`
+        Connector => "connector",
     }
 }
 
@@ -291,6 +295,8 @@ pub type PendingActionId = Id<table::PendingAction>;
 pub type MemoryId = Id<table::Memory>;
 /// `job` record key.
 pub type JobId = Id<table::Job>;
+/// `connector` record key.
+pub type ConnectorId = Id<table::Connector>;
 
 // ---------------------------------------------------------------------------------------------
 // Knowledge slugs
@@ -696,6 +702,75 @@ string_schema!(
     "<source_id>.<n>"
 );
 
+/// A farm record ([connectors 4]): the record key `farm_record:[connector, vendor_id, n]`, sent
+/// as `"<connector_id>.<n>.<vendor_id>"`. The vendor id goes last because it may hold dots and
+/// slashes (a Slack `"<channel>/<ts>"`, whose `ts` is `"1729000000.000100"`), so the first two
+/// dots split the string and the rest is the vendor id.
+///
+/// [connectors 4]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#4-data
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct FarmRecordId {
+    /// The connector that synced it.
+    pub connector: ConnectorId,
+    /// Slack `"<channel>/<ts>"` or a Drive file id.
+    pub vendor_id: Arc<str>,
+    /// The chunk's number: 0 for a message; 0, 1, … for a document's chunks.
+    pub n: u32,
+}
+impl FarmRecordId {
+    /// Builds a farm record id, checking the vendor id (printable, 1–255 bytes).
+    pub fn new(connector: ConnectorId, vendor_id: &str, n: u32) -> Result<Self, IdParseError> {
+        printable(vendor_id, 255)
+            .map_err(|problem| IdParseError::new("farm record id", problem))?;
+        Ok(Self {
+            connector,
+            vendor_id: Arc::from(vendor_id),
+            n,
+        })
+    }
+}
+impl fmt::Display for FarmRecordId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}.{}.{}", self.connector, self.n, self.vendor_id)
+    }
+}
+impl FromStr for FarmRecordId {
+    type Err = IdParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        const SHAPE: &str = "expected <connector_id>.<n>.<vendor_id>";
+        let (connector, rest) = s
+            .split_once('.')
+            .ok_or(IdParseError::new("farm record id", SHAPE))?;
+        let (n, vendor_id) = rest
+            .split_once('.')
+            .ok_or(IdParseError::new("farm record id", SHAPE))?;
+        let connector = connector
+            .parse()
+            .map_err(|_| IdParseError::new("farm record id", "connector part is not a ULID"))?;
+        let n = n
+            .parse()
+            .map_err(|_| IdParseError::new("farm record id", "number part is not an integer"))?;
+        Self::new(connector, vendor_id, n)
+    }
+}
+impl Serialize for FarmRecordId {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+impl<'de> Deserialize<'de> for FarmRecordId {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = <std::borrow::Cow<'de, str>>::deserialize(deserializer)?;
+        s.parse().map_err(de::Error::custom)
+    }
+}
+string_schema!(
+    FarmRecordId,
+    "FarmRecordId",
+    Some("^[0-9A-HJKMNP-TV-Z]{26}\\.[0-9]+\\..+$"),
+    "<connector_id>.<n>.<vendor_id>"
+);
+
 // ---------------------------------------------------------------------------------------------
 // Opaque string ids
 // ---------------------------------------------------------------------------------------------
@@ -836,6 +911,41 @@ opaque_string!(
     |s| printable(s, 64)
 );
 
+/// 43 base64url characters without padding: 32 bytes, or a SHA-256 digest.
+fn base64url_43(s: &str) -> Result<(), &'static str> {
+    if s.len() == 43
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+    {
+        Ok(())
+    } else {
+        Err("expected 43 base64url characters without padding")
+    }
+}
+
+opaque_string!(
+    /// A connect's device binding ([connectors 5]): the app's 32 random bytes, base64url without
+    /// padding. Never leaves the device that started the connect until `complete`.
+    ///
+    /// [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
+    DeviceVerifier,
+    "device verifier",
+    Some("^[A-Za-z0-9_-]{43}$"),
+    base64url_43
+);
+
+opaque_string!(
+    /// `SHA-256(device_verifier)`, base64url without padding, as PKCE's `S256` encodes a
+    /// challenge ([connectors 5]): sent when a connect starts and kept in the pending
+    /// connector's `oauth` field.
+    ///
+    /// [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
+    DeviceHash,
+    "device hash",
+    Some("^[A-Za-z0-9_-]{43}$"),
+    base64url_43
+);
+
 /// The `Idempotency-Key` header: a UUID the app generates per user action ([contracts 1],
 /// idempotency). Parsed with `uuid` (`v4`, `serde`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -906,6 +1016,35 @@ mod tests {
 
         let chunk: ChunkId = "example_extension_tomato_diseases.12".parse().unwrap();
         assert_eq!(chunk.n, 12);
+    }
+
+    #[test]
+    fn farm_record_ids_keep_the_dots_of_a_slack_ts() {
+        let text = "01JAX3K9T6R2B8V0QZ4M7D1E5C.0.C024BE91L/1729000000.000100";
+        let id: FarmRecordId = text.parse().unwrap();
+        assert_eq!(id.connector.to_string(), "01JAX3K9T6R2B8V0QZ4M7D1E5C");
+        assert_eq!(id.n, 0);
+        assert_eq!(&*id.vendor_id, "C024BE91L/1729000000.000100");
+        assert_eq!(serde_json::to_value(&id).unwrap(), serde_json::json!(text));
+        assert_eq!(
+            serde_json::from_value::<FarmRecordId>(serde_json::json!(text)).unwrap(),
+            id
+        );
+        assert!(
+            "01JAX3K9T6R2B8V0QZ4M7D1E5C.0"
+                .parse::<FarmRecordId>()
+                .is_err()
+        );
+        assert!(
+            "01JAX3K9T6R2B8V0QZ4M7D1E5C.x.file"
+                .parse::<FarmRecordId>()
+                .is_err()
+        );
+        assert!(
+            "01JAX3K9T6R2B8V0QZ4M7D1E5C.1."
+                .parse::<FarmRecordId>()
+                .is_err()
+        );
     }
 
     #[test]

@@ -394,6 +394,18 @@ async fn confirm_revision(
         .knowledge
         .citations(&revised.citation_ids)
         .await?;
+    // The base's farm records that the revised steps still cite (connectors 7).
+    let farm_records = base
+        .farm_records
+        .iter()
+        .filter(|c| {
+            revised
+                .steps
+                .iter()
+                .any(|s| s.farm_citations.contains(&c.record_id))
+        })
+        .cloned()
+        .collect();
     let plan = ActionPlan {
         id: state.ports.ids.id(),
         scan_id: base.scan_id,
@@ -408,6 +420,7 @@ async fn confirm_revision(
         steps: revised.steps,
         watch_for: revised.watch_for,
         citations,
+        farm_records,
         task_ids: Vec::new(),
         llm_model: base.llm_model.clone(),
         prompt_version: base.prompt_version.clone(),

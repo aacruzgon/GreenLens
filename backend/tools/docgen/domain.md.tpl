@@ -1,8 +1,8 @@
 # PDM Backend: `domain` crate
 
-> **Status:** Draft v0.3.6, 2026-10-19. v0.3.6: `AnalysisRepo::finish_guided_check` takes `now`, like `complete_job`, so the lease check and the `score` claim follow the `Clock` port instead of the database clock. v0.3.5: the `BeliefStore` port records shared memories in Agent Memory, and `MemoryStore` gains the belief sweep's four methods (`unsynced_shared`, `mark_synced`, `belief_forgets`, `finish_belief_forget`). v0.3.4: `ToolSpec` gains `strict`, set by `agent` for the tools that propose changes. v0.3.3: section 1 says these types are the contracts' source of truth now that the code exists. v0.3.2: the schema link points to `backend/migrations/schema.surql`. v0.3.1: the section 1 note says the Rust skills follow this design and keeps only the timestamp difference from the brief; section 10 no longer says `rust-async` prefers a hand-written `BoxFuture`. v0.3: the cross-crate fixes add `PastWeather.longest_humid_run_days` and the past-week humid-stretch rules, store methods with default bodies (`JobRepo::live_lease`, `GardenRepo::soil_profile_failed` and `gardens_due_soil_profile`, the account tombstone's `DeletionRepo` methods), `AuthError::AccountDeleted` for a tombstoned account, `soil_retry_after` and `TOMBSTONE_KEEP`, and make `QuestionState::after_failed_photo(false)` supersede the question as contracts 5 says. v0.2: one definition of the weather thresholds (`rules::weather::WeatherThresholds`: frost at a 2 m minimum ≤ 0.5 °C, hard frost ≤ −2 °C, a humid stretch of two days with ≥ 10 h over 90%), `TextEmbedder::embed` takes an `EmbedMode`, `PhotoAnswerStart::Segment` boxes its job, corrected `BoxFormat`, `JobRepo::check_lease` and `DeletionRepo::delete_batch` comments, every addition the other crates made since v0.1 (section 12), and the open questions that contracts v0.9 and database v1.3.3–v1.4 resolved marked as such. v0.1: the shared crate every other crate builds on: typed ids and wire primitives, the error codes, the pure rules, the authorization proofs, the signed-URL typing and every boundary trait, all compiled on Rust 1.99.1.
+> **Status:** Draft v0.3.7, 2026-10-19. v0.3.7: the farm connectors' ports (roadmap E1.2): `FarmSource` for the Slack and Drive adapters with `FarmSourceError`, and `FarmRecordStore` for the `connector` and `farm_record` tables, part of `Store`; `GardenResource::Connector`; the garden cascade's `FarmRecordsAndConnectors` step before `Garden`; a new `connectors` module of wire types. v0.3.6: `AnalysisRepo::finish_guided_check` takes `now`, like `complete_job`, so the lease check and the `score` claim follow the `Clock` port instead of the database clock. v0.3.5: the `BeliefStore` port records shared memories in Agent Memory, and `MemoryStore` gains the belief sweep's four methods (`unsynced_shared`, `mark_synced`, `belief_forgets`, `finish_belief_forget`). v0.3.4: `ToolSpec` gains `strict`, set by `agent` for the tools that propose changes. v0.3.3: section 1 says these types are the contracts' source of truth now that the code exists. v0.3.2: the schema link points to `backend/migrations/schema.surql`. v0.3.1: the section 1 note says the Rust skills follow this design and keeps only the timestamp difference from the brief; section 10 no longer says `rust-async` prefers a hand-written `BoxFuture`. v0.3: the cross-crate fixes add `PastWeather.longest_humid_run_days` and the past-week humid-stretch rules, store methods with default bodies (`JobRepo::live_lease`, `GardenRepo::soil_profile_failed` and `gardens_due_soil_profile`, the account tombstone's `DeletionRepo` methods), `AuthError::AccountDeleted` for a tombstoned account, `soil_retry_after` and `TOMBSTONE_KEEP`, and make `QuestionState::after_failed_photo(false)` supersede the question as contracts 5 says. v0.2: one definition of the weather thresholds (`rules::weather::WeatherThresholds`: frost at a 2 m minimum ≤ 0.5 °C, hard frost ≤ −2 °C, a humid stretch of two days with ≥ 10 h over 90%), `TextEmbedder::embed` takes an `EmbedMode`, `PhotoAnswerStart::Segment` boxes its job, corrected `BoxFormat`, `JobRepo::check_lease` and `DeletionRepo::delete_batch` comments, every addition the other crates made since v0.1 (section 12), and the open questions that contracts v0.9 and database v1.3.3–v1.4 resolved marked as such. v0.1: the shared crate every other crate builds on: typed ids and wire primitives, the error codes, the pure rules, the authorization proofs, the signed-URL typing and every boundary trait, all compiled on Rust 1.99.1.
 
-Companion to the [backend architecture](README.md). The contract shapes themselves, section by section, are in [domain-types](domain-types.md). Every listing here is copied from the compiled source of `crates/domain`: `cargo check -p domain`, `cargo test -p domain` (95 unit tests, 5 compile-fail doc tests) and `cargo clippy -p domain --all-targets` pass, with and without the `mock` and `test-util` features.
+Companion to the [backend architecture](README.md). The contract shapes themselves, section by section, are in [domain-types](domain-types.md). Every listing here is copied from the compiled source of `crates/domain`: `cargo check -p domain`, `cargo test -p domain` (112 unit tests, 5 compile-fail doc tests) and `cargo clippy -p domain --all-targets` pass, with and without the `mock` and `test-util` features.
 
 ## Contents
 
@@ -83,6 +83,7 @@ crates/domain/src/
 │  └─ records/         observation, measurement, weather, diagnosis, plan, task
 ├─ chat.rs             conversations, messages, chat events, pending actions,
 │                      memory, tool return shapes                                    (contracts 8)
+├─ connectors.rs       farm connectors, the connect requests, FarmCitation          (connectors 4–7)
 ├─ garden.rs           gardens, plants, tasks and account                            (contracts 9)
 │  └─ garden/          gardens, members, plants, species, map, tasks, account,
 │                      push, webhook, ops
@@ -93,10 +94,10 @@ crates/domain/src/
 ├─ authz.rs            MinRole markers, Membership<R>, ConversationOwner<R>, checks
 ├─ ports.rs            boundary traits
 │  ├─ ports/           errors, system, auth, blob, models, providers, knowledge,
-│  │                   beliefs
+│  │                   beliefs, farm
 │  └─ ports/store/     access, identity, gardens, plants, scans, events, analysis,
 │                      steps, plans, chat, knowledge, jobs, idempotency, weather,
-│                      deletion, map
+│                      deletion, map, farm
 ├─ testing.rs          FixedClock, SequentialIds, FakeSigner, FixedPhotos,
 │                      ScriptedChat (feature test-util)
 └─ schema_util.rs      hand-written string schemas for utoipa and schemars
@@ -462,6 +463,12 @@ Shared memories are recorded in `SurrealDB` Agent Memory as triples, so a newer 
 
 @@file ports/beliefs.rs@@
 
+### Farm connectors' vendors
+
+The Slack and Google Drive adapters behind the farm connectors ([connectors 5–6](../connectors/README.md#6-sync)). `integrations` implements `FarmSource` once per vendor, each client built with a base URL so tests point it at Era's simulators; `api` picks one by the connector's `kind` and hands it a token it unsealed. Chunking, embedding and the record limit happen in the sync, outside the adapter. The OAuth exchanges are not part of the port: they run once per connect in `api`'s routes.
+
+@@file ports/farm.rs@@
+
 ### The store
 
 The store's area traits, `Store` as the supertrait of all of them, and the claim and lease tokens the write patterns of [database 4](../database/README.md#4-write-patterns) need.
@@ -542,6 +549,12 @@ The store's area traits, `Store` as the supertrait of all of them, and the claim
 #### Garden map
 
 @@file ports/store/map.rs@@
+
+#### Farm connectors and records
+
+The `connector` and `farm_record` tables ([connectors 4](../connectors/README.md#4-data)). The store answers every method with `StoreError::Query` until roadmap task E1.6 implements them; no route reaches them before then.
+
+@@file ports/store/farm.rs@@
 
 #### Deletion cascades
 

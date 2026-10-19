@@ -1,0 +1,338 @@
+//! Farm connectors and their synced records ([connectors 4], [connectors 6]): the `connector`
+//! and `farm_record` tables. Owner routes take a `Membership<Owner>` from the connector's
+//! garden (`GardenResource::Connector`); the `connectors` scheduler task, the cleanup and the
+//! deletion runner call the internal methods, which take no proof.
+//!
+//! [connectors 4]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#4-data
+//! [connectors 6]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#6-sync
+
+use std::{collections::BTreeMap, fmt};
+
+use crate::{
+    authz::{Membership, Owner, Viewer},
+    connectors::{
+        Connector, ConnectorAccount, ConnectorEndpoint, ConnectorKind, ConnectorSource,
+        ConnectorStatus, FarmRecordHit, FarmRecordKind, SyncErrorCode,
+    },
+    id::{ConnectorId, DeviceHash, FarmRecordId, GardenId, UserId},
+    ports::{Embedding, StoreError, SyncCursor},
+    wire::Timestamp,
+};
+
+/// A value sealed with AES-256-GCM under `CONNECTOR_KEY`, the connector's id as associated
+/// data (`connector.secret`, the PKCE verifier in `oauth`). `Debug` never prints the bytes.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Sealed(pub bytes::Bytes);
+
+impl fmt::Debug for Sealed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Sealed({} bytes)", self.0.len())
+    }
+}
+
+/// A pending connect's `oauth` field: kept until the exchange clears it, so a state works once.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingConnect {
+    /// The nonce the signed `state` carries.
+    pub nonce: String,
+    /// `SHA-256(device_verifier)` from the app that started the connect.
+    pub device_hash: DeviceHash,
+    /// Google's PKCE verifier, sealed; `None` for Slack.
+    pub verifier: Option<Sealed>,
+    /// 10 minutes after the start.
+    pub expires_at: Timestamp,
+}
+
+/// A connector to create.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewConnector {
+    /// Its id.
+    pub id: ConnectorId,
+    /// Slack or Google Drive.
+    pub kind: ConnectorKind,
+    /// `pending` for an owner's connect; `active` for the seeded demo connectors.
+    pub status: ConnectorStatus,
+    /// `vendor` for every route; `era` only from start-up seeding.
+    pub endpoint: ConnectorEndpoint,
+    /// The owner who consented.
+    pub created_by: UserId,
+    /// Known at once only for a seeded connector.
+    pub account: Option<ConnectorAccount>,
+    /// The sealed tokens; `None` until the exchange.
+    pub secret: Option<Sealed>,
+    /// A pending connect's state; `None` for a seeded connector.
+    pub oauth: Option<PendingConnect>,
+    /// The chosen sources; empty for an owner's connect.
+    pub sources: Vec<ConnectorSource>,
+    /// Now.
+    pub created_at: Timestamp,
+}
+
+/// A connector with everything the sync and the routes need beside its wire shape. Never sent:
+/// it holds the sealed tokens.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectorRow {
+    /// The wire shape, with its record count.
+    pub connector: Connector,
+    /// The owner who consented; the connector goes when they stop being an owner.
+    pub created_by: UserId,
+    /// The sealed tokens.
+    pub secret: Option<Sealed>,
+    /// The pending connect's state.
+    pub oauth: Option<PendingConnect>,
+    /// Each source's sync cursor, by source id.
+    pub cursors: BTreeMap<String, SyncCursor>,
+    /// When the sync is due.
+    pub next_sync_at: Timestamp,
+    /// The last sync's failure, a fixed code.
+    pub last_error: Option<SyncErrorCode>,
+    /// The last accepted **Sync now** (decision 12): one per connector in 5 minutes.
+    pub sync_requested_at: Option<Timestamp>,
+}
+
+/// What a successful exchange stores: `status: active`, `oauth` cleared, `next_sync_at` now.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompletedConnect {
+    /// The nonce the state carried: the write is a compare-and-set on the stored one, so a
+    /// state works once.
+    pub nonce: String,
+    /// The connected workspace or account.
+    pub account: ConnectorAccount,
+    /// The sealed tokens.
+    pub secret: Sealed,
+    /// Now: also the first `next_sync_at`.
+    pub now: Timestamp,
+}
+
+/// What a sync run stores when it stops, finished or not.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyncOutcome {
+    /// Each source's cursor after the run.
+    pub cursors: BTreeMap<String, SyncCursor>,
+    /// Set when every source was read to its end.
+    pub synced_at: Option<Timestamp>,
+    /// 15 minutes after a finished sync or an outage; now when pages are left.
+    pub next_sync_at: Timestamp,
+    /// The failure that stopped it, if any.
+    pub last_error: Option<SyncErrorCode>,
+}
+
+/// A chunk's vector, sent only when its `text_hash` changed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FarmVector {
+    /// The vector, embedded in document mode with the pinned text embedder.
+    pub embedding: Embedding,
+    /// The embedding model's name.
+    pub model: String,
+}
+
+/// One chunk to upsert by `(connector, vendor_id, n)`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewFarmRecord {
+    /// `farm_record:[connector, vendor_id, n]`.
+    pub id: FarmRecordId,
+    /// A message or a document chunk.
+    pub kind: FarmRecordKind,
+    /// `"#field-reports"`, `"Spray log 2026"`.
+    pub title: String,
+    /// The author's display name.
+    pub author: Option<String>,
+    /// The permalink or `webViewLink`.
+    pub link: String,
+    /// At most 2,000 characters.
+    pub text: String,
+    /// The hash of `text`: an unchanged hash keeps the stored vector.
+    pub text_hash: String,
+    /// `None` when `text_hash` is unchanged, so the stored vector stays; required for a new
+    /// record.
+    pub vector: Option<FarmVector>,
+    /// The message's time, or the document's `modifiedTime`.
+    pub at: Timestamp,
+}
+
+/// `search_farm_records`' filters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct FarmRecordFilter {
+    /// Messages or documents only.
+    pub kind: Option<FarmRecordKind>,
+    /// Records at or after this instant (the tool's `since` date at the garden's midnight).
+    pub since: Option<Timestamp>,
+}
+
+/// A search hit with its similarity to the query.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FarmRecordMatch {
+    /// The text and its citation.
+    pub hit: FarmRecordHit,
+    /// Cosine similarity.
+    pub similarity: f32,
+}
+
+/// The `connector` and `farm_record` tables.
+#[cfg_attr(feature = "mock", mockall::automock)]
+#[async_trait::async_trait]
+pub trait FarmRecordStore: Send + Sync {
+    // ---- connectors ----
+
+    /// `POST /gardens/{id}/connectors`: a `pending` connector with its `oauth` state. A garden
+    /// holds at most 2 connectors (`Rejected`).
+    async fn create_connector(
+        &self,
+        owner: Membership<Owner>,
+        connector: NewConnector,
+    ) -> Result<Connector, StoreError>;
+
+    /// Start-up seeding of the demo garden's `era` connectors: idempotent by the fixed id.
+    async fn seed_connector(
+        &self,
+        garden: GardenId,
+        connector: NewConnector,
+    ) -> Result<Connector, StoreError>;
+
+    /// `GET /gardens/{id}/connectors`: the garden's connectors with their record counts,
+    /// oldest first, leaving out those being deleted.
+    async fn connectors(&self, member: Membership<Viewer>) -> Result<Vec<Connector>, StoreError>;
+
+    /// One connector with its sealed tokens and sync state; `None` when it doesn't exist.
+    async fn connector_row(
+        &self,
+        connector: ConnectorId,
+    ) -> Result<Option<ConnectorRow>, StoreError>;
+
+    /// `POST /connectors/{id}/complete`: a compare-and-set on `status = 'pending'` and the
+    /// stored nonce; `Conflict` when either no longer holds.
+    async fn complete_connect(
+        &self,
+        owner: Membership<Owner>,
+        connector: ConnectorId,
+        done: CompletedConnect,
+    ) -> Result<Connector, StoreError>;
+
+    /// `PUT /connectors/{id}/sources`: replaces the sources, drops the cursors of sources no
+    /// longer chosen and makes the sync due now.
+    async fn set_sources(
+        &self,
+        owner: Membership<Owner>,
+        connector: ConnectorId,
+        sources: Vec<ConnectorSource>,
+        now: Timestamp,
+    ) -> Result<Connector, StoreError>;
+
+    /// `POST /connectors/{id}/sync` (decision 12): a compare-and-set on `sync_requested_at`.
+    /// `true` when accepted (it is unset or 5 minutes old; `next_sync_at` becomes now),
+    /// `false` within 5 minutes of the last.
+    async fn request_sync(
+        &self,
+        owner: Membership<Owner>,
+        connector: ConnectorId,
+        now: Timestamp,
+    ) -> Result<bool, StoreError>;
+
+    /// The `connectors` task: connectors whose `next_sync_at` has passed, `active` only
+    /// (never `pending`, `reauth_needed` or `deleting`), on the `connector_due` index.
+    async fn due_connectors(
+        &self,
+        now: Timestamp,
+        limit: u32,
+    ) -> Result<Vec<ConnectorRow>, StoreError>;
+
+    /// Stores a sync run's cursors, times and failure.
+    async fn finish_sync(
+        &self,
+        connector: ConnectorId,
+        outcome: SyncOutcome,
+    ) -> Result<(), StoreError>;
+
+    /// Sets `status` and `last_error` (a refused token: `reauth_needed` with `auth_refused`).
+    async fn set_status(
+        &self,
+        connector: ConnectorId,
+        status: ConnectorStatus,
+        last_error: Option<SyncErrorCode>,
+    ) -> Result<(), StoreError>;
+
+    /// `DELETE /connectors/{id}`: `status: deleting`, so the sync and the list skip it.
+    /// Returns the row, whose tokens the caller revokes before deleting the records.
+    async fn start_connector_deletion(
+        &self,
+        owner: Membership<Owner>,
+        connector: ConnectorId,
+    ) -> Result<ConnectorRow, StoreError>;
+
+    /// One batch of a connector's deletion: its farm records, 500 at a time, then the connector
+    /// itself. The caller repeats it until 0.
+    async fn delete_connector_batch(&self, connector: ConnectorId) -> Result<u32, StoreError>;
+
+    /// The connectors a member created in a garden: deleted when that member stops being an
+    /// owner (demoted, removed, leaving or deleting the account).
+    async fn connectors_created_by(
+        &self,
+        garden: GardenId,
+        user: UserId,
+    ) -> Result<Vec<ConnectorId>, StoreError>;
+
+    /// The cleanup: deletes `pending` connectors created before the cutoff (10 minutes ago).
+    async fn delete_expired_pending(&self, before: Timestamp) -> Result<u32, StoreError>;
+
+    // ---- farm records ----
+
+    /// The stored `text_hash` of every chunk of these items, so the sync embeds only changed
+    /// text.
+    async fn record_hashes(
+        &self,
+        connector: ConnectorId,
+        vendor_ids: Vec<String>,
+    ) -> Result<Vec<(FarmRecordId, String)>, StoreError>;
+
+    /// Upserts chunks by `(connector, vendor_id, n)`, keeping the stored vector when
+    /// `vector` is `None`. Returns how many were written.
+    async fn upsert_records(
+        &self,
+        connector: ConnectorId,
+        records: Vec<NewFarmRecord>,
+    ) -> Result<u32, StoreError>;
+
+    /// Deletes every chunk of these items (gone at the vendor, or re-chunked into fewer).
+    async fn delete_records(
+        &self,
+        connector: ConnectorId,
+        vendor_ids: Vec<String>,
+    ) -> Result<u32, StoreError>;
+
+    /// One batch of 500 of a source's records, after the owner dropped it: Slack's whose
+    /// `vendor_id` starts with `"<channel>/"`, and for Drive (one folder) all of the
+    /// connector's.
+    async fn delete_source_records(
+        &self,
+        connector: ConnectorId,
+        source: String,
+    ) -> Result<u32, StoreError>;
+
+    /// A garden's record count, for the 10,000 limit.
+    async fn garden_record_count(&self, garden: GardenId) -> Result<u32, StoreError>;
+
+    /// `search_farm_records`: the `k` closest records of the proof's garden, searched exactly
+    /// (no HNSW index, gap G7), each with its citation.
+    async fn search_records(
+        &self,
+        member: Membership<Viewer>,
+        query: &Embedding,
+        filter: FarmRecordFilter,
+        k: usize,
+    ) -> Result<Vec<FarmRecordMatch>, StoreError>;
+
+    /// The cleanup: one batch of 500 records older than the cutoff (180 days), on the
+    /// `farm_record_at` index.
+    async fn delete_records_before(&self, cutoff: Timestamp) -> Result<u32, StoreError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sealed_bytes_never_print() {
+        let sealed = Sealed(bytes::Bytes::from_static(b"ciphertext"));
+        assert_eq!(format!("{sealed:?}"), "Sealed(10 bytes)");
+    }
+}

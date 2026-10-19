@@ -24,6 +24,7 @@ use utoipa::{
         (name = "account", description = "contracts 9, account"),
         (name = "memories", description = "contracts 8, memory"),
         (name = "chat", description = "contracts 8"),
+        (name = "connectors", description = "farm connectors, docs/connectors 5 and 11"),
         (name = "media", description = "signed image URLs, storage 3"),
         (name = "worker", description = "contracts 5; worker token"),
         (name = "ops", description = "contracts 9, ops and auth webhook"),

@@ -1,6 +1,6 @@
 # PDM Backend: `store` crate
 
-> **Status:** Draft v0.4.7, 2026-10-18. v0.4.7: `knowledge_meta` is in the schema, and an embedded-engine test loads the knowledge loader's output (work items M1, M6). v0.4.6: memories carry a `topic` and `belief_synced_at`, the `belief_forget` queue holds subjects to erase in Agent Memory (written by a shared memory's delete and by the plant and garden cascade starts), and `MemoryStore` gains the belief sweep's methods. v0.4.5: `label_set_version` follows `ml/models/FORMATS.md` (a SHA-256 over the BioCLIP revision, the 80 templates and the sorted labels) instead of an FNV-1a hash, and passes its test vector; open question 7 says so. v0.4.4: open question 4 is resolved: the vector search's bound `k` failed to parse on 3.3.4, so `search_chunks` writes it as a clamped literal, with a test on the embedded engine. v0.4.3: section 4 proposes the migration runner that applies the numbered migrations and the generated `knowledge.surql` after the schema, with its work items, tests and open questions. v0.4.2: the schema now lives at `backend/migrations/schema.surql` only, no longer a copy of a file in `docs/database`. v0.4.1: section 1 keeps only the `$now` difference from database 4, since the skills now follow this design; section 17 lists `TargetBinds`, which section 18 cites; research notes are no longer named by a path outside the repository. v0.4: the multi-line query listings are complete (a generator bug cut eight of them after their first line); the step-claim pair is described as conditional, as in database 4; the protected parameters are `auth`, `token`, `access` and `session`; a bound `$before` is overridden only in `RETURN`, and `Option` fails only from 2 ids; the closure-lifetime error has no code. v0.3: the account tombstone (`deleted_user`), SoilGrids retries, `live_lease`, and the store's `Notify` as the only claim wake-up (a requeue notifies too). v0.2: every repository method is real code (no `todo!()` left), reads decode straight into domain types through contract-shaped projections, and 12 more tests run on the embedded engine. v0.1: `SurrealStore`, which implements every repository of `domain::ports::store` and `MemoryStore` over SurrealDB 3.3.4, with every statement a named constant, one query per transaction with a conflict retry, one error classifier, and real code for each pattern that carries a guarantee, tested against the embedded 3.3.4 engine.
+> **Status:** Draft v0.4.8, 2026-10-19. v0.4.8: the farm connectors' `connector` and `farm_record` tables are in the schema (with `sync_requested_at`, and `farm_records` and `farm_citations` on `action_plan` and `message`), the garden cascade deletes them before the garden, `garden_of` resolves a connector, `farm_record:[connector, vendor_id, n]` keys map to `FarmRecordId`, and `FarmRecordStore` is stubbed until roadmap E1.6. v0.4.7: `knowledge_meta` is in the schema, and an embedded-engine test loads the knowledge loader's output (work items M1, M6). v0.4.6: memories carry a `topic` and `belief_synced_at`, the `belief_forget` queue holds subjects to erase in Agent Memory (written by a shared memory's delete and by the plant and garden cascade starts), and `MemoryStore` gains the belief sweep's methods. v0.4.5: `label_set_version` follows `ml/models/FORMATS.md` (a SHA-256 over the BioCLIP revision, the 80 templates and the sorted labels) instead of an FNV-1a hash, and passes its test vector; open question 7 says so. v0.4.4: open question 4 is resolved: the vector search's bound `k` failed to parse on 3.3.4, so `search_chunks` writes it as a clamped literal, with a test on the embedded engine. v0.4.3: section 4 proposes the migration runner that applies the numbered migrations and the generated `knowledge.surql` after the schema, with its work items, tests and open questions. v0.4.2: the schema now lives at `backend/migrations/schema.surql` only, no longer a copy of a file in `docs/database`. v0.4.1: section 1 keeps only the `$now` difference from database 4, since the skills now follow this design; section 17 lists `TargetBinds`, which section 18 cites; research notes are no longer named by a path outside the repository. v0.4: the multi-line query listings are complete (a generator bug cut eight of them after their first line); the step-claim pair is described as conditional, as in database 4; the protected parameters are `auth`, `token`, `access` and `session`; a bound `$before` is overridden only in `RETURN`, and `Option` fails only from 2 ids; the closure-lifetime error has no code. v0.3: the account tombstone (`deleted_user`), SoilGrids retries, `live_lease`, and the store's `Notify` as the only claim wake-up (a requeue notifies too). v0.2: every repository method is real code (no `todo!()` left), reads decode straight into domain types through contract-shaped projections, and 12 more tests run on the embedded engine. v0.1: `SurrealStore`, which implements every repository of `domain::ports::store` and `MemoryStore` over SurrealDB 3.3.4, with every statement a named constant, one query per transaction with a conflict retry, one error classifier, and real code for each pattern that carries a guarantee, tested against the embedded 3.3.4 engine.
 
 Companion to the [backend architecture](README.md), the [database notes](../database/README.md) (v1.4) and [`schema.surql`](../../backend/migrations/schema.surql). The ports it implements are in [domain 9](domain.md#9-boundary-traits). Every listing is copied from the compiled source of `crates/store` with the docgen tool: `cargo check -p store`, `cargo clippy -p store --all-targets` (clean) and `cargo test -p store` (7 unit tests and 25 tests against the embedded engine) pass on Rust 1.99.1 with `surrealdb = "=3.3.4"`.
 
@@ -122,7 +122,8 @@ crates/store/
 │  ├─ repo.rs         one module per repository area
 │  └─ repo/           access, identity, gardens, plants, map, scans, events, steps, analysis,
 │                     plans, jobs, idempotency (+ usage), weather, chat, memory, knowledge, deletion,
-│                     and load (the loaders and projections shared by several areas)
+│                     farm (stubs until E1.6), and load (the loaders and projections shared by
+│                     several areas)
 ├─ tests/
 │  ├─ embedded.rs     the guarantees against the embedded 3.3.4 engine (one datastore per test)
 │  ├─ embedded/support.rs   fixtures built through the store's own methods
@@ -762,6 +763,39 @@ pub fn weather_rid(hour: DateTime<Utc>, cell: &str) -> RecordId {
         vec![hour.into_value(), Value::String(cell.to_owned())],
     )
 }
+
+/// `farm_record:[connector, vendor_id, n]` ([connectors 4]): an array key, because a Slack
+/// `ts` holds a dot.
+///
+/// [connectors 4]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#4-data
+pub fn farm_record_rid(id: &FarmRecordId) -> RecordId {
+    array_key(
+        "farm_record",
+        vec![
+            Value::RecordId(rid(&id.connector)),
+            Value::String(id.vendor_id.to_string()),
+            int(i64::from(id.n)),
+        ],
+    )
+}
+
+/// The [`FarmRecordId`] of a `farm_record:[connector, vendor_id, n]` key.
+pub fn farm_record_id_of(id: &RecordId) -> Result<FarmRecordId, RowError> {
+    if id.table.as_str() == "farm_record"
+        && let RecordIdKey::Array(parts) = &id.key
+        && let [
+            Value::RecordId(connector),
+            Value::String(vendor_id),
+            Value::Number(Number::Int(n)),
+        ] = parts.as_slice()
+        && let Ok(n) = u32::try_from(*n)
+        && let Ok(connector) = from_rid::<ConnectorId>(connector)
+        && let Ok(record) = FarmRecordId::new(connector, vendor_id, n)
+    {
+        return Ok(record);
+    }
+    Err(bad_id(id, "farm_record"))
+}
 ```
 
 ### Rows
@@ -1045,6 +1079,9 @@ pub mod sql {
     /// An invite's garden.
     pub const GARDEN_OF_INVITE: &str =
         "SELECT VALUE garden FROM $id WHERE garden.deleting_at = NONE;";
+    /// A farm connector's garden; a connector being deleted reads as missing.
+    pub const GARDEN_OF_CONNECTOR: &str =
+        "SELECT VALUE garden FROM $id WHERE status != 'deleting' AND garden.deleting_at = NONE;";
     /// A conversation's owner and garden.
     pub const CONVERSATION_OWNER: &str =
         "SELECT user, garden FROM $id WHERE garden.deleting_at = NONE;";
@@ -2608,10 +2645,13 @@ pub fn step_statements(target: DeletionTarget, step: CascadeStep) -> &'static [&
             &[sql::MEMORIES_OF_GARDEN, sql::PLANTS_OF_GARDEN, sql::MAPS]
         }
         (T::Plant(_), S::MemoriesPlantsMap) => &[sql::MEMORIES_OF_PLANT, sql::PLANT],
+        (T::Garden(_), S::FarmRecordsAndConnectors) => {
+            &[sql::FARM_RECORDS_OF_GARDEN, sql::CONNECTORS_OF_GARDEN]
+        }
         (T::Garden(_), S::Garden) => &[sql::INVITES, sql::MEMBERSHIPS, sql::GARDEN],
-        // A pending scan has no tasks, plans, diagnoses, memories or garden step
-        // (CascadeStep::steps_for never asks for them).
-        (T::PendingScan(_), _) | (T::Plant(_), S::Garden) => &[],
+        // A pending scan has no tasks, plans, diagnoses, memories or garden step, and a plant no
+        // connectors (CascadeStep::steps_for never asks for them).
+        (T::PendingScan(_), _) | (T::Plant(_), S::FarmRecordsAndConnectors | S::Garden) => &[],
     }
 }
 ```
@@ -2624,7 +2664,9 @@ pub fn step_statements(target: DeletionTarget, step: CascadeStep) -> &'static [&
 | 4.4 | masks, guided checks and **indicator answers** (schema v1.4), then observations, questions, scan feedback |
 | 4.5 | scan images, then scans |
 | 4.6 conversations | pending actions, message feedback, messages, chat images, conversations |
-| 4.7 | memories, plants (a plant lost its pin at start), the garden map; then invites, memberships, the garden |
+| 4.7 | memories, plants (a plant lost its pin at start), the garden map |
+| farm records and connectors | a garden's farm records, then its connectors ([connectors 8](../connectors/README.md#8-privacy-and-security)); revoking their tokens is the runner's |
+| 4.7 (cont.) | invites, memberships, the garden |
 
 **The target's binds.** `TargetBinds::of` picks the target's scope statement (`SCOPE_GARDEN`, `SCOPE_PLANT`, `SCOPE_SCAN` or `SCOPE_MEMBER`) and the record ids it binds; what the target lacks binds as `NONE`. `delete_batch` binds the same four values to the scope query and to every batch, adding `$scans` and `$conversations` from the scope's last two statements. `bind` is a function rather than a closure for the lifetime reason in section 18.
 
@@ -2688,7 +2730,7 @@ impl TargetBinds {
 }
 ```
 
-✓ A garden with a scan, an event, a job, a plan with a task, an indicator answer and a map deletes cleanly in this order (section 20). A `Member` target runs the conversations step and the member's unshared chat memories.
+✓ A garden with a scan, an event, a job, a plan with a task, an indicator answer and a map deletes cleanly in this order (section 20), and so does one with a connector, a farm record, a plan citing it and a message citing it. A `Member` target runs the conversations step and the member's unshared chat memories.
 
 **Cleanup** (database 4, every 10 minutes, batches of 500): `IdempotencyRepo::delete_expired`, `WeatherCacheRepo::delete_before`, `ChatRepo::expire_pending_actions`, `JobRepo::delete_finished_jobs`, each a real method returning how many rows it touched.
 

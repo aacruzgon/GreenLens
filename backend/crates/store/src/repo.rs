@@ -8,6 +8,7 @@ pub mod analysis;
 pub mod chat;
 pub mod deletion;
 pub mod events;
+pub mod farm;
 pub mod gardens;
 pub mod idempotency;
 pub mod identity;

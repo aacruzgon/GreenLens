@@ -1,6 +1,6 @@
 # PDM Backend: `domain` contract types
 
-> **Status:** Draft v0.3.3, 2026-10-17. v0.3.3: memories gain a `topic`, and the beliefs mirrored into Agent Memory get their wire types (`Belief`, `PlantBeliefs`, `BeliefHit`, `MemorySearch`). v0.3.2: the schema links point to `backend/migrations/schema.surql`. v0.3.1: `JobErrorCode`'s comments follow contracts 5: `max_runtime_exceeded` is settled (question 18), and `unsupported_version` and `model_error` carry the contract's full meaning. v0.3: `PastWeather` gains `longest_humid_run_days` (contracts v0.10, section 7), the longest run of humid days in the past week, so a past humid stretch is detectable. v0.2: follows contracts v0.9 and v0.10 where they touch shapes: `JobError.code` is a `JobErrorCode` (`max_runtime_exceeded` and `unknown_label_version` included), the `model_versions` keys are `ModelVersionKey` constants, `Invite.created_by` is optional, worker payloads never carry a mask URL and `complete` results are read by the job's kind (both as v0.1 had them); `BoxFormat`'s comments name the models of each format. v0.1: every shape of [contracts.md](../architecture/contracts.md) v0.8.2 as compiled Rust, section by section, with the serde and schema decisions explained and a TypeScript → Rust map.
+> **Status:** Draft v0.3.4, 2026-10-19. v0.3.4: the farm connectors' wire types ([connectors](../connectors/README.md), roadmap E1.1): `Connector` and its enums, the connect requests, `FarmCitation`, `FarmRecordId` and `ConnectorId`; `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations`, absent when empty; the `search_farm_records` tool. v0.3.3: memories gain a `topic`, and the beliefs mirrored into Agent Memory get their wire types (`Belief`, `PlantBeliefs`, `BeliefHit`, `MemorySearch`). v0.3.2: the schema links point to `backend/migrations/schema.surql`. v0.3.1: `JobErrorCode`'s comments follow contracts 5: `max_runtime_exceeded` is settled (question 18), and `unsupported_version` and `model_error` carry the contract's full meaning. v0.3: `PastWeather` gains `longest_humid_run_days` (contracts v0.10, section 7), the longest run of humid days in the past week, so a past humid stretch is detectable. v0.2: follows contracts v0.9 and v0.10 where they touch shapes: `JobError.code` is a `JobErrorCode` (`max_runtime_exceeded` and `unknown_label_version` included), the `model_versions` keys are `ModelVersionKey` constants, `Invite.created_by` is optional, worker payloads never carry a mask URL and `complete` results are read by the job's kind (both as v0.1 had them); `BoxFormat`'s comments name the models of each format. v0.1: every shape of [contracts.md](../architecture/contracts.md) v0.8.2 as compiled Rust, section by section, with the serde and schema decisions explained and a TypeScript → Rust map.
 
 Companion to the [backend architecture](README.md) and to the [`domain` crate](domain.md). Sections 1–10 follow [contracts.md](../architecture/contracts.md) 1–10, so "contracts 7" and "domain-types 7" describe the same shapes. Every listing is copied from the compiled source of `crates/domain` (`cargo check`, `cargo test` and `cargo clippy --all-targets` pass on Rust 1.99.1 with serde 1.0.229, utoipa 6.0.0, schemars 1.2.3, chrono 0.4.45 and ulid 3.0.0); the module paths are in [the map](#11-typescript-to-rust-map).
 
@@ -374,6 +374,8 @@ pub mod table {
         Memory => "memory",
         /// `job`
         Job => "job",
+        /// `connector`
+        Connector => "connector",
     }
 }
 ```
@@ -444,6 +446,9 @@ pub type MemoryId = Id<table::Memory>;
 
 /// `job` record key.
 pub type JobId = Id<table::Job>;
+
+/// `connector` record key.
+pub type ConnectorId = Id<table::Connector>;
 ```
 
 Knowledge ids are slugs, typed by table. `"healthy"` is reserved: it can't be a problem slug, because it takes a problem id's place in `problem_id: Slug | "healthy"`.
@@ -476,7 +481,7 @@ pub enum ProblemOrHealthy {
 }
 ```
 
-Compound ids check both parts:
+Compound ids check both parts. A farm record's key is `farm_record:[connector, vendor_id, n]`, and its wire form puts the vendor id last, because a Slack `ts` holds a dot:
 
 ```rust
 /// `<problem_id>.<indicator_slug>` ([contracts 10]), such as
@@ -505,9 +510,25 @@ pub struct ChunkId {
     /// Its number within the source.
     pub n: u32,
 }
+
+/// A farm record ([connectors 4]): the record key `farm_record:[connector, vendor_id, n]`, sent
+/// as `"<connector_id>.<n>.<vendor_id>"`. The vendor id goes last because it may hold dots and
+/// slashes (a Slack `"<channel>/<ts>"`, whose `ts` is `"1729000000.000100"`), so the first two
+/// dots split the string and the rest is the vendor id.
+///
+/// [connectors 4]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#4-data
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct FarmRecordId {
+    /// The connector that synced it.
+    pub connector: ConnectorId,
+    /// Slack `"<channel>/<ts>"` or a Drive file id.
+    pub vendor_id: Arc<str>,
+    /// The chunk's number: 0 for a message; 0, 1, … for a document's chunks.
+    pub n: u32,
+}
 ```
 
-The opaque strings (`WorkerId`, `LeaseToken`, `AuthId`, `InviteCode`, `PushToken`, `Cursor`, `StepId`) come from one macro with a check per type, and `IdempotencyKey` wraps a `uuid::Uuid`:
+The opaque strings (`WorkerId`, `LeaseToken`, `AuthId`, `InviteCode`, `PushToken`, `Cursor`, `StepId`, `DeviceVerifier`, `DeviceHash`) come from one macro with a check per type, and `IdempotencyKey` wraps a `uuid::Uuid`:
 
 ```rust
 /// The `Idempotency-Key` header: a UUID the app generates per user action ([contracts 1],
@@ -4143,6 +4164,11 @@ pub struct PlanStep {
     pub plant_id: Option<PlantId>,
     /// Source ids; at least one.
     pub citations: Vec<SourceId>,
+    /// Farm records the step cites ([connectors 7]): the farm's history, never the advice, so a
+    /// step still needs a knowledge source. Each appears in `ActionPlan.farm_records`.
+    /// Absent when empty; a plan stored before connectors reads as citing none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub farm_citations: Vec<FarmRecordId>,
     /// Added by the server to every chemical step.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(nullable = false)]
@@ -4193,6 +4219,9 @@ pub struct ActionPlan {
     pub watch_for: Vec<String>,
     /// Every source the steps cite, resolved.
     pub citations: Vec<Citation>,
+    /// Every farm record the steps cite, resolved ([connectors 7]); absent when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub farm_records: Vec<FarmCitation>,
     /// The tasks the steps created.
     pub task_ids: Vec<TaskId>,
     /// The LLM that wrote it.
@@ -4553,6 +4582,10 @@ pub struct Message<U: UrlState = Signed> {
     pub attachments: Vec<Attachment<U>>,
     /// Sources cited.
     pub citations: Vec<Citation>,
+    /// The farm records an assistant message cites ([connectors 7]); absent when it cites none,
+    /// and read as empty from a message stored before connectors.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub farm_citations: Vec<FarmCitation>,
     /// Confirmation cards.
     pub pending_actions: Vec<PendingAction>,
     /// The stream dropped before `message_completed`.
@@ -5128,6 +5161,9 @@ pub enum ToolName {
     GetGardenMap,
     /// `Task[]`.
     ListTasks,
+    /// `FarmRecordHit` list, at most 8: the garden's synced Slack and Drive records
+    /// ([connectors 7]). Every role.
+    SearchFarmRecords,
     /// `Memory` and a `memory_saved` event.
     Remember,
     /// [`RescanRequest`] and a `rescan_requested` event.
@@ -6071,6 +6107,303 @@ pub struct Healthz {
 }
 ```
 
+### Farm connectors
+
+[Connectors 4–7](../connectors/README.md#4-data); contracts 8–9 gain them with roadmap E1.5. Module `connectors`. The sealed tokens (`connector.secret`), a pending connect's `oauth` state and the sync cursors are on no wire type: they stay in the store's rows (`ConnectorRow` in [domain](domain.md)). The statuses are the schema's four; `endpoint` is `era` only for the demo garden's seeded connectors.
+
+```rust
+/// `Connector.kind`, and `FarmCitation.system`: which vendor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectorKind {
+    /// Slack channels the bot was invited to.
+    Slack,
+    /// One Google Drive folder.
+    GoogleDrive,
+}
+
+/// `Connector.status` ([connectors 4], `connector.status`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectorStatus {
+    /// Started; the owner hasn't finished the vendor's consent yet. Deleted by the cleanup after
+    /// 10 minutes.
+    Pending,
+    /// Connected and syncing on its schedule.
+    Active,
+    /// The vendor refused the token (Slack's `invalid_auth` or `token_revoked`, Google's
+    /// `invalid_grant`): the sync stopped, records stay searchable, owners see **Reconnect**.
+    ReauthNeeded,
+    /// Disconnected or its garden is being deleted: tokens revoked, records being deleted.
+    Deleting,
+}
+
+/// `Connector.endpoint` ([connectors 9.4]): where the connector's vendor calls go. Set by server
+/// configuration only; no route creates an `era` connector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectorEndpoint {
+    /// The real vendor: every connector an owner creates.
+    Vendor,
+    /// Era by Eon's simulators: the demo garden's connectors, seeded at start-up. The app labels
+    /// them "Demo data from Era by Eon (synthetic)".
+    Era,
+}
+
+/// `Connector.account`: whose workspace or Drive was connected, tagged by `kind`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ConnectorAccount {
+    /// From Slack's `auth.test` at connect.
+    Slack {
+        /// The workspace's team id; one pacer and one token per team.
+        team_id: String,
+        /// The workspace's name.
+        team_name: String,
+        /// The workspace URL, which permalinks are built from.
+        url: String,
+    },
+    /// From the token response's `id_token`, or `about.get`.
+    GoogleDrive {
+        /// The Google account.
+        email: String,
+    },
+}
+
+/// A chosen source: a Slack channel or the Drive folder.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+pub struct ConnectorSource {
+    /// The vendor's id: a channel id (`"C024BE91L"`) or a folder id.
+    pub id: String,
+    /// `"field-reports"`, `"Farm records"`.
+    pub name: String,
+}
+
+/// `Connector` ([connectors 5]): what `GET /gardens/{id}/connectors` lists and the connect
+/// calls return. Tokens and the pending connect's state are never part of it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct Connector {
+    /// The connector.
+    pub id: ConnectorId,
+    /// Its garden.
+    pub garden_id: GardenId,
+    /// Slack or Google Drive.
+    pub kind: ConnectorKind,
+    /// Where it stands.
+    pub status: ConnectorStatus,
+    /// `vendor`, or `era` for the demo garden's synthetic data.
+    pub endpoint: ConnectorEndpoint,
+    /// The connected workspace or account; absent while `pending`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    pub account: Option<ConnectorAccount>,
+    /// The chosen channels (Slack, up to 10) or folder (Drive, 1); empty until chosen.
+    pub sources: Vec<ConnectorSource>,
+    /// When the last sync finished; absent before the first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    pub synced_at: Option<Timestamp>,
+    /// Synced records (chunks) held for the garden by this connector.
+    pub record_count: u32,
+    /// When the connect started.
+    pub created_at: Timestamp,
+}
+
+/// `GET /gardens/{id}/connectors` ([connectors 11]). `available: false` when connectors are off
+/// on this server (no `CONNECTOR_KEY`), with an empty list, as beliefs do.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct ConnectorList {
+    /// Connectors are configured on this server.
+    pub available: bool,
+    /// The garden's connectors, oldest first; empty when not available.
+    pub connectors: Vec<Connector>,
+}
+```
+
+The connect flow's requests. App requests deny unknown fields; the vendor's callback doesn't, because Slack and Google add their own parameters:
+
+```rust
+/// `POST /gardens/{id}/connectors` (owner): starts a connect.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CreateConnectorRequest {
+    /// Which vendor.
+    pub kind: ConnectorKind,
+    /// `SHA-256(device_verifier)`; `complete` must bring the verifier.
+    pub device_hash: DeviceHash,
+}
+
+/// `POST /gardens/{id}/connectors`' answer: the `pending` connector and the vendor's consent
+/// URL, opened with `openAuthSessionAsync`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct CreateConnectorResponse {
+    /// The pending connector.
+    pub connector: Connector,
+    /// The vendor's consent page, with `state` = HMAC(connector, nonce, expiry).
+    pub authorize_url: String,
+}
+
+/// `GET /connectors/oauth/callback?code&state` (public): what the vendor sends back. Not
+/// `deny_unknown_fields`: the vendors add their own parameters (Google's `scope`, `authuser`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct OAuthCallbackQuery {
+    /// The authorization code; absent when the owner declined.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    /// The state the API signed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    /// The vendor's error, such as `access_denied`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// `POST /connectors/{id}/complete` (the owner who started it): exchanges the code.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CompleteConnectorRequest {
+    /// The vendor's authorization code, from the redirect to the app.
+    pub code: String,
+    /// The state from the same redirect.
+    pub state: String,
+    /// The 32 random bytes whose hash started the connect.
+    pub device_verifier: DeviceVerifier,
+}
+
+/// `GET /connectors/{id}/available-sources` (owner): the channels the bot is a member of, or
+/// the folders.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct AvailableSources {
+    /// What the owner may choose from.
+    pub sources: Vec<ConnectorSource>,
+}
+
+/// One chosen source in `PUT /connectors/{id}/sources`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SourceChoice {
+    /// A channel id or a folder id from `available-sources`.
+    pub id: String,
+}
+
+/// `PUT /connectors/{id}/sources` (owner): Slack up to 10 channels, Drive 1 folder.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SetSourcesRequest {
+    /// The chosen sources; replaces the previous choice.
+    pub sources: Vec<SourceChoice>,
+}
+```
+
+A synced record's citation, which plans and messages keep as it was when the record is deleted. `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations` are omitted when empty and read as empty from rows stored before connectors:
+
+```rust
+/// `connector.last_error` ([connectors 6]): a fixed code, never the vendor's text, which may
+/// echo record text. Stored, not sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncErrorCode {
+    /// The vendor answered `429`; the cursor is saved and the next run continues.
+    RateLimited,
+    /// The vendor was down; the next attempt is 15 minutes later.
+    VendorUnavailable,
+    /// The vendor refused the token: `reauth_needed`, nothing runs until a reconnect.
+    AuthRefused,
+    /// The garden would exceed 10,000 records: nothing runs until the sources change.
+    TooLarge,
+}
+
+/// `farm_record.kind`, and `search_farm_records`' `kind?` filter.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum FarmRecordKind {
+    /// A Slack message, its thread's replies joined to it.
+    Message,
+    /// A chunk of a Drive document.
+    Document,
+}
+
+/// `FarmCitation` ([connectors 7]): a synced farm record cited by a plan step or an assistant
+/// message. Stored with the plan or message as it was, so a deleted record's citation stays.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct FarmCitation {
+    /// The `farm_record` cited.
+    pub record_id: FarmRecordId,
+    /// Slack or Google Drive.
+    pub system: ConnectorKind,
+    /// `"#field-reports"`, `"Spray log 2026"`.
+    pub title: String,
+    /// The author's display name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    pub author: Option<String>,
+    /// The message's time, or the document's `modifiedTime`.
+    pub at: Timestamp,
+    /// Opens the record in Slack or Drive (or, for an `era` connector, the simulator).
+    pub link: String,
+}
+
+/// One `search_farm_records` result: the record's text, framed as data for the model, and its
+/// citation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FarmRecordHit {
+    /// One chunk, at most 2,000 characters.
+    pub text: String,
+    /// What the answer cites.
+    pub citation: FarmCitation,
+}
+```
+
+```rust
+#[test]
+fn a_farm_citation_is_exactly_its_contract() {
+    let citation = FarmCitation {
+        record_id: RECORD.parse().unwrap(),
+        system: ConnectorKind::Slack,
+        title: "#field-reports".to_owned(),
+        author: Some("Sam".to_owned()),
+        at: "2026-10-12T07:30:00Z".parse().unwrap(),
+        link: "https://maplerow.slack.com/archives/C024BE91L/p1729000000000100".to_owned(),
+    };
+    assert_eq!(
+        serde_json::to_value(&citation).unwrap(),
+        json!({
+            "record_id": RECORD,
+            "system": "slack",
+            "title": "#field-reports",
+            "author": "Sam",
+            "at": "2026-10-12T07:30:00Z",
+            "link": "https://maplerow.slack.com/archives/C024BE91L/p1729000000000100"
+        })
+    );
+    let anonymous = FarmCitation {
+        author: None,
+        ..citation.clone()
+    };
+    assert!(
+        serde_json::to_value(&anonymous)
+            .unwrap()
+            .get("author")
+            .is_none()
+    );
+    let hit = FarmRecordHit {
+        text: "Rings on bed 3 again.".to_owned(),
+        citation,
+    };
+    assert_eq!(
+        serde_json::to_value(&hit).unwrap()["citation"]["record_id"],
+        RECORD
+    );
+    assert_eq!(
+        serde_json::to_value(FarmRecordKind::Document).unwrap(),
+        json!("document")
+    );
+}
+```
+
 ---
 
 ## 10. Knowledge seed format
@@ -6665,6 +6998,8 @@ pub struct SoilProfile {
 | `Slug` | `Slug<K>` (`SpeciesId`, `ProblemId`, `OrganismId`, `TreatmentId`, `SourceId`) | `id` |
 | `Slug \| "healthy"` | `ProblemOrHealthy` | `id` |
 | `"<problem_id>.<slug>"`, `"<image_id>.<n>"`, `"<source_id>.<n>"` | `IndicatorId`, `RegionId`, `ChunkId` | `id` |
+| `"<connector_id>.<n>.<vendor_id>"` (a farm record) | `FarmRecordId` | `id` |
+| `Connector`, `FarmCitation` and the connect requests | `Connector`, `FarmCitation`, … | `connectors` |
 | `Timestamp`, `LocalDate` | `Timestamp`, `LocalDate` | `wire` |
 | `Confidence`, `ConfidenceBand` | `Confidence`, `ConfidenceBand`; the pair as `Rated` | `wire` |
 | `BBox`, `Region`, `Page<T>` | `BBox`, `Region<U>`, `Page<T>` | `wire` |

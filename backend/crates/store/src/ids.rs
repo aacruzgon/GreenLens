@@ -10,8 +10,8 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use domain::{
     id::{
-        Id, IdempotencyKey, IndicatorId, MessageId, PushToken, ScanId, Slug, SlugKind, Table,
-        UserId, WorkerId,
+        ConnectorId, FarmRecordId, Id, IdempotencyKey, IndicatorId, MessageId, PushToken, ScanId,
+        Slug, SlugKind, Table, UserId, WorkerId,
     },
     wire::{EventSeq, Run},
 };
@@ -191,6 +191,39 @@ pub fn message_feedback_rid(message: MessageId) -> RecordId {
     array_key("message_feedback", vec![Value::RecordId(rid(&message))])
 }
 
+/// `farm_record:[connector, vendor_id, n]` ([connectors 4]): an array key, because a Slack
+/// `ts` holds a dot.
+///
+/// [connectors 4]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#4-data
+pub fn farm_record_rid(id: &FarmRecordId) -> RecordId {
+    array_key(
+        "farm_record",
+        vec![
+            Value::RecordId(rid(&id.connector)),
+            Value::String(id.vendor_id.to_string()),
+            int(i64::from(id.n)),
+        ],
+    )
+}
+
+/// The [`FarmRecordId`] of a `farm_record:[connector, vendor_id, n]` key.
+pub fn farm_record_id_of(id: &RecordId) -> Result<FarmRecordId, RowError> {
+    if id.table.as_str() == "farm_record"
+        && let RecordIdKey::Array(parts) = &id.key
+        && let [
+            Value::RecordId(connector),
+            Value::String(vendor_id),
+            Value::Number(Number::Int(n)),
+        ] = parts.as_slice()
+        && let Ok(n) = u32::try_from(*n)
+        && let Ok(connector) = from_rid::<ConnectorId>(connector)
+        && let Ok(record) = FarmRecordId::new(connector, vendor_id, n)
+    {
+        return Ok(record);
+    }
+    Err(bad_id(id, "farm_record"))
+}
+
 /// A `seq` as `SurrealDB`'s `int`. Sequences never reach `i64::MAX`.
 pub fn seq_i64(seq: EventSeq) -> i64 {
     i64::try_from(seq.0).unwrap_or(i64::MAX)
@@ -219,5 +252,13 @@ mod tests {
         let ev = scan_event_rid(scan, EventSeq(7));
         assert_eq!(seq_of(&ev).unwrap(), EventSeq(7));
         assert!(seq_of(&rid(&scan)).is_err());
+
+        let record: FarmRecordId = "01JAX3K9T6R2B8V0QZ4M7D1E5C.2.C024BE91L/1729000000.000100"
+            .parse()
+            .unwrap();
+        let key = farm_record_rid(&record);
+        assert_eq!(key.table.as_str(), "farm_record");
+        assert_eq!(farm_record_id_of(&key).unwrap(), record);
+        assert!(farm_record_id_of(&ev).is_err());
     }
 }

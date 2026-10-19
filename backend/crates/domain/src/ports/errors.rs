@@ -5,6 +5,7 @@
 //! `source` for the log.
 
 use crate::{
+    connectors::{ConnectorKind, SyncErrorCode},
     error::DomainError,
     id::{JobId, PlanId},
 };
@@ -146,6 +147,60 @@ impl ProviderError {
             | Self::RateLimited { provider, .. }
             | Self::Unavailable { provider, .. }
             | Self::BadResponse { provider, .. } => provider,
+        }
+    }
+}
+
+/// A farm connector vendor's error ([connectors 6]): Slack or Google Drive. Each maps to the
+/// fixed code stored in `connector.last_error`; the vendor's response text is never kept,
+/// because it may echo record text.
+///
+/// [connectors 6]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#6-sync
+#[derive(Debug, thiserror::Error)]
+pub enum FarmSourceError {
+    /// The vendor refused the token (Slack's `invalid_auth` or `token_revoked`, Google's
+    /// `invalid_grant`): the connector becomes `reauth_needed`.
+    #[error("{vendor}: token refused")]
+    AuthRefused {
+        /// The vendor.
+        vendor: ConnectorKind,
+    },
+    /// `429` past the pacer: the cursor is saved and the next run continues.
+    #[error("{vendor}: rate limited")]
+    RateLimited {
+        /// The vendor.
+        vendor: ConnectorKind,
+        /// The vendor's `Retry-After`.
+        retry_after_s: Option<u32>,
+    },
+    /// Down, timed out or answering 5xx: the next attempt is 15 minutes later.
+    #[error("{vendor}: unavailable")]
+    Unavailable {
+        /// The vendor.
+        vendor: ConnectorKind,
+        /// The client error, without the response body.
+        #[source]
+        source: BoxError,
+    },
+    /// The response didn't parse.
+    #[error("{vendor}: bad response")]
+    BadResponse {
+        /// The vendor.
+        vendor: ConnectorKind,
+        /// The parse error, without the response body.
+        #[source]
+        source: BoxError,
+    },
+}
+
+impl FarmSourceError {
+    /// The `connector.last_error` code. A response that didn't parse counts as the vendor being
+    /// unavailable: the sync tries again later either way.
+    pub const fn code(&self) -> SyncErrorCode {
+        match self {
+            Self::AuthRefused { .. } => SyncErrorCode::AuthRefused,
+            Self::RateLimited { .. } => SyncErrorCode::RateLimited,
+            Self::Unavailable { .. } | Self::BadResponse { .. } => SyncErrorCode::VendorUnavailable,
         }
     }
 }
