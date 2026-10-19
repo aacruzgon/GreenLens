@@ -18,7 +18,10 @@ use domain::{
         task::{AlertKey, TaskSource, TaskTrigger},
         weather::{CellWeather, WeatherCell},
     },
-    rules::limits::{FINISHED_JOB_KEEP, TOMBSTONE_KEEP, WEATHER_CACHE_KEEP, soil_retry_after},
+    rules::limits::{
+        DELETE_BATCH, FINISHED_JOB_KEEP, PENDING_CONNECT_TTL, TOMBSTONE_KEEP, WEATHER_CACHE_KEEP,
+        soil_retry_after,
+    },
     wire::{LocalDate, Timestamp, V1},
 };
 
@@ -196,8 +199,11 @@ async fn beliefs(state: Arc<AppState>) -> Result<(), ApiError> {
 }
 
 /// No TTL in `SurrealDB` ([database 4], cleanup): expired idempotency keys, weather older than
-/// 2 hours, expired pending actions, finished jobs older than 7 days, and account tombstones a
-/// day after the account was confirmed gone at Clerk.
+/// 2 hours, expired pending actions, finished jobs older than 7 days, account tombstones a day
+/// after the account was confirmed gone at Clerk, and farm connectors still `pending` 10 minutes
+/// after their connect started ([connectors 5]).
+///
+/// [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
 async fn cleanup(state: Arc<AppState>) -> Result<(), ApiError> {
     let now = state.ports.clock.now();
     let store = &state.ports.store;
@@ -210,7 +216,24 @@ async fn cleanup(state: Arc<AppState>) -> Result<(), ApiError> {
     store
         .delete_finished_tombstones(now.minus(TOMBSTONE_KEEP))
         .await?;
+    delete_expired_connects(&state, now).await?;
     Ok(())
+}
+
+/// Deletes the pending connectors whose connect started more than [`PENDING_CONNECT_TTL`]
+/// before `now`, a batch of up to 500 at a time until a batch comes back short. A pending
+/// connector holds no tokens and no records, so nothing is revoked.
+pub async fn delete_expired_connects(state: &AppState, now: Timestamp) -> Result<(), ApiError> {
+    let cutoff = now.minus(PENDING_CONNECT_TTL);
+    loop {
+        let deleted = state.ports.store.delete_expired_pending(cutoff).await?;
+        if deleted > 0 {
+            tracing::info!(deleted, "expired pending connectors deleted");
+        }
+        if deleted < DELETE_BATCH {
+            return Ok(());
+        }
+    }
 }
 
 /// The hour a weather cache row belongs to.

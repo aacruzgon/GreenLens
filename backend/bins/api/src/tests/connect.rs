@@ -1153,3 +1153,36 @@ async fn a_failed_revoke_still_deletes_the_records() {
     .await;
     assert_eq!(answer.status, StatusCode::ACCEPTED);
 }
+
+// ---------------------------------------------------------------------------------------------
+// E3.5: the cleanup
+// ---------------------------------------------------------------------------------------------
+
+/// T-E3.6 at the task (the embedded-store half is in `store`'s
+/// `pending_connectors_older_than_ten_minutes_are_cleaned_up`): the cutoff is 10 minutes before
+/// now, and full batches repeat until one comes back short.
+#[tokio::test]
+async fn the_cleanup_deletes_pending_connectors_older_than_ten_minutes() {
+    let mut store = FakeStore::default();
+    let mut seq = Sequence::new();
+    for deleted in [500, 3] {
+        store
+            .farm_record_store
+            .expect_delete_expired_pending()
+            .with(eq(now().minus(Duration::from_mins(10))))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(deleted));
+    }
+    let auth = signed_in(&mut store, None);
+    let state = state_with_vendors(
+        store,
+        auth,
+        on(),
+        MockConnectVendors::new(),
+        (MockBlobStore::new(), no_images(), Arc::new(NoBeliefs)),
+    );
+    crate::scheduler::delete_expired_connects(&state, now())
+        .await
+        .unwrap();
+}
