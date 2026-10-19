@@ -33,7 +33,10 @@
 //! [6]: ../../../docs/connectors/README.md#6-sync
 //! [connectors 8]: ../../../docs/connectors/README.md#8-privacy-and-security
 
+mod source;
 mod wire;
+
+pub use source::{REREAD_WINDOW, SlackSource, USER_NAME_TTL};
 
 #[cfg(test)]
 mod tests;
