@@ -1,6 +1,6 @@
 # PDM Backend: `api` binary
 
-> **Status:** Draft v0.7.1, 2026-10-19. v0.7.1: the farm connector routes are declared (roadmap E1.4): `GET /gardens/{id}/connectors` answers `available: false`, and the owner routes and the public OAuth callback answer `409 invalid_state` until connectors are configured; `Access<R, table::Connector>` resolves a connector's garden. v0.7: shared memories are recorded in `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs`, the new `GET /plants/{id}/beliefs` (never a 5xx), the `beliefs` scheduler task every 10 s (the only writer to Agent Memory: queued erases, then unsynced shared memories), deletions that queue their erase in their first transaction, and `POST /memories` taking a `topic`; 42 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
+> **Status:** Draft v0.7.2, 2026-10-19. v0.7.2: farm connectors are configured (roadmap E3.0–E3.2): `CONNECTOR_KEY` (64 hex characters) is the one switch, read through `AppState::connector_key`; without it the list answers `available: false` and the owner routes `409 invalid_state`, and with it the list comes from the store. The Slack and Google OAuth clients (each pair together or not at all), `CONNECTOR_RETURN_URL` and the Era bases are read for the routes and seeding to come. `sealing.rs` seals vendor tokens with AES-256-GCM (`aes-gcm` 0.11.1), a random nonce per seal and the connector id as associated data. v0.7.1: the farm connector routes are declared (roadmap E1.4): `GET /gardens/{id}/connectors` answers `available: false`, and the owner routes and the public OAuth callback answer `409 invalid_state` until connectors are configured; `Access<R, table::Connector>` resolves a connector's garden. v0.7: shared memories are recorded in `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs`, the new `GET /plants/{id}/beliefs` (never a 5xx), the `beliefs` scheduler task every 10 s (the only writer to Agent Memory: queued erases, then unsynced shared memories), deletions that queue their erase in their first transaction, and `POST /memories` taking a `topic`; 42 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
 
 Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports and types `api` wires, and [domain-types](domain-types.md) for every wire shape. Every listing below is copied from the compiled source of `bins/api` by the docgen tool. `cargo check -p api`, `cargo clippy -p api --all-targets` (no warning in `api`) and `cargo test -p api` pass: 42 tests, among them handler tests that drive the real router with `tower::ServiceExt::oneshot`. `cargo check --workspace` passes, the binary links, and `api openapi` writes the document.
 
@@ -106,6 +106,7 @@ ulid.workspace = true
 uuid.workspace = true
 # crypto and secrets
 hmac.workspace = true
+aes-gcm.workspace = true
 sha2.workspace = true
 secrecy.workspace = true
 rand.workspace = true
@@ -137,6 +138,7 @@ The `heic` feature turns on `vision`'s HEIC decoder, which links the system libh
 | `serde_path_to_error` | The JSON path of a field that failed to decode, for `details.field` (axum already depends on it) |
 | `tokio`, `tokio-util`, `tokio-stream`, `async-stream`, `futures` | Runtime, `CancellationToken`, `TaskTracker`, `stream!`, `StreamExt` |
 | `hmac`, `sha2` | Signed URLs; idempotency fingerprints |
+| `aes-gcm` (`zeroize`) | Sealing the farm connectors' vendor tokens (section 5, sealing) |
 | `secrecy` | `SecretString` in the configuration |
 | `rand`, `data-encoding` | Invite codes: 128 bits from `rand::rng()`, base32 |
 | `aws-lc-rs` | Constant-time comparison of worker tokens |
@@ -165,6 +167,7 @@ bins/api/src/
 ├─ limits.rs         governor limiters
 ├─ workers.rs        worker tokens
 ├─ signing.rs        HmacSigner (UrlSigner), PhotoIndex (SpeciesPhotos)
+├─ sealing.rs        ConnectorKey: AES-256-GCM seal and unseal of connector tokens
 ├─ uploads.rs        multipart reading, fingerprint, the CPU pipeline, blob puts
 ├─ events.rs
 │  ├─ hub.rs         EventHub: one broadcast channel per watched scan
@@ -182,7 +185,7 @@ bins/api/src/
 └─ tests.rs          handler tests
    ├─ tests/fake_store.rs  generated: a Store of per-area mockall mocks
    ├─ tests/beliefs.rs     the beliefs route and the deletion runner's Agent Memory step
-   └─ tests/connectors.rs  the connector routes while connectors are off
+   └─ tests/connectors.rs  the connector routes, off and on
 ```
 
 ---
@@ -368,6 +371,8 @@ pub struct Config {
     pub clerk: ClerkConfig,
     /// Outbound providers.
     pub providers: ProviderConfig,
+    /// Farm connectors.
+    pub connectors: ConnectorSettings,
 }
 
 /// `SurrealDB` connection ([database 1], [database 6]).
@@ -453,6 +458,52 @@ pub struct ProviderConfig {
     /// memories are mirrored into Agent Memory when all three are set; none set turns it off.
     pub agent_memory: Option<AgentMemorySettings>,
 }
+
+/// A vendor's OAuth client for the farm connectors ([connectors 5]): both variables or neither.
+///
+/// [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
+#[derive(Debug, Clone)]
+pub struct OAuthClient {
+    /// `SLACK_CLIENT_ID` or `GOOGLE_CLIENT_ID`: public, it goes in the consent URL.
+    pub client_id: String,
+    /// `SLACK_CLIENT_SECRET` or `GOOGLE_CLIENT_SECRET`: sent only in the code exchange.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "read by the code exchange, roadmap E3.4")
+    )]
+    pub client_secret: SecretString,
+}
+
+/// The two Slack variables, set together or not at all.
+const SLACK_VARS: [&str; 2] = ["SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET"];
+
+/// The two Google variables, set together or not at all.
+const GOOGLE_VARS: [&str; 2] = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"];
+
+/// Farm connectors ([connectors 4], [connectors 5]). `key` is the one switch: without
+/// `CONNECTOR_KEY` connectors are off (decision 9 of docs/EON), whatever else is set.
+///
+/// [connectors 4]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#4-data
+/// [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
+#[derive(Debug, Clone)]
+pub struct ConnectorSettings {
+    /// `CONNECTOR_KEY`: 64 hex characters (32 bytes, `openssl rand -hex 32`), the AES-256-GCM
+    /// key that seals vendor tokens. Unset turns connectors off.
+    pub key: Option<ConnectorKey>,
+    /// `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET`.
+    pub slack: Option<OAuthClient>,
+    /// `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`: a Web application client.
+    pub google: Option<OAuthClient>,
+    /// `CONNECTOR_RETURN_URL` (default `pdm://connectors`): where the OAuth callback's `302`
+    /// sends the app, as `{return_url}/{connector id}/callback?code&state`. The callback
+    /// itself is `{API_PUBLIC_BASE}/connectors/oauth/callback`.
+    pub return_url: String,
+    /// `ERA_SLACK_BASE`: Era's Slack simulator, for start-up seeding of the demo garden's
+    /// `era` connectors (roadmap E4.6). Never used by a route (decision 8).
+    pub era_slack_base: Option<String>,
+    /// `ERA_GOOGLE_BASE`: Era's Google Drive simulator, as above.
+    pub era_google_base: Option<String>,
+}
 ```
 
 ```rust
@@ -480,6 +531,59 @@ fn agent_memory<F: Fn(&str) -> Option<String>>(
                     .to_owned(),
             })
         }
+    }
+}
+
+/// The connector settings; a partial vendor pair names its first missing variable.
+fn connectors<F: Fn(&str) -> Option<String>>(
+    env: &Env<F>,
+) -> Result<ConnectorSettings, ConfigError> {
+    let key = env
+        .get("CONNECTOR_KEY")
+        .map(|value| {
+            ConnectorKey::from_hex(&value).map_err(|e| ConfigError::Invalid {
+                name: "CONNECTOR_KEY",
+                problem: e.to_string(),
+            })
+        })
+        .transpose()?;
+    let return_url = env
+        .or("CONNECTOR_RETURN_URL", "pdm://connectors")
+        .trim()
+        .trim_end_matches('/')
+        .to_owned();
+    if !return_url.contains("://") || return_url.contains(['?', '#']) {
+        return Err(ConfigError::Invalid {
+            name: "CONNECTOR_RETURN_URL",
+            problem: "expected a URL with a scheme and no query, such as pdm://connectors"
+                .to_owned(),
+        });
+    }
+    Ok(ConnectorSettings {
+        key,
+        slack: oauth_client(env, SLACK_VARS)?,
+        google: oauth_client(env, GOOGLE_VARS)?,
+        return_url,
+        era_slack_base: http_base(env, "ERA_SLACK_BASE")?,
+        era_google_base: http_base(env, "ERA_GOOGLE_BASE")?,
+    })
+}
+
+/// A vendor's client id and secret, both or neither; a partial pair names the missing one.
+fn oauth_client<F: Fn(&str) -> Option<String>>(
+    env: &Env<F>,
+    [id_var, secret_var]: [&'static str; 2],
+) -> Result<Option<OAuthClient>, ConfigError> {
+    match (env.get(id_var), env.get(secret_var)) {
+        (None, None) => Ok(None),
+        (Some(id), Some(secret)) => Ok(Some(OAuthClient {
+            client_id: id.trim().to_owned(),
+            client_secret: SecretString::from(secret),
+        })),
+        (id, _) => Err(ConfigError::Invalid {
+            name: if id.is_none() { id_var } else { secret_var },
+            problem: format!("{id_var} and {secret_var} are set together or not at all"),
+        }),
     }
 }
 ```
@@ -519,8 +623,125 @@ fn agent_memory<F: Fn(&str) -> Option<String>>(
 | `EXPO_ACCESS_TOKEN` | unset | Only with enhanced push security |
 | `OPEN_METEO_API_KEY` | unset | Only for Open-Meteo's commercial endpoint |
 | `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID`, `AGENT_MEMORY_API_KEY` | unset | `SurrealDB` Agent Memory, where shared memories are mirrored ([architecture 7, memory](../architecture/README.md#memory)). All three or none: a partial set stops start-up with `ConfigError::Invalid` naming the first missing variable. The key is a `SecretString`; unset turns the mirror off (`NoBeliefs`) |
+| `CONNECTOR_KEY` | unset | The farm connectors' sealing key ([connectors 4](../connectors/README.md#4-data)): 32 bytes written as 64 hex characters, either case (`openssl rand -hex 32`, as [infra 6](../infra/README.md#6-secrets-and-configuration) generates every secret). Anything else stops start-up without quoting the value. Unset turns connectors off (decision 9 of [docs/EON](../EON/README.md#10-decisions-blockers-and-waiting-items)) |
+| `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | unset | The Slack app's OAuth client ([connectors 5](../connectors/README.md#5-connecting-and-tokens)). Both or neither: a partial pair stops start-up naming the missing one. The secret is a `SecretString` |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | unset | The Google Web application OAuth client; both or neither, as above |
+| `CONNECTOR_RETURN_URL` | `pdm://connectors` | Where `GET /connectors/oauth/callback` sends the app: `302` to `{this}/{connector id}/callback?code&state`. A scheme is required; a query or fragment is refused. The callback itself is `{API_PUBLIC_BASE}/connectors/oauth/callback` |
+| `ERA_SLACK_BASE`, `ERA_GOOGLE_BASE` | unset | Era's Slack and Drive simulators, `http(s)://` origins, for start-up seeding of the demo garden's `era` connectors (roadmap E4.6). No route reads them (decision 8) |
 
 Every secret is a `SecretString`: `Debug` prints `[REDACTED]` (the test checks the signing key never appears in the formatted config). `Config::from_lookup` takes any variable source, so tests build a config from a map.
+
+**Sealing.** `CONNECTOR_KEY` parses into a `ConnectorKey`, which holds the expanded AES-256-GCM key (wiped on drop through `aes-gcm`'s `zeroize` feature) and prints as `ConnectorKey([REDACTED])`. `seal` draws a fresh 96-bit nonce from the OS for every call, so sealing one token twice gives two values, and writes `nonce (12 bytes) || ciphertext || tag (16 bytes)` into `domain::ports::Sealed`, whose `Debug` prints only the length. The associated data is the connector's id as it is written on the wire, so a sealed value opens only on its own connector ([connectors 4](../connectors/README.md#4-data)). `unseal` returns the plaintext as a `SecretSlice<u8>`, wiped on drop; a wrong key, another connector's id or any changed byte is the same opaque `UnsealError::Rejected`. It lives in `api` because every caller does: the connect routes (E3.3, E3.4), the `connectors` scheduler task (E4.1) and start-up seeding (E4.6). The `FarmSource` adapters in `integrations` get an unsealed `VendorToken` and never see the key, and `domain` holds only the opaque bytes, so neither depends on a cipher. `seal` and `unseal` have no caller outside the tests until E3.4, which removes their `expect(dead_code)`.
+
+```rust
+/// `CONNECTOR_KEY`: 32 bytes, written as 64 hex characters (`openssl rand -hex 32`, the way every
+/// other secret is generated, [infra 6]). Holds the expanded AES-256 key, which is wiped on drop;
+/// `Debug` never prints it.
+///
+/// [infra 6]: https://github.com/aacruzgon/GreenLens/blob/main/docs/infra/README.md#6-secrets-and-configuration
+#[derive(Clone)]
+pub struct ConnectorKey(Arc<Aes256Gcm>);
+
+/// Why `CONNECTOR_KEY` was refused. The message never quotes the value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum KeyError {
+    /// Not hexadecimal.
+    #[error("expected 64 hex characters (openssl rand -hex 32)")]
+    NotHex,
+    /// Hexadecimal, but not 32 bytes.
+    #[error("expected 32 bytes (64 hex characters), got {0} bytes")]
+    Length(usize),
+}
+
+/// Why a sealed value didn't open. Deliberately opaque: AES-GCM can't tell a wrong key, a wrong
+/// connector and a changed byte apart, and saying more would help no one but an attacker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum UnsealError {
+    /// Shorter than a nonce and a tag: not something [`ConnectorKey::seal`] wrote.
+    #[error("the sealed value is too short")]
+    TooShort,
+    /// The tag didn't verify: another key, another connector, or a changed byte.
+    #[error("the sealed value doesn't open under this key for this connector")]
+    Rejected,
+}
+```
+
+```rust
+impl ConnectorKey {
+    /// Parses the variable's value: 64 hex characters, either case, surrounding space ignored.
+    pub fn from_hex(value: &str) -> Result<Self, KeyError> {
+        let mut bytes = data_encoding::HEXLOWER_PERMISSIVE
+            .decode(value.trim().as_bytes())
+            .map_err(|_| KeyError::NotHex)?;
+        let key = <[u8; 32]>::try_from(bytes.as_slice()).map(Self::from_bytes);
+        let len = bytes.len();
+        bytes.zeroize();
+        key.map_err(|_| KeyError::Length(len))
+    }
+
+    /// A key from its 32 bytes. The caller wipes its own copy.
+    pub fn from_bytes(mut bytes: [u8; 32]) -> Self {
+        let mut key = Key::<Aes256Gcm>::from(bytes);
+        let cipher = Aes256Gcm::new(&key);
+        key.zeroize();
+        bytes.zeroize();
+        Self(Arc::new(cipher))
+    }
+
+    /// Seals `plaintext` for `connector`, with a fresh random nonce, so sealing the same token
+    /// twice gives two different values.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "sealed by the code exchange (E3.4) and seeding (E4.6)"
+        )
+    )]
+    pub fn seal(&self, connector: ConnectorId, plaintext: &[u8]) -> Sealed {
+        let nonce = Nonce::generate();
+        let mut body = Vec::with_capacity(plaintext.len() + TAG_LEN);
+        body.extend_from_slice(plaintext);
+        self.0
+            .encrypt_in_place(&nonce, associated_data(connector).as_bytes(), &mut body)
+            .expect(
+                "AES-GCM refuses only a message over 64 GiB, and a token is a few hundred bytes",
+            );
+        let mut sealed = Vec::with_capacity(NONCE_LEN + body.len());
+        sealed.extend_from_slice(&nonce);
+        sealed.extend_from_slice(&body);
+        Sealed(sealed.into())
+    }
+
+    /// Opens a value sealed for `connector`. The plaintext comes back as a secret, wiped when
+    /// dropped.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "opened by the routes (E3.4) and the sync (E4.1)")
+    )]
+    pub fn unseal(
+        &self,
+        connector: ConnectorId,
+        sealed: &Sealed,
+    ) -> Result<SecretSlice<u8>, UnsealError> {
+        if sealed.0.len() < NONCE_LEN + TAG_LEN {
+            return Err(UnsealError::TooShort);
+        }
+        let (nonce, body) = sealed.0.split_at(NONCE_LEN);
+        let nonce = Nonce::try_from(nonce).map_err(|_| UnsealError::TooShort)?;
+        let mut body = body.to_vec();
+        let opened =
+            self.0
+                .decrypt_in_place(&nonce, associated_data(connector).as_bytes(), &mut body);
+        if opened.is_err() {
+            body.zeroize();
+            return Err(UnsealError::Rejected);
+        }
+        Ok(SecretSlice::from(body))
+    }
+}
+```
+
+**One switch.** `AppState::connector_key` (section 6) is the only place that decides whether connectors are on. Every connector route, the `connectors` task and seeding ask it; `wiring.rs` logs the decision at start, with a warning when vendor or Era settings are set without the key.
 
 ---
 
@@ -622,6 +843,14 @@ impl AppState {
         garden: GardenId,
     ) -> Result<Membership<R>, ApiError> {
         Ok(authz::check_membership::<R>(&*self.ports.store, user, garden).await?)
+    }
+
+    /// Whether farm connectors are on, and the key that seals their tokens: the one switch
+    /// (decision 9 of docs/EON). `None` without `CONNECTOR_KEY`: the list answers
+    /// `available: false`, every owner write `409 invalid_state`, and the `connectors` scheduler
+    /// task (E4.1) and start-up seeding (E4.6) must do nothing.
+    pub fn connector_key(&self) -> Option<&ConnectorKey> {
+        self.config.connectors.key.as_ref()
     }
 
     /// Spawns a follow-up on the tracker; failures are logged, the sweep recovers them.
@@ -998,6 +1227,36 @@ fn agent_memory(config: &Config) -> Option<AgentMemoryConfig> {
     ))
 }
 
+/// Logs whether farm connectors are on, which vendors and simulators are configured, and a
+/// warning when vendor or Era settings are set without `CONNECTOR_KEY`, which turns them off.
+/// Neither the key nor a client secret is logged.
+fn log_connectors(config: &Config) {
+    let c = &config.connectors;
+    let (slack, google) = (c.slack.is_some(), c.google.is_some());
+    let era = c.era_slack_base.is_some() || c.era_google_base.is_some();
+    if c.key.is_none() {
+        if slack || google || era {
+            tracing::warn!(
+                slack,
+                google,
+                era,
+                "farm connectors off: CONNECTOR_KEY is not set, so the other connector settings are unused"
+            );
+        } else {
+            tracing::info!("farm connectors off: CONNECTOR_KEY is not set");
+        }
+        return;
+    }
+    tracing::info!(
+        slack = c.slack.as_ref().map(|s| s.client_id.as_str()),
+        google = c.google.as_ref().map(|g| g.client_id.as_str()),
+        return_url = %c.return_url,
+        era_slack = c.era_slack_base.as_deref(),
+        era_google = c.era_google_base.as_deref(),
+        "farm connectors on"
+    );
+}
+
 /// Builds every port and the state, in order: the databases (schema as root, then connect as
 /// `api`; the knowledge index), the object store, the outbound adapters, the CPU models, the
 /// species photo index, then `api`'s own pieces and the pipeline and agent that need the writer.
@@ -1012,6 +1271,7 @@ pub async fn build(
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
     let ids: Arc<dyn IdGen> = Arc::new(UlidGen);
     let out = outbound(&config, &clock).await?;
+    log_connectors(&config);
     let models = load_models(&config.models_dir).await.context("models")?;
     let snapshot = dbs
         .knowledge_repo
@@ -2539,7 +2799,7 @@ pub async fn plant_beliefs(
 }
 ```
 
-The farm connector routes are declared ahead of their work (roadmap E1.4). Until connectors are configured, the list answers `available: false` and everything else `409 invalid_state`, not `503`, which clients retry (decision 9 of [docs/EON](../EON/README.md)); the access checks already run, so a non-member gets `404` and a non-owner `403`:
+The farm connector routes were declared ahead of their work (roadmap E1.4). Without `CONNECTOR_KEY` (`AppState::connector_key`, section 5) connectors are off: the list answers `available: false` without asking the store, and everything else `409 invalid_state`, not `503`, which clients retry (decision 9 of [docs/EON](../EON/README.md)). With the key, the list is the store's `FarmRecordStore::connectors`; the other routes still answer `409 invalid_state` until the OAuth state and the routes are built (E3.3, E3.4). The access checks already run, so a non-member gets `404` and a non-owner `403`:
 
 ```rust
 /// The answer of every connector write while connectors are off.
@@ -2553,9 +2813,19 @@ fn connectors_off() -> ApiError {
 #[utoipa::path(get, path = "/gardens/{id}/connectors", tag = "connectors", params(("id" = String, Path)),
     responses((status = 200, body = ConnectorList), (status = 404, body = ErrorBody)))]
 pub async fn list_connectors(
-    _access: Access<Viewer, table::Garden>,
+    State(state): State<SharedState>,
+    access: Access<Viewer, table::Garden>,
 ) -> Result<Wire<ConnectorList>, ApiError> {
-    Ok(Wire::ok(ConnectorList::unavailable()))
+    // Off without `CONNECTOR_KEY` (the one switch, `AppState::connector_key`): the store isn't
+    // asked.
+    if state.connector_key().is_none() {
+        return Ok(Wire::ok(ConnectorList::unavailable()));
+    }
+    let connectors = state.ports.store.connectors(access.member).await?;
+    Ok(Wire::ok(ConnectorList {
+        available: true,
+        connectors,
+    }))
 }
 
 /// `POST /gardens/{id}/connectors`: starts a connect, `pending`, and returns the vendor's consent
@@ -4008,6 +4278,10 @@ pub const TASKS: [Task; 9] = [
 ];
 
 /// Starts every task on the tracker.
+///
+/// The farm connectors' `connectors` task (roadmap E4.1) isn't here yet. When it comes, it
+/// starts only when [`AppState::connector_key`] is `Some`, so with connectors off (no
+/// `CONNECTOR_KEY`, decision 9) it never runs, and it takes that key to unseal the tokens.
 pub fn start(state: &Arc<AppState>) {
     for task in &TASKS {
         match task.name {
@@ -5141,7 +5415,7 @@ The crate facts were checked against each crate's source at the pinned version (
 - axum 0.8.9: [`FromRequestParts`](https://docs.rs/axum-core/0.5.6/axum_core/extract/trait.FromRequestParts.html) · [`FromRef`](https://docs.rs/axum/0.8.9/axum/extract/trait.FromRef.html) · [the order of extractors](https://docs.rs/axum/0.8.9/axum/extract/index.html#the-order-of-extractors) · [customizing extractor responses](https://docs.rs/axum/0.8.9/axum/extract/index.html#customizing-extractor-responses) · [`RawPathParams`](https://docs.rs/axum/0.8.9/axum/extract/struct.RawPathParams.html) · [`DefaultBodyLimit`](https://docs.rs/axum/0.8.9/axum/extract/struct.DefaultBodyLimit.html) · [`Multipart`](https://docs.rs/axum/0.8.9/axum/extract/struct.Multipart.html) · [SSE](https://docs.rs/axum/0.8.9/axum/response/sse/index.html) · [middleware ordering](https://docs.rs/axum/0.8.9/axum/middleware/index.html#ordering) · [`Serve::with_graceful_shutdown`](https://docs.rs/axum/0.8.9/axum/serve/struct.Serve.html#method.with_graceful_shutdown) · [CHANGELOG 0.8.0](https://docs.rs/crate/axum/0.8.9/source/CHANGELOG.md)
 - tower-http 0.7.1: [`TimeoutLayer`](https://docs.rs/tower-http/0.7.1/tower_http/timeout/struct.TimeoutLayer.html) · [`CorsLayer`](https://docs.rs/tower-http/0.7.1/tower_http/cors/struct.CorsLayer.html) · [compression predicates](https://docs.rs/tower-http/0.7.1/tower_http/compression/predicate/index.html) · [request id](https://docs.rs/tower-http/0.7.1/tower_http/request_id/index.html) · [`CatchPanicLayer`](https://docs.rs/tower-http/0.7.1/tower_http/catch_panic/index.html) · [`RequestBodyLimitLayer`](https://docs.rs/tower-http/0.7.1/tower_http/limit/struct.RequestBodyLimitLayer.html)
 - [utoipa 6.0.0](https://docs.rs/utoipa/6.0.0/utoipa/) · [utoipa-axum 0.3.0](https://docs.rs/utoipa-axum/0.3.0/utoipa_axum/) · [governor 0.10.4](https://docs.rs/governor/0.10.4/governor/) · [`serde_path_to_error`](https://docs.rs/serde_path_to_error/0.1.20/serde_path_to_error/)
-- [hmac 0.13.0](https://docs.rs/hmac/0.13.0/hmac/) · [rand 0.10.3](https://docs.rs/rand/0.10.3/rand/) · [secrecy 0.10.3](https://docs.rs/secrecy/0.10.3/secrecy/) · [aws-lc-rs `constant_time`](https://docs.rs/aws-lc-rs/1.18.2/aws_lc_rs/constant_time/index.html)
+- [hmac 0.13.0](https://docs.rs/hmac/0.13.0/hmac/) · [aes-gcm 0.11.1](https://docs.rs/aes-gcm/0.11.1/aes_gcm/) · [rand 0.10.3](https://docs.rs/rand/0.10.3/rand/) · [secrecy 0.10.3](https://docs.rs/secrecy/0.10.3/secrecy/) · [aws-lc-rs `constant_time`](https://docs.rs/aws-lc-rs/1.18.2/aws_lc_rs/constant_time/index.html)
 - [MDN: CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS) · [MDN: preflight](https://developer.mozilla.org/en-US/docs/Glossary/Preflight_request) · [WHATWG: server-sent events](https://html.spec.whatwg.org/multipage/server-sent-events.html) · [Svix: verifying payloads](https://docs.svix.com/receiving/verifying-payloads/how) · [Expo: sending notifications](https://docs.expo.dev/push-notifications/sending-notifications/)
 
 **Project**
