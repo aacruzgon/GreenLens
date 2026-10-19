@@ -1,7 +1,9 @@
-# Faults are global to an Era simulator, so tests that set them run one at a time.
+# Faults are global to an Era simulator: a fault set by one test reaches every other test that
+# calls the same simulator, in any binary. So every Era test runs one at a time. CI gives the
+# fault tests their own simulators (docs/EON E6.2).
 [test-groups]
-era-faults = { max-threads = 1 }
+era = { max-threads = 1 }
 
 [[profile.default.overrides]]
-filter = "test(/^era_fault_/)"
-test-group = "era-faults"
+filter = "test(/^era_/)"
+test-group = "era"
