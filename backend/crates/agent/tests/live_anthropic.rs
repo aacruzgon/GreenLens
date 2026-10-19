@@ -37,7 +37,7 @@ fn user(text: &str) -> Vec<ChatMessage> {
     }]
 }
 
-/// A chat call with all nineteen tools (three strict), streamed, on the chat model. Prints when
+/// A chat call with all twenty tools (three strict), streamed, on the chat model. Prints when
 /// each text delta arrived, to show the answer streams in pieces rather than at the end.
 #[tokio::test]
 #[ignore = "calls the real Anthropic API"]

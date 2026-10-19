@@ -242,7 +242,7 @@ async fn has_farm_records(deps: &AgentDeps, member: Membership<Viewer>) -> bool 
     match deps.stores.farm.connectors(member).await {
         Ok(connectors) => farm_records_searchable(&connectors),
         Err(e) => {
-            tracing::warn!(error = %e, "farm connectors not read; search_farm_records not offered");
+            tracing::warn!(error = %crate::beliefs::Chain(&e), "farm connectors not read; search_farm_records not offered");
             false
         }
     }

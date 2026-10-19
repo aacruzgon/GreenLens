@@ -79,6 +79,8 @@ struct Setup {
     memory: MockMemoryStore,
     /// No connectors unless a test says otherwise.
     farm: MockFarmRecordStore,
+    /// The first embedding (the memory search) works; every later one fails.
+    embed_fails_after_memory: bool,
 }
 
 impl Setup {
@@ -92,6 +94,7 @@ impl Setup {
             spent_today: 0,
             memory,
             farm: crate::testing::no_connectors(),
+            embed_fails_after_memory: false,
         }
     }
 }
@@ -205,9 +208,22 @@ fn harness(setup: Setup) -> (ChatAgent, Arc<ScriptedModel>, Arc<Seen>) {
         ])
     });
     let mut embedder = MockTextEmbedder::new();
-    embedder
-        .expect_embed()
-        .returning(|_, texts| Ok(texts.iter().map(|_| Embedding(vec![0.1; 4])).collect()));
+    if setup.embed_fails_after_memory {
+        embedder
+            .expect_embed()
+            .times(1)
+            .returning(|_, texts| Ok(texts.iter().map(|_| Embedding(vec![0.1; 4])).collect()));
+        embedder.expect_embed().returning(|_, _| {
+            Err(domain::ports::ModelError::Unavailable {
+                model: "embedder",
+                source: "secret host 10.0.0.7 refused".into(),
+            })
+        });
+    } else {
+        embedder
+            .expect_embed()
+            .returning(|_, texts| Ok(texts.iter().map(|_| Embedding(vec![0.1; 4])).collect()));
+    }
     embedder.expect_model().returning(|| EmbeddingModel {
         name: "test-embed".to_owned(),
         version: "1".to_owned(),
@@ -761,6 +777,79 @@ async fn a_cited_farm_record_is_stored_and_its_rate_never_reaches_the_app() {
         "{framed}"
     );
     assert!(framed.ends_with("\n</data>"));
+}
+
+/// A failed search or a failed query embedding reaches the model as the tool's plain
+/// "unavailable" refusal: no record, no vendor text, no farm citation.
+#[tokio::test]
+async fn a_failed_farm_search_or_embedding_is_an_unavailable_refusal_without_citations() {
+    use domain::connectors::ConnectorStatus;
+
+    use crate::testing::connector;
+    for embed_fails in [false, true] {
+        let mut farm = MockFarmRecordStore::new();
+        farm.expect_connectors()
+            .returning(|_| Ok(vec![connector(ConnectorStatus::Active, 4)]));
+        if embed_fails {
+            // The search is never reached.
+            farm.expect_search_records().never();
+        } else {
+            farm.expect_search_records()
+                .times(1)
+                .returning(|_, _, _, _| {
+                    Err(StoreError::Unavailable(
+                        "secret slack token xoxb-123 in the error".into(),
+                    ))
+                });
+        }
+        let (agent, model, seen) = harness(Setup {
+            farm,
+            embed_fails_after_memory: embed_fails,
+            ..Setup::new(vec![
+                vec![
+                    ChatChunk::ToolCall {
+                        call_id: "toolu_1".to_owned(),
+                        name: "search_farm_records".to_owned(),
+                        arguments: json!({"query": "copper on bed 3"}),
+                    },
+                    ChatChunk::Done(StopReason::ToolUse),
+                ],
+                vec![
+                    ChatChunk::TextDelta("I could not check the farm records.".to_owned()),
+                    ChatChunk::Done(StopReason::EndTurn),
+                ],
+            ])
+        });
+        let stream = agent
+            .start_turn(request(owner(Role::Owner).await, "Copper on bed 3?"))
+            .await
+            .unwrap();
+        let (_, outcome) = collect(stream).await;
+        let TurnOutcome::Completed(message) = outcome else {
+            panic!("{outcome:?}")
+        };
+        assert_eq!(message.farm_citations, [], "embed_fails={embed_fails}");
+        assert_eq!(seen.stored.lock().unwrap()[1].farm_citations, []);
+
+        let sent = model.sent();
+        let ContentPart::ToolResult {
+            content, is_error, ..
+        } = &sent[1].messages.last().unwrap().content[0]
+        else {
+            panic!()
+        };
+        assert!(is_error, "embed_fails={embed_fails}");
+        assert_eq!(
+            content["error"],
+            "The tool is unavailable right now. Answer without it."
+        );
+        let shown = content.to_string();
+        assert!(
+            !shown.contains("xoxb") && !shown.contains("10.0.0.7"),
+            "{shown}"
+        );
+        assert!(!shown.contains("Kocide"), "{shown}");
+    }
 }
 
 #[tokio::test]
