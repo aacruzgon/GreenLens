@@ -308,6 +308,21 @@ impl Config {
     }
 }
 
+/// Whether `url` may be the app's return target: `https`, or a custom app scheme, never a
+/// scheme a browser would run or read; no query or fragment, and something after `://`.
+fn return_url_ok(url: &str) -> bool {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return false;
+    };
+    let mut chars = scheme.chars();
+    let scheme_ok = chars.next().is_some_and(|c| c.is_ascii_lowercase())
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "+.-".contains(c));
+    scheme_ok
+        && !["http", "javascript", "data", "file", "vbscript"].contains(&scheme)
+        && !rest.is_empty()
+        && !url.contains(['?', '#'])
+}
+
 /// The connector settings; a partial vendor pair names its first missing variable.
 fn connectors<F: Fn(&str) -> Option<String>>(
     env: &Env<F>,
@@ -326,10 +341,10 @@ fn connectors<F: Fn(&str) -> Option<String>>(
         .trim()
         .trim_end_matches('/')
         .to_owned();
-    if !return_url.contains("://") || return_url.contains(['?', '#']) {
+    if !return_url_ok(&return_url) {
         return Err(ConfigError::Invalid {
             name: "CONNECTOR_RETURN_URL",
-            problem: "expected a URL with a scheme and no query, such as pdm://connectors"
+            problem: "expected an https URL or an app scheme (not http, javascript, data, file or vbscript), with no query, such as pdm://connectors"
                 .to_owned(),
         });
     }
@@ -614,6 +629,40 @@ mod tests {
                 ..
             })
         ));
+        for bad in [
+            "http://app.example.org",
+            "javascript://x",
+            "data://x",
+            "file:///etc",
+            "vbscript://x",
+            "HTTPS://x",
+            "1pdm://x",
+            "pdm://",
+            "pdm://a#b",
+            "no-scheme",
+        ] {
+            let mut vars = base();
+            vars.insert("CONNECTOR_RETURN_URL", bad.to_owned());
+            assert!(
+                matches!(
+                    load(&vars),
+                    Err(ConfigError::Invalid {
+                        name: "CONNECTOR_RETURN_URL",
+                        ..
+                    })
+                ),
+                "{bad}"
+            );
+        }
+        for good in [
+            "https://app.example.org/c",
+            "pdm://connectors",
+            "exp+pdm://x",
+        ] {
+            let mut vars = base();
+            vars.insert("CONNECTOR_RETURN_URL", good.to_owned());
+            assert!(load(&vars).is_ok(), "{good}");
+        }
         let mut vars = base();
         vars.insert("ERA_GOOGLE_BASE", "era-google:8080".to_owned());
         assert!(matches!(

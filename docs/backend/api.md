@@ -552,10 +552,10 @@ fn connectors<F: Fn(&str) -> Option<String>>(
         .trim()
         .trim_end_matches('/')
         .to_owned();
-    if !return_url.contains("://") || return_url.contains(['?', '#']) {
+    if !return_url_ok(&return_url) {
         return Err(ConfigError::Invalid {
             name: "CONNECTOR_RETURN_URL",
-            problem: "expected a URL with a scheme and no query, such as pdm://connectors"
+            problem: "expected an https URL or an app scheme (not http, javascript, data, file or vbscript), with no query, such as pdm://connectors"
                 .to_owned(),
         });
     }
@@ -640,7 +640,11 @@ Every secret is a `SecretString`: `Debug` prints `[REDACTED]` (the test checks t
 ///
 /// [infra 6]: https://github.com/aacruzgon/GreenLens/blob/main/docs/infra/README.md#6-secrets-and-configuration
 #[derive(Clone)]
-pub struct ConnectorKey(Arc<Aes256Gcm>);
+pub struct ConnectorKey {
+    cipher: Arc<Aes256Gcm>,
+    /// The OAuth state's HMAC key, derived from the raw key (E3.3, [connectors 5]).
+    state_key: Arc<SecretBox<[u8; 32]>>,
+}
 
 /// Why `CONNECTOR_KEY` was refused. The message never quotes the value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -684,8 +688,27 @@ impl ConnectorKey {
         let mut key = Key::<Aes256Gcm>::from(bytes);
         let cipher = Aes256Gcm::new(&key);
         key.zeroize();
+        let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(&bytes)
+            .expect("HMAC accepts a key of any length");
+        mac.update(STATE_KEY_LABEL);
+        let mut derived: [u8; 32] = mac.finalize().into_bytes().into();
         bytes.zeroize();
-        Self(Arc::new(cipher))
+        let state_key = SecretBox::new(Box::new(derived));
+        derived.zeroize();
+        Self {
+            cipher: Arc::new(cipher),
+            state_key: Arc::new(state_key),
+        }
+    }
+
+    /// The key that signs the OAuth `state` (E3.3): HMAC-SHA256 of the raw key under a fixed
+    /// label, so it differs from the AES key and rotating `CONNECTOR_KEY` rotates both.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "signs the OAuth state (E3.3)")
+    )]
+    pub fn state_key(&self) -> &[u8; 32] {
+        self.state_key.expose_secret()
     }
 
     /// Seals `plaintext` for `connector`, with a fresh random nonce, so sealing the same token
@@ -697,12 +720,16 @@ impl ConnectorKey {
             reason = "sealed by the code exchange (E3.4) and seeding (E4.6)"
         )
     )]
-    pub fn seal(&self, connector: ConnectorId, plaintext: &[u8]) -> Sealed {
+    pub fn seal(&self, purpose: SealPurpose, connector: ConnectorId, plaintext: &[u8]) -> Sealed {
         let nonce = Nonce::generate();
         let mut body = Vec::with_capacity(plaintext.len() + TAG_LEN);
         body.extend_from_slice(plaintext);
-        self.0
-            .encrypt_in_place(&nonce, associated_data(connector).as_bytes(), &mut body)
+        self.cipher
+            .encrypt_in_place(
+                &nonce,
+                associated_data(purpose, connector).as_bytes(),
+                &mut body,
+            )
             .expect(
                 "AES-GCM refuses only a message over 64 GiB, and a token is a few hundred bytes",
             );
@@ -720,6 +747,7 @@ impl ConnectorKey {
     )]
     pub fn unseal(
         &self,
+        purpose: SealPurpose,
         connector: ConnectorId,
         sealed: &Sealed,
     ) -> Result<SecretSlice<u8>, UnsealError> {
@@ -729,9 +757,11 @@ impl ConnectorKey {
         let (nonce, body) = sealed.0.split_at(NONCE_LEN);
         let nonce = Nonce::try_from(nonce).map_err(|_| UnsealError::TooShort)?;
         let mut body = body.to_vec();
-        let opened =
-            self.0
-                .decrypt_in_place(&nonce, associated_data(connector).as_bytes(), &mut body);
+        let opened = self.cipher.decrypt_in_place(
+            &nonce,
+            associated_data(purpose, connector).as_bytes(),
+            &mut body,
+        );
         if opened.is_err() {
             body.zeroize();
             return Err(UnsealError::Rejected);
@@ -741,7 +771,7 @@ impl ConnectorKey {
 }
 ```
 
-**One switch.** `AppState::connector_key` (section 6) is the only place that decides whether connectors are on. Every connector route, the `connectors` task and seeding ask it; `wiring.rs` logs the decision at start, with a warning when vendor or Era settings are set without the key.
+**One switch.** `AppState::connector_key` (section 6) is the only place that decides whether connectors are on. The list route asks it and answers `available: false`; each of the seven write routes calls `require_connectors` first and answers `409 invalid_state` when it is off (and keeps answering it until E3.3 and E3.4 build their handlers); the `connectors` task and seeding ask it too; `wiring.rs` logs the decision at start, with a warning when vendor or Era settings are set without the key.
 
 ---
 
@@ -1251,8 +1281,8 @@ fn log_connectors(config: &Config) {
         slack = c.slack.as_ref().map(|s| s.client_id.as_str()),
         google = c.google.as_ref().map(|g| g.client_id.as_str()),
         return_url = %c.return_url,
-        era_slack = c.era_slack_base.as_deref(),
-        era_google = c.era_google_base.as_deref(),
+        era_slack = c.era_slack_base.is_some(),
+        era_google = c.era_google_base.is_some(),
         "farm connectors on"
     );
 }
@@ -2836,11 +2866,13 @@ pub async fn list_connectors(
     responses((status = 201, body = CreateConnectorResponse), (status = 400, body = ErrorBody),
         (status = 403, body = ErrorBody), (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)))]
 pub async fn create_connector(
+    State(state): State<SharedState>,
     _access: Access<Owner, table::Garden>,
     request: IdemJson<CreateConnectorRequest>,
 ) -> Response {
     let IdemJson { begun, .. } = request;
-    let result: Result<Wire<CreateConnectorResponse>, ApiError> = Err(connectors_off());
+    let result: Result<Wire<CreateConnectorResponse>, ApiError> = require_connectors(&state)
+        .and_then(|_key| Err(ApiError::invalid_state(InvalidStateDetails::default())));
     begun.finish(result).await
 }
 ```

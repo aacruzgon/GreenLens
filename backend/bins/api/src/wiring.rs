@@ -416,8 +416,8 @@ fn log_connectors(config: &Config) {
         slack = c.slack.as_ref().map(|s| s.client_id.as_str()),
         google = c.google.as_ref().map(|g| g.client_id.as_str()),
         return_url = %c.return_url,
-        era_slack = c.era_slack_base.as_deref(),
-        era_google = c.era_google_base.as_deref(),
+        era_slack = c.era_slack_base.is_some(),
+        era_google = c.era_google_base.is_some(),
         "farm connectors on"
     );
 }

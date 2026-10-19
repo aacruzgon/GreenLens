@@ -18,7 +18,9 @@ use aes_gcm::{
     Aes256Gcm, Key, KeyInit, Nonce,
     aead::{AeadInOut, Generate},
 };
-use secrecy::{SecretSlice, zeroize::Zeroize};
+use hmac::{Hmac, Mac};
+use secrecy::{ExposeSecret, SecretBox, SecretSlice, zeroize::Zeroize};
+use sha2::Sha256;
 
 use domain::{id::ConnectorId, ports::Sealed};
 
@@ -33,7 +35,37 @@ const TAG_LEN: usize = 16;
 ///
 /// [infra 6]: https://github.com/aacruzgon/GreenLens/blob/main/docs/infra/README.md#6-secrets-and-configuration
 #[derive(Clone)]
-pub struct ConnectorKey(Arc<Aes256Gcm>);
+pub struct ConnectorKey {
+    cipher: Arc<Aes256Gcm>,
+    /// The OAuth state's HMAC key, derived from the raw key (E3.3, [connectors 5]).
+    state_key: Arc<SecretBox<[u8; 32]>>,
+}
+
+/// What a sealed value is for. It is part of the associated data, so a value sealed as one
+/// purpose never opens as another (the token can't be swapped for the PKCE verifier).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "chosen by the connect routes (E3.3, E3.4)")
+)]
+pub enum SealPurpose {
+    /// The vendor's access token, in `connector.secret`.
+    Token,
+    /// The pending connect's PKCE verifier.
+    Pkce,
+}
+
+impl SealPurpose {
+    fn prefix(self) -> &'static str {
+        match self {
+            Self::Token => "token:",
+            Self::Pkce => "pkce:",
+        }
+    }
+}
+
+/// The label the OAuth-state key is derived under.
+const STATE_KEY_LABEL: &[u8] = b"pdm/connector-oauth-state/v1";
 
 impl fmt::Debug for ConnectorKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -81,8 +113,24 @@ impl ConnectorKey {
         let mut key = Key::<Aes256Gcm>::from(bytes);
         let cipher = Aes256Gcm::new(&key);
         key.zeroize();
+        let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(&bytes)
+            .expect("HMAC accepts a key of any length");
+        mac.update(STATE_KEY_LABEL);
+        let mut derived: [u8; 32] = mac.finalize().into_bytes().into();
         bytes.zeroize();
-        Self(Arc::new(cipher))
+        let state_key = SecretBox::new(Box::new(derived));
+        derived.zeroize();
+        Self {
+            cipher: Arc::new(cipher),
+            state_key: Arc::new(state_key),
+        }
+    }
+
+    /// The key that signs the OAuth `state` (E3.3): HMAC-SHA256 of the raw key under a fixed
+    /// label, so it differs from the AES key and rotating `CONNECTOR_KEY` rotates both.
+    #[cfg_attr(not(test), expect(dead_code, reason = "signs the OAuth state (E3.3)"))]
+    pub fn state_key(&self) -> &[u8; 32] {
+        self.state_key.expose_secret()
     }
 
     /// Seals `plaintext` for `connector`, with a fresh random nonce, so sealing the same token
@@ -94,12 +142,16 @@ impl ConnectorKey {
             reason = "sealed by the code exchange (E3.4) and seeding (E4.6)"
         )
     )]
-    pub fn seal(&self, connector: ConnectorId, plaintext: &[u8]) -> Sealed {
+    pub fn seal(&self, purpose: SealPurpose, connector: ConnectorId, plaintext: &[u8]) -> Sealed {
         let nonce = Nonce::generate();
         let mut body = Vec::with_capacity(plaintext.len() + TAG_LEN);
         body.extend_from_slice(plaintext);
-        self.0
-            .encrypt_in_place(&nonce, associated_data(connector).as_bytes(), &mut body)
+        self.cipher
+            .encrypt_in_place(
+                &nonce,
+                associated_data(purpose, connector).as_bytes(),
+                &mut body,
+            )
             .expect(
                 "AES-GCM refuses only a message over 64 GiB, and a token is a few hundred bytes",
             );
@@ -117,6 +169,7 @@ impl ConnectorKey {
     )]
     pub fn unseal(
         &self,
+        purpose: SealPurpose,
         connector: ConnectorId,
         sealed: &Sealed,
     ) -> Result<SecretSlice<u8>, UnsealError> {
@@ -126,9 +179,11 @@ impl ConnectorKey {
         let (nonce, body) = sealed.0.split_at(NONCE_LEN);
         let nonce = Nonce::try_from(nonce).map_err(|_| UnsealError::TooShort)?;
         let mut body = body.to_vec();
-        let opened =
-            self.0
-                .decrypt_in_place(&nonce, associated_data(connector).as_bytes(), &mut body);
+        let opened = self.cipher.decrypt_in_place(
+            &nonce,
+            associated_data(purpose, connector).as_bytes(),
+            &mut body,
+        );
         if opened.is_err() {
             body.zeroize();
             return Err(UnsealError::Rejected);
@@ -137,9 +192,9 @@ impl ConnectorKey {
     }
 }
 
-/// The associated data: the connector's id as it is written on the wire (its ULID).
-fn associated_data(connector: ConnectorId) -> String {
-    connector.to_string()
+/// The associated data: the purpose, then the connector's id as it is written on the wire.
+fn associated_data(purpose: SealPurpose, connector: ConnectorId) -> String {
+    format!("{}{connector}", purpose.prefix())
 }
 
 #[cfg(test)]
@@ -155,6 +210,7 @@ mod tests {
     use super::*;
 
     const KEY_HEX: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+    const T: SealPurpose = SealPurpose::Token;
     const TOKEN: &[u8] = b"xoxb-1234-5678-the-bot-token";
 
     fn key() -> ConnectorKey {
@@ -169,45 +225,48 @@ mod tests {
 
     #[test]
     fn a_sealed_token_opens_for_its_connector() {
-        let sealed = key().seal(connector(0), TOKEN);
+        let sealed = key().seal(T, connector(0), TOKEN);
         assert_eq!(sealed.0.len(), NONCE_LEN + TOKEN.len() + TAG_LEN);
-        let opened = key().unseal(connector(0), &sealed).unwrap();
+        let opened = key().unseal(T, connector(0), &sealed).unwrap();
         assert_eq!(opened.expose_secret(), TOKEN);
-        let empty = key().seal(connector(0), b"");
+        let empty = key().seal(T, connector(0), b"");
         assert_eq!(
-            key().unseal(connector(0), &empty).unwrap().expose_secret(),
+            key()
+                .unseal(T, connector(0), &empty)
+                .unwrap()
+                .expose_secret(),
             b""
         );
     }
 
     #[test]
     fn a_sealed_token_never_opens_for_another_connector() {
-        let sealed = key().seal(connector(0), TOKEN);
+        let sealed = key().seal(T, connector(0), TOKEN);
         assert_eq!(
-            key().unseal(connector(1), &sealed).unwrap_err(),
+            key().unseal(T, connector(1), &sealed).unwrap_err(),
             UnsealError::Rejected
         );
     }
 
     #[test]
     fn a_sealed_token_never_opens_under_another_key() {
-        let sealed = key().seal(connector(0), TOKEN);
+        let sealed = key().seal(T, connector(0), TOKEN);
         let other = ConnectorKey::from_bytes([7; 32]);
         assert_eq!(
-            other.unseal(connector(0), &sealed).unwrap_err(),
+            other.unseal(T, connector(0), &sealed).unwrap_err(),
             UnsealError::Rejected
         );
     }
 
     #[test]
     fn any_changed_byte_is_refused() {
-        let sealed = key().seal(connector(0), TOKEN);
+        let sealed = key().seal(T, connector(0), TOKEN);
         for at in 0..sealed.0.len() {
             let mut bytes = sealed.0.to_vec();
             bytes[at] ^= 0x01;
             assert_eq!(
                 key()
-                    .unseal(connector(0), &Sealed(bytes.into()))
+                    .unseal(T, connector(0), &Sealed(bytes.into()))
                     .unwrap_err(),
                 UnsealError::Rejected,
                 "byte {at}"
@@ -215,15 +274,45 @@ mod tests {
         }
         let cut = Sealed(sealed.0.slice(..NONCE_LEN + TAG_LEN - 1));
         assert_eq!(
-            key().unseal(connector(0), &cut).unwrap_err(),
+            key().unseal(T, connector(0), &cut).unwrap_err(),
             UnsealError::TooShort
         );
     }
 
     #[test]
+    fn a_value_sealed_for_one_purpose_never_opens_for_the_other() {
+        let sealed = key().seal(SealPurpose::Token, connector(0), TOKEN);
+        assert_eq!(
+            key()
+                .unseal(SealPurpose::Pkce, connector(0), &sealed)
+                .unwrap_err(),
+            UnsealError::Rejected
+        );
+        let pkce = key().seal(SealPurpose::Pkce, connector(0), TOKEN);
+        assert!(key().unseal(SealPurpose::Pkce, connector(0), &pkce).is_ok());
+        assert!(
+            key()
+                .unseal(SealPurpose::Token, connector(0), &pkce)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn the_state_key_is_derived_and_kept_secret() {
+        let a = key();
+        assert_eq!(a.state_key(), key().state_key());
+        assert_ne!(a.state_key(), ConnectorKey::from_bytes([7; 32]).state_key());
+        let raw = data_encoding::HEXLOWER.decode(KEY_HEX.as_bytes()).unwrap();
+        assert_ne!(a.state_key().as_slice(), raw.as_slice());
+        let derived_hex = data_encoding::HEXLOWER.encode(a.state_key());
+        assert!(!format!("{a:?}").contains(&derived_hex));
+        assert_eq!(format!("{a:?}"), "ConnectorKey([REDACTED])");
+    }
+
+    #[test]
     fn two_seals_of_one_token_differ() {
-        let first = key().seal(connector(0), TOKEN);
-        let second = key().seal(connector(0), TOKEN);
+        let first = key().seal(T, connector(0), TOKEN);
+        let second = key().seal(T, connector(0), TOKEN);
         assert_ne!(first.0[..NONCE_LEN], second.0[..NONCE_LEN]);
         assert_ne!(first, second);
     }
@@ -277,9 +366,9 @@ mod tests {
     #[test]
     fn neither_the_key_nor_a_token_reaches_a_log_line() {
         let key = key();
-        let sealed = key.seal(connector(0), TOKEN);
-        let opened = key.unseal(connector(0), &sealed).unwrap();
-        let error = key.unseal(connector(1), &sealed).unwrap_err();
+        let sealed = key.seal(T, connector(0), TOKEN);
+        let opened = key.unseal(T, connector(0), &sealed).unwrap();
+        let error = key.unseal(T, connector(1), &sealed).unwrap_err();
         let logs = Captured::default();
         let subscriber = tracing_subscriber::fmt()
             .json()

@@ -210,7 +210,7 @@ Every secret is a `SecretString`: `Debug` prints `[REDACTED]` (the test checks t
 
 @@impl sealing.rs impl ConnectorKey@@
 
-**One switch.** `AppState::connector_key` (section 6) is the only place that decides whether connectors are on. Every connector route, the `connectors` task and seeding ask it; `wiring.rs` logs the decision at start, with a warning when vendor or Era settings are set without the key.
+**One switch.** `AppState::connector_key` (section 6) is the only place that decides whether connectors are on. The list route asks it and answers `available: false`; each of the seven write routes calls `require_connectors` first and answers `409 invalid_state` when it is off (and keeps answering it until E3.3 and E3.4 build their handlers); the `connectors` task and seeding ask it too; `wiring.rs` logs the decision at start, with a warning when vendor or Era settings are set without the key.
 
 ---
 
