@@ -79,6 +79,7 @@ tokio-stream = { version = "0.1.19", features = ["sync"] }
 async-stream = "0.3.6"
 http-body-util = "0.1.5"
 hmac = "0.13.0"
+aes-gcm = { version = "0.11.1", features = ["zeroize"] }
 serde_path_to_error = "0.1.20"
 # agent (dose check)
 regex = "1.13.1"

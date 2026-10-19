@@ -392,6 +392,36 @@ fn agent_memory(config: &Config) -> Option<AgentMemoryConfig> {
     ))
 }
 
+/// Logs whether farm connectors are on, which vendors and simulators are configured, and a
+/// warning when vendor or Era settings are set without `CONNECTOR_KEY`, which turns them off.
+/// Neither the key nor a client secret is logged.
+fn log_connectors(config: &Config) {
+    let c = &config.connectors;
+    let (slack, google) = (c.slack.is_some(), c.google.is_some());
+    let era = c.era_slack_base.is_some() || c.era_google_base.is_some();
+    if c.key.is_none() {
+        if slack || google || era {
+            tracing::warn!(
+                slack,
+                google,
+                era,
+                "farm connectors off: CONNECTOR_KEY is not set, so the other connector settings are unused"
+            );
+        } else {
+            tracing::info!("farm connectors off: CONNECTOR_KEY is not set");
+        }
+        return;
+    }
+    tracing::info!(
+        slack = c.slack.as_ref().map(|s| s.client_id.as_str()),
+        google = c.google.as_ref().map(|g| g.client_id.as_str()),
+        return_url = %c.return_url,
+        era_slack = c.era_slack_base.as_deref(),
+        era_google = c.era_google_base.as_deref(),
+        "farm connectors on"
+    );
+}
+
 /// The object store the config points at.
 fn blob_store(config: &Config) -> Arc<dyn BlobStore> {
     Arc::new(blob::S3BlobStore::new(&blob::BlobConfig {
@@ -479,6 +509,7 @@ pub async fn build(
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
     let ids: Arc<dyn IdGen> = Arc::new(UlidGen);
     let out = outbound(&config, &clock).await?;
+    log_connectors(&config);
     let models = load_models(&config.models_dir).await.context("models")?;
     let snapshot = dbs
         .knowledge_repo
