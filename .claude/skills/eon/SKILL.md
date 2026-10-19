@@ -109,7 +109,8 @@ ERA_SLACK_BASE=http://127.0.0.1:8091 ERA_GOOGLE_BASE=http://127.0.0.1:8092 \
 
 - **Marking:** Era tests are `#[ignore = "needs Era's simulators"]`, and their names start with `era_`. Fault tests start with `era_fault_`.
 - **Missing variables fail the test,** they don't skip it, so a misconfigured CI job can't pass by doing nothing.
-- **They run one at a time.** `backend/.config/nextest.toml` puts every `era_` test in the `era` group (`max-threads = 1`), because a fault reaches every test on that simulator. In CI, the fault tests are to get their own simulators instead (E6.2, not built yet).
+- **They run one at a time.** `backend/.config/nextest.toml` puts every `era_` test in the `era` group (`max-threads = 1`), because a fault reaches every test on that simulator. In CI, the fault tests have their own simulators (E6.2), and the strict-mode tests a third pair (E6.4): the `era` job in `ci.yml` has three nextest steps, one per pair ([infra 2](../../../docs/infra/README.md#the-era-job)). Strict tests read `ERA_STRICT_SLACK_BASE` and `ERA_STRICT_GOOGLE_BASE`; a locally started pair needs `-e AUTH_MODE=strict`.
+- **Setting a fault:** create the tenant and inject first. On Slack, the inject call counts against `fail_next` and `quota_limit`, so a fault set before it is spent on it.
 - **Wrap fault tests in a guard** that resets the faults on panic. Reset before setting, too.
 - **`api`'s Era tests** (E4 onward) use the embedded store, a counting fake embedder and the pinned clock.
 
