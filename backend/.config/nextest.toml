@@ -5,5 +5,5 @@
 era = { max-threads = 1 }
 
 [[profile.default.overrides]]
-filter = "test(/^era_/)"
+filter = "test(/(^|::)era_/)"
 test-group = "era"
