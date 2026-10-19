@@ -18,6 +18,7 @@ mod reply;
 mod router;
 mod routes;
 mod scheduler;
+mod sealing;
 mod seams;
 mod signing;
 mod state;
