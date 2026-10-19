@@ -14,7 +14,7 @@ Era gives PDM's farm connectors something real to talk to: Slack's and Google's 
 | Need | Use | Costs calls? |
 |---|---|---|
 | Develop or test the clients and the sync, inject our farm, set faults, move time | **The simulator images**, locally or in CI | No |
-| A nightly check that our clients work on Era's hosted systems | **The hosted company** (`era` CLI) | Yes, from 2,000 a month |
+| A nightly check that our clients work on Era's hosted systems | **The hosted company** (`era` CLI) | Yes: each call uses one of 2,000 a month |
 | The demo garden on the live link | The images on the control plane (E9) | No |
 
 Default to the images. The hosted company has no inject, faults or time controls, and every REST or MCP call to it is metered.
@@ -40,8 +40,8 @@ All under `/_admin` on each simulator. It is never faulted, and needs no auth un
 | Call | What it does |
 |---|---|
 | `POST /tenants/<t>/inject` | Adds records to tenant `<t>`, created on first use. Slack keys: `team`, `users`, `channels`, `messages`, `bots`, `oauth_apps`, `files`, `pins`. Drive keys: `files`, `sheets`, `comments`. Any other key is an error |
-| `POST /tenants/<t>/credentials` with `{}` | A JWT in `access_token`, valid 1 hour. As the bearer token it selects the tenant (no `X-Sim-Tenant`) and turns on the journal |
-| `GET /tenants/<t>/requests` | The journal: `{requests: [{method, route, status, latency_ms}]}`, up to 500 entries, only for calls made with a minted credential |
+| `POST /tenants/<t>/credentials` with `{}` | A JWT in `access_token`, valid 1 hour. As the bearer token it selects the tenant (no `X-Sim-Tenant`) and turns on the journal; we found no other way to turn it on |
+| `GET /tenants/<t>/requests` | The journal: `{requests: [{method, route, status, latency_ms}]}`, up to 500 entries kept 24 hours, only for calls made with a minted credential |
 | `POST /tenants/<t>/reset` / `DELETE /tenants/<t>` | Back to the generated company / drop the tenant |
 | `POST /tenants/<t>/state/{day0,day1,day2}`, `GET …/state` | Move the tenant in time; `day2` is +91 days |
 | `POST /faults`, `POST /faults/reset` | `fail_next`, `retry_after_seconds`, `throttle`, `error_rate` (0–1), `latency_ms`, `quota_limit`. **Global to the simulator, all tenants** |
@@ -60,9 +60,9 @@ Inject formats ([EON 3, injecting the farm](../../../docs/EON/README.md#injectin
   - Slack: `403 writes_disabled`.
   - Drive: `403 PERMISSION_DENIED`, reason `insufficientPermissions`.
 - **Faults ([EON 3, tenants, faults and time](../../../docs/EON/README.md#tenants-faults-and-time)):**
-  - `fail_next` and `throttle` give `429` with `retry-after: 1`. `throttle` keeps doing it on every call.
+  - `fail_next` and `throttle` give `429` with `retry-after` set to `retry_after_seconds` (default 1). `throttle` keeps doing it on every call.
   - `error_rate: 1` gives `500`.
-  - `quota_limit: 1` lets one call through, then gives `429` with `retry-after: 60`.
+  - `quota_limit: 1` lets one call through, then gives `429` with `retry-after: 60` (ran on Slack on Oct 19, and on Drive by E2's tests).
   - Always `POST /faults/reset` afterwards, even when a test fails.
 - **`day0` isn't usable:**
   - Drive lists nothing, injected files included.
@@ -94,7 +94,7 @@ Change the fixture and the Era tests' expected counts change with it.
 
 ## The tests
 
-The harness is `integrations::era_sim`, behind the `era-sim` feature, so it is never in a release build. With it, a test:
+The harness and the serial test group arrive with E2 ([PR #56](https://github.com/aacruzgon/GreenLens/pull/56)); until it merges, they exist only on its branch, `feat/eon-e2-adapters`. The harness is `integrations::era_sim`, behind the `era-sim` feature, so it is never in a release build. With it, a test:
 
 - creates a tenant with a unique id;
 - injects the fixture;
@@ -104,12 +104,12 @@ The harness is `integrations::era_sim`, behind the `era-sim` feature, so it is n
 ```bash
 cd backend
 ERA_SLACK_BASE=http://127.0.0.1:8091 ERA_GOOGLE_BASE=http://127.0.0.1:8092 \
-  cargo nextest run -p integrations --run-ignored only -E 'test(/^era_/)'
+  cargo nextest run -p integrations -p api --run-ignored only -E 'test(/(^|::)era_/)'
 ```
 
 - **Marking:** Era tests are `#[ignore = "needs Era's simulators"]`, and their names start with `era_`. Fault tests start with `era_fault_`.
 - **Missing variables fail the test,** they don't skip it, so a misconfigured CI job can't pass by doing nothing.
-- **They run one at a time.** `backend/.config/nextest.toml` puts every `era_` test in the `era` group (`max-threads = 1`), because a fault reaches every test on that simulator. In CI, the fault tests get their own simulators instead (E6.2).
+- **They run one at a time.** `backend/.config/nextest.toml` puts every `era_` test in the `era` group (`max-threads = 1`), because a fault reaches every test on that simulator. In CI, the fault tests are to get their own simulators instead (E6.2, not built yet).
 - **Wrap fault tests in a guard** that resets the faults on panic. Reset before setting, too.
 - **`api`'s Era tests** (E4 onward) use the embedded store, a counting fake embedder and the pinned clock.
 
@@ -119,14 +119,14 @@ Our company is **Holling Holdings**: e-commerce, B2B, small, with `slack` and `g
 
 | Command | Use |
 |---|---|
-| `era init` | Sign in through the browser; the key stays on this machine. It waits 300 s for the browser by default; in a `!` prompt that can run out, so run `era init --timeout 900` in a separate terminal |
+| `era init` | Sign in through the browser; the key stays on this machine. On Oct 19 a run in a `!` prompt gave up after 300 s (exit 7, timed out), so run `era init --timeout 900` in a separate terminal |
 | `era doctor --env infra/env/.env.era` | Check the settings, the credential and the console |
 | `era usage [tenant]` | Metered calls this month, for the account or one company |
 | `era ls [tenant]` | The companies, or one in full |
 | `era systems`, `era options` | The systems; the industries, sizes, models and scenarios |
 | `era plan --size small --model b2b --systems slack,google-drive` | What a company would hold, before building it |
 | `era new --industry ecommerce --model b2b --size small --systems slack,google-drive --env infra/env/.env.era --strict` | Build a company and write its env block. `--strict` exits 6 if a system failed |
-| `era token <tenant> --env infra/env/.env.era` | A new token, which retires the old one. **Tokens last 7 days**: the current one expires 2026-10-26 20:51 UTC |
+| `era token <tenant> --env infra/env/.env.era` | A new token, which retires the old one at once, for CI and every teammate too, so ask the user first. **Tokens last 7 days**: `ERA_TENANT_TOKEN_EXPIRES_AT` in the env file says when |
 | `era env <tenant> --env infra/env/.env.era` | Rewrite the env block for an existing company |
 | `era client <tenant>` | OAuth client credentials for a pipeline (E7.3 checks them against our OAuth exchanges) |
 | `era mcp <tenant> --client claude` | The `claude mcp add` lines, one per system |
@@ -144,14 +144,14 @@ The REST routes take the same `Authorization` header as MCP. Load the file with 
 **Spend calls deliberately.** Each REST or MCP call to the hosted systems costs one of the 2,000 a month. Check `era usage` before and after, and record the cost in the PR.
 - The first `curl` check cost 5 calls.
 - A B2B small company keeps listings to a page or two.
-- `era` commands that only talk to the console, such as `ls`, `usage` and `doctor`, aren't metered: `era usage` stayed at 5 after them.
+- `era` commands that only talk to the console, such as `ls`, `usage` and `doctor`, aren't metered: `era usage` stayed at 5 after several of them on Oct 19.
 
 **What the hosted company differs on:**
-- It has no inject, fault or point-in-time commands. The console's **Advance to Next quarter** moves it, and tokens survive the move.
+- Era's docs document no inject, fault or point-in-time commands for it. The console's **Advance to Next quarter** moves it, and the docs say tokens survive the move (docs only; not tried).
 - Its data is Era's own, not our farm.
 - Slack's `auth.test` `url` looks real (`https://hollingholdings.slack.com/`).
 
-**In CI** (E6.5): the nightly `era-hosted` job reads `SLACK_BASE_URL`, `GOOGLE_DRIVE_BASE_URL` and `ERA_TENANT_TOKEN` from the GitHub environment `era-hosted`, which only `main` can use. The CLI's own CI credential is `ERA_TOKEN`. The job is never in `ci`'s `needs`, so a hosted outage or an expired token doesn't block a merge.
+**In CI** (E6.5, not built yet): the nightly `era-hosted` job is to read `SLACK_BASE_URL`, `GOOGLE_DRIVE_BASE_URL` and `ERA_TENANT_TOKEN` from the GitHub environment `era-hosted`, which only `main` can use. The CLI's own CI credential is `ERA_TOKEN`. The job is to stay out of `ci`'s `needs`, so a hosted outage or an expired token can't block a merge.
 
 ## Sources
 
