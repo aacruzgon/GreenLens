@@ -1,6 +1,6 @@
 # PDM App Roadmap
 
-> **Status:** Draft v0.1, 2026-10-19. v0.1: the app's build-week work in the Conservatory direction ([design 3.1](../design/design.md#31-conservatory)), as ten slices (F0–F9) from an empty `app/` on Oct 20 to the demo on Oct 24 and the web build on Oct 25. Each slice has its goal, its screens and composites, what it needs from the other tracks, its exit checks and the decisions it closes. It replaces the roadmap of the closed [PR #42](https://github.com/aacruzgon/GreenLens/pull/42), whose scaffold and [PR #58](https://github.com/aacruzgon/GreenLens/pull/58)'s design layer were not merged.
+> **Status:** Draft v0.2, 2026-10-19. v0.2: aligns the plan with the backend, vision and EON roadmaps after three audits: S4's need for the results UI and its real depth maps, weather from S2, push blocked on the Apple account, the web origin settled before S7's CORS review; the LiDAR day-1 check as the app's own, the evaluation captures vision needs by Oct 21, live checks dated to the first full scan (J4) and the demo passed three times (J7); E3.4, the E10 tests and farm citations in plans; decisions numbered as in design 10; README 18 rewritten to these dates. v0.1: the app's build-week work in the Conservatory direction ([design 3.1](../design/design.md#31-conservatory)), as ten slices (F0–F9) from an empty `app/` on Oct 20 to the demo on Oct 24 and the web build on Oct 25. Each slice has its goal, its screens and composites, what it needs from the other tracks, its exit checks and the decisions it closes. It replaces the roadmap of the closed [PR #42](https://github.com/aacruzgon/GreenLens/pull/42), whose scaffold and [PR #58](https://github.com/aacruzgon/GreenLens/pull/58)'s design layer were not merged.
 
 Companion to the [frontend architecture](README.md), its [flows](flows.md) and [screens](screens.md), and to the [design](../design/design.md). The architecture says how the app is structured, screens.md says what each screen contains, and the design says how it looks, moves and speaks. This document says in what order the app is built, what each step waits on, and how we know a step is finished. It mirrors the [backend roadmap](../backend/roadmap.md).
 
@@ -43,7 +43,8 @@ This roadmap starts from an empty `app/`. Where `feat/app-scaffold` already solv
 What else is true on Oct 19:
 
 - **The contracts exist as Rust types.** `backend/openapi.json` is committed, with 274 schemas, so the app's types are generated from day 1 ([README 9](README.md#generated-types)). It still references `AnchorType` and `TaskState` without defining them (section 17).
-- **The backend has not run end to end.** S1, the walking skeleton, is a draft ([PR #40](https://github.com/aacruzgon/GreenLens/pull/40)). The app is built on mock data until each backend slice is deployed (section 16).
+- **The backend has not run end to end.** S1, the walking skeleton, was due Oct 16–17 and is still a draft ([PR #40](https://github.com/aacruzgon/GreenLens/pull/40)), so S2–S4 slip with it. On the ML side, milestones MS1 and MS2 (Oct 17–18) slipped too, and the first full scan through every model (J4, MS3) is planned for Oct 21 ([vision dev-roadmap](../vision/dev-roadmap.md)). The app is built on mock data until each backend slice is deployed (section 16).
+- **The LiDAR day-1 check hasn't run.** It was planned for Oct 16–17 and is owned by the app and backend ([evaluation](../vision/evaluation.md), LiDAR row), not by vision. It needs the module and a development build, so it is F5's first exit check.
 - **The direction is chosen.** Conservatory, by the team on Oct 19, after the five directions in the [mockups](../design/mockups/index.html). Its camera-style capture, live analysis and 3D garden come with it ([design open decision 10](../design/design.md#10-open-decisions)).
 - **The app is iPhone only.** Android is out of development. The web build is the last slice (F9) and the live link the judges open ([design 2](../design/design.md#2-what-apple-owns-and-what-we-own)).
 
@@ -103,11 +104,11 @@ The biggest schedule risk is Lane B: the camera with depth, the mapping session,
 | [F2](#8-f2-capture-after-the-camera-app) | Oct 21 | Capture as a camera: the mode bar, the coverage dial, the instruction card | F1 | none on mock; S1 for uploads |
 | [F3](#9-f3-the-live-analysis) | Oct 21–22 | The analysis over the photo just taken: the stage card, the hotspots, "Not sure yet" and the picture answers | F2 | none on mock; S1, S4 live |
 | [F4](#10-f4-diagnosis-plan-and-the-plant) | Oct 22 | The tinted diagnosis, the plan with its mini player, step by step, the plant, tasks | F3 | S4 live |
-| [F5](#11-f5-the-iphones-native-work) | Oct 20–23 | Depth and distance on capture, the 3D `GardenView`, the mapping session, the Live Activity | F0 (Lane B) | Vision's LiDAR day-1 check; S2 depth upload |
+| [F5](#11-f5-the-iphones-native-work) | Oct 20–23 | The LiDAR day-1 check, depth and distance on capture, evaluation captures, the 3D `GardenView`, the mapping session, the Live Activity | F0 (Lane B) | S2 depth upload; S4 measurement; vision's evaluation set |
 | [F6](#12-f6-chat-with-answer-blocks) | Oct 22–23 | Chat with streaming, tool chips, cards, memories and answer blocks | F4 | `answer_block` contract change; S5 |
-| [F7](#13-f7-the-garden-3d-map-insights-and-tools) | Oct 22–23 | The 3D garden and the 2D map, Insights, members and invites, farm connectors, account | F4, F5 | S5 map; analytics' backend fields; S6; EON E10 |
-| [F8](#14-f8-polish-and-the-demo) | Oct 24 | Freeze; every screen checked against the design and the guidelines; the demo recorded | F1–F7 | Demo video |
-| [F9](#15-f9-the-web-build) | Oct 25 | The web build as the live link | F8 | S8 deploy; CORS |
+| [F7](#13-f7-the-garden-3d-map-insights-and-tools) | Oct 22–23 | The 3D garden and the 2D map, Insights, members and invites, farm connectors, Google and Apple sign-in, account | F4, F5 | S5 map; analytics' backend fields; S6; EON E3.4, E10, E11 |
+| [F8](#14-f8-polish-and-the-demo) | Oct 24 | Freeze; every screen checked against the design and the guidelines; the web origin settled for S7; the demo rehearsed (J7) and recorded | F1–F7 | Demo video; vision J7 and D11 |
+| [F9](#15-f9-the-web-build) | Oct 25 | The web build as the live link | F8 | S8 deploy; CORS from S7 |
 
 ```mermaid
 flowchart LR
@@ -152,8 +153,8 @@ The demo path is F1 → F2 → F3 → F4, then the chat (F6), the 3D garden and 
 9. **Sign-in and onboarding** in the design: the wash, the garden name field, location consent or a postal code ([screens 3.10](screens.md#310-sign-in-and-onboarding)).
 10. **CI.** An `app` job in `.github/workflows/ci.yml` running `npm ci`, the `gen:api` diff, typecheck, lint, Jest, `check:contrast` and `npx expo install --check`, added to `ci`'s `needs` ([infra 2](../infra/README.md#2-ci)).
 11. **Day-one spikes**, each recorded in the pull request that runs it:
-    - **Bottom accessory.** Does `NativeTabs` on SDK 57 expose iOS 26's tab bar bottom accessory, for the plan's mini player? (D2)
-    - **Scan button.** Can a round button sit beside the native tab bar without covering it, or does the scan action need its own tab? (D1)
+    - **Bottom accessory.** Does `NativeTabs` on SDK 57 expose iOS 26's tab bar bottom accessory, for the plan's mini player? (R1)
+    - **Scan button.** Can a round button sit beside the native tab bar without covering it, or does the scan action need its own tab? (D2)
     - **Glass over photos.** Is a glass bar button over a photo, and the selected tab over a dark screen, readable on the iPhone in sun? (D3)
     - **Real photos.** The melt and the photo tint on ten real photos of sick leaves taken in the garden, with the tint's contrast checked on each. (D8)
 
@@ -165,7 +166,7 @@ The demo path is F1 → F2 → F3 → F4, then the chat (F6), the 3D garden and 
 
 **Guidelines:** `/hig-foundations-color`, `/hig-foundations-typography`, `/hig-foundations-dark-mode`, `/hig-components-navigation-and-search-tab-bars`, `/hig-patterns-onboarding`, `/hig-patterns-managing-accounts`.
 
-**Closes.** D1, D2, D3, D8; [README open decisions](README.md#19-open-decisions) 2 (styling: tokens and `StyleSheet`) and 3 (custom Clerk screens).
+**Closes.** D2, D3, D8, R1; [README open decisions](README.md#19-open-decisions) 2 (styling: tokens and `StyleSheet`), 3 (custom Clerk screens) and 7 (the display name, sent from Clerk's profile with `PATCH /me`).
 
 ## 7. F1. Garden home
 
@@ -179,7 +180,7 @@ The demo path is F1 → F2 → F3 → F4, then the chat (F6), the 3D garden and 
 4. **Plants:** a carousel sorted by health, sick first. Each card's photo melts into the card, the name in Urbanist at 22 pt, the `StatusChip` below. "Scan not submitted" for a pending scan.
 5. **Today:** today's and overdue tasks as `TaskRow`s with a round check that springs in, and a success haptic. The weekly check of Tomato 2 is among them, and it leads to the live scan.
 6. **Garden notes**, with **+ Note** for editors and owners.
-7. **The scan button:** a white round button beside the tab bar (or the scan tab, by D1). It opens the **new-scan sheet** (`scan/new`, a `formSheet`): which plant, or a new one by name, then `POST /scans` and capture. Hidden for viewers.
+7. **The scan button:** a white round button beside the tab bar (or the scan tab, by D2). It opens the **new-scan sheet** (`scan/new`, a `formSheet`): which plant, or a new one by name, then `POST /scans` and capture. Hidden for viewers.
 8. **Empty garden:** "Add your first plant by scanning it", with the scan button.
 
 **Exit checks.** On the iPhone, light and dark: the home matches its mockup; the frost alert's **Done** removes it; checking a task springs the check and buzzes once; the sheet starts a scan; a viewer account sees no scan button, no **Done** and no check boxes. With reduced motion, nothing slides or springs.
@@ -194,8 +195,8 @@ The demo path is F1 → F2 → F3 → F4, then the chat (F6), the 3D garden and 
 
 1. **The capture model** in `features/capture/model`: the slot state machine, the kind limits, the persisted draft with each shot's exact file and idempotency key. Tested on its own.
 2. **The screen:** always dark, the camera full screen (`expo-camera`; `LidarCameraView` once F5 item 1 lands). ✕ and **Discard** as bar buttons.
-3. **The mode bar** (`ModeBar`): WHOLE PLANT · CLOSE-UP · UNDERSIDE · SOIL · FRUIT in a solid dark pill, the chosen one centred in white, a dot on each stored shot. It replaces the shot chips.
-4. **The instruction card** (`DropCard`) dropping from the top with a grabber: the chosen shot's instruction ("Fill the frame with one affected leaf, about 30 cm away"), and the distance chip once depth exists ("32 cm · good distance").
+3. **The mode bar** (`ModeBar`): WHOLE PLANT · CLOSE-UP · UNDERSIDE · SOIL · FRUIT in a solid dark pill, the chosen one centred in white, a dot on each stored shot. FRUIT is the `flower_fruit` kind, and its instruction says "flower or fruit". It replaces the shot chips.
+4. **The instruction card** (`DropCard`) dropping from the top with a grabber: the chosen shot's instruction ("Fill the frame with one affected leaf, about 30 cm away"), and the distance chip once depth exists ("32 cm · good distance"). Under it, the framing guide for the chosen shot ([design 5](../design/design.md#5-the-demo-screen-by-screen), capture row).
 5. **The shutter and the coverage dial** (`CoverageDial`): a white shutter with one segment per needed shot around it. **Library** to its left, **Analyse** to its right, white on the black control area, enabled when the whole plant is stored and nothing is uploading.
 6. **Uploads** as each shot is taken; the retake banner for `image_quality` with its hint icon; a re-encode and a new key for `upload_too_large` on a picked photo; replace and delete a shot.
 7. **Question mode** (one slot, the question's `photo_hint`, **Send**) and **guided mode** (squeeze and jar tests, their instructions first), which stay as screens.md describes.
@@ -232,8 +233,8 @@ The demo path is F1 → F2 → F3 → F4, then the chat (F6), the 3D garden and 
 2. **The header:** the diagnosis centred over the photo's faded edge in Urbanist at 40 pt, worded by `domain/diagnosis.ts`, and its basis below ("Tomato 2 · from 3 photos, your answer and the weather"). **Back** and **In the garden** float over the photo as clear glass bar buttons.
 3. **The sideways cards:** the risk of spread ("Crowded: 40 cm from Tomato 1") and "Also found: ladybug larva · leave it, it eats aphids", scrolling sideways with the next card peeking.
 4. **The lists** on translucent solid cards over the tint, with no shadows: what matched (with "measured" on a LiDAR-answered indicator, and what was contradicted), the weather at the scan, soil, measurements with their bands, organisms, sources (`CitationList`).
-5. **"Your plan ›"** (`PlanChecklist`): the steps with timing, category and citation; the server's safety note on a chemical step, as sent; the provisional banner; "Updated after your answer" after `plan_superseded`. Checking a step completes its task.
-6. **The mini player** (`MiniPlayer`): "Up next · step 1 of 5: Remove the lowest infected leaves", with play (step by step) and Ask. The tab bar's bottom accessory if D2 allows it, otherwise our own solid bar above the tab bar.
+5. **"Your plan ›"** (`PlanChecklist`): the steps with timing, category and citation, farm records among the citations (a vendor record opens Slack or Drive, an `era` record opens its text in a sheet; EON E10.3); the server's safety note on a chemical step, as sent; the provisional banner; "Updated after your answer" after `plan_superseded`. Checking a step completes its task.
+6. **The mini player** (`MiniPlayer`): "Up next · step 1 of 5: Remove the lowest infected leaves", with play (step by step) and Ask. The tab bar's bottom accessory if R1 allows it, otherwise our own solid bar above the tab bar.
 7. **Step by step** (`StepMode`): one step per screen in large type, with when, why, how and its source, and the time phrase as named tasks ("Adds 5 tasks: Oct 20, 23, 26, 29, Nov 1").
 8. **Plant detail** (`plants/[plantId]`): the melt hero, the status, the species with **Change**, the timeline of scans opening each one, notes, and **Scan** and **Ask**. The growth curve comes with Insights in F7.
 9. **The Tasks tab** ([screens 3.7](screens.md#37-tasks-and-alert-inbox)): grouped by due date in the garden's time zone, the alert inbox, swipe to **Done**, **Dismiss** or **Delete** by source, and the task editor sheet.
@@ -251,15 +252,16 @@ The demo path is F1 → F2 → F3 → F4, then the chat (F6), the 3D garden and 
 
 **Work**, in this order, so the demo's pieces land first:
 
-1. **`LidarCameraView` and depth** ([README 13](README.md#the-lidar-modules-javascript-surface), [architecture 6.7](../architecture/README.md#67-depth-and-measurement-lidar)): `getCapabilities()`; the camera view with distance events and the ranges per shot kind; the photo, the 16-bit depth PNG, the confidence map and `DepthMeta`; the fallback that reports no depth in Expo Go. Capture swaps it in on LiDAR phones.
-2. **The `GardenView` spike** ([garden-3d 7](../design/garden-3d.md#7-recommendation)), on Oct 20 beside the vision track's LiDAR day-1 check: an `ARView` in `.nonAR` mode with the mock garden (2 beds, 6 plants), tap to select, orbit, UIKit labels, the three modes and the date; then 10 beds and 40 plants with the frame time measured in Xcode.
-3. **`GardenView` built:** the showroom: a pale sage plinth over the off-white, plaster beds, terracotta soil and pots, plants in their species greens with a status ring under each, a warm key light with soft shadows, a 24° lens from 16.8 m, a slow turntable when idle, frost covers in Frost mode, no frames drawn while idle. Props: garden map, plants with heights, mode, date, selection; events: selection. An `AccessibilityComponent` per plant.
-4. **`GardenMappingView`:** bed corners, plant pins with canopy radius, heading, the tracking state, `ARWorldMap` saved on the phone ([architecture 6.8](../architecture/README.md#68-garden-map-lidar), [flows 11](flows.md#11-garden-mapping-session)).
-5. **The Live Activity:** an ActivityKit widget extension with the scan's stage, elapsed time, a nine-segment bar and what comes next, on the Lock Screen and in the Dynamic Island; it alerts only for the question and the result. How the extension joins the Expo project is D4.
+1. **`LidarCameraView` and depth** ([README 13](README.md#the-lidar-modules-javascript-surface), [architecture 6.7](../architecture/README.md#67-depth-and-measurement-lidar)): `getCapabilities()`; the camera view with distance events and the ranges per shot kind; the photo, the 16-bit depth PNG, the confidence map and `DepthMeta`; the fallback that reports no depth in Expo Go. Capture swaps it in on LiDAR phones. Its first exit check is the **LiDAR day-1 check**, owned by this lane on Oct 20: the checks of [architecture 10](../architecture/README.md#10-models-and-gpu-placement) and a scale card on a leaf at 30 cm measured within 3% ([evaluation](../vision/evaluation.md), LiDAR row), with the results recorded in architecture 10. It also settles the provisional 25 cm lower bound of the close-up and underside range.
+2. **Evaluation captures, by Oct 21.** A development build the vision track can use to take its evaluation set's LiDAR cases: 20 cases, and 5 plants scanned 3 times each, every shot with its photo, depth PNG, confidence map and `DepthMeta`, exported off the phone ([evaluation](../vision/evaluation.md), the set and its files). They feed vision's M10 and the calibration in M16.
+3. **The `GardenView` spike** ([garden-3d 7](../design/garden-3d.md#7-recommendation)), on Oct 20 beside the day-1 check: an `ARView` in `.nonAR` mode with the mock garden (2 beds, 6 plants), tap to select, orbit, UIKit labels, the three modes and the date; then 10 beds and 40 plants with the frame time measured in Xcode.
+4. **`GardenView` built:** the showroom: a pale sage plinth over the off-white, plaster beds, terracotta soil and pots, plants in their species greens with a status ring under each, a warm key light with soft shadows, a 24° lens from 16.8 m, a slow turntable when idle, frost covers in Frost mode, no frames drawn while idle. Props: garden map, plants with heights, mode, date, selection; events: selection. An `AccessibilityComponent` per plant.
+5. **`GardenMappingView`:** bed corners, plant pins with canopy radius, heading, the tracking state, `ARWorldMap` saved on the phone ([architecture 6.8](../architecture/README.md#68-garden-map-lidar), [flows 11](flows.md#11-garden-mapping-session)).
+6. **The Live Activity:** an ActivityKit widget extension with the scan's stage, elapsed time, a nine-segment bar and what comes next, on the Lock Screen and in the Dynamic Island; it alerts only for the question and the result. How the extension joins the Expo project is D4.
 
-**Needs.** A local development build; the vision track's day-1 depth check; backend S2 for depth uploads.
+**Needs.** A local development build; backend S2 for depth uploads and S4 for measuring from them (backend S4 work 4 measures from a real depth map, so a real depth capture must reach the API by Oct 21).
 
-**Exit checks.** On the 17 Pro Max: capabilities true, and false in Expo Go; a close-up uploads with `depth.stored: true` and the distance chip says "Move closer" outside 25–45 cm; `GardenView` draws 40 plants within the [performance budget](../design/garden-3d.md#3-performance-budget) and starts no AR session while mapping is closed; a mapped bed opens on the 2D map; the Live Activity follows a scripted scan.
+**Exit checks.** On the 17 Pro Max: the day-1 check passes and is recorded; capabilities true, and false in Expo Go; a close-up uploads with `depth.stored: true`, and the distance chip says "Move closer" outside the range the day-1 check sets (25–45 cm proposed), for the close-up and the underside; the evaluation captures export with their four files; `GardenView` draws 40 plants within the [performance budget](../design/garden-3d.md#3-performance-budget) and starts no AR session while mapping is closed; a mapped bed opens on the 2D map; the Live Activity follows a scripted scan.
 
 **Guidelines:** `/hig-technologies-augmented-reality`, `/hig-components-system-experiences-live-activities`, `/hig-foundations-accessibility`.
 
@@ -277,7 +279,7 @@ The demo path is F1 → F2 → F3 → F4, then the chat (F6), the 3D garden and 
 4. **Answer blocks** (`AnswerBlock`, one composite per kind), after the `answer_block` contract change (section 17): the garden map snippet, weather hours, the frost cover planner (which leads to a `create_task` card), the measurement trend, candidates compared. Interactions inside a block are local; anything that writes goes through a card. Each block has a text summary for VoiceOver.
 5. **Farm citations** (EON E10.3): a vendor record opens Slack or Drive; an `era` record opens its text in a sheet, labelled as Era's synthetic data.
 
-**Exit checks.** A scripted turn streams in mock mode with a tool chip, a block and a card. Live against S5: "Should I cover anything this week?" answers with the frost cover planner, the chosen plants become a confirmed task, and the task is on the Tasks tab. A dropped stream offers **Resend**.
+**Exit checks.** A scripted turn streams in mock mode with a tool chip, a block and a card. Live against S9's demo garden, EON's exit-check scan (E9.3, T-E9.2): bed 3's plan cites the spray log, a chat answer cites a `#field-reports` message, and an `era` record opens its text in a sheet. Live against S5: "Should I cover anything this week?" answers with the frost cover planner, the chosen plants become a confirmed task, and the task is on the Tasks tab. A dropped stream offers **Resend**.
 
 **Guidelines:** `/hig-technologies-generative-ai`, `/hig-components-selection-and-input-text-fields`, `/hig-components-selection-and-input-virtual-keyboards`.
 
@@ -299,10 +301,14 @@ The demo path is F1 → F2 → F3 → F4, then the chat (F6), the 3D garden and 
    - the date scrubber from the first scan to one step past today, a tick per scan date; dragging to Thursday chooses Frost;
    - **3D / Map** at the top right.
 2. **The 2D map** (`GardenMapView`, SVG): beds with names and areas, a pin per plant in its status shape and colour, canopy rings, a 1 m scale bar and north, distances to the nearest 5 cm. It shares the selection, the date and the modes. **Edit** opens the mapping session (F5) for editors on LiDAR phones. VoiceOver reads the plant list.
-3. **Insights** ([design 8](../design/design.md#8-insights), [analytics 2](../design/analytics.md#2-insights-per-plant), [6](../design/analytics.md#6-the-demos-analytics-moment)): Tomato 1's status strip (`StatusStrip`); spot cover 14% → 9% → 5% with range bars (`BandLine`) under the dates the plan steps were done (`StepLanes`); height with its noise band; humid hours before the diagnosis; Tomato 2, 40 cm away, "also found on", never "spread from". Trends only from 3 points over 14 days.
-4. **Garden tools:** garden create, edit and switch; members, roles and invites with the share sheet and `invite/[code]` ([screens 3.9](screens.md#39-settings-members-and-invites)); the **Farm connectors** screen and its connect flow with `openAuthSessionAsync` (EON E10.1–E10.2); account deletion; push in a development build if the team buys the Apple account.
+3. **Insights** ([design 8](../design/design.md#8-insights), [analytics 2](../design/analytics.md#2-insights-per-plant), [6](../design/analytics.md#6-the-demos-analytics-moment)): Tomato 1's status strip (`StatusStrip`); spot cover 14% → 9% → 5% with range bars (`BandLine`) under the dates the plan steps were done (`StepLanes`); height with its noise band, taken from the API or a constant marked provisional until vision measures the repeat scans (the 2 cm or 5% floor is a proposal, [evaluation](../vision/evaluation.md)); humid hours before the diagnosis; Tomato 2, 40 cm away, "also found on", never "spread from". Trends only from 3 points over 14 days.
+4. **Garden tools:** garden create, edit and switch; members, roles and invites with the share sheet and `invite/[code]` ([screens 3.9](screens.md#39-settings-members-and-invites)); the **Farm connectors** screen and its connect flow with `openAuthSessionAsync` (EON E10.1–E10.2); Google and Apple sign-in through `useSSO` ([README 8](README.md#8-authentication-clerk)); account deletion; push in a development build if the team buys the Apple account.
 
-**Exit checks.** On the 17 Pro Max: the scrubber runs from Sep 20 to today, Tomato 1 turns sick on Oct 11 and Tomato 2 after the live scan, one step on shows Thursday's frost with covers over the tender plants; the plant pill grows and shrinks; **Scan** from the shutter row starts a scan of the selected plant; **Map** shows the same selection and mode. In Expo Go the garden opens on the map. Insights draws the demo's two moments from the mock fixture. An invite accepted on a second account lands on the garden.
+**Exit checks.** On the 17 Pro Max: the scrubber runs from Sep 20 to today, Tomato 1 turns sick on Oct 11 and Tomato 2 after the live scan, one step on shows Thursday's frost with covers over the tender plants; the plant pill grows and shrinks; **Scan** from the shutter row starts a scan of the selected plant; **Map** shows the same selection and mode. In Expo Go the garden opens on the map. Insights draws the demo's two moments from the mock fixture. An invite accepted on a second account lands on the garden. The connectors screen's component tests (EON T-E10.1) pass on mock data; the connect flow on the iPhone against the real Slack and Google (T-E10.2) once E11's accounts exist.
+
+**Needs.** Backend S5 for the map, S6 for alerts and deletion, EON E3.4 (the connect routes, planned for Oct 22) for the connect flow, and E11's Slack app and Google client for T-E10.2.
+
+**Closes.** [README open decision](README.md#19-open-decisions) 4 (sign-in methods: email and password, Google and Apple).
 
 **Guidelines:** `/hig-patterns-charting-data`, `/hig-components-content-charts`, `/hig-components-presentation-sheets`, `/hig-patterns-collaboration-and-sharing`.
 
@@ -315,9 +321,10 @@ The demo path is F1 → F2 → F3 → F4, then the chat (F6), the 3D garden and 
 - A `/hig` review of every screen ([hig skill](../../.claude/skills/hig/SKILL.md), its review steps); no **must** findings left.
 - VoiceOver on the demo path; Dynamic Type at the largest size; reduced motion; light and dark; 44 pt targets; contrast in sun on the iPhone.
 - The app icon and splash in the palette.
+- The web origin settled (README open decision 5), with the app's request and body sizes handed to backend S7, whose CORS review and limits run on Oct 24.
 - The demo flow rehearsed on the 17 Pro Max: home → capture → live analysis → diagnosis and plan → a checked step → chat with a block and a confirmed task → the 3D garden scrubbed into the forecast → insights. Recorded for the two-minute video.
 
-**Exit checks.** The demo flow runs twice in a row on the iPhone without a fault, live and on mock (the fallback when the rig is down). Every screen passes the device script ([README 16](README.md#16-testing-and-tooling)).
+**Exit checks.** The demo flow runs three times in a row on the iPhone against the rig, with the fallback tested, as vision's freeze (J7) requires, and on mock as the fallback when the rig is down. How the VLM runs for the demo is vision's decision D11. Every screen passes the device script ([README 16](README.md#16-testing-and-tooling)).
 
 ## 15. F9. The web build
 
@@ -327,18 +334,18 @@ The demo path is F1 → F2 → F3 → F4, then the chat (F6), the 3D garden and 
 
 **Exit checks.** The live link works on a phone with a fresh account; a link opened from Instagram shows the banner and email sign-in only; a desktop browser runs a scan from a picked file.
 
-**Closes.** README open decisions 5, 9 and 10.
+**Closes.** README open decisions 9 and 10 (5 closes in F8).
 
 ## 16. Going live, slice by slice
 
-Every slice is built on mock data. It switches to the live API when the backend slice it reads is deployed on the control plane, and its live check is added to its exit checks then.
+Every slice is built on mock data. It switches to the live API when the backend slice it reads is deployed on the control plane, and its live check is added to its exit checks then. The backend dates below are the backend roadmap's; S1 has slipped from Oct 16–17, so every later slice may land later than its row says, and the app keeps working on mock data until it does.
 
 | App slice | Live when | Live check |
 |---|---|---|
-| F0, F1 | S1 deployed ([backend roadmap 5](../backend/roadmap.md#5-s1-walking-skeleton)) | Sign up, create a garden, see its weather on the home |
-| F2, F3 | S1 (stub vision), then S2–S4 (real models) | A scan on stub vision streams to a plan; then a real photo of Tomato 2 |
-| F4 | S4 ([backend roadmap 8](../backend/roadmap.md#8-s4-the-diagnosis-loop)) | A real diagnosis and plan with citations; tasks from the plan |
-| F5 | S2 depth upload | A close-up with depth gives a measured spot size |
+| F0, F1 | S1 deployed ([backend roadmap 5](../backend/roadmap.md#5-s1-walking-skeleton)) for the garden; S2 for live weather | Sign up and create a garden on S1; its weather on the home once S2 brings Open-Meteo |
+| F2, F3 | S1 (stub vision); then vision's first full scan (J4, MS3, Oct 21 at the earliest) | A scan on stub vision streams to a plan; after J4, a real photo of a sick tomato; run again after the final models (M17, Oct 23–24) |
+| F4 | S4 ([backend roadmap 8](../backend/roadmap.md#8-s4-the-diagnosis-loop)) and J4 | A real diagnosis and plan with citations; tasks from the plan. Spot sizes in mm also wait on vision's spot colour thresholds (M15) |
+| F5 | S2 depth upload, S4 measurement | A close-up with depth gives a measured spot size |
 | F6 | S5 and the `answer_block` change | A turn with a tool, a block and a confirmed card |
 | F7 | S5 map; analytics' fields (section 17); S6 alerts and deletion; S9 for connectors | A map upload, Insights from real measurements, an alert in the inbox |
 | F9 | S8 | The live link against the final deploy |
@@ -350,13 +357,17 @@ Going live also needs: a Clerk dev key in `.env`; signed image URLs refetched on
 | Need | From | For | State on Oct 19 |
 |---|---|---|---|
 | Register `AnchorType` and `TaskState` in `bins/api/src/openapi.rs`; no description-only `allOf` members | Backend | F0's `gen:api` without workarounds | Open: both schemas are referenced and undefined in `openapi.json` |
-| S1 deployed on the control plane | Backend | Going live (section 16) | Draft, [PR #40](https://github.com/aacruzgon/GreenLens/pull/40) |
-| `answer_block` SSE event, `Message.blocks`, `AnswerBlock` as a tagged union, the `show_block` tool ([design 5](../design/design.md#chat-answers-you-can-interact-with)) | Backend (`domain`, `agent`, `api`), with contracts §8 | F6 | Proposed, not in the contracts |
-| `GET /plants/{id}/measurements` for every quantity, points with `min`, `max`, `n`, `image_kind`; `TimelineEntry` with `low_evidence`, `primary.kind`, `primary.weather_fit`, `weather_7d`, `organisms`; `GET /gardens/{id}/timeline`; `GET /gardens/{id}/measurements`; `GET /tasks?plant_id=&plan_id=`; `spacing_cm` and `mature_height_cm` on the species care summary ([analytics 5](../design/analytics.md#5-buildable-now-and-backend-work)) | Backend | F7's Insights and the 3D scrubber | Proposed. Without them, Insights runs on mock data and the 3D scrubber computes from per-plant calls |
+| S1 deployed on the control plane | Backend | Going live (section 16) | Draft, [PR #40](https://github.com/aacruzgon/GreenLens/pull/40); due Oct 16–17 |
+| S4 (Oct 20–21) expects the results UI, which F3–F4 build on Oct 21–22 | Both | S4's exit check | S4's exit check runs through the API's smoke script; the app's results screens join it on Oct 22. The backend roadmap's S4 row should say so |
+| A real depth capture reaching the API by Oct 21 | App (F5) | Backend S4 work 4, measuring from a real depth map | Not started: no module yet |
+| `answer_block` SSE event, `Message.blocks`, `AnswerBlock` as a tagged union, the `show_block` tool ([design 5](../design/design.md#chat-answers-you-can-interact-with)) | Backend (`domain`, `agent`, `api`), with contracts §8 | F6 | Proposed, not in the contracts, and in no backend slice: it belongs in S5 (or backend roadmap §13 until it is) |
+| `GET /plants/{id}/measurements` for every quantity, points with `min`, `max`, `n`, `image_kind`; `TimelineEntry` with `low_evidence`, `primary.kind`, `primary.weather_fit`, `weather_7d`, `organisms`; `GET /gardens/{id}/timeline`; `GET /gardens/{id}/measurements`; `GET /tasks?plant_id=&plan_id=`; `spacing_cm` and `mature_height_cm` on the species care summary ([analytics 5](../design/analytics.md#5-buildable-now-and-backend-work)) | Backend | F7's Insights and the 3D scrubber | Proposed, and in no backend slice: they belong in S5 or backend roadmap §13. Without them, Insights runs on mock data and the 3D scrubber computes from per-plant calls |
 | The photo's dominant hue, if D9 puts it on the API | Backend | F4's tint | Open (D9) |
-| The LiDAR day-1 depth check | Vision | F5 | [Vision roadmap](../vision/roadmap.md) |
-| Farm connectors' routes (E1, merged) and the real Slack app and Google client (E11) | Backend, team accounts | F7's connectors screen, F6's farm citations | E1 merged; E11 waiting on accounts ([EON](../EON/README.md)) |
-| A paid Apple Developer account | Team | Push, and installs on teammates' phones | None yet |
+| The LiDAR day-1 check | App (Lane B), with backend | F5, and vision's LiDAR evaluation cases | Not run: planned for Oct 16–17, it needs the module and a development build |
+| The VLM's demo setup (D11) and the freeze rehearsal (J7) | Vision | F8 | Open ([vision dev-roadmap](../vision/dev-roadmap.md)) |
+| Farm connectors' routes (E1, merged), the connect routes (E3.4) and the real Slack app and Google client (E11) | Backend, team accounts | F7's connectors screen and connect flow, F4 and F6's farm citations | E1 merged; E3.4 not started, planned for Oct 22; E11 waiting on accounts ([EON](../EON/README.md)) |
+| A paid Apple Developer account | Team | Push, and installs on teammates' phones | None yet. Backend S6 work 2 (push from a development build, Oct 23) is blocked until it is bought: a free Apple ID can't use APNs |
+| The web origin, and the app's request and body sizes | App (F8) | Backend S7's CORS review and limits, Oct 24 | Open (README open decision 5) |
 
 Each backend change lands as AGENTS.md requires: the `domain` type, its exact-JSON test, `contracts.md` and `openapi.json` in one pull request, then `npm run gen:api` in the app.
 
@@ -368,8 +379,11 @@ In the pull request of the slice that makes each one true:
 |---|---|---|
 | [screens 3.2, 3.3, 3.8](screens.md#32-capture) | Capture with the mode bar and the coverage dial; the live analysis over the photo; the garden screen with its modes, pill and shutter row ([design open decision 10](../design/design.md#10-open-decisions)) | F2, F3, F7 |
 | [screens 3.9](screens.md#39-settings-members-and-invites) | The Farm connectors screen (EON E10.1) | F7 |
-| [README 3, 4, 6, 17, 18, 19](README.md) | iPhone only; the libraries added (`expo-symbols`, `expo-glass-effect`, Urbanist, the tint library if D9 chooses one); the module's `GardenView` and widget extension; the build plan by this roadmap's dates; decisions closed | F0 onward |
-| [design 3.1](../design/design.md#31-conservatory) | "Glass tint" still says the green tints the selected tab, against v0.5's neutral controls; it should say the text colour. Section 9 item 7 and the introduction point to PR #42's roadmap; they should point here | F0 |
+| [README 3, 4, 6, 17, 19](README.md) | iPhone only; the libraries added (`expo-symbols`, `expo-glass-effect`, Urbanist, the tint library if D9 chooses one); the module's `GardenView`, widget extension and evaluation export; decisions closed, and 19.1 saying the team stays on SDK 57 for build week although Clerk now allows 58 | F0 onward |
+| [README 18](README.md#18-build-plan) | The build plan by this roadmap's dates | Done with this roadmap |
+| [Architecture 14](../architecture/README.md#14-build-plan) | The frontend's and LiDAR's dates: the LiDAR module and the day-1 check on Oct 20–21, not Oct 16–19 | F0 |
+| [Backend roadmap 3, 8, 9, 13](../backend/roadmap.md) | S4's "results UI (app)" joins on Oct 22, after its smoke-script exit check; `answer_block` and the analytics fields given to S5 or listed in §13 | F0 |
+| [design](../design/design.md) | The introduction and section 9 item 7 point to PR #42's roadmap and its "F1 to F8" and "the first item of F1": they should point here, to F0–F9, with the design layer in F0 item 7. "Glass tint" in 3.1 still says the green tints the selected tab, against v0.5's neutral controls. Section 4 and 10.1 still recommend Instrument; mark 10.1 and 10.10 as taken | F0 |
 | [EON E10](../EON/README.md) | E10.1–E10.3 wait on this roadmap's F0 and F7, not on PR #42 | F0 |
 | [AGENTS.md](../../AGENTS.md) | The app exists, its layout, and this roadmap in the topic index | F0 |
 
@@ -377,18 +391,24 @@ In the pull request of the slice that makes each one true:
 
 | # | Decision | Owner document | Closes in |
 |---|---|---|---|
-| D1 | The scan action: a round button beside the native tab bar, or a tab of its own | [Design 10.2](../design/design.md#10-open-decisions) | F0 spike |
-| D2 | The plan's mini player as the tab bar's bottom accessory (glass), or our own solid bar | Design 3.1 | F0 spike |
+| D2 | The scan action: a round button beside the native tab bar, or a tab of its own | [Design 10.2](../design/design.md#10-open-decisions) | F0 spike |
 | D3 | Glass bar buttons and the selected tab over photos and dark screens, readable outdoors | Design 10.3 | F0 spike |
 | D4 | How the Live Activity's widget extension joins the Expo project | Design 10.4 | F5 |
 | D5 | `GardenView` on RealityKit, or the fallback on expo-gl | Design 10.5 | F5 spike, Oct 20 |
+| D7 | Answer blocks in chat, with the agent work in backend S5 | Design 10.7 | F6 |
 | D8 | The melt and the tint on real photos of sick leaves | Design 10.8 | F0 spike |
 | D9 | The photo tint computed on the phone, or by the API at upload (a contract change) | Design 10.9 | F4 |
+| R1 | The plan's mini player as the tab bar's bottom accessory (glass), or our own solid bar; *unverified* on SDK 57 | Design 3.1 (the diagnosis) | F0 spike |
 | — | Expo SDK 58. The closed PR #42 found `@clerk/expo` 4.13.0 declaring `expo: ">=54 <59"`. Stay on 57 for build week: nothing here needs 58, and a move re-verifies every pin | [README 19.1](README.md#19-open-decisions) | Not in build week |
+| — | Styling, Clerk screens, the display name | README 19.2, 19.3, 19.7 | F0 |
+| — | Sign-in methods | README 19.4 | F7 |
 | — | Upload progress | README 19.6 | Going live, after timing uploads |
-| — | Web origin, browser capture, web push | README 19.5, 19.9, 19.10 | F9 |
+| — | Abandoned scans: decided (Discard deletes the pending scan); whether to offer deleting the new plant too | README 19.8 | F2 |
+| — | Web origin | README 19.5 | F8, before S7's CORS review |
+| — | Browser capture, web push | README 19.9, 19.10 | F9 |
+| — | How the app shows a removed knowledge record, and whether `api` refuses stub results in production (so the app never shows one as real) | [Backend roadmap 13](../backend/roadmap.md#13-gaps-found-while-writing-this-roadmap); worker 17 | F4, with the backend |
 
-Design open decision 1 (the direction) and 10 (camera-style capture) are taken: Conservatory, with its camera screens. Decision 6 (Fraunces) doesn't apply.
+D*n* is design open decision 10.*n*. Decisions 1 (the direction) and 10 (camera-style capture) are taken: Conservatory, with its camera screens. Decision 6 (Fraunces) doesn't apply. R1 is this roadmap's own.
 
 ## 20. Tracking
 

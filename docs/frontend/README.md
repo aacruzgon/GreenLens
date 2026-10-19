@@ -1,6 +1,6 @@
 # PDM Frontend Architecture
 
-> **Status:** Draft v0.4.2, 2026-10-16. v0.4.2: the backend's OpenAPI spec is committed, so the app uses generated contract types from day 1 instead of hand-written ones (section 9, generated types; build plan). v0.4.1: the schema links point to `backend/migrations/schema.surql`. v0.4 applies the third audit and contracts v0.8.2: species photo paths carry a content hash, a failed scan never holds a question, push coverage, invalidations for confirmed plan revisions, the closer-photo rule, the `SFSafariViewController` cookie note and the CORS preflight reason.
+> **Status:** Draft v0.4.3, 2026-10-19. v0.4.3: the build plan (section 18) follows the new [roadmap](roadmap.md): the iPhone first in the Conservatory direction, F0 on Oct 20 to the web build on Oct 25. v0.4.2: the backend's OpenAPI spec is committed, so the app uses generated contract types from day 1 instead of hand-written ones (section 9, generated types; build plan). v0.4.1: the schema links point to `backend/migrations/schema.surql`. v0.4 applies the third audit and contracts v0.8.2: species photo paths carry a content hash, a failed scan never holds a question, push coverage, invalidations for confirmed plan revisions, the closer-photo rule, the `SFSafariViewController` cookie note and the CORS preflight reason.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Images:** event URLs arrive fresh, and the cache key is the image ID or the URL path; species photos carry their credit.
 >   - **Scan stream:** the resting rule counts guided checks on failed scans too.
@@ -946,17 +946,16 @@ If the web build has its own origin, the API must answer CORS for it, allowing t
 
 ## 18. Build plan
 
-The frontend track of [architecture 14](../architecture/README.md#14-build-plan).
+The frontend track of [architecture 14](../architecture/README.md#14-build-plan). The [roadmap](roadmap.md) holds each slice's work, dependencies and exit checks; this is its calendar. The app is built for the iPhone first, in the [Conservatory](../design/design.md#31-conservatory) direction, and the web build comes last.
 
 | Dates | Frontend goal |
 |---|---|
-| Oct 16–17 | Project on SDK 57 with the layers, lint rules and CI. Clerk sign-in, onboarding and garden creation. Contract types generated from `backend/openapi.json`, mock transport and the scripted early-blight run. Scan screen on the reducer with stage progress. Capture with `expo-camera`, the system camera in phone browsers and the file picker, uploading to the API skeleton. LiDAR day-1 check in a development build |
-| Oct 18–19 | Species confirmation card. Weather strip. LiDAR module: camera view, distance hints, depth upload. In-app browser detection and the sign-in banner |
-| Oct 20–21 | Results UI: photos with regions and masks, organisms, soil, measurements, diagnosis with indicators, question card, plan checklist with provisional plans. Question photos and guided soil checks |
-| Oct 22 | Chat with streaming, tool chips, citations, confirmation cards, memories and message feedback. Plant timeline with the growth curve. Garden map view and mapping session |
-| Oct 23 | Tasks and the alert inbox, push from a development build, members and invites, account deletion, the web manifest |
-| Oct 24 | Feature freeze, accessibility pass, polish on every target in section 13 |
-| Oct 25 | Web build deployed as the live link; screens recorded for the demo video |
+| Oct 20 | F0: the project, the layers, the api layer, mock mode with the demo story, Clerk, Conservatory's design layer, the app's CI job, the day-one spikes. F5 starts: the LiDAR module, the LiDAR day-1 check and the `GardenView` spike on the iPhone |
+| Oct 20–21 | F1: the garden home and the new-scan sheet. F2: capture after the Camera app. F5: depth capture and the evaluation captures for vision by Oct 21 |
+| Oct 21–22 | F3: the live analysis. F4: the tinted diagnosis, the plan with its mini player, step by step, plant detail and the Tasks tab |
+| Oct 22–23 | F6: chat with answer blocks. F7: the 3D garden and the 2D map, Insights, members and invites, farm connectors, Google and Apple sign-in, account deletion. F5: `GardenView`, the mapping session, the Live Activity |
+| Oct 24 | F8: feature freeze, design and guideline review, accessibility, the web origin settled, the demo rehearsed and recorded |
+| Oct 25 | F9: the web build deployed as the live link |
 
 ---
 
