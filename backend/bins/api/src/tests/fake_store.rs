@@ -179,8 +179,11 @@ mod analysis_repo {
             &self,
             lease: &Lease,
             outcome: GuidedOutcome,
+            now: Timestamp,
         ) -> Result<GuidedFinish, StoreError> {
-            self.analysis_repo.finish_guided_check(lease, outcome).await
+            self.analysis_repo
+                .finish_guided_check(lease, outcome, now)
+                .await
         }
     }
 }

@@ -47,7 +47,7 @@
        },
        {
         "type": "text",
-        "text": "The plant is believed to be Tomato. Give your own opinion below; don't just repeat this.\n\n1. species_guess: the species you see, from this list, or \"other\" with its common name in other_name.\n- tomato: Tomato\n- potato: Potato\n- pepper: Pepper\n- corn: Corn\n- squash: Squash\n- bean: Bean\n- strawberry: Strawberry\n\n2. soil: for each aspect, the value you see in the image that shows the soil best, or null if no image shows it clearly. Soil under mulch can't be judged for moisture, surface or structure.\n- moisture: dry (light-coloured, dusty), moist (darker, holds together), wet (shiny, sticky), waterlogged (standing water)\n- surface: normal, crusted (a hard skin), cracked\n- structure: crumbly, cloddy (hard lumps), compacted (dense, smooth, no crumbs), unclear\n- colour: dark, medium, pale, grey_mottled\n- cover: bare, mulched, residue (old plant material), ground_cover (low plants)\n- deposits: none, salt_crust (white crust), moss, algae (green film), mould (white or grey fuzz)\n- erosion: none, rills (small channels), exposed_roots\n- weeds: none, few, many\n\n3. organisms: every insect, mite, spider, slug, snail, worm, bird or other animal you can see, up to 10. Choose the label from this list, or \"other\" with a short name in other_name. Box each one, or the group when there are many of the same kind close together. count is one, few (2 to 10) or many.\n- aphid: Aphid\n- whitefly: Whitefly\n- ladybug_adult: Ladybug (adult)\n- ladybug_larva: Ladybug (larva)\n- tomato_hornworm: Tomato hornworm\n\nMany helpful insects look like pests. Check these before you choose a label:\n- Ladybug larvae are long, dark grey or black with orange spots, spiky, like a small alligator. They are not caterpillars or beetles that eat leaves.\n- Ladybug pupae are orange and black bumps stuck to a leaf.\n- Lacewing larvae are flat, pale brown, with curved jaws.\n- Hoverfly larvae are small, legless, green or translucent, like a slug, and sit among aphids.\n- A swollen, bronze or papery aphid is a mummy: a parasitic wasp has used it. Report it as other, with the name aphid mummy.\nOnly choose a pest label when you can see the features of that pest.\n\n4. damage: patterns of damage on the leaves, stems, fruit or soil, up to 10, each with the image and a box when it is in one area (null when it is spread over the whole plant):\n- shot_holes: many small round holes, a few millimetres across\n- ragged_holes: large irregular holes, often with slime nearby\n- chewed_margins: leaf edges eaten away\n- leaf_mines: pale winding tunnels or blotches inside the leaf\n- sticky_residue: shiny sticky coating on leaves\n- sooty_mould: black powdery coating\n- webbing: fine silk between leaves or stems\n- slime_trails: shiny dried trails\n- frass: small dark droppings of insects\n- skeletonised_leaves: only the veins left\n- cut_stems: stems cut cleanly at an angle\n- torn_stems: stems torn or ripped\n- digging: holes or disturbed soil\n- tunnels_or_mounds: raised ridges or mounds of soil\n- tracks: footprints\n- droppings: droppings of animals larger than insects\n- pecked_fruit: fruit with beak holes\n- other: anything else, described in other_description\nSpots, yellowing and mould caused by disease are not damage patterns here.\n\n5. notes: at most two short sentences about anything else important you see, or an empty string."
+        "text": "The plant is believed to be Tomato. Give your own opinion below; don't just repeat this.\n\n1. species_guess: the species you see, from this list, or \"other\" with its common name in other_name.\n- tomato: Tomato\n- potato: Potato\n- pepper: Pepper\n- corn: Corn\n- squash: Squash\n- bean: Bean\n- strawberry: Strawberry\n\n2. soil: for each aspect, the value you see in the image that shows the soil best, or null if no image shows it clearly. Soil glimpsed between leaves or blurred in the background doesn't count. Soil under mulch can't be judged for moisture, surface or structure. Write each aspect you can judge as an object, for example \"moisture\": {\"value\": \"moist\", \"image\": \"img1\", \"certainty\": \"medium\"}, and each one you can't as null, for example \"erosion\": null.\n- moisture: dry (light-coloured, dusty), moist (darker, holds together), wet (shiny, sticky), waterlogged (standing water)\n- surface: normal, crusted (a hard skin), cracked\n- structure: crumbly, cloddy (hard lumps), compacted (dense, smooth, no crumbs), unclear\n- colour: dark, medium, pale, grey_mottled\n- cover: bare, mulched, residue (old plant material), ground_cover (low plants)\n- deposits: none, salt_crust (white crust), moss, algae (green film), mould (white or grey fuzz)\n- erosion: none, rills (small channels), exposed_roots\n- weeds: none, few, many\n\n3. organisms: every insect, mite, spider, slug, snail, worm, bird or other animal you can see, up to 10. Choose the label from this list, or \"other\" with a short name in other_name. Box each one, or the group when there are many of the same kind close together. count is one, few (2 to 10) or many.\n- aphid: Aphid\n- whitefly: Whitefly\n- ladybug_adult: Ladybug (adult)\n- ladybug_larva: Ladybug (larva)\n- tomato_hornworm: Tomato hornworm\n\nMany helpful insects look like pests. Check these before you choose a label:\n- Ladybug larvae are long, dark grey or black with orange spots, spiky, like a small alligator. They are not caterpillars or beetles that eat leaves.\n- Ladybug pupae are orange and black bumps stuck to a leaf.\n- Lacewing larvae are flat, pale brown, with curved jaws.\n- Hoverfly larvae are small, legless, green or translucent, like a slug, and sit among aphids.\n- A swollen, bronze or papery aphid is a mummy: a parasitic wasp has used it. Report it as other, with the name aphid mummy.\nOnly choose a pest label when you can see the features of that pest.\n\n4. damage: patterns of damage on the leaves, stems, fruit or soil, up to 10, each with the image and a box when it is in one area (null when it is spread over the whole plant):\n- shot_holes: many small round holes, a few millimetres across\n- ragged_holes: large irregular holes, often with slime nearby\n- chewed_margins: leaf edges eaten away\n- leaf_mines: pale winding tunnels or blotches inside the leaf\n- sticky_residue: shiny sticky coating on leaves\n- sooty_mould: black powdery coating\n- webbing: fine silk between leaves or stems\n- slime_trails: shiny dried trails\n- frass: small dark droppings of insects\n- skeletonised_leaves: only the veins left\n- cut_stems: stems cut cleanly at an angle\n- torn_stems: stems torn or ripped\n- digging: holes or disturbed soil\n- tunnels_or_mounds: raised ridges or mounds of soil\n- tracks: footprints\n- droppings: droppings of animals larger than insects\n- pecked_fruit: fruit with beak holes\n- other: anything else, described in other_description\nSpots, yellowing and mould caused by disease are not damage patterns here.\n\n5. notes: at most two short sentences about anything else important you see, or an empty string."
        }
       ]
      }
@@ -644,16 +644,16 @@
     "stream": false
    },
    "response": {
-    "id": "chatcmpl-bca4086e7bee4a49",
+    "id": "chatcmpl-a17b6ca6e8084ce7",
     "object": "chat.completion",
-    "created": 1792188373,
+    "created": 1792207271,
     "model": "vlm",
     "choices": [
      {
       "index": 0,
       "message": {
        "role": "assistant",
-       "content": "{\"species_guess\": {\"species\": \"tomato\", \"other_name\": null, \"certainty\": \"low\"}, \"soil\": {\"moisture\": null, \"surface\": null, \"structure\": null, \"colour\": null, \"cover\": null, \"deposits\": null, \"erosion\": null, \"weeds\": null}, \"organisms\": [], \"damage\": [], \"notes\": \"The provided images appear to be a composite of different plants and conditions. The first image shows a leaf with small spots, the second shows a tomato plant with severe blight, and the third shows \"}",
+       "content": "{\"species_guess\": {\"species\": \"tomato\", \"other_name\": null, \"certainty\": \"low\"}, \"soil\": {\"moisture\": {\"value\": \"dry\", \"image\": \"img3\", \"certainty\": \"high\"}, \"surface\": {\"value\": \"normal\", \"image\": \"img3\", \"certainty\": \"high\"}, \"structure\": {\"value\": \"crumbly\", \"image\": \"img3\", \"certainty\": \"high\"}, \"colour\": {\"value\": \"pale\", \"image\": \"img3\", \"certainty\": \"high\"}, \"cover\": {\"value\": \"bare\", \"image\": \"img3\", \"certainty\": \"high\"}, \"deposits\": {\"value\": \"none\", \"image\": \"img3\", \"certainty\": \"high\"}, \"erosion\": {\"value\": \"none\", \"image\": \"img3\", \"certainty\": \"high\"}, \"weeds\": {\"value\": \"few\", \"image\": \"img3\", \"certainty\": \"high\"}}, \"organisms\": [], \"damage\": [{\"pattern\": \"leaf_mines\", \"other_description\": \"small dark spots and irregular blotches on the leaf surface\", \"image\": \"img1\", \"bbox_2d\": [200, 250, 600, 600], \"certainty\": \"medium\"}, {\"pattern\": \"leaf_mines\", \"other_description\": \"large irregular brown spots and yellowing on the leaf\", \"image\": \"img2\", \"bbox_2d\": [500, 400, 900, 800], \"certainty\": \"medium\"}, {\"pattern\": \"leaf_mines\", \"other_description\": \"a large section of the leaf is dried, bleached and brown\", \"image\": \"img3\", \"bbox_2d\": [300, 100, 500, 800], \"certainty\": \"high\"}], \"notes\": \"The soil appears dry and dusty with a few small weeds visible. The plant shows signs of significant leaf damage, including spots and large areas of drying.\"}",
        "refusal": null,
        "annotations": null,
        "audio": null,
@@ -670,9 +670,9 @@
     "service_tier": null,
     "system_fingerprint": "vllm-0.31.0-8f57f585",
     "usage": {
-     "prompt_tokens": 1756,
-     "total_tokens": 1885,
-     "completion_tokens": 129,
+     "prompt_tokens": 1825,
+     "total_tokens": 2288,
+     "completion_tokens": 463,
      "prompt_tokens_details": null,
      "completion_tokens_details": null
     },
@@ -684,7 +684,7 @@
     "metrics": null
    },
    "status": 200,
-   "wall_s": 1.467
+   "wall_s": 4.182
   },
   {
    "key": "7bd1deee70eba266c02bcf9a71ec79cdfc6228b1402c2e810bdd80485c418cbc",
@@ -1091,16 +1091,16 @@
     "stream": false
    },
    "response": {
-    "id": "chatcmpl-89b6d92ab4e73b7c",
+    "id": "chatcmpl-a3c5e2d4491fbc0f",
     "object": "chat.completion",
-    "created": 1792188374,
+    "created": 1792207275,
     "model": "vlm",
     "choices": [
      {
       "index": 0,
       "message": {
        "role": "assistant",
-       "content": "{\"q1_concentric_rings\": {\"reason\": \"Brown spots on leaf in img1 show concentric rings.\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q2_lower_leaves_first\": {\"reason\": \"Spots are visible on leaves in img2, but it is unclear if it\", \"answer\": \"unsure\", \"image\": \"img2\"}, \"q3_yellow_halo\": {\"reason\": \"Yellow discoloration surrounds the brown spots on the leaf.\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q4_small_spots\": {\"reason\": \"The spots on the leaf are small, roughly the size of a pin.\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q5_dark_specks_in_centre\": {\"reason\": \"The spots have dark centers with tiny black specks inside.\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q6_many_spots_per_leaf\": {\"reason\": \"There are many small spots covering the affected leaf area.\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q7_water_soaked_patches\": {\"reason\": \"The damage appears as dry, necrotic spots rather than wet, g\", \"answer\": \"no\", \"image\": \"img1\"}, \"q8_white_mould_underside\": {\"reason\": \"No image shows the underside of the leaves.\", \"answer\": \"unsure\", \"image\": null}, \"q9_dark_stem_lesions\": {\"reason\": \"The stem in img2 is green and does not show dark lesions.\", \"answer\": \"no\", \"image\": \"img2\"}}",
+       "content": "{\"q1_concentric_rings\": {\"reason\": \"Brown spots on leaf in img1 show concentric rings.\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q2_lower_leaves_first\": {\"reason\": \"Spots are visible on leaves in img2, but it is unclear if it\", \"answer\": \"unsure\", \"image\": \"img2\"}, \"q3_yellow_halo\": {\"reason\": \"Yellow discoloration surrounds the brown spots on the leaf.\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q4_small_spots\": {\"reason\": \"The spots on the leaf are small, roughly the size of a pin.\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q5_dark_specks_in_centre\": {\"reason\": \"The spots have dark centers with tiny black specks inside.\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q6_many_spots_per_leaf\": {\"reason\": \"There are many small spots covering the affected leaf area.\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q7_water_soaked_patches\": {\"reason\": \"The damage appears as dry, necrotic spots rather than wet, g\", \"answer\": \"no\", \"image\": \"img1\"}, \"q8_white_mould_underside\": {\"reason\": \"The underside of the leaves is not visible in the provided\", \"answer\": \"unsure\", \"image\": \"img1\"}, \"q9_dark_stem_lesions\": {\"reason\": \"The stems in img2 appear green and healthy with no visible\", \"answer\": \"no\", \"image\": \"img2\"}}",
        "refusal": null,
        "annotations": null,
        "audio": null,
@@ -1118,8 +1118,8 @@
     "system_fingerprint": "vllm-0.31.0-8f57f585",
     "usage": {
      "prompt_tokens": 988,
-     "total_tokens": 1340,
-     "completion_tokens": 352,
+     "total_tokens": 1344,
+     "completion_tokens": 356,
      "prompt_tokens_details": null,
      "completion_tokens_details": null
     },
@@ -1131,7 +1131,7 @@
     "metrics": null
    },
    "status": 200,
-   "wall_s": 3.21
+   "wall_s": 3.151
   },
   {
    "key": "7bd1deee70eba266c02bcf9a71ec79cdfc6228b1402c2e810bdd80485c418cbc",
@@ -1538,16 +1538,16 @@
     "stream": false
    },
    "response": {
-    "id": "chatcmpl-a3a3fcf58dc9c2c2",
+    "id": "chatcmpl-9ea5fd8935daadb5",
     "object": "chat.completion",
-    "created": 1792188378,
+    "created": 1792207279,
     "model": "vlm",
     "choices": [
      {
       "index": 0,
       "message": {
        "role": "assistant",
-       "content": "{\"q1_concentric_rings\": {\"reason\": \"The brown spots on the leaf in img1 show a target-like, ring\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q2_lower_leaves_first\": {\"reason\": \"The spots are visible on leaves in img2, but it is unclear\", \"answer\": \"unsure\", \"image\": \"img2\"}, \"q3_yellow_halo\": {\"reason\": \"The brown spots in img1 are surrounded by yellowing tissue\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q4_small_spots\": {\"reason\": \"The spots on the leaves in img1 are small and distinct\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q5_dark_specks_in_centre\": {\"reason\": \"The spots in img1 have dark centers with tiny black specks\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q6_many_spots_per_leaf\": {\"reason\": \"There are numerous small spots covering the leaves in img1\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q7_water_soaked_patches\": {\"reason\": \"The damage appears as small, dry spots rather than large wet\", \"answer\": \"no\", \"image\": \"img1\"}, \"q8_white_mould_underside\": {\"reason\": \"The underside of the leaves is not visible in the photos\", \"answer\": \"unsure\", \"image\": null}, \"q9_dark_stem_lesions\": {\"reason\": \"The stems in img2 appear green and healthy without dark\", \"answer\": \"no\", \"image\": \"img2\"}}",
+       "content": "{\"q1_concentric_rings\": {\"reason\": \"The brown spots on the leaf in img1 show concentric rings.\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q2_lower_leaves_first\": {\"reason\": \"The spots are visible on leaves in the middle of the plant, \", \"answer\": \"unsure\", \"image\": \"img2\"}, \"q3_yellow_halo\": {\"reason\": \"The brown spots in img1 are surrounded by yellowing tissue.\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q4_small_spots\": {\"reason\": \"The spots on the leaves are small, roughly the size of a pin\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q5_dark_specks_in_centre\": {\"reason\": \"The spots in img1 have dark centers with tiny black specks.\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q6_many_spots_per_leaf\": {\"reason\": \"There are many small spots covering the surface of the leaf.\", \"answer\": \"yes\", \"image\": \"img1\"}, \"q7_water_soaked_patches\": {\"reason\": \"The damage appears as small, dry spots rather than large wet\", \"answer\": \"no\", \"image\": \"img1\"}, \"q8_white_mould_underside\": {\"reason\": \"The underside of the leaves is not visible in the photos.\", \"answer\": \"unsure\", \"image\": null}, \"q9_dark_stem_lesions\": {\"reason\": \"The stems in img2 appear green and healthy with no dark\", \"answer\": \"no\", \"image\": \"img2\"}}",
        "refusal": null,
        "annotations": null,
        "audio": null,
@@ -1565,8 +1565,8 @@
     "system_fingerprint": "vllm-0.31.0-8f57f585",
     "usage": {
      "prompt_tokens": 1007,
-     "total_tokens": 1361,
-     "completion_tokens": 354,
+     "total_tokens": 1363,
+     "completion_tokens": 356,
      "prompt_tokens_details": null,
      "completion_tokens_details": null
     },
@@ -1578,7 +1578,7 @@
     "metrics": null
    },
    "status": 200,
-   "wall_s": 3.233
+   "wall_s": 3.164
   },
   {
    "key": "802c423a1341cffa4659213104dba8913426f37596186a00f3cafa1ac89aad28",
@@ -1616,7 +1616,7 @@
        },
        {
         "type": "text",
-        "text": "The plant is believed to be Corn. Give your own opinion below; don't just repeat this.\n\n1. species_guess: the species you see, from this list, or \"other\" with its common name in other_name.\n- tomato: Tomato\n- potato: Potato\n- pepper: Pepper\n- corn: Corn\n- squash: Squash\n- bean: Bean\n- strawberry: Strawberry\n\n2. soil: for each aspect, the value you see in the image that shows the soil best, or null if no image shows it clearly. Soil under mulch can't be judged for moisture, surface or structure.\n- moisture: dry (light-coloured, dusty), moist (darker, holds together), wet (shiny, sticky), waterlogged (standing water)\n- surface: normal, crusted (a hard skin), cracked\n- structure: crumbly, cloddy (hard lumps), compacted (dense, smooth, no crumbs), unclear\n- colour: dark, medium, pale, grey_mottled\n- cover: bare, mulched, residue (old plant material), ground_cover (low plants)\n- deposits: none, salt_crust (white crust), moss, algae (green film), mould (white or grey fuzz)\n- erosion: none, rills (small channels), exposed_roots\n- weeds: none, few, many\n\n3. organisms: every insect, mite, spider, slug, snail, worm, bird or other animal you can see, up to 10. Choose the label from this list, or \"other\" with a short name in other_name. Box each one, or the group when there are many of the same kind close together. count is one, few (2 to 10) or many.\n- aphid: Aphid\n- whitefly: Whitefly\n- ladybug_adult: Ladybug (adult)\n- ladybug_larva: Ladybug (larva)\n- fall_armyworm: Fall armyworm\n\nMany helpful insects look like pests. Check these before you choose a label:\n- Ladybug larvae are long, dark grey or black with orange spots, spiky, like a small alligator. They are not caterpillars or beetles that eat leaves.\n- Ladybug pupae are orange and black bumps stuck to a leaf.\n- Lacewing larvae are flat, pale brown, with curved jaws.\n- Hoverfly larvae are small, legless, green or translucent, like a slug, and sit among aphids.\n- A swollen, bronze or papery aphid is a mummy: a parasitic wasp has used it. Report it as other, with the name aphid mummy.\nOnly choose a pest label when you can see the features of that pest.\n\n4. damage: patterns of damage on the leaves, stems, fruit or soil, up to 10, each with the image and a box when it is in one area (null when it is spread over the whole plant):\n- shot_holes: many small round holes, a few millimetres across\n- ragged_holes: large irregular holes, often with slime nearby\n- chewed_margins: leaf edges eaten away\n- leaf_mines: pale winding tunnels or blotches inside the leaf\n- sticky_residue: shiny sticky coating on leaves\n- sooty_mould: black powdery coating\n- webbing: fine silk between leaves or stems\n- slime_trails: shiny dried trails\n- frass: small dark droppings of insects\n- skeletonised_leaves: only the veins left\n- cut_stems: stems cut cleanly at an angle\n- torn_stems: stems torn or ripped\n- digging: holes or disturbed soil\n- tunnels_or_mounds: raised ridges or mounds of soil\n- tracks: footprints\n- droppings: droppings of animals larger than insects\n- pecked_fruit: fruit with beak holes\n- other: anything else, described in other_description\nSpots, yellowing and mould caused by disease are not damage patterns here.\n\n5. notes: at most two short sentences about anything else important you see, or an empty string."
+        "text": "The plant is believed to be Corn. Give your own opinion below; don't just repeat this.\n\n1. species_guess: the species you see, from this list, or \"other\" with its common name in other_name.\n- tomato: Tomato\n- potato: Potato\n- pepper: Pepper\n- corn: Corn\n- squash: Squash\n- bean: Bean\n- strawberry: Strawberry\n\n2. soil: for each aspect, the value you see in the image that shows the soil best, or null if no image shows it clearly. Soil glimpsed between leaves or blurred in the background doesn't count. Soil under mulch can't be judged for moisture, surface or structure. Write each aspect you can judge as an object, for example \"moisture\": {\"value\": \"moist\", \"image\": \"img1\", \"certainty\": \"medium\"}, and each one you can't as null, for example \"erosion\": null.\n- moisture: dry (light-coloured, dusty), moist (darker, holds together), wet (shiny, sticky), waterlogged (standing water)\n- surface: normal, crusted (a hard skin), cracked\n- structure: crumbly, cloddy (hard lumps), compacted (dense, smooth, no crumbs), unclear\n- colour: dark, medium, pale, grey_mottled\n- cover: bare, mulched, residue (old plant material), ground_cover (low plants)\n- deposits: none, salt_crust (white crust), moss, algae (green film), mould (white or grey fuzz)\n- erosion: none, rills (small channels), exposed_roots\n- weeds: none, few, many\n\n3. organisms: every insect, mite, spider, slug, snail, worm, bird or other animal you can see, up to 10. Choose the label from this list, or \"other\" with a short name in other_name. Box each one, or the group when there are many of the same kind close together. count is one, few (2 to 10) or many.\n- aphid: Aphid\n- whitefly: Whitefly\n- ladybug_adult: Ladybug (adult)\n- ladybug_larva: Ladybug (larva)\n- fall_armyworm: Fall armyworm\n\nMany helpful insects look like pests. Check these before you choose a label:\n- Ladybug larvae are long, dark grey or black with orange spots, spiky, like a small alligator. They are not caterpillars or beetles that eat leaves.\n- Ladybug pupae are orange and black bumps stuck to a leaf.\n- Lacewing larvae are flat, pale brown, with curved jaws.\n- Hoverfly larvae are small, legless, green or translucent, like a slug, and sit among aphids.\n- A swollen, bronze or papery aphid is a mummy: a parasitic wasp has used it. Report it as other, with the name aphid mummy.\nOnly choose a pest label when you can see the features of that pest.\n\n4. damage: patterns of damage on the leaves, stems, fruit or soil, up to 10, each with the image and a box when it is in one area (null when it is spread over the whole plant):\n- shot_holes: many small round holes, a few millimetres across\n- ragged_holes: large irregular holes, often with slime nearby\n- chewed_margins: leaf edges eaten away\n- leaf_mines: pale winding tunnels or blotches inside the leaf\n- sticky_residue: shiny sticky coating on leaves\n- sooty_mould: black powdery coating\n- webbing: fine silk between leaves or stems\n- slime_trails: shiny dried trails\n- frass: small dark droppings of insects\n- skeletonised_leaves: only the veins left\n- cut_stems: stems cut cleanly at an angle\n- torn_stems: stems torn or ripped\n- digging: holes or disturbed soil\n- tunnels_or_mounds: raised ridges or mounds of soil\n- tracks: footprints\n- droppings: droppings of animals larger than insects\n- pecked_fruit: fruit with beak holes\n- other: anything else, described in other_description\nSpots, yellowing and mould caused by disease are not damage patterns here.\n\n5. notes: at most two short sentences about anything else important you see, or an empty string."
        }
       ]
      }
@@ -2203,16 +2203,16 @@
     "stream": false
    },
    "response": {
-    "id": "chatcmpl-83f658916383cc0e",
+    "id": "chatcmpl-aaa345531235eb8c",
     "object": "chat.completion",
-    "created": 1792188383,
+    "created": 1792207283,
     "model": "vlm",
     "choices": [
      {
       "index": 0,
       "message": {
        "role": "assistant",
-       "content": "{\"species_guess\": {\"species\": \"corn\", \"other_name\": null, \"certainty\": \"high\"}, \"soil\": {\"moisture\": null, \"surface\": null, \"structure\": null, \"colour\": null, \"cover\": null, \"deposits\": null, \"erosion\": null, \"weeds\": null}, \"organisms\": [], \"damage\": [{\"pattern\": \"chewed_margins\", \"other_description\": \"irregular holes along the leaf edge\", \"image\": \"img1\", \"bbox_2d\": [0, 200, 100, 400], \"certainty\": \"high\"}, {\"pattern\": \"other\", \"other_description\": \"large areas of bleached and necrotic tissue on the leaf sheath\", \"image\": \"img1\", \"bbox_2d\": [200, 0, 600, 800], \"certainty\": \"high\"}, {\"pattern\": \"other\", \"other_description\": \"a large pale necrotic lesion on the leaf surface\", \"image\": \"img2\", \"bbox_2d\": [100, 300, 400, 400], \"certainty\": \"high\"}, {\"pattern\": \"other\", \"other_description\": \"browning and drying along the leaf margin\", \"image\": \"img2\", \"bbox_2d\": [0, 0, 1000, 150], \"certainty\": \"high\"}], \"notes\": \"The plant shows significant damage to the leaf sheath and leaf margins. There are large necrotic patches on the leaves.\"}",
+       "content": "{\"species_guess\": {\"species\": \"corn\", \"other_name\": null, \"certainty\": \"high\"}, \"soil\": {\"moisture\": null, \"surface\": null, \"structure\": null, \"colour\": null, \"cover\": null, \"deposits\": null, \"erosion\": null, \"weeds\": null}, \"organisms\": [], \"damage\": [{\"pattern\": \"chewed_margins\", \"other_description\": \"irregular holes along the leaf edge\", \"image\": \"img1\", \"bbox_2d\": [0, 200, 100, 400], \"certainty\": \"high\"}, {\"pattern\": \"other\", \"other_description\": \"large areas of bleached and necrotic tissue on the leaf sheath\", \"image\": \"img1\", \"bbox_2d\": [200, 0, 600, 800], \"certainty\": \"high\"}, {\"pattern\": \"other\", \"other_description\": \"elongated bleached lesion on the leaf blade\", \"image\": \"img2\", \"bbox_2d\": [100, 300, 400, 400], \"certainty\": \"high\"}, {\"pattern\": \"other\", \"other_description\": \"necrotic tissue along the leaf margin\", \"image\": \"img2\", \"bbox_2d\": [0, 0, 1000, 150], \"certainty\": \"high\"}], \"notes\": \"The plant shows significant damage to the leaf sheath and blade, characterized by large areas of bleaching and necrosis. The leaf margins also appear to be chewed or eaten away.\"}",
        "refusal": null,
        "annotations": null,
        "audio": null,
@@ -2229,9 +2229,9 @@
     "service_tier": null,
     "system_fingerprint": "vllm-0.31.0-8f57f585",
     "usage": {
-     "prompt_tokens": 1993,
-     "total_tokens": 2351,
-     "completion_tokens": 358,
+     "prompt_tokens": 2062,
+     "total_tokens": 2431,
+     "completion_tokens": 369,
      "prompt_tokens_details": null,
      "completion_tokens_details": null
     },
@@ -2243,7 +2243,7 @@
     "metrics": null
    },
    "status": 200,
-   "wall_s": 3.481
+   "wall_s": 3.342
   },
   {
    "key": "75d9afab158b83171a17e0a6c9ceb86143728450029d006349f7ee2ad15c8afc",
@@ -2652,9 +2652,9 @@
     "stream": false
    },
    "response": {
-    "id": "chatcmpl-9fedf32822b4fe69",
+    "id": "chatcmpl-9d1febbe4607616b",
     "object": "chat.completion",
-    "created": 1792188386,
+    "created": 1792207286,
     "model": "vlm",
     "choices": [
      {
@@ -2692,7 +2692,7 @@
     "metrics": null
    },
    "status": 200,
-   "wall_s": 3.147
+   "wall_s": 2.972
   },
   {
    "key": "e233056d0ba925536c4e2d52711a4d66a3d6e380271b6991f4a19263be325e53",
@@ -2775,9 +2775,9 @@
     "stream": false
    },
    "response": {
-    "id": "chatcmpl-b774663664f14174",
+    "id": "chatcmpl-a34d08eadd3e3a1a",
     "object": "chat.completion",
-    "created": 1792188390,
+    "created": 1792207290,
     "model": "vlm",
     "choices": [
      {
@@ -2815,7 +2815,7 @@
     "metrics": null
    },
    "status": 200,
-   "wall_s": 0.324
+   "wall_s": 0.219
   },
   {
    "key": "f61da513bf35af456a35da948658dc74dd9b79530e5cdb833b16547f8b761c8d",
@@ -2903,9 +2903,9 @@
     "stream": false
    },
    "response": {
-    "id": "chatcmpl-bd73f986f8ca395d",
+    "id": "chatcmpl-b1fa8e8dd974ab40",
     "object": "chat.completion",
-    "created": 1792188391,
+    "created": 1792207290,
     "model": "vlm",
     "choices": [
      {
@@ -2943,7 +2943,7 @@
     "metrics": null
    },
    "status": 200,
-   "wall_s": 0.368
+   "wall_s": 0.28
   }
  ],
  "models": {
@@ -2952,16 +2952,16 @@
    {
     "id": "vlm",
     "object": "model",
-    "created": 1792188372,
+    "created": 1792207270,
     "owned_by": "vllm",
     "root": "cyankiwi/Qwen3.5-9B-AWQ-4bit",
     "parent": null,
     "max_model_len": 16384,
     "permission": [
      {
-      "id": "modelperm-b407ae927daad0c7",
+      "id": "modelperm-bad78614b36b1df2",
       "object": "model_permission",
-      "created": 1792188372,
+      "created": 1792207270,
       "allow_create_engine": false,
       "allow_sampling": true,
       "allow_logprobs": true,

@@ -1,0 +1,35 @@
+id: tomato_aphids
+name: Aphids
+kind: pest
+affects: [tomato]
+caused_by: [aphid]
+damage_patterns: [sticky_residue]
+prevalence: common
+indicators:
+  - id: tomato_aphids.clusters
+    text: Small soft insects in clusters under the leaves
+    question: Are there clusters of small soft insects under the leaves?
+    weight: 3
+    discriminating: true
+    where: leaf_underside
+    image_kinds: [leaf_underside]
+  - id: tomato_aphids.sticky
+    text: Shiny sticky coating on the leaves
+    question: Is there a shiny, sticky coating on the leaves?
+    weight: 2
+    discriminating: true
+    where: upper_leaves
+    image_kinds: [leaf_closeup]
+  - id: tomato_aphids.curled_tips
+    text: New leaves curled at the tips
+    question: Are the newest leaves curled?
+    weight: 1
+    discriminating: true
+    where: upper_leaves
+    image_kinds: [whole_plant, leaf_closeup]
+conditions: {}
+looks_like: []
+treatments: [spray_aphids_off_with_water]
+sources: [example_extension_tomato_diseases]
+reviewed_by: fixture
+reviewed_at: 2026-10-20

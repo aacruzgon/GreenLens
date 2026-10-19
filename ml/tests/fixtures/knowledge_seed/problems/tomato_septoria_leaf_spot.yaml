@@ -1,0 +1,46 @@
+id: tomato_septoria_leaf_spot
+name: Septoria leaf spot
+kind: fungal
+affects: [tomato]
+caused_by: []
+damage_patterns: []
+prevalence: common
+indicators:
+  - id: tomato_septoria_leaf_spot.small_spots
+    text: Spots about 1.5–3 mm across
+    question: Are the spots small, about the size of a pinhead or a little bigger?
+    weight: 3
+    discriminating: true
+    where: lower_leaves
+    image_kinds: [leaf_closeup]
+    measure: { quantity: lesion_diameter_mm, stat: median, min: 1.5, max: 3 }
+  - id: tomato_septoria_leaf_spot.black_dots
+    text: Tiny black dots in the pale centre of each spot
+    question: Do the spots have tiny black dots in a pale centre?
+    weight: 3
+    discriminating: true
+    where: lower_leaves
+    image_kinds: [leaf_closeup]
+  - id: tomato_septoria_leaf_spot.many_spots
+    text: Many spots on each leaf
+    question: Are there many spots on each leaf?
+    weight: 2
+    discriminating: true
+    where: lower_leaves
+    image_kinds: [leaf_closeup]
+  - id: tomato_septoria_leaf_spot.leaves_drop
+    text: Spotted leaves yellow and drop
+    question: Are spotted leaves turning yellow and falling off?
+    weight: 1
+    discriminating: false
+    where: whole_plant
+    image_kinds: [whole_plant]
+conditions:
+  temp_c: { min: 20, max: 25 }
+  rh_pct_min: 85.5
+  notes: Wet, mild weather.
+looks_like: []
+treatments: [remove_lower_infected_leaves]
+sources: [example_extension_tomato_diseases]
+reviewed_by: fixture
+reviewed_at: 2026-10-20

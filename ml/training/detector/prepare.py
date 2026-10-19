@@ -1,10 +1,13 @@
 """Prepare the leaf detector's COCO dataset from PlantDoc's detection data.
 
-    python -m ml.training.detector.prepare
+    python -m ml.training.detector.prepare [--background]
 
 Collapses every class to `leaf`, cleans the boxes, drops training images that duplicate a
 test image, holds out 15% of train as `valid` by "same plant" group (near-copies at cosine ≥
 0.97 share a split, as in data/dedupe.py), and writes RF-DETR's COCO layout. Idempotent: rebuilds ml/training/data/cache/leaf-coco from scratch.
+With --background, the photos of splits/background_coco_train.tsv (detector/background.py: COCO
+train2017, indoor and people or pets, no plant) join the training split with no boxes, so the
+detector also learns images with nothing to find; valid and test are unchanged.
 """
 import csv
 import hashlib
@@ -132,7 +135,30 @@ def write_split(split, items):
     return len(images), len(anns)
 
 
+def background_items() -> list[dict]:
+    """The pinned background photos as training items with no boxes."""
+    tsv = ROOT / "data/splits/background_coco_train.tsv"
+    if not tsv.exists():
+        raise SystemExit(f"{tsv} is missing: run python -m ml.training.detector.background")
+    items = []
+    for line in tsv.read_text().splitlines()[1:]:
+        _, rel, _, digest = line.split("\t")
+        path = ROOT / "data/raw" / rel
+        if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+            raise SystemExit(f"{path} doesn't match its pinned SHA-256")
+        with Image.open(path) as im:
+            w, h, fmt = im.width, im.height, im.format
+        items.append({"path": path, "name": path.name, "w": w, "h": h, "fmt": fmt,
+                      "rotated": False, "frame": "raw", "boxes": []})
+    return items
+
+
 def main():
+    import argparse
+
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--background", action="store_true", help="add the pinned COCO background photos to train")
+    args = ap.parse_args()
     stats = {"boxes_raw": 0, "clipped_oob": 0, "dropped_zero_size": 0, "dropped_small": 0,
              "images_unresolved": [], "images_no_boxes": [], "exif_nontrivial": []}
     (tr_rows, tr_size), (te_rows, te_size) = load_csv("train"), load_csv("test")
@@ -172,6 +198,11 @@ def main():
             valid_idx.update(g)
     valid = [it for i, it in enumerate(train) if i in valid_idx]
     train = [it for i, it in enumerate(train) if i not in valid_idx]
+
+    if args.background:
+        bg = background_items()
+        stats["train_background"] = len(bg)
+        train = train + bg
 
     if OUT.exists():
         shutil.rmtree(OUT)

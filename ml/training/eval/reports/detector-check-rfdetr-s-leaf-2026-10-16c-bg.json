@@ -1,0 +1,42 @@
+{
+  "version": "rfdetr-s-leaf-2026-10-16c-bg",
+  "checkpoint": "ml/training/runs/leaf-rfdetr-s-bg-2026-10-16/checkpoint_best_ema.pth",
+  "io": {
+    "inputs": {
+      "input": [
+        "batch",
+        3,
+        512,
+        512
+      ]
+    },
+    "outputs": {
+      "dets": [
+        "batch",
+        "Concatdets_dim_1",
+        "Concatdets_dim_2"
+      ],
+      "labels": [
+        "batch",
+        "Addlabels_dim_1",
+        2
+      ]
+    },
+    "opset": 17
+  },
+  "torch": {
+    "map50_95": 0.7259665959514123,
+    "map50": 0.941404381775356,
+    "mar100": 0.8103982300884954
+  },
+  "fp32": {
+    "map50_95": 0.7257913196476682,
+    "map50": 0.9414216328562623,
+    "mar100": 0.8110619469026549,
+    "max_diff_dets": 0.9527298212051392,
+    "max_diff_logits": 2.5749564170837402,
+    "batch1_vs_batch8_max_diff": 0.010485470294952393,
+    "sha256": "7764437dc8fc4070a09f0b8cd0b2f6dde4362bc415a55ac9bf7a2e93e0b45e4a",
+    "pass": true
+  }
+}

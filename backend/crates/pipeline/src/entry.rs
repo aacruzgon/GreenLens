@@ -647,6 +647,7 @@ impl Pipeline {
                     status: domain::scan::GuidedCheckStatus::Done,
                     observation: observation.clone(),
                 },
+                ctx.now,
             )
             .await?;
         if let Some(mut check) = check {

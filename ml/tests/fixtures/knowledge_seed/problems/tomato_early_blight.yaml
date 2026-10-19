@@ -1,0 +1,41 @@
+id: tomato_early_blight
+name: Early blight
+kind: fungal
+affects: [tomato]
+caused_by: []
+damage_patterns: []
+prevalence: common
+indicators:
+  - id: tomato_early_blight.concentric_rings
+    text: Brown spots with concentric rings, like a target
+    question: Do the brown spots have rings inside them, like a target?
+    weight: 3
+    discriminating: true
+    where: lower_leaves
+    image_kinds: [leaf_closeup]
+  - id: tomato_early_blight.lower_leaves_first
+    text: Spots started on the oldest, lowest leaves
+    question: Are the spots mostly on the lowest leaves of the plant?
+    weight: 2
+    discriminating: true
+    where: whole_plant
+    image_kinds: [whole_plant]
+  - id: tomato_early_blight.yellow_halo
+    text: Yellowing around each spot
+    question: Is there a yellow ring around the brown spots?
+    weight: 1
+    discriminating: true
+    where: lower_leaves
+    image_kinds: [leaf_closeup]
+conditions:
+  temp_c: { min: 24, max: 29 }
+  rh_pct_min: 90
+  humid_hours_min: 24
+  notes: Spreads in warm, humid weather with long periods of wet leaves.
+looks_like:
+  - problem: tomato_septoria_leaf_spot
+    how_to_tell: Septoria spots are smaller, with no rings, and have tiny black dots in a pale centre.
+treatments: [remove_lower_infected_leaves, mulch_soil_surface, avoid_overhead_watering]
+sources: [example_extension_tomato_diseases]
+reviewed_by: fixture
+reviewed_at: 2026-10-20

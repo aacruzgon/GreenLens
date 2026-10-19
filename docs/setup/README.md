@@ -1,6 +1,6 @@
 # PDM Developer Setup
 
-> **Status:** v0.1.3, 2026-10-16. v0.1.3: the control plane reaches the internet through Tailscale Funnel, run as a container, instead of a Cloudflare tunnel. v0.1.2: backend developers start SurrealDB and RustFS with `infra/dev.compose.yml`. v0.1.1: Debian 13's libheif is 1.23.4, as the `api` image build installed it. v0.1: first version: what each team member installs on macOS, Windows and Linux, by role, with the versions the other documents pin.
+> **Status:** v0.1.4, 2026-10-19. v0.1.4: backend developers working on connectors start Era's simulators with the compose file's `era` profile. v0.1.3: the control plane reaches the internet through Tailscale Funnel, run as a container, instead of a Cloudflare tunnel. v0.1.2: backend developers start SurrealDB and RustFS with `infra/dev.compose.yml`. v0.1.1: Debian 13's libheif is 1.23.4, as the `api` image build installed it. v0.1: first version: what each team member installs on macOS, Windows and Linux, by role, with the versions the other documents pin.
 > **Checked:** on 2026-10-16. The release files of ONNX Runtime 1.31.0 on GitHub, libheif's versions in Ubuntu and Debian, and the Node versions that React Native 0.86.3 and EAS CLI accept were read from their sources (✓). Items marked *unverified* weren't tried on that platform.
 
 ## Contents
@@ -106,6 +106,7 @@ The pins are in [backend 4](../backend/README.md#4-stack-and-version-pins) and t
 | libheif | **1.19 or newer** | Needed by `libheif-rs`, through `pkg-config` |
 | ONNX Runtime | 1.31.0, the CPU build | Needed to run `api`, which loads it at run time from `ORT_DYLIB_PATH` |
 | SurrealDB and RustFS | the pinned images | Docker: `docker compose -f infra/dev.compose.yml up -d` starts both, with the ports and throwaway credentials the ignored tests expect ([infra 4](../infra/README.md#infradevcomposeyml)) |
+| Era's Slack and Google Drive simulators | the pinned images | Docker, for connector work: `docker compose -f infra/dev.compose.yml --profile era up -d era-slack era-drive` starts them on `127.0.0.1:8091` and `:8092` ([infra 4](../infra/README.md#infradevcomposeyml), [EON 2](../EON/README.md#2-before-you-start)) |
 
 **libheif by platform:**
 - **macOS:** `brew install libheif pkg-config`. Homebrew's 1.23.1 built here ✓.
