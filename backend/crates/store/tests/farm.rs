@@ -1243,3 +1243,139 @@ async fn the_cleanup_leaves_old_drive_documents() {
     assert_eq!(left.len(), 1);
     assert_eq!(left[0].0.vendor_id.to_string(), "1aBcD");
 }
+
+/// A Slack disconnect revokes the workspace's token only when no other connector holds it:
+/// active or `reauth_needed` Slack connectors of the same team count, in any garden; the one
+/// being disconnected, pending ones, those being deleted and Drive connectors don't.
+#[tokio::test]
+async fn other_holders_of_a_slack_teams_token_are_counted() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let other = other_garden(&store, &f).await;
+    let other_owner = check_membership_of::<Owner>(&*store, f.user, other)
+        .await
+        .expect("the creator owns the second garden");
+    let here = active_slack(&store, &f, f.garden).await;
+    let there = active_slack(&store, &f, other).await;
+    let team = || "T0123".to_owned();
+    assert_eq!(store.slack_team_connectors(team(), here).await.unwrap(), 1);
+    assert_eq!(
+        store
+            .slack_team_connectors("T9999".into(), here)
+            .await
+            .unwrap(),
+        0
+    );
+    store
+        .set_status(
+            there,
+            ConnectorStatus::ReauthNeeded,
+            Some(SyncErrorCode::AuthRefused),
+        )
+        .await
+        .unwrap();
+    assert_eq!(store.slack_team_connectors(team(), here).await.unwrap(), 1);
+    store
+        .create_connector(owner, new_connector(&f, ConnectorKind::Slack))
+        .await
+        .unwrap();
+    store
+        .start_connector_deletion(other_owner, there)
+        .await
+        .unwrap();
+    assert_eq!(store.slack_team_connectors(team(), here).await.unwrap(), 0);
+    assert_eq!(store.slack_team_connectors(team(), there).await.unwrap(), 1);
+}
+
+/// T-E3.6 (docs/EON): the cleanup's cutoff is 10 minutes before now. A pending connector
+/// started 11 minutes ago is gone after it; one started 9 minutes ago and an active one stay.
+#[tokio::test]
+async fn pending_connectors_older_than_ten_minutes_are_cleaned_up() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let active = active_slack(&store, &f, f.garden).await;
+    let old = new_connector(&f, ConnectorKind::Slack);
+    let old_id = old.id;
+    store.create_connector(owner, old).await.unwrap();
+    let mut fresh = new_connector(&f, ConnectorKind::GoogleDrive);
+    fresh.created_at = at(2);
+    let fresh_id = fresh.id;
+    // A garden holds 2 connectors; the third goes to a second garden of the same owner.
+    let other = other_garden(&store, &f).await;
+    let other_owner = check_membership_of::<Owner>(&*store, f.user, other)
+        .await
+        .expect("the creator owns the second garden");
+    store.create_connector(other_owner, fresh).await.unwrap();
+
+    let now = at(11);
+    assert_eq!(
+        store
+            .delete_expired_pending(now.minus(PENDING_CONNECT_TTL))
+            .await
+            .unwrap(),
+        1
+    );
+    assert!(store.connector_row(old_id).await.unwrap().is_none());
+    assert!(store.connector_row(fresh_id).await.unwrap().is_some());
+    assert!(store.connector_row(active).await.unwrap().is_some());
+}
+
+/// T-E3.8 (docs/EON), on the embedded engine: what `PUT /connectors/{id}/sources` does when an
+/// owner drops a channel. The new sources are stored, then the dropped channel's records are
+/// deleted in batches; the kept channel's records stay.
+#[tokio::test]
+async fn dropping_a_channel_deletes_its_records_and_keeps_the_others() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let c = active_slack(&store, &f, f.garden).await;
+    store
+        .upsert_records(
+            c,
+            vec![
+                record(
+                    c,
+                    "C1/1.000100",
+                    0,
+                    "rings on tomatoes",
+                    Some(one_hot(0)),
+                    t0(),
+                ),
+                record(c, "C1/2.000100", 0, "bed 3 sprayed", Some(one_hot(1)), t0()),
+                record(c, "C2/1.000100", 0, "crew notes", Some(one_hot(2)), t0()),
+            ],
+        )
+        .await
+        .unwrap();
+    let kept = store
+        .set_sources(owner, c, vec![source("C2", "spray-log")], at(1))
+        .await
+        .unwrap();
+    assert_eq!(kept.sources, vec![source("C2", "spray-log")]);
+    let mut deleted = 0;
+    loop {
+        let n = store.delete_source_records(c, "C1".into()).await.unwrap();
+        if n == 0 {
+            break;
+        }
+        deleted += n;
+    }
+    assert_eq!(deleted, 2);
+    assert_eq!(
+        store
+            .source_vendor_ids_since(c, "C2".into(), t0())
+            .await
+            .unwrap(),
+        vec!["C2/1.000100".to_owned()]
+    );
+    assert_eq!(
+        store
+            .source_vendor_ids_since(c, "C1".into(), t0())
+            .await
+            .unwrap(),
+        Vec::<String>::new()
+    );
+    assert_eq!(store.garden_record_count(f.garden).await.unwrap(), 1);
+}

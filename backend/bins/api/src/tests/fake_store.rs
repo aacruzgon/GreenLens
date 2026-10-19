@@ -602,6 +602,15 @@ mod farm_record_store {
                 .connectors_created_by(garden, user)
                 .await
         }
+        async fn slack_team_connectors(
+            &self,
+            team_id: String,
+            except: ConnectorId,
+        ) -> Result<u32, StoreError> {
+            self.farm_record_store
+                .slack_team_connectors(team_id, except)
+                .await
+        }
         async fn delete_expired_pending(&self, before: Timestamp) -> Result<u32, StoreError> {
             self.farm_record_store.delete_expired_pending(before).await
         }

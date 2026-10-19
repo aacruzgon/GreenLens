@@ -205,6 +205,9 @@ COMMIT;";
     /// The connectors a member created in a garden.
     pub const CREATED_BY: &str =
         "SELECT VALUE id FROM connector WHERE garden = $garden AND created_by = $user ORDER BY id;";
+    /// Other Slack connectors holding a token of this workspace. No index: the table holds at
+    /// most two connectors a garden.
+    pub const SLACK_TEAM_CONNECTORS: &str = "RETURN count(SELECT VALUE id FROM connector WHERE kind = 'slack' AND status IN ['active', 'reauth_needed'] AND account.team_id = $team AND id != $except);";
     /// The cleanup: one batch of `pending` connectors started before the cutoff. A pending
     /// connector holds no records.
     pub const DELETE_EXPIRED_PENDING: &str = "DELETE (SELECT VALUE id FROM connector WHERE status = 'pending' AND created_at < $cutoff LIMIT 500) RETURN VALUE $before.id;";
@@ -790,6 +793,22 @@ impl FarmRecordStore for SurrealStore {
             .map(from_rid)
             .collect::<Result<_, RowError>>()
             .map_err(|e| e.into_store(WHAT))
+    }
+
+    async fn slack_team_connectors(
+        &self,
+        team_id: String,
+        except: ConnectorId,
+    ) -> Result<u32, StoreError> {
+        const WHAT: &str = "slack team connectors";
+        let mut r = run_tx(&self.db, sql::SLACK_TEAM_CONNECTORS, |q| {
+            q.bind(("team", team_id.clone()))
+                .bind(("except", rid(&except)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        let count: Option<i64> = r.take(0).map_err(|e| take_failed(WHAT, e))?;
+        Ok(u32::try_from(count.unwrap_or(0)).unwrap_or(u32::MAX))
     }
 
     async fn delete_expired_pending(&self, before: Timestamp) -> Result<u32, StoreError> {

@@ -312,6 +312,18 @@ pub trait FarmRecordStore: Send + Sync {
         user: UserId,
     ) -> Result<Vec<ConnectorId>, StoreError>;
 
+    /// How many other Slack connectors, in any garden, hold a token of this workspace
+    /// (`active` or `reauth_needed`, not `except`). A disconnect revokes the token with
+    /// `auth.revoke` only when there are none: Slack gives one bot token per app and workspace,
+    /// so revoking it would stop every connector of that workspace ([connectors 5]).
+    ///
+    /// [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
+    async fn slack_team_connectors(
+        &self,
+        team_id: String,
+        except: ConnectorId,
+    ) -> Result<u32, StoreError>;
+
     /// The cleanup: deletes `pending` connectors created before the cutoff (10 minutes ago).
     async fn delete_expired_pending(&self, before: Timestamp) -> Result<u32, StoreError>;
 
