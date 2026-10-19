@@ -47,7 +47,8 @@ async fn live_chat_accepts_every_tool_schema_and_streams() {
         purpose: ChatPurpose::Chat,
         system: "You are a test. Call no tools.".to_owned(),
         messages: user("In three short sentences, say how often to water a potted tomato."),
-        tools: ToolRegistry::standard().specs_for(domain::wire::Role::Owner),
+        tools: ToolRegistry::standard()
+            .specs_for(agent::tools::Offer::everything(domain::wire::Role::Owner)),
         response_schema: None,
         max_tokens: 4_096,
     };

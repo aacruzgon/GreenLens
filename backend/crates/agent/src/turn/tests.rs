@@ -8,11 +8,11 @@ use domain::{
     id::{ConversationId, GardenId, UserId},
     ports::{
         ConversationOwnerRow, Embedding, EmbeddingModel, LabelScore, MockAccessRepo,
-        MockAnalysisRepo, MockAuthVerifier, MockBlobStore, MockChatRepo, MockGardenRepo,
-        MockIdentityRepo, MockKnowledgeStore, MockMapRepo, MockMemoryStore, MockPlanRepo,
-        MockPlantRepo, MockScanRepo, MockTextClassifier, MockTextEmbedder, MockUsageRepo,
-        MockWeatherCacheRepo, MockWeatherProvider, ReasoningBlock, StoreError, UsageTotals,
-        VerifiedToken,
+        MockAnalysisRepo, MockAuthVerifier, MockBlobStore, MockChatRepo, MockFarmRecordStore,
+        MockGardenRepo, MockIdentityRepo, MockKnowledgeStore, MockMapRepo, MockMemoryStore,
+        MockPlanRepo, MockPlantRepo, MockScanRepo, MockTextClassifier, MockTextEmbedder,
+        MockUsageRepo, MockWeatherCacheRepo, MockWeatherProvider, ReasoningBlock, StoreError,
+        UsageTotals, VerifiedToken,
     },
     testing::{FixedClock, SequentialIds},
     wire::{Page, Role},
@@ -77,6 +77,8 @@ struct Setup {
     script: Vec<Vec<ChatChunk>>,
     spent_today: u64,
     memory: MockMemoryStore,
+    /// No connectors unless a test says otherwise.
+    farm: MockFarmRecordStore,
 }
 
 impl Setup {
@@ -89,6 +91,7 @@ impl Setup {
             script,
             spent_today: 0,
             memory,
+            farm: crate::testing::no_connectors(),
         }
     }
 }
@@ -100,7 +103,7 @@ fn stored_message(m: &NewMessage) -> Message<Stored> {
         text: m.text.clone(),
         attachments: Vec::new(),
         citations: m.citations.clone(),
-        farm_citations: Vec::new(),
+        farm_citations: m.farm_citations.clone(),
         pending_actions: Vec::new(),
         interrupted: m.interrupted,
         created_at: m.created_at,
@@ -223,6 +226,7 @@ fn harness(setup: Setup) -> (ChatAgent, Arc<ScriptedModel>, Arc<Seen>) {
             maps: Arc::new(maps),
             usage: Arc::new(usage),
             weather_cache: Arc::new(MockWeatherCacheRepo::new()),
+            farm: Arc::new(setup.farm),
         },
         memory: Arc::new(setup.memory),
         beliefs: Arc::new(domain::ports::NoBeliefs),
@@ -572,6 +576,238 @@ async fn a_tool_result_reaches_the_model_inside_a_data_block() {
         panic!("the call, then its result")
     };
     assert_eq!(content["memories"][1]["text"], tagged.as_str());
+}
+
+fn tools_offered(model: &ScriptedModel) -> Vec<String> {
+    model.sent()[0]
+        .tools
+        .iter()
+        .map(|t| t.name.clone())
+        .collect()
+}
+
+#[tokio::test]
+async fn search_farm_records_is_offered_only_to_a_garden_with_farm_records() {
+    use domain::connectors::ConnectorStatus::{Active, Pending, ReauthNeeded};
+
+    use crate::testing::connector;
+    let cases = [
+        (Vec::new(), false),
+        (vec![connector(Pending, 0)], false),
+        (vec![connector(ReauthNeeded, 0)], true),
+        (vec![connector(ReauthNeeded, 40)], true),
+        (vec![connector(Active, 0)], true),
+        (vec![connector(Pending, 0), connector(Active, 12)], true),
+    ];
+    for (connectors, offered) in cases {
+        let statuses: Vec<_> = connectors.iter().map(|c| c.status).collect();
+        let mut farm = MockFarmRecordStore::new();
+        farm.expect_connectors()
+            .times(1)
+            .returning(move |_| Ok(connectors.clone()));
+        let (agent, model, _) = harness(Setup {
+            farm,
+            ..Setup::new(vec![vec![
+                ChatChunk::TextDelta("Hello.".to_owned()),
+                ChatChunk::Done(StopReason::EndTurn),
+            ]])
+        });
+        let stream = agent
+            .start_turn(request(owner(Role::Viewer).await, "Any notes on bed 3?"))
+            .await
+            .unwrap();
+        collect(stream).await;
+        let names = tools_offered(&model);
+        assert_eq!(
+            names.iter().any(|n| n == "search_farm_records"),
+            offered,
+            "{statuses:?}"
+        );
+        assert_eq!(names.len(), if offered { 17 } else { 16 }, "{statuses:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_failed_connector_read_leaves_the_tool_out_and_the_turn_goes_on() {
+    let mut farm = MockFarmRecordStore::new();
+    farm.expect_connectors()
+        .returning(|_| Err(StoreError::Unavailable("offline".into())));
+    let (agent, model, _) = harness(Setup {
+        farm,
+        ..Setup::new(vec![vec![
+            ChatChunk::TextDelta("Hello.".to_owned()),
+            ChatChunk::Done(StopReason::EndTurn),
+        ]])
+    });
+    let stream = agent
+        .start_turn(request(owner(Role::Editor).await, "Hi"))
+        .await
+        .unwrap();
+    let (_, outcome) = collect(stream).await;
+    assert!(matches!(outcome, TurnOutcome::Completed(_)));
+    assert!(
+        !tools_offered(&model)
+            .iter()
+            .any(|n| n == "search_farm_records")
+    );
+}
+
+#[tokio::test]
+async fn a_cited_farm_record_is_stored_and_its_rate_never_reaches_the_app() {
+    use domain::connectors::ConnectorStatus;
+
+    use crate::testing::{connector, spray_log_hit};
+
+    let hit = spray_log_hit();
+    // The rate exactly as the fixture's spray log writes it.
+    let rate = "1.75 g/L";
+    assert!(
+        hit.text
+            .contains(&format!("Kocide 3000 (copper hydroxide). Rate {rate}."))
+    );
+    let mut farm = MockFarmRecordStore::new();
+    farm.expect_connectors()
+        .returning(|_| Ok(vec![connector(ConnectorStatus::Active, 4)]));
+    let found = hit.clone();
+    farm.expect_search_records()
+        .withf(|member, _, _, k| member.garden().to_string() == GARDEN && *k == 8)
+        .times(1)
+        .returning(move |_, _, _, _| {
+            // The same record twice is cited once.
+            Ok(vec![
+                domain::ports::FarmRecordMatch {
+                    hit: found.clone(),
+                    similarity: 0.91,
+                },
+                domain::ports::FarmRecordMatch {
+                    hit: found.clone(),
+                    similarity: 0.9,
+                },
+            ])
+        });
+    let (agent, model, seen) = harness(Setup {
+        farm,
+        ..Setup::new(vec![
+            vec![
+                ChatChunk::ToolCall {
+                    call_id: "toolu_1".to_owned(),
+                    name: "search_farm_records".to_owned(),
+                    arguments: json!({"query": "copper on bed 3", "kind": "document"}),
+                },
+                ChatChunk::Done(StopReason::ToolUse),
+            ],
+            vec![
+                ChatChunk::TextDelta(
+                    "The spray log shows Kocide 3000 on bed 3 on 4 September. ".to_owned(),
+                ),
+                ChatChunk::TextDelta(format!("It was mixed at {rate}.")),
+                ChatChunk::Done(StopReason::EndTurn),
+            ],
+        ])
+    });
+    let stream = agent
+        .start_turn(request(
+            owner(Role::Reviewer).await,
+            "When was bed 3 last sprayed?",
+        ))
+        .await
+        .unwrap();
+    let (events, outcome) = collect(stream).await;
+
+    // T-E5.6: the sentence repeating the rate is replaced before it is streamed.
+    let text = text_of(&events);
+    assert_eq!(
+        text,
+        format!("The spray log shows Kocide 3000 on bed 3 on 4 September. {REPLACED_SENTENCE}")
+    );
+    assert!(!text.contains(rate));
+    // No knowledge citation event: farm citations travel with the stored message.
+    assert!(!names(&events).contains(&"citation"));
+
+    // T-E5.3: the answer carries the record's citation, once.
+    let TurnOutcome::Completed(message) = outcome else {
+        panic!("{outcome:?}")
+    };
+    assert_eq!(message.farm_citations, std::slice::from_ref(&hit.citation));
+    let cited = &message.farm_citations[0];
+    assert_eq!(cited.title, "Spray log 2026");
+    assert_eq!(cited.author.as_deref(), Some("Maria Lopez"));
+    assert_eq!(cited.at, "2026-09-04T18:00:00Z".parse().unwrap());
+    assert_eq!(cited.link, "http://localhost:4003/file/d/D_SPRAY/view");
+    let stored = seen.stored.lock().unwrap();
+    assert_eq!(
+        stored[0].farm_citations,
+        [],
+        "the user's message cites nothing"
+    );
+    assert_eq!(stored[1].farm_citations, [hit.citation]);
+    assert_eq!(
+        stored[1].prompt_version.as_deref(),
+        Some("chat/2026-10-19.2")
+    );
+
+    // The records reach the model as farm_records data.
+    let sent = model.sent();
+    let ContentPart::ToolResult {
+        content: serde_json::Value::String(framed),
+        is_error: false,
+        ..
+    } = &sent[1].messages.last().unwrap().content[0]
+    else {
+        panic!("a successful result is sent as framed text")
+    };
+    assert!(
+        framed.starts_with("<data kind=\"farm_records\">\n"),
+        "{framed}"
+    );
+    assert!(framed.ends_with("\n</data>"));
+}
+
+#[tokio::test]
+async fn a_farm_tool_call_in_a_garden_without_records_is_unknown() {
+    // `no_connectors`: the tool isn't offered, so a call to it is refused without a search.
+    let (agent, model, seen) = harness(Setup::new(vec![
+        vec![
+            ChatChunk::ToolCall {
+                call_id: "toolu_1".to_owned(),
+                name: "search_farm_records".to_owned(),
+                arguments: json!({"query": "copper"}),
+            },
+            ChatChunk::Done(StopReason::ToolUse),
+        ],
+        vec![ChatChunk::Done(StopReason::EndTurn)],
+    ]));
+    let stream = agent
+        .start_turn(request(owner(Role::Owner).await, "Copper?"))
+        .await
+        .unwrap();
+    collect(stream).await;
+    let sent = model.sent();
+    let ContentPart::ToolResult {
+        content, is_error, ..
+    } = &sent[1].messages.last().unwrap().content[0]
+    else {
+        panic!()
+    };
+    assert!(is_error);
+    assert!(
+        content["error"]
+            .as_str()
+            .unwrap()
+            .contains("no tool named search_farm_records")
+    );
+    assert_eq!(seen.stored.lock().unwrap()[1].farm_citations, []);
+}
+
+#[test]
+fn the_offering_rule_reads_records_and_connector_status() {
+    use domain::connectors::ConnectorStatus::{Active, Pending, ReauthNeeded};
+
+    use crate::{context::farm_records_searchable, testing::connector};
+    assert!(!farm_records_searchable(&[]));
+    assert!(!farm_records_searchable(&[connector(Pending, 0)]));
+    assert!(farm_records_searchable(&[connector(ReauthNeeded, 0)]));
+    assert!(farm_records_searchable(&[connector(Active, 0)]));
 }
 
 #[tokio::test]
