@@ -1,6 +1,6 @@
 # PDM Backend: `api` binary
 
-> **Status:** Draft v0.7.2, 2026-10-19. v0.7.2: farm connectors are configured (roadmap E3.0–E3.2): `CONNECTOR_KEY` (64 hex characters) is the one switch, read through `AppState::connector_key`; without it the list answers `available: false` and the owner routes `409 invalid_state`, and with it the list comes from the store. The Slack and Google OAuth clients (each pair together or not at all), `CONNECTOR_RETURN_URL` and the Era bases are read for the routes and seeding to come. `sealing.rs` seals vendor tokens with AES-256-GCM (`aes-gcm` 0.11.1), a random nonce per seal and the connector id as associated data. v0.7.1: the farm connector routes are declared (roadmap E1.4): `GET /gardens/{id}/connectors` answers `available: false`, and the owner routes and the public OAuth callback answer `409 invalid_state` until connectors are configured; `Access<R, table::Connector>` resolves a connector's garden. v0.7: shared memories are recorded in `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs`, the new `GET /plants/{id}/beliefs` (never a 5xx), the `beliefs` scheduler task every 10 s (the only writer to Agent Memory: queued erases, then unsynced shared memories), deletions that queue their erase in their first transaction, and `POST /memories` taking a `topic`; 42 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
+> **Status:** Draft v0.7.3, 2026-10-19. v0.7.3: farm connectors connect (roadmap E3.3–E3.5): `connect.rs` signs the OAuth state (`OAuthState`, an HMAC-SHA256 under `ConnectorKey::state_key` over the connector id, the nonce and the expiry), seals the tokens as `StoredTokens`, and holds the `ConnectVendors` seam that `wiring/connect.rs` implements over the Slack and Drive clients on the vendors' own hosts; the seven connector routes are built (section 11), refuse an `era` connector with `409 invalid_state`, and the `cleanup` task deletes pending connectors after 10 minutes (section 16). v0.7.2: farm connectors are configured (roadmap E3.0–E3.2): `CONNECTOR_KEY` (64 hex characters) is the one switch, read through `AppState::connector_key`; without it the list answers `available: false` and the owner routes `409 invalid_state`, and with it the list comes from the store. The Slack and Google OAuth clients (each pair together or not at all), `CONNECTOR_RETURN_URL` and the Era bases are read for the routes and seeding to come. `sealing.rs` seals vendor tokens with AES-256-GCM (`aes-gcm` 0.11.1), a random nonce per seal and the connector id as associated data. v0.7.1: the farm connector routes are declared (roadmap E1.4): `GET /gardens/{id}/connectors` answers `available: false`, and the owner routes and the public OAuth callback answer `409 invalid_state` until connectors are configured; `Access<R, table::Connector>` resolves a connector's garden. v0.7: shared memories are recorded in `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs`, the new `GET /plants/{id}/beliefs` (never a 5xx), the `beliefs` scheduler task every 10 s (the only writer to Agent Memory: queued erases, then unsynced shared memories), deletions that queue their erase in their first transaction, and `POST /memories` taking a `topic`; 42 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
 
 Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports and types `api` wires, and [domain-types](domain-types.md) for every wire shape. Every listing below is copied from the compiled source of `bins/api` by the docgen tool. `cargo check -p api`, `cargo clippy -p api --all-targets` (no warning in `api`) and `cargo test -p api` pass: 42 tests, among them handler tests that drive the real router with `tower::ServiceExt::oneshot`. `cargo check --workspace` passes, the binary links, and `api openapi` writes the document.
 
@@ -168,6 +168,8 @@ bins/api/src/
 ├─ workers.rs        worker tokens
 ├─ signing.rs        HmacSigner (UrlSigner), PhotoIndex (SpeciesPhotos)
 ├─ sealing.rs        ConnectorKey: AES-256-GCM seal and unseal of connector tokens
+├─ connect.rs        StoredTokens, the consent URLs, ConnectVendors (the vendor seam), disconnect
+│  └─ oauth.rs       OAuthState: the signed OAuth state
 ├─ uploads.rs        multipart reading, fingerprint, the CPU pipeline, blob puts
 ├─ events.rs
 │  ├─ hub.rs         EventHub: one broadcast channel per watched scan
@@ -185,7 +187,8 @@ bins/api/src/
 └─ tests.rs          handler tests
    ├─ tests/fake_store.rs  generated: a Store of per-area mockall mocks
    ├─ tests/beliefs.rs     the beliefs route and the deletion runner's Agent Memory step
-   └─ tests/connectors.rs  the connector routes, off and on
+   ├─ tests/connectors.rs  the connector routes while connectors are off, and the list
+   └─ tests/connect.rs     the connect flow and the owner routes on, with a mocked ConnectVendors
 ```
 
 ---
@@ -467,10 +470,6 @@ pub struct OAuthClient {
     /// `SLACK_CLIENT_ID` or `GOOGLE_CLIENT_ID`: public, it goes in the consent URL.
     pub client_id: String,
     /// `SLACK_CLIENT_SECRET` or `GOOGLE_CLIENT_SECRET`: sent only in the code exchange.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "read by the code exchange, roadmap E3.4")
-    )]
     pub client_secret: SecretString,
 }
 
@@ -631,7 +630,7 @@ fn oauth_client<F: Fn(&str) -> Option<String>>(
 
 Every secret is a `SecretString`: `Debug` prints `[REDACTED]` (the test checks the signing key never appears in the formatted config). `Config::from_lookup` takes any variable source, so tests build a config from a map.
 
-**Sealing.** `CONNECTOR_KEY` parses into a `ConnectorKey`, which holds the expanded AES-256-GCM key (wiped on drop through `aes-gcm`'s `zeroize` feature) and prints as `ConnectorKey([REDACTED])`. `seal` draws a fresh 96-bit nonce from the OS for every call, so sealing one token twice gives two values, and writes `nonce (12 bytes) || ciphertext || tag (16 bytes)` into `domain::ports::Sealed`, whose `Debug` prints only the length. The associated data is the connector's id as it is written on the wire, so a sealed value opens only on its own connector ([connectors 4](../connectors/README.md#4-data)). `unseal` returns the plaintext as a `SecretSlice<u8>`, wiped on drop; a wrong key, another connector's id or any changed byte is the same opaque `UnsealError::Rejected`. It lives in `api` because every caller does: the connect routes (E3.3, E3.4), the `connectors` scheduler task (E4.1) and start-up seeding (E4.6). The `FarmSource` adapters in `integrations` get an unsealed `VendorToken` and never see the key, and `domain` holds only the opaque bytes, so neither depends on a cipher. `seal` and `unseal` have no caller outside the tests until E3.4, which removes their `expect(dead_code)`.
+**Sealing.** `CONNECTOR_KEY` parses into a `ConnectorKey`, which holds the expanded AES-256-GCM key (wiped on drop through `aes-gcm`'s `zeroize` feature) and prints as `ConnectorKey([REDACTED])`. `seal` draws a fresh 96-bit nonce from the OS for every call, so sealing one token twice gives two values, and writes `nonce (12 bytes) || ciphertext || tag (16 bytes)` into `domain::ports::Sealed`, whose `Debug` prints only the length. The associated data is the connector's id as it is written on the wire, so a sealed value opens only on its own connector ([connectors 4](../connectors/README.md#4-data)). `unseal` returns the plaintext as a `SecretSlice<u8>`, wiped on drop; a wrong key, another connector's id or any changed byte is the same opaque `UnsealError::Rejected`. It lives in `api` because every caller does: the connect routes (E3.3, E3.4), the `connectors` scheduler task (E4.1) and start-up seeding (E4.6). The `FarmSource` adapters in `integrations` get an unsealed `VendorToken` and never see the key, and `domain` holds only the opaque bytes, so neither depends on a cipher. The connect routes seal Google's PKCE verifier (`SealPurpose::Pkce`) and, after the exchange, the vendor's tokens (`SealPurpose::Token`) as `connect::StoredTokens` (section 11).
 
 ```rust
 /// `CONNECTOR_KEY`: 32 bytes, written as 64 hex characters (`openssl rand -hex 32`, the way every
@@ -703,20 +702,12 @@ impl ConnectorKey {
 
     /// The key that signs the OAuth `state` (E3.3): HMAC-SHA256 of the raw key under a fixed
     /// label, so it differs from the AES key and rotating `CONNECTOR_KEY` rotates both.
-    #[cfg_attr(not(test), expect(dead_code, reason = "signs the OAuth state (E3.3)"))]
     pub fn state_key(&self) -> &[u8; 32] {
         self.state_key.expose_secret()
     }
 
     /// Seals `plaintext` for `connector`, with a fresh random nonce, so sealing the same token
     /// twice gives two different values.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "sealed by the code exchange (E3.4) and seeding (E4.6)"
-        )
-    )]
     pub fn seal(&self, purpose: SealPurpose, connector: ConnectorId, plaintext: &[u8]) -> Sealed {
         let nonce = Nonce::generate();
         let mut body = Vec::with_capacity(plaintext.len() + TAG_LEN);
@@ -738,10 +729,6 @@ impl ConnectorKey {
 
     /// Opens a value sealed for `connector`. The plaintext comes back as a secret, wiped when
     /// dropped.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "opened by the routes (E3.4) and the sync (E4.1)")
-    )]
     pub fn unseal(
         &self,
         purpose: SealPurpose,
@@ -768,7 +755,7 @@ impl ConnectorKey {
 }
 ```
 
-**One switch.** `AppState::connector_key` (section 6) is the only place that decides whether connectors are on. The list route asks it and answers `available: false`; each of the seven write routes calls `require_connectors` first and answers `409 invalid_state` when it is off (and keeps answering it until E3.3 and E3.4 build their handlers); the `connectors` task and seeding ask it too; `wiring.rs` logs the decision at start, with a warning when vendor or Era settings are set without the key.
+**One switch.** `AppState::connector_key` (section 6) is the only place that decides whether connectors are on. The list route asks it and answers `available: false`; each of the seven write routes calls `require_connectors` first and answers `409 invalid_state` when it is off; the `connectors` task and seeding ask it too; `wiring.rs` logs the decision at start, with a warning when vendor or Era settings are set without the key.
 
 ---
 
@@ -841,6 +828,9 @@ pub struct AppState {
     /// The one path to `RustFS` deletes ([storage 4]): detached, never cancelled, retried, and
     /// drained at shutdown for at least one full attempt. Shared with `deletions`.
     pub deletes: blob::DeleteQueue,
+    /// The farm connectors' vendor calls (the code exchange, the source picker, the revoke), on
+    /// the vendors' fixed hosts; a seam like `pipeline`, so route tests mock it.
+    pub connect: Arc<dyn ConnectVendors>,
     /// Cancelled once on SIGTERM / Ctrl-C.
     pub shutdown: CancellationToken,
     /// Every background task and spawned follow-up; waited on at shutdown.
@@ -1141,8 +1131,13 @@ struct Outbound {
     chat_model: Arc<dyn ChatModel>,
     classifier: Arc<dyn TextClassifier>,
     beliefs: Arc<dyn BeliefStore>,
+    connect: Arc<dyn ConnectVendors>,
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "every outbound adapter is built here, one after another, over one HTTP client"
+)]
 async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Outbound> {
     let http = client(&HttpConfig::default()).context("HTTP client")?;
     let mut verifier = ClerkVerifierConfig::new(config.clerk.issuer.clone());
@@ -1190,6 +1185,12 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
             256,
         )),
     };
+    let connect: Arc<dyn ConnectVendors> = Arc::new(connect::VendorClients::new(
+        |c| SlackClient::new(http.clone(), c),
+        |c| DriveClient::new(http.clone(), c),
+        &config.connectors,
+        Arc::clone(clock),
+    ));
     let beliefs: Arc<dyn BeliefStore> = match agent_memory(config) {
         Some(c) => Arc::new(AgentMemory::new(http.clone(), c)),
         None => Arc::new(NoBeliefs),
@@ -1236,6 +1237,7 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         chat_model,
         classifier,
         beliefs,
+        connect,
     })
 }
 
@@ -1385,6 +1387,7 @@ pub async fn build(
         broker,
         deletions,
         deletes,
+        connect: out.connect,
         shutdown,
         tasks,
     }))
@@ -2827,7 +2830,16 @@ pub async fn plant_beliefs(
 }
 ```
 
-The farm connector routes were declared ahead of their work (roadmap E1.4). Without `CONNECTOR_KEY` (`AppState::connector_key`, section 5) connectors are off: the list answers `available: false` without asking the store, and everything else `409 invalid_state`, not `503`, which clients retry (decision 9 of [docs/EON](../EON/README.md)). With the key, the list is the store's `FarmRecordStore::connectors`; the other routes still answer `409 invalid_state` until the OAuth state and the routes are built (E3.3, E3.4). The access checks already run, so a non-member gets `404` and a non-owner `403`:
+**Farm connectors** ([connectors 5](../connectors/README.md#5-connecting-and-tokens); roadmap E3.1–E3.4 of [docs/EON](../EON/README.md)). Without `CONNECTOR_KEY` (`AppState::connector_key`, section 5) connectors are off: the list answers `available: false` without asking the store, and everything else `409 invalid_state` after its access checks, not `503`, which clients retry (decision 9). With the key:
+
+- **Starting.** `POST /gardens/{id}/connectors` (owner) creates a `pending` connector whose `oauth` holds the nonce, the app's `device_hash` and, for Google, the PKCE verifier sealed with `SealPurpose::Pkce`; it answers `201` with the vendor's consent URL. A vendor without its OAuth client (`SLACK_CLIENT_ID`, `GOOGLE_CLIENT_ID`) is `409 invalid_state`, and so is a third connector in a garden (the store's limit).
+- **The state** is `<connector id>.<nonce>.<expiry in unix seconds>.<mac>`: four URL-safe fields, the MAC an HMAC-SHA256 under `ConnectorKey::state_key` over the first three as written, checked in constant time before anything else is read. A state works only while the pending connector still holds its nonce and expiry, and the exchange clears them, so a tampered, expired or used state is `400 invalid_request` on `state`, at the callback and at `complete`.
+- **The callback** is public: it checks the state, stores nothing, and answers `302` to `{CONNECTOR_RETURN_URL}/{id}/callback` with the code (or the vendor's `error`, when the owner declined) and the state, with `Cache-Control: no-store` and `Referrer-Policy: no-referrer`.
+- **`complete`** (owner) checks the state against the `{id}` in the path, then the device: anyone but the owner who started it, or a `device_verifier` whose SHA-256 isn't the stored hash, gets `404 not_found`, and the pending connector is deleted. Then it exchanges the code: a code the vendor refuses (the client's `AuthRefused`) is `400 invalid_request` on `code`; our own request rejected (the client's `Refused`, a misconfigured OAuth client) is `500`; an outage is `503 upstream_unavailable` with `upstream: "slack"` or `"google_drive"`. The tokens are sealed and the store's compare-and-set on the nonce activates the connector; losing it is the used-state `400`.
+- **Sources.** `available-sources` asks the vendor (channels where the bot is a member, or the Google account's folders); a refused token makes the connector `reauth_needed` and answers `409 invalid_state` with that status. `PUT sources` takes at most 10 channels or 1 folder, each id from the vendor's list (its name comes from there), stores them, then deletes each dropped source's records, 500 at a time, before answering with the fresh record count.
+- **Sync now** is the store's compare-and-set (decision 12): `202`, or `429 rate_limited` with `retry_after_s` up to the next allowed instant.
+- **Disconnect.** `DELETE` has the store mark the connector `deleting` (the list and the sync skip it) and answers `202`; a task on the tracker (`connect::disconnect`) revokes the tokens, then deletes the records and the connector in batches. A Slack token another connector of the same workspace holds (`slack_team_connectors`) isn't revoked, an `era` connector's never is, and a failed revoke is logged and the records are deleted anyway.
+- **Demo connectors** (`endpoint: "era"`) refuse every owner route with `409 invalid_state` (decision 11). No route takes a URL: the consent URLs are constants, and `wiring/connect.rs` builds the Slack and Drive clients with their default configurations, the vendors' own hosts (decision 8).
 
 ```rust
 /// The answer of every connector write while connectors are off.
@@ -2857,7 +2869,8 @@ pub async fn list_connectors(
 }
 
 /// `POST /gardens/{id}/connectors`: starts a connect, `pending`, and returns the vendor's consent
-/// URL. Owner. `409 invalid_state` while connectors are off.
+/// URL. Owner. `409 invalid_state` while connectors are off, when this server has no OAuth
+/// client for the vendor, or when the garden already has 2 connectors.
 #[utoipa::path(post, path = "/gardens/{id}/connectors", tag = "connectors",
     params(("id" = String, Path), ("Idempotency-Key" = Option<String>, Header, description = "UUID per user action")),
     request_body = CreateConnectorRequest,
@@ -2865,13 +2878,158 @@ pub async fn list_connectors(
         (status = 403, body = ErrorBody), (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)))]
 pub async fn create_connector(
     State(state): State<SharedState>,
-    _access: Access<Owner, table::Garden>,
+    access: Access<Owner, table::Garden>,
     request: IdemJson<CreateConnectorRequest>,
 ) -> Response {
-    let IdemJson { begun, .. } = request;
-    let result: Result<Wire<CreateConnectorResponse>, ApiError> = require_connectors(&state)
-        .and_then(|_key| Err(ApiError::invalid_state(InvalidStateDetails::default())));
+    let IdemJson { body, begun, .. } = request;
+    let result = start_connect(&state, &access, body).await;
     begun.finish(result).await
+}
+```
+
+```rust
+/// A connect's signed state, as the pending connector's `oauth` field remembers it.
+#[derive(Clone, PartialEq, Eq)]
+pub struct OAuthState {
+    /// The pending connector.
+    pub connector: ConnectorId,
+    /// 128 random bits, also stored in the pending connector's `oauth.nonce`.
+    pub nonce: String,
+    /// When the state stops working: 10 minutes after the start, whole seconds.
+    pub expires_at: Timestamp,
+}
+
+/// Why a state was refused. Every one is `400 invalid_request` on `state`; the variants exist
+/// for the log and the tests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum StateError {
+    /// Not four fields of the expected shapes.
+    #[error("the state is malformed")]
+    Malformed,
+    /// The MAC doesn't verify: tampered, or signed under another `CONNECTOR_KEY`.
+    #[error("the state's signature doesn't verify")]
+    Signature,
+    /// Past its expiry.
+    #[error("the state has expired")]
+    Expired,
+}
+```
+
+```rust
+/// Slack's consent page ([connectors 5]). A constant: no configuration can move it.
+///
+/// [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
+pub const SLACK_AUTHORIZE_URL: &str = "https://slack.com/oauth/v2/authorize";
+
+/// Google's consent page. A constant, like Slack's.
+pub const GOOGLE_AUTHORIZE_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
+
+/// A connector's vendor tokens, as they are sealed in `connector.secret`: JSON
+/// `{"access_token", "refresh_token"?, "expires_at"?}`, sealed with [`SealPurpose::Token`].
+/// Slack's bot token has neither a refresh token nor an expiry; Google's access token has both.
+/// A sealed value that isn't JSON is read as a bare access token, so a seeded connector's
+/// fixed token (roadmap E4.6) may be sealed as it is.
+pub struct StoredTokens {
+    /// Slack's `xoxb-…` bot token, or Google's access token.
+    pub access_token: SecretString,
+    /// Google's refresh token.
+    pub refresh_token: Option<SecretString>,
+    /// When Google's access token expires.
+    pub expires_at: Option<Timestamp>,
+}
+
+/// A vendor call that failed. The vendor's response body is never kept ([connectors 8]).
+///
+/// [connectors 8]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#8-privacy-and-security
+#[derive(Debug, thiserror::Error)]
+pub enum VendorError {
+    /// This server has no OAuth client for the vendor.
+    #[error("{0} isn't configured")]
+    NotConfigured(ConnectorKind),
+    /// The vendor refused the owner's code or token (the client's `AuthRefused`): a used,
+    /// expired or wrong code at the exchange (Slack's `invalid_code`, Google's `invalid_grant`);
+    /// a revoked token, or a missing scope, afterwards. The owner fixes it by connecting again.
+    #[error("{vendor} refused the code or token ({code})")]
+    AuthRefused {
+        /// The vendor.
+        vendor: ConnectorKind,
+        /// The vendor's short error code.
+        code: String,
+    },
+    /// The vendor rejected our own request (the client's `Refused` or `NotFound`): a
+    /// misconfigured OAuth client (Slack's `bad_redirect_uri`, `invalid_client_id`,
+    /// `bad_client_secret`; Google's `invalid_client`) or another refusal no owner can fix. A
+    /// server-side error, never the owner's `400`.
+    #[error("{vendor} rejected the request ({code})")]
+    Rejected {
+        /// The vendor.
+        vendor: ConnectorKind,
+        /// The vendor's short error code.
+        code: String,
+    },
+    /// Down, timing out, throttling or answering something unreadable.
+    #[error("{vendor} is unavailable")]
+    Unavailable {
+        /// The vendor.
+        vendor: ConnectorKind,
+        /// The vendor's `Retry-After`, when it throttled.
+        retry_after_s: Option<u32>,
+        /// The client's error, without any body.
+        #[source]
+        source: Option<domain::ports::BoxError>,
+    },
+}
+
+/// Everything the connector routes ask Slack or Google, on the vendors' fixed hosts. `wiring.rs`
+/// implements it over `integrations`' `SlackClient` and `DriveClient`; the route tests mock it.
+#[cfg_attr(test, mockall::automock)]
+#[async_trait]
+pub trait ConnectVendors: Send + Sync {
+    /// Exchanges an authorization code (Slack's `oauth.v2.access` then `auth.test`; Google's
+    /// token endpoint with the PKCE verifier, then `about.get`). Never retried: a code works
+    /// once.
+    async fn exchange(
+        &self,
+        kind: ConnectorKind,
+        code: &str,
+        pkce_verifier: Option<SecretString>,
+        redirect_uri: &str,
+    ) -> Result<Exchanged, VendorError>;
+
+    /// The channels the bot is a member of, or the folders the Google account can open.
+    async fn available_sources(
+        &self,
+        kind: ConnectorKind,
+        tokens: &StoredTokens,
+    ) -> Result<Vec<ConnectorSource>, VendorError>;
+
+    /// Revokes the tokens (`auth.revoke`; Google's `revoke` with the refresh token, which ends
+    /// the whole grant).
+    async fn revoke(&self, kind: ConnectorKind, tokens: &StoredTokens) -> Result<(), VendorError>;
+}
+
+/// Disconnects a connector the store has already marked `deleting`: revokes its tokens with the
+/// vendor, then deletes its records and itself, 500 records a batch. A failed revoke is logged
+/// and the records are deleted anyway ([connectors 8]): the token is gone from our side either
+/// way. Runs on the task tracker; a store failure stops it, logged, and leaves the connector
+/// `deleting`, hidden from the list and the sync.
+///
+/// [connectors 8]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#8-privacy-and-security
+pub async fn disconnect(state: &AppState, row: ConnectorRow) {
+    let id = row.connector.id;
+    revoke_tokens(state, &row).await;
+    loop {
+        match state.ports.store.delete_connector_batch(id).await {
+            Ok(0) => break,
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(connector = %id, error = %error,
+                    "connector deletion stopped; it stays `deleting`");
+                return;
+            }
+        }
+    }
+    tracing::info!(connector = %id, "connector disconnected");
 }
 ```
 
@@ -4392,7 +4550,7 @@ Each task is a loop on the process `TaskTracker`: `interval_at` with a first del
 | `sweep` | 30 s | `Pipeline::sweep`, the one owner of recovery and continuation: stale steps (2 min; 5 for `plan`) and question photos stuck in `measuring` for 2 min, re-claimed and re-run; questions unanswered for 10 minutes, continued with the best candidate marked uncertain (skipped while a photo for it is analysing). Follow-ups spawned | Compare-and-set on the old stamp and run ([database 4](../database/README.md#steps-between-jobs-)); the `score` claim |
 | `idle` | 60 s | Limiter keys (`retain_recent`, `shrink_to_fit`), idle broadcast channels, unheld plan locks | In memory |
 | `beliefs` | 10 s | `agent::beliefs::sync_pending(…, 50)`, the only writer to Agent Memory: erases the subjects queued in `belief_forget` (then re-marks their remaining shared memories unsynced), then records the unsynced shared memories, oldest first. A failure is logged and retried next run without holding up the rest; a failed erase holds back the records under its subject. The counts are logged when any is above 0. With Agent Memory off it only empties the queue | `belief_forget` (`belief_forgets`, `finish_belief_forget`); `memory.belief_synced_at` (`unsynced_shared`, `mark_synced`) |
-| `cleanup` | 10 min | Expired idempotency keys, weather older than 2 hours, expired pending actions, finished jobs older than 7 days, account tombstones 24 h after Clerk confirmed the deletion (`TOMBSTONE_KEEP`) | Batches of 500; `weather_cache` by key range ([database 4](../database/README.md#cleanup-no-ttl)) |
+| `cleanup` | 10 min | Expired idempotency keys, weather older than 2 hours, expired pending actions, finished jobs older than 7 days, account tombstones 24 h after Clerk confirmed the deletion (`TOMBSTONE_KEEP`), farm connectors still `pending` 10 minutes after their connect started (`PENDING_CONNECT_TTL`, `delete_expired_connects`) | Batches of 500; `weather_cache` by key range ([database 4](../database/README.md#cleanup-no-ttl)) |
 | `weather` | 1 h | Group gardens by cell, fetch each missing cell once (batches of 50, a failed batch retried once, then cell by cell, `integrations::open_meteo::fetch_cells`), cache them; fire forecast alerts (task + push to every member) and plan triggers (task on the rule's plant) | `weather_cache:[hour, cell]`; tasks deduplicated by the unique `alert_key` ([database 4](../database/README.md#alert-dedupe-)) |
 | `soil` | 15 min | `SoilGrids` for due gardens, at most 4 a run (its limit is 5 calls a minute): `pending`, or `unavailable` past `soil_retry_at`. A failure stores `unavailable` with the next attempt `soil_retry_after` it ([contracts 9](../architecture/contracts.md#gardens)): 15 minutes after an outage (timeout, connection error, `5xx`, `429`), 7 days after `NotFound` (null pixels at the point and the 8 nearby probes). So a null-pixel garden costs its 9 paced calls once a week, not every 15 minutes; an outage stops at the first call. `POST /gardens` makes the first attempt the same way (`fetch_soil_profile`) | `garden.soil_profile`, `garden.soil_retry_at`; `gardens_due_soil_profile`, `soil_profile_failed` |
 | `receipts` | 15 min | Expo push receipts: forget `DeviceNotRegistered` tokens (`Notifier::check_receipts`) | `push_token` deletes |
