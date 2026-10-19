@@ -212,6 +212,13 @@ def test_the_header_names_the_seed_it_came_from(seed):
                            "ml/tests/fixtures/knowledge_seed. Do not edit.\n")
 
 
+def test_a_relative_seed_path_gives_the_same_bytes(seed, monkeypatch):
+    monkeypatch.chdir(ROOT / "ml")
+    relative = load(Path("tests/fixtures/knowledge_seed"))
+    assert not relative.root.is_absolute()
+    assert build(relative)[0] == build(seed)[0]
+
+
 def test_removing_a_record_deletes_it(seed):
     seed.organisms = [o for o in seed.organisms if o["id"] != "ladybug_larva"]
     text, _, _ = build(seed)
