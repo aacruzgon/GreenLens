@@ -7,6 +7,8 @@
 pub mod agent_memory;
 pub mod anthropic;
 pub mod clerk;
+#[cfg(feature = "era-sim")]
+pub mod era_sim;
 pub mod expo_push;
 pub mod geocode;
 pub mod http;

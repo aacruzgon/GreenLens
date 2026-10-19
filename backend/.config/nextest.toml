@@ -1,0 +1,7 @@
+# Faults are global to an Era simulator, so tests that set them run one at a time.
+[test-groups]
+era-faults = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = "test(/^era_fault_/)"
+test-group = "era-faults"
