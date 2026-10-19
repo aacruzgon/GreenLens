@@ -1,0 +1,191 @@
+{
+  "format": 1,
+  "as_of": "2026-10-15T12:00:00Z",
+  "garden": {
+    "key": "G_MAPLE",
+    "name": "Maple Row Farm",
+    "location": {
+      "city": "Guelph, ON"
+    },
+    "time_zone": "America/Toronto"
+  },
+  "members": [
+    {
+      "key": "M_MARIA",
+      "display_name": "Maria Lopez",
+      "role": "owner",
+      "slack_user": "U_MARIA"
+    },
+    {
+      "key": "M_DEV",
+      "display_name": "Dev Patel",
+      "role": "editor",
+      "slack_user": "U_DEV"
+    }
+  ],
+  "plants": [
+    {
+      "key": "P_BED1",
+      "name": "Bed 1",
+      "species": {
+        "scientific_name": "Capsicum annuum",
+        "common_name": "Sweet pepper"
+      },
+      "species_status": "confirmed",
+      "status": "healthy",
+      "created_at": "2026-05-29T19:30:00Z"
+    },
+    {
+      "key": "P_BED2",
+      "name": "Bed 2",
+      "species": {
+        "scientific_name": "Brassica oleracea",
+        "common_name": "Kale"
+      },
+      "species_status": "confirmed",
+      "status": "healthy",
+      "created_at": "2026-05-01T16:30:00Z"
+    },
+    {
+      "key": "P_BED3",
+      "name": "Bed 3",
+      "species": {
+        "scientific_name": "Solanum lycopersicum",
+        "common_name": "Tomato"
+      },
+      "species_status": "confirmed",
+      "status": "sick",
+      "created_at": "2026-05-22T19:00:00Z"
+    },
+    {
+      "key": "P_BED4",
+      "name": "Bed 4",
+      "species": {
+        "scientific_name": "Cucurbita pepo",
+        "common_name": "Zucchini"
+      },
+      "species_status": "confirmed",
+      "status": "healthy",
+      "created_at": "2026-05-25T16:00:00Z"
+    },
+    {
+      "key": "P_BED5",
+      "name": "Bed 5",
+      "species": {
+        "scientific_name": "Phaseolus vulgaris",
+        "common_name": "Bush bean"
+      },
+      "species_status": "confirmed",
+      "status": "healthy",
+      "created_at": "2026-05-27T16:45:00Z"
+    },
+    {
+      "key": "P_BED6",
+      "name": "Bed 6",
+      "species": {
+        "scientific_name": "Allium sativum",
+        "common_name": "Garlic"
+      },
+      "species_status": "confirmed",
+      "status": "healthy",
+      "created_at": "2026-04-24T14:30:00Z"
+    }
+  ],
+  "scans": [
+    {
+      "key": "SC_BED1",
+      "plant": "P_BED1",
+      "created_by": "M_MARIA",
+      "created_at": "2026-06-18T15:50:00Z",
+      "status": "planned",
+      "diagnosis": {
+        "status": "confirmed",
+        "primary": {
+          "name": "Green peach aphid",
+          "kind": "pest"
+        },
+        "organisms": [
+          {
+            "name": "Green peach aphid",
+            "role": "pest"
+          },
+          {
+            "name": "Seven-spotted lady beetle",
+            "role": "beneficial"
+          }
+        ]
+      }
+    },
+    {
+      "key": "SC_BED3",
+      "plant": "P_BED3",
+      "created_by": "M_MARIA",
+      "created_at": "2026-09-02T15:00:00Z",
+      "status": "planned",
+      "diagnosis": {
+        "status": "confirmed",
+        "primary": {
+          "name": "Early blight",
+          "kind": "fungal"
+        },
+        "organisms": []
+      }
+    }
+  ],
+  "memories": [
+    {
+      "key": "MEM_SC_BED1",
+      "plant": "P_BED1",
+      "scan": "SC_BED1",
+      "kind": "summary",
+      "topic": "health",
+      "source": "pipeline",
+      "shared": true,
+      "text": "Scan of 2026-06-18: green peach aphids under the leaves at the north end, with seven-spotted lady beetles feeding on them. No treatment needed; check again in a week.",
+      "created_at": "2026-06-18T16:05:00Z"
+    },
+    {
+      "key": "MEM_SC_BED3",
+      "plant": "P_BED3",
+      "scan": "SC_BED3",
+      "kind": "summary",
+      "topic": "health",
+      "source": "pipeline",
+      "shared": true,
+      "text": "Scan of 2026-09-02: early blight (Alternaria solani), confirmed. Target-ring lesions on the upper leaves and a few stems at the east end; the fruit is clean.",
+      "created_at": "2026-09-02T15:20:00Z"
+    },
+    {
+      "key": "MEM_BED3_COPPER",
+      "plant": "P_BED3",
+      "kind": "event",
+      "topic": "treatment",
+      "source": "user",
+      "author": "M_DEV",
+      "shared": true,
+      "text": "Bed 3 had its sixth and last copper spray of 2026 on 2026-09-04. The SOP allows six a season.",
+      "created_at": "2026-09-04T13:00:00Z"
+    },
+    {
+      "key": "MEM_BED3_DRIP",
+      "plant": "P_BED3",
+      "kind": "fact",
+      "topic": "watering",
+      "source": "user",
+      "author": "M_MARIA",
+      "shared": true,
+      "text": "Bed 3's drip line runs along the north edge. Water in the morning so the leaves are dry by noon.",
+      "created_at": "2026-05-22T19:10:00Z"
+    },
+    {
+      "key": "MEM_GARDEN_RECORDS",
+      "kind": "fact",
+      "topic": "other",
+      "source": "user",
+      "author": "M_MARIA",
+      "shared": true,
+      "text": "Every spray is logged in Spray log 2026 in the Farm records folder. Rates come from the product label and SOP: copper sprays, never from chat.",
+      "created_at": "2026-06-01T12:05:00Z"
+    }
+  ]
+}
