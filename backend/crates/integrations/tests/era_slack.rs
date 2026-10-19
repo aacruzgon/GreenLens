@@ -253,8 +253,9 @@ async fn with_faults(faults: Value, test: impl Future<Output = ()>) {
 #[tokio::test]
 #[ignore = "needs Era's simulators"]
 async fn era_fault_fail_next_is_retried_after_retry_after() {
+    // The inject call counts against `fail_next` and `quota_limit`, so the farm comes first.
+    let (tenant, token) = farm().await;
     with_faults(json!({ "fail_next": 1, "retry_after_seconds": 1 }), async {
-        let (tenant, token) = farm().await;
         let slack = client(tenant.base(), |_| {});
         let start = Instant::now();
         let auth = slack.auth_test(&token).await.unwrap();
@@ -316,8 +317,9 @@ async fn era_fault_error_rate_is_unavailable() {
 #[tokio::test]
 #[ignore = "needs Era's simulators"]
 async fn era_fault_quota_limit_paces_to_a_minute() {
+    // The inject call counts against `quota_limit`, so the farm comes first.
+    let (tenant, token) = farm().await;
     with_faults(json!({ "quota_limit": 1 }), async {
-        let (tenant, token) = farm().await;
         // Gives up on a `Retry-After` over 10 s instead of sleeping the minute.
         let slack = client(tenant.base(), |c| {
             c.retry = RetryPolicy {
