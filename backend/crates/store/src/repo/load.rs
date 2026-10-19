@@ -122,7 +122,7 @@ FROM ONLY $diagnosis;";
     pub const PLAN: &str =
         "SELECT id, scan AS scan_id, plant AS plant_id, version, supersedes, provisional,
        diagnosis AS diagnosis_id, open_question AS open_question_id, constraints, summary, steps,
-       watch_for, citations, llm_model, prompt_version, created_at,
+       watch_for, citations, farm_records, llm_model, prompt_version, created_at,
        (SELECT VALUE id FROM task WHERE plan = $parent.id) AS task_ids
 FROM ONLY $plan;";
 

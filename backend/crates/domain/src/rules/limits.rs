@@ -48,6 +48,19 @@ pub const SOIL_RETRY_OUTAGE: Duration = Duration::from_mins(15);
 /// `SoilGrids` retry after no data at the point and every nearby probe: a null pixel doesn't
 /// change on a quick retry.
 pub const SOIL_RETRY_NO_DATA: Duration = Duration::from_hours(168);
+/// Farm connectors per garden, `deleting` ones left out ([connectors 8], abuse and cost).
+pub const MAX_CONNECTORS_PER_GARDEN: u32 = 2;
+/// Farm records (chunks) per garden: a sync that would exceed it stops with `too_large`
+/// ([connectors 8]).
+pub const MAX_FARM_RECORDS_PER_GARDEN: u32 = 10_000;
+/// **Sync now** is accepted once per connector in this window (EON decision 12; contracts 2,
+/// `rate_limited`).
+pub const SYNC_NOW_INTERVAL: Duration = Duration::from_mins(5);
+/// Farm records older than this are deleted by the cleanup ([connectors 6]).
+pub const FARM_RECORD_KEEP: Duration = Duration::from_hours(180 * 24);
+/// A `pending` connector the owner didn't finish is deleted by the cleanup after this
+/// ([connectors 5]).
+pub const PENDING_CONNECT_TTL: Duration = Duration::from_mins(10);
 
 /// How long to wait before the next `SoilGrids` attempt after this failure: 7 days after
 /// `NotFound` (null pixels), 15 minutes after anything else (timeout, connection error, `5xx`,

@@ -240,6 +240,7 @@ impl ChatAgent {
                     text: text.clone(),
                     attachments: image_ids,
                     citations: Vec::new(),
+                    farm_citations: Vec::new(),
                     tool_calls: Vec::new(),
                     route: Some(decision.route()),
                     interrupted: false,
@@ -510,6 +511,8 @@ async fn store_reply(
                 text: reply.text.clone(),
                 attachments: Vec::new(),
                 citations: reply.citations.clone(),
+                // The agent cites farm records once `search_farm_records` exists (EON E5).
+                farm_citations: Vec::new(),
                 tool_calls: reply.tool_calls.clone(),
                 route: Some(route),
                 interrupted,

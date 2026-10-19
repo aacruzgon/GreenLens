@@ -141,6 +141,35 @@ stored_enum! {
     MemorySourceRow <=> domain::chat::MemorySource { Pipeline, Chat, User }
 }
 
+stored_enum! {
+    /// `connector.kind`, and a farm citation's `system`.
+    ConnectorKindRow <=> domain::connectors::ConnectorKind { Slack, GoogleDrive }
+}
+
+stored_enum! {
+    /// `connector.status`.
+    ConnectorStatusRow <=> domain::connectors::ConnectorStatus {
+        Pending, Active, ReauthNeeded, Deleting,
+    }
+}
+
+stored_enum! {
+    /// `connector.endpoint`.
+    ConnectorEndpointRow <=> domain::connectors::ConnectorEndpoint { Vendor, Era }
+}
+
+stored_enum! {
+    /// `connector.last_error`.
+    SyncErrorCodeRow <=> domain::connectors::SyncErrorCode {
+        RateLimited, VendorUnavailable, AuthRefused, TooLarge, SourceMissing,
+    }
+}
+
+stored_enum! {
+    /// `farm_record.kind`.
+    FarmRecordKindRow <=> domain::connectors::FarmRecordKind { Message, Document }
+}
+
 /// `job.status`: the broker's own states, not a contract enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, SurrealValue)]
 #[surreal(untagged, rename_all = "snake_case")]

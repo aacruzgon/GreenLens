@@ -128,6 +128,19 @@ pub struct SyncOutcome {
     pub last_error: Option<SyncErrorCode>,
 }
 
+/// What [`FarmRecordStore::request_sync`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncRequest {
+    /// Accepted: the connector is due now.
+    Accepted,
+    /// Within [`SYNC_NOW_INTERVAL`](crate::rules::limits::SYNC_NOW_INTERVAL) of the last
+    /// accepted request.
+    TooSoon {
+        /// When the next request will be accepted (the last one plus the interval).
+        allowed_at: Timestamp,
+    },
+}
+
 /// A chunk's vector, sent only when its `text_hash` changed.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FarmVector {
@@ -210,8 +223,9 @@ pub trait FarmRecordStore: Send + Sync {
         connector: ConnectorId,
     ) -> Result<Option<ConnectorRow>, StoreError>;
 
-    /// `POST /connectors/{id}/complete`: a compare-and-set on `status = 'pending'` and the
-    /// stored nonce; `Conflict` when either no longer holds.
+    /// `POST /connectors/{id}/complete`: a compare-and-set on `status = 'pending'`, the stored
+    /// nonce and its `expires_at` being after `done.now`; `Conflict(AlreadyExists)` when any
+    /// no longer holds (the state was used, replaced or expired).
     async fn complete_connect(
         &self,
         owner: Membership<Owner>,
@@ -229,18 +243,24 @@ pub trait FarmRecordStore: Send + Sync {
         now: Timestamp,
     ) -> Result<Connector, StoreError>;
 
-    /// `POST /connectors/{id}/sync` (decision 12): a compare-and-set on `sync_requested_at`.
-    /// `true` when accepted (it is unset or 5 minutes old; `next_sync_at` becomes now),
-    /// `false` within 5 minutes of the last.
+    /// `POST /connectors/{id}/sync` (decision 12): a compare-and-set on `sync_requested_at`,
+    /// accepted when it is unset or [`SYNC_NOW_INTERVAL`] old (`next_sync_at` becomes now);
+    /// [`SyncRequest::TooSoon`] within it, with the instant the next is allowed, so the route
+    /// can answer `429 rate_limited` with `retry_after_s`. Only an `active` connector syncs; any
+    /// other status is `Rejected(InvalidState)`.
+    ///
+    /// [`SYNC_NOW_INTERVAL`]: crate::rules::limits::SYNC_NOW_INTERVAL
     async fn request_sync(
         &self,
         owner: Membership<Owner>,
         connector: ConnectorId,
         now: Timestamp,
-    ) -> Result<bool, StoreError>;
+    ) -> Result<SyncRequest, StoreError>;
 
     /// The `connectors` task: connectors whose `next_sync_at` has passed, `active` only
-    /// (never `pending`, `reauth_needed` or `deleting`), on the `connector_due` index.
+    /// (never `pending`, `reauth_needed` or `deleting`), on the `connector_due` index, earliest
+    /// first. A connector stopped with `too_large` or `source_missing` waits until the owner
+    /// changes its sources ([`set_sources`](Self::set_sources) clears the failure).
     async fn due_connectors(
         &self,
         now: Timestamp,
@@ -296,19 +316,39 @@ pub trait FarmRecordStore: Send + Sync {
     ) -> Result<Vec<(FarmRecordId, String)>, StoreError>;
 
     /// Upserts chunks by `(connector, vendor_id, n)`, keeping the stored vector when
-    /// `vector` is `None`. Returns how many were written.
+    /// `vector` is `None`. Returns how many were written. `NotFound` when the connector is
+    /// missing or being deleted, so no record outlives its connector's deletion.
     async fn upsert_records(
         &self,
         connector: ConnectorId,
         records: Vec<NewFarmRecord>,
     ) -> Result<u32, StoreError>;
 
-    /// Deletes every chunk of these items (gone at the vendor, or re-chunked into fewer).
+    /// Deletes every chunk of these items (gone at the vendor). Returns how many went.
     async fn delete_records(
         &self,
         connector: ConnectorId,
         vendor_ids: Vec<String>,
     ) -> Result<u32, StoreError>;
+
+    /// A document re-chunked into fewer chunks: deletes its chunks numbered `from` and up,
+    /// leaving the others (and their vectors) for [`upsert_records`](Self::upsert_records).
+    async fn delete_chunks_from(
+        &self,
+        connector: ConnectorId,
+        vendor_id: String,
+        from: u32,
+    ) -> Result<u32, StoreError>;
+
+    /// The vendor ids a source holds from `since` on (by `at`), for the daily 7-day re-read to
+    /// find what is gone at the vendor ([connectors 6]). The source as in
+    /// [`delete_source_records`](Self::delete_source_records).
+    async fn source_vendor_ids_since(
+        &self,
+        connector: ConnectorId,
+        source: String,
+        since: Timestamp,
+    ) -> Result<Vec<String>, StoreError>;
 
     /// One batch of 500 of a source's records, after the owner dropped it: Slack's whose
     /// `vendor_id` starts with `"<channel>/"`, and for Drive (one folder) all of the
