@@ -150,6 +150,7 @@ def main(argv=None) -> int:
     ap.add_argument("--negatives", type=Path, default=NEGATIVES, help="the no-plant photos (a negatives TSV)")
     ap.add_argument("--pair", type=parse_pair, action="append", default=[],
                     help="a fixed pair to report, PROMPTS:TAU_LEAF:TAU_PLANT (repeatable)")
+    ap.add_argument("--note", help="a line for the report's header, such as what the detector was trained on")
     args = ap.parse_args(argv)
     if args.rescore:
         prev = json.loads(args.rescore.read_text())
@@ -162,13 +163,17 @@ def main(argv=None) -> int:
         split = prev["split"]
         negatives = prev.get("negatives_source", NEGATIVES.name)
         detector = prev.get("detector", "manifest.cpu.toml's leaf_detector")
+        note = args.note or prev.get("note")
     else:
         pos, neg, pos_leaf, neg_leaf, probs, tau_leaf, scale, embedder = score(args.split, args.detector, args.negatives)
         split, negatives = args.split, args.negatives.name
         detector = str(args.detector.resolve().relative_to(ROOT)) if args.detector else "manifest.cpu.toml's leaf_detector"
+        note = args.note
     report = analyse(split, args.label, pos, neg, pos_leaf, neg_leaf, probs, tau_leaf, scale, embedder, args.pair)
     report["detector"] = detector
     report["negatives_source"] = negatives
+    if note:
+        report["note"] = note
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / f"{report['label']}.json").write_text(json.dumps(report, indent=1) + "\n")
     (args.out / f"{report['label']}.md").write_text(markdown(report))
@@ -288,6 +293,7 @@ def markdown(r: dict) -> str:
     names = sorted({p["dataset"] for p in r["positives"]})
     negatives = r.get("negatives_source", NEGATIVES.name)
     out = [f"# The plant check on the {r['split']} split ({r['label']})\n\n",
+           *([f"> {r['note']}\n\n"] if r.get("note") else []),
            f"{r['n_positives']} plant photos (the split) and {r['n_negatives']} photos without a plant "
            f"(`{negatives}`: COCO without potted plant or broccoli). Probe = zero-shot BioCLIP 2 at logit "
            f"scale {r['logit_scale']:.0f} on the fp16 embedding ({r['embedder']}); leaf detector: "

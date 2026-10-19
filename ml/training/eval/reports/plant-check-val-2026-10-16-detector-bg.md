@@ -1,5 +1,7 @@
 # The plant check on the val split (plant-check-val-2026-10-16-detector-bg)
 
+> Detector `rfdetr-s-leaf-2026-10-16c-bg` was trained on the **first** background pick (`background_coco_train.tsv` at 12833c1: 181 indoor and 219 people/pets photos, about a third of them with trees, grass or shrubs), since replaced by photos with no COCO-Stuff plant pixel (8aebf9a). No detector has been trained on the new pick in this report; compare it with the new TSV only through a candidate trained on it.
+
 1152 plant photos (the split) and 4758 photos without a plant (`negatives_coco.tsv`: COCO without potted plant or broccoli). Probe = zero-shot BioCLIP 2 at logit scale 100 on the fp16 embedding (b9016a6865e188c0); leaf detector: ml/models/files/leaf_detector/rfdetr-s-leaf-2026-10-16c-bg-fp32.onnx. The manifest's `τ_leaf` (0.9) is used by the leaf-score-alone line and by the rule fixed before measuring, tau_plant = lowest value with the probe alone passing <= 5% of negatives, kept for the record. The pairs to choose from are the joint searches (below). "Prompts" names the probe's prompt set (A or B, listed below).
 
 **Leaf score alone at the manifest's `τ_leaf` 0.9:** false `no_plant_found` 41.8% (481 no-leaf photos); negatives passing 0.1%.

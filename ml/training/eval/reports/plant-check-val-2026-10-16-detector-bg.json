@@ -43322,5 +43322,6 @@
   }
  ],
  "detector": "ml/models/files/leaf_detector/rfdetr-s-leaf-2026-10-16c-bg-fp32.onnx",
- "negatives_source": "negatives_coco.tsv"
+ "negatives_source": "negatives_coco.tsv",
+ "note": "Detector `rfdetr-s-leaf-2026-10-16c-bg` was trained on the **first** background pick (`background_coco_train.tsv` at 12833c1: 181 indoor and 219 people/pets photos, about a third of them with trees, grass or shrubs), since replaced by photos with no COCO-Stuff plant pixel (8aebf9a). No detector has been trained on the new pick in this report; compare it with the new TSV only through a candidate trained on it."
 }
