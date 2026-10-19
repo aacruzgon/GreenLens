@@ -108,7 +108,8 @@ PDM/
 ├─ backend/
 │  ├─ crates/{domain, store, blob, integrations, agent, vision, knowledge, pipeline}
 │  ├─ bins/{api, worker}
-│  └─ migrations/*.surql
+│  ├─ migrations/*.surql
+│  └─ tests/fixtures/era/  the Era simulators' farm fixture (docs/EON)
 ├─ ml/
 │  ├─ pdm_vision/      shared pre-processing for training and evaluation
 │  ├─ models/          the model manifest (manifest.toml) and licence notices
