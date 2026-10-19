@@ -1,8 +1,8 @@
 # Era by Eon: Development Roadmap
 
-> **Status:** Draft v0.2, 2026-10-19. v0.2: an independent audit's findings are folded in. The sync waits on the configuration and sealing tasks (E3.0–E3.2). Era tests run on the embedded store with `api`'s clock pinned to the simulator's day. The OAuth exchanges are tested at the client level, so vendor hosts stay constants. New tasks cover the store repositories (E1.6), configuration (E3.0) and the demo garden (E9.0). The schema task adds the plan's and message's new fields. Owners can't change `era` connectors, and Sync now is limited per connector in the store. Privacy tests cover `users.info` emails and removed sources. The `era` job joins `ci` after four green pushes to `main`, and `ERA_TENANT_TOKEN` lives in a GitHub environment limited to `main`. Two more gaps (G8, G9) are listed. v0.1: first version. The farm connectors (Slack and Google Drive) and their Era by Eon test bench, as twelve phases (E0–E11) in build order, each with its tasks, what it needs, the tests that prove it and its state; a test catalogue; the design gaps found on `main`; and what Era's simulators and the vendors' documents showed when they were checked on Oct 19.
+> **Status:** Draft v0.3, 2026-10-19. v0.3: the hosted company is built (Holling Holdings, B2B small, Slack and Google Drive), and five REST calls against it passed and cost five of the account's 2,000 monthly calls (section 3); E0.2 and E7.1 are done. v0.2: an independent audit's findings are folded in. The sync waits on the configuration and sealing tasks (E3.0–E3.2). Era tests run on the embedded store with `api`'s clock pinned to the simulator's day. The OAuth exchanges are tested at the client level, so vendor hosts stay constants. New tasks cover the store repositories (E1.6), configuration (E3.0) and the demo garden (E9.0). The schema task adds the plan's and message's new fields. Owners can't change `era` connectors, and Sync now is limited per connector in the store. Privacy tests cover `users.info` emails and removed sources. The `era` job joins `ci` after four green pushes to `main`, and `ERA_TENANT_TOKEN` lives in a GitHub environment limited to `main`. Two more gaps (G8, G9) are listed. v0.1: first version. The farm connectors (Slack and Google Drive) and their Era by Eon test bench, as twelve phases (E0–E11) in build order, each with its tasks, what it needs, the tests that prove it and its state; a test catalogue; the design gaps found on `main`; and what Era's simulators and the vendors' documents showed when they were checked on Oct 19.
 > **How to use it:** find your next task in section 5 and check its "Needs" column. When it is done, change its state and add the pull request that proves it, in the same pull request as the work. Bump this status line when you do. The design is [docs/connectors](../connectors/README.md); this file says in what order to build it, what to test and when it is done. It expands [backend roadmap S9](../backend/roadmap.md#12-s9-farm-connectors-and-era) and doesn't replace it: S9's exit checks are this roadmap's exit checks.
-> **Checked:** "ran" marks a request made on 2026-10-19 against Era's simulator images at the pinned digests (section 3). "docs" marks a fact read in a vendor's or Era's documentation on 2026-10-19. Neither has run against a real Slack workspace or Google account yet.
+> **Checked:** "ran" marks a request made on 2026-10-19 against Era's simulator images at the pinned digests, or against our hosted Era company (section 3). "docs" marks a fact read in a vendor's or Era's documentation on 2026-10-19. Neither has run against a real Slack workspace or Google account yet.
 
 ## Contents
 
@@ -137,11 +137,30 @@ curl -XPOST http://127.0.0.1:8092/_admin/tenants/farm/inject -H 'content-type: a
   - **Admin calls:** with no header they get `401 admin_unauthorized`, and with a wrong token `403 admin_forbidden`. They take `Authorization: Bearer <token>` or `X-Sim-Admin-Token: <token>`. `/_meta` stays open.
   - **Tenant selection:** `X-Sim-Tenant` is ignored unless the admin token comes with it, so the demo can't select a tenant with that header (E9.1).
 
-### The hosted console (docs and the console's tutorial)
+### The hosted console
 
-- **A company** is built with `era new --industry <ecommerce|fintech|healthcare> --size <small|mid|hyperscale> --systems slack,google-drive --json`. Its systems are read-only, and it has three points in time: day0 (Inception, empty), day1 (Today) and day2 (Next quarter, +91 days). The console moves it with **Advance to Next quarter**; tokens keep working across a move.
-- **One token opens every system of a company.** The console's tutorial shows it expiring 7 days after it is issued, and issuing a new one retires the old (`era token <tenant>`). Era's documentation pages give no expiry, so check the console when you issue one.
-- **The CLI writes `ERA_TENANT_TOKEN` and each system's endpoints** (`SLACK_BASE_URL`, `GOOGLE_DRIVE_BASE_URL` and their MCP URLs) to the env file. In CI, the CLI's own credential is `ERA_TOKEN`, used once and never saved.
+**Our company (ran, Oct 19).** Built with `era` 0.1.5, signed in as the team's Era account:
+
+- **The account:** `era usage` gives an allowance of **2,000 calls a month**. `era systems` lists 13 systems, `slack` and `google-drive` among them; `era options` lists the industries, sizes, models and scenarios below.
+- **Size matters more than it looks.** `era plan` for a small company: B2C has 250 employees and 50,000 documents; B2B has 50 employees, 60 documents and 361 Slack rows (about 160 KB). We built the B2B one, so a folder listing is a page or two, not hundreds.
+- **The company:** `era new --industry ecommerce --model b2b --size small --systems slack,google-drive --env infra/env/.env.era --strict` built **Holling Holdings** in seconds. Its tenant id is `ERA_TENANT` in the env file, and `era ls` shows it.
+- **The env file** holds `ERA_TENANT`, `ERA_TENANT_TOKEN`, `ERA_TENANT_TOKEN_EXPIRES_AT`, `SLACK_BASE_URL` (`https://slack-mcp.era.eon.io`), `GOOGLE_DRIVE_BASE_URL` (`https://google-drive-mcp.era.eon.io`), and each system's MCP URL and `*_MCP_HEADER`. The header is `Authorization`, and the same value works on the REST routes. `infra/env/.env.era` is ignored by git.
+- **The token expires on 2026-10-26 at 20:51 UTC,** 7 days after it was issued.
+- **Five REST calls, five calls metered** (`era usage` went from 0 to 5):
+
+| Call | Result |
+|---|---|
+| Slack `auth.test` | `ok`, team `Holling Holdings`, `url` `https://hollingholdings.slack.com/` (a real-looking workspace URL, unlike the local images' `127.0.0.1`), bot user `user-bot` |
+| Slack `conversations.list` | 99 channels, the bot a member of 82 |
+| Slack `conversations.history`, 15 messages | `has_more: true`; a thread parent carries `latest_reply` |
+| Drive `files.list`, 20 files | Folders, Google Docs, one `.docx`, one JSON file and one JPEG; `nextPageToken` set |
+| Drive `files.export`, a Doc as `text/plain` | `200`, 1,058 bytes of text |
+
+**From the docs and the console's tutorial:**
+
+- **A company** is built with `era new --industry <ecommerce|fintech|healthcare> --size <small|mid|hyperscale> --model <b2b|b2c> --systems slack,google-drive --json`. Its systems are read-only, and it has three points in time: day0 (Inception, empty), day1 (Today) and day2 (Next quarter, +91 days). The console moves it with **Advance to Next quarter**; tokens keep working across a move.
+- **One token opens every system of a company.** Issuing a new one retires the old (`era token <tenant>`).
+- **In CI,** the CLI's own credential is `ERA_TOKEN`, used once and never saved.
 - **`era client <tenant>`** issues OAuth client credentials for a company. E7.3 checks whether that lets the clients' OAuth exchanges run against the hosted systems.
 - **The hosted console documents no inject, fault or point-in-time commands,** so our farm can't be loaded into it. The hosted company holds Era's own generated data.
 - **Era's official CI example** ([`eon-io/era/examples/ci`](https://github.com/eon-io/era/tree/main/examples/ci)) runs tests against a hosted company whose connection values are repository secrets. That is our nightly `era-hosted` job (E6.5). It adds to the required `era` job on the local images and doesn't replace it.
@@ -196,7 +215,7 @@ States: **Done**, **In progress**, **Next** (start now), **Not started**, **Wait
 | ID | Task | Needs | Tests | State | Owner |
 |---|---|---|---|---|---|
 | E0.1 | **`era` compose profile** in `infra/dev.compose.yml`: `era-slack` and `era-drive` pinned by tag and digest, on `127.0.0.1:8091` and `:8092`, with the four `SIMCORE_*`/`AUTH_MODE` settings. Add the images to [setup](../setup/README.md) and the profile to [infra 4](../infra/README.md#4-compose-files) (S9 6) | nothing | T-E0.1 | Next | To assign |
-| E0.2 | **Sign in to the hosted console** (`era init`), then record `era systems`, `era options` and `era usage` in section 3 | the invite link | none | In progress (CLI installed Oct 19) | Alan |
+| E0.2 | **Sign in to the hosted console** (`era init`), then record `era systems`, `era options` and `era usage` in section 3 | the invite link | none | Done (Oct 19, section 3) | Alan |
 | E0.3 | **Correct [connectors 10](../connectors/README.md#10-measured-behaviour-of-the-simulators)** with section 3's results: the inject formats, the request journal, strict mode, the admin token, `day0`, the fault keys, Drive's `403` shape. Answer connectors open questions 4 and 5. Change `validation_failed` in connectors 5 to the contract's `invalid_request` (gap G8) | nothing | none | Next | To assign |
 | E0.4 | **Maple Row Farm fixture** in `backend/tests/fixtures/era/maple-row/`, in the inject formats of section 3 ([connectors 9.1](../connectors/README.md#91-the-farm-fixture)): `slack.json` (the `team` named Maple Row Farm, users, `#field-reports` and `#crew` with the bot as a member, about 120 messages dated in the 180 days before 2026-10-15, threads as `reply` arrays, the three planted cases), `google-drive.json` (the `Farm records` folder, the spray log, the bed map and the SOP as Docs, the planting plan as a Sheet, one PDF by name) | nothing | T-E0.2 | Next | To assign |
 | E0.5 | **`garden.json` and `answers.toml`** for the same farm: plants named after the beds, two scans, the memories the evaluation needs, and every question with its answer and the record it must cite ([connectors 9.3](../connectors/README.md#93-the-agent-evaluation)) | E0.4 | T-E8.1 | Not started | To assign |
@@ -270,10 +289,10 @@ E1.1–E1.5 are one pull request. E1.6 can follow in a second.
 
 | ID | Task | Needs | Tests | State | Owner |
 |---|---|---|---|---|---|
-| E7.1 | **Build the company:** `era new --industry ecommerce --size small --systems slack,google-drive --env infra/env/.env.era --json`. Industry and size are any allowed pair; only the systems matter. Put its values in the `era-hosted` environment | E0.2 | none | Waiting (sign-in) | Alan |
-| E7.2 | **Run the REST clients against it** by hand, then in `era-hosted`. Record the calls with `era usage <tenant>` so the nightly job's cost is known | E2, E7.1 | T-E7.1 | Not started | To assign |
+| E7.1 | **Build the company:** `era new --industry ecommerce --model b2b --size small --systems slack,google-drive --env infra/env/.env.era --strict`. Only the systems matter; B2B small keeps the data, and so the calls, small. Put its values in the `era-hosted` environment when E6.5 is built | E0.2 | none | Done (Oct 19, Holling Holdings, section 3); the secrets wait on E6.5 | Alan |
+| E7.2 | **Run the REST clients against it,** first by hand with `curl`, then the Rust clients in `era-hosted`. Record the calls with `era usage <tenant>` so the nightly job's cost is known | E2, E7.1 | T-E7.1 | In progress (the `curl` check passed Oct 19: 5 calls, 5 metered; the Rust clients wait on E2) | To assign |
 | E7.3 | **Try `era client <tenant>`:** if the OAuth client credentials it issues work with the clients' Slack and Google exchanges on the hosted systems, add them to `era-hosted` | E2, E7.1 | T-E7.2 | Not started | To assign |
-| E7.4 | **Token rotation:** a hosted token lasts 7 days, so whoever owns the secret re-issues it weekly (`era token <tenant>`) and updates `ERA_TENANT_TOKEN`. Write the step in [infra 6](../infra/README.md#6-secrets-and-configuration), whose "CI needs only `GITHUB_TOKEN`" no longer holds | E7.1 | none | Not started | Alan |
+| E7.4 | **Token rotation:** a hosted token lasts 7 days (the first expires 2026-10-26 at 20:51 UTC), so whoever owns the secret re-issues it weekly (`era token <tenant> --env infra/env/.env.era`) and updates `ERA_TENANT_TOKEN`. Write the step in [infra 6](../infra/README.md#6-secrets-and-configuration), whose "CI needs only `GITHUB_TOKEN`" no longer holds | E7.1 | none | Not started | Alan |
 
 ### E8. The agent evaluation
 
@@ -443,7 +462,6 @@ Read in the vendors' own documents (docs). These replace the matching *unverifie
 
 | Item | Waits on | Blocks |
 |---|---|---|
-| Sign-in to the hosted console | Alan (`era init`) | E7 |
 | The Slack app and the Google OAuth client | Whoever holds the team's accounts | E11, T-E10.2 |
 | A hosted chat model's API key for the evaluation | The team's provider account | E8 |
 | The control-plane compose file | [PR #40](https://github.com/aacruzgon/GreenLens/pull/40) (S1) | E9 |
