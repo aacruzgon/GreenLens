@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.10, 2026-10-19. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.11, 2026-10-19. Companion to the [architecture document](README.md).
+> **v0.10.11**: `POST /gardens/{id}/connectors` answers `409 invalid_state` when the garden already has 2 connectors; no wire shape changed.
 > **v0.10.10**: the connector routes accept `Idempotency-Key`, and section 2 lists connectors under `invalid_state` and Sync now under `rate_limited`; no wire shape changed.
 > **v0.10.9** declares the farm connectors' contract ([connectors](../connectors/README.md)): the `Connector` types and eight routes (section 9), `search_farm_records` and `FarmCitation` (section 8), `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations` as optional fields (sections 7, 8), the `FarmRecordId` wire form, the roles rows and the deletion step. The routes answer `409 invalid_state` until E3 turns connectors on.
 > **v0.10.8**: the findings prompt is `findings@2` (it shows the shape of a soil reading, vision vlm.md 7), so `vlm_prompts` reads `system@1,findings@2,indicators@1,verify@1,guided@1`; no wire shape changed.
@@ -1985,7 +1986,7 @@ Tokens (`connector.secret`), the pending connect's `oauth` state, the sync curso
 | Endpoint | Role | Body | Response |
 |---|---|---|---|
 | `GET /gardens/{id}/connectors` | any | | `200 ConnectorList`. `{ available: false, connectors: [] }` when connectors are off on this server (no `CONNECTOR_KEY`), as for beliefs |
-| `POST /gardens/{id}/connectors` | owner | `{ kind, device_hash }`, `device_hash` = `SHA-256(device_verifier)` as 43 base64url characters; `device_verifier` has the same shape | `201 { connector: Connector, authorize_url: string }`: the `pending` connector and the vendor's consent URL |
+| `POST /gardens/{id}/connectors` | owner | `{ kind, device_hash }`, `device_hash` = `SHA-256(device_verifier)` as 43 base64url characters; `device_verifier` has the same shape | `201 { connector: Connector, authorize_url: string }`: the `pending` connector and the vendor's consent URL. `409 invalid_state` when the garden already has 2 connectors (those being deleted don't count) |
 | `GET /connectors/oauth/callback?code&state&error` | public | | `302` to the app with `code` and `state`. Checks only the state's signature and expiry and stores nothing; unknown query parameters (Google's `scope`, `authuser`) are ignored. A bad, expired or reused state gets `400 invalid_request` |
 | `POST /connectors/{id}/complete` | owner who started it | `{ code, state, device_verifier }` | `200 Connector` (`active`) |
 | `GET /connectors/{id}/available-sources` | owner | | `200 { sources: ConnectorSource[] }`: the channels the bot is a member of, or the folders |
