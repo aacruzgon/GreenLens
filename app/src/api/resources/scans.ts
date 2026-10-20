@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 
 import { client, ok } from "../client";
+import { isApiError } from "../errors";
 import type { AnswerRequest, CreateScanRequest, ImageKind, Scan, ScanDetail, UploadImageResponse } from "@/domain/types";
 import { useIdempotentMutation, type IdempotencyKey } from "../idempotency";
 import { STALE } from "../queryClient";
@@ -108,7 +109,11 @@ export function useAnswerQuestion(scanId: string) {
 export function useDeleteScan() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (scan: Pick<Scan, "id" | "plant_id" | "garden_id">) => scans.delete(scan.id),
+    // A 404 means it's already gone (a retry after a lost response): what was asked for, so it counts as done.
+    mutationFn: (scan: Pick<Scan, "id" | "plant_id" | "garden_id">) =>
+      scans.delete(scan.id).catch((error: unknown) => {
+        if (!(isApiError(error) && error.status === 404)) throw error;
+      }),
     onSuccess: (_data, scan) => {
       qc.removeQueries({ queryKey: qk.scan(scan.id) });
       // A pending scan's jar-test task goes with it.

@@ -6,6 +6,8 @@ import {
   createDraft,
   modeMark,
   pendingWork,
+  reconcileDraft,
+  relocateDraft,
   resumeDraft,
   shutterTarget,
   takeShot,
@@ -83,6 +85,17 @@ describe("the slot machine (flows 14)", () => {
     expect(removed.file).toBeUndefined();
   });
 
+  it("puts a shot back to stored when its delete fails, dropping the retake that waited", () => {
+    const stored = slotReducer(uploading, { type: "stored", imageId: "img1" });
+    const deleting = slotReducer(stored, { type: "replace", next: { file: camera("b"), key: "k2" } });
+    const kept = slotReducer(deleting, { type: "deleteFailed", message: "offline" });
+    expect(kept).toMatchObject({ state: "stored", imageId: "img1", file: { name: "a.jpg" }, problem: { message: "offline" } });
+    expect(kept.next).toBeUndefined();
+    // Trying again clears the message.
+    expect(slotReducer(kept, { type: "replace" })).toMatchObject({ state: "deleting", problem: undefined });
+    expect(slotReducer(stored, { type: "deleteFailed", message: "x" })).toBe(stored);
+  });
+
   it("ignores events a state doesn't take", () => {
     expect(slotReducer(empty, { type: "stored", imageId: "x" })).toBe(empty);
     expect(slotReducer(empty, { type: "deleted" })).toBe(empty);
@@ -157,6 +170,48 @@ describe("the draft", () => {
     expect(pendingWork(d).uploads).toEqual([]);
     const resumed = resumeDraft(d);
     expect(pendingWork(resumed).uploads.map((s) => [s.id, s.key])).toEqual([["whole_plant:0", "key-w"]]);
+  });
+});
+
+describe("a saved draft", () => {
+  it("rebuilds each photo's URI from its name, the waiting retake's too", () => {
+    let d = store(createDraft(scan), "whole_plant", "w");
+    d = takeShot(d, "whole_plant", camera("w2"), "key-w2");
+    const moved = relocateDraft(d, (name) => `file:///new/${name}`);
+    expect(moved.slots[0]).toMatchObject({ file: { uri: "file:///new/w.jpg" }, next: { file: { uri: "file:///new/w2.jpg" } } });
+    // The web build can't locate a photo: the saved URI stays.
+    expect(relocateDraft(d, () => undefined).slots[0]!.file!.uri).toBe("file:///draft/w.jpg");
+  });
+
+  it("empties a shot the server no longer has, and finishes a delete that already happened", () => {
+    let d = store(createDraft(scan), "whole_plant", "w");
+    d = store(d, "leaf_closeup", "c1");
+    d = store(d, "leaf_closeup", "c2");
+    d = takeShot(d, "leaf_closeup", camera("c3"), "key-c3");
+    const { draft, unused } = reconcileDraft(d, { images: [{ id: "img-c1", kind: "leaf_closeup" }] }, new Set(["img-w", "img-c1", "img-c2"]));
+    expect(draft.slots.find((s) => s.id === "whole_plant:0")).toEqual(emptySlot("whole_plant", 0));
+    expect(draft.slots.find((s) => s.id === "leaf_closeup:1")).toMatchObject({ state: "captured", key: "key-c3" });
+    expect(unused).toEqual(["file:///draft/w.jpg"]);
+    expect(canAnalyse(draft)).toBe(false);
+  });
+
+  it("keeps a shot stored during the visit, which a fetch from before it can't show", () => {
+    const d = store(createDraft(scan), "whole_plant", "w");
+    expect(reconcileDraft(d, { images: [] }, new Set()).draft.slots[0]).toMatchObject({ state: "stored", imageId: "img-w" });
+  });
+
+  it("adopts a server image into a free slot, unless a slot of its kind still holds an upload", () => {
+    const images = [
+      { id: "img_w", kind: "whole_plant" },
+      { id: "img_c", kind: "leaf_closeup" },
+      { id: "img_q", kind: "leaf_closeup", answers_question_id: "q_1" },
+    ];
+    // The close-up's upload may be img_c, its response lost: its retry returns img_c, so it isn't adopted twice.
+    let d = takeShot(createDraft(scan), "leaf_closeup", camera("c"), "key-c");
+    d = applySlot(applySlot(d, "leaf_closeup:0", { type: "upload" }), "leaf_closeup:0", { type: "failed", message: "offline" });
+    const { draft } = reconcileDraft(d, { images }, new Set());
+    expect(draft.slots.filter((s) => s.state === "stored").map((s) => [s.id, s.imageId])).toEqual([["whole_plant:0", "img_w"]]);
+    expect(draft.slots.find((s) => s.id === "leaf_closeup:0")).toMatchObject({ state: "failed", key: "key-c" });
   });
 });
 

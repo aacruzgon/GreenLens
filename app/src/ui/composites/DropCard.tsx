@@ -3,7 +3,7 @@
 // and a grabber at its foot (styles.css .cap-sheet), never glass, since it carries content (design 6). It drops
 // 16 pt on the entrance spring as it fades in; under reduced motion it only fades (design 6).
 import { useEffect, type ReactNode } from "react";
-import { View, type StyleProp, type ViewStyle } from "react-native";
+import { View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from "react-native";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withSpring, withTiming } from "react-native-reanimated";
 
 import { useReducedMotion } from "../theme";
@@ -18,9 +18,11 @@ export interface DropCardProps {
   dropKey?: string;
   style?: StyleProp<ViewStyle>;
   testID?: string;
+  /** The card's frame, for what must stay clear of it (capture's framing guide). */
+  onLayout?: (event: LayoutChangeEvent) => void;
 }
 
-export function DropCard({ children, dropKey, style, testID }: DropCardProps) {
+export function DropCard({ children, dropKey, style, testID, onLayout }: DropCardProps) {
   const reduced = useReducedMotion();
   const progress = useSharedValue(0);
 
@@ -39,6 +41,7 @@ export function DropCard({ children, dropKey, style, testID }: DropCardProps) {
   return (
     <Animated.View
       testID={testID}
+      onLayout={onLayout}
       style={[
         {
           paddingTop: 14,

@@ -55,7 +55,9 @@ export type SlotEvent =
   | { type: "refused"; message: string }
   /** Delete the stored shot; with a file, that shot uploads once the delete is done. */
   | { type: "replace"; next?: { file: ShotFile; key: string } }
-  | { type: "deleted" };
+  | { type: "deleted" }
+  /** The delete didn't go through after its retries: the stored shot stays, and a waiting retake is dropped. */
+  | { type: "deleteFailed"; message: string };
 
 export function emptySlot(kind: CaptureKind, index: number): Slot {
   return { id: `${kind}:${index}`, kind, index, state: "empty" };
@@ -91,9 +93,11 @@ export function slotReducer(slot: Slot, event: SlotEvent): Slot {
     case "refused":
       return slot.state === "uploading" ? { ...clear(slot), problem: { message: event.message } } : slot;
     case "replace":
-      return slot.state === "stored" ? { ...slot, state: "deleting", next: event.next } : slot;
+      return slot.state === "stored" ? { ...slot, state: "deleting", next: event.next, problem: undefined } : slot;
     case "deleted":
       if (slot.state !== "deleting") return slot;
       return slot.next ? { ...clear(slot), state: "captured", file: slot.next.file, key: slot.next.key } : clear(slot);
+    case "deleteFailed":
+      return slot.state === "deleting" ? { ...slot, state: "stored", next: undefined, problem: { message: event.message } } : slot;
   }
 }

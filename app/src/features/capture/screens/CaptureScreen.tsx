@@ -33,6 +33,10 @@ function Capture() {
   const preview = useRef<CameraPreviewHandle>(null);
   const [flash, setFlash] = useState(false);
   const [shooting, setShooting] = useState(false);
+  // The preview stops while the library picker or the discard alert covers it, to save power and heat.
+  const [covered, setCovered] = useState(false);
+  // Where the drop card ends, so the framing guide starts below it.
+  const [cardBottom, setCardBottom] = useState(0);
   const v = session.view;
   const { actions } = session;
 
@@ -61,16 +65,30 @@ function Capture() {
   };
 
   const pick = async () => {
-    const shot = await pickFromLibrary();
-    if (shot) actions.addShot(shot, true);
+    setCovered(true);
+    try {
+      const shot = await pickFromLibrary();
+      if (shot) actions.addShot(shot, true);
+    } finally {
+      setCovered(false);
+    }
   };
 
   // Discard asks first (screens 3.2), with the platform's own alert and a destructive button.
-  const confirmDiscard = () =>
+  const confirmDiscard = () => {
+    setCovered(true);
     Alert.alert("Discard this scan?", "Its photos will be deleted.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Discard", style: "destructive", onPress: actions.discard },
+      { text: "Cancel", style: "cancel", onPress: () => setCovered(false) },
+      {
+        text: "Discard",
+        style: "destructive",
+        onPress: () => {
+          setCovered(false);
+          actions.discard();
+        },
+      },
     ]);
+  };
 
   if (session.scan.error) {
     return (
@@ -88,14 +106,14 @@ function Capture() {
   return (
     <Shell>
       {access.status === "granted" ? (
-        <CameraPreview ref={preview} active style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
+        <CameraPreview ref={preview} active={!covered} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
       ) : (
         <CameraAccessNote access={access} />
       )}
       <Fade visible={flash} duration={flash ? 40 : 340} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: camera.ink }}>
         <View />
       </Fade>
-      {v ? <FramingGuide kind={v.mode.kind} /> : null}
+      {v ? <FramingGuide kind={v.mode.kind} clearTop={cardBottom} /> : null}
 
       {/* The top bar: ✕ keeps the draft, Discard deletes the scan (screens 3.2). */}
       <View
@@ -135,7 +153,12 @@ function Capture() {
       </View>
 
       {v ? (
-        <DropCard dropKey={v.mode.kind} testID="instruction-card" style={{ position: "absolute", top: insets.top + 56, left: 12, right: 12 }}>
+        <DropCard
+          dropKey={v.mode.kind}
+          testID="instruction-card"
+          onLayout={(e) => setCardBottom(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}
+          style={{ position: "absolute", top: insets.top + 56, left: 12, right: 12 }}
+        >
           <Instruction view={v} problem={session.problem} onRetry={actions.retry} onRemove={actions.removeShot} onNewScan={actions.close} />
         </DropCard>
       ) : null}
@@ -304,9 +327,9 @@ function AnalyseButton({ enabled, busy, onPress }: { enabled: boolean; busy: boo
       })}
     >
       {busy ? (
-        <ActivityIndicator color={camera.black} />
+        <ActivityIndicator color={camera.onInk} />
       ) : (
-        <Text variant="headline" style={{ color: "#0B0E0D" }}>
+        <Text variant="headline" style={{ color: camera.onInk }}>
           Analyse
         </Text>
       )}

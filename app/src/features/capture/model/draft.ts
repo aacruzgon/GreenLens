@@ -106,6 +106,63 @@ export function resumeDraft(draft: CaptureDraft): CaptureDraft {
   return { ...draft, slots: draft.slots.map((s) => (s.state === "uploading" ? { ...s, state: "captured" } : s)) };
 }
 
+/**
+ * Points a saved draft's photos at where they are now. iOS can move the app's folder when the app is updated, so
+ * a URI saved before the update is gone; the photo's name in the scan's folder still finds it (README 11).
+ */
+export function relocateDraft(draft: CaptureDraft, locate: (name: string) => string | undefined): CaptureDraft {
+  const move = (file: ShotFile): ShotFile => {
+    const uri = locate(file.name);
+    return uri ? { ...file, uri } : file;
+  };
+  return {
+    ...draft,
+    slots: draft.slots.map((s) => ({
+      ...s,
+      ...(s.file ? { file: move(s.file) } : {}),
+      ...(s.next ? { next: { ...s.next, file: move(s.next.file) } } : {}),
+    })),
+  };
+}
+
+const holdsUpload = (s: Slot) => s.state === "captured" || s.state === "uploading" || s.state === "failed";
+
+/**
+ * Brings a saved draft in line with its scan on the server, once per visit (flows 16). `known` is the images the
+ * draft held as stored before the scan was fetched: one of those the server no longer has (removed on another
+ * device, or a scan whose ID the mock reused) empties its slot, and a shot being deleted whose image is gone is
+ * done. A server image the draft lacks fills a free slot of its kind, as createDraft does, unless a slot of that
+ * kind still holds an upload: the server's image may be that upload, whose retry returns it under the same key.
+ * Returns the draft and the kept photos it no longer uses.
+ */
+export function reconcileDraft(
+  draft: CaptureDraft,
+  scan: { images?: readonly { id: string; kind: string; answers_question_id?: string }[] },
+  known: ReadonlySet<string>,
+): { draft: CaptureDraft; unused: string[] } {
+  const images = (scan.images ?? []).filter((i) => !i.answers_question_id);
+  const onServer = new Set(images.map((i) => i.id));
+  const unused: string[] = [];
+  let slots = draft.slots.map((s): Slot => {
+    if (!s.imageId || onServer.has(s.imageId)) return s;
+    if (s.state === "deleting") return slotReducer(s, { type: "deleted" });
+    if (s.state === "stored" && known.has(s.imageId)) {
+      if (s.file) unused.push(s.file.uri);
+      return emptySlot(s.kind, s.index);
+    }
+    return s;
+  });
+  const held = new Set(slots.flatMap((s) => (s.imageId ? [s.imageId] : [])));
+  for (const image of images) {
+    if (held.has(image.id) || slots.some((s) => s.kind === image.kind && holdsUpload(s))) continue;
+    const free = slots.find((s) => s.kind === image.kind && s.state === "empty");
+    if (!free) continue;
+    slots = slots.map((s) => (s === free ? { ...emptySlot(s.kind, s.index), state: "stored", imageId: image.id } : s));
+    held.add(image.id);
+  }
+  return { draft: { ...draft, slots }, unused };
+}
+
 /** How an upload ended, as the slot's next event (flows 14). */
 export type UploadOutcome =
   | { type: "rejected"; message: string; hint?: QualityHint }

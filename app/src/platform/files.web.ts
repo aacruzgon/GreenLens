@@ -5,6 +5,10 @@ export const files = {
     return uri;
   },
 
+  locate(_scanId: string, _name: string): string | undefined {
+    return undefined;
+  },
+
   async toUploadPart(uri: string): Promise<Blob> {
     return (await fetch(uri)).blob();
   },

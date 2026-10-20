@@ -55,6 +55,11 @@ export class MockStore {
   nameSet = false;
 
   private counter = 1000;
+  /**
+   * Tags this launch's IDs. The counter restarts with the app, so without it a new scan could take the ID of one
+   * from an earlier launch and pick up that scan's saved capture draft.
+   */
+  private readonly launch = Math.random().toString(36).slice(2, 6);
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private listeners = new Map<string, Set<() => void>>();
 
@@ -101,7 +106,7 @@ export class MockStore {
 
   nextId(prefix: string): string {
     this.counter += 1;
-    return `${prefix}_${this.counter}`;
+    return `${prefix}_${this.launch}${this.counter}`;
   }
 
   /** Resolves after `ms`; never resolves after a reset (the caller checks `generation`). */

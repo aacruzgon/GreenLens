@@ -3,11 +3,12 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import { files, storage } from "@/platform";
 
-import { resumeDraft, type CaptureDraft } from "../model/draft";
+import { relocateDraft, resumeDraft, type CaptureDraft } from "../model/draft";
 
 // Capture drafts (docs/frontend/README.md 12: zustand, persisted), one per pending scan, so a capture survives
 // the app closing (flows 15, suspended). Rehydrated drafts are resumed: an upload that was running is sent
-// again under its key. Signing out clears them with their photos.
+// again under its key, and each photo's URI is rebuilt from its name, since the app's folder can move between
+// launches. Signing out clears them with their photos.
 interface DraftState {
   drafts: Record<string, CaptureDraft>;
   put: (draft: CaptureDraft) => void;
@@ -46,7 +47,7 @@ export const useDraftStore = create<DraftState>()(
       partialize: (s) => ({ drafts: s.drafts }),
       merge: (persisted, current) => {
         const drafts = (persisted as Partial<DraftState> | undefined)?.drafts ?? {};
-        return { ...current, drafts: Object.fromEntries(Object.entries(drafts).map(([id, d]) => [id, resumeDraft(d)])) };
+        return { ...current, drafts: Object.fromEntries(Object.entries(drafts).map(([id, d]) => [id, relocateDraft(resumeDraft(d), (name) => files.locate(d.scanId, name))])) };
       },
     },
   ),

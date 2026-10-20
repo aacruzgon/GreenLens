@@ -2,13 +2,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { Alert } from "react-native";
 
-import { newKey, scans, setTransport } from "@/api";
+import { ApiError, newKey, scans, setTransport } from "@/api";
 import { IDS, mockStore, mockTransport, resetMock, scenario } from "@/api/mock";
 import { files } from "@/platform";
 import { ThemeProvider } from "@/ui";
 
 import { useDraftStore } from "../hooks/draftStore";
-import { createDraft, takeShot } from "../model/draft";
+import { applySlot, createDraft, takeShot } from "../model/draft";
 import { CaptureScreen } from "../screens/CaptureScreen";
 
 // The camera, the library and the file copies are the platform's; the API is the mock's, with no delays.
@@ -30,6 +30,7 @@ jest.mock("@/platform/capture", () => {
 jest.mock("@/platform/files", () => ({
   files: {
     keep: jest.fn((scanId: string, _uri: string, name: string) => `file:///documents/capture/${scanId}/${name}`),
+    locate: jest.fn((scanId: string, name: string) => `file:///documents/capture/${scanId}/${name}`),
     toUploadPart: jest.fn(async (uri: string) => ({ uri, name: uri.split("/").pop(), type: "image/jpeg" })),
     reencode: jest.fn(async (uri: string) => uri),
     remove: jest.fn(),
@@ -159,5 +160,81 @@ describe("CaptureScreen", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Close" }));
     expect(mockRouter.back).toHaveBeenCalled();
     expect(draftOf(id)).toBeDefined();
+  });
+
+  it("suggests the close-up the dial still counts before the optional shots", async () => {
+    await renderCapture(await newScan());
+    await fireEvent.press(shutter());
+    await waitFor(() => expect(screen.getByText(/Add a leaf close-up/)).toBeTruthy());
+  });
+
+  it("empties a saved shot whose image the server no longer has", async () => {
+    const id = await newScan();
+    const scan = mockStore.scan(id)!.scan;
+    let d = takeShot(createDraft(scan), "whole_plant", { uri: "file:///w.jpg", name: "w.jpg", type: "image/jpeg", picked: false, width: 1, height: 1 }, "key-w");
+    d = applySlot(applySlot(d, "whole_plant:0", { type: "upload" }), "whole_plant:0", { type: "stored", imageId: "img_gone" });
+    useDraftStore.getState().put({ ...d, mode: "soil_surface" });
+    await renderCapture(id);
+    await waitFor(() => expect(screen.getByText("0 of 2 needed shots")).toBeTruthy());
+    expect(screen.getByRole("tab", { name: "Whole plant" })).toBeTruthy();
+    expect(analyse().props.accessibilityState).toMatchObject({ disabled: true });
+    expect(files.remove).toHaveBeenCalledWith("file:///w.jpg");
+  });
+
+  it("drops the draft of a scan that's gone", async () => {
+    const id = await newScan();
+    useDraftStore.getState().put(createDraft(mockStore.scan(id)!.scan));
+    await scans.delete(id);
+    mockParams = { scanId: id };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await render(
+      <QueryClientProvider client={qc}>
+        <CaptureScreen />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(draftOf(id)).toBeUndefined());
+    expect(files.drop).toHaveBeenCalledWith(id);
+  });
+
+  it("keeps the shot with Try again when removing it fails", async () => {
+    const id = await newScan();
+    await renderCapture(id);
+    await fireEvent.press(shutter());
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Whole plant, taken" })).toBeTruthy());
+    const del = jest
+      .spyOn(scans, "deleteImage")
+      .mockRejectedValueOnce(new ApiError({ code: "invalid_state", message: "This scan can't change now.", retryable: false, status: 409 }));
+    await fireEvent.press(screen.getByRole("button", { name: "Remove this whole plant photo" }));
+    expect(await screen.findByText("This scan can't change now.")).toBeTruthy();
+    expect(analyse().props.accessibilityState).toMatchObject({ disabled: false });
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(screen.getByText("0 of 2 needed shots")).toBeTruthy());
+    expect(del).toHaveBeenCalledTimes(2);
+    expect(mockStore.scan(id)!.scan.images).toHaveLength(0);
+  });
+
+  it("treats a scan already deleted as discarded", async () => {
+    const alert = jest.spyOn(Alert, "alert");
+    const id = await newScan();
+    await renderCapture(id);
+    await scans.delete(id);
+    await fireEvent.press(screen.getByRole("button", { name: "Discard" }));
+    await act(async () => alert.mock.calls[0]![2]!.find((b) => b.style === "destructive")!.onPress!());
+    await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
+    expect(draftOf(id)).toBeUndefined();
+    expect(screen.queryByTestId("shot-problem")).toBeNull();
+  });
+
+  it("starts a retake's retries afresh and deletes the refused photo", async () => {
+    const id = await newScan();
+    await renderCapture(id);
+    scenario.set({ uploadFault: "image_quality" });
+    await fireEvent.press(shutter());
+    await screen.findByTestId("shot-problem");
+    const first = draftOf(id)!.slots[0]!.file!.uri;
+    scenario.set({ uploadFault: null });
+    await fireEvent.press(shutter());
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Whole plant, taken" })).toBeTruthy());
+    expect(files.remove).toHaveBeenCalledWith(first);
   });
 });

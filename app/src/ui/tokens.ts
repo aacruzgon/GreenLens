@@ -71,6 +71,8 @@ export const camera = {
   /** A hairline on the pills and cards. */
   hairline: "rgba(255, 255, 255, 0.1)",
   ink: "#FFFFFF",
+  /** Text on a white control, such as Analyse (the mockup's capture accentText). */
+  onInk: "#0B0E0D",
   /** Unchosen modes (.mode). */
   inkSoft: "rgba(255, 255, 255, 0.86)",
   /** Secondary text on the cards (.cap-sheet p). */

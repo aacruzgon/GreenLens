@@ -20,6 +20,11 @@ export const files = {
     return copy.uri;
   },
 
+  /** Where a kept photo is now. The app's folder can move when iOS updates the app, so a saved URI can go stale. */
+  locate(scanId: string, name: string): string | undefined {
+    return new File(new Directory(root(), scanId), name).uri;
+  },
+
   /** The multipart file part (README 13, platform/files): expo/fetch takes an expo-file-system File, a Blob. */
   async toUploadPart(uri: string): Promise<Blob> {
     return new File(uri);
