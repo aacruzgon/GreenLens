@@ -1,10 +1,12 @@
+import type { TaskSource, TaskState } from "@/domain/types";
+
 // Every query key, named as the table in docs/frontend/README.md §9 (query keys and invalidation).
 // Optional trailing parts are left off when absent, so `qk.tasks(gardenId)` is a prefix of
 // `qk.tasks(gardenId, filter)` and invalidates every filtered list of that garden.
 
 export interface TaskFilter {
-  source?: "plan" | "forecast_alert" | "chat" | "user";
-  state?: string;
+  source?: TaskSource;
+  state?: TaskState;
 }
 
 export interface ConversationAnchor {

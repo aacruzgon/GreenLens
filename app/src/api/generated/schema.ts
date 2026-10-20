@@ -1243,6 +1243,11 @@ export interface components {
             type: "garden";
         };
         /**
+         * @description `anchor_type` query values.
+         * @enum {string}
+         */
+        AnchorType: "scan" | "plant" | "garden";
+        /**
          * @description `"yes" | "no" | "unsure"`: question options, indicator answers and evidence.
          * @enum {string}
          */
@@ -4133,6 +4138,11 @@ export interface components {
          * @enum {string}
          */
         TaskSource: "plan" | "forecast_alert" | "chat" | "user";
+        /**
+         * @description `?state=open|done|dismissed`, stored as `task.state` ([database 3]).
+         * @enum {string}
+         */
+        TaskState: "open" | "done" | "dismissed";
         /** @description `Task.trigger`. */
         TaskTrigger: {
             /** @description The local date it fired for. */
@@ -4766,7 +4776,7 @@ export interface operations {
                 /** @description The garden. */
                 garden_id: components["schemas"]["Id"];
                 /** @description Filter by anchor type. */
-                anchor_type?: string;
+                anchor_type?: components["schemas"]["AnchorType"];
                 /** @description Filter by anchor id (a ULID of the anchor type's table). */
                 anchor_id?: string;
                 /** @description From a previous page's `next_cursor`. */
@@ -7219,7 +7229,7 @@ export interface operations {
                 /** @description Filter by source. */
                 source?: components["schemas"]["TaskSource"];
                 /** @description Filter by state. */
-                state?: string;
+                state?: components["schemas"]["TaskState"];
                 /** @description From a previous page's `next_cursor`. */
                 cursor?: components["schemas"]["Cursor"];
                 /** @description 1–100; 20 when absent. */

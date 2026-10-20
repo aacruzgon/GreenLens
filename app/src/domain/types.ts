@@ -144,6 +144,7 @@ export type Task = S["Task"];
 export type CreateTaskRequest = S["CreateTaskRequest"];
 export type UpdateTaskRequest = S["UpdateTaskRequest"];
 export type TaskSource = S["TaskSource"];
+export type TaskState = S["TaskState"];
 export type WeatherSummary = S["WeatherSummary"];
 export type GardenWeather = S["GardenWeather"];
 export type ForecastDay = S["ForecastDay"];

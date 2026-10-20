@@ -1,7 +1,7 @@
 // Generates src/api/generated/schema.ts from the backend's OpenAPI spec (docs/frontend/README.md §9).
 //
 // Two workarounds until the backend fixes its spec (docs/frontend/roadmap.md §17):
-// - a $ref to a schema the spec doesn't define (AnchorType and TaskState today) becomes a plain string;
+// - a $ref to a schema the spec doesn't define becomes a plain string (none since #65 registered AnchorType and TaskState);
 // - description-only members of an allOf ({ "description": "…" }, or { "type": "object", "description": "…" }) are dropped,
 //   because openapi-typescript renders them as Record<string, never>, which makes the type unbuildable.
 // Each workaround prints a warning, so they are removed once the spec is clean.
