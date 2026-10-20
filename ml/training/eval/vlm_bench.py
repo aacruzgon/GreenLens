@@ -40,7 +40,7 @@ import argparse
 import hashlib
 import json
 import os
-import statistics
+import signal
 import subprocess
 import sys
 import threading
@@ -162,12 +162,66 @@ def served(base_url: str) -> list[dict]:
         return json.loads(r.read())["data"]
 
 
+def server_up(base_url: str) -> bool:
+    try:
+        with urllib.request.urlopen(f"{base_url.rstrip('/')}/health", timeout=10) as r:
+            return r.status == 200
+    except OSError:
+        return False
+
+
+def read_rows(path: Path) -> list[dict]:
+    """The lines of an `out.jsonl`; a line cut short by a killed run is skipped."""
+    rows = []
+    for line in path.read_text().splitlines():
+        try:
+            rows.append(json.loads(line))
+        except ValueError:
+            continue
+    return rows
+
+
+def finished(d: Path, n_cases: int) -> bool:
+    """A run already done in full: it exited 0 and wrote a line per case."""
+    try:
+        meta = json.loads((d / "meta.json").read_text())
+        return meta.get("exit") == 0 and len(read_rows(d / "out.jsonl")) == n_cases
+    except (OSError, ValueError):
+        return False
+
+
+_child: subprocess.Popen | None = None
+
+
+def _stop_child(signum, _frame):
+    # The test runs in its own process group, so a signal to this script (the night script's
+    # `timeout`, Ctrl-C) doesn't reach it: stop it here, then leave.
+    if _child is not None and _child.poll() is None:
+        os.killpg(_child.pid, signal.SIGKILL)
+    sys.exit(128 + signum)
+
+
 def run(args) -> int:
+    global _child
+    signal.signal(signal.SIGTERM, _stop_child)
+    signal.signal(signal.SIGINT, _stop_child)
     models = served(args.base_url)
+    n_cases = sum(1 for line in args.cases.read_text().splitlines() if line.strip())
+    build = subprocess.run(["cargo", "test", "-p", "worker", "--no-run"], cwd=ROOT / "backend")
+    if build.returncode:
+        print("the worker's tests don't build", file=sys.stderr)
+        return build.returncode
     out_dir = RUNS / args.label
+    failed = 0
     for mp in args.max_pixels:
         for conc in args.concurrency:
             d = out_dir / f"px{mp}-c{conc}"
+            if not args.again and finished(d, n_cases):
+                print(f"{args.label}: max_pixels {mp}, {conc} at once: done already", file=sys.stderr, flush=True)
+                continue
+            if not server_up(args.base_url):
+                print(f"{args.label}: the server at {args.base_url} is down; stopping", file=sys.stderr, flush=True)
+                return 3
             d.mkdir(parents=True, exist_ok=True)
             env = {**os.environ, "VLM_BENCH_BASE_URL": args.base_url, "VLM_BENCH_CASES": str(args.cases.resolve()),
                    "VLM_BENCH_OUT": str((d / "out.jsonl").resolve()), "VLM_BENCH_MAX_PIXELS": str(mp),
@@ -175,15 +229,23 @@ def run(args) -> int:
             print(f"{args.label}: max_pixels {mp}, {conc} at once", file=sys.stderr, flush=True)
             started = time.time()
             with Sampler(args.base_url) as s:
-                p = subprocess.run(["cargo", "test", "-p", "worker", "bench_cases", "--", "--ignored", "--nocapture"],
-                                   cwd=ROOT / "backend", env=env)
+                _child = subprocess.Popen(["cargo", "test", "-p", "worker", "bench_cases", "--", "--ignored", "--nocapture"],
+                                          cwd=ROOT / "backend", env=env, start_new_session=True)
+                try:
+                    code = _child.wait(timeout=args.timeout)
+                except subprocess.TimeoutExpired:
+                    os.killpg(_child.pid, signal.SIGKILL)
+                    _child.wait()
+                    code = "timeout"
+                _child = None
             meta = {"label": args.label, "max_pixels": mp, "concurrency": conc, "models": models,
                     "seconds": round(time.time() - started, 1), "peak_gpu_mib": s.gpu_mib, "peak_kv_cache": s.kv,
-                    "exit": p.returncode, "cases": str(args.cases)}
+                    "exit": code, "cases": str(args.cases.resolve())}
             (d / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
-            if p.returncode:
-                print(f"  bench_cases exited {p.returncode}; see {d}", file=sys.stderr)
-    return 0
+            if code != 0:
+                failed += 1
+                print(f"  bench_cases exited {code}; see {d}", file=sys.stderr, flush=True)
+    return 1 if failed else 0
 
 
 def pct(values: list[float], q: float) -> float | None:
@@ -241,15 +303,29 @@ def score_run(rows: list[dict], cases_by_id: dict[str, dict]) -> dict:
     }
 
 
+def run_dirs(root: Path) -> list[Path]:
+    def key(d: Path):
+        px, c = d.name[2:].split("-c")
+        return int(px), int(c)
+    return sorted((d for d in root.glob("px*-c*") if d.is_dir()), key=key)
+
+
 def score(args) -> int:
     report = []
     for run_root in args.runs:
-        for d in sorted(Path(run_root).glob("px*-c*")):
-            meta = json.loads((d / "meta.json").read_text())
-            cases_by_id = {b["case_id"]: b for b in map(json.loads, Path(meta["cases"]).read_text().splitlines())}
-            rows = [json.loads(line) for line in (d / "out.jsonl").read_text().splitlines() if line.strip()]
+        for d in run_dirs(Path(run_root)):
+            try:
+                meta = json.loads((d / "meta.json").read_text())
+                cases_by_id = {b["case_id"]: b for b in map(json.loads, Path(meta["cases"]).read_text().splitlines())}
+                rows = [r for r in read_rows(d / "out.jsonl") if r.get("case_id") in cases_by_id]
+            except (OSError, ValueError, KeyError) as e:
+                print(f"skipping {d}: {e}", file=sys.stderr)
+                continue
+            s = score_run(rows, cases_by_id)
+            s["jobs"] = len(cases_by_id)   # every case, so a run cut short shows the jobs it never ran
+            model = meta["models"][0].get("root") or meta["models"][0]["id"] if meta["models"] else None
             report.append({**{k: meta[k] for k in ("label", "max_pixels", "concurrency", "peak_gpu_mib", "peak_kv_cache")},
-                           "model": meta["models"][0]["id"] if meta["models"] else None, **score_run(rows, cases_by_id)})
+                           "exit": meta.get("exit"), "seconds": meta.get("seconds"), "model": model, **s})
     REPORTS.mkdir(parents=True, exist_ok=True)
     (REPORTS / f"vlm-bench-{args.out}.json").write_text(json.dumps(report, indent=2) + "\n")
     f = lambda v, p=False: "n/a" if v is None else (f"{v:.0%}" if p else f"{v / 1000:.1f} s")
@@ -258,7 +334,8 @@ def score(args) -> int:
              "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in report:
         dmg = ", ".join(f"{k} {v}" for k, v in r["damage_findings"].items()) or "none"
-        lines.append(f"| {r['label']} | {r['max_pixels']:,} | {r['concurrency']} | {r['finished']}/{r['jobs']} | {r['retried_calls']} | "
+        run = r["label"] if r["exit"] == 0 else f"{r['label']} (exit {r['exit']})"
+        lines.append(f"| {run} | {r['max_pixels']:,} | {r['concurrency']} | {r['finished']}/{r['jobs']} | {r['retried_calls']} | "
                      f"{f(r['job_ms_p50'])} | {f(r['job_ms_p95'])} | {f(r['species_agree'], True)} | "
                      f"{f(r['diagnosis_top1_sure'], True)} (n={r['diagnosis_n']}) | {f(r['healthy_no_candidate'], True)} (n={r['healthy_n']}) | "
                      f"{f(r['yes_on_healthy'], True)} | {f(r['unsure_share'], True)} | {dmg} | {r['organisms_reported']} | {r['peak_gpu_mib']:,} MiB |")
@@ -281,6 +358,8 @@ def main(argv=None) -> int:
     r.add_argument("--cases", type=Path, default=CASES)
     r.add_argument("--max-pixels", type=int, nargs="+", default=list(DEFAULT_PIXELS))
     r.add_argument("--concurrency", type=int, nargs="+", default=[1, 2])
+    r.add_argument("--timeout", type=float, default=7200, help="seconds before a run is stopped (default 2 h)")
+    r.add_argument("--again", action="store_true", help="rerun the settings that finished already")
     s = sub.add_parser("score")
     s.add_argument("runs", nargs="+", type=Path)
     s.add_argument("--out", default="vlm-bench")

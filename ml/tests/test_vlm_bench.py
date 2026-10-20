@@ -1,5 +1,7 @@
 """`training.eval.vlm_bench`: the cases it builds for the worker and the scores it gives."""
 
+import argparse
+import json
 import re
 from pathlib import Path
 
@@ -54,3 +56,25 @@ def test_the_top_candidate_by_yes_share_is_the_diagnosis():
     assert s["diagnosis_top1_sure"] == 1.0 and s["healthy_no_candidate"] == 1.0
     assert s["retried_calls"] == 1 and s["damage_findings"] == {"leaf_mines": 1}
     assert abs(s["unsure_share"] - 1 / 18) < 1e-9 and s["species_agree"] == 1.0
+
+
+def test_a_run_cut_short_is_scored_on_what_it_wrote_and_rerun(tmp_path, monkeypatch):
+    b = vb.bench_case(case(), Path("/p"))
+    cases = tmp_path / "cases.jsonl"
+    cases.write_text(json.dumps(b) + "\n" + json.dumps({**b, "case_id": "tomato-z"}) + "\n")
+    done, cut, empty = (tmp_path / "fp8" / n for n in ("px602112-c1", "px1003520-c2", "px2007040-c1"))
+    for d in (done, cut, empty):
+        d.mkdir(parents=True)
+    meta = {"label": "fp8", "concurrency": 1, "peak_gpu_mib": 1, "peak_kv_cache": 0.1,
+            "models": [{"id": "vlm", "root": "Qwen/Qwen3-VL-8B-Instruct-FP8"}], "cases": str(cases)}
+    full = [row(b, ["yes"] * 9), {**row(b, ["no"] * 9), "case_id": "tomato-z"}]
+    (done / "meta.json").write_text(json.dumps({**meta, "max_pixels": 602112, "exit": 0}))
+    (done / "out.jsonl").write_text("".join(json.dumps(r) + "\n" for r in full))
+    (cut / "meta.json").write_text(json.dumps({**meta, "max_pixels": 1003520, "exit": "timeout"}))
+    (cut / "out.jsonl").write_text(json.dumps(full[0]) + "\n" + '{"case_id": "tomato-z", "ok"')
+    assert vb.finished(done, 2) and not vb.finished(cut, 2) and not vb.finished(empty, 2)
+    monkeypatch.setattr(vb, "REPORTS", tmp_path / "reports")
+    vb.score(argparse.Namespace(runs=[tmp_path / "fp8"], out="t"))
+    report = json.loads((tmp_path / "reports" / "vlm-bench-t.json").read_text())
+    assert [(r["max_pixels"], r["finished"], r["jobs"], r["exit"]) for r in report] == [(602112, 2, 2, 0), (1003520, 1, 2, "timeout")]
+    assert report[0]["model"] == "Qwen/Qwen3-VL-8B-Instruct-FP8"

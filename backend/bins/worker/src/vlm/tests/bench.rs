@@ -116,10 +116,12 @@ async fn bench_cases() {
     let started = Instant::now();
 
     let mut tasks = JoinSet::new();
+    let mut case_of = BTreeMap::new();
     for case in cases {
         let (base_url, cpu, slots, out) =
             (base_url.clone(), cpu.clone(), slots.clone(), out.clone());
-        tasks.spawn(async move {
+        let id = case.id.clone();
+        let task = tasks.spawn(async move {
             let _slot = slots.acquire_owned().await.unwrap();
             let a = adapter_with(&base_url, max_pixels, cpu).await;
             let mut payload = case.payload;
@@ -160,11 +162,24 @@ async fn bench_cases() {
             writeln!(out.lock().unwrap(), "{line}").unwrap();
             ok
         });
+        case_of.insert(task.id(), id);
     }
+    // A case that panics (an unreadable photo, the server gone) is written as a failed case, and
+    // the others go on.
     let mut failed = 0;
-    while let Some(ok) = tasks.join_next().await {
-        if !ok.unwrap() {
-            failed += 1;
+    while let Some(done) = tasks.join_next_with_id().await {
+        match done {
+            Ok((_, true)) => {}
+            Ok((_, false)) => failed += 1,
+            Err(e) => {
+                failed += 1;
+                let line = json!({
+                    "case_id": case_of.get(&e.id()), "ok": false, "job_ms": 0,
+                    "max_pixels": max_pixels, "concurrency": concurrency,
+                    "error": format!("panicked: {e}"), "calls": [],
+                });
+                writeln!(out.lock().unwrap(), "{line}").unwrap();
+            }
         }
     }
     eprintln!(
