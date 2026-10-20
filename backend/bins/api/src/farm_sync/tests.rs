@@ -516,6 +516,138 @@ async fn a_renamed_author_or_channel_embeds_the_record_again() {
     assert_eq!(b.embedder.texts(), 3, "a renamed channel");
 }
 
+/// EON gap G12, the upgrade: records stored with the text-only hash under a cursor written
+/// before `text_version` are read again in full and embedded again, keeping their ids, though
+/// the vendor doesn't send an unchanged item past its cursor.
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "a sync, the earlier version's state, and two more"
+)]
+async fn records_from_before_the_embedded_text_are_embedded_again_once() {
+    let at = pinned().minus(Duration::from_hours(5));
+    let posted = vec![
+        item("C1", "1.000100", "Rings on bed 3.", at),
+        item("C1", "2.000100", "Aphids on bed 1.", at),
+    ];
+    let kept: Vec<String> = posted.iter().map(|i| i.vendor_id.clone()).collect();
+    let source = FakeSource::new(
+        None,
+        Box::new(move |r| {
+            // Like Slack: a first pass sends every item; a later one, nothing unchanged.
+            Ok(if r.cursor.is_none() {
+                page(posted.clone(), false, "c1")
+            } else {
+                FarmPage {
+                    kept: kept.clone(),
+                    ..page(Vec::new(), false, "c1")
+                }
+            })
+        }),
+    );
+    let b = bench(store().await, source.clone(), SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "xoxb-1",
+        b.clock.now(),
+    )
+    .await;
+    b.run().await;
+    b.clock.advance(SYNC_EVERY);
+    b.run().await;
+    assert_eq!(
+        b.embedder.texts(),
+        2,
+        "the current cursor sends nothing again"
+    );
+
+    // Back to how an earlier version left them: text-only hashes, and a cursor without
+    // `text_version`.
+    let vendors = vec!["C1/1.000100".to_owned(), "C1/2.000100".to_owned()];
+    let old: Vec<NewFarmRecord> = [
+        ("C1/1.000100", "Rings on bed 3."),
+        ("C1/2.000100", "Aphids on bed 1."),
+    ]
+    .into_iter()
+    .map(|(vendor, text)| NewFarmRecord {
+        id: FarmRecordId::new(id, vendor, 0).expect("id"),
+        kind: FarmRecordKind::Message,
+        source: "C1".into(),
+        title: "#C1".into(),
+        author: Some("Maria".into()),
+        link: "l".into(),
+        text: text.into(),
+        text_hash: chunk::text_hash(text),
+        vector: Some(FarmVector {
+            embedding: Embedding(vec![0.0, 1.0, 0.0, 0.0]),
+            model: "counting".into(),
+        }),
+        at,
+    })
+    .collect();
+    b.store.upsert_records(id, old).await.expect("old records");
+    let row = b.row(id).await;
+    let mut cursors = row.cursors.clone();
+    cursors.insert(
+        "C1".into(),
+        SyncCursor(r#"{"vendor":"c1","reread_at":"2026-10-15T11:00:00Z"}"#.into()),
+    );
+    b.store
+        .finish_sync(
+            id,
+            domain::ports::SyncOutcome {
+                due_at: row.next_sync_at,
+                cursors,
+                synced_at: Some(b.clock.now()),
+                next_sync_at: b.clock.now(),
+                last_error: None,
+            },
+        )
+        .await
+        .expect("old cursor");
+    let before = source.requests().len();
+    let ids = |hashes: &[(FarmRecordId, String)]| {
+        hashes
+            .iter()
+            .map(|(r, _)| r.to_string())
+            .collect::<Vec<_>>()
+    };
+    let stored = b
+        .store
+        .record_hashes(id, vendors.clone())
+        .await
+        .expect("hashes");
+
+    b.run().await;
+    assert_eq!(
+        source.requests()[before].cursor,
+        None,
+        "read again from the start"
+    );
+    assert_eq!(b.embedder.texts(), 4, "both records embedded again");
+    let now = b.store.record_hashes(id, vendors).await.expect("hashes");
+    assert_eq!(ids(&now), ids(&stored), "the same records, not new ones");
+    assert_eq!(b.count(owner.1).await, 2);
+    let mut hashes: Vec<String> = now.into_iter().map(|(_, h)| h).collect();
+    hashes.sort();
+    let mut expected = vec![
+        chunk::text_hash("Maria in #C1\n\nRings on bed 3."),
+        chunk::text_hash("Maria in #C1\n\nAphids on bed 1."),
+    ];
+    expected.sort();
+    assert_eq!(hashes, expected);
+
+    // Once: the cursor now carries the version, and the next run embeds nothing.
+    b.clock.advance(SYNC_EVERY);
+    b.run().await;
+    assert_eq!(b.embedder.texts(), 4);
+}
+
 #[tokio::test]
 async fn a_shorter_document_drops_its_extra_chunks() {
     let long = Arc::new(Mutex::new(

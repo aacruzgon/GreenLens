@@ -751,6 +751,9 @@ pub const FARM_RECORD_HITS: usize = 8;
 /// messages outnumber Drive documents, and without a reserve they crowd the spray log out.
 pub const FARM_KIND_RESERVED: usize = 3;
 
+// Both kinds' reserves fit in the hits.
+const _: () = assert!(FARM_RECORD_HITS >= 2 * FARM_KIND_RESERVED);
+
 /// `search_farm_records(query, kind?, since?, until?, author?)` ([connectors 7]): the garden's
 /// synced Slack messages and Drive documents, closest first.
 #[derive(Debug)]
@@ -771,7 +774,8 @@ pub struct SearchFarmRecordsArgs {
     /// Records up to the end of this day, in the garden's time zone (YYYY-MM-DD).
     #[serde(default)]
     pub until: Option<LocalDate>,
-    /// Records whose author's name contains this, ignoring case ("Riley").
+    /// Slack messages whose author's name contains this, ignoring case ("Riley"). Drive
+    /// documents have no author, so this searches messages only.
     #[serde(default)]
     pub author: Option<String>,
 }
@@ -783,8 +787,11 @@ impl Tool for SearchFarmRecords {
         channels and Google Drive folder: field reports, spray logs, procedures. Each hit comes \
         with its title, author, time and link. Without `kind`, both are searched and each keeps \
         a few of the hits; for logs, plans and procedures, also search with `kind: \"document\"`. \
-        `since` and `until` are days in the garden's time zone, both included; `author` matches \
-        part of a name. Say what was applied and when, never a rate from a record.";
+        `since` and `until` are days in the garden's time zone, both included. `author` matches \
+        part of a name and searches Slack messages only. A Slack thread is one record with the \
+        author and time of its first message, so `author`, `since` and `until` don't find a \
+        reply by its own author or day. Say what was applied and when, never a rate from a \
+        record.";
     const LABEL: &'static str = "Checking the farm records";
     const KIND: ToolKind = ToolKind::Read;
     const DATA_KIND: DataKind = DataKind::FarmRecords;
@@ -796,6 +803,30 @@ impl Tool for SearchFarmRecords {
         args: SearchFarmRecordsArgs,
     ) -> Result<ToolOutput, ToolError> {
         let member = ctx.owner.membership();
+        if let (Some(since), Some(until)) = (args.since, args.until)
+            && until < since
+        {
+            return Err(ToolError::Rejected(
+                "`until` is before `since`: give the earlier day as `since`.".to_owned(),
+            ));
+        }
+        let author = args
+            .author
+            .as_deref()
+            .map(str::trim)
+            .filter(|a| !a.is_empty())
+            .map(str::to_owned);
+        // Drive documents carry no author, so an author searches Slack messages only.
+        let kind = match (args.kind, &author) {
+            (Some(FarmRecordKind::Document), Some(_)) => {
+                return Err(ToolError::Rejected(
+                    "`author` applies to Slack messages only: Drive documents have no author."
+                        .to_owned(),
+                ));
+            }
+            (None, Some(_)) => Some(FarmRecordKind::Message),
+            (kind, _) => kind,
+        };
         let (since, until) = if args.since.is_some() || args.until.is_some() {
             let garden = ctx
                 .deps
@@ -818,15 +849,9 @@ impl Tool for SearchFarmRecords {
         } else {
             (None, None)
         };
-        let author = args
-            .author
-            .as_deref()
-            .map(str::trim)
-            .filter(|a| !a.is_empty())
-            .map(str::to_owned);
         let query = embed(ctx, &args.query).await?;
         let filter = FarmRecordFilter {
-            kind: args.kind,
+            kind,
             since,
             until,
             author,
@@ -873,7 +898,8 @@ impl Tool for SearchFarmRecords {
 
 /// The hits of a search without `kind`, from each kind's closest (EON gap G16): each kind keeps
 /// its best `reserved` hits, or all it has when fewer; the slots left up to `total` go to the
-/// closest of the rest, whatever their kind. Closest first.
+/// closest of the rest, whatever their kind. Closest first. A hit without a finite similarity
+/// (a zero vector's is NaN, which `total_cmp` would put first) is left out.
 pub fn merge_kinds(
     messages: Vec<FarmRecordMatch>,
     documents: Vec<FarmRecordMatch>,
@@ -885,6 +911,7 @@ pub fn merge_kinds(
     let mut chosen = Vec::with_capacity(total);
     let mut rest = Vec::new();
     for mut kind in [messages, documents] {
+        kind.retain(|m| m.similarity.is_finite());
         kind.sort_by(closest_first);
         let tail = kind.split_off(reserved.min(kind.len()));
         chosen.extend(kind);

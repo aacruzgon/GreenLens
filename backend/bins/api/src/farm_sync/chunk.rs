@@ -195,11 +195,12 @@ mod tests {
             embedded_text(" Spray log 2026 ", Some("  "), "Kocide 3000 on bed 3."),
             "Spray log 2026\n\nKocide 3000 on bed 3."
         );
-        // A file listed by name is its title once.
+        // A Drive file has no author (the adapter sets none), and one listed by name is its
+        // title once.
         let [named] = chunks(D, "", "Kocide 3000 label.pdf").try_into().unwrap();
         assert_eq!(
-            embedded_text("Kocide 3000 label.pdf", Some("Maria Lopez"), &named),
-            "Maria Lopez in Kocide 3000 label.pdf"
+            embedded_text("Kocide 3000 label.pdf", None, &named),
+            "Kocide 3000 label.pdf"
         );
         // A new author or title is a new hash, so the record is embedded again.
         let hash = |author| text_hash(&embedded_text("#field-reports", author, &chunk));

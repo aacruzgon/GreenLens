@@ -111,12 +111,17 @@ impl SourceState {
     /// The stored state; a cursor this module didn't write (none yet, or an older shape)
     /// starts afresh, which reads again but loses no record. So does a state from another
     /// [`EMBEDDED_TEXT_VERSION`]: the fresh pass returns every item, and each record's new hash
-    /// embeds it again (EON gap G12).
+    /// embeds it again (EON gap G12). It keeps `failing`, so a source that hasn't had its turn
+    /// since still holds the connector's `last_error`.
     pub fn parse(cursor: Option<&SyncCursor>) -> Self {
-        cursor
-            .and_then(|c| serde_json::from_str::<Self>(&c.0).ok())
-            .filter(|s| s.text_version == EMBEDDED_TEXT_VERSION)
-            .unwrap_or_default()
+        match cursor.and_then(|c| serde_json::from_str::<Self>(&c.0).ok()) {
+            Some(state) if state.text_version == EMBEDDED_TEXT_VERSION => state,
+            Some(older) => Self {
+                failing: older.failing,
+                ..Self::default()
+            },
+            None => Self::default(),
+        }
     }
 
     /// The state to store.
@@ -208,6 +213,15 @@ mod tests {
         let before = SyncCursor(r#"{"vendor":"p9","reread_at":"2026-10-15T12:00:00Z"}"#.into());
         assert_eq!(SourceState::parse(Some(&before)), SourceState::default());
         assert_eq!(SourceState::default().vendor_cursor(), None);
+        // A failing source stays failing until a page of it comes through.
+        let failing = SyncCursor(r#"{"vendor":"p9","failing":true}"#.into());
+        assert_eq!(
+            SourceState::parse(Some(&failing)),
+            SourceState {
+                failing: true,
+                ..SourceState::default()
+            }
+        );
         let current = SyncCursor(r#"{"text_version":1,"vendor":"p9"}"#.into());
         assert_eq!(
             SourceState::parse(Some(&current)).vendor_cursor(),

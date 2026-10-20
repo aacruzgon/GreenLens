@@ -525,6 +525,14 @@ mod search_farm_records {
             3,
         );
         assert_eq!(texts(&out), ["m-high", "d-mid", "m-low"]);
+        // A NaN similarity (a zero vector) is left out, not ranked first.
+        let out = merge_kinds(
+            vec![named("m-nan", 1, f32::NAN), named("m", 2, 0.5)],
+            vec![named("d-inf", 3, f32::INFINITY), named("d", 4, 0.4)],
+            8,
+            3,
+        );
+        assert_eq!(texts(&out), ["m", "d"]);
         assert_eq!(FARM_KIND_RESERVED, 3);
     }
 
@@ -573,13 +581,15 @@ mod search_farm_records {
             .withf(move |_, _, filter, _| {
                 let since: Timestamp = "2026-08-31T04:00:00Z".parse().unwrap();
                 let until: Timestamp = "2026-09-01T04:00:00Z".parse().unwrap();
-                filter.since == Some(since)
+                // Documents have no author: one search, of the messages.
+                filter.kind == Some(FarmRecordKind::Message)
+                    && filter.since == Some(since)
                     && filter.until == Some(until)
                     && filter.author.as_deref() == Some("Riley")
                     && since <= riley
                     && riley < until
             })
-            .times(2)
+            .times(1)
             .returning(|_, _, _, _| Ok(Vec::new()));
         let out = call(
             farm,
@@ -612,6 +622,9 @@ mod search_farm_records {
             json!({"query": "x", "since": "1 July"}),
             json!({"query": "x", "until": "31 August"}),
             json!({"query": "x", "author": 7}),
+            // `until` before `since`, and an author for documents, which have none.
+            json!({"query": "x", "since": "2026-09-01", "until": "2026-08-31"}),
+            json!({"query": "x", "author": "Maria", "kind": "document"}),
         ] {
             // No expectation: a search would panic the test.
             let err = call(MockFarmRecordStore::new(), args.clone())
