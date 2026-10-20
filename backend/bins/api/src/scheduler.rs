@@ -137,7 +137,7 @@ where
                 _ = ticks.tick() => {}
             }
             if let Err(error) = body(Arc::clone(&state)).await {
-                tracing::warn!(task = name, error = %error, "scheduled task failed");
+                tracing::warn!(task = name, error = %error.chain(), "scheduled task failed");
             }
         }
     });
@@ -277,7 +277,7 @@ async fn fetch_missing_weather(
                 weather.insert(result.cell, fetched);
             }
             Err(error) => {
-                tracing::warn!(cell = %result.cell, error = %error, "weather cell skipped");
+                tracing::warn!(cell = %result.cell, error = %crate::error::chain(&error), "weather cell skipped");
             }
         }
     }
@@ -438,7 +438,7 @@ pub async fn fetch_soil_profile(
         }
         Err(error) => {
             let wait = soil_retry_after(&error);
-            tracing::info!(%garden, error = %error, retry_in_s = wait.as_secs(), "SoilGrids failed; retried later");
+            tracing::info!(%garden, error = %crate::error::chain(&error), retry_in_s = wait.as_secs(), "SoilGrids failed; retried later");
             let retry_at = state.ports.clock.now().plus(wait);
             state
                 .ports

@@ -1,6 +1,6 @@
 # PDM Backend: `store` crate
 
-> **Status:** Draft v0.4.13, 2026-10-20. v0.4.13: the farm search filters by `until` (before the instant) and `author` (part of the display name, lowercased, never a record without one) beside `kind` and `since` (EON gap G12). v0.4.12: `begin` takes over a `running` idempotency key older than 10 minutes with a compare-and-set, and `deleting_connectors_of_user` lists a user's `deleting` connectors with no garden filter; `delete_expired_pending` takes a second cutoff and leaves a pending connector claimed since then. v0.4.11: `UPSERT_RECORDS` skips a record whose source is no longer among the connector's sources, in the same transaction; `SEED_CONNECTOR` repairs an existing connector of the garden (token, `status`, `last_error`). v0.4.10: the audit's fixes to the farm repository: creates bump `garden.connector_rev` so the limit holds under a race, Sync now refuses a connector stopped until new sources, a record stores its `source`, the 180-day cleanup takes Slack messages only (`farm_record_kind_at`), and `finish_sync` keeps a `next_sync_at` that moved during the run (`SyncOutcome::due_at`). v0.4.9: `FarmRecordStore` is implemented (roadmap E1.6): connectors with the 2-per-garden limit, the connect compare-and-set, the due query, **Sync now** as a compare-and-set on `sync_requested_at`, upserts that keep a vector only while its `text_hash` holds, deletes by item, chunk range and source, the exact search within one garden, record counts and the cleanup; plans and messages write and read `farm_records` and `farm_citations`, and rows from before them read as empty; 8 tests in `tests/farm.rs`. v0.4.8: the farm connectors' `connector` and `farm_record` tables are in the schema (with `sync_requested_at`, and `farm_records` and `farm_citations` on `action_plan` and `message`), the garden cascade deletes them before the garden, `garden_of` resolves a connector, `farm_record:[connector, vendor_id, n]` keys map to `FarmRecordId`, and `FarmRecordStore` is stubbed until roadmap E1.6. v0.4.7: `knowledge_meta` is in the schema, and an embedded-engine test loads the knowledge loader's output (work items M1, M6). v0.4.6: memories carry a `topic` and `belief_synced_at`, the `belief_forget` queue holds subjects to erase in Agent Memory (written by a shared memory's delete and by the plant and garden cascade starts), and `MemoryStore` gains the belief sweep's methods. v0.4.5: `label_set_version` follows `ml/models/FORMATS.md` (a SHA-256 over the BioCLIP revision, the 80 templates and the sorted labels) instead of an FNV-1a hash, and passes its test vector; open question 7 says so. v0.4.4: open question 4 is resolved: the vector search's bound `k` failed to parse on 3.3.4, so `search_chunks` writes it as a clamped literal, with a test on the embedded engine. v0.4.3: section 4 proposes the migration runner that applies the numbered migrations and the generated `knowledge.surql` after the schema, with its work items, tests and open questions. v0.4.2: the schema now lives at `backend/migrations/schema.surql` only, no longer a copy of a file in `docs/database`. v0.4.1: section 1 keeps only the `$now` difference from database 4, since the skills now follow this design; section 17 lists `TargetBinds`, which section 18 cites; research notes are no longer named by a path outside the repository. v0.4: the multi-line query listings are complete (a generator bug cut eight of them after their first line); the step-claim pair is described as conditional, as in database 4; the protected parameters are `auth`, `token`, `access` and `session`; a bound `$before` is overridden only in `RETURN`, and `Option` fails only from 2 ids; the closure-lifetime error has no code. v0.3: the account tombstone (`deleted_user`), SoilGrids retries, `live_lease`, and the store's `Notify` as the only claim wake-up (a requeue notifies too). v0.2: every repository method is real code (no `todo!()` left), reads decode straight into domain types through contract-shaped projections, and 12 more tests run on the embedded engine. v0.1: `SurrealStore`, which implements every repository of `domain::ports::store` and `MemoryStore` over SurrealDB 3.3.4, with every statement a named constant, one query per transaction with a conflict retry, one error classifier, and real code for each pattern that carries a guarantee, tested against the embedded 3.3.4 engine.
+> **Status:** Draft v0.4.15, 2026-10-20. v0.4.15: the user writes that set a species (`create_plant`, `confirm_species`, a new plant of `create_scan` and of `put_map`) `THROW 'unknown_species'` in their transaction for a species the knowledge base doesn't hold, answered as `Rejected(InvalidRequest)` at the request's field (`unknown_species`), with a test on the embedded engine; the plant projection reads a dangling species link as no species (open question 1). v0.4.14: `run_stage_events` reads a run's `run_started` and stage events in `seq` order (`RUN_STAGE_EVENTS`, a key-range read filtered by run and type), for the stage events a job's `complete` stands in for (backend roadmap gap 9), with a test on the embedded engine. v0.4.13: the farm search filters by `until` (before the instant) and `author` (part of the display name, lowercased, never a record without one) beside `kind` and `since` (EON gap G12). v0.4.12: `begin` takes over a `running` idempotency key older than 10 minutes with a compare-and-set, and `deleting_connectors_of_user` lists a user's `deleting` connectors with no garden filter; `delete_expired_pending` takes a second cutoff and leaves a pending connector claimed since then. v0.4.11: `UPSERT_RECORDS` skips a record whose source is no longer among the connector's sources, in the same transaction; `SEED_CONNECTOR` repairs an existing connector of the garden (token, `status`, `last_error`). v0.4.10: the audit's fixes to the farm repository: creates bump `garden.connector_rev` so the limit holds under a race, Sync now refuses a connector stopped until new sources, a record stores its `source`, the 180-day cleanup takes Slack messages only (`farm_record_kind_at`), and `finish_sync` keeps a `next_sync_at` that moved during the run (`SyncOutcome::due_at`). v0.4.9: `FarmRecordStore` is implemented (roadmap E1.6): connectors with the 2-per-garden limit, the connect compare-and-set, the due query, **Sync now** as a compare-and-set on `sync_requested_at`, upserts that keep a vector only while its `text_hash` holds, deletes by item, chunk range and source, the exact search within one garden, record counts and the cleanup; plans and messages write and read `farm_records` and `farm_citations`, and rows from before them read as empty; 8 tests in `tests/farm.rs`. v0.4.8: the farm connectors' `connector` and `farm_record` tables are in the schema (with `sync_requested_at`, and `farm_records` and `farm_citations` on `action_plan` and `message`), the garden cascade deletes them before the garden, `garden_of` resolves a connector, `farm_record:[connector, vendor_id, n]` keys map to `FarmRecordId`, and `FarmRecordStore` is stubbed until roadmap E1.6. v0.4.7: `knowledge_meta` is in the schema, and an embedded-engine test loads the knowledge loader's output (work items M1, M6). v0.4.6: memories carry a `topic` and `belief_synced_at`, the `belief_forget` queue holds subjects to erase in Agent Memory (written by a shared memory's delete and by the plant and garden cascade starts), and `MemoryStore` gains the belief sweep's methods. v0.4.5: `label_set_version` follows `ml/models/FORMATS.md` (a SHA-256 over the BioCLIP revision, the 80 templates and the sorted labels) instead of an FNV-1a hash, and passes its test vector; open question 7 says so. v0.4.4: open question 4 is resolved: the vector search's bound `k` failed to parse on 3.3.4, so `search_chunks` writes it as a clamped literal, with a test on the embedded engine. v0.4.3: section 4 proposes the migration runner that applies the numbered migrations and the generated `knowledge.surql` after the schema, with its work items, tests and open questions. v0.4.2: the schema now lives at `backend/migrations/schema.surql` only, no longer a copy of a file in `docs/database`. v0.4.1: section 1 keeps only the `$now` difference from database 4, since the skills now follow this design; section 17 lists `TargetBinds`, which section 18 cites; research notes are no longer named by a path outside the repository. v0.4: the multi-line query listings are complete (a generator bug cut eight of them after their first line); the step-claim pair is described as conditional, as in database 4; the protected parameters are `auth`, `token`, `access` and `session`; a bound `$before` is overridden only in `RETURN`, and `Option` fails only from 2 ids; the closure-lifetime error has no code. v0.3: the account tombstone (`deleted_user`), SoilGrids retries, `live_lease`, and the store's `Notify` as the only claim wake-up (a requeue notifies too). v0.2: every repository method is real code (no `todo!()` left), reads decode straight into domain types through contract-shaped projections, and 12 more tests run on the embedded engine. v0.1: `SurrealStore`, which implements every repository of `domain::ports::store` and `MemoryStore` over SurrealDB 3.3.4, with every statement a named constant, one query per transaction with a conflict retry, one error classifier, and real code for each pattern that carries a guarantee, tested against the embedded 3.3.4 engine.
 
 Companion to the [backend architecture](README.md), the [database notes](../database/README.md) (v1.4) and [`schema.surql`](../../backend/migrations/schema.surql). The ports it implements are in [domain 9](domain.md#9-boundary-traits). Every listing is copied from the compiled source of `crates/store` with the docgen tool: `cargo check -p store`, `cargo clippy -p store --all-targets` (clean) and `cargo test -p store` (7 unit tests and 25 tests against the embedded engine) pass on Rust 1.99.1 with `surrealdb = "=3.3.4"`.
 
@@ -333,7 +333,7 @@ pub async fn migrate_with(root: &Surreal<Any>, files: &[Migration]) -> Result<Ap
 - The embedded engine has no WebSocket, so only M7 checks the 64 MiB message cap.
 
 **Open questions.**
-1. **Removed knowledge records.** User records keep a plain link to a deleted species or problem. What should the app show for a plant whose species was removed: unknown, with a prompt to confirm it again? No reader handles a missing record yet.
+1. **Removed knowledge records.** User records keep a plain link to a deleted species or problem. The plant projection (`plant_fields!`) reads a species link to a missing record as no species, and the user writes that set a species (`create_plant`, `confirm_species`, a new plant of `create_scan` and of `put_map`) refuse one the knowledge base doesn't hold with `invalid_request` (`thrown::UNKNOWN_SPECIES`), so only the pipeline's suggestion or a later knowledge load can leave a dangling link. What should the app show for a plant whose species was removed: unknown, with a prompt to confirm it again? Links to a missing problem are still read as they are.
 2. **Memories after a text-model change.** The loader re-embeds chunks, but `memory.embedding` uses the same model and only `api` can re-embed it. A background job, or no model change once memories exist?
 3. **Stale photos.** `seed-upload` deletes photos no longer in the seed before the new `api` starts, so the old `api` can sign URLs to deleted photos for a short time. Delete only photos in neither the old nor the new seed, or delete after `api` is healthy?
 4. **Growth past 48 MiB.** Split the knowledge file by table (losing one transaction for the whole set), apply it over HTTP `/import` (limits *unverified*), or keep chunks out of Git?
@@ -453,6 +453,18 @@ pub mod thrown {
     pub const INVALID_STATE: &str = "invalid_state";
     /// A map upload pins plants that aren't the garden's.
     pub const UNKNOWN_PLANTS: &str = "unknown_plants";
+    /// A user's write names a species the knowledge base doesn't hold.
+    pub const UNKNOWN_SPECIES: &str = "unknown_species";
+}
+
+/// What [`thrown::UNKNOWN_SPECIES`] answers: `400 invalid_request` at the request's `field`
+/// ([contracts 2]). `option<record<species>>` doesn't check that the record exists, so the
+/// user writes that set a species check it in their transaction.
+pub fn unknown_species(field: &'static str) -> StoreError {
+    StoreError::Rejected(DomainError::invalid(
+        field,
+        "not a species of the knowledge base",
+    ))
 }
 
 /// What one failed statement means, before the caller adds context.
@@ -591,7 +603,7 @@ impl DbFailure {
 }
 ```
 
-A caller that knows more maps first: the plan write turns `stale_plan` and the `action_plan_version` unique index into `StalePlan { current }` by reading the plan that won (section 13); the map upload turns `stale_map` into `StaleMap { current_version }` and `unknown_plants` into `Rejected(UnknownPlants { plant_ids })` (section 9); `create_scan` turns `budget_exceeded` into `Rejected(BudgetExceeded)` with the next UTC midnight (section 10); alert dedupe and `upsert_user` treat their unique index as success (sections 13, 8).
+A caller that knows more maps first: the plan write turns `stale_plan` and the `action_plan_version` unique index into `StalePlan { current }` by reading the plan that won (section 13); the map upload turns `stale_map` into `StaleMap { current_version }` and `unknown_plants` into `Rejected(UnknownPlants { plant_ids })` (section 9); `create_scan` turns `budget_exceeded` into `Rejected(BudgetExceeded)` with the next UTC midnight (section 10); `create_plant`, `confirm_species`, `create_scan` and `put_map` turn `unknown_species` into `Rejected(InvalidRequest)` at the request's field (`species_id`, `new_plant.species_id` or `pins`) through `unknown_species`; alert dedupe and `upsert_user` treat their unique index as success (sections 13, 8).
 
 A row that doesn't convert into its domain type is a `RowError`, reported as `StoreError::Query`: a bug or a schema drift, never a user error.
 
@@ -1281,7 +1293,8 @@ The centroid is `type::point([$lon, $lat])`: ✓ a `($lon, $lat)` literal doesn'
 
 ```rust
 /// `PUT /gardens/{id}/map` in one transaction ([database 4] ✓): the `base_version`
-/// check (`THROW` and nothing changes), unknown plants refused, pins of plants being
+/// check (`THROW` and nothing changes), unknown plants refused, new plants' species the
+/// knowledge base doesn't hold refused (`unknown_species`), pins of plants being
 /// deleted dropped, new plants created, the version incremented, the map written, older
 /// maps deleted, and every plant's `position` set or unset. Two concurrent uploads conflict
 /// on the garden row; the retry then fails the version check.
@@ -1290,6 +1303,7 @@ LET $g = (SELECT map_version FROM ONLY $garden WHERE deleting_at = NONE);
 IF $g = NONE { THROW 'not_found' };
 IF $g.map_version != $base { THROW 'stale_map' };
 IF array::len(array::filter($existing, |$p| array::len(SELECT VALUE id FROM $p WHERE garden = $garden) = 0)) > 0 { THROW 'unknown_plants' };
+IF array::len(array::filter(array::filter($new_plants, |$n| $n.species != NONE), |$n| array::len(SELECT VALUE id FROM $n.species) = 0)) > 0 { THROW 'unknown_species' };
 LET $dropped = (SELECT VALUE id FROM plant WHERE id IN $existing AND deleting_at != NONE);
 FOR $n IN $new_plants {
   CREATE $n.id SET garden = $garden, name = $n.name, species = $n.species,
@@ -1363,6 +1377,9 @@ impl MapRepo for SurrealStore {
                         .map_err(|e: RowError| e.into_store(WHAT))?,
                 }));
             }
+            Err(failure) if failure.thrown() == Some(thrown::UNKNOWN_SPECIES) => {
+                return Err(unknown_species("pins"));
+            }
             Err(failure) => return Err(failure.into_store(WHAT)),
         }
         self.current_map(editor.garden())
@@ -1396,6 +1413,7 @@ impl MapRepo for SurrealStore {
 | `create_scan` | `CREATE_SCAN`: the scan (and a new plant) with `UPSERT usage_daily … scans += 1` and the limit `THROW` in one transaction | [4, limits](../database/README.md#limits-and-counters-) ✓ |
 | `append_event` | `APPEND_EVENT`: the counter on the scan, the event at `scan_event:[scan, seq]` | [4, scan events](../database/README.md#scan-events-a-gap-free-seq-) ✓ |
 | `events_after` | `EVENTS_AFTER`: a key-range read, scoped to the proof's garden | [4, scan events](../database/README.md#scan-events-a-gap-free-seq-) ✓ |
+| `run_stage_events` | `RUN_STAGE_EVENTS`: the scan's key range filtered by run and type, no garden scope (`api`'s own read for a job it holds the lease of) | [pipeline 10](pipeline.md#10-events) |
 | `stream_state` | `STREAM_STATE`, with `step_claimed` from `pipeline_step != NONE` | [contracts 4](../architecture/contracts.md#when-the-stream-closes) |
 | `add_image` | `ADD_IMAGE`: the status, `deleting_at`, kind limit and question re-checked; a guided check and its `guided` job created; a question photo's first step and job | [contracts 3](../architecture/contracts.md#post-scansidimages) |
 | `remove_image`, `start_run`, `fail_scan`, `record_feedback` | `REMOVE_IMAGE`, `START_RUN`, `FAIL_SCAN`, `RECORD_FEEDBACK` | [contracts 3](../architecture/contracts.md#3-scan-rest-api) |
@@ -1423,6 +1441,12 @@ COMMIT;";
         "IF array::len(SELECT VALUE id FROM $scan WHERE garden = $garden AND deleting_at = NONE
       AND plant.deleting_at = NONE AND garden.deleting_at = NONE) = 0 { THROW 'not_found' };
 SELECT * FROM scan_event:[$scan, $after + 1]..=[$scan, ..];";
+
+    /// A run's `run_started` and stage events, for a job's `complete` ([contracts 5], partial
+    /// results): the scan's key range, filtered by run and type, in `seq` order. No garden
+    /// scope: `api` reads it for a job it holds the lease of. Statements: 0 `SELECT`.
+    pub const RUN_STAGE_EVENTS: &str = "SELECT * FROM scan_event:[$scan, 1]..=[$scan, ..]
+WHERE run = $run AND type IN ['run_started', 'stage_started', 'stage_completed'];";
 
     /// What the closing rule needs ([contracts 4], when the stream closes).
     pub const STREAM_STATE: &str = "SELECT status, open_question.status AS question_status, pipeline_step != NONE AS step_claimed,
@@ -1500,6 +1524,27 @@ impl EventRepo for SurrealStore {
             .collect()
     }
 
+    async fn run_stage_events(
+        &self,
+        scan: ScanId,
+        run: Run,
+    ) -> Result<Vec<ScanEventBody<Stored>>, StoreError> {
+        const WHAT: &str = "read a run's stage events";
+        let mut results = run_tx(&self.db, sql::RUN_STAGE_EVENTS, |q| {
+            q.bind(("scan", rid(&scan))).bind(("run", i64::from(run.0)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        let rows: Vec<EventRow> = results.take(0).map_err(|e| take_failed(WHAT, e))?;
+        rows.into_iter()
+            .map(|row| {
+                ScanEvent::try_from(row)
+                    .map(|e| e.body)
+                    .map_err(|e| e.into_store(WHAT))
+            })
+            .collect()
+    }
+
     async fn stream_state(&self, scan: ScanId) -> Result<StreamState, StoreError> {
         const WHAT: &str = "stream state";
         let mut results = run_tx(&self.db, sql::STREAM_STATE, |q| {
@@ -1525,10 +1570,12 @@ impl EventRepo for SurrealStore {
 ```rust
 /// `POST /scans`: the scan (and the new plant), counted in `usage_daily` in the same
 /// transaction ([database 4], limits ✓: `+=` on a missing record starts from the default,
-/// and the `THROW` over 30 rolls the scan back). Statements: 0 `BEGIN`, 1 the plant `IF`,
-/// 2 `CREATE` scan, 3 `LET $count`, 4 the limit `IF`, 5 the scan read, 6 `COMMIT`.
+/// and the `THROW` over 30 rolls the scan back). A new plant's species must be one the
+/// knowledge base holds (`unknown_species`). Statements: 0 `BEGIN`, 1 the plant `IF`, 2
+/// `CREATE` scan, 3 `LET $count`, 4 the limit `IF`, 5 the scan read, 6 `COMMIT`.
 pub const CREATE_SCAN: &str = "BEGIN;
 IF $new_plant != NONE {
+  IF $new_plant.species != NONE { IF array::len(SELECT VALUE id FROM $new_plant.species) = 0 { THROW 'unknown_species' } };
   CREATE $plant SET garden = $garden, name = $new_plant.name, species = $new_plant.species,
     species_status = IF $new_plant.species != NONE { 'confirmed' } ELSE { 'unknown' }, created_at = $now;
 } ELSE IF array::len(SELECT VALUE id FROM $plant WHERE garden = $garden AND deleting_at = NONE) = 0 {
@@ -2859,6 +2906,7 @@ The store returns the domain's `StoreError` ([domain 6](domain.md#6-errors)); `a
 |---|---|
 | `schema_applies_twice` | The v1.4 schema is idempotent |
 | `concurrent_appends_are_gap_free_and_replay_by_range` | 40 appends on a **multi-thread** runtime (conflicts don't happen on a current-thread one, research `surrealdb.md` §3) commit exactly `seq` 1…40; the replay after 35 returns 36…40 with the body decoded |
+| `run_stage_events_reads_one_runs_stage_events_in_order` | A run's `run_started` and stage events come back in `seq` order across `seq` 10, without a `status_changed` or another run's events; a run without events reads empty |
 | `plan_compare_and_set` | A first plan; a second "first plan" gets `StalePlan { current: v1 }` and nothing of it is stored; v2 over v1 dismisses v1's open task with `plan_superseded` |
 | `job_claim_slots_requeue_and_fallback_hold` | The claim, `started_analysing`, a full slot, the heartbeat, the requeue of an expired lease (a free requeue), the fallback held back from a photo answer's segmentation job while the perception worker is alive and taking it 31 s after its last heartbeat, with `max_runtime` doubled |
 | `step_claim_commit_and_sweep` | The claim and `Busy`; `retrieve` queues its job and hands over to `score` because of `rescore_pending`; the same claim can't commit twice; the sweep re-claims once; the slow original's commit loses; a claim of an older run never commits |

@@ -1,0 +1,22 @@
+# Caddy fronts api in every ingress case (docs/infra/README.md section 5).
+# CADDY_SITE is ":80" behind an ingress profile and "api.<domain>" on a VM (Caddy then gets a
+# Let's Encrypt certificate, stored in the caddy-data volume).
+{
+	servers {
+		trusted_proxies static private_ranges   # the ingress sidecar connects from the compose network
+	}
+}
+
+{$CADDY_SITE} {
+	reverse_proxy api:8080
+	log {
+		output stdout
+		# A signed image URL's sig is a 15-minute credential: never logged (rust-tracing's rule for api).
+		format filter {
+			request>uri query {
+				replace sig REDACTED
+			}
+			wrap json
+		}
+	}
+}

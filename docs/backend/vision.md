@@ -1885,6 +1885,9 @@ pub fn tile_origins(size: (u32, u32), tile: u32, stride: u32) -> Vec<(u32, u32)>
 
 /// Blurs each (already grown) box in place with a Gaussian of sigma = a quarter of the box's
 /// longer side, strong enough not to be reversible. Pixels outside the boxes are untouched.
+///
+/// `fast_blur` (three box passes) costs the same at any sigma. `imageops::blur` convolves
+/// directly, at a cost proportional to sigma: one large box on a 12 MP photo took 48 s.
 pub fn blur_faces(image: &mut RgbImage, faces: &[FaceBox]) {
     let size = image.dimensions();
     for face in faces {
@@ -1894,7 +1897,7 @@ pub fn blur_faces(image: &mut RgbImage, faces: &[FaceBox]) {
         }
         let sigma = (r.w.max(r.h) as f32 / 4.0).max(2.0);
         let region = imageops::crop_imm(image, r.x, r.y, r.w, r.h).to_image();
-        let blurred = imageops::blur(&region, sigma);
+        let blurred = imageops::fast_blur(&region, sigma);
         imageops::replace(image, &blurred, i64::from(r.x), i64::from(r.y));
     }
 }

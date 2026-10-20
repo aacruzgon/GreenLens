@@ -396,6 +396,9 @@ pub fn tile_origins(size: (u32, u32), tile: u32, stride: u32) -> Vec<(u32, u32)>
 
 /// Blurs each (already grown) box in place with a Gaussian of sigma = a quarter of the box's
 /// longer side, strong enough not to be reversible. Pixels outside the boxes are untouched.
+///
+/// `fast_blur` (three box passes) costs the same at any sigma. `imageops::blur` convolves
+/// directly, at a cost proportional to sigma: one large box on a 12 MP photo took 48 s.
 pub fn blur_faces(image: &mut RgbImage, faces: &[FaceBox]) {
     let size = image.dimensions();
     for face in faces {
@@ -405,7 +408,7 @@ pub fn blur_faces(image: &mut RgbImage, faces: &[FaceBox]) {
         }
         let sigma = (r.w.max(r.h) as f32 / 4.0).max(2.0);
         let region = imageops::crop_imm(image, r.x, r.y, r.w, r.h).to_image();
-        let blurred = imageops::blur(&region, sigma);
+        let blurred = imageops::fast_blur(&region, sigma);
         imageops::replace(image, &blurred, i64::from(r.x), i64::from(r.y));
     }
 }
@@ -482,5 +485,24 @@ mod tests {
         blur_faces(&mut img, &[fb(0.25, 0.25, 0.25, 0.25)]);
         assert_eq!(img.get_pixel(2, 2), before.get_pixel(2, 2));
         assert_ne!(img.get_pixel(24, 24), before.get_pixel(24, 24));
+    }
+
+    #[test]
+    fn a_large_box_is_flattened() {
+        // A face filling most of a photo: the checkerboard inside the box must be gone.
+        let mut img = RgbImage::from_fn(1200, 900, |x, y| {
+            image::Rgb(if (x / 4 + y / 4) % 2 == 0 {
+                [255; 3]
+            } else {
+                [0; 3]
+            })
+        });
+        blur_faces(&mut img, &[fb(0.1, 0.1, 0.8, 0.8)]);
+        let inside: Vec<u8> = (300..600)
+            .flat_map(|y| (300..900).map(move |x| (x, y)))
+            .map(|(x, y)| img.get_pixel(x, y)[0])
+            .collect();
+        let (lo, hi) = (inside.iter().min().unwrap(), inside.iter().max().unwrap());
+        assert!(hi - lo < 16, "the box still has contrast {lo}..{hi}");
     }
 }

@@ -1,0 +1,178 @@
+# The control plane (docs/infra/README.md section 4): SurrealDB, RustFS, api, the fallback worker,
+# Caddy and an ingress sidecar. Run it from the host's checkout with the env files of section 6:
+#   docker compose -f infra/control-plane.compose.yml --env-file /srv/pdm/env/.env.compose up -d
+# Secrets come from ${PDM_ENV}/.env.<service>; .env.compose holds only digests and host settings.
+# First time on a host: infra/bootstrap/ (infra section 7) after `up -d surrealdb rustfs`.
+name: pdm
+x-logging: &logging
+  driver: json-file
+  # The live file up to 10 MB, plus four rotated files gzipped (compress): from about 12 MB per container.
+  options: { max-size: "10m", max-file: "5", compress: "true" }
+x-hardened: &hardened
+  read_only: true
+  tmpfs: ["/tmp:size=512m"]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+services:
+  surrealdb-volume:                 # database 1: gives the volume to UID 65532, then exits, with only CHOWN and no network
+    image: busybox:1.38.0@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e
+    command: ["chown", "65532:65532", "/data"]
+    volumes: ["surrealdb-data:/data"]
+    restart: "no"
+    network_mode: none              # it runs as root, so nothing else
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN]                # cap_drop ALL alone: "Operation not permitted"
+    security_opt: ["no-new-privileges:true"]
+  surrealdb:
+    image: surrealdb/surrealdb:v3.3.4@sha256:649a60a3b9c0177d9923c938e1c2563e48cde2a9d06ac2c0519714be719b02af
+    restart: unless-stopped
+    depends_on: { surrealdb-volume: { condition: service_completed_successfully } }
+    command: start --log info rocksdb:/data/db
+    env_file: ${PDM_ENV:-/srv/pdm/env}/.env.surrealdb    # SURREAL_USER, SURREAL_PASS: the root user, created on first start
+    environment:
+      SURREAL_ROCKSDB_BLOCK_CACHE_SIZE: "536870912"      # 512 MiB; the default is half of memory minus 1 GiB
+    ports: ["127.0.0.1:${SURREAL_HOST_PORT:-8000}:8000"] # host-only, for backups
+    volumes: ["surrealdb-data:/data"]
+    healthcheck:
+      test: ["CMD", "/surreal", "is-ready", "--endpoint", "http://127.0.0.1:8000"]   # distroless image, no curl
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    logging: *logging
+    networks: [data]
+    stop_grace_period: 60s          # stops after api (reverse dependency order)
+  rustfs:
+    image: rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
+    restart: unless-stopped         # memory creeps up on single-disk nodes (storage caveat 3)
+    security_opt: ["no-new-privileges:true"]
+    env_file: ${PDM_ENV:-/srv/pdm/env}/.env.rustfs       # RUSTFS_ACCESS_KEY, RUSTFS_SECRET_KEY: the root identity
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_REGION: us-east-1
+      RUSTFS_CONSOLE_ENABLE: "false"
+      RUSTFS_CHECK_UPDATE: "false"
+      RUSTFS_OBS_LOGGER_LEVEL: info
+      RUSTFS_OBS_LOG_STDOUT_ENABLED: "true"
+    ports: ["127.0.0.1:${RUSTFS_HOST_PORT:-9000}:9000"]  # host-only, for the admin CLI and backups
+    volumes: ["rustfs-data:/data", "rustfs-logs:/logs"]  # the image runs as UID 10001
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    logging: *logging
+    networks: [data]
+    stop_grace_period: 60s
+  seed-upload:                      # S2 (infra roadmap 11): its image doesn't exist in S1, so the service sits behind the `seed` profile
+    profiles: [seed]
+    image: ${SEED_UPLOAD_IMAGE:-seed-upload:unset}       # ghcr.io/aacruzgon/greenlens/seed-upload@sha256:…
+    restart: "no"
+    <<: *hardened
+    env_file: [{ path: "${PDM_ENV:-/srv/pdm/env}/.env.seed", required: false }]   # PDMSEED01's keys
+    depends_on: { rustfs: { condition: service_healthy } }
+    networks: [data]
+    logging: *logging
+  model-fetch:                      # vision 6: fills the models volume, then exits
+    image: python:3.12-slim-trixie@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+    restart: "no"
+    <<: *hardened
+    # fetch.py is standard-library only and runs as a script; it needs no `ml` package on the path.
+    command: ["python", "/src/fetch.py", "--manifest", "/src/manifest.toml", "--sources", "/src/sources.toml",
+              "--for", "api,fallback", "--dest", "/models"]
+    env_file: ${PDM_ENV:-/srv/pdm/env}/.env.models      # HF_TOKEN, read-only, pdm-models only
+    volumes: ["../ml/models:/src:ro", "models:/models"]
+    networks: [edge]
+    logging: *logging
+  api:
+    image: ${API_IMAGE:?}
+    restart: unless-stopped
+    <<: *hardened
+    env_file: ${PDM_ENV:-/srv/pdm/env}/.env.api
+    environment: { MODELS_DIR: /models }                 # api doesn't read ORT_EP (config.rs), so it isn't set here
+    volumes: ["models:/models:ro"]
+    depends_on:
+      model-fetch: { condition: service_completed_successfully }
+      surrealdb: { condition: service_healthy }
+      rustfs: { condition: service_healthy }
+      # Waits for the knowledge photos once the `seed` profile is on (S2); without it, S1 starts without them.
+      seed-upload: { condition: service_completed_successfully, required: false }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 60s             # schema, migrations and the knowledge index load first
+    stop_grace_period: 190s         # architecture 12; backend 12
+    networks: [edge, data]
+    logging: *logging
+  fallback-worker:
+    image: ${WORKER_IMAGE:?}
+    restart: unless-stopped
+    <<: *hardened
+    command: ["--caps", "fallback"]
+    env_file: ${PDM_ENV:-/srv/pdm/env}/.env.fallback    # WORKER_TOKEN, LLM_API_KEY
+    environment: { WORKER_ID: cp-fallback-1, API_BASE_URL: "http://api:8080", MODEL_MANIFEST: /models/manifest.toml }
+    volumes: ["models:/models:ro"]
+    depends_on: { api: { condition: service_healthy } }  # api already waited for model-fetch
+    stop_grace_period: 30s          # DRAIN_SECONDS (20) + 10 s, worker 12
+    networks: [edge]
+    logging: *logging
+  perception-stub-worker:           # S1 only (ST6): answers perception jobs with fixed output so the pipeline runs end to end
+    profiles: [stub]                # S2 turns it off by dropping `stub` from COMPOSE_PROFILES
+    image: ${WORKER_IMAGE:?}
+    restart: unless-stopped
+    <<: *hardened
+    command: ["--caps", "perception", "--stub-vision"]
+    # WORKER_TOKEN, STUB_LABEL_SET_VERSION, STUB_CLASSIFIER_LABELS_VERSION. Its token is also in api's WORKER_TOKENS.
+    env_file: ${PDM_ENV:-/srv/pdm/env}/.env.stub
+    environment:
+      WORKER_ID: dev-stub-perception-1
+      API_BASE_URL: "http://api:8080"
+      PDM_ALLOW_STUB_VISION: "1"
+      # The kill check starts it slowed down so the kill lands mid-stage (worker 15.1.5):
+      #   STUB_STAGE_DELAY_MS=10000 docker compose ... up -d perception-stub-worker
+      STUB_STAGE_DELAY_MS: ${STUB_STAGE_DELAY_MS:-150}
+    depends_on: { api: { condition: service_healthy } }
+    stop_grace_period: 30s
+    networks: [edge]
+    logging: *logging
+  caddy:
+    image: caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+    restart: unless-stopped
+    environment: { CADDY_SITE: "${CADDY_SITE:?}" }       # api.example.org on a VM; :80 behind an ingress profile
+    ports: ["${CADDY_HTTP:-80}:80", "${CADDY_HTTPS:-443}:443"]   # host-only behind an ingress profile
+    volumes: ["./caddy/Caddyfile:/etc/caddy/Caddyfile:ro", "caddy-data:/data", "caddy-config:/config"]
+    depends_on: { api: { condition: service_healthy } }
+    networks: [edge]
+    logging: *logging
+  tailscale:                        # infra 5: Funnel, the default on the rig
+    profiles: [tailscale]
+    image: tailscale/tailscale:v1.104.1@sha256:87c55d6be56ad85b3d8bceca5f87f73de288c609131460dd1be1874c250cc41d
+    restart: unless-stopped
+    hostname: pdm-cp
+    env_file: ${PDM_ENV:-/srv/pdm/env}/.env.tailscale   # TS_AUTHKEY, used once to join the tailnet
+    environment:
+      TS_HOSTNAME: pdm-cp                                # the public URL is https://pdm-cp.<tailnet>.ts.net
+      TS_STATE_DIR: /var/lib/tailscale                   # keeps the node's identity across restarts
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_USERSPACE: "true"                               # the default; no /dev/net/tun, no added capabilities
+    volumes: ["tailscale-state:/var/lib/tailscale", "./ingress/tailscale:/config:ro"]   # a directory, so edits are picked up
+    depends_on: [caddy]
+    networks: [edge]
+    logging: *logging
+  cloudflared:                      # infra 5: needs a domain on Cloudflare
+    profiles: [cloudflare]
+    image: cloudflare/cloudflared:2026.10.1@sha256:a15a3b50b8dabd57ac2090e9484c0247dba9dfa1f0df4d298d4317f9d69eb2d5
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "--config", "/etc/cloudflared/config.yml", "run"]
+    volumes: ["./ingress/cloudflare/config.yml:/etc/cloudflared/config.yml:ro",
+              "${PDM_ENV:-/srv/pdm/env}/tunnel.json:/etc/cloudflared/tunnel.json:ro"]
+    depends_on: [caddy]
+    networks: [edge]
+    logging: *logging
+networks: { edge: {}, data: {} }
+volumes: { models: {}, surrealdb-data: {}, rustfs-data: {}, rustfs-logs: {}, caddy-data: {}, caddy-config: {}, tailscale-state: {} }

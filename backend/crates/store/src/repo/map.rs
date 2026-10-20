@@ -13,7 +13,7 @@ use surrealdb::types::{RecordId, SurrealValue};
 
 use crate::{
     SurrealStore,
-    error::{RowError, take_failed, thrown},
+    error::{RowError, take_failed, thrown, unknown_species},
     ids::{from_opt_rid, from_rid, opt_rid, rid},
     rows::{dt, from_json, to_json, ts, u32_of},
     tx::run_tx,
@@ -22,7 +22,8 @@ use crate::{
 /// The statements.
 pub mod sql {
     /// `PUT /gardens/{id}/map` in one transaction ([database 4] ✓): the `base_version`
-    /// check (`THROW` and nothing changes), unknown plants refused, pins of plants being
+    /// check (`THROW` and nothing changes), unknown plants refused, new plants' species the
+    /// knowledge base doesn't hold refused (`unknown_species`), pins of plants being
     /// deleted dropped, new plants created, the version incremented, the map written, older
     /// maps deleted, and every plant's `position` set or unset. Two concurrent uploads conflict
     /// on the garden row; the retry then fails the version check.
@@ -31,6 +32,7 @@ LET $g = (SELECT map_version FROM ONLY $garden WHERE deleting_at = NONE);
 IF $g = NONE { THROW 'not_found' };
 IF $g.map_version != $base { THROW 'stale_map' };
 IF array::len(array::filter($existing, |$p| array::len(SELECT VALUE id FROM $p WHERE garden = $garden) = 0)) > 0 { THROW 'unknown_plants' };
+IF array::len(array::filter(array::filter($new_plants, |$n| $n.species != NONE), |$n| array::len(SELECT VALUE id FROM $n.species) = 0)) > 0 { THROW 'unknown_species' };
 LET $dropped = (SELECT VALUE id FROM plant WHERE id IN $existing AND deleting_at != NONE);
 FOR $n IN $new_plants {
   CREATE $n.id SET garden = $garden, name = $n.name, species = $n.species,
@@ -254,6 +256,9 @@ impl MapRepo for SurrealStore {
                         .collect::<Result<_, _>>()
                         .map_err(|e: RowError| e.into_store(WHAT))?,
                 }));
+            }
+            Err(failure) if failure.thrown() == Some(thrown::UNKNOWN_SPECIES) => {
+                return Err(unknown_species("pins"));
             }
             Err(failure) => return Err(failure.into_store(WHAT)),
         }
