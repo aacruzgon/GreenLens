@@ -46,13 +46,16 @@ const RATE_UNIT: &str = r"(?:(?:us|u\.s\.|uk|imperial)\s+)?(?:litres?|liters?|l|
 /// words come before it (EON gap G13).
 const RATE_PHRASE: &str = r"(?:\b(?:per|each|every)\s+|/\s*)";
 
-/// What a rate is given per beside a volume, after `per` or `/` only (EON gap G19): a field
-/// measure (`hectare(s)`, `ha`, `acre(s)`, with an optional number before it), a container
-/// (`tank(s)`, `tankful(s)`, `backpack(s)`, `bucket(s)`, `watering can(s)`), or an area with a
-/// number ("100 m²", "100 m2", "10 square metres", "1,000 sq ft"). Not `each` or `every`, which
-/// garden advice uses ("water each plant", "after every tank"), and not an area without a number,
-/// which is spacing ("two plants per square metre", "four lettuces per square foot").
-const RATE_BASE: &str = r"(?:\bper\s+|/\s*)(?:(?:\d[\d.,]*\s*-?\s*)?(?:hectares?|ha|acres?)\b|(?:tanks?|tankfuls?|backpacks?|buckets?|watering\s+cans?)\b|(?:\d[\d.,]*|(?:a\s+)?(?:ten|hundred|thousand))\s*(?:m²|m2\b|ft²|ft2\b|sq\.?\s*(?:m|ft|feet|foot|yds?|yards?|metres?|meters?)\b|square\s+(?:metres?|meters?|feet|foot|yards?)\b))";
+/// What a rate is given per beside a volume (EON gap G19). After `per`: a field measure
+/// (`hectare(s)`, `ha`, `acre(s)`, optionally after a number, a fraction, `half` or `quarter`), a
+/// container (`tank(s)`, `spray tank(s)`, `tankful(s)`, `tankload(s)`, `backpack(s)`,
+/// `knapsack(s)`, `sprayer(s)`, `jerry can(s)`, `bucket(s)`, `watering can(s)`), or an area with a
+/// number ("100 m²", "100 m2", "10 square metres", "1,000 sq ft"). After `/`: only a field measure
+/// with no number before it or an area with a number, so "1/2 acre" and "rainwater/tank water"
+/// pass. Not `each` or `every`, which garden advice uses ("water each plant", "after every
+/// tank"), and not an area without a number, which is spacing ("two plants per square metre",
+/// "four lettuces per square foot").
+const RATE_BASE: &str = r"\bper\s+(?:(?:\d+\s*/\s*\d+\s*-?\s*|\d[\d.,]*\s*-?\s*|[½¼¾]\s*|(?:half|quarter)(?:\s+an?)?\s*-?\s*)?(?:hectares?|ha|acres?)\b|(?:spray\s+)?(?:tanks?|tankfuls?|tankloads?|backpacks?|knapsacks?|sprayers?|jerry[\s-]*cans?|buckets?|watering[\s-]+cans?)\b|(?:\d[\d.,]*|(?:a\s+)?(?:ten|hundred|thousand))\s*(?:m²|m2\b|ft²|ft2\b|sqm\b|sq\b\.?(?:\s*(?:m|ft|feet|foot|yds?|yards?|metres?|meters?)\b)?|square\s+(?:metres?|meters?|feet|foot|yards?)\b))|/\s*(?:hectares?|ha|acres?)\b|/\s*\d[\d.,]*\s*(?:m²|m2\b|ft²|ft2\b|sqm\b|sq\b\.?(?:\s*(?:m|ft|feet|foot)\b)?)";
 
 /// Which rule a text broke. The order is the order of contracts 7's list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -480,7 +483,18 @@ mod tests {
             "two scoops per 10 square metres",
             "a scoop per 100 square feet",
             "a bag per 1,000 sq ft",
+            "Use a bag per 100 sq. ft.",
+            "Use a bag per 1000 sq. m of lawn.",
+            "a bag per half an acre",
+            "a bag per ½ acre",
+            "a scoop per quarter hectare",
             "Use a capful per tank.",
+            "a capful per spray tank",
+            "a capful per tankload",
+            "a sachet per knapsack",
+            "a capful per sprayer",
+            "a capful per jerry can",
+            "a capful per watering-can",
             "a capful per tankful",
             "Per tank, add a capful.",
             "three capfuls per backpack",
@@ -521,6 +535,14 @@ mod tests {
             "The farm covers 12 hectares.",
             "The beds cover about 100 m² in all.",
             "Walk the field once per acre block.",
+            // `/` takes no number before a field measure and no container (audit of G19).
+            "Your plot is 1/2 acre.",
+            "A 1/4 acre lot is plenty for a family.",
+            "The field is 3/4 hectare.",
+            "Use rainwater/tank water if you can.",
+            "Water from a can/bucket at the base.",
+            "Two buckets of compost per bed are enough.",
+            "Two plants per m² is enough.",
             "I can't give you the rate per hectare.",
             "I can't give the amount per tank; follow the label.",
         ];
@@ -596,9 +618,16 @@ mod tests {
             // At most three words before the unit, no amount.
             "Rates per litre are on the label.",
             "DiPel's rate per litre is on its label.",
-            // A count per field measure (EON gap G19).
+            // A count per field measure or per area with a number: spacing and sampling or trap
+            // density (EON gap G19).
             "Scout a few rows per hectare.",
             "Set one trap per acre.",
+            "One tree per 20 m².",
+            "Run one sprinkler per 100 square feet.",
+            "Take one soil sample per hectare.",
+            "Keep one hive per acre.",
+            // A volume abbreviation as a URL's path segment, in a sentence with an amount.
+            "See https://example.org/pt/garden for a guide.",
         ] {
             assert_eq!(check(text), Some(DoseRule::Rate), "{text:?}");
         }
