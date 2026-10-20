@@ -748,3 +748,24 @@ async fn a_429_is_honoured_for_exactly_its_retry_after() {
     assert_eq!(result.unwrap().team_id, "T_MAPLE");
     assert_eq!(at, [Duration::ZERO, Duration::from_secs(7)]);
 }
+
+#[tokio::test]
+async fn an_already_revoked_token_counts_as_revoked() {
+    for code in ["token_revoked", "invalid_auth"] {
+        let server = answering("auth.revoke", refused(code)).await;
+        client(&server)
+            .auth_revoke(&token())
+            .await
+            .unwrap_or_else(|e| panic!("{code}: {e}"));
+    }
+    let server = answering("auth.revoke", ok(json!({ "ok": true, "revoked": true }))).await;
+    client(&server).auth_revoke(&token()).await.unwrap();
+    for code in ["account_inactive", "not_authed"] {
+        let server = answering("auth.revoke", refused(code)).await;
+        let error = client(&server).auth_revoke(&token()).await.unwrap_err();
+        assert!(
+            matches!(&error, FarmClientError::AuthRefused { code: c, .. } if c == code),
+            "{code}: {error:?}"
+        );
+    }
+}
