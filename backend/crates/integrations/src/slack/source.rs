@@ -376,8 +376,9 @@ impl SlackSource {
     /// whose last reply is within 30 days of the request's now. A thread whose `latest_reply` or
     /// `reply_count` moved is read in full and returned as an item; one Slack no longer has is
     /// forgotten, and one whose parent was deleted is forgotten and its record removed. A
-    /// failure other than a refused token ends the checks and keeps `probed` before the thread
-    /// that failed: the page stands.
+    /// failure other than a refused token ends the checks and moves `probed` past the thread
+    /// that failed, so a thread whose check keeps failing doesn't hold up the others (it comes
+    /// round again later): the page stands.
     async fn probe_older_threads(
         &self,
         token: &SecretString,
@@ -418,8 +419,11 @@ impl SlackSource {
                 Ok(check) => check,
                 Err(e @ FarmClientError::AuthRefused { .. }) => return Err(e),
                 Err(e) => {
-                    // The page stands; this thread is the first checked next time.
+                    // The page stands. The next check starts after this thread, so one that
+                    // keeps failing doesn't stop the others being checked; it comes round
+                    // again later.
                     tracing::debug!(error = %e, "older-thread checks stopped");
+                    cursor.probed = Some(ts);
                     break;
                 }
             };
@@ -1036,8 +1040,9 @@ mod threads {
         assert_eq!(page.items[0].vendor_id, format!("C_FIELD/{new}"));
         let cursor = Cursor::parse(Some(&page.cursor));
         assert_eq!(
-            cursor.probed, None,
-            "the failed thread is checked first next time"
+            cursor.probed.as_deref(),
+            Some(p1.as_str()),
+            "the next check starts after the thread that failed"
         );
         assert_eq!(cursor.threads, Cursor::parse(Some(&start)).threads);
 
@@ -1060,8 +1065,44 @@ mod threads {
             .expect("the page stands");
         assert_eq!(page.items.len(), 1, "only the new message");
         let cursor = Cursor::parse(Some(&page.cursor));
-        assert_eq!(cursor.probed, None);
+        assert_eq!(cursor.probed.as_deref(), Some(p1.as_str()));
         assert_eq!(cursor.threads, Cursor::parse(Some(&start)).threads);
+    }
+
+    #[tokio::test]
+    async fn a_thread_whose_check_keeps_failing_does_not_stop_the_others() {
+        let server = MockServer::start().await;
+        let (p1, p2, _, start) = two_due(&server).await;
+        let broken = p1.clone();
+        let fine = parent(&p2, 1, &days_ago(20));
+        let calls = replies_by(&server, move |ts, _| {
+            if ts == broken {
+                json!({ "ok": false, "error": "invalid_arguments" })
+            } else {
+                json!({ "ok": true, "messages": [fine] })
+            }
+        })
+        .await;
+        let source = source(&server);
+        let mut cursor = start;
+        for _ in 0..4 {
+            let mut one = request(Some(cursor));
+            one.probe_limit = 1;
+            let page = source.page(&token(), &one).await.expect("the page stands");
+            assert_eq!(page.probes, 1);
+            cursor = page.cursor;
+        }
+        let checked: Vec<String> = calls
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(ts, _)| ts.clone())
+            .collect();
+        assert_eq!(
+            checked,
+            [p1.clone(), p2.clone(), p1, p2],
+            "the failing thread and the other take turns"
+        );
     }
 
     #[tokio::test]
