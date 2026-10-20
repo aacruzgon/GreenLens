@@ -81,8 +81,9 @@ services:
     restart: "no"
     <<: *hardened
     # fetch.py is standard-library only and runs as a script; it needs no `ml` package on the path.
+    # MODEL_GROUPS adds `perception` on the host with the 3070 (the `perception` profile below).
     command: ["python", "/src/fetch.py", "--manifest", "/src/manifest.toml", "--sources", "/src/sources.toml",
-              "--for", "api,fallback", "--dest", "/models"]
+              "--for", "${MODEL_GROUPS:-api,fallback}", "--dest", "/models"]
     env_file: ${PDM_ENV:-/srv/pdm/env}/.env.models      # HF_TOKEN, read-only, pdm-models only
     volumes: ["../ml/models:/src:ro", "models:/models"]
     networks: [edge]
@@ -138,6 +139,22 @@ services:
       STUB_STAGE_DELAY_MS: ${STUB_STAGE_DELAY_MS:-150}
     depends_on: { api: { condition: service_healthy } }
     stop_grace_period: 30s
+    networks: [edge]
+    logging: *logging
+  perception-worker:                # S2 (infra 10): the RTX 3070 sits in this host (architecture open decision 2)
+    profiles: [perception]          # with MODEL_GROUPS=api,fallback,perception, so model-fetch brings its models
+    image: ${WORKER_CUDA_IMAGE:-worker-cuda:unset}       # ghcr.io/aacruzgon/greenlens/worker-cuda@sha256:…
+    restart: unless-stopped
+    <<: *hardened
+    command: ["--caps", "perception"]
+    env_file: ${PDM_ENV:-/srv/pdm/env}/.env.rig-3070-perception-1   # WORKER_TOKEN; also in api's WORKER_TOKENS
+    # ORT_EP=cuda and ORT_DYLIB_PATH come from the image.
+    environment: { WORKER_ID: rig-3070-perception-1, API_BASE_URL: "http://api:8080", MODEL_MANIFEST: /models/manifest.toml }
+    volumes: ["models:/models:ro"]
+    depends_on: { api: { condition: service_healthy } }  # api already waited for model-fetch
+    deploy: { resources: { reservations: { devices:
+      [{ driver: nvidia, device_ids: ["${GPU_3070_UUID:-unset}"], capabilities: [gpu] }] } } }
+    stop_grace_period: 30s          # DRAIN_SECONDS (20) + 10 s, worker 12
     networks: [edge]
     logging: *logging
   caddy:
