@@ -1,0 +1,97 @@
+# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
+# tomato_hornworms.review.md and signs reviewed_by and reviewed_at.
+id: tomato_hornworms
+name: Hornworms
+kind: pest
+affects:
+- tomato
+caused_by:
+- hornworm
+damage_patterns:
+- other
+prevalence: common
+indicators:
+- id: tomato_hornworms.leaves_stripped
+  text: Leaves are eaten away, and parts of the plant are quickly stripped bare.
+  question: Are parts of the plant stripped bare, with many leaves eaten away?
+  weight: 2
+  discriminating: true
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+- id: tomato_hornworms.large_green_caterpillar
+  text: A very large, fat, bright green caterpillar, about as thick as a thumb, is on the plant. It is
+    the same colour as the leaves, so it is hard to see.
+  question: Is there a large, fat, green caterpillar on the plant?
+  weight: 2
+  discriminating: true
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+  - leaf_closeup
+- id: tomato_hornworms.horn_on_rear_end
+  text: The caterpillar has a horn sticking out from its back end. The horn may be red and curved, or
+    black and straight, or green.
+  question: Does the caterpillar have a horn sticking out from its back end?
+  weight: 3
+  discriminating: true
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+  - leaf_closeup
+- id: tomato_hornworms.side_stripes_or_v_marks
+  text: The caterpillar has white slanted stripes or V-shaped marks along each side of its body.
+  question: Does the green caterpillar have white slanted stripes or V-shaped marks along its sides?
+  weight: 2
+  discriminating: false
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+  - leaf_closeup
+- id: tomato_hornworms.eggs_under_leaves
+  text: Smooth, round eggs, about 1.6 mm across, sit on the underside of leaves. They are light green
+    at first and turn white before hatching.
+  question: Are there tiny, smooth, round, pale green or white eggs on the underside of the leaf?
+  weight: 2
+  discriminating: false
+  where: leaf_underside
+  image_kinds:
+  - leaf_underside
+- id: tomato_hornworms.open_scars_on_fruit
+  text: In heavy infestations, fruit has large, open scars where the caterpillars ate the surface. They
+    do not bore inside. This is much less common than leaf loss.
+  question: Does the fruit have large, open, eaten scars on its surface?
+  weight: 1
+  discriminating: false
+  where: fruit
+  image_kinds:
+  - flower_fruit
+- id: tomato_hornworms.white_cocoons_on_back
+  text: Some caterpillars carry many small white projections on their backs. These are the cocoons of
+    tiny parasitic wasps.
+  question: Does the caterpillar have many small white bumps sticking up from its back?
+  weight: 2
+  discriminating: false
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+  - leaf_closeup
+conditions:
+  notes: No weather is given. Damage usually starts in midsummer and goes on until the end of the season.
+    Heavy egg laying is common in August and early September (South Carolina). Eggs hatch in about four
+    days, depending on temperature.
+looks_like: []
+treatments:
+- bt_hornworms
+- contact_insecticide_hornworms
+- handpick_hornworms
+- keep_plants_vigorous
+- leave_parasitized_hornworms
+- protect_natural_enemies
+- pyrethrin_hornworms
+- spinosad_hornworms
+sources:
+- clemson_hgic_tomato_insect_pests
+- isu_tomato_hornworm
+reviewed_by: ''
+reviewed_at: ''

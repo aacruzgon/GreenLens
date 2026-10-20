@@ -1,0 +1,97 @@
+# The knowledge sources (contracts §10, SourceSeed): one document each. `licence` records the
+# terms checked before ingesting it (architecture 5, licensing; open decision 7) and the credit
+# line the publisher asks for, which the app shows next to an excerpt. The seed keeps only short
+# verbatim excerpts, each linked back to `url`; the profiles state facts in our own words.
+#
+# Terms, as each publisher states them (checked 2026-10-20):
+# - Ontario (ontario.ca/page/copyright-information): "If credit is given and Crown copyright is
+#   acknowledged, the materials may be reproduced for non-commercial purposes if no changes are
+#   made to the original content." Commercial use needs a licence from the King's Printer.
+# - Iowa State University Extension and Outreach, Yard and Garden (each article's own note): may
+#   be republished without further permission "if published as written and if credit is given
+#   to the author, Yard and Garden, and Iowa State University Extension and Outreach".
+#   The how-to page "Growing Tomatoes in the Home Garden" carries no such note, only
+#   "© Iowa State University of Science and Technology": facts only, no wording committed.
+# - UF/IFAS EDIS (journals.flvc.org/edis/about): CC BY-NC-ND 4.0 "beginning with Volume 2024,
+#   Issue 1". Older articles: "Permission is granted to others to use these materials in part or
+#   in full for educational purposes, provided that full credit is given to the UF/IFAS, citing
+#   the publication, its source, and date of publication." Both used articles are older.
+# - Clemson HGIC: © Clemson University, no reuse grant found. Facts only (plan.yaml,
+#   facts_only_sources): the profiles cite it, but none of its wording is committed.
+#
+# GreenLens is a non-commercial student project, which these terms cover. If it is ever
+# commercialised, Ontario, EDIS and Clemson must be revisited (#46).
+
+# --- Ontario ---------------------------------------------------------------------------------
+- id: ontario_tomato_bacterial_diseases
+  title: "Bacterial diseases of tomato: bacterial spot, bacterial speck and bacterial canker"
+  publisher: Ontario Ministry of Agriculture, Food and Agribusiness
+  url: https://www.ontario.ca/page/bacterial-diseases-tomato-bacterial-spot-bacterial-speck-and-bacterial-canker
+  licence: "Crown copyright. Non-commercial reproduction without changes, with credit; commercial use needs a licence. Credit: Janice LeBoeuf, Mike Celetti, Diane Cuppels, Jim Dick, Ron Pitblado and Steve Loewen; Ontario Ministry of Agriculture, Food and Agribusiness. © King's Printer for Ontario, 2012–2026."
+  retrieved_at: 2026-10-19
+
+# --- Iowa State University Extension and Outreach, Yard and Garden ---------------------------
+- id: isu_septoria_leaf_spot
+  title: Septoria Leaf Spot
+  publisher: Iowa State University Extension and Outreach, Yard and Garden
+  url: https://yardandgarden.extension.iastate.edu/encyclopedia/septoria-leaf-spot
+  licence: "May be republished without further permission if published as written, with credit to the author, Yard and Garden, and Iowa State University Extension and Outreach. Credit: Lina M. Rodriguez Salamanca, Yard and Garden, Iowa State University Extension and Outreach."
+  retrieved_at: 2026-10-19
+- id: isu_bacterial_spot_pepper_tomato
+  title: Bacterial Spot of Pepper and Tomatoes
+  publisher: Iowa State University Extension and Outreach, Yard and Garden
+  url: https://yardandgarden.extension.iastate.edu/encyclopedia/bacterial-spot-pepper-and-tomatoes
+  licence: "May be republished without further permission if published as written, with credit to the author, Yard and Garden, and Iowa State University Extension and Outreach. Credit: Yard and Garden, Iowa State University Extension and Outreach."
+  retrieved_at: 2026-10-19
+- id: isu_two_spotted_spider_mite
+  title: Two-spotted Spider Mite
+  publisher: Iowa State University Extension and Outreach, Yard and Garden
+  url: https://yardandgarden.extension.iastate.edu/encyclopedia/two-spotted-spider-mite
+  licence: "May be republished without further permission if published as written, with credit to the author, Yard and Garden, and Iowa State University Extension and Outreach. Credit: Yard and Garden, Iowa State University Extension and Outreach."
+  retrieved_at: 2026-10-19
+- id: isu_tomato_hornworm
+  title: Tomato Hornworm
+  publisher: Iowa State University Extension and Outreach, Yard and Garden
+  url: https://yardandgarden.extension.iastate.edu/encyclopedia/tomato-hornworm
+  licence: "May be republished without further permission if published as written, with credit to the author, Yard and Garden, and Iowa State University Extension and Outreach. Credit: Yard and Garden, Iowa State University Extension and Outreach."
+  retrieved_at: 2026-10-19
+- id: isu_parasitic_wasps
+  title: Parasitic Wasps
+  publisher: Iowa State University Extension and Outreach, Yard and Garden
+  url: https://yardandgarden.extension.iastate.edu/encyclopedia/parasitic-wasps
+  licence: "May be republished without further permission if published as written, with credit to the author, Yard and Garden, and Iowa State University Extension and Outreach. Credit: Yard and Garden, Iowa State University Extension and Outreach."
+  retrieved_at: 2026-10-19
+- id: isu_growing_tomatoes_home_garden
+  title: Growing Tomatoes in the Home Garden
+  publisher: Iowa State University Extension and Outreach, Yard and Garden
+  url: https://yardandgarden.extension.iastate.edu/how-to/growing-tomatoes-home-garden
+  licence: "© Iowa State University of Science and Technology (the page's only notice). Unlike the Yard and Garden encyclopedia articles, this how-to page carries no republishing note, so it is used for facts only: cited by the tomato care profile, with no wording committed. Credit: Aaron Steil, Yard and Garden, Iowa State University Extension and Outreach (last reviewed April 2024)."
+  retrieved_at: 2026-10-20
+
+# --- UF/IFAS EDIS ----------------------------------------------------------------------------
+- id: edis_in307_twospotted_spider_mite
+  title: "Twospotted Spider Mite, Tetranychus urticae Koch (IN307)"
+  publisher: UF/IFAS Extension, EDIS
+  url: https://edis.ifas.ufl.edu/publication/IN307
+  licence: "EDIS terms for articles before Volume 2024: use in part or in full for educational purposes with full credit. Credit: Thomas R. Fasulo and H. A. Denmark, Twospotted Spider Mite, Tetranychus urticae Koch (EENY150/IN307), UF/IFAS Extension, EDIS, 2000, revised 2025, https://doi.org/10.32473/edis-in307-2000."
+  retrieved_at: 2026-10-19
+- id: edis_in286_sweetpotato_whitefly
+  title: "Sweetpotato Whitefly B Biotype, Bemisia tabaci (Gennadius) (EENY-129/IN286)"
+  publisher: UF/IFAS Extension, EDIS
+  url: https://edis.ifas.ufl.edu/publication/IN286
+  licence: "EDIS terms for articles before Volume 2024: use in part or in full for educational purposes with full credit. Credit: Heather J. McAuslane and Hugh A. Smith, Sweetpotato Whitefly B Biotype, Bemisia tabaci (Gennadius) (EENY-129/IN286), UF/IFAS Extension, EDIS, 2000, revised 2015, https://doi.org/10.32473/edis-in286-2002."
+  retrieved_at: 2026-10-20
+
+# --- Clemson HGIC (facts only: no wording committed) -----------------------------------------
+- id: clemson_hgic_tomato_diseases
+  title: "Tomato Diseases & Disorders (HGIC 2217)"
+  publisher: Clemson Cooperative Extension, Home & Garden Information Center
+  url: https://hgic.clemson.edu/factsheet/tomato-diseases-disorders/
+  licence: "© Clemson University. No reuse grant found: facts only, cited; no wording is committed."
+  retrieved_at: 2026-10-19
+- id: clemson_hgic_tomato_insect_pests
+  title: Tomato Insect Pests
+  publisher: Clemson Cooperative Extension, Home & Garden Information Center
+  url: https://hgic.clemson.edu/factsheet/tomato-insect-pests/
+  licence: "© Clemson University. No reuse grant found: facts only, cited; no wording is committed."
+  retrieved_at: 2026-10-19

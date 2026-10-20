@@ -1,0 +1,14 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: rotate_crops_3_years
+kind: cultural
+text: 'Use at least a 3-year rotation: grow tomatoes, or related crops such as potatoes, peppers and eggplant,
+  in the same spot only once every 3 years. In between, grow crops that do not get these diseases; corn
+  is a good choice. Many tomato diseases survive in old debris in the soil, and rotating keeps new plants
+  away from it. For bacterial speck and bacterial spot, 3 years should be enough if the old tomato debris
+  has been worked well into the top 15 cm of soil.'
+sources:
+- clemson_hgic_tomato_diseases
+- isu_bacterial_spot_pepper_tomato
+- isu_septoria_leaf_spot
+- ontario_tomato_bacterial_diseases

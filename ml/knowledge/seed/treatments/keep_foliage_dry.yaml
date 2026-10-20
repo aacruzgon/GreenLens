@@ -1,0 +1,12 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: keep_foliage_dry
+kind: cultural
+text: 'Keep the leaves dry. Water at the base of the plants, for example with drip or furrow irrigation,
+  rather than from above. If you must water from above, avoid doing it late in the day, and use low pressure
+  so less water splashes: splashing carries spores and bacteria from leaf to leaf. Try to keep the leaves
+  dry when you transplant, too.'
+sources:
+- clemson_hgic_tomato_diseases
+- isu_septoria_leaf_spot
+- ontario_tomato_bacterial_diseases

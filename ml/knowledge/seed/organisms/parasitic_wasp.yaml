@@ -1,0 +1,17 @@
+# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
+# parasitic_wasp.review.md and signs reviewed_by.
+id: parasitic_wasp
+name: Parasitic wasp
+scientific_name: Braconidae
+taxon_group: insect
+role: beneficial
+recognition: 'Adults are small to medium-sized wasps, usually brown or black, though size and colour vary
+  a lot. The easiest sign is on hornworms: small white projections sticking up from the caterpillar''s
+  back. These are the wasps'' pupal cases.'
+preys_on:
+- hornworm
+bioclip_label: Braconidae with common name parasitic wasp
+sources:
+- clemson_hgic_tomato_insect_pests
+- isu_parasitic_wasps
+reviewed_by: ''

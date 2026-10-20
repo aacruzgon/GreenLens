@@ -1,0 +1,77 @@
+# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
+# tomato_yellow_leaf_curl_virus.review.md and signs reviewed_by and reviewed_at.
+id: tomato_yellow_leaf_curl_virus
+name: Tomato yellow leaf curl virus
+kind: viral
+affects:
+- tomato
+caused_by: []
+damage_patterns: []
+prevalence: occasional
+indicators:
+- id: tomato_yellow_leaf_curl_virus.upward_leaf_curl
+  text: Leaves curl upward.
+  question: Do the leaves curl upward at the edges?
+  weight: 3
+  discriminating: true
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+- id: tomato_yellow_leaf_curl_virus.yellow_leaf_margins
+  text: Leaf edges turn yellow.
+  question: Are the edges of the leaves yellow?
+  weight: 3
+  discriminating: true
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+- id: tomato_yellow_leaf_curl_virus.small_leaves
+  text: Leaves are smaller than normal.
+  question: Are the leaves smaller than normal tomato leaves?
+  weight: 2
+  discriminating: true
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+- id: tomato_yellow_leaf_curl_virus.stunted_plant
+  text: The plant is stunted.
+  question: Is the plant short and stunted for a tomato plant?
+  weight: 2
+  discriminating: false
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+- id: tomato_yellow_leaf_curl_virus.flower_drop
+  text: Flowers drop off.
+  question: Are the flowers falling off the plant before fruit forms?
+  weight: 2
+  discriminating: false
+  where: fruit
+  image_kinds:
+  - flower_fruit
+  - whole_plant
+- id: tomato_yellow_leaf_curl_virus.no_fruit
+  text: Plants infected early in their growth may form no fruit.
+  question: Does the plant have no fruit at all?
+  weight: 1
+  discriminating: false
+  where: fruit
+  image_kinds:
+  - flower_fruit
+  - whole_plant
+conditions: {}
+looks_like: []
+treatments:
+- control_weeds_and_volunteers
+- fine_mesh_screen_greenhouse
+- oil_spray_whitefly_repellent
+- reflective_mulch_whiteflies
+- remove_crop_debris
+- remove_diseased_plants
+- resistant_cultivars_tylcv
+- soap_or_oil_spray
+sources:
+- clemson_hgic_tomato_diseases
+- edis_in286_sweetpotato_whitefly
+reviewed_by: ''
+reviewed_at: ''

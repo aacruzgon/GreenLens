@@ -1,0 +1,102 @@
+# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
+# tomato_early_blight.review.md and signs reviewed_by and reviewed_at.
+id: tomato_early_blight
+name: Early blight
+kind: fungal
+affects:
+- tomato
+caused_by: []
+damage_patterns: []
+prevalence: common
+indicators:
+- id: tomato_early_blight.brown_spots_older_leaves
+  text: Small brown spots appear first, mostly on the older, lower leaves.
+  question: Are there small brown spots on the lower, older leaves?
+  weight: 2
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+  - whole_plant
+- id: tomato_early_blight.concentric_rings_bullseye
+  text: As spots grow, dark rings form inside them in a bull's-eye or target pattern.
+  question: Do the brown spots have dark rings inside them, like a target?
+  weight: 3
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_early_blight.yellow_halo_around_spots
+  text: The leaf tissue around the spots often turns yellow, like a yellow halo.
+  question: Is the leaf yellow around the brown spots?
+  weight: 2
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_early_blight.spots_become_angular
+  text: Spots get bigger and become angular over time.
+  question: Are the larger brown spots angular, with straight edges, rather than round?
+  weight: 2
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_early_blight.much_foliage_killed
+  text: In hot, humid weather much of the foliage may be killed.
+  question: Are many of the leaves on the plant dead and brown?
+  weight: 1
+  discriminating: false
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+- id: tomato_early_blight.stem_lesion_collar_rot
+  text: Spots like the leaf spots can form on stems. Near the soil line they sometimes circle the stem
+    (collar rot).
+  question: Is there a dark spot circling the stem near the soil?
+  weight: 1
+  discriminating: false
+  where: stem
+  image_kinds:
+  - whole_plant
+- id: tomato_early_blight.large_fruit_lesion_rings
+  text: Fruit spots grow large, often covering nearly the whole fruit, and show rings like the leaf spots.
+  question: Does the fruit have a large dark spot with rings inside it?
+  weight: 2
+  discriminating: false
+  where: fruit
+  image_kinds:
+  - flower_fruit
+conditions:
+  notes: High temperature and humidity while spots are forming let the disease kill much of the foliage.
+    Between seasons it lives on in old infected plant bits in the soil, in seed, in self-sown tomatoes and in related
+    plants such as potato, eggplant and black nightshade.
+looks_like:
+- problem: tomato_bacterial_speck
+  how_to_tell: Bacterial speck makes black specks, usually no more than 2 mm across, with a yellow halo.
+    Early blight spots grow larger, become angular and show dark rings like a target. Early blight does
+    not make the small black fruit specks typical of speck.
+- problem: tomato_bacterial_spot
+  how_to_tell: Young early blight spots can look like bacterial spot. Look for the dark target-like rings
+    of early blight. Early blight does not make the small black fruit spots typical of bacterial spot.
+- problem: tomato_septoria_leaf_spot
+  how_to_tell: Septoria spots have light tan centres with tiny black dots, best seen with a hand lens.
+    Septoria rarely causes yellowing until spots are many. Early blight spots have dark rings like a target,
+    and they grow larger and angular over time.
+treatments:
+- clean_seed_and_transplants
+- control_weeds_and_volunteers
+- fungicide_early_blight
+- keep_foliage_dry
+- keep_plants_vigorous
+- mulch_around_plants
+- remove_infected_leaves
+- resistant_cultivars_early_blight
+- rotate_crops_3_years
+- space_plants_apart
+sources:
+- clemson_hgic_tomato_diseases
+- isu_septoria_leaf_spot
+- ontario_tomato_bacterial_diseases
+reviewed_by: ''
+reviewed_at: ''

@@ -1,0 +1,13 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: fungicide_late_blight
+kind: chemical
+text: Late blight spreads fast, carried by rain and wind from plant to plant and garden to garden, and
+  can kill all the leaves soon after the first spots. Fungicides work by stopping spores from growing,
+  so use one to protect healthy plants before the disease reaches them, not once it is bad. Use a fungicide
+  labelled for tomatoes that contains chlorothalonil, copper or mancozeb. Follow the label. It also says
+  how many days to wait between spraying and picking; wait at least that long before you harvest.
+sources:
+- clemson_hgic_tomato_diseases
+- isu_septoria_leaf_spot
+- ontario_tomato_bacterial_diseases

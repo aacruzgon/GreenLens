@@ -1,0 +1,16 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: remove_crop_debris
+kind: cultural
+text: 'At the end of the season, pull out the old tomato plants and remove as much plant debris as you
+  can from the garden; burn it or throw it away. Many tomato diseases survive the winter on old debris,
+  and old plants keep tomato yellow leaf curl virus and its whiteflies going between crops, so for that
+  virus remove the other plants that get it as well. Break up any debris you cannot remove: till the soil
+  well in autumn, or, for bacterial speck and bacterial spot, work it well into the top 15 cm of soil
+  so it breaks down quickly.'
+sources:
+- clemson_hgic_tomato_diseases
+- edis_in286_sweetpotato_whitefly
+- isu_bacterial_spot_pepper_tomato
+- isu_septoria_leaf_spot
+- ontario_tomato_bacterial_diseases

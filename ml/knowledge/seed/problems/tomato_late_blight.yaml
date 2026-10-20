@@ -1,0 +1,92 @@
+# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
+# tomato_late_blight.review.md and signs reviewed_by and reviewed_at.
+id: tomato_late_blight
+name: Late blight
+kind: fungal
+affects:
+- tomato
+caused_by: []
+damage_patterns: []
+prevalence: occasional
+indicators:
+- id: tomato_late_blight.dark_water_soaked_leaf_spots
+  text: Young leaf spots are small, dark and look water-soaked.
+  question: Are there small, dark spots on the leaf that look wet or soaked with water?
+  weight: 2
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_late_blight.spots_enlarge_quickly
+  text: The leaf spots quickly grow into large dark patches.
+  question: Are there large dark patches on the leaf, spreading over much of it?
+  weight: 2
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_late_blight.white_mould_underside_margins
+  text: White mould grows at the edges of the damaged areas on the underside of the leaves.
+  question: On the underside of the leaf, is there white, fuzzy mould along the edge of a dark patch?
+  weight: 2
+  discriminating: true
+  where: leaf_underside
+  image_kinds:
+  - leaf_underside
+- id: tomato_late_blight.leaves_brown_shrivelled
+  text: Leaves turn brown and shrivel. The plant can lose all its leaves within about two weeks of the
+    first symptoms.
+  question: Are many of the plant's leaves brown and shrivelled?
+  weight: 2
+  discriminating: false
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+- id: tomato_late_blight.stems_brown_shrivelled
+  text: Stems turn brown and shrivel.
+  question: Are the stems brown and shrivelled?
+  weight: 2
+  discriminating: false
+  where: stem
+  image_kinds:
+  - whole_plant
+- id: tomato_late_blight.shiny_dark_olive_fruit_lesions
+  text: Infected fruits get shiny, dark or olive-coloured patches, which may cover large areas of the
+    fruit.
+  question: Does the tomato fruit have shiny, dark or olive-green patches?
+  weight: 2
+  discriminating: false
+  where: fruit
+  image_kinds:
+  - flower_fruit
+- id: tomato_late_blight.rough_sunken_edge_fruit_lesions
+  text: Fruit patches become rough and are slightly sunken at the edges.
+  question: Are the patches on the fruit rough, with edges that are slightly sunken?
+  weight: 2
+  discriminating: false
+  where: fruit
+  image_kinds:
+  - flower_fruit
+conditions:
+  notes: Most damaging in cool, wet weather. The same source also says infection is ideal when days reach
+    about 24 to 26 °C and humidity is high. Rain and wind spread the spores between plants and gardens.
+looks_like:
+- problem: tomato_early_blight
+  how_to_tell: Early blight spots start on the older, lower leaves and grow dark rings inside them, like
+    a target. Late blight starts as small, dark spots that look soaked with water. They quickly grow into
+    large patches, with white mould at their edges on the underside of the leaf.
+treatments:
+- clean_seed_and_transplants
+- control_weeds_and_volunteers
+- fungicide_late_blight
+- keep_foliage_dry
+- no_compost_rotten_potatoes
+- remove_diseased_plants
+- resistant_cultivars_late_blight
+- site_morning_sun
+- space_plants_apart
+sources:
+- clemson_hgic_tomato_diseases
+- ontario_tomato_bacterial_diseases
+reviewed_by: ''
+reviewed_at: ''

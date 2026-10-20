@@ -1,0 +1,15 @@
+# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
+# predatory_mite.review.md and signs reviewed_by.
+id: predatory_mite
+name: Predatory mite
+scientific_name: Phytoseiulus persimilis
+taxon_group: mite
+role: beneficial
+recognition: A tiny mite, often red or orange, with longer legs than a spider mite. The front pair of
+  legs often points forward. It moves about quickly and is more active than the spider mites it hunts.
+preys_on:
+- two_spotted_spider_mite
+bioclip_label: Phytoseiulus persimilis with common name predatory mite
+sources:
+- edis_in307_twospotted_spider_mite
+reviewed_by: ''

@@ -1,0 +1,105 @@
+# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
+# tomato_bacterial_speck.review.md and signs reviewed_by and reviewed_at.
+id: tomato_bacterial_speck
+name: Bacterial speck
+kind: bacterial
+affects:
+- tomato
+caused_by: []
+damage_patterns: []
+prevalence: common
+indicators:
+- id: tomato_bacterial_speck.tiny_leaf_specks_size
+  text: Leaf specks are tiny, usually no more than 2 mm across, smaller than bacterial spot's leaf spots.
+  question: Are the spots on the leaf tiny specks, about 2 mm across or smaller?
+  weight: 3
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+  measure:
+    max: 2
+    quantity: lesion_diameter_mm
+    stat: median
+- id: tomato_bacterial_speck.black_leaf_specks
+  text: Black specks on the leaves.
+  question: Are there black specks on the leaves?
+  weight: 2
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_bacterial_speck.yellow_halo
+  text: A yellow halo usually surrounds each black leaf speck.
+  question: Is there a yellow ring around the black specks on the leaves?
+  weight: 2
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_bacterial_speck.specks_near_leaf_edges
+  text: Specks are often bunched near the leaf edges.
+  question: Are most of the black specks near the edges of the leaves?
+  weight: 2
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_bacterial_speck.leaf_distortion
+  text: Leaves with specks are sometimes distorted, because the infection stops the leaf from growing
+    evenly.
+  question: Are the leaves with specks bent, puckered or misshapen?
+  weight: 1
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_bacterial_speck.specks_merge_leaflets_die
+  text: When specks are many, they may run together and whole leaflets may die.
+  question: Have many specks run together and are whole leaflets dead?
+  weight: 1
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+  - whole_plant
+- id: tomato_bacterial_speck.stunted_seedlings
+  text: Badly infected seedlings may be stunted.
+  question: Is the young seedling small and stunted compared with healthy ones?
+  weight: 1
+  discriminating: false
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+- id: tomato_bacterial_speck.black_fruit_specks
+  text: Tiny pinpoint black specks on the fruit, only slightly raised and not scabby, often with a narrow
+    green to yellow ring. They sit on the surface and can be scraped off with a fingernail. Only young
+    green fruit gets infected, but the black specks stay after the fruit ripens.
+  question: Are there tiny pinpoint black specks on the tomato fruit that are only slightly raised, not
+    rough or scabby?
+  weight: 3
+  discriminating: true
+  where: fruit
+  image_kinds:
+  - flower_fruit
+conditions:
+  notes: Splashing water, wind-driven rain and storm mists spread the bacteria. Cool weather and stressed
+    plants, as in early plantings, make it worse. The bacteria enter through natural openings and through
+    wounds from wind-blown soil, insects, pruning, tools and handling.
+looks_like: []
+treatments:
+- avoid_handling_wet_plants
+- avoid_wounding_plants
+- clean_seed_and_transplants
+- control_weeds_and_volunteers
+- copper_preventive_bacterial
+- disinfect_tools_equipment
+- keep_foliage_dry
+- keep_plants_vigorous
+- remove_crop_debris
+- resistant_cultivars_pto_speck
+- rotate_crops_3_years
+sources:
+- ontario_tomato_bacterial_diseases
+reviewed_by: ''
+reviewed_at: ''

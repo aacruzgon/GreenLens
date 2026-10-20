@@ -1,0 +1,103 @@
+# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
+# tomato_septoria_leaf_spot.review.md and signs reviewed_by and reviewed_at.
+id: tomato_septoria_leaf_spot
+name: Septoria leaf spot
+kind: fungal
+affects:
+- tomato
+caused_by: []
+damage_patterns: []
+prevalence: common
+indicators:
+- id: tomato_septoria_leaf_spot.small_spot_size
+  text: The spots are small, about 3 to 6 mm across.
+  question: Are the spots small, only a few millimetres across?
+  weight: 2
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+  measure:
+    max: 6.4
+    min: 3.2
+    quantity: lesion_diameter_mm
+    stat: median
+- id: tomato_septoria_leaf_spot.many_round_spots
+  text: Many small, round spots on each affected leaf.
+  question: Does the leaf have many small round spots?
+  weight: 2
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_septoria_leaf_spot.tan_centre_dark_border
+  text: The spots have a light tan, beige or whitish centre with a dark brown border.
+  question: Do the spots have a pale tan or whitish centre with a dark edge?
+  weight: 3
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_septoria_leaf_spot.black_specks_in_centre
+  text: Tiny black specks (spore bodies) sit in the pale centre of older spots. A hand lens shows them
+    clearly.
+  question: Are there tiny black dots inside the pale centre of the spots?
+  weight: 3
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_septoria_leaf_spot.starts_on_lower_leaves
+  text: Spots start on the older, lower leaves near the ground, usually after the plant begins to set
+    fruit.
+  question: Are the spots mostly on the lower, older leaves near the ground?
+  weight: 2
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - whole_plant
+  - leaf_closeup
+- id: tomato_septoria_leaf_spot.spotted_leaves_yellow
+  text: Badly spotted leaves turn yellow, then brown, and wither. Yellowing is rare until the spots are
+    numerous.
+  question: Are the leaves with many spots turning yellow or brown?
+  weight: 2
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - whole_plant
+  - leaf_closeup
+- id: tomato_septoria_leaf_spot.lower_leaf_drop
+  text: Spotted leaves die and fall off, so the plant loses its leaves from the bottom up.
+  question: Have many lower leaves dropped off, leaving bare stems at the bottom of the plant?
+  weight: 2
+  discriminating: false
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+conditions:
+  temp_c:
+    max: 25
+    min: 20
+looks_like:
+- problem: tomato_bacterial_speck
+  how_to_tell: Bacterial speck makes small black spots on the fruit. Septoria does not infect fruit. Septoria
+    leaf spots have light tan centres with tiny black dots.
+- problem: tomato_bacterial_spot
+  how_to_tell: Bacterial spot makes small black spots on the fruit. Septoria does not infect fruit. Septoria
+    leaf spots have light tan centres with tiny black dots.
+treatments:
+- fungicide_preventive
+- keep_foliage_dry
+- mulch_around_plants
+- prune_and_stake_for_airflow
+- remove_crop_debris
+- remove_infected_leaves
+- rotate_crops_3_years
+- space_plants_apart
+sources:
+- clemson_hgic_tomato_diseases
+- isu_septoria_leaf_spot
+- ontario_tomato_bacterial_diseases
+reviewed_by: ''
+reviewed_at: ''

@@ -1,0 +1,17 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: soap_or_oil_spray
+kind: chemical
+text: 'If you need a spray, try insecticidal soap, horticultural oil or insecticidal oil labelled for
+  tomatoes first. They are the least toxic choice for people and the environment. They kill only the pests
+  they hit directly and leave nothing behind that keeps working, so cover the plant thoroughly, especially
+  the undersides of the leaves, where spider mites and whiteflies live and sprays reach them poorly. Because
+  they kill what they hit, they can also kill predatory mites and other helpful insects on the plant.
+  For whiteflies, spray early, before they build up to large numbers, and aim at the young whiteflies;
+  whiteflies resist many insecticides. Soap and oil can burn leaves: some varieties are more sensitive,
+  and weather, fertilisers and additives can raise the risk. Household soaps, detergents and kitchen oils
+  work less reliably. Follow the label.'
+sources:
+- edis_in286_sweetpotato_whitefly
+- edis_in307_twospotted_spider_mite
+- isu_two_spotted_spider_mite

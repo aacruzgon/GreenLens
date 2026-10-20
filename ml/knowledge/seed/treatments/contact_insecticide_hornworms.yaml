@@ -1,0 +1,10 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: contact_insecticide_hornworms
+kind: chemical
+text: If you need a spray, contact insecticides such as bifenthrin, cyhalothrin, cyfluthrin or permethrin
+  control hornworms. Insecticides can kill the helpful insects that also control hornworms, so use them
+  only when needed. Do not use permethrin on tomato varieties whose fruit is smaller than about 2.5 cm
+  across. Use a product labelled for tomatoes and follow its label.
+sources:
+- clemson_hgic_tomato_insect_pests

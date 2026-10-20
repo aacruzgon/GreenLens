@@ -1,0 +1,59 @@
+# Pest-control products the treatments name (contracts §10, ProductsSeed). The plan validator
+# matches each name inside a step's text, case-insensitively, plurals allowed, and treats a
+# broad-spectrum one as harmful to beneficial insects and mites.
+#
+# DRAFT, 2026-10-20 (review point 15): one entry per single ingredient or product type a
+# treatment names; an entry no treatment names is dropped. broad_spectrum is true for:
+# - the contact insecticides bifenthrin, cyhalothrin, cyfluthrin and permethrin (Clemson insect
+#   pests .15, which also tells gardeners to use insecticides only when necessary so as not to
+#   kill beneficial insects), malathion (ISU spider mite .4) and pyrethrin (Clemson .15). These
+#   are pyrethroids, an organophosphate and a pyrethrin, flagged as a class at review; no
+#   excerpt names the classes or says one of these products by name kills beneficials. Pyrethrin
+#   stands in the excerpt exactly as spinosad does, so the reviewer should confirm the split;
+# - insecticidal soap, insecticidal oil, horticultural oil and canola oil: ISU spider mite .4
+#   says soap and oil sprays kill the mites and insects they hit directly, which includes the
+#   predatory mites and insects on the plant. EDIS IN307 .10 calls them the least toxic choice
+#   for people, other non-target organisms and the environment, but does not say they spare
+#   predators, so they are flagged;
+# - beauveria bassiana and verticillium lecanii: EDIS IN286 .17 says they work against
+#   whiteflies "and other insects", not whiteflies alone.
+# false for: bacillus thuringiensis and spinosad (no excerpt says they harm beneficials;
+# Clemson .15 calls spinosad a natural product for caterpillars and thrips), and the
+# fungicides chlorothalonil, copper and mancozeb (no excerpt says they harm beneficials).
+# No excerpt names a carbamate, so none is listed; the neonicotinoids in IN286 .18 are for
+# commercial growers and no treatment names them. The reviewer checks these with the treatments.
+products:
+- name: bacillus thuringiensis
+  broad_spectrum: false
+- name: beauveria bassiana
+  broad_spectrum: true
+- name: bifenthrin
+  broad_spectrum: true
+- name: canola oil
+  broad_spectrum: true
+- name: chlorothalonil
+  broad_spectrum: false
+- name: copper
+  broad_spectrum: false
+- name: cyfluthrin
+  broad_spectrum: true
+- name: cyhalothrin
+  broad_spectrum: true
+- name: horticultural oil
+  broad_spectrum: true
+- name: insecticidal oil
+  broad_spectrum: true
+- name: insecticidal soap
+  broad_spectrum: true
+- name: malathion
+  broad_spectrum: true
+- name: mancozeb
+  broad_spectrum: false
+- name: permethrin
+  broad_spectrum: true
+- name: pyrethrin
+  broad_spectrum: true
+- name: spinosad
+  broad_spectrum: false
+- name: verticillium lecanii
+  broad_spectrum: true

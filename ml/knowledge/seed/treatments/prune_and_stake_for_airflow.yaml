@@ -1,0 +1,10 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: prune_and_stake_for_airflow
+kind: cultural
+text: Prune suckers and stake or trellis your plants so air moves through them and the leaves stay less
+  humid. Pruning cuts let bacteria in, so for bacterial spot prune only when the plants are dry.
+sources:
+- clemson_hgic_tomato_diseases
+- isu_septoria_leaf_spot
+- ontario_tomato_bacterial_diseases

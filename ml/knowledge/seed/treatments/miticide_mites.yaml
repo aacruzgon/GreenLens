@@ -1,0 +1,13 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: miticide_mites
+kind: chemical
+text: For heavy infestations, other sprays sold to home gardeners include malathion and permethrin. Use
+  them only when needed, since the predators of spider mites should be protected. Do not
+  use permethrin on tomato varieties whose fruit is smaller than about 2.5 cm across. Spider mites become
+  resistant to most miticides after repeated use, and most miticides do not kill eggs, so more than one
+  spray is needed. Use a product labelled for tomatoes and follow its label exactly.
+sources:
+- clemson_hgic_tomato_insect_pests
+- edis_in307_twospotted_spider_mite
+- isu_two_spotted_spider_mite

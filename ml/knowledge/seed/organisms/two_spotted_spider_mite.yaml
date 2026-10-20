@@ -1,0 +1,17 @@
+# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
+# two_spotted_spider_mite.review.md and signs reviewed_by.
+id: two_spotted_spider_mite
+name: Two-spotted spider mite
+scientific_name: Tetranychus urticae
+taxon_group: mite
+role: pest
+recognition: A tiny oval mite, about 0.4–0.5 mm long, barely visible without a hand lens. It is usually
+  green, greenish-yellow, whitish or almost see-through, with two dark spots on its body; some are brown
+  or orange-red. It sits mainly on the underside of leaves, often among fine silk webbing, on leaves with
+  pale speckles.
+bioclip_label: Tetranychus urticae with common name two-spotted spider mite
+sources:
+- clemson_hgic_tomato_insect_pests
+- edis_in307_twospotted_spider_mite
+- isu_two_spotted_spider_mite
+reviewed_by: ''

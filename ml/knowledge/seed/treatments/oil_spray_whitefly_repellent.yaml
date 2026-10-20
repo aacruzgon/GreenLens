@@ -1,0 +1,8 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: oil_spray_whitefly_repellent
+kind: chemical
+text: Spray a low-strength horticultural oil or canola oil. It repels whiteflies, reduces their feeding
+  and may reduce spread of the virus. Use a product labelled for tomatoes and follow its label.
+sources:
+- clemson_hgic_tomato_diseases

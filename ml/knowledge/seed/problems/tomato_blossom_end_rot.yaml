@@ -1,0 +1,56 @@
+# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
+# tomato_blossom_end_rot.review.md and signs reviewed_by and reviewed_at.
+id: tomato_blossom_end_rot
+name: Blossom-end rot
+kind: abiotic
+affects:
+- tomato
+caused_by: []
+damage_patterns: []
+prevalence: common
+indicators:
+- id: tomato_blossom_end_rot.water_soaked_blossom_end_spot
+  text: Water-soaked spots on the blossom end of the fruit.
+  question: Is there a wet-looking, soaked spot on the bottom tip of the fruit, the end away from the
+    stem?
+  weight: 2
+  discriminating: true
+  where: fruit
+  image_kinds:
+  - flower_fruit
+- id: tomato_blossom_end_rot.blossom_end_spot_black
+  text: The spots on the blossom end grow larger and turn black.
+  question: Is there a large black patch on the bottom tip of the fruit?
+  weight: 2
+  discriminating: true
+  where: fruit
+  image_kinds:
+  - flower_fruit
+- id: tomato_blossom_end_rot.secondary_rot
+  text: Rot from other decay organisms usually sets in on the damaged blossom end.
+  question: Does the dark patch on the bottom of the fruit look rotten or decayed?
+  weight: 2
+  discriminating: true
+  where: fruit
+  image_kinds:
+  - flower_fruit
+conditions:
+  notes: Favoured by big swings in soil moisture, rainy or cloudy weather with high humidity, and cool
+    temperatures, especially early in the season. Low soil calcium, root damage from hoeing or digging
+    near the plants, and too much ammonium nitrogen, potassium or magnesium fertiliser also raise the
+    risk.
+looks_like: []
+treatments:
+- avoid_excess_potassium_magnesium
+- calcium_nitrate_sidedress_no_ammonium
+- even_moisture_irrigation_mulch
+- gypsum_preplant_ber
+- gypsum_sidedress_rescue
+- plant_at_recommended_date_ber
+- remove_ber_fruit
+- resistant_cultivars_ber
+- soil_test_lime_ber
+sources:
+- clemson_hgic_tomato_diseases
+reviewed_by: ''
+reviewed_at: ''
