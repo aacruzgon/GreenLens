@@ -16,8 +16,9 @@ use secrecy::SecretString;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use api::{
+    connect::{ConnectVendors, Exchanged, VendorError},
     farm_sync::{FarmSources, FarmSync, RunEnd, SyncConfig},
-    sealing::{ConnectorKey, SealPurpose},
+    sealing::{ConnectorKey, SealPurpose, StoredTokens},
     wiring::UlidGen,
 };
 use domain::{
@@ -36,6 +37,7 @@ use domain::{
 use integrations::{
     anthropic::{AnthropicClient, AnthropicConfig, ModelIds},
     era_sim::ERA_TIMEOUT,
+    google_drive::{DriveClient, DriveConfig, DriveSource},
     http::{self, HttpConfig},
     slack::{SlackClient, SlackConfig, SlackSource},
 };
@@ -133,14 +135,61 @@ pub fn slack_source(client: &reqwest::Client, base: &str) -> Arc<dyn FarmSource>
     Arc::new(SlackSource::new(SlackClient::new(client.clone(), config)))
 }
 
-/// The Drive adapter, pointed at `ERA_GOOGLE_BASE`. Not wired in yet. Once the Drive sync
-/// (PR #82) merges, return `DriveSource::new(DriveClient::new(client, DriveConfig::era(base)))`
-/// here, and the harness also needs `api::connect` public (or re-exported), a stub
-/// `ConnectVendors` (Era's connectors have no OAuth) and `FarmSync::new`'s new `vendors`
-/// argument in [`sync`]. The harness then creates the Drive tenant and connector, syncs Drive's
-/// records, checks its journal and scores the Drive questions. Until then they are skipped.
-pub fn drive_source(_client: &reqwest::Client, _base: Option<&str>) -> Option<Arc<dyn FarmSource>> {
-    None
+/// `pageSize` of the Drive adapter's listings: production's.
+pub fn drive_page() -> u32 {
+    DriveConfig::default().page_size
+}
+
+/// The Drive adapter, pointed at `ERA_GOOGLE_BASE` when it is set, with the simulators'
+/// timeout.
+pub fn drive_source(client: &reqwest::Client, base: Option<&str>) -> Option<Arc<dyn FarmSource>> {
+    let config = DriveConfig {
+        timeout: ERA_TIMEOUT,
+        ..DriveConfig::era(base?)
+    };
+    Some(Arc::new(DriveSource::new(DriveClient::new(
+        client.clone(),
+        config,
+    ))))
+}
+
+/// The vendors' OAuth for the sync: Era's connectors hold a minted credential, not OAuth
+/// tokens, and the sync renews only `vendor` connectors, so nothing here is ever called. Each
+/// method fails, so a sync that started renewing an `era` connector would show it.
+struct NoOAuth;
+
+#[async_trait]
+impl ConnectVendors for NoOAuth {
+    async fn exchange(
+        &self,
+        kind: ConnectorKind,
+        _code: &str,
+        _pkce_verifier: Option<SecretString>,
+        _redirect_uri: &str,
+    ) -> Result<Exchanged, VendorError> {
+        Err(VendorError::NotConfigured(kind))
+    }
+
+    async fn refresh(
+        &self,
+        kind: ConnectorKind,
+        _tokens: &StoredTokens,
+        _force: bool,
+    ) -> Result<Option<StoredTokens>, VendorError> {
+        Err(VendorError::NotConfigured(kind))
+    }
+
+    async fn available_sources(
+        &self,
+        kind: ConnectorKind,
+        _tokens: &StoredTokens,
+    ) -> Result<Vec<ConnectorSource>, VendorError> {
+        Err(VendorError::NotConfigured(kind))
+    }
+
+    async fn revoke(&self, kind: ConnectorKind, _tokens: &StoredTokens) -> Result<(), VendorError> {
+        Err(VendorError::NotConfigured(kind))
+    }
 }
 
 /// Creates an `era` connector over `sources` with the tenant's minted credential, sealed like
@@ -192,7 +241,15 @@ pub async fn sync(
     connectors: usize,
 ) -> anyhow::Result<Vec<(ConnectorId, RunEnd)>> {
     let key = ConnectorKey::from_hex(KEY_HEX).map_err(|e| anyhow::anyhow!("key: {e:?}"))?;
-    let sync = FarmSync::new(store, embedder, clock, key, sources, SyncConfig::default());
+    let sync = FarmSync::new(
+        store,
+        embedder,
+        clock,
+        key,
+        Arc::new(NoOAuth),
+        sources,
+        SyncConfig::default(),
+    );
     let mut ends = Vec::new();
     for _ in 0..5 {
         let run = sync

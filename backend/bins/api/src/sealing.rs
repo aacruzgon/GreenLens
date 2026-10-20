@@ -195,6 +195,7 @@ fn associated_data(purpose: SealPurpose, connector: ConnectorId) -> String {
 /// [`seal`](Self::seal) writes the plain string exactly when there is no refresh token and no
 /// expiry; [`unseal`](Self::unseal) reads a value that starts with `{` as JSON, anything else
 /// as a plain token.
+#[derive(Clone)]
 pub struct StoredTokens {
     /// Slack's `xoxb-…` bot token, or Google's access token.
     pub access_token: SecretString,

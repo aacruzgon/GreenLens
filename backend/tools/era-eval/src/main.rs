@@ -16,13 +16,9 @@
 //!   --out era-eval.json
 //! ```
 //!
-//! Until the Drive adapter is wired in ([`bench::drive_source`]), only Slack is synced and the
-//! questions that need Drive are skipped. Wiring it in is more than one line once the Drive sync
-//! (PR #82) merges: `api::connect` must be public (or re-exported), the harness needs a stub
-//! `ConnectVendors` (Era's connectors have no OAuth), `FarmSync::new` takes a new `vendors`
-//! argument, and the source is `DriveSource::new(DriveClient::new(client,
-//! DriveConfig::era(base)))`. The plan-writer question (`target = "plan"`) waits on E5.4 and is
-//! reported as not measured.
+//! Drive is synced when `ERA_GOOGLE_BASE` is set; without it the questions that need Drive
+//! are skipped. The plan-writer question (`target = "plan"`) waits on E5.4 and is reported as
+//! not measured.
 //!
 //! [connectors 9.3]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#93-the-agent-evaluation
 
@@ -222,9 +218,9 @@ async fn evaluate(args: &Args, api_key: &SecretString) -> anyhow::Result<Report>
         bench::slack_source(&http, slack.base()),
     );
     let drive_base = std::env::var("ERA_GOOGLE_BASE").ok();
+    let drive_fixture = fixture(FIXTURE, "google-drive.json");
     if let Some(source) = bench::drive_source(&http, drive_base.as_deref()) {
-        let tenant =
-            Tenant::create(SimKind::Drive, Some(&fixture(FIXTURE, "google-drive.json"))).await;
+        let tenant = Tenant::create(SimKind::Drive, Some(&drive_fixture)).await;
         bench::connector(
             store.as_ref(),
             ids.as_ref(),
@@ -263,7 +259,10 @@ async fn evaluate(args: &Args, api_key: &SecretString) -> anyhow::Result<Report>
         journal::slack_expected(&slack_fixture, &CHANNELS, bench::SLACK_PAGE),
     );
     let drive_journal = match &drive {
-        Some(d) => Some(journal::check_drive(&d.requests().await)),
+        Some(d) => Some(journal::check_drive(
+            &d.requests().await,
+            journal::drive_expected(&drive_fixture, DRIVE_FOLDER, bench::drive_page()),
+        )),
         None => None,
     };
 

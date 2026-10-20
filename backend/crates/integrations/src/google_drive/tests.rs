@@ -541,6 +541,11 @@ async fn a_folder_lists_recursively_across_pages() {
     let ids: Vec<_> = listing.files.iter().map(|f| f.id.as_str()).collect();
     assert_eq!(ids, ["D_1", "S_1", "T_1", "P_1"]);
     assert_eq!(listing.folders, ["F_ROOT", "F_SUB"]);
+    assert_eq!(
+        listing.tree,
+        [("F_SUB".to_owned(), "F_ROOT".to_owned())],
+        "each folder found with the folder it was listed in"
+    );
     assert!(!listing.truncated);
     let kinds: Vec<_> = listing.files.iter().map(DriveFile::kind).collect();
     assert_eq!(

@@ -6,7 +6,7 @@
 
 mod broker;
 pub mod config;
-mod connect;
+pub mod connect;
 mod deletion;
 mod error;
 mod events;
