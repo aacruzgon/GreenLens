@@ -34,6 +34,9 @@ pub mod state;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod tests_era;
+
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,

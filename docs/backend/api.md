@@ -120,8 +120,9 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 domain = { workspace = true, features = ["mock", "test-util"] }
-# The farm sync's tests: the embedded engine (kv-mem, tests only).
+# The farm sync's tests: the embedded engine (kv-mem, tests only) and Era's harness.
 surrealdb = { workspace = true, features = ["kv-mem"] }
+integrations = { workspace = true, features = ["era-sim"] }
 http-body-util.workspace = true
 mockall.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
@@ -183,7 +184,8 @@ bins/api/src/
 │  ├─ chunk.rs       chunks of at most 2,000 characters and their text_hash
 │  ├─ state.rs       SourceState: a source's stored cursor around the adapter's own
 │  ├─ seed.rs        start-up seeding of the demo garden's era connectors
-│  └─ tests.rs       the sync on the embedded store with a scripted source
+│  ├─ tests.rs       the sync on the embedded store with a scripted source
+│  └─ tests_era.rs   the Slack sync against Era's simulator (ignored by default)
 ├─ deletion.rs       DeletionRunner: cascades (objects, Agent Memory, records), account deletion, resume
 ├─ media.rs          signature check, object streaming
 ├─ routes.rs
@@ -5646,7 +5648,7 @@ The hub, writer and plan-lock maps use `std::sync::Mutex`: their critical sectio
 | Handlers | The real router (`router::app`), so layers, extractors, the renderer and request ids are under test, driven with `tower::ServiceExt::oneshot`. The ports are mockall mocks from `domain`'s `mock` feature; the store is `tests/fake_store.rs`, a `Store` made of one mock per repository trait with every method delegated, **generated** from `domain::ports::store` by `backend/tools/apigen/gen_fake_store.py` (regenerate when a store trait changes). The generator scans each trait body for `async fn` signatures that end in `;` or open a default body, skipping the body by brace matching, so a method with a default body (`live_lease`, `soil_profile_failed`, `gardens_due_soil_profile`, the account-tombstone methods) is delegated like any other and a test sets its expectations. The seams are small fakes: `NoPipeline` and `NoChat` (`unreachable!()`), `FixedImages` with a fixed answer |
 | Time | `FixedClock`; tokio's paused clock (`start_paused = true`) for the broker's long poll |
 | Scheduler | `scheduler::fetch_soil_profile` called directly, with a mocked `SoilProvider` |
-| Farm sync | `farm_sync/tests.rs`: `FarmSync` on the embedded `SurrealDB` 3.3.4 engine (`surrealdb` with `kv-mem`, a dev-dependency) with a scripted `FarmSource`, a counting embedder and `FixedClock`: at most 4 due connectors a run and `next_sync_at` 15 minutes on (T-E4.1); unchanged text costs no embedding and a changed chunk is embedded (T-E4.7); a refused token makes the connector `reauth_needed` and keeps the records, the 10,001st record stops it with `too_large`, and the cleanup deletes old Slack messages but keeps an old document (T-E4.9); seeding twice gives one pair of sealed `era` connectors, and a missing garden is skipped (T-E4.10); a throttled pass resumes from its cursor; the daily re-read deletes what the vendor dropped and keeps what it reported as kept; an outage waits 15 minutes |
+| Farm sync | `farm_sync/tests.rs`: `FarmSync` on the embedded `SurrealDB` 3.3.4 engine (`surrealdb` with `kv-mem`, a dev-dependency) with a scripted `FarmSource`, a counting embedder and `FixedClock`: at most 4 due connectors a run and `next_sync_at` 15 minutes on (T-E4.1); unchanged text costs no embedding and a changed chunk is embedded (T-E4.7); a refused token makes the connector `reauth_needed` and keeps the records, the 10,001st record stops it with `too_large`, and the cleanup deletes old Slack messages but keeps an old document (T-E4.9); seeding twice gives one pair of sealed `era` connectors, and a missing garden is skipped (T-E4.10); a throttled pass resumes from its cursor; the daily re-read deletes what the vendor dropped and keeps what it reported as kept; an outage waits 15 minutes. `farm_sync/tests_era.rs` runs the Slack sync against Era's Slack simulator on the Maple Row Farm fixture (`#[ignore]`d, `era_` names, the nextest `era` group), with `integrations`' `era-sim` harness as a dev-dependency: the first sync stores the chosen channel with authors, links and joined replies (T-E4.2); a quiet channel costs one `conversations.history` call and no embedding, a new message arrives, and a new reply arrives through the re-read (T-E4.4, T-E4.7); the re-read deletes a message gone at the vendor (T-E4.6); a throttled first sync resumes without duplicates, `fail_next` is waited out, and an outage is `vendor_unavailable` for 15 minutes (T-E4.8); no log line or record holds a fixture email or a message's text (T-E4.11) |
 | Pure parts | Config parsing, error mapping and statuses, the fallback renderer, canonical fingerprints, multipart fingerprints, the HMAC signer, the invite limiter, trigger rules, hour truncation, worker tokens |
 
 ```rust
