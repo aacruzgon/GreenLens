@@ -16,10 +16,12 @@
 //! - `probed`: the parent `ts` of the last older thread checked (below), the round-robin
 //!   position.
 //!
-//! The daily re-read ([`FarmPageRequest::reread_from`]) starts a pass from 7 days back. Slack's
-//! history never reports a deletion, so the sync deletes what that pass didn't see. A new reply
-//! to a thread shows in its parent's `latest_reply`, which a pass reads when the parent is in
-//! its window: a later pass when the parent is new, the daily re-read for the last 7 days.
+//! The daily re-read ([`FarmPageRequest::reread_from`]) starts a pass from 7 days back, or from
+//! `newest` when that is older (a sync after a week or more without one), so it skips nothing
+//! a later pass would have read. Slack's history never reports a deletion, so the sync deletes
+//! what that pass didn't see. A new reply to a thread shows in its parent's `latest_reply`,
+//! which a pass reads when the parent is in its window: a later pass when the parent is new,
+//! the daily re-read for the last 7 days.
 //!
 //! **Replies to older threads.** `conversations.history` lists a parent by its own time, so a
 //! reply to a thread whose parent is older than 7 days is seen by no pass. At the end of a pass
@@ -290,8 +292,11 @@ impl SlackSource {
         let (oldest, page) = if let Some(pass) = cursor.pass.take() {
             (pass.oldest, Some((pass.page, pass.top)))
         } else {
+            // A re-read starts 7 days back, or at the newest message seen when that is older
+            // (a sync after a week or more without one), so nothing between them is skipped.
             let from = match (request.reread_from, cursor.newest.as_deref()) {
-                (Some(from), _) => unix_ts(from),
+                (Some(from), Some(newest)) => earlier_ts(unix_ts(from), newest),
+                (Some(from), None) => unix_ts(from),
                 (None, Some(newest)) => newest.to_owned(),
                 (None, None) => floor.clone(),
             };
@@ -617,6 +622,15 @@ fn ts_key(ts: &str) -> (u64, u32) {
 /// The later of two `ts` values.
 fn later_ts(a: String, b: &str) -> String {
     if ts_key(&a) >= ts_key(b) {
+        a
+    } else {
+        b.to_owned()
+    }
+}
+
+/// The earlier of two `ts` values.
+fn earlier_ts(a: String, b: &str) -> String {
+    if ts_key(&a) <= ts_key(b) {
         a
     } else {
         b.to_owned()
@@ -1208,5 +1222,43 @@ mod threads {
         );
         assert_eq!(page.probes, 1);
         assert!(!Cursor::parse(Some(&page.cursor)).threads.contains_key(&old));
+    }
+
+    /// A re-read starts 7 days back, or at the newest message seen when a week or more has
+    /// passed without a sync, so the messages between them are read too (T-E4.5).
+    #[tokio::test]
+    async fn a_reread_after_a_long_gap_starts_at_the_newest_message_seen() {
+        let server = MockServer::start().await;
+        let asked: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = asked.clone();
+        Mock::given(method("GET"))
+            .and(path("/api/conversations.history"))
+            .respond_with(move |r: &Request| {
+                let oldest = r
+                    .url
+                    .query_pairs()
+                    .find(|(k, _)| k == "oldest")
+                    .map(|(_, v)| v.into_owned())
+                    .unwrap_or_default();
+                seen.lock().unwrap().push(oldest);
+                ResponseTemplate::new(200).set_body_json(json!({ "ok": true, "messages": [] }))
+            })
+            .mount(&server)
+            .await;
+        let source = source(&server);
+        let week = now().minus(REREAD_WINDOW);
+        for (newest, from) in [
+            (days_ago(30), days_ago(30)),
+            (days_ago(1), week.unix_seconds().to_string()),
+        ] {
+            let cursor = Cursor {
+                newest: Some(newest),
+                ..Cursor::default()
+            };
+            let mut request = request(Some(cursor.into_sync_cursor()));
+            request.reread_from = Some(week);
+            source.page(&token(), &request).await.unwrap();
+            assert_eq!(asked.lock().unwrap().pop(), Some(from));
+        }
     }
 }
