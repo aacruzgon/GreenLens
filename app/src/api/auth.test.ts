@@ -1,4 +1,4 @@
-import { authedFetch, resetAuthForTests, setOnSignedOut, setTokenProvider } from "./auth";
+import { authedFetch, clearTokenProvider, resetAuthForTests, setOnSignedOut, setTokenProvider } from "./auth";
 import { client, ok, setTransport } from "./client";
 import { ApiError } from "./errors";
 
@@ -113,5 +113,43 @@ describe("auth", () => {
     const res = await authedFetch(new Request("http://localhost/me", { method: "PATCH", body: '{"display_name":"Ada"}' }), send);
     expect(res.status).toBe(200);
     expect(bodies).toEqual(['{"display_name":"Ada"}', '{"display_name":"Ada"}']);
+  });
+  it("keeps a refresh from a cleared session away from the new session's state", async () => {
+    const oldGate = deferred<string | null>();
+    const oldProvider = jest.fn(async (opts?: { skipCache?: boolean }) => (opts?.skipCache ? oldGate.promise : "old"));
+    setTokenProvider(oldProvider);
+    const oldCall = authedFetch(new Request("http://localhost/me"), async () => json(401, UNAUTH));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(oldProvider).toHaveBeenCalledWith({ skipCache: true });
+
+    clearTokenProvider();
+    const newGate = deferred<string | null>();
+    let refreshed = false;
+    const newProvider = jest.fn(async (opts?: { skipCache?: boolean }) => {
+      if (opts?.skipCache) {
+        const t = await newGate.promise;
+        refreshed = true;
+        return t;
+      }
+      return refreshed ? "fresh" : "tok";
+    });
+    setTokenProvider(newProvider);
+    const newCall = authedFetch(new Request("http://localhost/me"), async (r) =>
+      json(r.headers.get("Authorization") === "Bearer fresh" ? 200 : 401, ME),
+    );
+    await new Promise((r) => setTimeout(r, 0));
+
+    oldGate.resolve("stale");
+    await new Promise((r) => setTimeout(r, 0));
+    // A third request joins the new session's refresh; the old one's settling must not have cleared it.
+    const third = authedFetch(new Request("http://localhost/me"), async (r) =>
+      json(r.headers.get("Authorization") === "Bearer fresh" ? 200 : 401, ME),
+    );
+    await new Promise((r) => setTimeout(r, 0));
+    newGate.resolve("fresh");
+    expect((await newCall).status).toBe(200);
+    expect((await third).status).toBe(200);
+    await oldCall;
+    expect(newProvider.mock.calls.filter(([o]) => o?.skipCache)).toHaveLength(1);
   });
 });

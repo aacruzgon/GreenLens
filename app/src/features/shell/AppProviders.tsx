@@ -7,6 +7,7 @@ import { liveTransport, queryClient, setBaseUrl, setTransport } from "@/api";
 import { mockTransport } from "@/api/mock";
 import type { Env } from "@/config/env";
 import { SessionProvider } from "@/features/auth";
+import { useActiveGardenStore } from "@/features/gardens";
 import { ThemeProvider } from "@/ui";
 
 // The provider tree of docs/frontend/README.md §7. Called once, after the env check passed.
@@ -19,11 +20,17 @@ export function configureApi(env: Env) {
   }
 }
 
+// Sign-out (README 8): nothing of the last account stays for the next one on this phone.
+function clearSignedOutState() {
+  queryClient.clear();
+  useActiveGardenStore.getState().setGardenId(null);
+}
+
 export function AppProviders({ env, children }: { env: Env; children: ReactNode }) {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <SessionProvider publishableKey={env.clerkPublishableKey}>
+        <SessionProvider publishableKey={env.clerkPublishableKey} onSignedOut={clearSignedOutState}>
           <QueryClientProvider client={queryClient}>
             <ThemeProvider>{children}</ThemeProvider>
           </QueryClientProvider>

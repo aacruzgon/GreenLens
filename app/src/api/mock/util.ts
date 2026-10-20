@@ -97,9 +97,18 @@ export function errorResponse(
   return jsonResponse(STATUS_OF[code], errorBody(code, details, message));
 }
 
+/** A Timestamp in whole seconds (contracts 1), `offsetMs` from now. */
+export function nowTs(offsetMs = 0): string {
+  return isoSeconds(new Date(Date.now() + offsetMs));
+}
+
+export function isoSeconds(d: Date): string {
+  return d.toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
 export function bandFor(confidence: number): S["ConfidenceBand"] {
-  if (confidence >= 0.7) return "high";
-  if (confidence >= 0.4) return "medium";
+  if (confidence >= 0.8) return "high";
+  if (confidence >= 0.5) return "medium";
   return "low";
 }
 
@@ -130,7 +139,7 @@ export class DateKit {
 
   /** A UTC timestamp for the local day `daysAgo` days back (negative: ahead), at hour:minute. */
   ts(daysAgo: number, hour = 9, minute = 0): string {
-    return new Date(this.y, this.m, this.d - daysAgo, hour, minute).toISOString();
+    return isoSeconds(new Date(this.y, this.m, this.d - daysAgo, hour, minute));
   }
 
   /** A `YYYY-MM-DD` local date. */

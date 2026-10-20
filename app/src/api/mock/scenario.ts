@@ -24,6 +24,8 @@ export interface ScenarioState {
   delayScale: number;
   /** Milliseconds between `: keepalive` comments on an idle stream (15 000 on the server). */
   keepaliveMs: number;
+  /** Demo control: a new account with no name and no gardens, so onboarding shows. Clears on POST /gardens. */
+  emptyAccount: boolean;
 
   setNextScan(v: NextScan): void;
   setUploadFault(v: UploadFault | null): void;
@@ -31,6 +33,7 @@ export interface ScenarioState {
   setDropNextStream(v: boolean): void;
   setRole(v: S["Role"]): void;
   setDelayScale(v: number): void;
+  setEmptyAccount(v: boolean): void;
   reset(): void;
 }
 
@@ -42,6 +45,7 @@ const INITIAL = {
   role: "owner",
   delayScale: 1,
   keepaliveMs: 15_000,
+  emptyAccount: false,
 } as const satisfies Partial<ScenarioState>;
 
 export const useScenario = create<ScenarioState>()((set) => ({
@@ -52,6 +56,7 @@ export const useScenario = create<ScenarioState>()((set) => ({
   setDropNextStream: (dropNextStream) => set({ dropNextStream }),
   setRole: (role) => set({ role }),
   setDelayScale: (delayScale) => set({ delayScale }),
+  setEmptyAccount: (emptyAccount) => set({ emptyAccount }),
   reset: () => set({ ...INITIAL }),
 }));
 

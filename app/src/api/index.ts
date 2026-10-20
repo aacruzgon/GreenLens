@@ -22,8 +22,8 @@ export {
   type IdempotentMutationOptions,
   type IdempotentMutationResult,
 } from "./idempotency";
-export { SseParser, readSse, type SseMessage } from "./sse";
-export { openScanStream, decodeScanEvent, type ScanEvent, type ScanEventType, type ScanStreamOptions } from "./scanStream";
+export { SseParser, readSse, type SseMessage, type ReadSseOptions } from "./sse";
+export { openScanStream, decodeScanEvent, type ScanStreamOptions } from "./scanStream";
 export { fetchAllPages, flattenPages, nextCursor, MAX_PAGE_SIZE, type Page } from "./pages";
 export { qk, type TaskFilter, type ConversationAnchor } from "./queryKeys";
 export { createQueryClient, queryClient, STALE } from "./queryClient";
