@@ -29,7 +29,8 @@ case $var in
 esac
 
 # 1. The reference has a digest, and the host can pull it.
-[[ $ref =~ ^[a-z0-9./_-]+(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$ ]] || die "$ref is not <image>@sha256:<64 hex digits>"
+# An optional registry host with a port (127.0.0.1:5000/...), the repository, an optional tag.
+[[ $ref =~ ^([a-z0-9.-]+:[0-9]+/)?[a-z0-9./_-]+(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$ ]] || die "$ref is not <image>@sha256:<64 hex digits>"
 [ -r "$env_file" ] || die "cannot read $env_file"
 docker pull --quiet "$ref" >/dev/null || die "docker pull $ref failed"
 
