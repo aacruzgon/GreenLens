@@ -77,6 +77,13 @@ pub struct RunReport {
     pub route: String,
     /// The stored answer.
     pub text: String,
+    /// The model's text across all calls of the turn, before the dose check. It differs from
+    /// `text` where a sentence was replaced, and has no paragraph breaks the turn adds between
+    /// tool rounds (EON gap G20). Fixture data only: the product never stores or logs it.
+    pub raw_text: String,
+    /// The sentences of `raw_text` the dose check fails, each with its rule and matched words
+    /// (the production check with the built-in product words only).
+    pub replaced: Vec<crate::score::Replaced>,
     /// The scores.
     pub scores: Scores,
     /// The tools called, in order.

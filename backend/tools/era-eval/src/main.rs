@@ -406,6 +406,8 @@ fn failed_run(
         outcome: outcome.to_owned(),
         route: String::new(),
         text: String::new(),
+        raw_text: String::new(),
+        replaced: Vec::new(),
         scores: score::failed_turn(q, ctx, outcome),
         tools: Vec::new(),
         tool_calls: Vec::new(),
@@ -523,6 +525,7 @@ async fn ask(
 
     let mark = meter.len();
     let tool_mark = meter.tool_calls_len();
+    let text_mark = meter.text_len();
     let started = agent
         .start_turn(agent::TurnRequest {
             owner,
@@ -577,8 +580,10 @@ async fn ask(
 
     let calls = meter.since(mark);
     let (tokens_in, tokens_out, cost_usd) = totals(&calls);
+    let raw_text = meter.text_since(text_mark);
+    let replaced = score::replaced(&raw_text);
     let scores = if outcome == "completed" {
-        score::score(q, ctx, &text, &farm_citations)
+        score::score(q, ctx, &text, &raw_text, &farm_citations)
     } else {
         score::failed_turn(q, ctx, outcome)
     };
@@ -588,6 +593,8 @@ async fn ask(
         outcome: outcome.to_owned(),
         route,
         text,
+        raw_text,
+        replaced,
         scores,
         tools,
         tool_calls: meter.tool_calls_since(tool_mark),
