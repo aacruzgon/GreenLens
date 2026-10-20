@@ -40,9 +40,12 @@
 //! revoked, which the vendors answer as revoked.
 //!
 //! **Without `CONNECTOR_KEY`** no token can be opened. A garden's cascade still deletes its
-//! connectors, unrevoked, because the garden goes; a demoted, removed or leaving owner's
-//! connectors stay `deleting`, hidden from the list and the sync, with a warning at each
-//! start, so their tokens are revoked once the key is configured.
+//! connectors, unrevoked, because the garden goes, and so does an account's: the user record
+//! can't go while a connector names it (`connector.created_by`, `ON DELETE REJECT`), and the
+//! account can't wait for a key, so each is deleted unrevoked with a warning by its id and
+//! kind. A demoted, removed or leaving owner's connectors stay `deleting`, hidden from the
+//! list and the sync, with a warning at each start, so their tokens are revoked once the key
+//! is configured.
 //!
 //! **Accounts.** An account cascade starts with the tombstone's compare-and-set
 //! (`DeletionRepo::start_account_deletion`): a second `DELETE /me`, or a `user.deleted` webhook
@@ -273,6 +276,19 @@ impl DeletionRunner {
         }
     }
 
+    /// Before an account's user record goes, which `connector.created_by` refuses while a
+    /// connector names it: every connector the user created that is still marked `deleting`
+    /// (this cascade's transfers and removals, or a run a restart cut off), revoked and
+    /// deleted. Without `CONNECTOR_KEY` they are deleted unrevoked, as a garden's are, since the
+    /// account deletion can't wait for a key; `revoke_stored` logs each by its id and kind.
+    async fn finish_account_connectors(&self, user: UserId) -> Result<(), StoreError> {
+        let rows = self.store.deleting_connectors(None).await?;
+        for row in rows.into_iter().filter(|r| r.created_by == user) {
+            self.finish_connector(row).await?;
+        }
+        Ok(())
+    }
+
     /// The one revoke-then-delete path of a connector marked `deleting`: revokes its token
     /// (unless another live connector holds the account's), then deletes its records and the
     /// row, 500 records a batch. A failed revoke is logged and the deletion goes on.
@@ -491,7 +507,9 @@ impl DeletionRunner {
                 let member =
                     authz::check_membership_of::<Viewer>(&*self.store, user, garden).await?;
                 let removed = self.store.remove_member(member, user).await?;
-                self.finish_member_connectors(garden, user).await;
+                if self.revoke.is_some() {
+                    self.finish_member_connectors(garden, user).await;
+                }
                 if !self.delete_objects(removed.chat_prefixes, Vec::new()).await {
                     return Err(DeletionError::Objects);
                 }
@@ -499,6 +517,7 @@ impl DeletionRunner {
                     .await?;
             }
             self.store.delete_user_feedback(user).await?;
+            self.finish_account_connectors(user).await?;
             self.store.delete_user(user).await?;
         }
         let mut wait = Duration::from_secs(1);

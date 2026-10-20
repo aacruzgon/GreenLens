@@ -189,10 +189,13 @@ fn mine() -> Vec<ConnectorRow> {
     ]
 }
 
-/// `deleting_connectors` answers `rows` (logged as `list:<garden or resume>`), and each
-/// connector's batches delete 2 records, then the row, then nothing.
+/// `deleting_connectors` answers `rows` not yet deleted (logged as `list:<garden or resume>`),
+/// and each connector's batches delete 2 records, then the row, then nothing.
 fn connector_store(store: &mut FakeStore, log: &Arc<Log>, rows: Vec<ConnectorRow>) {
     let l = Arc::clone(log);
+    // Batches made per connector; a connector whose last batch ran is gone from the listing.
+    let calls: Arc<Mutex<HashMap<ConnectorId, usize>>> = Arc::default();
+    let listed = Arc::clone(&calls);
     store
         .farm_record_store
         .expect_deleting_connectors()
@@ -201,10 +204,14 @@ fn connector_store(store: &mut FakeStore, log: &Arc<Log>, rows: Vec<ConnectorRow
                 "list:{}",
                 garden.map_or("resume".to_owned(), |g| g.to_string())
             ));
-            Ok(rows.clone())
+            let calls = listed.lock().unwrap_or_else(PoisonError::into_inner);
+            Ok(rows
+                .iter()
+                .filter(|r| calls.get(&r.connector.id).is_none_or(|&n| n < 3))
+                .cloned()
+                .collect())
         });
     let l = Arc::clone(log);
-    let calls: Mutex<HashMap<ConnectorId, usize>> = Mutex::default();
     store
         .farm_record_store
         .expect_delete_connector_batch()
@@ -781,6 +788,127 @@ async fn with_connectors_off_a_former_owners_connectors_wait_for_the_key() {
     app_state.tasks.close();
     app_state.tasks.wait().await;
     assert_eq!(log.events(), ["list:resume"]);
+}
+
+/// `state` with connectors off: a runner with no key to open tokens, deleting the Clerk
+/// account through `admin`.
+fn keyless_state(store: FakeStore, auth: MockAuthVerifier, admin: MockAuthAdmin) -> Arc<AppState> {
+    let mut app_state = state(store, auth, MockBlobStore::new(), no_images());
+    let inner = Arc::get_mut(&mut app_state).expect("the test holds the only state");
+    let admin: Arc<dyn AuthAdmin> = Arc::new(admin);
+    inner.deletions = DeletionRunner::new(
+        Arc::clone(&inner.ports.store),
+        inner.deletes.clone(),
+        admin,
+        Pusher::new(
+            Arc::clone(&inner.ports.store),
+            Arc::clone(&inner.ports.notifier),
+        ),
+        Arc::clone(&inner.ports.clock),
+        inner.tasks.clone(),
+        inner.shutdown.clone(),
+    );
+    app_state
+}
+
+/// Audit of PR 72, finding 4: an account deletion can't wait for the key either. The user
+/// record can't go while a connector names it (`connector.created_by`, `ON DELETE REJECT`), so
+/// the former owner's connectors and records are deleted unrevoked, and the account at Clerk
+/// after them.
+#[tokio::test]
+async fn with_connectors_off_an_account_deletion_still_deletes_its_connectors() {
+    let log = Arc::new(Log::default());
+    let mut store = FakeStore::default();
+    let auth = signed_in(&mut store, Some(Role::Owner));
+    let garden: GardenId = GARDEN.parse().unwrap();
+    store
+        .deletion_repo
+        .expect_plan_account_deletion()
+        .returning(move |_| {
+            Ok(AccountDeletionPlan {
+                delete: Vec::new(),
+                transfer: vec![GardenTransfer {
+                    garden_id: garden,
+                    new_owner_user_id: MEMBER.parse().unwrap(),
+                }],
+                leave: vec![garden],
+            })
+        });
+    store
+        .deletion_repo
+        .expect_start_account_deletion()
+        .times(1)
+        .returning(|_, _, _| Ok(true));
+    store
+        .deletion_repo
+        .expect_transfer_ownership()
+        .times(1)
+        .returning(|_, _| Ok(()));
+    store
+        .garden_repo
+        .expect_remove_member()
+        .times(1)
+        .returning(|member, user| {
+            Ok(RemovedMember {
+                garden: member.garden(),
+                user,
+                conversations: Vec::new(),
+                chat_prefixes: Vec::new(),
+            })
+        });
+    let mut rows = mine();
+    rows.push(row(
+        THEIRS,
+        OTHER_OWNER,
+        ConnectorKind::Slack,
+        ConnectorEndpoint::Vendor,
+        "xoxb-theirs",
+    ));
+    connector_store(&mut store, &log, rows);
+    store
+        .deletion_repo
+        .expect_delete_user_feedback()
+        .returning(|_| Ok(0));
+    let l = Arc::clone(&log);
+    store
+        .deletion_repo
+        .expect_delete_user()
+        .times(1)
+        .returning(move |_| {
+            l.push("delete_user");
+            Ok(())
+        });
+    let l = Arc::clone(&log);
+    store
+        .deletion_repo
+        .expect_finish_account_deletion()
+        .times(1)
+        .returning(move |_, _| {
+            l.push("clerk_deleted");
+            Ok(())
+        });
+    let mut admin = MockAuthAdmin::new();
+    admin.expect_delete_account().times(1).returning(|_| Ok(()));
+    let app_state = keyless_state(store, auth, admin);
+
+    let status = send(&app_state, request("DELETE", "/me", None)).await;
+
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let events = log.events();
+    assert_eq!(revokes(&events), [] as [&str; 0]);
+    for mine in [MINE_SLACK, MINE_DRIVE] {
+        assert!(
+            position(&events, &format!("delete:{mine}:0")) < position(&events, "delete_user"),
+            "{mine} goes before the user: {events:?}"
+        );
+    }
+    assert!(
+        !events
+            .iter()
+            .any(|e| e.starts_with(&format!("delete:{THEIRS}"))),
+        "another owner's connector stays: {events:?}"
+    );
+    assert_eq!(events.last().map(String::as_str), Some("clerk_deleted"));
 }
 
 /// A garden's cascade can't wait for the key: the garden goes, so its connectors are deleted,
