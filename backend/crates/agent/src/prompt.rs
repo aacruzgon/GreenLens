@@ -18,7 +18,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 /// The chat system prompt's version.
-pub const CHAT_PROMPT_VERSION: &str = "chat/2026-10-20.1";
+pub const CHAT_PROMPT_VERSION: &str = "chat/2026-10-20.2";
 /// The plan writer's version.
 pub const PLAN_PROMPT_VERSION: &str = "plan/2026-10-17.1";
 /// The off-topic redirect's version.
@@ -459,7 +459,7 @@ mod tests {
         assert!(p.contains("say what was applied, to which bed or crop, and when"));
         assert!(p.contains("Never repeat a rate"));
         assert!(p.contains("only when the user's question is about that item"));
-        assert_eq!(CHAT_PROMPT_VERSION, "chat/2026-10-20.1");
+        assert_eq!(CHAT_PROMPT_VERSION, "chat/2026-10-20.2");
     }
 
     #[test]

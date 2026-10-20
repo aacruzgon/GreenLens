@@ -312,10 +312,13 @@ COMMIT;";
     pub const GARDEN_RECORD_COUNT: &str =
         "RETURN count(SELECT VALUE id FROM farm_record WHERE garden = $garden);";
     /// `search_farm_records` (EON gap G7): `memory`'s exact cosine search without its sharing
-    /// filter, within one garden, leaving out a connector being deleted.
+    /// filter, within one garden, leaving out a connector being deleted. `$author` comes
+    /// lowercased (EON gap G12).
     pub const SEARCH: &str = "SELECT id, connector.kind AS system, title, author, link, text, at,
   vector::similarity::cosine(embedding, $query) AS similarity FROM farm_record
 WHERE garden = $garden AND ($kind = NONE OR kind = $kind) AND ($since = NONE OR at >= $since)
+  AND ($until = NONE OR at < $until)
+  AND ($author = NONE OR string::contains(string::lowercase(author ?? ''), $author))
   AND connector.status != 'deleting'
 ORDER BY similarity DESC LIMIT $k;";
     /// The cleanup: one batch of Slack messages older than the cutoff (index
@@ -1122,6 +1125,8 @@ impl FarmRecordStore for SurrealStore {
                 .bind(("query", query.0.clone()))
                 .bind(("kind", filter.kind.map(FarmRecordKindRow::from)))
                 .bind(("since", filter.since.map(dt)))
+                .bind(("until", filter.until.map(dt)))
+                .bind(("author", filter.author.as_deref().map(str::to_lowercase)))
                 .bind(("k", i64::try_from(k).unwrap_or(i64::MAX)))
         })
         .await
