@@ -505,8 +505,10 @@ async fn era_slack_daily_reread_deletes_a_message_gone_at_the_vendor() {
     farm.tenant.close().await;
 }
 
-/// A `#crew` thread whose last reply was on 2026-10-03, over 30 days before `day2`.
-const QUIET: &str = "1791033300.011600";
+/// A `#crew` thread whose last reply was on 2026-10-03, 12 days before the `day1` sync.
+const ACTIVE: &str = "1791033300.011600";
+/// A `#field-reports` thread whose last reply was on 2026-09-01, 44 days before the `day1` sync.
+const QUIET: &str = "1788216000.009700";
 /// A `#field-reports` message of 2026-12-01, before `day2`'s last 7 days.
 const MIDDLE: &str = "1796115600.000100";
 /// A `#field-reports` message of 2027-01-12, in `day2`'s last 7 days.
@@ -514,17 +516,29 @@ const RECENT: &str = "1799744400.000100";
 /// A new `#crew` thread of 2027-01-11, with one reply.
 const THREAD: &str = "1799685000.000100";
 
-/// The fixture a quarter on: a reply to [`QUIET`] and the quarter's new messages.
+/// The fixture a quarter on: a reply to [`ACTIVE`] and to [`QUIET`], and the quarter's new
+/// messages.
 fn quarter_later() -> Value {
     let mut slack = fixture("maple-row", "slack.json");
     let messages = slack["messages"].as_array_mut().expect("messages");
-    messages
-        .iter_mut()
-        .find(|m| m["ts"] == QUIET)
-        .expect("the thread")["reply"]
-        .as_array_mut()
-        .expect("its replies")
-        .push(json!({"user": "U_SAM", "ts": "1799679600.000100", "text": "Totals are in the binder."}));
+    for (parent, reply) in [
+        (
+            ACTIVE,
+            json!({"user": "U_SAM", "ts": "1799679600.000100", "text": "Totals are in the binder."}),
+        ),
+        (
+            QUIET,
+            json!({"user": "U_JUNE", "ts": "1799680000.000100", "text": "Bed 2 netting is torn."}),
+        ),
+    ] {
+        messages
+            .iter_mut()
+            .find(|m| m["ts"] == parent)
+            .expect("the thread")["reply"]
+            .as_array_mut()
+            .expect("its replies")
+            .push(reply);
+    }
     messages.extend([
         json!({"channel": "C_FIELD", "user": "U_JUNE", "ts": MIDDLE,
                "text": "Garlic is up in bed 4 under the straw."}),
@@ -537,47 +551,13 @@ fn quarter_later() -> Value {
     slack
 }
 
-/// T-E4.5, Slack's half: synced on `day1`, the tenant moved to `day2` and the clock 91 days on,
-/// with the quarter's messages injected. The first run is then the daily re-read, which reads
-/// from the newest message seen, not only its 7 days, so a message from the quarter's middle
-/// arrives with those of the last week; nothing is stored twice and nothing is deleted. Every
-/// thread of the fixture has been quiet for over 30 days, so none is checked, and a new reply
-/// to one is missed (connectors 6). The 180-day cleanup then deletes the fixture's messages
-/// older than 180 days, and a later sync doesn't bring them back.
-#[tokio::test]
-#[ignore = "needs Era's simulators"]
-async fn era_slack_a_quarter_later_the_new_messages_arrive_and_the_old_ones_age_out() {
-    let farm = farm(&["C_FIELD", "C_CREW"], |_| {}).await;
-    assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
-    assert_eq!(farm.count().await, 94);
-    let before = farm.records().await;
-    let embedded = farm.embedder.texts();
-
-    // A quarter later. The tenant is reset to inject the fixture afresh, since the simulator
-    // answers a parent injected a second time with its first copy, and lists every message
-    // injected twice twice. Reset goes back to `day1`, so the move comes after it.
-    farm.tenant.reset().await;
-    farm.tenant.state("day2").await;
-    farm.tenant.inject(&quarter_later()).await;
-    farm.clock.advance(Duration::from_hours(91 * 24));
-
-    let history = farm.calls(HISTORY).await;
-    let mark = farm.proxy.len();
-    assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
-    // One page per channel from its newest message; no older thread is due a check (each
-    // last reply is over 30 days old), and the new thread is read in full.
-    assert_eq!(farm.calls(HISTORY).await - history, 2);
-    assert_eq!(farm.proxy.replies_since(mark), (0, 1));
-
+/// After `day2`'s first sync: the quarter's three messages, each once, and every record of
+/// `before` as it was.
+async fn assert_the_quarter_arrived(farm: &Farm, before: &BTreeMap<String, FarmRecordMatch>) {
     let after = farm.records().await;
     assert_eq!(farm.count().await, 97, "the three new messages, each once");
     assert_eq!(after.len(), 97);
-    assert_eq!(
-        farm.embedder.texts(),
-        embedded + 3,
-        "only the new ones embedded"
-    );
-    for (vendor_id, record) in &before {
+    for (vendor_id, record) in before {
         assert_eq!(
             after[vendor_id].hit.text, record.hit.text,
             "{vendor_id} changed"
@@ -598,13 +578,71 @@ async fn era_slack_a_quarter_later_the_new_messages_arrive_and_the_old_ones_age_
             .text
             .contains("Dev: Works for me.")
     );
+}
+
+/// T-E4.5, Slack's half: synced on `day1`, the tenant moved to `day2` and the clock 91 days on,
+/// with the quarter's messages injected. The first run is then the daily re-read, which reads
+/// from the newest message seen, not only its 7 days, so a message from the quarter's middle
+/// arrives with those of the last week; nothing is stored twice and nothing is deleted. The
+/// 91 days away don't count toward a thread's 30 quiet days, so a check finds a new reply to a
+/// thread active at the last sync, and a thread already quiet for 30 days then isn't checked
+/// (connectors 6). The 180-day cleanup then deletes the fixture's messages older than 180 days,
+/// and the next day's re-read doesn't bring them back.
+#[tokio::test]
+#[ignore = "needs Era's simulators"]
+async fn era_slack_a_quarter_later_the_new_messages_arrive_and_the_old_ones_age_out() {
+    let farm = farm(&["C_FIELD", "C_CREW"], |_| {}).await;
+    assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
+    assert_eq!(farm.count().await, 94);
+    let before = farm.records().await;
+    let embedded = farm.embedder.texts();
+
+    // A quarter later. The tenant is reset to inject the fixture afresh, since the simulator
+    // answers a parent injected a second time with its first copy, and lists every message
+    // injected twice twice. Reset goes back to `day1`, so the move comes after it.
+    farm.tenant.reset().await;
+    farm.tenant.state("day2").await;
+    farm.tenant.inject(&quarter_later()).await;
+    farm.clock.advance(Duration::from_hours(91 * 24));
+
+    let history = farm.calls(HISTORY).await;
+    let mark = farm.proxy.len();
+    assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
+    // One page per channel from its newest message; the new thread is read in full, and the
+    // page's one check takes the first of the three `#crew` threads with a reply within 30
+    // days of the last sync, unchanged.
+    assert_eq!(farm.calls(HISTORY).await - history, 2);
+    assert_eq!(farm.proxy.replies_since(mark), (1, 1));
+    assert_the_quarter_arrived(&farm, &before).await;
+    assert_eq!(
+        farm.embedder.texts(),
+        embedded + 3,
+        "only the new ones embedded"
+    );
+
+    // The next sync's check takes `ACTIVE`: the 91 days away didn't make it quiet. `QUIET`,
+    // quiet for 30 days before the last sync, isn't checked.
+    let mark = farm.proxy.len();
+    farm.clock.advance(SYNC_EVERY);
+    assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
+    assert_eq!(farm.proxy.replies_since(mark), (1, 1));
+    let after = farm.records().await;
     assert!(
-        !after[&format!("C_CREW/{QUIET}")]
+        after[&format!("C_CREW/{ACTIVE}")]
             .hit
             .text
-            .contains("Totals are in the binder."),
-        "a thread quiet for 30 days is no longer checked"
+            .contains("Sam: Totals are in the binder."),
+        "time away doesn't make a thread quiet"
     );
+    assert!(
+        !after[&format!("C_FIELD/{QUIET}")]
+            .hit
+            .text
+            .contains("Bed 2 netting is torn."),
+        "a thread quiet for 30 days before the last sync is no longer checked"
+    );
+    assert_eq!(farm.count().await, 97, "the thread is still one record");
+    assert_eq!(farm.embedder.texts(), embedded + 4);
 
     // The cleanup deletes the fixture's messages from before 2026-07-18T12:00:00Z.
     let cutoff = farm.clock.now().minus(FARM_RECORD_KEEP).unix_seconds();
@@ -625,15 +663,24 @@ async fn era_slack_a_quarter_later_the_new_messages_arrive_and_the_old_ones_age_
             .all(|m| m.hit.citation.at.unix_seconds() >= cutoff)
     );
 
-    // A later sync reads only what is new: nothing, and nothing deleted comes back.
+    // A day later the re-read reads the last 7 days again: nothing deleted comes back, and
+    // what it sees stays. Its check takes the next thread, unchanged.
     let history = farm.calls(HISTORY).await;
     let mark = farm.proxy.len();
-    farm.clock.advance(SYNC_EVERY);
+    farm.clock.advance(super::REREAD_EVERY);
     assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
+    let row = farm.row().await;
+    for channel in ["C_FIELD", "C_CREW"] {
+        let state = super::state::SourceState::parse(row.cursors.get(channel));
+        assert_eq!(state.reread_at, Some(farm.clock.now()), "{channel} re-read");
+    }
     assert_eq!(farm.calls(HISTORY).await - history, 2);
-    assert_eq!(farm.proxy.replies_since(mark), (0, 0));
+    assert_eq!(farm.proxy.replies_since(mark), (1, 0));
     assert_eq!(farm.count().await, 50);
-    assert_eq!(farm.embedder.texts(), embedded + 3);
+    let left = farm.records().await;
+    assert!(left.contains_key(&format!("C_FIELD/{RECENT}")));
+    assert!(left.contains_key(&format!("C_CREW/{THREAD}")));
+    assert_eq!(farm.embedder.texts(), embedded + 4);
     farm.tenant.close().await;
 }
 
