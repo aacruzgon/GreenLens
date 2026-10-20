@@ -67,6 +67,7 @@ Inject formats ([EON 3, injecting the farm](../../../docs/EON/README.md#injectin
 - **`day0` isn't usable:**
   - Drive lists nothing, injected files included.
   - Slack's `auth.test` answers `user_not_found`.
+- **Reset and inject again:** `reset` goes back to `day1` without the injections, and Slack lists a message injected twice twice. To change an injected message, reset, move the day again, then inject the changed fixture. Never `DELETE` a tenant before its first use: the id then can't be used ([EON 3](../../../docs/EON/README.md#tenants-faults-and-time)).
 - **`changes.list` after a move** returns thousands of changes over several pages, not in time order. Read every page.
 - **Links lead nowhere:**
   - Slack's `auth.test` `url` is always `http://127.0.0.1:8080/`.

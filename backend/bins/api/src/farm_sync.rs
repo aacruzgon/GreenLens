@@ -725,11 +725,29 @@ impl FarmSync {
             }
             self.store_page(run, src, &page).await?;
             state.failing = false;
+            // Only ids in the window are kept: a re-read that catches up from older (after a
+            // week or more without a sync) would otherwise store every id of the catch-up. A
+            // kept id carries no time, so it counts when the source has a record of it in the
+            // window, which is all the deletion at the re-read's end looks at.
             if let Some(reread) = state.reread.as_mut() {
-                reread
-                    .seen
-                    .extend(page.items.iter().map(|i| i.vendor_id.clone()));
-                reread.seen.extend(page.kept.iter().cloned());
+                let from = reread.from;
+                reread.seen.extend(
+                    page.items
+                        .iter()
+                        .filter(|i| i.at >= from)
+                        .map(|i| i.vendor_id.clone()),
+                );
+                if !page.kept.is_empty() {
+                    let window: std::collections::HashSet<String> = self
+                        .store
+                        .source_vendor_ids_since(run.id, src.id.clone(), from)
+                        .await?
+                        .into_iter()
+                        .collect();
+                    reread
+                        .seen
+                        .extend(page.kept.iter().filter(|v| window.contains(*v)).cloned());
+                }
             }
             let SyncCursor(cursor) = page.cursor;
             state.vendor = Some(cursor);

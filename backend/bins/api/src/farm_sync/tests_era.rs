@@ -1,7 +1,8 @@
 //! The Slack and Drive syncs against Era's simulators, on the Maple Row Farm fixture (docs/EON
-//! T-E4.2, T-E4.3, T-E4.4, T-E4.5's Drive half, T-E4.6, T-E4.7, T-E4.8, T-E4.11): the embedded
-//! store, a counting embedder and the clock pinned to 2026-10-15T12:00:00Z; the client's token
-//! is the tenant's minted credential. Ignored by default; with the simulators up:
+//! T-E4.2, T-E4.3, T-E4.4, T-E4.5, T-E4.6, T-E4.7, T-E4.8, T-E4.11, and E4.3's resync): the
+//! embedded store, a counting embedder and the clock pinned to 2026-10-15T12:00:00Z, 91 days on
+//! after `day2`; the client's token is the tenant's minted credential. Ignored by default; with
+//! the simulators up:
 //!
 //! ```sh
 //! docker compose -f infra/dev.compose.yml --profile era up -d --wait era-slack era-drive
@@ -31,6 +32,7 @@ use domain::{
     connectors::{ConnectorEndpoint, ConnectorStatus, SyncErrorCode},
     id::{ConnectorId, GardenId},
     ports::{Clock as _, Embedding, FarmRecordFilter, FarmRecordMatch, FarmRecordStore},
+    rules::limits::FARM_RECORD_KEEP,
     testing::{FixedClock, SequentialIds},
 };
 use integrations::{
@@ -503,6 +505,185 @@ async fn era_slack_daily_reread_deletes_a_message_gone_at_the_vendor() {
     farm.tenant.close().await;
 }
 
+/// A `#crew` thread whose last reply was on 2026-10-03, 12 days before the `day1` sync.
+const ACTIVE: &str = "1791033300.011600";
+/// A `#field-reports` thread whose last reply was on 2026-09-01, 44 days before the `day1` sync.
+const QUIET: &str = "1788216000.009700";
+/// A `#field-reports` message of 2026-12-01, before `day2`'s last 7 days.
+const MIDDLE: &str = "1796115600.000100";
+/// A `#field-reports` message of 2027-01-12, in `day2`'s last 7 days.
+const RECENT: &str = "1799744400.000100";
+/// A new `#crew` thread of 2027-01-11, with one reply.
+const THREAD: &str = "1799685000.000100";
+
+/// The fixture a quarter on: a reply to [`ACTIVE`] and to [`QUIET`], and the quarter's new
+/// messages.
+fn quarter_later() -> Value {
+    let mut slack = fixture("maple-row", "slack.json");
+    let messages = slack["messages"].as_array_mut().expect("messages");
+    for (parent, reply) in [
+        (
+            ACTIVE,
+            json!({"user": "U_SAM", "ts": "1799679600.000100", "text": "Totals are in the binder."}),
+        ),
+        (
+            QUIET,
+            json!({"user": "U_JUNE", "ts": "1799680000.000100", "text": "Bed 2 netting is torn."}),
+        ),
+    ] {
+        messages
+            .iter_mut()
+            .find(|m| m["ts"] == parent)
+            .expect("the thread")["reply"]
+            .as_array_mut()
+            .expect("its replies")
+            .push(reply);
+    }
+    messages.extend([
+        json!({"channel": "C_FIELD", "user": "U_JUNE", "ts": MIDDLE,
+               "text": "Garlic is up in bed 4 under the straw."}),
+        json!({"channel": "C_FIELD", "user": "U_MARIA", "ts": RECENT,
+               "text": "Seed order for spring placed: tomatoes, peppers, basil."}),
+        json!({"channel": "C_CREW", "user": "U_MARIA", "ts": THREAD,
+               "text": "Planning meeting moved to Thursday.",
+               "reply": [{"user": "U_DEV", "ts": "1799686000.000100", "text": "Works for me."}]}),
+    ]);
+    slack
+}
+
+/// After `day2`'s first sync: the quarter's three messages, each once, and every record of
+/// `before` as it was.
+async fn assert_the_quarter_arrived(farm: &Farm, before: &BTreeMap<String, FarmRecordMatch>) {
+    let after = farm.records().await;
+    assert_eq!(farm.count().await, 97, "the three new messages, each once");
+    assert_eq!(after.len(), 97);
+    for (vendor_id, record) in before {
+        assert_eq!(
+            after[vendor_id].hit.text, record.hit.text,
+            "{vendor_id} changed"
+        );
+    }
+    assert_eq!(
+        after[&format!("C_FIELD/{MIDDLE}")]
+            .hit
+            .citation
+            .at
+            .to_string(),
+        "2026-12-01T09:00:00Z"
+    );
+    assert!(after.contains_key(&format!("C_FIELD/{RECENT}")));
+    assert!(
+        after[&format!("C_CREW/{THREAD}")]
+            .hit
+            .text
+            .contains("Dev: Works for me.")
+    );
+}
+
+/// T-E4.5, Slack's half: synced on `day1`, the tenant moved to `day2` and the clock 91 days on,
+/// with the quarter's messages injected. The first run is then the daily re-read, which reads
+/// from the newest message seen, not only its 7 days, so a message from the quarter's middle
+/// arrives with those of the last week; nothing is stored twice and nothing is deleted. The
+/// 91 days away don't count toward a thread's 30 quiet days, so a check finds a new reply to a
+/// thread active at the last sync, and a thread already quiet for 30 days then isn't checked
+/// (connectors 6). The 180-day cleanup then deletes the fixture's messages older than 180 days,
+/// and the next day's re-read doesn't bring them back.
+#[tokio::test]
+#[ignore = "needs Era's simulators"]
+async fn era_slack_a_quarter_later_the_new_messages_arrive_and_the_old_ones_age_out() {
+    let farm = farm(&["C_FIELD", "C_CREW"], |_| {}).await;
+    assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
+    assert_eq!(farm.count().await, 94);
+    let before = farm.records().await;
+    let embedded = farm.embedder.texts();
+
+    // A quarter later. The tenant is reset to inject the fixture afresh, since the simulator
+    // answers a parent injected a second time with its first copy, and lists every message
+    // injected twice twice. Reset goes back to `day1`, so the move comes after it.
+    farm.tenant.reset().await;
+    farm.tenant.state("day2").await;
+    farm.tenant.inject(&quarter_later()).await;
+    farm.clock.advance(Duration::from_hours(91 * 24));
+
+    let history = farm.calls(HISTORY).await;
+    let mark = farm.proxy.len();
+    assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
+    // One page per channel from its newest message; the new thread is read in full, and the
+    // page's one check takes the first of the three `#crew` threads with a reply within 30
+    // days of the last sync, unchanged.
+    assert_eq!(farm.calls(HISTORY).await - history, 2);
+    assert_eq!(farm.proxy.replies_since(mark), (1, 1));
+    assert_the_quarter_arrived(&farm, &before).await;
+    assert_eq!(
+        farm.embedder.texts(),
+        embedded + 3,
+        "only the new ones embedded"
+    );
+
+    // The next sync's check takes `ACTIVE`: the 91 days away didn't make it quiet. `QUIET`,
+    // quiet for 30 days before the last sync, isn't checked.
+    let mark = farm.proxy.len();
+    farm.clock.advance(SYNC_EVERY);
+    assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
+    assert_eq!(farm.proxy.replies_since(mark), (1, 1));
+    let after = farm.records().await;
+    assert!(
+        after[&format!("C_CREW/{ACTIVE}")]
+            .hit
+            .text
+            .contains("Sam: Totals are in the binder."),
+        "time away doesn't make a thread quiet"
+    );
+    assert!(
+        !after[&format!("C_FIELD/{QUIET}")]
+            .hit
+            .text
+            .contains("Bed 2 netting is torn."),
+        "a thread quiet for 30 days before the last sync is no longer checked"
+    );
+    assert_eq!(farm.count().await, 97, "the thread is still one record");
+    assert_eq!(farm.embedder.texts(), embedded + 4);
+
+    // The cleanup deletes the fixture's messages from before 2026-07-18T12:00:00Z.
+    let cutoff = farm.clock.now().minus(FARM_RECORD_KEEP).unix_seconds();
+    let old = before
+        .values()
+        .filter(|m| m.hit.citation.at.unix_seconds() < cutoff)
+        .count();
+    assert_eq!(old, 47);
+    let deleted = super::delete_old_messages(farm.store.as_ref(), farm.clock.now())
+        .await
+        .expect("cleanup");
+    assert_eq!(deleted as usize, old);
+    assert_eq!(farm.count().await, 50);
+    assert!(
+        farm.records()
+            .await
+            .values()
+            .all(|m| m.hit.citation.at.unix_seconds() >= cutoff)
+    );
+
+    // A day later the re-read reads the last 7 days again: nothing deleted comes back, and
+    // what it sees stays. Its check takes the next thread, unchanged.
+    let history = farm.calls(HISTORY).await;
+    let mark = farm.proxy.len();
+    farm.clock.advance(super::REREAD_EVERY);
+    assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
+    let row = farm.row().await;
+    for channel in ["C_FIELD", "C_CREW"] {
+        let state = super::state::SourceState::parse(row.cursors.get(channel));
+        assert_eq!(state.reread_at, Some(farm.clock.now()), "{channel} re-read");
+    }
+    assert_eq!(farm.calls(HISTORY).await - history, 2);
+    assert_eq!(farm.proxy.replies_since(mark), (1, 0));
+    assert_eq!(farm.count().await, 50);
+    let left = farm.records().await;
+    assert!(left.contains_key(&format!("C_FIELD/{RECENT}")));
+    assert!(left.contains_key(&format!("C_CREW/{THREAD}")));
+    assert_eq!(farm.embedder.texts(), embedded + 4);
+    farm.tenant.close().await;
+}
+
 #[tokio::test]
 #[ignore = "needs Era's simulators"]
 async fn era_fault_a_throttled_first_sync_resumes_without_duplicates() {
@@ -663,9 +844,9 @@ async fn era_fault_logs_and_records_hold_no_email_and_no_vendor_body() {
     farm.tenant.close().await;
 }
 
-/// The Drive sync against Era's Drive simulator (docs/EON T-E4.3, T-E4.5's Drive half): one
-/// `era` connector on the fixture's folder `F_FARM`, its token the tenant's minted credential,
-/// sealed as a bare bearer token like the seeded `ya29.era-demo`.
+/// The Drive sync against Era's Drive simulator (docs/EON T-E4.3, T-E4.5's Drive half, E4.3's
+/// resync): one `era` connector on the fixture's folder `F_FARM`, its token the tenant's minted
+/// credential, sealed as a bare bearer token like the seeded `ya29.era-demo`.
 mod drive {
     use domain::{
         connectors::{ConnectorAccount, ConnectorKind, ConnectorSource},
@@ -688,6 +869,7 @@ mod drive {
         tenant: Tenant,
         store: Arc<SurrealStore>,
         clock: Arc<FixedClock>,
+        embedder: Arc<CountingEmbedder>,
         sync: FarmSync,
         garden: GardenId,
         viewer: domain::authz::Membership<Viewer>,
@@ -740,9 +922,10 @@ mod drive {
         let source = Arc::new(DriveSource::new(DriveClient::new(http, config)));
         let mut vendors = MockConnectVendors::new();
         vendors.expect_refresh().never();
+        let embedder = Arc::new(CountingEmbedder::default());
         let sync = FarmSync::new(
             store.clone(),
-            Arc::new(CountingEmbedder::default()),
+            embedder.clone(),
             clock.clone(),
             key(),
             Arc::new(vendors),
@@ -756,6 +939,7 @@ mod drive {
             tenant,
             store,
             clock,
+            embedder,
             sync,
             garden: garden_id,
             viewer,
@@ -909,6 +1093,104 @@ mod drive {
                 .all(|m| m.hit.citation.at.to_string() == "2027-01-14T12:00:00Z"),
             "each file read again at its new modifiedTime"
         );
+        farm.tenant.close().await;
+    }
+
+    /// E4.3's resync: a change token Drive refuses (`400`, reason `invalid`) lists the folder
+    /// again, and the sync deletes the records of the files the listing didn't hold
+    /// (`FarmPage::listed`) and keeps the others, under the same ids, with their vectors.
+    #[tokio::test]
+    #[ignore = "needs Era's simulators"]
+    async fn era_drive_a_refused_change_token_lists_the_folder_again_and_drops_what_is_gone() {
+        let farm = drive_farm(None, |_| {}).await;
+        assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
+        let before = farm.records().await;
+        assert_eq!(farm.files().await, FARM);
+        let embedded = farm.embedder.texts();
+
+        // The tenant again without `D_SOP`: an inject writes no change on one day (EON 3), so
+        // only a listing can tell it is gone.
+        let gone = "D_SOP";
+        let mut drive = fixture("maple-row", "google-drive.json");
+        drive["files"]
+            .as_array_mut()
+            .expect("files")
+            .retain(|f| f["id"] != gone);
+        farm.tenant.reset().await;
+        farm.tenant.inject(&drive).await;
+
+        // The stored change token replaced with one Drive never gave.
+        let mut cursors: BTreeMap<String, String> = farm
+            .store
+            .connector_row(farm.connector)
+            .await
+            .expect("read")
+            .expect("exists")
+            .cursors
+            .into_iter()
+            .map(|(source, cursor)| (source, cursor.0))
+            .collect();
+        let mut state: Value = serde_json::from_str(&cursors["F_FARM"]).expect("the state");
+        let mut vendor: Value =
+            serde_json::from_str(state["vendor"].as_str().expect("a cursor")).expect("its JSON");
+        vendor["token"] = json!("not-a-token");
+        state["vendor"] = json!(vendor.to_string());
+        cursors.insert("F_FARM".to_owned(), state.to_string());
+        farm.store
+            .db()
+            .query("UPDATE $c SET cursor = $cursor;")
+            .bind(("c", store::ids::rid(&farm.connector)))
+            .bind(("cursor", cursors))
+            .await
+            .expect("cursor written")
+            .check()
+            .expect("cursor written");
+
+        let journal = farm.tenant.requests().await;
+        let (start, listed) = (count(&journal, START), count(&journal, FILES));
+        farm.clock.advance(SYNC_EVERY);
+        assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
+
+        // One refused `changes.list`, then a new start token and the folder listed again.
+        let journal = farm.tenant.requests().await;
+        let refused = journal
+            .iter()
+            .filter(|r| r.route == CHANGES && r.status == 400)
+            .count();
+        assert_eq!(refused, 1);
+        assert_eq!(count(&journal, CHANGES), 0);
+        assert_eq!(count(&journal, START), start + 1);
+        assert_eq!(count(&journal, FILES), listed + 1);
+
+        let kept: Vec<&str> = FARM.iter().copied().filter(|f| *f != gone).collect();
+        assert_eq!(farm.files().await, kept, "the file gone is deleted");
+        let after = farm.records().await;
+        let expected: BTreeMap<_, _> = before.iter().filter(|((v, _), _)| v != gone).collect();
+        assert_eq!(after.len(), expected.len());
+        for (key, record) in expected {
+            let now = &after[key];
+            assert_eq!(now.hit.citation.record_id, record.hit.citation.record_id);
+            assert_eq!(now.hit.text, record.hit.text);
+        }
+        let stored = farm
+            .store
+            .garden_record_count(farm.garden)
+            .await
+            .expect("count");
+        assert_eq!(stored as usize, after.len(), "no record stored twice");
+        assert_eq!(
+            farm.embedder.texts(),
+            embedded,
+            "the files read again are unchanged, so nothing is embedded"
+        );
+
+        // The new token works: the next sync reads `changes.list` and changes nothing.
+        farm.clock.advance(SYNC_EVERY);
+        assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
+        let journal = farm.tenant.requests().await;
+        assert_eq!(count(&journal, CHANGES), 1);
+        assert_eq!(count(&journal, FILES), listed + 1, "not listed again");
+        assert_eq!(farm.files().await, kept);
         farm.tenant.close().await;
     }
 
