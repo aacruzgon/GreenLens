@@ -1,5 +1,6 @@
-// The weather card (screens 3.1; styles.css .weather with the "days" layout): now, the next six days with
-// the frost day marked, and when it was fetched. A 503 shows "Weather unavailable" in its place.
+// The weather card (screens 3.1; styles.css .weather with the "days" layout, where .w-main is hidden): the
+// next six days with the frost day marked, and a footer with the frost day and when it was fetched. The
+// hero's sentence above carries now. A 503 shows "Weather unavailable" in its place.
 import { View } from "react-native";
 
 import { Button, Card, Skeleton, Text, space, useTheme } from "@/ui";
@@ -13,10 +14,9 @@ export function WeatherCard({ state }: { state: WeatherCardState }) {
   if (state.status === "loading") {
     return (
       <Card testID="weather-loading" accessibilityLabel="Loading the weather">
-        <Skeleton height={44} width="55%" />
-        <View style={{ flexDirection: "row", gap: space[2], marginTop: space[4] }}>
+        <View style={{ flexDirection: "row", gap: space[2] }}>
           {[0, 1, 2, 3, 4, 5].map((i) => (
-            <Skeleton key={i} height={72} radius={10} style={{ flex: 1 }} />
+            <Skeleton key={i} height={110} radius={10} style={{ flex: 1 }} />
           ))}
         </View>
         <Skeleton height={12} width="40%" style={{ marginTop: space[3] }} />
@@ -41,23 +41,10 @@ export function WeatherCard({ state }: { state: WeatherCardState }) {
   }
 
   const v = state.view;
+  // .w-day: 13 pt type on the screen's 22 pt line, 4 pt between the rows and 6 pt above and below.
+  const cell = { fontSize: 13, lineHeight: 22, fontVariant: ["tabular-nums" as const] };
   return (
-    <Card>
-      <View
-        accessible
-        accessibilityLabel={`Now ${v.temp}, ${v.humidity}, ${v.detail}`}
-        style={{ flexDirection: "row", alignItems: "center", gap: space[3], marginBottom: space[3] }}
-      >
-        <Icon name={v.nowKind} color={colors.info} size={34} />
-        <Text style={{ fontSize: 44, lineHeight: 48, fontWeight: "300", letterSpacing: -0.9, fontVariant: ["tabular-nums"] }}>{v.temp}</Text>
-        <View style={{ flex: 1 }}>
-          <Text variant="headline">{v.humidity}</Text>
-          <Text variant="footnote" color="textMuted">
-            {v.detail}
-          </Text>
-        </View>
-      </View>
-
+    <Card style={{ paddingTop: 14, paddingBottom: 12 }}>
       <View style={{ flexDirection: "row", gap: 2 }}>
         {v.days.map((d) => (
           <View
@@ -71,17 +58,18 @@ export function WeatherCard({ state }: { state: WeatherCardState }) {
               gap: space[1],
               paddingVertical: 6,
               borderRadius: 10,
+              borderCurve: "continuous",
               backgroundColor: d.frost ? colors.watchSoft : "transparent",
             }}
           >
-            <Text variant="footnote" color={d.frost ? "watch" : "text"} emphasis={d.frost}>
+            <Text color={d.frost ? "watch" : "text"} style={cell}>
               {d.label}
             </Text>
             <Icon name={d.kind} color={d.frost ? colors.watch : colors.textMuted} />
-            <Text variant="footnote" color={d.frost ? "watch" : "text"} style={{ fontVariant: ["tabular-nums"] }}>
+            <Text color={d.frost ? "watch" : "text"} style={cell}>
               {d.high}
             </Text>
-            <Text variant="footnote" color={d.frost ? "watch" : "textMuted"} style={{ fontVariant: ["tabular-nums"] }}>
+            <Text color={d.frost ? "watch" : "textMuted"} style={cell}>
               {d.low}
             </Text>
           </View>

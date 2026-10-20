@@ -2,6 +2,8 @@
 // at Conservatory's 1.6 stroke (directions.js shape.iconStroke). Decorative: the text beside them carries the meaning.
 import Svg, { Circle, Path } from "react-native-svg";
 
+import { hiddenSvg } from "@/ui";
+
 import type { WeatherKind } from "../model/weather";
 
 const PATHS: Record<WeatherKind | "leaf" | "plus" | "chevron", string[]> = {
@@ -28,8 +30,7 @@ export function Icon({ name, color, size = 20, strokeWidth = 1.6 }: { name: Icon
       strokeWidth={strokeWidth}
       strokeLinecap="round"
       strokeLinejoin="round"
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      {...hiddenSvg}
       testID={`icon-${name}`}
     >
       {name === "sun" ? <Circle cx={12} cy={12} r={4} /> : null}

@@ -14,7 +14,7 @@ import { Card, EmptyState, Enter, ErrorState, Section, Skeleton, Text, WASH_HEIG
 import { AlertCard } from "../components/AlertCard";
 import { GardenHero } from "../components/GardenHero";
 import { GardenNotes } from "../components/GardenNotes";
-import { HeroControls } from "../components/HeroControls";
+import { HeroControls, chooseGarden } from "../components/HeroControls";
 import { PlantCarousel, PlantCarouselSkeleton } from "../components/PlantCarousel";
 import { WeatherCard } from "../components/WeatherCard";
 import { useActiveGardenId } from "../hooks/useActiveGarden";
@@ -25,6 +25,8 @@ import { emptyPlantsTitle, mixHex } from "../model/home";
 const HERO_HEIGHT = 470;
 /** Room for the tab bar and the scan button beside it (iOS 26's floating bar is about 62 pt plus its margin). */
 const TAB_BAR_CLEARANCE = 96;
+/** styles.css .sec: margin-top 26. */
+const SECTION_GAP = 26;
 /** Entrance stagger between sections (the mockup's --i steps). */
 const STAGGER = 60;
 
@@ -83,6 +85,9 @@ export function GardenHomeScreen() {
   const plants = view.plants;
   const today = view.today;
   const emptyGarden = plants.status === "ready" && plants.items.length === 0;
+  const gardens = view.gardens.items;
+  // The switcher is the ▾ on the title, only with two or more gardens (screens 3.1).
+  const onSwitchGarden = gardens.length >= 2 ? () => chooseGarden(gardens, view.actions.switchGarden) : undefined;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }} testID="garden-home">
@@ -101,6 +106,7 @@ export function GardenHomeScreen() {
           eyebrow={g?.eyebrow}
           weatherLine={g?.weatherLine}
           note={g?.note}
+          onSwitchGarden={onSwitchGarden}
           photo={view.hero.photo}
           photoLabel={view.hero.label}
           ground={ground}
@@ -108,15 +114,13 @@ export function GardenHomeScreen() {
           topInset={insets.top}
         />
         <HeroControls
-          gardens={view.gardens.items}
-          activeId={view.gardens.activeId}
-          onPickGarden={view.actions.switchGarden}
           onAddPlant={view.can.addPlant ? view.actions.addPlant : undefined}
           overPhoto={hasPhoto}
           topInset={insets.top}
         />
 
-        <View style={{ paddingHorizontal: gutter, paddingTop: space[4], gap: space[6] }}>
+        {/* .sec: 16 pt gutters and 26 pt between sections, the first included. */}
+        <View style={{ paddingHorizontal: gutter, paddingTop: SECTION_GAP, gap: SECTION_GAP }}>
           <Enter delay={STAGGER}>
             <WeatherCard state={view.weather} />
           </Enter>
@@ -163,9 +167,10 @@ export function GardenHomeScreen() {
                     </Text>
                   </Card>
                 ) : (
-                  <Card padded={false} style={{ paddingVertical: space[1] }}>
+                  // .card.list: no padding, each row 12 × 16, full-width rules between rows.
+                  <Card padded={false}>
                     {today.items.map((t, i) => (
-                      <View key={t.id} style={i > 0 ? { borderTopWidth: 1, borderTopColor: colors.border, marginLeft: space[4] } : undefined}>
+                      <View key={t.id} style={i > 0 ? { borderTopWidth: 1, borderTopColor: colors.border } : undefined}>
                         <TaskRow
                           testID={`task-${t.id}`}
                           title={t.title}

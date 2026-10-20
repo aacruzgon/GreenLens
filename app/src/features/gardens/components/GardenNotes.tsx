@@ -1,8 +1,8 @@
-// Garden notes (screens 3.1): memories with no plant, shared ones plus the caller's own, with **+ Note**
-// for editors and owners. The note's own text is shown as stored.
+// Garden notes (screens 3.1): memories with no plant, shared ones plus the caller's own, in one card at
+// 15 pt (styles.css .card.t-sub), with **Add** at the right of the section title for editors and owners. The note's own text is shown as stored.
 import { View } from "react-native";
 
-import { Button, Card, ErrorState, Section, Skeleton, Text, space, useTheme } from "@/ui";
+import { Card, ErrorState, Section, Skeleton, Text, space, useTheme } from "@/ui";
 
 import type { Loadable } from "../model/views";
 
@@ -33,8 +33,9 @@ export function GardenNotes({ state, onAddNote }: GardenNotesProps) {
     );
   }
   const notes = state.items;
+  const add = onAddNote ? { label: "Add", accessibilityLabel: "Add a note", onPress: onAddNote } : undefined;
   return (
-    <Section title="Garden notes">
+    <Section title="Garden notes" action={add}>
       <Card style={{ gap: space[2] }}>
         {notes.length === 0 ? (
           <Text variant="subheadline" color="textMuted">
@@ -54,7 +55,6 @@ export function GardenNotes({ state, onAddNote }: GardenNotesProps) {
             </View>
           ))
         )}
-        {onAddNote ? <Button variant="secondary" label="+ Note" accessibilityLabel="Add a note" onPress={onAddNote} /> : null}
       </Card>
     </Section>
   );

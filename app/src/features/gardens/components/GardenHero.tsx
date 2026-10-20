@@ -2,19 +2,23 @@
 // name at 54 pt in Urbanist over its faded edge, the place and day above it and a line on the weather below.
 // A light shade at the top keeps the light status bar readable over the photo; nothing tinted sits on it.
 import { useId } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 import type { ImageSource } from "expo-image";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
-import { MeltPhoto, Skeleton, Text, space } from "@/ui";
+import { MeltPhoto, Skeleton, Text, hiddenSvg, space, useTheme } from "@/ui";
+
+import { Icon } from "./Icons";
 
 export interface GardenHeroProps {
   /** Undefined while the garden loads. */
   name?: string;
   /** "Toronto · Monday". */
   eyebrow?: string;
-  /** "11 °C, 84% humidity. Frost possible Thursday." */
+  /** "14 °C and light rain, 92% humidity. Frost possible Thursday night." */
   weatherLine?: string;
+  /** Opens the garden switcher; set only with two or more gardens, and draws a ▾ after the name. */
+  onSwitchGarden?: () => void;
   /** "Soil data loading" while the soil profile is pending (screens 3.1). */
   note?: string;
   /** null: no photo, the name sits on the wash. undefined: still loading, the hero keeps its height. */
@@ -37,8 +41,7 @@ function TopShade() {
       height="100%"
       style={{ position: "absolute", top: 0, left: 0 }}
       pointerEvents="none"
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      {...hiddenSvg}
     >
       <Defs>
         <LinearGradient id={id} x1="0" y1="0" x2="0" y2="1">
@@ -51,20 +54,43 @@ function TopShade() {
   );
 }
 
-function HeroText({ name, eyebrow, weatherLine, note }: Pick<GardenHeroProps, "name" | "eyebrow" | "weatherLine" | "note">) {
+type HeroTextProps = Pick<GardenHeroProps, "name" | "eyebrow" | "weatherLine" | "note" | "onSwitchGarden">;
+
+function Title({ name, onSwitchGarden }: { name: string; onSwitchGarden?: () => void }) {
+  const { colors } = useTheme();
+  const title = (
+    <Text variant="hero" accessibilityRole="header" numberOfLines={2} style={{ flexShrink: 1 }}>
+      {name}
+    </Text>
+  );
+  if (!onSwitchGarden) return <View style={{ marginBottom: 10 }}>{title}</View>;
   return (
-    <View style={{ paddingHorizontal: space[5], paddingBottom: 6, gap: space[1] }}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${name}. Switch garden`}
+      onPress={onSwitchGarden}
+      testID="garden-switcher"
+      style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10, opacity: pressed ? 0.6 : 1 })}
+    >
+      {title}
+      <Icon name="chevron" color={colors.textMuted} size={28} strokeWidth={2.2} />
+    </Pressable>
+  );
+}
+
+// .hero-text under data-melt: the eyebrow at 15 pt, the name 4 pt below it with 10 pt under, then the line.
+function HeroText({ name, eyebrow, weatherLine, note, onSwitchGarden }: HeroTextProps) {
+  return (
+    <View style={{ paddingHorizontal: space[5], paddingBottom: 6 }}>
       {eyebrow ? (
-        <Text variant="subheadline" color="textMuted">
+        <Text variant="subheadline" color="textMuted" style={{ letterSpacing: 0.3, marginBottom: space[1] }}>
           {eyebrow}
         </Text>
       ) : null}
       {name ? (
-        <Text variant="hero" accessibilityRole="header" numberOfLines={2} style={{ marginTop: space[1], marginBottom: 6 }}>
-          {name}
-        </Text>
+        <Title name={name} onSwitchGarden={onSwitchGarden} />
       ) : (
-        <Skeleton height={52} width="70%" style={{ marginVertical: space[2] }} />
+        <Skeleton height={52} width="70%" style={{ marginTop: space[1], marginBottom: space[2] }} />
       )}
       {weatherLine ? (
         <Text variant="subheadline" color="textMuted" style={{ maxWidth: 320 }}>
@@ -72,7 +98,7 @@ function HeroText({ name, eyebrow, weatherLine, note }: Pick<GardenHeroProps, "n
         </Text>
       ) : null}
       {note ? (
-        <Text variant="footnote" color="textMuted">
+        <Text variant="footnote" color="textMuted" style={{ marginTop: space[1] }}>
           {note}
         </Text>
       ) : null}

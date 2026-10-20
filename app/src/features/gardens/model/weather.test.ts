@@ -1,6 +1,6 @@
 import type { ForecastDay, WeatherSummary } from "@/domain/types";
 
-import { dayKind, heroWeatherLine, upcomingDays, weatherView } from "./weather";
+import { dayKind, heroWeatherLine, skyWords, upcomingDays, weatherView } from "./weather";
 
 function day(date: string, o: Partial<ForecastDay> = {}): ForecastDay {
   return { date, t_min_c: 6, t_max_c: 13, mean_rh_pct: 62, hours_rh_over_90: 0, precip_mm: 0, frost_risk: false, ...o };
@@ -37,22 +37,29 @@ describe("weatherView", () => {
     expect(view.frostNote).toBe("Frost possible Thursday");
   });
 
-  it("gives now and when it was fetched, in the garden's time zone", () => {
-    expect(view.temp).toBe("11°");
-    expect(view.humidity).toBe("84% humidity");
-    expect(view.detail).toBe("3 mm of rain in the past day · wind 9 km/h");
+  it("gives when it was fetched, in the garden's time zone", () => {
     expect(view.updated).toBe("Updated 10:00");
   });
 });
 
 describe("heroWeatherLine", () => {
   it("reads now and the coming frost", () => {
-    expect(heroWeatherLine(weather, "2026-10-19")).toBe("11 °C, 84% humidity, 3 mm of rain in the past day. Frost possible Thursday.");
+    expect(heroWeatherLine(weather, "2026-10-19")).toBe("11 °C and light rain, 84% humidity. Frost possible Thursday night.");
   });
 
   it("says tomorrow for tomorrow's frost and nothing without one", () => {
-    expect(heroWeatherLine(weather, "2026-10-21")).toBe("11 °C, 84% humidity, 3 mm of rain in the past day. Frost possible tomorrow.");
-    expect(heroWeatherLine(weather, "2026-10-22")).toBe("11 °C, 84% humidity, 3 mm of rain in the past day.");
+    expect(heroWeatherLine(weather, "2026-10-21")).toBe("11 °C and light rain, 84% humidity. Frost possible tomorrow night.");
+    expect(heroWeatherLine(weather, "2026-10-22")).toBe("11 °C and light rain, 84% humidity.");
+  });
+
+  it("words the sky from the past day's rain and the humidity", () => {
+    expect([0, 0.4, 3, 12].map((precip_mm_last_24h) => skyWords({ precip_mm_last_24h, rh_pct: 84 }))).toEqual([
+      "cloudy",
+      "cloudy",
+      "light rain",
+      "rain",
+    ]);
+    expect(skyWords({ precip_mm_last_24h: 0, rh_pct: 60 })).toBe("partly cloudy");
   });
 });
 

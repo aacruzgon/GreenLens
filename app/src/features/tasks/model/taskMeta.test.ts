@@ -8,6 +8,12 @@ describe("taskMeta", () => {
     expect(taskMeta({ plant_id: "plant_tomato_2", repeat: { every_days: 7 }, due: "2026-10-19" }, nameOf, "2026-10-19")).toBe("Tomato 2 · weekly");
   });
 
+  it("marks a plan's repeating check on a plant as monitoring", () => {
+    expect(
+      taskMeta({ source: "plan", plant_id: "plant_tomato_2", repeat: { every_days: 7 }, due: "2026-10-19" }, nameOf, "2026-10-19"),
+    ).toBe("Tomato 2 · Monitoring · weekly");
+  });
+
   it("adds when an overdue task was due", () => {
     expect(taskMeta({ repeat: { every_days: 3 }, due: "2026-10-16" }, nameOf, "2026-10-19")).toBe("every 3 days · due Oct 16");
   });

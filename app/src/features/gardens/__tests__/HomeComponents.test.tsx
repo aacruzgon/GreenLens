@@ -16,10 +16,6 @@ function themed(node: ReactNode) {
 }
 
 const weather: WeatherView = {
-  temp: "11°",
-  humidity: "84% humidity",
-  detail: "3 mm of rain in the past day · wind 9 km/h",
-  nowKind: "rain",
   days: ["Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label, i) => ({
     date: `2026-10-${20 + i}`,
     label,
@@ -35,9 +31,8 @@ const weather: WeatherView = {
 };
 
 describe("WeatherCard", () => {
-  it("shows now, six days with the frost day marked, and when it was fetched", async () => {
+  it("shows six days with the frost day marked, and when it was fetched", async () => {
     await themed(<WeatherCard state={{ status: "ready", view: weather }} />);
-    expect(screen.getByText("11°")).toBeTruthy();
     expect(screen.getAllByTestId(/^weather-day/)).toHaveLength(6);
     expect(screen.getAllByTestId("weather-day-frost")).toHaveLength(1);
     expect(screen.getByText("Frost possible Thursday")).toBeTruthy();
@@ -92,7 +87,7 @@ describe("GardenHero", () => {
       <GardenHero
         name="Back garden"
         eyebrow="Toronto · Monday"
-        weatherLine="11 °C, 84% humidity. Frost possible Thursday."
+        weatherLine="11 °C and light rain, 84% humidity. Frost possible Thursday night."
         photo={{ uri: "https://example.com/basil.jpg" }}
         photoLabel="Basil"
         ground="#EEF2E9"
@@ -102,7 +97,18 @@ describe("GardenHero", () => {
     );
     expect(screen.getByRole("header", { name: "Back garden" })).toBeTruthy();
     expect(screen.getByText("Toronto · Monday")).toBeTruthy();
-    expect(screen.getByText("11 °C, 84% humidity. Frost possible Thursday.")).toBeTruthy();
+    expect(screen.getByText("11 °C and light rain, 84% humidity. Frost possible Thursday night.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Switch garden/ })).toBeNull();
+  });
+
+  it("makes the name the garden switcher when one is given", async () => {
+    const onSwitch = jest.fn();
+    await themed(
+      <GardenHero name="Back garden" photo={null} photoLabel="" ground="#EEF2E9" height={470} topInset={59} onSwitchGarden={onSwitch} />,
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Back garden. Switch garden" }));
+    expect(onSwitch).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("header", { name: "Back garden" })).toBeTruthy();
   });
 });
 
@@ -122,39 +128,32 @@ describe("GardenNotes", () => {
     expect(retry).toHaveBeenCalledTimes(1);
   });
 
-  it("offers + Note to editors only", async () => {
+  it("offers Add to editors only", async () => {
     const onAddNote = jest.fn();
     const { rerender } = await themed(<GardenNotes state={ready} onAddNote={onAddNote} />);
     expect(screen.getByText("Everything is in containers")).toBeTruthy();
-    await fireEvent.press(screen.getByRole("button", { name: "Add a note" }));
+    await fireEvent.press(screen.getByRole("link", { name: "Add a note" }));
     expect(onAddNote).toHaveBeenCalledTimes(1);
     await rerender(
       <ThemeProvider scheme="light">
         <GardenNotes state={ready} />
       </ThemeProvider>,
     );
-    expect(screen.queryByRole("button", { name: "Add a note" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Add a note" })).toBeNull();
   });
 });
 
 describe("HeroControls", () => {
-  const two = [
-    { id: "g1", name: "Back garden" },
-    { id: "g2", name: "Allotment" },
-  ];
-
-  it("offers the switcher with two gardens and + to editors", async () => {
+  it("offers + to editors", async () => {
     const onAdd = jest.fn();
-    await themed(<HeroControls gardens={two} activeId="g1" onPickGarden={() => {}} onAddPlant={onAdd} overPhoto topInset={0} />);
-    expect(screen.getByRole("button", { name: "Garden: Back garden. Switch garden" })).toBeTruthy();
+    await themed(<HeroControls onAddPlant={onAdd} overPhoto topInset={0} />);
     await fireEvent.press(screen.getByRole("button", { name: "Add a plant" }));
     expect(onAdd).toHaveBeenCalledTimes(1);
   });
 
-  it("shows the name without a menu for one garden, and no + for viewers", async () => {
-    await themed(<HeroControls gardens={[two[0]!]} activeId="g1" onPickGarden={() => {}} overPhoto={false} topInset={0} />);
-    expect(screen.getByText("Back garden")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Switch garden/ })).toBeNull();
+  it("shows nothing to viewers", async () => {
+    await themed(<HeroControls overPhoto={false} topInset={0} />);
     expect(screen.queryByRole("button", { name: "Add a plant" })).toBeNull();
+    expect(screen.queryByTestId("hero-controls")).toBeNull();
   });
 });

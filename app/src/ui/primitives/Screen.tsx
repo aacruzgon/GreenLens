@@ -6,7 +6,7 @@ import { ScrollView, View, type RefreshControlProps, type StyleProp, type ViewSt
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
-import { useSvgId } from "../svgId";
+import { hiddenSvg, useSvgId } from "../svgId";
 import { useTheme } from "../theme";
 import { gutter, space } from "../tokens";
 
@@ -36,8 +36,7 @@ export function Wash() {
       width="100%"
       height={WASH_HEIGHT}
       style={{ position: "absolute", top: 0, left: 0, right: 0 }}
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      {...hiddenSvg}
       pointerEvents="none"
     >
       <Defs>
