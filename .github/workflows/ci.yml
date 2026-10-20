@@ -1,14 +1,22 @@
 # CI for the repository, designed in docs/infra/README.md section 2. It runs in stages:
-#   1. changes, then lint, test, examples, docs and infra. Each runs only when its inputs changed.
+#   1. changes, then lint, test, examples, docs, infra and app. Each runs only when its inputs changed.
 #      A skipped job reports success.
 #   2. security and live, only once lint (and, for live, test) have passed, so a broken pull
-#      request stops early and spends fewer runner minutes.
+#      request stops early and holds a runner for less time.
 #   3. ci: one check that fails if any job above failed or was cancelled. It's the only required
 #      check in the ruleset, so renaming a job never breaks the ruleset.
 #   4. On main and on v* tags: images builds and pushes api, worker and worker-cuda to GHCR.
 #      On v* tags only: release creates the GitHub Release with the digests.
 # Nothing deploys from CI: a person deploys by digest from the host (section 7). Actions are pinned
 # by commit; Dependabot proposes updates.
+#
+# Runners: every job runs on the labels in the repository variable RUNNER_LABELS, today the
+# self-hosted runners rig-1 and rig-2 (section 2, Runners). Without the variable, the jobs fall
+# back to GitHub's ubuntu-26.04. Steps that need sudo or the Actions cache run only on GitHub's
+# runners (`runner.environment == 'github-hosted'`); a self-hosted job keeps its build trees in
+# the runner's home instead (.github/actions/self-hosted-env). Every checkout sets
+# persist-credentials: false, so a job's token never sits in .git/config on a runner that the next
+# job, from another pull request, can read.
 name: CI
 
 on:
@@ -31,7 +39,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   # Line tables keep file and line in backtraces at a fraction of full debug info's size, so the
-  # build trees and their caches fit the runner's disk.
+  # build trees and their caches fit a hosted runner's disk, and the rig's persistent ones stay small.
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   # check_examples.py builds outside backend/, where rust-toolchain.toml doesn't apply.
   RUSTUP_TOOLCHAIN: "1.99.1"
@@ -41,7 +49,7 @@ jobs:
   # --- stage 1 ---------------------------------------------------------------------------------
 
   changes:
-    runs-on: ubuntu-26.04
+    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 5
     outputs:
       rust: ${{ steps.diff.outputs.rust }}
@@ -50,9 +58,11 @@ jobs:
       infra: ${{ steps.diff.outputs.infra }}
       live: ${{ steps.diff.outputs.live }}
       images: ${{ steps.diff.outputs.images }}
+      app: ${{ steps.diff.outputs.app }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       - id: diff
         env:
@@ -83,6 +93,8 @@ jobs:
           # check_examples.py copies the schema into its crate.
           out skills '^\.claude/skills/rust|^backend/migrations/'
           out infra  '^infra/|^\.github/'
+          # The generated types come from backend/openapi.json, so a contract change runs the app job too.
+          out app    '^app/|^backend/openapi\.json$'
           out live   '^backend/crates/(store|blob)/|^backend/migrations/|^backend/Cargo\.(toml|lock)$|^\.claude/skills/rust'
           # What the image build context holds (backend/.dockerignore leaves out tools/).
           out images '^backend/(crates|bins|migrations)/|^backend/(Cargo\.toml|Cargo\.lock|rust-toolchain\.toml|openapi\.json|Dockerfile|docker-bake\.hcl|\.dockerignore)$'
@@ -91,18 +103,24 @@ jobs:
   lint:
     needs: changes
     if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-26.04
+    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 30
     defaults:
       run:
         working-directory: backend
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Rust 1.99.1 with rustfmt and Clippy
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
+      # The rig has libheif-dev 1.23.4 installed, and no sudo for its runners.
       - name: Install libheif (vision's heic feature needs 1.19 or newer)
+        if: runner.environment == 'github-hosted'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libheif-dev
+      - uses: ./.github/actions/self-hosted-env
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        if: runner.environment == 'github-hosted'
         with:
           workspaces: "backend -> target"
           shared-key: lint
@@ -117,16 +135,20 @@ jobs:
   test:
     needs: changes
     if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-26.04
+    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 40
     defaults:
       run:
         working-directory: backend
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Rust 1.99.1 with rustfmt and Clippy
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
+      - uses: ./.github/actions/self-hosted-env
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        if: runner.environment == 'github-hosted'
         with:
           workspaces: "backend -> target"
           shared-key: test
@@ -144,18 +166,24 @@ jobs:
     # The examples compile against versions.md and the schema, not the workspace crates, so they
     # don't wait for lint or test.
     if: needs.changes.outputs.skills == 'true' || github.event_name == 'push'
-    runs-on: ubuntu-26.04
+    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # Its build tree is the largest of any job (5.1 GB): 8.8 GB was left at the end without this.
       - uses: ./.github/actions/free-disk
       - name: Rust 1.99.1 with rustfmt and Clippy
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
+      # setup-python ships builds for GitHub's images only; the rig uses Debian's python3 (3.13).
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           python-version: "3.12"
+      - uses: ./.github/actions/self-hosted-env
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        if: runner.environment == 'github-hosted'
         with:
           workspaces: "backend -> target"
           shared-key: examples
@@ -168,15 +196,18 @@ jobs:
         if: always()
         run: |
           df -h /
-          du -sh backend/target ~/.cache/pdm-rust-skills-check/target 2>/dev/null || true
+          du -sh "${CARGO_TARGET_DIR:-backend/target}" \
+            "${PDM_RUST_SKILLS_TARGET_DIR:-$HOME/.cache/pdm-rust-skills-check/target}" 2>/dev/null || true
 
   docs:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs == 'true'
-    runs-on: ubuntu-26.04
+    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Rust 1.99.1 with rustfmt and Clippy
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
       - name: The crate documents match the source
@@ -195,10 +226,12 @@ jobs:
   infra:
     needs: changes
     if: needs.changes.outputs.infra == 'true'
-    runs-on: ubuntu-26.04
+    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Every compose file renders with the example env file
         run: |
           shopt -s nullglob
@@ -219,6 +252,38 @@ jobs:
       - name: The Discord mention script's tests pass
         run: python3 -m unittest discover -s .github/scripts -b
 
+  app:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      # The generated types must match backend/openapi.json.
+      - name: The generated types match the spec
+        run: |
+          npm run gen:api
+          git diff --exit-code src/api/generated/schema.ts || {
+            echo "::error::app/src/api/generated/schema.ts is stale: run npm run gen:api in app/ and commit the result"
+            exit 1
+          }
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test -- --ci
+      - run: npm run check:contrast
+      - run: npx expo install --check
+
   # --- stage 2: only after lint (and test) pass --------------------------------------------------
   # `!cancelled() && !failure()` lets a job run when a job it needs was skipped for having no
   # changes, and stops it when one failed.
@@ -226,13 +291,15 @@ jobs:
   security:
     needs: [changes, lint]
     if: ${{ !cancelled() && !failure() && (needs.changes.outputs.rust == 'true' || github.event_name == 'push') }}
-    runs-on: ubuntu-26.04
+    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 10
     defaults:
       run:
         working-directory: backend
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: cargo-deny@0.20.2
@@ -242,13 +309,15 @@ jobs:
   live:
     needs: [changes, lint, test]
     if: ${{ !cancelled() && !failure() && (needs.changes.outputs.live == 'true' || github.event_name == 'push') }}
-    runs-on: ubuntu-26.04
+    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 30
+    # Ephemeral host ports on loopback: the rig runs two jobs at once beside the developer's own
+    # dev compose, which holds 18000 and 19000. The test step reads the ports back from `job`.
     services:
       surrealdb:
         image: surrealdb/surrealdb:v3.3.4@sha256:649a60a3b9c0177d9923c938e1c2563e48cde2a9d06ac2c0519714be719b02af
         command: start --user root --pass root memory
-        ports: ["127.0.0.1:18000:8000"]
+        ports: ["127.0.0.1::8000"]
         # Distroless: no /bin/sh for a --health-cmd, so the image's own exec-form check
         # (/surreal isready) runs, at this interval.
         options: >-
@@ -261,21 +330,22 @@ jobs:
           RUSTFS_SECRET_KEY: testrootsecret
           RUSTFS_CONSOLE_ENABLE: "false"
           RUSTFS_CHECK_UPDATE: "false"
-        ports: ["127.0.0.1:19000:9000"]
+        ports: ["127.0.0.1::9000"]
         options: >-
           --health-cmd "curl -fsS http://127.0.0.1:9000/health/ready"
           --health-interval 5s --health-retries 12 --health-start-period 30s
-    env:
-      PDM_TEST_SURREALDB_URL: ws://127.0.0.1:18000
-      PDM_TEST_RUSTFS_URL: http://127.0.0.1:19000
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # Two build trees; rust-cache's post step then unpacks every platform's crates and writes the
       # archive. Without this, the first save on main ran the disk out.
       - uses: ./.github/actions/free-disk
       - name: Rust 1.99.1 with rustfmt and Clippy
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
+      - uses: ./.github/actions/self-hosted-env
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        if: runner.environment == 'github-hosted'
         with:
           workspaces: "backend -> target"
           shared-key: live
@@ -287,21 +357,25 @@ jobs:
           tool: cargo-nextest@0.9.148
       - run: cargo nextest run -p store -p blob --run-ignored only --locked
         working-directory: backend
+        env:
+          PDM_TEST_SURREALDB_URL: ws://127.0.0.1:${{ job.services.surrealdb.ports['8000'] }}
+          PDM_TEST_RUSTFS_URL: http://127.0.0.1:${{ job.services.rustfs.ports['9000'] }}
       # Starts its own SurrealDB container on an ephemeral port. --no-test: the examples job runs the rest.
       - run: python3 .claude/skills/rust/scripts/check_examples.py --live --no-test
       - name: Disk left
         if: always()
         run: |
           df -h /
-          du -sh backend/target ~/.cache/pdm-rust-skills-check/target 2>/dev/null || true
+          du -sh "${CARGO_TARGET_DIR:-backend/target}" \
+            "${PDM_RUST_SKILLS_TARGET_DIR:-$HOME/.cache/pdm-rust-skills-check/target}" 2>/dev/null || true
 
   # --- stage 3: the one required check -----------------------------------------------------------
 
   ci:
     # live joined after it passed on four consecutive pushes to main (infra §2).
-    needs: [changes, lint, test, examples, docs, infra, security, live]
+    needs: [changes, lint, test, examples, docs, infra, app, security, live]
     if: always()
-    runs-on: ubuntu-26.04
+    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 5
     steps:
       - env:
@@ -314,12 +388,12 @@ jobs:
   # --- stage 4: images on main and tags; the release on tags -------------------------------------
 
   images:
-    needs: [changes, lint, test, examples, docs, infra, security, live]
+    needs: [changes, lint, test, examples, docs, infra, app, security, live]
     if: >-
       ${{ !cancelled() && !failure() && github.event_name == 'push' &&
           (startsWith(github.ref, 'refs/tags/v') ||
            (github.ref == 'refs/heads/main' && needs.changes.outputs.images == 'true')) }}
-    runs-on: ubuntu-26.04
+    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 90
     permissions:
       contents: read
@@ -329,6 +403,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: A tag must name a reviewed commit and a plain version
         if: startsWith(github.ref, 'refs/tags/v')
@@ -344,6 +419,12 @@ jobs:
       # Three images, two Rust builds and worker-cuda's 2.3 GB of layers.
       - uses: ./.github/actions/free-disk
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: runner.environment == 'github-hosted'
+      # The rig keeps one docker-container builder, pdm-ci, whose layer cache outlives the job
+      # (docs/setup/README.md, CI runner).
+      - name: Use the rig's persistent builder
+        if: runner.environment == 'self-hosted'
+        run: echo "BUILDX_BUILDER=pdm-ci" >> "$GITHUB_ENV"
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
@@ -377,11 +458,15 @@ jobs:
         run: |
           tags="sha-${GITHUB_SHA::12}"
           if [ "$IS_TAG" = true ]; then tags="$tags,$REF_NAME"; else tags="$tags,main"; fi
-          # The layer cache lives in GHCR, not the Actions cache, whose 10 GB the Rust caches already use.
+          # On GitHub's runners the layer cache lives in GHCR, not the Actions cache, whose 10 GB the
+          # Rust caches already use. The rig's builder keeps its own, so it only reads GHCR's and
+          # doesn't upload every layer over a home connection.
           cache=()
           for t in api worker worker-cuda; do
-            cache+=(--set "$t.cache-from=type=registry,ref=$REGISTRY/buildcache:$t"
-                    --set "$t.cache-to=type=registry,ref=$REGISTRY/buildcache:$t,mode=max")
+            cache+=(--set "$t.cache-from=type=registry,ref=$REGISTRY/buildcache:$t")
+            if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+              cache+=(--set "$t.cache-to=type=registry,ref=$REGISTRY/buildcache:$t,mode=max")
+            fi
           done
           # The commit's time, not the build's, so the label is the same whenever this commit is built.
           TAGS="$tags" REVISION="$GITHUB_SHA" CREATED="$(git log -1 --format=%cI)" \
@@ -397,12 +482,14 @@ jobs:
   release:
     needs: images
     if: ${{ !cancelled() && needs.images.result == 'success' && startsWith(github.ref, 'refs/tags/v') }}
-    runs-on: ubuntu-26.04
+    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 5
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Create the GitHub Release with the image digests
         env:
           GH_TOKEN: ${{ github.token }}
