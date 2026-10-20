@@ -27,6 +27,7 @@ use tokio::{
     time::MissedTickBehavior,
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
+use tracing::Instrument as _;
 
 use crate::{
     api::{CallError, JobLease, WorkerApi},
@@ -276,10 +277,14 @@ impl<A: WorkerApi> Worker<A> {
             Arc::clone(&self.runner),
             self.timings,
         );
-        self.tracker.spawn(async move {
-            run_job(&api, &runner, claimed, &cancel, timings).await;
-            drop((registered, slot)); // leaves the heartbeat list, then frees the slot
-        });
+        // `in_current_span`: the process span (`stub_vision`) follows the job into its task.
+        self.tracker.spawn(
+            async move {
+                run_job(&api, &runner, claimed, &cancel, timings).await;
+                drop((registered, slot)); // leaves the heartbeat list, then frees the slot
+            }
+            .in_current_span(),
+        );
     }
 
     /// After `shutdown`: wait up to the drain bound for running jobs, then abandon the rest
@@ -330,11 +335,11 @@ where
     let (shutdown, stop_heartbeat) = (CancellationToken::new(), CancellationToken::new());
     let heartbeat = tokio::spawn({
         let (worker, stop) = (Arc::clone(&worker), stop_heartbeat.clone());
-        async move { worker.heartbeat_loop(stop).await }
+        async move { worker.heartbeat_loop(stop).await }.in_current_span()
     });
     let claims = tokio::spawn({
         let (worker, shutdown) = (Arc::clone(&worker), shutdown.clone());
-        async move { worker.claim_loop(shutdown).await }
+        async move { worker.claim_loop(shutdown).await }.in_current_span()
     });
     stopped.await?;
     tracing::info!("shutting down: no new claims");

@@ -17,7 +17,7 @@ use surrealdb::types::{RecordId, SurrealValue, Value};
 
 use crate::{
     SurrealStore,
-    error::{RowError, take_failed},
+    error::{RowError, take_failed, thrown, unknown_species},
     ids::{from_opt_rid, from_rid, opt_rid, rid},
     read::{json_of, page as page_of},
     repo::{analysis::enum_str, load::plant_from_json},
@@ -48,18 +48,23 @@ pub mod sql {
         plant_fields!(),
         " FROM plant WHERE garden = $garden AND deleting_at = NONE ORDER BY name;"
     );
-    /// `POST /plants`. The port passes no time, so `created_at` takes its default.
-    pub const CREATE_PLANT: &str =
-        "CREATE $plant SET garden = $garden, name = $name, species = $species,
-  species_status = IF $species != NONE { 'confirmed' } ELSE { 'unknown' };";
+    /// `POST /plants`, refusing a species the knowledge base doesn't hold (`unknown_species`).
+    /// The port passes no time, so `created_at` takes its default.
+    pub const CREATE_PLANT: &str = "BEGIN;
+IF $species != NONE { IF array::len(SELECT VALUE id FROM $species) = 0 { THROW 'unknown_species' } };
+CREATE $plant SET garden = $garden, name = $name, species = $species,
+  species_status = IF $species != NONE { 'confirmed' } ELSE { 'unknown' };
+COMMIT;";
     /// `PATCH /plants/{id}`.
     pub const UPDATE_PLANT: &str =
         "UPDATE $plant SET name = $name ?? name, status = $status ?? status
 WHERE garden = $garden AND deleting_at = NONE RETURN VALUE id;";
     /// `POST /plants/{id}/species`, with the most recent live scan for the follow-up
-    /// ([contracts 3], species confirmation). Statements: 0 `BEGIN`, 1 the update, 2 the scan,
-    /// 3 `COMMIT`.
+    /// ([contracts 3], species confirmation), refusing a species the knowledge base doesn't
+    /// hold (`unknown_species`). Statements: 0 `BEGIN`, 1 the species check, 2 the update, 3
+    /// the scan, 4 `COMMIT`.
     pub const CONFIRM_SPECIES: &str = "BEGIN;
+IF $species != NONE { IF array::len(SELECT VALUE id FROM $species) = 0 { THROW 'unknown_species' } };
 UPDATE $plant SET species = $species, custom_species_name = $custom, species_status = 'confirmed'
 WHERE garden = $garden AND deleting_at = NONE RETURN VALUE id;
 SELECT id, status, created_at, working_species FROM scan WHERE plant = $plant AND deleting_at = NONE ORDER BY created_at DESC LIMIT 1;
@@ -274,7 +279,10 @@ impl PlantRepo for SurrealStore {
                 .bind(("species", opt_rid(plant.species.as_ref())))
         })
         .await
-        .map_err(|f| f.into_store(WHAT))?;
+        .map_err(|f| match f.thrown() {
+            Some(thrown::UNKNOWN_SPECIES) => unknown_species("species_id"),
+            _ => f.into_store(WHAT),
+        })?;
         self.load_plant(plant.id).await?.ok_or(StoreError::NotFound)
     }
 
@@ -324,12 +332,15 @@ impl PlantRepo for SurrealStore {
                 .bind(("custom", custom.clone()))
         })
         .await
-        .map_err(|f| f.into_store(WHAT))?;
-        let updated: Vec<RecordId> = r.take(1).map_err(|e| take_failed(WHAT, e))?;
+        .map_err(|f| match f.thrown() {
+            Some(thrown::UNKNOWN_SPECIES) => unknown_species("species_id"),
+            _ => f.into_store(WHAT),
+        })?;
+        let updated: Vec<RecordId> = r.take(2).map_err(|e| take_failed(WHAT, e))?;
         if updated.is_empty() {
             return Err(StoreError::NotFound);
         }
-        let scans: Vec<RecentScanRow> = r.take(2).map_err(|e| take_failed(WHAT, e))?;
+        let scans: Vec<RecentScanRow> = r.take(3).map_err(|e| take_failed(WHAT, e))?;
         let recent_scan = scans
             .into_iter()
             .next()
