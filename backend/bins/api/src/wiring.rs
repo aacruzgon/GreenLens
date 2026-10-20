@@ -232,21 +232,29 @@ async fn load_models(models_dir: &str) -> anyhow::Result<Models> {
     .await?
 }
 
-/// The database side: the schema applied as root, then the `api` user's connection, the
-/// repositories, memories and the knowledge index.
+/// The database side: the schema and the migrations applied as root, then the `api` user's
+/// connection, the repositories, memories, the knowledge index and `knowledge_meta`.
 struct Databases {
     store: Arc<dyn Store>,
     memory: Arc<dyn MemoryStore>,
     knowledge_repo: Arc<dyn KnowledgeRepo>,
     knowledge: Arc<dyn KnowledgeStore>,
     jobs_queued: Arc<tokio::sync::Notify>,
+    /// `knowledge_meta:current`, `None` before a knowledge file was applied.
+    knowledge_meta: Option<store::migrate::KnowledgeMeta>,
 }
 
 async fn connect_databases(config: &Config) -> anyhow::Result<Databases> {
     let db = &config.database;
-    store::SurrealStore::apply_schema(&db.url, &db.root_user, db.root_password.expose_secret())
-        .await
-        .context("apply schema.surql")?;
+    let applied =
+        store::SurrealStore::migrate(&db.url, &db.root_user, db.root_password.expose_secret())
+            .await
+            .context("apply the migrations")?;
+    tracing::info!(
+        numbered = ?applied.numbered,
+        knowledge = applied.knowledge,
+        "migrations applied"
+    );
     let surreal = Arc::new(
         store::SurrealStore::connect(&store::StoreConfig {
             url: db.url.clone(),
@@ -259,6 +267,10 @@ async fn connect_databases(config: &Config) -> anyhow::Result<Databases> {
     // The store signals this after every write that queues or requeues a job commits; the
     // broker's claim long poll waits on it, and nothing else wakes it.
     let jobs_queued = surreal.jobs_queued();
+    let knowledge_meta = surreal
+        .knowledge_meta()
+        .await
+        .context("read knowledge_meta")?;
     let knowledge_repo: Arc<dyn KnowledgeRepo> = surreal.clone();
     let knowledge: Arc<dyn KnowledgeStore> = Arc::new(
         knowledge::SurrealKnowledgeStore::load(Arc::clone(&knowledge_repo))
@@ -271,7 +283,32 @@ async fn connect_databases(config: &Config) -> anyhow::Result<Databases> {
         knowledge_repo,
         knowledge,
         jobs_queued,
+        knowledge_meta,
     })
+}
+
+/// Stops the start when the loaded knowledge set's chunks were embedded by another model than
+/// `embedder`, since its query vectors would not match them (docs/database section 1,
+/// changing the text-embedding model). Before any knowledge set is loaded, it passes.
+fn check_embedder(
+    meta: Option<&store::migrate::KnowledgeMeta>,
+    embedder: &dyn TextEmbedder,
+) -> anyhow::Result<()> {
+    let Some(meta) = meta else {
+        return Ok(());
+    };
+    let model = embedder.model();
+    anyhow::ensure!(
+        meta.matches_embedder(&model.name, &model.version, model.dimension),
+        "the knowledge set was embedded with {} ({} dimensions), but this api loaded {}@{} ({} \
+         dimensions): regenerate knowledge.surql with this model, or pin the knowledge set's",
+        meta.embedding_model,
+        meta.embedding_dimension,
+        model.name,
+        model.version,
+        model.dimension,
+    );
+    Ok(())
 }
 
 /// The outbound adapters, over one shared HTTP client.
@@ -571,9 +608,9 @@ fn chat_turns(
     ))
 }
 
-/// Builds every port and the state, in order: the databases (schema as root, then connect as
-/// `api`; the knowledge index), the object store, the outbound adapters, the CPU models, the
-/// species photo index, then `api`'s own pieces and the pipeline and agent that need the writer.
+/// Builds every port and the state, in order: the databases (schema and migrations as root,
+/// then connect as `api`; the knowledge index), the object store, the outbound adapters, the
+/// CPU models and their check against `knowledge_meta`, the species photo index, then `api`'s own pieces and the pipeline and agent that need the writer.
 #[expect(
     clippy::too_many_lines,
     reason = "every port and in-process piece is built here, in start-up order"
@@ -591,6 +628,7 @@ pub async fn build(
     let out = outbound(&config, &clock).await?;
     log_connectors(&config);
     let models = load_models(&config.models_dir).await.context("models")?;
+    check_embedder(dbs.knowledge_meta.as_ref(), models.embedder.as_ref())?;
     let snapshot = dbs
         .knowledge_repo
         .load_knowledge()
@@ -686,4 +724,53 @@ pub async fn build(
         shutdown,
         tasks,
     }))
+}
+
+#[cfg(test)]
+mod embedder_check_tests {
+    use domain::ports::{EmbedMode, Embedding, EmbeddingModel, ModelError};
+
+    use super::*;
+
+    struct Named(&'static str, usize);
+
+    #[async_trait]
+    impl TextEmbedder for Named {
+        fn model(&self) -> EmbeddingModel {
+            EmbeddingModel {
+                name: "snowflake-arctic-embed-xs".into(),
+                version: self.0.into(),
+                dimension: self.1,
+            }
+        }
+
+        async fn embed(
+            &self,
+            _mode: EmbedMode,
+            _texts: &[String],
+        ) -> Result<Vec<Embedding>, ModelError> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[test]
+    fn the_embedder_must_match_the_knowledge_set() {
+        let meta = store::migrate::KnowledgeMeta {
+            label_set_version: "f4fd4e3401ecb0f0".into(),
+            classifier_labels_version: "v1".into(),
+            embedding_model: "snowflake-arctic-embed-xs@d8c86521".into(),
+            embedding_dimension: 384,
+        };
+        assert!(
+            check_embedder(None, &Named("other", 768)).is_ok(),
+            "no knowledge set yet"
+        );
+        assert!(check_embedder(Some(&meta), &Named("d8c86521", 384)).is_ok());
+        let err = check_embedder(Some(&meta), &Named("other", 384)).unwrap_err();
+        assert!(
+            err.to_string().contains("snowflake-arctic-embed-xs@other"),
+            "{err}"
+        );
+        assert!(check_embedder(Some(&meta), &Named("d8c86521", 768)).is_err());
+    }
 }
