@@ -10,7 +10,9 @@ questions and the species and organism options are the worker's own fixtures
 (`backend/bins/worker/src/vlm/tests/fixtures/`, tomato and corn): the knowledge base the API
 would draw them from isn't loaded yet. So a case of another species is left out, and a
 diagnosed case whose problem isn't one of its fixture's three candidates is kept for validity,
-timing and false signs, but not scored for diagnosis.
+timing and false signs, but not scored for diagnosis. A case without a leaf close-up (a one-photo
+case, sent as the whole_plant shot) also sends its photo to the indicator call as a leaf close-up,
+since a question gets only the images its indicator names.
 
 `run` drives the Rust test `bench_cases` (backend/bins/worker/src/vlm/tests/bench.rs), which
 sends each case through the worker's real `analyse` (its prompts, schemas, image preparation and
@@ -25,7 +27,8 @@ its own `--label`.
 - timing: wall time per job (p50, p95) and per call kind;
 - species: the VLM's species guess against the truth;
 - diagnosis from the indicator answers: each candidate scores its share of "yes" answers, and the
-  top candidate (none when every share is 0) is compared with the truth, on `sure` cases;
+  top candidate (none when every share is 0 or two tie for the top) is compared with the truth, on
+  `sure` cases;
 - false signs: on healthy cases, the share answered "yes"; on every case, damage findings and
   organisms, which these leaf photos don't show (a disease spot called `leaf_mines` is the known
   error, #45);
@@ -89,6 +92,14 @@ def bench_case(c: dict, photos: Path) -> dict | None:
                        "url": f"/internal/jobs/{JOB}/images/{iid}"})
         paths[iid] = str((photos / img["file"]).resolve())
     indicator = [im for k in INDICATOR_KINDS for im in images if im["kind"] == k]
+    whole = next((im for im in images if im["kind"] == "whole_plant"), None)
+    if whole and not any(im["kind"] == "leaf_closeup" for im in images):
+        # A one-photo case is a leaf photo sent as the whole_plant shot (evaluation 2). A question only
+        # gets the images its indicator's `image_kinds` names, and one with none can only be unsure, so
+        # the indicator call also gets the photo as the leaf close-up it is (review of #86, point 1).
+        iid = ulid(f"{c['case_id']}|closeup")
+        indicator.insert(0, {**whole, "image_id": iid, "kind": "leaf_closeup", "url": f"/internal/jobs/{JOB}/images/{iid}"})
+        paths[iid] = paths[whole["image_id"]]
     payload = {k: fx[k] for k in ("working_species", "species_options", "organism_options", "candidates")}
     payload["findings_images"] = images
     payload["indicator_images"] = indicator or images[:1]
@@ -120,10 +131,12 @@ def cases(args) -> int:
 
 
 class Sampler:
-    """Peak GPU memory (`nvidia-smi`) and vLLM KV-cache usage (`/metrics`) while a run lasts."""
+    """Peak GPU memory of the VLM's card (`nvidia-smi --id`, all cards when `gpu` is None) and
+    vLLM KV-cache usage (`/metrics`) while a run lasts."""
 
-    def __init__(self, base_url: str, every: float = 0.5):
+    def __init__(self, base_url: str, gpu: str | None = None, every: float = 0.5):
         self.base_url, self.every = base_url.rstrip("/"), every
+        self.query = ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"] + ([f"--id={gpu}"] if gpu else [])
         self.gpu_mib, self.kv = 0, 0.0
         self._stop = threading.Event()
         self._t = threading.Thread(target=self._loop, daemon=True)
@@ -131,8 +144,7 @@ class Sampler:
     def _loop(self):
         while not self._stop.is_set():
             try:
-                used = subprocess.run(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
-                                      capture_output=True, text=True, timeout=5).stdout.split()
+                used = subprocess.run(self.query, capture_output=True, text=True, timeout=5).stdout.split()
                 self.gpu_mib = max([self.gpu_mib] + [int(u) for u in used])
             except (OSError, ValueError, subprocess.TimeoutExpired):
                 pass
@@ -207,7 +219,9 @@ def run(args) -> int:
     signal.signal(signal.SIGINT, _stop_child)
     models = served(args.base_url)
     n_cases = sum(1 for line in args.cases.read_text().splitlines() if line.strip())
-    build = subprocess.run(["cargo", "test", "-p", "worker", "--no-run"], cwd=ROOT / "backend")
+    # A release build: the image preparation inside the timed `analyse` is unoptimised in the dev
+    # profile (review of #86, point 6).
+    build = subprocess.run(["cargo", "test", "--release", "-p", "worker", "--no-run"], cwd=ROOT / "backend")
     if build.returncode:
         print("the worker's tests don't build", file=sys.stderr)
         return build.returncode
@@ -223,13 +237,16 @@ def run(args) -> int:
                 print(f"{args.label}: the server at {args.base_url} is down; stopping", file=sys.stderr, flush=True)
                 return 3
             d.mkdir(parents=True, exist_ok=True)
-            env = {**os.environ, "VLM_BENCH_BASE_URL": args.base_url, "VLM_BENCH_CASES": str(args.cases.resolve()),
+            # The run keeps its own copy of the cases, so a later `cases` can't change what it is scored on.
+            cases = d / "cases.jsonl"
+            cases.write_text(args.cases.read_text())
+            env = {**os.environ, "VLM_BENCH_BASE_URL": args.base_url, "VLM_BENCH_CASES": str(cases.resolve()),
                    "VLM_BENCH_OUT": str((d / "out.jsonl").resolve()), "VLM_BENCH_MAX_PIXELS": str(mp),
                    "VLM_BENCH_CONCURRENCY": str(conc)}
             print(f"{args.label}: max_pixels {mp}, {conc} at once", file=sys.stderr, flush=True)
             started = time.time()
-            with Sampler(args.base_url) as s:
-                _child = subprocess.Popen(["cargo", "test", "-p", "worker", "bench_cases", "--", "--ignored", "--nocapture"],
+            with Sampler(args.base_url, args.gpu) as s:
+                _child = subprocess.Popen(["cargo", "test", "--release", "-p", "worker", "bench_cases", "--", "--ignored", "--nocapture"],
                                           cwd=ROOT / "backend", env=env, start_new_session=True)
                 try:
                     code = _child.wait(timeout=args.timeout)
@@ -238,13 +255,21 @@ def run(args) -> int:
                     _child.wait()
                     code = "timeout"
                 _child = None
+            # Cases fail fast once the server is gone and the test still exits 0, so a run that ends
+            # with the server down isn't finished: a resume runs it again (review of #86, point 4).
+            down = not server_up(args.base_url)
+            if down:
+                code = "server_down"
             meta = {"label": args.label, "max_pixels": mp, "concurrency": conc, "models": models,
                     "seconds": round(time.time() - started, 1), "peak_gpu_mib": s.gpu_mib, "peak_kv_cache": s.kv,
-                    "exit": code, "cases": str(args.cases.resolve())}
+                    "exit": code, "cases": str(cases.resolve()), "gpu": args.gpu, "profile": "release"}
             (d / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
             if code != 0:
                 failed += 1
                 print(f"  bench_cases exited {code}; see {d}", file=sys.stderr, flush=True)
+            if down:
+                print(f"{args.label}: the server at {args.base_url} went down; stopping", file=sys.stderr, flush=True)
+                return 3
     return 1 if failed else 0
 
 
@@ -263,7 +288,7 @@ def score_run(rows: list[dict], cases_by_id: dict[str, dict]) -> dict:
     for r in rows:
         for c in r["calls"]:
             by_kind[c["schema"].split("@")[0]].append(c["ms"])
-    species = diag_hit = diag_n = healthy_clean = healthy_n = yes_on_healthy = answers_n = unsure = 0
+    species = diag_hit = diag_n = healthy_clean = healthy_n = yes_on_healthy = answers_n = unsure = ties = 0
     damage, organisms = Counter(), 0
     for r in ok:
         case = cases_by_id[r["case_id"]]
@@ -279,7 +304,12 @@ def score_run(rows: list[dict], cases_by_id: dict[str, dict]) -> dict:
         for x in a:
             share[cand_of.get(x["indicator_id"])].append(x["answer"] == "yes")
         means = {k: sum(v) / len(v) for k, v in share.items() if k}
-        top = max(means, key=means.get) if means and max(means.values()) > 0 else None
+        best = max(means.values(), default=0.0)
+        leaders = [k for k, v in means.items() if v == best]
+        # No diagnosis when nothing is "yes", or when candidates tie for the top: a model answering "yes"
+        # to everything would otherwise always "diagnose" the first candidate (review of #86, point 3).
+        top = leaders[0] if best > 0 and len(leaders) == 1 else None
+        ties += best > 0 and len(leaders) > 1
         if truth["outcome"] == "healthy":
             healthy_n += 1
             healthy_clean += top is None
@@ -289,7 +319,8 @@ def score_run(rows: list[dict], cases_by_id: dict[str, dict]) -> dict:
             diag_hit += top in truth["problems"]
     healthy_answers = sum(len(r["result"]["indicators"]["answers"]) for r in ok
                           if cases_by_id[r["case_id"]]["truth"]["outcome"] == "healthy")
-    job_ms = [r["job_ms"] for r in ok]
+    # Every job that ran, failed ones too, so a slow tail that times out still counts (review of #86, point 5).
+    job_ms = [r["job_ms"] for r in rows if r.get("job_ms")]
     return {
         "jobs": jobs, "finished": len(ok), "retried_calls": retried,
         "job_ms_p50": pct(job_ms, 0.5), "job_ms_p95": pct(job_ms, 0.95),
@@ -298,7 +329,7 @@ def score_run(rows: list[dict], cases_by_id: dict[str, dict]) -> dict:
         "diagnosis_top1_sure": diag_hit / diag_n if diag_n else None, "diagnosis_n": diag_n,
         "healthy_no_candidate": healthy_clean / healthy_n if healthy_n else None, "healthy_n": healthy_n,
         "yes_on_healthy": yes_on_healthy / healthy_answers if healthy_answers else None,
-        "unsure_share": unsure / answers_n if answers_n else None,
+        "unsure_share": unsure / answers_n if answers_n else None, "top_ties": ties,
         "damage_findings": dict(damage), "organisms_reported": organisms,
     }
 
@@ -330,14 +361,14 @@ def score(args) -> int:
     (REPORTS / f"vlm-bench-{args.out}.json").write_text(json.dumps(report, indent=2) + "\n")
     f = lambda v, p=False: "n/a" if v is None else (f"{v:.0%}" if p else f"{v / 1000:.1f} s")
     lines = [f"# VLM benchmark: {args.out}", "",
-             "| Run | Pixels | At once | Finished | Retried calls | Job p50 | Job p95 | Species | Diagnosis (sure) | Healthy kept clean | Yes on healthy | Unsure | Damage found | Organisms | Peak GPU |",
-             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+             "| Run | Pixels | At once | Finished | Retried calls | Job p50 | Job p95 | Species | Diagnosis (sure) | Ties | Healthy kept clean | Yes on healthy | Unsure | Damage found | Organisms | Peak GPU |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in report:
         dmg = ", ".join(f"{k} {v}" for k, v in r["damage_findings"].items()) or "none"
         run = r["label"] if r["exit"] == 0 else f"{r['label']} (exit {r['exit']})"
         lines.append(f"| {run} | {r['max_pixels']:,} | {r['concurrency']} | {r['finished']}/{r['jobs']} | {r['retried_calls']} | "
                      f"{f(r['job_ms_p50'])} | {f(r['job_ms_p95'])} | {f(r['species_agree'], True)} | "
-                     f"{f(r['diagnosis_top1_sure'], True)} (n={r['diagnosis_n']}) | {f(r['healthy_no_candidate'], True)} (n={r['healthy_n']}) | "
+                     f"{f(r['diagnosis_top1_sure'], True)} (n={r['diagnosis_n']}) | {r['top_ties']} | {f(r['healthy_no_candidate'], True)} (n={r['healthy_n']}) | "
                      f"{f(r['yes_on_healthy'], True)} | {f(r['unsure_share'], True)} | {dmg} | {r['organisms_reported']} | {r['peak_gpu_mib']:,} MiB |")
     (REPORTS / f"vlm-bench-{args.out}.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
@@ -359,6 +390,8 @@ def main(argv=None) -> int:
     r.add_argument("--max-pixels", type=int, nargs="+", default=list(DEFAULT_PIXELS))
     r.add_argument("--concurrency", type=int, nargs="+", default=[1, 2])
     r.add_argument("--timeout", type=float, default=7200, help="seconds before a run is stopped (default 2 h)")
+    r.add_argument("--gpu", default=os.environ.get("VLM_GPU_UUID"),
+                   help="the VLM's card for the memory sample, as nvidia-smi --id takes it (default: $VLM_GPU_UUID, else every card)")
     r.add_argument("--again", action="store_true", help="rerun the settings that finished already")
     s = sub.add_parser("score")
     s.add_argument("runs", nargs="+", type=Path)

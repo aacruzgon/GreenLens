@@ -31,6 +31,16 @@ def test_a_case_becomes_the_worker_payload_of_its_species_fixture():
     assert b["photos"][iid] == "/p/f/1.jpg" and b["scored_for_diagnosis"]
 
 
+def test_a_one_photo_case_also_goes_to_the_indicator_call_as_a_leaf_closeup():
+    b = vb.bench_case(case(), Path("/p"))
+    p = b["payload"]
+    assert [i["kind"] for i in p["findings_images"]] == ["whole_plant"]
+    assert [i["kind"] for i in p["indicator_images"]] == ["leaf_closeup", "whole_plant"]
+    closeup, whole = p["indicator_images"]
+    assert closeup["image_id"] != whole["image_id"] and ULID.match(closeup["image_id"])
+    assert b["photos"][closeup["image_id"]] == b["photos"][whole["image_id"]] == "/p/f/0.jpg"
+
+
 def test_cases_outside_the_fixtures_are_left_out_or_kept_unscored():
     assert vb.bench_case(case(species="apple", problems=("apple_scab",)), Path("/p")) is None
     assert not vb.bench_case(case(problems=("tomato_bacterial_spot",)), Path("/p"))["scored_for_diagnosis"]
@@ -54,7 +64,7 @@ def test_the_top_candidate_by_yes_share_is_the_diagnosis():
             row(well, ["no"] * 8 + ["unsure"])]
     s = vb.score_run(rows, {b["case_id"]: b for b in (sick, well)})
     assert s["diagnosis_top1_sure"] == 1.0 and s["healthy_no_candidate"] == 1.0
-    assert s["retried_calls"] == 1 and s["damage_findings"] == {"leaf_mines": 1}
+    assert s["retried_calls"] == 1 and s["damage_findings"] == {"leaf_mines": 1} and s["top_ties"] == 0
     assert abs(s["unsure_share"] - 1 / 18) < 1e-9 and s["species_agree"] == 1.0
 
 
@@ -78,3 +88,9 @@ def test_a_run_cut_short_is_scored_on_what_it_wrote_and_rerun(tmp_path, monkeypa
     report = json.loads((tmp_path / "reports" / "vlm-bench-t.json").read_text())
     assert [(r["max_pixels"], r["finished"], r["jobs"], r["exit"]) for r in report] == [(602112, 2, 2, 0), (1003520, 1, 2, "timeout")]
     assert report[0]["model"] == "Qwen/Qwen3-VL-8B-Instruct-FP8"
+
+
+def test_a_tie_for_the_top_is_no_diagnosis():
+    b = vb.bench_case(case(), Path("/p"))
+    s = vb.score_run([row(b, ["yes"] * 9)], {b["case_id"]: b})   # every candidate at 100%
+    assert s["diagnosis_top1_sure"] == 0.0 and s["top_ties"] == 1
