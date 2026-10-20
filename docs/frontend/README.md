@@ -1,6 +1,6 @@
 # PDM Frontend Architecture
 
-> **Status:** Draft v0.4.4, 2026-10-19. v0.4.4: section 4 adds `expo-symbols` and Urbanist, which F0 uses.
+> **Status:** Draft v0.4.5, 2026-10-19. v0.4.5: sign-in has no authenticator-app second factor; a new device is confirmed with an email code (section 8). v0.4.4: section 4 adds `expo-symbols` and Urbanist, which F0 uses.
 > v0.4.3: the build plan (section 18) follows the new [roadmap](roadmap.md): the iPhone first in the Conservatory direction, F0 on Oct 20 to the web build on Oct 25. v0.4.2: the backend's OpenAPI spec is committed, so the app uses generated contract types from day 1 instead of hand-written ones (section 9, generated types; build plan). v0.4.1: the schema links point to `backend/migrations/schema.surql`. v0.4 applies the third audit and contracts v0.8.2: species photo paths carry a content hash, a failed scan never holds a question, push coverage, invalidations for confirmed plan revisions, the closer-photo rule, the `SFSafariViewController` cookie note and the CORS preflight reason.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Images:** event URLs arrive fresh, and the cache key is the image ID or the URL path; species photos carry their credit.
@@ -74,7 +74,7 @@ This is the frontend's architecture. It is built on the [system architecture](..
 ```
                      ┌─────────────────────────────┐
                      │ Clerk                       │
-                     │ sign-in · MFA · sessions    │
+                     │ sign-in · sessions          │
                      │ JWKS · webhooks (to the API)│
                      └──────▲──────────────────────┘
                             │ hooks: useSignIn, useSSO, useAuth().getToken()
@@ -275,7 +275,7 @@ app/
 └─ src/
    ├─ app/                        routes only (screens.md 1)
    ├─ features/
-   │  ├─ auth/                    sign-in, sign-up, verification and MFA, onboarding, session bootstrap
+   │  ├─ auth/                    sign-in, sign-up, email-code verification, onboarding, session bootstrap
    │  ├─ gardens/                 garden home, create and edit, location consent, active garden, garden switcher
    │  ├─ members/                 members, roles, invites, invite acceptance
    │  ├─ plants/                  plant list and detail, timeline, growth curve, species confirmation, notes
@@ -284,7 +284,7 @@ app/
    │  ├─ tasks/                   task list, alert inbox, task editor
    │  ├─ chat/                    conversations, streaming messages, confirmation cards, memories, message feedback
    │  ├─ map/                     garden map view and LiDAR mapping session
-   │  └─ account/                 profile, MFA settings, notifications, account deletion
+   │  └─ account/                 profile, notifications, account deletion
    │     every feature:
    │     ├─ index.ts              public API
    │     ├─ screens/              one component per route the feature owns
@@ -403,7 +403,7 @@ Custom screens built with Clerk's hooks, `useSignIn`, `useSignUp` and `useSSO` �
 |---|---|---|
 | Email and password | Sign-up sends an email code; `verify` takes it | Everywhere, including in-app browsers |
 | Google, Apple | `useSSO` in a browser session (`expo-web-browser`), returning to the `pdm` scheme; a redirect on the web | Native builds, browsers, and the system's in-app views (`SFSafariViewController`, Custom Tabs). **Not in embedded web views** (`in_app`: Instagram, Facebook, LinkedIn): Google refuses OAuth in embedded browsers ([Google's policy](https://developers.googleblog.com/upcoming-security-changes-to-googles-oauth-20-authorization-endpoint-in-embedded-webviews/)), so the app hides both and shows "Open in Safari or Chrome" instead (section 13) |
-| Second factor (MFA) | When sign-in needs a second factor, `verify` asks for the TOTP code or a backup code. Users turn MFA on in Settings; the Clerk instance enables TOTP and backup codes | Everywhere |
+| New device (Device Trust) | A password sign-in on a new device returns `needs_client_trust`: the app sends an email code (`signIn.mfa.sendEmailCode`) and `verify` checks it. The authenticator-app second factor and backup codes are off on the instance (Oct 19, the team: not needed for build week) | Everywhere |
 
 Clerk Core 3 changed the sign-in and sign-up calls (`signUp.password(...)`, `signUp.verifications.sendEmailCode()` in the quickstart, *unverified*). The screens follow the docs of the installed version. They all live in `features/auth`, so a change touches one folder. `app.config.ts` lists the `expo-secure-store` and `@clerk/expo` config plugins (*unverified*, Clerk quickstart).
 
@@ -669,7 +669,7 @@ Each feature's `model/` is the logic that lives outside React and is tested on i
 | `tasks` | Task list, alert inbox, task editor | Grouping by due date in the garden's time zone; which fields each source may edit | `/tasks` |
 | `chat` | Conversation list, conversation, composer with photos, cards, remembered facts, message feedback | `messageReducer`, pending-action card state | `/conversations`, `/messages/{id}/feedback`, `/pending-actions`, `/memories` |
 | `map` | Map view, mapping session | Map draft and upload conflicts | `/gardens/{id}/map`, `GET /plants` (all pages) |
-| `account` | Profile, MFA, notifications, account deletion | | `/me`, `/me/push-tokens` |
+| `account` | Profile, notifications, account deletion | | `/me`, `/me/push-tokens` |
 
 ### Capture
 

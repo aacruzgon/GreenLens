@@ -35,7 +35,6 @@ function ClerkSignIn() {
     setError(null);
     const { error: passwordError } = await signIn.password({ identifier: email.trim(), password });
     if (passwordError) return setError(clerkErrorMessage(passwordError));
-    if (signIn.status === "needs_second_factor") return router.push({ pathname: "/verify", params: { mode: "mfa" } });
     // Device Trust: a password sign-in on a new device confirms it with an email code.
     if (signIn.status === "needs_client_trust") {
       const { error: sendError } = await signIn.mfa.sendEmailCode();

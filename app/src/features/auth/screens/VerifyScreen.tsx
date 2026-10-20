@@ -7,12 +7,10 @@ import { Button, TextField } from "@/ui";
 import { AuthShell } from "../components/AuthShell";
 import { clerkErrorMessage } from "../model/clerkErrors";
 
-// One code field for the sign-up email code, the second factor, or a new device's email code (screens 3.10).
+// One code field for the sign-up email code or a new device's email code (screens 3.10).
 export function VerifyScreen() {
   const { mode } = useLocalSearchParams<{ mode?: string }>();
-  if (mode === "mfa") return <SecondFactor />;
-  if (mode === "trust") return <NewDevice />;
-  return <EmailCode />;
+  return mode === "trust" ? <NewDevice /> : <EmailCode />;
 }
 
 // Device Trust (Clerk's custom flow): the code sent to the account's email confirms this device.
@@ -62,50 +60,16 @@ function EmailCode() {
   );
 }
 
-function SecondFactor() {
-  const { signIn, fetchStatus } = useSignIn();
-  const [code, setCode] = useState("");
-  const [backup, setBackup] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function submit() {
-    setError(null);
-    const verify = backup ? signIn.mfa.verifyBackupCode : signIn.mfa.verifyTOTP;
-    const { error: verifyError } = await verify({ code: code.trim() });
-    if (verifyError) return setError(clerkErrorMessage(verifyError));
-    const { error: finalizeError } = await signIn.finalize();
-    if (finalizeError) setError(clerkErrorMessage(finalizeError));
-  }
-
-  return (
-    <AuthShell
-      title="Two-step sign-in"
-      subtitle={backup ? "Enter one of your backup codes." : "Enter the code from your authenticator app."}
-    >
-      <CodeField value={code} onChange={setCode} error={error} backup={backup} />
-      <Button label="Verify" onPress={submit} busy={fetchStatus === "fetching"} disabled={!code.trim()} size="large" />
-      <Button
-        label={backup ? "Use your authenticator app" : "Use a backup code"}
-        variant="plain"
-        onPress={() => {
-          setBackup(!backup);
-          setCode("");
-        }}
-      />
-    </AuthShell>
-  );
-}
-
-function CodeField({ value, onChange, error, backup }: { value: string; onChange: (v: string) => void; error: string | null; backup?: boolean }) {
+function CodeField({ value, onChange, error }: { value: string; onChange: (v: string) => void; error: string | null }) {
   return (
     <TextField
-      label={backup ? "Backup code" : "Code"}
+      label="Code"
       value={value}
       onChangeText={onChange}
       autoCapitalize="none"
       autoComplete="one-time-code"
       textContentType="oneTimeCode"
-      keyboardType={backup ? "default" : "number-pad"}
+      keyboardType="number-pad"
       error={error ?? undefined}
     />
   );
