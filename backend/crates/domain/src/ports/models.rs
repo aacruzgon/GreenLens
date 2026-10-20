@@ -162,6 +162,31 @@ pub enum ClassifierTask {
     ChunkTopic,
 }
 
+/// The labels of [`ClassifierTask::Route`] for a garden without farm records, in the order of
+/// contracts 8. `agent`'s classifier and Jev share them.
+pub const ROUTE_LABELS: [&str; 5] = [
+    "diagnosis_question",
+    "care_question",
+    "task_change",
+    "safety_sensitive",
+    "off_topic",
+];
+
+/// The label for a question about the garden's own farm records (gap G10). It is no route of
+/// its own: the router answers it as a care question, and only when the garden has farm records.
+pub const FARM_RECORDS_LABEL: &str = "farm_records";
+
+/// The labels of [`ClassifierTask::Route`] for a garden with farm records: [`ROUTE_LABELS`]
+/// and [`FARM_RECORDS_LABEL`] before `off_topic`.
+pub const FARM_ROUTE_LABELS: [&str; 6] = [
+    "diagnosis_question",
+    "care_question",
+    "task_change",
+    "safety_sensitive",
+    FARM_RECORDS_LABEL,
+    "off_topic",
+];
+
 /// One label's score. Scores are compared with each other, not read as probabilities.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LabelScore {

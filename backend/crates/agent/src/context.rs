@@ -24,7 +24,7 @@
 //! topic only then (gap G10), and `search_farm_records` is offered only then (gap G6). The
 //! records themselves are never loaded into the context; the model searches them.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time::Duration};
 
 use domain::{
     authz::{ConversationOwner, Membership, Viewer},
@@ -233,13 +233,24 @@ pub async fn load(
     })
 }
 
-/// Reads the garden's connectors for [`farm_records_searchable`]. A failed read leaves the tool
-/// out, and the router asks as for a garden without farm records, rather than failing the turn.
+/// How long the router waits for the garden's connectors before routing as for a garden without
+/// farm records: the read sits in front of the classifier on every turn.
+pub const FARM_READ_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Reads the garden's connectors for [`farm_records_searchable`]. A failed or slow read leaves
+/// the tool out, and the router asks as for a garden without farm records, rather than failing
+/// the turn.
 pub async fn has_farm_records(deps: &AgentDeps, member: Membership<Viewer>) -> bool {
-    match deps.stores.farm.connectors(member).await {
-        Ok(connectors) => farm_records_searchable(&connectors),
-        Err(e) => {
-            tracing::warn!(error = %crate::beliefs::Chain(&e), "farm connectors not read; search_farm_records not offered");
+    match tokio::time::timeout(FARM_READ_TIMEOUT, deps.stores.farm.connectors(member)).await {
+        Ok(Ok(connectors)) => farm_records_searchable(&connectors),
+        Ok(Err(e)) => {
+            tracing::warn!(error = %crate::beliefs::Chain(&e), "farm connectors not read; search_farm_records not offered, routed as a garden without farm records");
+            false
+        }
+        Err(_) => {
+            tracing::warn!(
+                "farm connectors not read in time; search_farm_records not offered, routed as a garden without farm records"
+            );
             false
         }
     }

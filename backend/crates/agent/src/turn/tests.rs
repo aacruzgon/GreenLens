@@ -652,8 +652,9 @@ async fn search_farm_records_is_offered_only_to_a_garden_with_farm_records() {
 async fn a_failed_connector_read_leaves_the_tool_out_and_the_turn_goes_on() {
     let mut farm = MockFarmRecordStore::new();
     farm.expect_connectors()
+        .times(1)
         .returning(|_| Err(StoreError::Unavailable("offline".into())));
-    let (agent, model, _) = harness(Setup {
+    let (agent, model, seen) = harness(Setup {
         farm,
         ..Setup::new(vec![vec![
             ChatChunk::TextDelta("Hello.".to_owned()),
@@ -666,6 +667,13 @@ async fn a_failed_connector_read_leaves_the_tool_out_and_the_turn_goes_on() {
         .unwrap();
     let (_, outcome) = collect(stream).await;
     assert!(matches!(outcome, TurnOutcome::Completed(_)));
+    // Routed as a garden without farm records.
+    assert_eq!(
+        seen.classified.lock().unwrap()[0],
+        ClassifierTask::Route {
+            farm_records: false
+        }
+    );
     assert!(
         !tools_offered(&model)
             .iter()
@@ -1093,41 +1101,62 @@ async fn a_farm_records_question_reaches_the_chat_model_in_a_garden_with_records
 /// question, scored off-topic, gets the cheap redirect with no tools.
 #[tokio::test]
 async fn without_farm_records_the_router_is_asked_as_before() {
-    for scores in [
-        vec![("off_topic", 0.9), ("care_question", 0.1)],
-        // A `farm_records` score the classifier wasn't asked for counts as off-topic.
-        vec![("farm_records", 0.9), ("care_question", 0.1)],
-    ] {
-        let (agent, model, seen) = harness(Setup {
-            route_scores: scores,
-            ..Setup::new(vec![vec![
-                ChatChunk::TextDelta("I can help with your garden.".to_owned()),
-                ChatChunk::Done(StopReason::EndTurn),
-            ]])
-        });
-        let stream = agent
-            .start_turn(request(
-                owner(Role::Editor).await,
-                "What did Riley post in #field-reports on August 31?",
-            ))
-            .await
-            .unwrap();
-        let (events, _) = collect(stream).await;
-        let ChatEvent::MessageStarted(started) = &events[0] else {
-            panic!("{events:?}")
-        };
-        assert_eq!(started.route, ChatRoute::OffTopic);
-        assert_eq!(
-            seen.classified.lock().unwrap()[0],
-            ClassifierTask::Route {
-                farm_records: false
-            }
-        );
-        let sent = model.sent();
-        assert_eq!(sent.len(), 1);
-        assert_eq!(sent[0].purpose, ChatPurpose::OffTopic);
-        assert_eq!(sent[0].tools, []);
-    }
+    let (agent, model, seen) = harness(Setup {
+        route_scores: vec![("off_topic", 0.9), ("care_question", 0.1)],
+        ..Setup::new(vec![vec![
+            ChatChunk::TextDelta("I can help with your garden.".to_owned()),
+            ChatChunk::Done(StopReason::EndTurn),
+        ]])
+    });
+    let stream = agent
+        .start_turn(request(
+            owner(Role::Editor).await,
+            "What did Riley post in #field-reports on August 31?",
+        ))
+        .await
+        .unwrap();
+    let (events, _) = collect(stream).await;
+    let ChatEvent::MessageStarted(started) = &events[0] else {
+        panic!("{events:?}")
+    };
+    assert_eq!(started.route, ChatRoute::OffTopic);
+    assert_eq!(
+        seen.classified.lock().unwrap()[0],
+        ClassifierTask::Route {
+            farm_records: false
+        }
+    );
+    let sent = model.sent();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].purpose, ChatPurpose::OffTopic);
+    assert_eq!(sent[0].tools, []);
+}
+
+/// A poisoning message in a garden with farm records still gets poison control, whatever the
+/// classifier says about the records.
+#[tokio::test]
+async fn poisoning_in_a_garden_with_farm_records_gets_poison_control() {
+    use domain::connectors::ConnectorStatus::Active;
+    let mut farm = MockFarmRecordStore::new();
+    farm.expect_connectors()
+        .times(1)
+        .returning(|_| Ok(vec![crate::testing::connector(Active, 12)]));
+    let (agent, model, _) = harness(Setup {
+        farm,
+        route_scores: vec![("farm_records", 0.9), ("care_question", 0.1)],
+        ..Setup::new(Vec::new())
+    });
+    let stream = agent
+        .start_turn(request(
+            owner(Role::Editor).await,
+            "My dog ate the slug pellets, what did the crew log?",
+        ))
+        .await
+        .unwrap();
+    let (events, outcome) = collect(stream).await;
+    assert!(matches!(outcome, TurnOutcome::Completed(_)));
+    assert!(text_of(&events).contains("poison control"));
+    assert_eq!(model.sent().len(), 0);
 }
 
 /// A clearly off-topic message stays off-topic in a garden with farm records.

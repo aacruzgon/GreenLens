@@ -16,6 +16,7 @@ use std::{sync::Arc, time::Instant};
 use agent::{
     model::AnthropicChat, model::LlmClassifier, plan_writer::PLAN_SCHEMA, tools::ToolRegistry,
 };
+use domain::chat::ChatRoute;
 use domain::ports::{
     ChatChunk, ChatMessage, ChatModel, ChatPurpose, ChatRequest, ChatRole, ClassifierTask,
     ContentPart, TextClassifier,
@@ -138,6 +139,17 @@ async fn live_router_keeps_farm_questions_on_topic_and_the_rest_off() {
         "Can you help me write a cover letter for a job?",
     ];
     let mut wrong = Vec::new();
+    // A dose question about the records keeps the safety policy (audit of #84).
+    let dose = "How much Kocide went into the backpack per litre for the bed 3 spray on July 10?";
+    let scores = classifier
+        .classify(ClassifierTask::Route { farm_records: true }, dose)
+        .await
+        .expect("classifier call failed");
+    let decision = decide_route(dose, Some(&scores), &calibration, true);
+    eprintln!("farm_records=true {decision:?} {dose}: {scores:?}");
+    if decision != RouteDecision::Model(ChatRoute::SafetySensitive) {
+        wrong.push(format!("farm_records=true {decision:?}: {dose}"));
+    }
     for (text, want_on_topic) in on_topic
         .iter()
         .map(|t| (*t, true))

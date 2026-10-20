@@ -1,6 +1,6 @@
 # PDM Backend: `agent` crate
 
-> **Status:** Draft v0.6.2, 2026-10-20. v0.6.2: gap G10: a garden with farm records is routed knowing it, so a question about its own Slack channels or documents reaches the chat model instead of the off-topic reply: the turn reads `has_farm_records` once before routing, `ClassifierTask::Route { farm_records }` adds a `farm_records` label to the classifier's labels and prompt only then (`classify/2026-10-20.1`), and `decide` counts that label as a care question with farm records and as `off_topic` without; a garden without farm records is asked exactly as before; 106 unit tests and a live router check. v0.6.1: `AnthropicChat::stream` sends the call's final usage just before `Done`, since the `message_delta` that carries the stop reason also carries the final output count and the accumulator merged it without emitting it, so a turn's stored `tokens_out` (and the daily budget) kept an earlier, smaller count (found by `era-eval`, docs/EON E8.1). v0.6: `search_farm_records` (roadmap E5.2), a read tool for every role that embeds its query, searches the garden's farm records exactly with `kind` and `since` (the garden's midnight) and returns at most 8 hits framed as `farm_records` data; it is offered only when the garden has farm records or a connector past `pending` (gap G6: `Offer` carries the role and that fact, which the context reads once per turn from `FarmRecordStore::connectors`); its hits fill `Message.farm_citations` (E5.3), as knowledge hits fill `citations`; the chat prompt says what was applied and when, never the rate, and moved to `2026-10-19.2` (E5.5); 98 unit tests. v0.5: every successful tool result reaches the model inside a `<data kind="tool_result">` block (`prompt::tool_result`; a tool may pick another kind through `Tool::DATA_KIND`), refusals stay plain, and the stored copy keeps the tool's JSON; `DataKind` gains `ToolResult` and `FarmRecords`; the `<data` escape also catches a tag at the very end of a body, Unicode whitespace and zero-width characters after `<` or `/` (also in a JSON result's strings and keys, before it is written), the fullwidth and small `<`, and a multi-byte character after `data`; the chat prompt says where tool results arrive and moved to `2026-10-19.1`; 85 unit tests. v0.4: shared memories are recorded in `SurrealDB` Agent Memory through the new `beliefs` module (the `sync_pending` sweep, the only writer, and the reads `current_beliefs` and `search_beliefs`); memories and beliefs reach the model with their day; the context carries the current beliefs in their own `beliefs` block, `search_memory` returns `MemorySearch` with belief hits, the plan writer reads the plant's current beliefs, memories carry a `topic` (extraction and `remember`), and the chat, plan and extraction prompts moved to `2026-10-17.1`; 77 unit tests. v0.3: only the three tools that propose changes are `strict` (`ToolSpec::strict`), because all nineteen made a grammar the API refused as too large in the first live call; the Anthropic adapter maps `model_context_window_exceeded` to `MaxTokens` and ends a stream cut off before its stop reason with `Unavailable`; 62 unit tests and three ignored live tests (`tests/live_anthropic.rs`). v0.2: one `embedder` in `AgentDeps`, called with `EmbedMode::Query` for the user's message and searches and `EmbedMode::Document` for the memories it stores (`document_embedder` is gone). v0.1: the agent core (the chat turn and its stream, nineteen tools, the dose check, plan validation, the router and safety gate, the plan writer, the context builder, memory extraction and the Anthropic and classifier adapters), compiled on Rust 1.99.1 with 60 unit tests.
+> **Status:** Draft v0.6.2, 2026-10-20. v0.6.2: gap G10: a garden with farm records is routed knowing it, so a question about its own Slack channels or documents reaches the chat model instead of the off-topic reply: the turn reads `has_farm_records` once before routing, `ClassifierTask::Route { farm_records }` adds a `farm_records` label to the classifier's labels and prompt only then (`classify/2026-10-20.2`), and `decide` counts that label as a care question with farm records and as unknown without; a `farm_records` win with `safety_sensitive` at 0.5 or more is safety-sensitive, and the prompt keeps a question about the doses or products the records hold `safety_sensitive`; the connectors read before routing gives up after 2 s; a garden without farm records is asked exactly as before; 107 unit tests and a live router check. v0.6.1: `AnthropicChat::stream` sends the call's final usage just before `Done`, since the `message_delta` that carries the stop reason also carries the final output count and the accumulator merged it without emitting it, so a turn's stored `tokens_out` (and the daily budget) kept an earlier, smaller count (found by `era-eval`, docs/EON E8.1). v0.6: `search_farm_records` (roadmap E5.2), a read tool for every role that embeds its query, searches the garden's farm records exactly with `kind` and `since` (the garden's midnight) and returns at most 8 hits framed as `farm_records` data; it is offered only when the garden has farm records or a connector past `pending` (gap G6: `Offer` carries the role and that fact, which the context reads once per turn from `FarmRecordStore::connectors`); its hits fill `Message.farm_citations` (E5.3), as knowledge hits fill `citations`; the chat prompt says what was applied and when, never the rate, and moved to `2026-10-19.2` (E5.5); 98 unit tests. v0.5: every successful tool result reaches the model inside a `<data kind="tool_result">` block (`prompt::tool_result`; a tool may pick another kind through `Tool::DATA_KIND`), refusals stay plain, and the stored copy keeps the tool's JSON; `DataKind` gains `ToolResult` and `FarmRecords`; the `<data` escape also catches a tag at the very end of a body, Unicode whitespace and zero-width characters after `<` or `/` (also in a JSON result's strings and keys, before it is written), the fullwidth and small `<`, and a multi-byte character after `data`; the chat prompt says where tool results arrive and moved to `2026-10-19.1`; 85 unit tests. v0.4: shared memories are recorded in `SurrealDB` Agent Memory through the new `beliefs` module (the `sync_pending` sweep, the only writer, and the reads `current_beliefs` and `search_beliefs`); memories and beliefs reach the model with their day; the context carries the current beliefs in their own `beliefs` block, `search_memory` returns `MemorySearch` with belief hits, the plan writer reads the plant's current beliefs, memories carry a `topic` (extraction and `remember`), and the chat, plan and extraction prompts moved to `2026-10-17.1`; 77 unit tests. v0.3: only the three tools that propose changes are `strict` (`ToolSpec::strict`), because all nineteen made a grammar the API refused as too large in the first live call; the Anthropic adapter maps `model_context_window_exceeded` to `MaxTokens` and ends a stream cut off before its stop reason with `Unavailable`; 62 unit tests and three ignored live tests (`tests/live_anthropic.rs`). v0.2: one `embedder` in `AgentDeps`, called with `EmbedMode::Query` for the user's message and searches and `EmbedMode::Document` for the memories it stores (`document_embedder` is gone). v0.1: the agent core (the chat turn and its stream, nineteen tools, the dose check, plan validation, the router and safety gate, the plan writer, the context builder, memory extraction and the Anthropic and classifier adapters), compiled on Rust 1.99.1 with 60 unit tests.
 
 Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate uses and implements. It implements [architecture 7](../architecture/README.md#7-chat-and-agent-core), [8.2](../architecture/README.md#82-chat-turn) and the safety rules of [architecture 11](../architecture/README.md#11-security-privacy-and-safety), over the shapes of [contracts 7](../architecture/contracts.md#7-pipeline-records) and [contracts 8](../architecture/contracts.md#8-chat-and-memory). Every listing below is copied from the compiled source of `crates/agent`: `cargo check --workspace`, `cargo clippy -p agent --all-targets` (no warnings in `agent`) and `cargo test -p agent` (83 tests) pass.
 
@@ -800,7 +800,7 @@ Passing steps are renumbered `order` 1, 2, … in their original order. `Validat
 
 [Architecture 7](../architecture/README.md#router-and-safety-gate): before the model runs, the text classifier labels the message; the scores are compared with each other, shifted by offsets calibrated on a labelled set, and a near tie with `safety_sensitive` resolves to `safety_sensitive`. A keyword check for a person or pet being poisoned runs whatever the classifier says, so the poison-control answer never depends on a model.
 
-**Farm records** (gap G10 of the [connectors roadmap](../EON/README.md)). The turn reads whether the garden has farm records (`context::has_farm_records`, the fact that offers `search_farm_records`) once, before routing, and asks the classifier `ClassifierTask::Route { farm_records }`. With farm records, the labels gain `farm_records` (`FARM_ROUTE_LABELS`): the prompt says the garden keeps its crew's Slack messages and shared documents, `farm_records` is a question about what they say (what someone saw, reported, did or posted, and when or how often), and `off_topic` is "not about plants, the garden or its farm records". `decide` counts `farm_records` as `care_question`, so the chat model answers with `search_farm_records`. Without farm records, the classifier is asked exactly as before, and a `farm_records` score (which only an unasked Jev could send) counts as `off_topic`. Two labels for one route count once, with the higher score. On Oct 20 Haiku 5.5 scored the evaluation's Q02, Q10 and Q19 `farm_records` 0.95–1.0 with farm records and `off_topic` 0.6–0.9 without, and four plainly off-topic messages `off_topic` 1.0 either way (`live_router_keeps_farm_questions_on_topic_and_the_rest_off`, ignored).
+**Farm records** (gap G10 of the [connectors roadmap](../EON/README.md)). The turn reads whether the garden has farm records (`context::has_farm_records`, the fact that offers `search_farm_records`) once, before routing, within `FARM_READ_TIMEOUT` (2 s; a failed or slow read routes as a garden without farm records), and asks the classifier `ClassifierTask::Route { farm_records }`. With farm records, the labels gain `farm_records` (`FARM_ROUTE_LABELS`): the prompt says the garden keeps its crew's Slack messages and shared documents, `farm_records` is a question about what they say (what someone saw, reported, did or posted, and when or how often), `safety_sensitive` also covers what the records say about pesticides or doses, and `off_topic` is "not about plants, the garden or its farm records". `decide` counts `farm_records` as `care_question`, so the chat model answers with `search_farm_records`, unless `safety_sensitive` scores at least `FARM_SAFETY_FLOOR` (0.5): a question about the dose the spray log holds keeps the safety policy however far `farm_records` is ahead. Without farm records, the classifier is asked exactly as before, and a `farm_records` score it wasn't asked for is an unknown label, ignored like any other, so it can never turn a poisoning message off-topic (Jev also drops labels it wasn't sent). The labels live in `domain::ports` (`ROUTE_LABELS`, `FARM_ROUTE_LABELS`), shared with Jev. `CLASSIFIER_PROMPT_VERSION` names the prompt for the tests and these documents; stored messages keep the route, not the version. On Oct 20 Haiku 5.5 scored the evaluation's Q02, Q10 and Q19 `farm_records` 0.95–1.0 with farm records and `off_topic` 0.6–0.9 without, and four plainly off-topic messages `off_topic` 1.0 either way; with `classify/2026-10-20.2`, "How much Kocide went into the backpack per litre for the bed 3 spray on July 10?" scored `safety_sensitive` 1.0 (`live_router_keeps_farm_questions_on_topic_and_the_rest_off`, ignored).
 
 ```rust
 /// Per-label offsets fitted on the labelled set, plus the near-tie margin.
@@ -830,25 +830,27 @@ pub enum RouteDecision {
 /// scores (the classifier failed or returned unknown labels) the turn is a care question: the
 /// dose check still applies to every sentence. `farm_records` says whether the garden has farm
 /// records, as the classifier was told: it decides what a `farm_records` score counts for. Two
-/// labels for the same route count once, with the higher calibrated score.
+/// labels for the same route count once, with the higher calibrated score. A `farm_records` win
+/// with `safety_sensitive` at [`FARM_SAFETY_FLOOR`] or more is safety-sensitive.
 pub fn decide(
     text: &str,
     scores: Option<&[LabelScore]>,
     calibration: &Calibration,
     farm_records: bool,
 ) -> RouteDecision {
-    let mut ranked: Vec<(ChatRoute, f64)> = scores
+    // Each usable label's route, calibrated score, and whether it was `farm_records`.
+    let mut ranked: Vec<(ChatRoute, f64, bool)> = scores
         .unwrap_or_default()
         .iter()
         .filter_map(|s| {
             let route = parse_route(&s.label, farm_records)?;
             let offset = calibration.offsets.get(&s.label).copied().unwrap_or(0.0);
-            Some((route, s.score + offset))
+            Some((route, s.score + offset, s.label == FARM_RECORDS_LABEL))
         })
         .collect();
     ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
     let mut seen = Vec::with_capacity(ranked.len());
-    ranked.retain(|(route, _)| {
+    ranked.retain(|(route, _, _)| {
         let first = !seen.contains(route);
         seen.push(*route);
         first
@@ -856,13 +858,15 @@ pub fn decide(
 
     let route = match ranked.as_slice() {
         [] => ChatRoute::CareQuestion,
-        [(top, _)] => *top,
-        [(top, top_score), (second, second_score), ..] => {
+        [(top, _, _)] => *top,
+        [(top, top_score, farm_win), (second, second_score, _), ..] => {
             let safety = ranked
                 .iter()
-                .find(|(r, _)| *r == ChatRoute::SafetySensitive)
-                .map(|(_, s)| *s);
-            if safety.is_some_and(|s| top_score - s <= calibration.safety_margin) {
+                .find(|(r, _, _)| *r == ChatRoute::SafetySensitive)
+                .map(|(_, s, _)| *s);
+            if safety.is_some_and(|s| {
+                top_score - s <= calibration.safety_margin || (*farm_win && s >= FARM_SAFETY_FLOOR)
+            }) {
                 ChatRoute::SafetySensitive
             } else if *top == ChatRoute::OffTopic
                 && top_score - second_score < calibration.off_topic_margin
@@ -1191,7 +1195,8 @@ pub const fn task_labels(task: ClassifierTask) -> (&'static str, &'static [&'sta
              messages in the farm's Slack channels and its shared documents and logs. \
              diagnosis_question: about what is wrong with a plant. care_question: about looking \
              after plants. task_change: asks to add, finish or change tasks or the plan. \
-             safety_sensitive: about pesticides, doses, or a person or pet being poisoned. \
+             safety_sensitive: about pesticides, doses, or a person or pet being poisoned, \
+             also when it asks what the farm records say about them. \
              farm_records: asks what the farm records say: what someone in the crew saw, \
              reported, did or posted, in a channel or a document, or when or how often. \
              off_topic: not about plants, the garden or its farm records.",
@@ -1997,13 +2002,20 @@ impl ToolRegistry {
 Viewers and reviewers are offered the read tools, `request_rescan` and `remember`; editors and owners all twenty ([contracts 1, roles and access](../architecture/contracts.md#roles-and-access)). **Gap G6:** an `Offer` carries the role and whether the garden has farm records to search, and a tool with `Tool::NEEDS_FARM_RECORDS` (only `search_farm_records`) is left out without them. The fact is true when the garden has a synced record or a connector that is `active` or `reauth_needed`, so records stay searchable while the owner reconnects; a `pending` connector alone doesn't count, and one being deleted isn't listed ([connectors 7](../connectors/README.md#7-the-agent)). The turn reads the fact once, before routing (`has_farm_records`; a failed read counts as none and is logged), so the router (gap G10, [section 7](#7-router-and-safety-gate)) and the offer always agree. A call to a tool that wasn't offered is answered like an unknown tool. The list is sorted by name and identical for every turn of a role in a garden, which keeps the provider's prompt cache; a garden's first synced record changes it once.
 
 ```rust
-/// Reads the garden's connectors for [`farm_records_searchable`]. A failed read leaves the tool
-/// out, and the router asks as for a garden without farm records, rather than failing the turn.
+/// Reads the garden's connectors for [`farm_records_searchable`]. A failed or slow read leaves
+/// the tool out, and the router asks as for a garden without farm records, rather than failing
+/// the turn.
 pub async fn has_farm_records(deps: &AgentDeps, member: Membership<Viewer>) -> bool {
-    match deps.stores.farm.connectors(member).await {
-        Ok(connectors) => farm_records_searchable(&connectors),
-        Err(e) => {
-            tracing::warn!(error = %crate::beliefs::Chain(&e), "farm connectors not read; search_farm_records not offered");
+    match tokio::time::timeout(FARM_READ_TIMEOUT, deps.stores.farm.connectors(member)).await {
+        Ok(Ok(connectors)) => farm_records_searchable(&connectors),
+        Ok(Err(e)) => {
+            tracing::warn!(error = %crate::beliefs::Chain(&e), "farm connectors not read; search_farm_records not offered, routed as a garden without farm records");
+            false
+        }
+        Err(_) => {
+            tracing::warn!(
+                "farm connectors not read in time; search_farm_records not offered, routed as a garden without farm records"
+            );
             false
         }
     }
@@ -3014,7 +3026,7 @@ pub enum MemoryError {
 
 ## 17. Testing
 
-106 unit tests, run with `cargo test -p agent` (or `cargo nextest run -p agent`):
+107 unit tests, run with `cargo test -p agent` (or `cargo nextest run -p agent`):
 
 | Module | Tests | What |
 |---|---|---|
@@ -3022,7 +3034,7 @@ pub enum MemoryError {
 | `safety::sentences` | 6 | Terminators and line breaks; decimals, abbreviations and list numbers; closing quotes; the undecided full stop; streamed pieces concatenating to the text; the cap |
 | `safety::products` | 2 | Built-in words, plurals, case, whole words; knowledge-base products and `broad_spectrum` |
 | `safety::plan` | 9 | Every row of the validation table |
-| `safety::routes` | 8 | Calibration, the safety tie-break, the off-topic margin, poisoning whatever the scores (and three non-poisoning sentences), no scores; `farm_records` a care question only with farm records and `off_topic` without, a safety-sensitive farm question still safety-sensitive, a clearly off-topic message off-topic either way, two labels of one route counted once (gap G10) |
+| `safety::routes` | 8 | Calibration, the safety tie-break, the off-topic margin, poisoning whatever the scores (and three non-poisoning sentences), no scores; `farm_records` a care question only with farm records and unknown without (so a poisoning message still gets poison control), a safety-sensitive farm question still safety-sensitive in a near tie and at the 0.5 floor however far `farm_records` leads, not below it, the floor for a `farm_records` win only, a clearly off-topic message off-topic either way (gap G10) |
 | `prompt` | 10 | A body can't close its `<data>` element: nested, mixed-case and spaced tags and a tag at the very end are escaped, other tags and short tails are not, escaped text is never escaped twice, an empty body is an empty element; a framed tool result is still its JSON; every system prompt passes its own dose check; the chat prompt says what was applied and when, never the rate |
 | `model::anthropic` | 4 | A stream cut off before its stop reason ends in an error (`wiremock`); the last usage before `Done` has the final output count. The request body: sorted tools, `strict` only where the spec says, stripped keywords, no `tool_choice` or `thinking`, effort, the reasoning block replayed, `tool_result` with `is_error` and an image after it, the cache breakpoint |
 | `model::classifier` | 4 | Parsing and clamping scores, the strict schema, a refusal routed as `safety_sensitive` with or without farm records; the route task's labels and prompt unchanged without farm records and with `farm_records` with them (gap G10) |
@@ -3030,7 +3042,7 @@ pub enum MemoryError {
 | `tools` | 16 | Twenty tools, sorted, filtered by role (17 for viewers and reviewers); only the three write tools strict; schemas from the argument types; `apply_preview`; crops; `remember`'s optional topic; `search_memory` merges belief hits, and a slow belief store gives empty `beliefs` after 4 s (paused time); `search_farm_records` left out without farm records, framed as `farm_records` (the only tool that overrides `DATA_KIND`), at most 8 hits from the proof's garden with `kind` and `since` passed through (T-E5.1), no filters when none are given, unknown arguments refused before the search, `since` at the garden's midnight (DST gap included) |
 | `beliefs` | 8 | Queued erases run before any record; a failed record doesn't hold up the rest; a failed erase stays queued and holds back its plant's records; a failed garden erase holds back its plants'; a private memory is never recorded; with Agent Memory off the queue is emptied and nothing is called; reads empty on error and on timeout (paused time) |
 | `context` | 2 | The beliefs block, with each belief's day, between the context and the memories; a slow belief store leaves it out after 1.5 s (paused time) while the memory hits arrive |
-| `turn` | 20 | Gap G10: with farm records the classifier is asked `Route { farm_records: true }` and a `farm_records` question reaches the chat model as `care_question` with `search_farm_records`; without them it is asked `Route { farm_records: false }` and the same question, scored off-topic or `farm_records`, gets the cheap redirect with no tools; a clearly off-topic message stays off-topic with farm records; `search_farm_records` offered with a record or an `active` or `reauth_needed` connector, not with none or only a `pending` one (T-E5.2), and left out when the connectors can't be read; a call to it without records answered as unknown; a failed search or a failed query embedding answered with the plain "unavailable" refusal, no vendor text and no farm citation; an answer citing the fixture's spray log stores its `FarmCitation` once with title, author, time and link (T-E5.3), its hits reach the model as `farm_records`, and the sentence repeating the log's rate is replaced (T-E5.6); the offering rule; a dosed sentence replaced before streaming; the tool loop with the reasoning block replayed unchanged; a dose in tool arguments refused before the tool runs; a write tool unknown to a reviewer; the Maple Row fixture's planted injection, returned by `search_memory`, reaches the model only inside `<data>` with its planted tags escaped, while the stored result keeps the JSON (T-E5.4); the budget; validation; a disconnect stored as interrupted; poison control with no model call; a model failure as an `error` event |
+| `turn` | 21 | Gap G10: with farm records the classifier is asked `Route { farm_records: true }` and a `farm_records` question reaches the chat model as `care_question` with `search_farm_records`; without them it is asked `Route { farm_records: false }` and the same question, scored off-topic, gets the cheap redirect with no tools; a poisoning message in a garden with farm records gets poison control; a failed connectors read routes as without farm records; a clearly off-topic message stays off-topic with farm records; `search_farm_records` offered with a record or an `active` or `reauth_needed` connector, not with none or only a `pending` one (T-E5.2), and left out when the connectors can't be read; a call to it without records answered as unknown; a failed search or a failed query embedding answered with the plain "unavailable" refusal, no vendor text and no farm citation; an answer citing the fixture's spray log stores its `FarmCitation` once with title, author, time and link (T-E5.3), its hits reach the model as `farm_records`, and the sentence repeating the log's rate is replaced (T-E5.6); the offering rule; a dosed sentence replaced before streaming; the tool loop with the reasoning block replayed unchanged; a dose in tool arguments refused before the tool runs; a write tool unknown to a reviewer; the Maple Row fixture's planted injection, returned by `search_memory`, reaches the model only inside `<data>` with its planted tags escaped, while the stored result keeps the JSON (T-E5.4); the budget; validation; a disconnect stored as interrupted; poison control with no model call; a model failure as an `error` event |
 | `memory` | 3 | The summary trigger; the strict extraction schema with `topic` required; every `ExtractedTopic` maps to its wire name |
 
 **Fakes.** `domain`'s `mock` feature gives one `mockall` mock per port (`MockMemoryStore` and `MockBeliefStore` for the mirror, whose call order is recorded through the mocks' closures); `testing::SlowBeliefs` answers every read after a minute, for the timeouts; `testing::garden_deps` builds a garden-anchored `AgentDeps` over mocks; the turn tests build a `ConversationOwner<Viewer>` the only way it can be built, through `authenticate` and `check_conversation` over mocked `AuthVerifier`, `IdentityRepo` and `AccessRepo`. `ChatModel` can't be mocked by `mockall` (its stream borrows the request), and `domain`'s `ScriptedChat` replays one script for every call, so `testing::ScriptedModel` pops one script per call, records every request, and turns an empty script into a provider failure.

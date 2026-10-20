@@ -157,7 +157,12 @@ impl Report {
                 let n = runs.len() as f64;
                 let mean = |f: fn(&RunReport) -> f64| runs.iter().map(|r| f(r)).sum::<f64>() / n;
                 let cost: f64 = runs.iter().map(|r| r.cost_usd).sum();
-                let mut routes: Vec<&str> = runs.iter().map(|r| r.route.as_str()).collect();
+                // A failed run may have no route.
+                let mut routes: Vec<&str> = runs
+                    .iter()
+                    .map(|r| r.route.as_str())
+                    .filter(|r| !r.is_empty())
+                    .collect();
                 routes.sort_unstable();
                 routes.dedup();
                 total += cost;

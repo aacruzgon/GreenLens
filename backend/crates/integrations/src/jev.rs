@@ -18,25 +18,9 @@ use crate::http::TransportError;
 /// The model name in errors and logs.
 pub const MODEL: &str = "jev";
 
-/// The chat router's labels ([contracts 8]).
-pub const ROUTE_LABELS: &[&str] = &[
-    "diagnosis_question",
-    "care_question",
-    "task_change",
-    "safety_sensitive",
-    "off_topic",
-];
-
-/// The chat router's labels in a garden with farm records: `farm_records` too, for a question
-/// about the garden's own Slack channels and documents (`agent`'s routes; gap G10).
-pub const FARM_ROUTE_LABELS: &[&str] = &[
-    "diagnosis_question",
-    "care_question",
-    "task_change",
-    "safety_sensitive",
-    "farm_records",
-    "off_topic",
-];
+/// The chat router's labels ([contracts 8]), without and with farm records (gap G10); shared
+/// with `agent`'s classifier.
+pub use domain::ports::{FARM_ROUTE_LABELS, ROUTE_LABELS};
 
 /// The memory gate's labels.
 pub const MEMORY_LABELS: &[&str] = &["memory_worthy", "not_memory_worthy"];
@@ -99,8 +83,8 @@ impl TextClassifier for JevClassifier {
         let (name, labels): (&'static str, &[&str]) = match task {
             ClassifierTask::Route {
                 farm_records: false,
-            } => ("route", ROUTE_LABELS),
-            ClassifierTask::Route { farm_records: true } => ("route", FARM_ROUTE_LABELS),
+            } => ("route", &ROUTE_LABELS),
+            ClassifierTask::Route { farm_records: true } => ("route", &FARM_ROUTE_LABELS),
             ClassifierTask::MemoryWorthy => ("memory_worthy", MEMORY_LABELS),
             ClassifierTask::ChunkTopic => ("chunk_topic", &[]),
         };
@@ -136,9 +120,11 @@ impl TextClassifier for JevClassifier {
                     model: MODEL,
                     source: Box::new(TransportError::from_reqwest(e)),
                 })?;
+        // Only the labels asked: a label the router wasn't offered must not count.
         let mut scores: Vec<LabelScore> = body
             .scores
             .into_iter()
+            .filter(|s| labels.contains(&s.label.as_str()))
             .map(|s| LabelScore {
                 label: s.label,
                 score: s.score,

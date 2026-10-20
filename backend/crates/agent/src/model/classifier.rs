@@ -46,7 +46,8 @@ pub const fn task_labels(task: ClassifierTask) -> (&'static str, &'static [&'sta
              messages in the farm's Slack channels and its shared documents and logs. \
              diagnosis_question: about what is wrong with a plant. care_question: about looking \
              after plants. task_change: asks to add, finish or change tasks or the plan. \
-             safety_sensitive: about pesticides, doses, or a person or pet being poisoned. \
+             safety_sensitive: about pesticides, doses, or a person or pet being poisoned, \
+             also when it asks what the farm records say about them. \
              farm_records: asks what the farm records say: what someone in the crew saw, \
              reported, did or posted, in a channel or a document, or when or how often. \
              off_topic: not about plants, the garden or its farm records.",
@@ -219,7 +220,7 @@ mod tests {
         assert_eq!(schema["required"].as_array().unwrap().len(), 6);
         assert_eq!(
             crate::prompt::CLASSIFIER_PROMPT_VERSION,
-            "classify/2026-10-20.1"
+            "classify/2026-10-20.2"
         );
 
         let c = LlmClassifier::new(

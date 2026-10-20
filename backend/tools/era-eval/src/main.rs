@@ -466,10 +466,7 @@ async fn drain(mut events: impl futures::Stream<Item = ChatEvent> + Unpin) -> St
     while let Some(event) = events.next().await {
         match event {
             ChatEvent::MessageStarted(m) => {
-                seen.route = serde_json::to_value(m.route)
-                    .ok()
-                    .and_then(|v| v.as_str().map(str::to_owned))
-                    .unwrap_or_default();
+                agent::safety::route_label(m.route).clone_into(&mut seen.route);
             }
             ChatEvent::TextDelta(d) => seen.text.push_str(&d.text),
             ChatEvent::ToolStarted(t) => seen.tools.push(t.tool),
