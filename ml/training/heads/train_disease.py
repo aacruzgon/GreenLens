@@ -4,7 +4,11 @@
 
 - Classes: every (species, problem | healthy) with at least --min-train training images.
 - Multinomial logistic regression; C chosen on validation by restricted top-1, from a grid
-  wide enough that the choice isn't at its edge (the report says if it is).
+  wide enough that the choice isn't at its edge (the report says if it is). With --features
+  crops, --select-on crop (the default) scores what the worker returns: each leaf crop of the
+  val photos with exactly one crop (a crop carries its photo's label, which is wrong for a
+  healthy leaf in a diseased photo with several). --select-on photo scores each photo by the
+  mean of its crops' probabilities, which the worker doesn't do. The report gives both.
 - Class weights by inverse frequency, capped at 10 times the median weight.
 - Restricted softmax: at serving time the worker keeps only the working species' classes, so
   every accuracy and the temperature are computed on that restricted softmax.
@@ -126,7 +130,12 @@ def main(argv=None) -> None:
                     help="species left out of the headline numbers (still trained and reported)")
     ap.add_argument("--balance-sources", action="store_true",
                     help="within each class, give every dataset the same total weight")
+    ap.add_argument("--select-on", choices=("crop", "photo"), default="crop",
+                    help="with --features crops, choose C by per-crop top-1 on val photos with one crop (as the "
+                         "worker returns each crop), or by per-photo top-1 (the mean of a photo's crops)")
     args = ap.parse_args(argv)
+    if args.features != "crops":
+        args.select_on = "photo"   # one row per photo: the two are the same
 
     splits = {n: read_split(n) for n in ("train", "val", "test")}
     left_out_species = {}
@@ -226,12 +235,23 @@ def main(argv=None) -> None:
 
     best = None
     grid = (1, 5, 20, 50, 100, 200, 500, 1000, 2000, 5000)
-    val_multi = np.asarray([(species_of_class == s).sum() > 1 for s in data["val"]["sp_img"]])
+    dv = data["val"]
+    val_multi = np.asarray([(species_of_class == s).sum() > 1 for s in dv["sp_img"]])
+    # The crops the worker returns one by one, from photos where the photo's label is the crop's.
+    crop_multi = np.asarray([(species_of_class == s).sum() > 1 for s in dv["sp"]])
+    crop_sel = dv["single"] & crop_multi
+    if crop_sel.sum() < 200:
+        crop_sel = crop_multi
+    grid_scores = []
     for C in grid:
         clf = LogisticRegression(C=C, max_iter=3000)
         clf.fit(Xtr, ytr, sample_weight=sample_w)
-        acc = topk_acc(photo_probs("val", clf)[val_multi], data["val"]["y_img"][val_multi], 1)
-        print(f"C={C}: restricted val top-1 per photo {acc:.3f}")
+        per_photo = topk_acc(photo_probs("val", clf)[val_multi], dv["y_img"][val_multi], 1)
+        lv_c = restricted_logits(clf.decision_function(dv["X"][crop_sel]), species_of_class, dv["sp"][crop_sel])
+        per_crop = topk_acc(softmax(lv_c), dv["y"][crop_sel], 1)
+        grid_scores.append({"C": C, "val_top1_per_photo": per_photo, "val_top1_per_crop": per_crop})
+        print(f"C={C}: restricted val top-1 per photo {per_photo:.3f}, per crop {per_crop:.3f}")
+        acc = per_crop if args.select_on == "crop" else per_photo
         if best is None or acc > best[0]:
             best = (acc, C, clf)
     _, C, clf = best
@@ -241,7 +261,6 @@ def main(argv=None) -> None:
 
     # The worker tempers each crop. A crop carries its photo's label, which is wrong for a healthy
     # leaf in a diseased photo, so T is fitted on the crops of photos with exactly one crop.
-    dv = data["val"]
     lv = restricted_logits(clf.decision_function(dv["X"]), species_of_class, dv["sp"])
     fit_on = dv["single"] if dv["single"].sum() >= 200 else np.ones(len(dv["y"]), bool)
     T = fit_temperature(lv[fit_on], dv["y"][fit_on])
@@ -249,6 +268,7 @@ def main(argv=None) -> None:
     def report(name: str) -> dict:
         d = data[name]
         raw = clf.decision_function(d["X"])
+        res_crop_untempered = softmax(restricted_logits(raw, species_of_class, d["sp"]))
         res_crop = softmax(restricted_logits(raw, species_of_class, d["sp"]) / T)
         res = photo_probs(name, clf, T)
         res_untempered = photo_probs(name, clf)
@@ -317,12 +337,14 @@ def main(argv=None) -> None:
                 "top1_multiclass": over(k_crop > 1, lambda m: topk_acc(res_crop[m], yc[m], 1)),
                 "top3_over_3_classes": over(k_crop > 3, lambda m: topk_acc(res_crop[m], yc[m], 3)),
                 "single_crop_photos_top1_multiclass": over(one, lambda m: topk_acc(res_crop[m], yc[m], 1)),
+                "single_crop_photos_ece_before_T": over(one, lambda m: ece(res_crop_untempered[m], yc[m])),
                 "single_crop_photos_ece_after_T": over(one, lambda m: ece(res_crop[m], yc[m])),
             }
-            out["note"] = ("Headline numbers are per photo: the mean of its crops' restricted, tempered probabilities. "
-                           "Per-crop numbers score each crop against its photo's label, which is wrong for a healthy "
-                           "leaf in a diseased photo; photos with one crop are the cleanest. Restricted metrics assume "
-                           "the species is right.")
+            out["note"] = ("Headline numbers are per photo: the mean of its crops' restricted, tempered probabilities; "
+                           "the worker doesn't average, it returns each crop's top 3. per_leaf_crop scores each crop "
+                           "against its photo's label, which is wrong for a healthy leaf in a diseased photo; photos "
+                           "with one crop are the cleanest and the closest to what the worker returns. Restricted "
+                           "metrics assume the species is right.")
         else:
             out["note"] = "Restricted metrics assume the species is right. The head is trained and scored on whole images; the worker feeds it leaf crops."
         return out
@@ -359,6 +381,9 @@ def main(argv=None) -> None:
         "C": C,
         "C_grid": list(grid),
         "C_at_grid_edge": c_at_edge,
+        "C_selected_on": ("val top-1 per crop, photos with one crop" if args.select_on == "crop" and crop_sel is not crop_multi
+                          else "val top-1 per crop, every crop" if args.select_on == "crop" else "val top-1 per photo"),
+        "C_grid_scores": grid_scores,
         "temperature": T,
         "temperature_fitted_on": "val crops of photos with one crop" if fit_on is dv["single"] else "all val crops",
         "views": args.views,
@@ -391,7 +416,8 @@ def main(argv=None) -> None:
         if "per_leaf_crop" in r:
             c = r["per_leaf_crop"]
             print(f"   per leaf crop: {c['crops']} crops, top-1 {fmt(c['top1_multiclass'])}, "
-                  f"one-crop photos top-1 {fmt(c['single_crop_photos_top1_multiclass'])} ECE {fmt(c['single_crop_photos_ece_after_T'])}")
+                  f"one-crop photos top-1 {fmt(c['single_crop_photos_top1_multiclass'])} "
+                  f"ECE {fmt(c['single_crop_photos_ece_before_T'])} -> {fmt(c['single_crop_photos_ece_after_T'])}")
 
 
 if __name__ == "__main__":
