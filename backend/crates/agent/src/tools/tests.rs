@@ -428,18 +428,16 @@ mod search_farm_records {
     }
 
     #[tokio::test]
-    async fn at_most_8_hits_from_its_own_garden_filtered_by_kind_and_since() {
+    async fn at_most_8_hits_from_its_own_garden_filtered_by_kind_with_a_window_ignored() {
         let mut farm = MockFarmRecordStore::new();
         farm.expect_search_records()
             .withf(|member, query, filter, k| {
-                // Midnight in Toronto on 1 July is 04:00 UTC (EDT).
-                let since: Timestamp = "2026-07-01T04:00:00Z".parse().unwrap();
+                // The window is ignored for documents (EON gap G18).
                 member.garden().to_string() == GARDEN
                     && query.0.len() == 4
                     && *filter
                         == FarmRecordFilter {
                             kind: Some(FarmRecordKind::Document),
-                            since: Some(since),
                             ..FarmRecordFilter::default()
                         }
                     && *k == FARM_RECORD_HITS
@@ -568,6 +566,42 @@ mod search_farm_records {
         assert_eq!(returned.len(), 8);
         assert_eq!(returned[7].text, "spray log");
         assert_eq!(out.effects.len(), 8);
+    }
+
+    #[tokio::test]
+    async fn a_window_applies_to_messages_and_never_to_documents() {
+        // EON gap G18: a document's time is its last edit, so a question about July with
+        // `until` set must still find the spray log, edited later. Midnight in Toronto is
+        // 04:00Z (EDT).
+        let mut farm = MockFarmRecordStore::new();
+        farm.expect_search_records()
+            .withf(|_, _, filter, _| {
+                let since: Timestamp = "2026-07-09T04:00:00Z".parse().unwrap();
+                let until: Timestamp = "2026-07-29T04:00:00Z".parse().unwrap();
+                filter.kind == Some(FarmRecordKind::Message)
+                    && filter.since == Some(since)
+                    && filter.until == Some(until)
+            })
+            .times(1)
+            .returning(|_, _, _, _| Ok(vec![named("a slack message", 50, 0.5)]));
+        farm.expect_search_records()
+            .withf(|_, _, filter, _| {
+                filter.kind == Some(FarmRecordKind::Document)
+                    && filter.since.is_none()
+                    && filter.until.is_none()
+            })
+            .times(1)
+            .returning(|_, _, _, _| Ok(hits(2)));
+        let out = call(
+            farm,
+            json!({"query": "spray log", "since": "2026-07-09", "until": "2026-07-28"}),
+        )
+        .await
+        .unwrap();
+        let returned: Vec<FarmRecordHit> = serde_json::from_value(out.content).unwrap();
+        // The spray log is returned though the window ended before it was edited.
+        assert!(returned.contains(&spray_log_hit()));
+        assert_eq!(returned.len(), 3);
     }
 
     #[tokio::test]
