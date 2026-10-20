@@ -81,7 +81,8 @@ pub struct RunReport {
     pub scores: Scores,
     /// The tools called, in order.
     pub tools: Vec<String>,
-    /// The same calls with the arguments the model gave each (EON gap G18).
+    /// Every tool call the model made, with its arguments, including any the turn did not run
+    /// (the last call at the loop cap, a stream that failed or refused) (EON gap G18).
     pub tool_calls: Vec<crate::meter::ToolCall>,
     /// The vendor ids of `farm_citations`.
     pub farm_citations: Vec<String>,
