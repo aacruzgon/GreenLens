@@ -1,0 +1,92 @@
+{
+  "plant_present": true,
+  "regions": [
+    {
+      "region_id": "01JAX6BBBBBBBBBBBBBBBBBBB1.1",
+      "image_id": "01JAX6BBBBBBBBBBBBBBBBBBB1",
+      "class": "plant",
+      "bbox": [
+        0.1,
+        0.1,
+        0.8,
+        0.8
+      ],
+      "confidence": 0.9
+    },
+    {
+      "region_id": "01JAX6BBBBBBBBBBBBBBBBBBB2.1",
+      "image_id": "01JAX6BBBBBBBBBBBBBBBBBBB2",
+      "class": "leaf",
+      "bbox": [
+        0.15,
+        0.15,
+        0.7,
+        0.7
+      ],
+      "confidence": 0.9
+    },
+    {
+      "region_id": "01JAX6BBBBBBBBBBBBBBBBBBB3.1",
+      "image_id": "01JAX6BBBBBBBBBBBBBBBBBBB3",
+      "class": "leaf",
+      "bbox": [
+        0.15,
+        0.15,
+        0.7,
+        0.7
+      ],
+      "confidence": 0.9
+    },
+    {
+      "region_id": "01JAX6BBBBBBBBBBBBBBBBBBB4.1",
+      "image_id": "01JAX6BBBBBBBBBBBBBBBBBBB4",
+      "class": "soil",
+      "bbox": [
+        0.0,
+        0.5,
+        1.0,
+        0.5
+      ],
+      "confidence": 0.9
+    }
+  ],
+  "species": {
+    "candidates": [
+      {
+        "species_id": "tomato",
+        "label": "tomato (stub)",
+        "score": 0.62
+      }
+    ]
+  },
+  "disease": [
+    {
+      "image_id": "01JAX6BBBBBBBBBBBBBBBBBBB2",
+      "region_id": "01JAX6BBBBBBBBBBBBBBBBBBB2.1",
+      "top": [
+        {
+          "problem_id": "healthy",
+          "confidence": 0.7
+        },
+        {
+          "problem_id": "tomato_early_blight",
+          "confidence": 0.2
+        }
+      ]
+    },
+    {
+      "image_id": "01JAX6BBBBBBBBBBBBBBBBBBB3",
+      "region_id": "01JAX6BBBBBBBBBBBBBBBBBBB3.1",
+      "top": [
+        {
+          "problem_id": "healthy",
+          "confidence": 0.7
+        },
+        {
+          "problem_id": "tomato_early_blight",
+          "confidence": 0.2
+        }
+      ]
+    }
+  ]
+}

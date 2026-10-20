@@ -281,6 +281,93 @@ async fn concurrent_appends_are_gap_free_and_replay_by_range() {
     assert_eq!(replay[0].scan_id, f.scan);
 }
 
+/// A job's `complete` reads its run's `run_started` and stage events, in `seq` order, and
+/// nothing of another run or type (backend roadmap gap 9). Seven events come first, so the
+/// stage events' `seq` crosses 10 and a text order of the keys would show.
+#[tokio::test]
+async fn run_stage_events_reads_one_runs_stage_events_in_order() {
+    use domain::events::{RunReason, Stage};
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    for i in 0..7u64 {
+        store
+            .append_event(
+                f.scan,
+                NewEvent {
+                    run: Run(1),
+                    ts: t0().plus(Duration::from_secs(i)),
+                    body: ScanEventBody::StatusChanged {
+                        from: ScanStatus::Queued,
+                        to: ScanStatus::Analysing,
+                    },
+                },
+            )
+            .await
+            .unwrap();
+    }
+    let bodies = [
+        (
+            1,
+            ScanEventBody::RunStarted {
+                reason: RunReason::Submit,
+                rerun_stages: vec![Stage::PlantCheck],
+            },
+        ),
+        (
+            1,
+            ScanEventBody::StageCompleted {
+                stage: Stage::Segmentation,
+                duration_ms: 3,
+                skipped: None,
+            },
+        ),
+        (
+            1,
+            ScanEventBody::StatusChanged {
+                from: ScanStatus::Queued,
+                to: ScanStatus::Analysing,
+            },
+        ),
+        (
+            1,
+            ScanEventBody::StageStarted {
+                stage: Stage::PlantCheck,
+            },
+        ),
+        (
+            2,
+            ScanEventBody::StageStarted {
+                stage: Stage::Species,
+            },
+        ),
+        (
+            1,
+            ScanEventBody::StageCompleted {
+                stage: Stage::PlantCheck,
+                duration_ms: 12,
+                skipped: None,
+            },
+        ),
+    ];
+    for (i, (run, body)) in bodies.iter().enumerate() {
+        store
+            .append_event(
+                f.scan,
+                NewEvent {
+                    run: Run(*run),
+                    ts: t0().plus(Duration::from_secs(10 + i as u64)),
+                    body: body.clone(),
+                },
+            )
+            .await
+            .unwrap();
+    }
+    let read = store.run_stage_events(f.scan, Run(1)).await.unwrap();
+    let want: Vec<_> = [0, 1, 3, 5].map(|i| bodies[i].1.clone()).into();
+    assert_eq!(read, want);
+    assert_eq!(store.run_stage_events(f.scan, Run(3)).await.unwrap(), []);
+}
+
 fn plan(f: &support::Fixture, id: PlanId, version: u32, supersedes: Option<PlanId>) -> ActionPlan {
     ActionPlan {
         id,

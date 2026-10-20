@@ -118,6 +118,8 @@ pub struct Meter {
     inner: Arc<dyn ChatModel>,
     calls: Mutex<Vec<Call>>,
     tool_calls: Mutex<Vec<ToolCall>>,
+    /// The chat model's streamed text, every call in order (EON gap G20).
+    text: Mutex<String>,
 }
 
 impl Meter {
@@ -127,7 +129,23 @@ impl Meter {
             inner,
             calls: Mutex::new(Vec::new()),
             tool_calls: Mutex::new(Vec::new()),
+            text: Mutex::new(String::new()),
         }
+    }
+
+    /// Bytes of chat text recorded so far.
+    pub fn text_len(&self) -> usize {
+        self.text
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len()
+    }
+
+    /// The chat text since `from` (a [`Meter::text_len`]): what the model streamed across the
+    /// calls of a turn, before the dose check.
+    pub fn text_since(&self, from: usize) -> String {
+        let text = self.text.lock().unwrap_or_else(PoisonError::into_inner);
+        text.get(from..).map(str::to_owned).unwrap_or_default()
     }
 
     /// Tool calls recorded so far.
@@ -170,6 +188,7 @@ impl Meter {
             meter: self,
             purpose,
             latest: None,
+            first_text: true,
         }
     }
 
@@ -195,6 +214,8 @@ struct Recorder<'a> {
     purpose: ChatPurpose,
     /// Usage is cumulative within a call: the latest replaces the earlier ones.
     latest: Option<domain::chat::Usage>,
+    /// Whether no text of this call has been recorded yet.
+    first_text: bool,
 }
 
 impl Recorder<'_> {
@@ -204,7 +225,7 @@ impl Recorder<'_> {
             Ok(ChatChunk::Done(_)) | Err(_) => self.flush(),
             Ok(ChatChunk::ToolCall {
                 name, arguments, ..
-            }) => self
+            }) if self.purpose == ChatPurpose::Chat => self
                 .meter
                 .tool_calls
                 .lock()
@@ -213,6 +234,28 @@ impl Recorder<'_> {
                     name: name.clone(),
                     arguments: arguments.clone(),
                 }),
+            Ok(ChatChunk::TextDelta(delta)) if self.purpose == ChatPurpose::Chat => {
+                let mut text = self
+                    .meter
+                    .text
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner);
+                // The turn ends the splitter's buffer at the end of every call and adds a
+                // paragraph break before the next call's text, so a sentence never runs
+                // across two calls.
+                if std::mem::take(&mut self.first_text)
+                    && !text.is_empty()
+                    && !text.ends_with(char::is_whitespace)
+                    && !delta.starts_with(char::is_whitespace)
+                {
+                    text.push_str(
+                        "
+
+",
+                    );
+                }
+                text.push_str(delta);
+            }
             Ok(_) => {}
         }
     }
@@ -340,6 +383,33 @@ mod tests {
             call_id: "c1".to_owned(),
             name: "search_farm_records".to_owned(),
             arguments: serde_json::json!({"query": "spray", "until": "2026-07-28"}),
+        }));
+        drop(r);
+        // Text is kept for the chat model only, across calls, and read from a mark.
+        let mut r = meter.recorder(ChatPurpose::Chat);
+        r.see(&Ok(ChatChunk::TextDelta("Bed 3 got ".to_owned())));
+        let mark = meter.text_len();
+        r.see(&Ok(ChatChunk::TextDelta("six sprays.".to_owned())));
+        drop(r);
+        let mut r = meter.recorder(ChatPurpose::MemoryExtraction);
+        r.see(&Ok(ChatChunk::TextDelta("{\"memory\": true}".to_owned())));
+        drop(r);
+        let mut r = meter.recorder(ChatPurpose::Chat);
+        r.see(&Ok(ChatChunk::TextDelta(" Done.".to_owned())));
+        drop(r);
+        // Other purposes' text and tool calls are left out; a call's text starts a new
+        // paragraph, so sentences never run across two calls.
+        assert_eq!(meter.text_since(0), "Bed 3 got six sprays. Done.");
+        assert_eq!(meter.text_since(mark), "six sprays. Done.");
+        let mut r = meter.recorder(ChatPurpose::Chat);
+        r.see(&Ok(ChatChunk::TextDelta("Next.".to_owned())));
+        drop(r);
+        assert!(meter.text_since(0).ends_with("Done.\n\nNext."));
+        let mut r = meter.recorder(ChatPurpose::MemoryExtraction);
+        r.see(&Ok(ChatChunk::ToolCall {
+            call_id: "c2".to_owned(),
+            name: "save_memory".to_owned(),
+            arguments: serde_json::json!({}),
         }));
         drop(r);
         let tool_calls = meter.tool_calls_since(0);

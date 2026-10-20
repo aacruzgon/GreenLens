@@ -19,8 +19,8 @@ use domain::{
     jobs::{
         ClaimRequest, ClaimedJob, CompleteJob, GuidedPayload, GuidedResult, Heartbeat,
         HeartbeatResponse, HeldJob, Job, JobErrorCode, JobHead, JobImage, JobOutcome, JobSpec,
-        PerceptionPayload, PerceptionResult, VerifyPayload, VerifyResult, VlmPayload, VlmResult,
-        WorkerEvent, WorkerEvents, WorkerImagePath,
+        PerceptionPayload, PerceptionResult, PerceptionStage, VerifyPayload, VerifyResult,
+        VlmPayload, VlmResult, WorkerEvent, WorkerEvents, WorkerImagePath,
     },
     ports::{JobContext, LoadedImage, ModelError, ProgressSink, VisionModel},
     scan::ImageKind,
@@ -31,7 +31,11 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use super::*;
-use crate::api::{CallError, JobLease, WorkerApi};
+use crate::{
+    api::{CallError, JobLease, WorkerApi},
+    config::StubArgs,
+    stub::{StubConfig, StubModel},
+};
 
 #[derive(Default)]
 struct Fake {
@@ -50,6 +54,9 @@ struct Fake {
     completes: Mutex<Vec<CompleteJob>>,
     heartbeats: Mutex<Vec<Vec<HeldJob>>>,
     cancel_job_ids: Vec<JobId>,
+    /// Hand out `perception` jobs instead of guided ones.
+    perception: bool,
+    events_seen: Mutex<Vec<WorkerEvent>>,
 }
 
 const IMG: &str = "01JAX6BBBBBBBBBBBBBBBBBBBB";
@@ -111,7 +118,10 @@ impl WorkerApi for Fake {
                 }))
             } else if *left > 0 {
                 *left -= 1;
-                let j = job(*claims, 120);
+                let mut j = job(*claims, 120);
+                if self.perception {
+                    j.spec = perception_spec(j.job_id);
+                }
                 Some(Ok(Some(if self.unsupported {
                     ClaimedJob::Unsupported(JobHead {
                         v: 2,
@@ -134,10 +144,14 @@ impl WorkerApi for Fake {
         }
     }
 
-    async fn events(&self, _lease: &JobLease, _events: &WorkerEvents) -> Result<(), CallError> {
+    async fn events(&self, _lease: &JobLease, events: &WorkerEvents) -> Result<(), CallError> {
         if self.events_lease_lost {
             Err(CallError::LeaseLost)
         } else {
+            self.events_seen
+                .lock()
+                .unwrap()
+                .extend(events.events.iter().cloned());
             Ok(())
         }
     }
@@ -243,17 +257,82 @@ fn fake(jobs: u32) -> Fake {
 }
 
 fn worker(fake: Fake, hangs: bool, slots: u32) -> Arc<Worker<Fake>> {
+    worker_of(
+        fake,
+        Arc::new(Model { hangs }),
+        "rig-5070ti-vlm-1",
+        Capability::Vlm,
+        slots,
+    )
+}
+
+fn worker_of(
+    fake: Fake,
+    model: Arc<dyn VisionModel>,
+    id: &str,
+    cap: Capability,
+    slots: u32,
+) -> Arc<Worker<Fake>> {
     let identity = Identity {
-        worker_id: "rig-5070ti-vlm-1".parse().unwrap(),
-        caps: vec![Capability::Vlm],
+        worker_id: id.parse().unwrap(),
+        caps: vec![cap],
         slots,
     };
     Arc::new(Worker::new(
         fake,
-        Arc::new(Model { hangs }),
+        model,
         identity,
         Timings::new(Duration::from_secs(20)),
     ))
+}
+
+/// A `perception` payload for every stage: one whole-plant photo and one leaf close-up.
+fn perception_spec(job: JobId) -> JobSpec {
+    let image = |id: &str, kind| JobImage {
+        image_id: id.parse().unwrap(),
+        kind,
+        width: 100,
+        height: 100,
+        url: WorkerImagePath::new(job, id.parse().unwrap()),
+    };
+    JobSpec::Perception(PerceptionPayload {
+        images: vec![
+            image(IMG, ImageKind::WholePlant),
+            image("01JAX6BBBBBBBBBBBBBBBBBBBC", ImageKind::LeafCloseup),
+        ],
+        stages: PerceptionStage::ALL.to_vec(),
+        species_id: None,
+        skip_species_identification: false,
+        regions: None,
+        label_set_version: "labels-1".to_owned(),
+        classifier_labels_version: "classes-1".to_owned(),
+        question_id: None,
+    })
+}
+
+/// A stub worker pausing `delay_ms` inside each stage.
+fn stub_worker(fake: Fake, delay_ms: u64) -> Arc<Worker<Fake>> {
+    let config = StubConfig::new(&StubArgs {
+        stub_vision: true,
+        allow_stub_vision: false,
+        label_set_version: Some("labels-1".to_owned()),
+        classifier_labels_version: Some("classes-1".to_owned()),
+        species: vec!["tomato".to_owned()],
+        problems: Vec::new(),
+        plant_present: true,
+        stage_delay_ms: delay_ms,
+    })
+    .unwrap();
+    worker_of(
+        Fake {
+            perception: true,
+            ..fake
+        },
+        Arc::new(StubModel::new(config)),
+        "dev-stub-perception-1",
+        Capability::Perception,
+        1,
+    )
 }
 
 fn spawn_claims(
@@ -546,4 +625,80 @@ async fn the_whole_shutdown_ends_within_the_drain_bound() {
     assert_eq!(started.elapsed(), Duration::from_secs(21)); // the signal, then exactly 20 s
     assert_eq!(w.api.complete_calls.lock().unwrap().len(), 1);
     assert!(w.api.completes.lock().unwrap().is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_stub_job_completes_through_the_loop() {
+    let w = stub_worker(fake(1), 150);
+    let shutdown = CancellationToken::new();
+    let claims = spawn_claims(&w, &shutdown);
+    tokio::time::sleep(Duration::from_secs(3)).await; // five stages of 150 ms
+    stop(&w, &shutdown, claims).await;
+    let completes = w.api.completes.lock().unwrap();
+    assert_eq!(completes.len(), 1);
+    assert!(matches!(completes[0].outcome, JobOutcome::Done { .. }));
+    let versions = &completes[0].model_versions;
+    assert_eq!(versions["stub"], "1");
+    assert_eq!(versions["worker_id"], "dev-stub-perception-1");
+    assert_eq!(versions["label_set_version"], "labels-1");
+    assert!(completes[0].timings_ms.contains_key("perception"));
+    // The stages arrive in the contract's order.
+    let started: Vec<Stage> = w
+        .api
+        .events_seen
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|e| match e {
+            WorkerEvent::StageStarted { stage } => Some(*stage),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        started,
+        [
+            Stage::PlantCheck,
+            Stage::Segmentation,
+            Stage::Species,
+            Stage::Disease,
+            Stage::ImageEmbedding,
+        ]
+    );
+    // What the heartbeat of a started stub lists.
+    assert_eq!(w.versions()["classifier_labels_version"], "classes-1");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_cancelled_stub_job_stops_at_its_delay() {
+    let w = stub_worker(
+        Fake {
+            cancel_job_ids: vec![job_id(1)],
+            ..fake(1)
+        },
+        10_000,
+    );
+    let shutdown = CancellationToken::new();
+    let claims = spawn_claims(&w, &shutdown);
+    // Claimed at once. The heartbeat loop starts at 3 s, and its first tick is answered with the
+    // job's id in `cancel_job_ids`: the job ends while the first stage is still in its 10 s pause.
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    assert_eq!(w.running().current_jobs().len(), 1);
+    let heartbeats = tokio::spawn({
+        let w = Arc::clone(&w);
+        async move { w.heartbeat_loop(CancellationToken::new()).await }
+    });
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    heartbeats.abort();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert_eq!(w.running().current_jobs().len(), 0);
+    stop(&w, &shutdown, claims).await;
+    assert!(w.api.completes.lock().unwrap().is_empty());
+    assert!(
+        !w.api
+            .events_seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, WorkerEvent::StageCompleted { .. }))
+    );
 }

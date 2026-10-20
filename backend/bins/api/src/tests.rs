@@ -7,6 +7,7 @@ mod connect;
 mod connector_deletion;
 mod connectors;
 mod fake_store;
+mod pipeline;
 
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
@@ -268,9 +269,41 @@ fn state_with_vendors(
     auth: MockAuthVerifier,
     config: Config,
     vendors: crate::connect::MockConnectVendors,
+    parts: (MockBlobStore, FixedImages, Arc<dyn BeliefStore>),
+) -> Arc<AppState> {
+    build_state(store, auth, config, vendors, parts, |_| {
+        Arc::new(NoPipeline)
+    })
+}
+
+/// [`state`] with the pipeline `make` builds over the state's store.
+fn state_with_pipeline(
+    store: FakeStore,
+    auth: MockAuthVerifier,
+    config: Config,
+    make: impl FnOnce(Arc<FakeStore>) -> Arc<dyn PipelineApi>,
+) -> Arc<AppState> {
+    build_state(
+        store,
+        auth,
+        config,
+        crate::connect::MockConnectVendors::new(),
+        (MockBlobStore::new(), no_images(), Arc::new(NoBeliefs)),
+        make,
+    )
+}
+
+/// The state every builder above shares.
+fn build_state(
+    store: FakeStore,
+    auth: MockAuthVerifier,
+    config: Config,
+    vendors: crate::connect::MockConnectVendors,
     (blob, images, beliefs): (MockBlobStore, FixedImages, Arc<dyn BeliefStore>),
+    make_pipeline: impl FnOnce(Arc<FakeStore>) -> Arc<dyn PipelineApi>,
 ) -> Arc<AppState> {
     let store: Arc<FakeStore> = Arc::new(store);
+    let pipeline = make_pipeline(Arc::clone(&store));
     let clock = Arc::new(FixedClock::at(NOW.parse().unwrap()));
     let tasks = TaskTracker::new();
     let shutdown = CancellationToken::new();
@@ -331,7 +364,7 @@ fn state_with_vendors(
             clock: clock.clone(),
             ids: Arc::new(SequentialIds::default()),
         },
-        pipeline: Arc::new(NoPipeline),
+        pipeline,
         chat: Arc::new(NoChat),
         images: Arc::new(images),
         hub,

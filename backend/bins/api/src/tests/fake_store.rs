@@ -473,6 +473,13 @@ mod event_repo {
         async fn stream_state(&self, scan: ScanId) -> Result<StreamState, StoreError> {
             self.event_repo.stream_state(scan).await
         }
+        async fn run_stage_events(
+            &self,
+            scan: ScanId,
+            run: Run,
+        ) -> Result<Vec<ScanEventBody<Stored>>, StoreError> {
+            self.event_repo.run_stage_events(scan, run).await
+        }
     }
 }
 

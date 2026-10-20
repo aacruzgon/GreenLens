@@ -7,7 +7,10 @@
 //! [`DbFailure::into_store`] maps it to the domain's [`StoreError`]. A caller that knows more
 //! (which plan won, which job lost its lease) matches the failure first.
 
-use domain::ports::{BoxError, Conflict, StoreError};
+use domain::{
+    error::DomainError,
+    ports::{BoxError, Conflict, StoreError},
+};
 use surrealdb::types::{AlreadyExistsError, QueryError};
 
 /// How the server prefixes the message of a `THROW` ✓.
@@ -34,6 +37,18 @@ pub mod thrown {
     pub const INVALID_STATE: &str = "invalid_state";
     /// A map upload pins plants that aren't the garden's.
     pub const UNKNOWN_PLANTS: &str = "unknown_plants";
+    /// A user's write names a species the knowledge base doesn't hold.
+    pub const UNKNOWN_SPECIES: &str = "unknown_species";
+}
+
+/// What [`thrown::UNKNOWN_SPECIES`] answers: `400 invalid_request` at the request's `field`
+/// ([contracts 2]). `option<record<species>>` doesn't check that the record exists, so the
+/// user writes that set a species check it in their transaction.
+pub fn unknown_species(field: &'static str) -> StoreError {
+    StoreError::Rejected(DomainError::invalid(
+        field,
+        "not a species of the knowledge base",
+    ))
 }
 
 /// What one failed statement means, before the caller adds context.
