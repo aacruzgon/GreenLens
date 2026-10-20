@@ -18,6 +18,12 @@
 //! `duration_ms` is 0: `api` never timed the stage. `skipped` is what the result shows (the
 //! disease classifier's `disease_skipped`, `all_measured` for a `vlm` job with no indicator
 //! answers), and nothing otherwise.
+//!
+//! A `guided` job gets no catch-up. Its `guided` stage is one stage shared by every guided
+//! check of the run, and two checks can run at once, so the fold can't tell which check's
+//! `stage_started` is still open: one check's completion would close another's stage, and two
+//! completions could each send a start and a completion. `guided_check_done` already tells
+//! the app the check finished.
 
 use std::collections::BTreeMap;
 
@@ -95,10 +101,8 @@ impl ResultStages {
                 shown.insert(Stage::Verify, None);
                 &[Stage::Verify]
             }
-            JobResult::Guided(_) => {
-                shown.insert(Stage::Guided, None);
-                &[Stage::Guided]
-            }
+            // The `guided` stage is shared by every check of the run (module docs).
+            JobResult::Guided(_) => &[],
         };
         Self { kind, shown }
     }
@@ -389,6 +393,22 @@ mod tests {
             })
             .collect();
         assert_eq!(stages, [Stage::Species, Stage::Disease]);
+    }
+
+    /// A `guided` job's stage is shared by the run's checks, so even one left open gets no
+    /// catch-up from a check's completion.
+    #[test]
+    fn a_guided_result_sends_no_stage_events() {
+        let mut stored = submitted();
+        stored.extend([started(Stage::Guided), started(Stage::Guided)]);
+        let result = JobResult::decode(
+            JobKind::Guided,
+            serde_json::json!({"texture": {"kind": "jar_test", "settled": true, "texture": "loamy", "confidence": 0.65}}),
+        )
+        .unwrap();
+        let stages = ResultStages::of(&result);
+        assert_eq!(stages.missing(&stored), []);
+        assert_eq!(stages.missing(&submitted()), []);
     }
 
     /// A `vlm` job with no indicator answers skipped its indicators call: the missing

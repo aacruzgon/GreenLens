@@ -334,6 +334,151 @@ async fn a_species_outside_the_knowledge_base_reads_as_none() {
     assert_eq!(species.common_name, "Tomato");
 }
 
+/// A user's write that sets a species must name one the knowledge base holds: `POST /plants`,
+/// `POST /plants/{id}/species`, a new plant of `POST /scans` and a new plant of a map upload
+/// refuse any other with `invalid_request` at the request's field, and store nothing. The
+/// pipeline's own `suggest_species` isn't checked (the test above).
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the four writes, each refused and then accepted"
+)]
+async fn user_writes_refuse_a_species_outside_the_knowledge_base() {
+    use domain::{
+        error::DomainError,
+        garden::map::{GardenMapInput, PinInput},
+        id::SpeciesId,
+        ports::{MapRepo, MapWrite, NewPlant, NewScan, NewScanPlant},
+        scan::{NewPlantInput, SpeciesChoice, SpeciesStatus},
+    };
+    fn refused_at(result: &Result<impl std::fmt::Debug, StoreError>, at: &str) {
+        assert!(
+            matches!(result, Err(StoreError::Rejected(DomainError::InvalidRequest { field, .. })) if field == at),
+            "{result:?}"
+        );
+    }
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let nosuch: SpeciesId = "nosuch".parse().unwrap();
+    let tomato: SpeciesId = "tomato".parse().unwrap();
+    exec(
+        &store,
+        "CREATE species:tomato SET scientific_name = 'Solanum lycopersicum', common_names = ['Tomato'], profile = 'full',
+           classifier_supported = true, bioclip_label = 'tomato', sources = [], reviewed_by = 'ada';",
+    )
+    .await;
+    let count = |table: &'static str| {
+        let store = Arc::clone(&store);
+        async move {
+            let mut r = exec(
+                &store,
+                &format!("RETURN count(SELECT VALUE id FROM {table});"),
+            )
+            .await;
+            r.take::<Option<i64>>(0).unwrap().unwrap_or(0)
+        }
+    };
+
+    // POST /plants.
+    let plant: PlantId = f.ids.id();
+    let new_plant = |species: &SpeciesId| NewPlant {
+        id: plant,
+        name: "Basil".into(),
+        species: Some(species.clone()),
+    };
+    refused_at(
+        &store.create_plant(f.editor, new_plant(&nosuch)).await,
+        "species_id",
+    );
+    assert_eq!(count("plant").await, 1, "only the fixture's plant");
+    let created = store
+        .create_plant(f.editor, new_plant(&tomato))
+        .await
+        .expect("a known species");
+    assert_eq!(created.species.map(|s| s.id), Some(tomato.clone()));
+    assert_eq!(created.species_status, SpeciesStatus::Confirmed);
+
+    // POST /plants/{id}/species.
+    refused_at(
+        &store
+            .confirm_species(f.editor, f.plant, SpeciesChoice::Known(nosuch.clone()))
+            .await,
+        "species_id",
+    );
+    let viewer = check_membership_of::<Viewer>(&*store, f.user, f.garden)
+        .await
+        .unwrap();
+    let unchanged = store.plant(viewer, f.plant).await.expect("plant");
+    assert_eq!(unchanged.species_status, SpeciesStatus::Unknown);
+    let confirmed = store
+        .confirm_species(f.editor, f.plant, SpeciesChoice::Known(tomato.clone()))
+        .await
+        .expect("a known species");
+    assert_eq!(confirmed.plant.species.map(|s| s.id), Some(tomato.clone()));
+    assert_eq!(confirmed.recent_scan.map(|r| r.scan), Some(f.scan));
+    store
+        .confirm_species(f.editor, f.plant, SpeciesChoice::Custom("Mystery".into()))
+        .await
+        .expect("a custom name names no species");
+
+    // POST /scans with a new plant.
+    let new_scan = |species: &SpeciesId| NewScan {
+        id: f.ids.id(),
+        plant: NewScanPlant::New {
+            id: f.ids.id(),
+            plant: NewPlantInput {
+                name: "Pepper".into(),
+                species_id: Some(species.clone()),
+            },
+        },
+        created_by: f.user,
+        created_at: t0(),
+    };
+    refused_at(
+        &store.create_scan(f.editor, new_scan(&nosuch)).await,
+        "new_plant.species_id",
+    );
+    assert_eq!(count("scan").await, 1, "nothing stored");
+    assert_eq!(count("plant").await, 2);
+    store
+        .create_scan(f.editor, new_scan(&tomato))
+        .await
+        .expect("a known species");
+
+    // PUT /gardens/{id}/map with a new plant.
+    let map = |species: &SpeciesId| MapWrite {
+        upload: GardenMapInput {
+            base_version: 0,
+            beds: Vec::new(),
+            pins: vec![PinInput {
+                plant_id: None,
+                new_plant: Some(NewPlantInput {
+                    name: "Squash".into(),
+                    species_id: Some(species.clone()),
+                }),
+                x_m: 1.0,
+                y_m: 2.0,
+                canopy_radius_m: None,
+                bed_id: None,
+            }],
+            north_deg: None,
+        }
+        .validate()
+        .expect("a valid upload"),
+        new_plant_ids: vec![f.ids.id()],
+        created_at: t0(),
+    };
+    refused_at(&store.put_map(f.editor, map(&nosuch)).await, "pins");
+    assert_eq!(count("plant").await, 3, "nothing stored");
+    assert_eq!(count("garden_map").await, 0);
+    let stored = store
+        .put_map(f.editor, map(&tomato))
+        .await
+        .expect("a known species");
+    assert_eq!(stored.version, 1);
+    assert_eq!(count("plant").await, 4);
+}
+
 fn lease_of(claimed: &domain::ports::ClaimedJob, worker: &str) -> Lease {
     Lease {
         job: claimed.job.job_id,

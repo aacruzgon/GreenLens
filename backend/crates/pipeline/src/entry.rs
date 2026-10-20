@@ -414,13 +414,7 @@ impl Pipeline {
             && let JobCompletion::Done { result, .. } = &completion
         {
             return self
-                .guided_done(
-                    lease,
-                    &job,
-                    &complete.model_versions,
-                    result.clone(),
-                    stages.as_ref(),
-                )
+                .guided_done(lease, &job, &complete.model_versions, result.clone())
                 .await;
         }
         let is_vlm = matches!(job.kind, JobKind::Vlm);
@@ -477,7 +471,7 @@ impl Pipeline {
             .run_stage_events(scan, run)
             .await
             .unwrap_or_else(|e| {
-                tracing::warn!(%scan, error = %e, "run's stage events not read; no missing stage events sent");
+                tracing::warn!(%scan, error = %crate::error::Chain(&e), "run's stage events not read; no missing stage events sent");
                 Vec::new()
             })
     }
@@ -622,14 +616,14 @@ impl Pipeline {
     /// A `guided` job's result ([contracts 7], guided checks and the diagnosis): the check is
     /// updated and its texture stored under the lease, claiming `score` when the scan is
     /// `diagnosed` or `planned`; `guided_check_done` goes out at once, since the claim keeps
-    /// the stream open until the new diagnosis.
+    /// the stream open until the new diagnosis. It sends no catch-up stage events: the
+    /// `guided` stage is shared by the run's checks ([`catch_up`]).
     async fn guided_done(
         &self,
         lease: &Lease,
         job: &LeasedJob,
         versions: &std::collections::BTreeMap<String, String>,
         raw: serde_json::Value,
-        stages: Option<&ResultStages>,
     ) -> Result<Handled<CompletionOutcome>, PipelineError> {
         let snap = self.deps.store.snapshot(job.scan).await?;
         let JobResult::Guided(result) = JobResult::decode(JobKind::Guided, raw)
@@ -675,12 +669,12 @@ impl Pipeline {
         if let Some(mut check) = check {
             check.status = domain::scan::GuidedCheckStatus::Done;
             check.result = observation;
-            let mut events = match stages {
-                Some(s) => s.missing(&self.run_stage_events(job.scan, snap.scan.run).await),
-                None => Vec::new(),
-            };
-            events.push(ScanEventBody::GuidedCheckDone { check });
-            self.emit(job.scan, snap.scan.run, events).await?;
+            self.emit(
+                job.scan,
+                snap.scan.run,
+                vec![ScanEventBody::GuidedCheckDone { check }],
+            )
+            .await?;
         }
         Ok(Handled {
             value: CompletionOutcome::Stored {
