@@ -772,7 +772,7 @@ async fn a_cited_farm_record_is_stored_and_its_rate_never_reaches_the_app() {
     assert_eq!(stored[1].farm_citations, [hit.citation]);
     assert_eq!(
         stored[1].prompt_version.as_deref(),
-        Some("chat/2026-10-19.2")
+        Some("chat/2026-10-20.1")
     );
 
     // The records reach the model as farm_records data.
@@ -807,8 +807,9 @@ async fn a_failed_farm_search_or_embedding_is_an_unavailable_refusal_without_cit
             // The search is never reached.
             farm.expect_search_records().never();
         } else {
+            // Without `kind`, both kinds are searched side by side, and either failing fails it.
             farm.expect_search_records()
-                .times(1)
+                .times(1..=2)
                 .returning(|_, _, _, _| {
                     Err(StoreError::Unavailable(
                         "secret slack token xoxb-123 in the error".into(),

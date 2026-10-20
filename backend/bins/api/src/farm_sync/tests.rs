@@ -459,10 +459,61 @@ async fn t_e4_7_unchanged_text_costs_no_embedding_and_a_changed_chunk_is_embedde
         .into_iter()
         .map(|(id, h)| (id.to_string(), h))
         .collect();
+    // The hash is of what was embedded: the author and channel, then the text.
     assert_eq!(
         hashes.values().next(),
-        Some(&chunk::text_hash("Rings on bed 3, now upper leaves too."))
+        Some(&chunk::text_hash(
+            "Maria in #C1\n\nRings on bed 3, now upper leaves too."
+        ))
     );
+}
+
+/// EON gap G12: the author and title are embedded with the text, so a new display name or
+/// channel name embeds the record again, though its text is the same.
+#[tokio::test]
+async fn a_renamed_author_or_channel_embeds_the_record_again() {
+    let author = Arc::new(Mutex::new("Riley".to_owned()));
+    let title = Arc::new(Mutex::new("#field-reports".to_owned()));
+    let (script_author, script_title) = (author.clone(), title.clone());
+    let at = pinned().minus(Duration::from_hours(5));
+    let source = FakeSource::new(
+        None,
+        Box::new(move |_| {
+            let mut posted = item("C1", "1.000100", "Rings on bed 3.", at);
+            posted.author = Some(script_author.lock().expect("author").clone());
+            posted.title = script_title.lock().expect("title").clone();
+            Ok(page(vec![posted], false, "c"))
+        }),
+    );
+    let b = bench(store().await, source, SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "xoxb-1",
+        b.clock.now(),
+    )
+    .await;
+    b.run().await;
+    assert_eq!(b.embedder.texts(), 1);
+    b.clock.advance(SYNC_EVERY);
+    b.run().await;
+    assert_eq!(
+        b.embedder.texts(),
+        1,
+        "the same author and channel keep the vector"
+    );
+    "Riley Shaw".clone_into(&mut author.lock().expect("author"));
+    b.clock.advance(SYNC_EVERY);
+    b.run().await;
+    assert_eq!(b.embedder.texts(), 2, "a new display name");
+    "#field".clone_into(&mut title.lock().expect("title"));
+    b.clock.advance(SYNC_EVERY);
+    b.run().await;
+    assert_eq!(b.embedder.texts(), 3, "a renamed channel");
 }
 
 #[tokio::test]

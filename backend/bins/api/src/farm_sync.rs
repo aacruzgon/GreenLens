@@ -817,7 +817,7 @@ impl FarmSync {
             items.insert(item.vendor_id.as_str(), item);
         }
         let mut records: Vec<NewFarmRecord> = Vec::new();
-        let mut changed: Vec<usize> = Vec::new();
+        let mut changed: Vec<(usize, String)> = Vec::new();
         let mut shrunk: Vec<(String, u32)> = Vec::new();
         let mut new = 0_u32;
         if !items.is_empty() {
@@ -843,13 +843,15 @@ impl FarmSync {
                         tracing::warn!(source = %src.id, "an item with an unusable id skipped");
                         continue 'items;
                     };
-                    let hash = chunk::text_hash(&text);
+                    // The hash covers what is embedded: the author and title, then the text.
+                    let embedded = chunk::embedded_text(&item.title, item.author.as_deref(), &text);
+                    let hash = chunk::text_hash(&embedded);
                     let old = hashes.get(&(*vendor_id, n)).copied();
                     if old.is_none() {
                         item_new += 1;
                     }
                     if old != Some(hash.as_str()) {
-                        item_changed.push(records.len() + item_records.len());
+                        item_changed.push((records.len() + item_records.len(), embedded));
                     }
                     item_records.push(NewFarmRecord {
                         id,
@@ -899,15 +901,19 @@ impl FarmSync {
         Ok(())
     }
 
-    /// Embeds the chunks at `changed` in `Document` mode, in batches; the others keep their
-    /// stored vector.
-    async fn embed(&self, records: &mut [NewFarmRecord], changed: &[usize]) -> Result<(), Stop> {
+    /// Embeds the changed chunks, each given by its index in `records` and its embedded text,
+    /// in `Document` mode, in batches; the others keep their stored vector.
+    async fn embed(
+        &self,
+        records: &mut [NewFarmRecord],
+        changed: &[(usize, String)],
+    ) -> Result<(), Stop> {
         if changed.is_empty() {
             return Ok(());
         }
         let model = self.embedder.model().name;
         for batch in changed.chunks(EMBED_BATCH) {
-            let texts: Vec<String> = batch.iter().map(|&i| records[i].text.clone()).collect();
+            let texts: Vec<String> = batch.iter().map(|(_, text)| text.clone()).collect();
             let vectors = self
                 .embedder
                 .embed(EmbedMode::Document, &texts)
@@ -918,7 +924,7 @@ impl FarmSync {
                     "the embedder returned a vector count that differs from its input".into(),
                 ));
             }
-            for (&i, embedding) in batch.iter().zip(vectors) {
+            for (&(i, _), embedding) in batch.iter().zip(vectors) {
                 records[i].vector = Some(FarmVector {
                     embedding,
                     model: model.clone(),

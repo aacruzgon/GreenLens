@@ -368,7 +368,7 @@ mod search_farm_records {
     use crate::{
         error::ToolError,
         testing::{GARDEN, garden_deps, now, owner, spray_log_hit},
-        tools::read::{FARM_RECORD_HITS, local_midnight},
+        tools::read::{FARM_KIND_RESERVED, FARM_RECORD_HITS, local_midnight, merge_kinds},
     };
 
     fn toronto() -> MockGardenRepo {
@@ -440,6 +440,7 @@ mod search_farm_records {
                         == FarmRecordFilter {
                             kind: Some(FarmRecordKind::Document),
                             since: Some(since),
+                            ..FarmRecordFilter::default()
                         }
                     && *k == FARM_RECORD_HITS
             })
@@ -464,15 +465,143 @@ mod search_farm_records {
         );
     }
 
+    /// A hit whose text names it, at a similarity.
+    fn named(name: &str, n: u32, similarity: f32) -> FarmRecordMatch {
+        let mut hit = spray_log_hit();
+        hit.text = name.to_owned();
+        hit.citation.record_id = format!("01JAX3K9T6R2B8V0QZ4M7D1E5C.{n}.D_SPRAY")
+            .parse()
+            .unwrap();
+        FarmRecordMatch { hit, similarity }
+    }
+
+    fn texts(found: &[FarmRecordMatch]) -> Vec<&str> {
+        found.iter().map(|m| m.hit.text.as_str()).collect()
+    }
+
+    #[test]
+    fn each_kind_keeps_its_reserve_and_the_rest_goes_by_similarity() {
+        // Ten close messages and three far documents: the documents keep 3 of the 8.
+        let messages: Vec<_> = (0..10_u8)
+            .map(|i| named(&format!("m{i}"), i.into(), 0.9 - f32::from(i) * 0.02))
+            .collect();
+        let documents = vec![
+            named("d0", 20, 0.4),
+            named("d1", 21, 0.3),
+            named("d2", 22, 0.2),
+        ];
+        let out = merge_kinds(messages.clone(), documents.clone(), 8, 3);
+        assert_eq!(
+            texts(&out),
+            ["m0", "m1", "m2", "m3", "m4", "d0", "d1", "d2"]
+        );
+        // The two free slots go by similarity: the fourth document (0.85) and the fourth
+        // message (0.84), not the fifth message (0.82).
+        let close = vec![
+            named("d3", 23, 0.95),
+            named("d4", 24, 0.93),
+            named("d5", 25, 0.91),
+            named("d6", 26, 0.85),
+        ];
+        let out = merge_kinds(messages.clone(), close, 8, 3);
+        assert_eq!(
+            texts(&out),
+            ["d3", "d4", "d5", "m0", "m1", "m2", "d6", "m3"]
+        );
+        // One document: the messages fill the other 7 slots.
+        let out = merge_kinds(messages.clone(), documents[..1].to_vec(), 8, 3);
+        assert_eq!(out.len(), 8);
+        assert_eq!(texts(&out).iter().filter(|t| t.starts_with('d')).count(), 1);
+        // No documents, or no messages: the other kind takes every slot, closest first.
+        let out = merge_kinds(messages.clone(), Vec::new(), 8, 3);
+        assert_eq!(texts(&out), texts(&messages[..8]));
+        let out = merge_kinds(Vec::new(), documents.clone(), 8, 3);
+        assert_eq!(texts(&out), ["d0", "d1", "d2"]);
+        // Out-of-order input comes back closest first.
+        let out = merge_kinds(
+            vec![named("m-low", 1, 0.1), named("m-high", 2, 0.8)],
+            vec![named("d-mid", 3, 0.5)],
+            8,
+            3,
+        );
+        assert_eq!(texts(&out), ["m-high", "d-mid", "m-low"]);
+        assert_eq!(FARM_KIND_RESERVED, 3);
+    }
+
     #[tokio::test]
-    async fn without_filters_the_search_takes_none() {
+    async fn without_kind_each_kind_is_searched_and_keeps_its_reserve() {
         let mut farm = MockFarmRecordStore::new();
         farm.expect_search_records()
-            .withf(|_, _, filter, _| *filter == FarmRecordFilter::default())
+            .withf(|_, _, filter, k| {
+                *filter
+                    == FarmRecordFilter {
+                        kind: Some(FarmRecordKind::Message),
+                        ..FarmRecordFilter::default()
+                    }
+                    && *k == FARM_RECORD_HITS
+            })
             .times(1)
-            .returning(|_, _, _, _| Ok(hits(2)));
-        let out = call(farm, json!({"query": "late blight"})).await.unwrap();
-        assert_eq!(out.content.as_array().unwrap().len(), 2);
+            .returning(|_, _, _, _| Ok((0..8).map(|i| named(&format!("m{i}"), i, 0.9)).collect()));
+        farm.expect_search_records()
+            .withf(|_, _, filter, k| {
+                *filter
+                    == FarmRecordFilter {
+                        kind: Some(FarmRecordKind::Document),
+                        ..FarmRecordFilter::default()
+                    }
+                    && *k == FARM_RECORD_HITS
+            })
+            .times(1)
+            .returning(|_, _, _, _| Ok(vec![named("spray log", 20, 0.2)]));
+        let out = call(farm, json!({"query": "was bed 3 sprayed"}))
+            .await
+            .unwrap();
+        let returned: Vec<FarmRecordHit> = serde_json::from_value(out.content).unwrap();
+        assert_eq!(returned.len(), 8);
+        assert_eq!(returned[7].text, "spray log");
+        assert_eq!(out.effects.len(), 8);
+    }
+
+    #[tokio::test]
+    async fn until_includes_its_day_and_author_is_trimmed() {
+        // Q19: "What did Riley post in #field-reports on August 31?". Riley's message is at
+        // 1788216000 (2026-08-31T22:40:00Z), within Toronto's August 31 (04:00Z to 04:00Z).
+        let riley: Timestamp = "2026-08-31T22:40:00Z".parse().unwrap();
+        assert_eq!(riley.unix_seconds(), 1_788_216_000);
+        let mut farm = MockFarmRecordStore::new();
+        farm.expect_search_records()
+            .withf(move |_, _, filter, _| {
+                let since: Timestamp = "2026-08-31T04:00:00Z".parse().unwrap();
+                let until: Timestamp = "2026-09-01T04:00:00Z".parse().unwrap();
+                filter.since == Some(since)
+                    && filter.until == Some(until)
+                    && filter.author.as_deref() == Some("Riley")
+                    && since <= riley
+                    && riley < until
+            })
+            .times(2)
+            .returning(|_, _, _, _| Ok(Vec::new()));
+        let out = call(
+            farm,
+            json!({"query": "Riley's post", "author": "  Riley ", "since": "2026-08-31",
+                "until": "2026-08-31"}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(out.content, json!([]));
+
+        // A blank author is no filter.
+        let mut farm = MockFarmRecordStore::new();
+        farm.expect_search_records()
+            .withf(|_, _, filter, _| filter.author.is_none() && filter.until.is_none())
+            .times(1)
+            .returning(|_, _, _, _| Ok(Vec::new()));
+        call(
+            farm,
+            json!({"query": "x", "author": "   ", "kind": "message"}),
+        )
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
@@ -481,6 +610,8 @@ mod search_farm_records {
             json!({"query": "x", "garden_id": GARDEN}),
             json!({"query": "x", "kind": "email"}),
             json!({"query": "x", "since": "1 July"}),
+            json!({"query": "x", "until": "31 August"}),
+            json!({"query": "x", "author": 7}),
         ] {
             // No expectation: a search would panic the test.
             let err = call(MockFarmRecordStore::new(), args.clone())

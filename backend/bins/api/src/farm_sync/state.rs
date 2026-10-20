@@ -1,7 +1,8 @@
 //! Where one source's sync stands, stored as its [`SyncCursor`] in `connector.cursor`. The
 //! adapter's own cursor is opaque here and kept inside, next to what the sync tracks itself: the
 //! last finished re-read, the re-read pass in progress with the vendor ids it has seen, and
-//! whether its last turn ended in a vendor error. The rotation over the connector's sources
+//! whether its last turn ended in a vendor error, and the version of the embedded text its records
+//! were written with. The rotation over the connector's sources
 //! ([`Rotation`]) is stored beside them, under [`SYNC_STATE_KEY`](domain::ports::SYNC_STATE_KEY).
 
 use std::collections::BTreeSet;
@@ -10,9 +11,15 @@ use serde::{Deserialize, Serialize};
 
 use domain::{ports::SyncCursor, wire::Timestamp};
 
+use super::chunk::EMBEDDED_TEXT_VERSION;
+
 /// One source's state.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceState {
+    /// The [`EMBEDDED_TEXT_VERSION`] its records were embedded under; 0 in a state written
+    /// before it existed.
+    #[serde(default)]
+    pub text_version: u32,
     /// The adapter's cursor after the last page it returned; `None` before the first.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vendor: Option<String>,
@@ -30,6 +37,19 @@ pub struct SourceState {
     /// caught up, and keeps its `last_error`, until one does.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub failing: bool,
+}
+
+impl Default for SourceState {
+    fn default() -> Self {
+        Self {
+            text_version: EMBEDDED_TEXT_VERSION,
+            vendor: None,
+            reread_at: None,
+            more: false,
+            reread: None,
+            failing: false,
+        }
+    }
 }
 
 /// The rotation over a connector's sources, stored under
@@ -89,10 +109,13 @@ pub struct Reread {
 
 impl SourceState {
     /// The stored state; a cursor this module didn't write (none yet, or an older shape)
-    /// starts afresh, which reads again but loses no record.
+    /// starts afresh, which reads again but loses no record. So does a state from another
+    /// [`EMBEDDED_TEXT_VERSION`]: the fresh pass returns every item, and each record's new hash
+    /// embeds it again (EON gap G12).
     pub fn parse(cursor: Option<&SyncCursor>) -> Self {
         cursor
-            .and_then(|c| serde_json::from_str(&c.0).ok())
+            .and_then(|c| serde_json::from_str::<Self>(&c.0).ok())
+            .filter(|s| s.text_version == EMBEDDED_TEXT_VERSION)
             .unwrap_or_default()
     }
 
@@ -115,6 +138,7 @@ mod tests {
     fn a_state_round_trips_and_stays_small() {
         let t: Timestamp = "2026-10-15T12:00:00Z".parse().unwrap();
         let state = SourceState {
+            text_version: EMBEDDED_TEXT_VERSION,
             vendor: Some(r#"{"newest":"1.0"}"#.into()),
             reread_at: Some(t),
             more: false,
@@ -124,7 +148,7 @@ mod tests {
         let cursor = state.to_cursor();
         assert_eq!(
             cursor.0,
-            r#"{"vendor":"{\"newest\":\"1.0\"}","reread_at":"2026-10-15T12:00:00Z"}"#
+            r#"{"text_version":1,"vendor":"{\"newest\":\"1.0\"}","reread_at":"2026-10-15T12:00:00Z"}"#
         );
         assert_eq!(SourceState::parse(Some(&cursor)), state);
         let reread = SourceState {
@@ -140,7 +164,10 @@ mod tests {
             failing: true,
             ..SourceState::default()
         };
-        assert_eq!(failing.to_cursor().0, r#"{"failing":true}"#);
+        assert_eq!(
+            failing.to_cursor().0,
+            r#"{"text_version":1,"failing":true}"#
+        );
         assert_eq!(SourceState::parse(Some(&failing.to_cursor())), failing);
     }
 
@@ -173,5 +200,18 @@ mod tests {
             SourceState::default()
         );
         assert_eq!(SourceState::parse(None), SourceState::default());
+    }
+
+    #[test]
+    fn a_state_from_another_embedded_text_starts_afresh() {
+        // Written before the author and title joined the embedded text: no version.
+        let before = SyncCursor(r#"{"vendor":"p9","reread_at":"2026-10-15T12:00:00Z"}"#.into());
+        assert_eq!(SourceState::parse(Some(&before)), SourceState::default());
+        assert_eq!(SourceState::default().vendor_cursor(), None);
+        let current = SyncCursor(r#"{"text_version":1,"vendor":"p9"}"#.into());
+        assert_eq!(
+            SourceState::parse(Some(&current)).vendor_cursor(),
+            Some(SyncCursor("p9".into()))
+        );
     }
 }
