@@ -92,7 +92,7 @@ jobs:
           out() { if has "$2"; then echo "$1=true"; else echo "$1=false"; fi >> "$GITHUB_OUTPUT"; }
           # store's tests read ml/'s manifest and templates (the copies inside backend/ must match them),
           # and domain's compare ml/knowledge/schema/ with the seed types.
-          out rust   '^backend/(crates|bins|migrations)/|^backend/(Cargo\.toml|Cargo\.lock|clippy\.toml|rust-toolchain\.toml|openapi\.json|deny\.toml)$|^ml/models/(manifest\.toml|templates/)|^ml/knowledge/schema/'
+          out rust   '^backend/(crates|bins|migrations|tools/era-eval)/|^backend/(Cargo\.toml|Cargo\.lock|clippy\.toml|rust-toolchain\.toml|openapi\.json|deny\.toml)$|^ml/models/(manifest\.toml|templates/)|^ml/knowledge/schema/'
           out docs   '\.md$|^backend/tools/docgen/'
           # check_examples.py copies the schema into its crate.
           out skills '^\.claude/skills/rust|^backend/migrations/'
@@ -103,8 +103,9 @@ jobs:
           # The Era tests run the clients and the sync against Era's simulators with the Maple Row fixture
           # (backend/tests/fixtures/era/).
           out era    '^backend/'
-          # What the image build context holds (backend/.dockerignore leaves out tools/).
-          out images '^backend/(crates|bins|migrations)/|^backend/(Cargo\.toml|Cargo\.lock|rust-toolchain\.toml|openapi\.json|Dockerfile|docker-bake\.hcl|\.dockerignore)$'
+          # What the image build context holds (backend/.dockerignore leaves out tools/, except
+          # era-eval, a workspace member).
+          out images '^backend/(crates|bins|migrations|tools/era-eval)/|^backend/(Cargo\.toml|Cargo\.lock|rust-toolchain\.toml|openapi\.json|Dockerfile|docker-bake\.hcl|\.dockerignore)$'
           cat "$GITHUB_OUTPUT"
 
   lint:
