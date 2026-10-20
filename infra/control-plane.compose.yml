@@ -72,7 +72,8 @@ services:
     image: ${SEED_UPLOAD_IMAGE:-seed-upload:unset}       # ghcr.io/aacruzgon/greenlens/seed-upload@sha256:…
     restart: "no"
     <<: *hardened
-    # PDMSEED01's keys. Without the file it exits 2, so api stays down.
+    # PDMSEED01's keys. Without the file it exits 2. api's dependency on it is optional, so compose starts
+    # api even when it fails: deploy.sh SEED_UPLOAD_IMAGE checks its exit code (infra 7).
     env_file: [{ path: "${PDM_ENV:-/srv/pdm/env}/.env.seed", required: false }]
     depends_on: { rustfs: { condition: service_healthy } }
     networks: [data]

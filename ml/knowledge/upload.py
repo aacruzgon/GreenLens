@@ -14,7 +14,8 @@ never pushed. It needs Pillow and PyYAML, not the embedder or a token.
 hash, so a changed photo gets a new key and an older api still finds its own (infra §7). It never
 overwrites (`If-None-Match: *`) and never deletes. It first lists knowledge/species/, so wrong keys
 or a missing bucket fail even with no photos. Every photo is read back and its SHA-256 compared,
-whether it was put now or was already there. Any failure exits non-zero, which keeps api down.
+whether it was put now or was already there. Any failure exits non-zero; infra/deploy.sh checks
+the exit code. Compose doesn't hold api back on it, since api's dependency is optional (infra §4).
 
 Environment for push: RUSTFS_ACCESS_KEY and RUSTFS_SECRET_KEY (PDMSEED01's, from .env.seed),
 RUSTFS_ENDPOINT (default http://rustfs:9000), RUSTFS_BUCKET (default pdm-images), RUSTFS_REGION

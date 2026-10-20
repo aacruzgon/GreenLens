@@ -258,11 +258,11 @@ jobs:
           export PDM_ENV="$RUNNER_TEMP/pdm-env"
           mkdir -p "$PDM_ENV"
           awk -v dir="$PDM_ENV" '/^# --- / { out = ""; if (match($3, /^\.env\.[a-z]+/)) out = dir "/" substr($3, 1, RLENGTH); next } out { print > out }' infra/env/.env.example
-          touch "$PDM_ENV/tunnel.json"
+          touch "$PDM_ENV/tunnel.json" "$PDM_ENV/.env.rig-3070-perception-1"
           for f in infra/*.compose.yml; do
             echo "$f"
             if [ "$f" = infra/control-plane.compose.yml ]; then
-              for profiles in "" tailscale,stub,seed cloudflare; do
+              for profiles in "" tailscale,stub,seed tailscale,perception,seed cloudflare; do
                 COMPOSE_PROFILES="$profiles" docker compose -f "$f" --env-file "$PDM_ENV/.env.compose" config -q
               done
             else
@@ -279,6 +279,27 @@ jobs:
       # Mention parsing, routing and delivery for discord-mentions.yml, against a mocked Discord.
       - name: The Discord mention script's tests pass
         run: python3 -m unittest discover -s .github/scripts -b
+
+  seed:
+    needs: changes
+    if: needs.changes.outputs.seed == 'true'
+    runs-on: ${{ fromJSON(vars.LIGHT_RUNNER_LABELS || vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The seed's photos match knowledge.surql, and the upload's tests pass
+        # In the seed-upload image's own Python and hashed wheels (ml/knowledge/Dockerfile), so a pull
+        # request fails here, not in images on main, when its photos and knowledge.surql disagree.
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -w /src -e PYTHONDONTWRITEBYTECODE=1 \
+            -e PIP_DISABLE_PIP_VERSION_CHECK=1 -e PIP_ROOT_USER_ACTION=ignore \
+            python:3.12-slim-trixie@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1 \
+            sh -ec 'pip install -q --require-hashes --only-binary=:all: -r ml/knowledge/requirements-seed-upload.txt
+                    pip install -q pytest==9.1.1
+                    python -m ml.knowledge.upload build --out /tmp/photos
+                    python -m pytest -q -p no:cacheprovider ml/tests/test_upload.py'
 
   app:
     needs: changes
@@ -578,7 +599,7 @@ jobs:
 
   ci:
     # live joined after four consecutive green pushes to main, era after five (infra §2).
-    needs: [changes, lint, test, examples, docs, infra, app, security, live, era]
+    needs: [changes, lint, test, examples, docs, infra, seed, app, security, live, era]
     if: always()
     runs-on: ${{ fromJSON(vars.LIGHT_RUNNER_LABELS || vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 5
@@ -593,7 +614,7 @@ jobs:
   # --- stage 4: images on main and tags; the release on tags -------------------------------------
 
   images:
-    needs: [changes, lint, test, examples, docs, infra, app, security, live, era]
+    needs: [changes, lint, test, examples, docs, infra, seed, app, security, live, era]
     if: >-
       ${{ !cancelled() && !failure() && github.event_name == 'push' &&
           (startsWith(github.ref, 'refs/tags/v') ||
