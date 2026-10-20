@@ -1,0 +1,308 @@
+{
+  "version": "disease-head-v2-2026-10-20",
+  "features": "crops",
+  "detector": "rfdetr-s-leaf-2026-10-19-bglic",
+  "supported": [
+    "tomato",
+    "apple",
+    "grape",
+    "pepper",
+    "corn"
+  ],
+  "classes": 21,
+  "left_out_below_min": {},
+  "C": 200,
+  "C_grid": [
+    1,
+    5,
+    20,
+    50,
+    100,
+    200,
+    500,
+    1000,
+    2000,
+    5000
+  ],
+  "C_at_grid_edge": false,
+  "temperature": 1.0706773827852138,
+  "temperature_fitted_on": "val crops of photos with one crop",
+  "views": 0,
+  "balance_sources": false,
+  "train_rows": 8489,
+  "train_photos": 3179,
+  "val": {
+    "n": 628,
+    "left_out_class_images": 0,
+    "left_out_species_images": {
+      "bean": 289,
+      "blueberry": 16,
+      "cherry": 7,
+      "peach": 15,
+      "potato": 27,
+      "raspberry": 17,
+      "soybean": 9,
+      "squash": 18,
+      "strawberry": 13
+    },
+    "headline": {
+      "excludes": [
+        "bean"
+      ],
+      "restricted_top1_multiclass": {
+        "value": 0.8455414012738853,
+        "n": 628
+      },
+      "restricted_top3_over_3_classes": {
+        "value": 0.9642857142857143,
+        "n": 560
+      },
+      "ece_after_T_multiclass": {
+        "value": 0.08825750098693927,
+        "n": 628
+      }
+    },
+    "per_dataset": {
+      "plantdoc": {
+        "restricted_top1_multiclass": {
+          "value": 0.7962962962962963,
+          "n": 216
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.09984516128407435,
+          "n": 216
+        }
+      },
+      "tom2024": {
+        "restricted_top1_multiclass": {
+          "value": 0.9154078549848943,
+          "n": 331
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.13076224373946058,
+          "n": 331
+        }
+      },
+      "tomato_pakistan_2026": {
+        "restricted_top1_multiclass": {
+          "value": 0.691358024691358,
+          "n": 81
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.13181219302103583,
+          "n": 81
+        }
+      }
+    },
+    "full_top1": 0.839171974522293,
+    "full_top3": 0.9585987261146497,
+    "restricted_top1_multiclass": {
+      "value": 0.8455414012738853,
+      "n": 628
+    },
+    "restricted_top3_over_3_classes": {
+      "value": 0.9642857142857143,
+      "n": 560
+    },
+    "ece_before_T_multiclass": {
+      "value": 0.07466186389126599,
+      "n": 628
+    },
+    "ece_after_T_multiclass": {
+      "value": 0.08825750098693927,
+      "n": 628
+    },
+    "trivial_share": 0.0,
+    "per_crop": {
+      "apple": {
+        "n": 36,
+        "classes": 3,
+        "top1": 0.9166666666666666,
+        "top3": 1.0
+      },
+      "corn": {
+        "n": 180,
+        "classes": 5,
+        "top1": 0.8666666666666667,
+        "top3": 0.9888888888888889
+      },
+      "grape": {
+        "n": 16,
+        "classes": 2,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "pepper": {
+        "n": 16,
+        "classes": 2,
+        "top1": 0.9375,
+        "top3": 1.0
+      },
+      "tomato": {
+        "n": 380,
+        "classes": 9,
+        "top1": 0.8184210526315789,
+        "top3": 0.9526315789473684
+      }
+    },
+    "per_leaf_crop": {
+      "crops": 1848,
+      "photos_with_no_leaf_kept": 14,
+      "crops_per_photo_median": 1.0,
+      "top1_multiclass": {
+        "value": 0.7619047619047619,
+        "n": 1848
+      },
+      "top3_over_3_classes": {
+        "value": 0.9332501559575795,
+        "n": 1603
+      },
+      "single_crop_photos_top1_multiclass": {
+        "value": 0.8313253012048193,
+        "n": 332
+      },
+      "single_crop_photos_ece_after_T": {
+        "value": 0.058114230857197066,
+        "n": 332
+      }
+    },
+    "note": "Headline numbers are per photo: the mean of its crops' restricted, tempered probabilities. Per-crop numbers score each crop against its photo's label, which is wrong for a healthy leaf in a diseased photo; photos with one crop are the cleanest. Restricted metrics assume the species is right."
+  },
+  "test": {
+    "n": 565,
+    "left_out_class_images": 0,
+    "left_out_species_images": {
+      "bean": 128,
+      "blueberry": 11,
+      "cherry": 10,
+      "peach": 9,
+      "potato": 11,
+      "raspberry": 7,
+      "soybean": 8,
+      "squash": 6,
+      "strawberry": 8
+    },
+    "headline": {
+      "excludes": [
+        "bean"
+      ],
+      "restricted_top1_multiclass": {
+        "value": 0.8460176991150442,
+        "n": 565
+      },
+      "restricted_top3_over_3_classes": {
+        "value": 0.9679358717434869,
+        "n": 499
+      },
+      "ece_after_T_multiclass": {
+        "value": 0.056743723459340784,
+        "n": 565
+      }
+    },
+    "per_dataset": {
+      "plantdoc": {
+        "restricted_top1_multiclass": {
+          "value": 0.7628205128205128,
+          "n": 156
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.07667150362091756,
+          "n": 156
+        }
+      },
+      "tom2024": {
+        "restricted_top1_multiclass": {
+          "value": 0.9088145896656535,
+          "n": 329
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.07648252105722197,
+          "n": 329
+        }
+      },
+      "tomato_pakistan_2026": {
+        "restricted_top1_multiclass": {
+          "value": 0.75,
+          "n": 80
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.06699133892955224,
+          "n": 80
+        }
+      }
+    },
+    "full_top1": 0.8389380530973451,
+    "full_top3": 0.9699115044247788,
+    "restricted_top1_multiclass": {
+      "value": 0.8460176991150442,
+      "n": 565
+    },
+    "restricted_top3_over_3_classes": {
+      "value": 0.9679358717434869,
+      "n": 499
+    },
+    "ece_before_T_multiclass": {
+      "value": 0.04379780838024681,
+      "n": 565
+    },
+    "ece_after_T_multiclass": {
+      "value": 0.056743723459340784,
+      "n": 565
+    },
+    "trivial_share": 0.0,
+    "per_crop": {
+      "apple": {
+        "n": 29,
+        "classes": 3,
+        "top1": 0.8620689655172413,
+        "top3": 1.0
+      },
+      "corn": {
+        "n": 157,
+        "classes": 5,
+        "top1": 0.8726114649681529,
+        "top3": 0.9872611464968153
+      },
+      "grape": {
+        "n": 20,
+        "classes": 2,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "pepper": {
+        "n": 17,
+        "classes": 2,
+        "top1": 0.9411764705882353,
+        "top3": 1.0
+      },
+      "tomato": {
+        "n": 342,
+        "classes": 9,
+        "top1": 0.8187134502923976,
+        "top3": 0.9590643274853801
+      }
+    },
+    "per_leaf_crop": {
+      "crops": 1199,
+      "photos_with_no_leaf_kept": 18,
+      "crops_per_photo_median": 1.0,
+      "top1_multiclass": {
+        "value": 0.7848206839032527,
+        "n": 1199
+      },
+      "top3_over_3_classes": {
+        "value": 0.9474153297682709,
+        "n": 1122
+      },
+      "single_crop_photos_top1_multiclass": {
+        "value": 0.8450704225352113,
+        "n": 355
+      },
+      "single_crop_photos_ece_after_T": {
+        "value": 0.03903380380549902,
+        "n": 355
+      }
+    },
+    "note": "Headline numbers are per photo: the mean of its crops' restricted, tempered probabilities. Per-crop numbers score each crop against its photo's label, which is wrong for a healthy leaf in a diseased photo; photos with one crop are the cleanest. Restricted metrics assume the species is right."
+  }
+}
