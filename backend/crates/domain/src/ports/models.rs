@@ -149,8 +149,13 @@ pub trait SpeciesIdentifier: Send + Sync {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ClassifierTask {
     /// The chat route: `diagnosis_question`, `care_question`, `task_change`, `safety_sensitive`,
-    /// `off_topic`.
-    Route,
+    /// `off_topic`, and `farm_records` when the garden has farm records to search, so a
+    /// question about its own Slack channels or documents isn't taken for off-topic (gap G10).
+    Route {
+        /// The garden has farm records: a synced record, or a connector that is `active` or
+        /// `reauth_needed`, the condition that offers `search_farm_records`.
+        farm_records: bool,
+    },
     /// Whether a turn holds a fact worth remembering.
     MemoryWorthy,
     /// A knowledge chunk's topic, at ingestion.

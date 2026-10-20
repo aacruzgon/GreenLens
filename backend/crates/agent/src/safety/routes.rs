@@ -7,18 +7,40 @@
 //! and a near tie with `safety_sensitive` resolves to `safety_sensitive` (fail safe). A cheap
 //! keyword check for a person or pet being poisoned runs whatever the classifier says, so the
 //! poison-control answer never depends on a model.
+//!
+//! **Farm records** (gap G10). When the garden has farm records, the classifier is also asked
+//! for [`FARM_RECORDS_LABEL`], a question about what the garden's own records say (its Slack
+//! channels and shared documents), and that label is a care question: the chat model answers it
+//! with `search_farm_records`. Without farm records the classifier is asked exactly as before,
+//! and a `farm_records` score counts as `off_topic`, since nothing could answer it.
 
 use std::{collections::BTreeMap, sync::LazyLock};
 
 use domain::{chat::ChatRoute, ports::LabelScore};
 use regex::{Regex, RegexBuilder};
 
-/// The labels of `ClassifierTask::Route`, in the order of contracts 8.
+/// The labels of `ClassifierTask::Route` for a garden without farm records, in the order of
+/// contracts 8.
 pub const ROUTE_LABELS: [&str; 5] = [
     "diagnosis_question",
     "care_question",
     "task_change",
     "safety_sensitive",
+    "off_topic",
+];
+
+/// The label for a question about the garden's own farm records. It is no route of its own:
+/// [`decide`] answers it as a care question when the garden has farm records.
+pub const FARM_RECORDS_LABEL: &str = "farm_records";
+
+/// The labels of `ClassifierTask::Route` for a garden with farm records: [`ROUTE_LABELS`] and
+/// [`FARM_RECORDS_LABEL`] before `off_topic`.
+pub const FARM_ROUTE_LABELS: [&str; 6] = [
+    "diagnosis_question",
+    "care_question",
+    "task_change",
+    "safety_sensitive",
+    FARM_RECORDS_LABEL,
     "off_topic",
 ];
 
@@ -33,13 +55,16 @@ pub const fn route_label(route: ChatRoute) -> &'static str {
     }
 }
 
-fn parse_route(label: &str) -> Option<ChatRoute> {
+/// The route a label counts for. `farm_records` is a care question in a garden with farm
+/// records and off-topic in one without.
+fn parse_route(label: &str, farm_records: bool) -> Option<ChatRoute> {
     Some(match label {
         "diagnosis_question" => ChatRoute::DiagnosisQuestion,
         "care_question" => ChatRoute::CareQuestion,
         "task_change" => ChatRoute::TaskChange,
         "safety_sensitive" => ChatRoute::SafetySensitive,
-        "off_topic" => ChatRoute::OffTopic,
+        FARM_RECORDS_LABEL if farm_records => ChatRoute::CareQuestion,
+        "off_topic" | FARM_RECORDS_LABEL => ChatRoute::OffTopic,
         _ => return None,
     })
 }
@@ -114,22 +139,31 @@ pub fn mentions_poisoning(text: &str) -> bool {
 
 /// Decides the route from the classifier's scores and the poisoning check. With no usable
 /// scores (the classifier failed or returned unknown labels) the turn is a care question: the
-/// dose check still applies to every sentence.
+/// dose check still applies to every sentence. `farm_records` says whether the garden has farm
+/// records, as the classifier was told: it decides what a `farm_records` score counts for. Two
+/// labels for the same route count once, with the higher calibrated score.
 pub fn decide(
     text: &str,
     scores: Option<&[LabelScore]>,
     calibration: &Calibration,
+    farm_records: bool,
 ) -> RouteDecision {
     let mut ranked: Vec<(ChatRoute, f64)> = scores
         .unwrap_or_default()
         .iter()
         .filter_map(|s| {
-            let route = parse_route(&s.label)?;
+            let route = parse_route(&s.label, farm_records)?;
             let offset = calibration.offsets.get(&s.label).copied().unwrap_or(0.0);
             Some((route, s.score + offset))
         })
         .collect();
     ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let mut seen = Vec::with_capacity(ranked.len());
+    ranked.retain(|(route, _)| {
+        let first = !seen.contains(route);
+        seen.push(*route);
+        first
+    });
 
     let route = match ranked.as_slice() {
         [] => ChatRoute::CareQuestion,
@@ -201,13 +235,13 @@ mod tests {
             ("safety_sensitive", 0.1),
         ]);
         assert_eq!(
-            decide("When should I water?", Some(&s), &c),
+            decide("When should I water?", Some(&s), &c, false),
             RouteDecision::Model(ChatRoute::CareQuestion)
         );
         let mut c = Calibration::default();
         c.offsets.insert("diagnosis_question".to_owned(), 0.2);
         assert_eq!(
-            decide("When should I water?", Some(&s), &c),
+            decide("When should I water?", Some(&s), &c, false),
             RouteDecision::Model(ChatRoute::DiagnosisQuestion)
         );
     }
@@ -216,7 +250,12 @@ mod tests {
     fn a_near_tie_with_safety_sensitive_is_safety_sensitive() {
         let s = scores(&[("care_question", 0.62), ("safety_sensitive", 0.55)]);
         assert_eq!(
-            decide("Can I use copper on it?", Some(&s), &Calibration::default()),
+            decide(
+                "Can I use copper on it?",
+                Some(&s),
+                &Calibration::default(),
+                false
+            ),
             RouteDecision::Model(ChatRoute::SafetySensitive)
         );
     }
@@ -226,12 +265,12 @@ mod tests {
         let c = Calibration::default();
         let close = scores(&[("off_topic", 0.5), ("care_question", 0.4)]);
         assert_eq!(
-            decide("what about the weather", Some(&close), &c),
+            decide("what about the weather", Some(&close), &c, false),
             RouteDecision::Model(ChatRoute::CareQuestion)
         );
         let clear = scores(&[("off_topic", 0.9), ("care_question", 0.1)]);
         assert_eq!(
-            decide("write me a poem", Some(&clear), &c),
+            decide("write me a poem", Some(&clear), &c, false),
             RouteDecision::OffTopic
         );
     }
@@ -248,7 +287,7 @@ mod tests {
             "I got neem spray in my eyes",
         ] {
             assert_eq!(
-                decide(text, Some(&s), &c),
+                decide(text, Some(&s), &c, false),
                 RouteDecision::PoisonControl,
                 "{text}"
             );
@@ -259,7 +298,7 @@ mod tests {
             "Is the sap toxic?",
         ] {
             assert_eq!(
-                decide(text, Some(&s), &c),
+                decide(text, Some(&s), &c, false),
                 RouteDecision::Model(ChatRoute::CareQuestion),
                 "{text}"
             );
@@ -267,9 +306,78 @@ mod tests {
     }
 
     #[test]
+    fn a_farm_records_question_is_a_care_question_only_with_farm_records() {
+        let c = Calibration::default();
+        // Q19 of the Maple Row evaluation: the classifier's farm label wins clearly.
+        let text = "What did Riley post in #field-reports on August 31?";
+        let s = scores(&[
+            ("farm_records", 0.9),
+            ("off_topic", 0.3),
+            ("care_question", 0.1),
+        ]);
+        assert_eq!(
+            decide(text, Some(&s), &c, true),
+            RouteDecision::Model(ChatRoute::CareQuestion)
+        );
+        // Without farm records nothing could answer it: off-topic, as before G10.
+        assert_eq!(decide(text, Some(&s), &c, false), RouteDecision::OffTopic);
+        // A safety-sensitive farm question stays safety-sensitive.
+        let s = scores(&[("farm_records", 0.8), ("safety_sensitive", 0.7)]);
+        assert_eq!(
+            decide("How much Kocide went in per litre?", Some(&s), &c, true),
+            RouteDecision::Model(ChatRoute::SafetySensitive)
+        );
+    }
+
+    #[test]
+    fn farm_records_never_rescue_a_clearly_off_topic_message() {
+        let c = Calibration::default();
+        let s = scores(&[
+            ("off_topic", 0.95),
+            ("farm_records", 0.1),
+            ("care_question", 0.05),
+        ]);
+        for farm_records in [true, false] {
+            for text in ["write me a poem about football", "what's the bitcoin price"] {
+                assert_eq!(
+                    decide(text, Some(&s), &c, farm_records),
+                    RouteDecision::OffTopic,
+                    "{text}, farm_records={farm_records}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn two_labels_of_one_route_count_once() {
+        let c = Calibration::default();
+        // Without farm records, farm_records and off_topic are one off-topic score, 0.5, and
+        // its runner-up is care_question, 0.4: not a clear win. Counted twice, off_topic's
+        // runner-up would be itself.
+        let s = scores(&[
+            ("farm_records", 0.5),
+            ("off_topic", 0.45),
+            ("care_question", 0.4),
+        ]);
+        assert_eq!(
+            decide("any notes on bed 3?", Some(&s), &c, false),
+            RouteDecision::Model(ChatRoute::CareQuestion)
+        );
+        let s = scores(&[
+            ("farm_records", 0.8),
+            ("off_topic", 0.2),
+            ("care_question", 0.3),
+        ]);
+        assert_eq!(
+            decide("any notes on bed 3?", Some(&s), &c, false),
+            RouteDecision::OffTopic
+        );
+    }
+
+    #[test]
     fn no_scores_means_a_care_question() {
         assert_eq!(
-            decide("hello", None, &Calibration::default()),
+            decide("hello", None, &Calibration::default(), false),
             RouteDecision::Model(ChatRoute::CareQuestion)
         );
     }

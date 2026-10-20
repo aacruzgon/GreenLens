@@ -13,7 +13,7 @@ use serde_json::{Map, Value, json};
 
 use crate::{
     prompt::{DataKind, classifier_system, data},
-    safety::routes::ROUTE_LABELS,
+    safety::routes::{FARM_ROUTE_LABELS, ROUTE_LABELS},
 };
 
 /// The memory gate's labels.
@@ -31,12 +31,26 @@ pub const TOPIC_LABELS: [&str; 5] = [
 /// What the model is told, and the labels, per task.
 pub const fn task_labels(task: ClassifierTask) -> (&'static str, &'static [&'static str]) {
     match task {
-        ClassifierTask::Route => (
+        ClassifierTask::Route {
+            farm_records: false,
+        } => (
             "Classify a gardener's chat message. diagnosis_question: about what is wrong with a \
              plant. care_question: about looking after plants. task_change: asks to add, finish \
              or change tasks or the plan. safety_sensitive: about pesticides, doses, or a person \
              or pet being poisoned. off_topic: not about plants or the garden.",
             &ROUTE_LABELS,
+        ),
+        // Gap G10: in a garden with farm records, a question about them is not off-topic.
+        ClassifierTask::Route { farm_records: true } => (
+            "Classify a gardener's chat message. The garden keeps farm records: its crew's \
+             messages in the farm's Slack channels and its shared documents and logs. \
+             diagnosis_question: about what is wrong with a plant. care_question: about looking \
+             after plants. task_change: asks to add, finish or change tasks or the plan. \
+             safety_sensitive: about pesticides, doses, or a person or pet being poisoned. \
+             farm_records: asks what the farm records say: what someone in the crew saw, \
+             reported, did or posted, in a channel or a document, or when or how often. \
+             off_topic: not about plants, the garden or its farm records.",
+            &FARM_ROUTE_LABELS,
         ),
         ClassifierTask::MemoryWorthy => (
             "Decide whether this exchange contains a fact the gardener stated that will still \
@@ -125,7 +139,7 @@ pub fn parse_scores(text: &str, labels: &[&str]) -> Option<Vec<LabelScore>> {
 /// What a refused classification counts as: the safe label scores 1.
 fn refused(task: ClassifierTask, labels: &[&str]) -> Vec<LabelScore> {
     let safe = match task {
-        ClassifierTask::Route => "safety_sensitive",
+        ClassifierTask::Route { .. } => "safety_sensitive",
         ClassifierTask::MemoryWorthy => "skip",
         ClassifierTask::ChunkTopic => "management",
     };
@@ -185,17 +199,57 @@ mod tests {
         assert_eq!(s["required"].as_array().unwrap().len(), 5);
     }
 
+    /// Gap G10: a garden without farm records is asked exactly as before; one with them gets
+    /// the `farm_records` label, and `off_topic` no longer covers its records.
+    #[test]
+    fn the_route_task_adds_the_farm_label_only_with_farm_records() {
+        let (without, labels) = task_labels(ClassifierTask::Route {
+            farm_records: false,
+        });
+        assert_eq!(labels, ROUTE_LABELS);
+        assert!(!without.contains("farm_records"));
+        assert!(without.ends_with("off_topic: not about plants or the garden."));
+
+        let (with, labels) = task_labels(ClassifierTask::Route { farm_records: true });
+        assert_eq!(labels, FARM_ROUTE_LABELS);
+        assert!(with.contains("Slack channels"));
+        assert!(with.contains("farm_records: asks what the farm records say"));
+        assert!(with.ends_with("off_topic: not about plants, the garden or its farm records."));
+        let schema = score_schema(labels);
+        assert_eq!(schema["required"].as_array().unwrap().len(), 6);
+        assert_eq!(
+            crate::prompt::CLASSIFIER_PROMPT_VERSION,
+            "classify/2026-10-20.1"
+        );
+
+        let c = LlmClassifier::new(
+            Arc::new(crate::testing::ScriptedModel::completing(
+                "{}",
+                StopReason::EndTurn,
+            )),
+            256,
+        );
+        let system = c
+            .request(ClassifierTask::Route { farm_records: true }, "hi")
+            .system;
+        assert!(system.contains(
+            "Labels: diagnosis_question care_question task_change safety_sensitive \
+             farm_records off_topic.\n\n"
+        ));
+    }
+
     #[tokio::test]
     async fn a_refusal_routes_as_safety_sensitive() {
-        let model = Arc::new(crate::testing::ScriptedModel::completing(
-            "",
-            StopReason::Refusal,
-        ));
-        let c = LlmClassifier::new(model, 256);
-        let s = c
-            .classify(ClassifierTask::Route, "how much poison")
-            .await
-            .unwrap();
-        assert_eq!(s[0].label, "safety_sensitive");
+        for farm_records in [false, true] {
+            let model = Arc::new(crate::testing::ScriptedModel::completing(
+                "",
+                StopReason::Refusal,
+            ));
+            let s = LlmClassifier::new(model, 256)
+                .classify(ClassifierTask::Route { farm_records }, "how much poison")
+                .await
+                .unwrap();
+            assert_eq!(s[0].label, "safety_sensitive");
+        }
     }
 }
