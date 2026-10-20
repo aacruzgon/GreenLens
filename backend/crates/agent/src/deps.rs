@@ -9,9 +9,9 @@
 use std::sync::Arc;
 
 use domain::ports::{
-    AnalysisRepo, BeliefStore, BlobStore, ChatModel, ChatRepo, Clock, GardenRepo, IdGen,
-    KnowledgeStore, MapRepo, MemoryStore, PlanRepo, PlantRepo, ScanRepo, Store, TextClassifier,
-    TextEmbedder, UsageRepo, WeatherCacheRepo, WeatherProvider,
+    AnalysisRepo, BeliefStore, BlobStore, ChatModel, ChatRepo, Clock, FarmRecordStore, GardenRepo,
+    IdGen, KnowledgeStore, MapRepo, MemoryStore, PlanRepo, PlantRepo, ScanRepo, Store,
+    TextClassifier, TextEmbedder, UsageRepo, WeatherCacheRepo, WeatherProvider,
 };
 
 use crate::{config::AgentConfig, safety::ProductCatalogue};
@@ -37,6 +37,9 @@ pub struct AgentStores {
     pub usage: Arc<dyn UsageRepo>,
     /// The weather cache.
     pub weather_cache: Arc<dyn WeatherCacheRepo>,
+    /// Farm connectors and their synced records: whether the garden has any to search, and
+    /// `search_farm_records`.
+    pub farm: Arc<dyn FarmRecordStore>,
 }
 
 impl AgentStores {
@@ -53,6 +56,7 @@ impl AgentStores {
             maps: store.clone(),
             usage: store.clone(),
             weather_cache: store.clone(),
+            farm: store.clone(),
         }
     }
 }
@@ -75,7 +79,7 @@ pub struct AgentDeps {
     /// Jev or the LLM fallback.
     pub classifier: Arc<dyn TextClassifier>,
     /// The pinned text-embedding model. Queries (the user's message, `search_memory`,
-    /// `search_knowledge`) are embedded as `EmbedMode::Query`; memory texts stored by
+    /// `search_knowledge`, `search_farm_records`) are embedded as `EmbedMode::Query`; memory texts stored by
     /// `remember` and extraction as `EmbedMode::Document`, like the knowledge chunks they are
     /// searched beside.
     pub embedder: Arc<dyn TextEmbedder>,

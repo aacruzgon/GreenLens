@@ -147,7 +147,7 @@ pub async fn search_beliefs(
 }
 
 /// The log form of an error: its message, then each source's, joined by ": ".
-struct Chain<'a>(&'a (dyn std::error::Error + 'static));
+pub(crate) struct Chain<'a>(pub &'a (dyn std::error::Error + 'static));
 
 impl std::fmt::Display for Chain<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
