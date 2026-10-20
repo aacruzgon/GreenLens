@@ -4,7 +4,9 @@
 //! What the bench leaves out of production: Agent Memory (`NoBeliefs`), the weather (always
 //! unavailable, so the context has none; the clock is pinned to the fixture's day), object
 //! storage (in memory, empty: no question has an image) and the knowledge base (the embedded
-//! store has none, so `search_knowledge` finds nothing and plants have no species).
+//! store has none, so `search_knowledge` finds nothing and plants have no species), and the
+//! product catalogue (empty, so the dose check's rules that depend on a product name in the
+//! sentence, percentages and ratios, behave unlike production's).
 
 use std::{sync::Arc, time::Duration};
 
@@ -131,10 +133,12 @@ pub fn slack_source(client: &reqwest::Client, base: &str) -> Arc<dyn FarmSource>
     Arc::new(SlackSource::new(SlackClient::new(client.clone(), config)))
 }
 
-/// The Drive adapter, pointed at `ERA_GOOGLE_BASE`. When E4.3 has built it, return it here
-/// (`integrations::google_drive`'s source over a client at `base`, as [`slack_source`] does
-/// for Slack): the harness then creates the Drive tenant and connector, syncs Drive's records,
-/// checks its journal and scores the Drive questions. Until then they are skipped.
+/// The Drive adapter, pointed at `ERA_GOOGLE_BASE`. Not wired in yet. Once the Drive sync
+/// (PR #82) merges, return `DriveSource::new(DriveClient::new(client, DriveConfig::era(base)))`
+/// here, and the harness also needs `api::connect` public (or re-exported), a stub
+/// `ConnectVendors` (Era's connectors have no OAuth) and `FarmSync::new`'s new `vendors`
+/// argument in [`sync`]. The harness then creates the Drive tenant and connector, syncs Drive's
+/// records, checks its journal and scores the Drive questions. Until then they are skipped.
 pub fn drive_source(_client: &reqwest::Client, _base: Option<&str>) -> Option<Arc<dyn FarmSource>> {
     None
 }

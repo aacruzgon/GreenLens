@@ -16,9 +16,13 @@
 //!   --out era-eval.json
 //! ```
 //!
-//! Until the Drive adapter lands (E4.3, [`bench::drive_source`]), only Slack is synced and the
-//! questions that need Drive are skipped. The plan-writer question (`target = "plan"`) waits on
-//! E5.4 and is reported as not measured.
+//! Until the Drive adapter is wired in ([`bench::drive_source`]), only Slack is synced and the
+//! questions that need Drive are skipped. Wiring it in is more than one line once the Drive sync
+//! (PR #82) merges: `api::connect` must be public (or re-exported), the harness needs a stub
+//! `ConnectVendors` (Era's connectors have no OAuth), `FarmSync::new` takes a new `vendors`
+//! argument, and the source is `DriveSource::new(DriveClient::new(client,
+//! DriveConfig::era(base)))`. The plan-writer question (`target = "plan"`) waits on E5.4 and is
+//! reported as not measured.
 //!
 //! [connectors 9.3]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#93-the-agent-evaluation
 
@@ -53,7 +57,7 @@ use crate::{
     garden::GardenFile,
     meter::Meter,
     report::{QuestionReport, Report, RunReport, SyncReport},
-    score::{Context, Scores, Verdict},
+    score::Context,
 };
 
 /// The fixture the evaluation reads.
@@ -91,7 +95,8 @@ struct Args {
     /// The model for the router's classifier, memory extraction and off-topic replies.
     #[arg(long, env = "LLM_CHEAP_MODEL", default_value = "claude-haiku-5-5")]
     cheap_model: String,
-    /// Stop asking once the estimated spend passes this many US dollars.
+    /// Stop asking once the estimated spend has passed this many US dollars. The check runs
+    /// before each question, so the run may exceed the cap by up to one question.
     #[arg(long, default_value_t = 10.0)]
     max_cost_usd: f64,
 }
@@ -108,6 +113,13 @@ async fn main() -> anyhow::Result<()> {
     if args.models.is_empty() {
         args.models.push("claude-opus-5-5".to_owned());
     }
+    // Before any call: a model with no price would make the cost cap blind.
+    meter::ensure_priced(
+        args.models
+            .iter()
+            .map(String::as_str)
+            .chain([args.cheap_model.as_str()]),
+    )?;
     let api_key = SecretString::from(
         std::env::var("LLM_API_KEY").context("LLM_API_KEY is not set (Anthropic's API key)")?,
     );
@@ -183,10 +195,12 @@ async fn evaluate(args: &Args, api_key: &SecretString) -> anyhow::Result<Report>
         owner_auth: loaded.auth_ids[&owner_key].clone(),
     };
 
-    // The tenants, the connectors and the first sync.
+    // The tenants, the connectors and the first sync. The tenants are closed on every exit path.
     let http = bench::http()?;
     let slack_fixture = fixture(FIXTURE, "slack.json");
     let slack = Tenant::create(SimKind::Slack, Some(&slack_fixture)).await;
+    let mut drive: Option<Tenant> = None;
+    let result: anyhow::Result<Report> = async {
     bench::connector(
         store.as_ref(),
         ids.as_ref(),
@@ -207,7 +221,6 @@ async fn evaluate(args: &Args, api_key: &SecretString) -> anyhow::Result<Report>
         ConnectorEndpoint::Era,
         bench::slack_source(&http, slack.base()),
     );
-    let mut drive = None;
     let drive_base = std::env::var("ERA_GOOGLE_BASE").ok();
     if let Some(source) = bench::drive_source(&http, drive_base.as_deref()) {
         let tenant =
@@ -290,14 +303,29 @@ async fn evaluate(args: &Args, api_key: &SecretString) -> anyhow::Result<Report>
             }
             for n in 1..=args.runs {
                 let spent: f64 = cost_usd.values().sum();
-                if spent > args.max_cost_usd {
+                if over_cap(spent, args.max_cost_usd) {
                     stopped = Some(format!(
                         "the estimated spend, US${spent:.2}, passed --max-cost-usd {}",
                         args.max_cost_usd
                     ));
                     break 'models;
                 }
-                let r = ask(&run, &agent, &meter, q, model, n, ctx).await?;
+                let mark = meter.len();
+                let r = match ask(&run, &agent, &meter, q, model, n, ctx).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        // One question's error is a failed run, not the loss of the evaluation.
+                        tracing::warn!(question = %q.id, model, run = n, error = %e, "the question errored");
+                        failed_run(
+                            q,
+                            ctx,
+                            (model, n),
+                            "failed",
+                            vec!["internal: the question could not be asked".to_owned()],
+                            meter.since(mark),
+                        )
+                    }
+                };
                 *cost_usd.entry(model.clone()).or_default() += r.cost_usd;
                 tracing::info!(question = %q.id, model, run = n, cost = r.cost_usd, "asked");
                 report.runs.push(r);
@@ -307,10 +335,11 @@ async fn evaluate(args: &Args, api_key: &SecretString) -> anyhow::Result<Report>
     tracker.close();
     tracker.wait().await;
 
-    slack.close().await;
-    if let Some(d) = drive {
-        d.close().await;
-    }
+    let failed_turns = reports
+        .iter()
+        .flat_map(|q| &q.runs)
+        .filter(|r| r.turn_failed())
+        .count();
     Ok(Report {
         fixture: answers.fixture.clone(),
         as_of: file.as_of.to_string(),
@@ -326,8 +355,67 @@ async fn evaluate(args: &Args, api_key: &SecretString) -> anyhow::Result<Report>
         skipped_scans: loaded.skipped_scans,
         questions: reports,
         cost_usd,
+        failed_turns: u32::try_from(failed_turns).unwrap_or(u32::MAX),
         stopped,
     })
+    }
+    .await;
+    slack.close().await;
+    if let Some(d) = drive {
+        d.close().await;
+    }
+    result
+}
+
+/// Whether the spend has passed the cap. Written so that a NaN (an unpriced call) or a NaN cap
+/// stops the run too.
+#[expect(
+    clippy::neg_cmp_op_on_partial_ord,
+    reason = "the negation is the point: a NaN is not under the cap"
+)]
+fn over_cap(spent: f64, max: f64) -> bool {
+    !(spent <= max)
+}
+
+/// The tokens and the estimated cost of a turn's model calls. A call to a model with no price
+/// counts as NaN, which stops the run ([`over_cap`]).
+fn totals(calls: &[meter::Call]) -> (u64, u64, f64) {
+    (
+        calls.iter().map(|c| u64::from(c.tokens_in)).sum(),
+        calls.iter().map(|c| u64::from(c.tokens_out)).sum(),
+        calls
+            .iter()
+            .map(|c| meter::cost(&c.model, c.tokens_in, c.tokens_out).unwrap_or(f64::NAN))
+            .sum(),
+    )
+}
+
+/// A run whose turn didn't complete: every measure that applies fails ([`score::failed_turn`]).
+/// `errors` holds error codes, never a key or a vendor's body.
+fn failed_run(
+    q: &Question,
+    ctx: Context<'_>,
+    (model, n): (&str, u32),
+    outcome: &str,
+    errors: Vec<String>,
+    calls: Vec<meter::Call>,
+) -> RunReport {
+    let (tokens_in, tokens_out, cost_usd) = totals(&calls);
+    RunReport {
+        model: model.to_owned(),
+        run: n,
+        outcome: outcome.to_owned(),
+        route: String::new(),
+        text: String::new(),
+        scores: score::failed_turn(q, ctx, outcome),
+        tools: Vec::new(),
+        farm_citations: Vec::new(),
+        calls,
+        tokens_in,
+        tokens_out,
+        cost_usd,
+        errors,
+    }
 }
 
 /// The fixture's channels, with their names.
@@ -394,6 +482,10 @@ async fn drain(mut events: impl futures::Stream<Item = ChatEvent> + Unpin) -> St
     seen
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "one question's steps in order: conversation, turn, events, outcome, scores"
+)]
 /// Asks one question in a new conversation and scores the answer. A memory the turn saved is
 /// deleted afterwards, so no run sees another's.
 async fn ask(
@@ -433,7 +525,7 @@ async fn ask(
         .map_err(|e| anyhow::anyhow!("conversation: {e:?}"))?;
 
     let mark = meter.len();
-    let turn = agent
+    let started = agent
         .start_turn(agent::TurnRequest {
             owner,
             message: SendMessageRequest {
@@ -442,7 +534,24 @@ async fn ask(
             },
             shutdown: CancellationToken::new(),
         })
-        .await?;
+        .await;
+    let turn = match started {
+        Ok(turn) => turn,
+        Err(e) => {
+            let code = match &e {
+                agent::TurnError::Domain(d) => d.kind().code().to_string(),
+                agent::TurnError::Store(_) => "internal".to_owned(),
+            };
+            return Ok(failed_run(
+                q,
+                ctx,
+                (model, n),
+                "failed",
+                vec![format!("the turn could not start: {code}")],
+                meter.since(mark),
+            ));
+        }
+    };
     let (events, outcome) = turn.into_parts();
     let Streamed {
         route,
@@ -469,23 +578,11 @@ async fn ask(
     }
 
     let calls = meter.since(mark);
-    let tokens_in = calls.iter().map(|c| u64::from(c.tokens_in)).sum();
-    let tokens_out = calls.iter().map(|c| u64::from(c.tokens_out)).sum();
-    let cost_usd = calls
-        .iter()
-        .map(|c| meter::cost(&c.model, c.tokens_in, c.tokens_out).unwrap_or(f64::NAN))
-        .sum();
+    let (tokens_in, tokens_out, cost_usd) = totals(&calls);
     let scores = if outcome == "completed" {
         score::score(q, ctx, &text, &farm_citations)
     } else {
-        let failed = Verdict::Fail(format!("the turn {outcome}"));
-        Scores {
-            answer: failed.clone(),
-            citation: failed.clone(),
-            cross_source: failed.clone(),
-            safety: failed.clone(),
-            injection: failed,
-        }
+        score::failed_turn(q, ctx, outcome)
     };
     Ok(RunReport {
         model: model.to_owned(),
@@ -502,4 +599,44 @@ async fn ask(
         cost_usd,
         errors,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_cost_cap_stops_on_nan_too() {
+        assert!(!over_cap(1.0, 10.0));
+        assert!(!over_cap(10.0, 10.0));
+        assert!(over_cap(10.01, 10.0));
+        assert!(over_cap(f64::NAN, 10.0));
+        assert!(over_cap(1.0, f64::NAN));
+    }
+
+    #[test]
+    fn an_errored_question_is_a_failed_run_with_its_applicable_measures_failed() {
+        let answers = Answers::parse(include_str!(
+            "../../../tests/fixtures/era/maple-row/answers.toml"
+        ))
+        .unwrap();
+        let q = &answers.questions[0];
+        let ctx = Context {
+            safety: &answers.safety,
+            year: 2026,
+            drive_synced: false,
+            replaced_sentence: "x",
+        };
+        let r = failed_run(
+            q,
+            ctx,
+            ("claude-opus-5-5", 2),
+            "failed",
+            vec!["internal".into()],
+            Vec::new(),
+        );
+        assert!(r.turn_failed());
+        assert!(matches!(r.scores.answer, score::Verdict::Fail(_)));
+        assert!(matches!(r.scores.safety, score::Verdict::NotApplicable(_)));
+    }
 }
