@@ -1,4 +1,4 @@
-import { clerkErrorMessage } from "./clerkErrors";
+import { clerkErrorMessage, isEmailTaken } from "./clerkErrors";
 
 describe("clerkErrorMessage", () => {
   it("prefers the long message", () => {
@@ -13,5 +13,21 @@ describe("clerkErrorMessage", () => {
 
   it("falls back to a generic line", () => {
     expect(clerkErrorMessage(undefined)).toBe("Something went wrong. Try again.");
+  });
+});
+
+describe("isEmailTaken", () => {
+  it("is true for a taken email, on the error or the first of a list", () => {
+    expect(isEmailTaken({ code: "form_identifier_exists", meta: { paramName: "email_address" } })).toBe(true);
+    expect(isEmailTaken({ errors: [{ code: "form_identifier_exists", meta: { paramName: "email_address" } }] })).toBe(
+      true,
+    );
+    expect(isEmailTaken({ code: "form_identifier_exists" })).toBe(true);
+  });
+
+  it("is false for a taken phone number and for other errors", () => {
+    expect(isEmailTaken({ code: "form_identifier_exists", meta: { paramName: "phone_number" } })).toBe(false);
+    expect(isEmailTaken({ code: "form_password_pwned" })).toBe(false);
+    expect(isEmailTaken(undefined)).toBe(false);
   });
 });

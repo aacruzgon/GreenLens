@@ -1,11 +1,11 @@
 import { useSignUp } from "@clerk/expo";
-import { useRouter } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { useState } from "react";
 
-import { Button, TextField } from "@/ui";
+import { Banner, Button, Text, TextField } from "@/ui";
 
 import { AuthShell } from "../components/AuthShell";
-import { clerkErrorMessage } from "../model/clerkErrors";
+import { clerkErrorMessage, isEmailTaken } from "../model/clerkErrors";
 import { TEST_PHONE_HINT, toE164 } from "../model/phone";
 
 export function SignUpScreen() {
@@ -15,12 +15,15 @@ export function SignUpScreen() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [emailTaken, setEmailTaken] = useState(false);
 
   async function submit() {
     setError(null);
+    setEmailTaken(false);
     const phoneNumber = toE164(phone);
     if (!phoneNumber) return setError("Enter a phone number with its area code.");
     const { error: createError } = await signUp.password({ emailAddress: email.trim(), phoneNumber, password });
+    if (isEmailTaken(createError)) return setEmailTaken(true);
     if (createError) return setError(clerkErrorMessage(createError));
     const { error: sendError } = await signUp.verifications.sendEmailCode();
     if (sendError) return setError(clerkErrorMessage(sendError));
@@ -29,6 +32,16 @@ export function SignUpScreen() {
 
   return (
     <AuthShell title="Create an account" subtitle="We'll send a code to your email, then one to your phone. Signing in asks for a code by text.">
+      {emailTaken ? (
+        <Banner
+          title="You already have an account"
+          message="This email is already used by an account. Sign in, or reset its password if you've forgotten it."
+          action={{
+            label: "Reset password",
+            onPress: () => router.push({ pathname: "/reset-password", params: { email: email.trim() } }),
+          }}
+        />
+      ) : null}
       <TextField
         label="Email"
         value={email}
@@ -63,6 +76,11 @@ export function SignUpScreen() {
         disabled={!email.trim() || !phone.trim() || !password}
         size="large"
       />
+      <Link href="/sign-in" asChild>
+        <Text variant="body" color="textMuted" accessibilityRole="link">
+          Already have an account? Sign in
+        </Text>
+      </Link>
     </AuthShell>
   );
 }
