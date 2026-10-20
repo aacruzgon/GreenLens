@@ -1,6 +1,6 @@
 import { SseParser } from "../sse";
 import type { S } from "./util";
-import { IDS, mockStore, mockTransport, resetMock, scenario } from "./index";
+import { chooseAccount, IDS, mockStore, mockTransport, resetMock, scenario } from "./index";
 import { bandFor } from "./util";
 
 const BASE = "https://mock.pdm.local";
@@ -471,5 +471,25 @@ describe("review fixes", () => {
     scenario.get().setEmptyAccount(true);
     resetMock();
     expect(scenario.get().emptyAccount).toBe(false);
+  });
+
+  it("chooseAccount keeps a new account chosen after its first garden, and brings the demo back", async () => {
+    chooseAccount("new");
+    expect(scenario.get()).toMatchObject({ account: "new", emptyAccount: true });
+    await call("POST", "/gardens", { name: "Mine", location: { city: "Ottawa" } });
+    // The transport clears emptyAccount with the first garden; the controls' account stays "new".
+    expect(scenario.get()).toMatchObject({ account: "new", emptyAccount: false });
+
+    chooseAccount("demo");
+    expect(scenario.get()).toMatchObject({ account: "demo", emptyAccount: false });
+    const names = ((await call("GET", "/gardens")).json.items as S["Garden"][]).map((g) => g.name);
+    expect(names).toEqual(["Back garden"]);
+    expect((await call("GET", `/gardens/${IDS.garden}`)).status).toBe(200);
+  });
+
+  it("chooseAccount leaves the demo alone when it is already chosen", async () => {
+    const scan = (await call("POST", "/scans", { garden_id: IDS.garden, plant_id: IDS.basil })).json.id as string;
+    chooseAccount("demo");
+    expect(mockStore.scans.has(scan)).toBe(true);
   });
 });
