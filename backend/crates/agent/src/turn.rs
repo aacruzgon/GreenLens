@@ -363,6 +363,8 @@ enum Ended {
 struct Reply {
     /// The text as streamed, failing sentences replaced.
     text: String,
+    /// The message being written, for the dose check's log line.
+    message_id: Option<MessageId>,
     citations: Vec<Citation>,
     /// The farm records the tools returned, each once (`Message.farm_citations`).
     farm_citations: Vec<FarmCitation>,
@@ -393,7 +395,10 @@ async fn run(
 ) {
     let deps = &inner.deps;
     let mut out = Emitter { tx, gone: false };
-    let mut reply = Reply::default();
+    let mut reply = Reply {
+        message_id: Some(turn.message_id),
+        ..Reply::default()
+    };
     let route = turn.decision.route();
 
     let started = MessageStarted {
@@ -554,7 +559,15 @@ async fn store_reply(
 /// Dose-checks one streamed piece and sends it; a failing sentence is replaced by the fixed
 /// safety note, keeping the piece's surrounding whitespace ([contracts 7]).
 async fn emit_piece(deps: &AgentDeps, out: &mut Emitter, reply: &mut Reply, piece: String) -> bool {
-    let checked = if dose_check(&piece, &deps.products).is_some() {
+    let checked = if let Some(found) = dose_check(&piece, &deps.products) {
+        // The rule and whether the match held a digit; never the matched text or the sentence,
+        // which may hold a rate.
+        tracing::info!(
+            message_id = ?reply.message_id,
+            rule = ?found.rule,
+            has_digit = found.matched.chars().any(|c| c.is_ascii_digit()),
+            "dose check replaced a sentence"
+        );
         let lead = &piece[..piece.len() - piece.trim_start().len()];
         let trail = &piece[piece.trim_end().len()..];
         format!("{lead}{REPLACED_SENTENCE}{trail}")
@@ -564,6 +577,22 @@ async fn emit_piece(deps: &AgentDeps, out: &mut Emitter, reply: &mut Reply, piec
     reply.text.push_str(&checked);
     out.text(checked).await
 }
+
+/// Starts the text of a call that follows a tool round with a paragraph break, once, when the
+/// reply already has text that does not end in whitespace; it goes the way of any other text.
+async fn break_after_tool_round(out: &mut Emitter, reply: &mut Reply, pending: &mut bool) -> bool {
+    if !std::mem::take(pending)
+        || reply.text.is_empty()
+        || reply.text.ends_with(char::is_whitespace)
+    {
+        return true;
+    }
+    reply.text.push_str(PARAGRAPH_BREAK);
+    out.text(PARAGRAPH_BREAK.to_owned()).await
+}
+
+/// Separates the text before a tool call from the text after it.
+const PARAGRAPH_BREAK: &str = "\n\n";
 
 /// Sends a fixed or complete text sentence by sentence.
 async fn emit_checked(
@@ -604,6 +633,7 @@ async fn stream_call(
     let mut result = CallResult::default();
     let mut raw = String::new();
     let mut usage = Usage::default();
+    let mut break_pending = true;
     let mut stream = deps.chat.stream(request);
     loop {
         let next = tokio::select! {
@@ -624,7 +654,9 @@ async fn stream_call(
             ChatChunk::TextDelta(t) => {
                 raw.push_str(&t);
                 for piece in splitter.push(&t) {
-                    if !emit_piece(deps, out, reply, piece).await {
+                    if !break_after_tool_round(out, reply, &mut break_pending).await
+                        || !emit_piece(deps, out, reply, piece).await
+                    {
                         reply.add_usage(usage);
                         return Err(Ended::Interrupted);
                     }
@@ -657,7 +689,8 @@ async fn stream_call(
     reply.add_usage(usage);
     // Text before a tool call may not end with a full stop: check and send it now.
     if let Some(rest) = splitter.finish()
-        && !emit_piece(deps, out, reply, rest).await
+        && (!break_after_tool_round(out, reply, &mut break_pending).await
+            || !emit_piece(deps, out, reply, rest).await)
     {
         return Err(Ended::Interrupted);
     }
