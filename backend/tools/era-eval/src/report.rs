@@ -172,18 +172,27 @@ impl Report {
             }
             let _ = writeln!(out, "\nTotal for {model}: US${total:.2}\n");
         }
-        let j = &self.sync.slack_journal;
-        let _ = writeln!(
-            out,
-            "Sync: {} records. Slack journal (T-E8.2): {}{}",
-            self.sync.records,
-            if j.passed() { "pass" } else { "FAIL" },
+        let verdict = |j: &JournalCheck| {
             if j.passed() {
-                String::new()
+                "pass".to_owned()
             } else {
-                format!(" ({})", j.problems.join("; "))
+                format!("FAIL ({})", j.problems.join("; "))
             }
+        };
+        let _ = write!(
+            out,
+            "Sync: {} records. Slack journal (T-E8.2): {}",
+            self.sync.records,
+            verdict(&self.sync.slack_journal),
         );
+        match &self.sync.drive_journal {
+            Some(j) => {
+                let _ = writeln!(out, ". Drive journal: {}", verdict(j));
+            }
+            None => {
+                let _ = writeln!(out, ". Drive: not synced");
+            }
+        }
         if self.failed_turns > 0 {
             let _ = writeln!(
                 out,

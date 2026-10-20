@@ -135,6 +135,11 @@ pub fn slack_source(client: &reqwest::Client, base: &str) -> Arc<dyn FarmSource>
     Arc::new(SlackSource::new(SlackClient::new(client.clone(), config)))
 }
 
+/// `pageSize` of the Drive adapter's listings: production's.
+pub fn drive_page() -> u32 {
+    DriveConfig::default().page_size
+}
+
 /// The Drive adapter, pointed at `ERA_GOOGLE_BASE` when it is set, with the simulators'
 /// timeout.
 pub fn drive_source(client: &reqwest::Client, base: Option<&str>) -> Option<Arc<dyn FarmSource>> {
@@ -149,7 +154,8 @@ pub fn drive_source(client: &reqwest::Client, base: Option<&str>) -> Option<Arc<
 }
 
 /// The vendors' OAuth for the sync: Era's connectors hold a minted credential, not OAuth
-/// tokens, so there is never anything to refresh, and nothing else is called.
+/// tokens, and the sync renews only `vendor` connectors, so nothing here is ever called. Each
+/// method fails, so a sync that started renewing an `era` connector would show it.
 struct NoOAuth;
 
 #[async_trait]
@@ -166,11 +172,11 @@ impl ConnectVendors for NoOAuth {
 
     async fn refresh(
         &self,
-        _kind: ConnectorKind,
+        kind: ConnectorKind,
         _tokens: &StoredTokens,
         _force: bool,
     ) -> Result<Option<StoredTokens>, VendorError> {
-        Ok(None)
+        Err(VendorError::NotConfigured(kind))
     }
 
     async fn available_sources(

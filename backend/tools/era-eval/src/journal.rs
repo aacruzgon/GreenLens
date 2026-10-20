@@ -101,17 +101,92 @@ pub fn check_slack(journal: &[JournalEntry], expected: SlackExpected) -> Journal
     JournalCheck { calls, problems }
 }
 
-/// Checks the Drive tenant's journal after the first sync: reads only. The exact calls come
-/// with the Drive adapter (E4.3).
-pub fn check_drive(journal: &[JournalEntry]) -> JournalCheck {
+/// What a first sync of the chosen folder must call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DriveExpected {
+    /// `files.list` pages: each folder of the tree listed a page at a time.
+    pub listings: usize,
+    /// `files.export`: each Google Doc and Sheet under the folder.
+    pub exports: usize,
+    /// `files.get` with `alt=media`: each `text/plain` file under the folder.
+    pub downloads: usize,
+}
+
+/// Checks the Drive tenant's journal after the first sync: one `changes.getStartPageToken`,
+/// one `files.get` of the chosen folder, then the listing and each text file read once
+/// (connectors 6).
+pub fn check_drive(journal: &[JournalEntry], expected: DriveExpected) -> JournalCheck {
     let mut problems = Vec::new();
     reads_only(journal, &mut problems);
-    if journal.is_empty() {
-        problems.push("no Drive call".into());
+    let calls = counts(journal);
+    let n = |route: &str| calls.get(route).copied().unwrap_or_default();
+    let want = [
+        ("/drive/v3/changes/startPageToken", 1),
+        ("/drive/v3/files", expected.listings),
+        // The folder's own `files.get`, then each download.
+        ("/drive/v3/files/{file_id}", 1 + expected.downloads),
+        ("/drive/v3/files/{file_id}/export", expected.exports),
+    ];
+    for route in calls.keys() {
+        if !want.iter().any(|(r, _)| r == route) {
+            problems.push(format!("{route}: not a method the sync reads"));
+        }
     }
-    JournalCheck {
-        calls: counts(journal),
-        problems,
+    for (route, count) in want {
+        let got = n(route);
+        if got != count {
+            problems.push(format!("{route}: {got} calls for {count}"));
+        }
+    }
+    JournalCheck { calls, problems }
+}
+
+/// What a first sync of `folder` must call, from a Drive inject body and the adapter's page
+/// size. A file without a `mimeType` is injected as a Google Doc; a sheet is a Google Sheet.
+pub fn drive_expected(drive: &serde_json::Value, folder: &str, page: u32) -> DriveExpected {
+    const FOLDER: &str = "application/vnd.google-apps.folder";
+    const DOC: &str = "application/vnd.google-apps.document";
+    let list = |key: &str| drive[key].as_array().map_or(&[][..], Vec::as_slice);
+    let (files, sheets) = (list("files"), list("sheets"));
+    let all = || files.iter().chain(sheets);
+    let in_folder = |f: &serde_json::Value, p: &str| {
+        f["parents"]
+            .as_array()
+            .is_some_and(|ps| ps.iter().any(|x| x == p))
+    };
+    // The tree: the folder and every folder under it.
+    let mut tree = vec![folder.to_owned()];
+    let mut i = 0;
+    while let Some(p) = tree.get(i).cloned() {
+        tree.extend(
+            files
+                .iter()
+                .filter(|f| f["mimeType"] == FOLDER && in_folder(f, &p))
+                .filter_map(|f| f["id"].as_str().map(str::to_owned)),
+        );
+        i += 1;
+    }
+    let under = |f: &serde_json::Value| tree.iter().any(|p| in_folder(f, p));
+    let page = usize::try_from(page).unwrap_or(usize::MAX).max(1);
+    let mime = |f: &serde_json::Value| f["mimeType"].as_str().unwrap_or(DOC).to_owned();
+    DriveExpected {
+        // A folder's last page says there is no more; an empty folder still takes one call.
+        listings: tree
+            .iter()
+            .map(|p| {
+                all()
+                    .filter(|f| in_folder(f, p))
+                    .count()
+                    .div_ceil(page)
+                    .max(1)
+            })
+            .sum(),
+        exports: files.iter().filter(|f| under(f) && mime(f) == DOC).count()
+            + sheets.iter().filter(|f| under(f)).count(),
+        downloads: files
+            .iter()
+            .filter(|f| under(f) && mime(f) == "text/plain")
+            .count(),
     }
 }
 
@@ -209,11 +284,64 @@ mod tests {
         );
     }
 
+    const DRIVE: DriveExpected = DriveExpected {
+        listings: 1,
+        exports: 2,
+        downloads: 0,
+    };
+
+    fn drive_first_sync() -> Vec<JournalEntry> {
+        vec![
+            entry("GET", "/drive/v3/changes/startPageToken", 200),
+            entry("GET", "/drive/v3/files/{file_id}", 200),
+            entry("GET", "/drive/v3/files", 200),
+            entry("GET", "/drive/v3/files/{file_id}/export", 200),
+            entry("GET", "/drive/v3/files/{file_id}/export", 200),
+        ]
+    }
+
     #[test]
-    fn drive_needs_reads_and_at_least_one_call() {
-        assert!(check_drive(&[entry("GET", "/drive/v3/files", 200)]).passed());
-        assert!(!check_drive(&[]).passed());
-        assert!(!check_drive(&[entry("PATCH", "/drive/v3/files/D_SPRAY", 403)]).passed());
+    fn drive_needs_reads_and_the_expected_calls() {
+        let check = check_drive(&drive_first_sync(), DRIVE);
+        assert!(check.passed(), "{:?}", check.problems);
+        assert_eq!(
+            check_drive(&[], DRIVE).problems,
+            [
+                "/drive/v3/changes/startPageToken: 0 calls for 1",
+                "/drive/v3/files: 0 calls for 1",
+                "/drive/v3/files/{file_id}: 0 calls for 1",
+                "/drive/v3/files/{file_id}/export: 0 calls for 2",
+            ]
+        );
+        let mut journal = drive_first_sync();
+        journal.push(entry("PATCH", "/drive/v3/files/{file_id}", 403));
+        assert_eq!(
+            check_drive(&journal, DRIVE).problems,
+            [
+                "PATCH /drive/v3/files/{file_id}: not a read",
+                "PATCH /drive/v3/files/{file_id}: status 403",
+                "/drive/v3/files/{file_id}: 2 calls for 1",
+            ]
+        );
+    }
+
+    #[test]
+    fn the_drive_fixture_takes_one_listing_and_4_exports() {
+        let drive: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/era/maple-row/google-drive.json"
+        ))
+        .unwrap();
+        // Three Docs, one Sheet and a PDF read by name only, in one folder.
+        assert_eq!(
+            drive_expected(&drive, "F_FARM", 1000),
+            DriveExpected {
+                listings: 1,
+                exports: 4,
+                downloads: 0,
+            }
+        );
+        // A page of 2 takes three listings of the folder's 5 files.
+        assert_eq!(drive_expected(&drive, "F_FARM", 2).listings, 3);
     }
 
     #[test]

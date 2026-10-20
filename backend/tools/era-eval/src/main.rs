@@ -218,9 +218,9 @@ async fn evaluate(args: &Args, api_key: &SecretString) -> anyhow::Result<Report>
         bench::slack_source(&http, slack.base()),
     );
     let drive_base = std::env::var("ERA_GOOGLE_BASE").ok();
+    let drive_fixture = fixture(FIXTURE, "google-drive.json");
     if let Some(source) = bench::drive_source(&http, drive_base.as_deref()) {
-        let tenant =
-            Tenant::create(SimKind::Drive, Some(&fixture(FIXTURE, "google-drive.json"))).await;
+        let tenant = Tenant::create(SimKind::Drive, Some(&drive_fixture)).await;
         bench::connector(
             store.as_ref(),
             ids.as_ref(),
@@ -259,7 +259,10 @@ async fn evaluate(args: &Args, api_key: &SecretString) -> anyhow::Result<Report>
         journal::slack_expected(&slack_fixture, &CHANNELS, bench::SLACK_PAGE),
     );
     let drive_journal = match &drive {
-        Some(d) => Some(journal::check_drive(&d.requests().await)),
+        Some(d) => Some(journal::check_drive(
+            &d.requests().await,
+            journal::drive_expected(&drive_fixture, DRIVE_FOLDER, bench::drive_page()),
+        )),
         None => None,
     };
 
