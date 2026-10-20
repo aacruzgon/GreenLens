@@ -1,6 +1,6 @@
 # PDM Backend: `integrations` crate
 
-> **Status:** Draft v0.7.2, 2026-10-20. v0.7.2: `google_drive::DriveSource` implements the `FarmSource` port (E4.3): the start token taken before a recursive first listing, then `changes.list` read to its last page with only the files under the folder kept, through a cursor that holds the folder tree and the files held, so a folder moved out takes its files and one moved in is listed; 25 files a page; `FolderListing::tree` records each folder's parent, `DriveConfig::era` points the client at a simulator, and `era_sim::fidelity` reads a simulator's fidelity. v0.7.1: a Slack thread's cursor keeps `reply_count`, so a deleted reply reads the thread again, and the end of a pass checks older threads for new replies (`conversations.replies`, `limit=1`, round-robin) up to the sync's `probe_limit`, two per connector run; a failed check other than a refused token keeps the page, a deleted parent is forgotten and its record removed, an answer for another message is skipped, and threads past 180 days are forgotten before any check; transport errors drop the request URL. v0.7: `slack::SlackSource` implements the `FarmSource` port for the sync (E4.2): one history page a call, the replies of changed threads, a name per user and team for a day, and its own cursor; `FarmClientError::into_source_error` maps a client failure to the port's error (section 15). v0.6: adds `farm`, `slack` and `google_drive`, the standalone clients for the farm connectors, and `era_sim`, the test support for Era's simulators (section 15, which moves the sections after it down one); the Era tests run in one serial nextest group (section 18). v0.5: adds `agent_memory`, the `BeliefStore` over `SurrealDB` Agent Memory's REST API (section 14; the sections after it moved down one), 13 tests; 77 in all. v0.4: checked against Anthropic's documentation and the first live calls: the sanitiser turns `oneOf` into `enum` or `anyOf` (refused live), turns a nullable enum into one `enum` holding `null` so it isn't a union-typed parameter, and drops `format`s the API doesn't list; token counts that are `null` read as 0 and a missing `usage` defaults; `StopReason::ModelContextWindowExceeded`; 64 tests. v0.3.3: the Clerk tests generate their RSA key pair at run time, so no key file is committed, and the Svix tests use a made-up secret. v0.3.2: section 4 says the worker builds its client with a 600 s read timeout, not the 60 s default, because its VLM and hosted LLM calls aren't streamed, and their 240 s and 300 s deadlines end a slow call; the skills table became a plain list of the extra dependencies. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
+> **Status:** Draft v0.7.2, 2026-10-20. v0.7.2: `google_drive::DriveSource` implements the `FarmSource` port (E4.3): the start token taken before a recursive first listing, then `changes.list` read to its last page with only the files under the folder kept, through a cursor that holds the folder tree and the files held, so a folder moved out takes its files and one moved in is listed; 25 files a page; `FolderListing::tree` records each folder's parent, `DriveConfig::era` points the client at a simulator, and `era_sim::fidelity` reads a simulator's fidelity. After its audit: `changes_page` reads one page of `changes.list` and the sync's backlog goes a page at a time; a change with no file id (a shared drive's own) is skipped; a refused change token or an unreadable cursor resyncs with a listing that reports every file in `FarmPage::listed`; `files.get` (`DriveClient::file`) checks the chosen folder first; past 500 files or folders is `too_large`; a file whose read keeps failing is tried once a run and skipped after 5; a binary `text/plain` file is kept by name. v0.7.1: a Slack thread's cursor keeps `reply_count`, so a deleted reply reads the thread again, and the end of a pass checks older threads for new replies (`conversations.replies`, `limit=1`, round-robin) up to the sync's `probe_limit`, two per connector run; a failed check other than a refused token keeps the page, a deleted parent is forgotten and its record removed, an answer for another message is skipped, and threads past 180 days are forgotten before any check; transport errors drop the request URL. v0.7: `slack::SlackSource` implements the `FarmSource` port for the sync (E4.2): one history page a call, the replies of changed threads, a name per user and team for a day, and its own cursor; `FarmClientError::into_source_error` maps a client failure to the port's error (section 15). v0.6: adds `farm`, `slack` and `google_drive`, the standalone clients for the farm connectors, and `era_sim`, the test support for Era's simulators (section 15, which moves the sections after it down one); the Era tests run in one serial nextest group (section 18). v0.5: adds `agent_memory`, the `BeliefStore` over `SurrealDB` Agent Memory's REST API (section 14; the sections after it moved down one), 13 tests; 77 in all. v0.4: checked against Anthropic's documentation and the first live calls: the sanitiser turns `oneOf` into `enum` or `anyOf` (refused live), turns a nullable enum into one `enum` holding `null` so it isn't a union-typed parameter, and drops `format`s the API doesn't list; token counts that are `null` read as 0 and a missing `usage` defaults; `StopReason::ModelContextWindowExceeded`; 64 tests. v0.3.3: the Clerk tests generate their RSA key pair at run time, so no key file is committed, and the Svix tests use a made-up secret. v0.3.2: section 4 says the worker builds its client with a 600 s read timeout, not the 60 s default, because its VLM and hosted LLM calls aren't streamed, and their 240 s and 300 s deadlines end a slow call; the skills table became a plain list of the extra dependencies. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
 
 Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate implements. Every listing below is copied from the compiled source of `crates/integrations`. `cargo check`, `cargo clippy -p integrations --all-targets` and `cargo test -p integrations` all pass: 77 tests, against `wiremock` servers and the live responses recorded on 2026-10-15.
 
@@ -3626,6 +3626,21 @@ impl DriveClient {
         read_text(response).await
     }
 
+    /// One file's or folder's metadata (`files.get` with the listing's fields). A file the token
+    /// can't see is `NotFound`.
+    pub async fn file(
+        &self,
+        token: &SecretString,
+        file_id: &str,
+    ) -> Result<DriveFile, FarmClientError> {
+        let path = format!("/drive/v3/files/{}", segment(file_id));
+        self.json("files.get", self.config.retry, || {
+            self.get(token, &path)
+                .query(&[("fields", FILE_FIELDS), ("supportsAllDrives", "true")])
+        })
+        .await
+    }
+
     /// `changes.getStartPageToken`: the token a first sync saves.
     pub async fn start_page_token(&self, token: &SecretString) -> Result<String, FarmClientError> {
         let start: wire::StartPageToken = self
@@ -3637,18 +3652,50 @@ impl DriveClient {
         Ok(start.start_page_token)
     }
 
+    /// One page of `changes.list` from `page_token`: its changes, and either the next page's
+    /// token or, on the last page, `newStartPageToken`. A page with neither is `Malformed`. An
+    /// unknown or expired token is `Refused` (`400`, reason `invalid`) or `NotFound`.
+    pub async fn changes_page(
+        &self,
+        token: &SecretString,
+        page_token: &str,
+    ) -> Result<ChangePage, FarmClientError> {
+        let fields = format!(
+            "nextPageToken,newStartPageToken,changes(fileId,removed,time,file({FILE_FIELDS}))"
+        );
+        let page_size = self.page_size();
+        let page: wire::ChangeList = self
+            .json("changes.list", self.config.retry, || {
+                self.get(token, "/drive/v3/changes").query(&[
+                    ("pageToken", page_token),
+                    ("fields", fields.as_str()),
+                    ("pageSize", page_size.as_str()),
+                    ("supportsAllDrives", "true"),
+                    ("includeItemsFromAllDrives", "true"),
+                    ("includeRemoved", "true"),
+                ])
+            })
+            .await?;
+        let page = ChangePage {
+            changes: page.changes,
+            next_page_token: page.next_page_token.filter(|t| !t.is_empty()),
+            new_start_page_token: page.new_start_page_token.filter(|t| !t.is_empty()),
+        };
+        if page.next_page_token.is_none() && page.new_start_page_token.is_none() {
+            return Err(malformed("changes.list"));
+        }
+        Ok(page)
+    }
+
     /// Every change since `page_token`, reading `changes.list` page by page until the page
     /// that carries `newStartPageToken`. Drive doesn't order the pages by time, so the caller
-    /// gets them all or an error.
+    /// gets them all or an error. The sync reads one page at a time instead
+    /// ([`Self::changes_page`]), so a long backlog never has to fit in one call.
     pub async fn changes(
         &self,
         token: &SecretString,
         page_token: &str,
     ) -> Result<ChangeSet, FarmClientError> {
-        let fields = format!(
-            "nextPageToken,newStartPageToken,changes(fileId,removed,time,file({FILE_FIELDS}))"
-        );
-        let page_size = self.page_size();
         let mut current = page_token.to_owned();
         let mut changes = Vec::new();
         let mut pages = 0_u32;
@@ -3657,21 +3704,10 @@ impl DriveClient {
             if pages == MAX_PAGES {
                 return Err(malformed("changes.list"));
             }
-            let page: wire::ChangeList = self
-                .json("changes.list", self.config.retry, || {
-                    self.get(token, "/drive/v3/changes").query(&[
-                        ("pageToken", current.as_str()),
-                        ("fields", fields.as_str()),
-                        ("pageSize", page_size.as_str()),
-                        ("supportsAllDrives", "true"),
-                        ("includeItemsFromAllDrives", "true"),
-                        ("includeRemoved", "true"),
-                    ])
-                })
-                .await?;
+            let page = self.changes_page(token, &current).await?;
             pages += 1;
             changes.extend(page.changes);
-            if let Some(new_start) = page.new_start_page_token.filter(|t| !t.is_empty()) {
+            if let Some(new_start) = page.new_start_page_token {
                 tracing::debug!(
                     vendor = VENDOR,
                     changes = changes.len(),
@@ -3776,7 +3812,7 @@ impl DriveClient {
 
 **OAuth with PKCE.** `Pkce::generate` makes a verifier and its S256 challenge; the app sends the challenge and `exchange_code` sends the verifier. `refresh` trades a refresh token for an access token, and `revoke` ends the grant on disconnect. The only scope is `drive.readonly`, so the token response has no `id_token`. `about_email` calls `about.get` for the account's email. `invalid_grant` on a refresh is `AuthRefused`.
 
-**Reading.** `list_folder` walks a folder recursively across `nextPageToken`, and stops at 500 files or 500 folders (`MAX_FILES`, `MAX_FOLDERS`); `FolderListing::truncated` says so. Trashed files are left out, and a shared drive's folder works. `export` returns a Doc as text or a Sheet as CSV, and `download_text` returns a plain-text file. Both cut the text at `MAX_TEXT_BYTES` (1 MB), so one large file can't fill memory. `start_page_token` gives the cursor a first sync saves, and `changes` reads `changes.list` page by page up to the last page, the one carrying `newStartPageToken`. Drive doesn't order the pages by time, so the caller gets all of them or an error. `FolderListing::tree` gives each folder found under the chosen one with the folder it was listed in. `DriveConfig::era` points the client at an Era simulator (its `/token` and `/o/oauth2/revoke`), with no back-off between retries; a `Retry-After` up to 60 s is still honoured.
+**Reading.** `list_folder` walks a folder recursively across `nextPageToken`, and stops at 500 files or 500 folders (`MAX_FILES`, `MAX_FOLDERS`); `FolderListing::truncated` says so. Trashed files are left out, and a shared drive's folder works. `export` returns a Doc as text or a Sheet as CSV, and `download_text` returns a plain-text file. Both cut the text at `MAX_TEXT_BYTES` (1 MB), so one large file can't fill memory. `file` reads one file's or folder's metadata (`files.get`). `start_page_token` gives the cursor a first sync saves. `changes_page` reads one page of `changes.list`: its changes and either `nextPageToken` or, on the last page, `newStartPageToken` (a page with neither is `Malformed`; an unknown token is `400` reason `invalid` on the simulator, ran 2026-10-20). `changes` reads every page up to the last; the sync uses `changes_page`. A change with no `fileId` (a shared drive's own, `changeType: "drive"`) parses with an empty `file_id`. `FolderListing::tree` gives each folder found under the chosen one with the folder it was listed in. `DriveConfig::era` points the client at an Era simulator (its `/token` and `/o/oauth2/revoke`), with no back-off between retries; a `Retry-After` up to 60 s is still honoured.
 
 ### `DriveSource`: the port for the sync
 
@@ -3786,6 +3822,14 @@ impl DriveClient {
 /// Files read on one page. A page also stops once it holds [`TEXT_PER_PAGE`] bytes of text.
 pub const FILES_PER_PAGE: usize = 25;
 
+/// Failed file reads after which a page stops: each can take the client's retries and
+/// timeouts.
+pub const FAILURES_PER_PAGE: usize = 2;
+
+/// Runs a file's read may fail in before it is skipped, its record left as it was: about an
+/// hour of an outage at one run every 15 minutes.
+pub const MAX_TRIES: u8 = 5;
+
 /// The farm-connector adapter for Google Drive: one per process and per endpoint (Google, or
 /// an Era simulator).
 #[derive(Debug, Clone)]
@@ -3794,11 +3838,13 @@ pub struct DriveSource {
 }
 ```
 
-- **A first sync** takes `changes.getStartPageToken` before it lists the chosen folder recursively, so a change made during the listing is read by the next sync. Every file found is queued.
-- **A page** reads the next files of the queue: at most `FILES_PER_PAGE` (25), and it stops early once it holds 8 MB of text. A Doc is exported as text, a Sheet as CSV (its first tab), a `text/plain` file downloaded, anything else kept by name with no text. A file Drive won't hand over (`Refused`, such as `fileNotDownloadable`) is kept by name; one gone since it was queued (`404`) is reported in `FarmPage::removed`. Any other error fails the page, so the sync keeps its cursor and the next run reads the same files again. `more` is set while the queue has files.
-- **Later syncs**, when no pass is in progress, read `changes.list` from the saved token to its last page, then save `newStartPageToken`. The change set is applied to the cursor (folders first, then files) and the files to read again are queued.
-- **The cursor** is the adapter's JSON in `SyncCursor`: `token`, where `changes.list` continues; `folders`, every folder under the chosen one with the folder it is in; `files`, every file held with its folder; `queue`, the files still to read with their name, type, `modifiedTime` and `webViewLink`. A cursor it can't read starts a first sync.
-- **Under the folder.** Drive gives a file's `parents`, not its path, and moving a folder changes only that folder. A changed folder is placed under its new parent, or dropped when trashed or deleted, and the tree keeps the folders whose parents lead to the chosen folder. A folder that left takes its subfolders and their files with it; a folder that joined is listed recursively, since its files bring no change of their own. A file change is kept when one of its parents is the chosen folder or a folder of the tree; trashed, deleted or moved elsewhere, the file is dropped. Only files held before are reported in `removed`, so the thousands of changes elsewhere in an account cost only the reading. The latest change of a file wins, and a change with no file that isn't a removal is skipped. Folders and files are capped at 500 each, like the listing.
+- **A listing** (the first sync, a resync): `files.get` on the chosen folder (gone, trashed or not a folder is `SourceMissing`), then `changes.getStartPageToken` before the folder is listed recursively, so a change made during the listing is read by the next sync. Every file found is queued, and the page reports every file id listed in `FarmPage::listed`, so the sync deletes the source's records of files no longer there, after storing the page.
+- **A page** reads the next files of the queue: at most `FILES_PER_PAGE` (25), and it stops early once it holds 8 MB of text. A Doc is exported as text, a Sheet as CSV (its first tab), a `text/plain` file downloaded, anything else kept by name with no text. A file Drive won't hand over (`Refused`, such as `fileNotDownloadable`), and a `text/plain` file whose characters are more than a tenth U+FFFD or NUL (a binary file), are kept by name; one gone since it was queued (`404`) is reported in `FarmPage::removed`. A refused token or a `429` fails the page, so the sync keeps its cursor. `more` is set while the queue has files or a backlog of changes goes on.
+- **A file whose read fails** another way (Drive down for it, a timeout, an answer that doesn't parse) goes to the back of the queue with its tries counted and the run's start (`FarmPageRequest::oldest` plus 180 days) noted, and the page goes on; it stops after `FAILURES_PER_PAGE` (2) such failures. A file is tried once a run; after `MAX_TRIES` (5) runs it is skipped and its record stays as it was. A page left with only files that failed in this run fails with `vendor_unavailable`, so the run stops and the next one, 15 minutes later, tries them again.
+- **Later syncs**, when the queue is empty, read one page of `changes.list` from the saved token (`changes_page`) and save its `nextPageToken`, or `newStartPageToken` on the last page, so a long backlog spreads over pages and runs and a `429` loses at most one page. Each page's changes are applied to the cursor (folders first, then files) and the files to read again are queued. A token Drive refuses (`400`) or doesn't know (`404`) starts a resync: the listing above.
+- **The cursor** is the adapter's JSON in `SyncCursor`: `token`, where `changes.list` continues; `paging`, a backlog in progress; `folders`, every folder under the chosen one with the folder it is in; `files`, every file held with its folder; `queue`, the files still to read with their name, type, `modifiedTime`, `webViewLink` and failed tries. A cursor it can't read starts a listing.
+- **Under the folder.** Drive gives a file's `parents`, not its path, and moving a folder changes only that folder. A changed folder is placed under its new parent, or dropped when trashed or deleted, and the tree keeps the folders whose parents lead to the chosen folder. A folder that left takes its subfolders and their files with it; a folder that joined is listed recursively, since its files bring no change of their own. A file change is kept when one of its parents is the chosen folder or a folder of the tree; trashed, deleted or moved elsewhere, the file is dropped. Only files held before are reported in `removed`, so the thousands of changes elsewhere in an account cost only the reading. The latest change of a file wins; a change with no file id, or with no file that isn't a removal, is skipped. A listed file whose parent isn't a folder of the tree is left out.
+- **Limits.** Past 500 files or 500 folders under the chosen folder (`MAX_FILES`, `MAX_FOLDERS`; a truncated listing, a change or a folder moved in), the page fails with `FarmSourceError::TooLarge`, stored as `too_large` like the garden's 10,000 records: nothing more runs until the owner chooses a smaller folder.
 - **The chosen folder** trashed or deleted is `SourceMissing`; any other `404` (a file, a page token) is a bad answer, `vendor_unavailable`.
 - **No re-read.** `reread_window()` is `None`: `changes.list` reports what is gone, so the sync never deletes a Drive record by absence.
 
@@ -3884,7 +3930,7 @@ The two LLM clients keep their own enums (`AnthropicError`, `OpenAiCompatError`)
 | Clerk | tokens signed with a throwaway RSA key, generated once per test run with `aws-lc-rs` so no private key is committed, and served as a JWKS by `wiremock`: issuer, expiry, `nbf`, `azp`, leeway, missing `nbf`, refetch limit; `DELETE` 200, 404 and 429 |
 | Svix | the `svix` crate's `Webhook::sign` as the oracle; rotation (several entries), tampering, ±301 s |
 | Agent Memory | `wiremock`, exact request bodies (the service ignores unknown fields silently): `record` and the scope cache (one registration for two writes, none after the first), the `400 unknown scope node` re-register and single retry, a 5xx write retried twice, `current` (plant and garden merged, superseded dropped, label and both timestamp forms, 404 as empty), `history` (cursor followed through a short page, newest first), `search` (exact lens, hit filter, prefix stripped), `forget` (trailing slash, cache dropped), the 500, 429, 401, 403 and 422 mapping, `Debug` without the key |
-| Slack, Google Drive | `wiremock`, exact requests: `ok:false` at 200 for each code group, `Retry-After`, 5xx retries, the pacer per (team, method) and its bounded cache, paging by cursor, `users.info` without the email, `permalink`; Drive's OAuth with PKCE, `about.get`, the recursive listing and its cap of 500, the 1 MB cut, `changes` to the last page, the `403` reasons, a refused scope as `auth_refused`; no body in any error or log. `DriveSource`: the start token before the listing, nested folders, 25 files a page from the cursor, changes kept under the folder (edited, moved out, trashed, deleted, created in a subfolder, elsewhere), a folder moved out taking its file and one moved in listed with its subfolder, the chosen folder trashed as `source_missing`, the 1 MB cut, a locked file kept by name and a gone one removed, a `429` with its `Retry-After` |
+| Slack, Google Drive | `wiremock`, exact requests: `ok:false` at 200 for each code group, `Retry-After`, 5xx retries, the pacer per (team, method) and its bounded cache, paging by cursor, `users.info` without the email, `permalink`; Drive's OAuth with PKCE, `about.get`, the recursive listing and its cap of 500, the 1 MB cut, `changes` to the last page, the `403` reasons, a refused scope as `auth_refused`; no body in any error or log. `DriveSource`: the folder checked, then the start token before the listing, nested folders and every id listed; a chosen folder gone, trashed or not a folder as `source_missing`; 25 files a page from the cursor; 501 files as `too_large`, listed or by a change; changes kept under the folder (edited, moved out, trashed, deleted, created in a subfolder, elsewhere, a shared drive's change without a file id); a backlog read one page at a time; a refused or unknown change token, and an unreadable cursor, listing again; a folder moved out taking its file and one moved in listed with its subfolder; the chosen folder trashed as `source_missing`; a change with no file that isn't a removal ignored; a listed file outside the tree left out; the 1 MB cut, a three-byte character included; a locked file and a binary `text/plain` kept by name and a gone one removed; a file whose read keeps failing tried once a run and skipped after 5; a `429` with its `Retry-After` |
 | Era | see below |
 | Expo | ticket order, `DeviceNotRegistered` in tickets and receipts, batches of 100, a failed whole push |
 
