@@ -41,7 +41,10 @@ use super::{
     FarmSources, FarmSync, RunEnd, SYNC_EVERY, SyncConfig, chunk, delete_old_messages,
     seed::{self, EraSeed, Seeded},
 };
-use crate::sealing::{ConnectorKey, SealPurpose, StoredTokens};
+use crate::{
+    connect::{ConnectVendors, MockConnectVendors},
+    sealing::{ConnectorKey, SealPurpose, StoredTokens},
+};
 
 const KEY_HEX: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 const DIM: usize = 4;
@@ -132,6 +135,13 @@ pub async fn connector(
         .await
         .expect("connector");
     id
+}
+
+/// Vendors whose tokens never need renewing: `refresh` answers `None`.
+pub fn vendors() -> Arc<dyn ConnectVendors> {
+    let mut vendors = MockConnectVendors::new();
+    vendors.expect_refresh().returning(|_, _, _| Ok(None));
+    Arc::new(vendors)
 }
 
 /// Counts the texts it embeds; every vector is the same unit vector.
@@ -270,6 +280,7 @@ fn bench(store: Arc<SurrealStore>, source: Arc<dyn FarmSource>, config: SyncConf
         embedder.clone(),
         clock.clone(),
         key(),
+        vendors(),
         FarmSources::default().with(ConnectorEndpoint::Vendor, source),
         config,
     );
@@ -557,6 +568,7 @@ async fn a_token_that_does_not_open_is_refused_too() {
         b.embedder.clone(),
         b.clock.clone(),
         other,
+        vendors(),
         FarmSources::default().with(
             ConnectorEndpoint::Vendor,
             FakeSource::new(None, Box::new(|_| panic!("never read"))),
@@ -2039,4 +2051,407 @@ async fn seeding_leaves_a_connector_being_deleted_to_its_deletion() {
         "not revived"
     );
     assert_eq!(after.secret, before.secret, "its token isn't sealed again");
+}
+
+/// The Drive sync (E4.3) over [`DriveSource`] against a mocked Google API: the token renewed
+/// before a run and after a refusal, each stored over the sealed value it came from; an `era`
+/// connector that never renews; nested folders and a file moved out; the 1 MB cut; a `429`
+/// that keeps the cursor.
+mod drive {
+    use domain::ports::ConnectorRow;
+    use integrations::google_drive::{DriveClient, DriveConfig, DriveSource, MAX_TEXT_BYTES};
+    use serde_json::{Value, json};
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{header, method, path, path_regex, query_param},
+    };
+
+    use super::*;
+    use crate::connect::VendorError;
+
+    const ROOT: &str = "F_ROOT";
+    const DOC: &str = "application/vnd.google-apps.document";
+    const FOLDER: &str = "application/vnd.google-apps.folder";
+    const PDF: &str = "application/pdf";
+
+    fn grant(access: &str, refresh: Option<&str>, expires_in: Duration) -> StoredTokens {
+        StoredTokens {
+            access_token: SecretString::from(access),
+            refresh_token: refresh.map(SecretString::from),
+            expires_at: Some(pinned().plus(expires_in)),
+        }
+    }
+
+    fn file(id: &str, mime: &str, parent: &str) -> Value {
+        json!({"id": id, "name": format!("name of {id}"), "mimeType": mime, "parents": [parent],
+            "modifiedTime": "2026-10-14T08:00:00.000Z",
+            "webViewLink": format!("https://docs.google.com/document/d/{id}/edit")})
+    }
+
+    /// The start token `100`, `files` listed in each folder, and every Doc exporting as
+    /// `<id> text`.
+    async fn drive(server: &MockServer, folders: &[(&str, Vec<Value>)]) {
+        Mock::given(method("GET"))
+            .and(path("/drive/v3/changes/startPageToken"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({ "startPageToken": "100" })),
+            )
+            .mount(server)
+            .await;
+        for (folder, files) in folders {
+            Mock::given(method("GET"))
+                .and(path("/drive/v3/files"))
+                .and(query_param(
+                    "q",
+                    format!("'{folder}' in parents and trashed=false"),
+                ))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "files": files })))
+                .mount(server)
+                .await;
+        }
+        Mock::given(method("GET"))
+            .and(path_regex(r"^/drive/v3/files/[^/]+/export$"))
+            .respond_with(|r: &wiremock::Request| {
+                let id = r
+                    .url
+                    .path()
+                    .split('/')
+                    .nth(4)
+                    .unwrap_or_default()
+                    .to_owned();
+                ResponseTemplate::new(200).set_body_string(format!("{id} text"))
+            })
+            .mount(server)
+            .await;
+    }
+
+    /// Answers `401` to `token`, ahead of every other mock.
+    async fn refuse(server: &MockServer, token: &str) {
+        Mock::given(header("authorization", format!("Bearer {token}")))
+            .respond_with(
+                ResponseTemplate::new(401)
+                    .set_body_json(json!({"error": {"code": 401, "status": "UNAUTHENTICATED"}})),
+            )
+            .with_priority(1)
+            .mount(server)
+            .await;
+    }
+
+    /// A Drive connector on `ROOT`, its tokens sealed as the connect routes seal them.
+    async fn connector(
+        b: &Bench,
+        endpoint: ConnectorEndpoint,
+        tokens: &StoredTokens,
+    ) -> (GardenId, ConnectorId) {
+        let (user, garden) = garden(&b.store, &b.ids, "drive").await;
+        let id: ConnectorId = b.ids.id();
+        b.store
+            .seed_connector(
+                garden,
+                NewConnector {
+                    id,
+                    kind: ConnectorKind::GoogleDrive,
+                    status: ConnectorStatus::Active,
+                    endpoint,
+                    created_by: user,
+                    account: Some(ConnectorAccount::GoogleDrive {
+                        email: "farm@example.org".into(),
+                    }),
+                    secret: Some(tokens.seal(&key(), id)),
+                    oauth: None,
+                    sources: vec![ConnectorSource {
+                        id: ROOT.into(),
+                        name: "Farm records".into(),
+                    }],
+                    created_at: b.clock.now(),
+                },
+            )
+            .await
+            .expect("connector");
+        (garden, id)
+    }
+
+    fn bench(
+        store: Arc<SurrealStore>,
+        server: &MockServer,
+        endpoint: ConnectorEndpoint,
+        vendors: MockConnectVendors,
+    ) -> Bench {
+        let clock = Arc::new(FixedClock::at(pinned()));
+        let embedder = Arc::new(CountingEmbedder::default());
+        let source = Arc::new(DriveSource::new(DriveClient::new(
+            integrations::http::client(&integrations::http::HttpConfig::default())
+                .expect("the HTTP client builds"),
+            DriveConfig::era(server.uri()),
+        )));
+        let sync = FarmSync::new(
+            store.clone(),
+            embedder.clone(),
+            clock.clone(),
+            key(),
+            Arc::new(vendors),
+            FarmSources::default().with(endpoint, source),
+            SyncConfig::default(),
+        );
+        Bench {
+            store,
+            clock,
+            embedder,
+            sync,
+            ids: SequentialIds::default(),
+        }
+    }
+
+    fn stored_access(row: &ConnectorRow) -> String {
+        let sealed = row.secret.as_ref().expect("sealed");
+        StoredTokens::unseal(&key(), row.connector.id, sealed)
+            .expect("opens")
+            .access_token
+            .expose_secret()
+            .to_owned()
+    }
+
+    #[tokio::test]
+    async fn an_expiring_google_token_is_renewed_before_the_run_and_stored() {
+        let server = MockServer::start().await;
+        drive(&server, &[(ROOT, vec![file("D1", DOC, ROOT)])]).await;
+        refuse(&server, "ya29.old").await;
+        let mut vendors = MockConnectVendors::new();
+        vendors
+            .expect_refresh()
+            .withf(|kind, tokens, force| {
+                *kind == ConnectorKind::GoogleDrive
+                    && tokens.access_token.expose_secret() == "ya29.old"
+                    && !force
+            })
+            .times(1)
+            .returning(|_, _, _| {
+                Ok(Some(grant(
+                    "ya29.new",
+                    Some("1//refresh"),
+                    Duration::from_hours(1),
+                )))
+            });
+        let b = bench(store().await, &server, ConnectorEndpoint::Vendor, vendors);
+        let old = grant("ya29.old", Some("1//refresh"), Duration::from_mins(1));
+        let (garden, id) = connector(&b, ConnectorEndpoint::Vendor, &old).await;
+
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        assert_eq!(b.count(garden).await, 1);
+        let row = b.row(id).await;
+        assert_eq!(stored_access(&row), "ya29.new", "stored over the one read");
+    }
+
+    #[tokio::test]
+    async fn a_refused_google_token_is_renewed_once_and_the_page_asked_again() {
+        let server = MockServer::start().await;
+        drive(&server, &[(ROOT, vec![file("D1", DOC, ROOT)])]).await;
+        refuse(&server, "ya29.old").await;
+        let mut vendors = MockConnectVendors::new();
+        // Not expiring yet: the client leaves it, until Google refuses it.
+        vendors
+            .expect_refresh()
+            .withf(|_, _, force| !force)
+            .times(1)
+            .returning(|_, _, _| Ok(None));
+        vendors
+            .expect_refresh()
+            .withf(|_, tokens, force| *force && tokens.access_token.expose_secret() == "ya29.old")
+            .times(1)
+            .returning(|_, _, _| {
+                Ok(Some(grant(
+                    "ya29.new",
+                    Some("1//refresh"),
+                    Duration::from_hours(1),
+                )))
+            });
+        let b = bench(store().await, &server, ConnectorEndpoint::Vendor, vendors);
+        let old = grant("ya29.old", Some("1//refresh"), Duration::from_mins(40));
+        let (garden, id) = connector(&b, ConnectorEndpoint::Vendor, &old).await;
+
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        assert_eq!(b.count(garden).await, 1);
+        let row = b.row(id).await;
+        assert_eq!(row.connector.status, ConnectorStatus::Active);
+        assert_eq!(stored_access(&row), "ya29.new");
+    }
+
+    #[tokio::test]
+    async fn a_refused_refresh_makes_the_connector_reauth_needed() {
+        let server = MockServer::start().await;
+        drive(&server, &[(ROOT, vec![file("D1", DOC, ROOT)])]).await;
+        refuse(&server, "ya29.old").await;
+        let mut vendors = MockConnectVendors::new();
+        vendors
+            .expect_refresh()
+            .withf(|_, _, force| !force)
+            .returning(|_, _, _| Ok(None));
+        vendors
+            .expect_refresh()
+            .withf(|_, _, force| *force)
+            .times(1)
+            .returning(|kind, _, _| {
+                Err(VendorError::AuthRefused {
+                    vendor: kind,
+                    code: "invalid_grant".into(),
+                })
+            });
+        let b = bench(store().await, &server, ConnectorEndpoint::Vendor, vendors);
+        let old = grant("ya29.old", Some("1//refresh"), Duration::from_mins(40));
+        let (garden, id) = connector(&b, ConnectorEndpoint::Vendor, &old).await;
+
+        assert_eq!(
+            b.run().await,
+            [(id, RunEnd::Failed(SyncErrorCode::AuthRefused))]
+        );
+        let row = b.row(id).await;
+        assert_eq!(row.connector.status, ConnectorStatus::ReauthNeeded);
+        assert_eq!(row.last_error, Some(SyncErrorCode::AuthRefused));
+        assert_eq!(stored_access(&row), "ya29.old");
+        assert_eq!(b.count(garden).await, 0);
+    }
+
+    /// The seeded demo connector's `ya29.era-demo` has no refresh token, and an `era`
+    /// connector's token never goes to Google's token endpoint.
+    #[tokio::test]
+    async fn an_era_drive_connector_never_renews_its_token() {
+        let server = MockServer::start().await;
+        drive(&server, &[(ROOT, vec![file("D1", DOC, ROOT)])]).await;
+        let mut vendors = MockConnectVendors::new();
+        vendors.expect_refresh().never();
+        let b = bench(store().await, &server, ConnectorEndpoint::Era, vendors);
+        let demo = StoredTokens::bearer(SecretString::from("ya29.era-demo"));
+        let (garden, id) = connector(&b, ConnectorEndpoint::Era, &demo).await;
+
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        assert_eq!(b.count(garden).await, 1);
+        let requests = server.received_requests().await.expect("recorded");
+        assert!(requests.iter().all(|r| {
+            r.headers.get("authorization").and_then(|v| v.to_str().ok())
+                == Some("Bearer ya29.era-demo")
+        }));
+    }
+
+    #[tokio::test]
+    async fn nested_folders_are_read_and_a_file_moved_out_loses_its_records() {
+        let server = MockServer::start().await;
+        drive(
+            &server,
+            &[
+                (
+                    ROOT,
+                    vec![
+                        file("D1", DOC, ROOT),
+                        file("D2", DOC, ROOT),
+                        file("F_SUB", FOLDER, ROOT),
+                    ],
+                ),
+                ("F_SUB", vec![file("D_SUB", DOC, "F_SUB")]),
+            ],
+        )
+        .await;
+        let b = bench(store().await, &server, ConnectorEndpoint::Vendor, {
+            let mut v = MockConnectVendors::new();
+            v.expect_refresh().returning(|_, _, _| Ok(None));
+            v
+        });
+        let tokens = grant("ya29.a", Some("1//r"), Duration::from_hours(1));
+        let (garden, id) = connector(&b, ConnectorEndpoint::Vendor, &tokens).await;
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        assert_eq!(b.count(garden).await, 3, "D1, D2 and the nested D_SUB");
+
+        // D2 moves to another folder; the nested folder moves out with its file.
+        Mock::given(method("GET"))
+            .and(path("/drive/v3/changes"))
+            .and(query_param("pageToken", "100"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "changes": [
+                    {"fileId": "D2", "removed": false, "file": file("D2", DOC, "F_ELSE")},
+                    {"fileId": "F_SUB", "removed": false, "file": file("F_SUB", FOLDER, "F_ELSE")},
+                ],
+                "newStartPageToken": "200"
+            })))
+            .mount(&server)
+            .await;
+        b.clock.advance(SYNC_EVERY);
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        let held = b
+            .store
+            .record_hashes(id, vec!["D1".into(), "D2".into(), "D_SUB".into()])
+            .await
+            .expect("hashes");
+        let ids: Vec<&str> = held.iter().map(|(r, _)| &*r.vendor_id).collect();
+        assert_eq!(ids, ["D1"]);
+    }
+
+    #[tokio::test]
+    async fn a_document_is_cut_at_1_mb_before_chunking() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/drive/v3/files/D_BIG/export"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("spray ".repeat(200_000)))
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        drive(&server, &[(ROOT, vec![file("D_BIG", DOC, ROOT)])]).await;
+        let b = bench(store().await, &server, ConnectorEndpoint::Vendor, {
+            let mut v = MockConnectVendors::new();
+            v.expect_refresh().returning(|_, _, _| Ok(None));
+            v
+        });
+        let tokens = grant("ya29.a", Some("1//r"), Duration::from_hours(1));
+        let (garden, id) = connector(&b, ConnectorEndpoint::Vendor, &tokens).await;
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        // 1.2 MB sent, 1 MB kept: chunks of just under 2,000 characters.
+        let chunks = b.count(garden).await;
+        let full = u32::try_from(MAX_TEXT_BYTES / 1_990).expect("small");
+        assert!((full - 5..=full + 5).contains(&chunks), "{chunks} chunks");
+        assert_eq!(b.embedder.texts(), chunks as usize);
+    }
+
+    #[tokio::test]
+    async fn a_drive_429_keeps_the_cursor_and_the_next_run_continues() {
+        let server = MockServer::start().await;
+        // 25 files fill the first page; the 26th, a Doc, is throttled once.
+        let mut files: Vec<Value> = (0..25)
+            .map(|n| file(&format!("P{n:02}"), PDF, ROOT))
+            .collect();
+        files.push(file("D_LAST", DOC, ROOT));
+        Mock::given(method("GET"))
+            .and(path("/drive/v3/files/D_LAST/export"))
+            .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "120"))
+            .up_to_n_times(1)
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        drive(&server, &[(ROOT, files)]).await;
+        let b = bench(store().await, &server, ConnectorEndpoint::Vendor, {
+            let mut v = MockConnectVendors::new();
+            v.expect_refresh().returning(|_, _, _| Ok(None));
+            v
+        });
+        let tokens = grant("ya29.a", Some("1//r"), Duration::from_hours(1));
+        let (garden, id) = connector(&b, ConnectorEndpoint::Vendor, &tokens).await;
+
+        assert_eq!(
+            b.run().await,
+            [(id, RunEnd::Failed(SyncErrorCode::RateLimited))]
+        );
+        assert_eq!(b.count(garden).await, 25, "the first page is kept");
+        let row = b.row(id).await;
+        assert_eq!(row.next_sync_at, pinned().plus(Duration::from_mins(2)));
+        assert_eq!(row.last_error, Some(SyncErrorCode::RateLimited));
+
+        b.clock.advance(Duration::from_mins(2));
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        assert_eq!(b.count(garden).await, 26);
+        let requests = server.received_requests().await.expect("recorded");
+        let calls = |p: &str| requests.iter().filter(|r| r.url.path() == p).count();
+        assert_eq!(
+            calls("/drive/v3/changes/startPageToken"),
+            1,
+            "not started again"
+        );
+        assert_eq!(calls("/drive/v3/files"), 1, "not listed again");
+    }
 }
