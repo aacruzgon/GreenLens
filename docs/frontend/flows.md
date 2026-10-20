@@ -1,6 +1,6 @@
 # PDM Frontend Flows
 
-> **Status:** Draft v0.4.1, 2026-10-19. v0.4.1: sign-in confirms a new device with an email code instead of a TOTP second factor (section 1).
+> **Status:** Draft v0.4.2, 2026-10-19. v0.4.2: the second factor is a code by text, not TOTP (section 1).
 > v0.4 applies the third audit and contracts v0.8.2: a failed scan supersedes its question first, and a guided check that finishes after a failure is kept for a Retry.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Species and capture:** the species card shows each photo's credit, and discarding a capture also deletes its jar-test task.
@@ -70,8 +70,8 @@ Companion to the [frontend architecture](README.md) and the [screens](screens.md
   │      ▼                                          ▼               │
   │  (auth)/sign-in                          (app) SessionGate      │
   │  email + password ──▶ signIn ──────────▶│                      │
-  │                  │◀── needs_client_trust │ [a new device]       │
-  │  email code ────▶│ verify ──────────────▶│                      │
+  │                  │◀── needs_second_factor│ [phone reserved]     │
+  │  code by text ──▶│ verify ──────────────▶│                      │
   │                  │◀──── session active ──│                      │
   │                  │ guard flips to (app)  │                      │
   │                  │                       │                      │

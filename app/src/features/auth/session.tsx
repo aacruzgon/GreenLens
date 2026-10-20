@@ -1,6 +1,6 @@
 import { ClerkLoaded, ClerkProvider, useAuth, useUser } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { clearTokenProvider, setOnSignedOut, setTokenProvider } from "@/api";
 
@@ -52,6 +52,22 @@ function ClerkSession({ children }: { children: ReactNode }) {
     setOnSignedOut(() => void signOut());
     return () => clearTokenProvider();
   }, [isSignedIn, getToken, signOut]);
+
+  // Two-step sign-in by text: the phone verified at sign-up becomes the account's second factor,
+  // so every later sign-in asks for a code by SMS (Clerk's phone_code second factor).
+  const reserving = useRef(false);
+  useEffect(() => {
+    if (!user || user.twoFactorEnabled || reserving.current) return;
+    const phone = user.phoneNumbers.find((p) => p.verification?.status === "verified");
+    if (!phone || phone.reservedForSecondFactor) return;
+    reserving.current = true;
+    phone
+      .setReservedForSecondFactor({ reserved: true })
+      .catch(() => {})
+      .finally(() => {
+        reserving.current = false;
+      });
+  }, [user]);
 
   const value = useMemo<Session>(
     () => ({

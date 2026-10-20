@@ -1,6 +1,6 @@
 # PDM Frontend Screens
 
-> **Status:** Draft v0.4.1, 2026-10-19. v0.4.1: no authenticator-app second factor; verify takes the sign-up or new-device email code.
+> **Status:** Draft v0.4.2, 2026-10-19. v0.4.2: sign-up takes a phone number, and sign-in asks for a code by text. v0.4.1: no authenticator-app second factor.
 > v0.4 applies the third audit: Google and Apple sign-in are hidden only in embedded web views, and the note delete rule names who deletes which note.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **New-plant sheet:** added, with `POST /plants`.
@@ -98,8 +98,8 @@ Wireframes show layout and content, not visual design. They are drawn at phone w
 | Route | Feature | Shows | Reads | Writes | Who |
 |---|---|---|---|---|---|
 | `(auth)/sign-in` | auth | Email and password; Google and Apple except in embedded web views (`in_app`, [README 13](README.md#13-platform-adapters-and-the-lidar-module)) | Clerk | Clerk | Signed out |
-| `(auth)/sign-up` | auth | New account | Clerk | Clerk | Signed out |
-| `(auth)/verify` | auth | The sign-up email code, or the email code that confirms a new device | Clerk | Clerk | Signed out |
+| `(auth)/sign-up` | auth | New account: email, phone number and password | Clerk | Clerk | Signed out |
+| `(auth)/verify` | auth | A 6-digit code: the sign-up email and phone codes, the code by text at sign-in, or the email code that confirms a new device | Clerk | Clerk | Signed out |
 | `(app)/onboarding` | auth, gardens | Display name, first garden, location consent | `GET /me` | `PATCH /me`, `POST /gardens` | Signed in, no garden |
 | `(tabs)/index` | gardens | Garden home (3.1) | `GET /gardens/{id}`, `GET /gardens/{id}/weather`, `GET /plants`, `GET /tasks`, `GET /tasks?source=forecast_alert`, `GET /memories?garden_id=`, `GET /gardens/{id}/map` | `PATCH /tasks/{id}`, `POST /memories`, starts a scan | All roles; task changes, notes and "Scan" for editors and owners |
 | `(tabs)/tasks` | tasks | Tasks and the alert inbox (3.7) | `GET /tasks` | `POST /tasks`, `PATCH /tasks/{id}`, `DELETE /tasks/{id}` | All read; changes for editors and owners |
@@ -447,7 +447,7 @@ Wireframes show layout and content, not visual design. They are drawn at phone w
 └─────────────────────────────────────┘
 ```
 
-- **Verify** shows a 6-digit code field for the sign-up email code, or for the email code that confirms a new device, with "Send a new code".
+- **Verify** shows a 6-digit code field with "Send a new code": the sign-up email code, then the phone's; the code by text at every sign-in; or the email code that confirms a new device. In development builds, the phone steps show Clerk's test numbers (+1 555 555 0100 to 0199, code 424242).
 - The postal-code-or-city field sends `postal_code` when it looks like a Canadian postal code, otherwise `city`.
 
 ### 3.11 Species picker and scan feedback
