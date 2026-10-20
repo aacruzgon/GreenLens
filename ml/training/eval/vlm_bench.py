@@ -28,11 +28,13 @@ its own `--label`.
 - species: the VLM's species guess against the truth;
 - diagnosis from the indicator answers: each candidate scores its share of "yes" answers, and the
   top candidate (none when every share is 0 or two tie for the top) is compared with the truth, on
-  `sure` cases;
+  `sure` cases, also split by the case's photo size (under 1 MP, or 1 MP and up);
 - false signs: on healthy cases, the share answered "yes"; on every case, damage findings and
   organisms, which these leaf photos don't show (a disease spot called `leaf_mines` is the known
   error, #45);
-- unsure: the share of answers that are `unsure`.
+- unsure: the share of answers that are `unsure`;
+- per indicator, for each model at the worker's default 1,003,520 pixels and one job at once: its
+  answers on the `sure` cases that have its problem and on every other case.
 The cases and the raw runs stay in the git-ignored `ml/training/runs/vlm-bench/`; the report is
 `ml/training/eval/reports/vlm-bench-<out>.md` and `.json`.
 """
@@ -289,7 +291,10 @@ def score_run(rows: list[dict], cases_by_id: dict[str, dict]) -> dict:
         for c in r["calls"]:
             by_kind[c["schema"].split("@")[0]].append(c["ms"])
     species = diag_hit = diag_n = healthy_clean = healthy_n = yes_on_healthy = answers_n = unsure = ties = 0
+    by_size = {"under_1mp": [0, 0], "1mp_and_up": [0, 0]}   # diagnosis hits and cases, by the photo's size
     damage, organisms = Counter(), 0
+    # Each indicator's answers on the sure cases whose truth is its problem, and on every other case.
+    per_indicator = defaultdict(lambda: {"truth": Counter(), "other": Counter()})
     for r in ok:
         case = cases_by_id[r["case_id"]]
         truth = case["truth"]
@@ -303,6 +308,8 @@ def score_run(rows: list[dict], cases_by_id: dict[str, dict]) -> dict:
         share = defaultdict(list)
         for x in a:
             share[cand_of.get(x["indicator_id"])].append(x["answer"] == "yes")
+            on_truth = case["label_confidence"] == "sure" and cand_of.get(x["indicator_id"]) in truth.get("problems", [])
+            per_indicator[x["indicator_id"]]["truth" if on_truth else "other"][x["answer"]] += 1
         means = {k: sum(v) / len(v) for k, v in share.items() if k}
         best = max(means.values(), default=0.0)
         leaders = [k for k, v in means.items() if v == best]
@@ -317,6 +324,10 @@ def score_run(rows: list[dict], cases_by_id: dict[str, dict]) -> dict:
         elif case["scored_for_diagnosis"] and case["label_confidence"] == "sure":
             diag_n += 1
             diag_hit += top in truth["problems"]
+            if case.get("megapixels") is not None:
+                b = by_size["under_1mp" if case["megapixels"] < 1.0 else "1mp_and_up"]
+                b[0] += top in truth["problems"]
+                b[1] += 1
     healthy_answers = sum(len(r["result"]["indicators"]["answers"]) for r in ok
                           if cases_by_id[r["case_id"]]["truth"]["outcome"] == "healthy")
     # Every job that ran, failed ones too, so a slow tail that times out still counts (review of #86, point 5).
@@ -327,10 +338,12 @@ def score_run(rows: list[dict], cases_by_id: dict[str, dict]) -> dict:
         "call_ms_p50": {k: pct(v, 0.5) for k, v in sorted(by_kind.items())},
         "species_agree": species / len(ok) if ok else None,
         "diagnosis_top1_sure": diag_hit / diag_n if diag_n else None, "diagnosis_n": diag_n,
+        "diagnosis_by_photo_size": {k: {"hits": h, "n": n} for k, (h, n) in by_size.items()},
         "healthy_no_candidate": healthy_clean / healthy_n if healthy_n else None, "healthy_n": healthy_n,
         "yes_on_healthy": yes_on_healthy / healthy_answers if healthy_answers else None,
         "unsure_share": unsure / answers_n if answers_n else None, "top_ties": ties,
         "damage_findings": dict(damage), "organisms_reported": organisms,
+        "indicators": {k: {side: dict(c) for side, c in v.items()} for k, v in sorted(per_indicator.items())},
     }
 
 
@@ -341,13 +354,41 @@ def run_dirs(root: Path) -> list[Path]:
     return sorted((d for d in root.glob("px*-c*") if d.is_dir()), key=key)
 
 
+def with_megapixels(case: dict) -> dict:
+    """The case with `megapixels`, its largest photo's size before the worker resizes it, or None
+    when a photo isn't on this machine."""
+    from PIL import Image
+
+    try:
+        mp = max(w * h for w, h in (Image.open(p).size for p in case["photos"].values())) / 1e6
+    except OSError:
+        mp = None
+    return {**case, "megapixels": mp}
+
+
+def indicator_tables(report: list[dict], pixels: int = 1003520) -> list[str]:
+    """Per model, each indicator's answers on the cases that have its problem (sure labels) and on
+    the others, from the run at the worker's default `pixels` with one job at once (else its first)."""
+    out = []
+    for label in dict.fromkeys(r["label"] for r in report):
+        runs = [r for r in report if r["label"] == label]
+        r = next((x for x in runs if x["max_pixels"] == pixels and x["concurrency"] == 1), runs[0])
+        out += ["", f"## Indicators: {label}, {r['max_pixels']:,} pixels, {r['concurrency']} at once", "",
+                "| Indicator | Cases with the problem: yes / no / unsure | Other cases: yes / no / unsure |", "|---|---|---|"]
+        for ind, v in r["indicators"].items():
+            t, o = v["truth"], v["other"]
+            out.append(f"| `{ind}` | {t.get('yes', 0)} / {t.get('no', 0)} / {t.get('unsure', 0)} | "
+                       f"{o.get('yes', 0)} / {o.get('no', 0)} / {o.get('unsure', 0)} |")
+    return out
+
+
 def score(args) -> int:
     report = []
     for run_root in args.runs:
         for d in run_dirs(Path(run_root)):
             try:
                 meta = json.loads((d / "meta.json").read_text())
-                cases_by_id = {b["case_id"]: b for b in map(json.loads, Path(meta["cases"]).read_text().splitlines())}
+                cases_by_id = {b["case_id"]: with_megapixels(b) for b in map(json.loads, Path(meta["cases"]).read_text().splitlines())}
                 rows = [r for r in read_rows(d / "out.jsonl") if r.get("case_id") in cases_by_id]
             except (OSError, ValueError, KeyError) as e:
                 print(f"skipping {d}: {e}", file=sys.stderr)
@@ -360,16 +401,18 @@ def score(args) -> int:
     REPORTS.mkdir(parents=True, exist_ok=True)
     (REPORTS / f"vlm-bench-{args.out}.json").write_text(json.dumps(report, indent=2) + "\n")
     f = lambda v, p=False: "n/a" if v is None else (f"{v:.0%}" if p else f"{v / 1000:.1f} s")
+    sizes = lambda r: " / ".join(f"{d['hits']}/{d['n']}" for d in r["diagnosis_by_photo_size"].values())
     lines = [f"# VLM benchmark: {args.out}", "",
-             "| Run | Pixels | At once | Finished | Retried calls | Job p50 | Job p95 | Species | Diagnosis (sure) | Ties | Healthy kept clean | Yes on healthy | Unsure | Damage found | Organisms | Peak GPU |",
-             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+             "| Run | Pixels | At once | Finished | Retried calls | Job p50 | Job p95 | Species | Diagnosis (sure) | Photos under 1 MP / 1 MP and up | Ties | Healthy kept clean | Yes on healthy | Unsure | Damage found | Organisms | Peak GPU |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in report:
         dmg = ", ".join(f"{k} {v}" for k, v in r["damage_findings"].items()) or "none"
         run = r["label"] if r["exit"] == 0 else f"{r['label']} (exit {r['exit']})"
         lines.append(f"| {run} | {r['max_pixels']:,} | {r['concurrency']} | {r['finished']}/{r['jobs']} | {r['retried_calls']} | "
                      f"{f(r['job_ms_p50'])} | {f(r['job_ms_p95'])} | {f(r['species_agree'], True)} | "
-                     f"{f(r['diagnosis_top1_sure'], True)} (n={r['diagnosis_n']}) | {r['top_ties']} | {f(r['healthy_no_candidate'], True)} (n={r['healthy_n']}) | "
+                     f"{f(r['diagnosis_top1_sure'], True)} (n={r['diagnosis_n']}) | {sizes(r)} | {r['top_ties']} | {f(r['healthy_no_candidate'], True)} (n={r['healthy_n']}) | "
                      f"{f(r['yes_on_healthy'], True)} | {f(r['unsure_share'], True)} | {dmg} | {r['organisms_reported']} | {r['peak_gpu_mib']:,} MiB |")
+    lines += indicator_tables(report)
     (REPORTS / f"vlm-bench-{args.out}.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
     return 0

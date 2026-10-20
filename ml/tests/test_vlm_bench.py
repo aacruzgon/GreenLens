@@ -90,6 +90,23 @@ def test_a_run_cut_short_is_scored_on_what_it_wrote_and_rerun(tmp_path, monkeypa
     assert report[0]["model"] == "Qwen/Qwen3-VL-8B-Instruct-FP8"
 
 
+def test_answers_are_counted_per_indicator_on_cases_with_its_problem_and_on_the_rest():
+    b = vb.bench_case(case(), Path("/p"))
+    s = vb.score_run([row(b, ["yes"] * 9)], {b["case_id"]: b})
+    truth = set(b["truth"]["problems"])
+    for ind, v in s["indicators"].items():
+        side = "truth" if any(ind.startswith(p + ".") for p in truth) and b["label_confidence"] == "sure" else "other"
+        assert v[side] == {"yes": 1}, ind
+    assert sum(bool(v["truth"]) for v in s["indicators"].values()) == 3   # early blight's three
+
+
+def test_diagnosis_is_split_by_the_photos_size():
+    b = {**vb.bench_case(case(), Path("/p")), "megapixels": 0.4}
+    s = vb.score_run([row(b, ["yes", "yes", "yes"] + ["no"] * 6)], {b["case_id"]: b})
+    assert s["diagnosis_by_photo_size"] == {"under_1mp": {"hits": 1, "n": 1}, "1mp_and_up": {"hits": 0, "n": 0}}
+    assert vb.with_megapixels({"photos": {"x": "/nowhere.jpg"}})["megapixels"] is None
+
+
 def test_a_tie_for_the_top_is_no_diagnosis():
     b = vb.bench_case(case(), Path("/p"))
     s = vb.score_run([row(b, ["yes"] * 9)], {b["case_id"]: b})   # every candidate at 100%
