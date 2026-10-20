@@ -10,9 +10,12 @@
 # Nothing deploys from CI: a person deploys by digest from the host (section 7). Actions are pinned
 # by commit; Dependabot proposes updates.
 #
-# Runners: every job runs on the labels in the repository variable RUNNER_LABELS, today the
-# self-hosted runners rig-1 and rig-2 (section 2, Runners). Without the variable, the jobs fall
-# back to GitHub's ubuntu-26.04. Steps that need sudo or the Actions cache run only on GitHub's
+# Runners: the jobs that build run on the labels in the repository variable RUNNER_LABELS, today
+# the self-hosted runners rig-1 and rig-2 (label pdm; section 2, Runners). The light jobs, which
+# take seconds (changes, docs, infra, security, ci, release), run on LIGHT_RUNNER_LABELS (label
+# pdm-light): rig-3, kept for them, or an idle rig-1 or rig-2, which carry pdm-light too. So they
+# don't queue behind Rust builds, and a stopped rig-3 holds nothing up. Without the variables, the
+# jobs fall back to GitHub's ubuntu-26.04. Steps that need sudo or the Actions cache run only on GitHub's
 # runners (`runner.environment == 'github-hosted'`); a self-hosted job keeps its build trees in
 # the runner's home instead (.github/actions/self-hosted-env). Every checkout sets
 # persist-credentials: false, so a job's token never sits in .git/config on a runner that the next
@@ -49,7 +52,7 @@ jobs:
   # --- stage 1 ---------------------------------------------------------------------------------
 
   changes:
-    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
+    runs-on: ${{ fromJSON(vars.LIGHT_RUNNER_LABELS || vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 5
     outputs:
       rust: ${{ steps.diff.outputs.rust }}
@@ -206,7 +209,7 @@ jobs:
   docs:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs == 'true'
-    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
+    runs-on: ${{ fromJSON(vars.LIGHT_RUNNER_LABELS || vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -230,7 +233,7 @@ jobs:
   infra:
     needs: changes
     if: needs.changes.outputs.infra == 'true'
-    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
+    runs-on: ${{ fromJSON(vars.LIGHT_RUNNER_LABELS || vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -295,7 +298,7 @@ jobs:
   security:
     needs: [changes, lint]
     if: ${{ !cancelled() && !failure() && (needs.changes.outputs.rust == 'true' || github.event_name == 'push') }}
-    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
+    runs-on: ${{ fromJSON(vars.LIGHT_RUNNER_LABELS || vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 10
     defaults:
       run:
@@ -544,7 +547,7 @@ jobs:
     # live joined after it passed on four consecutive pushes to main (infra §2).
     needs: [changes, lint, test, examples, docs, infra, app, security, live]
     if: always()
-    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
+    runs-on: ${{ fromJSON(vars.LIGHT_RUNNER_LABELS || vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 5
     steps:
       - env:
@@ -651,7 +654,7 @@ jobs:
   release:
     needs: images
     if: ${{ !cancelled() && needs.images.result == 'success' && startsWith(github.ref, 'refs/tags/v') }}
-    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
+    runs-on: ${{ fromJSON(vars.LIGHT_RUNNER_LABELS || vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 5
     permissions:
       contents: write
