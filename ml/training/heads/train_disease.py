@@ -12,7 +12,10 @@
   every number is also reported per dataset, so the field sets' own test splits show apart
   from PlantDoc's.
 - --views N adds N augmented views per training image (random resized crop 0.7–1.0, flip,
-  colour jitter 0.2, mild blur).
+  colour jitter 0.2, mild blur); with --features crops, N views of each crop, embedded first by
+  `ml.training.heads.crops --splits train --views N`. Each view of a photo weighs 1 in total.
+- --drop-classes leaves the named classes out (their photos too), for a problem with no profile
+  in the knowledge base.
 
 Writes the head JSON (ml/models/FORMATS.md), classifier_labels.yaml and a report under
 ml/training/runs/heads/<version>/.
@@ -117,13 +120,13 @@ def main(argv=None) -> None:
                     help="train only these species' classes (classifier_supported, issue #4); the others go to the VLM")
     ap.add_argument("--min-train", type=int, default=30, help="training photos a class needs")
     ap.add_argument("--views", type=int, default=0)
+    ap.add_argument("--drop-classes", nargs="*", default=[], metavar="SPECIES/PROBLEM",
+                    help="classes to leave out, e.g. tomato/tomato_mosaic_virus")
     ap.add_argument("--not-supported", nargs="*", default=["bean"],
                     help="species left out of the headline numbers (still trained and reported)")
     ap.add_argument("--balance-sources", action="store_true",
                     help="within each class, give every dataset the same total weight")
     args = ap.parse_args(argv)
-    if args.views and args.features == "crops":
-        ap.error("--views augments whole photos; it doesn't apply to --features crops")
 
     splits = {n: read_split(n) for n in ("train", "val", "test")}
     left_out_species = {}
@@ -132,7 +135,10 @@ def main(argv=None) -> None:
             left_out_species[n] = dict(collections.Counter(r["species_id"] for r in rs if r["species_id"] not in args.supported))
             splits[n] = [r for r in rs if r["species_id"] in args.supported]
     counts = collections.Counter(f"{r['species_id']}/{r['problem_id']}" for r in splits["train"])
-    classes = sorted(c for c, n in counts.items() if n >= args.min_train)
+    unknown = set(args.drop_classes) - set(counts)
+    if unknown:
+        ap.error(f"--drop-classes: no such class {sorted(unknown)}")
+    classes = sorted(c for c, n in counts.items() if n >= args.min_train and c not in args.drop_classes)
     left_out = {c: n for c, n in counts.items() if n < args.min_train}
     cidx = {c: i for i, c in enumerate(classes)}
     species_of_class = np.asarray([c.split("/")[0] for c in classes])
@@ -146,7 +152,7 @@ def main(argv=None) -> None:
     crop_source = None
     if args.features == "crops":
         from ml.training.heads.crops import CropEmbedder
-        crop_source = CropEmbedder()
+        crop_source = CropEmbedder(gpu=False)   # the cache only: no GPU memory held while training
 
     # One feature row per crop (or per photo); `group` maps a row to its photo, `weight` makes
     # every photo count once in total, `single` marks rows of photos with exactly one crop.
@@ -175,7 +181,17 @@ def main(argv=None) -> None:
     tr = data["train"]
     Xtr, ytr, photo_w = tr["X"], tr["y"], tr["weight"]
     src_rows = tr["ds_img"][tr["group"]]
-    if args.views:
+    if args.views and crop_source:
+        # Every crop's views, crop by crop; a photo's n crops give n rows per view, 1/n each.
+        views = crop_source.load_views([r["path"] for r in rows["train"]], args.views)
+        extra_y = np.concatenate([np.full(len(v), y) for v, y in zip(views, tr["y_img"])])
+        extra_w = np.concatenate([np.full(len(v), args.views / len(v)) for v in views])
+        extra_src = np.concatenate([np.full(len(v), ds, dtype=object) for v, ds in zip(views, tr["ds_img"])])
+        Xtr = np.concatenate([Xtr, *views])
+        ytr = np.concatenate([ytr, extra_y])
+        photo_w = np.concatenate([photo_w, extra_w])
+        src_rows = np.concatenate([src_rows.astype(object), extra_src])
+    elif args.views:
         rng = np.random.default_rng(0)
         extra, extra_y = [], []
         for r, y in zip(rows["train"], tr["y_img"]):
@@ -346,6 +362,7 @@ def main(argv=None) -> None:
         "temperature": T,
         "temperature_fitted_on": "val crops of photos with one crop" if fit_on is dv["single"] else "all val crops",
         "views": args.views,
+        "dropped_classes": list(args.drop_classes),
         "balance_sources": args.balance_sources,
         "train_rows": int(len(ytr)),
         "train_photos": int(len(tr["y_img"])),

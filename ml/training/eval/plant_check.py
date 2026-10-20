@@ -73,10 +73,9 @@ def read_tsv(path: Path) -> list[dict]:
 
 
 def parse_pair(text: str) -> dict:
-    """`A:0.48:0.96` -> prompt set A, τ_leaf 0.48, τ_plant 0.96."""
-    name, tl, tp = text.split(":")
-    if name not in plant_probe.PROMPT_SETS:
-        raise argparse.ArgumentTypeError(f"unknown prompt set {name!r}")
+    """`A:0.48:0.96` -> prompt set A, τ_leaf 0.48, τ_plant 0.96. The name may also be the version
+    of a trained probe given with --probe."""
+    name, tl, tp = text.rsplit(":", 2)
     return {"set": name, "tau_leaf": float(tl), "tau_plant": float(tp)}
 
 
@@ -151,7 +150,13 @@ def main(argv=None) -> int:
     ap.add_argument("--pair", type=parse_pair, action="append", default=[],
                     help="a fixed pair to report, PROMPTS:TAU_LEAF:TAU_PLANT (repeatable)")
     ap.add_argument("--note", help="a line for the report's header, such as what the detector was trained on")
+    ap.add_argument("--probe", type=Path, action="append", default=[],
+                    help="a trained probe file (pdm-linear-head/1, kind plant_probe) scored beside the prompt sets; repeatable")
     args = ap.parse_args(argv)
+    known = set(plant_probe.PROMPT_SETS) | {headfile_version(f) for f in args.probe}
+    for pair in args.pair:
+        if not args.rescore and pair["set"] not in known:
+            ap.error(f"--pair: unknown prompt set or probe {pair['set']!r}")
     if args.rescore:
         prev = json.loads(args.rescore.read_text())
         pos, neg = prev["positives"], prev["negatives"]
@@ -165,7 +170,7 @@ def main(argv=None) -> int:
         detector = prev.get("detector", "manifest.cpu.toml's leaf_detector")
         note = args.note or prev.get("note")
     else:
-        pos, neg, pos_leaf, neg_leaf, probs, tau_leaf, scale, embedder = score(args.split, args.detector, args.negatives)
+        pos, neg, pos_leaf, neg_leaf, probs, tau_leaf, scale, embedder = score(args.split, args.detector, args.negatives, args.probe)
         split, negatives = args.split, args.negatives.name
         detector = str(args.detector.resolve().relative_to(ROOT)) if args.detector else "manifest.cpu.toml's leaf_detector"
         note = args.note
@@ -181,7 +186,12 @@ def main(argv=None) -> int:
     return 0
 
 
-def score(split: str, detector: Path | None = None, negatives: Path = NEGATIVES):
+def headfile_version(path: Path) -> str:
+    return json.loads(path.read_text())["version"]
+
+
+def score(split: str, detector: Path | None = None, negatives: Path = NEGATIVES, probes: list[Path] = ()):
+    from ml.pdm_vision import headfile
     from ml.pdm_vision.features import Embedder
 
     pos = read_tsv(DATA / f"splits/{split}.tsv")
@@ -197,6 +207,12 @@ def score(split: str, detector: Path | None = None, negatives: Path = NEGATIVES)
     neg_e = emb.files([DATA / "raw" / r["path"] for r in neg])
     weights, scale = plant_probe.weights("cpu")
     probs = {n: (plant_probe.probability(pos_e, w), plant_probe.probability(neg_e, w)) for n, w in weights.items()}
+    for f in probes:   # a trained probe: sigma(w . e + b), the worker's PlantProbe
+        doc = headfile.read_linear_head(f)
+        if doc["kind"] != "plant_probe":
+            raise SystemExit(f"{f}: kind {doc['kind']}, not plant_probe")
+        w, b = doc["weight"][0], float(doc["bias"][0])
+        probs[doc["version"]] = (plant_probe.probability(pos_e, w, b), plant_probe.probability(neg_e, w, b))
     return pos, neg, pos_leaf, neg_leaf, probs, tau_leaf, scale, emb.model_sha
 
 
@@ -208,7 +224,7 @@ def analyse(split, label, pos, neg, pos_leaf, neg_leaf, probs, tau_leaf, scale, 
         tau = choose_tau(neg_p)
         sweep = [summary(pos_leaf, pos_p, neg_leaf, neg_p, groups, tau_leaf, float(t))
                  for t in (0.5, 0.6, 0.7, 0.8, 0.9, 0.95)]
-        sets[name] = {"labels": plant_probe.PROMPT_SETS[name], "chosen": summary(
+        sets[name] = {"labels": plant_probe.PROMPT_SETS.get(name, f"trained probe {name}"), "chosen": summary(
             pos_leaf, pos_p, neg_leaf, neg_p, groups, tau_leaf, tau), "sweep": sweep,
             "joint": joint(pos_leaf, pos_p, neg_leaf, neg_p),
             "joint_every_dataset": joint(pos_leaf, pos_p, neg_leaf, neg_p, datasets=datasets),
