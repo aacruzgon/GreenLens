@@ -313,3 +313,61 @@ async fn an_account_deletion_hands_the_garden_on_and_deletes_the_leavers_connect
     assert_eq!(status(&store, mine).await, None);
     assert_eq!(store.garden_record_count(f.garden).await.unwrap(), 0);
 }
+
+/// A demoted user's `deleting` connector in a garden that is itself being deleted: `resume`'s
+/// listing skips it (the garden's cascade owns it), but the account deletion must still find it
+/// by its creator, or `DELETE $user` is refused by `created_by`.
+#[tokio::test]
+async fn an_account_deletion_finds_a_deleting_connector_in_a_garden_being_deleted() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let bob = member(&store, &f, "user_bob", "owner").await;
+    let mine = connector(&store, &f, f.user, 3).await;
+    let bobs = connector(&store, &f, bob, 2).await;
+
+    // Bob demotes the user, then deletes the garden.
+    let by_bob = owner(&store, bob, f.garden).await;
+    let demoted = store
+        .change_role(by_bob, f.user, Role::Editor)
+        .await
+        .unwrap();
+    assert!(demoted.demoted_owner);
+    let started = store
+        .start_garden_deletion(owner(&store, bob, f.garden).await, t0())
+        .await
+        .unwrap();
+    assert_eq!(store.deleting_connectors(None).await.unwrap(), []);
+    let listed = store.deleting_connectors_of_user(f.user).await.unwrap();
+    assert_eq!(
+        listed.iter().map(|r| r.connector.id).collect::<Vec<_>>(),
+        [mine],
+        "only this user's, whatever the garden's state"
+    );
+    assert_eq!(
+        status(&store, bobs).await,
+        Some(ConnectorStatus::Deleting),
+        "bob's is the garden's to finish"
+    );
+
+    // The account deletion finishes the user's connector; the user can then go once the
+    // garden's cascade has run.
+    for row in listed {
+        while store
+            .delete_connector_batch(row.connector.id)
+            .await
+            .unwrap()
+            > 0
+        {}
+    }
+    assert_eq!(status(&store, mine).await, None);
+    assert_eq!(store.deleting_connectors_of_user(f.user).await.unwrap(), []);
+    let target = started.target;
+    for &step in CascadeStep::steps_for(target) {
+        if step == CascadeStep::FarmRecordsAndConnectors {
+            assert_eq!(finish(&store, f.garden).await, [bobs]);
+        }
+        while store.delete_batch(target, step).await.unwrap() > 0 {}
+    }
+    store.delete_user_feedback(f.user).await.unwrap();
+    store.delete_user(f.user).await.unwrap();
+}

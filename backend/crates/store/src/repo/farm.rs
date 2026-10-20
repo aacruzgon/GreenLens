@@ -241,6 +241,13 @@ COMMIT;";
         row_fields!(),
         " FROM connector WHERE status = 'deleting' AND garden.deleting_at = NONE ORDER BY id;"
     );
+    /// The connectors marked `deleting` that a user created, in any garden (a garden being
+    /// deleted included), for the account deletion that must clear `created_by` references.
+    pub const DELETING_OF_USER: &str = concat!(
+        "SELECT ",
+        row_fields!(),
+        " FROM connector WHERE status = 'deleting' AND created_by = $user ORDER BY id;"
+    );
     /// The cleanup: one batch of `pending` connectors started before the cutoff, leaving those
     /// claimed since `$claimed_cutoff`, whose exchange may still be running. A pending
     /// connector holds no records.
@@ -920,6 +927,19 @@ impl FarmRecordStore for SurrealStore {
         };
         let mut r = run_tx(&self.db, statement, |q| {
             q.bind(("garden", garden.as_ref().map(rid)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        take_rows(&mut r, 0, WHAT)
+    }
+
+    async fn deleting_connectors_of_user(
+        &self,
+        user: UserId,
+    ) -> Result<Vec<ConnectorRow>, StoreError> {
+        const WHAT: &str = "deleting connectors of a user";
+        let mut r = run_tx(&self.db, sql::DELETING_OF_USER, |q| {
+            q.bind(("user", rid(&user)))
         })
         .await
         .map_err(|f| f.into_store(WHAT))?;

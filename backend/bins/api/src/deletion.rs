@@ -282,8 +282,9 @@ impl DeletionRunner {
     /// deleted. Without `CONNECTOR_KEY` they are deleted unrevoked, as a garden's are, since the
     /// account deletion can't wait for a key; `revoke_stored` logs each by its id and kind.
     async fn finish_account_connectors(&self, user: UserId) -> Result<(), StoreError> {
-        let rows = self.store.deleting_connectors(None).await?;
-        for row in rows.into_iter().filter(|r| r.created_by == user) {
+        // Not `deleting_connectors(None)`, which skips a garden being deleted: its connector
+        // still names the user in `created_by`.
+        for row in self.store.deleting_connectors_of_user(user).await? {
             self.finish_connector(row).await?;
         }
         Ok(())

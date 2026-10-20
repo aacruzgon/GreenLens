@@ -387,6 +387,15 @@ pub trait FarmRecordStore: Send + Sync {
         garden: Option<GardenId>,
     ) -> Result<Vec<ConnectorRow>, StoreError>;
 
+    /// Every connector marked `deleting` that this user created, in any garden, being deleted
+    /// or not, with its sealed token, oldest id first. An account deletion finishes these
+    /// before `DELETE $user`, which `connector.created_by` refuses while one names the user
+    /// (EON E3.6).
+    async fn deleting_connectors_of_user(
+        &self,
+        user: UserId,
+    ) -> Result<Vec<ConnectorRow>, StoreError>;
+
     /// The cleanup: deletes `pending` connectors created before `before` (10 minutes ago),
     /// except those a `complete` claimed at or after `claimed_before` (`CONNECT_CLAIM_HOLD`
     /// ago), whose exchange may still be running; up to 500 a call.

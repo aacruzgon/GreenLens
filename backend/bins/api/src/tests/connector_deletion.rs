@@ -192,6 +192,7 @@ fn mine() -> Vec<ConnectorRow> {
 /// `deleting_connectors` answers `rows` not yet deleted (logged as `list:<garden or resume>`),
 /// and each connector's batches delete 2 records, then the row, then nothing.
 fn connector_store(store: &mut FakeStore, log: &Arc<Log>, rows: Vec<ConnectorRow>) {
+    let rows_for_user = rows.clone();
     let l = Arc::clone(log);
     // Batches made per connector; a connector whose last batch ran is gone from the listing.
     let calls: Arc<Mutex<HashMap<ConnectorId, usize>>> = Arc::default();
@@ -207,6 +208,23 @@ fn connector_store(store: &mut FakeStore, log: &Arc<Log>, rows: Vec<ConnectorRow
             let calls = listed.lock().unwrap_or_else(PoisonError::into_inner);
             Ok(rows
                 .iter()
+                .filter(|r| calls.get(&r.connector.id).is_none_or(|&n| n < 3))
+                .cloned()
+                .collect())
+        });
+    // The account deletion lists by creator, in any garden (logged as `list:user:<id>`).
+    let l = Arc::clone(log);
+    let listed = Arc::clone(&calls);
+    let by_user = rows_for_user.clone();
+    store
+        .farm_record_store
+        .expect_deleting_connectors_of_user()
+        .returning(move |user| {
+            l.push(format!("list:user:{user}"));
+            let calls = listed.lock().unwrap_or_else(PoisonError::into_inner);
+            Ok(by_user
+                .iter()
+                .filter(|r| r.created_by == user)
                 .filter(|r| calls.get(&r.connector.id).is_none_or(|&n| n < 3))
                 .cloned()
                 .collect())

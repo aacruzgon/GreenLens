@@ -649,6 +649,14 @@ mod farm_record_store {
         ) -> Result<Vec<ConnectorRow>, StoreError> {
             self.farm_record_store.deleting_connectors(garden).await
         }
+        async fn deleting_connectors_of_user(
+            &self,
+            user: UserId,
+        ) -> Result<Vec<ConnectorRow>, StoreError> {
+            self.farm_record_store
+                .deleting_connectors_of_user(user)
+                .await
+        }
         async fn delete_expired_pending(
             &self,
             before: Timestamp,
