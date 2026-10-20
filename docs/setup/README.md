@@ -1,6 +1,6 @@
 # PDM Developer Setup
 
-> **Status:** v0.1.5, 2026-10-19. v0.1.5: section 6 has a CI runner subsection, with the commands that set up the two self-hosted runners on the rig's 3070 host. v0.1.4: backend developers working on connectors start Era's simulators with the compose file's `era` profile. v0.1.3: the control plane reaches the internet through Tailscale Funnel, run as a container, instead of a Cloudflare tunnel. v0.1.2: backend developers start SurrealDB and RustFS with `infra/dev.compose.yml`. v0.1.1: Debian 13's libheif is 1.23.4, as the `api` image build installed it. v0.1: first version: what each team member installs on macOS, Windows and Linux, by role, with the versions the other documents pin.
+> **Status:** v0.1.6, 2026-10-19. v0.1.6: a third CI runner, `rig-3`, for the light jobs, and step 13 marked as run. v0.1.5: section 6 has a CI runner subsection, with the commands that set up the two self-hosted runners on the rig's 3070 host. v0.1.4: backend developers working on connectors start Era's simulators with the compose file's `era` profile. v0.1.3: the control plane reaches the internet through Tailscale Funnel, run as a container, instead of a Cloudflare tunnel. v0.1.2: backend developers start SurrealDB and RustFS with `infra/dev.compose.yml`. v0.1.1: Debian 13's libheif is 1.23.4, as the `api` image build installed it. v0.1: first version: what each team member installs on macOS, Windows and Linux, by role, with the versions the other documents pin.
 > **Checked:** on 2026-10-16. The release files of ONNX Runtime 1.31.0 on GitHub, libheif's versions in Ubuntu and Debian, and the Node versions that React Native 0.86.3 and EAS CLI accept were read from their sources (✓). Items marked *unverified* weren't tried on that platform. On 2026-10-19 the steps of [CI runner](#ci-runner) in section 6 were run on the rig's 3070 host (✓ run); the install script's step and the first job on the runners were not.
 
 ## Contents
@@ -165,9 +165,9 @@ The containers bring everything else: CUDA 13.0.3 and ONNX Runtime in `worker-cu
 
 ### CI runner
 
-CI runs on two self-hosted runners, `rig-1` and `rig-2`, on the rig's 3070 host (Debian 13, 16 threads, 15 GB of RAM, 16 GB of swap). The design, the guards in `ci.yml` and the risks are in [infra 2](../infra/README.md#runners-and-budget). Pull-request code runs on this machine, so the runners run as their own user with no `sudo` and no `docker` group, in their own rootless Docker daemon.
+CI runs on three self-hosted runners on the rig's 3070 host: `rig-1` and `rig-2` for the builds, and `rig-3` for the light jobs, (Debian 13, 16 threads, 15 GB of RAM, 16 GB of swap). The design, the guards in `ci.yml` and the risks are in [infra 2](../infra/README.md#runners-and-budget). Pull-request code runs on this machine, so the runners run as their own user with no `sudo` and no `docker` group, in their own rootless Docker daemon.
 
-✓ Run on 2026-10-19, in this order, except step 13 (`install.sh` needs a checkout that exists only after a first job). Replace `<uid>` with the output of `id -u ci-runner`.
+✓ Run on 2026-10-19, in this order; step 13 after the first job had checked the repository out, and step 14 later the same night. Replace `<uid>` with the output of `id -u ci-runner`.
 
 **In your own terminal, with `sudo`:**
 
@@ -276,7 +276,7 @@ CI runs on two self-hosted runners, `rig-1` and `rig-2`, on the rig's 3070 host 
     gh api repos/aacruzgon/GreenLens/actions/runners --jq '.runners[] | [.name, .status] | @tsv'
     ```
 
-**After the first job has checked the repository out** (*unverified*: not yet run), in the `ci-runner` shell:
+**After the first job has checked the repository out**, in the `ci-runner` shell:
 
 13. Install the job-started hook, which removes containers and networks older than 2 hours that cancelled jobs left behind, and the weekly `ci-prune.timer`, which trims the buildx cache to 30 GB and removes old images, unused volumes and build trees unused for 14 days. The script is idempotent and needs no `sudo`. Then restart the runners when no job is running, because they read `.env` at start. Expect under 100 GB of disk in use.
 
@@ -284,6 +284,25 @@ CI runs on two self-hosted runners, `rig-1` and `rig-2`, on the rig's 3070 host 
     bash ~/runner-1/_work/GreenLens/GreenLens/infra/ci-runner/install.sh
     systemctl --user restart gh-runner@1 gh-runner@2
     systemctl --user list-timers ci-prune.timer --no-pager
+    ```
+
+14. A third runner, `rig-3`, for the light jobs (`changes`, `docs`, `infra`, `security`, `ci`, `release`), so they don't queue behind Rust builds ([infra 2](../infra/README.md#runners-and-budget)). It gets only the label `pdm-light`, so it never takes a build. In the `ci-runner` shell, with a registration token from step 10:
+
+    ```bash
+    curl -fL -# -o /tmp/runner.tgz https://github.com/actions/runner/releases/download/v2.338.0/actions-runner-linux-x64-2.338.0.tar.gz
+    echo "af4b794c1bc41d73d40535e3fe092a39f9679cd8d965954c2aca25a05ca41d32  /tmp/runner.tgz" | sha256sum -c
+    mkdir -p ~/runner-3 && tar xzf /tmp/runner.tgz -C ~/runner-3 && rm /tmp/runner.tgz
+    cd ~/runner-3 && ./config.sh --unattended --url https://github.com/aacruzgon/GreenLens --token <token> --name rig-3 --labels pdm-light --work _work --replace
+    cp bin/runsvc.sh . && cd ~
+    printf '%s\n' "DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock" 'CARGO_BUILD_JOBS=2' 'NEXTEST_TEST_THREADS=2' "ACTIONS_RUNNER_HOOK_JOB_STARTED=$HOME/ci/bin/job-started.sh" >> ~/runner-3/.env
+    systemctl --user enable --now gh-runner@3
+    ```
+
+    Then, in your own terminal, give `rig-1` and `rig-2` the light label too, so light jobs can also use them when idle, and set the variable the light jobs read:
+
+    ```bash
+    for r in $(gh api repos/aacruzgon/GreenLens/actions/runners --jq '.runners[] | select(.name=="rig-1" or .name=="rig-2") | .id'); do gh api -X POST repos/aacruzgon/GreenLens/actions/runners/$r/labels -f 'labels[]=pdm-light'; done
+    gh variable set LIGHT_RUNNER_LABELS --body '["self-hosted","linux","x64","pdm-light"]'
     ```
 
 **To remove a runner:** disable its unit (with `Restart=always`, a removed runner would otherwise restart every 10 seconds), get a removal token from `gh api -X POST repos/aacruzgon/GreenLens/actions/runners/remove-token --jq .token` in your own terminal, then in the `ci-runner` shell:
