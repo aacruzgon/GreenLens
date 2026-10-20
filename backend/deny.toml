@@ -19,3 +19,9 @@ ignore = [
   # webpki-roots 1.x's TLS_SERVER_ROOTS, which the lock file pins at 1.0.10, the fixed version.
   { id = "RUSTSEC-2026-0381", reason = "webpki-roots 0.26.11 re-exports the roots of webpki-roots 1.0.10" },
 ]
+
+[bans]
+# The RUSTSEC-2026-0381 ignore above relies on webpki-roots 1.x being at the fixed 1.0.10 or later.
+deny = [
+  { crate = "webpki-roots:>=1.0.0, <1.0.10", reason = "RUSTSEC-2026-0381; the 0.26.11 shim ignore relies on 1.0.10 or later" },
+]
