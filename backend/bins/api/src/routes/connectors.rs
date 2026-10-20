@@ -386,6 +386,18 @@ async fn check_state(
     Ok((oauth, row))
 }
 
+/// The vendor's `error` as the callback passes it on: a short code of `[a-z_]` (Slack's and
+/// Google's are, `access_denied` among them), or `vendor_error` for anything else, so nothing
+/// a third party puts in the query reaches the app's URL beyond a bounded code.
+fn vendor_error_code(error: &str) -> &str {
+    let short = (1..=64).contains(&error.len());
+    if short && error.bytes().all(|b| b.is_ascii_lowercase() || b == b'_') {
+        error
+    } else {
+        "vendor_error"
+    }
+}
+
 /// `GET /connectors/oauth/callback?code&state&error`: the vendor's redirect. Public: no session
 /// can say who consented, so it checks the state (signature, expiry, and that the pending
 /// connector still holds its nonce), stores nothing, and answers `302` to the app with the
@@ -406,7 +418,7 @@ pub async fn oauth_callback(
         .ok_or_else(|| ApiError::invalid_request("state", "missing"))?;
     let (oauth, _) = check_state(&state, key, value, None).await?;
     let params: Vec<(&str, &str)> = match (&query.code, &query.error) {
-        (_, Some(error)) => vec![("error", error.as_str()), ("state", value)],
+        (_, Some(error)) => vec![("error", vendor_error_code(error)), ("state", value)],
         (Some(code), None) => vec![("code", code.as_str()), ("state", value)],
         (None, None) => return Err(ApiError::invalid_request("code", "missing")),
     };

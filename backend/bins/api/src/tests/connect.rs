@@ -414,6 +414,36 @@ async fn a_declined_consent_returns_the_vendors_error_to_the_app() {
     );
 }
 
+/// A10: the vendor's `error` reaches the app only as a short `[a-z_]` code; anything else
+/// becomes `vendor_error`.
+#[tokio::test]
+async fn the_callback_passes_on_only_a_short_vendor_error_code() {
+    let long = "a".repeat(65);
+    for (error, expected) in [
+        ("server_error", "server_error"),
+        ("Access%20Denied", "vendor_error"),
+        ("javascript%3Aalert(1)", "vendor_error"),
+        (long.as_str(), "vendor_error"),
+    ] {
+        let state = good_state();
+        let answer = send(
+            store_with(pending_row(ConnectorKind::GoogleDrive)),
+            on(),
+            None,
+            MockConnectVendors::new(),
+            callback(&format!("error={error}&state={state}")),
+        )
+        .await;
+        assert_eq!(answer.status, StatusCode::FOUND, "{error}");
+        assert_eq!(
+            answer.headers[header::LOCATION],
+            format!("pdm://connectors/{CONNECTOR}/callback?error={expected}&state={state}")
+                .as_str(),
+            "{error}"
+        );
+    }
+}
+
 /// The three ways a state goes bad: a changed character, its expiry passed, and a state already
 /// used (the exchange cleared the pending connector's nonce and activated it).
 fn bad_states() -> Vec<(&'static str, String, ConnectorRow)> {
