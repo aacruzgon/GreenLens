@@ -1,5 +1,7 @@
 """`training.eval.calibrate`: the worker's species and disease scoring, and the temperature fits."""
 
+from pathlib import Path
+
 import numpy as np
 
 from ml.training.eval import calibrate as cb
@@ -42,8 +44,9 @@ def test_case_labels_and_leaf_photos():
     assert cb.case_label(case(outcome="healthy", problems=()), index) == 0
     assert cb.case_label(case(problems=("tomato_early_blight", "tomato_septoria_leaf_spot")), index) is None
     assert cb.case_label(case(problems=("tomato_hornworms",)), index) is None
-    assert cb.leaf_photos(case()) == ["fieldsets/set/0.jpg"]                       # one photo: a leaf on its own
-    assert cb.leaf_photos(case(kinds=("whole_plant", "leaf_closeup", "leaf_underside"))) == ["fieldsets/set/1.jpg", "fieldsets/set/2.jpg"]
+    assert cb.leaf_photos(case()) == [("fieldsets/set/0.jpg", "leaf_closeup")]    # one photo: sent as a close-up
+    assert cb.leaf_photos(case(kinds=("whole_plant", "leaf_closeup", "leaf_underside"))) == [
+        ("fieldsets/set/1.jpg", "leaf_closeup"), ("fieldsets/set/2.jpg", "leaf_underside")]
     assert cb.leaf_photos(case(kinds=("whole_plant", "flower_fruit"))) == []
     assert cb.source("fieldsets/tomato-bd-2025/x/1.jpg") == "fieldsets/tomato-bd-2025" and cb.source("inat/1-2.jpg") == "inat"
 
@@ -58,15 +61,68 @@ def test_the_disease_logits_are_restricted_to_the_case_species():
     assert np.isneginf(z[2]) and cb.softmax(z)[2] == 0
 
 
-def test_disease_scores_lead_with_the_top_3_and_count_medium_claims():
+def test_disease_scores_count_the_top_3_the_api_keeps_and_both_sides_of_medium():
     inf = -np.inf
-    items = [  # 4 classes of one species, index 0 healthy; the right class ranks 2nd, 4th and 3rd
-        (np.array([0.0, 4.0, 3.0, inf]), 2, "a", "tomato", "x"),
-        (np.array([3.0, 2.0, 1.0, 0.0]), 3, "b", "tomato", "x"),
+    items = [  # 4 classes of one species, index 0 healthy
+        (np.array([0.0, 4.0, 3.0, inf]), 2, "a", "tomato", "x"),   # right problem 2nd
+        (np.array([3.0, 2.0, 1.0, 0.0]), 3, "b", "tomato", "x"),   # right problem 4th, behind healthy
         (np.array([0.0, 5.0, 1.0, inf]), 0, "c", "tomato", "x"),   # a healthy leaf, confidently called sick
+        (np.array([6.0, 1.0, 0.0, inf]), 0, "d", "tomato", "x"),   # a healthy leaf called healthy
     ]
     cold, hot = cb.disease_scores(items, 1.0, {0}), cb.disease_scores(items, 20.0, {0})
-    assert cold["top3"] == hot["top3"] == 2 / 3 and cold["top1"] == 0
-    assert abs(cold["chance_top3"] - (1 + 3 / 4 + 1) / 3) < 1e-9
-    assert cold["medium"] == {"n": 2, "right": 0} and cold["healthy_blocked"] == {"n": 1, "blocked": 1}
-    assert hot["medium"]["n"] == 0 and hot["healthy_blocked"]["blocked"] == 0   # a high temperature claims nothing
+    # Only the 2 photos with a problem count; b's problem is 4th, so the worker never sends it.
+    assert cold["with_problem"] == 2 and cold["top3_sent"] == hot["top3_sent"] == 0.5
+    assert abs(cold["chance_top3_sent"] - (1 + 3 / 4) / 2) < 1e-9
+    # Once healthy is dropped, b's problem is in the top 3 problems; 2 and 3 problems are all guessed.
+    assert cold["top3_problems"] == 1.0 and cold["chance_top3_problems"] == 1.0
+    assert cold["top3_sent_can_miss"] == {"n": 1, "top3": 0.0, "chance": 0.75}
+    assert cold["top3_problems_can_miss"]["n"] == 0
+    assert cold["top1"] == 0.25
+    assert cold["medium"] == {"n": 2, "right": 0}                 # a and c
+    assert cold["healthy"] == {"n": 2, "evidence": 1, "blocked": 1}
+    assert cold["called_healthy"] == {"n": 2, "called": 1}         # b: healthy at 0.64
+    # A high temperature claims nothing either way.
+    assert hot["medium"]["n"] == 0 and hot["healthy"]["evidence"] == 0 and hot["called_healthy"]["called"] == 0
+
+
+def test_temperatures_per_item_and_per_species():
+    items = [(None, 0, "a", "tomato", "x"), (None, 0, "b", "corn", "x"), (None, 0, "c", "pepper", "x")]
+    assert list(cb.temperatures(items, 2.0)) == [2.0, 2.0, 2.0]
+    assert list(cb.temperatures(items, [1.0, 2.0, 3.0])) == [1.0, 2.0, 3.0]
+    assert list(cb.temperatures(items, {"*": 9.0, "tomato": 4.0, "corn": 1.5})) == [4.0, 1.5, 9.0]
+    # Three classes, healthy last: the top problem is at 0.79 at T = 1 and at 0.38 at T = 10.
+    one = [(np.array([2.0, 0.0, 0.0]), 0, "a", "tomato", "x")]
+    assert cb.disease_scores(one, {"*": 10.0, "tomato": 1.0}, {2})["medium"]["n"] == 1
+    assert cb.disease_scores(one, {"*": 1.0, "tomato": 10.0}, {2})["medium"]["n"] == 0
+
+
+def test_folds_deal_each_species_across_the_folds():
+    cases = [(f"t{i}", "tomato") for i in range(12)] + [(f"g{i}", "grape") for i in range(5)] + [("t0", "tomato")]
+    fold = cb.folds(cases)
+    assert set(fold) == {c for c, _ in cases} and set(fold.values()) == set(range(cb.FOLDS))
+    assert sorted(fold[f"g{i}"] for i in range(5)) == list(range(cb.FOLDS))   # 5 grape cases, one per fold
+    assert cb.folds(cases) == fold                                              # seeded
+
+
+def test_out_of_fold_fits_never_see_the_held_out_case():
+    items = [(None, 0, f"c{i // 2}", "tomato" if i % 3 else "corn", "x") for i in range(30)]
+    fold = cb.folds([(i[2], i[3]) for i in items])
+    # A "fit" that returns how many items it was given: each item gets the size of the other folds.
+    tt, fits = cb.out_of_fold(items, lambda train: float(len(train)))
+    sizes = {f: sum(fold[i[2]] == f for i in items) for f in range(cb.FOLDS)}
+    assert [float(t) for t in tt] == [float(len(items) - sizes[fold[i[2]]]) for i in items]
+    assert len(fits) == cb.FOLDS
+    # A per-species fit covers a species missing from a fold through "*".
+    tt, _ = cb.out_of_fold(items, lambda train: {"*": 7.0})
+    assert set(tt) == {7.0}
+
+
+def test_an_underside_with_no_leaf_box_is_dropped_and_a_closeup_is_used_whole():
+    head = {"weight": np.eye(2, 4, dtype=np.float32), "bias": np.zeros(2, np.float32), "temperature": 1.0,
+            "labels": [{"index": 0, "species_id": "tomato", "problem_id": "healthy"},
+                       {"index": 1, "species_id": "tomato", "problem_id": "tomato_early_blight"}]}
+    cases = [case(kinds=("whole_plant", "leaf_underside")), case(kinds=("whole_plant", "leaf_closeup"))]
+    whole = np.array([0.0, 1.0, 0.0, 0.0], np.float32)
+    items, left_out = cb.disease_items(cases, Path("/p"), head, lambda f: np.zeros((0, 4), np.float32), lambda f: whole)
+    assert len(items) == 1 and left_out == {"undersides with no leaf box": 1}
+    assert cb.confusion(items, head) == {"tomato": {"tomato_early_blight": {"tomato_early_blight": 1}}}
