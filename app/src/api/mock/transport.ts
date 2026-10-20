@@ -107,7 +107,11 @@ type FormLike = {
 async function readForm(input: string | Request, init?: RequestInit): Promise<FormFields> {
   let form: FormLike | undefined;
   if (typeof FormData !== "undefined" && init?.body instanceof FormData) form = init.body as unknown as FormLike;
-  else if (init?.body == null && typeof input !== "string") {
+  else if (init?.body == null && typeof input !== "string" && (input as { _bodyFormData?: unknown })._bodyFormData) {
+    // React Native's fetch is whatwg-fetch: its formData() reads the body as text, which throws for a FormData
+    // body, so a phone's upload lost its fields and defaulted to whole_plant. The request keeps the form itself.
+    form = (input as unknown as { _bodyFormData: FormLike })._bodyFormData;
+  } else if (init?.body == null && typeof input !== "string") {
     try {
       form = (await input.clone().formData()) as unknown as FormLike;
     } catch {

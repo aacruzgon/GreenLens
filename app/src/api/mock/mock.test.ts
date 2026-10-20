@@ -202,6 +202,21 @@ describe("uploads and faults", () => {
     expect((await upload(scanId, "whole_plant")).json.error.code).toBe("too_many_images");
   });
 
+  it("reads an upload's fields from React Native's Request, whose formData() can't read a form", async () => {
+    const scanId = (await call("POST", "/scans", { garden_id: IDS.garden, plant_id: IDS.tomato2 })).json.id;
+    const form = new FormData();
+    form.append("kind", "leaf_closeup");
+    form.append("file", new Blob(["x"], { type: "image/jpeg" }), "photo.jpg");
+    // As openapi-fetch hands it over on a phone: a Request and no init, with whatwg-fetch's failing formData().
+    const request = Object.assign(new Request(`${BASE}/scans/${scanId}/images`, { method: "POST", body: form }), {
+      _bodyFormData: form,
+      clone: () => ({ formData: () => Promise.reject(new Error("could not read FormData body as text")) }),
+    });
+    const res = await mockTransport.fetch(request as unknown as Request);
+    expect(res.status).toBe(201);
+    expect(mockStore.scan(scanId)!.scan.images.map((i) => i.kind)).toEqual(["leaf_closeup"]);
+  });
+
   it("refuses submit without a whole_plant shot, and other faults hit the next call", async () => {
     const scanId = await newScan(IDS.kale, false);
     const r = await call("POST", `/scans/${scanId}/submit`);
