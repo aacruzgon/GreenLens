@@ -9,7 +9,7 @@ use domain::{
     garden::{map::neighbours, plants::GrowthQuantity, tasks::TaskQuery},
     id::{ChatImageId, ImageId, OrganismId, PlantId, ProblemId, ScanId, SourceId, SpeciesId},
     knowledge::ChunkTopic,
-    ports::{ChunkFilter, ContentPart, FarmRecordFilter, ObjectKey},
+    ports::{ChunkFilter, ContentPart, FarmRecordFilter, FarmRecordMatch, ObjectKey},
     records::task::TaskState,
     wire::{LocalDate, PageRequest, Timestamp},
 };
@@ -747,8 +747,15 @@ impl Tool for ListTasks {
 /// The most hits `search_farm_records` returns ([connectors 7]).
 pub const FARM_RECORD_HITS: usize = 8;
 
-/// `search_farm_records(query, kind?, since?)` ([connectors 7]): the garden's synced Slack
-/// messages and Drive documents, closest first.
+/// The hits each kind keeps, when it has them, in a search without `kind` (EON gap G16): Slack
+/// messages outnumber Drive documents, and without a reserve they crowd the spray log out.
+pub const FARM_KIND_RESERVED: usize = 3;
+
+// Both kinds' reserves fit in the hits.
+const _: () = assert!(FARM_RECORD_HITS >= 2 * FARM_KIND_RESERVED);
+
+/// `search_farm_records(query, kind?, since?, until?, author?)` ([connectors 7]): the garden's
+/// synced Slack messages and Drive documents, closest first.
 #[derive(Debug)]
 pub struct SearchFarmRecords;
 
@@ -761,9 +768,18 @@ pub struct SearchFarmRecordsArgs {
     /// Slack messages (`message`) or Drive documents (`document`) only.
     #[serde(default)]
     pub kind: Option<FarmRecordKind>,
-    /// Records from this day on, in the garden's time zone (YYYY-MM-DD).
+    /// Slack messages from this day on, in the garden's time zone (YYYY-MM-DD). Drive documents
+    /// are returned whatever the window.
     #[serde(default)]
     pub since: Option<LocalDate>,
+    /// Slack messages up to the end of this day, in the garden's time zone (YYYY-MM-DD). Drive
+    /// documents are returned whatever the window.
+    #[serde(default)]
+    pub until: Option<LocalDate>,
+    /// Slack messages whose author's name contains this, ignoring case ("Riley"). Drive
+    /// documents have no author, so this searches messages only.
+    #[serde(default)]
+    pub author: Option<String>,
 }
 
 impl Tool for SearchFarmRecords {
@@ -771,8 +787,15 @@ impl Tool for SearchFarmRecords {
     const NAME: ToolName = ToolName::SearchFarmRecords;
     const DESCRIPTION: &'static str = "Search the farm's own records, synced from its Slack \
         channels and Google Drive folder: field reports, spray logs, procedures. Each hit comes \
-        with its title, author, time and link. Say what was applied and when, never a rate from \
-        a record.";
+        with its title, author, time and link. Without `kind`, both are searched and each keeps \
+        a few of the hits; for logs, plans and procedures, also search with `kind: \"document\"`. \
+        `since` and `until` are days in the garden's time zone, both included, and window Slack \
+        messages only: a Drive document is returned whatever the window, because its time is \
+        when it was last edited, not the period it records. `author` matches part of a name and \
+        searches Slack messages only. A Slack thread is one record with the author and time of \
+        its first message, so `author`, `since` and `until` don't find a reply by its own \
+        author or day. Say what was applied and when, never a rate from a \
+        record.";
     const LABEL: &'static str = "Checking the farm records";
     const KIND: ToolKind = ToolKind::Read;
     const DATA_KIND: DataKind = DataKind::FarmRecords;
@@ -784,35 +807,87 @@ impl Tool for SearchFarmRecords {
         args: SearchFarmRecordsArgs,
     ) -> Result<ToolOutput, ToolError> {
         let member = ctx.owner.membership();
-        let since = match args.since {
-            Some(day) => {
-                let garden = ctx
-                    .deps
-                    .stores
-                    .gardens
-                    .garden_context(member.garden())
-                    .await?;
-                Some(local_midnight(day, &garden.time_zone.0))
+        if let (Some(since), Some(until)) = (args.since, args.until)
+            && until < since
+        {
+            return Err(ToolError::Rejected(
+                "`until` is before `since`: give the earlier day as `since`.".to_owned(),
+            ));
+        }
+        let author = args
+            .author
+            .as_deref()
+            .map(str::trim)
+            .filter(|a| !a.is_empty())
+            .map(str::to_owned);
+        // Drive documents carry no author, so an author searches Slack messages only.
+        let kind = match (args.kind, &author) {
+            (Some(FarmRecordKind::Document), Some(_)) => {
+                return Err(ToolError::Rejected(
+                    "`author` applies to Slack messages only: Drive documents have no author."
+                        .to_owned(),
+                ));
             }
-            None => None,
+            (None, Some(_)) => Some(FarmRecordKind::Message),
+            (kind, _) => kind,
+        };
+        let (since, until) = if args.since.is_some() || args.until.is_some() {
+            let garden = ctx
+                .deps
+                .stores
+                .gardens
+                .garden_context(member.garden())
+                .await?;
+            let zone = garden.time_zone.0;
+            // `until` includes its day: records before the next day's midnight.
+            let until = match args.until {
+                Some(day) => Some(local_midnight(
+                    day.plus_days(1).ok_or_else(|| {
+                        ToolError::Rejected("`until` is past the last date.".to_owned())
+                    })?,
+                    &zone,
+                )),
+                None => None,
+            };
+            (args.since.map(|day| local_midnight(day, &zone)), until)
+        } else {
+            (None, None)
         };
         let query = embed(ctx, &args.query).await?;
         let filter = FarmRecordFilter {
-            kind: args.kind,
+            kind,
             since,
+            until,
+            author,
         };
         // An exact cosine search within the proof's garden: another garden's records are never
-        // read.
-        let mut hits: Vec<FarmRecordHit> = ctx
-            .deps
-            .stores
-            .farm
-            .search_records(member, &query, filter, FARM_RECORD_HITS)
-            .await?
-            .into_iter()
-            .map(|m| m.hit)
-            .collect();
-        hits.truncate(FARM_RECORD_HITS);
+        // read. Without `kind`, each kind is searched on its own and keeps its reserve.
+        let farm = &ctx.deps.stores.farm;
+        let filter = unwindowed_documents(filter);
+        let matches = if filter.kind.is_some() {
+            let mut found = farm
+                .search_records(member, &query, filter, FARM_RECORD_HITS)
+                .await?;
+            found.truncate(FARM_RECORD_HITS);
+            found
+        } else {
+            let of = |kind| FarmRecordFilter {
+                kind: Some(kind),
+                ..filter.clone()
+            };
+            let documents_of = unwindowed_documents(of(FarmRecordKind::Document));
+            let (messages, documents) = futures::try_join!(
+                farm.search_records(
+                    member,
+                    &query,
+                    of(FarmRecordKind::Message),
+                    FARM_RECORD_HITS
+                ),
+                farm.search_records(member, &query, documents_of, FARM_RECORD_HITS),
+            )?;
+            merge_kinds(messages, documents, FARM_RECORD_HITS, FARM_KIND_RESERVED)
+        };
+        let hits: Vec<FarmRecordHit> = matches.into_iter().map(|m| m.hit).collect();
         let mut out = ToolOutput::json(&hits);
         out.effects = hits
             .into_iter()
@@ -820,6 +895,49 @@ impl Tool for SearchFarmRecords {
             .collect();
         Ok(out)
     }
+}
+
+/// A document search without the window. A Drive document's time is its last edit, not the
+/// period it records (EON gap G18), so `since` and `until` apply to Slack messages only.
+fn unwindowed_documents(filter: FarmRecordFilter) -> FarmRecordFilter {
+    if filter.kind == Some(FarmRecordKind::Document) {
+        FarmRecordFilter {
+            since: None,
+            until: None,
+            ..filter
+        }
+    } else {
+        filter
+    }
+}
+
+/// The hits of a search without `kind`, from each kind's closest (EON gap G16): each kind keeps
+/// its best `reserved` hits, or all it has when fewer; the slots left up to `total` go to the
+/// closest of the rest, whatever their kind. Closest first. A hit without a finite similarity
+/// (a zero vector's is NaN, which `total_cmp` would put first) is left out.
+pub fn merge_kinds(
+    messages: Vec<FarmRecordMatch>,
+    documents: Vec<FarmRecordMatch>,
+    total: usize,
+    reserved: usize,
+) -> Vec<FarmRecordMatch> {
+    let closest_first =
+        |a: &FarmRecordMatch, b: &FarmRecordMatch| b.similarity.total_cmp(&a.similarity);
+    let mut chosen = Vec::with_capacity(total);
+    let mut rest = Vec::new();
+    for mut kind in [messages, documents] {
+        kind.retain(|m| m.similarity.is_finite());
+        kind.sort_by(closest_first);
+        let tail = kind.split_off(reserved.min(kind.len()));
+        chosen.extend(kind);
+        rest.extend(tail);
+    }
+    rest.sort_by(closest_first);
+    let free = total.saturating_sub(chosen.len());
+    chosen.extend(rest.into_iter().take(free));
+    chosen.sort_by(closest_first);
+    chosen.truncate(total);
+    chosen
 }
 
 /// The first instant of `day` in the garden's IANA time zone; UTC midnight when the zone doesn't

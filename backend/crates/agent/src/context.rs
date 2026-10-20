@@ -19,11 +19,12 @@
 //! turns, so the provider's prompt cache keeps them, and nothing earlier in the conversation is
 //! ever edited inside a turn's tool loop (the thinking blocks the loop replays stay valid).
 //!
-//! **Farm records.** The context also reads, once per turn, whether the garden has farm records
-//! to search ([`farm_records_searchable`]): `search_farm_records` is offered only then (gap G6).
-//! The records themselves are never loaded into the context; the model searches them.
+//! **Farm records.** Whether the garden has farm records to search ([`has_farm_records`]) is
+//! read by the turn, once and before routing: the router counts a question about them as on
+//! topic only then (gap G10), and `search_farm_records` is offered only then (gap G6). The
+//! records themselves are never loaded into the context; the model searches them.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time::Duration};
 
 use domain::{
     authz::{ConversationOwner, Membership, Viewer},
@@ -113,16 +114,14 @@ pub struct TurnContext {
     /// The current shared beliefs of the plant and its garden, or of the garden; empty when
     /// Agent Memory is off, down or slow.
     pub beliefs: Vec<Belief>,
-    /// The garden has farm records to search: `search_farm_records` is offered only then
-    /// ([`farm_records_searchable`]; gap G6).
-    pub farm_records: bool,
 }
 
 /// How many open tasks and timeline entries the context carries.
 const LIST_LIMIT: u32 = 20;
 
-/// Loads the context. `query` is the user message's embedding, for the memory hits. `current` is the user message this turn just stored, left out of the
-/// history because the turn message carries it with the context.
+/// Loads the context. `query` is the user message's embedding, for the memory hits. `current`
+/// is the user message this turn just stored, left out of the history because the turn message
+/// carries it with the context.
 pub async fn load(
     deps: &AgentDeps,
     owner: ConversationOwner<Viewer>,
@@ -223,8 +222,7 @@ pub async fn load(
         plant,
         deps.config.beliefs_read_timeout,
     );
-    let (memories, beliefs, farm_records) =
-        tokio::join!(search, beliefs, has_farm_records(deps, member));
+    let (memories, beliefs) = tokio::join!(search, beliefs);
     Ok(TurnContext {
         anchor,
         plant,
@@ -232,17 +230,27 @@ pub async fn load(
         data,
         memories: memories?,
         beliefs,
-        farm_records,
     })
 }
 
-/// Reads the garden's connectors for [`farm_records_searchable`]. A failed read leaves the tool
-/// out rather than failing the turn.
-async fn has_farm_records(deps: &AgentDeps, member: Membership<Viewer>) -> bool {
-    match deps.stores.farm.connectors(member).await {
-        Ok(connectors) => farm_records_searchable(&connectors),
-        Err(e) => {
-            tracing::warn!(error = %crate::beliefs::Chain(&e), "farm connectors not read; search_farm_records not offered");
+/// How long the router waits for the garden's connectors before routing as for a garden without
+/// farm records: the read sits in front of the classifier on every turn.
+pub const FARM_READ_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Reads the garden's connectors for [`farm_records_searchable`]. A failed or slow read leaves
+/// the tool out, and the router asks as for a garden without farm records, rather than failing
+/// the turn.
+pub async fn has_farm_records(deps: &AgentDeps, member: Membership<Viewer>) -> bool {
+    match tokio::time::timeout(FARM_READ_TIMEOUT, deps.stores.farm.connectors(member)).await {
+        Ok(Ok(connectors)) => farm_records_searchable(&connectors),
+        Ok(Err(e)) => {
+            tracing::warn!(error = %crate::beliefs::Chain(&e), "farm connectors not read; search_farm_records not offered, routed as a garden without farm records");
+            false
+        }
+        Err(_) => {
+            tracing::warn!(
+                "farm connectors not read in time; search_farm_records not offered, routed as a garden without farm records"
+            );
             false
         }
     }

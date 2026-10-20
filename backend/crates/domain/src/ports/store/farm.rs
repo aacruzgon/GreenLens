@@ -191,7 +191,8 @@ pub struct NewFarmRecord {
     pub link: String,
     /// At most 2,000 characters.
     pub text: String,
-    /// The hash of `text`: an unchanged hash keeps the stored vector.
+    /// The hash of the text that is embedded (the author and title, then `text`): an
+    /// unchanged hash keeps the stored vector.
     pub text_hash: String,
     /// `None` when `text_hash` is unchanged, so the stored vector stays; required for a new
     /// record.
@@ -201,12 +202,17 @@ pub struct NewFarmRecord {
 }
 
 /// `search_farm_records`' filters.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FarmRecordFilter {
     /// Messages or documents only.
     pub kind: Option<FarmRecordKind>,
     /// Records at or after this instant (the tool's `since` date at the garden's midnight).
     pub since: Option<Timestamp>,
+    /// Records before this instant (the garden's midnight after the tool's `until` date).
+    pub until: Option<Timestamp>,
+    /// Records whose author's display name contains this, ignoring case (the tool's `author`,
+    /// trimmed, never empty). A record without an author never matches.
+    pub author: Option<String>,
 }
 
 /// A search hit with its similarity to the query.
@@ -479,8 +485,8 @@ pub trait FarmRecordStore: Send + Sync {
     /// A garden's record count, for the 10,000 limit.
     async fn garden_record_count(&self, garden: GardenId) -> Result<u32, StoreError>;
 
-    /// `search_farm_records`: the `k` closest records of the proof's garden, searched exactly
-    /// (no HNSW index, gap G7), each with its citation.
+    /// `search_farm_records`: the `k` closest records of the proof's garden under the filters,
+    /// searched exactly (no HNSW index, gap G7), closest first, each with its citation.
     async fn search_records(
         &self,
         member: Membership<Viewer>,

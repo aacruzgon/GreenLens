@@ -15,7 +15,7 @@ pub use plan::{
 };
 pub use products::{BUILTIN_PRODUCTS, ProductCatalogue, ProductMention};
 pub use routes::{
-    Calibration, POISON_CONTROL_TEXT, REPLACED_SENTENCE, RouteDecision, SAFETY_POLICY,
-    decide as decide_route, mentions_poisoning,
+    Calibration, FARM_SAFETY_FLOOR, POISON_CONTROL_TEXT, REPLACED_SENTENCE, RouteDecision,
+    SAFETY_POLICY, decide as decide_route, mentions_poisoning, route_label,
 };
 pub use sentences::{SentenceSplitter, sentence_spans, sentences};
