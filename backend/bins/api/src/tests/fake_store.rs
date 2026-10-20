@@ -524,6 +524,27 @@ mod farm_record_store {
         ) -> Result<Option<ConnectorRow>, StoreError> {
             self.farm_record_store.connector_row(connector).await
         }
+        async fn claim_connect(
+            &self,
+            owner: Membership<Owner>,
+            connector: ConnectorId,
+            nonce: String,
+            now: Timestamp,
+        ) -> Result<(), StoreError> {
+            self.farm_record_store
+                .claim_connect(owner, connector, nonce, now)
+                .await
+        }
+        async fn release_connect(
+            &self,
+            owner: Membership<Owner>,
+            connector: ConnectorId,
+            nonce: String,
+        ) -> Result<(), StoreError> {
+            self.farm_record_store
+                .release_connect(owner, connector, nonce)
+                .await
+        }
         async fn complete_connect(
             &self,
             owner: Membership<Owner>,
@@ -602,8 +623,48 @@ mod farm_record_store {
                 .connectors_created_by(garden, user)
                 .await
         }
-        async fn delete_expired_pending(&self, before: Timestamp) -> Result<u32, StoreError> {
-            self.farm_record_store.delete_expired_pending(before).await
+        async fn shared_account_connectors(
+            &self,
+            kind: ConnectorKind,
+            account: String,
+            except: ConnectorId,
+        ) -> Result<u32, StoreError> {
+            self.farm_record_store
+                .shared_account_connectors(kind, account, except)
+                .await
+        }
+        async fn replace_secret(
+            &self,
+            connector: ConnectorId,
+            read: Sealed,
+            new: Sealed,
+        ) -> Result<bool, StoreError> {
+            self.farm_record_store
+                .replace_secret(connector, read, new)
+                .await
+        }
+        async fn deleting_connectors(
+            &self,
+            garden: Option<GardenId>,
+        ) -> Result<Vec<ConnectorRow>, StoreError> {
+            self.farm_record_store.deleting_connectors(garden).await
+        }
+        async fn deleting_connectors_of_user(
+            &self,
+            user: UserId,
+        ) -> Result<Vec<ConnectorRow>, StoreError> {
+            self.farm_record_store
+                .deleting_connectors_of_user(user)
+                .await
+        }
+        async fn delete_expired_pending(
+            &self,
+            before: Timestamp,
+            claimed_before: Timestamp,
+        ) -> Result<u32, StoreError> {
+            self.farm_record_store
+                .delete_expired_pending(before, claimed_before)
+                .await
         }
         async fn record_hashes(
             &self,
@@ -803,7 +864,7 @@ mod garden_repo {
             owner: Membership<Owner>,
             member: UserId,
             role: Role,
-        ) -> Result<Member, StoreError> {
+        ) -> Result<RoleChange, StoreError> {
             self.garden_repo.change_role(owner, member, role).await
         }
         async fn remove_member(

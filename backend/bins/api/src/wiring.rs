@@ -2,6 +2,8 @@
 //! configuration and assembles `AppState`, in the start-up order of api.md section 4, and it
 //! implements `api`'s seam traits for the library crates' types.
 
+mod connect;
+
 use std::{path::Path, sync::Arc, time::Duration};
 
 use anyhow::Context as _;
@@ -34,6 +36,7 @@ use integrations::{
     clerk::{ClerkAdmin, ClerkAdminConfig, ClerkVerifier, ClerkVerifierConfig},
     expo_push::{ExpoPush, ExpoPushConfig},
     geocode::{CompositeGeocoder, GeocoderConfig, TimeZoneFinder},
+    google_drive::DriveClient,
     http::{HttpConfig, client},
     jev::{JevClassifier, JevConfig},
     open_meteo::{OpenMeteo, OpenMeteoConfig},
@@ -45,6 +48,7 @@ use integrations::{
 use crate::{
     broker::JobBroker,
     config::Config,
+    connect::ConnectVendors,
     deletion::DeletionRunner,
     events::{hub::EventHub, writer::ScanWriters},
     farm_sync::{FarmSources, FarmSync, SyncConfig},
@@ -282,6 +286,7 @@ struct Outbound {
     chat_model: Arc<dyn ChatModel>,
     classifier: Arc<dyn TextClassifier>,
     beliefs: Arc<dyn BeliefStore>,
+    connect: Arc<dyn ConnectVendors>,
     farm: FarmSources,
 }
 
@@ -316,6 +321,10 @@ fn farm_sources(config: &Config, slack_client: impl Fn(SlackConfig) -> SlackClie
     sources
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "every outbound adapter is built here, one after another, over one HTTP client"
+)]
 async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Outbound> {
     let http = client(&HttpConfig::default()).context("HTTP client")?;
     let mut verifier = ClerkVerifierConfig::new(config.clerk.issuer.clone());
@@ -363,6 +372,12 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
             256,
         )),
     };
+    let connect: Arc<dyn ConnectVendors> = Arc::new(connect::VendorClients::new(
+        |c| SlackClient::new(http.clone(), c),
+        |c| DriveClient::new(http.clone(), c),
+        &config.connectors,
+        Arc::clone(clock),
+    ));
     let farm = farm_sources(config, |c| SlackClient::new(http.clone(), c));
     let beliefs: Arc<dyn BeliefStore> = match agent_memory(config) {
         Some(c) => Arc::new(AgentMemory::new(http.clone(), c)),
@@ -410,6 +425,7 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         chat_model,
         classifier,
         beliefs,
+        connect,
         farm,
     })
 }
@@ -535,6 +551,10 @@ fn chat_turns(
 /// Builds every port and the state, in order: the databases (schema as root, then connect as
 /// `api`; the knowledge index), the object store, the outbound adapters, the CPU models, the
 /// species photo index, then `api`'s own pieces and the pipeline and agent that need the writer.
+#[expect(
+    clippy::too_many_lines,
+    reason = "every port and in-process piece is built here, in start-up order"
+)]
 pub async fn build(
     config: Config,
     shutdown: CancellationToken,
@@ -611,7 +631,7 @@ pub async fn build(
     );
     // The one delete queue: every RustFS delete in `api` goes through it, and `main` drains it.
     let deletes = blob::DeleteQueue::new(Arc::clone(&blob));
-    let deletions = DeletionRunner::new(
+    let mut deletions = DeletionRunner::new(
         store,
         deletes.clone(),
         out.auth_admin,
@@ -620,6 +640,10 @@ pub async fn build(
         tasks.clone(),
         shutdown.clone(),
     );
+    // Connectors on: the deletion runner revokes through the routes' own vendor seam.
+    if let Some(key) = &config.connectors.key {
+        deletions = deletions.with_revoke(key.clone(), Arc::clone(&out.connect));
+    }
     Ok(Arc::new(AppState {
         limits: RateLimits::new(config.rate_per_minute),
         upload_permits: Arc::new(Semaphore::new(config.upload_permits.max(1))),
@@ -634,6 +658,7 @@ pub async fn build(
         broker,
         deletions,
         deletes,
+        connect: out.connect,
         farm_sync,
         shutdown,
         tasks,

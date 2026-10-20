@@ -3,6 +3,8 @@
 //! fakes of the seams.
 
 mod beliefs;
+mod connect;
+mod connector_deletion;
 mod connectors;
 mod fake_store;
 
@@ -251,6 +253,23 @@ fn state_with_config(
     beliefs: Arc<dyn BeliefStore>,
     config: Config,
 ) -> Arc<AppState> {
+    state_with_vendors(
+        store,
+        auth,
+        config,
+        crate::connect::MockConnectVendors::new(),
+        (blob, images, beliefs),
+    )
+}
+
+/// [`state_with_config`] with the farm connectors' vendor calls of the test's.
+fn state_with_vendors(
+    store: FakeStore,
+    auth: MockAuthVerifier,
+    config: Config,
+    vendors: crate::connect::MockConnectVendors,
+    (blob, images, beliefs): (MockBlobStore, FixedImages, Arc<dyn BeliefStore>),
+) -> Arc<AppState> {
     let store: Arc<FakeStore> = Arc::new(store);
     let clock = Arc::new(FixedClock::at(NOW.parse().unwrap()));
     let tasks = TaskTracker::new();
@@ -275,6 +294,20 @@ fn state_with_config(
     ));
     let auth_admin = Arc::new(MockAuthAdmin::new());
     let deletes = blob::DeleteQueue::new(blob.clone());
+    let vendors: Arc<dyn crate::connect::ConnectVendors> = Arc::new(vendors);
+    // As `wiring.rs` builds it: with connectors on, the runner revokes through the same seam.
+    let mut deletions = DeletionRunner::new(
+        store.clone(),
+        deletes.clone(),
+        auth_admin,
+        pusher.clone(),
+        clock.clone(),
+        tasks.clone(),
+        shutdown.clone(),
+    );
+    if let Some(key) = &config.connectors.key {
+        deletions = deletions.with_revoke(key.clone(), Arc::clone(&vendors));
+    }
     Arc::new(AppState {
         limits: RateLimits::new(1000),
         upload_permits: Arc::new(Semaphore::new(1)),
@@ -304,16 +337,9 @@ fn state_with_config(
         hub,
         writers,
         broker,
-        deletions: DeletionRunner::new(
-            store,
-            deletes.clone(),
-            auth_admin,
-            pusher,
-            clock,
-            tasks.clone(),
-            shutdown.clone(),
-        ),
+        deletions,
         deletes,
+        connect: vendors,
         farm_sync: None,
         shutdown,
         tasks,

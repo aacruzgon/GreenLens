@@ -754,6 +754,56 @@ async fn idempotency_begin_finish_release() {
     assert_eq!(store.delete_expired(after).await.unwrap(), 0);
 }
 
+/// [contracts 1] idempotency: a `running` key older than `IDEMPOTENCY_RUNNING_STALE` is taken
+/// over by a retry, a younger one is in progress, and of two concurrent takeovers one wins.
+#[tokio::test]
+async fn idempotency_takes_over_a_stale_running_key() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let scope = IdempotencyScope {
+        user: f.user,
+        route: "POST /gardens/x/connectors/y/complete".into(),
+        key: "6f1c2a7e-0b8e-4d55-9a31-2f1f6c3b9d11"
+            .parse::<IdempotencyKey>()
+            .unwrap(),
+    };
+    let day = Duration::from_hours(24);
+    let expires_at = |minutes: u64| t0().plus(Duration::from_mins(minutes)).plus(day);
+    assert_eq!(
+        store.begin(&scope, "fp", expires_at(0)).await.unwrap(),
+        IdempotencyBegin::Started
+    );
+    assert_eq!(
+        store.begin(&scope, "fp", expires_at(5)).await.unwrap(),
+        IdempotencyBegin::InProgress
+    );
+    // A different body is a conflict even when the key is stale.
+    assert_eq!(
+        store.begin(&scope, "other", expires_at(11)).await.unwrap(),
+        IdempotencyBegin::Conflict
+    );
+    assert_eq!(
+        store.begin(&scope, "fp", expires_at(11)).await.unwrap(),
+        IdempotencyBegin::Started
+    );
+    // The takeover restarted the clock: 5 minutes later it is running again.
+    assert_eq!(
+        store.begin(&scope, "fp", expires_at(16)).await.unwrap(),
+        IdempotencyBegin::InProgress
+    );
+    // Two concurrent takeovers of the next stale window: one wins.
+    let (a, b) = tokio::join!(
+        store.begin(&scope, "fp", expires_at(30)),
+        store.begin(&scope, "fp", expires_at(30)),
+    );
+    let mut results = [a.unwrap(), b.unwrap()];
+    results.sort_by_key(|r| matches!(r, IdempotencyBegin::InProgress));
+    assert_eq!(
+        results,
+        [IdempotencyBegin::Started, IdempotencyBegin::InProgress]
+    );
+}
+
 /// [database 4] limits: the 31st scan of a UTC day is refused and nothing is stored.
 #[tokio::test]
 async fn daily_scan_limit() {

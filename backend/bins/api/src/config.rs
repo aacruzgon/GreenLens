@@ -97,10 +97,6 @@ pub struct OAuthClient {
     /// `SLACK_CLIENT_ID` or `GOOGLE_CLIENT_ID`: public, it goes in the consent URL.
     pub client_id: String,
     /// `SLACK_CLIENT_SECRET` or `GOOGLE_CLIENT_SECRET`: sent only in the code exchange.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "read by the code exchange, roadmap E3.4")
-    )]
     pub client_secret: SecretString,
 }
 

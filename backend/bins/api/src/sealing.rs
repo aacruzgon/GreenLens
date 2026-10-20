@@ -19,10 +19,11 @@ use aes_gcm::{
     aead::{AeadInOut, Generate},
 };
 use hmac::{Hmac, Mac};
-use secrecy::{ExposeSecret, SecretBox, SecretSlice, zeroize::Zeroize};
+use secrecy::{ExposeSecret, SecretBox, SecretSlice, SecretString, zeroize::Zeroize};
+use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-use domain::{id::ConnectorId, ports::Sealed};
+use domain::{id::ConnectorId, ports::Sealed, wire::Timestamp};
 
 /// The nonce's length: 96 bits, GCM's native size.
 const NONCE_LEN: usize = 12;
@@ -48,10 +49,6 @@ pub enum SealPurpose {
     /// The vendor's access token, in `connector.secret`.
     Token,
     /// The pending connect's PKCE verifier.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "sealed by the connect routes (E3.3, E3.4)")
-    )]
     Pkce,
 }
 
@@ -128,7 +125,6 @@ impl ConnectorKey {
 
     /// The key that signs the OAuth `state` (E3.3): HMAC-SHA256 of the raw key under a fixed
     /// label, so it differs from the AES key and rotating `CONNECTOR_KEY` rotates both.
-    #[cfg_attr(not(test), expect(dead_code, reason = "signs the OAuth state (E3.3)"))]
     pub fn state_key(&self) -> &[u8; 32] {
         self.state_key.expose_secret()
     }
@@ -155,7 +151,8 @@ impl ConnectorKey {
     }
 
     /// Opens a value sealed for `connector`. The plaintext comes back as a secret, wiped when
-    /// dropped.
+    /// dropped. The deletion runner opens tokens to revoke them (E3.6); the routes (E3.4) and
+    /// the sync (E4.1) open them too.
     pub fn unseal(
         &self,
         purpose: SealPurpose,
@@ -184,6 +181,127 @@ impl ConnectorKey {
 /// The associated data: the purpose, then the connector's id as it is written on the wire.
 fn associated_data(purpose: SealPurpose, connector: ConnectorId) -> String {
     format!("{}{connector}", purpose.prefix())
+}
+
+/// A connector's vendor tokens, as they are sealed in `connector.secret` with
+/// [`SealPurpose::Token`]: the one reader and writer of that value, for the connect routes, the
+/// deletion runner's revoke (E3.6) and the sync (E4). Two forms:
+///
+/// - **A plain string**, the token's own bytes: Slack's `xoxb-…` bot token, which has neither a
+///   refresh token nor an expiry, and a seeded connector's fixed token (roadmap E4.6).
+/// - **A JSON object** `{"access_token", "refresh_token"?, "expires_at"?}`: Google's grant.
+///   `expires_at` is RFC 3339. A revoke prefers `refresh_token`, which ends the whole grant.
+///
+/// [`seal`](Self::seal) writes the plain string exactly when there is no refresh token and no
+/// expiry; [`unseal`](Self::unseal) reads a value that starts with `{` as JSON, anything else
+/// as a plain token.
+pub struct StoredTokens {
+    /// Slack's `xoxb-…` bot token, or Google's access token.
+    pub access_token: SecretString,
+    /// Google's refresh token.
+    pub refresh_token: Option<SecretString>,
+    /// When Google's access token expires.
+    pub expires_at: Option<Timestamp>,
+}
+
+impl fmt::Debug for StoredTokens {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StoredTokens")
+            .field("refresh_token", &self.refresh_token.is_some())
+            .field("expires_at", &self.expires_at)
+            .finish_non_exhaustive()
+    }
+}
+
+/// The JSON inside the seal. No `Debug`: it holds the tokens in the clear.
+#[derive(Serialize, Deserialize)]
+struct TokensJson {
+    access_token: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    refresh_token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    expires_at: Option<Timestamp>,
+}
+
+/// Why sealed tokens couldn't be read.
+#[derive(Debug, thiserror::Error)]
+pub enum TokensError {
+    /// The seal didn't open under this key for this connector.
+    #[error("the connector's tokens don't open")]
+    Unseal(#[source] UnsealError),
+    /// It opened, but isn't what [`StoredTokens::seal`] writes.
+    #[error("the connector's tokens are unreadable")]
+    Format,
+}
+
+impl StoredTokens {
+    /// A bare access token, with no refresh token or expiry: Slack's bot token.
+    pub fn bearer(token: SecretString) -> Self {
+        Self {
+            access_token: token,
+            refresh_token: None,
+            expires_at: None,
+        }
+    }
+
+    /// Seals the tokens for `connector`: a bare bearer token as its plain string, a grant
+    /// with a refresh token or an expiry as JSON.
+    pub fn seal(&self, key: &ConnectorKey, connector: ConnectorId) -> Sealed {
+        if self.refresh_token.is_none() && self.expires_at.is_none() {
+            return key.seal(
+                SealPurpose::Token,
+                connector,
+                self.access_token.expose_secret().as_bytes(),
+            );
+        }
+        let json = TokensJson {
+            access_token: self.access_token.expose_secret().to_owned(),
+            refresh_token: self
+                .refresh_token
+                .as_ref()
+                .map(|t| t.expose_secret().to_owned()),
+            expires_at: self.expires_at,
+        };
+        let mut plain =
+            serde_json::to_vec(&json).expect("strings and a timestamp always serialise");
+        let TokensJson {
+            mut access_token,
+            refresh_token,
+            ..
+        } = json;
+        access_token.zeroize();
+        if let Some(mut t) = refresh_token {
+            t.zeroize();
+        }
+        let sealed = key.seal(SealPurpose::Token, connector, &plain);
+        plain.zeroize();
+        sealed
+    }
+
+    /// Opens the tokens sealed for `connector`.
+    pub fn unseal(
+        key: &ConnectorKey,
+        connector: ConnectorId,
+        sealed: &Sealed,
+    ) -> Result<Self, TokensError> {
+        let plain = key
+            .unseal(SealPurpose::Token, connector, sealed)
+            .map_err(TokensError::Unseal)?;
+        let bytes = plain.expose_secret();
+        if bytes.first() != Some(&b'{') {
+            let token = std::str::from_utf8(bytes).map_err(|_| TokensError::Format)?;
+            if token.is_empty() {
+                return Err(TokensError::Format);
+            }
+            return Ok(Self::bearer(SecretString::from(token)));
+        }
+        let json: TokensJson = serde_json::from_slice(bytes).map_err(|_| TokensError::Format)?;
+        Ok(Self {
+            access_token: SecretString::from(json.access_token),
+            refresh_token: json.refresh_token.map(SecretString::from),
+            expires_at: json.expires_at,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -380,5 +498,70 @@ mod tests {
         let sealed_hex = data_encoding::HEXLOWER.encode(&sealed.0);
         assert!(!line.contains(&sealed_hex[..24]), "{line}");
         assert!(!format!("{key:?}{sealed:?}{opened:?}{error}").contains(token));
+    }
+
+    #[test]
+    fn tokens_round_trip_through_the_seal() {
+        let tokens = StoredTokens {
+            access_token: SecretString::from("ya29.access"),
+            refresh_token: Some(SecretString::from("1//refresh")),
+            expires_at: Some("2026-10-19T10:00:00Z".parse().unwrap()),
+        };
+        let sealed = tokens.seal(&key(), connector(0));
+        let back = StoredTokens::unseal(&key(), connector(0), &sealed).unwrap();
+        assert_eq!(back.access_token.expose_secret(), "ya29.access");
+        assert_eq!(
+            back.refresh_token.as_ref().map(ExposeSecret::expose_secret),
+            Some("1//refresh")
+        );
+        assert_eq!(back.expires_at, tokens.expires_at);
+        assert!(!format!("{back:?}").contains("ya29"));
+        let other = connector(1);
+        assert!(matches!(
+            StoredTokens::unseal(&key(), other, &sealed),
+            Err(TokensError::Unseal(_))
+        ));
+    }
+
+    #[test]
+    fn a_slack_token_is_sealed_as_its_plain_string() {
+        let sealed =
+            StoredTokens::bearer(SecretString::from("xoxb-1234-bot")).seal(&key(), connector(0));
+        let plain = key()
+            .unseal(SealPurpose::Token, connector(0), &sealed)
+            .unwrap();
+        assert_eq!(plain.expose_secret(), b"xoxb-1234-bot");
+    }
+
+    #[test]
+    fn a_google_grant_is_sealed_as_json() {
+        let tokens = StoredTokens {
+            access_token: SecretString::from("ya29.access"),
+            refresh_token: Some(SecretString::from("1//refresh")),
+            expires_at: Some("2026-10-19T10:00:00Z".parse().unwrap()),
+        };
+        let sealed = tokens.seal(&key(), connector(0));
+        let plain = key()
+            .unseal(SealPurpose::Token, connector(0), &sealed)
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(plain.expose_secret()).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "access_token": "ya29.access",
+                "refresh_token": "1//refresh",
+                "expires_at": "2026-10-19T10:00:00Z"
+            })
+        );
+    }
+
+    #[test]
+    fn a_bare_sealed_token_reads_as_a_bearer_token() {
+        let sealed = key().seal(SealPurpose::Token, connector(0), b"xoxb-era-demo");
+        let tokens = StoredTokens::unseal(&key(), connector(0), &sealed).unwrap();
+        assert_eq!(tokens.access_token.expose_secret(), "xoxb-era-demo");
+        assert!(tokens.refresh_token.is_none() && tokens.expires_at.is_none());
+        let pkce = key().seal(SealPurpose::Pkce, connector(0), b"xoxb-era-demo");
+        assert!(StoredTokens::unseal(&key(), connector(0), &pkce).is_err());
     }
 }

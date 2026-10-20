@@ -1,6 +1,6 @@
 # PDM Backend Flows
 
-> **Status:** Draft v0.2.4, 2026-10-19. v0.2.4: the farm sync's rounds decide turns and `synced_at`, never who is read: a round gives every chosen source a turn (a page asked, whatever follows), then the budget left goes to the passes in progress, and the round ends with the next sync 15 minutes later, `synced_at` set only when every source is caught up. The farm sync rotates the sources per run, each run starting after the last source the previous one read, with `synced_at` set only when every chosen source has finished its pass in the round, offers two older-item checks a run (`probe_limit`), as many on a page as its budget covers, and reads the garden's record count before each page; section 11 adds the farm connectors' `connectors` loop with the sync's sequence (pages from a saved cursor, only changed chunks embedded, the daily 7-day re-read, the stopping codes), the `beliefs` loop it lacked, and the cleanup of old Slack messages; section 13 seeds the demo garden's `era` connectors after resuming deletions. v0.2.3: the chat turn offers `search_farm_records` only to a garden with farm records (EON E5.2, gap G6). v0.2.2: the scan stream closes on a 15-second re-check (rest without an event, a deleted scan), a stream can close before a step's last events (the app refetches on close), image bodies end on shutdown, and the worker's shutdown drops a `complete` or heartbeat in flight, so it ends within `DRAIN_SECONDS`. v0.2.1: the scan stream ends on a duplicate flagged `rests`, the global body cap is 20 MiB + 128 KiB, and the `api` container's grace period is 190 s. v0.2: the diagrams follow the cross-crate fixes (one wake-up path for the claim long poll, one `fail_scan` per final failure, the sweep as the only question continuation, late events dropped, deletes through one `DeleteQueue`, the account tombstone, SoilGrids retry times, guided stage events, the plan step's release after 3 lost compare-and-sets), and section 20 marks each gap fixed and where. v0.1: sequence diagrams and state machines for every server-side flow, from a request's layers to a scan's steps, a job's lease, a chat turn, deletion, the scheduler and start-up. Every name is a type, trait or function from the crate documents and the compiled scratch workspace.
+> **Status:** Draft v0.2.7, 2026-10-19. v0.2.7: `complete` is in a route group of its own with a 60 s timeout, and without `CONNECTOR_KEY` an account cascade deletes the user's connectors, unrevoked, before the user. v0.2.6: the farm connector deletion has one path, `DeletionRunner::finish_connector`, which the owner's disconnect uses too; it revokes through `ConnectVendors` in a task of its own, keeps a token another live connector of the same Slack team or Google account holds, finishes a removed member's connectors before their objects, and leaves a former owner's connectors `deleting` while `CONNECTOR_KEY` is missing. v0.2.5: farm connectors go with their garden and with the owner who created them (demoted, removed, leaving, or deleting the account): the store marks them `deleting` in the transaction that changes the garden or the membership, and the deletion runner revokes each token after that commit and then deletes the records and the row, resumed at start while the mark remains (section 10, EON E3.6). v0.2.4: the farm sync's rounds decide turns and `synced_at`, never who is read: a round gives every chosen source a turn (a page asked, whatever follows), then the budget left goes to the passes in progress, and the round ends with the next sync 15 minutes later, `synced_at` set only when every source is caught up. The farm sync rotates the sources per run, each run starting after the last source the previous one read, with `synced_at` set only when every chosen source has finished its pass in the round, offers two older-item checks a run (`probe_limit`), as many on a page as its budget covers, and reads the garden's record count before each page; section 11 adds the farm connectors' `connectors` loop with the sync's sequence (pages from a saved cursor, only changed chunks embedded, the daily 7-day re-read, the stopping codes), the `beliefs` loop it lacked, and the cleanup of old Slack messages; section 13 seeds the demo garden's `era` connectors after resuming deletions. v0.2.3: the chat turn offers `search_farm_records` only to a garden with farm records (EON E5.2, gap G6). v0.2.2: the scan stream closes on a 15-second re-check (rest without an event, a deleted scan), a stream can close before a step's last events (the app refetches on close), image bodies end on shutdown, and the worker's shutdown drops a `complete` or heartbeat in flight, so it ends within `DRAIN_SECONDS`. v0.2.1: the scan stream ends on a duplicate flagged `rests`, the global body cap is 20 MiB + 128 KiB, and the `api` container's grace period is 190 s. v0.2: the diagrams follow the cross-crate fixes (one wake-up path for the claim long poll, one `fail_scan` per final failure, the sweep as the only question continuation, late events dropped, deletes through one `DeleteQueue`, the account tombstone, SoilGrids retry times, guided stage events, the plan step's release after 3 lost compare-and-sets), and section 20 marks each gap fixed and where. v0.1: sequence diagrams and state machines for every server-side flow, from a request's layers to a scan's steps, a job's lease, a chat turn, deletion, the scheduler and start-up. Every name is a type, trait or function from the crate documents and the compiled scratch workspace.
 
 Companion to the [backend architecture](README.md) and the server-side half of the [frontend flows](../frontend/flows.md). Every request, event and job here is defined in the [data contracts](../architecture/contracts.md). The system-level flows are in [architecture 8](../architecture/README.md#8-main-flows). This document shows how the crates work together at run time: which handler, entry point, repository method and adapter each arrow is.
 
@@ -77,7 +77,7 @@ sequenceDiagram
     Layers->>Layers: TraceLayer span (request_id, method, matched route)
     Layers->>Layers: CorsLayer (answers preflights here)
     Layers->>Layers: CompressionLayer, render_errors, CatchPanicLayer, RequestBodyLimitLayer 20 MiB + 128 KiB
-    Layers->>Group: TimeoutLayer (10 s app, 60 s uploads and worker, 35 s claim), DefaultBodyLimit
+    Layers->>Group: TimeoutLayer (10 s app, 60 s uploads, connect and worker, 35 s claim), DefaultBodyLimit
     Group->>Ext: AuthUser
     Ext->>Ints: authz::authenticate, AuthVerifier::verify (JWKS, exp, nbf, iss, azp)
     Ints-->>Ext: VerifiedToken (sub)
@@ -969,7 +969,7 @@ sequenceDiagram
     participant Push as Pusher
     App->>Handler: DELETE /gardens/{id} (Owner)
     Handler->>Store: DeletionRepo::start_garden_deletion(owner, now)
-    Note over Store: one transaction: deleting_at, jobs cancelled, step claims and question steps cleared
+    Note over Store: one transaction: deleting_at, jobs cancelled, step claims and question steps cleared, farm connectors marked deleting
     Store-->>Handler: DeletionStarted (target, prefixes, notify, garden_name)
     Handler->>Runner: spawn(started) on the TaskTracker
     Handler-->>App: 202 (204 for a pending scan)
@@ -977,6 +977,9 @@ sequenceDiagram
     Runner->>Blob: DeleteQueue::submit each prefix and the keys, await the DeleteHandles
     Note over Runner,Blob: the queue owns each delete: 5 attempts, 1-8 s back-off, 120 s client operation timeout per attempt, drained at shutdown, and objects left after the attempts stop the cascade (records kept, resumed on start)
     loop CascadeStep::steps_for(target)
+        opt step FarmRecordsAndConnectors (a garden)
+            Runner->>Runner: finish each connector marked deleting (below)
+        end
         Runner->>Store: delete_batch(target, step) until it deletes 0
     end
     opt garden with other members
@@ -989,13 +992,49 @@ sequenceDiagram
 | Garden (`DELETE /gardens/{id}`, owner) | `start_garden_deletion`; `202` | Its prefix `gardens/{garden_id}/`; every cascade step; `garden_deleted` pushes |
 | Plant (`DELETE /plants/{id}`, owner) | `start_plant_deletion` (also removes its pin from the current map in place); `202` | Its scans' prefixes; the plant steps |
 | Pending scan (`DELETE /scans/{id}`, editor) | `start_scan_deletion` (`pending` only, else `409`); `204` | Its prefix; its own short list; the jar-test task goes through `task.scan`'s `CASCADE` |
-| Member (`DELETE /gardens/{id}/members/{user_id}`) | `remove_member` (the last owner can't); `204` | Their conversations' image prefixes; their conversations and unshared chat memories in that garden (`DeletionTarget::Member`) |
+| Member (`DELETE /gardens/{id}/members/{user_id}`) | `remove_member` (the last owner can't), which marks the farm connectors the member created there `deleting`; `204` | Their conversations' image prefixes; their connectors (revoked, then deleted); their conversations and unshared chat memories in that garden (`DeletionTarget::Member`) |
+| Demotion (`PATCH /gardens/{id}/members/{user_id}` from `owner`) | `change_role`, which marks the connectors the demoted owner created there `deleting`; `200` | Those connectors, revoked and then deleted (`spawn_connectors_of`) |
 | Account | [flow 12](#12-the-auth-webhook-and-account-deletion) | |
 
 - **Why objects first and never cancelled.** On RustFS 1.0.1 an interrupted `DeleteObjects` can leave objects that can never be listed or deleted. Every delete in `api` (cascades, a removed shot, an upload's depth maps, the orphan sweep) goes through one `blob::DeleteQueue` in `AppState`, which runs each job in a task it owns: dropping the cascade or the handle never stops it. The only time limit is the client's 120-second per-attempt operation timeout. At shutdown the queue is drained for `max(SHUTDOWN_DRAIN_S, 120 s)`, so a pending delete always gets one full attempt ([storage 4](../storage/README.md#4-writes-and-deletes), [api 17](api.md#17-deletion), [blob 6](blob.md#6-deletes-that-are-never-cancelled)).
 - **Why a running step can't write afterwards.** The synchronous part clears `pipeline_step` and question steps, and `commit_step` re-checks `deleting_at` on the plant and garden, so a step already running fails with `ClaimLost` ([database 4](../database/README.md#deletion-)).
 - **Resumable.** At start, `DeletionRunner::resume` runs every target still marked `deleting_at` from its first step; a garden's prefix is deleted again, and a plant's or scan's objects are left to the orphan sweep ([api 23](api.md#23-open-questions), question 5).
 - **A missed step fails loudly** on `REFERENCE ON DELETE REJECT` instead of orphaning records.
+
+### Farm connectors
+
+A connector goes with its garden, and with the owner who created it when that owner stops being one, because the consent was theirs ([connectors 8](../connectors/README.md#8-privacy-and-security), EON E3.6). The store marks it `deleting` inside the transaction that changes the garden or the membership (`start_garden_deletion`, `change_role` from `owner`, `remove_member`, and `transfer_ownership` at account deletion), so the sync and the list skip it at once and its row keeps the sealed token; the owner's `DELETE /connectors/{id}` marks it the same way (`start_connector_deletion`). The vendor's revoke is an HTTP call, so the runner makes it after that commit, outside every transaction, in `finish_connector`, the one revoke-then-delete path:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Runner as DeletionRunner
+    participant Store
+    participant Key as ConnectorKey
+    participant Vendor as ConnectVendors (Slack auth.revoke, Google revoke)
+    Runner->>Store: FarmRecordStore::deleting_connectors(Some(garden))
+    Store-->>Runner: ConnectorRow (sealed token), for a member only those they created
+    loop each connector: finish_connector
+        alt endpoint era, or no token
+            Note over Runner: nothing to revoke (era's demo token is a fixed string)
+        else
+            Runner->>Key: StoredTokens::unseal(key, connector, secret)
+            Runner->>Store: shared_account_connectors(kind, team id or email, except)
+            alt another live vendor connector holds the account
+                Note over Runner: not revoked: the token is theirs too
+            else
+                Runner->>Vendor: revoke(kind, tokens), in a task of its own
+                Note over Runner,Vendor: logged by connector id and kind, never the token or the body; a failure or a panic doesn't stop the deletion
+            end
+        end
+        Runner->>Store: delete_connector_batch until it deletes 0 (records 500 at a time, then the row)
+    end
+```
+
+- **Revoke before the delete, after the mark.** Revoking after the rows were gone would hold the only copy of the token in memory, and a crash would lose the revoke for good. With the mark committed first, a restart anywhere before the last batch leaves the row `deleting` with its token, and `DeletionRunner::resume` finishes it (`deleting_connectors(None)`: every such connector outside a garden being deleted; a garden being deleted finishes its own in its resumed cascade). The worst case is a second revoke of a token already revoked, which the vendor refuses and the log records.
+- **A removed member** (`Member` cascade, also the account cascade's leave step) has their connectors finished before their chat objects; a store error listing them is logged and the chat steps go on, since `resume` finishes the connectors. The account cascade marks the leaver's connectors in `transfer_ownership` (the leaver drops to editor) and `remove_member`, and finishes them before `delete_user`: `connector.created_by` rejects the user's deletion while one remains.
+- **A demotion** starts `spawn_connectors_of` only when `change_role` says an owner was demoted (`RoleChange::demoted_owner`).
+- **Connectors off** (no `CONNECTOR_KEY`): nothing can be unsealed. A garden's cascade still deletes its connectors, unrevoked, and so does an account's, before `DELETE $user`; a demoted, removed or leaving owner's stay `deleting`, with a warning at each start, so their tokens are revoked once the key is configured.
 
 ---
 
@@ -1214,14 +1253,15 @@ sequenceDiagram
     Handler-->>App: 202 deleted_gardens, transferred_gardens
     Runner->>Store: plan_account_deletion again
     loop each transfer
-        Runner->>Store: transfer_ownership (longest-standing editor)
+        Runner->>Store: transfer_ownership (longest-standing editor; the leaver's connectors there marked deleting)
     end
     loop each garden the user alone used
         Runner->>Store: check_membership_of Owner, start_garden_deletion
         Runner->>Blob: garden prefix, then records (flow 10)
     end
     loop each shared garden
-        Runner->>Store: check_membership_of Viewer, remove_member
+        Runner->>Store: check_membership_of Viewer, remove_member (marks the user's connectors there deleting)
+        Runner->>Store: the user's connectors there, revoked and deleted (finish_connector, flow 10)
         Runner->>Blob: chat prefixes
         Runner->>Store: delete_records DeletionTarget::Member
     end

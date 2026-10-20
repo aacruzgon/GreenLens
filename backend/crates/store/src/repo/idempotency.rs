@@ -9,7 +9,7 @@ use domain::{
         IdempotencyBegin, IdempotencyRepo, IdempotencyScope, StoreError, StoredResponse, UsageRepo,
         UsageTotals,
     },
-    rules::limits::IDEMPOTENCY_TTL,
+    rules::limits::{IDEMPOTENCY_RUNNING_STALE, IDEMPOTENCY_TTL},
     wire::Timestamp,
 };
 use surrealdb::types::{RecordId, SurrealValue};
@@ -31,6 +31,10 @@ pub mod sql {
     pub const READ_KEY: &str = "SELECT * FROM ONLY $key;";
     /// An expired key the cleanup hasn't reached yet: deleted, then `BEGIN_KEY` again.
     pub const DELETE_EXPIRED_KEY: &str = "DELETE $key WHERE expires_at <= $now;";
+    /// A stale `running` key taken over by a retry: a compare-and-set on the state and the
+    /// start time (`expires_at` is the start plus 24 hours), so of two concurrent retries one
+    /// wins ([contracts 1], idempotency).
+    pub const TAKE_OVER_KEY: &str = "UPDATE $key SET expires_at = $new_expires_at WHERE state = 'running' AND expires_at = $read_expires_at RETURN VALUE id;";
     /// The finished response ([contracts 1]: `2xx` and the deterministic `4xx` only).
     pub const FINISH_KEY: &str =
         "UPDATE $key SET state = 'done', response_status = $status, response_body = $body;";
@@ -168,6 +172,25 @@ impl IdempotencyRepo for SurrealStore {
             }
             match self.read_key(&key).await? {
                 Some(row) if row.expires_at > dt(now) => {
+                    let stale = row.state == KeyStateRow::Running
+                        && row.fingerprint == fingerprint
+                        && row.expires_at <= dt(expires_at.minus(IDEMPOTENCY_RUNNING_STALE));
+                    if stale {
+                        let mut results = run_tx(&self.db, sql::TAKE_OVER_KEY, |q| {
+                            q.bind(("key", key.clone()))
+                                .bind(("new_expires_at", dt(expires_at)))
+                                .bind(("read_expires_at", row.expires_at))
+                        })
+                        .await
+                        .map_err(|f| f.into_store(WHAT))?;
+                        let won: Vec<RecordId> =
+                            results.take(0).map_err(|e| take_failed(WHAT, e))?;
+                        return Ok(if won.is_empty() {
+                            IdempotencyBegin::InProgress
+                        } else {
+                            IdempotencyBegin::Started
+                        });
+                    }
                     return decide(row, fingerprint).map_err(|e| e.into_store(WHAT));
                 }
                 // Expired but not yet cleaned up (reads hide expired keys, database 4).

@@ -1,6 +1,6 @@
 # PDM Backend: `api` binary
 
-> **Status:** Draft v0.7.5, 2026-10-19. v0.7.5: the farm sync's rounds decide turns and `synced_at`, never who is read (section 16): a round gives every chosen source a turn, a page asked whatever follows (`Rotation::turned`), the budget left then goes to the passes in progress, and the round ends with `Synced` only when every source is caught up, `RoundEnded` when one has pages left or a failed last turn (`SourceState::failing`, which keeps `last_error`), and `NoSources` for a connector without sources; older-item checks need 140 s left, and a page can still overrun the budget by several paced calls. The farm sync's audit fixes (section 16): the sources rotate per run (`state::Rotation`, stored under `SYNC_STATE_KEY`), so each run starts after the last source the previous one read, a new source joins the round in progress, and the run reports `Synced` (setting `synced_at`) only when every chosen source has finished its pass in the round; older-thread checks are two per connector run (`PROBES_PER_RUN`), none on a first pass, and a page is offered only as many as 70 s each of the budget left covers after 70 s for the page; the garden's record count is read before each page is stored; a page of a source dropped meanwhile doesn't count toward the record limit; seeding reports a garden or a connector being deleted (`Seeded::GardenDeleting`, `Seeded::ConnectorDeleting`); shutdown interrupts a page in flight (the budget is still checked between pages), a `429`'s wait is kept between 60 s and 1 h, and seeding repairs an existing demo connector (token sealed again, status and `last_error` reset) and warns when the fixed id lives in another garden. v0.7.4: start-up seeds the demo garden's two `era` connectors after resuming deletions (roadmap E4.6), by fixed id, into the garden `ERA_DEMO_GARDEN_ID` names, with their tokens sealed under `CONNECTOR_KEY` (sections 4, 5 and 16). v0.7.3: the farm sync (roadmap E4.1, E4.2, E4.4, E4.5): `farm_sync.rs` runs the `connectors` task every minute when connectors are on (`AppState::farm_sync`), at most 4 due connectors a run side by side, over the `FarmSource` adapters by kind and endpoint (`FarmSources`): pages from each source's saved cursor, chunks of at most 2,000 characters with a SHA-256 `text_hash`, only changed chunks embedded, the daily 7-day re-read that deletes what the vendor no longer has, the 10,000-record limit, and `last_error` and the next attempt by failure; `cleanup` deletes Slack messages older than 180 days (section 16). v0.7.2: farm connectors are configured (roadmap E3.0–E3.2): `CONNECTOR_KEY` (64 hex characters) is the one switch, read through `AppState::connector_key`; without it the list answers `available: false` and the owner routes `409 invalid_state`, and with it the list comes from the store. The Slack and Google OAuth clients (each pair together or not at all), `CONNECTOR_RETURN_URL` and the Era bases are read for the routes and seeding to come. `sealing.rs` seals vendor tokens with AES-256-GCM (`aes-gcm` 0.11.1), a random nonce per seal and the connector id as associated data. v0.7.1: the farm connector routes are declared (roadmap E1.4): `GET /gardens/{id}/connectors` answers `available: false`, and the owner routes and the public OAuth callback answer `409 invalid_state` until connectors are configured; `Access<R, table::Connector>` resolves a connector's garden. v0.7: shared memories are recorded in `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs`, the new `GET /plants/{id}/beliefs` (never a 5xx), the `beliefs` scheduler task every 10 s (the only writer to Agent Memory: queued erases, then unsynced shared memories), deletions that queue their erase in their first transaction, and `POST /memories` taking a `topic`; 42 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
+> **Status:** Draft v0.7.9, 2026-10-19. v0.7.9: the account deletion finishes the user's `deleting` connectors through `deleting_connectors_of_user`, so one in a garden being deleted no longer blocks `DELETE $user`, and a connect lost to a deletion is answered as not found; `complete` runs its work on the tracker in a `connect` route group with a 60 s timeout, so a dropped request neither keeps a claim nor orphans tokens, and a panic releases the claim; a final write that fails ambiguously re-reads the row before revoking; the pending cleanup leaves claims younger than `CONNECT_CLAIM_HOLD`; without `CONNECTOR_KEY` an account cascade deletes the user's connectors unrevoked (sections 7, 11, 16, 17). v0.7.8: the connect and deletion branches share one path: `DeletionRunner::finish_connector` is the only revoke-then-delete (the owner's `DELETE /connectors/{id}` spawns it; `revoke.rs` and `connect::disconnect` are gone), `sealing::StoredTokens` the only reader of a sealed token, and `ConnectVendors` the only revoke seam; a token another live `vendor` connector of the same Slack team or Google account holds isn't revoked; each revoke runs in a task of its own; a demotion starts the task only when an owner was demoted; `complete` claims the state before the exchange and revokes tokens it can't store; a refreshed Google token is stored with a compare-and-set; the callback passes on only a short vendor error code (sections 11, 17). v0.7.7: connector deletion (roadmap E3.6): a garden's cascade, an owner's demotion, removal or leaving, and account deletion delete the connectors that owner created; the store marks them `deleting` in its transaction, and the deletion runner unseals each token, revokes it through the `TokenRevoker` seam (`revoke.rs`, Slack's `auth.revoke` and Google's `revoke`; never for an `era` connector) after that commit, then deletes the records and the row, resumed at start while the mark remains; the deletion runner opens tokens with `unseal` too (section 17). v0.7.6: farm connectors connect (roadmap E3.3–E3.5): `connect.rs` signs the OAuth state (`OAuthState`, an HMAC-SHA256 under `ConnectorKey::state_key` over the connector id, the nonce and the expiry), seals the tokens as `StoredTokens` (Slack's bot token as its plain string, Google's grant as JSON `{access_token, refresh_token, expires_at}`), and holds the `ConnectVendors` seam that `wiring/connect.rs` implements over the Slack and Drive clients on the vendors' own hosts; the seven connector routes are built (section 11), refuse an `era` connector with `409 invalid_state`, and the `cleanup` task deletes pending connectors after 10 minutes (section 16). v0.7.5: the farm sync's rounds decide turns and `synced_at`, never who is read (section 16): a round gives every chosen source a turn, a page asked whatever follows (`Rotation::turned`), the budget left then goes to the passes in progress, and the round ends with `Synced` only when every source is caught up, `RoundEnded` when one has pages left or a failed last turn (`SourceState::failing`, which keeps `last_error`), and `NoSources` for a connector without sources; older-item checks need 140 s left, and a page can still overrun the budget by several paced calls. The farm sync's audit fixes (section 16): the sources rotate per run (`state::Rotation`, stored under `SYNC_STATE_KEY`), so each run starts after the last source the previous one read, a new source joins the round in progress, and the run reports `Synced` (setting `synced_at`) only when every chosen source has finished its pass in the round; older-thread checks are two per connector run (`PROBES_PER_RUN`), none on a first pass, and a page is offered only as many as 70 s each of the budget left covers after 70 s for the page; the garden's record count is read before each page is stored; a page of a source dropped meanwhile doesn't count toward the record limit; seeding reports a garden or a connector being deleted (`Seeded::GardenDeleting`, `Seeded::ConnectorDeleting`); shutdown interrupts a page in flight (the budget is still checked between pages), a `429`'s wait is kept between 60 s and 1 h, and seeding repairs an existing demo connector (token sealed again, status and `last_error` reset) and warns when the fixed id lives in another garden. v0.7.4: start-up seeds the demo garden's two `era` connectors after resuming deletions (roadmap E4.6), by fixed id, into the garden `ERA_DEMO_GARDEN_ID` names, with their tokens sealed under `CONNECTOR_KEY` (sections 4, 5 and 16). v0.7.3: the farm sync (roadmap E4.1, E4.2, E4.4, E4.5): `farm_sync.rs` runs the `connectors` task every minute when connectors are on (`AppState::farm_sync`), at most 4 due connectors a run side by side, over the `FarmSource` adapters by kind and endpoint (`FarmSources`): pages from each source's saved cursor, chunks of at most 2,000 characters with a SHA-256 `text_hash`, only changed chunks embedded, the daily 7-day re-read that deletes what the vendor no longer has, the 10,000-record limit, and `last_error` and the next attempt by failure; `cleanup` deletes Slack messages older than 180 days (section 16). v0.7.2: farm connectors are configured (roadmap E3.0–E3.2): `CONNECTOR_KEY` (64 hex characters) is the one switch, read through `AppState::connector_key`; without it the list answers `available: false` and the owner routes `409 invalid_state`, and with it the list comes from the store. The Slack and Google OAuth clients (each pair together or not at all), `CONNECTOR_RETURN_URL` and the Era bases are read for the routes and seeding to come. `sealing.rs` seals vendor tokens with AES-256-GCM (`aes-gcm` 0.11.1), a random nonce per seal and the connector id as associated data. v0.7.1: the farm connector routes are declared (roadmap E1.4): `GET /gardens/{id}/connectors` answers `available: false`, and the owner routes and the public OAuth callback answer `409 invalid_state` until connectors are configured; `Access<R, table::Connector>` resolves a connector's garden. v0.7: shared memories are recorded in `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs`, the new `GET /plants/{id}/beliefs` (never a 5xx), the `beliefs` scheduler task every 10 s (the only writer to Agent Memory: queued erases, then unsynced shared memories), deletions that queue their erase in their first transaction, and `POST /memories` taking a `topic`; 42 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
 
 Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports and types `api` wires, and [domain-types](domain-types.md) for every wire shape. Every listing below is copied from the compiled source of `bins/api` by the docgen tool. `cargo check -p api`, `cargo clippy -p api --all-targets` (no warning in `api`) and `cargo test -p api` pass: 42 tests, among them handler tests that drive the real router with `tower::ServiceExt::oneshot`. `cargo check --workspace` passes, the binary links, and `api openapi` writes the document.
 
@@ -170,7 +170,9 @@ bins/api/src/
 ├─ limits.rs         governor limiters
 ├─ workers.rs        worker tokens
 ├─ signing.rs        HmacSigner (UrlSigner), PhotoIndex (SpeciesPhotos)
-├─ sealing.rs        ConnectorKey: AES-256-GCM seal and unseal of connector tokens
+├─ sealing.rs        ConnectorKey: AES-256-GCM seal and unseal; StoredTokens, the sealed tokens
+├─ connect.rs        the consent URLs, ConnectVendors (the vendor seam: exchange, refresh, sources, revoke)
+│  └─ oauth.rs       OAuthState: the signed OAuth state
 ├─ uploads.rs        multipart reading, fingerprint, the CPU pipeline, blob puts
 ├─ events.rs
 │  ├─ hub.rs         EventHub: one broadcast channel per watched scan
@@ -194,7 +196,9 @@ bins/api/src/
 └─ tests.rs          handler tests
    ├─ tests/fake_store.rs  generated: a Store of per-area mockall mocks
    ├─ tests/beliefs.rs     the beliefs route and the deletion runner's Agent Memory step
-   └─ tests/connectors.rs  the connector routes, off and on
+   ├─ tests/connect.rs     the connect flow and the owner routes on, with a mocked ConnectVendors
+   ├─ tests/connector_deletion.rs  connectors deleted with their garden or their owner: revoke order, failures, resume
+   └─ tests/connectors.rs  the connector routes while connectors are off, and the list
 ```
 
 ---
@@ -478,10 +482,6 @@ pub struct OAuthClient {
     /// `SLACK_CLIENT_ID` or `GOOGLE_CLIENT_ID`: public, it goes in the consent URL.
     pub client_id: String,
     /// `SLACK_CLIENT_SECRET` or `GOOGLE_CLIENT_SECRET`: sent only in the code exchange.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "read by the code exchange, roadmap E3.4")
-    )]
     pub client_secret: SecretString,
 }
 
@@ -655,7 +655,7 @@ fn oauth_client<F: Fn(&str) -> Option<String>>(
 
 Every secret is a `SecretString`: `Debug` prints `[REDACTED]` (the test checks the signing key never appears in the formatted config). `Config::from_lookup` takes any variable source, so tests build a config from a map.
 
-**Sealing.** `CONNECTOR_KEY` parses into a `ConnectorKey`, which holds the expanded AES-256-GCM key (wiped on drop through `aes-gcm`'s `zeroize` feature) and prints as `ConnectorKey([REDACTED])`. `seal` draws a fresh 96-bit nonce from the OS for every call, so sealing one token twice gives two values, and writes `nonce (12 bytes) || ciphertext || tag (16 bytes)` into `domain::ports::Sealed`, whose `Debug` prints only the length. The associated data is the connector's id as it is written on the wire, so a sealed value opens only on its own connector ([connectors 4](../connectors/README.md#4-data)). `unseal` returns the plaintext as a `SecretSlice<u8>`, wiped on drop; a wrong key, another connector's id or any changed byte is the same opaque `UnsealError::Rejected`. It lives in `api` because every caller does: the connect routes (E3.3, E3.4), the `connectors` scheduler task (E4.1) and start-up seeding (E4.6). The `FarmSource` adapters in `integrations` get an unsealed `VendorToken` and never see the key, and `domain` holds only the opaque bytes, so neither depends on a cipher. Seeding seals the demo tokens and the sync unseals every connector's; `SealPurpose::Pkce` keeps its `expect(dead_code)` until the connect routes seal the PKCE verifier (E3.3).
+**Sealing.** `CONNECTOR_KEY` parses into a `ConnectorKey`, which holds the expanded AES-256-GCM key (wiped on drop through `aes-gcm`'s `zeroize` feature) and prints as `ConnectorKey([REDACTED])`. `seal` draws a fresh 96-bit nonce from the OS for every call, so sealing one token twice gives two values, and writes `nonce (12 bytes) || ciphertext || tag (16 bytes)` into `domain::ports::Sealed`, whose `Debug` prints only the length. The associated data is the connector's id as it is written on the wire, so a sealed value opens only on its own connector ([connectors 4](../connectors/README.md#4-data)). `unseal` returns the plaintext as a `SecretSlice<u8>`, wiped on drop; a wrong key, another connector's id or any changed byte is the same opaque `UnsealError::Rejected`. It lives in `api` because every caller does: the connect routes (E3.3, E3.4), the `connectors` scheduler task (E4.1) and start-up seeding (E4.6). The `FarmSource` adapters in `integrations` get an unsealed `VendorToken` and never see the key, and `domain` holds only the opaque bytes, so neither depends on a cipher. The connect routes seal Google's PKCE verifier (`SealPurpose::Pkce`) and, after the exchange, the vendor's tokens (`SealPurpose::Token`) as `sealing::StoredTokens`: Slack's bot token as its plain string, Google's grant as JSON `{access_token, refresh_token?, expires_at?}`, read back as JSON exactly when the plaintext starts with `{`; the routes, the deletion runner and the sync all read it through `StoredTokens::unseal`. The deletion runner opens a deleted connector's tokens to revoke them (E3.6, section 17). Start-up seeding seals the demo connectors' tokens as plain strings (E4.6).
 
 ```rust
 /// `CONNECTOR_KEY`: 32 bytes, written as 64 hex characters (`openssl rand -hex 32`, the way every
@@ -692,6 +692,27 @@ pub enum UnsealError {
     #[error("the sealed value doesn't open under this key for this connector")]
     Rejected,
 }
+
+/// A connector's vendor tokens, as they are sealed in `connector.secret` with
+/// [`SealPurpose::Token`]: the one reader and writer of that value, for the connect routes, the
+/// deletion runner's revoke (E3.6) and the sync (E4). Two forms:
+///
+/// - **A plain string**, the token's own bytes: Slack's `xoxb-…` bot token, which has neither a
+///   refresh token nor an expiry, and a seeded connector's fixed token (roadmap E4.6).
+/// - **A JSON object** `{"access_token", "refresh_token"?, "expires_at"?}`: Google's grant.
+///   `expires_at` is RFC 3339. A revoke prefers `refresh_token`, which ends the whole grant.
+///
+/// [`seal`](Self::seal) writes the plain string exactly when there is no refresh token and no
+/// expiry; [`unseal`](Self::unseal) reads a value that starts with `{` as JSON, anything else
+/// as a plain token.
+pub struct StoredTokens {
+    /// Slack's `xoxb-…` bot token, or Google's access token.
+    pub access_token: SecretString,
+    /// Google's refresh token.
+    pub refresh_token: Option<SecretString>,
+    /// When Google's access token expires.
+    pub expires_at: Option<Timestamp>,
+}
 ```
 
 ```rust
@@ -727,7 +748,6 @@ impl ConnectorKey {
 
     /// The key that signs the OAuth `state` (E3.3): HMAC-SHA256 of the raw key under a fixed
     /// label, so it differs from the AES key and rotating `CONNECTOR_KEY` rotates both.
-    #[cfg_attr(not(test), expect(dead_code, reason = "signs the OAuth state (E3.3)"))]
     pub fn state_key(&self) -> &[u8; 32] {
         self.state_key.expose_secret()
     }
@@ -754,7 +774,8 @@ impl ConnectorKey {
     }
 
     /// Opens a value sealed for `connector`. The plaintext comes back as a secret, wiped when
-    /// dropped.
+    /// dropped. The deletion runner opens tokens to revoke them (E3.6); the routes (E3.4) and
+    /// the sync (E4.1) open them too.
     pub fn unseal(
         &self,
         purpose: SealPurpose,
@@ -781,7 +802,7 @@ impl ConnectorKey {
 }
 ```
 
-**One switch.** `AppState::connector_key` (section 6) is the only place that decides whether connectors are on. The list route asks it and answers `available: false`; each of the seven write routes calls `require_connectors` first and answers `409 invalid_state` when it is off (and keeps answering it until E3.3 and E3.4 build their handlers); the `connectors` task and seeding ask it too; `wiring.rs` logs the decision at start, with a warning when vendor or Era settings are set without the key.
+**One switch.** `AppState::connector_key` (section 6) is the only place that decides whether connectors are on. The list route asks it and answers `available: false`; each of the seven write routes calls `require_connectors` first and answers `409 invalid_state` when it is off; the `connectors` task and seeding ask it too; `wiring.rs` logs the decision at start, with a warning when vendor or Era settings are set without the key.
 
 ---
 
@@ -857,6 +878,9 @@ pub struct AppState {
     /// The one path to `RustFS` deletes ([storage 4]): detached, never cancelled, retried, and
     /// drained at shutdown for at least one full attempt. Shared with `deletions`.
     pub deletes: blob::DeleteQueue,
+    /// The farm connectors' vendor calls (the code exchange, the source picker, the revoke), on
+    /// the vendors' fixed hosts; a seam like `pipeline`, so route tests mock it.
+    pub connect: Arc<dyn ConnectVendors>,
     /// Cancelled once on SIGTERM / Ctrl-C.
     pub shutdown: CancellationToken,
     /// Every background task and spawned follow-up; waited on at shutdown.
@@ -1157,9 +1181,14 @@ struct Outbound {
     chat_model: Arc<dyn ChatModel>,
     classifier: Arc<dyn TextClassifier>,
     beliefs: Arc<dyn BeliefStore>,
+    connect: Arc<dyn ConnectVendors>,
     farm: FarmSources,
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "every outbound adapter is built here, one after another, over one HTTP client"
+)]
 async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Outbound> {
     let http = client(&HttpConfig::default()).context("HTTP client")?;
     let mut verifier = ClerkVerifierConfig::new(config.clerk.issuer.clone());
@@ -1207,6 +1236,12 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
             256,
         )),
     };
+    let connect: Arc<dyn ConnectVendors> = Arc::new(connect::VendorClients::new(
+        |c| SlackClient::new(http.clone(), c),
+        |c| DriveClient::new(http.clone(), c),
+        &config.connectors,
+        Arc::clone(clock),
+    ));
     let farm = farm_sources(config, |c| SlackClient::new(http.clone(), c));
     let beliefs: Arc<dyn BeliefStore> = match agent_memory(config) {
         Some(c) => Arc::new(AgentMemory::new(http.clone(), c)),
@@ -1254,6 +1289,7 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         chat_model,
         classifier,
         beliefs,
+        connect,
         farm,
     })
 }
@@ -1337,6 +1373,10 @@ fn log_connectors(config: &Config) {
 /// Builds every port and the state, in order: the databases (schema as root, then connect as
 /// `api`; the knowledge index), the object store, the outbound adapters, the CPU models, the
 /// species photo index, then `api`'s own pieces and the pipeline and agent that need the writer.
+#[expect(
+    clippy::too_many_lines,
+    reason = "every port and in-process piece is built here, in start-up order"
+)]
 pub async fn build(
     config: Config,
     shutdown: CancellationToken,
@@ -1413,7 +1453,7 @@ pub async fn build(
     );
     // The one delete queue: every RustFS delete in `api` goes through it, and `main` drains it.
     let deletes = blob::DeleteQueue::new(Arc::clone(&blob));
-    let deletions = DeletionRunner::new(
+    let mut deletions = DeletionRunner::new(
         store,
         deletes.clone(),
         out.auth_admin,
@@ -1422,6 +1462,10 @@ pub async fn build(
         tasks.clone(),
         shutdown.clone(),
     );
+    // Connectors on: the deletion runner revokes through the routes' own vendor seam.
+    if let Some(key) = &config.connectors.key {
+        deletions = deletions.with_revoke(key.clone(), Arc::clone(&out.connect));
+    }
     Ok(Arc::new(AppState {
         limits: RateLimits::new(config.rate_per_minute),
         upload_permits: Arc::new(Semaphore::new(config.upload_permits.max(1))),
@@ -1436,6 +1480,7 @@ pub async fn build(
         broker,
         deletions,
         deletes,
+        connect: out.connect,
         farm_sync,
         shutdown,
         tasks,
@@ -1489,7 +1534,8 @@ Every route is registered through utoipa's `OpenApiRouter` and `routes!`, which 
 /// The claim long-poll waits up to 30 s ([contracts 5]); its group's timeout leaves 5 s more.
 pub const CLAIM_TIMEOUT: Duration = Duration::from_secs(35);
 
-/// Uploads run the CPU pipeline; worker completions carry large results.
+/// Uploads run the CPU pipeline; worker completions carry large results; a connect's
+/// `complete` waits on two vendor calls.
 pub const SLOW_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Worker result bodies (perception masks and embeddings for every image).
@@ -1561,7 +1607,6 @@ pub fn routes(request_timeout: Duration) -> OpenApiRouter<SharedState> {
             connectors::create_connector
         ))
         .routes(routes!(connectors::oauth_callback))
-        .routes(routes!(connectors::complete_connector))
         .routes(routes!(connectors::available_sources))
         .routes(routes!(connectors::set_sources))
         .routes(routes!(connectors::sync_connector))
@@ -1575,6 +1620,13 @@ pub fn routes(request_timeout: Duration) -> OpenApiRouter<SharedState> {
         .routes(routes!(scans::upload_image))
         .routes(routes!(chat::upload_chat_image))
         .layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT))
+        .layer(timeout(SLOW_TIMEOUT));
+    // `complete` exchanges a code in two vendor calls (Slack's 20 s deadline each, Google's
+    // 30 s), so it gets the slow routes' timeout; its work runs on in a task when even that
+    // passes (contracts 9, farm connectors).
+    let connect = OpenApiRouter::new()
+        .routes(routes!(connectors::complete_connector))
+        .layer(DefaultBodyLimit::max(JSON_BODY_LIMIT))
         .layer(timeout(SLOW_TIMEOUT));
     let claim = OpenApiRouter::new()
         .routes(routes!(internal::claim))
@@ -1590,6 +1642,7 @@ pub fn routes(request_timeout: Duration) -> OpenApiRouter<SharedState> {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .merge(app)
         .merge(uploads)
+        .merge(connect)
         .merge(claim)
         .merge(worker)
 }
@@ -1601,6 +1654,7 @@ pub fn routes(request_timeout: Duration) -> OpenApiRouter<SharedState> {
 |---|---|---|---|
 | app | everything else, both SSE streams, media, ops, the webhook | `REQUEST_TIMEOUT_S` (10 s) | 1 MiB |
 | uploads | `POST /scans/{id}/images`, `POST /conversations/{id}/images` | 60 s | 12 MiB + 2 × 4 MiB + 128 KiB |
+| connect | `POST /connectors/{id}/complete` (two vendor calls, 20 s or 30 s deadlines each; section 11) | 60 s | 1 MiB |
 | claim | `POST /internal/jobs/claim` | 35 s (the long poll waits up to 30 s) | 1 MiB |
 | worker | heartbeat, events, complete, job images | 60 s | 16 MiB |
 
@@ -2879,7 +2933,18 @@ pub async fn plant_beliefs(
 }
 ```
 
-The farm connector routes were declared ahead of their work (roadmap E1.4). Without `CONNECTOR_KEY` (`AppState::connector_key`, section 5) connectors are off: the list answers `available: false` without asking the store, and everything else `409 invalid_state`, not `503`, which clients retry (decision 9 of [docs/EON](../EON/README.md)). With the key, the list is the store's `FarmRecordStore::connectors`; the other routes still answer `409 invalid_state` until the OAuth state and the routes are built (E3.3, E3.4). The access checks already run, so a non-member gets `404` and a non-owner `403`:
+**Farm connectors** ([connectors 5](../connectors/README.md#5-connecting-and-tokens); roadmap E3.1–E3.4 of [docs/EON](../EON/README.md)). Without `CONNECTOR_KEY` (`AppState::connector_key`, section 5) connectors are off: the list answers `available: false` without asking the store, and everything else `409 invalid_state` after its access checks, not `503`, which clients retry (decision 9). With the key:
+
+- **Starting.** `POST /gardens/{id}/connectors` (owner) creates a `pending` connector whose `oauth` holds the nonce, the app's `device_hash` and, for Google, the PKCE verifier sealed with `SealPurpose::Pkce`; it answers `201` with the vendor's consent URL. A vendor without its OAuth client (`SLACK_CLIENT_ID`, `GOOGLE_CLIENT_ID`) is `409 invalid_state`, and so is a third connector in a garden (the store's limit).
+- **The state** is `<connector id>.<nonce>.<expiry in unix seconds>.<mac>`: four URL-safe fields, the MAC an HMAC-SHA256 under `ConnectorKey::state_key` over the first three as written, checked in constant time before anything else is read. A state works only while the pending connector still holds its nonce and expiry and no `complete` has claimed it (`oauth.claimed_at`); the exchange clears them, so a tampered, expired, claimed or used state is `400 invalid_request` on `state`, at the callback and at `complete`.
+- **The callback** is public: it checks the state, stores nothing, and answers `302` to `{CONNECTOR_RETURN_URL}/{id}/callback` with the code (or the vendor's `error`, when the owner declined, passed on only when it is 1 to 64 characters of `[a-z_]` and as `vendor_error` otherwise) and the state, with `Cache-Control: no-store` and `Referrer-Policy: no-referrer`.
+- **`complete`** (owner) checks the state against the `{id}` in the path, then the device: anyone but the owner who started it, or a `device_verifier` whose SHA-256 isn't the stored hash, gets `404 not_found`, and the pending connector is deleted (`finish_connector` on the tracker). Then it claims the state (`claim_connect`, a compare-and-set on `pending`, the nonce, the expiry and no earlier claim), so of two concurrent `complete`s only one exchanges the code and the other gets the used-state `400`. Then it exchanges the code: a code the vendor refuses (the client's `AuthRefused`) is `400 invalid_request` on `code`; our own request rejected (the client's `Refused`, a misconfigured OAuth client) is `500`; an outage is `503 upstream_unavailable` with `upstream: "slack"` or `"google_drive"`. A failed exchange gave no tokens, so `release_connect` clears the claim and a retry can claim again. The tokens are sealed and the store's compare-and-set on the claimed nonce activates the connector; when it loses (the connector was deleted or cleaned up during the exchange) the answer is the used-state `400` or `404`, and the tokens nothing stores are revoked in the background (`DeletionRunner::revoke_tokens`, with the shared-account rule). Any other store error may have come after the commit applied, so `connect_lost` reads the row again: holding the same sealed value, the connect worked and is `200`; otherwise the tokens are revoked; and when the read fails too, they are left alone and logged.
+
+  **Not cancelled with its request.** The handler spawns the work on the tracker and only awaits its `JoinHandle`, so the route's timeout (the `connect` group's 60 s) or a client that goes away drops the handler, not the exchange: the task still stores the tokens, revokes them or releases the claim, and finishes the idempotency record, so a retry with the same `Idempotency-Key` gets `409 request_in_progress` until it is done and then its answer. The claimed part (exchange, then `complete_connect`) is a task of its own: a panic in it comes back as a `JoinError`, which releases the claim and answers `500`.
+- **Sources.** `available-sources` first asks `ConnectVendors::refresh` for a Google access token with under 5 minutes left, and stores what comes back with `replace_secret`, a compare-and-set against the sealed value it read (of two refreshes at once one is stored, and the other call uses its own token); then it asks the vendor (channels where the bot is a member, or the Google account's folders); a refused token makes the connector `reauth_needed` and answers `409 invalid_state` with that status. `PUT sources` takes at most 10 channels or 1 folder, each id from the vendor's list (its name comes from there), stores them, then deletes each dropped source's records, 500 at a time, before answering with the fresh record count.
+- **Sync now** is the store's compare-and-set (decision 12): `202`, or `429 rate_limited` with `retry_after_s` up to the next allowed instant.
+- **Disconnect.** `DELETE` has the store mark the connector `deleting` (the list and the sync skip it) and answers `202`; a task on the tracker runs `DeletionRunner::finish_connector` (section 17), the one revoke-then-delete path, which every cascade uses too.
+- **Demo connectors** (`endpoint: "era"`) refuse every owner route with `409 invalid_state` (decision 11). No route takes a URL: the consent URLs are constants, and `wiring/connect.rs` builds the Slack and Drive clients with their default configurations, the vendors' own hosts (decision 8).
 
 ```rust
 /// The answer of every connector write while connectors are off.
@@ -2909,7 +2974,8 @@ pub async fn list_connectors(
 }
 
 /// `POST /gardens/{id}/connectors`: starts a connect, `pending`, and returns the vendor's consent
-/// URL. Owner. `409 invalid_state` while connectors are off.
+/// URL. Owner. `409 invalid_state` while connectors are off, when this server has no OAuth
+/// client for the vendor, or when the garden already has 2 connectors.
 #[utoipa::path(post, path = "/gardens/{id}/connectors", tag = "connectors",
     params(("id" = String, Path), ("Idempotency-Key" = Option<String>, Header, description = "UUID per user action")),
     request_body = CreateConnectorRequest,
@@ -2917,13 +2983,135 @@ pub async fn list_connectors(
         (status = 403, body = ErrorBody), (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)))]
 pub async fn create_connector(
     State(state): State<SharedState>,
-    _access: Access<Owner, table::Garden>,
+    access: Access<Owner, table::Garden>,
     request: IdemJson<CreateConnectorRequest>,
 ) -> Response {
-    let IdemJson { begun, .. } = request;
-    let result: Result<Wire<CreateConnectorResponse>, ApiError> = require_connectors(&state)
-        .and_then(|_key| Err(ApiError::invalid_state(InvalidStateDetails::default())));
+    let IdemJson { body, begun, .. } = request;
+    let result = start_connect(&state, &access, body).await;
     begun.finish(result).await
+}
+```
+
+```rust
+/// A connect's signed state, as the pending connector's `oauth` field remembers it.
+#[derive(Clone, PartialEq, Eq)]
+pub struct OAuthState {
+    /// The pending connector.
+    pub connector: ConnectorId,
+    /// 128 random bits, also stored in the pending connector's `oauth.nonce`.
+    pub nonce: String,
+    /// When the state stops working: 10 minutes after the start, whole seconds.
+    pub expires_at: Timestamp,
+}
+
+/// Why a state was refused. Every one is `400 invalid_request` on `state`; the variants exist
+/// for the log and the tests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum StateError {
+    /// Not four fields of the expected shapes.
+    #[error("the state is malformed")]
+    Malformed,
+    /// The MAC doesn't verify: tampered, or signed under another `CONNECTOR_KEY`.
+    #[error("the state's signature doesn't verify")]
+    Signature,
+    /// Past its expiry.
+    #[error("the state has expired")]
+    Expired,
+}
+```
+
+```rust
+/// Slack's consent page ([connectors 5]). A constant: no configuration can move it.
+///
+/// [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
+pub const SLACK_AUTHORIZE_URL: &str = "https://slack.com/oauth/v2/authorize";
+
+/// Google's consent page. A constant, like Slack's.
+pub const GOOGLE_AUTHORIZE_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
+
+/// A vendor call that failed. The vendor's response body is never kept ([connectors 8]).
+///
+/// [connectors 8]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#8-privacy-and-security
+#[derive(Debug, thiserror::Error)]
+pub enum VendorError {
+    /// This server has no OAuth client for the vendor.
+    #[error("{0} isn't configured")]
+    NotConfigured(ConnectorKind),
+    /// The vendor refused the owner's code or token (the client's `AuthRefused`): a used,
+    /// expired or wrong code at the exchange (Slack's `invalid_code`, Google's `invalid_grant`);
+    /// a revoked token, or a missing scope, afterwards. The owner fixes it by connecting again.
+    #[error("{vendor} refused the code or token ({code})")]
+    AuthRefused {
+        /// The vendor.
+        vendor: ConnectorKind,
+        /// The vendor's short error code.
+        code: String,
+    },
+    /// The vendor rejected our own request (the client's `Refused` or `NotFound`): a
+    /// misconfigured OAuth client (Slack's `bad_redirect_uri`, `invalid_client_id`,
+    /// `bad_client_secret`; Google's `invalid_client`) or another refusal no owner can fix. A
+    /// server-side error, never the owner's `400`.
+    #[error("{vendor} rejected the request ({code})")]
+    Rejected {
+        /// The vendor.
+        vendor: ConnectorKind,
+        /// The vendor's short error code.
+        code: String,
+    },
+    /// Down, timing out, throttling or answering something unreadable.
+    #[error("{vendor} is unavailable")]
+    Unavailable {
+        /// The vendor.
+        vendor: ConnectorKind,
+        /// The vendor's `Retry-After`, when it throttled.
+        retry_after_s: Option<u32>,
+        /// The client's error, without any body.
+        #[source]
+        source: Option<domain::ports::BoxError>,
+    },
+}
+
+/// Everything the connector routes ask Slack or Google, on the vendors' fixed hosts. `wiring.rs`
+/// implements it over `integrations`' `SlackClient` and `DriveClient`; the route tests mock it.
+#[cfg_attr(test, mockall::automock)]
+#[async_trait]
+pub trait ConnectVendors: Send + Sync {
+    /// Exchanges an authorization code (Slack's `oauth.v2.access` then `auth.test`; Google's
+    /// token endpoint with the PKCE verifier, then `about.get`). Never retried: a code works
+    /// once.
+    async fn exchange(
+        &self,
+        kind: ConnectorKind,
+        code: &str,
+        pkce_verifier: Option<SecretString>,
+        redirect_uri: &str,
+    ) -> Result<Exchanged, VendorError>;
+
+    /// Google's tokens with a new access token when the stored one has less than 5 minutes
+    /// left and a refresh token is there to renew it; `None` when they are fine as they are
+    /// (always for Slack, whose bot token doesn't expire). The caller stores what comes back
+    /// with `FarmRecordStore::replace_secret`, a compare-and-set against the sealed value it
+    /// read, so two refreshes at once keep one.
+    async fn refresh(
+        &self,
+        kind: ConnectorKind,
+        tokens: &StoredTokens,
+    ) -> Result<Option<StoredTokens>, VendorError>;
+
+    /// The channels the bot is a member of, or the folders the Google account can open, with
+    /// the access token as given: refresh it first.
+    async fn available_sources(
+        &self,
+        kind: ConnectorKind,
+        tokens: &StoredTokens,
+    ) -> Result<Vec<ConnectorSource>, VendorError>;
+
+    /// Revokes the tokens: Slack's `auth.revoke`; Google's `revoke` with the refresh token,
+    /// which ends the whole grant of that account to this OAuth client, or the access token
+    /// when there is none. A token the vendor already forgot counts as revoked. Never call it
+    /// directly for a stored connector: `DeletionRunner::finish_connector` decides whether a
+    /// shared account's token may go.
+    async fn revoke(&self, kind: ConnectorKind, tokens: &StoredTokens) -> Result<(), VendorError>;
 }
 ```
 
@@ -4451,7 +4639,7 @@ Each task is a loop on the process `TaskTracker`: `interval_at` with a first del
 | `sweep` | 30 s | `Pipeline::sweep`, the one owner of recovery and continuation: stale steps (2 min; 5 for `plan`) and question photos stuck in `measuring` for 2 min, re-claimed and re-run; questions unanswered for 10 minutes, continued with the best candidate marked uncertain (skipped while a photo for it is analysing). Follow-ups spawned | Compare-and-set on the old stamp and run ([database 4](../database/README.md#steps-between-jobs-)); the `score` claim |
 | `idle` | 60 s | Limiter keys (`retain_recent`, `shrink_to_fit`), idle broadcast channels, unheld plan locks | In memory |
 | `beliefs` | 10 s | `agent::beliefs::sync_pending(…, 50)`, the only writer to Agent Memory: erases the subjects queued in `belief_forget` (then re-marks their remaining shared memories unsynced), then records the unsynced shared memories, oldest first. A failure is logged and retried next run without holding up the rest; a failed erase holds back the records under its subject. The counts are logged when any is above 0. With Agent Memory off it only empties the queue | `belief_forget` (`belief_forgets`, `finish_belief_forget`); `memory.belief_synced_at` (`unsynced_shared`, `mark_synced`) |
-| `cleanup` | 10 min | Expired idempotency keys, weather older than 2 hours, expired pending actions, finished jobs older than 7 days, account tombstones 24 h after Clerk confirmed the deletion (`TOMBSTONE_KEEP`), synced Slack messages older than 180 days (`farm_sync::delete_old_messages`; Drive documents stay while they are under the folder) | Batches of 500; `weather_cache` by key range ([database 4](../database/README.md#cleanup-no-ttl)) |
+| `cleanup` | 10 min | Expired idempotency keys, weather older than 2 hours, expired pending actions, finished jobs older than 7 days, account tombstones 24 h after Clerk confirmed the deletion (`TOMBSTONE_KEEP`), farm connectors still `pending` 10 minutes after their connect started (`PENDING_CONNECT_TTL`, `delete_expired_connects`), except one a `complete` claimed less than 10 minutes ago, whose exchange may still be running (`CONNECT_CLAIM_HOLD`), synced Slack messages older than 180 days (`farm_sync::delete_old_messages`; Drive documents stay while they are under the folder) | Batches of 500; `weather_cache` by key range ([database 4](../database/README.md#cleanup-no-ttl)) |
 | `weather` | 1 h | Group gardens by cell, fetch each missing cell once (batches of 50, a failed batch retried once, then cell by cell, `integrations::open_meteo::fetch_cells`), cache them; fire forecast alerts (task + push to every member) and plan triggers (task on the rule's plant) | `weather_cache:[hour, cell]`; tasks deduplicated by the unique `alert_key` ([database 4](../database/README.md#alert-dedupe-)) |
 | `soil` | 15 min | `SoilGrids` for due gardens, at most 4 a run (its limit is 5 calls a minute): `pending`, or `unavailable` past `soil_retry_at`. A failure stores `unavailable` with the next attempt `soil_retry_after` it ([contracts 9](../architecture/contracts.md#gardens)): 15 minutes after an outage (timeout, connection error, `5xx`, `429`), 7 days after `NotFound` (null pixels at the point and the 8 nearby probes). So a null-pixel garden costs its 9 paced calls once a week, not every 15 minutes; an outage stops at the first call. `POST /gardens` makes the first attempt the same way (`fetch_soil_profile`) | `garden.soil_profile`, `garden.soil_retry_at`; `gardens_due_soil_profile`, `soil_profile_failed` |
 | `connectors` | 1 min | Only when connectors are on. `FarmSync::run_due`: at most 4 due connectors (`active`, `next_sync_at` passed, not stopped by `too_large` or `source_missing`), synced side by side; each is due again 15 minutes after a sync that finished (below) | `connector_due` index (`due_connectors`), `finish_sync`, `farm_record` upserts by `(connector, vendor_id, n)` |
@@ -4798,16 +4986,12 @@ impl FarmSync {
         self.finish(id, outcome, end).await
     }
 
-    /// The connector's token, unsealed.
+    /// The connector's access token, unsealed through [`StoredTokens`], which reads both forms
+    /// the connect routes seal: Slack's bot token as its plain string, Google's grant as JSON.
     fn token(&self, row: &ConnectorRow) -> Option<VendorToken> {
         let sealed = row.secret.as_ref()?;
-        let opened = self
-            .key
-            .unseal(SealPurpose::Token, row.connector.id, sealed)
-            .ok()?;
-        std::str::from_utf8(opened.expose_secret())
-            .ok()
-            .map(VendorToken::new)
+        let tokens = StoredTokens::unseal(&self.key, row.connector.id, sealed).ok()?;
+        Some(VendorToken::new(tokens.access_token.expose_secret()))
     }
 
     /// One run's share of the round in progress ([`Rotation`]). First the sources that haven't
@@ -5423,6 +5607,9 @@ pub struct DeletionRunner {
     clock: Arc<dyn Clock>,
     tasks: TaskTracker,
     shutdown: CancellationToken,
+    /// The key that opens connector tokens and the vendors that revoke them; `None` with
+    /// connectors off (no `CONNECTOR_KEY`), when no token can be opened to revoke.
+    revoke: Option<Revoke>,
 }
 ```
 
@@ -5446,7 +5633,15 @@ impl DeletionRunner {
             clock,
             tasks,
             shutdown,
+            revoke: None,
         }
+    }
+
+    /// With farm connectors on: `key` opens the tokens the cascades revoke through `vendors`.
+    #[must_use]
+    pub fn with_revoke(mut self, key: ConnectorKey, vendors: Arc<dyn ConnectVendors>) -> Self {
+        self.revoke = Some(Revoke { key, vendors });
+        self
     }
 
     /// Runs a started cascade in the background. Not tied to the shutdown token: shutdown waits
@@ -5461,8 +5656,12 @@ impl DeletionRunner {
         });
     }
 
-    /// Objects, then records, then pushes. Records go only after every object is gone.
+    /// A removed member's connectors, then objects, then records, then pushes. Records go only
+    /// after every object is gone.
     pub async fn run(&self, started: DeletionStarted) -> Result<(), DeletionError> {
+        if let DeletionTarget::Member { garden, user } = started.target {
+            self.finish_member_connectors(garden, user).await;
+        }
         if !self.delete_objects(started.prefixes, started.keys).await {
             return Err(DeletionError::Objects);
         }
@@ -5503,20 +5702,221 @@ impl DeletionRunner {
         all_done
     }
 
-    /// Every cascade step of the target, each repeated until a batch deletes nothing.
+    /// Every cascade step of the target, each repeated until a batch deletes nothing. A
+    /// garden's connectors are revoked and deleted just before its `FarmRecordsAndConnectors`
+    /// step, which then deletes anything left; a removed member's go before their objects
+    /// ([`run`](Self::run)).
     pub async fn delete_records(&self, target: DeletionTarget) -> Result<(), StoreError> {
         for &step in CascadeStep::steps_for(target) {
+            if step == CascadeStep::FarmRecordsAndConnectors
+                && let DeletionTarget::Garden(garden) = target
+            {
+                for row in self.store.deleting_connectors(Some(garden)).await? {
+                    self.finish_connector(row).await?;
+                }
+            }
             while self.store.delete_batch(target, step).await? > 0 {}
         }
         Ok(())
     }
 
-    /// Resumes every cascade a restart cut off: targets still marked `deleting_at`, and account
-    /// deletions whose tombstone has no `clerk_deleted_at`.
+    /// After a demotion (`PATCH /gardens/{id}/members/{user_id}`) of an owner committed:
+    /// revokes and deletes, in the background, the connectors the demoted owner created in the
+    /// garden, which the store marked `deleting` in that transaction.
+    pub fn spawn_connectors_of(&self, garden: GardenId, owner: UserId) {
+        let runner = self.clone();
+        self.tasks.spawn(async move {
+            runner.finish_member_connectors(garden, owner).await;
+        });
+    }
+
+    /// After `DELETE /connectors/{id}`, or a `complete` from the wrong user or device,
+    /// committed the `deleting` mark: [`finish_connector`](Self::finish_connector) in the
+    /// background.
+    pub fn spawn_connector(&self, row: ConnectorRow) {
+        let runner = self.clone();
+        self.tasks.spawn(async move {
+            let connector = row.connector.id;
+            if let Err(error) = runner.finish_connector(row).await {
+                tracing::error!(%connector, error = %error, "connector deletion stopped; it resumes on restart");
+            }
+        });
+    }
+
+    /// The connectors `owner` created in `garden` and the store marked `deleting` when they
+    /// stopped being its owner, each finished in turn. Never fails: a store error is logged
+    /// and the rest of the cascade goes on, since `resume` finishes what is left. Without
+    /// `CONNECTOR_KEY` they stay `deleting`, so their tokens can be revoked once it is set.
+    async fn finish_member_connectors(&self, garden: GardenId, owner: UserId) {
+        if self.revoke.is_none() {
+            tracing::warn!(%garden, "connectors off: a former owner's connectors stay `deleting` until CONNECTOR_KEY is set");
+            return;
+        }
+        let rows = match self.store.deleting_connectors(Some(garden)).await {
+            Ok(rows) => rows,
+            Err(error) => {
+                tracing::error!(%garden, error = %error, "listing a former owner's connectors failed; they resume on restart");
+                return;
+            }
+        };
+        for row in rows.into_iter().filter(|r| r.created_by == owner) {
+            let connector = row.connector.id;
+            if let Err(error) = self.finish_connector(row).await {
+                tracing::error!(%connector, error = %error, "connector deletion stopped; it resumes on restart");
+            }
+        }
+    }
+
+    /// Before an account's user record goes, which `connector.created_by` refuses while a
+    /// connector names it: every connector the user created that is still marked `deleting`
+    /// (this cascade's transfers and removals, or a run a restart cut off), revoked and
+    /// deleted. Without `CONNECTOR_KEY` they are deleted unrevoked, as a garden's are, since the
+    /// account deletion can't wait for a key; `revoke_stored` logs each by its id and kind.
+    async fn finish_account_connectors(&self, user: UserId) -> Result<(), StoreError> {
+        // Not `deleting_connectors(None)`, which skips a garden being deleted: its connector
+        // still names the user in `created_by`.
+        for row in self.store.deleting_connectors_of_user(user).await? {
+            self.finish_connector(row).await?;
+        }
+        Ok(())
+    }
+
+    /// The one revoke-then-delete path of a connector marked `deleting`: revokes its token
+    /// (unless another live connector holds the account's), then deletes its records and the
+    /// row, 500 records a batch. A failed revoke is logged and the deletion goes on.
+    pub async fn finish_connector(&self, row: ConnectorRow) -> Result<(), StoreError> {
+        self.revoke_stored(&row).await;
+        let connector = row.connector.id;
+        while self.store.delete_connector_batch(connector).await? > 0 {}
+        tracing::info!(%connector, "connector deleted");
+        Ok(())
+    }
+
+    /// Unseals a stored connector's tokens and revokes them. Never fails: every outcome is
+    /// logged by the connector's id and kind only, never the token or the vendor's body.
+    async fn revoke_stored(&self, row: &ConnectorRow) {
+        let connector = row.connector.id;
+        let kind = row.connector.kind;
+        if row.connector.endpoint == ConnectorEndpoint::Era {
+            tracing::debug!(%connector, ?kind, "era connector: its demo token needs no revoke");
+            return;
+        }
+        let Some(sealed) = &row.secret else {
+            tracing::debug!(%connector, ?kind, "no token to revoke");
+            return;
+        };
+        let Some(revoke) = &self.revoke else {
+            tracing::warn!(%connector, ?kind, "connectors off: the token can't be opened to revoke");
+            return;
+        };
+        let tokens = match StoredTokens::unseal(&revoke.key, connector, sealed) {
+            Ok(tokens) => tokens,
+            Err(error) => {
+                tracing::warn!(%connector, ?kind, error = %error, "token not revoked: it doesn't open");
+                return;
+            }
+        };
+        self.revoke_tokens(connector, kind, row.connector.account.as_ref(), tokens)
+            .await;
+    }
+
+    /// Revokes `tokens` for `connector` unless another live connector holds the same account's
+    /// token, in a task of its own: a panic in the vendor call is a failed revoke, never the
+    /// end of the cascade that asked. Also the `complete` route's revoke of tokens it got but
+    /// couldn't store.
+    pub async fn revoke_tokens(
+        &self,
+        connector: ConnectorId,
+        kind: ConnectorKind,
+        account: Option<&ConnectorAccount>,
+        tokens: StoredTokens,
+    ) {
+        let Some(revoke) = &self.revoke else {
+            tracing::warn!(%connector, ?kind, "connectors off: no vendor to revoke with");
+            return;
+        };
+        if self.account_held_elsewhere(connector, kind, account).await {
+            return;
+        }
+        let vendors = Arc::clone(&revoke.vendors);
+        let call = self
+            .tasks
+            .spawn(async move { vendors.revoke(kind, &tokens).await });
+        match call.await {
+            Ok(Ok(())) => tracing::info!(%connector, ?kind, "token revoked"),
+            Ok(Err(error)) => tracing::warn!(
+                %connector,
+                ?kind,
+                error = %error,
+                "token revoke failed; the records are deleted anyway"
+            ),
+            Err(error) => tracing::error!(
+                %connector,
+                ?kind,
+                error = %error,
+                "token revoke task failed; the records are deleted anyway"
+            ),
+        }
+    }
+
+    /// `true` when the token must stay: another live `vendor` connector holds this Slack
+    /// workspace's bot token or this Google account's grant, or the store couldn't say.
+    async fn account_held_elsewhere(
+        &self,
+        connector: ConnectorId,
+        kind: ConnectorKind,
+        account: Option<&ConnectorAccount>,
+    ) -> bool {
+        let key = match account {
+            Some(ConnectorAccount::Slack { team_id, .. }) => team_id.clone(),
+            Some(ConnectorAccount::GoogleDrive { email }) => email.clone(),
+            None => return false,
+        };
+        match self
+            .store
+            .shared_account_connectors(kind, key, connector)
+            .await
+        {
+            Ok(0) => false,
+            Ok(_) => {
+                tracing::info!(%connector, ?kind, "another connector holds this account's token; not revoked");
+                true
+            }
+            Err(error) => {
+                tracing::warn!(%connector, ?kind, error = %error, "couldn't check the account's other connectors; not revoked");
+                true
+            }
+        }
+    }
+
+    /// Resumes every cascade a restart cut off: targets still marked `deleting_at`, account
+    /// deletions whose tombstone has no `clerk_deleted_at`, and connectors still marked
+    /// `deleting` outside a garden being deleted (a demotion's or a removal's, cut off between
+    /// the store's commit and the last batch).
     pub async fn resume(&self) -> Result<usize, StoreError> {
         let targets = self.store.unfinished_deletions().await?;
         let accounts = self.store.unfinished_account_deletions().await?;
-        let count = targets.len() + accounts.len();
+        let mut connectors = self.store.deleting_connectors(None).await?;
+        if self.revoke.is_none() && !connectors.is_empty() {
+            // A former owner's connectors wait for the key, so their tokens can be revoked.
+            tracing::warn!(
+                count = connectors.len(),
+                "connectors off: connectors marked `deleting` stay until CONNECTOR_KEY is set"
+            );
+            connectors.clear();
+        }
+        let count = targets.len() + accounts.len() + connectors.len();
+        if !connectors.is_empty() {
+            let runner = self.clone();
+            self.tasks.spawn(async move {
+                for row in connectors {
+                    let connector = row.connector.id;
+                    if let Err(error) = runner.finish_connector(row).await {
+                        tracing::error!(%connector, error = %error, "connector deletion stopped; it resumes on restart");
+                    }
+                }
+            });
+        }
         for marker in accounts {
             self.spawn_account_run(marker);
         }
@@ -5599,6 +5999,9 @@ impl DeletionRunner {
                 let member =
                     authz::check_membership_of::<Viewer>(&*self.store, user, garden).await?;
                 let removed = self.store.remove_member(member, user).await?;
+                if self.revoke.is_some() {
+                    self.finish_member_connectors(garden, user).await;
+                }
                 if !self.delete_objects(removed.chat_prefixes, Vec::new()).await {
                     return Err(DeletionError::Objects);
                 }
@@ -5606,6 +6009,7 @@ impl DeletionRunner {
                     .await?;
             }
             self.store.delete_user_feedback(user).await?;
+            self.finish_account_connectors(user).await?;
             self.store.delete_user(user).await?;
         }
         let mut wait = Duration::from_secs(1);
@@ -5630,7 +6034,8 @@ impl DeletionRunner {
 | A garden (`DELETE /gardens/{id}`, owner) | `start_garden_deletion`: `deleting_at`, jobs cancelled, step claims and question steps cleared; `202` | Its prefix in `RustFS`; every cascade step in order; `garden_deleted` pushes to the other members |
 | A plant (`DELETE /plants/{id}`, owner) | `start_plant_deletion`; `202` | Its scans' prefixes; the steps up to memories, plants and the map |
 | A pending scan (`DELETE /scans/{id}`, editor) | `start_scan_deletion` (`pending` only, `409` otherwise); `204` | Its prefix; its own short step list |
-| A member leaving or removed | `remove_member` (the last owner can't) | Their conversations' image prefixes; their conversations and unshared chat memories in that garden |
+| A member leaving or removed | `remove_member` (the last owner can't), which marks the connectors they created there `deleting` | Their conversations' image prefixes; those connectors, revoked and deleted; their conversations and unshared chat memories in that garden |
+| An owner demoted (`PATCH /gardens/{id}/members/{user_id}` to any other role) | `change_role`, which marks the connectors they created there `deleting`; `200` | Those connectors, revoked and deleted (`spawn_connectors_of`) |
 | An account (`DELETE /me`, or `user.deleted`) | The plan, for the `202` body; then `start_account_deletion`, the tombstone's compare-and-set: a second request, or the webhook during a `DELETE /me` cascade, starts nothing | Transfers; each solely used garden as above; each shared garden left as a member; scan feedback; the user; the account at Clerk, retried with back-off up to an hour until it succeeds; then `finish_account_deletion` |
 
 **Agent Memory.** A garden's or plant's cascade erases its scope in Agent Memory without a step of its own: `start_garden_deletion` and `start_plant_deletion` queue the subject in `belief_forget` in the transaction that sets `deleting_at` ([store](store.md)), and the `beliefs` task erases it within seconds while Agent Memory is up (section 16). The queued row is a plain link, not a reference, so it outlives the records, and a cascade resumed after a restart needs nothing. From `deleting_at` on, the sweep records nothing of that plant or garden. Account deletion needs nothing: shared memories stay with the garden (a garden deleted with the account is queued as above) and private ones were never sent.
@@ -5642,6 +6047,12 @@ The record steps are `CascadeStep::steps_for(target)` in [database 4](../databas
 **Resumable.** At start, `unfinished_deletions` lists every target still marked `deleting_at`, and each is run again from its first step. A garden's objects are one prefix, deleted again; a plant's or scan's objects, whose keys aren't known any more once their records are gone, are left to the orphan sweep, which deletes them once nothing points to them.
 
 **The account tombstone** (`deleted_user:[auth_id]`, `AccountDeletionMarker`, [database 4](../database/README.md#deletion-)) is written first, by `start_account_deletion`, as a compare-and-set on its absence, so two cascades for one user can't run at once: a `DELETE /me` repeated, or a dashboard deletion's `user.deleted` arriving while a `DELETE /me` cascade runs, gets `false` and starts nothing. While it exists, `upsert_user` refuses the auth id, so a session token still valid after the deletion answers `401` and never creates the user again (section 9). It also makes the Clerk deletion durable: `resume` lists `unfinished_account_deletions` (no `clerk_deleted_at`), re-runs the record steps when the user record is still there (each step is idempotent; a garden whose own cascade was cut off is resumed from `deleting_at`), and retries Clerk until it answers; `finish_account_deletion` records it, and the `cleanup` task deletes the tombstone 24 h later (`TOMBSTONE_KEEP`, far longer than a Clerk session token lives). Clerk answers `404` for an account already gone (a dashboard deletion), which counts as success.
+
+**Farm connectors** ([connectors 8](../connectors/README.md#8-privacy-and-security); roadmap E3.6). A connector goes with its garden, with the owner who created it when that owner stops being one, and when its owner disconnects it. The store marks it `deleting` in the transaction that changes the garden, the membership or the connector: `start_garden_deletion`, `change_role` from `owner` (which returns `RoleChange { demoted_owner }`, so the route starts the task only for a demotion), `remove_member`, account deletion's `transfer_ownership`, and `start_connector_deletion`. The vendor's revoke is an HTTP call, so the runner makes it after that commit and never inside a transaction, through one path, `finish_connector`: it skips the revoke for an `era` connector (the fixed demo string of start-up seeding) and one without a token, opens the rest with `StoredTokens::unseal`, and leaves the token alone while another live `vendor` connector holds the same account (`shared_account_connectors`: Slack gives one bot token per app and workspace, and revoking Google's refresh token ends the whole grant of that account to our client; a store error counts as held). Otherwise it calls `ConnectVendors::revoke` (the routes' own instance; Google's refresh token first) in a task of its own on the tracker, so a panic is a `JoinError` logged as one failed revoke. The outcome is logged by connector id and kind only, never the token or the vendor's body, and a failure never stops what follows: `delete_connector_batch` until it deletes nothing (records 500 at a time, then the row). A garden's connectors are finished just before its `FarmRecordsAndConnectors` step, whose own batches then delete anything left; a removed member's before their chat objects, and a store error listing them is logged without skipping the chat steps; a demotion's in a task of its own (`spawn_connectors_of`); a disconnect's with `spawn_connector`.
+
+**Without `CONNECTOR_KEY`** nothing can be unsealed. A garden's cascade still deletes its connectors, unrevoked, because the garden goes. An account deletion can't wait either: before `DELETE $user`, which `connector.created_by` rejects while a connector names the user, `finish_account_connectors` deletes every connector the user created that is still `deleting` (listed by creator through `deleting_connectors_of_user`, in any garden, including one being deleted, which `resume`'s listing skips), with its records, unrevoked, each logged by its id and kind (with the key, it revokes them first, and finishes a run a restart cut off). A demoted, removed or leaving owner's connectors stay `deleting`, hidden from the list and the sync, and `resume` logs a warning at each start instead of finishing them, so their tokens are revoked once the key is configured.
+
+**Why revoke after the mark and before the delete.** Revoking after the rows were gone would leave the only copy of the token in memory, and a crash in between would lose the revoke for good. With the mark committed first, the row keeps its sealed token until the revoke has been asked for, so `resume` can finish it: it lists `deleting_connectors(None)` (every connector still `deleting` outside a garden being deleted, whose resumed cascade finishes its own) and runs each through `finish_connector`. The worst case after a restart is a second revoke of a token already revoked, which both vendors answer as revoked (Slack's `token_revoked` and `invalid_auth`, Google's `invalid_token`). The tests record the revokes through a `ConnectVendors` fake: one revoke per connector, after the store's marking call and before the first batch; a failed or panicking revoke followed by every batch; a shared account's token kept; a restart between the commit and the revoke finished by `resume`; and, with connectors off, a former owner's connectors left `deleting` while a garden's are deleted.
 
 **Account deletion from the webhook** has no `CurrentUser` (no session token), so it uses `authz::check_membership_of`, an additive domain function that reads the role for a `UserId` the verified webhook named (a domain change this crate made; the proof still says what the store says).
 

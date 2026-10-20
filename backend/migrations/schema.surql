@@ -526,7 +526,7 @@ DEFINE FIELD OVERWRITE created_by ON connector TYPE record<user> REFERENCE ON DE
 DEFINE FIELD OVERWRITE account    ON connector TYPE option<object> FLEXIBLE;   -- Slack team id, name and workspace URL, or the Google account's email
 DEFINE FIELD OVERWRITE sources    ON connector TYPE array<object> FLEXIBLE DEFAULT [];   -- [{ id, name }]: channels, or one folder
 DEFINE FIELD OVERWRITE secret     ON connector TYPE option<bytes>;   -- AES-256-GCM sealed tokens; never returned, never logged
-DEFINE FIELD OVERWRITE oauth      ON connector TYPE option<object> FLEXIBLE;   -- pending only: { nonce, device_hash, verifier (sealed), expires_at }; cleared by the exchange
+DEFINE FIELD OVERWRITE oauth      ON connector TYPE option<object> FLEXIBLE;   -- pending only: { nonce, device_hash, verifier (sealed), expires_at, claimed_at }; cleared by the exchange
 DEFINE FIELD OVERWRITE endpoint   ON connector TYPE "vendor" | "era";   -- set by server configuration only
 DEFINE FIELD OVERWRITE cursor     ON connector TYPE option<object> FLEXIBLE;   -- per source id: the sync's state around Slack's or Drive's cursor; '#sync': the rotation over the sources
 DEFINE FIELD OVERWRITE synced_at  ON connector TYPE option<datetime>;

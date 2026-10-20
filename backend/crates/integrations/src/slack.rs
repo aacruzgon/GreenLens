@@ -523,15 +523,22 @@ impl SlackClient {
     }
 
     /// `auth.revoke`: the token stops working. A token that is already revoked answers
-    /// `token_revoked` or `invalid_auth`, which is [`FarmClientError::AuthRefused`]; for a
-    /// disconnect, that means the token is gone too.
+    /// `token_revoked` or `invalid_auth`, and that counts as revoked (`Ok`), as Google's
+    /// `invalid_token` does: the token is gone either way. Any other refusal is an error.
     pub async fn auth_revoke(&self, token: &SecretString) -> Result<(), FarmClientError> {
         let call = Call {
             verb: Method::POST,
             ..Call::read("auth.revoke", token, &[])
         };
-        let _: wire::Empty = self.call(&call).await?;
-        Ok(())
+        match self.call::<wire::Empty>(&call).await {
+            Ok(_) => Ok(()),
+            Err(FarmClientError::AuthRefused { code, .. })
+                if code == "token_revoked" || code == "invalid_auth" =>
+            {
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// `oauth.v2.access`: exchanges an authorization code for the bot token. The Slack app is a

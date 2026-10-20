@@ -6,6 +6,7 @@
 
 mod broker;
 mod config;
+mod connect;
 mod deletion;
 mod error;
 mod events;

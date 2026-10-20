@@ -12,7 +12,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use secrecy::ExposeSecret as _;
+use secrecy::{ExposeSecret as _, SecretString};
 use surrealdb::engine::any;
 use tokio_util::sync::CancellationToken;
 
@@ -41,7 +41,7 @@ use super::{
     FarmSources, FarmSync, RunEnd, SYNC_EVERY, SyncConfig, chunk, delete_old_messages,
     seed::{self, EraSeed, Seeded},
 };
-use crate::sealing::{ConnectorKey, SealPurpose};
+use crate::sealing::{ConnectorKey, SealPurpose, StoredTokens};
 
 const KEY_HEX: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 const DIM: usize = 4;
@@ -360,6 +360,39 @@ async fn t_e4_1_a_run_takes_at_most_four_due_connectors() {
             .iter()
             .all(|t| t == "xoxb-1")
     );
+}
+
+/// The connect routes seal Google's grant as JSON (`StoredTokens`); the sync sends only its
+/// access token.
+#[tokio::test]
+async fn a_grant_sealed_as_json_gives_the_sync_its_access_token() {
+    let source = FakeSource::new(None, Box::new(|_| Ok(page(Vec::new(), false, "c"))));
+    let b = bench(store().await, source.clone(), SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "xoxb-1",
+        b.clock.now(),
+    )
+    .await;
+    let grant = StoredTokens {
+        access_token: SecretString::from("ya29.access"),
+        refresh_token: Some(SecretString::from("1//refresh")),
+        expires_at: Some(pinned().plus(Duration::from_hours(1))),
+    };
+    let read = b.row(id).await.secret.expect("sealed");
+    assert!(
+        b.store
+            .replace_secret(id, read, grant.seal(&key(), id))
+            .await
+            .expect("stored")
+    );
+    assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+    assert_eq!(*source.tokens.lock().expect("tokens"), ["ya29.access"]);
 }
 
 #[tokio::test]

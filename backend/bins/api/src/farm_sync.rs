@@ -79,7 +79,7 @@ use domain::{
 
 use crate::{
     error::{ApiError, chain},
-    sealing::{ConnectorKey, SealPurpose},
+    sealing::{ConnectorKey, StoredTokens},
 };
 
 use state::{Reread, Rotation, SourceState};
@@ -398,16 +398,12 @@ impl FarmSync {
         self.finish(id, outcome, end).await
     }
 
-    /// The connector's token, unsealed.
+    /// The connector's access token, unsealed through [`StoredTokens`], which reads both forms
+    /// the connect routes seal: Slack's bot token as its plain string, Google's grant as JSON.
     fn token(&self, row: &ConnectorRow) -> Option<VendorToken> {
         let sealed = row.secret.as_ref()?;
-        let opened = self
-            .key
-            .unseal(SealPurpose::Token, row.connector.id, sealed)
-            .ok()?;
-        std::str::from_utf8(opened.expose_secret())
-            .ok()
-            .map(VendorToken::new)
+        let tokens = StoredTokens::unseal(&self.key, row.connector.id, sealed).ok()?;
+        Some(VendorToken::new(tokens.access_token.expose_secret()))
     }
 
     /// One run's share of the round in progress ([`Rotation`]). First the sources that haven't

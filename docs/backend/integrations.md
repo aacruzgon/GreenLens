@@ -3093,15 +3093,22 @@ impl SlackClient {
     }
 
     /// `auth.revoke`: the token stops working. A token that is already revoked answers
-    /// `token_revoked` or `invalid_auth`, which is [`FarmClientError::AuthRefused`]; for a
-    /// disconnect, that means the token is gone too.
+    /// `token_revoked` or `invalid_auth`, and that counts as revoked (`Ok`), as Google's
+    /// `invalid_token` does: the token is gone either way. Any other refusal is an error.
     pub async fn auth_revoke(&self, token: &SecretString) -> Result<(), FarmClientError> {
         let call = Call {
             verb: Method::POST,
             ..Call::read("auth.revoke", token, &[])
         };
-        let _: wire::Empty = self.call(&call).await?;
-        Ok(())
+        match self.call::<wire::Empty>(&call).await {
+            Ok(_) => Ok(()),
+            Err(FarmClientError::AuthRefused { code, .. })
+                if code == "token_revoked" || code == "invalid_auth" =>
+            {
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// `oauth.v2.access`: exchanges an authorization code for the bot token. The Slack app is a
@@ -3531,6 +3538,55 @@ impl DriveClient {
             "folder listed"
         );
         Ok(listing)
+    }
+
+    /// The folders the account can open, for the owner's source picker
+    /// (`GET /connectors/{id}/available-sources`): every folder not in the bin, the account's
+    /// own and those shared with it, shared drives' included, across `nextPageToken`, sorted by
+    /// name, at most [`MAX_FOLDERS`].
+    pub async fn folders(&self, token: &SecretString) -> Result<Vec<DriveFile>, FarmClientError> {
+        let q = format!("mimeType='{FOLDER_MIME}' and trashed=false");
+        let fields = format!("nextPageToken,files({FILE_FIELDS})");
+        let page_size = self.page_size();
+        let mut folders: Vec<DriveFile> = Vec::new();
+        let mut page_token: Option<String> = None;
+        let mut tokens: HashSet<String> = HashSet::new();
+        for _ in 0..MAX_PAGES {
+            let page: wire::FileList = self
+                .json("files.list", self.config.retry, || {
+                    let mut query = vec![
+                        ("q", q.as_str()),
+                        ("fields", fields.as_str()),
+                        ("pageSize", page_size.as_str()),
+                        ("supportsAllDrives", "true"),
+                        ("includeItemsFromAllDrives", "true"),
+                    ];
+                    if let Some(t) = &page_token {
+                        query.push(("pageToken", t));
+                    }
+                    self.get(token, "/drive/v3/files").query(&query)
+                })
+                .await?;
+            folders.extend(
+                page.files
+                    .into_iter()
+                    .filter(|f| f.kind() == FileKind::Folder && !f.trashed),
+            );
+            match page.next_page_token {
+                Some(t) if !t.is_empty() && folders.len() < MAX_FOLDERS => {
+                    if !tokens.insert(t.clone()) {
+                        return Err(malformed("files.list"));
+                    }
+                    page_token = Some(t);
+                }
+                _ => {
+                    folders.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.id.cmp(&b.id)));
+                    folders.truncate(MAX_FOLDERS);
+                    return Ok(folders);
+                }
+            }
+        }
+        Err(malformed("files.list"))
     }
 
     /// A Google Doc or Sheet converted by `files.export`, cut at [`MAX_TEXT_BYTES`].

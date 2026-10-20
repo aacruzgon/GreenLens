@@ -31,7 +31,7 @@ use domain::{
         plan::{ActionPlan, PlanReason, PlanStep, PlanWhen, StepCategory},
         weather::{Coordinates, LocationPrecision},
     },
-    rules::limits::{FARM_RECORD_KEEP, PENDING_CONNECT_TTL, SYNC_NOW_INTERVAL},
+    rules::limits::{CONNECT_CLAIM_HOLD, FARM_RECORD_KEEP, PENDING_CONNECT_TTL, SYNC_NOW_INTERVAL},
     wire::Timestamp,
 };
 use store::{SurrealStore, apply_schema_with, ids::rid};
@@ -63,6 +63,7 @@ fn new_connector(f: &Fixture, kind: ConnectorKind) -> NewConnector {
             device_hash: "h".repeat(43).parse().expect("a device hash"),
             verifier: Some(sealed(b"sealed-verifier")),
             expires_at: at(10),
+            claimed_at: None,
         }),
         sources: Vec::new(),
         created_at: t0(),
@@ -183,13 +184,46 @@ async fn connectors_and_the_due_query() {
     assert_eq!(oauth.expires_at, at(10));
     assert!(row.secret.is_none() && row.cursors.is_empty());
 
-    // The exchange: a wrong nonce loses, the right one activates, and a second use loses.
+    // The claim: a wrong nonce loses, the right one claims once, and a second claim loses.
+    let lost =
+        |r: Result<(), StoreError>| matches!(r, Err(StoreError::Conflict(Conflict::AlreadyExists)));
+    let claim =
+        |nonce: &'static str, now| store.claim_connect(owner, pending_id, nonce.into(), now);
+    assert!(lost(claim("other", at(1)).await));
     let done = |nonce: &str, now| CompletedConnect {
         nonce: nonce.into(),
         account: slack_account(),
         secret: sealed(b"sealed-token"),
         now,
     };
+    // Unclaimed, the exchange's compare-and-set loses.
+    assert!(matches!(
+        store
+            .complete_connect(owner, pending_id, done("nonce-1", at(1)))
+            .await,
+        Err(StoreError::Conflict(Conflict::AlreadyExists))
+    ));
+    claim("nonce-1", at(1)).await.unwrap();
+    assert!(
+        lost(claim("nonce-1", at(1)).await),
+        "a state is claimed once"
+    );
+    let row = store.connector_row(pending_id).await.unwrap().unwrap();
+    assert_eq!(row.oauth.and_then(|o| o.claimed_at), Some(at(1)));
+    // A release after a failed exchange lets the same state claim again; another nonce's
+    // release changes nothing.
+    store
+        .release_connect(owner, pending_id, "other".into())
+        .await
+        .unwrap();
+    assert!(lost(claim("nonce-1", at(1)).await));
+    store
+        .release_connect(owner, pending_id, "nonce-1".into())
+        .await
+        .unwrap();
+    claim("nonce-1", at(1)).await.unwrap();
+
+    // The exchange: a wrong nonce loses, the claimed one activates, and a second use loses.
     assert!(matches!(
         store
             .complete_connect(owner, pending_id, done("other", at(1)))
@@ -213,13 +247,18 @@ async fn connectors_and_the_due_query() {
     assert_eq!(row.secret, Some(sealed(b"sealed-token")));
     assert_eq!(row.next_sync_at, at(1), "due at once");
 
-    // An expired state loses too.
+    assert!(
+        lost(claim("nonce-1", at(2)).await),
+        "an active connector has no state"
+    );
+
+    // An expired state can't be claimed.
     let late = new_connector(&f, ConnectorKind::GoogleDrive);
     let late_id = late.id;
     store.create_connector(owner, late).await.unwrap();
     assert!(matches!(
         store
-            .complete_connect(owner, late_id, done("nonce-1", at(10)))
+            .claim_connect(owner, late_id, "nonce-1".into(), at(10))
             .await,
         Err(StoreError::Conflict(Conflict::AlreadyExists))
     ));
@@ -824,11 +863,20 @@ async fn counts_cleanup_and_deletion() {
     let pending = new_connector(&f, ConnectorKind::GoogleDrive);
     let pending_id = pending.id;
     store.create_connector(owner, pending).await.unwrap();
-    assert_eq!(store.delete_expired_pending(t0()).await.unwrap(), 0);
+    assert_eq!(
+        store
+            .delete_expired_pending(t0(), t0().minus(CONNECT_CLAIM_HOLD))
+            .await
+            .unwrap(),
+        0
+    );
     let ten_minutes_on = t0().plus(PENDING_CONNECT_TTL).plus(Duration::from_secs(1));
     assert_eq!(
         store
-            .delete_expired_pending(ten_minutes_on.minus(PENDING_CONNECT_TTL))
+            .delete_expired_pending(
+                ten_minutes_on.minus(PENDING_CONNECT_TTL),
+                ten_minutes_on.minus(CONNECT_CLAIM_HOLD)
+            )
             .await
             .unwrap(),
         1
@@ -1408,4 +1456,272 @@ async fn the_cleanup_leaves_old_drive_documents() {
         .unwrap();
     assert_eq!(left.len(), 1);
     assert_eq!(left[0].0.vendor_id.to_string(), "1aBcD");
+}
+
+/// A deletion revokes an account's token only when no other connector holds it: live
+/// (`active` or `reauth_needed`) `vendor` connectors of the same Slack team or Google account
+/// count, in any garden; the one being deleted, pending ones, those being deleted, `era`
+/// connectors and the other kind don't.
+#[tokio::test]
+async fn other_holders_of_an_accounts_token_are_counted() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let other = other_garden(&store, &f).await;
+    let other_owner = check_membership_of::<Owner>(&*store, f.user, other)
+        .await
+        .expect("the creator owns the second garden");
+    let here = active_slack(&store, &f, f.garden).await;
+    let there = active_slack(&store, &f, other).await;
+    let slack =
+        |except| store.shared_account_connectors(ConnectorKind::Slack, "T0123".to_owned(), except);
+    assert_eq!(slack(here).await.unwrap(), 1);
+    assert_eq!(
+        store
+            .shared_account_connectors(ConnectorKind::Slack, "T9999".into(), here)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        store
+            .shared_account_connectors(ConnectorKind::GoogleDrive, "T0123".into(), here)
+            .await
+            .unwrap(),
+        0,
+        "a Slack team is never a Google account"
+    );
+    store
+        .set_status(
+            there,
+            ConnectorStatus::ReauthNeeded,
+            Some(SyncErrorCode::AuthRefused),
+        )
+        .await
+        .unwrap();
+    assert_eq!(slack(here).await.unwrap(), 1);
+    store
+        .create_connector(owner, new_connector(&f, ConnectorKind::Slack))
+        .await
+        .unwrap();
+    store
+        .start_connector_deletion(other_owner, there)
+        .await
+        .unwrap();
+    assert_eq!(slack(here).await.unwrap(), 0);
+    assert_eq!(slack(there).await.unwrap(), 1);
+
+    // Google: keyed on the account's email; an `era` connector of the same account doesn't
+    // count, since its token is the simulator's.
+    let google = |id: ConnectorId, endpoint| {
+        let mut c = new_connector(&f, ConnectorKind::GoogleDrive);
+        c.id = id;
+        c.status = ConnectorStatus::Active;
+        c.endpoint = endpoint;
+        c.oauth = None;
+        c.account = Some(ConnectorAccount::GoogleDrive {
+            email: "farm@example.org".into(),
+        });
+        c.secret = Some(sealed(b"sealed-grant"));
+        c
+    };
+    let drive = f.ids.id();
+    let demo = f.ids.id();
+    store
+        .seed_connector(other, google(drive, ConnectorEndpoint::Vendor))
+        .await
+        .unwrap();
+    store
+        .seed_connector(other, google(demo, ConnectorEndpoint::Era))
+        .await
+        .unwrap();
+    let email = |except| {
+        store.shared_account_connectors(
+            ConnectorKind::GoogleDrive,
+            "farm@example.org".to_owned(),
+            except,
+        )
+    };
+    assert_eq!(email(drive).await.unwrap(), 0, "the era one doesn't count");
+    assert_eq!(email(demo).await.unwrap(), 1);
+}
+
+/// A3: two `complete`s claiming the same pending state at once: exactly one claims it, so the
+/// code is exchanged at most once.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn two_claims_at_once_spend_the_state_once() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let pending = new_connector(&f, ConnectorKind::GoogleDrive);
+    let id = pending.id;
+    store.create_connector(owner, pending).await.unwrap();
+    let (a, b) = tokio::join!(
+        store.claim_connect(owner, id, "nonce-1".into(), at(1)),
+        store.claim_connect(owner, id, "nonce-1".into(), at(1)),
+    );
+    let claimed = [&a, &b].iter().filter(|r| r.is_ok()).count();
+    assert_eq!(claimed, 1, "{a:?} {b:?}");
+    let lost = if a.is_ok() { b } else { a };
+    assert!(matches!(
+        lost,
+        Err(StoreError::Conflict(Conflict::AlreadyExists))
+    ));
+}
+
+/// A refreshed token is stored only over the sealed value it was refreshed from: of two
+/// refreshes racing from the same read, exactly one is stored; a stale read, or a connector
+/// being deleted, stores nothing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_refreshed_secret_replaces_only_the_value_it_was_read_from() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let c = active_slack(&store, &f, f.garden).await;
+    let read = sealed(b"sealed-token");
+
+    let (a, b) = tokio::join!(
+        store.replace_secret(c, read.clone(), sealed(b"refreshed-a")),
+        store.replace_secret(c, read.clone(), sealed(b"refreshed-b")),
+    );
+    let (a, b) = (a.unwrap(), b.unwrap());
+    assert!(a ^ b, "exactly one refresh is stored: {a} {b}");
+    let stored = store.connector_row(c).await.unwrap().unwrap().secret;
+    let winner = if a {
+        sealed(b"refreshed-a")
+    } else {
+        sealed(b"refreshed-b")
+    };
+    assert_eq!(stored, Some(winner.clone()));
+
+    assert!(
+        !store
+            .replace_secret(c, read, sealed(b"stale"))
+            .await
+            .unwrap(),
+        "a stale read stores nothing"
+    );
+    store.start_connector_deletion(owner, c).await.unwrap();
+    assert!(
+        !store
+            .replace_secret(c, winner.clone(), sealed(b"late"))
+            .await
+            .unwrap(),
+        "a connector being deleted keeps the token it is revoked with"
+    );
+    let missing: ConnectorId = f.ids.id();
+    assert!(
+        !store
+            .replace_secret(missing, winner, sealed(b"x"))
+            .await
+            .unwrap()
+    );
+}
+
+/// T-E3.6 (docs/EON): the cleanup's cutoff is 10 minutes before now. A pending connector
+/// started 11 minutes ago is gone after it; one started 9 minutes ago and an active one stay.
+/// So does one started 11 minutes ago whose state a `complete` claimed 2 minutes ago (audit of
+/// PR 72): its exchange may still be running, so it goes only `CONNECT_CLAIM_HOLD` after the
+/// claim.
+#[tokio::test]
+async fn pending_connectors_older_than_ten_minutes_are_cleaned_up() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let active = active_slack(&store, &f, f.garden).await;
+    let old = new_connector(&f, ConnectorKind::Slack);
+    let old_id = old.id;
+    store.create_connector(owner, old).await.unwrap();
+    let mut fresh = new_connector(&f, ConnectorKind::GoogleDrive);
+    fresh.created_at = at(2);
+    let fresh_id = fresh.id;
+    // A garden holds 2 connectors; the third goes to a second garden of the same owner.
+    let other = other_garden(&store, &f).await;
+    let other_owner = check_membership_of::<Owner>(&*store, f.user, other)
+        .await
+        .expect("the creator owns the second garden");
+    store.create_connector(other_owner, fresh).await.unwrap();
+    let claimed = new_connector(&f, ConnectorKind::Slack);
+    let claimed_id = claimed.id;
+    store.create_connector(other_owner, claimed).await.unwrap();
+    store
+        .claim_connect(other_owner, claimed_id, "nonce-1".into(), at(9))
+        .await
+        .unwrap();
+
+    let cleanup = |now: Timestamp| {
+        store.delete_expired_pending(
+            now.minus(PENDING_CONNECT_TTL),
+            now.minus(CONNECT_CLAIM_HOLD),
+        )
+    };
+    assert_eq!(cleanup(at(11)).await.unwrap(), 1);
+    assert!(store.connector_row(old_id).await.unwrap().is_none());
+    assert!(store.connector_row(fresh_id).await.unwrap().is_some());
+    assert!(store.connector_row(claimed_id).await.unwrap().is_some());
+    assert!(store.connector_row(active).await.unwrap().is_some());
+
+    // Over 10 minutes after the claim, the claimed one goes too (and the fresh one, now old).
+    assert_eq!(cleanup(at(20)).await.unwrap(), 2);
+    assert!(store.connector_row(claimed_id).await.unwrap().is_none());
+    assert!(store.connector_row(fresh_id).await.unwrap().is_none());
+    assert!(store.connector_row(active).await.unwrap().is_some());
+}
+
+/// T-E3.8 (docs/EON), on the embedded engine: what `PUT /connectors/{id}/sources` does when an
+/// owner drops a channel. The new sources are stored, then the dropped channel's records are
+/// deleted in batches; the kept channel's records stay.
+#[tokio::test]
+async fn dropping_a_channel_deletes_its_records_and_keeps_the_others() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let c = active_slack(&store, &f, f.garden).await;
+    store
+        .upsert_records(
+            c,
+            vec![
+                record(
+                    c,
+                    "C1/1.000100",
+                    0,
+                    "rings on tomatoes",
+                    Some(one_hot(0)),
+                    t0(),
+                ),
+                record(c, "C1/2.000100", 0, "bed 3 sprayed", Some(one_hot(1)), t0()),
+                record(c, "C2/1.000100", 0, "crew notes", Some(one_hot(2)), t0()),
+            ],
+        )
+        .await
+        .unwrap();
+    let kept = store
+        .set_sources(owner, c, vec![source("C2", "spray-log")], at(1))
+        .await
+        .unwrap();
+    assert_eq!(kept.sources, vec![source("C2", "spray-log")]);
+    let mut deleted = 0;
+    loop {
+        let n = store.delete_source_records(c, "C1".into()).await.unwrap();
+        if n == 0 {
+            break;
+        }
+        deleted += n;
+    }
+    assert_eq!(deleted, 2);
+    assert_eq!(
+        store
+            .source_vendor_ids_since(c, "C2".into(), t0())
+            .await
+            .unwrap(),
+        vec!["C2/1.000100".to_owned()]
+    );
+    assert_eq!(
+        store
+            .source_vendor_ids_since(c, "C1".into(), t0())
+            .await
+            .unwrap(),
+        Vec::<String>::new()
+    );
+    assert_eq!(store.garden_record_count(f.garden).await.unwrap(), 1);
 }
