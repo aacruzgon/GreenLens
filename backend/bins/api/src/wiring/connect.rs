@@ -136,11 +136,13 @@ impl ConnectVendors for VendorClients {
         &self,
         kind: ConnectorKind,
         tokens: &StoredTokens,
+        force: bool,
     ) -> Result<Option<StoredTokens>, VendorError> {
         let now = self.clock.now();
-        let fresh = tokens
-            .expires_at
-            .is_none_or(|at| at > now.plus(REFRESH_BEFORE));
+        let fresh = !force
+            && tokens
+                .expires_at
+                .is_none_or(|at| at > now.plus(REFRESH_BEFORE));
         let (ConnectorKind::GoogleDrive, Some(refresh), false) =
             (kind, &tokens.refresh_token, fresh)
         else {

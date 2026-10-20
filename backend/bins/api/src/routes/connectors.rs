@@ -47,7 +47,7 @@ use integrations::google_drive::Pkce;
 use crate::{
     config::OAuthClient,
     connect::{
-        Exchanged, OAuthState, StateError, VendorError, authorize_url, device_matches,
+        self, Exchanged, OAuthState, StateError, VendorError, authorize_url, device_matches,
         redirect_uri, return_location,
     },
     error::ApiError,
@@ -205,40 +205,28 @@ async fn token_failure(state: &AppState, row: &ConnectorRow, error: VendorError)
     vendor_failure(error)
 }
 
-/// The connector's tokens, with Google's access token refreshed when it is about to expire.
-/// A refreshed token is stored over the sealed value it came from (`replace_secret`, a
-/// compare-and-set): when that value changed meanwhile (another refresh stored first, or the
-/// connector was disconnected, deleted or reconnected), nothing is stored and this call still
-/// uses its own, which is as good.
+/// The connector's tokens, with Google's access token refreshed when it is about to expire
+/// and stored over the sealed value it came from ([`connect::refresh_and_store`]).
 async fn fresh_tokens(
     state: &AppState,
     key: &ConnectorKey,
     row: &ConnectorRow,
 ) -> Result<StoredTokens, ApiError> {
     let tokens = tokens_of(key, row)?;
-    let fresh = match state.connect.refresh(row.connector.kind, &tokens).await {
-        Ok(Some(fresh)) => fresh,
-        Ok(None) => return Ok(tokens),
-        Err(error) => return Err(token_failure(state, row, error).await),
-    };
-    let id = row.connector.id;
-    if let Some(read) = row.secret.clone() {
-        match state
-            .ports
-            .store
-            .replace_secret(id, read, fresh.seal(key, id))
-            .await
-        {
-            Ok(true) => tracing::debug!(connector = %id, "refreshed token stored"),
-            Ok(false) => {
-                tracing::debug!(connector = %id, "refreshed token not stored: the connector changed or went meanwhile");
-            }
-            Err(error) => {
-                tracing::warn!(connector = %id, error = %error, "refreshed token not stored");
-            }
-        }
+    let mut sealed = row.secret.clone();
+    match connect::refresh_and_store(
+        state.connect.as_ref(),
+        state.ports.store.as_ref(),
+        key,
+        (row.connector.id, row.connector.kind),
+        &mut sealed,
+        (tokens, false),
+    )
+    .await
+    {
+        Ok(tokens) => Ok(tokens),
+        Err(error) => Err(token_failure(state, row, error).await),
     }
-    Ok(fresh)
 }
 
 /// The connector's sources at the vendor; a refused token makes it `reauth_needed`.
