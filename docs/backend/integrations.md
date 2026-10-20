@@ -2701,7 +2701,10 @@ pub enum FarmErrorCode {
 pub enum FarmClientError {
     /// The token is missing, wrong, expired, revoked or lacks a scope (Slack `not_authed`,
     /// `invalid_auth`, `token_revoked`, `account_inactive`, `missing_scope`; Google `401`, a
-    /// `403` for an insufficient scope, or `invalid_grant` on a refresh).
+    /// `403` for an insufficient scope, or `invalid_grant` on a refresh). It is also a bad code
+    /// the user brought to an OAuth exchange (Slack `invalid_code`, `code_already_used`,
+    /// `code_expired`; Google `invalid_grant`). The rule: a bad user code or token is
+    /// `AuthRefused`; a fault in our own configuration is [`Self::Refused`].
     #[error("{vendor}: token refused ({code})")]
     AuthRefused {
         /// `"slack"` or `"google_drive"`.
@@ -2737,7 +2740,9 @@ pub enum FarmClientError {
         code: String,
     },
     /// Any other refusal: Slack's `ok: false` with another code, a Drive `403` that isn't a
-    /// rate limit, a `400`. Never retried.
+    /// rate limit, a `400`. Never retried. Includes our own misconfiguration of an OAuth exchange
+    /// (Slack `bad_redirect_uri`, `invalid_client_id`, `bad_client_secret`, `invalid_client`;
+    /// Google `401 invalid_client`), which is not the user's to fix.
     #[error("{vendor}: refused ({code})")]
     Refused {
         /// The vendor.
@@ -3104,7 +3109,14 @@ impl SlackClient {
             paced_team: None,
             idempotent: false,
         };
-        let w: wire::OAuthAccess = self.call(&call).await?;
+        // A bad code is the user's (`AuthRefused`); a bad redirect URI, client id or secret is our
+        // own configuration and stays `Refused`.
+        let w: wire::OAuthAccess = self.call(&call).await.map_err(|error| match error {
+            FarmClientError::Refused { vendor, code, .. } if BAD_CODES.contains(&code.as_str()) => {
+                FarmClientError::AuthRefused { vendor, code }
+            }
+            other => other,
+        })?;
         Ok(OAuthAccess {
             access_token: SecretString::from(w.access_token),
             token_type: w.token_type,

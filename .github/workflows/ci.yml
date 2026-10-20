@@ -1,8 +1,8 @@
 # CI for the repository, designed in docs/infra/README.md section 2. It runs in stages:
 #   1. changes, then lint, test, examples, docs, infra and app. Each runs only when its inputs changed.
 #      A skipped job reports success.
-#   2. security and live, only once lint (and, for live, test) have passed, so a broken pull
-#      request stops early and holds a runner for less time.
+#   2. security, live and era, only once lint (and, for live and era, test) have passed, so a broken
+#      pull request stops early and holds a runner for less time.
 #   3. ci: one check that fails if any job above failed or was cancelled. It's the only required
 #      check in the ruleset, so renaming a job never breaks the ruleset.
 #   4. On main and on v* tags: images builds and pushes api, worker and worker-cuda to GHCR.
@@ -57,6 +57,7 @@ jobs:
       skills: ${{ steps.diff.outputs.skills }}
       infra: ${{ steps.diff.outputs.infra }}
       live: ${{ steps.diff.outputs.live }}
+      era: ${{ steps.diff.outputs.era }}
       images: ${{ steps.diff.outputs.images }}
       app: ${{ steps.diff.outputs.app }}
     steps:
@@ -96,6 +97,9 @@ jobs:
           # The generated types come from backend/openapi.json, so a contract change runs the app job too.
           out app    '^app/|^backend/openapi\.json$'
           out live   '^backend/crates/(store|blob)/|^backend/migrations/|^backend/Cargo\.(toml|lock)$|^\.claude/skills/rust'
+          # The Era tests run the clients and the sync against Era's simulators with the Maple Row fixture
+          # (backend/tests/fixtures/era/).
+          out era    '^backend/'
           # What the image build context holds (backend/.dockerignore leaves out tools/).
           out images '^backend/(crates|bins|migrations)/|^backend/(Cargo\.toml|Cargo\.lock|rust-toolchain\.toml|openapi\.json|Dockerfile|docker-bake\.hcl|\.dockerignore)$'
           cat "$GITHUB_OUTPUT"
@@ -368,6 +372,171 @@ jobs:
           df -h /
           du -sh "${CARGO_TARGET_DIR:-backend/target}" \
             "${PDM_RUST_SKILLS_TARGET_DIR:-$HOME/.cache/pdm-rust-skills-check/target}" 2>/dev/null || true
+
+  # Era's Slack and Google Drive simulators as service containers, the same images as the era profile
+  # in infra/dev.compose.yml (docs/EON E6, infra section 2). Three pairs, because a fault is global to
+  # a simulator and strict mode changes how it authenticates:
+  #   era-slack, era-drive                open mode: every era_ test except the next two kinds
+  #   era-slack-fault, era-drive-fault    open mode: era_fault_* only, so a fault never reaches
+  #                                       another test (E6.2)
+  #   era-slack-strict, era-drive-strict  AUTH_MODE=strict: era_strict_* only, the clients' OAuth
+  #                                       exchanges (E6.4)
+  # Ephemeral host ports on loopback, as in live: the rig runs two jobs at once, so two era jobs
+  # would collide on fixed ports. The steps read the ports back from `job`.
+  # One job with three nextest steps, not three jobs: they share one build and one runner's minutes,
+  # and the pairs are separate containers, so the steps cannot disturb each other. Each step runs
+  # even when an earlier one failed. Health is checked on /_admin/tenants, which faults never touch
+  # (the image has python3 but no curl). Not in ci's needs yet: it joins after four green runs on
+  # main (docs/EON E6.3), as live did.
+  era:
+    needs: [changes, lint, test]
+    if: ${{ !cancelled() && !failure() && (needs.changes.outputs.era == 'true' || github.event_name == 'push') }}
+    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
+    timeout-minutes: 30
+    services:
+      era-slack:
+        image: erabyeon/slack:189e10c16ec66ee1ca24ac5f7962cd7637174d0f@sha256:33382931f381da5dca51c45ad4ad7c7bfc07644d3240465bfd41e7b7ea2cb75f
+        env:
+          SIMCORE_SEED: "42"
+          SIMCORE_TODAY: "2026-10-15"
+          SIMCORE_FIDELITY: high
+          AUTH_MODE: open
+        ports: ["127.0.0.1::8080"]
+        options: >-
+          --health-cmd "python3 -c 'import sys,urllib.request as u; u.urlopen(sys.argv[1])' http://127.0.0.1:8080/_admin/tenants"
+          --health-interval 5s --health-timeout 5s --health-retries 12 --health-start-period 10s
+      era-drive:
+        image: erabyeon/google-drive:189e10c16ec66ee1ca24ac5f7962cd7637174d0f@sha256:2b9cd2a79def5cac0c325bf0a325a83842eb41edf766b2b9a362e0ee33fa9424
+        env:
+          SIMCORE_SEED: "42"
+          SIMCORE_TODAY: "2026-10-15"
+          SIMCORE_FIDELITY: high
+          AUTH_MODE: open
+        ports: ["127.0.0.1::8080"]
+        options: >-
+          --health-cmd "python3 -c 'import sys,urllib.request as u; u.urlopen(sys.argv[1])' http://127.0.0.1:8080/_admin/tenants"
+          --health-interval 5s --health-timeout 5s --health-retries 12 --health-start-period 10s
+      era-slack-fault:
+        image: erabyeon/slack:189e10c16ec66ee1ca24ac5f7962cd7637174d0f@sha256:33382931f381da5dca51c45ad4ad7c7bfc07644d3240465bfd41e7b7ea2cb75f
+        env:
+          SIMCORE_SEED: "42"
+          SIMCORE_TODAY: "2026-10-15"
+          SIMCORE_FIDELITY: high
+          AUTH_MODE: open
+        ports: ["127.0.0.1::8080"]
+        options: >-
+          --health-cmd "python3 -c 'import sys,urllib.request as u; u.urlopen(sys.argv[1])' http://127.0.0.1:8080/_admin/tenants"
+          --health-interval 5s --health-timeout 5s --health-retries 12 --health-start-period 10s
+      era-drive-fault:
+        image: erabyeon/google-drive:189e10c16ec66ee1ca24ac5f7962cd7637174d0f@sha256:2b9cd2a79def5cac0c325bf0a325a83842eb41edf766b2b9a362e0ee33fa9424
+        env:
+          SIMCORE_SEED: "42"
+          SIMCORE_TODAY: "2026-10-15"
+          SIMCORE_FIDELITY: high
+          AUTH_MODE: open
+        ports: ["127.0.0.1::8080"]
+        options: >-
+          --health-cmd "python3 -c 'import sys,urllib.request as u; u.urlopen(sys.argv[1])' http://127.0.0.1:8080/_admin/tenants"
+          --health-interval 5s --health-timeout 5s --health-retries 12 --health-start-period 10s
+      era-slack-strict:
+        image: erabyeon/slack:189e10c16ec66ee1ca24ac5f7962cd7637174d0f@sha256:33382931f381da5dca51c45ad4ad7c7bfc07644d3240465bfd41e7b7ea2cb75f
+        env:
+          SIMCORE_SEED: "42"
+          SIMCORE_TODAY: "2026-10-15"
+          SIMCORE_FIDELITY: high
+          AUTH_MODE: strict
+        ports: ["127.0.0.1::8080"]
+        options: >-
+          --health-cmd "python3 -c 'import sys,urllib.request as u; u.urlopen(sys.argv[1])' http://127.0.0.1:8080/_admin/tenants"
+          --health-interval 5s --health-timeout 5s --health-retries 12 --health-start-period 10s
+      era-drive-strict:
+        image: erabyeon/google-drive:189e10c16ec66ee1ca24ac5f7962cd7637174d0f@sha256:2b9cd2a79def5cac0c325bf0a325a83842eb41edf766b2b9a362e0ee33fa9424
+        env:
+          SIMCORE_SEED: "42"
+          SIMCORE_TODAY: "2026-10-15"
+          SIMCORE_FIDELITY: high
+          AUTH_MODE: strict
+        ports: ["127.0.0.1::8080"]
+        options: >-
+          --health-cmd "python3 -c 'import sys,urllib.request as u; u.urlopen(sys.argv[1])' http://127.0.0.1:8080/_admin/tenants"
+          --health-interval 5s --health-timeout 5s --health-retries 12 --health-start-period 10s
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/free-disk
+      - name: Rust 1.99.1 with rustfmt and Clippy
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
+      - uses: ./.github/actions/self-hosted-env
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        if: runner.environment == 'github-hosted'
+        with:
+          workspaces: "backend -> target"
+          shared-key: era
+          key: ${{ hashFiles('.claude/skills/rust/versions.md') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: cargo-nextest@0.9.148
+      # A simulator generates its company on the first call that needs it (8 s locally, over 20 s on a
+      # runner). One cheap call to each of the six makes the tests' first calls fast; the tests' own
+      # clients also wait up to 90 s (ERA_TIMEOUT). The open and fault pairs generate per tenant, so a
+      # minted credential and one data call warm the process; the strict pair needs no token for the
+      # consent step, which is the call that generates the default company.
+      - name: Warm up Era's simulators
+        env:
+          SLACK_PORT: ${{ job.services.era-slack.ports['8080'] }}
+          DRIVE_PORT: ${{ job.services.era-drive.ports['8080'] }}
+          SLACK_FAULT_PORT: ${{ job.services.era-slack-fault.ports['8080'] }}
+          DRIVE_FAULT_PORT: ${{ job.services.era-drive-fault.ports['8080'] }}
+          SLACK_STRICT_PORT: ${{ job.services.era-slack-strict.ports['8080'] }}
+          DRIVE_STRICT_PORT: ${{ job.services.era-drive-strict.ports['8080'] }}
+        run: |
+          set -eu
+          warm_open() {
+            token=$(curl -sS -m 180 -X POST -H 'content-type: application/json' -d '{}' "$1/_admin/tenants/warmup/credentials" | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
+            curl -sS -m 180 -o /dev/null -w "$1 %{http_code} %{time_total}s\n" -H "Authorization: Bearer $token" "$1/$2"
+          }
+          for port in "$SLACK_PORT" "$SLACK_FAULT_PORT"; do warm_open "http://127.0.0.1:$port" api/auth.test; done
+          for port in "$DRIVE_PORT" "$DRIVE_FAULT_PORT"; do warm_open "http://127.0.0.1:$port" drive/v3/files; done
+          curl -sS -m 180 -o /dev/null -w "strict slack %{http_code} %{time_total}s\n" -G "http://127.0.0.1:$SLACK_STRICT_PORT/oauth/v2/authorize" \
+            --data-urlencode client_id=pdm-test --data-urlencode scope=channels:read \
+            --data-urlencode redirect_uri=https://api.example/connectors/oauth/callback --data-urlencode state=warm
+          curl -sS -m 180 -o /dev/null -w "strict google %{http_code} %{time_total}s\n" -G "http://127.0.0.1:$DRIVE_STRICT_PORT/o/oauth2/v2/auth" \
+            --data-urlencode client_id=pdm-test --data-urlencode response_type=code \
+            --data-urlencode scope=https://www.googleapis.com/auth/drive.readonly \
+            --data-urlencode redirect_uri=https://api.example/connectors/oauth/callback --data-urlencode state=warm
+      - name: Era tests
+        working-directory: backend
+        env:
+          ERA_SLACK_BASE: http://127.0.0.1:${{ job.services.era-slack.ports['8080'] }}
+          ERA_GOOGLE_BASE: http://127.0.0.1:${{ job.services.era-drive.ports['8080'] }}
+        run: >-
+          cargo nextest run -p integrations -p api --run-ignored only --locked
+          -E 'test(/(^|::)era_/) and not test(/(^|::)era_fault_/) and not test(/(^|::)era_strict_/)'
+      - name: Era fault tests
+        if: ${{ !cancelled() }}
+        working-directory: backend
+        env:
+          ERA_SLACK_BASE: http://127.0.0.1:${{ job.services.era-slack-fault.ports['8080'] }}
+          ERA_GOOGLE_BASE: http://127.0.0.1:${{ job.services.era-drive-fault.ports['8080'] }}
+        run: >-
+          cargo nextest run -p integrations -p api --run-ignored only --locked
+          -E 'test(/(^|::)era_fault_/)'
+      - name: Era strict-mode OAuth tests
+        if: ${{ !cancelled() }}
+        working-directory: backend
+        env:
+          ERA_STRICT_SLACK_BASE: http://127.0.0.1:${{ job.services.era-slack-strict.ports['8080'] }}
+          ERA_STRICT_GOOGLE_BASE: http://127.0.0.1:${{ job.services.era-drive-strict.ports['8080'] }}
+        run: >-
+          cargo nextest run -p integrations -p api --run-ignored only --locked
+          -E 'test(/(^|::)era_strict_/)'
+      - name: Disk left
+        if: always()
+        run: |
+          df -h /
+          du -sh "${CARGO_TARGET_DIR:-backend/target}" 2>/dev/null || true
 
   # --- stage 3: the one required check -----------------------------------------------------------
 
