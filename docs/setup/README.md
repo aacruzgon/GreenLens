@@ -1,7 +1,7 @@
 # PDM Developer Setup
 
-> **Status:** v0.1.4, 2026-10-19. v0.1.4: backend developers working on connectors start Era's simulators with the compose file's `era` profile. v0.1.3: the control plane reaches the internet through Tailscale Funnel, run as a container, instead of a Cloudflare tunnel. v0.1.2: backend developers start SurrealDB and RustFS with `infra/dev.compose.yml`. v0.1.1: Debian 13's libheif is 1.23.4, as the `api` image build installed it. v0.1: first version: what each team member installs on macOS, Windows and Linux, by role, with the versions the other documents pin.
-> **Checked:** on 2026-10-16. The release files of ONNX Runtime 1.31.0 on GitHub, libheif's versions in Ubuntu and Debian, and the Node versions that React Native 0.86.3 and EAS CLI accept were read from their sources (✓). Items marked *unverified* weren't tried on that platform.
+> **Status:** v0.1.5, 2026-10-19. v0.1.5: section 6 has a CI runner subsection, with the commands that set up the two self-hosted runners on the rig's 3070 host. v0.1.4: backend developers working on connectors start Era's simulators with the compose file's `era` profile. v0.1.3: the control plane reaches the internet through Tailscale Funnel, run as a container, instead of a Cloudflare tunnel. v0.1.2: backend developers start SurrealDB and RustFS with `infra/dev.compose.yml`. v0.1.1: Debian 13's libheif is 1.23.4, as the `api` image build installed it. v0.1: first version: what each team member installs on macOS, Windows and Linux, by role, with the versions the other documents pin.
+> **Checked:** on 2026-10-16. The release files of ONNX Runtime 1.31.0 on GitHub, libheif's versions in Ubuntu and Debian, and the Node versions that React Native 0.86.3 and EAS CLI accept were read from their sources (✓). Items marked *unverified* weren't tried on that platform. On 2026-10-19 the steps of [CI runner](#ci-runner) in section 6 were run on the rig's 3070 host (✓ run); the install script's step and the first job on the runners were not.
 
 ## Contents
 
@@ -25,6 +25,7 @@
 | Backend developer | 2, [4](#4-backend-rust) | `backend/` ([backend](../backend/README.md)) |
 | ML developer | 2, [5](#5-machine-learning-python) | `ml/` ([vision](../vision/README.md)) |
 | Whoever runs the rig or the control plane | 2, 4, [6](#6-the-gpu-rig-and-the-control-plane) | `infra/` ([architecture 12](../architecture/README.md#12-deployment)) |
+| Whoever looks after the CI runners (the rig's owner) | 2, 6, [CI runner](#ci-runner) | `infra/ci-runner/`, `.github/` ([infra 2](../infra/README.md#runners-and-budget)) |
 
 What each operating system can do:
 
@@ -161,6 +162,136 @@ Only the people who run these machines need this section. The design is in [arch
 | **The control plane** | Docker Engine with Compose v2, and the Caddy and ingress configuration from `infra/` ([infra 5](../infra/README.md#5-ingress)): a Tailscale account with Funnel turned on for the rig, or a domain on Cloudflare or a VM for the other profiles |
 
 The containers bring everything else: CUDA 13.0.3 and ONNX Runtime in `worker-cuda`, vLLM 0.31.0 for CUDA and ROCm, SurrealDB and RustFS. Each is pinned by digest, so nothing else is installed on the host.
+
+### CI runner
+
+CI runs on two self-hosted runners, `rig-1` and `rig-2`, on the rig's 3070 host (Debian 13, 16 threads, 15 GB of RAM, 16 GB of swap). The design, the guards in `ci.yml` and the risks are in [infra 2](../infra/README.md#runners-and-budget). Pull-request code runs on this machine, so the runners run as their own user with no `sudo` and no `docker` group, in their own rootless Docker daemon.
+
+✓ Run on 2026-10-19, in this order, except step 13 (`install.sh` needs a checkout that exists only after a first job). Replace `<uid>` with the output of `id -u ci-runner`.
+
+**In your own terminal, with `sudo`:**
+
+1. Create the user, with no password and no `sudo` or `docker` membership:
+
+   ```bash
+   sudo adduser --disabled-password --comment "GitHub Actions runner" ci-runner
+   ```
+
+2. Check that it has subordinate ID ranges, which rootless Docker needs. If the command prints nothing for either file, add a range of 65,536 that starts after the highest one already in `/etc/subuid` (`sort -t: -k2 -n /etc/subuid | tail -1`), so no two users' containers share IDs: `sudo usermod --add-subuids <start>-<start+65535> --add-subgids <start>-<start+65535> ci-runner`. On the rig it got 362144:
+
+   ```bash
+   grep ci-runner /etc/subuid /etc/subgid
+   ```
+
+3. Install what rootless Docker needs, and keep the user's services running without a login:
+
+   ```bash
+   sudo apt install uidmap dbus-user-session rootlesskit slirp4netns systemd-container
+   sudo loginctl enable-linger ci-runner
+   ```
+
+4. Cap the user's memory, so your desktop and builds survive two Rust links at once:
+
+   ```bash
+   sudo systemctl set-property user-$(id -u ci-runner).slice MemoryHigh=9G MemoryMax=11G
+   ```
+
+5. Check that your home is closed to it (mode 700), so CI can't read your files or the rig's env files:
+
+   ```bash
+   stat -c '%a %n' /home/acruzgon
+   ```
+
+6. Open a shell as `ci-runner`. Use `machinectl`: `sudo -iu ci-runner` has no user bus, so `systemctl --user` fails. Don't paste multi-line blocks into this shell.
+
+   ```bash
+   sudo machinectl shell ci-runner@
+   ```
+
+**In the `ci-runner` shell:**
+
+7. Rootless Docker, from the Debian package's script. The script expects `dockerd-rootless.sh` and `dockerd` on the `PATH`, and Debian keeps them in `/usr/share/docker.io/contrib` and `/usr/sbin`, so put both on it first (with `~/.cargo/bin`, for step 8). Then start the daemon as a user service and check it:
+
+   ```bash
+   echo 'export PATH=$HOME/.cargo/bin:/usr/share/docker.io/contrib:/usr/sbin:$PATH' >> ~/.bashrc
+   echo 'export DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock' >> ~/.bashrc
+   source ~/.bashrc
+   dockerd-rootless-setuptool.sh install
+   systemctl --user enable --now docker
+   systemctl --user is-enabled docker
+   docker run --rm hello-world
+   ```
+
+8. Rust 1.99.1, and the buildx plugin v0.38.0 with its checksum. The `pdm-ci` builder keeps image layers between jobs. The `docker` driver can't export a registry cache, so a `docker-container` builder is needed:
+
+   ```bash
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.99.1 -c rustfmt -c clippy
+   . ~/.cargo/env
+   rustc --version
+   mkdir -p ~/.docker/cli-plugins
+   curl -fsSL -o ~/.docker/cli-plugins/docker-buildx https://github.com/docker/buildx/releases/download/v0.38.0/buildx-v0.38.0.linux-amd64
+   echo '4fe4cc38adf48169132749b6ca22a990928db0118e3407584ee553723115d287  /home/ci-runner/.docker/cli-plugins/docker-buildx' | sha256sum -c -
+   chmod +x ~/.docker/cli-plugins/docker-buildx
+   docker buildx version
+   docker buildx create --name pdm-ci --driver docker-container --bootstrap
+   ```
+
+9. The runner software, actions/runner v2.338.0, unpacked twice with its checksum checked:
+
+   ```bash
+   curl -fsSL -o ~/actions-runner.tar.gz https://github.com/actions/runner/releases/download/v2.338.0/actions-runner-linux-x64-2.338.0.tar.gz
+   echo 'af4b794c1bc41d73d40535e3fe092a39f9679cd8d965954c2aca25a05ca41d32  /home/ci-runner/actions-runner.tar.gz' | sha256sum -c -
+   mkdir -p ~/runner-1 ~/runner-2
+   tar xzf ~/actions-runner.tar.gz -C ~/runner-1
+   tar xzf ~/actions-runner.tar.gz -C ~/runner-2
+   ```
+
+**On GitHub, in your own terminal** (`ci-runner` isn't logged in to `gh`):
+
+10. Get a registration token. It lasts an hour and registers both runners. You can instead copy it from Settings, Actions, Runners, New self-hosted runner.
+
+    ```bash
+    gh api -X POST repos/aacruzgon/GreenLens/actions/runners/registration-token --jq .token
+    ```
+
+**Back in the `ci-runner` shell:**
+
+11. Register the runners, set each one's environment, and install the service unit. Run `config.sh` where `rustc` works, so the runner records `~/.cargo/bin` in its `PATH`. Two jobs at a time fit in 15 GB; three don't, because linking a test binary takes 1–2 GB. The unit file comes from the repository, which `ci-runner` can't read, so copy it first from your own terminal: `sudo install -D -o ci-runner -g ci-runner -m 644 infra/ci-runner/gh-runner@.service /home/ci-runner/.config/systemd/user/gh-runner@.service`.
+
+    ```bash
+    cd ~/runner-1 && ./config.sh --unattended --url https://github.com/aacruzgon/GreenLens --token <token> --name rig-1 --labels pdm --work _work --replace
+    cd ~/runner-2 && ./config.sh --unattended --url https://github.com/aacruzgon/GreenLens --token <token> --name rig-2 --labels pdm --work _work --replace
+    for n in 1 2; do printf '%s\n' DOCKER_HOST=unix:///run/user/<uid>/docker.sock CARGO_BUILD_JOBS=6 NEXTEST_TEST_THREADS=8 >> ~/runner-$n/.env; cp ~/runner-$n/bin/runsvc.sh ~/runner-$n/runsvc.sh; done
+    systemctl --user daemon-reload
+    systemctl --user enable --now gh-runner@1 gh-runner@2
+    systemctl --user status gh-runner@1 gh-runner@2 --no-pager
+    ```
+
+**On GitHub, in your own terminal:**
+
+12. Send every job to the runners, and check that both are `online`. Deleting the variable sends the jobs back to GitHub's `ubuntu-26.04`:
+
+    ```bash
+    gh variable set RUNNER_LABELS --body '["self-hosted","linux","x64","pdm"]'
+    gh api repos/aacruzgon/GreenLens/actions/runners --jq '.runners[] | [.name, .status] | @tsv'
+    ```
+
+**After the first job has checked the repository out** (*unverified*: not yet run), in the `ci-runner` shell:
+
+13. Install the job-started hook, which removes containers and networks older than 2 hours that cancelled jobs left behind, and the weekly `ci-prune.timer`, which trims the buildx cache to 30 GB and removes old images, unused volumes and build trees unused for 14 days. The script is idempotent and needs no `sudo`. Then restart the runners when no job is running, because they read `.env` at start. Expect under 100 GB of disk in use.
+
+    ```bash
+    bash ~/runner-1/_work/GreenLens/GreenLens/infra/ci-runner/install.sh
+    systemctl --user restart gh-runner@1 gh-runner@2
+    systemctl --user list-timers ci-prune.timer --no-pager
+    ```
+
+**To remove a runner:** disable its unit (with `Restart=always`, a removed runner would otherwise restart every 10 seconds), get a removal token from `gh api -X POST repos/aacruzgon/GreenLens/actions/runners/remove-token --jq .token` in your own terminal, then in the `ci-runner` shell:
+
+```bash
+systemctl --user disable --now gh-runner@2
+cd ~/runner-2 && ./config.sh remove --token <token>
+```
 
 ## 7. Checking your setup
 
