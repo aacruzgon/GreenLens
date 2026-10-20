@@ -30,6 +30,9 @@ pub struct Report {
     pub questions: Vec<QuestionReport>,
     /// Estimated cost, US dollars, by model.
     pub cost_usd: BTreeMap<String, f64>,
+    /// Turns that didn't complete (failed, interrupted, or a question that errored), over every
+    /// question and model. Their applicable measures count as failed.
+    pub failed_turns: u32,
     /// Why the evaluation stopped early, if it did.
     pub stopped: Option<String>,
 }
@@ -67,7 +70,8 @@ pub struct RunReport {
     pub model: String,
     /// 1-based.
     pub run: u32,
-    /// How the turn ended: `completed`, `failed` or `interrupted`.
+    /// How the turn ended: `completed`, `failed` or `interrupted`. A question that errored
+    /// before or during its turn is `failed`, with the error's code in `errors`.
     pub outcome: String,
     /// The stored answer.
     pub text: String,
@@ -87,6 +91,13 @@ pub struct RunReport {
     pub cost_usd: f64,
     /// The error events, if any.
     pub errors: Vec<String>,
+}
+
+impl RunReport {
+    /// Whether the turn ended without a completed answer.
+    pub fn turn_failed(&self) -> bool {
+        self.outcome != "completed"
+    }
 }
 
 /// `passed/scored` for one measure over runs, or the one verdict when only one run counted.
@@ -124,14 +135,14 @@ impl Report {
             let _ = writeln!(out, "### {model}\n");
             let _ = writeln!(
                 out,
-                "| Q | Measure | Answer | Citation | Cross-source | Safety | Injection | Tools | Tokens in / out | Cost (US$) |"
+                "| Q | Measure | Answer | Citation | Cross-source | Safety | Injection | Failed turns | Tools | Tokens in / out | Cost (US$) |"
             );
-            let _ = writeln!(out, "|---|---|---|---|---|---|---|---|---|---|");
+            let _ = writeln!(out, "|---|---|---|---|---|---|---|---|---|---|---|");
             let mut total = 0.0;
             for q in &self.questions {
                 let runs: Vec<&RunReport> = q.runs.iter().filter(|r| &r.model == model).collect();
                 if let Some(why) = &q.skipped {
-                    let _ = writeln!(out, "| {} | {} | {why} | | | | | | | |", q.id, q.measure);
+                    let _ = writeln!(out, "| {} | {} | {why} | | | | | | | | |", q.id, q.measure);
                     continue;
                 }
                 if runs.is_empty() {
@@ -143,7 +154,7 @@ impl Report {
                 total += cost;
                 let _ = writeln!(
                     out,
-                    "| {} | {} | {} | {} | {} | {} | {} | {:.1} | {:.0} / {:.0} | {:.3} |",
+                    "| {} | {} | {} | {} | {} | {} | {} | {}/{} | {:.1} | {:.0} / {:.0} | {:.3} |",
                     q.id,
                     q.measure,
                     tally(runs.iter().map(|r| &r.scores.answer)),
@@ -151,6 +162,8 @@ impl Report {
                     tally(runs.iter().map(|r| &r.scores.cross_source)),
                     tally(runs.iter().map(|r| &r.scores.safety)),
                     tally(runs.iter().map(|r| &r.scores.injection)),
+                    runs.iter().filter(|r| r.turn_failed()).count(),
+                    runs.len(),
                     mean(|r| r.tools.len() as f64),
                     mean(|r| r.tokens_in as f64),
                     mean(|r| r.tokens_out as f64),
@@ -171,6 +184,13 @@ impl Report {
                 format!(" ({})", j.problems.join("; "))
             }
         );
+        if self.failed_turns > 0 {
+            let _ = writeln!(
+                out,
+                "\nFailed turns: {}. Their applicable measures count as failed; see `errors` in the JSON.",
+                self.failed_turns
+            );
+        }
         if let Some(why) = &self.stopped {
             let _ = writeln!(out, "\nStopped early: {why}");
         }

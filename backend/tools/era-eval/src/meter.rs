@@ -73,6 +73,24 @@ pub fn cost(model: &str, tokens_in: u32, tokens_out: u32) -> Option<f64> {
     Some((f64::from(tokens_in) * input + f64::from(tokens_out) * output) / 1_000_000.0)
 }
 
+/// Whether `model` is in [`PRICES`]. The cost cap needs every model that is called priced.
+pub fn is_priced(model: &str) -> bool {
+    PRICES.iter().any(|p| p.model == model)
+}
+
+/// Refuses a model id that isn't in [`PRICES`], with the ids that are.
+pub fn ensure_priced<'a>(models: impl IntoIterator<Item = &'a str>) -> anyhow::Result<()> {
+    for model in models {
+        anyhow::ensure!(
+            is_priced(model),
+            "the model \"{model}\" has no price in the table, so --max-cost-usd couldn't hold; \
+             priced models: {}",
+            PRICES.map(|p| p.model).join(", ")
+        );
+    }
+    Ok(())
+}
+
 /// One model call.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Call {
@@ -115,6 +133,15 @@ impl Meter {
         calls.get(from..).map(<[Call]>::to_vec).unwrap_or_default()
     }
 
+    /// Watches one streamed call.
+    fn recorder(&self, purpose: ChatPurpose) -> Recorder<'_> {
+        Recorder {
+            meter: self,
+            purpose,
+            latest: None,
+        }
+    }
+
     fn record(&self, purpose: ChatPurpose, usage: domain::chat::Usage) {
         let call = Call {
             model: self.inner.model_name(purpose),
@@ -129,6 +156,38 @@ impl Meter {
     }
 }
 
+/// Watches one streamed call and records its latest usage once: when the call is done, when it
+/// ends in an error, or when the stream is dropped before either (a cancelled turn), so a call
+/// that spent tokens and failed is still costed.
+struct Recorder<'a> {
+    meter: &'a Meter,
+    purpose: ChatPurpose,
+    /// Usage is cumulative within a call: the latest replaces the earlier ones.
+    latest: Option<domain::chat::Usage>,
+}
+
+impl Recorder<'_> {
+    fn see(&mut self, chunk: &Result<ChatChunk, ModelError>) {
+        match chunk {
+            Ok(ChatChunk::Usage(usage)) => self.latest = Some(*usage),
+            Ok(ChatChunk::Done(_)) | Err(_) => self.flush(),
+            Ok(_) => {}
+        }
+    }
+
+    fn flush(&mut self) {
+        if let Some(usage) = self.latest.take() {
+            self.meter.record(self.purpose, usage);
+        }
+    }
+}
+
+impl Drop for Recorder<'_> {
+    fn drop(&mut self) {
+        self.flush();
+    }
+}
+
 #[async_trait]
 impl ChatModel for Meter {
     fn model_name(&self, purpose: ChatPurpose) -> String {
@@ -139,20 +198,11 @@ impl ChatModel for Meter {
         &'a self,
         request: &'a ChatRequest,
     ) -> BoxStream<'a, Result<ChatChunk, ModelError>> {
-        // Usage is cumulative within a call, and the adapter sends the final counts just
-        // before `Done`: record the latest once the call is done.
-        let mut latest = None;
+        // The adapter sends the call's cumulative counts, the final ones just before `Done`.
+        let mut recorder = self.recorder(request.purpose);
         self.inner
             .stream(request)
-            .inspect(move |chunk| match chunk {
-                Ok(ChatChunk::Usage(usage)) => latest = Some(*usage),
-                Ok(ChatChunk::Done(_)) => {
-                    if let Some(usage) = latest.take() {
-                        self.record(request.purpose, usage);
-                    }
-                }
-                _ => {}
-            })
+            .inspect(move |chunk| recorder.see(chunk))
             .boxed()
     }
 
@@ -182,5 +232,70 @@ mod tests {
         let long = cost("claude-haiku-5-5", 100_001, 0).unwrap();
         assert!((short - 0.01).abs() < 1e-9);
         assert!(long > 4.0 * short);
+    }
+
+    #[test]
+    fn an_unpriced_model_is_refused() {
+        assert!(ensure_priced(["claude-opus-5-5", "claude-haiku-5-5"]).is_ok());
+        let e = ensure_priced(["claude-opus-5-5", "claude-opus-9"]).unwrap_err();
+        assert!(e.to_string().contains("claude-opus-9"), "{e}");
+    }
+
+    struct Silent;
+
+    #[async_trait]
+    impl ChatModel for Silent {
+        fn model_name(&self, _: ChatPurpose) -> String {
+            "claude-haiku-5-5".to_owned()
+        }
+
+        fn stream<'a>(
+            &'a self,
+            _: &'a ChatRequest,
+        ) -> BoxStream<'a, Result<ChatChunk, ModelError>> {
+            futures::stream::empty().boxed()
+        }
+
+        async fn complete(&self, _: &ChatRequest) -> Result<ChatCompletion, ModelError> {
+            Err(ModelError::Unsupported {
+                model: "silent",
+                what: "complete",
+            })
+        }
+    }
+
+    fn usage(tokens_in: u32, tokens_out: u32) -> ChatChunk {
+        ChatChunk::Usage(domain::chat::Usage {
+            tokens_in,
+            tokens_out,
+        })
+    }
+
+    #[test]
+    fn a_call_is_costed_once_with_its_latest_usage_whatever_its_end() {
+        let meter = Meter::new(Arc::new(Silent));
+        // Done: the latest usage replaces the earlier one, recorded once.
+        let mut r = meter.recorder(ChatPurpose::Chat);
+        r.see(&Ok(usage(10, 1)));
+        r.see(&Ok(usage(10, 40)));
+        r.see(&Ok(ChatChunk::Done(domain::ports::StopReason::EndTurn)));
+        drop(r);
+        // An error after usage: still recorded.
+        let mut r = meter.recorder(ChatPurpose::Chat);
+        r.see(&Ok(usage(20, 5)));
+        r.see(&Err(ModelError::Unsupported {
+            model: "silent",
+            what: "stream",
+        }));
+        drop(r);
+        // Dropped mid-stream: recorded on drop.
+        let mut r = meter.recorder(ChatPurpose::Chat);
+        r.see(&Ok(usage(30, 7)));
+        drop(r);
+        // No usage, no call.
+        drop(meter.recorder(ChatPurpose::Chat));
+        let calls = meter.since(0);
+        let counts: Vec<(u32, u32)> = calls.iter().map(|c| (c.tokens_in, c.tokens_out)).collect();
+        assert_eq!(counts, [(10, 40), (20, 5), (30, 7)]);
     }
 }
