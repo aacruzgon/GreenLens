@@ -320,7 +320,7 @@ jobs:
         with:
           tool: cargo-deny@0.20.2
       # RustSec advisories for what ships, with the accepted ones in backend/deny.toml.
-      - run: cargo deny --locked check advisories
+      - run: cargo deny --locked check advisories bans
 
   live:
     needs: [changes, lint, test]
