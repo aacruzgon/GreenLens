@@ -152,14 +152,14 @@ def main(argv=None) -> int:
         p_head = softmax(clf.decision_function(X[n]) / T)
         p_zs = softmax(LOGIT_SCALE * X[n] @ rows_zs.T)
         p_comb = combine(p_zs, ids, p_head, sup)
-        out = {}
-        for s in sorted(set(src[n])):
-            m = src[n] == s
+        on_sup = np.asarray([t in sidx for t in truth], bool)
+
+        def scores(m: np.ndarray) -> dict:
             t = [truth[i] for i in np.flatnonzero(m)]
             zs = [ids[i] for i in p_zs[m].argmax(1)]
             head = [sup[i] for i in p_head[m].argmax(1)]
             comb = [ids[i] for i in p_comb[m].argmax(1)]
-            out[s] = {
+            return {
                 "n": int(m.sum()),
                 "zero_shot_top1": float(np.mean([a == b for a, b in zip(zs, t)])),
                 "head_top1_over_supported": float(np.mean([a == b for a, b in zip(head, t)])),
@@ -168,6 +168,14 @@ def main(argv=None) -> int:
                     [sup[i] == b for i, b in zip(p_zs[m][:, [ids.index(x) for x in sup]].argmax(1), t)])),
                 "by_species": {sp: int(c) for sp, c in collections.Counter(t).items()},
             }
+
+        out = {}
+        for s in sorted(set(src[n])):
+            m = src[n] == s
+            out[s] = scores(m)
+            if (m & ~on_sup).any() and (m & on_sup).any():
+                # The head can only name a supported crop, so its fair score is on those photos.
+                out[f"{s}, supported crops only"] = scores(m & on_sup)
         return out
 
     report = {
@@ -177,7 +185,9 @@ def main(argv=None) -> int:
         "val": evaluate("val"), "test": evaluate("test"), "dev": evaluate("dev") if sets["dev"] else None,
         "note": ("Zero-shot is over every species row of the manifest's label matrix (a stand-in of 20 species "
                  "until the seed's matrix exists), with T_species 1. Combined is models.md 6's rule. Dev is every "
-                 "plant shot of the evaluation set's dev cases, which are tomato and corn only."),
+                 "plant shot of the evaluation set's dev cases; where a source holds photos of an unsupported species "
+                 "(squash), the head can't name them, so a second row scores the supported crops only. Test is the leaf "
+                 "datasets' test split: C and T are chosen on val."),
     }
     out = RUNS / args.version
     out.mkdir(parents=True, exist_ok=True)
