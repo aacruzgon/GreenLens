@@ -23,6 +23,7 @@
 //! [connectors 8]: ../../../docs/connectors/README.md#8-privacy-and-security
 
 mod pkce;
+mod source;
 #[cfg(test)]
 mod tests;
 mod wire;
@@ -34,6 +35,7 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::de::DeserializeOwned;
 
 pub use pkce::{InvalidVerifier, Pkce};
+pub use source::{DriveSource, FILES_PER_PAGE};
 pub use wire::{
     Change, ChangeSet, DOCUMENT_MIME, DriveFile, FOLDER_MIME, FileKind, FileText, FolderListing,
     PLAIN_TEXT_MIME, SPREADSHEET_MIME, TokenGrant,
@@ -103,6 +105,26 @@ impl Default for DriveConfig {
             timeout: Duration::from_secs(30),
             retry: RetryPolicy::STANDARD,
             page_size: MAX_PAGE_SIZE,
+        }
+    }
+}
+
+impl DriveConfig {
+    /// An Era simulator at `base_url`, for the seeded `era` connectors: no back-off between
+    /// retries, but a `Retry-After` is still honoured (up to 60 s), like
+    /// [`SlackConfig::era`](crate::slack::SlackConfig::era). The OAuth paths are the simulator's.
+    pub fn era(base_url: impl Into<String>) -> Self {
+        let base = base_url.into().trim_end_matches('/').to_owned();
+        Self {
+            token_url: format!("{base}/token"),
+            revoke_url: format!("{base}/o/oauth2/revoke"),
+            api_base: base,
+            retry: RetryPolicy {
+                base: Duration::ZERO,
+                cap: Duration::ZERO,
+                ..RetryPolicy::STANDARD
+            },
+            ..Self::default()
         }
     }
 }
@@ -252,6 +274,7 @@ impl DriveClient {
         let mut listing = FolderListing {
             files: Vec::new(),
             folders: vec![folder_id.to_owned()],
+            tree: Vec::new(),
             truncated: false,
         };
         let mut seen: HashSet<String> = HashSet::from([folder_id.to_owned()]);
@@ -293,6 +316,7 @@ impl DriveClient {
                             listing.truncated = true;
                             break 'folders;
                         }
+                        listing.tree.push((file.id.clone(), folder.clone()));
                         listing.folders.push(file.id);
                     } else {
                         if listing.files.len() == MAX_FILES {

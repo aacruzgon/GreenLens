@@ -62,16 +62,23 @@ pub struct DriveFile {
     pub trashed: bool,
 }
 
+impl FileKind {
+    /// How the sync treats a file of this MIME type.
+    pub fn of(mime_type: &str) -> Self {
+        match mime_type {
+            FOLDER_MIME => Self::Folder,
+            DOCUMENT_MIME => Self::Document,
+            SPREADSHEET_MIME => Self::Spreadsheet,
+            PLAIN_TEXT_MIME => Self::PlainText,
+            _ => Self::Other,
+        }
+    }
+}
+
 impl DriveFile {
     /// How the sync treats the file.
     pub fn kind(&self) -> FileKind {
-        match self.mime_type.as_str() {
-            FOLDER_MIME => FileKind::Folder,
-            DOCUMENT_MIME => FileKind::Document,
-            SPREADSHEET_MIME => FileKind::Spreadsheet,
-            PLAIN_TEXT_MIME => FileKind::PlainText,
-            _ => FileKind::Other,
-        }
+        FileKind::of(&self.mime_type)
     }
 }
 
@@ -84,6 +91,9 @@ pub struct FolderListing {
     /// The folder and every folder found under it, the folder first. A change is under the
     /// chosen folder when one of its parents is in this list.
     pub folders: Vec<String>,
+    /// Every folder found under the chosen one, with the folder it was listed in: the tree a
+    /// sync keeps to tell whether a later change is still under the chosen folder.
+    pub tree: Vec<(String, String)>,
     /// The listing stopped at [`super::MAX_FILES`] files or [`super::MAX_FOLDERS`] folders.
     pub truncated: bool,
 }
