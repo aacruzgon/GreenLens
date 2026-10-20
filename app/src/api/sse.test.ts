@@ -94,3 +94,21 @@ describe("readSse", () => {
     expect(out).toEqual(EXPECTED);
   });
 });
+
+describe("readSse onActivity", () => {
+  it("fires for keepalive-only chunks and yields no event", async () => {
+    const enc = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(enc.encode(": keepalive\n\n"));
+        c.enqueue(enc.encode(": keepalive\n\n"));
+        c.close();
+      },
+    });
+    const onActivity = jest.fn();
+    const out: SseMessage[] = [];
+    for await (const m of readSse(body, { onActivity })) out.push(m);
+    expect(out).toEqual([]);
+    expect(onActivity).toHaveBeenCalledTimes(2);
+  });
+});

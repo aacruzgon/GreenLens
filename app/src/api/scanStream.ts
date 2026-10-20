@@ -1,9 +1,8 @@
 import { client } from "./client";
-import type { components } from "./generated/schema";
+import type { ScanEvent, ScanEventType } from "@/domain/types";
+
 import { readSse } from "./sse";
 
-export type ScanEvent = components["schemas"]["ScanEvent"];
-export type ScanEventType = ScanEvent["type"];
 
 const KNOWN_TYPES: ReadonlySet<string> = new Set<ScanEventType>([
   "run_started", "status_changed", "stage_started", "stage_completed", "finding",
@@ -17,6 +16,8 @@ export interface ScanStreamOptions {
   lastEventId?: number;
   /** Aborting closes the connection and ends the iteration. */
   signal?: AbortSignal;
+  /** Fired for every chunk of bytes, keepalives too (README §10: 45 s of silence → reconnect). */
+  onActivity?: () => void;
 }
 
 /** One decoded `data:` line, or undefined for a line the app must ignore. */
@@ -53,7 +54,7 @@ export async function* openScanStream(scanId: string, opts: ScanStreamOptions = 
   });
   const body = data as ReadableStream<Uint8Array> | null | undefined;
   if (!body) return;
-  for await (const msg of readSse(body, opts.signal)) {
+  for await (const msg of readSse(body, { signal: opts.signal, onActivity: opts.onActivity })) {
     const event = decodeScanEvent(msg.data);
     if (event) yield event;
   }
