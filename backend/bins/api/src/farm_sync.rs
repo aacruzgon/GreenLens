@@ -2,8 +2,9 @@
 //! body, vendor-agnostic over the [`FarmSource`] port.
 //!
 //! Every minute the task takes at most 4 due connectors ([`FarmRecordStore::due_connectors`])
-//! and syncs them side by side. For one connector: unseal its token; then for each chosen source,
-//! read pages from the source's cursor until the pass ends or the run's budget is spent; for each
+//! and syncs them side by side. For one connector: unseal its token; then for each source of the
+//! round (below), read pages from the source's cursor until the pass ends or the run's budget is
+//! spent; for each
 //! page, chunk the items ([`chunk`]), hash each chunk, embed only the chunks whose hash changed
 //! (in `Document` mode), upsert them, and delete what the vendor reports gone; finally store the
 //! cursors, the times and the failure in one [`FarmRecordStore::finish_sync`].
@@ -11,6 +12,12 @@
 //! - **Passes and cursors** ([`state`]): a source's stored cursor wraps the adapter's own. A pass
 //!   with pages left (a throttled first sync, a spent budget) continues from it on a later run,
 //!   and records are keyed by `(connector, vendor_id, n)`, so nothing is stored twice.
+//! - **Rounds**: each source's state holds the round in which it last finished a pass. A run
+//!   reads only the sources in the lowest round, in order, starting one source further on each
+//!   round, so a run whose budget runs out (Slack's Tier 1 pacing makes ten channels take
+//!   several runs) is followed a minute later by one that continues with the next source, and
+//!   every chosen source is read once a round. The round ends when every source has finished
+//!   its pass: only then is `synced_at` set and the next sync 15 minutes away.
 //! - **The daily re-read**: for a vendor with a [`FarmSource::reread_window`] (Slack's 7 days),
 //!   once a day after a finished pass the sync starts a pass from that far back; at its end, the
 //!   source's records in the window ([`FarmRecordStore::source_vendor_ids_since`]) that the pass
@@ -170,9 +177,9 @@ enum Read {
 /// How one connector's run ended, for the logs and the tests.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunEnd {
-    /// Every source read to its end.
+    /// The round ended: every source has finished a pass since the last round.
     Synced,
-    /// Pages left for the next run.
+    /// Pages or sources of the round left for the next run.
     PagesLeft,
     /// Stopped with this code.
     Failed(SyncErrorCode),
@@ -301,12 +308,32 @@ impl FarmSync {
             Ok(n) => n,
             Err(e) => return self.internal(&row, cursors, Box::new(e)).await,
         };
+        let sources = &row.connector.sources;
+        let rounds: Vec<u32> = sources
+            .iter()
+            .map(|s| SourceState::parse(cursors.get(&s.id)).round)
+            .collect();
+        let low = rounds.iter().copied().min().unwrap_or(0);
+        let high = rounds.iter().copied().max().unwrap_or(0);
+        // A source that finishes its pass moves to the next round, or joins the others when
+        // it is behind them (a source just added).
+        let next_round = low.saturating_add(1).max(high);
+        // Each round starts one source further on, so the first sources of a run, which get
+        // the run's older-item checks first, aren't always the same.
+        let start = usize::try_from(low).unwrap_or(0) % sources.len().max(1);
         let mut left = false;
-        for src in &row.connector.sources {
+        for src in sources.iter().cycle().skip(start).take(sources.len()) {
             let mut state = SourceState::parse(cursors.get(&src.id));
+            if state.round > low {
+                // Finished its pass in this round already.
+                continue;
+            }
             let read = self
                 .read_source(&run, src, &mut state, &mut count, shutdown)
                 .await;
+            if matches!(read, Ok(Read::Done)) {
+                state.round = next_round;
+            }
             cursors.insert(src.id.clone(), state.to_cursor());
             match read {
                 Ok(Read::Done) => {}

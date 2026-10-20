@@ -849,6 +849,109 @@ async fn a_spent_budget_leaves_the_connector_due() {
 }
 
 #[tokio::test]
+async fn a_spent_budget_moves_on_to_the_next_sources_on_the_next_run() {
+    // Ten channels, each page 100 ms (a paced vendor), and a budget for about three.
+    let source = FakeSource::new(
+        None,
+        Box::new(|_| {
+            std::thread::sleep(Duration::from_millis(100));
+            Ok(page(Vec::new(), false, "c"))
+        }),
+    );
+    let config = SyncConfig {
+        run_budget: Duration::from_millis(250),
+        ..SyncConfig::default()
+    };
+    let b = bench(store().await, source.clone(), config);
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let channels: Vec<String> = (0..10).map(|i| format!("C{i}")).collect();
+    let names: Vec<&str> = channels.iter().map(String::as_str).collect();
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &names,
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    let read = |from: usize| -> Vec<String> {
+        source.requests()[from..]
+            .iter()
+            .map(|r| r.source.id.clone())
+            .collect()
+    };
+
+    // Three a run takes four runs; a loaded machine may fit fewer, so up to ten are allowed:
+    // what matters is that no channel is read twice before every channel is read once.
+    let mut ends = Vec::new();
+    for _ in 0..10 {
+        let end = b.run().await;
+        assert_eq!(end.len(), 1, "due again at once until the round ends");
+        ends.push(end[0].1);
+        if end[0].1 == RunEnd::Synced {
+            break;
+        }
+        assert_eq!(b.row(id).await.connector.synced_at, None);
+    }
+    assert_eq!(ends.last(), Some(&RunEnd::Synced), "{ends:?}");
+    assert!(ends.len() >= 3, "a run read more than the budget: {ends:?}");
+    assert_eq!(read(0), channels, "each channel once, in order, none starved");
+    let row = b.row(id).await;
+    assert_eq!(row.connector.synced_at, Some(pinned()));
+    assert_eq!(row.next_sync_at, pinned().plus(SYNC_EVERY));
+
+    // The next round starts one channel further on.
+    let before = source.requests().len();
+    b.clock.advance(SYNC_EVERY);
+    b.run().await;
+    assert_eq!(read(before).first().map(String::as_str), Some("C1"));
+}
+
+#[tokio::test]
+async fn a_source_added_later_is_read_alone_and_ends_the_round() {
+    let source = FakeSource::new(None, Box::new(|_| Ok(page(Vec::new(), false, "c"))));
+    let b = bench(store().await, source.clone(), SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1", "C2"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    for _ in 0..3 {
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        b.clock.advance(SYNC_EVERY);
+    }
+    // A third channel joins, as `PUT sources` would leave it: due now, with no cursor.
+    b.store
+        .db()
+        .query("UPDATE $c SET sources += { id: 'C3', name: 'c3' }, next_sync_at = $now;")
+        .bind(("c", store::ids::rid(&id)))
+        .bind(("now", b.clock.now().into_inner()))
+        .await
+        .expect("sources updated")
+        .check()
+        .expect("sources updated");
+    let before = source.requests().len();
+    assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+    let read: Vec<String> = source.requests()[before..]
+        .iter()
+        .map(|r| r.source.id.clone())
+        .collect();
+    assert_eq!(read, ["C3"], "only the new channel");
+    b.clock.advance(SYNC_EVERY);
+    let before = source.requests().len();
+    assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+    assert_eq!(source.requests().len() - before, 3, "then all three again");
+}
+
+#[tokio::test]
 async fn an_outage_retries_15_minutes_later() {
     let source = FakeSource::new(
         None,

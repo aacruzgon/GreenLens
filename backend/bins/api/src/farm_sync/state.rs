@@ -1,6 +1,7 @@
 //! Where one source's sync stands, stored as its [`SyncCursor`] in `connector.cursor`. The
 //! adapter's own cursor is opaque here and kept inside, next to what the sync tracks itself: the
-//! last finished re-read and the re-read pass in progress, with the vendor ids it has seen.
+//! last finished re-read, the re-read pass in progress with the vendor ids it has seen, and the
+//! round of the rotation over the connector's sources.
 
 use std::collections::BTreeSet;
 
@@ -24,6 +25,19 @@ pub struct SourceState {
     /// The re-read pass in progress.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reread: Option<Reread>,
+    /// The connector's round in which this source last finished a pass; 0 before its first.
+    /// A run reads only the sources in the lowest round, so a run that runs out of budget
+    /// leaves the rest for the next run instead of starting from the first source again.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub round: u32,
+}
+
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if passes a reference"
+)]
+const fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 /// A re-read pass in progress.
@@ -69,6 +83,7 @@ mod tests {
             reread_at: Some(t),
             more: false,
             reread: None,
+            round: 0,
         };
         let cursor = state.to_cursor();
         assert_eq!(
@@ -85,6 +100,12 @@ mod tests {
             ..state
         };
         assert_eq!(SourceState::parse(Some(&reread.to_cursor())), reread);
+        let later = SourceState {
+            round: 3,
+            ..SourceState::default()
+        };
+        assert_eq!(later.to_cursor().0, r#"{"round":3}"#);
+        assert_eq!(SourceState::parse(Some(&later.to_cursor())), later);
     }
 
     #[test]
