@@ -389,8 +389,8 @@ jobs:
   # One job with three nextest steps, not three jobs: they share one build and one runner's minutes,
   # and the pairs are separate containers, so the steps cannot disturb each other. Each step runs
   # even when an earlier one failed. Health is checked on /_admin/tenants, which faults never touch
-  # (the image has python3 but no curl). Not in ci's needs yet: it joins after four green runs on
-  # main (docs/EON E6.3), as live did.
+  # (the image has python3 but no curl). In ci's needs since 2026-10-20, after five green runs on
+  # main (docs/EON E6.3).
   era:
     needs: [changes, lint, test]
     if: ${{ !cancelled() && !failure() && (needs.changes.outputs.era == 'true' || github.event_name == 'push') }}
@@ -487,6 +487,8 @@ jobs:
       # minted credential and one data call warm the process; the strict pair needs no token for the
       # consent step, which is the call that generates the default company.
       - name: Warm up Era's simulators
+        # Normally about 20 s; a hung simulator fails here, not at the job's 30 minutes.
+        timeout-minutes: 5
         env:
           SLACK_PORT: ${{ job.services.era-slack.ports['8080'] }}
           DRIVE_PORT: ${{ job.services.era-drive.ports['8080'] }}
@@ -544,7 +546,7 @@ jobs:
   # --- stage 3: the one required check -----------------------------------------------------------
 
   ci:
-    # live and era each joined after they passed on four consecutive pushes to main (infra §2).
+    # live joined after four consecutive green pushes to main, era after five (infra §2).
     needs: [changes, lint, test, examples, docs, infra, app, security, live, era]
     if: always()
     runs-on: ${{ fromJSON(vars.LIGHT_RUNNER_LABELS || vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
