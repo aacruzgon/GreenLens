@@ -17,8 +17,13 @@ Each dev case runs through the worker's perception steps on the same model files
   a close-up. The head's raw logits are restricted to the case's species, as the worker restricts
   them. A crop carries its case's label, which is wrong for a healthy leaf on a diseased plant, so
   `T` is fitted and scored on the photos with exactly one crop, as training fits it; only species
-  with two or more classes count. The fit uses the head's own validation crops plus the dev cases
-  (evaluation 5), and the dev cases alone are reported beside it.
+  with two or more classes count. The head's job is its top 3, which the API adds to the candidates
+  (architecture 6.3), so the report leads with top-3 against guessing; the temperature doesn't
+  change that ranking. What it changes is how often the head claims a problem at medium confidence,
+  which shows a possible problem and keeps a scan from `healthy` (contracts 7), so the report gives
+  those claims and their accuracy at three temperatures: the file's (fitted on validation), one
+  fitted on validation and dev (evaluation 5), and one fitted on dev alone, which it proposes,
+  since the dev cases are the photos most like the app's.
 
 Not here, since they need the cases through the API (J5): the VLM certainty words, the diagnosis
 margin and the indicator weights.
@@ -54,6 +59,7 @@ SHOT_WEIGHT = {"whole_plant": 2.0, "flower_fruit": 2.0, "leaf_closeup": 1.0, "le
 LEAFY = ("leaf_closeup", "leaf_underside")
 AGREEMENT = 0.8          # architecture 6.2: BioCLIP's top-1 in the high band
 AGREEMENT_ACCURACY = 0.95
+MEDIUM = 0.5             # contracts 1: the medium band starts here
 BINS = 15
 
 
@@ -239,14 +245,35 @@ def val_items(head: dict, crop_loader) -> list:
             for r, z in zip(rows, loaded) if len(z["emb"]) == 1 and (species_of_class == r["species_id"]).sum() >= 2]
 
 
-def disease_scores(items: list, t: float) -> dict:
+def disease_scores(items: list, t: float, healthy: set[int] = frozenset()) -> dict:
+    """What the head gives the API at temperature `t`:
+    - `top3`: the true class among the head's top 3, its job (the API adds them to the candidates,
+      architecture 6.3); `chance_top3` is what guessing 3 of the species' classes gives;
+    - `medium`: photos whose top class is a problem at `MEDIUM` or more, which the API shows as a
+      possible problem when the indicators are unsure, and how many of them are right;
+    - `healthy_blocked`: healthy leaves the head gives a problem at `MEDIUM` or more, which keeps a
+      scan from `healthy` (contracts 7);
+    - `top1`, `ece`, `nll` and the reliability bins."""
     if not items:
         return {"n": 0}
-    p = softmax(np.stack([i[0] for i in items]) / t)
+    z = np.stack([i[0] for i in items])
+    p = softmax(z / t)
     y = np.array([i[1] for i in items])
-    conf, correct = p.max(1), p.argmax(1) == y
-    return {"n": len(items), "top1": float(correct.mean()), "ece": ece(conf, correct),
-            "nll": float(-np.log(p[np.arange(len(y)), y] + 1e-12).mean()), "reliability": reliability(conf, correct)}
+    order = np.argsort(-z, axis=1)                      # the ranking doesn't depend on t
+    k = np.isfinite(z).sum(1)
+    conf, top = p.max(1), order[:, 0]
+    correct = top == y
+    problem = np.array([c not in healthy for c in top])
+    medium = (conf >= MEDIUM) & problem
+    is_healthy = np.array([c in healthy for c in y])
+    return {"n": len(items),
+            "top3": float(np.mean([yy in o[:3] for yy, o in zip(y, order)])),
+            "chance_top3": float(np.mean(np.minimum(3, k) / k)),
+            "top1": float(correct.mean()), "ece": ece(conf, correct),
+            "nll": float(-np.log(p[np.arange(len(y)), y] + 1e-12).mean()),
+            "medium": {"n": int(medium.sum()), "right": int((medium & correct).sum())},
+            "healthy_blocked": {"n": int(is_healthy.sum()), "blocked": int((medium & is_healthy).sum())},
+            "reliability": reliability(conf, correct)}
 
 
 def fit_items(items: list) -> float:
@@ -259,17 +286,20 @@ def disease_calibration(name: str, cases: list[dict], photos: Path, crops_of, wh
     head = read_linear_head(HEADS / name / f"{name}.json")
     dev, left_out = disease_items(cases, photos, head, crops_of, whole_of)
     val = val_items(head, crop_loader)
+    healthy = {l["index"] for l in head["labels"] if l["problem_id"] == "healthy"}
     t_file = float(head["temperature"])
     t_dev = fit_items(dev) if len(dev) >= 10 else None
     t_both = fit_items(val + dev)
+    temps = {"t_file": t_file, "t_val_and_dev": t_both, **({"t_dev": t_dev} if t_dev else {})}
+    shown = t_dev or t_both
     out = {"head": name, "classes": len(head["labels"]), "dev_photos": len(dev), "val_photos": len(val),
            "left_out": dict(left_out), "t_file": round(t_file, 4), "t_dev": None if t_dev is None else round(t_dev, 4),
-           "t_val_and_dev": round(t_both, 4),
-           "dev": {k: disease_scores(dev, t) for k, t in (("t_1", 1.0), ("t_file", t_file), ("t_val_and_dev", t_both))},
-           "val": {k: disease_scores(val, t) for k, t in (("t_file", t_file), ("t_val_and_dev", t_both))},
-           "dev_per_species": {sp: disease_scores([i for i in dev if i[3] == sp], t_both)
+           "t_val_and_dev": round(t_both, 4), "proposed": round(shown, 4),
+           "dev": {k: disease_scores(dev, t, healthy) for k, t in temps.items()},
+           "val": {k: disease_scores(val, t, healthy) for k, t in temps.items()},
+           "dev_per_species": {sp: disease_scores([i for i in dev if i[3] == sp], shown, healthy)
                                for sp in sorted({i[3] for i in dev})},
-           "dev_per_source": {src: disease_scores([i for i in dev if i[4] == src], t_both)
+           "dev_per_source": {src: disease_scores([i for i in dev if i[4] == src], shown, healthy)
                               for src in sorted({i[4] for i in dev})}}
     return out
 
@@ -311,7 +341,7 @@ def write_report(out: str, species: dict, disease: list[dict], args) -> None:
          REPORTS / f"{out}-species.png", "BioCLIP 2 species, dev cases")
     for d in disease:
         plot({sp: v.get("reliability", []) for sp, v in d["dev_per_species"].items()}, REPORTS / f"{out}-{d['head']}.png",
-             f"{d['head']}, dev leaf photos, T = {d['t_val_and_dev']}")
+             f"{d['head']}, dev leaf photos, T = {d['proposed']}")
 
     s1, sf = species["t_1"], species["fitted"]
     lines = [f"# Calibration on the dev cases: {out}", "",
@@ -330,20 +360,36 @@ def write_report(out: str, species: dict, disease: list[dict], args) -> None:
               "", f"![species reliability]({out}-species.png)", "",
               "## Disease head (`temperature`)", "",
               "Leaf photos of the dev cases with exactly one crop (or none, so the whole photo), restricted to the case's species.", "",
-              "| Head | Classes | T in the file (val) | T fitted on dev | T fitted on val and dev | Dev photos | Dev top-1 | Dev ECE: T = 1 / file / val and dev | Val photos | Val ECE: file / val and dev |",
-              "|---|---|---|---|---|---|---|---|---|---|"]
+              "**The head's job is its top 3.** The API adds them to the candidates the VLM's questions decide between "
+              "(architecture 6.3), so the measure is whether the true class is among them, against guessing 3 of the "
+              "species' classes. The ranking doesn't depend on the temperature.", "",
+              "| Head | Classes | Dev photos | **Top-3** | Guessing, top-3 | Top-1 |",
+              "|---|---|---|---|---|---|"]
     for d in disease:
-        dv, vl = d["dev"], d["val"]
-        lines.append(f"| `{d['head']}` | {d['classes']} | {d['t_file']} | {num(d['t_dev'], 4)} | {d['t_val_and_dev']} | {d['dev_photos']} | "
-                     f"{pct(dv['t_val_and_dev'].get('top1'))} | {num(dv['t_1'].get('ece'))} / {num(dv['t_file'].get('ece'))} / {num(dv['t_val_and_dev'].get('ece'))} | "
-                     f"{d['val_photos']} | {num(vl['t_file'].get('ece'))} / {num(vl['t_val_and_dev'].get('ece'))} |")
+        r = d["dev"]["t_file"]
+        lines.append(f"| `{d['head']}` | {d['classes']} | {d['dev_photos']} | **{pct(r['top3'])}** | {pct(r['chance_top3'])} | {pct(r['top1'])} |")
+    lines += ["", "**The temperature sets what the head's confidence does.** A problem at medium confidence (0.5) or more "
+              "is shown as a possible problem when the indicators are unsure, and keeps a scan from `healthy` (contracts 7). "
+              "The temperature should make those claims as right as they sound on photos like the app's; the proposed one "
+              "is fitted on the dev cases.", "",
+              "| Head | Temperature | Value | Problem at medium or more: photos (right) | Healthy leaves blocked from `healthy` | Dev ECE | Val ECE |",
+              "|---|---|---|---|---|---|---|"]
+    names = {"t_file": "in the file (val)", "t_val_and_dev": "fitted on val and dev", "t_dev": "**fitted on dev (proposed)**"}
     for d in disease:
-        lines += ["", f"`{d['head']}` per crop on dev (val and dev T): "
-                  + ", ".join(f"{sp} {pct(v.get('top1'))} of {v['n']}, ECE {num(v.get('ece'))}" for sp, v in d["dev_per_species"].items()) + ".",
-                  f"`{d['head']}` per source on dev: "
-                  + ", ".join(f"{src} {pct(v.get('top1'))} of {v['n']}" for src, v in d["dev_per_source"].items()) + ".",
+        for key, label in names.items():
+            if key not in d["dev"]:
+                continue
+            r, v = d["dev"][key], d["val"][key]
+            t = {"t_file": d["t_file"], "t_val_and_dev": d["t_val_and_dev"], "t_dev": d["t_dev"]}[key]
+            lines.append(f"| `{d['head']}` | {label} | {t} | {r['medium']['n']} of {r['n']} ({pct(r['medium']['right'] / r['medium']['n'] if r['medium']['n'] else None)}) | "
+                         f"{r['healthy_blocked']['blocked']} of {r['healthy_blocked']['n']} | {num(r['ece'])} | {num(v.get('ece'))} |")
+    for d in disease:
+        lines += ["", f"`{d['head']}` per crop on dev, top-3 (guessing) and top-1: "
+                  + ", ".join(f"{sp} {pct(v.get('top3'))} ({pct(v.get('chance_top3'))}) and {pct(v.get('top1'))} of {v['n']}" for sp, v in d["dev_per_species"].items()) + ".",
+                  f"Per source: "
+                  + ", ".join(f"{src} {pct(v.get('top3'))} ({pct(v.get('chance_top3'))}) and {pct(v.get('top1'))} of {v['n']}" for src, v in d["dev_per_source"].items()) + ".",
                   "Left out: " + (", ".join(f"{v} {k}" for k, v in d["left_out"].items()) or "none") + ".",
-                  "", f"![{d['head']} reliability]({out}-{d['head']}.png)"]
+                  "", f"![{d['head']} reliability at the proposed temperature]({out}-{d['head']}.png)"]
     (REPORTS / f"{out}.md").write_text("\n".join(lines) + "\n")
 
 

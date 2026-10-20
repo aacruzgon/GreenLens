@@ -56,3 +56,17 @@ def test_the_disease_logits_are_restricted_to_the_case_species():
     _, species_of_class = cb.class_index(head)
     z = cb.restricted(cb.raw_logits(head, np.array([0.0, 0.0, 5.0, 0.0])), species_of_class, "tomato")
     assert np.isneginf(z[2]) and cb.softmax(z)[2] == 0
+
+
+def test_disease_scores_lead_with_the_top_3_and_count_medium_claims():
+    inf = -np.inf
+    items = [  # 4 classes of one species, index 0 healthy; the right class ranks 2nd, 4th and 3rd
+        (np.array([0.0, 4.0, 3.0, inf]), 2, "a", "tomato", "x"),
+        (np.array([3.0, 2.0, 1.0, 0.0]), 3, "b", "tomato", "x"),
+        (np.array([0.0, 5.0, 1.0, inf]), 0, "c", "tomato", "x"),   # a healthy leaf, confidently called sick
+    ]
+    cold, hot = cb.disease_scores(items, 1.0, {0}), cb.disease_scores(items, 20.0, {0})
+    assert cold["top3"] == hot["top3"] == 2 / 3 and cold["top1"] == 0
+    assert abs(cold["chance_top3"] - (1 + 3 / 4 + 1) / 3) < 1e-9
+    assert cold["medium"] == {"n": 2, "right": 0} and cold["healthy_blocked"] == {"n": 1, "blocked": 1}
+    assert hot["medium"]["n"] == 0 and hot["healthy_blocked"]["blocked"] == 0   # a high temperature claims nothing

@@ -21,19 +21,32 @@ Wrong top-1 at the fitted temperature: `corn-maize-bd-2026-corn-leaf-blight-img-
 
 Leaf photos of the dev cases with exactly one crop (or none, so the whole photo), restricted to the case's species.
 
-| Head | Classes | T in the file (val) | T fitted on dev | T fitted on val and dev | Dev photos | Dev top-1 | Dev ECE: T = 1 / file / val and dev | Val photos | Val ECE: file / val and dev |
-|---|---|---|---|---|---|---|---|---|---|
-| `disease-head-v2-2026-10-20` | 21 | 0.8098 | 2.0160 | 1.0485 | 94 | 36% | 0.247 / 0.288 / 0.243 | 318 | 0.043 / 0.068 |
-| `disease-head-v2c-2026-10-20` | 19 | 1.1474 | 3.6646 | 1.6553 | 94 | 40% | 0.311 / 0.266 / 0.223 | 286 | 0.036 / 0.088 |
+**The head's job is its top 3.** The API adds them to the candidates the VLM's questions decide between (architecture 6.3), so the measure is whether the true class is among them, against guessing 3 of the species' classes. The ranking doesn't depend on the temperature.
 
-`disease-head-v2-2026-10-20` per crop on dev (val and dev T): apple 73% of 11, ECE 0.339, corn 53% of 15, ECE 0.210, grape 100% of 8, ECE 0.022, tomato 17% of 60, ECE 0.326.
-`disease-head-v2-2026-10-20` per source on dev: fieldsets/ccmt-2023 20% of 5, fieldsets/maize-bd-2026 53% of 15, fieldsets/tomato-bd-2025 26% of 23, fieldsets/tomato-bd-iphone-2025 15% of 20, inat 52% of 31.
+| Head | Classes | Dev photos | **Top-3** | Guessing, top-3 | Top-1 |
+|---|---|---|---|---|---|
+| `disease-head-v2-2026-10-20` | 21 | 94 | **72%** | 51% | 36% |
+| `disease-head-v2c-2026-10-20` | 19 | 94 | **74%** | 56% | 40% |
+
+**The temperature sets what the head's confidence does.** A problem at medium confidence (0.5) or more is shown as a possible problem when the indicators are unsure, and keeps a scan from `healthy` (contracts 7). The temperature should make those claims as right as they sound on photos like the app's; the proposed one is fitted on the dev cases.
+
+| Head | Temperature | Value | Problem at medium or more: photos (right) | Healthy leaves blocked from `healthy` | Dev ECE | Val ECE |
+|---|---|---|---|---|---|---|
+| `disease-head-v2-2026-10-20` | in the file (val) | 0.8098 | 60 of 94 (42%) | 4 of 11 | 0.288 | 0.043 |
+| `disease-head-v2-2026-10-20` | fitted on val and dev | 1.0485 | 48 of 94 (50%) | 3 of 11 | 0.243 | 0.068 |
+| `disease-head-v2-2026-10-20` | **fitted on dev (proposed)** | 2.016 | 24 of 94 (75%) | 0 of 11 | 0.122 | 0.256 |
+| `disease-head-v2c-2026-10-20` | in the file (val) | 1.1474 | 61 of 94 (44%) | 5 of 11 | 0.266 | 0.036 |
+| `disease-head-v2c-2026-10-20` | fitted on val and dev | 1.6553 | 47 of 94 (49%) | 3 of 11 | 0.223 | 0.088 |
+| `disease-head-v2c-2026-10-20` | **fitted on dev (proposed)** | 3.6646 | 18 of 94 (72%) | 0 of 11 | 0.112 | 0.305 |
+
+`disease-head-v2-2026-10-20` per crop on dev, top-3 (guessing) and top-1: apple 100% (100%) and 73% of 11, corn 93% (60%) and 53% of 15, grape 100% (100%) and 100% of 8, tomato 58% (33%) and 17% of 60.
+Per source: fieldsets/ccmt-2023 80% (33%) and 20% of 5, fieldsets/maize-bd-2026 93% (60%) and 53% of 15, fieldsets/tomato-bd-2025 65% (33%) and 26% of 23, fieldsets/tomato-bd-iphone-2025 60% (33%) and 15% of 20, inat 74% (74%) and 52% of 31.
 Left out: 18 leaf photos with several crops, 2 no leaf shot, 10 species without head classes.
 
-![disease-head-v2-2026-10-20 reliability](calibration-2026-10-20-disease-head-v2-2026-10-20.png)
+![disease-head-v2-2026-10-20 reliability at the proposed temperature](calibration-2026-10-20-disease-head-v2-2026-10-20.png)
 
-`disease-head-v2c-2026-10-20` per crop on dev (val and dev T): apple 45% of 11, ECE 0.412, corn 73% of 15, ECE 0.159, grape 100% of 8, ECE 0.041, tomato 23% of 60, ECE 0.278.
-`disease-head-v2c-2026-10-20` per source on dev: fieldsets/ccmt-2023 60% of 5, fieldsets/maize-bd-2026 73% of 15, fieldsets/tomato-bd-2025 22% of 23, fieldsets/tomato-bd-iphone-2025 25% of 20, inat 45% of 31.
+`disease-head-v2c-2026-10-20` per crop on dev, top-3 (guessing) and top-1: apple 100% (100%) and 45% of 11, corn 100% (75%) and 73% of 15, grape 100% (100%) and 100% of 8, tomato 60% (38%) and 23% of 60.
+Per source: fieldsets/ccmt-2023 100% (38%) and 60% of 5, fieldsets/maize-bd-2026 100% (75%) and 73% of 15, fieldsets/tomato-bd-2025 65% (38%) and 22% of 23, fieldsets/tomato-bd-iphone-2025 65% (38%) and 25% of 20, inat 71% (76%) and 45% of 31.
 Left out: 18 leaf photos with several crops, 2 no leaf shot, 10 species without head classes.
 
-![disease-head-v2c-2026-10-20 reliability](calibration-2026-10-20-disease-head-v2c-2026-10-20.png)
+![disease-head-v2c-2026-10-20 reliability at the proposed temperature](calibration-2026-10-20-disease-head-v2c-2026-10-20.png)
