@@ -14,7 +14,7 @@ x-hardened: &hardened
   tmpfs: ["/tmp:size=512m"]
   cap_drop: [ALL]
   security_opt: ["no-new-privileges:true"]
-x-era-sim: &era-sim                 # the `demo` profile's simulators, merged after *hardened
+x-era-sim: &era-sim                 # the `demo` profile's simulators, merged with *hardened (no key in both)
   # Started without `uv run`, which writes its cache under /root and fails on a read-only root;
   # as UID 65532 with HOME on the tmpfs, where the simulator keeps its media leases.
   command: ["--host", "0.0.0.0", "--port", "8080"]
@@ -29,6 +29,7 @@ x-era-sim: &era-sim                 # the `demo` profile's simulators, merged af
   healthcheck:                      # /_meta: /_admin answers 401 here, and no one but era-seed can set a fault
     test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/_meta', timeout=3)"]
     interval: 5s
+    timeout: 3s
     retries: 12
     start_period: 10s
   networks: [era]
@@ -119,8 +120,10 @@ services:
       surrealdb: { condition: service_healthy }
       rustfs: { condition: service_healthy }
       # Waits for the knowledge photos once the `seed` profile is on (S2); without it, S1 starts without them.
+      # A failed seed-upload doesn't keep api down: check `ps -a`, or `up --wait` (infra section 4).
       seed-upload: { condition: service_completed_successfully, required: false }
-      # Waits for the farm in the simulators once the `demo` profile is on (EON E9.1).
+      # Runs after the farm is in the simulators once the `demo` profile is on (EON E9.1). Optional,
+      # like seed-upload: compose skips a failed optional dependency and starts api anyway.
       era-seed: { condition: service_completed_successfully, required: false }
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
@@ -199,8 +202,10 @@ services:
   # The `demo` profile (EON E9.1): Era's Slack and Google Drive simulators behind the demo garden's
   # `era` connectors, on the internal network `era` with no published port; only api and era-seed
   # reach them. Same images and settings as dev.compose.yml's `era` profile, plus the admin token,
-  # so /_admin answers 401 to anyone without it. State lives in memory: after a simulator restarts,
-  # `docker compose ... up -d era-seed` injects the farm again.
+  # so /_admin answers 401 to anyone without it. State lives in memory, and era-seed doesn't come
+  # back after a reboot: run `up -d era-seed`, then `restart api`, whose start-up seeding sets the
+  # demo connectors active again. Every `up -d` with the profile re-seeds under a running api, so
+  # follow it with `restart api` too (infra section 4).
   era-slack:
     profiles: [demo]
     image: erabyeon/slack:189e10c16ec66ee1ca24ac5f7962cd7637174d0f@sha256:33382931f381da5dca51c45ad4ad7c7bfc07644d3240465bfd41e7b7ea2cb75f

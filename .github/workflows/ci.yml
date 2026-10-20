@@ -265,6 +265,8 @@ jobs:
               docker compose -f "$f" config -q
             fi
           done
+      - name: The demo profile's seed script compiles
+        run: python3 -m py_compile infra/era-seed/seed.py
       - name: Shell scripts parse and pass shellcheck
         run: |
           shopt -s nullglob globstar
