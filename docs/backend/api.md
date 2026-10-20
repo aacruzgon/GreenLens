@@ -1,6 +1,6 @@
 # PDM Backend: `api` binary
 
-> **Status:** Draft v0.7.5, 2026-10-19. v0.7.5: the farm sync's audit fixes (section 16): the sources rotate per run (`state::Rotation`, stored under `SYNC_STATE_KEY`), so each run starts after the last source the previous one read, a new source joins the round in progress, and the run reports `Synced` (setting `synced_at`) only when every chosen source has finished its pass in the round; older-thread checks are two per connector run (`PROBES_PER_RUN`), none on a first pass, and a page is offered only as many as 70 s each of the budget left covers after 70 s for the page; the garden's record count is read before each page is stored; a page of a source dropped meanwhile doesn't count toward the record limit; seeding reports a garden or a connector being deleted (`Seeded::GardenDeleting`, `Seeded::ConnectorDeleting`); shutdown interrupts a page in flight (the budget is still checked between pages), a `429`'s wait is kept between 60 s and 1 h, and seeding repairs an existing demo connector (token sealed again, status and `last_error` reset) and warns when the fixed id lives in another garden. v0.7.4: start-up seeds the demo garden's two `era` connectors after resuming deletions (roadmap E4.6), by fixed id, into the garden `ERA_DEMO_GARDEN_ID` names, with their tokens sealed under `CONNECTOR_KEY` (sections 4, 5 and 16). v0.7.3: the farm sync (roadmap E4.1, E4.2, E4.4, E4.5): `farm_sync.rs` runs the `connectors` task every minute when connectors are on (`AppState::farm_sync`), at most 4 due connectors a run side by side, over the `FarmSource` adapters by kind and endpoint (`FarmSources`): pages from each source's saved cursor, chunks of at most 2,000 characters with a SHA-256 `text_hash`, only changed chunks embedded, the daily 7-day re-read that deletes what the vendor no longer has, the 10,000-record limit, and `last_error` and the next attempt by failure; `cleanup` deletes Slack messages older than 180 days (section 16). v0.7.2: farm connectors are configured (roadmap E3.0–E3.2): `CONNECTOR_KEY` (64 hex characters) is the one switch, read through `AppState::connector_key`; without it the list answers `available: false` and the owner routes `409 invalid_state`, and with it the list comes from the store. The Slack and Google OAuth clients (each pair together or not at all), `CONNECTOR_RETURN_URL` and the Era bases are read for the routes and seeding to come. `sealing.rs` seals vendor tokens with AES-256-GCM (`aes-gcm` 0.11.1), a random nonce per seal and the connector id as associated data. v0.7.1: the farm connector routes are declared (roadmap E1.4): `GET /gardens/{id}/connectors` answers `available: false`, and the owner routes and the public OAuth callback answer `409 invalid_state` until connectors are configured; `Access<R, table::Connector>` resolves a connector's garden. v0.7: shared memories are recorded in `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs`, the new `GET /plants/{id}/beliefs` (never a 5xx), the `beliefs` scheduler task every 10 s (the only writer to Agent Memory: queued erases, then unsynced shared memories), deletions that queue their erase in their first transaction, and `POST /memories` taking a `topic`; 42 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
+> **Status:** Draft v0.7.5, 2026-10-19. v0.7.5: the farm sync's rounds decide turns and `synced_at`, never who is read (section 16): a round gives every chosen source a turn, a page asked whatever follows (`Rotation::turned`), the budget left then goes to the passes in progress, and the round ends with `Synced` only when every source is caught up, `RoundEnded` when one has pages left or a failed last turn (`SourceState::failing`, which keeps `last_error`), and `NoSources` for a connector without sources; older-item checks need 140 s left, and a page can still overrun the budget by several paced calls. The farm sync's audit fixes (section 16): the sources rotate per run (`state::Rotation`, stored under `SYNC_STATE_KEY`), so each run starts after the last source the previous one read, a new source joins the round in progress, and the run reports `Synced` (setting `synced_at`) only when every chosen source has finished its pass in the round; older-thread checks are two per connector run (`PROBES_PER_RUN`), none on a first pass, and a page is offered only as many as 70 s each of the budget left covers after 70 s for the page; the garden's record count is read before each page is stored; a page of a source dropped meanwhile doesn't count toward the record limit; seeding reports a garden or a connector being deleted (`Seeded::GardenDeleting`, `Seeded::ConnectorDeleting`); shutdown interrupts a page in flight (the budget is still checked between pages), a `429`'s wait is kept between 60 s and 1 h, and seeding repairs an existing demo connector (token sealed again, status and `last_error` reset) and warns when the fixed id lives in another garden. v0.7.4: start-up seeds the demo garden's two `era` connectors after resuming deletions (roadmap E4.6), by fixed id, into the garden `ERA_DEMO_GARDEN_ID` names, with their tokens sealed under `CONNECTOR_KEY` (sections 4, 5 and 16). v0.7.3: the farm sync (roadmap E4.1, E4.2, E4.4, E4.5): `farm_sync.rs` runs the `connectors` task every minute when connectors are on (`AppState::farm_sync`), at most 4 due connectors a run side by side, over the `FarmSource` adapters by kind and endpoint (`FarmSources`): pages from each source's saved cursor, chunks of at most 2,000 characters with a SHA-256 `text_hash`, only changed chunks embedded, the daily 7-day re-read that deletes what the vendor no longer has, the 10,000-record limit, and `last_error` and the next attempt by failure; `cleanup` deletes Slack messages older than 180 days (section 16). v0.7.2: farm connectors are configured (roadmap E3.0–E3.2): `CONNECTOR_KEY` (64 hex characters) is the one switch, read through `AppState::connector_key`; without it the list answers `available: false` and the owner routes `409 invalid_state`, and with it the list comes from the store. The Slack and Google OAuth clients (each pair together or not at all), `CONNECTOR_RETURN_URL` and the Era bases are read for the routes and seeding to come. `sealing.rs` seals vendor tokens with AES-256-GCM (`aes-gcm` 0.11.1), a random nonce per seal and the connector id as associated data. v0.7.1: the farm connector routes are declared (roadmap E1.4): `GET /gardens/{id}/connectors` answers `available: false`, and the owner routes and the public OAuth callback answer `409 invalid_state` until connectors are configured; `Access<R, table::Connector>` resolves a connector's garden. v0.7: shared memories are recorded in `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs`, the new `GET /plants/{id}/beliefs` (never a 5xx), the `beliefs` scheduler task every 10 s (the only writer to Agent Memory: queued erases, then unsynced shared memories), deletions that queue their erase in their first transaction, and `POST /memories` taking a `topic`; 42 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
 
 Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports and types `api` wires, and [domain-types](domain-types.md) for every wire shape. Every listing below is copied from the compiled source of `bins/api` by the docgen tool. `cargo check -p api`, `cargo clippy -p api --all-targets` (no warning in `api`) and `cargo test -p api` pass: 42 tests, among them handler tests that drive the real router with `tower::ServiceExt::oneshot`. `cargo check --workspace` passes, the binary links, and `api openapi` writes the document.
 
@@ -182,7 +182,7 @@ bins/api/src/
 │  └─ triggers.rs    the trigger rules (frost, heat, humid stretch, heavy rain, after rain, dry soil)
 ├─ farm_sync.rs      FarmSync: the connectors task's body over the FarmSource adapters; FarmSources
 │  ├─ chunk.rs       chunks of at most 2,000 characters and their text_hash
-│  ├─ state.rs       SourceState: a source's stored cursor around the adapter's own; Rotation: the round and the next start
+│  ├─ state.rs       SourceState: a source's stored cursor around the adapter's own; Rotation: the round, its turns and the next start
 │  ├─ seed.rs        start-up seeding of the demo garden's era connectors
 │  ├─ tests.rs       the sync on the embedded store with a scripted source
 │  └─ tests_era.rs   the Slack sync against Era's simulator (ignored by default)
@@ -4616,10 +4616,15 @@ pub struct FarmSources(HashMap<(ConnectorKind, ConnectorEndpoint), Arc<dyn FarmS
 /// How one connector's run ended, for the logs and the tests.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunEnd {
-    /// The round ended: every source has finished its pass in it.
+    /// The round ended with every source caught up: `synced_at` is set.
     Synced,
-    /// Sources of the round with pages left, or not reached, for the next run.
+    /// The round ended, but a source has pages left (a long first pass, a re-read) or its last
+    /// turn failed: no `synced_at`; the next round 15 minutes later.
+    RoundEnded,
+    /// Sources wait for their turn in the round, for the next run.
     PagesLeft,
+    /// The connector has no source chosen: nothing read, tried again after [`SYNC_EVERY`].
+    NoSources,
     /// Stopped with this code.
     Failed(SyncErrorCode),
     /// No adapter for its kind and endpoint here; tried again later.
@@ -4686,7 +4691,11 @@ impl FarmSync {
         let end = tracing::Instrument::instrument(self.run(row, shutdown), span.clone()).await;
         let _entered = span.enter();
         match end {
-            RunEnd::Synced | RunEnd::PagesLeft | RunEnd::NoAdapter => {
+            RunEnd::Synced
+            | RunEnd::RoundEnded
+            | RunEnd::PagesLeft
+            | RunEnd::NoSources
+            | RunEnd::NoAdapter => {
                 tracing::info!(end = ?end, "farm sync");
             }
             RunEnd::Failed(code) => {
@@ -4723,6 +4732,16 @@ impl FarmSync {
                 )
                 .await;
         };
+        if row.connector.sources.is_empty() {
+            let outcome = SyncOutcome {
+                due_at,
+                cursors: row.cursors.clone(),
+                synced_at: None,
+                next_sync_at: now.plus(SYNC_EVERY),
+                last_error: None,
+            };
+            return self.finish(id, outcome, RunEnd::NoSources).await;
+        }
         let run = Run {
             id,
             garden: row.connector.garden_id,
@@ -4738,18 +4757,30 @@ impl FarmSync {
             .await;
         let end_now = self.clock.now();
         let (synced_at, next, end) = match read {
-            Ok(Read::Done) => (Some(end_now), end_now.plus(SYNC_EVERY), RunEnd::Synced),
-            Ok(Read::PagesLeft) => (None, end_now, RunEnd::PagesLeft),
+            Ok(Round::Ended { caught_up: true }) => {
+                (Some(end_now), end_now.plus(SYNC_EVERY), RunEnd::Synced)
+            }
+            Ok(Round::Ended { caught_up: false }) => {
+                (None, end_now.plus(SYNC_EVERY), RunEnd::RoundEnded)
+            }
+            Ok(Round::TurnsLeft) => (None, end_now, RunEnd::PagesLeft),
             Err(Stop::Internal(e)) => return self.internal(&row, cursors, e).await,
             Err(Stop::Vendor(e)) => return self.stop(&row, cursors, &Halt::Vendor(e)).await,
             Err(Stop::TooLarge) => return self.stop(&row, cursors, &Halt::TooLarge).await,
         };
+        // A source whose last turn failed keeps the connector's error until a page of it comes
+        // through, though this run didn't ask it.
+        let failing = row
+            .connector
+            .sources
+            .iter()
+            .any(|s| SourceState::parse(cursors.get(&s.id)).failing);
         let outcome = SyncOutcome {
             due_at,
             cursors,
             synced_at,
             next_sync_at: next,
-            last_error: None,
+            last_error: if failing { row.last_error } else { None },
         };
         self.finish(id, outcome, end).await
     }
@@ -4766,28 +4797,33 @@ impl FarmSync {
             .map(VendorToken::new)
     }
 
-    /// One run's share of the round in progress ([`Rotation`]): reads the sources that haven't
-    /// finished their pass in it, in order from where the last run stopped, until the round
-    /// ends, the budget runs out, shutdown comes or one fails. Stores each source's state and
-    /// the rotation in `cursors`, whatever the end. `Done` when the round ended: every source
-    /// has finished its pass in it.
+    /// One run's share of the round in progress ([`Rotation`]). First the sources that haven't
+    /// had their turn in the round, in order from where the last run stopped: each reads until
+    /// its pass ends, the budget runs out or shutdown comes, and asking it for a page is its
+    /// turn, even when the page fails. Then, once every source has had its turn, the budget
+    /// left goes to the sources with pages left (a long first pass, a re-read), in order. A
+    /// vendor, limit or store error stops the run. Stores each source's state and the rotation
+    /// in `cursors`, whatever the end.
     async fn read_round(
         &self,
         run: &Run<'_>,
         sources: &[ConnectorSource],
         cursors: &mut BTreeMap<String, SyncCursor>,
         shutdown: &CancellationToken,
-    ) -> Result<Read, Stop> {
+    ) -> Result<Round, Stop> {
         let mut states: Vec<SourceState> = sources
             .iter()
             .map(|s| SourceState::parse(cursors.get(&s.id)))
             .collect();
-        let lowest = states.iter().map(|s| s.round).min().unwrap_or(0);
-        let mut rotation = Rotation::parse(cursors.get(SYNC_STATE_KEY), lowest);
-        if states.iter().all(|s| s.round >= rotation.round) {
-            // Every source still chosen has finished this round (the last one left was
-            // dropped): the next round starts.
+        let mut rotation = Rotation::parse(cursors.get(SYNC_STATE_KEY));
+        rotation
+            .turned
+            .retain(|id| sources.iter().any(|s| &s.id == id));
+        let all_turned = |r: &Rotation| sources.iter().all(|s| r.turned.contains(&s.id));
+        if all_turned(&rotation) {
+            // The sources still waiting were dropped: the next round starts.
             rotation.round = rotation.round.saturating_add(1);
+            rotation.turned.clear();
         }
         let n = sources.len();
         let start = rotation
@@ -4797,45 +4833,72 @@ impl FarmSync {
             .unwrap_or(0);
         let mut probes = PROBES_PER_RUN;
         // The last source this run asked the vendor for a page of.
-        let mut last = None;
-        let mut read = Ok(Read::Done);
-        for i in (0..n).map(|k| (start + k) % n) {
-            let state = &mut states[i];
-            if state.round >= rotation.round {
-                // Finished its pass in this round already.
-                continue;
+        let mut last: Option<usize> = None;
+        let mut read: Result<Read, Stop> = Ok(Read::Done);
+        // The turns, then the budget left for the passes in progress.
+        for second in [false, true] {
+            if second && !all_turned(&rotation) {
+                break;
             }
-            let src = &sources[i];
-            let mut asked = false;
-            read = self
-                .read_source(run, src, state, (&mut probes, &mut asked), shutdown)
-                .await;
-            if asked {
-                last = Some(i);
+            let from = if second {
+                last.map_or(start, |i| i + 1)
+            } else {
+                start
+            };
+            for i in (0..n).map(|k| (from + k) % n) {
+                let src = &sources[i];
+                let state = &mut states[i];
+                let waits = if second {
+                    state.more
+                } else {
+                    !rotation.turned.contains(&src.id)
+                };
+                if !waits {
+                    continue;
+                }
+                let mut asked = false;
+                read = self
+                    .read_source(run, src, state, (&mut probes, &mut asked), shutdown)
+                    .await;
+                if asked {
+                    rotation.turned.insert(src.id.clone());
+                    last = Some(i);
+                }
+                if matches!(read, Err(Stop::Vendor(_))) {
+                    state.failing = true;
+                }
+                cursors.insert(src.id.clone(), state.to_cursor());
+                if !matches!(read, Ok(Read::Done)) {
+                    break;
+                }
             }
-            if matches!(read, Ok(Read::Done)) {
-                state.round = rotation.round;
-            }
-            cursors.insert(src.id.clone(), state.to_cursor());
             if !matches!(read, Ok(Read::Done)) {
                 break;
             }
         }
         // The next run starts after the last source this one asked for a page, so a source
-        // that keeps the budget (a long first pass) or keeps failing doesn't hold up the
-        // others; a source left mid-pass resumes from its cursor when its turn comes again. A
-        // new round starts one source further on still, so the sources that come first in a
-        // run, which get its older-item checks, change from round to round.
-        let ended = matches!(read, Ok(Read::Done));
+        // that takes the budget (a long first pass) or keeps failing never holds up the
+        // others for more than its turn; one left mid-pass resumes from its cursor. When the
+        // round ends, the next one starts one source further on still, so the sources that
+        // come first in a run, which get its older-item checks, change from round to round.
+        let ended = all_turned(&rotation);
         if let Some(i) = last {
             let step = if ended { 2 } else { 1 };
             rotation.next = Some(sources[(i + step) % n].id.clone());
         }
         if ended {
             rotation.round = rotation.round.saturating_add(1);
+            rotation.turned.clear();
         }
         cursors.insert(SYNC_STATE_KEY.to_owned(), rotation.to_cursor());
-        read
+        read?;
+        Ok(if ended {
+            Round::Ended {
+                caught_up: states.iter().all(|s| !s.more && !s.failing),
+            }
+        } else {
+            Round::TurnsLeft
+        })
     }
 
     /// Reads one source's pages until its pass ends, the budget runs out or shutdown comes.
@@ -4884,16 +4947,19 @@ impl FarmSync {
                     probes_offered(remaining, *probes)
                 },
             };
-            *asked = true;
             // Shutdown interrupts a page in flight (a Tier 1 page can wait a minute per call);
-            // nothing of it is stored yet. The budget is not raced: it is checked between pages.
+            // nothing of it is stored yet, and it isn't the source's turn. The budget is not
+            // raced: it is checked between pages.
             let page = tokio::select! {
                 biased;
                 () = shutdown.cancelled() => return Ok(Read::PagesLeft),
-                page = run.source.read_page(&run.token, request) => page.map_err(Stop::Vendor)?,
+                page = run.source.read_page(&run.token, request) => page,
             };
+            *asked = true;
+            let page = page.map_err(Stop::Vendor)?;
             *probes = probes.saturating_sub(page.probes);
             self.store_page(run, src, &page).await?;
+            state.failing = false;
             if let Some(reread) = state.reread.as_mut() {
                 reread
                     .seen
@@ -5137,11 +5203,11 @@ impl FarmSync {
 }
 ```
 
-**One connector's run.** The sync picks the adapter by the connector's kind and endpoint (`FarmSources`: the real Slack for owners' connectors, Era's simulator for the seeded `era` ones; Drive's go beside them in E4.3), unseals the token, and reads the sources of the round still to finish (below) page by page from their stored cursors until a pass ends, the run's budget (3 minutes, checked between pages) is spent, or shutdown comes. For each page it chunks every item (`chunk::chunks`: a message is one chunk with its replies joined, cut at 2,000 characters; a document is split on paragraphs; a file listed by name only is its title), hashes each chunk (`chunk::text_hash`, SHA-256 in hex, EON gap G5), reads the stored hashes of the page's items (`record_hashes`), reads the garden's record count (each page, so connectors of one garden syncing side by side pass the 10,000 limit by at most a page each), embeds only the new or changed chunks in `Document` mode in batches of 32, upserts them all (an unchanged chunk keeps its vector; a page of a source the owner dropped meanwhile is skipped by the store), drops a shortened document's extra chunks (`delete_chunks_from`) and deletes what the page reports gone. One `finish_sync` at the end stores every source's cursor, `synced_at` when the round ended, `next_sync_at` and `last_error`.
+**One connector's run.** The sync picks the adapter by the connector's kind and endpoint (`FarmSources`: the real Slack for owners' connectors, Era's simulator for the seeded `era` ones; Drive's go beside them in E4.3), unseals the token, and gives the sources their turns in the round (below), reading each page by page from their stored cursors until a pass ends, the run's budget (3 minutes, checked between pages) is spent, or shutdown comes. For each page it chunks every item (`chunk::chunks`: a message is one chunk with its replies joined, cut at 2,000 characters; a document is split on paragraphs; a file listed by name only is its title), hashes each chunk (`chunk::text_hash`, SHA-256 in hex, EON gap G5), reads the stored hashes of the page's items (`record_hashes`), reads the garden's record count (each page, so connectors of one garden syncing side by side pass the 10,000 limit by at most a page each), embeds only the new or changed chunks in `Document` mode in batches of 32, upserts them all (an unchanged chunk keeps its vector; a page of a source the owner dropped meanwhile is skipped by the store), drops a shortened document's extra chunks (`delete_chunks_from`) and deletes what the page reports gone. One `finish_sync` at the end stores every source's cursor, `synced_at` when the round ended with every source caught up, `next_sync_at` and `last_error`. A connector with no source chosen reads nothing and is due again 15 minutes later (`RunEnd::NoSources`).
 
-**Rounds.** Each source's state holds the round in which it last finished a pass, and the connector's sync state (`state::Rotation`, stored in its cursors under `SYNC_STATE_KEY`, `"#sync"`, which the store keeps when it drops a source's cursor) holds the round in progress and the source the next run starts from. A run reads the sources that haven't finished their pass in the round, in the connector's order from there, and the next run starts after the last source this one asked for a page, whether it stopped on the budget (as ten channels under Slack's Tier 1 pacing do), on a vendor error or at the round's end, when it starts one source further on still, so the sources first in a run, which get its older-item checks, change from round to round. So a source with a long first pass, or one that keeps failing, doesn't hold up the others: each is read once in the round, then waits for the round to end. A source left mid-pass resumes from its own cursor when its turn comes again, and a source just added joins the round in progress. The round ends, setting `synced_at` and the 15-minute wait, only when every chosen source has finished its pass in it. A connector whose cursors were stored without a rotation starts with the round after the lowest round its sources finished.
+**Rounds and turns.** The connector's sync state (`state::Rotation`, stored in its cursors under `SYNC_STATE_KEY`, `"#sync"`, which the store keeps when it drops a source's cursor) holds the round in progress, the sources that have had their turn in it (`turned`) and the source the next run starts from. Source ids never start with `#` (Slack's are `[A-Z0-9]`, Drive's `[A-Za-z0-9_-]`), so the key can't clash with one. A turn is the run asking a source for at least one page, whether the source then finishes its pass, runs out of budget mid-pass or fails with a vendor error (a page that shutdown interrupts isn't one). A run first gives their turns to the sources without one in the round, in the connector's order from `next`; each reads until its pass ends, the budget is spent or shutdown comes, and a vendor error takes the turn and stops the run as before. Then, if every source has had its turn and budget is left, the rest goes to the sources with pages left (a long first pass, a re-read), in order. The next run starts after the last source this one asked, and one source further on still after the round's end, so the sources first in a run, which get its older-item checks, change from round to round. When every chosen source has had its turn, the round ends (`turned` empties and the round number moves on): the next sync is 15 minutes away, and `synced_at` is set only if every source is caught up, with no pages left and no failed last turn (`SourceState::failing`, set by a vendor error and cleared by the source's next stored page). While a source's last turn failed, a run that didn't ask it keeps the stored `last_error`. So a source with a long first pass or a re-read, or one that always fails (Slack's `missing_scope`, an unparseable message), holds up the others for one turn a round at most, a source left mid-pass resumes from its own cursor, and a source just added joins the round in progress. A cursor without a rotation, or with one of an earlier shape, starts a fresh round.
 
-**Older-item checks.** `FarmPageRequest::probe_limit` tells the adapter how many older items it may check with an extra call (Slack's threads older than the re-read window); `FarmPage::probes` says how many it made. A run offers `PROBES_PER_RUN` (2) over all the connector's sources, none on a source's first pass (which read everything in full). Under Tier 1 the page's own call and each check can wait a paced minute, so a page is offered only as many as the budget left covers at 70 s each after 70 s for the page itself (`probes_offered`): one on a run's first page with the 3-minute budget, none in its last 140 s, and the run overruns its budget by at most one paced call. The cap is per connector: two connectors on one Slack workspace share the client's pacer, so each one's checks also wait for the other's calls.
+**Older-item checks.** `FarmPageRequest::probe_limit` tells the adapter how many older items it may check with an extra call (Slack's threads older than the re-read window); `FarmPage::probes` says how many it made. A run offers `PROBES_PER_RUN` (2) over all the connector's sources, none on a source's first pass (which read everything in full). Under Tier 1 the page's own call and each check can wait a paced minute, so a page is offered only as many as the budget left covers at 70 s each after 70 s for the page itself (`probes_offered`): a check needs 140 s left, so with the 3-minute budget checks are offered only in a run's first 40 s or so. That bounds the checks, not the run: the budget is checked between pages, and one page makes a `conversations.replies` call per changed thread and a `users.info` call per new author, each of which can wait a paced minute, so a page can still overrun the budget by several paced calls. The cap is per connector: two connectors on one Slack workspace share the client's pacer, so each one's checks also wait for the other's calls.
 
 **Cursors.** A source's stored cursor is `state::SourceState` as JSON: the adapter's own opaque cursor, whether the last page said more follow, when a pass covering the re-read window last finished (`reread_at`), and the re-read pass in progress with the vendor ids it has seen. A pass with pages left (a `429`, a spent budget) continues from it on a later run; records are keyed by `(connector, vendor_id, n)`, so nothing is stored twice.
 
@@ -5149,8 +5215,10 @@ impl FarmSync {
 
 | How the run ended | `last_error` | `next_sync_at` | Also |
 |---|---|---|---|
-| The round ended: every chosen source has finished its pass in it | none | 15 min later (`SYNC_EVERY`) | `synced_at` now |
-| Budget spent or shutdown, with a source of the round mid-pass or not reached | none | now: the next run continues | |
+| The round ended, every source caught up (`Synced`) | none | 15 min later (`SYNC_EVERY`) | `synced_at` now |
+| The round ended, a source with pages left or a failed last turn (`RoundEnded`) | none, or the stored one while a source's last turn failed | 15 min later | |
+| Budget spent or shutdown, with sources still to have their turn (`PagesLeft`) | as above | now: the next run continues | |
+| No source chosen (`NoSources`) | none | 15 min later | nothing read |
 | `429` past the client's retries | `rate_limited` | the vendor's `Retry-After` later (the next run at the earliest) | cursor kept |
 | Down, `5xx`, an answer that didn't parse | `vendor_unavailable` | 15 min later | |
 | Token refused, or one that doesn't open under the key, or no account | `auth_refused` | 15 min later | `reauth_needed`; records stay searchable; nothing runs until the owner reconnects |
@@ -5766,7 +5834,7 @@ The hub, writer and plan-lock maps use `std::sync::Mutex`: their critical sectio
 | Handlers | The real router (`router::app`), so layers, extractors, the renderer and request ids are under test, driven with `tower::ServiceExt::oneshot`. The ports are mockall mocks from `domain`'s `mock` feature; the store is `tests/fake_store.rs`, a `Store` made of one mock per repository trait with every method delegated, **generated** from `domain::ports::store` by `backend/tools/apigen/gen_fake_store.py` (regenerate when a store trait changes). The generator scans each trait body for `async fn` signatures that end in `;` or open a default body, skipping the body by brace matching, so a method with a default body (`live_lease`, `soil_profile_failed`, `gardens_due_soil_profile`, the account-tombstone methods) is delegated like any other and a test sets its expectations. The seams are small fakes: `NoPipeline` and `NoChat` (`unreachable!()`), `FixedImages` with a fixed answer |
 | Time | `FixedClock`; tokio's paused clock (`start_paused = true`) for the broker's long poll |
 | Scheduler | `scheduler::fetch_soil_profile` called directly, with a mocked `SoilProvider` |
-| Farm sync | `farm_sync/tests.rs`: `FarmSync` on the embedded `SurrealDB` 3.3.4 engine (`surrealdb` with `kv-mem`, a dev-dependency) with a scripted `FarmSource`, a counting embedder and `FixedClock`: at most 4 due connectors a run and `next_sync_at` 15 minutes on (T-E4.1); unchanged text costs no embedding and a changed chunk is embedded (T-E4.7); a refused token makes the connector `reauth_needed` and keeps the records, the 10,001st record stops it with `too_large`, and the cleanup deletes old Slack messages but keeps an old document (T-E4.9); seeding twice gives one pair of sealed `era` connectors, a missing garden is skipped, and a garden or a connector being deleted is reported and left so (T-E4.10); a throttled pass resumes from its cursor; ten paced sources are each read once a round across runs, and the next round starts one further on; a source left mid-pass keeps the round open when a source is added, and resumes from its cursor; a new source with a long first pass doesn't hold up nine others; a source that keeps failing doesn't stop the others and the connector reports its error; a source added later joins the others' round; older-item checks are two a run over every source, none on a first pass, and a page is offered only as many as its budget covers; a page of a source dropped meanwhile doesn't count toward the limit, and the limit counts what another connector stored during the run; the daily re-read deletes what the vendor dropped and keeps what it reported as kept; an outage waits 15 minutes. `farm_sync/tests_era.rs` runs the Slack sync against Era's Slack simulator on the Maple Row Farm fixture (`#[ignore]`d, `era_` names, the nextest `era` group), with `integrations`' `era-sim` harness as a dev-dependency: the first sync stores the chosen channel with authors, links and joined replies (T-E4.2); a quiet channel costs one `conversations.history` call and no embedding, a new message arrives, and a new reply arrives through the re-read, with the `conversations.replies` calls counted exactly through a forwarding proxy that records each `limit` (one check, the 3-minute budget's, and no full read on a quiet pass, one full read for the new reply) (T-E4.4, T-E4.7); a check, one a run in turn over the two threads due one, finds a new reply to a thread older than 7 days and reads it in full; the re-read deletes a message gone at the vendor (T-E4.6); a throttled first sync resumes without duplicates, `fail_next` is waited out, and an outage is `vendor_unavailable` for 15 minutes (T-E4.8); no log line or record holds a fixture email or a message's text (T-E4.11) |
+| Farm sync | `farm_sync/tests.rs`: `FarmSync` on the embedded `SurrealDB` 3.3.4 engine (`surrealdb` with `kv-mem`, a dev-dependency) with a scripted `FarmSource`, a counting embedder and `FixedClock`: at most 4 due connectors a run and `next_sync_at` 15 minutes on (T-E4.1); unchanged text costs no embedding and a changed chunk is embedded (T-E4.7); a refused token makes the connector `reauth_needed` and keeps the records, the 10,001st record stops it with `too_large`, and the cleanup deletes old Slack messages but keeps an old document (T-E4.9); seeding twice gives one pair of sealed `era` connectors, a missing garden is skipped, and a garden or a connector being deleted is reported and left so (T-E4.10); a throttled pass resumes from its cursor; ten quiet paced sources each have their turn within four runs, once and in order, the round then ends synced, and the next round starts one further on; no run reports `Synced` while a source is mid-pass, a source added meanwhile included, and a source left mid-pass resumes from its cursor; a new source with a 1,000-page first pass leaves nine others read in every round, and the round it finishes in sets `synced_at`; a source that always fails leaves the others read in every round, the connector keeps its error and no `synced_at` until it answers; a connector without sources reads nothing and waits 15 minutes; a source added later joins the others' round; older-item checks are two a run over every source, none on a first pass, and a page is offered only as many as its budget covers; a page of a source dropped meanwhile doesn't count toward the limit, and the limit counts what another connector stored during the run; the daily re-read deletes what the vendor dropped and keeps what it reported as kept; an outage waits 15 minutes. `farm_sync/tests_era.rs` runs the Slack sync against Era's Slack simulator on the Maple Row Farm fixture (`#[ignore]`d, `era_` names, the nextest `era` group), with `integrations`' `era-sim` harness as a dev-dependency: the first sync stores the chosen channel with authors, links and joined replies (T-E4.2); a quiet channel costs one `conversations.history` call and no embedding, a new message arrives, and a new reply arrives through the re-read, with the `conversations.replies` calls counted exactly through a forwarding proxy that records each `limit` (one check, the 3-minute budget's, and no full read on a quiet pass, one full read for the new reply) (T-E4.4, T-E4.7); a check, one a run in turn over the two threads due one, finds a new reply to a thread older than 7 days and reads it in full; the re-read deletes a message gone at the vendor (T-E4.6); a throttled first sync resumes without duplicates, `fail_next` is waited out, and an outage is `vendor_unavailable` for 15 minutes (T-E4.8); no log line or record holds a fixture email or a message's text (T-E4.11) |
 | Pure parts | Config parsing, error mapping and statuses, the fallback renderer, canonical fingerprints, multipart fingerprints, the HMAC signer, the invite limiter, trigger rules, hour truncation, worker tokens |
 
 ```rust

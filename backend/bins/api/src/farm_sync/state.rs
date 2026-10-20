@@ -1,7 +1,7 @@
 //! Where one source's sync stands, stored as its [`SyncCursor`] in `connector.cursor`. The
 //! adapter's own cursor is opaque here and kept inside, next to what the sync tracks itself: the
-//! last finished re-read, the re-read pass in progress with the vendor ids it has seen, and the
-//! round in which it last finished a pass. The rotation over the connector's sources
+//! last finished re-read, the re-read pass in progress with the vendor ids it has seen, and
+//! whether its last turn ended in a vendor error. The rotation over the connector's sources
 //! ([`Rotation`]) is stored beside them, under [`SYNC_STATE_KEY`](domain::ports::SYNC_STATE_KEY).
 
 use std::collections::BTreeSet;
@@ -26,52 +26,53 @@ pub struct SourceState {
     /// The re-read pass in progress.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reread: Option<Reread>,
-    /// The connector's round in which this source last finished a pass; 0 before its first.
-    /// It has finished its pass in the round in progress ([`Rotation::round`]) when this is
-    /// that round.
-    #[serde(default, skip_serializing_if = "is_zero")]
-    pub round: u32,
+    /// Its last turn ended in a vendor error, and no page has come since: the connector isn't
+    /// caught up, and keeps its `last_error`, until one does.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub failing: bool,
 }
 
-#[expect(
-    clippy::trivially_copy_pass_by_ref,
-    reason = "serde's skip_serializing_if passes a reference"
-)]
-const fn is_zero(n: &u32) -> bool {
-    *n == 0
-}
-
-/// The rotation over a connector's sources, stored under [`SYNC_STATE_KEY`](domain::ports::SYNC_STATE_KEY) in its cursors.
-/// Each run reads, in order from [`next`](Self::next), the sources that haven't finished their
-/// pass in the round in progress, and moves `next` past the last source it asked for a page.
-/// The round ends when every chosen source has finished its pass in it.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// The rotation over a connector's sources, stored under
+/// [`SYNC_STATE_KEY`](domain::ports::SYNC_STATE_KEY) in its cursors. A round gives every chosen
+/// source a turn: the run asks it for at least one page, whether it then finishes its pass,
+/// runs out of budget mid-pass or fails. Each run first gives a turn to the sources that
+/// haven't had one in the round, in order from [`next`](Self::next); the round is over once
+/// every chosen source has had its turn.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rotation {
-    /// The round in progress, from 1. A source finishing its pass takes this round.
-    #[serde(default)]
+    /// The round in progress, from 1.
     pub round: u32,
     /// The source the next run starts from; the first source when unset or no longer chosen.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next: Option<String>,
+    /// The sources that have had their turn in the round in progress.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub turned: BTreeSet<String>,
+}
+
+impl Default for Rotation {
+    fn default() -> Self {
+        Self {
+            round: 1,
+            next: None,
+            turned: BTreeSet::new(),
+        }
+    }
 }
 
 impl Rotation {
-    /// The stored rotation. Without one (a connector not synced yet, or synced before the
-    /// rotation was stored), the round in progress is the one after the lowest round its
-    /// sources finished, so the sources behind the others are read first, from the first.
-    pub fn parse(cursor: Option<&SyncCursor>, lowest: u32) -> Self {
+    /// The stored rotation; without one, or with one this module didn't write, a fresh round
+    /// from the first source.
+    pub fn parse(cursor: Option<&SyncCursor>) -> Self {
         cursor
             .and_then(|c| serde_json::from_str::<Self>(&c.0).ok())
             .filter(|r| r.round > 0)
-            .unwrap_or(Self {
-                round: lowest.saturating_add(1),
-                next: None,
-            })
+            .unwrap_or_default()
     }
 
     /// The rotation to store.
     pub fn to_cursor(&self) -> SyncCursor {
-        SyncCursor(serde_json::to_string(self).expect("a number and a string serialise"))
+        SyncCursor(serde_json::to_string(self).expect("numbers and strings serialise"))
     }
 }
 
@@ -118,7 +119,7 @@ mod tests {
             reread_at: Some(t),
             more: false,
             reread: None,
-            round: 0,
+            failing: false,
         };
         let cursor = state.to_cursor();
         assert_eq!(
@@ -135,31 +136,34 @@ mod tests {
             ..state
         };
         assert_eq!(SourceState::parse(Some(&reread.to_cursor())), reread);
-        let later = SourceState {
-            round: 3,
+        let failing = SourceState {
+            failing: true,
             ..SourceState::default()
         };
-        assert_eq!(later.to_cursor().0, r#"{"round":3}"#);
-        assert_eq!(SourceState::parse(Some(&later.to_cursor())), later);
+        assert_eq!(failing.to_cursor().0, r#"{"failing":true}"#);
+        assert_eq!(SourceState::parse(Some(&failing.to_cursor())), failing);
     }
 
     #[test]
-    fn a_rotation_round_trips_and_an_old_connector_starts_from_its_lowest_round() {
+    fn a_rotation_round_trips_and_anything_else_starts_a_fresh_round() {
         let rotation = Rotation {
             round: 4,
             next: Some("C2".into()),
+            turned: ["C1".to_owned(), "C3".to_owned()].into(),
         };
         let cursor = rotation.to_cursor();
-        assert_eq!(cursor.0, r#"{"round":4,"next":"C2"}"#);
-        assert_eq!(Rotation::parse(Some(&cursor), 0), rotation);
-        // Stored before the rotation: the sources at the lowest round are the ones left.
-        let fresh = Rotation {
-            round: 3,
-            next: None,
-        };
-        assert_eq!(Rotation::parse(None, 2), fresh);
-        assert_eq!(Rotation::parse(Some(&SyncCursor("{}".into())), 2), fresh);
-        assert_eq!(Rotation::parse(Some(&SyncCursor("junk".into())), 2), fresh);
+        assert_eq!(cursor.0, r#"{"round":4,"next":"C2","turned":["C1","C3"]}"#);
+        assert_eq!(Rotation::parse(Some(&cursor)), rotation);
+        assert_eq!(Rotation::default().to_cursor().0, r#"{"round":1}"#);
+        // None stored, an unreadable one, or one from an earlier shape: a fresh round.
+        let fresh = Rotation::default();
+        assert_eq!(Rotation::parse(None), fresh);
+        assert_eq!(Rotation::parse(Some(&SyncCursor("{}".into()))), fresh);
+        assert_eq!(Rotation::parse(Some(&SyncCursor("junk".into()))), fresh);
+        assert_eq!(
+            Rotation::parse(Some(&SyncCursor(r#"{"round":0,"next":"C2"}"#.into()))),
+            fresh
+        );
     }
 
     #[test]

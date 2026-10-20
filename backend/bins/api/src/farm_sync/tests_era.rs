@@ -534,13 +534,14 @@ async fn era_fault_a_throttled_first_sync_resumes_without_duplicates() {
     assert_eq!(farm.count().await, 94, "every message once");
     assert_eq!(farm.records().await.len(), 94);
     // 4 pages of `#field-reports` and 3 of `#crew`. The throttle stops the run on `#crew`'s
-    // first page, after its history call (on a reply or a name), so that page is read again;
-    // `#field-reports` finished its pass in this round and isn't read on the resume.
+    // first page, after its history call (on a reply or a name), so that page is read again.
+    // The failed page was `#crew`'s turn, so the round ended: the resume starts a new one,
+    // `#crew` first, and `#field-reports` has its turn too, one call for what is new.
     assert_eq!(history, 5, "4 pages of #field-reports and #crew's first");
     assert_eq!(
         farm.calls(HISTORY).await,
-        8,
-        "#crew's 3 pages on the resume"
+        9,
+        "#crew's 3 pages and #field-reports' one on the resume"
     );
     assert_eq!(farm.row().await.last_error, None);
     farm.tenant.close().await;

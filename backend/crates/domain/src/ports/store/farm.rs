@@ -80,8 +80,9 @@ pub struct NewConnector {
 }
 
 /// The entry of a connector's cursors ([`ConnectorRow::cursors`], [`SyncOutcome::cursors`])
-/// that holds the sync's own state across the sources (the round and where the next run
-/// starts), beside the cursors keyed by source id. No vendor's source id starts with `#`. The
+/// that holds the sync's own state across the sources (the round, the sources that have had
+/// their turn in it, and where the next run starts), beside the cursors keyed by source id. No
+/// vendor's source id starts with `#` (Slack's are `[A-Z0-9]`, Drive's `[A-Za-z0-9_-]`). The
 /// store keeps it when it drops the cursors of sources no longer chosen.
 pub const SYNC_STATE_KEY: &str = "#sync";
 
@@ -134,11 +135,14 @@ pub struct SyncOutcome {
     /// [`SYNC_STATE_KEY`]. The store keeps the cursors of the sources still chosen and that
     /// state.
     pub cursors: BTreeMap<String, SyncCursor>,
-    /// Set when every source was read to its end.
+    /// Set when the round ended with every source caught up: no pages left, and no source's
+    /// last turn failed.
     pub synced_at: Option<Timestamp>,
-    /// 15 minutes after a finished sync or an outage; now when pages are left.
+    /// 15 minutes after a round's end, an outage or a connector without sources; now when
+    /// sources still wait for their turn in the round.
     pub next_sync_at: Timestamp,
-    /// The failure that stopped it, if any.
+    /// The failure that stopped it, if any; or the stored one, kept while a source's last turn
+    /// failed.
     pub last_error: Option<SyncErrorCode>,
 }
 

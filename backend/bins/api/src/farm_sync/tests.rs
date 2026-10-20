@@ -1051,7 +1051,7 @@ async fn a_spent_budget_leaves_the_connector_due() {
 
 #[tokio::test]
 async fn a_spent_budget_moves_on_to_the_next_sources_on_the_next_run() {
-    // Ten channels, each page 100 ms (a paced vendor), and a budget for about three.
+    // Ten quiet channels, each page 100 ms (a paced vendor), and a budget for three a run.
     let source = FakeSource::new(
         None,
         Box::new(|_| {
@@ -1060,7 +1060,7 @@ async fn a_spent_budget_moves_on_to_the_next_sources_on_the_next_run() {
         }),
     );
     let config = SyncConfig {
-        run_budget: Duration::from_millis(250),
+        run_budget: Duration::from_millis(280),
         ..SyncConfig::default()
     };
     let b = bench(store().await, source.clone(), config);
@@ -1077,29 +1077,13 @@ async fn a_spent_budget_moves_on_to_the_next_sources_on_the_next_run() {
         b.clock.now(),
     )
     .await;
-    let read = |from: usize| -> Vec<String> {
-        source.requests()[from..]
-            .iter()
-            .map(|r| r.source.id.clone())
-            .collect()
-    };
 
-    // Three a run takes four runs; a loaded machine may fit fewer, so up to ten are allowed:
-    // what matters is that no channel is read twice before every channel is read once.
-    let mut ends = Vec::new();
-    for _ in 0..10 {
-        let end = b.run().await;
-        assert_eq!(end.len(), 1, "due again at once until the round ends");
-        ends.push(end[0].1);
-        if end[0].1 == RunEnd::Synced {
-            break;
-        }
-        assert_eq!(b.row(id).await.connector.synced_at, None);
-    }
-    assert_eq!(ends.last(), Some(&RunEnd::Synced), "{ends:?}");
-    assert!(ends.len() >= 3, "a run read more than the budget: {ends:?}");
+    // Every channel has its turn within four runs, each once and in order; the round then
+    // ends synced.
+    let runs = b.until_synced(id, 4).await;
+    assert!(runs >= 3, "a run read more than the budget: {runs} runs");
     assert_eq!(
-        read(0),
+        reads(&source, 0),
         channels,
         "each channel once, in order, none starved"
     );
@@ -1111,8 +1095,8 @@ async fn a_spent_budget_moves_on_to_the_next_sources_on_the_next_run() {
     // and again reads each channel once.
     let before = source.requests().len();
     b.clock.advance(SYNC_EVERY);
-    b.until_synced(id, 10).await;
-    let next = read(before);
+    b.until_synced(id, 4).await;
+    let next = reads(&source, before);
     assert_eq!(next.first().map(String::as_str), Some("C1"));
     let mut sorted = next.clone();
     sorted.sort();
@@ -1328,10 +1312,44 @@ async fn a_source_added_later_joins_the_others_in_the_next_round() {
     assert_eq!(read, ["C1", "C2", "C3"], "read with the others, not alone");
 }
 
-/// The audit's case: A and B finished round 1; in round 2 A finished, B was left mid-pass by
-/// the budget, and then C was added. The round must wait for B.
+impl Bench {
+    /// The round in progress, as the sync stored it (the first before the first run).
+    async fn round(&self, id: ConnectorId) -> u64 {
+        self.row(id)
+            .await
+            .cursors
+            .get("#sync")
+            .and_then(|c| serde_json::from_str::<serde_json::Value>(&c.0).ok())
+            .and_then(|v| v["round"].as_u64())
+            .unwrap_or(1)
+    }
+
+    /// One run, 15 minutes after the last (due whatever the last run's end), and the sources
+    /// it read; `rounds` gets them, and a new entry when the run ended the round.
+    async fn run_into(
+        &self,
+        id: ConnectorId,
+        source: &FakeSource,
+        rounds: &mut Vec<Vec<String>>,
+    ) -> RunEnd {
+        self.clock.advance(SYNC_EVERY);
+        let round = self.round(id).await;
+        let before = source.requests().len();
+        let end = self.run().await;
+        assert_eq!(end.len(), 1, "due");
+        let read = reads(source, before);
+        rounds.last_mut().expect("a round").extend(read);
+        if self.round(id).await > round {
+            rounds.push(Vec::new());
+        }
+        end[0].1
+    }
+}
+
+/// A finished, then the budget ended with B mid-pass, then C was added: no run reports the
+/// connector synced while B has pages left.
 #[tokio::test]
-async fn a_source_left_mid_pass_keeps_the_round_open_when_a_source_is_added() {
+async fn a_round_never_ends_synced_with_a_source_mid_pass() {
     // B's second pass is ten pages; every other pass is one.
     let source = paced(|id, pass| if id == "B" && pass == 1 { 10 } else { 1 });
     let b = bench(store().await, source.clone(), paced_budget());
@@ -1347,35 +1365,52 @@ async fn a_source_left_mid_pass_keeps_the_round_open_when_a_source_is_added() {
     )
     .await;
     b.until_synced(id, 3).await;
-    b.clock.advance(SYNC_EVERY);
+    let first = b.row(id).await.connector.synced_at;
+    assert_eq!(first, Some(pinned()));
+    let b_reads = |source: &FakeSource| reads(source, 0).iter().filter(|s| *s == "B").count();
 
-    // Round 2 until A has finished it and B is mid-pass: at most three pages a run, so B's
-    // ten take several runs.
+    // Until A has been read in round 2 and B is mid-pass.
     let before = source.requests().len();
+    let mut rounds = vec![Vec::new()];
+    let mut runs = 0;
     while !reads(&source, before).contains(&"A".to_owned()) {
-        assert_eq!(b.run().await, [(id, RunEnd::PagesLeft)]);
+        runs += 1;
+        assert!(runs < 5, "A isn't read: {rounds:?}");
+        let end = b.run_into(id, &source, &mut rounds).await;
+        assert_ne!(end, RunEnd::Synced, "B is mid-pass");
     }
-    let b_pages = reads(&source, before).iter().filter(|s| *s == "B").count();
-    assert!(b_pages < 10, "B is mid-pass: {b_pages} pages");
+    assert!(b_reads(&source) < 11, "B is mid-pass: {rounds:?}");
 
     b.choose(id, &["A", "B", "C"]).await;
     let before = source.requests().len();
-    b.until_synced(id, 10).await;
-    let read = reads(&source, before);
-    assert_eq!(
-        read.iter().filter(|s| *s == "B").count(),
-        10 - b_pages,
-        "the round ended only after B's pass: {read:?}"
-    );
-    assert_eq!(read.iter().filter(|s| *s == "C").count(), 1);
-    assert!(!read.contains(&"A".to_owned()), "A had finished the round");
-    assert_eq!(b.row(id).await.connector.synced_at, Some(b.clock.now()));
+    loop {
+        runs += 1;
+        assert!(runs < 20, "never synced: {rounds:?}");
+        let end = b.run_into(id, &source, &mut rounds).await;
+        let synced_at = b.row(id).await.connector.synced_at;
+        if b_reads(&source) < 11 {
+            assert_ne!(end, RunEnd::Synced, "B is mid-pass: {rounds:?}");
+            assert_eq!(synced_at, first, "B is mid-pass: {rounds:?}");
+        } else if end == RunEnd::Synced {
+            assert_eq!(synced_at, Some(b.clock.now()));
+            break;
+        }
+    }
+    assert!(reads(&source, before).contains(&"C".to_owned()));
 }
 
 #[tokio::test]
 async fn a_new_source_with_a_long_first_pass_does_not_hold_up_the_others() {
-    // N's first pass is far longer than the test.
-    let source = paced(|id, pass| if id == "N" && pass == 0 { 1000 } else { 1 });
+    // N's first pass is 1000 pages, far longer than the test, until the test shortens it.
+    let length = Arc::new(AtomicUsize::new(1000));
+    let n_length = length.clone();
+    let source = paced(move |id, pass| {
+        if id == "N" && pass == 0 {
+            u32::try_from(n_length.load(Ordering::SeqCst)).expect("a page count")
+        } else {
+            1
+        }
+    });
     let b = bench(store().await, source.clone(), paced_budget());
     let owner = garden(&b.store, &b.ids, "a").await;
     let channels: Vec<String> = (0..9).map(|i| format!("C{i}")).collect();
@@ -1391,32 +1426,44 @@ async fn a_new_source_with_a_long_first_pass_does_not_hold_up_the_others() {
     )
     .await;
     b.until_synced(id, 9).await;
-    b.clock.advance(SYNC_EVERY);
+    let first = b.row(id).await.connector.synced_at;
 
-    // N joins first in the order. Within a few runs every other channel is read once.
+    // N joins first in the order. Each round reads every other channel once, and some of N.
     let mut chosen = vec!["N"];
     chosen.extend(&names);
     b.choose(id, &chosen).await;
-    let before = source.requests().len();
+    let n_reads = |source: &FakeSource| reads(source, 0).iter().filter(|s| *s == "N").count();
+    let mut rounds = vec![Vec::new()];
     let mut runs = 0;
-    loop {
-        assert_eq!(b.run().await, [(id, RunEnd::PagesLeft)], "N has pages left");
+    while rounds.len() <= 3 {
         runs += 1;
-        let read = reads(&source, before);
-        if channels.iter().all(|c| read.contains(c)) {
+        assert!(runs < 30, "the rounds stall: {rounds:?}");
+        let end = b.run_into(id, &source, &mut rounds).await;
+        assert_ne!(end, RunEnd::Synced, "N has pages left");
+        assert_eq!(b.row(id).await.connector.synced_at, first);
+    }
+    rounds.pop();
+    for round in &rounds {
+        for c in &channels {
+            assert_eq!(
+                round.iter().filter(|s| *s == c).count(),
+                1,
+                "{c} once a round: {round:?}"
+            );
+        }
+        assert!(round.contains(&"N".to_owned()), "N advances: {round:?}");
+    }
+
+    // N's pass ends at its next page; the round it ends in is synced.
+    length.store(n_reads(&source) + 1, Ordering::SeqCst);
+    loop {
+        runs += 1;
+        assert!(runs < 45, "never synced: {rounds:?}");
+        if b.run_into(id, &source, &mut rounds).await == RunEnd::Synced {
             break;
         }
-        assert!(runs < 10, "the others are held up: {read:?}");
     }
-    let read = reads(&source, before);
-    for c in &channels {
-        assert_eq!(
-            read.iter().filter(|s| *s == c).count(),
-            1,
-            "{c} once: {read:?}"
-        );
-    }
-    assert!(read.contains(&"N".to_owned()));
+    assert_eq!(b.row(id).await.connector.synced_at, Some(b.clock.now()));
 }
 
 #[tokio::test]
@@ -1447,30 +1494,63 @@ async fn a_source_that_keeps_failing_does_not_stop_the_others() {
         b.clock.now(),
     )
     .await;
-    let failed = [(id, RunEnd::Failed(SyncErrorCode::VendorUnavailable))];
 
-    // C2 stops the first run; the next starts after it, so C3 is read too.
-    assert_eq!(b.run().await, failed);
-    assert_eq!(reads(&source, 0), ["C1", "C2"]);
-    b.clock.advance(SYNC_EVERY);
-    let before = source.requests().len();
-    assert_eq!(b.run().await, failed);
-    assert_eq!(reads(&source, before), ["C3", "C2"]);
-    let row = b.row(id).await;
-    assert_eq!(row.last_error, Some(SyncErrorCode::VendorUnavailable));
-    assert_eq!(row.connector.synced_at, None, "the round waits for C2");
+    // Three rounds: every one reads C1 and C3, and C2 fails in every one.
+    let mut rounds = vec![Vec::new()];
+    let mut runs = 0;
+    while rounds.len() <= 3 {
+        runs += 1;
+        assert!(runs < 12, "the rounds stall: {rounds:?}");
+        let end = b.run_into(id, &source, &mut rounds).await;
+        assert_ne!(end, RunEnd::Synced);
+        let row = b.row(id).await;
+        assert_eq!(
+            row.last_error,
+            Some(SyncErrorCode::VendorUnavailable),
+            "reported after run {runs}: {rounds:?}"
+        );
+        assert_eq!(row.connector.synced_at, None, "C2 never synced");
+    }
+    rounds.pop();
+    for round in &rounds {
+        for c in ["C1", "C2", "C3"] {
+            assert!(round.contains(&c.to_owned()), "{c} read: {round:?}");
+        }
+    }
 
-    // Once C2 answers, the round ends; the next reads all three.
+    // Once C2 answers, a round ends synced and the error clears.
     *broken.lock().expect("flag") = false;
-    b.clock.advance(SYNC_EVERY);
-    let before = source.requests().len();
-    assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
-    assert_eq!(reads(&source, before), ["C2"]);
-    assert_eq!(b.row(id).await.last_error, None);
-    b.clock.advance(SYNC_EVERY);
-    let before = source.requests().len();
-    assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
-    assert_eq!(reads(&source, before).len(), 3);
+    for n in 0.. {
+        assert!(n < 4, "never synced: {rounds:?}");
+        if b.run_into(id, &source, &mut rounds).await == RunEnd::Synced {
+            break;
+        }
+    }
+    let row = b.row(id).await;
+    assert_eq!(row.last_error, None);
+    assert_eq!(row.connector.synced_at, Some(b.clock.now()));
+}
+
+#[tokio::test]
+async fn a_connector_without_sources_reads_nothing_and_waits_15_minutes() {
+    let source = FakeSource::new(None, Box::new(|_| panic!("never read")));
+    let b = bench(store().await, source.clone(), SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &[],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    assert_eq!(b.run().await, [(id, RunEnd::NoSources)]);
+    let row = b.row(id).await;
+    assert_eq!(row.connector.synced_at, None);
+    assert_eq!(row.next_sync_at, pinned().plus(SYNC_EVERY));
+    assert_eq!(source.requests(), Vec::<FarmPageRequest>::new());
 }
 
 #[tokio::test]
