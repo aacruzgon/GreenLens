@@ -3,6 +3,8 @@
 export type { Transport } from "./transport";
 export { setTransport, getTransport, setBaseUrl, getBaseUrl, client, apiFetch, DEFAULT_BASE_URL } from "./client";
 export { liveTransport } from "./liveTransport";
+export { imageSource } from "./images";
+export { useActionKey } from "./idempotency";
 export { setTokenProvider, clearTokenProvider, setOnSignedOut, type TokenProvider } from "./auth";
 export {
   ApiError,
@@ -34,3 +36,4 @@ export * from "./resources/plants";
 export * from "./resources/tasks";
 export * from "./resources/scans";
 export * from "./resources/species";
+export * from "./resources/memories";
