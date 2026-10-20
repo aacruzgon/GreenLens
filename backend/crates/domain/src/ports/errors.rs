@@ -176,6 +176,15 @@ pub enum FarmSourceError {
         /// The channel or folder id from the owner's choice.
         source_id: String,
     },
+    /// The chosen source holds more than the adapter follows (Drive: 500 files or 500 folders
+    /// under the folder): `too_large`, and nothing runs until the owner changes the sources.
+    #[error("{vendor}: source {source_id} is too large")]
+    TooLarge {
+        /// The vendor.
+        vendor: ConnectorKind,
+        /// The channel or folder id from the owner's choice.
+        source_id: String,
+    },
     /// `429` past the pacer: the cursor is saved and the next run continues.
     #[error("{vendor}: rate limited")]
     RateLimited {
@@ -211,6 +220,7 @@ impl FarmSourceError {
         match self {
             Self::AuthRefused { .. } => SyncErrorCode::AuthRefused,
             Self::SourceMissing { .. } => SyncErrorCode::SourceMissing,
+            Self::TooLarge { .. } => SyncErrorCode::TooLarge,
             Self::RateLimited { .. } => SyncErrorCode::RateLimited,
             Self::Unavailable { .. } | Self::BadResponse { .. } => SyncErrorCode::VendorUnavailable,
         }
@@ -311,5 +321,10 @@ mod farm_source_tests {
             vendor: ConnectorKind::Slack,
         };
         assert_eq!(refused.code(), SyncErrorCode::AuthRefused);
+        let large = FarmSourceError::TooLarge {
+            vendor: ConnectorKind::GoogleDrive,
+            source_id: "F_FARM".into(),
+        };
+        assert_eq!(large.code().as_str(), "too_large");
     }
 }

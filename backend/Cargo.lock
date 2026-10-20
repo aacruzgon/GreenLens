@@ -246,6 +246,7 @@ dependencies = [
  "serde_path_to_error",
  "sha2 0.11.1",
  "store",
+ "surrealdb",
  "thiserror",
  "tokio",
  "tokio-stream",
@@ -259,6 +260,7 @@ dependencies = [
  "utoipa-axum",
  "uuid",
  "vision",
+ "wiremock",
 ]
 
 [[package]]
@@ -2076,6 +2078,37 @@ name = "equivalent"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00d174d5400e5e8fd687ad1049e2f578285fa914201b1af7e8b112a4546bd826"
+
+[[package]]
+name = "era-eval"
+version = "0.1.0"
+dependencies = [
+ "agent",
+ "anyhow",
+ "api",
+ "async-trait",
+ "blob",
+ "bytes",
+ "chrono",
+ "clap",
+ "domain",
+ "futures",
+ "integrations",
+ "knowledge",
+ "regex",
+ "reqwest 0.13.5",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "store",
+ "surrealdb",
+ "tokio",
+ "tokio-util",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+ "vision",
+]
 
 [[package]]
 name = "errno"

@@ -225,7 +225,7 @@ def analyse(split, label, pos, neg, pos_leaf, neg_leaf, probs, tau_leaf, scale, 
                                                 pair["tau_leaf"], pair["tau_plant"], datasets)}
 
     fixed_pairs = [fixed(MANIFEST_PAIR, "manifest pair (current detector's)")]
-    fixed_pairs += [fixed(p, "given with --pair") for p in pairs]
+    fixed_pairs += [fixed(p, f"{p['set']} {p['tau_leaf']:.2f} / {p['tau_plant']:.2f}") for p in pairs]
     winner = max(sets, key=lambda n: (sets[n]["chosen"]["no_leaf_rescued"] or 0.0, n == "A"))
 
     no_leaf_by = defaultdict(lambda: [0, 0])
@@ -282,9 +282,12 @@ def fixed_pairs_md(r: dict, names: list[str]) -> str:
         out.append(f"| {p['name']} | {p['set']} | {p['tau_leaf']:.2f} | {p['tau_plant']:.2f} | "
                    f"{pct(p['positives_false_no_plant'], 2)} |{dataset_cells(p['by_dataset'], names)} "
                    f"{pct(p['negatives_pass_check'])} |\n")
-    out += ["\n| Pair | negatives group | n | pass: check |\n|---|---|---|---|\n"]
+    groups = sorted({g for p in r["fixed_pairs"] for g in p["by_group"]})
+    out += ["\nPhotos without a plant passing, by group:\n\n",
+            "| Pair |" + "".join(f" {g} (n {r['fixed_pairs'][0]['by_group'].get(g, {}).get('n', 0)}) |" for g in groups) + "\n",
+            "|---|" + "---|" * len(groups) + "\n"]
     for p in r["fixed_pairs"]:
-        out += [f"| {p['name']} | {g} | {v['n']} | {pct(v['check'])} |\n" for g, v in p["by_group"].items()]
+        out.append(f"| {p['name']} |" + "".join(f" {pct(p['by_group'][g]['check'])} |" if g in p["by_group"] else " – |" for g in groups) + "\n")
     return "".join(out) + "\n"
 
 

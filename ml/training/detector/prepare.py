@@ -142,7 +142,7 @@ def background_items() -> list[dict]:
         raise SystemExit(f"{tsv} is missing: run python -m ml.training.detector.background")
     items = []
     for line in tsv.read_text().splitlines()[1:]:
-        _, rel, _, digest = line.split("\t")
+        _, rel, _, digest = line.split("\t")[:4]
         path = ROOT / "data/raw" / rel
         if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
             raise SystemExit(f"{path} doesn't match its pinned SHA-256")

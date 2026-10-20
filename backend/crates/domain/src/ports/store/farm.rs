@@ -41,6 +41,10 @@ pub struct PendingConnect {
     pub verifier: Option<Sealed>,
     /// 10 minutes after the start.
     pub expires_at: Timestamp,
+    /// When a `complete` claimed the state ([`FarmRecordStore::claim_connect`]) to exchange the
+    /// code; `None` until then. A claimed state is spent: the callback and every other
+    /// `complete` refuse it.
+    pub claimed_at: Option<Timestamp>,
 }
 
 impl fmt::Debug for PendingConnect {
@@ -50,6 +54,7 @@ impl fmt::Debug for PendingConnect {
             .field("device_hash", &self.device_hash)
             .field("verifier", &self.verifier)
             .field("expires_at", &self.expires_at)
+            .field("claimed_at", &self.claimed_at)
             .finish()
     }
 }
@@ -79,6 +84,13 @@ pub struct NewConnector {
     pub created_at: Timestamp,
 }
 
+/// The entry of a connector's cursors ([`ConnectorRow::cursors`], [`SyncOutcome::cursors`])
+/// that holds the sync's own state across the sources (the round, the sources that have had
+/// their turn in it, and where the next run starts), beside the cursors keyed by source id. No
+/// vendor's source id starts with `#` (Slack's are `[A-Z0-9]`, Drive's `[A-Za-z0-9_-]`). The
+/// store keeps it when it drops the cursors of sources no longer chosen.
+pub const SYNC_STATE_KEY: &str = "#sync";
+
 /// A connector with everything the sync and the routes need beside its wire shape. Never sent:
 /// it holds the sealed tokens.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,7 +103,8 @@ pub struct ConnectorRow {
     pub secret: Option<Sealed>,
     /// The pending connect's state.
     pub oauth: Option<PendingConnect>,
-    /// Each source's sync cursor, by source id.
+    /// Each source's sync cursor, by source id, and the sync's own state under
+    /// [`SYNC_STATE_KEY`].
     pub cursors: BTreeMap<String, SyncCursor>,
     /// When the sync is due.
     pub next_sync_at: Timestamp,
@@ -120,16 +133,21 @@ pub struct CompletedConnect {
 pub struct SyncOutcome {
     /// The connector's `next_sync_at` as [`due_connectors`](FarmRecordStore::due_connectors)
     /// returned it. If the stored value is later when the run ends, a **Sync now** or a new set
-    /// of sources landed during the run: the store keeps that time, and doesn't store a
-    /// stopping failure (`too_large`, `source_missing`) over it.
+    /// of sources landed during the run: the store keeps that time, doesn't store a stopping
+    /// failure (`too_large`, `source_missing`) over it, and doesn't set `synced_at`.
     pub due_at: Timestamp,
-    /// Each source's cursor after the run.
+    /// Each source's cursor after the run, and the sync's own state under
+    /// [`SYNC_STATE_KEY`]. The store keeps the cursors of the sources still chosen and that
+    /// state.
     pub cursors: BTreeMap<String, SyncCursor>,
-    /// Set when every source was read to its end.
+    /// Set when the round ended with every source caught up: no pages left, and no source's
+    /// last turn failed.
     pub synced_at: Option<Timestamp>,
-    /// 15 minutes after a finished sync or an outage; now when pages are left.
+    /// 15 minutes after a round's end, an outage or a connector without sources; now when
+    /// sources still wait for their turn in the round.
     pub next_sync_at: Timestamp,
-    /// The failure that stopped it, if any.
+    /// The failure that stopped it, if any; or the stored one, kept while a source's last turn
+    /// failed.
     pub last_error: Option<SyncErrorCode>,
 }
 
@@ -214,7 +232,10 @@ pub trait FarmRecordStore: Send + Sync {
         connector: NewConnector,
     ) -> Result<Connector, StoreError>;
 
-    /// Start-up seeding of the demo garden's `era` connectors: idempotent by the fixed id.
+    /// Start-up seeding of the demo garden's `era` connectors: idempotent by the fixed id. An
+    /// existing connector in this garden (not being deleted) is repaired: the new sealed
+    /// token, `status` and no `last_error`. One elsewhere is returned unchanged, so the caller
+    /// can compare its `garden_id`.
     async fn seed_connector(
         &self,
         garden: GardenId,
@@ -231,9 +252,36 @@ pub trait FarmRecordStore: Send + Sync {
         connector: ConnectorId,
     ) -> Result<Option<ConnectorRow>, StoreError>;
 
-    /// `POST /connectors/{id}/complete`: a compare-and-set on `status = 'pending'`, the stored
-    /// nonce and its `expires_at` being after `done.now`; `Conflict(AlreadyExists)` when any
-    /// no longer holds (the state was used, replaced or expired).
+    /// `POST /connectors/{id}/complete`, before the code exchange: claims the pending state, a
+    /// compare-and-set on `status = 'pending'`, the stored nonce, its `expires_at` being after
+    /// `now` and no earlier claim, which sets `oauth.claimed_at`. Single use: of two
+    /// concurrent `complete`s, one claims and the other gets `Conflict(AlreadyExists)`, so the
+    /// code is spent at most once. `Conflict(AlreadyExists)` too when the state was used,
+    /// replaced or expired; `NotFound` when the connector is gone.
+    async fn claim_connect(
+        &self,
+        owner: Membership<Owner>,
+        connector: ConnectorId,
+        nonce: String,
+        now: Timestamp,
+    ) -> Result<(), StoreError>;
+
+    /// Undoes [`claim_connect`](Self::claim_connect) when the exchange failed before the vendor
+    /// gave tokens (an outage, a refused code), so a retry of the same `complete` can claim
+    /// again. Only the claim of `nonce` on a connector still `pending` is cleared; anything
+    /// else is left as it is.
+    async fn release_connect(
+        &self,
+        owner: Membership<Owner>,
+        connector: ConnectorId,
+        nonce: String,
+    ) -> Result<(), StoreError>;
+
+    /// `POST /connectors/{id}/complete`, after the exchange: a compare-and-set on
+    /// `status = 'pending'` and the stored nonce having been claimed; `Conflict(AlreadyExists)`
+    /// when that no longer holds, and `NotFound` when the connector is gone (deleted, or
+    /// removed by the pending cleanup while the exchange ran). The caller then revokes the
+    /// tokens it was given, which nothing stores.
     async fn complete_connect(
         &self,
         owner: Membership<Owner>,
@@ -242,7 +290,7 @@ pub trait FarmRecordStore: Send + Sync {
     ) -> Result<Connector, StoreError>;
 
     /// `PUT /connectors/{id}/sources`: replaces the sources, drops the cursors of sources no
-    /// longer chosen and makes the sync due now.
+    /// longer chosen (keeping the sync's state, [`SYNC_STATE_KEY`]) and makes the sync due now.
     async fn set_sources(
         &self,
         owner: Membership<Owner>,
@@ -305,15 +353,73 @@ pub trait FarmRecordStore: Send + Sync {
     async fn delete_connector_batch(&self, connector: ConnectorId) -> Result<u32, StoreError>;
 
     /// The connectors a member created in a garden: deleted when that member stops being an
-    /// owner (demoted, removed, leaving or deleting the account).
+    /// owner (demoted, removed, leaving or deleting the account). The store marks those
+    /// `deleting` itself, in the transaction that changes the membership
+    /// (`GardenRepo::change_role`, `GardenRepo::remove_member`, `DeletionRepo::transfer_ownership`;
+    /// a garden's in `DeletionRepo::start_garden_deletion`).
     async fn connectors_created_by(
         &self,
         garden: GardenId,
         user: UserId,
     ) -> Result<Vec<ConnectorId>, StoreError>;
 
-    /// The cleanup: deletes `pending` connectors created before the cutoff (10 minutes ago).
-    async fn delete_expired_pending(&self, before: Timestamp) -> Result<u32, StoreError>;
+    /// How many other live connectors, in any garden, hold a token of this account: `vendor`
+    /// connectors of `kind`, `active` or `reauth_needed`, not `except`, whose account is
+    /// `account` (Slack's team id, or the Google account's email). A deletion revokes the token
+    /// only when there are none ([connectors 5]): Slack gives one bot token per app and
+    /// workspace, and revoking Google's refresh token ends the whole grant of that account to
+    /// this OAuth client, so either would stop every connector of the account. `era`
+    /// connectors hold the simulator's tokens and never count.
+    ///
+    /// [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
+    async fn shared_account_connectors(
+        &self,
+        kind: ConnectorKind,
+        account: String,
+        except: ConnectorId,
+    ) -> Result<u32, StoreError>;
+
+    /// Replaces a connector's sealed tokens with `new` (a refreshed Google access token) only
+    /// when the stored value is still `read`, the one the caller unsealed, and the connector is
+    /// `active` or `reauth_needed`: a compare-and-set, so of two refreshes at once one is
+    /// stored and the other keeps its token for its own call. `true` when it was stored.
+    /// Used by the source picker and the sync (E4).
+    async fn replace_secret(
+        &self,
+        connector: ConnectorId,
+        read: Sealed,
+        new: Sealed,
+    ) -> Result<bool, StoreError>;
+
+    /// Connectors marked `deleting` whose deletion hasn't finished, with their sealed tokens,
+    /// oldest id first: with `Some(garden)`, that garden's (a cascade or a demotion finishing
+    /// them); with `None`, those of every garden not itself being deleted (`api`'s
+    /// `deletions.resume()` after a restart; a garden being deleted finishes its own connectors
+    /// in its cascade). The marker is what makes a deletion resumable: the status is set in the
+    /// transaction that removed the owner, and the row keeps its token until `api` revoked it
+    /// and deleted the records (EON E3.6).
+    async fn deleting_connectors(
+        &self,
+        garden: Option<GardenId>,
+    ) -> Result<Vec<ConnectorRow>, StoreError>;
+
+    /// Every connector marked `deleting` that this user created, in any garden, being deleted
+    /// or not, with its sealed token, oldest id first. An account deletion finishes these
+    /// before `DELETE $user`, which `connector.created_by` refuses while one names the user
+    /// (EON E3.6).
+    async fn deleting_connectors_of_user(
+        &self,
+        user: UserId,
+    ) -> Result<Vec<ConnectorRow>, StoreError>;
+
+    /// The cleanup: deletes `pending` connectors created before `before` (10 minutes ago),
+    /// except those a `complete` claimed at or after `claimed_before` (`CONNECT_CLAIM_HOLD`
+    /// ago), whose exchange may still be running; up to 500 a call.
+    async fn delete_expired_pending(
+        &self,
+        before: Timestamp,
+        claimed_before: Timestamp,
+    ) -> Result<u32, StoreError>;
 
     // ---- farm records ----
 
@@ -326,8 +432,9 @@ pub trait FarmRecordStore: Send + Sync {
     ) -> Result<Vec<(FarmRecordId, String)>, StoreError>;
 
     /// Upserts chunks by `(connector, vendor_id, n)`, keeping the stored vector when
-    /// `vector` is `None`. Returns how many were written. `NotFound` when the connector is
-    /// missing or being deleted, so no record outlives its connector's deletion.
+    /// `vector` is `None`. A record whose `source` the connector no longer has is skipped.
+    /// Returns how many were written. `NotFound` when the connector is missing or being
+    /// deleted, so no record outlives its connector's deletion.
     async fn upsert_records(
         &self,
         connector: ConnectorId,
@@ -405,6 +512,7 @@ mod tests {
             device_hash: "h".repeat(43).parse().unwrap(),
             verifier: None,
             expires_at: Timestamp::from(chrono::DateTime::UNIX_EPOCH),
+            claimed_at: None,
         };
         assert!(!format!("{pending:?}").contains("the-secret-nonce"));
     }

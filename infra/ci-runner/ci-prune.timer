@@ -1,0 +1,12 @@
+# Runs ci-prune.service once a week; Persistent catches up a run missed while the machine was off.
+# Installed by install.sh in ~/.config/systemd/user/ of the ci-runner user.
+[Unit]
+Description=Weekly prune of the CI runner's Docker data and build trees
+
+[Timer]
+OnCalendar=weekly
+Persistent=true
+RandomizedDelaySec=1h
+
+[Install]
+WantedBy=timers.target

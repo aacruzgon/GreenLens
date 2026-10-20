@@ -2,6 +2,7 @@
 
 from ml.training.data.negatives import select
 from ml.training.data.negatives_holdout import pick as holdout_pick
+from ml.training.data.negatives_holdout import pinned_rows
 
 CATS = [
     {"id": 1, "name": "person", "supercategory": "person"},
@@ -50,3 +51,11 @@ def test_the_holdout_leaves_out_excluded_photos_and_is_deterministic():
     assert first == holdout_pick(list(reversed(rows)), 10, exclude=set()) == sorted(first)
     without = holdout_pick(rows, 10, exclude={first[0][0]})
     assert first[0] not in without and len(without) == 10
+
+
+def test_a_pinned_holdout_is_read_back_not_picked_again(tmp_path):
+    tsv = tmp_path / "holdout.tsv"
+    tsv.write_text("dataset\tpath\tgroup\tsha256\n"
+                   "coco_train2017\tcoco_train2017_holdout/b.jpg\toutdoor\t" + "0" * 64 + "\n"
+                   "coco_train2017\tcoco_train2017_holdout/a.jpg\tindoor\t" + "1" * 64 + "\n")
+    assert pinned_rows(tsv) == [("b.jpg", "outdoor"), ("a.jpg", "indoor")]

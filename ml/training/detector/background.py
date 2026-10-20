@@ -14,9 +14,17 @@ ignore the hedges and shrubs users photograph. The groups alone don't ensure tha
 scenes in front of trees, grass or shrubs. The whole-photo plant probe can't catch them either: it
 scores those photos 0.04 to 0.12, because the people fill the frame.
 
+Only photos whose Flickr licence allows commercial use and adaptation are picked (CC BY, CC BY-SA,
+no known copyright restrictions, US government work), the rule for shipped weights in
+docs/vision/training.md §3. The second pick (8aebf9a) didn't hold to it: 292 of its 400 photos were
+non-commercial and 16 no-derivatives. The photos pinned as plant-check hold-out negatives
+(`ml.training.data.negatives_holdout`) are left out, so the thresholds are checked on photos the
+detector never saw.
+
 The pick is deterministic (the lowest SHA-256 of `coco_bg|<file name>`). Each image is downloaded
 from COCO's server to `ml/training/data/raw/coco_train2017_bg/` (git-ignored) and pinned by its
-SHA-256 in `ml/training/data/splits/background_coco_train.tsv`; a rerun checks the pins.
+SHA-256 and its licence in `ml/training/data/splits/background_coco_train.tsv`; a rerun checks the
+pins.
 `python -m ml.training.detector.prepare --background` adds them to the training split with no
 boxes. Licence: COCO and COCO-Stuff annotations CC BY 4.0; each image keeps its Flickr licence;
 never committed.
@@ -33,6 +41,7 @@ import hashlib
 import json
 import sys
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from ml.training.data.negatives import select
@@ -47,6 +56,9 @@ IMAGES = DATA / "raw/coco_train2017_bg"
 TSV = DATA / "splits/background_coco_train.tsv"
 URL = "http://images.cocodataset.org/train2017/{}"
 GROUPS = ("indoor", "people_pets")
+# COCO's licence names that allow commercial use and adaptation (training.md §3).
+REUSABLE = ("Attribution License", "Attribution-ShareAlike License",
+            "No known copyright restrictions", "United States Government Work")
 
 
 def plant_fraction(stuff: dict) -> dict[str, float]:
@@ -68,16 +80,34 @@ def load_plant_fraction() -> dict[str, float]:
     return json.loads(PLANT_FRACTION.read_text())
 
 
-def pick(rows: list[tuple[str, str]], count: int, plant: dict[str, float]) -> list[tuple[str, str]]:
-    """`count` of the (file, group) rows in GROUPS with no plant pixel, by the lowest hash of their
-    file name. A photo COCO-Stuff doesn't cover counts as vegetated."""
-    eligible = [r for r in rows if r[1] in GROUPS and plant.get(r[0], 1.0) == 0.0]
+def licences(annotations: dict) -> dict[str, str]:
+    """Each image's licence name, by file name."""
+    names = {lic["id"]: lic["name"] for lic in annotations["licenses"]}
+    return {i["file_name"]: names[i["license"]] for i in annotations["images"]}
+
+
+def pick(rows: list[tuple[str, str]], count: int, plant: dict[str, float], licence: dict[str, str],
+         exclude: set[str] = frozenset()) -> list[tuple[str, str]]:
+    """`count` of the (file, group) rows in GROUPS with no plant pixel and a REUSABLE licence, not
+    in `exclude`, by the lowest hash of their file name. A photo COCO-Stuff doesn't cover counts as
+    vegetated."""
+    eligible = [r for r in rows if r[1] in GROUPS and plant.get(r[0], 1.0) == 0.0
+                and licence.get(r[0]) in REUSABLE and r[0] not in exclude]
     key = lambda r: hashlib.sha256(f"coco_bg|{r[0]}".encode()).hexdigest()
     return sorted(sorted(eligible, key=key)[:count])
 
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def fetch(name: str) -> Path:
+    dest = IMAGES / name
+    if not dest.exists():
+        tmp = dest.with_suffix(".partial")
+        urllib.request.urlretrieve(URL.format(name), tmp)
+        tmp.rename(dest)
+    return dest
 
 
 def main(argv=None) -> int:
@@ -87,24 +117,21 @@ def main(argv=None) -> int:
     pinned = {}
     if TSV.exists():
         for line in TSV.read_text().splitlines()[1:]:
-            _, path, _, digest = line.split("\t")
+            _, path, _, digest = line.split("\t")[:4]
             pinned[path] = digest
-    rows = pick(select(json.loads(ANNOTATIONS.read_text())), args.count, load_plant_fraction())
-    if clash := {n for n, _ in rows} & pinned_names(HOLDOUT):
-        raise SystemExit(f"{len(clash)} picked photos are plant-check hold-out negatives, e.g. {min(clash)}")
+    annotations = json.loads(ANNOTATIONS.read_text())
+    licence = licences(annotations)
+    rows = pick(select(annotations), args.count, load_plant_fraction(), licence, pinned_names(HOLDOUT))
     IMAGES.mkdir(parents=True, exist_ok=True)
-    out = ["dataset\tpath\tgroup\tsha256"]
-    for name, group in rows:
-        dest = IMAGES / name
-        if not dest.exists():
-            tmp = dest.with_suffix(".partial")
-            urllib.request.urlretrieve(URL.format(name), tmp)
-            tmp.rename(dest)
+    with ThreadPoolExecutor(8) as pool:
+        files = list(pool.map(fetch, [n for n, _ in rows]))
+    out = ["dataset\tpath\tgroup\tsha256\tlicence"]
+    for (name, group), dest in zip(rows, files):
         path = f"coco_train2017_bg/{name}"
         digest = sha256(dest)
         if path in pinned and pinned[path] != digest:
             raise SystemExit(f"{path}: SHA-256 {digest} differs from its pin {pinned[path]}")
-        out.append(f"coco_train2017\t{path}\t{group}\t{digest}")
+        out.append(f"coco_train2017\t{path}\t{group}\t{digest}\t{licence[name]}")
     TSV.write_text("\n".join(out) + "\n")
     groups = {g: sum(1 for _, x in rows if x == g) for g in GROUPS}
     print(f"{len(rows)} background images {groups} -> {TSV}")

@@ -1,6 +1,6 @@
 # Faults are global to an Era simulator: a fault set by one test reaches every other test that
-# calls the same simulator, in any binary. So every Era test runs one at a time. CI gives the
-# fault tests their own simulators (docs/EON E6.2).
+# calls the same simulator, in any binary. So every Era test runs one at a time. CI also gives the
+# fault tests and the strict-mode tests their own simulators (docs/EON E6.2, E6.4).
 [test-groups]
 era = { max-threads = 1 }
 

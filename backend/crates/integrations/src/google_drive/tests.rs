@@ -541,6 +541,11 @@ async fn a_folder_lists_recursively_across_pages() {
     let ids: Vec<_> = listing.files.iter().map(|f| f.id.as_str()).collect();
     assert_eq!(ids, ["D_1", "S_1", "T_1", "P_1"]);
     assert_eq!(listing.folders, ["F_ROOT", "F_SUB"]);
+    assert_eq!(
+        listing.tree,
+        [("F_SUB".to_owned(), "F_ROOT".to_owned())],
+        "each folder found with the folder it was listed in"
+    );
     assert!(!listing.truncated);
     let kinds: Vec<_> = listing.files.iter().map(DriveFile::kind).collect();
     assert_eq!(
@@ -557,6 +562,60 @@ async fn a_folder_lists_recursively_across_pages() {
         listing.files[0].modified_time.unwrap().to_rfc3339(),
         "2026-10-15T12:00:00+00:00"
     );
+}
+
+#[tokio::test]
+async fn the_source_picker_lists_every_folder_by_name_across_pages() {
+    let server = MockServer::start().await;
+    let q = format!("mimeType='{FOLDER_MIME}' and trashed=false");
+    Mock::given(method("GET"))
+        .and(path("/drive/v3/files"))
+        .and(header("authorization", "Bearer ya29.test-token"))
+        .and(query_param("q", q.as_str()))
+        .and(query_param("supportsAllDrives", "true"))
+        .and(query_param("includeItemsFromAllDrives", "true"))
+        .and(query_param_is_missing("pageToken"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "nextPageToken": "p2",
+            "files": [{"id": "F_2", "name": "Spray logs", "mimeType": FOLDER_MIME},
+                      // Drive never sends a file for this query; the client keeps folders only.
+                      file("D_1", DOCUMENT_MIME, "F_2")]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/drive/v3/files"))
+        .and(query_param("q", q.as_str()))
+        .and(query_param("pageToken", "p2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "files": [{"id": "F_1", "name": "Farm records", "mimeType": FOLDER_MIME}]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let folders = client(&server).folders(&token()).await.unwrap();
+    let names: Vec<_> = folders
+        .iter()
+        .map(|f| (f.id.as_str(), f.name.as_str()))
+        .collect();
+    assert_eq!(names, [("F_1", "Farm records"), ("F_2", "Spray logs")]);
+}
+
+#[tokio::test]
+async fn the_source_picker_refuses_a_page_cycle() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/drive/v3/files"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "nextPageToken": "again", "files": []
+        })))
+        .mount(&server)
+        .await;
+    assert!(matches!(
+        client(&server).folders(&token()).await,
+        Err(FarmClientError::Malformed { .. })
+    ));
 }
 
 #[tokio::test]
@@ -862,6 +921,30 @@ async fn a_refused_refresh_is_auth_refused() {
         .await
         .unwrap_err();
     assert_eq!(error.code(), crate::farm::FarmErrorCode::AuthRefused);
+}
+
+#[tokio::test]
+async fn a_bad_client_secret_is_our_misconfiguration_not_auth_refused() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/token"))
+        .respond_with(
+            ResponseTemplate::new(401).set_body_json(
+                json!({"error": "invalid_client", "error_description": "Unauthorized"}),
+            ),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let error = client(&server)
+        .refresh(&SecretString::from("1//r"), "c", &SecretString::from("bad"))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&error, FarmClientError::Refused { status: 401, code, .. } if code == "invalid_client"),
+        "{error:?}"
+    );
+    assert_eq!(error.code(), crate::farm::FarmErrorCode::VendorUnavailable);
 }
 
 #[tokio::test]

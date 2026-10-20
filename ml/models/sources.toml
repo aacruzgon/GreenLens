@@ -90,3 +90,13 @@ auth   = "hf"
 sha256 = "ffcea111c7c19a3458876f921ae45fc8bc889f5ed6005c51a4626e761c5b7aa8"
 url    = "https://huggingface.co/GreenLens/pdm-models/resolve/e00434c9659f619602202122a6515a63eaf9caac/plant_probe/plant-probe-zs-2026-10-16.cpu.json"
 auth   = "hf"
+
+[[file]]                                  # leaf_detector
+sha256 = "e0218e1d262eb59a34fd6518a6628e6a61f33b480ee972eb8fb85d92ed1bce0f"
+url    = "https://huggingface.co/GreenLens/pdm-models/resolve/3306025cee0e4faeeb5cc0d8dd160ca98e3dafcc/leaf_detector/rfdetr-s-leaf-2026-10-19-bglic-fp16.onnx"
+auth   = "hf"
+
+[[file]]                                  # leaf_detector
+sha256 = "76eb8b41f2f9826f5e417adbb2ef0130ba1ffd7608422aee7e8fec2dcf2020cd"
+url    = "https://huggingface.co/GreenLens/pdm-models/resolve/3306025cee0e4faeeb5cc0d8dd160ca98e3dafcc/leaf_detector/rfdetr-s-leaf-2026-10-19-bglic-fp32.onnx"
+auth   = "hf"

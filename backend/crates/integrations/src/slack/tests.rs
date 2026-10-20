@@ -628,15 +628,33 @@ async fn oauth_v2_access_is_not_retried_after_a_5xx() {
     );
     assert_eq!(requests(&server).await, 1);
 
-    let server = answering("oauth.v2.access", refused("invalid_code")).await;
-    let error = client(&server)
-        .oauth_v2_access("used", "https://x", "1", &SecretString::from("s"))
-        .await
-        .unwrap_err();
-    assert!(
-        matches!(&error, FarmClientError::Refused { code, .. } if code == "invalid_code"),
-        "{error:?}"
-    );
+    for bad in ["invalid_code", "code_already_used", "code_expired"] {
+        let server = answering("oauth.v2.access", refused(bad)).await;
+        let error = client(&server)
+            .oauth_v2_access("used", "https://x", "1", &SecretString::from("s"))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&error, FarmClientError::AuthRefused { code, .. } if code == bad),
+            "{error:?}"
+        );
+    }
+    for ours in [
+        "bad_redirect_uri",
+        "invalid_client_id",
+        "bad_client_secret",
+        "invalid_client",
+    ] {
+        let server = answering("oauth.v2.access", refused(ours)).await;
+        let error = client(&server)
+            .oauth_v2_access("c0de", "https://x", "1", &SecretString::from("s"))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&error, FarmClientError::Refused { code, .. } if code == ours),
+            "{error:?}"
+        );
+    }
 }
 
 #[test]
@@ -747,4 +765,25 @@ async fn a_429_is_honoured_for_exactly_its_retry_after() {
     .await;
     assert_eq!(result.unwrap().team_id, "T_MAPLE");
     assert_eq!(at, [Duration::ZERO, Duration::from_secs(7)]);
+}
+
+#[tokio::test]
+async fn an_already_revoked_token_counts_as_revoked() {
+    for code in ["token_revoked", "invalid_auth"] {
+        let server = answering("auth.revoke", refused(code)).await;
+        client(&server)
+            .auth_revoke(&token())
+            .await
+            .unwrap_or_else(|e| panic!("{code}: {e}"));
+    }
+    let server = answering("auth.revoke", ok(json!({ "ok": true, "revoked": true }))).await;
+    client(&server).auth_revoke(&token()).await.unwrap();
+    for code in ["account_inactive", "not_authed"] {
+        let server = answering("auth.revoke", refused(code)).await;
+        let error = client(&server).auth_revoke(&token()).await.unwrap_err();
+        assert!(
+            matches!(&error, FarmClientError::AuthRefused { code: c, .. } if c == code),
+            "{code}: {error:?}"
+        );
+    }
 }

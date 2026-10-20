@@ -24,14 +24,14 @@ use domain::{
     ports::{
         ChatRepo, CompletedConnect, Conflict, Embedding, FarmRecordFilter, FarmRecordStore,
         FarmVector, GardenRepo, IdGenExt, NewConnector, NewConversation, NewFarmRecord, NewGarden,
-        NewMessage, PendingConnect, PlanRepo, PlanWrite, ResolvedLocation, Sealed, StoreError,
-        SyncCursor, SyncOutcome, SyncRequest,
+        NewMessage, PendingConnect, PlanRepo, PlanWrite, ResolvedLocation, SYNC_STATE_KEY, Sealed,
+        StoreError, SyncCursor, SyncOutcome, SyncRequest,
     },
     records::{
         plan::{ActionPlan, PlanReason, PlanStep, PlanWhen, StepCategory},
         weather::{Coordinates, LocationPrecision},
     },
-    rules::limits::{FARM_RECORD_KEEP, PENDING_CONNECT_TTL, SYNC_NOW_INTERVAL},
+    rules::limits::{CONNECT_CLAIM_HOLD, FARM_RECORD_KEEP, PENDING_CONNECT_TTL, SYNC_NOW_INTERVAL},
     wire::Timestamp,
 };
 use store::{SurrealStore, apply_schema_with, ids::rid};
@@ -63,6 +63,7 @@ fn new_connector(f: &Fixture, kind: ConnectorKind) -> NewConnector {
             device_hash: "h".repeat(43).parse().expect("a device hash"),
             verifier: Some(sealed(b"sealed-verifier")),
             expires_at: at(10),
+            claimed_at: None,
         }),
         sources: Vec::new(),
         created_at: t0(),
@@ -95,7 +96,14 @@ async fn active_slack(store: &SurrealStore, f: &Fixture, garden: GardenId) -> Co
     c.oauth = None;
     c.account = Some(slack_account());
     c.secret = Some(sealed(b"sealed-token"));
-    c.sources = vec![source("C1", "field-reports"), source("C2", "spray-log")];
+    // `folder-1` and `C10` are for the tests that store records of other sources: an upsert
+    // skips a record whose source isn't the connector's.
+    c.sources = vec![
+        source("C1", "field-reports"),
+        source("C2", "spray-log"),
+        source("C10", "misc"),
+        source("folder-1", "Farm records"),
+    ];
     let id = c.id;
     store.seed_connector(garden, c).await.expect("seeded");
     id
@@ -176,13 +184,46 @@ async fn connectors_and_the_due_query() {
     assert_eq!(oauth.expires_at, at(10));
     assert!(row.secret.is_none() && row.cursors.is_empty());
 
-    // The exchange: a wrong nonce loses, the right one activates, and a second use loses.
+    // The claim: a wrong nonce loses, the right one claims once, and a second claim loses.
+    let lost =
+        |r: Result<(), StoreError>| matches!(r, Err(StoreError::Conflict(Conflict::AlreadyExists)));
+    let claim =
+        |nonce: &'static str, now| store.claim_connect(owner, pending_id, nonce.into(), now);
+    assert!(lost(claim("other", at(1)).await));
     let done = |nonce: &str, now| CompletedConnect {
         nonce: nonce.into(),
         account: slack_account(),
         secret: sealed(b"sealed-token"),
         now,
     };
+    // Unclaimed, the exchange's compare-and-set loses.
+    assert!(matches!(
+        store
+            .complete_connect(owner, pending_id, done("nonce-1", at(1)))
+            .await,
+        Err(StoreError::Conflict(Conflict::AlreadyExists))
+    ));
+    claim("nonce-1", at(1)).await.unwrap();
+    assert!(
+        lost(claim("nonce-1", at(1)).await),
+        "a state is claimed once"
+    );
+    let row = store.connector_row(pending_id).await.unwrap().unwrap();
+    assert_eq!(row.oauth.and_then(|o| o.claimed_at), Some(at(1)));
+    // A release after a failed exchange lets the same state claim again; another nonce's
+    // release changes nothing.
+    store
+        .release_connect(owner, pending_id, "other".into())
+        .await
+        .unwrap();
+    assert!(lost(claim("nonce-1", at(1)).await));
+    store
+        .release_connect(owner, pending_id, "nonce-1".into())
+        .await
+        .unwrap();
+    claim("nonce-1", at(1)).await.unwrap();
+
+    // The exchange: a wrong nonce loses, the claimed one activates, and a second use loses.
     assert!(matches!(
         store
             .complete_connect(owner, pending_id, done("other", at(1)))
@@ -206,13 +247,18 @@ async fn connectors_and_the_due_query() {
     assert_eq!(row.secret, Some(sealed(b"sealed-token")));
     assert_eq!(row.next_sync_at, at(1), "due at once");
 
-    // An expired state loses too.
+    assert!(
+        lost(claim("nonce-1", at(2)).await),
+        "an active connector has no state"
+    );
+
+    // An expired state can't be claimed.
     let late = new_connector(&f, ConnectorKind::GoogleDrive);
     let late_id = late.id;
     store.create_connector(owner, late).await.unwrap();
     assert!(matches!(
         store
-            .complete_connect(owner, late_id, done("nonce-1", at(10)))
+            .claim_connect(owner, late_id, "nonce-1".into(), at(10))
             .await,
         Err(StoreError::Conflict(Conflict::AlreadyExists))
     ));
@@ -293,6 +339,10 @@ async fn connectors_and_the_due_query() {
                 cursors: BTreeMap::from([
                     ("C1".to_owned(), SyncCursor("1729000000.000100".into())),
                     ("C9".to_owned(), SyncCursor("dropped meanwhile".into())),
+                    (
+                        SYNC_STATE_KEY.to_owned(),
+                        SyncCursor(r#"{"round":2}"#.into()),
+                    ),
                 ]),
                 due_at: t0(),
                 synced_at: Some(at(2)),
@@ -305,10 +355,17 @@ async fn connectors_and_the_due_query() {
     let row = store.connector_row(seeded).await.unwrap().unwrap();
     assert_eq!(row.connector.synced_at, Some(at(2)));
     assert_eq!(row.next_sync_at, at(17));
+    let sync_state = (
+        SYNC_STATE_KEY.to_owned(),
+        SyncCursor(r#"{"round":2}"#.into()),
+    );
     assert_eq!(
         row.cursors,
-        BTreeMap::from([("C1".to_owned(), SyncCursor("1729000000.000100".into()))]),
-        "only chosen sources keep a cursor"
+        BTreeMap::from([
+            ("C1".to_owned(), SyncCursor("1729000000.000100".into())),
+            sync_state.clone(),
+        ]),
+        "only chosen sources keep a cursor, and the sync keeps its state"
     );
     assert!(
         due(at(20)).await.is_empty(),
@@ -322,7 +379,11 @@ async fn connectors_and_the_due_query() {
         .unwrap();
     assert_eq!(changed.sources, vec![source("C2", "spray-log")]);
     let row = store.connector_row(seeded).await.unwrap().unwrap();
-    assert!(row.cursors.is_empty(), "C1 was dropped");
+    assert_eq!(
+        row.cursors,
+        BTreeMap::from([sync_state]),
+        "C1 was dropped; the sync's state stays"
+    );
     assert_eq!(row.last_error, None);
     assert_eq!(due(at(21)).await, vec![seeded]);
 
@@ -802,11 +863,20 @@ async fn counts_cleanup_and_deletion() {
     let pending = new_connector(&f, ConnectorKind::GoogleDrive);
     let pending_id = pending.id;
     store.create_connector(owner, pending).await.unwrap();
-    assert_eq!(store.delete_expired_pending(t0()).await.unwrap(), 0);
+    assert_eq!(
+        store
+            .delete_expired_pending(t0(), t0().minus(CONNECT_CLAIM_HOLD))
+            .await
+            .unwrap(),
+        0
+    );
     let ten_minutes_on = t0().plus(PENDING_CONNECT_TTL).plus(Duration::from_secs(1));
     assert_eq!(
         store
-            .delete_expired_pending(ten_minutes_on.minus(PENDING_CONNECT_TTL))
+            .delete_expired_pending(
+                ten_minutes_on.minus(PENDING_CONNECT_TTL),
+                ten_minutes_on.minus(CONNECT_CLAIM_HOLD)
+            )
             .await
             .unwrap(),
         1
@@ -1088,6 +1158,81 @@ async fn sync_now_is_refused_on_a_stopped_connector() {
     );
 }
 
+/// Seeding again repairs an existing connector of its garden: the new sealed token, `active`
+/// and no `last_error`. Another garden's connector, one being deleted and one in a garden being
+/// deleted stay as they are.
+#[tokio::test]
+async fn seeding_again_repairs_the_connector_where_it_belongs() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let c = active_slack(&store, &f, f.garden).await;
+    let again = |f: &Fixture, token: &[u8]| {
+        let mut n = new_connector(f, ConnectorKind::Slack);
+        n.id = c;
+        n.status = ConnectorStatus::Active;
+        n.oauth = None;
+        n.secret = Some(sealed(token));
+        n
+    };
+    store
+        .set_status(
+            c,
+            ConnectorStatus::ReauthNeeded,
+            Some(SyncErrorCode::AuthRefused),
+        )
+        .await
+        .unwrap();
+    let seeded = store
+        .seed_connector(f.garden, again(&f, b"new-key-token"))
+        .await
+        .unwrap();
+    assert_eq!(seeded.status, ConnectorStatus::Active);
+    let row = store.connector_row(c).await.unwrap().unwrap();
+    assert_eq!(row.last_error, None);
+    assert_eq!(row.secret, Some(sealed(b"new-key-token")));
+    assert_eq!(
+        row.connector.sources.len(),
+        4,
+        "its sources are the owner's"
+    );
+
+    // Another garden: unchanged, and the result says where it lives.
+    let other = other_garden(&store, &f).await;
+    store
+        .set_status(
+            c,
+            ConnectorStatus::ReauthNeeded,
+            Some(SyncErrorCode::AuthRefused),
+        )
+        .await
+        .unwrap();
+    let seen = store
+        .seed_connector(other, again(&f, b"other-token"))
+        .await
+        .unwrap();
+    assert_eq!(seen.garden_id, f.garden);
+    assert_eq!(seen.status, ConnectorStatus::ReauthNeeded);
+    let row = store.connector_row(c).await.unwrap().unwrap();
+    assert_eq!(row.last_error, Some(SyncErrorCode::AuthRefused));
+    assert_eq!(row.secret, Some(sealed(b"new-key-token")));
+
+    // Its garden being deleted: unchanged.
+    let mut r = store
+        .db()
+        .query("UPDATE $garden SET deleting_at = time::now();")
+        .bind(("garden", rid(&f.garden)))
+        .await
+        .unwrap();
+    assert!(r.take_errors().is_empty());
+    store
+        .seed_connector(f.garden, again(&f, b"late-token"))
+        .await
+        .unwrap();
+    let row = store.connector_row(c).await.unwrap().unwrap();
+    assert_eq!(row.connector.status, ConnectorStatus::ReauthNeeded);
+    assert_eq!(row.secret, Some(sealed(b"new-key-token")));
+}
+
 /// Two Sync now requests at once: one is accepted, the other is too soon.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn racing_sync_requests_accept_exactly_one() {
@@ -1152,7 +1297,11 @@ async fn finish_sync_keeps_what_landed_during_the_run() {
     let row = store.connector_row(c).await.unwrap().unwrap();
     assert_eq!(row.next_sync_at, at(20), "the Sync now is not pushed out");
     assert_eq!(row.last_error, None);
-    assert_eq!(row.connector.synced_at, Some(at(36)));
+    assert_eq!(
+        row.connector.synced_at,
+        Some(at(16)),
+        "a run that overlapped a Sync now doesn't set synced_at"
+    );
 
     // New sources land during a run that stops on `too_large`: the wait isn't stored.
     let due_at = row.next_sync_at;
@@ -1167,15 +1316,35 @@ async fn finish_sync_keeps_what_landed_during_the_run() {
     let row = store.connector_row(c).await.unwrap().unwrap();
     assert_eq!(row.next_sync_at, at(40));
     assert_eq!(row.last_error, None, "the new sources run first");
+    assert_eq!(row.connector.synced_at, Some(at(16)));
     assert_eq!(
         store.due_connectors(at(41), 10).await.unwrap().len(),
         1,
         "still due"
     );
 
+    // A run that finished while new sources landed doesn't set synced_at: it didn't read them.
+    let due_at = row.next_sync_at;
+    store
+        .set_sources(
+            owner,
+            c,
+            vec![source("C2", "spray-log"), source("C3", "scouting")],
+            at(42),
+        )
+        .await
+        .unwrap();
+    store
+        .finish_sync(c, outcome(due_at, at(57), None))
+        .await
+        .unwrap();
+    let row = store.connector_row(c).await.unwrap().unwrap();
+    assert_eq!(row.connector.synced_at, Some(at(16)));
+    assert_eq!(row.next_sync_at, at(42));
+
     // Without anything landing, too_large is stored and stops the connector.
     store
-        .finish_sync(c, outcome(at(40), at(60), Some(SyncErrorCode::TooLarge)))
+        .finish_sync(c, outcome(at(42), at(60), Some(SyncErrorCode::TooLarge)))
         .await
         .unwrap();
     let row = store.connector_row(c).await.unwrap().unwrap();
@@ -1192,7 +1361,10 @@ async fn dropping_a_drive_folder_keeps_the_new_folders_records() {
     let mut d = new_connector(&f, ConnectorKind::GoogleDrive);
     d.status = ConnectorStatus::Active;
     d.oauth = None;
-    d.sources = vec![source("folder-2", "New records")];
+    d.sources = vec![
+        source("folder-1", "Old records"),
+        source("folder-2", "New records"),
+    ];
     let c = d.id;
     store.seed_connector(f.garden, d).await.unwrap();
     let mut old = record(c, "1aBcD", 0, "old", Some(one_hot(0)), t0());
@@ -1200,6 +1372,11 @@ async fn dropping_a_drive_folder_keeps_the_new_folders_records() {
     let mut new = record(c, "2eFgH", 0, "new", Some(one_hot(1)), t0());
     new.source = "folder-2".into();
     store.upsert_records(c, vec![old, new]).await.unwrap();
+    let owner = owner_of(&store, &f).await;
+    store
+        .set_sources(owner, c, vec![source("folder-2", "New records")], at(1))
+        .await
+        .unwrap();
     assert_eq!(
         store
             .delete_source_records(c, "folder-1".into())
@@ -1214,6 +1391,43 @@ async fn dropping_a_drive_folder_keeps_the_new_folders_records() {
             .unwrap(),
         vec!["2eFgH".to_owned()]
     );
+    assert_eq!(store.garden_record_count(f.garden).await.unwrap(), 1);
+}
+
+/// A record whose source the owner dropped while a sync still read it is not written; the
+/// others in the same upsert are.
+#[tokio::test]
+async fn an_upsert_skips_records_of_a_dropped_source() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let c = active_slack(&store, &f, f.garden).await;
+    store
+        .set_sources(owner, c, vec![source("C2", "spray-log")], at(1))
+        .await
+        .unwrap();
+    let written = store
+        .upsert_records(
+            c,
+            vec![
+                record(c, "C1/1.000100", 0, "dropped", Some(one_hot(0)), t0()),
+                record(c, "C2/1.000100", 0, "kept", Some(one_hot(1)), t0()),
+                // No vector and no stored row: it would be `missing_vector`, but its source
+                // is gone, so it is skipped before that check.
+                record(c, "C1/2.000100", 0, "dropped too", None, t0()),
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(written, 1, "only the kept record counts");
+    let ids = vec![
+        "C1/1.000100".into(),
+        "C2/1.000100".into(),
+        "C1/2.000100".into(),
+    ];
+    let stored = store.record_hashes(c, ids).await.unwrap();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0].0.vendor_id.to_string(), "C2/1.000100");
     assert_eq!(store.garden_record_count(f.garden).await.unwrap(), 1);
 }
 
@@ -1242,4 +1456,272 @@ async fn the_cleanup_leaves_old_drive_documents() {
         .unwrap();
     assert_eq!(left.len(), 1);
     assert_eq!(left[0].0.vendor_id.to_string(), "1aBcD");
+}
+
+/// A deletion revokes an account's token only when no other connector holds it: live
+/// (`active` or `reauth_needed`) `vendor` connectors of the same Slack team or Google account
+/// count, in any garden; the one being deleted, pending ones, those being deleted, `era`
+/// connectors and the other kind don't.
+#[tokio::test]
+async fn other_holders_of_an_accounts_token_are_counted() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let other = other_garden(&store, &f).await;
+    let other_owner = check_membership_of::<Owner>(&*store, f.user, other)
+        .await
+        .expect("the creator owns the second garden");
+    let here = active_slack(&store, &f, f.garden).await;
+    let there = active_slack(&store, &f, other).await;
+    let slack =
+        |except| store.shared_account_connectors(ConnectorKind::Slack, "T0123".to_owned(), except);
+    assert_eq!(slack(here).await.unwrap(), 1);
+    assert_eq!(
+        store
+            .shared_account_connectors(ConnectorKind::Slack, "T9999".into(), here)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        store
+            .shared_account_connectors(ConnectorKind::GoogleDrive, "T0123".into(), here)
+            .await
+            .unwrap(),
+        0,
+        "a Slack team is never a Google account"
+    );
+    store
+        .set_status(
+            there,
+            ConnectorStatus::ReauthNeeded,
+            Some(SyncErrorCode::AuthRefused),
+        )
+        .await
+        .unwrap();
+    assert_eq!(slack(here).await.unwrap(), 1);
+    store
+        .create_connector(owner, new_connector(&f, ConnectorKind::Slack))
+        .await
+        .unwrap();
+    store
+        .start_connector_deletion(other_owner, there)
+        .await
+        .unwrap();
+    assert_eq!(slack(here).await.unwrap(), 0);
+    assert_eq!(slack(there).await.unwrap(), 1);
+
+    // Google: keyed on the account's email; an `era` connector of the same account doesn't
+    // count, since its token is the simulator's.
+    let google = |id: ConnectorId, endpoint| {
+        let mut c = new_connector(&f, ConnectorKind::GoogleDrive);
+        c.id = id;
+        c.status = ConnectorStatus::Active;
+        c.endpoint = endpoint;
+        c.oauth = None;
+        c.account = Some(ConnectorAccount::GoogleDrive {
+            email: "farm@example.org".into(),
+        });
+        c.secret = Some(sealed(b"sealed-grant"));
+        c
+    };
+    let drive = f.ids.id();
+    let demo = f.ids.id();
+    store
+        .seed_connector(other, google(drive, ConnectorEndpoint::Vendor))
+        .await
+        .unwrap();
+    store
+        .seed_connector(other, google(demo, ConnectorEndpoint::Era))
+        .await
+        .unwrap();
+    let email = |except| {
+        store.shared_account_connectors(
+            ConnectorKind::GoogleDrive,
+            "farm@example.org".to_owned(),
+            except,
+        )
+    };
+    assert_eq!(email(drive).await.unwrap(), 0, "the era one doesn't count");
+    assert_eq!(email(demo).await.unwrap(), 1);
+}
+
+/// A3: two `complete`s claiming the same pending state at once: exactly one claims it, so the
+/// code is exchanged at most once.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn two_claims_at_once_spend_the_state_once() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let pending = new_connector(&f, ConnectorKind::GoogleDrive);
+    let id = pending.id;
+    store.create_connector(owner, pending).await.unwrap();
+    let (a, b) = tokio::join!(
+        store.claim_connect(owner, id, "nonce-1".into(), at(1)),
+        store.claim_connect(owner, id, "nonce-1".into(), at(1)),
+    );
+    let claimed = [&a, &b].iter().filter(|r| r.is_ok()).count();
+    assert_eq!(claimed, 1, "{a:?} {b:?}");
+    let lost = if a.is_ok() { b } else { a };
+    assert!(matches!(
+        lost,
+        Err(StoreError::Conflict(Conflict::AlreadyExists))
+    ));
+}
+
+/// A refreshed token is stored only over the sealed value it was refreshed from: of two
+/// refreshes racing from the same read, exactly one is stored; a stale read, or a connector
+/// being deleted, stores nothing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_refreshed_secret_replaces_only_the_value_it_was_read_from() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let c = active_slack(&store, &f, f.garden).await;
+    let read = sealed(b"sealed-token");
+
+    let (a, b) = tokio::join!(
+        store.replace_secret(c, read.clone(), sealed(b"refreshed-a")),
+        store.replace_secret(c, read.clone(), sealed(b"refreshed-b")),
+    );
+    let (a, b) = (a.unwrap(), b.unwrap());
+    assert!(a ^ b, "exactly one refresh is stored: {a} {b}");
+    let stored = store.connector_row(c).await.unwrap().unwrap().secret;
+    let winner = if a {
+        sealed(b"refreshed-a")
+    } else {
+        sealed(b"refreshed-b")
+    };
+    assert_eq!(stored, Some(winner.clone()));
+
+    assert!(
+        !store
+            .replace_secret(c, read, sealed(b"stale"))
+            .await
+            .unwrap(),
+        "a stale read stores nothing"
+    );
+    store.start_connector_deletion(owner, c).await.unwrap();
+    assert!(
+        !store
+            .replace_secret(c, winner.clone(), sealed(b"late"))
+            .await
+            .unwrap(),
+        "a connector being deleted keeps the token it is revoked with"
+    );
+    let missing: ConnectorId = f.ids.id();
+    assert!(
+        !store
+            .replace_secret(missing, winner, sealed(b"x"))
+            .await
+            .unwrap()
+    );
+}
+
+/// T-E3.6 (docs/EON): the cleanup's cutoff is 10 minutes before now. A pending connector
+/// started 11 minutes ago is gone after it; one started 9 minutes ago and an active one stay.
+/// So does one started 11 minutes ago whose state a `complete` claimed 2 minutes ago (audit of
+/// PR 72): its exchange may still be running, so it goes only `CONNECT_CLAIM_HOLD` after the
+/// claim.
+#[tokio::test]
+async fn pending_connectors_older_than_ten_minutes_are_cleaned_up() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let active = active_slack(&store, &f, f.garden).await;
+    let old = new_connector(&f, ConnectorKind::Slack);
+    let old_id = old.id;
+    store.create_connector(owner, old).await.unwrap();
+    let mut fresh = new_connector(&f, ConnectorKind::GoogleDrive);
+    fresh.created_at = at(2);
+    let fresh_id = fresh.id;
+    // A garden holds 2 connectors; the third goes to a second garden of the same owner.
+    let other = other_garden(&store, &f).await;
+    let other_owner = check_membership_of::<Owner>(&*store, f.user, other)
+        .await
+        .expect("the creator owns the second garden");
+    store.create_connector(other_owner, fresh).await.unwrap();
+    let claimed = new_connector(&f, ConnectorKind::Slack);
+    let claimed_id = claimed.id;
+    store.create_connector(other_owner, claimed).await.unwrap();
+    store
+        .claim_connect(other_owner, claimed_id, "nonce-1".into(), at(9))
+        .await
+        .unwrap();
+
+    let cleanup = |now: Timestamp| {
+        store.delete_expired_pending(
+            now.minus(PENDING_CONNECT_TTL),
+            now.minus(CONNECT_CLAIM_HOLD),
+        )
+    };
+    assert_eq!(cleanup(at(11)).await.unwrap(), 1);
+    assert!(store.connector_row(old_id).await.unwrap().is_none());
+    assert!(store.connector_row(fresh_id).await.unwrap().is_some());
+    assert!(store.connector_row(claimed_id).await.unwrap().is_some());
+    assert!(store.connector_row(active).await.unwrap().is_some());
+
+    // Over 10 minutes after the claim, the claimed one goes too (and the fresh one, now old).
+    assert_eq!(cleanup(at(20)).await.unwrap(), 2);
+    assert!(store.connector_row(claimed_id).await.unwrap().is_none());
+    assert!(store.connector_row(fresh_id).await.unwrap().is_none());
+    assert!(store.connector_row(active).await.unwrap().is_some());
+}
+
+/// T-E3.8 (docs/EON), on the embedded engine: what `PUT /connectors/{id}/sources` does when an
+/// owner drops a channel. The new sources are stored, then the dropped channel's records are
+/// deleted in batches; the kept channel's records stay.
+#[tokio::test]
+async fn dropping_a_channel_deletes_its_records_and_keeps_the_others() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let c = active_slack(&store, &f, f.garden).await;
+    store
+        .upsert_records(
+            c,
+            vec![
+                record(
+                    c,
+                    "C1/1.000100",
+                    0,
+                    "rings on tomatoes",
+                    Some(one_hot(0)),
+                    t0(),
+                ),
+                record(c, "C1/2.000100", 0, "bed 3 sprayed", Some(one_hot(1)), t0()),
+                record(c, "C2/1.000100", 0, "crew notes", Some(one_hot(2)), t0()),
+            ],
+        )
+        .await
+        .unwrap();
+    let kept = store
+        .set_sources(owner, c, vec![source("C2", "spray-log")], at(1))
+        .await
+        .unwrap();
+    assert_eq!(kept.sources, vec![source("C2", "spray-log")]);
+    let mut deleted = 0;
+    loop {
+        let n = store.delete_source_records(c, "C1".into()).await.unwrap();
+        if n == 0 {
+            break;
+        }
+        deleted += n;
+    }
+    assert_eq!(deleted, 2);
+    assert_eq!(
+        store
+            .source_vendor_ids_since(c, "C2".into(), t0())
+            .await
+            .unwrap(),
+        vec!["C2/1.000100".to_owned()]
+    );
+    assert_eq!(
+        store
+            .source_vendor_ids_since(c, "C1".into(), t0())
+            .await
+            .unwrap(),
+        Vec::<String>::new()
+    );
+    assert_eq!(store.garden_record_count(f.garden).await.unwrap(), 1);
 }
