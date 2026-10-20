@@ -8,14 +8,25 @@
 //!   (`oldest` is exclusive), so a quiet channel costs one `conversations.history` call.
 //! - `pass`: a pass with pages left: its `oldest`, Slack's page cursor and the newest `ts` seen
 //!   so far. A throttled first sync resumes from it on a later run, reading no page twice.
-//! - `threads`: per thread parent, its `latest_reply` and a short hash of its text when its
-//!   replies were last read. A parent seen again with both unchanged isn't sent again (its id is
-//!   [`FarmPage::kept`]) and costs no `conversations.replies` call.
+//! - `threads`: per thread parent, its `latest_reply`, its `reply_count` and a short hash of its
+//!   text when its replies were last read. A parent seen again with all three unchanged isn't
+//!   sent again (its id is [`FarmPage::kept`]) and costs no `conversations.replies` call. A
+//!   deleted reply changes `reply_count`, so the thread is read again; an edited reply changes
+//!   neither and is missed.
+//! - `probed`: the parent `ts` of the last older thread checked (below), the round-robin
+//!   position.
 //!
 //! The daily re-read ([`FarmPageRequest::reread_from`]) starts a pass from 7 days back. Slack's
 //! history never reports a deletion, so the sync deletes what that pass didn't see. A new reply
 //! to a thread shows in its parent's `latest_reply`, which a pass reads when the parent is in
 //! its window: a later pass when the parent is new, the daily re-read for the last 7 days.
+//!
+//! **Replies to older threads.** `conversations.history` lists a parent by its own time, so a
+//! reply to a thread whose parent is older than 7 days is seen by no pass. At the end of every
+//! pass the adapter therefore checks [`PROBES_PER_PASS`] threads from `threads` whose parent is
+//! older than 7 days and whose last reply is within 30 days, round-robin by `probed`, with
+//! `conversations.replies` and `limit=1`: the parent comes back first with its current
+//! `latest_reply` and `reply_count`, and the thread is read in full when either differs.
 //!
 //! Authors: `users.info` once per user and team a day, keeping one name ([`SlackUser::label`]),
 //! never the email. Links: built from the workspace URL `auth.test` gave at connect
@@ -40,6 +51,7 @@ use domain::{
     ports::{
         FarmItem, FarmPage, FarmPageRequest, FarmSource, FarmSourceError, SyncCursor, VendorToken,
     },
+    rules::limits::FARM_RECORD_KEEP,
     wire::Timestamp,
 };
 
@@ -50,6 +62,16 @@ use crate::farm::FarmClientError;
 ///
 /// [connectors 6]: ../../../docs/connectors/README.md#6-sync
 pub const REREAD_WINDOW: Duration = Duration::from_hours(7 * 24);
+
+/// Older threads checked for new replies at the end of each pass.
+pub const PROBES_PER_PASS: usize = 2;
+
+/// A thread's parent must be older than this to be checked by the round-robin (younger ones are
+/// in the daily re-read's window).
+const PROBE_PARENT_AGE: Duration = REREAD_WINDOW;
+
+/// A thread is checked only if its last reply is newer than this.
+const PROBE_REPLY_AGE: Duration = Duration::from_hours(30 * 24);
 
 /// How long an author's name is kept per team ([connectors 6]).
 ///
@@ -93,6 +115,9 @@ struct Cursor {
     /// Thread parent `ts` → what its replies were read at.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     threads: BTreeMap<String, Thread>,
+    /// The parent `ts` of the last older thread checked: the round-robin position.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    probed: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -110,6 +135,10 @@ struct Pass {
 struct Thread {
     /// The parent's `latest_reply` when the replies were read.
     latest_reply: String,
+    /// The parent's `reply_count` then: a deleted reply lowers it with `latest_reply` unchanged.
+    /// Cursors from before it was kept read as 0, so each thread is read once more.
+    #[serde(default)]
+    reply_count: u32,
     /// The first 8 bytes of the parent text's SHA-256, in hex: an edited parent is read again.
     text: String,
 }
@@ -256,6 +285,7 @@ impl SlackSource {
                 let latest = message.latest_reply.clone().unwrap_or_default();
                 let read = Thread {
                     latest_reply: latest,
+                    reply_count: message.reply_count,
                     text: short_hash(&message.text),
                 };
                 if cursor.threads.get(&message.ts) == Some(&read) {
@@ -270,6 +300,14 @@ impl SlackSource {
             };
             items.push(
                 self.item(token, team_id, url, &request.source, message, replies)
+                    .await?,
+            );
+        }
+
+        if history.next_cursor.is_none() {
+            let now = request.oldest.plus(FARM_RECORD_KEEP);
+            items.extend(
+                self.probe_older_threads(token, team_id, url, request, &mut cursor, now)
                     .await?,
             );
         }
@@ -300,6 +338,83 @@ impl SlackSource {
             cursor: cursor.into_sync_cursor(),
             more,
         })
+    }
+
+    /// Checks up to [`PROBES_PER_PASS`] older threads for replies no pass would see: the next
+    /// ones after `cursor.probed` among the threads whose parent is older than 7 days and whose
+    /// last reply is within 30 days of `now`. A thread whose `latest_reply` or `reply_count`
+    /// moved is read in full and returned as an item; one Slack no longer has is forgotten.
+    async fn probe_older_threads(
+        &self,
+        token: &SecretString,
+        team_id: &str,
+        url: &str,
+        request: &FarmPageRequest,
+        cursor: &mut Cursor,
+        now: Timestamp,
+    ) -> Result<Vec<FarmItem>, FarmClientError> {
+        let channel = request.source.id.as_str();
+        let parent_before = now.minus(PROBE_PARENT_AGE).unix_seconds();
+        let reply_after = now.minus(PROBE_REPLY_AGE).unix_seconds();
+        let secs = |ts: &str| i64::try_from(ts_key(ts).0).unwrap_or(0);
+        let mut due: Vec<&String> = cursor
+            .threads
+            .iter()
+            .filter(|(ts, t)| secs(ts) < parent_before && secs(&t.latest_reply) >= reply_after)
+            .map(|(ts, _)| ts)
+            .collect();
+        due.sort_by_key(|ts| ts_key(ts));
+        let after = cursor.probed.as_deref().map(ts_key);
+        let (later, earlier): (Vec<&String>, Vec<&String>) =
+            due.into_iter().partition(|ts| Some(ts_key(ts)) > after);
+        let chosen: Vec<String> = later
+            .into_iter()
+            .chain(earlier)
+            .take(PROBES_PER_PASS)
+            .cloned()
+            .collect();
+        let mut items = Vec::new();
+        for ts in chosen {
+            cursor.probed = Some(ts.clone());
+            let found = match self
+                .client
+                .conversations_thread_parent(token, team_id, channel, &ts)
+                .await
+            {
+                Ok(found) => found,
+                Err(FarmClientError::NotFound { .. }) => None,
+                Err(e) => return Err(e),
+            };
+            let Some(parent) = found else {
+                cursor.threads.remove(&ts);
+                continue;
+            };
+            let latest = parent.latest_reply.clone().unwrap_or_default();
+            let stored = cursor.threads.get(&ts);
+            if stored
+                .is_some_and(|t| t.latest_reply == latest && t.reply_count == parent.reply_count)
+            {
+                continue;
+            }
+            let replies = self.replies(token, team_id, channel, &ts).await?;
+            if parent.reply_count > 0 {
+                cursor.threads.insert(
+                    ts.clone(),
+                    Thread {
+                        latest_reply: latest,
+                        reply_count: parent.reply_count,
+                        text: short_hash(&parent.text),
+                    },
+                );
+            } else {
+                cursor.threads.remove(&ts);
+            }
+            items.push(
+                self.item(token, team_id, url, &request.source, parent, replies)
+                    .await?,
+            );
+        }
+        Ok(items)
     }
 
     /// A message with its replies joined, each reply on its own paragraph after its author's
@@ -494,6 +609,7 @@ mod tests {
             newest: Some("1.000100".into()),
             pass: None,
             threads: BTreeMap::new(),
+            probed: None,
         };
         let round = cursor.clone().into_sync_cursor();
         assert_eq!(round.0, r#"{"newest":"1.000100"}"#);
@@ -516,5 +632,249 @@ mod tests {
             ts_time("1791829800.012100").to_string(),
             "2026-10-12T18:30:00Z"
         );
+    }
+}
+
+/// The thread checks against a mock Slack: a deleted reply, and the round-robin over older
+/// threads (T-E4.2, gap G5).
+#[cfg(test)]
+mod threads {
+    use std::sync::{Arc, Mutex};
+
+    use serde_json::{Value, json};
+    use wiremock::{
+        Mock, MockServer, Request, ResponseTemplate,
+        matchers::{method, path},
+    };
+
+    use super::*;
+    use crate::slack::SlackConfig;
+
+    const DAY: i64 = 86_400;
+
+    fn now() -> Timestamp {
+        "2026-10-15T12:00:00Z".parse().expect("a timestamp")
+    }
+
+    fn days_ago(d: i64) -> String {
+        format!("{}.000100", now().unix_seconds() - d * DAY)
+    }
+
+    fn source(server: &MockServer) -> SlackSource {
+        let mut config = SlackConfig::era(server.uri());
+        config.timeout = Duration::from_secs(2);
+        SlackSource::new(SlackClient::new(reqwest::Client::new(), config))
+    }
+
+    fn request(cursor: Option<SyncCursor>) -> FarmPageRequest {
+        FarmPageRequest {
+            account: ConnectorAccount::Slack {
+                team_id: "T_MAPLE".into(),
+                team_name: "Maple Row Farm".into(),
+                url: "https://maplerow.slack.com/".into(),
+            },
+            source: ConnectorSource {
+                id: "C_FIELD".into(),
+                name: "field-reports".into(),
+            },
+            cursor,
+            oldest: now().minus(FARM_RECORD_KEEP),
+            reread_from: None,
+        }
+    }
+
+    fn parent(ts: &str, replies: u32, latest: &str) -> Value {
+        json!({ "ts": ts, "thread_ts": ts, "user": "U1", "text": "parent",
+                "reply_count": replies, "latest_reply": latest })
+    }
+
+    fn thread(latest: &str, reply_count: u32) -> Thread {
+        Thread {
+            latest_reply: latest.into(),
+            reply_count,
+            text: short_hash("parent"),
+        }
+    }
+
+    async fn users(server: &MockServer) {
+        Mock::given(path("/api/users.info"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({ "ok": true, "user": { "id": "U1", "name": "maria", "profile": {} } }),
+            ))
+            .mount(server)
+            .await;
+    }
+
+    /// `(ts, limit)` of every `conversations.replies` call.
+    type Calls = Arc<Mutex<Vec<(String, String)>>>;
+
+    /// Answers `conversations.replies` from `parents` (by `ts`): the parent alone for
+    /// `limit=1`, else the parent and one reply.
+    async fn replies(server: &MockServer, parents: Vec<(String, Value)>) -> Calls {
+        let calls: Calls = Arc::default();
+        let seen = calls.clone();
+        Mock::given(method("GET"))
+            .and(path("/api/conversations.replies"))
+            .respond_with(move |r: &Request| {
+                let q = |k: &str| {
+                    r.url
+                        .query_pairs()
+                        .find(|(key, _)| key == k)
+                        .map(|(_, v)| v.into_owned())
+                        .unwrap_or_default()
+                };
+                let (ts, limit) = (q("ts"), q("limit"));
+                seen.lock().unwrap().push((ts.clone(), limit.clone()));
+                let parent = parents
+                    .iter()
+                    .find(|(t, _)| *t == ts)
+                    .map(|(_, p)| p.clone());
+                let Some(parent) = parent else {
+                    return ResponseTemplate::new(200)
+                        .set_body_json(json!({ "ok": false, "error": "thread_not_found" }));
+                };
+                let mut messages = vec![parent];
+                if limit != "1" {
+                    messages.push(json!({ "ts": format!("{ts}1"), "thread_ts": ts,
+                                          "user": "U1", "text": "reply" }));
+                }
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({ "ok": true, "messages": messages }))
+            })
+            .mount(server)
+            .await;
+        calls
+    }
+
+    async fn history(server: &MockServer, messages: Vec<Value>) {
+        Mock::given(path("/api/conversations.history"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({ "ok": true, "messages": messages })),
+            )
+            .mount(server)
+            .await;
+    }
+
+    fn cursor_of(threads: Vec<(&str, Thread)>) -> SyncCursor {
+        Cursor {
+            threads: threads
+                .into_iter()
+                .map(|(ts, t)| (ts.to_owned(), t))
+                .collect(),
+            ..Cursor::default()
+        }
+        .into_sync_cursor()
+    }
+
+    #[tokio::test]
+    async fn a_deleted_reply_changes_the_count_and_reads_the_thread_again() {
+        let server = MockServer::start().await;
+        users(&server).await;
+        let (ts, latest) = (days_ago(1), days_ago(0));
+        history(&server, vec![parent(&ts, 1, &latest)]).await;
+        let calls = replies(&server, vec![(ts.clone(), parent(&ts, 1, &latest))]).await;
+        let source = source(&server);
+
+        // Same latest reply and same count: kept, no call.
+        let same = cursor_of(vec![(&ts, thread(&latest, 1))]);
+        let page = source.page(&token(), &request(Some(same))).await.unwrap();
+        assert_eq!(page.items.len(), 0);
+        assert_eq!(page.kept, [format!("C_FIELD/{ts}")]);
+        assert!(calls.lock().unwrap().is_empty());
+
+        // The count was 2: a reply was deleted, so the thread is read again.
+        let was_two = cursor_of(vec![(&ts, thread(&latest, 2))]);
+        let page = source
+            .page(&token(), &request(Some(was_two)))
+            .await
+            .unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert!(page.items[0].text.contains("reply"));
+        assert_eq!(page.kept.len(), 0);
+        let stored = Cursor::parse(Some(&page.cursor));
+        assert_eq!(stored.threads[&ts].reply_count, 1);
+    }
+
+    fn token() -> SecretString {
+        SecretString::from("xoxb-test")
+    }
+
+    #[tokio::test]
+    async fn older_threads_are_checked_two_a_pass_round_robin() {
+        let server = MockServer::start().await;
+        users(&server).await;
+        history(&server, Vec::new()).await;
+        // Three checkable threads (parent over 7 days old, reply within 30), one whose last
+        // reply is too old, and one whose parent is inside the re-read window.
+        let (p1, p2, p3) = (days_ago(60), days_ago(50), days_ago(40));
+        let stale = days_ago(90);
+        let young = days_ago(3);
+        let (l_old, l_new) = (days_ago(20), days_ago(2));
+        let mut answers = vec![
+            (p1.clone(), parent(&p1, 2, &l_new)), // a reply arrived
+            (p2.clone(), parent(&p2, 1, &l_old)),
+            (p3.clone(), parent(&p3, 1, &l_old)),
+            (stale.clone(), parent(&stale, 5, &l_new)),
+            (young.clone(), parent(&young, 5, &l_new)),
+        ];
+        answers.reverse();
+        let calls = replies(&server, answers).await;
+        let source = source(&server);
+        let start = cursor_of(vec![
+            (&p1, thread(&l_old, 1)),
+            (&p2, thread(&l_old, 1)),
+            (&p3, thread(&l_old, 1)),
+            (&stale, thread(&days_ago(45), 1)),
+            (&young, thread(&l_old, 1)),
+        ]);
+
+        // Pass 1 checks P1 and P2: P1 changed, so it is read in full and sent.
+        let page = source.page(&token(), &request(Some(start))).await.unwrap();
+        let probes = |calls: &Calls| -> Vec<String> {
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(_, limit)| limit == "1")
+                .map(|(ts, _)| ts.clone())
+                .collect()
+        };
+        assert_eq!(probes(&calls), [p1.clone(), p2.clone()]);
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].vendor_id, format!("C_FIELD/{p1}"));
+        let cursor = Cursor::parse(Some(&page.cursor));
+        assert_eq!(cursor.threads[&p1].reply_count, 2);
+        assert_eq!(cursor.probed.as_deref(), Some(p2.as_str()));
+
+        // Pass 2 continues with P3, then wraps to P1, which is unchanged now.
+        calls.lock().unwrap().clear();
+        let page = source
+            .page(&token(), &request(Some(page.cursor)))
+            .await
+            .unwrap();
+        assert_eq!(probes(&calls), [p3.clone(), p1.clone()]);
+        assert_eq!(page.items.len(), 0);
+        assert_eq!(
+            Cursor::parse(Some(&page.cursor)).probed.as_deref(),
+            Some(p1.as_str())
+        );
+    }
+
+    #[tokio::test]
+    async fn an_older_thread_slack_no_longer_has_is_forgotten() {
+        let server = MockServer::start().await;
+        users(&server).await;
+        history(&server, Vec::new()).await;
+        let calls = replies(&server, Vec::new()).await;
+        let p = days_ago(60);
+        let start = cursor_of(vec![(&p, thread(&days_ago(2), 1))]);
+        let page = source(&server)
+            .page(&token(), &request(Some(start)))
+            .await
+            .unwrap();
+        assert_eq!(calls.lock().unwrap().len(), 1);
+        assert_eq!(page.items.len(), 0);
+        assert!(Cursor::parse(Some(&page.cursor)).threads.is_empty());
     }
 }

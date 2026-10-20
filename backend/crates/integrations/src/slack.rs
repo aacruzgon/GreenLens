@@ -482,6 +482,25 @@ impl SlackClient {
         Err(too_many_pages("conversations.replies"))
     }
 
+    /// The parent of a thread and nothing else (`conversations.replies` with `limit=1`): one
+    /// call that shows its current `reply_count` and `latest_reply`. `None` when Slack returns
+    /// no message. Paced per `team_id`.
+    pub async fn conversations_thread_parent(
+        &self,
+        token: &SecretString,
+        team_id: &str,
+        channel: &str,
+        thread_ts: &str,
+    ) -> Result<Option<SlackMessage>, FarmClientError> {
+        let query = [("channel", channel), ("ts", thread_ts), ("limit", "1")];
+        let call = Call {
+            paced_team: Some(team_id),
+            ..Call::read("conversations.replies", token, &query)
+        };
+        let page: wire::Messages = self.call(&call).await?;
+        Ok(page.messages.into_iter().next().map(message))
+    }
+
     /// `users.info`: the user's names. Never the email, even when Slack sends one.
     pub async fn users_info(
         &self,
