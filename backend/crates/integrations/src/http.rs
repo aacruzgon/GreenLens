@@ -230,8 +230,10 @@ pub struct TransportError {
 }
 
 impl TransportError {
-    /// Wraps a `reqwest` error.
+    /// Wraps a `reqwest` error, without its URL: a URL's query can carry a token or a code,
+    /// and the error's `Display` and chain are logged.
     pub(crate) fn from_reqwest(e: reqwest::Error) -> Self {
+        let e = e.without_url();
         Self {
             timeout: e.is_timeout(),
             connect: e.is_connect(),
@@ -269,6 +271,29 @@ mod tests {
         );
         assert_eq!(p.delay(0, Some(Duration::from_secs(61))), None);
         assert_eq!(RetryPolicy::NONE.delay(0, None), Some(Duration::ZERO));
+    }
+
+    #[tokio::test]
+    async fn a_transport_error_does_not_carry_the_request_url() {
+        use std::fmt::Write as _;
+        // Nothing listens on port 1, so the request fails to connect.
+        let url = "http://127.0.0.1:1/path?token=s3cret&code=abc";
+        let e = reqwest::Client::new().get(url).send().await.unwrap_err();
+        assert!(
+            e.to_string().contains("s3cret"),
+            "the plain error has the URL"
+        );
+        let e = TransportError::from_reqwest(e);
+        let mut rendered = e.to_string();
+        let mut cause: Option<&(dyn std::error::Error + 'static)> = std::error::Error::source(&e);
+        while let Some(c) = cause {
+            let _ = write!(rendered, " / {c} / {c:?}");
+            cause = c.source();
+        }
+        for leak in ["s3cret", "code=abc", "token=", "?"] {
+            assert!(!rendered.contains(leak), "{leak} in {rendered}");
+        }
+        assert!(e.connect);
     }
 
     #[test]
