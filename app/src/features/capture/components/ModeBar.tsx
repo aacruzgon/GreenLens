@@ -1,11 +1,13 @@
 // The mode bar (roadmap F2 item 3; design 3.1; styles.css .modes): the shots as the Camera app's modes, WHOLE PLANT ·
-// CLOSE-UP · UNDERSIDE · SOIL · FRUIT, in a solid dark pill. The chosen one sits in a lighter pill in white and is
-// kept centred; a dot marks a stored shot. It replaces screens 3.2's row of shot chips. Each mode is a tab
+// CLOSE-UP · UNDERSIDE · SOIL · FRUIT, in a dark Liquid Glass pill like the Camera app's mode picker and home's
+// tab bar, or a solid dark pill where glass isn't drawn (design 3.1). The chosen one sits in a lighter pill in white
+// and is kept centred; a dot marks a stored shot. It replaces screens 3.2's row of shot chips. Each mode is a tab
 // (HIG segmented controls: one choice of a few, the selection always visible).
+import { GlassView } from "expo-glass-effect";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, View, type LayoutRectangle } from "react-native";
 
-import { Text, camera, useReducedMotion } from "@/ui";
+import { Text, camera, useGlass, useReducedMotion } from "@/ui";
 
 import type { ModeMark } from "../model/draft";
 import type { CaptureKind } from "../model/shotPlan";
@@ -50,6 +52,7 @@ function Mark({ mark }: { mark: ModeMark }) {
 
 export function ModeBar({ items, onSelect }: { items: ModeBarItem[]; onSelect: (kind: CaptureKind) => void }) {
   const reduced = useReducedMotion();
+  const glass = useGlass();
   const scroll = useRef<ScrollView>(null);
   const [barWidth, setBarWidth] = useState(0);
   const frames = useRef(new Map<CaptureKind, LayoutRectangle>());
@@ -62,12 +65,22 @@ export function ModeBar({ items, onSelect }: { items: ModeBarItem[]; onSelect: (
     scroll.current?.scrollTo({ x: Math.max(0, f.x - (barWidth - f.width) / 2), animated: !reduced });
   }, [chosen, barWidth, reduced]);
 
+  const Bar = glass ? GlassView : View;
   return (
-    <View
+    <Bar
       accessibilityRole="tablist"
       accessibilityLabel="Shot"
       onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
-      style={{ alignSelf: "center", maxWidth: "100%", borderRadius: 999, backgroundColor: camera.pill, borderWidth: 1, borderColor: camera.hairline }}
+      {...(glass ? { glassEffectStyle: "regular" as const, colorScheme: "dark" as const, tintColor: camera.glassTint } : {})}
+      style={{
+        alignSelf: "center",
+        maxWidth: "100%",
+        borderRadius: 999,
+        overflow: "hidden",
+        backgroundColor: glass ? undefined : camera.pill,
+        borderWidth: glass ? 0 : 1,
+        borderColor: camera.hairline,
+      }}
     >
       {/* A ScrollView grows to fill its parent by default (flexGrow 1); the bar is one row. */}
       <ScrollView
@@ -114,6 +127,6 @@ export function ModeBar({ items, onSelect }: { items: ModeBarItem[]; onSelect: (
           );
         })}
       </ScrollView>
-    </View>
+    </Bar>
   );
 }

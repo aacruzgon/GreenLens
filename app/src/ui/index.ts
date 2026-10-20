@@ -1,6 +1,7 @@
 // The ui layer's public surface (docs/frontend/README.md 14). Features import from "@/ui" only.
 export * from "./tokens";
 export { ThemeProvider, useTheme, useReducedMotion, useSystemReducedMotion, type Theme, type ThemeProviderProps } from "./theme";
+export { useGlass, useSystemReducedTransparency } from "./glass";
 export { DISPLAY_FAMILY, useDisplayFontLoaded, displayFamily } from "./fonts";
 
 export { Text, type TextProps, type TextVariant } from "./primitives/Text";

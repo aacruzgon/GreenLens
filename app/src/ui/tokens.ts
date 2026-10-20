@@ -66,6 +66,11 @@ export const camera = {
   /** Solid pills and cards: the mode bar, the hint, the drop card (at 92%: .cap-sheet). */
   pill: "#1C1C1E",
   card: "rgba(28, 28, 30, 0.92)",
+  /**
+   * The mode bar's dark tint over Liquid Glass, so its labels stay readable when a bright scene lightens the glass.
+   * Not yet measured over a sunny garden on a phone.
+   */
+  glassTint: "rgba(28, 28, 30, 0.45)",
   /** The chosen mode's pill (.mode.on). */
   selected: "#3A3A3C",
   /** A hairline on the pills and cards. */
