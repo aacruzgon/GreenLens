@@ -25,10 +25,10 @@ use domain::{
     garden::gardens::TimeZone,
     id::{AuthId, ConnectorId, FarmRecordId, GardenId, UserId},
     ports::{
-        Clock, EmbedMode, Embedding, EmbeddingModel, FarmItem, FarmPage, FarmPageRequest,
-        FarmRecordStore, FarmSource, FarmSourceError, FarmVector, GardenRepo, IdGenExt,
-        IdentityRepo, ModelError, NewConnector, NewFarmRecord, NewGarden, ResolvedLocation,
-        SyncCursor, TextEmbedder, VendorToken,
+        Clock, DeletionRepo, EmbedMode, Embedding, EmbeddingModel, FarmItem, FarmPage,
+        FarmPageRequest, FarmRecordStore, FarmSource, FarmSourceError, FarmVector, GardenRepo,
+        IdGenExt, IdentityRepo, ModelError, NewConnector, NewFarmRecord, NewGarden,
+        ResolvedLocation, SyncCursor, TextEmbedder, VendorToken,
     },
     records::weather::{Coordinates, LocationPrecision},
     rules::limits::{FARM_RECORD_KEEP, MAX_FARM_RECORDS_PER_GARDEN},
@@ -1086,4 +1086,102 @@ async fn shutdown_interrupts_a_page_in_flight_and_leaves_the_connector_due() {
     let row = b.row(id).await;
     assert_eq!(row.next_sync_at, pinned(), "still due on the next start");
     assert_eq!(b.count(owner.1).await, 0);
+}
+
+#[tokio::test]
+async fn seeding_repairs_the_connectors_under_the_current_key() {
+    let store = store().await;
+    let ids = SequentialIds::default();
+    let (_, garden) = garden(&store, &ids, "maple").await;
+    let clock = FixedClock::at(pinned());
+    let seed = EraSeed {
+        slack_base: "http://era-slack:8080".into(),
+        garden,
+    };
+    let id: ConnectorId = seed::ERA_SLACK_CONNECTOR.parse().expect("id");
+    seed::seed_era_connectors(store.as_ref(), &key(), &clock, &seed)
+        .await
+        .expect("seeded");
+    store
+        .set_status(
+            id,
+            ConnectorStatus::ReauthNeeded,
+            Some(SyncErrorCode::AuthRefused),
+        )
+        .await
+        .expect("stopped");
+
+    // The next start has another key.
+    let rotated = ConnectorKey::from_bytes([7; 32]);
+    assert_eq!(
+        seed::seed_era_connectors(store.as_ref(), &rotated, &clock, &seed)
+            .await
+            .expect("seeded"),
+        Seeded::Done
+    );
+    let row = store
+        .connector_row(id)
+        .await
+        .expect("read")
+        .expect("exists");
+    assert_eq!(row.connector.status, ConnectorStatus::Active);
+    assert_eq!(row.last_error, None);
+    let opened = rotated
+        .unseal(SealPurpose::Token, id, &row.secret.expect("sealed"))
+        .expect("opens under the new key");
+    assert_eq!(opened.expose_secret(), seed::ERA_SLACK_TOKEN.as_bytes());
+}
+
+#[tokio::test]
+async fn seeding_reports_a_connector_in_another_garden_and_leaves_it() {
+    let store = store().await;
+    let ids = SequentialIds::default();
+    let (_, first) = garden(&store, &ids, "first").await;
+    let (_, second) = garden(&store, &ids, "second").await;
+    let clock = FixedClock::at(pinned());
+    let seed = |garden| EraSeed {
+        slack_base: "http://era-slack:8080".into(),
+        garden,
+    };
+    seed::seed_era_connectors(store.as_ref(), &key(), &clock, &seed(first))
+        .await
+        .expect("seeded");
+    assert_eq!(
+        seed::seed_era_connectors(store.as_ref(), &key(), &clock, &seed(second))
+            .await
+            .expect("no error"),
+        Seeded::Elsewhere(first)
+    );
+    let id: ConnectorId = seed::ERA_SLACK_CONNECTOR.parse().expect("id");
+    let row = store
+        .connector_row(id)
+        .await
+        .expect("read")
+        .expect("exists");
+    assert_eq!(row.connector.garden_id, first);
+}
+
+#[tokio::test]
+async fn seeding_skips_a_garden_whose_deletion_is_under_way() {
+    let store = store().await;
+    let ids = SequentialIds::default();
+    let (user, garden) = garden(&store, &ids, "maple").await;
+    let owner = check_membership_of(store.as_ref(), user, garden)
+        .await
+        .expect("owner");
+    store
+        .start_garden_deletion(owner, pinned())
+        .await
+        .expect("deletion started");
+    let clock = FixedClock::at(pinned());
+    let seed = EraSeed {
+        slack_base: "http://era-slack:8080".into(),
+        garden,
+    };
+    assert_eq!(
+        seed::seed_era_connectors(store.as_ref(), &key(), &clock, &seed)
+            .await
+            .expect("no error"),
+        Seeded::NoGarden
+    );
 }

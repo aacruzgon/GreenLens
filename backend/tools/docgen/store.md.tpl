@@ -521,7 +521,7 @@ The fragments that write observations (replacement per image, [database 5](../da
 | Method | Statement |
 |---|---|
 | `create_connector` | `CREATE_CONNECTOR`: bumps `garden.connector_rev` first, so creates racing on a garden conflict and the retry meets `connector_limit` (`Rejected(InvalidState)`) when the garden holds 2 connectors besides those being deleted |
-| `seed_connector` | `SEED_CONNECTOR`: creates the fixed id only when it is free, so every start may run it |
+| `seed_connector` | `SEED_CONNECTOR`: creates the fixed id when it is free; otherwise, for a connector of this garden that is not being deleted (and whose garden is not), re-seals the token and sets `active` with no `last_error`; one elsewhere stays as it is. Every start may run it |
 | `connectors`, `connector_row` | `CONNECTORS` (oldest first, without `deleting`), `CONNECTOR_ROW`; `record_count` is counted per connector on `farm_record_connector`. The sealed `secret` and `oauth` are read by `SurrealValue` and removed before the JSON decode of `Connector` |
 | `complete_connect` | `COMPLETE_CONNECT`: a compare-and-set on `status = 'pending'`, the nonce and `expires_at`; `Conflict(AlreadyExists)` when it lost |
 | `set_sources` | `SET_SOURCES`: the chosen sources' cursors kept (`object::entries` filtered with a closure), `too_large` and `source_missing` cleared, due now |

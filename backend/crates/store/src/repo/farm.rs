@@ -94,11 +94,20 @@ CREATE $connector CONTENT $row;
 SELECT ", connector_fields!(), " FROM ONLY $connector;
 COMMIT;"
     );
-    /// Start-up seeding: creates the connector only when its fixed id is free, so every start
-    /// may run it.
+    /// Start-up seeding: creates the connector when its fixed id is free; otherwise repairs
+    /// it, so every start may run it. A connector that exists in this garden and isn't being
+    /// deleted gets the freshly sealed token (a new `CONNECTOR_KEY` makes the old one useless),
+    /// `status` `active` and no `last_error`. One in another garden, or being deleted, or in a
+    /// garden being deleted, is left as it is; the caller sees its garden in the result.
     pub const SEED_CONNECTOR: &str = concat!(
         "BEGIN;
-IF (SELECT VALUE id FROM ONLY $connector) = NONE { CREATE $connector CONTENT $row; };
+LET $c = (SELECT garden, status FROM ONLY $connector);
+LET $dying = (SELECT VALUE deleting_at FROM ONLY $garden);
+IF $c = NONE { CREATE $connector CONTENT $row; }
+ELSE IF $c.garden = $garden AND $c.status != 'deleting' AND $dying = NONE {
+  UPDATE $connector SET status = $row.status, last_error = NONE,
+    secret = IF $row.secret = NONE { secret } ELSE { $row.secret };
+};
 SELECT ",
         connector_fields!(),
         " FROM ONLY $connector;
@@ -573,6 +582,7 @@ impl FarmRecordStore for SurrealStore {
         let row = ConnectorWriteRow::new(garden, &connector).map_err(|e| e.into_store(WHAT))?;
         let mut r = run_tx(&self.db, sql::SEED_CONNECTOR, |q| {
             q.bind(("connector", rid(&connector.id)))
+                .bind(("garden", rid(&garden)))
                 .bind(("row", row.clone()))
         })
         .await

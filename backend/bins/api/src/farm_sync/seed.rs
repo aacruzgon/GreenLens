@@ -1,8 +1,12 @@
 //! Start-up seeding of the demo garden's `era` connectors ([connectors 9.4], docs/EON E4.6 and
 //! gap G4). It runs after `deletions.resume()`, on every start, and only when connectors are on
 //! (`CONNECTOR_KEY`) and `ERA_SLACK_BASE`, `ERA_GOOGLE_BASE` and `ERA_DEMO_GARDEN_ID` are all
-//! set. Each connector has a fixed id, and the store creates it only when that id is free, so a
-//! second start changes nothing. Their tokens are the fixed strings the simulators accept in open
+//! set. Each connector has a fixed id. The store creates it when that id is free; when it exists
+//! in the demo garden it is repaired on every start: the token is sealed again under the current
+//! `CONNECTOR_KEY` (a rotated key would otherwise leave the demo unable to sync), `status` goes
+//! back to `active` and `last_error` is cleared. A connector with that id in another garden is
+//! left alone and logged as a warning ([`Seeded::Elsewhere`]); a garden being deleted has no
+//! owner to the store, so it is skipped like one that doesn't exist yet. Their tokens are the fixed strings the simulators accept in open
 //! mode, sealed under `CONNECTOR_KEY` like any token. No route can create an `era` connector.
 //!
 //! The garden is the one `ERA_DEMO_GARDEN_ID` names: E9.0 creates it through the API, so its
@@ -53,8 +57,11 @@ pub struct EraSeed {
 /// What seeding did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Seeded {
-    /// Both connectors exist (created now or before).
+    /// Both connectors exist in the demo garden (created or repaired now).
     Done,
+    /// A connector with a fixed id lives in another garden and was left as it was; this is
+    /// that garden. The demo garden is missing it.
+    Elsewhere(GardenId),
     /// The garden has no owner (it doesn't exist yet): nothing was created.
     NoGarden,
 }
@@ -83,6 +90,11 @@ pub async fn at_start(state: &AppState) {
     let p = &state.ports;
     match seed_era_connectors(p.store.as_ref(), key, p.clock.as_ref(), &seed).await {
         Ok(Seeded::Done) => tracing::info!(%garden, "era connectors seeded"),
+        Ok(Seeded::Elsewhere(other)) => tracing::warn!(
+            %garden,
+            %other,
+            "era connectors not seeded: a connector with a fixed id lives in another garden"
+        ),
         Ok(Seeded::NoGarden) => tracing::info!(
             %garden,
             "era connectors not seeded: the demo garden has no owner yet; the next start seeds it"
@@ -91,7 +103,8 @@ pub async fn at_start(state: &AppState) {
     }
 }
 
-/// Creates the two `era` connectors if their ids are free.
+/// Creates the two `era` connectors if their ids are free, and repairs those that exist in the
+/// demo garden (token sealed under `key`, `status` active, no `last_error`).
 pub async fn seed_era_connectors(
     store: &dyn Store,
     key: &ConnectorKey,
@@ -126,6 +139,7 @@ pub async fn seed_era_connectors(
             ERA_DRIVE_TOKEN,
         ),
     ];
+    let mut elsewhere = None;
     for (id, kind, account, sources, token) in connectors {
         let connector = NewConnector {
             id,
@@ -139,9 +153,12 @@ pub async fn seed_era_connectors(
             sources,
             created_at: now,
         };
-        store.seed_connector(seed.garden, connector).await?;
+        let stored = store.seed_connector(seed.garden, connector).await?;
+        if stored.garden_id != seed.garden {
+            elsewhere = Some(stored.garden_id);
+        }
     }
-    Ok(Seeded::Done)
+    Ok(elsewhere.map_or(Seeded::Done, Seeded::Elsewhere))
 }
 
 /// The garden's first owner, in the store's member order; `None` when it has none.

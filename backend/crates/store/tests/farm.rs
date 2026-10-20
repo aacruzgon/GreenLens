@@ -1088,6 +1088,81 @@ async fn sync_now_is_refused_on_a_stopped_connector() {
     );
 }
 
+/// Seeding again repairs an existing connector of its garden: the new sealed token, `active`
+/// and no `last_error`. Another garden's connector, one being deleted and one in a garden being
+/// deleted stay as they are.
+#[tokio::test]
+async fn seeding_again_repairs_the_connector_where_it_belongs() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let c = active_slack(&store, &f, f.garden).await;
+    let again = |f: &Fixture, token: &[u8]| {
+        let mut n = new_connector(f, ConnectorKind::Slack);
+        n.id = c;
+        n.status = ConnectorStatus::Active;
+        n.oauth = None;
+        n.secret = Some(sealed(token));
+        n
+    };
+    store
+        .set_status(
+            c,
+            ConnectorStatus::ReauthNeeded,
+            Some(SyncErrorCode::AuthRefused),
+        )
+        .await
+        .unwrap();
+    let seeded = store
+        .seed_connector(f.garden, again(&f, b"new-key-token"))
+        .await
+        .unwrap();
+    assert_eq!(seeded.status, ConnectorStatus::Active);
+    let row = store.connector_row(c).await.unwrap().unwrap();
+    assert_eq!(row.last_error, None);
+    assert_eq!(row.secret, Some(sealed(b"new-key-token")));
+    assert_eq!(
+        row.connector.sources.len(),
+        2,
+        "its sources are the owner's"
+    );
+
+    // Another garden: unchanged, and the result says where it lives.
+    let other = other_garden(&store, &f).await;
+    store
+        .set_status(
+            c,
+            ConnectorStatus::ReauthNeeded,
+            Some(SyncErrorCode::AuthRefused),
+        )
+        .await
+        .unwrap();
+    let seen = store
+        .seed_connector(other, again(&f, b"other-token"))
+        .await
+        .unwrap();
+    assert_eq!(seen.garden_id, f.garden);
+    assert_eq!(seen.status, ConnectorStatus::ReauthNeeded);
+    let row = store.connector_row(c).await.unwrap().unwrap();
+    assert_eq!(row.last_error, Some(SyncErrorCode::AuthRefused));
+    assert_eq!(row.secret, Some(sealed(b"new-key-token")));
+
+    // Its garden being deleted: unchanged.
+    let mut r = store
+        .db()
+        .query("UPDATE $garden SET deleting_at = time::now();")
+        .bind(("garden", rid(&f.garden)))
+        .await
+        .unwrap();
+    assert!(r.take_errors().is_empty());
+    store
+        .seed_connector(f.garden, again(&f, b"late-token"))
+        .await
+        .unwrap();
+    let row = store.connector_row(c).await.unwrap().unwrap();
+    assert_eq!(row.connector.status, ConnectorStatus::ReauthNeeded);
+    assert_eq!(row.secret, Some(sealed(b"new-key-token")));
+}
+
 /// Two Sync now requests at once: one is accepted, the other is too soon.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn racing_sync_requests_accept_exactly_one() {
