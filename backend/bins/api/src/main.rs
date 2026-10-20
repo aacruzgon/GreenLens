@@ -2,41 +2,19 @@
 //! the job broker, the scheduler and the deletion runner.
 //!
 //! `api` serves; `api openapi` prints the `OpenAPI` document (written to `backend/openapi.json`,
-//! from which the app's TypeScript types are generated).
-
-mod broker;
-mod config;
-mod deletion;
-mod error;
-mod events;
-mod extract;
-mod limits;
-mod media;
-mod openapi;
-mod push;
-mod reply;
-mod router;
-mod routes;
-mod scheduler;
-mod sealing;
-mod seams;
-mod signing;
-mod state;
-mod uploads;
-mod wiring;
-mod workers;
-
-#[cfg(test)]
-mod tests;
+//! from which the app's TypeScript types are generated). The modules live in the library target
+//! (`lib.rs`), so `backend/tools/era-eval` can run the farm sync too.
 
 use std::io::Write as _;
 
 use anyhow::Context as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
+use api::{config, farm_sync, router, scheduler, wiring};
+
 /// Start-up in order: tracing; configuration; the ports (store with schema, blob, adapters,
-/// models, the species photo index); resumed deletions; the scheduler; then serve until a signal,
-/// and drain.
+/// models, the species photo index); resumed deletions; the demo garden's `era` connectors; the
+/// scheduler; then serve until a signal, and drain.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     if std::env::args().nth(1).as_deref() == Some("openapi") {
@@ -58,6 +36,7 @@ async fn main() -> anyhow::Result<()> {
     if resumed > 0 {
         tracing::info!(resumed, "deletions resumed");
     }
+    farm_sync::seed::at_start(&state).await;
     scheduler::start(&state);
     let deletes = state.deletes.clone();
     tokio::spawn(signal(shutdown.clone()));
@@ -136,5 +115,27 @@ async fn until_signal(name: &str, signal: impl Future<Output = std::io::Result<(
     if let Err(error) = signal.await {
         tracing::error!(signal = name, %error, "signal handler not installed");
         std::future::pending::<()>().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    #[tokio::test(start_paused = true)]
+    async fn a_signal_handler_that_fails_to_install_never_fires() {
+        let failed = super::until_signal(
+            "test",
+            std::future::ready(Err(std::io::Error::other("no handler"))),
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_secs(3600), failed)
+                .await
+                .is_err()
+        );
+        let delivered = super::until_signal("test", std::future::ready(Ok(())));
+        tokio::time::timeout(Duration::from_secs(1), delivered)
+            .await
+            .unwrap();
     }
 }

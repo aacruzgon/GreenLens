@@ -17,7 +17,7 @@ use std::{
 };
 
 use integrations::{
-    era_sim::{Faults, SimKind, Tenant, fixture},
+    era_sim::{ERA_TIMEOUT, Faults, SimKind, Tenant, fidelity, fixture},
     farm::{FarmClientError, FarmErrorCode},
     google_drive::{DriveClient, DriveConfig, DriveFile, ExportFormat, FileKind},
     http::{RetryPolicy, SecretString},
@@ -37,7 +37,7 @@ fn drive(tenant: &Tenant, retry: RetryPolicy, page_size: u32) -> DriveClient {
             revoke_url: format!("{}/o/oauth2/revoke", tenant.base()),
             retry,
             page_size,
-            ..DriveConfig::default()
+            timeout: ERA_TIMEOUT,
         },
     )
 }
@@ -65,6 +65,12 @@ async fn with_faults(faults: Value, body: impl Future<Output = ()> + Send + 'sta
 #[tokio::test]
 #[ignore = "needs Era's simulators"]
 async fn era_drive_reads_the_farm_folder_and_its_changes() {
+    // A legacy-fidelity simulator has too few changes for a second page (EON section 3).
+    assert_eq!(
+        fidelity(SimKind::Drive).await,
+        "high",
+        "start the Drive simulator with -e SIMCORE_FIDELITY=high, each setting its own -e"
+    );
     let tenant = Tenant::create(SimKind::Drive, Some(&maple_row())).await;
     // Two files a page, so the folder's five files take three pages.
     let client = drive(&tenant, RetryPolicy::STANDARD, 2);

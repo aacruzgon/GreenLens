@@ -10,6 +10,11 @@
 # That is why pull requests use pull_request_target, not pull_request; never check out the pull
 # request's head in this job, and never drop the branches filter. The text is untrusted: it reaches
 # the script only through the event file, never through an expression in a shell command.
+#
+# It runs where ci.yml's light jobs do: the runners named in LIGHT_RUNNER_LABELS, else
+# RUNNER_LABELS, else GitHub's ubuntu-26.04 (docs/infra/README.md section 2). On the rig, earlier pull-request jobs ran as the same user, so the webhook
+# URLs reach a runner that pull-request code could have tampered with (docs/infra/discord-mentions.md
+# section 4). A leaked webhook can only post to its channel.
 name: Discord mentions
 
 on:
@@ -45,12 +50,17 @@ jobs:
                    format(' {0} ', github.event.issue.user.login)) ||
           contains(format(' {0} {1} {2} {3} ', vars.GH_USER_SARAH, vars.GH_USER_SAM, vars.GH_USER_ALAN, vars.GH_USER_MARK),
                    format(' @{0} ', github.event.issue.user.login))))))
-    runs-on: ubuntu-26.04
+    runs-on: ${{ fromJSON(vars.LIGHT_RUNNER_LABELS || vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 5
     steps:
+      # Its own directory, so its own .git. On a self-hosted runner every workflow shares one workspace,
+      # and a non-cone sparse checkout writes core.sparseCheckout=true into that repository's config.
+      # The next ci.yml checkout then "disables" sparse checkout in a worktree config it immediately
+      # drops, so the old pattern returns and its jobs start with only this script on disk.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.repository.default_branch }}
+          path: discord-mentions
           sparse-checkout: .github/scripts/discord_mentions.py
           sparse-checkout-cone-mode: false
           persist-credentials: false
@@ -64,4 +74,4 @@ jobs:
           DISCORD_WEBHOOK_SAM: ${{ secrets.DISCORD_WEBHOOK_SAM }}
           DISCORD_WEBHOOK_ALAN: ${{ secrets.DISCORD_WEBHOOK_ALAN }}
           DISCORD_WEBHOOK_MARK: ${{ secrets.DISCORD_WEBHOOK_MARK }}
-        run: python3 .github/scripts/discord_mentions.py "$GITHUB_EVENT_PATH"
+        run: python3 discord-mentions/.github/scripts/discord_mentions.py "$GITHUB_EVENT_PATH"

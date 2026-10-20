@@ -1,7 +1,10 @@
 # The build context is backend/. Everything the crates embed (migrations/, openapi.json,
 # fixtures/, testdata/, bioclip_templates.json) lives inside it and must stay in the context.
 target/
-tools/
+# tools/ holds the docs generator and the like, but era-eval is a workspace member, so cargo
+# needs its manifest and sources to load the workspace (docs/EON E8).
+tools/*
+!tools/era-eval/
 # tests/ holds the Era fixtures, which tests read at run time and nothing embeds.
 tests/
 .git

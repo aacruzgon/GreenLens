@@ -1,0 +1,96 @@
+# Published field datasets for the evaluation set (`python -m ml.training.eval.fieldsets`,
+# evaluation.md §2). They fill the tomato and corn diseases the team can't photograph in October
+# and iNaturalist doesn't have (inat_targets.yaml).
+#
+# Rules for a set listed here:
+#   - It is not a training source (ml/training/data/sources.yaml), and it never becomes one: a
+#     test fails if a dataset id appears in both files.
+#   - Its licence allows reuse with credit. Each case records the licence and the citation.
+#   - Only folders of original photos: no augmented copies, no crops of other photos.
+#
+#   name               a short name; it prefixes the case ids
+#   dataset, version   Mendeley Data's id and version (read with its public API on 2026-10-19)
+#   taken              where and when, from the dataset's description
+#   classes            folder -> species_id, problems, outcome, optional note for the reviewer;
+#                      classes the knowledge base doesn't have are left out
+
+sets:
+  - name: maize-bd-2026
+    title: An Open-Source Multi-Format Maize Leaf Image Dataset for Disease Detection and Classification
+    dataset: sb4wwjs8bz
+    version: 1
+    licence: CC BY 4.0
+    citation: "Rabbany G., Hashi U., Rahman M., Adnan M. (2026) Mendeley Data V1, doi:10.17632/sb4wwjs8bz.1"
+    taken: maize fields in Bangladesh, June 2026; published 2026-08-04, after every model we use was trained
+    classes:
+      "maize (corn) leaf images/RAW_Image/Common_Rust":
+        {species_id: corn, problems: [corn_common_rust], outcome: diagnosed}
+      "maize (corn) leaf images/RAW_Image/Gray_Leaf_Spot":
+        {species_id: corn, problems: [corn_gray_leaf_spot], outcome: diagnosed}
+      "maize (corn) leaf images/RAW_Image/Corn_Leaf_Blight":
+        species_id: corn
+        problems: [corn_northern_leaf_blight]
+        outcome: diagnosed
+        note: >-
+          The set's description names both northern and southern corn leaf blight. Keep the long,
+          grey-green to tan, cigar-shaped lesions (northern); skip small rectangular lesions held
+          between the veins (southern, which the knowledge base doesn't have).
+      "maize (corn) leaf images/RAW_Image/Healthy_Leaf":
+        {species_id: corn, problems: [], outcome: healthy}
+
+  - name: tomato-bd-2025
+    title: Tomato Leaf Disease Classification Dataset
+    dataset: jttrv2w27r
+    version: 2
+    licence: CC BY 4.0
+    citation: "Rachin N., Likhon N. (2025) Mendeley Data V2, doi:10.17632/jttrv2w27r.2"
+    taken: fields across Bangladesh, March 10-20, 2025
+    classes:
+      "Tomato Dataset/Early Blight":
+        {species_id: tomato, problems: [tomato_early_blight], outcome: diagnosed}
+      "Tomato Dataset/Late Blight":
+        {species_id: tomato, problems: [tomato_late_blight], outcome: diagnosed}
+      "Tomato Dataset/Bacteiral Spot":
+        {species_id: tomato, problems: [tomato_bacterial_spot], outcome: diagnosed}
+      "Tomato Dataset/Yellow Leaf Curl Virus":
+        {species_id: tomato, problems: [tomato_yellow_leaf_curl_virus], outcome: diagnosed}
+      "Tomato Dataset/Healthy":
+        {species_id: tomato, problems: [], outcome: healthy}
+
+  - name: tomato-bd-iphone-2025
+    title: Tomato leaf diseases
+    dataset: 93h9p62kg4
+    version: 1
+    licence: CC BY 4.0
+    citation: "Hossain I., Haque K., Rafi A., Talukder M. (2025) Mendeley Data V1, doi:10.17632/93h9p62kg4.1"
+    taken: Khagan and Charabag, Bangladesh, on an iPhone 11; published 2025-03-10
+    classes:
+      "Tomato Leaf/Early Blight":
+        {species_id: tomato, problems: [tomato_early_blight], outcome: diagnosed}
+      "Tomato Leaf/Late Blight":
+        {species_id: tomato, problems: [tomato_late_blight], outcome: diagnosed}
+      "Tomato Leaf/Leaf Mold":
+        {species_id: tomato, problems: [tomato_leaf_mold], outcome: diagnosed}
+      "Tomato Leaf/Bacterial Spot":
+        {species_id: tomato, problems: [tomato_bacterial_spot], outcome: diagnosed}
+      "Tomato Leaf/Spider Mites":
+        species_id: tomato
+        problems: [tomato_spider_mites]
+        outcome: diagnosed
+        note: The set doesn't name the mite species. Keep photos with webbing or fine yellow stippling.
+      "Tomato Leaf/Healthy":
+        {species_id: tomato, problems: [], outcome: healthy}
+
+  - name: ccmt-2023
+    title: "Dataset for Crop Pest and Disease Detection (CCMT)"
+    dataset: bwh3zbpkpv
+    version: 1
+    licence: CC BY 4.0
+    citation: "Mensah Kwabena P. et al. (2023) Mendeley Data V1, doi:10.17632/bwh3zbpkpv.1"
+    taken: local farms in Ghana; published 2023-04-26
+    classes:
+      "Raw Data/CCMT Dataset/Tomato/septoria leaf spot":
+        species_id: tomato
+        problems: [tomato_septoria_leaf_spot]
+        outcome: diagnosed
+        note: The only Septoria source found. Keep small round spots with dark edges and pale centres.

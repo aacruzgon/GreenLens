@@ -68,7 +68,8 @@ pub mod sql {
         };
     }
 
-    /// Keeps the entries of the cursor object `$from` whose source id is in `$ids`.
+    /// Keeps the entries of the cursor object `$from` whose source id is in `$ids`, and the
+    /// sync's own state (`#sync`, [`domain::ports::SYNC_STATE_KEY`]).
     macro_rules! kept_cursor {
         ($from:literal, $ids:literal) => {
             concat!(
@@ -76,7 +77,7 @@ pub mod sql {
                 $from,
                 " ?? {}), |$e| $e[0] IN ",
                 $ids,
-                "))"
+                " OR $e[0] = '#sync'))"
             )
         };
     }
@@ -94,11 +95,20 @@ CREATE $connector CONTENT $row;
 SELECT ", connector_fields!(), " FROM ONLY $connector;
 COMMIT;"
     );
-    /// Start-up seeding: creates the connector only when its fixed id is free, so every start
-    /// may run it.
+    /// Start-up seeding: creates the connector when its fixed id is free; otherwise repairs
+    /// it, so every start may run it. A connector that exists in this garden and isn't being
+    /// deleted gets the freshly sealed token (a new `CONNECTOR_KEY` makes the old one useless),
+    /// `status` `active` and no `last_error`. One in another garden, or being deleted, or in a
+    /// garden being deleted, is left as it is; the caller sees its garden in the result.
     pub const SEED_CONNECTOR: &str = concat!(
         "BEGIN;
-IF (SELECT VALUE id FROM ONLY $connector) = NONE { CREATE $connector CONTENT $row; };
+LET $c = (SELECT garden, status FROM ONLY $connector);
+LET $dying = (SELECT VALUE deleting_at FROM ONLY $garden);
+IF $c = NONE { CREATE $connector CONTENT $row; }
+ELSE IF $c.garden = $garden AND $c.status != 'deleting' AND $dying = NONE {
+  UPDATE $connector SET status = $row.status, last_error = NONE,
+    secret = IF $row.secret = NONE { secret } ELSE { $row.secret };
+};
 SELECT ",
         connector_fields!(),
         " FROM ONLY $connector;
@@ -113,13 +123,26 @@ COMMIT;"
     );
     /// One connector with its sync state.
     pub const CONNECTOR_ROW: &str = concat!("SELECT ", row_fields!(), " FROM ONLY $connector;");
-    /// `POST /connectors/{id}/complete`: a compare-and-set on `status = 'pending'`, the
-    /// stored nonce and its expiry, so a state works once.
+    /// `POST /connectors/{id}/complete`, before the exchange: claims the pending state, a
+    /// compare-and-set on `status = 'pending'`, the stored nonce, its expiry and no earlier
+    /// claim. Two claims at once write the same record, so one conflicts, is retried, and then
+    /// finds the claim and throws.
+    pub const CLAIM_CONNECT: &str = "BEGIN;
+LET $c = (SELECT status, oauth FROM ONLY $connector WHERE garden = $garden);
+IF $c = NONE { THROW 'not_found' };
+IF $c.status != 'pending' OR $c.oauth.nonce != $nonce OR $c.oauth.expires_at <= $now OR $c.oauth.claimed_at != NONE { THROW 'connect_lost' };
+UPDATE $connector SET oauth.claimed_at = $now;
+COMMIT;";
+    /// Clears this nonce's claim after a failed exchange; a no-op for anything else.
+    pub const RELEASE_CONNECT: &str = "UPDATE $connector SET oauth.claimed_at = NONE WHERE garden = $garden AND status = 'pending' AND oauth.nonce = $nonce;";
+    /// `POST /connectors/{id}/complete`, after the exchange: a compare-and-set on
+    /// `status = 'pending'` and the claimed nonce, so a state works once. The expiry was checked
+    /// by the claim.
     pub const COMPLETE_CONNECT: &str = concat!(
         "BEGIN;
 LET $c = (SELECT status, oauth FROM ONLY $connector WHERE garden = $garden);
 IF $c = NONE { THROW 'not_found' };
-IF $c.status != 'pending' OR $c.oauth.nonce != $nonce OR $c.oauth.expires_at <= $now { THROW 'connect_lost' };
+IF $c.status != 'pending' OR $c.oauth.nonce != $nonce OR $c.oauth.claimed_at = NONE { THROW 'connect_lost' };
 UPDATE $connector SET status = 'active', oauth = NONE, account = $account, secret = $secret,
   next_sync_at = $now, last_error = NONE;
 SELECT ", connector_fields!(), " FROM ONLY $connector;
@@ -167,15 +190,16 @@ ORDER BY next_sync_at, id LIMIT $limit;"
     /// A sync run's end: the cursors of sources still chosen, the times and the failure. A
     /// connector being deleted is left alone, and a missing one is never created. When the
     /// connector's `next_sync_at` moved past `$due_at` (the value the run started from) while
-    /// the run was going, a **Sync now** or a new set of sources landed: that time stays, and
-    /// a stopping failure of the old sources isn't stored over the owner's change.
+    /// the run was going, a **Sync now** or a new set of sources landed: that time stays, a
+    /// stopping failure of the old sources isn't stored over the owner's change, and
+    /// `synced_at` isn't set, since the run may not have read the sources now chosen.
     pub const FINISH_SYNC: &str = concat!(
         "BEGIN;
 LET $moved = (SELECT VALUE next_sync_at FROM ONLY $connector) > $due_at;
 UPDATE $connector SET cursor = ",
         kept_cursor!("$cursor", "sources.id"),
         ",
-  synced_at = $synced_at ?? synced_at,
+  synced_at = IF $moved { synced_at } ELSE { $synced_at ?? synced_at },
   next_sync_at = IF $moved { next_sync_at } ELSE { $next },
   last_error = IF $moved AND $last_error IN ['too_large', 'source_missing'] { last_error } ELSE { $last_error }
 WHERE status != 'deleting';
@@ -205,31 +229,73 @@ COMMIT;";
     /// The connectors a member created in a garden.
     pub const CREATED_BY: &str =
         "SELECT VALUE id FROM connector WHERE garden = $garden AND created_by = $user ORDER BY id;";
-    /// The cleanup: one batch of `pending` connectors started before the cutoff. A pending
+    /// Other live `vendor` connectors holding a token of this Slack workspace. No index: the
+    /// table holds at most two connectors a garden.
+    pub const SLACK_ACCOUNT_CONNECTORS: &str = "RETURN count(SELECT VALUE id FROM connector WHERE kind = 'slack' AND endpoint = 'vendor' AND status IN ['active', 'reauth_needed'] AND account.team_id = $account AND id != $except);";
+    /// Other live `vendor` connectors holding a grant of this Google account.
+    pub const GOOGLE_ACCOUNT_CONNECTORS: &str = "RETURN count(SELECT VALUE id FROM connector WHERE kind = 'google_drive' AND endpoint = 'vendor' AND status IN ['active', 'reauth_needed'] AND account.email = $account AND id != $except);";
+    /// A refreshed token: a compare-and-set on the sealed value the caller read. One record by
+    /// its id, so the statement touches at most one row.
+    pub const REPLACE_SECRET: &str = "UPDATE $connector SET secret = $new WHERE secret = $read AND status IN ['active', 'reauth_needed'] RETURN VALUE id;";
+    /// A garden's connectors marked `deleting` (index `connector_garden`), for a cascade or a
+    /// demotion to revoke and delete.
+    pub const DELETING_OF_GARDEN: &str = concat!(
+        "SELECT ",
+        row_fields!(),
+        " FROM connector WHERE garden = $garden AND status = 'deleting' ORDER BY id;"
+    );
+    /// Every connector marked `deleting` outside a garden being deleted, to resume after a
+    /// restart (index `connector_due`, whose first field is `status`). A garden being deleted
+    /// finishes its own connectors in its resumed cascade.
+    pub const DELETING_TO_RESUME: &str = concat!(
+        "SELECT ",
+        row_fields!(),
+        " FROM connector WHERE status = 'deleting' AND garden.deleting_at = NONE ORDER BY id;"
+    );
+    /// The connectors marked `deleting` that a user created, in any garden (a garden being
+    /// deleted included), for the account deletion that must clear `created_by` references.
+    pub const DELETING_OF_USER: &str = concat!(
+        "SELECT ",
+        row_fields!(),
+        " FROM connector WHERE status = 'deleting' AND created_by = $user ORDER BY id;"
+    );
+    /// The cleanup: one batch of `pending` connectors started before the cutoff, leaving those
+    /// claimed since `$claimed_cutoff`, whose exchange may still be running. A pending
     /// connector holds no records.
-    pub const DELETE_EXPIRED_PENDING: &str = "DELETE (SELECT VALUE id FROM connector WHERE status = 'pending' AND created_at < $cutoff LIMIT 500) RETURN VALUE $before.id;";
+    pub const DELETE_EXPIRED_PENDING: &str = "DELETE (SELECT VALUE id FROM connector WHERE status = 'pending' AND created_at < $cutoff AND (oauth.claimed_at = NONE OR oauth.claimed_at < $claimed_cutoff) LIMIT 500) RETURN VALUE $before.id;";
 
     /// The stored hash of every chunk of these items (index `farm_record_connector`).
     pub const RECORD_HASHES: &str = "SELECT id, text_hash FROM farm_record WHERE connector = $connector AND vendor_id IN $vendor_ids;";
     /// Chunks by `(connector, vendor_id, n)`. A chunk sent without a vector keeps the stored
     /// one, and only when its `text_hash` is unchanged (`missing_vector` otherwise); the
     /// connector must be syncing (`active` or `reauth_needed`), so no record is written for a
-    /// connector being deleted.
+    /// connector being deleted. A record whose `source` is no longer among the connector's
+    /// `sources` is skipped in the same transaction: `PUT .../sources` can drop a source while
+    /// a sync that read it is still running, and its records must not come back. The last
+    /// statement returns how many were written. The check reads `sources` from the
+    /// transaction's snapshot: a `PUT .../sources` that commits while it runs isn't seen, so
+    /// that page's records of the dropped source can still land (a known narrow window,
+    /// [connectors 6]).
+    ///
+    /// [connectors 6]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#6-sync
     pub const UPSERT_RECORDS: &str = "BEGIN;
-LET $c = (SELECT garden, status FROM ONLY $connector);
+LET $c = (SELECT garden, status, sources FROM ONLY $connector);
 IF $c = NONE OR !($c.status IN ['active', 'reauth_needed']) { THROW 'not_found' };
 FOR $r IN $records {
-  IF $r.embedding = NONE {
-    IF (SELECT VALUE text_hash FROM ONLY $r.id) != $r.text_hash { THROW 'missing_vector' };
-    UPDATE $r.id SET kind = $r.kind, source = $r.source, title = $r.title, author = $r.author, link = $r.link,
-      text = $r.text, at = $r.at;
-  } ELSE {
-    UPSERT $r.id CONTENT { garden: $c.garden, connector: $connector, kind: $r.kind,
-      vendor_id: $r.vendor_id, source: $r.source, title: $r.title, author: $r.author, link: $r.link, text: $r.text,
-      text_hash: $r.text_hash, embedding: $r.embedding, embedding_model: $r.embedding_model,
-      at: $r.at };
+  IF $r.source IN $c.sources.id {
+    IF $r.embedding = NONE {
+      IF (SELECT VALUE text_hash FROM ONLY $r.id) != $r.text_hash { THROW 'missing_vector' };
+      UPDATE $r.id SET kind = $r.kind, source = $r.source, title = $r.title, author = $r.author, link = $r.link,
+        text = $r.text, at = $r.at;
+    } ELSE {
+      UPSERT $r.id CONTENT { garden: $c.garden, connector: $connector, kind: $r.kind,
+        vendor_id: $r.vendor_id, source: $r.source, title: $r.title, author: $r.author, link: $r.link, text: $r.text,
+        text_hash: $r.text_hash, embedding: $r.embedding, embedding_model: $r.embedding_model,
+        at: $r.at };
+    };
   };
 };
+RETURN count($records.filter(|$r| $r.source IN $c.sources.id));
 COMMIT;";
     /// Every chunk of these items.
     pub const DELETE_RECORDS: &str = "DELETE farm_record WHERE connector = $connector AND vendor_id IN $vendor_ids RETURN VALUE $before.id;";
@@ -278,6 +344,8 @@ pub struct OAuthRow {
     pub verifier: Option<Bytes>,
     /// 10 minutes after the start.
     pub expires_at: DateTime<Utc>,
+    /// When a `complete` claimed the state.
+    pub claimed_at: Option<DateTime<Utc>>,
 }
 
 /// A `connector` as created. No `Debug`: it holds the sealed tokens.
@@ -415,6 +483,7 @@ impl From<&PendingConnect> for OAuthRow {
             device_hash: p.device_hash.to_string(),
             verifier: p.verifier.as_ref().map(sealed_bytes),
             expires_at: dt(p.expires_at),
+            claimed_at: p.claimed_at.map(dt),
         }
     }
 }
@@ -431,6 +500,7 @@ impl TryFrom<OAuthRow> for PendingConnect {
             })?,
             verifier: row.verifier.map(|b| Sealed(b.into())),
             expires_at: ts(row.expires_at),
+            claimed_at: row.claimed_at.map(ts),
         })
     }
 }
@@ -573,6 +643,7 @@ impl FarmRecordStore for SurrealStore {
         let row = ConnectorWriteRow::new(garden, &connector).map_err(|e| e.into_store(WHAT))?;
         let mut r = run_tx(&self.db, sql::SEED_CONNECTOR, |q| {
             q.bind(("connector", rid(&connector.id)))
+                .bind(("garden", rid(&garden)))
                 .bind(("row", row.clone()))
         })
         .await
@@ -624,6 +695,42 @@ impl FarmRecordStore for SurrealStore {
         .map_err(|f| farm_failure(f, WHAT))?;
         let last = r.num_statements().saturating_sub(2);
         take_one(&mut r, last, WHAT)?.ok_or(StoreError::NotFound)
+    }
+
+    async fn claim_connect(
+        &self,
+        owner: Membership<Owner>,
+        connector: ConnectorId,
+        nonce: String,
+        now: Timestamp,
+    ) -> Result<(), StoreError> {
+        const WHAT: &str = "claim connect";
+        run_tx(&self.db, sql::CLAIM_CONNECT, |q| {
+            q.bind(("connector", rid(&connector)))
+                .bind(("garden", rid(&owner.garden())))
+                .bind(("nonce", nonce.clone()))
+                .bind(("now", dt(now)))
+        })
+        .await
+        .map_err(|f| farm_failure(f, WHAT))?;
+        Ok(())
+    }
+
+    async fn release_connect(
+        &self,
+        owner: Membership<Owner>,
+        connector: ConnectorId,
+        nonce: String,
+    ) -> Result<(), StoreError> {
+        const WHAT: &str = "release connect";
+        run_tx(&self.db, sql::RELEASE_CONNECT, |q| {
+            q.bind(("connector", rid(&connector)))
+                .bind(("garden", rid(&owner.garden())))
+                .bind(("nonce", nonce.clone()))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        Ok(())
     }
 
     async fn set_sources(
@@ -792,10 +899,85 @@ impl FarmRecordStore for SurrealStore {
             .map_err(|e| e.into_store(WHAT))
     }
 
-    async fn delete_expired_pending(&self, before: Timestamp) -> Result<u32, StoreError> {
+    async fn shared_account_connectors(
+        &self,
+        kind: ConnectorKind,
+        account: String,
+        except: ConnectorId,
+    ) -> Result<u32, StoreError> {
+        const WHAT: &str = "shared account connectors";
+        let statement = match kind {
+            ConnectorKind::Slack => sql::SLACK_ACCOUNT_CONNECTORS,
+            ConnectorKind::GoogleDrive => sql::GOOGLE_ACCOUNT_CONNECTORS,
+        };
+        let mut r = run_tx(&self.db, statement, |q| {
+            q.bind(("account", account.clone()))
+                .bind(("except", rid(&except)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        let count: Option<i64> = r.take(0).map_err(|e| take_failed(WHAT, e))?;
+        Ok(u32::try_from(count.unwrap_or(0)).unwrap_or(u32::MAX))
+    }
+
+    async fn replace_secret(
+        &self,
+        connector: ConnectorId,
+        read: Sealed,
+        new: Sealed,
+    ) -> Result<bool, StoreError> {
+        const WHAT: &str = "replace connector secret";
+        let mut r = run_tx(&self.db, sql::REPLACE_SECRET, |q| {
+            q.bind(("connector", rid(&connector)))
+                .bind(("read", sealed_bytes(&read)))
+                .bind(("new", sealed_bytes(&new)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        let ids: Vec<RecordId> = r.take(0).map_err(|e| take_failed(WHAT, e))?;
+        Ok(!ids.is_empty())
+    }
+
+    async fn deleting_connectors(
+        &self,
+        garden: Option<GardenId>,
+    ) -> Result<Vec<ConnectorRow>, StoreError> {
+        const WHAT: &str = "deleting connectors";
+        let statement = if garden.is_some() {
+            sql::DELETING_OF_GARDEN
+        } else {
+            sql::DELETING_TO_RESUME
+        };
+        let mut r = run_tx(&self.db, statement, |q| {
+            q.bind(("garden", garden.as_ref().map(rid)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        take_rows(&mut r, 0, WHAT)
+    }
+
+    async fn deleting_connectors_of_user(
+        &self,
+        user: UserId,
+    ) -> Result<Vec<ConnectorRow>, StoreError> {
+        const WHAT: &str = "deleting connectors of a user";
+        let mut r = run_tx(&self.db, sql::DELETING_OF_USER, |q| {
+            q.bind(("user", rid(&user)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        take_rows(&mut r, 0, WHAT)
+    }
+
+    async fn delete_expired_pending(
+        &self,
+        before: Timestamp,
+        claimed_before: Timestamp,
+    ) -> Result<u32, StoreError> {
         const WHAT: &str = "delete expired pending connectors";
         let mut r = run_tx(&self.db, sql::DELETE_EXPIRED_PENDING, |q| {
             q.bind(("cutoff", dt(before)))
+                .bind(("claimed_cutoff", dt(claimed_before)))
         })
         .await
         .map_err(|f| f.into_store(WHAT))?;
@@ -838,13 +1020,15 @@ impl FarmRecordStore for SurrealStore {
             .into_store(WHAT));
         }
         let rows: Vec<FarmRecordWriteRow> = records.iter().map(FarmRecordWriteRow::new).collect();
-        run_tx(&self.db, sql::UPSERT_RECORDS, |q| {
+        let mut r = run_tx(&self.db, sql::UPSERT_RECORDS, |q| {
             q.bind(("connector", rid(&connector)))
                 .bind(("records", rows.clone()))
         })
         .await
         .map_err(|f| f.into_store(WHAT))?;
-        Ok(u32::try_from(records.len()).unwrap_or(u32::MAX))
+        let last = r.num_statements().saturating_sub(2);
+        let written: Option<i64> = r.take(last).map_err(|e| take_failed(WHAT, e))?;
+        Ok(written.map_or(0, |n| u32::try_from(n).unwrap_or(u32::MAX)))
     }
 
     async fn delete_records(

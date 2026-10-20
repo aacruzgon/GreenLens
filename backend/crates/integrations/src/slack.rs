@@ -14,7 +14,8 @@
 //! [`FarmClientError::NotFound`]; `ratelimited` or HTTP `429` is retried after the
 //! `Retry-After` the server sent, then [`FarmClientError::RateLimited`]; a 5xx, `internal_error`
 //! or a timeout is retried, then [`FarmClientError::Unavailable`]; any other code is
-//! [`FarmClientError::Refused`]. A response body is never kept in an error or logged, because
+//! [`FarmClientError::Refused`], except that `oauth.v2.access` maps `invalid_code`,
+//! `code_already_used` and `code_expired` (a bad user code) to `AuthRefused`. A response body is never kept in an error or logged, because
 //! it may echo the farm's records ([connectors 8]): the log lines carry the method, the status
 //! and the short code, and a code that isn't a short `snake_case` word is replaced.
 //!
@@ -33,7 +34,10 @@
 //! [6]: ../../../docs/connectors/README.md#6-sync
 //! [connectors 8]: ../../../docs/connectors/README.md#8-privacy-and-security
 
+mod source;
 mod wire;
+
+pub use source::{REREAD_WINDOW, SlackSource, USER_NAME_TTL};
 
 #[cfg(test)]
 mod tests;
@@ -79,6 +83,9 @@ const UNRECOGNISED: &str = "unrecognised";
 const MIN_PACER_IDLE: Duration = Duration::from_mins(10);
 
 /// The token is refused, or lacks a scope: either way only the owner reconnecting fixes it.
+/// The codes `oauth.v2.access` answers for a code the user brought that is wrong, spent or old.
+const BAD_CODES: [&str; 3] = ["invalid_code", "code_already_used", "code_expired"];
+
 const AUTH_CODES: [&str; 11] = [
     "not_authed",
     "invalid_auth",
@@ -479,6 +486,25 @@ impl SlackClient {
         Err(too_many_pages("conversations.replies"))
     }
 
+    /// The parent of a thread and nothing else (`conversations.replies` with `limit=1`): one
+    /// call that shows its current `reply_count` and `latest_reply`. `None` when Slack returns
+    /// no message. Paced per `team_id`.
+    pub async fn conversations_thread_parent(
+        &self,
+        token: &SecretString,
+        team_id: &str,
+        channel: &str,
+        thread_ts: &str,
+    ) -> Result<Option<SlackMessage>, FarmClientError> {
+        let query = [("channel", channel), ("ts", thread_ts), ("limit", "1")];
+        let call = Call {
+            paced_team: Some(team_id),
+            ..Call::read("conversations.replies", token, &query)
+        };
+        let page: wire::Messages = self.call(&call).await?;
+        Ok(page.messages.into_iter().next().map(message))
+    }
+
     /// `users.info`: the user's names. Never the email, even when Slack sends one.
     pub async fn users_info(
         &self,
@@ -497,15 +523,22 @@ impl SlackClient {
     }
 
     /// `auth.revoke`: the token stops working. A token that is already revoked answers
-    /// `token_revoked` or `invalid_auth`, which is [`FarmClientError::AuthRefused`]; for a
-    /// disconnect, that means the token is gone too.
+    /// `token_revoked` or `invalid_auth`, and that counts as revoked (`Ok`), as Google's
+    /// `invalid_token` does: the token is gone either way. Any other refusal is an error.
     pub async fn auth_revoke(&self, token: &SecretString) -> Result<(), FarmClientError> {
         let call = Call {
             verb: Method::POST,
             ..Call::read("auth.revoke", token, &[])
         };
-        let _: wire::Empty = self.call(&call).await?;
-        Ok(())
+        match self.call::<wire::Empty>(&call).await {
+            Ok(_) => Ok(()),
+            Err(FarmClientError::AuthRefused { code, .. })
+                if code == "token_revoked" || code == "invalid_auth" =>
+            {
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// `oauth.v2.access`: exchanges an authorization code for the bot token. The Slack app is a
@@ -535,7 +568,14 @@ impl SlackClient {
             paced_team: None,
             idempotent: false,
         };
-        let w: wire::OAuthAccess = self.call(&call).await?;
+        // A bad code is the user's (`AuthRefused`); a bad redirect URI, client id or secret is our
+        // own configuration and stays `Refused`.
+        let w: wire::OAuthAccess = self.call(&call).await.map_err(|error| match error {
+            FarmClientError::Refused { vendor, code, .. } if BAD_CODES.contains(&code.as_str()) => {
+                FarmClientError::AuthRefused { vendor, code }
+            }
+            other => other,
+        })?;
         Ok(OAuthAccess {
             access_token: SecretString::from(w.access_token),
             token_type: w.token_type,

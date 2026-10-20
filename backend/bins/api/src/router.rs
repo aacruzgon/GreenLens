@@ -41,7 +41,8 @@ use crate::{
 
 /// The claim long-poll waits up to 30 s ([contracts 5]); its group's timeout leaves 5 s more.
 pub const CLAIM_TIMEOUT: Duration = Duration::from_secs(35);
-/// Uploads run the CPU pipeline; worker completions carry large results.
+/// Uploads run the CPU pipeline; worker completions carry large results; a connect's
+/// `complete` waits on two vendor calls.
 pub const SLOW_TIMEOUT: Duration = Duration::from_secs(60);
 /// Worker result bodies (perception masks and embeddings for every image).
 pub const WORKER_BODY_LIMIT: usize = 16 * 1024 * 1024;
@@ -157,7 +158,6 @@ pub fn routes(request_timeout: Duration) -> OpenApiRouter<SharedState> {
             connectors::create_connector
         ))
         .routes(routes!(connectors::oauth_callback))
-        .routes(routes!(connectors::complete_connector))
         .routes(routes!(connectors::available_sources))
         .routes(routes!(connectors::set_sources))
         .routes(routes!(connectors::sync_connector))
@@ -171,6 +171,13 @@ pub fn routes(request_timeout: Duration) -> OpenApiRouter<SharedState> {
         .routes(routes!(scans::upload_image))
         .routes(routes!(chat::upload_chat_image))
         .layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT))
+        .layer(timeout(SLOW_TIMEOUT));
+    // `complete` exchanges a code in two vendor calls (Slack's 20 s deadline each, Google's
+    // 30 s), so it gets the slow routes' timeout; its work runs on in a task when even that
+    // passes (contracts 9, farm connectors).
+    let connect = OpenApiRouter::new()
+        .routes(routes!(connectors::complete_connector))
+        .layer(DefaultBodyLimit::max(JSON_BODY_LIMIT))
         .layer(timeout(SLOW_TIMEOUT));
     let claim = OpenApiRouter::new()
         .routes(routes!(internal::claim))
@@ -186,6 +193,7 @@ pub fn routes(request_timeout: Duration) -> OpenApiRouter<SharedState> {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .merge(app)
         .merge(uploads)
+        .merge(connect)
         .merge(claim)
         .merge(worker)
 }

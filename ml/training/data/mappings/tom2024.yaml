@@ -1,9 +1,10 @@
 # TOM2024 class folder → (species_id, problem_id | healthy)  (training.md §4, step 3)
 #
-# PROPOSED slugs, as in plantdoc.yaml; the knowledge-base owner confirms them. Only leaf
-# classes of tomato and maize (corn) are mapped. Dropped (problem_id: null): fruit classes
+# Slugs as in plantdoc.yaml, confirmed by the knowledge-base owner on issue #4 (2026-10-18). Only
+# leaf classes of tomato and maize (corn) are mapped. Dropped (problem_id: null): fruit classes
 # (the heads classify leaf crops), pests on fruit, abiotic classes, mixed classes, onion (not a
-# supported crop yet), and "virosis"/"stripe", which name no single problem.
+# supported crop yet), "virosis"/"stripe", which name no single problem, and the two classes #4
+# dropped: alternaria_d and Bacterial_floundering_d (comments below).
 # Every class here has no published split, so dedupe.py holds out val and test shares by
 # session. File names are `<id>_<Unix ms>[_640x480].jpg`; photos from one UTC day are one visit
 # to a field, so a whole day goes to one split, and the test share is a set of field visits the
@@ -21,10 +22,13 @@ sessions:
 classes:
   # tomato
   "tomato_diseases/healthy_leaf":            { species_id: tomato, problem_id: healthy }
-  "tomato_diseases/alternaria_d":            { species_id: tomato, problem_id: tomato_early_blight }   # Alternaria; check by eye: A. solani (early blight) vs A. alternata
+  # alternaria_d: #4 kept it as early blight only if the photos show target rings. In a random 36
+  # (2026-10-19), 9 are green fruit, and the leaves show small scattered spots and dead margins,
+  # not rings, so it is dropped rather than mislabelled.
+  "tomato_diseases/alternaria_d":            { species_id: tomato, problem_id: null }
   "tomato_diseases/tomato_late_blight_d":    { species_id: tomato, problem_id: tomato_late_blight }
-  "tomato_diseases/Mite_d":                  { species_id: tomato, problem_id: tomato_two_spotted_spider_mite }  # mite damage; species in Burkina Faso may be T. evansi
-  "tomato_diseases/Bacterial_floundering_d": { species_id: tomato, problem_id: tomato_bacterial_wilt }   # "floundering" is the dataset's word for wilt
+  "tomato_diseases/Mite_d":                  { species_id: tomato, problem_id: tomato_spider_mites }  # genus level (#4): T. urticae and T. evansi look alike in a photo
+  "tomato_diseases/Bacterial_floundering_d": { species_id: tomato, problem_id: null }   # wilt: a whole-plant sign, left to the VLM (#4)
   "tomato_diseases/virosis_d":               { species_id: tomato, problem_id: null }
   "tomato_diseases/healthy_fruit":           { species_id: tomato, problem_id: null }
   "tomato_diseases/Blossom_end_rot_d":       { species_id: tomato, problem_id: null }

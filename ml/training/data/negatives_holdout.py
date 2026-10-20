@@ -9,10 +9,12 @@ pair on photos it wasn't chosen on (with the test split as the plant photos).
 
 Same rule and groups as `negatives.select` (no `potted plant` or `broccoli`; indoor, people_pets,
 outdoor, unlabelled), so the mix matches val2017's. The pick is deterministic (the lowest SHA-256
-of `coco_holdout|<file name>`) and leaves out every photo pinned as a detector background
-(`splits/background_coco_train.tsv`); `detector.background` refuses to pin a photo listed here.
-Each image is downloaded to `ml/training/data/raw/coco_train2017_holdout/` (git-ignored) and pinned
-by SHA-256 in `splits/negatives_coco_train_holdout.tsv`; a rerun checks the pins. Evaluation only:
+of `coco_holdout|<file name>`) and was drawn once, on Oct 19, leaving out the detector background
+photos pinned then (8aebf9a). Each image is downloaded to
+`ml/training/data/raw/coco_train2017_holdout/` (git-ignored) and pinned by SHA-256 in
+`splits/negatives_coco_train_holdout.tsv`. Once that file exists it is the hold-out: a rerun
+downloads and checks its photos and never picks again, since a new background pick would change
+the pick and the reports measured on it. `detector.background` leaves out every photo listed here. Evaluation only:
 never training data, never committed. Licence: COCO annotations CC BY 4.0; each image keeps its
 Flickr licence.
 """
@@ -51,6 +53,15 @@ def pick(rows: list[tuple[str, str]], count: int, exclude: set[str]) -> list[tup
     return sorted(sorted((r for r in rows if r[0] not in exclude), key=key)[:count])
 
 
+def pinned_rows(tsv: Path) -> list[tuple[str, str]]:
+    """The (file, group) rows a pinned TSV lists."""
+    rows = []
+    for line in tsv.read_text().splitlines()[1:]:
+        _, path, group = line.split("\t")[:3]
+        rows.append((path.rsplit("/", 1)[-1], group))
+    return rows
+
+
 def fetch(name: str) -> Path:
     dest = IMAGES / name
     if not dest.exists():
@@ -62,14 +73,16 @@ def fetch(name: str) -> Path:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--count", type=int, default=1000)
+    ap.add_argument("--count", type=int, default=1000, help="photos to pick when no TSV is pinned yet")
     args = ap.parse_args(argv)
     pinned = {}
     if TSV.exists():
         for line in TSV.read_text().splitlines()[1:]:
-            _, path, _, digest = line.split("\t")
+            _, path, _, digest = line.split("\t")[:4]
             pinned[path] = digest
-    rows = pick(select(json.loads(ANNOTATIONS.read_text())), args.count, pinned_names(BACKGROUND))
+        rows = pinned_rows(TSV)
+    else:
+        rows = pick(select(json.loads(ANNOTATIONS.read_text())), args.count, pinned_names(BACKGROUND))
     IMAGES.mkdir(parents=True, exist_ok=True)
     with ThreadPoolExecutor(8) as pool:
         files = list(pool.map(fetch, [n for n, _ in rows]))

@@ -1,0 +1,22 @@
+# On a self-hosted runner, points Cargo at a build tree that outlives the job, one per runner and
+# job, so a run starts warm without the Actions cache. On a GitHub-hosted runner it does nothing,
+# and rust-cache restores the tree instead (docs/infra/README.md section 2, Runners).
+name: Self-hosted build trees
+description: Set CARGO_TARGET_DIR and PDM_RUST_SKILLS_TARGET_DIR to persistent directories on a self-hosted runner
+runs:
+  using: composite
+  steps:
+    - if: runner.environment == 'self-hosted'
+      shell: bash
+      run: |
+        # The directory's mtime records its last use; infra/ci-runner/prune.sh removes the stale ones.
+        d="$HOME/ci/target/$RUNNER_NAME/$GITHUB_JOB"
+        mkdir -p "$d"
+        touch "$d"
+        {
+          echo "CARGO_TARGET_DIR=$d/backend"
+          echo "PDM_RUST_SKILLS_TARGET_DIR=$d/skills"
+          # As rust-cache sets on hosted runners: incremental state only grows a tree CI never edits.
+          echo "CARGO_INCREMENTAL=0"
+        } >> "$GITHUB_ENV"
+        echo "Build trees in $d"
