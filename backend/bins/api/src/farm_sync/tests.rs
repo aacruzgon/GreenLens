@@ -677,7 +677,7 @@ async fn a_throttled_pass_saves_its_cursor_and_resumes_on_the_next_run() {
             }
             1 => Err(FarmSourceError::RateLimited {
                 vendor: ConnectorKind::Slack,
-                retry_after_s: Some(30),
+                retry_after_s: Some(90),
             }),
             _ => {
                 assert_eq!(r.cursor, Some(SyncCursor("p1".into())), "resumes at page 2");
@@ -705,11 +705,11 @@ async fn a_throttled_pass_saves_its_cursor_and_resumes_on_the_next_run() {
     let ends = b.run().await;
     assert_eq!(ends, [(id, RunEnd::Failed(SyncErrorCode::RateLimited))]);
     let row = b.row(id).await;
-    assert_eq!(row.next_sync_at, pinned().plus(Duration::from_secs(30)));
+    assert_eq!(row.next_sync_at, pinned().plus(Duration::from_secs(90)));
     assert_eq!(row.connector.synced_at, None);
     assert_eq!(b.count(owner.1).await, 1);
 
-    b.clock.advance(Duration::from_secs(30));
+    b.clock.advance(Duration::from_secs(90));
     assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
     assert_eq!(b.count(owner.1).await, 2);
     assert_eq!(b.row(id).await.last_error, None);
@@ -1006,4 +1006,84 @@ async fn seeding_skips_a_demo_garden_that_does_not_exist_yet() {
             .expect("read")
             .is_none()
     );
+}
+
+#[test]
+fn retry_after_is_kept_between_a_minute_and_an_hour() {
+    use super::retry_wait;
+    let secs = |s| retry_wait(s).as_secs();
+    assert_eq!(secs(None), 60, "a missing value waits a minute");
+    assert_eq!(secs(Some(0)), 60);
+    assert_eq!(secs(Some(1)), 60);
+    assert_eq!(secs(Some(60)), 60);
+    assert_eq!(secs(Some(600)), 600);
+    assert_eq!(secs(Some(3600)), 3600);
+    assert_eq!(secs(Some(86_400)), 3600, "a day is cut to an hour");
+    assert_eq!(secs(Some(u32::MAX)), 3600);
+}
+
+/// A vendor whose page never comes, counting the calls.
+struct HangingSource(AtomicUsize);
+
+#[async_trait]
+impl FarmSource for HangingSource {
+    fn kind(&self) -> ConnectorKind {
+        ConnectorKind::Slack
+    }
+
+    fn reread_window(&self) -> Option<Duration> {
+        None
+    }
+
+    async fn available_sources(
+        &self,
+        _token: &VendorToken,
+    ) -> Result<Vec<ConnectorSource>, FarmSourceError> {
+        Ok(Vec::new())
+    }
+
+    async fn read_page(
+        &self,
+        _token: &VendorToken,
+        _request: FarmPageRequest,
+    ) -> Result<FarmPage, FarmSourceError> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        std::future::pending().await
+    }
+
+    async fn revoke(&self, _token: &VendorToken) -> Result<(), FarmSourceError> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn shutdown_interrupts_a_page_in_flight_and_leaves_the_connector_due() {
+    let source = Arc::new(HangingSource(AtomicUsize::new(0)));
+    let b = bench(store().await, source.clone(), SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    let shutdown = CancellationToken::new();
+    let stopper = shutdown.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        stopper.cancel();
+    });
+    let ends = tokio::time::timeout(Duration::from_secs(10), b.sync.run_due(&shutdown))
+        .await
+        .expect("the run ends with shutdown, not with the page")
+        .expect("due connectors listed");
+    assert_eq!(ends, [(id, RunEnd::PagesLeft)]);
+    assert_eq!(source.0.load(Ordering::SeqCst), 1);
+    let row = b.row(id).await;
+    assert_eq!(row.next_sync_at, pinned(), "still due on the next start");
+    assert_eq!(b.count(owner.1).await, 0);
 }

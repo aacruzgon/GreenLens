@@ -142,6 +142,16 @@ enum Stop {
     Internal(BoxError),
 }
 
+/// A [`Stop`] that ends the run with a code and a next attempt (everything but a store or
+/// embedder failure).
+#[derive(Debug)]
+enum Halt {
+    /// The vendor refused, throttled, failed or lost a source.
+    Vendor(FarmSourceError),
+    /// The garden would pass its record limit.
+    TooLarge,
+}
+
 impl From<StoreError> for Stop {
     fn from(e: StoreError) -> Self {
         Self::Internal(Box::new(e))
@@ -273,7 +283,7 @@ impl FarmSync {
                 .stop(
                     &row,
                     row.cursors.clone(),
-                    &Stop::Vendor(refused(row.connector.kind)),
+                    &Halt::Vendor(refused(row.connector.kind)),
                 )
                 .await;
         };
@@ -305,7 +315,8 @@ impl FarmSync {
                     break;
                 }
                 Err(Stop::Internal(e)) => return self.internal(&row, cursors, e).await,
-                Err(stop) => return self.stop(&row, cursors, &stop).await,
+                Err(Stop::Vendor(e)) => return self.stop(&row, cursors, &Halt::Vendor(e)).await,
+                Err(Stop::TooLarge) => return self.stop(&row, cursors, &Halt::TooLarge).await,
             }
         }
         let end_now = self.clock.now();
@@ -369,11 +380,13 @@ impl FarmSync {
                 oldest: run.now.minus(FARM_RECORD_KEEP),
                 reread_from: state.reread.as_ref().map(|r| r.from),
             };
-            let page = run
-                .source
-                .read_page(&run.token, request)
-                .await
-                .map_err(Stop::Vendor)?;
+            // Shutdown interrupts a page in flight (a Tier 1 page can wait a minute per call);
+            // nothing of it is stored yet. The budget is not raced: it is checked between pages.
+            let page = tokio::select! {
+                biased;
+                () = shutdown.cancelled() => return Ok(Read::PagesLeft),
+                page = run.source.read_page(&run.token, request) => page.map_err(Stop::Vendor)?,
+            };
             self.store_page(run, src, &page, count).await?;
             if let Some(reread) = state.reread.as_mut() {
                 reread
@@ -558,11 +571,11 @@ impl FarmSync {
         &self,
         row: &ConnectorRow,
         cursors: BTreeMap<String, SyncCursor>,
-        stop: &Stop,
+        stop: &Halt,
     ) -> RunEnd {
         let now = self.clock.now();
         let (code, next) = outcome(stop, now);
-        if let Stop::Vendor(error) = stop {
+        if let Halt::Vendor(error) = stop {
             tracing::info!(error = %chain(error), "vendor stopped the sync");
         }
         let outcome = SyncOutcome {
@@ -622,16 +635,24 @@ impl FarmSync {
 /// A run's stopping code and its next attempt: a `429` continues when the vendor allows (the
 /// next run at the earliest); everything else 15 minutes later. After `auth_refused`,
 /// `too_large` and `source_missing` the due query skips the connector until the owner acts.
-fn outcome(stop: &Stop, now: Timestamp) -> (SyncErrorCode, Timestamp) {
+fn outcome(stop: &Halt, now: Timestamp) -> (SyncErrorCode, Timestamp) {
     match stop {
-        Stop::Vendor(FarmSourceError::RateLimited { retry_after_s, .. }) => (
+        Halt::Vendor(FarmSourceError::RateLimited { retry_after_s, .. }) => (
             SyncErrorCode::RateLimited,
-            now.plus(Duration::from_secs(u64::from(retry_after_s.unwrap_or(0)))),
+            now.plus(retry_wait(*retry_after_s)),
         ),
-        Stop::Vendor(e) => (e.code(), now.plus(SYNC_EVERY)),
-        Stop::TooLarge => (SyncErrorCode::TooLarge, now.plus(SYNC_EVERY)),
-        Stop::Internal(_) => (SyncErrorCode::VendorUnavailable, now.plus(SYNC_EVERY)),
+        Halt::Vendor(e) => (e.code(), now.plus(SYNC_EVERY)),
+        Halt::TooLarge => (SyncErrorCode::TooLarge, now.plus(SYNC_EVERY)),
     }
+}
+
+/// The wait after a `429`: the vendor's `Retry-After`, kept within a minute (a missing or tiny
+/// value would make the sync hammer the vendor every scheduler tick) and an hour (a hostile or
+/// broken value would park the connector).
+fn retry_wait(retry_after_s: Option<u32>) -> Duration {
+    const MIN: u32 = 60;
+    const MAX: u32 = 3600;
+    Duration::from_secs(u64::from(retry_after_s.unwrap_or(0).clamp(MIN, MAX)))
 }
 
 /// The refusal for a token that can't be used.
