@@ -779,6 +779,31 @@ async fn a_lost_answer_after_the_commit_keeps_the_tokens_and_answers_200() {
     assert_eq!(answer.body["status"], "active");
 }
 
+/// A lost answer whose commit applied, but the connector was marked `deleting` since: the
+/// connect didn't survive, so it is answered as the store's not-found, and the deletion
+/// revokes the row's tokens (no revoke here).
+#[tokio::test]
+async fn a_lost_answer_for_a_connector_now_deleting_answers_not_found() {
+    let mut vendors = MockConnectVendors::new();
+    vendors.expect_revoke().never();
+    let store = ambiguous_write(&mut vendors, |secret| {
+        let mut row = active_row();
+        row.connector.kind = ConnectorKind::GoogleDrive;
+        row.connector.status = ConnectorStatus::Deleting;
+        row.secret = Some(secret);
+        Ok(Some(row))
+    });
+    let answer = send(
+        store,
+        on(),
+        Some(Role::Owner),
+        vendors,
+        complete_request(&good_state(), VERIFIER),
+    )
+    .await;
+    assert_eq!(answer.status, StatusCode::NOT_FOUND, "{}", answer.body);
+}
+
 /// Finding 2: a lost answer whose commit didn't apply (the row is still pending): nothing
 /// holds the tokens, so they are revoked.
 #[tokio::test]

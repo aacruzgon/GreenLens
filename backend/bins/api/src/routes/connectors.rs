@@ -450,7 +450,9 @@ pub async fn oauth_callback(
 /// off.
 ///
 /// The timeout is 60 s. Past it the answer is `503`, but the exchange runs on: a retry with the
-/// same `Idempotency-Key` gets `409 request_in_progress` until it ends, and then its answer.
+/// same `Idempotency-Key` gets `409 request_in_progress` until it ends, and then its answer when
+/// that is a `2xx` or a deterministic `4xx` (the only answers stored); after a `5xx` the key is
+/// released and the retry runs again.
 #[utoipa::path(post, path = "/connectors/{id}/complete", tag = "connectors",
     params(("id" = String, Path), ("Idempotency-Key" = Option<String>, Header, description = "UUID per user action")),
     request_body = CompleteConnectorRequest,
@@ -627,12 +629,21 @@ async fn connect_lost(
     claim: &Claim,
     exchanged: Exchanged,
     secret: &Sealed,
-    error: StoreError,
+    mut error: StoreError,
 ) -> Result<Wire<Connector>, ApiError> {
     let id = claim.id;
     let revoke = match &error {
         StoreError::Conflict(_) | StoreError::NotFound => true,
         _ => match state.ports.store.connector_row(id).await {
+            // Holding these tokens but now being deleted: the connect didn't survive, and the
+            // answer is the store's not-found. The deletion revokes the row's tokens itself.
+            Ok(Some(row))
+                if row.secret.as_ref() == Some(secret)
+                    && row.connector.status == ConnectorStatus::Deleting =>
+            {
+                error = StoreError::NotFound;
+                false
+            }
             Ok(Some(row)) if row.secret.as_ref() == Some(secret) => {
                 tracing::info!(connector = %id, kind = %claim.kind, error = %error, "connector connected; the store's answer was lost");
                 return Ok(Wire::ok(row.connector));
