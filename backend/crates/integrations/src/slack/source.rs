@@ -124,6 +124,8 @@ struct Cursor {
 struct Probed {
     /// The threads that changed, read in full.
     items: Vec<FarmItem>,
+    /// Threads whose parent was deleted at Slack.
+    removed: Vec<String>,
     /// `conversations.replies` checks made (`limit=1`), failed ones included.
     calls: u32,
 }
@@ -133,8 +135,12 @@ struct Probed {
 enum Check {
     /// As stored.
     Unchanged,
+    /// Slack answered with another message than the parent asked for: left as it is.
+    Other,
     /// Slack no longer has the thread: forgotten; its record leaves with the 180-day cleanup.
     Gone,
+    /// The parent was deleted and its replies remain: forgotten, and its record deleted.
+    Deleted,
     /// A reply arrived or went: the thread read in full, and what to remember of it (`None`
     /// when no reply is left).
     Changed {
@@ -356,7 +362,7 @@ impl SlackSource {
         cursor.threads.retain(|ts, _| ts_key(ts) >= floor_key);
         Ok(FarmPage {
             items,
-            removed: Vec::new(),
+            removed: probed.removed,
             kept: kept_ids,
             cursor: cursor.into_sync_cursor(),
             more,
@@ -368,7 +374,8 @@ impl SlackSource {
     /// next ones after `cursor.probed` among the threads whose parent is older than 7 days and
     /// whose last reply is within 30 days of the request's now. A thread whose `latest_reply` or
     /// `reply_count` moved is read in full and returned as an item; one Slack no longer has is
-    /// forgotten. A failure other than a refused token ends the checks and keeps `probed` before the thread
+    /// forgotten, and one whose parent was deleted is forgotten and its record removed. A
+    /// failure other than a refused token ends the checks and keeps `probed` before the thread
     /// that failed: the page stands.
     async fn probe_older_threads(
         &self,
@@ -378,6 +385,7 @@ impl SlackSource {
         request: &FarmPageRequest,
         cursor: &mut Cursor,
     ) -> Result<Probed, FarmClientError> {
+        let channel = request.source.id.as_str();
         let now = request.oldest.plus(FARM_RECORD_KEEP);
         let parent_before = now.minus(PROBE_PARENT_AGE).unix_seconds();
         let reply_after = now.minus(PROBE_REPLY_AGE).unix_seconds();
@@ -416,9 +424,13 @@ impl SlackSource {
             };
             cursor.probed = Some(ts.clone());
             match check {
-                Check::Unchanged => {}
+                Check::Unchanged | Check::Other => {}
                 Check::Gone => {
                     cursor.threads.remove(&ts);
+                }
+                Check::Deleted => {
+                    cursor.threads.remove(&ts);
+                    probed.removed.push(format!("{channel}/{ts}"));
                 }
                 Check::Changed { item, thread } => {
                     match thread {
@@ -457,6 +469,13 @@ impl SlackSource {
         let Some(parent) = found else {
             return Ok(Check::Gone);
         };
+        if parent.ts != ts {
+            return Ok(Check::Other);
+        }
+        if !kept(&parent) {
+            // A deleted parent (`tombstone`) whose replies remain: a pass wouldn't store it.
+            return Ok(Check::Deleted);
+        }
         let latest = parent.latest_reply.clone().unwrap_or_default();
         if stored.is_some_and(|t| t.latest_reply == latest && t.reply_count == parent.reply_count) {
             return Ok(Check::Unchanged);
@@ -1061,5 +1080,60 @@ mod threads {
             matches!(failed, FarmClientError::AuthRefused { .. }),
             "{failed:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn a_deleted_parent_is_not_stored_and_its_record_goes() {
+        let server = MockServer::start().await;
+        let (p1, p2, new, start) = two_due(&server).await;
+        let (a1, a2) = (days_ago(60), days_ago(50));
+        replies_by(&server, move |ts, _| {
+            let message = if ts == a1 {
+                // Deleted at Slack, with a new reply since.
+                json!({ "ts": ts, "thread_ts": ts, "subtype": "tombstone",
+                        "text": "This message was deleted.", "reply_count": 2,
+                        "latest_reply": days_ago(1) })
+            } else {
+                assert_eq!(ts, a2);
+                parent(ts, 1, &days_ago(20))
+            };
+            json!({ "ok": true, "messages": [message] })
+        })
+        .await;
+        let page = source(&server)
+            .page(&token(), &request(Some(start)))
+            .await
+            .unwrap();
+        assert_eq!(page.probes, 2);
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].vendor_id, format!("C_FIELD/{new}"));
+        assert_eq!(page.removed, [format!("C_FIELD/{p1}")]);
+        let cursor = Cursor::parse(Some(&page.cursor));
+        assert!(!cursor.threads.contains_key(&p1));
+        assert!(cursor.threads.contains_key(&p2));
+    }
+
+    #[tokio::test]
+    async fn an_answer_for_another_message_is_skipped() {
+        let server = MockServer::start().await;
+        let (_, p2, _, start) = two_due(&server).await;
+        let other = days_ago(10);
+        let answer = parent(&other, 3, &days_ago(1));
+        replies_by(
+            &server,
+            move |_, _| json!({ "ok": true, "messages": [answer] }),
+        )
+        .await;
+        let page = source(&server)
+            .page(&token(), &request(Some(start.clone())))
+            .await
+            .unwrap();
+        assert_eq!(page.probes, 2);
+        assert_eq!(page.items.len(), 1, "only the new message");
+        assert_eq!(page.removed, Vec::<String>::new());
+        let cursor = Cursor::parse(Some(&page.cursor));
+        assert_eq!(cursor.threads, Cursor::parse(Some(&start)).threads);
+        assert!(!cursor.threads.contains_key(&other));
+        assert_eq!(cursor.probed.as_deref(), Some(p2.as_str()));
     }
 }
