@@ -67,12 +67,13 @@ services:
     logging: *logging
     networks: [data]
     stop_grace_period: 60s
-  seed-upload:                      # S2 (infra roadmap 11): its image doesn't exist in S1, so the service sits behind the `seed` profile
+  seed-upload:                      # S2 (infra roadmap 11): adds the species photos to RustFS, then exits; on with the `seed` profile
     profiles: [seed]
     image: ${SEED_UPLOAD_IMAGE:-seed-upload:unset}       # ghcr.io/aacruzgon/greenlens/seed-upload@sha256:…
     restart: "no"
     <<: *hardened
-    env_file: [{ path: "${PDM_ENV:-/srv/pdm/env}/.env.seed", required: false }]   # PDMSEED01's keys
+    # PDMSEED01's keys. Without the file it exits 2, so api stays down.
+    env_file: [{ path: "${PDM_ENV:-/srv/pdm/env}/.env.seed", required: false }]
     depends_on: { rustfs: { condition: service_healthy } }
     networks: [data]
     logging: *logging
