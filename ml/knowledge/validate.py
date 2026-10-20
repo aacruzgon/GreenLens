@@ -4,6 +4,7 @@ whole-set checks (contracts §10, checks and generated files).
     python3 -m ml.knowledge.validate                 # ml/knowledge/seed
     python3 -m ml.knowledge.validate --seed DIR      # another seed, e.g. a test fixture
     python3 -m ml.knowledge.validate --no-dose-check # skip the cargo step (never for a real build)
+    python3 -m ml.knowledge.validate --drafts        # also pass records not yet reviewed
 
 Every problem is reported, not only the first. Exit code 0 when the seed passes, 1 when it
 doesn't, 2 when the dose check can't run.
@@ -13,6 +14,10 @@ doesn't, 2 when the dose check can't run.
 - The dose check is the agent crate's own (`cargo run -p agent --example dose_check`), run on
   every treatment text and soil condition, with the seed's products: a port to Python would
   drift from the 400 lines of rules the plans and chat are checked with.
+- A species, problem or organism with an empty `reviewed_by` is a draft from extract.py, and
+  fails: model output is never loaded unreviewed (training.md §10, review). `--drafts` runs
+  every other check on the drafts. A problem's `reviewed_by` and `reviewed_at` are signed
+  together: a draft has both empty, and one without the other fails even with `--drafts`.
 """
 
 from __future__ import annotations
@@ -74,8 +79,9 @@ def _schema_errors(name: str, schema: dict, value, where: str) -> list[str]:
     return out
 
 
-def check(seed: Seed, dose: DoseChecker | None = cargo_dose_check) -> list[str]:
-    """Every problem with the seed, as one line each naming its file. Empty when it passes."""
+def check(seed: Seed, dose: DoseChecker | None = cargo_dose_check, drafts: bool = False) -> list[str]:
+    """Every problem with the seed, as one line each naming its file. Empty when it passes.
+    With `drafts`, records nobody has reviewed yet pass too."""
     sch, measurable = schemas()
     errors: list[str] = []
     rel = lambda p: str(p.relative_to(seed.root)) if p.is_relative_to(seed.root) else str(p)
@@ -90,7 +96,10 @@ def check(seed: Seed, dose: DoseChecker | None = cargo_dose_check) -> list[str]:
     for folder, name in (("species", "SpeciesSeed"), ("problems", "ProblemSeed"),
                          ("organisms", "OrganismSeed"), ("treatments", "TreatmentSeed")):
         for d in getattr(seed, folder):
-            errors += _schema_errors(name, sch[name], d, path(folder, d))
+            # A draft's empty reviewed_at isn't a date; check 8 reports it, not the schema.
+            shape = ({**d, "reviewed_at": "1970-01-01"}
+                     if folder == "problems" and isinstance(d, dict) and d.get("reviewed_at") == "" else d)
+            errors += _schema_errors(name, sch[name], shape, path(folder, d))
     errors += _schema_errors("ProductsSeed", sch["ProductsSeed"], seed.products, "products.yaml")
     if not isinstance(seed.soil_conditions, list):
         errors.append("soil_conditions.yaml: must be a list of soil conditions")
@@ -253,7 +262,21 @@ def check(seed: Seed, dose: DoseChecker | None = cargo_dose_check) -> list[str]:
         if o["role"] == "invasive" and not o.get("reporting_url"):
             errors.append(f"{path('organisms', o)}: an invasive organism needs reporting_url")
 
-    # 8. The dose check, on everything the seed advises.
+    # 8. Every record was reviewed by a teammate, and a problem's review is dated.
+    for folder in ("species", "problems", "organisms"):
+        for d in getattr(seed, folder):
+            by = str(d.get("reviewed_by") or "").strip()
+            at = str(d.get("reviewed_at") or "").strip() if folder == "problems" else by
+            if by and not at:
+                errors.append(f"{path(folder, d)}: reviewed_by is set but reviewed_at is empty; "
+                              "sign both")
+            elif at and not by:
+                errors.append(f"{path(folder, d)}: reviewed_at is set but reviewed_by is empty; "
+                              "sign both")
+            elif not by and not drafts:
+                errors.append(f"{path(folder, d)}: not reviewed yet (reviewed_by is empty)")
+
+    # 9. The dose check, on everything the seed advises.
     if dose is not None:
         texts = [{"id": f"{path('treatments', t)}: text", "text": t["text"]}
                  for t in seed.treatments]
@@ -270,10 +293,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--seed", type=Path, default=SEED)
     ap.add_argument("--no-dose-check", action="store_true")
+    ap.add_argument("--drafts", action="store_true", help="pass records not yet reviewed")
     args = ap.parse_args()
     seed = load(args.seed)
     try:
-        errors = check(seed, None if args.no_dose_check else cargo_dose_check)
+        errors = check(seed, None if args.no_dose_check else cargo_dose_check, args.drafts)
     except DoseCheckUnavailable as e:
         print(f"the dose check can't run: {e}", file=sys.stderr)
         return 2

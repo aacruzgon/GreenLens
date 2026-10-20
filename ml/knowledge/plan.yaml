@@ -1,0 +1,41 @@
+# The curation plan: the records the model steps draft (training.md §10). tag.py takes its id
+# enums from here and from the seed, so a tag can't name an unknown id; extract.py drafts one
+# record per entry that has no file in seed/ yet. Slugs follow #4 (decided 2026-10-17).
+#
+# The tomato slice: the eight problems the disease head predicts (the mapping files'
+# tomato_* classes), the bacterial speck its sources pair with bacterial spot, blossom-end rot,
+# the pests the sources cover, and the natural enemies the sources say attack them.
+
+# Sources with no reuse grant (sources.yaml): their facts go into the drafts, rewritten and
+# cited, but their wording isn't committed. tag.py leaves them out of seed/chunks, extract.py
+# reads them from build/tags, and the review files link them instead of quoting them.
+facts_only_sources:
+  - clemson_hgic_tomato_diseases
+  - clemson_hgic_tomato_insect_pests
+  - isu_growing_tomatoes_home_garden   # no chunks: the care profile cites it by hand
+
+species:
+  - id: tomato
+    name: Tomato
+    scientific_name: Solanum lycopersicum
+
+problems:
+  - { id: tomato_early_blight, name: Early blight, affects: [tomato] }
+  - { id: tomato_late_blight, name: Late blight, affects: [tomato] }
+  - { id: tomato_septoria_leaf_spot, name: Septoria leaf spot, affects: [tomato] }
+  - { id: tomato_leaf_mold, name: Leaf mold, affects: [tomato] }
+  - { id: tomato_bacterial_spot, name: Bacterial spot, affects: [tomato] }
+  - { id: tomato_bacterial_speck, name: Bacterial speck, affects: [tomato] }
+  - { id: tomato_yellow_leaf_curl_virus, name: Tomato yellow leaf curl virus, affects: [tomato] }
+  # tomato_mosaic_virus: no source covers it on its own yet (#46); the tags of 2026-10-20 list it.
+  - { id: tomato_spider_mites, name: Spider mites, affects: [tomato], caused_by: [two_spotted_spider_mite] }
+  - { id: tomato_hornworms, name: Hornworms, affects: [tomato], caused_by: [hornworm] }
+  - { id: tomato_whiteflies, name: Whiteflies, affects: [tomato], caused_by: [whitefly] }
+  - { id: tomato_blossom_end_rot, name: Blossom-end rot, affects: [tomato] }
+
+organisms:
+  - { id: two_spotted_spider_mite, name: Two-spotted spider mite, scientific_name: Tetranychus urticae }
+  - { id: hornworm, name: Hornworm, scientific_name: Manduca }
+  - { id: whitefly, name: Whitefly, scientific_name: Aleyrodidae }
+  - { id: parasitic_wasp, name: Parasitic wasp, scientific_name: Braconidae }
+  - { id: predatory_mite, name: Predatory mite, scientific_name: Phytoseiulus persimilis }
