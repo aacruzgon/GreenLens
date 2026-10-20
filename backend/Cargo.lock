@@ -246,6 +246,7 @@ dependencies = [
  "serde_path_to_error",
  "sha2 0.11.1",
  "store",
+ "surrealdb",
  "thiserror",
  "tokio",
  "tokio-stream",

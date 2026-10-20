@@ -11,7 +11,7 @@
 //! [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
 //! [connectors 6]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#6-sync
 
-use std::{fmt, sync::Arc};
+use std::{fmt, sync::Arc, time::Duration};
 
 use crate::{
     connectors::{ConnectorAccount, ConnectorKind, ConnectorSource, FarmRecordKind},
@@ -57,9 +57,20 @@ pub struct FarmPageRequest {
     pub source: ConnectorSource,
     /// Where the last page stopped; `None` for a first sync.
     pub cursor: Option<SyncCursor>,
-    /// The oldest item wanted: 180 days back on a first sync, 7 days back for the daily
-    /// re-read of Slack's trailing window.
+    /// The oldest item kept: 180 days back (`FARM_RECORD_KEEP`). A first sync reads from here,
+    /// and nothing older is read.
     pub oldest: Timestamp,
+    /// The daily re-read ([`FarmSource::reread_window`]): read everything from this instant
+    /// again, not only what is new, so edits and deletions are seen. The sync sets it on every
+    /// page of a re-read pass and `None` otherwise. The adapter starts a pass from it only when
+    /// its cursor has no page in progress; a vendor without a re-read ignores it.
+    pub reread_from: Option<Timestamp>,
+    /// How many older items the adapter may check with an extra call each on this page, for
+    /// changes no pass can see (Slack: replies to threads whose parent is older than the
+    /// re-read window). The sync shares a fixed number among a connector's sources per run
+    /// and sends 0 on a source's first pass and when its run is nearly over. A vendor whose
+    /// change feed reports everything (Drive) ignores it.
+    pub probe_limit: u32,
 }
 
 /// One item as the vendor holds it, before chunking.
@@ -90,10 +101,17 @@ pub struct FarmPage {
     /// Vendor ids that are gone (deleted, trashed, moved out of the folder), whose records the
     /// sync deletes.
     pub removed: Vec<String>,
+    /// Vendor ids still at the vendor and unchanged since the adapter last returned them, so
+    /// not sent again (Slack: a thread whose parent and `latest_reply` are as before, whose
+    /// replies aren't re-read). A re-read counts them as seen, so their records stay.
+    pub kept: Vec<String>,
     /// The cursor to save after this page.
     pub cursor: SyncCursor,
     /// `true` when another page follows; the sync reads it now or on its next run.
     pub more: bool,
+    /// How many of [`FarmPageRequest::probe_limit`]'s checks this page made, failed ones
+    /// included.
+    pub probes: u32,
 }
 
 /// A vendor behind the farm connectors (Slack or Google Drive).
@@ -102,6 +120,14 @@ pub struct FarmPage {
 pub trait FarmSource: Send + Sync {
     /// Which vendor this adapter speaks to.
     fn kind(&self) -> ConnectorKind;
+
+    /// The trailing window the sync reads again once a day to catch edits and deletions that
+    /// reading only what is new can't see: Slack's 7 days ([connectors 6]). `None` for a vendor
+    /// whose change feed reports them (Drive's `changes.list`): the sync then never deletes by
+    /// absence.
+    ///
+    /// [connectors 6]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#6-sync
+    fn reread_window(&self) -> Option<Duration>;
 
     /// `GET /connectors/{id}/available-sources`: the channels the bot is a member of
     /// (`is_member`), or the folders the account can open.

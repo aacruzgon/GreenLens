@@ -241,6 +241,8 @@ async fn era_slack_oauth_code_exchange() {
 }
 
 /// Runs `test` with `faults` set on the Slack simulator, and always clears them afterwards.
+/// Faults are global to the simulator and the admin API's calls use them up too (an inject
+/// spends `fail_next` and counts against `quota_limit`), so a test creates its tenant first.
 async fn with_faults(faults: Value, test: impl Future<Output = ()>) {
     Faults::reset(SimKind::Slack).await;
     Faults::set(SimKind::Slack, faults).await;

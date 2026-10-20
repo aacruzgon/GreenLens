@@ -28,6 +28,7 @@ use crate::{
     deletion::DeletionRunner,
     error::ApiError,
     events::{hub::EventHub, writer::ScanWriters},
+    farm_sync::FarmSync,
     limits::RateLimits,
     sealing::ConnectorKey,
     seams::{ChatTurns, ImageProcessing, PipelineApi},
@@ -97,6 +98,9 @@ pub struct AppState {
     pub workers: WorkerTokens,
     /// Garden, plant, scan and account cascades.
     pub deletions: DeletionRunner,
+    /// The farm connectors' sync and their adapters; `None` when connectors are off (no
+    /// `CONNECTOR_KEY`), so the `connectors` task and start-up seeding don't run.
+    pub farm_sync: Option<Arc<FarmSync>>,
     /// The one path to `RustFS` deletes ([storage 4]): detached, never cancelled, retried, and
     /// drained at shutdown for at least one full attempt. Shared with `deletions`.
     pub deletes: blob::DeleteQueue,
@@ -132,7 +136,7 @@ impl AppState {
     /// Whether farm connectors are on, and the key that seals their tokens: the one switch
     /// (decision 9 of docs/EON). `None` without `CONNECTOR_KEY`: the list answers
     /// `available: false`, every owner write `409 invalid_state`, and the `connectors` scheduler
-    /// task (E4.1) and start-up seeding (E4.6) must do nothing.
+    /// task (E4.1) and start-up seeding (E4.6) do nothing ([`Self::farm_sync`] is `None`).
     pub fn connector_key(&self) -> Option<&ConnectorKey> {
         self.config.connectors.key.as_ref()
     }

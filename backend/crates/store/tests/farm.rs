@@ -24,8 +24,8 @@ use domain::{
     ports::{
         ChatRepo, CompletedConnect, Conflict, Embedding, FarmRecordFilter, FarmRecordStore,
         FarmVector, GardenRepo, IdGenExt, NewConnector, NewConversation, NewFarmRecord, NewGarden,
-        NewMessage, PendingConnect, PlanRepo, PlanWrite, ResolvedLocation, Sealed, StoreError,
-        SyncCursor, SyncOutcome, SyncRequest,
+        NewMessage, PendingConnect, PlanRepo, PlanWrite, ResolvedLocation, SYNC_STATE_KEY, Sealed,
+        StoreError, SyncCursor, SyncOutcome, SyncRequest,
     },
     records::{
         plan::{ActionPlan, PlanReason, PlanStep, PlanWhen, StepCategory},
@@ -95,7 +95,14 @@ async fn active_slack(store: &SurrealStore, f: &Fixture, garden: GardenId) -> Co
     c.oauth = None;
     c.account = Some(slack_account());
     c.secret = Some(sealed(b"sealed-token"));
-    c.sources = vec![source("C1", "field-reports"), source("C2", "spray-log")];
+    // `folder-1` and `C10` are for the tests that store records of other sources: an upsert
+    // skips a record whose source isn't the connector's.
+    c.sources = vec![
+        source("C1", "field-reports"),
+        source("C2", "spray-log"),
+        source("C10", "misc"),
+        source("folder-1", "Farm records"),
+    ];
     let id = c.id;
     store.seed_connector(garden, c).await.expect("seeded");
     id
@@ -293,6 +300,10 @@ async fn connectors_and_the_due_query() {
                 cursors: BTreeMap::from([
                     ("C1".to_owned(), SyncCursor("1729000000.000100".into())),
                     ("C9".to_owned(), SyncCursor("dropped meanwhile".into())),
+                    (
+                        SYNC_STATE_KEY.to_owned(),
+                        SyncCursor(r#"{"round":2}"#.into()),
+                    ),
                 ]),
                 due_at: t0(),
                 synced_at: Some(at(2)),
@@ -305,10 +316,17 @@ async fn connectors_and_the_due_query() {
     let row = store.connector_row(seeded).await.unwrap().unwrap();
     assert_eq!(row.connector.synced_at, Some(at(2)));
     assert_eq!(row.next_sync_at, at(17));
+    let sync_state = (
+        SYNC_STATE_KEY.to_owned(),
+        SyncCursor(r#"{"round":2}"#.into()),
+    );
     assert_eq!(
         row.cursors,
-        BTreeMap::from([("C1".to_owned(), SyncCursor("1729000000.000100".into()))]),
-        "only chosen sources keep a cursor"
+        BTreeMap::from([
+            ("C1".to_owned(), SyncCursor("1729000000.000100".into())),
+            sync_state.clone(),
+        ]),
+        "only chosen sources keep a cursor, and the sync keeps its state"
     );
     assert!(
         due(at(20)).await.is_empty(),
@@ -322,7 +340,11 @@ async fn connectors_and_the_due_query() {
         .unwrap();
     assert_eq!(changed.sources, vec![source("C2", "spray-log")]);
     let row = store.connector_row(seeded).await.unwrap().unwrap();
-    assert!(row.cursors.is_empty(), "C1 was dropped");
+    assert_eq!(
+        row.cursors,
+        BTreeMap::from([sync_state]),
+        "C1 was dropped; the sync's state stays"
+    );
     assert_eq!(row.last_error, None);
     assert_eq!(due(at(21)).await, vec![seeded]);
 
@@ -1088,6 +1110,81 @@ async fn sync_now_is_refused_on_a_stopped_connector() {
     );
 }
 
+/// Seeding again repairs an existing connector of its garden: the new sealed token, `active`
+/// and no `last_error`. Another garden's connector, one being deleted and one in a garden being
+/// deleted stay as they are.
+#[tokio::test]
+async fn seeding_again_repairs_the_connector_where_it_belongs() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let c = active_slack(&store, &f, f.garden).await;
+    let again = |f: &Fixture, token: &[u8]| {
+        let mut n = new_connector(f, ConnectorKind::Slack);
+        n.id = c;
+        n.status = ConnectorStatus::Active;
+        n.oauth = None;
+        n.secret = Some(sealed(token));
+        n
+    };
+    store
+        .set_status(
+            c,
+            ConnectorStatus::ReauthNeeded,
+            Some(SyncErrorCode::AuthRefused),
+        )
+        .await
+        .unwrap();
+    let seeded = store
+        .seed_connector(f.garden, again(&f, b"new-key-token"))
+        .await
+        .unwrap();
+    assert_eq!(seeded.status, ConnectorStatus::Active);
+    let row = store.connector_row(c).await.unwrap().unwrap();
+    assert_eq!(row.last_error, None);
+    assert_eq!(row.secret, Some(sealed(b"new-key-token")));
+    assert_eq!(
+        row.connector.sources.len(),
+        4,
+        "its sources are the owner's"
+    );
+
+    // Another garden: unchanged, and the result says where it lives.
+    let other = other_garden(&store, &f).await;
+    store
+        .set_status(
+            c,
+            ConnectorStatus::ReauthNeeded,
+            Some(SyncErrorCode::AuthRefused),
+        )
+        .await
+        .unwrap();
+    let seen = store
+        .seed_connector(other, again(&f, b"other-token"))
+        .await
+        .unwrap();
+    assert_eq!(seen.garden_id, f.garden);
+    assert_eq!(seen.status, ConnectorStatus::ReauthNeeded);
+    let row = store.connector_row(c).await.unwrap().unwrap();
+    assert_eq!(row.last_error, Some(SyncErrorCode::AuthRefused));
+    assert_eq!(row.secret, Some(sealed(b"new-key-token")));
+
+    // Its garden being deleted: unchanged.
+    let mut r = store
+        .db()
+        .query("UPDATE $garden SET deleting_at = time::now();")
+        .bind(("garden", rid(&f.garden)))
+        .await
+        .unwrap();
+    assert!(r.take_errors().is_empty());
+    store
+        .seed_connector(f.garden, again(&f, b"late-token"))
+        .await
+        .unwrap();
+    let row = store.connector_row(c).await.unwrap().unwrap();
+    assert_eq!(row.connector.status, ConnectorStatus::ReauthNeeded);
+    assert_eq!(row.secret, Some(sealed(b"new-key-token")));
+}
+
 /// Two Sync now requests at once: one is accepted, the other is too soon.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn racing_sync_requests_accept_exactly_one() {
@@ -1152,7 +1249,11 @@ async fn finish_sync_keeps_what_landed_during_the_run() {
     let row = store.connector_row(c).await.unwrap().unwrap();
     assert_eq!(row.next_sync_at, at(20), "the Sync now is not pushed out");
     assert_eq!(row.last_error, None);
-    assert_eq!(row.connector.synced_at, Some(at(36)));
+    assert_eq!(
+        row.connector.synced_at,
+        Some(at(16)),
+        "a run that overlapped a Sync now doesn't set synced_at"
+    );
 
     // New sources land during a run that stops on `too_large`: the wait isn't stored.
     let due_at = row.next_sync_at;
@@ -1167,15 +1268,35 @@ async fn finish_sync_keeps_what_landed_during_the_run() {
     let row = store.connector_row(c).await.unwrap().unwrap();
     assert_eq!(row.next_sync_at, at(40));
     assert_eq!(row.last_error, None, "the new sources run first");
+    assert_eq!(row.connector.synced_at, Some(at(16)));
     assert_eq!(
         store.due_connectors(at(41), 10).await.unwrap().len(),
         1,
         "still due"
     );
 
+    // A run that finished while new sources landed doesn't set synced_at: it didn't read them.
+    let due_at = row.next_sync_at;
+    store
+        .set_sources(
+            owner,
+            c,
+            vec![source("C2", "spray-log"), source("C3", "scouting")],
+            at(42),
+        )
+        .await
+        .unwrap();
+    store
+        .finish_sync(c, outcome(due_at, at(57), None))
+        .await
+        .unwrap();
+    let row = store.connector_row(c).await.unwrap().unwrap();
+    assert_eq!(row.connector.synced_at, Some(at(16)));
+    assert_eq!(row.next_sync_at, at(42));
+
     // Without anything landing, too_large is stored and stops the connector.
     store
-        .finish_sync(c, outcome(at(40), at(60), Some(SyncErrorCode::TooLarge)))
+        .finish_sync(c, outcome(at(42), at(60), Some(SyncErrorCode::TooLarge)))
         .await
         .unwrap();
     let row = store.connector_row(c).await.unwrap().unwrap();
@@ -1192,7 +1313,10 @@ async fn dropping_a_drive_folder_keeps_the_new_folders_records() {
     let mut d = new_connector(&f, ConnectorKind::GoogleDrive);
     d.status = ConnectorStatus::Active;
     d.oauth = None;
-    d.sources = vec![source("folder-2", "New records")];
+    d.sources = vec![
+        source("folder-1", "Old records"),
+        source("folder-2", "New records"),
+    ];
     let c = d.id;
     store.seed_connector(f.garden, d).await.unwrap();
     let mut old = record(c, "1aBcD", 0, "old", Some(one_hot(0)), t0());
@@ -1200,6 +1324,11 @@ async fn dropping_a_drive_folder_keeps_the_new_folders_records() {
     let mut new = record(c, "2eFgH", 0, "new", Some(one_hot(1)), t0());
     new.source = "folder-2".into();
     store.upsert_records(c, vec![old, new]).await.unwrap();
+    let owner = owner_of(&store, &f).await;
+    store
+        .set_sources(owner, c, vec![source("folder-2", "New records")], at(1))
+        .await
+        .unwrap();
     assert_eq!(
         store
             .delete_source_records(c, "folder-1".into())
@@ -1214,6 +1343,43 @@ async fn dropping_a_drive_folder_keeps_the_new_folders_records() {
             .unwrap(),
         vec!["2eFgH".to_owned()]
     );
+    assert_eq!(store.garden_record_count(f.garden).await.unwrap(), 1);
+}
+
+/// A record whose source the owner dropped while a sync still read it is not written; the
+/// others in the same upsert are.
+#[tokio::test]
+async fn an_upsert_skips_records_of_a_dropped_source() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let c = active_slack(&store, &f, f.garden).await;
+    store
+        .set_sources(owner, c, vec![source("C2", "spray-log")], at(1))
+        .await
+        .unwrap();
+    let written = store
+        .upsert_records(
+            c,
+            vec![
+                record(c, "C1/1.000100", 0, "dropped", Some(one_hot(0)), t0()),
+                record(c, "C2/1.000100", 0, "kept", Some(one_hot(1)), t0()),
+                // No vector and no stored row: it would be `missing_vector`, but its source
+                // is gone, so it is skipped before that check.
+                record(c, "C1/2.000100", 0, "dropped too", None, t0()),
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(written, 1, "only the kept record counts");
+    let ids = vec![
+        "C1/1.000100".into(),
+        "C2/1.000100".into(),
+        "C1/2.000100".into(),
+    ];
+    let stored = store.record_hashes(c, ids).await.unwrap();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0].0.vendor_id.to_string(), "C2/1.000100");
     assert_eq!(store.garden_record_count(f.garden).await.unwrap(), 1);
 }
 

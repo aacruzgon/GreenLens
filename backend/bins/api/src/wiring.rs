@@ -14,6 +14,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use domain::{
     authz::{Editor, Membership},
     chat::Preview,
+    connectors::ConnectorEndpoint,
     id::{PendingActionId, PlantId, QuestionId, ScanId},
     jobs::{CompleteJob, WorkerEvent},
     ports::{
@@ -36,6 +37,7 @@ use integrations::{
     http::{HttpConfig, client},
     jev::{JevClassifier, JevConfig},
     open_meteo::{OpenMeteo, OpenMeteoConfig},
+    slack::{SlackClient, SlackConfig, SlackSource},
     soilgrids::{SoilGrids, SoilGridsConfig},
     svix::SvixVerifier,
 };
@@ -45,6 +47,7 @@ use crate::{
     config::Config,
     deletion::DeletionRunner,
     events::{hub::EventHub, writer::ScanWriters},
+    farm_sync::{FarmSources, FarmSync, SyncConfig},
     limits::RateLimits,
     push::Pusher,
     seams::{
@@ -279,6 +282,38 @@ struct Outbound {
     chat_model: Arc<dyn ChatModel>,
     classifier: Arc<dyn TextClassifier>,
     beliefs: Arc<dyn BeliefStore>,
+    farm: FarmSources,
+}
+
+/// The sync when connectors are on (decision 9 of docs/EON): the `connectors` task and
+/// start-up seeding run only with it.
+fn farm_sync(config: &Config, ports: &Ports, sources: FarmSources) -> Option<Arc<FarmSync>> {
+    config.connectors.key.clone().map(|key| {
+        Arc::new(FarmSync::new(
+            Arc::clone(&ports.store),
+            Arc::clone(&ports.embedder),
+            Arc::clone(&ports.clock),
+            key,
+            sources,
+            SyncConfig::default(),
+        ))
+    })
+}
+
+/// The farm connectors' adapters: the real Slack, with Tier 1 pacing, for owners' connectors;
+/// Era's Slack simulator, without pacing, for the seeded `era` ones when `ERA_SLACK_BASE` is
+/// set. Drive's (E4.3) go beside them.
+fn farm_sources(config: &Config, slack_client: impl Fn(SlackConfig) -> SlackClient) -> FarmSources {
+    let slack = |c: SlackConfig| Arc::new(SlackSource::new(slack_client(c)));
+    let mut sources =
+        FarmSources::default().with(ConnectorEndpoint::Vendor, slack(SlackConfig::default()));
+    if let Some(base) = &config.connectors.era_slack_base {
+        sources = sources.with(
+            ConnectorEndpoint::Era,
+            slack(SlackConfig::era(base.clone())),
+        );
+    }
+    sources
 }
 
 async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Outbound> {
@@ -328,6 +363,7 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
             256,
         )),
     };
+    let farm = farm_sources(config, |c| SlackClient::new(http.clone(), c));
     let beliefs: Arc<dyn BeliefStore> = match agent_memory(config) {
         Some(c) => Arc::new(AgentMemory::new(http.clone(), c)),
         None => Arc::new(NoBeliefs),
@@ -374,6 +410,7 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         chat_model,
         classifier,
         beliefs,
+        farm,
     })
 }
 
@@ -541,6 +578,7 @@ pub async fn build(
         clock: Arc::clone(&clock),
         ids,
     };
+    let farm_sync = farm_sync(&config, &ports, out.farm);
     let hub = Arc::new(EventHub::default());
     let broker = Arc::new(JobBroker::new(
         store.clone(),
@@ -596,6 +634,7 @@ pub async fn build(
         broker,
         deletions,
         deletes,
+        farm_sync,
         shutdown,
         tasks,
     }))

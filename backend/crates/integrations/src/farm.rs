@@ -10,6 +10,8 @@
 
 use std::time::Duration;
 
+use domain::{connectors::ConnectorKind, ports::FarmSourceError};
+
 use crate::http::TransportError;
 
 /// The code stored in a connector's `last_error` ([connectors 6]).
@@ -121,5 +123,113 @@ impl FarmClientError {
                 FarmErrorCode::VendorUnavailable
             }
         }
+    }
+
+    /// The `FarmSource` port's error for this failure, for a call that read `source_id` (a
+    /// channel or the folder) or, with `None`, a call about the token or the account. A
+    /// `NotFound` on a source is `SourceMissing`; on anything else it says nothing about the
+    /// owner's choice and counts as a bad answer. The result keeps no response body: its
+    /// source is this error at most, which holds none.
+    pub fn into_source_error(
+        self,
+        vendor: ConnectorKind,
+        source_id: Option<&str>,
+    ) -> FarmSourceError {
+        match self {
+            Self::AuthRefused { .. } => FarmSourceError::AuthRefused { vendor },
+            Self::RateLimited { retry_after, .. } => FarmSourceError::RateLimited {
+                vendor,
+                retry_after_s: retry_after.map(|d| u32::try_from(d.as_secs()).unwrap_or(u32::MAX)),
+            },
+            Self::NotFound { .. } => match source_id {
+                Some(id) => FarmSourceError::SourceMissing {
+                    vendor,
+                    source_id: id.to_owned(),
+                },
+                None => FarmSourceError::BadResponse {
+                    vendor,
+                    source: Box::new(self),
+                },
+            },
+            Self::Malformed { .. } => FarmSourceError::BadResponse {
+                vendor,
+                source: Box::new(self),
+            },
+            Self::Unavailable { .. } | Self::Refused { .. } => FarmSourceError::Unavailable {
+                vendor,
+                source: Box::new(self),
+            },
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use domain::{connectors::ConnectorKind, connectors::SyncErrorCode};
+
+    use super::FarmClientError;
+
+    const SLACK: ConnectorKind = ConnectorKind::Slack;
+
+    #[test]
+    fn each_client_error_maps_to_the_same_code_through_the_port() {
+        let cases = [
+            FarmClientError::AuthRefused {
+                vendor: "slack",
+                code: "invalid_auth".into(),
+            },
+            FarmClientError::RateLimited {
+                vendor: "slack",
+                retry_after: Some(Duration::from_secs(30)),
+            },
+            FarmClientError::Unavailable {
+                vendor: "slack",
+                source: None,
+            },
+            FarmClientError::NotFound {
+                vendor: "slack",
+                code: "channel_not_found".into(),
+            },
+            FarmClientError::Refused {
+                vendor: "slack",
+                status: 400,
+                code: "invalid_cursor".into(),
+            },
+            FarmClientError::Malformed { vendor: "slack" },
+        ];
+        for error in cases {
+            let code = error.code().as_str();
+            let port = error.into_source_error(SLACK, Some("C_FIELD"));
+            assert_eq!(port.code().as_str(), code, "{port:?}");
+        }
+    }
+
+    #[test]
+    fn a_retry_after_is_kept_in_whole_seconds() {
+        let error = FarmClientError::RateLimited {
+            vendor: "slack",
+            retry_after: Some(Duration::from_millis(1_500)),
+        };
+        assert!(matches!(
+            error.into_source_error(SLACK, None),
+            domain::ports::FarmSourceError::RateLimited {
+                retry_after_s: Some(1),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn not_found_off_a_source_is_not_source_missing() {
+        let error = FarmClientError::NotFound {
+            vendor: "slack",
+            code: "user_not_found".into(),
+        };
+        assert_eq!(
+            error.into_source_error(SLACK, None).code(),
+            SyncErrorCode::VendorUnavailable
+        );
     }
 }

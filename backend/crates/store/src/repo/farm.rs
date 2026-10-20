@@ -68,7 +68,8 @@ pub mod sql {
         };
     }
 
-    /// Keeps the entries of the cursor object `$from` whose source id is in `$ids`.
+    /// Keeps the entries of the cursor object `$from` whose source id is in `$ids`, and the
+    /// sync's own state (`#sync`, [`domain::ports::SYNC_STATE_KEY`]).
     macro_rules! kept_cursor {
         ($from:literal, $ids:literal) => {
             concat!(
@@ -76,7 +77,7 @@ pub mod sql {
                 $from,
                 " ?? {}), |$e| $e[0] IN ",
                 $ids,
-                "))"
+                " OR $e[0] = '#sync'))"
             )
         };
     }
@@ -94,11 +95,20 @@ CREATE $connector CONTENT $row;
 SELECT ", connector_fields!(), " FROM ONLY $connector;
 COMMIT;"
     );
-    /// Start-up seeding: creates the connector only when its fixed id is free, so every start
-    /// may run it.
+    /// Start-up seeding: creates the connector when its fixed id is free; otherwise repairs
+    /// it, so every start may run it. A connector that exists in this garden and isn't being
+    /// deleted gets the freshly sealed token (a new `CONNECTOR_KEY` makes the old one useless),
+    /// `status` `active` and no `last_error`. One in another garden, or being deleted, or in a
+    /// garden being deleted, is left as it is; the caller sees its garden in the result.
     pub const SEED_CONNECTOR: &str = concat!(
         "BEGIN;
-IF (SELECT VALUE id FROM ONLY $connector) = NONE { CREATE $connector CONTENT $row; };
+LET $c = (SELECT garden, status FROM ONLY $connector);
+LET $dying = (SELECT VALUE deleting_at FROM ONLY $garden);
+IF $c = NONE { CREATE $connector CONTENT $row; }
+ELSE IF $c.garden = $garden AND $c.status != 'deleting' AND $dying = NONE {
+  UPDATE $connector SET status = $row.status, last_error = NONE,
+    secret = IF $row.secret = NONE { secret } ELSE { $row.secret };
+};
 SELECT ",
         connector_fields!(),
         " FROM ONLY $connector;
@@ -167,15 +177,16 @@ ORDER BY next_sync_at, id LIMIT $limit;"
     /// A sync run's end: the cursors of sources still chosen, the times and the failure. A
     /// connector being deleted is left alone, and a missing one is never created. When the
     /// connector's `next_sync_at` moved past `$due_at` (the value the run started from) while
-    /// the run was going, a **Sync now** or a new set of sources landed: that time stays, and
-    /// a stopping failure of the old sources isn't stored over the owner's change.
+    /// the run was going, a **Sync now** or a new set of sources landed: that time stays, a
+    /// stopping failure of the old sources isn't stored over the owner's change, and
+    /// `synced_at` isn't set, since the run may not have read the sources now chosen.
     pub const FINISH_SYNC: &str = concat!(
         "BEGIN;
 LET $moved = (SELECT VALUE next_sync_at FROM ONLY $connector) > $due_at;
 UPDATE $connector SET cursor = ",
         kept_cursor!("$cursor", "sources.id"),
         ",
-  synced_at = $synced_at ?? synced_at,
+  synced_at = IF $moved { synced_at } ELSE { $synced_at ?? synced_at },
   next_sync_at = IF $moved { next_sync_at } ELSE { $next },
   last_error = IF $moved AND $last_error IN ['too_large', 'source_missing'] { last_error } ELSE { $last_error }
 WHERE status != 'deleting';
@@ -214,22 +225,33 @@ COMMIT;";
     /// Chunks by `(connector, vendor_id, n)`. A chunk sent without a vector keeps the stored
     /// one, and only when its `text_hash` is unchanged (`missing_vector` otherwise); the
     /// connector must be syncing (`active` or `reauth_needed`), so no record is written for a
-    /// connector being deleted.
+    /// connector being deleted. A record whose `source` is no longer among the connector's
+    /// `sources` is skipped in the same transaction: `PUT .../sources` can drop a source while
+    /// a sync that read it is still running, and its records must not come back. The last
+    /// statement returns how many were written. The check reads `sources` from the
+    /// transaction's snapshot: a `PUT .../sources` that commits while it runs isn't seen, so
+    /// that page's records of the dropped source can still land (a known narrow window,
+    /// [connectors 6]).
+    ///
+    /// [connectors 6]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#6-sync
     pub const UPSERT_RECORDS: &str = "BEGIN;
-LET $c = (SELECT garden, status FROM ONLY $connector);
+LET $c = (SELECT garden, status, sources FROM ONLY $connector);
 IF $c = NONE OR !($c.status IN ['active', 'reauth_needed']) { THROW 'not_found' };
 FOR $r IN $records {
-  IF $r.embedding = NONE {
-    IF (SELECT VALUE text_hash FROM ONLY $r.id) != $r.text_hash { THROW 'missing_vector' };
-    UPDATE $r.id SET kind = $r.kind, source = $r.source, title = $r.title, author = $r.author, link = $r.link,
-      text = $r.text, at = $r.at;
-  } ELSE {
-    UPSERT $r.id CONTENT { garden: $c.garden, connector: $connector, kind: $r.kind,
-      vendor_id: $r.vendor_id, source: $r.source, title: $r.title, author: $r.author, link: $r.link, text: $r.text,
-      text_hash: $r.text_hash, embedding: $r.embedding, embedding_model: $r.embedding_model,
-      at: $r.at };
+  IF $r.source IN $c.sources.id {
+    IF $r.embedding = NONE {
+      IF (SELECT VALUE text_hash FROM ONLY $r.id) != $r.text_hash { THROW 'missing_vector' };
+      UPDATE $r.id SET kind = $r.kind, source = $r.source, title = $r.title, author = $r.author, link = $r.link,
+        text = $r.text, at = $r.at;
+    } ELSE {
+      UPSERT $r.id CONTENT { garden: $c.garden, connector: $connector, kind: $r.kind,
+        vendor_id: $r.vendor_id, source: $r.source, title: $r.title, author: $r.author, link: $r.link, text: $r.text,
+        text_hash: $r.text_hash, embedding: $r.embedding, embedding_model: $r.embedding_model,
+        at: $r.at };
+    };
   };
 };
+RETURN count($records.filter(|$r| $r.source IN $c.sources.id));
 COMMIT;";
     /// Every chunk of these items.
     pub const DELETE_RECORDS: &str = "DELETE farm_record WHERE connector = $connector AND vendor_id IN $vendor_ids RETURN VALUE $before.id;";
@@ -573,6 +595,7 @@ impl FarmRecordStore for SurrealStore {
         let row = ConnectorWriteRow::new(garden, &connector).map_err(|e| e.into_store(WHAT))?;
         let mut r = run_tx(&self.db, sql::SEED_CONNECTOR, |q| {
             q.bind(("connector", rid(&connector.id)))
+                .bind(("garden", rid(&garden)))
                 .bind(("row", row.clone()))
         })
         .await
@@ -838,13 +861,15 @@ impl FarmRecordStore for SurrealStore {
             .into_store(WHAT));
         }
         let rows: Vec<FarmRecordWriteRow> = records.iter().map(FarmRecordWriteRow::new).collect();
-        run_tx(&self.db, sql::UPSERT_RECORDS, |q| {
+        let mut r = run_tx(&self.db, sql::UPSERT_RECORDS, |q| {
             q.bind(("connector", rid(&connector)))
                 .bind(("records", rows.clone()))
         })
         .await
         .map_err(|f| f.into_store(WHAT))?;
-        Ok(u32::try_from(records.len()).unwrap_or(u32::MAX))
+        let last = r.num_statements().saturating_sub(2);
+        let written: Option<i64> = r.take(last).map_err(|e| take_failed(WHAT, e))?;
+        Ok(written.map_or(0, |n| u32::try_from(n).unwrap_or(u32::MAX)))
     }
 
     async fn delete_records(
