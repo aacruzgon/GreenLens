@@ -347,6 +347,10 @@ impl SlackSource {
             );
         }
 
+        // Threads whose parent left the 180 days are forgotten with their records, before the
+        // checks, so none is spent on them.
+        let floor_key = ts_key(&floor);
+        cursor.threads.retain(|ts, _| ts_key(ts) >= floor_key);
         let probed = if history.next_cursor.is_none() && request.probe_limit > 0 {
             self.probe_older_threads(token, team_id, url, request, &mut cursor)
                 .await?
@@ -357,9 +361,6 @@ impl SlackSource {
 
         let more = history.next_cursor.is_some();
         cursor.after_page(oldest, history.next_cursor, page_top);
-        // Threads whose parent left the 180 days are forgotten with their records.
-        let floor_key = ts_key(&floor);
-        cursor.threads.retain(|ts, _| ts_key(ts) >= floor_key);
         Ok(FarmPage {
             items,
             removed: probed.removed,
@@ -1135,5 +1136,35 @@ mod threads {
         assert_eq!(cursor.threads, Cursor::parse(Some(&start)).threads);
         assert!(!cursor.threads.contains_key(&other));
         assert_eq!(cursor.probed.as_deref(), Some(p2.as_str()));
+    }
+
+    #[tokio::test]
+    async fn a_thread_past_180_days_is_forgotten_before_any_check() {
+        let server = MockServer::start().await;
+        users(&server).await;
+        history(&server, Vec::new()).await;
+        let calls = replies(&server, Vec::new()).await;
+        let (old, kept_one) = (days_ago(200), days_ago(60));
+        let start = cursor_of(vec![
+            (&old, thread(&days_ago(2), 1)),
+            (&kept_one, thread(&days_ago(20), 1)),
+        ]);
+        let page = source(&server)
+            .page(&token(), &request(Some(start)))
+            .await
+            .unwrap();
+        let checked: Vec<String> = calls
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(ts, _)| ts.clone())
+            .collect();
+        assert_eq!(
+            checked,
+            [kept_one.as_str()],
+            "no check spent on the old thread"
+        );
+        assert_eq!(page.probes, 1);
+        assert!(!Cursor::parse(Some(&page.cursor)).threads.contains_key(&old));
     }
 }
