@@ -1,6 +1,6 @@
 # PDM Backend: `agent` crate
 
-> **Status:** Draft v0.6.5, 2026-10-20. v0.6.5: `search_farm_records`' `since` and `until` window Slack messages only, and a Drive document is returned whatever the window (gap G18); the chat prompt is `chat/2026-10-20.3`. v0.6.4: `search_farm_records` takes `until?` and `author?` (gap G12), and without `kind` searches each kind apart and keeps `FARM_KIND_RESERVED` (3) of the 8 hits for each (`merge_kinds`, gap G16); its description says so, and the chat prompt's version is `chat/2026-10-20.2`; 110 unit tests. v0.6.3: gaps G13, G14 and G17 (docs/EON): the reply starts the text of a call after a tool round with a paragraph break (`\n\n`, once per call, only when the reply already has text that does not end in whitespace; sent as a `text_delta` and stored like any text), so "…records too." and "The zucchini…" no longer run together, and the budget note after a tool round gets the same break; the dose check logs an info event `dose check replaced a sentence` with the `message_id`, the `rule` and `has_quantity` (`DoseMatch::has_quantity`: whether the sentence holds a number or a number word), never the text; the chat prompt tells the model to mention instructions it ignores in a record, document or memory only when the question is about that item, and moved to `2026-10-20.1`; 108 unit tests. v0.6.2: gap G10: a garden with farm records is routed knowing it, so a question about its own Slack channels or documents reaches the chat model instead of the off-topic reply: the turn reads `has_farm_records` once before routing, `ClassifierTask::Route { farm_records }` adds a `farm_records` label to the classifier's labels and prompt only then (`classify/2026-10-20.2`), and `decide` counts that label as a care question with farm records and as unknown without; a `farm_records` win with `safety_sensitive` at 0.5 or more is safety-sensitive, and the prompt keeps a question about the doses or products the records hold `safety_sensitive`; the connectors read before routing gives up after 2 s; a garden without farm records is asked exactly as before; 107 unit tests and a live router check. v0.6.1: `AnthropicChat::stream` sends the call's final usage just before `Done`, since the `message_delta` that carries the stop reason also carries the final output count and the accumulator merged it without emitting it, so a turn's stored `tokens_out` (and the daily budget) kept an earlier, smaller count (found by `era-eval`, docs/EON E8.1). v0.6: `search_farm_records` (roadmap E5.2), a read tool for every role that embeds its query, searches the garden's farm records exactly with `kind` and `since` (the garden's midnight) and returns at most 8 hits framed as `farm_records` data; it is offered only when the garden has farm records or a connector past `pending` (gap G6: `Offer` carries the role and that fact, which the context reads once per turn from `FarmRecordStore::connectors`); its hits fill `Message.farm_citations` (E5.3), as knowledge hits fill `citations`; the chat prompt says what was applied and when, never the rate, and moved to `2026-10-19.2` (E5.5); 98 unit tests. v0.5: every successful tool result reaches the model inside a `<data kind="tool_result">` block (`prompt::tool_result`; a tool may pick another kind through `Tool::DATA_KIND`), refusals stay plain, and the stored copy keeps the tool's JSON; `DataKind` gains `ToolResult` and `FarmRecords`; the `<data` escape also catches a tag at the very end of a body, Unicode whitespace and zero-width characters after `<` or `/` (also in a JSON result's strings and keys, before it is written), the fullwidth and small `<`, and a multi-byte character after `data`; the chat prompt says where tool results arrive and moved to `2026-10-19.1`; 85 unit tests. v0.4: shared memories are recorded in `SurrealDB` Agent Memory through the new `beliefs` module (the `sync_pending` sweep, the only writer, and the reads `current_beliefs` and `search_beliefs`); memories and beliefs reach the model with their day; the context carries the current beliefs in their own `beliefs` block, `search_memory` returns `MemorySearch` with belief hits, the plan writer reads the plant's current beliefs, memories carry a `topic` (extraction and `remember`), and the chat, plan and extraction prompts moved to `2026-10-17.1`; 77 unit tests. v0.3: only the three tools that propose changes are `strict` (`ToolSpec::strict`), because all nineteen made a grammar the API refused as too large in the first live call; the Anthropic adapter maps `model_context_window_exceeded` to `MaxTokens` and ends a stream cut off before its stop reason with `Unavailable`; 62 unit tests and three ignored live tests (`tests/live_anthropic.rs`). v0.2: one `embedder` in `AgentDeps`, called with `EmbedMode::Query` for the user's message and searches and `EmbedMode::Document` for the memories it stores (`document_embedder` is gone). v0.1: the agent core (the chat turn and its stream, nineteen tools, the dose check, plan validation, the router and safety gate, the plan writer, the context builder, memory extraction and the Anthropic and classifier adapters), compiled on Rust 1.99.1 with 60 unit tests.
+> **Status:** Draft v0.6.6, 2026-10-20. v0.6.6: gap G13 (docs/EON): the dose check's `Rate` is a sentence rule (`Condition::QuantityOrStart`): a unit phrase (`RATE_PHRASE` and `RATE_UNIT`: `per`, `each` or `every` and a volume, or `/` and a volume, with quarts and pints) fails a sentence that holds a `QUANTITY` or a `RATE_AMOUNT` anywhere (vague, fractional and multiplying words, plural measure nouns, a rate from a record or a habit) or has at most three words before it (`LINE_START`), so a refusal that only names the unit passes while "a capful per litre", "Per litre, add a capful." and a rate split from its amount by a sentence break fail; `QUANTITY` adds `thirty` … `ninety`, `hundred`, `thousand` and more fraction glyphs; `has_quantity` is whether the sentence holds an amount, so `Rate` without one marks the short-prefix case; the advice rules tell the model not to name a volume unit when it declines a rate, and the chat and plan prompts moved to `chat/2026-10-20.4` and `plan/2026-10-20.1`; 114 unit tests. v0.6.5: `search_farm_records`' `since` and `until` window Slack messages only, and a Drive document is returned whatever the window (gap G18); the chat prompt is `chat/2026-10-20.3`. v0.6.4: `search_farm_records` takes `until?` and `author?` (gap G12), and without `kind` searches each kind apart and keeps `FARM_KIND_RESERVED` (3) of the 8 hits for each (`merge_kinds`, gap G16); its description says so, and the chat prompt's version is `chat/2026-10-20.2`; 110 unit tests. v0.6.3: gaps G13, G14 and G17 (docs/EON): the reply starts the text of a call after a tool round with a paragraph break (`\n\n`, once per call, only when the reply already has text that does not end in whitespace; sent as a `text_delta` and stored like any text), so "…records too." and "The zucchini…" no longer run together, and the budget note after a tool round gets the same break; the dose check logs an info event `dose check replaced a sentence` with the `message_id`, the `rule` and `has_quantity` (`DoseMatch::has_quantity`: whether the sentence holds a number or a number word), never the text; the chat prompt tells the model to mention instructions it ignores in a record, document or memory only when the question is about that item, and moved to `2026-10-20.1`; 108 unit tests. v0.6.2: gap G10: a garden with farm records is routed knowing it, so a question about its own Slack channels or documents reaches the chat model instead of the off-topic reply: the turn reads `has_farm_records` once before routing, `ClassifierTask::Route { farm_records }` adds a `farm_records` label to the classifier's labels and prompt only then (`classify/2026-10-20.2`), and `decide` counts that label as a care question with farm records and as unknown without; a `farm_records` win with `safety_sensitive` at 0.5 or more is safety-sensitive, and the prompt keeps a question about the doses or products the records hold `safety_sensitive`; the connectors read before routing gives up after 2 s; a garden without farm records is asked exactly as before; 107 unit tests and a live router check. v0.6.1: `AnthropicChat::stream` sends the call's final usage just before `Done`, since the `message_delta` that carries the stop reason also carries the final output count and the accumulator merged it without emitting it, so a turn's stored `tokens_out` (and the daily budget) kept an earlier, smaller count (found by `era-eval`, docs/EON E8.1). v0.6: `search_farm_records` (roadmap E5.2), a read tool for every role that embeds its query, searches the garden's farm records exactly with `kind` and `since` (the garden's midnight) and returns at most 8 hits framed as `farm_records` data; it is offered only when the garden has farm records or a connector past `pending` (gap G6: `Offer` carries the role and that fact, which the context reads once per turn from `FarmRecordStore::connectors`); its hits fill `Message.farm_citations` (E5.3), as knowledge hits fill `citations`; the chat prompt says what was applied and when, never the rate, and moved to `2026-10-19.2` (E5.5); 98 unit tests. v0.5: every successful tool result reaches the model inside a `<data kind="tool_result">` block (`prompt::tool_result`; a tool may pick another kind through `Tool::DATA_KIND`), refusals stay plain, and the stored copy keeps the tool's JSON; `DataKind` gains `ToolResult` and `FarmRecords`; the `<data` escape also catches a tag at the very end of a body, Unicode whitespace and zero-width characters after `<` or `/` (also in a JSON result's strings and keys, before it is written), the fullwidth and small `<`, and a multi-byte character after `data`; the chat prompt says where tool results arrive and moved to `2026-10-19.1`; 85 unit tests. v0.4: shared memories are recorded in `SurrealDB` Agent Memory through the new `beliefs` module (the `sync_pending` sweep, the only writer, and the reads `current_beliefs` and `search_beliefs`); memories and beliefs reach the model with their day; the context carries the current beliefs in their own `beliefs` block, `search_memory` returns `MemorySearch` with belief hits, the plan writer reads the plant's current beliefs, memories carry a `topic` (extraction and `remember`), and the chat, plan and extraction prompts moved to `2026-10-17.1`; 77 unit tests. v0.3: only the three tools that propose changes are `strict` (`ToolSpec::strict`), because all nineteen made a grammar the API refused as too large in the first live call; the Anthropic adapter maps `model_context_window_exceeded` to `MaxTokens` and ends a stream cut off before its stop reason with `Unavailable`; 62 unit tests and three ignored live tests (`tests/live_anthropic.rs`). v0.2: one `embedder` in `AgentDeps`, called with `EmbedMode::Query` for the user's message and searches and `EmbedMode::Document` for the memories it stores (`document_embedder` is gone). v0.1: the agent core (the chat turn and its stream, nineteen tools, the dose check, plan validation, the router and safety gate, the plan writer, the context builder, memory extraction and the Anthropic and classifier adapters), compiled on Rust 1.99.1 with 60 unit tests.
 
 Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate uses and implements. It implements [architecture 7](../architecture/README.md#7-chat-and-agent-core), [8.2](../architecture/README.md#82-chat-turn) and the safety rules of [architecture 11](../architecture/README.md#11-security-privacy-and-safety), over the shapes of [contracts 7](../architecture/contracts.md#7-pipeline-records) and [contracts 8](../architecture/contracts.md#8-chat-and-memory). Every listing below is copied from the compiled source of `crates/agent`: `cargo check --workspace`, `cargo clippy -p agent --all-targets` (no warnings in `agent`) and `cargo test -p agent` (83 tests) pass.
 
@@ -163,9 +163,10 @@ Each `foo.rs` with tests too long to sit at its end has `foo/tests.rs` (`safety/
 Every pattern is a constant, compiled once into a `LazyLock`, and matched case-insensitively. Units are followed by `\b`, so "2 lowest leaves" and "3 large leaves" never read as litres.
 
 ```rust
-/// A quantity in the measure rules: a number (`2`, `0.5`, `1/2`, `1 1/2`, `½`) or a number word
-/// (`one` … `twenty`, `half`, `a`, `an`).
-const QUANTITY: &str = r"(?:(?:\d+(?:[.,]\d+)?(?:\s+\d+\s*/\s*\d+)?|\d+\s*/\s*\d+|\d*[½¼¾⅓⅔⅛])|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|half|a|an)\b)";
+/// A quantity in the measure rules: a number (`2`, `0.5`, `1/2`, `1 1/2`, `½`, `⅜`, the `2` of
+/// `2x`) or a number word (`one` … `twenty`, `thirty` … `ninety`, `hundred`, `thousand`, `half`,
+/// `a`, `an`).
+const QUANTITY: &str = r"(?:(?:\d+(?:[.,]\d+)?(?:\s+\d+\s*/\s*\d+)?|\d+\s*/\s*\d+|\d*[½¼¾⅓⅔⅛⅕⅖⅗⅘⅙⅚⅜⅝⅞⅐⅑⅒])|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|half|a|an)\b)";
 
 /// A quantity in the ratio rules: a number or `one` … `twenty`, never `a`, `an` or `half`.
 const RATIO_QUANTITY: &str = r"(?:\d+(?:[.,]\d+)?|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b)";
@@ -178,6 +179,21 @@ const EVERYDAY: &str = r"(?:drops?|cups?|spoonfuls?|capfuls?|pinch(?:es)?)";
 
 /// "…of within three words": `of` is one of the next three words.
 const OF_WITHIN_THREE: &str = r"(?:\s+[\p{L}'’-]+){0,2}\s+of\b";
+
+/// The volumes a rate is given per.
+const RATE_UNIT: &str = r"(?:litres?|liters?|l|gallons?|gal|quarts?|pints?)";
+
+/// A rate's unit phrase: `per`, `each` or `every` and a volume, or `/` and a volume. It fails a
+/// sentence that also holds a [`QUANTITY`] or a [`RATE_AMOUNT`] anywhere, or where at most three
+/// words come before it (EON gap G13).
+const RATE_PHRASE: &str = r"(?:\b(?:per|each|every)\s+|/\s*)";
+
+/// What else counts as an amount beside a rate's unit phrase: vague, fractional and multiplying
+/// words, plural measure nouns ("capfuls per litre"), and a rate taken from a record or a habit
+/// ("the same rate", "the logged rate", "last week's dose"). Not `many`, which refusals use
+/// ("how many grams go in each litre"), and not the label's rate, which is what the advice says
+/// to follow.
+const RATE_AMOUNT: &str = r"\b(?:several|some|dozens?|double|twice|triple|thrice|quarters?|thirds?|tenths?|few|couple|pair|handful|hundreds|thousands|lots|plenty|capfuls|caps|scoops|drops|cups|spoons|teaspoons|tablespoons|tsps|tbsps|handfuls|sachets|tablets|pumps|squirts)\b|\b(?:same|usual|normal|previous|logged|recorded|log['’]s|last\s+[\p{L}]+['’]s)\s+(?:rate|dose|dosage|amount)s?\b";
 ```
 
 | Contract rule | `DoseRule` | Pattern | Condition |
@@ -185,7 +201,7 @@ const OF_WITHIN_THREE: &str = r"(?:\s+[\p{L}'’-]+){0,2}\s+of\b";
 | A quantity followed by a measure | `Measure` | `QUANTITY \s*-?\s* MEASURE \b` | none |
 | `drop`, `cup`, `spoonful`, `capful`, `pinch` with `of` within three words | `EverydayMeasure` | `QUANTITY \s*-?\s* EVERYDAY \b OF_WITHIN_THREE` | none |
 | "a few drops", "a splash", "a squirt" with `of` within three words | `VagueMeasure` | `\ba\s+(?:few\s+drops\|splash\|squirt)\b OF_WITHIN_THREE` | none |
-| A rate | `Rate` | `\bper\s+(?:litre\|liter\|gallon)s?\b \| /\s*(?:l\|gal)\b` | none |
+| `per`, `each` or `every` and a volume, or `/` and a volume, in a sentence with an amount anywhere or with at most three words before it | `Rate` | `RATE_PHRASE RATE_UNIT \b` | a `QUANTITY` or `RATE_AMOUNT` in the sentence, or `LINE_START` before the match |
 | Two numbers around a colon | `ColonRatio` | `\d+\s*:\s*\d+` | none |
 | "<q> part(s) … to <q> part(s)" | `PartsRatio` | `RATIO_QUANTITY\s+parts?\b.*?\bto\s+RATIO_QUANTITY\s+parts?\b` | none |
 | "<q> part(s) … to <q>", "<q> in <q>" | `MixtureRatio` | `…parts?\b.*?\bto\s+RATIO_QUANTITY`, `RATIO_QUANTITY\s+in\s+RATIO_QUANTITY` | a product name or a mixture word in the sentence |
@@ -202,7 +218,11 @@ pub enum DoseRule {
     EverydayMeasure,
     /// "a few drops", "a splash" or "a squirt" with `of` within three words.
     VagueMeasure,
-    /// A rate: `per litre`, `per liter`, `per gallon`, `/l`, `/gal` (so `ml/l`, `g/l`).
+    /// `per`, `each` or `every` and a volume, or `/` and a volume, in a sentence that holds a
+    /// quantity anywhere, or where at most three words come before that phrase: "a capful per
+    /// litre", "Per litre, add two scoops.", "2/l", "Use capfuls/L.", "Do this per litre of
+    /// water." after "Add two capfuls.". A sentence with the unit, no quantity and four or more
+    /// words before it ("I can't give you the amount per litre.") passes.
     Rate,
     /// Two numbers around a colon: "1:10" (clock times are a known false positive).
     ColonRatio,
@@ -217,48 +237,52 @@ pub enum DoseRule {
 ```
 
 ```rust
-fn patterns() -> [(DoseRule, String, bool); 9] {
+fn patterns() -> [(DoseRule, String, Condition); 9] {
     [
         (
             DoseRule::Measure,
             format!(r"{QUANTITY}\s*-?\s*{MEASURE}\b"),
-            false,
+            Condition::None,
         ),
         (
             DoseRule::EverydayMeasure,
             format!(r"{QUANTITY}\s*-?\s*{EVERYDAY}\b{OF_WITHIN_THREE}"),
-            false,
+            Condition::None,
         ),
         (
             DoseRule::VagueMeasure,
             format!(r"\ba\s+(?:few\s+drops|splash|squirt)\b{OF_WITHIN_THREE}"),
-            false,
+            Condition::None,
         ),
         (
             DoseRule::Rate,
-            r"\bper\s+(?:litre|liter|gallon)s?\b|/\s*(?:l|gal)\b".to_owned(),
-            false,
+            format!(r"{RATE_PHRASE}{RATE_UNIT}\b"),
+            Condition::QuantityOrStart,
         ),
-        (DoseRule::ColonRatio, r"\d+\s*:\s*\d+".to_owned(), false),
+        (
+            DoseRule::ColonRatio,
+            r"\d+\s*:\s*\d+".to_owned(),
+            Condition::None,
+        ),
         (
             DoseRule::PartsRatio,
             format!(r"{RATIO_QUANTITY}\s+parts?\b.*?\bto\s+{RATIO_QUANTITY}\s+parts?\b"),
-            false,
+            Condition::None,
         ),
         (
             DoseRule::MixtureRatio,
             format!(r"{RATIO_QUANTITY}\s+parts?\b.*?\bto\s+{RATIO_QUANTITY}"),
-            true,
+            Condition::Mixture,
         ),
         (
             DoseRule::MixtureRatio,
             format!(r"{RATIO_QUANTITY}\s+in\s+{RATIO_QUANTITY}"),
-            true,
+            Condition::Mixture,
         ),
         (
             DoseRule::Percentage,
             r"\d+(?:[.,]\d+)?\s*(?:%|percent\b|per\s+cent\b)".to_owned(),
-            true,
+            Condition::Mixture,
         ),
     ]
 }
@@ -266,10 +290,10 @@ fn patterns() -> [(DoseRule, String, bool); 9] {
 static RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
     patterns()
         .into_iter()
-        .map(|(kind, pattern, needs_mixture)| Rule {
+        .map(|(kind, pattern, condition)| Rule {
             kind,
             regex: ci(&pattern),
-            needs_mixture,
+            condition,
         })
         .collect()
 });
@@ -353,9 +377,16 @@ fn check_sentence(sentence: &str, products: &ProductCatalogue) -> Option<(DoseRu
         .enumerate()
         .filter(|(i, _)| hits.matched(*i))
         .filter(|(_, r)| {
-            !r.needs_mixture || *mixture.get_or_insert_with(|| mixture_context(sentence, products))
+            r.condition != Condition::Mixture
+                || *mixture.get_or_insert_with(|| mixture_context(sentence, products))
         })
-        .filter_map(|(_, r)| r.regex.find(sentence).map(|m| (r.kind, m.range())))
+        .filter_map(|(_, r)| r.regex.find(sentence).map(|m| (r, m.range())))
+        .filter(|(r, m)| {
+            r.condition != Condition::QuantityOrStart
+                || ANY_QUANTITY.is_match(sentence)
+                || LINE_START.is_match(&sentence[..m.start])
+        })
+        .map(|(r, m)| (r.kind, m))
         .min_by_key(|(_, m)| m.start)
 }
 ```
@@ -371,13 +402,15 @@ Every example of contracts 7, failing and passing, is a test case (`safety::dose
 | "Mix 2 tbsp into the watering can.", "Use 0.5 l of water.", "Add 1/2 tsp.", "Add ¼ teaspoon.", "Add 1 1/2 tablespoons.", "Use half a litre.", "Use an ounce.", "Dissolve 10ml in water." | fails: `Measure` |
 | "a drop of soap", "two cups of water", "a spoonful of sugar", "a capful of bleach", "a pinch of baking soda", "a cup or so of milk", "Add ½ cup of soap." | fails: `EverydayMeasure` |
 | "Add a few drops of dish soap.", "Add a splash of vinegar.", "a squirt of soap" | fails: `VagueMeasure` |
-| "Use it per litre of water.", "per liter", "per gallon", "Apply 2/l.", "dilute to /gal" | fails: `Rate` ("5 g/l" and "5 ml per litre" fail earlier, as `Measure`) |
+| "Add a capful per litre.", "Add half a cup per gallon.", "two scoops of it per liter", "two scoops of the copper product per gallon", "Per litre, add a capful.", "a capful (per litre)", "thirty capfuls per litre", "some powder per litre", "twice the label rate per litre", "2x per litre", "Use ⅜ cup per litre.", "Add few caps per litre.", "ADD CAPFULS PER GALLON.", "Use capfuls/L.", "Use the same rate per litre as last time.", "Add two capfuls. Do this per litre of water.", "Add two capfuls.\nThat is per litre.", "a\ncapful per litre", "Use it per litre of water.", "dilute to /gal", "Apply 2/l.", "Apply 3 capfuls/gal." | fails: `Rate` ("5 ml per litre", "25 g per litre", "two tablespoons per gallon", "5 g/l" and "5 ml/l" fail at the same position as `Measure`, which comes first; "fifty grams" and "Add thirty ml of Kocide." are `Measure`) |
 | "Mix at 1:10." | fails: `ColonRatio` |
 | "Use one part soap to ten parts water.", "Use 1 part milk to 9 parts water." | fails: `PartsRatio` |
 | "Mix 1 in 10 with water.", "One part neem to ten of water." | fails: `MixtureRatio` |
 | "Use a 2% soap spray.", "A 0.5 percent copper solution." | fails: `Percentage` |
 | "Remove the 2 lowest leaves.", "Pick off 3 large leaves.", "Expect a drop in temperature tonight.", "The leaves curl into a cup.", "Cut a part of the stem back to a healthy bud.", "Plant one in a pot.", "Remove one in three canes.", "More than 50% of the leaves are spotted.", "Above 90% humidity, the fungus spreads.", "Check again in 2 weeks.", "Look for new spots every 3 days.", "Space them 10 cm apart.", "Mulch 30 cm deep around the stem.", "The spots are about 2 mm across." | passes |
-| "Use a 1 gallon sprayer." / "Water at 10:30 in the morning." / "Spots cover 12% of the leaf, so spray the healthy leaves too." | fails: the three **known false positives** (`Measure`, `ColonRatio`, `Percentage`) |
+| "I can't tell you how much Kocide went into the backpack per litre.", "I can't give the amount per litre.", "I can't say how many grams go in each litre.", "Follow the label's rate per litre.", "Use the label rate per litre.", "The label gives the rate in g/l or ml/l.", "Collect some litres of rainwater.", "Water with several gallons each week." | passes: a unit phrase with no amount in the sentence and four or more words before it (EON gap G13; the first two are the refusals of E8.3), and the vague words count only beside a unit phrase |
+| "Use a 1 gallon sprayer." / "Water at 10:30 in the morning." / "Spots cover 12% of the leaf, so spray the healthy leaves too." / "A drop in temperature of 5 °C." / "…went into a backpack per litre.", "I can't give you an amount per litre.", "How much Kocide 3000 to use per litre is on the label.", "Some growers ask about the rate per litre.", "Rates per litre are on the label.", "DiPel's rate per litre is on its label." | fails: the five **known false positives** (`Measure`, `ColonRatio`, `Percentage`, `EverydayMeasure`, `Rate`); the prompts steer around the first three |
+| "Add a capful per litre." / "Add two capfuls.\nThat is per litre." | `has_quantity()` true / false: whether the sentence holds an amount, what the turn logs when it replaces a sentence; `Rate` with `false` is the short-prefix case |
 | "Spots cover 12% of the leaf. Spray the healthy leaves too." | passes: the condition is per sentence, which is how the prompts tell the model to write a measured share |
 
 ```rust
@@ -401,6 +434,19 @@ fn contract_examples_pass() {
         "Water early in the morning.",
         "Spray the plant with water to knock off aphids.",
         "Use a product registered for this use and follow its label exactly.",
+        // A unit in a sentence with no amount and four or more words before it (EON gap
+        // G13: the first two are refusals E8.3 replaced).
+        "I can't tell you how much Kocide went into the backpack per litre.",
+        "I can't give the amount per litre.",
+        "I can't give you the amount per litre.",
+        "I can't say how many grams go in each litre.",
+        "Follow the label's rate per litre.",
+        "Use the label rate per litre.",
+        "Maria logged the rate in g/L for each spray.",
+        "The label gives the rate in g/l or ml/l.",
+        // Quantity words that count only beside a rate's unit.
+        "Collect some litres of rainwater.",
+        "Water with several gallons each week.",
         "",
     ];
     for text in cases {
@@ -905,10 +951,10 @@ pub fn decide(
 
 ```rust
 /// The chat system prompt's version.
-pub const CHAT_PROMPT_VERSION: &str = "chat/2026-10-20.3";
+pub const CHAT_PROMPT_VERSION: &str = "chat/2026-10-20.4";
 
 /// The plan writer's version.
-pub const PLAN_PROMPT_VERSION: &str = "plan/2026-10-17.1";
+pub const PLAN_PROMPT_VERSION: &str = "plan/2026-10-20.1";
 
 /// The off-topic redirect's version.
 pub const OFF_TOPIC_PROMPT_VERSION: &str = "off_topic/2026-10-16.1";
@@ -989,7 +1035,7 @@ pub fn tool_result(kind: DataKind, content: &Value) -> Value {
 
 **Farm records and doses** (roadmap E5.5; [connectors 7](../connectors/README.md#7-the-agent)). A spray log holds rates ("Rate 1.75 g/L" in the Maple Row fixture). The chat prompt tells the model to say what was applied, to which bed or crop, and when, and never to repeat a rate, amount, volume or mixing ratio from a record; the dose check, which runs on every streamed sentence, replaces one that does anyway.
 
-**The advice rules** every advice-writing prompt shares include the three wording rules of contracts 7 that keep the dose check's known false positives out of real text: equipment without sizes, times of day in words, a measured share in a sentence of its own. A unit test checks that every system prompt passes its own dose check.
+**The advice rules** every advice-writing prompt shares include the four wording rules of contracts 7 that keep the dose check's known false positives out of real text: equipment without sizes, times of day in words, a measured share in a sentence of its own, and no volume unit when declining a rate or an amount (EON gap G13; a unit test checks the chat and plan prompts carry it). A unit test checks that every system prompt passes its own dose check.
 
 **Stable prefixes.** The system prompts are constants and the tool list is sorted by name, so the provider's prompt cache keeps them across turns. Everything that changes per turn goes in the turn's last user message ([section 11](#11-context-per-anchor)).
 
@@ -3068,16 +3114,16 @@ pub enum MemoryError {
 
 ## 17. Testing
 
-111 unit tests, run with `cargo test -p agent` (or `cargo nextest run -p agent`):
+114 unit tests, run with `cargo test -p agent` (or `cargo nextest run -p agent`):
 
 | Module | Tests | What |
 |---|---|---|
-| `safety::dose` | 7 | Every contracts 7 example, failing and passing; the three known false positives; per-sentence conditions; the borrowed match and its span; earliest match; `dose_check_all` |
+| `safety::dose` | 9 | Every contracts 7 example, failing and passing, and every rate an audit found (a rate is a unit phrase in a sentence with an amount or with at most three words before it, so the refusals of EON gap G13 pass); the five known false positives; `has_quantity` reads the sentence; per-sentence conditions; the borrowed match and its span; earliest match; `dose_check_all` |
 | `safety::sentences` | 6 | Terminators and line breaks; decimals, abbreviations and list numbers; closing quotes; the undecided full stop; streamed pieces concatenating to the text; the cap |
 | `safety::products` | 2 | Built-in words, plurals, case, whole words; knowledge-base products and `broad_spectrum` |
 | `safety::plan` | 9 | Every row of the validation table |
 | `safety::routes` | 8 | Calibration, the safety tie-break, the off-topic margin, poisoning whatever the scores (and three non-poisoning sentences), no scores; `farm_records` a care question only with farm records and unknown without (so a poisoning message still gets poison control), a safety-sensitive farm question still safety-sensitive in a near tie and at the 0.5 floor however far `farm_records` leads, not below it, the floor for a `farm_records` win only, a clearly off-topic message off-topic either way (gap G10) |
-| `prompt` | 10 | A body can't close its `<data>` element: nested, mixed-case and spaced tags and a tag at the very end are escaped, other tags and short tails are not, escaped text is never escaped twice, an empty body is an empty element; a framed tool result is still its JSON; every system prompt passes its own dose check; the chat prompt says what was applied and when, never the rate |
+| `prompt` | 11 | A body can't close its `<data>` element: nested, mixed-case and spaced tags and a tag at the very end are escaped, other tags and short tails are not, escaped text is never escaped twice, an empty body is an empty element; a framed tool result is still its JSON; every system prompt passes its own dose check; the chat prompt says what was applied and when, never the rate; the chat and plan prompts say not to name a volume unit when declining a rate (gap G13) |
 | `model::anthropic` | 4 | A stream cut off before its stop reason ends in an error (`wiremock`); the last usage before `Done` has the final output count. The request body: sorted tools, `strict` only where the spec says, stripped keywords, no `tool_choice` or `thinking`, effort, the reasoning block replayed, `tool_result` with `is_error` and an image after it, the cache breakpoint |
 | `model::classifier` | 4 | Parsing and clamping scores, the strict schema, a refusal routed as `safety_sensitive` with or without farm records; the route task's labels and prompt unchanged without farm records and with `farm_records` with them (gap G10) |
 | `plan_writer` | 7 | Private memories refused; one call when clean; exactly one validation round-trip, append-only; one parse retry; a refusal; the prompt's data blocks, the beliefs block with `key`, `value`, `about_plant` and the day only; no beliefs, no block |
