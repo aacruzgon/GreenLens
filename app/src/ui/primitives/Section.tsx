@@ -8,8 +8,8 @@ import { Text } from "./Text";
 
 export interface SectionProps {
   title: string;
-  /** A link at the right of the title ("See all"); neutral, not the accent. */
-  action?: { label: string; onPress: () => void };
+  /** A link at the right of the title ("See all"), in the accent at 15 pt (styles.css .sec-h a). */
+  action?: { label: string; onPress: () => void; accessibilityLabel?: string };
   children?: ReactNode;
   style?: StyleProp<ViewStyle>;
 }
@@ -22,8 +22,14 @@ export function Section({ title, action, children, style }: SectionProps) {
           {title}
         </Text>
         {action ? (
-          <Pressable accessibilityRole="link" onPress={action.onPress} hitSlop={12} style={{ minHeight: 28, justifyContent: "center" }}>
-            <Text variant="subheadline" color="textMuted">
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel={action.accessibilityLabel ?? action.label}
+            onPress={action.onPress}
+            hitSlop={12}
+            style={{ minHeight: 28, justifyContent: "center" }}
+          >
+            <Text variant="subheadline" color="accent">
               {action.label}
             </Text>
           </Pressable>

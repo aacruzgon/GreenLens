@@ -6,7 +6,7 @@ import { View, type DimensionValue, type StyleProp, type ViewStyle } from "react
 import { Image, type ImageSource } from "expo-image";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
-import { useSvgId } from "../svgId";
+import { hiddenSvg, useSvgId } from "../svgId";
 import { useTheme } from "../theme";
 import { motion, type ColorRole } from "../tokens";
 
@@ -91,8 +91,7 @@ export function MeltPhoto({
         height="100%"
         style={{ position: "absolute", top: 0, left: 0 }}
         pointerEvents="none"
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
+        {...hiddenSvg}
       >
         <Defs>
           <LinearGradient id={id} x1="0" y1="0" x2="0" y2="1">

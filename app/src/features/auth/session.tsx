@@ -102,8 +102,12 @@ function ClerkSession({ onSignedOut, children }: { onSignedOut: () => void; chil
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 
+// Development only: EXPO_PUBLIC_DEMO_AUTO_SIGNIN=1 starts the demo signed in, so screenshots and
+// design comparisons can open on the garden home without a tap. A release build ignores it.
+const DEMO_AUTO_SIGNIN = __DEV__ && process.env.EXPO_PUBLIC_DEMO_AUTO_SIGNIN === "1";
+
 function DemoSession({ onSignedOut, children }: { onSignedOut: () => void; children: ReactNode }) {
-  const [isSignedIn, setSignedIn] = useState(false);
+  const [isSignedIn, setSignedIn] = useState(DEMO_AUTO_SIGNIN);
   useSignOutCleanup(isSignedIn, onSignedOut);
 
   useEffect(() => {

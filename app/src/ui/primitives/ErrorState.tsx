@@ -3,6 +3,7 @@
 import { View, type StyleProp, type ViewStyle } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 
+import { hiddenSvg } from "../svgId";
 import { useTheme } from "../theme";
 import { space } from "../tokens";
 import { Button } from "./Button";
@@ -24,7 +25,7 @@ export function ErrorState({ title = "Something went wrong", message, onRetry, r
       accessibilityRole="alert"
       style={[{ alignItems: "center", gap: space[3], paddingVertical: space[10], paddingHorizontal: space[6] }, style]}
     >
-      <Svg width={32} height={32} viewBox="0 0 32 32" accessibilityElementsHidden importantForAccessibility="no">
+      <Svg width={32} height={32} viewBox="0 0 32 32" {...hiddenSvg}>
         <Circle cx={16} cy={16} r={14} stroke={colors.danger} strokeWidth={2} fill="none" />
         <Path d="M16 9v9M16 22.5v.5" stroke={colors.danger} strokeWidth={2.5} strokeLinecap="round" />
       </Svg>

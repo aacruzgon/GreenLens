@@ -58,7 +58,10 @@ jobs:
           workspaces: "backend -> target"
           shared-key: era-hosted
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      # Its own HOME, as in ci.yml's test job: the rig's runners share one home.
       - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        env:
+          HOME: ${{ runner.temp }}
         with:
           tool: cargo-nextest@0.9.148
       # Build first, so a failed build never mints a token or spends a call.

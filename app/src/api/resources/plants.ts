@@ -20,6 +20,15 @@ export const plants = {
     ok(await client().GET("/plants/{id}/timeline", { params: { path: { id }, query: { cursor } } })),
 };
 
+/** Every plant of a garden, all pages loaded: for pickers, which must show everything (screens 4). */
+export function useAllPlants(gardenId: string) {
+  return useQuery({
+    queryKey: [...qk.plants(gardenId), "all"] as const,
+    queryFn: () => plants.listAll(gardenId),
+    staleTime: STALE.signedUrls,
+  });
+}
+
 export function usePlants(gardenId: string) {
   return useInfiniteQuery({
     queryKey: qk.plants(gardenId),

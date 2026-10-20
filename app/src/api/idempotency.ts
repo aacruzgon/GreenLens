@@ -1,4 +1,5 @@
 import { useMutation, type UseMutationOptions, type UseMutationResult } from "@tanstack/react-query";
+import { useRef } from "react";
 
 import { uuid } from "@/lib/uuid";
 
@@ -52,5 +53,19 @@ export function useIdempotentMutation<TData, TError = Error, TVars = void, TCont
     ...m,
     mutate: (vars, key) => m.mutate({ vars, key: key ?? newKey() }),
     mutateAsync: (vars, key) => m.mutateAsync({ vars, key: key ?? newKey() }),
+  };
+}
+
+/**
+ * The key of one user action, kept while its body is unchanged (contracts 1): tapping Save again
+ * after a lost response resends the same key, so the server answers with the stored result instead
+ * of creating a second record. A changed body is a new action with a new key.
+ */
+export function useActionKey(): (body: unknown) => IdempotencyKey {
+  const last = useRef<{ body: string; key: IdempotencyKey } | null>(null);
+  return (body) => {
+    const json = JSON.stringify(body);
+    if (last.current?.body !== json) last.current = { body: json, key: newKey() };
+    return last.current.key;
   };
 }

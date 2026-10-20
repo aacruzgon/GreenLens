@@ -7,7 +7,11 @@ import type { S } from "./util";
 export type NextScan = "auto" | "early_blight" | "healthy" | "low_evidence" | "no_plant_found";
 
 export type UploadFault = "image_quality" | "image_too_dark" | "unsupported_media_type";
+
 export type CallFault = "budget_exceeded" | "invalid_state" | "rate_limited";
+
+/** The demo controls' account: the demo story, or a new one that starts empty. */
+export type DemoAccount = "demo" | "new";
 
 export interface ScenarioState {
   /** Outcome of the next submitted scan; back to "auto" once a scan uses it. */
@@ -26,6 +30,11 @@ export interface ScenarioState {
   keepaliveMs: number;
   /** Demo control: a new account with no name and no gardens, so onboarding shows. Clears on POST /gardens. */
   emptyAccount: boolean;
+  /**
+   * The account the demo controls chose. Unlike emptyAccount it stays "new" after the new account makes its
+   * first garden, so the controls keep showing the account in use (chooseAccount in index.ts sets both).
+   */
+  account: DemoAccount;
 
   setNextScan(v: NextScan): void;
   setUploadFault(v: UploadFault | null): void;
@@ -46,6 +55,7 @@ const INITIAL = {
   delayScale: 1,
   keepaliveMs: 15_000,
   emptyAccount: false,
+  account: "demo",
 } as const satisfies Partial<ScenarioState>;
 
 export const useScenario = create<ScenarioState>()((set) => ({

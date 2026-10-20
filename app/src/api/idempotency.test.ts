@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { createElement, type ReactNode } from "react";
 
-import { newKey, useIdempotentMutation, type IdempotencyKey } from "./idempotency";
+import { newKey, useActionKey, useIdempotentMutation, type IdempotencyKey } from "./idempotency";
 
 let mockN = 0;
 jest.mock("@/lib/uuid", () => ({ uuid: () => `key-${++mockN}` }));
@@ -62,5 +62,14 @@ describe("idempotency keys", () => {
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(keys).toEqual(["key-1", "key-2", "draft-key"]);
+  });
+});
+
+describe("useActionKey", () => {
+  it("keeps one key while the body is unchanged, and makes a new one when it changes", async () => {
+    const { result } = await renderHook(() => useActionKey());
+    const first = result.current({ garden_id: "g1", text: "Shade after 3 pm" });
+    expect(result.current({ garden_id: "g1", text: "Shade after 3 pm" })).toBe(first);
+    expect(result.current({ garden_id: "g1", text: "Shade after 4 pm" })).not.toBe(first);
   });
 });

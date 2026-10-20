@@ -1,11 +1,13 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { View } from "react-native";
 
-import { useScenario, type NextScan, type UploadFault } from "@/api/mock";
+import { chooseAccount, useScenario, type DemoAccount, type NextScan, type UploadFault } from "@/api/mock";
 import type { Role } from "@/domain/types";
 import { Chip, Section, Text, space } from "@/ui";
 
-// Mock mode's demo controls (README §15, fault injection): what the next scan does, a failed upload, the role.
+// Mock mode's demo controls (README §15, fault injection): what the next scan does, a failed upload, the account
+// and the role. The account and the role change what the server answers, so both refetch every query; the next
+// scan and the next upload are read only when they happen.
 const NEXT_SCANS: { value: NextScan; label: string }[] = [
   { value: "auto", label: "The demo story" },
   { value: "early_blight", label: "Early blight" },
@@ -20,11 +22,18 @@ const UPLOAD_FAULTS: { value: UploadFault | null; label: string }[] = [
   { value: "image_too_dark", label: "Too dark" },
 ];
 
+const ACCOUNTS: { value: DemoAccount; label: string }[] = [
+  { value: "demo", label: "The demo garden" },
+  // No name and no garden, so the session gate opens onboarding.
+  { value: "new", label: "A new account" },
+];
+
 const ROLES: Role[] = ["owner", "editor", "reviewer", "viewer"];
 
 export function DemoControls() {
   const s = useScenario();
   const queryClient = useQueryClient();
+  const refetchAll = () => void queryClient.invalidateQueries();
   return (
     <Section title="Demo controls">
       <View style={{ gap: space[4] }}>
@@ -39,20 +48,29 @@ export function DemoControls() {
           ))}
         </ChipRow>
         <ChipRow label="Account">
-          <Chip label="The demo garden" selected={!s.emptyAccount} onPress={() => s.setEmptyAccount(false)} />
-          <Chip
-            label="A new account"
-            selected={s.emptyAccount}
-            onPress={() => {
-              // No name and no garden, so the session gate opens onboarding.
-              s.setEmptyAccount(true);
-              void queryClient.invalidateQueries();
-            }}
-          />
+          {ACCOUNTS.map((o) => (
+            <Chip
+              key={o.value}
+              label={o.label}
+              selected={s.account === o.value}
+              onPress={() => {
+                chooseAccount(o.value);
+                refetchAll();
+              }}
+            />
+          ))}
         </ChipRow>
         <ChipRow label="Your role">
           {ROLES.map((r) => (
-            <Chip key={r} label={r[0].toUpperCase() + r.slice(1)} selected={s.role === r} onPress={() => s.setRole(r)} />
+            <Chip
+              key={r}
+              label={r[0].toUpperCase() + r.slice(1)}
+              selected={s.role === r}
+              onPress={() => {
+                s.setRole(r);
+                refetchAll();
+              }}
+            />
           ))}
         </ChipRow>
       </View>
