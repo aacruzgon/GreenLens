@@ -23,7 +23,7 @@ use domain::{
         ResolvedLocation,
     },
     rules::limits::INVITE_TTL,
-    wire::{Page, PageRequest},
+    wire::{Page, PageRequest, Role},
 };
 
 use crate::{
@@ -260,13 +260,19 @@ pub async fn update_member(
     ApiPath(ids): ApiPath<(GardenId, UserId)>,
     ApiJson(body): ApiJson<UpdateMemberRequest>,
 ) -> Result<Wire<Member>, ApiError> {
-    Ok(Wire::ok(
-        state
-            .ports
-            .store
-            .change_role(access.member, ids.1, body.role)
-            .await?,
-    ))
+    let garden = access.member.garden();
+    let member = state
+        .ports
+        .store
+        .change_role(access.member, ids.1, body.role)
+        .await?;
+    // Demoting an owner deletes the farm connectors they created in the garden (connectors 8):
+    // the store marked them `deleting` in the role change's transaction, and the runner revokes
+    // and deletes them in the background now that it committed (EON E3.6).
+    if body.role != Role::Owner {
+        state.deletions.spawn_connectors_of(garden, ids.1);
+    }
+    Ok(Wire::ok(member))
 }
 
 /// `DELETE /gardens/{id}/members/{user_id}`: an owner removing anyone, or a member leaving

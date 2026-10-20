@@ -305,7 +305,10 @@ pub trait FarmRecordStore: Send + Sync {
     async fn delete_connector_batch(&self, connector: ConnectorId) -> Result<u32, StoreError>;
 
     /// The connectors a member created in a garden: deleted when that member stops being an
-    /// owner (demoted, removed, leaving or deleting the account).
+    /// owner (demoted, removed, leaving or deleting the account). The store marks those
+    /// `deleting` itself, in the transaction that changes the membership
+    /// (`GardenRepo::change_role`, `GardenRepo::remove_member`, `DeletionRepo::transfer_ownership`;
+    /// a garden's in `DeletionRepo::start_garden_deletion`).
     async fn connectors_created_by(
         &self,
         garden: GardenId,
@@ -323,6 +326,18 @@ pub trait FarmRecordStore: Send + Sync {
         team_id: String,
         except: ConnectorId,
     ) -> Result<u32, StoreError>;
+
+    /// Connectors marked `deleting` whose deletion hasn't finished, with their sealed tokens,
+    /// oldest id first: with `Some(garden)`, that garden's (a cascade or a demotion finishing
+    /// them); with `None`, those of every garden not itself being deleted (`api`'s
+    /// `deletions.resume()` after a restart; a garden being deleted finishes its own connectors
+    /// in its cascade). The marker is what makes a deletion resumable: the status is set in the
+    /// transaction that removed the owner, and the row keeps its token until `api` revoked it
+    /// and deleted the records (EON E3.6).
+    async fn deleting_connectors(
+        &self,
+        garden: Option<GardenId>,
+    ) -> Result<Vec<ConnectorRow>, StoreError>;
 
     /// The cleanup: deletes `pending` connectors created before the cutoff (10 minutes ago).
     async fn delete_expired_pending(&self, before: Timestamp) -> Result<u32, StoreError>;

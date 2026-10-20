@@ -19,11 +19,27 @@
 //! is idempotent). A garden's objects are one prefix, deleted again; a plant's or scan's objects
 //! are left to the daily orphan sweep, which deletes objects no record points to.
 //!
+//! **Farm connectors** ([connectors 8]; EON E3.6). A connector goes with its garden, and with
+//! the owner who created it when that owner stops being one: demoted (`change_role`), removed or
+//! leaving (`remove_member`), or deleting the account (`transfer_ownership`, then the `Member`
+//! cascade, or the garden's own cascade). The store marks those connectors `deleting` in the
+//! transaction that changes the garden or the membership, so the sync stops reading them at once
+//! and the row keeps its sealed token. After that commit, never inside a transaction, the runner
+//! takes each one in turn: it unseals the token and asks the vendor to revoke it (an `era`
+//! connector's fixed demo token is skipped), logs the outcome without the token or the vendor's
+//! body, and then deletes its records and the row in batches (`delete_connector_batch`), whether
+//! the revoke worked or not. Revoking before the delete, not after it, is what makes this
+//! resumable: a restart anywhere between the mark and the last batch leaves the row `deleting`
+//! with its token, and `resume` (or the garden's resumed cascade) finishes it. The worst case is
+//! a second revoke of a token already revoked, which the vendor refuses and the log records.
+//!
 //! **Accounts.** An account cascade starts with the tombstone's compare-and-set
 //! (`DeletionRepo::start_account_deletion`): a second `DELETE /me`, or a `user.deleted` webhook
 //! arriving while the first cascade runs, is a no-op. The tombstone also refuses the account's
 //! still-valid session tokens (`401`), and `unfinished_account_deletions` resumes the records and
 //! the Clerk deletion after a restart, until `finish_account_deletion` records Clerk's answer.
+//!
+//! [connectors 8]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#8-privacy-and-security
 
 use std::{sync::Arc, time::Duration};
 
@@ -32,16 +48,22 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use domain::{
     authz::{self, AccessError, Owner, Viewer},
+    connectors::ConnectorEndpoint,
     garden::{account::AccountDeletion, push::PushPayload},
-    id::{AuthId, UserId},
+    id::{AuthId, GardenId, UserId},
     ports::{
-        AccountDeletionMarker, AuthAdmin, CascadeStep, Clock, DeletionStarted, DeletionTarget,
-        ObjectKey, ObjectPrefix, Store, StoreError,
+        AccountDeletionMarker, AuthAdmin, CascadeStep, Clock, ConnectorRow, DeletionStarted,
+        DeletionTarget, ObjectKey, ObjectPrefix, Store, StoreError,
     },
     wire::V1,
 };
 
-use crate::{error::ApiError, push::Pusher};
+use crate::{
+    error::ApiError,
+    push::Pusher,
+    revoke::{TokenRevoker, token_to_revoke},
+    sealing::{ConnectorKey, SealPurpose},
+};
 
 /// The longest wait between retries of the Clerk account deletion.
 const ADMIN_BACKOFF_MAX: Duration = Duration::from_secs(3600);
@@ -74,6 +96,17 @@ pub struct DeletionRunner {
     clock: Arc<dyn Clock>,
     tasks: TaskTracker,
     shutdown: CancellationToken,
+    /// The key that opens connector tokens and the vendors that revoke them; `None` with
+    /// connectors off (no `CONNECTOR_KEY`), when a connector's records are still deleted but its
+    /// token can't be opened to revoke.
+    revoke: Option<Revoke>,
+}
+
+/// What revoking a connector's token needs.
+#[derive(Clone)]
+struct Revoke {
+    key: ConnectorKey,
+    vendors: Arc<dyn TokenRevoker>,
 }
 
 impl DeletionRunner {
@@ -95,7 +128,15 @@ impl DeletionRunner {
             clock,
             tasks,
             shutdown,
+            revoke: None,
         }
+    }
+
+    /// With farm connectors on: `key` opens the tokens the cascades revoke through `vendors`.
+    #[must_use]
+    pub fn with_revoke(mut self, key: ConnectorKey, vendors: Arc<dyn TokenRevoker>) -> Self {
+        self.revoke = Some(Revoke { key, vendors });
+        self
     }
 
     /// Runs a started cascade in the background. Not tied to the shutdown token: shutdown waits
@@ -152,20 +193,120 @@ impl DeletionRunner {
         all_done
     }
 
-    /// Every cascade step of the target, each repeated until a batch deletes nothing.
+    /// Every cascade step of the target, each repeated until a batch deletes nothing. A removed
+    /// member's connectors in the garden go first; a garden's are revoked and deleted just
+    /// before its `FarmRecordsAndConnectors` step, which then deletes anything left.
     pub async fn delete_records(&self, target: DeletionTarget) -> Result<(), StoreError> {
+        if let DeletionTarget::Member { garden, user } = target {
+            self.finish_connectors(garden, Some(user)).await?;
+        }
         for &step in CascadeStep::steps_for(target) {
+            if step == CascadeStep::FarmRecordsAndConnectors
+                && let DeletionTarget::Garden(garden) = target
+            {
+                self.finish_connectors(garden, None).await?;
+            }
             while self.store.delete_batch(target, step).await? > 0 {}
         }
         Ok(())
     }
 
-    /// Resumes every cascade a restart cut off: targets still marked `deleting_at`, and account
-    /// deletions whose tombstone has no `clerk_deleted_at`.
+    /// After a demotion (`PATCH /gardens/{id}/members/{user_id}`) committed: revokes and deletes,
+    /// in the background, the connectors the demoted owner created in the garden, which the
+    /// store marked `deleting` in that transaction. Nothing to do when there are none.
+    pub fn spawn_connectors_of(&self, garden: GardenId, owner: UserId) {
+        let runner = self.clone();
+        self.tasks.spawn(async move {
+            if let Err(error) = runner.finish_connectors(garden, Some(owner)).await {
+                tracing::error!(%garden, error = %error, "connector deletion stopped; it resumes on restart");
+            }
+        });
+    }
+
+    /// The garden's connectors marked `deleting` (those `created_by` made, when given), each
+    /// revoked and then deleted.
+    async fn finish_connectors(
+        &self,
+        garden: GardenId,
+        created_by: Option<UserId>,
+    ) -> Result<(), StoreError> {
+        for row in self.store.deleting_connectors(Some(garden)).await? {
+            if created_by.is_none_or(|user| row.created_by == user) {
+                self.finish_connector(row).await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// One connector marked `deleting`: revokes its token, then deletes its records and the
+    /// row, 500 records a batch. A failed revoke is logged and the deletion goes on.
+    pub async fn finish_connector(&self, row: ConnectorRow) -> Result<(), StoreError> {
+        self.revoke_token(&row).await;
+        let connector = row.connector.id;
+        while self.store.delete_connector_batch(connector).await? > 0 {}
+        tracing::info!(%connector, "connector deleted");
+        Ok(())
+    }
+
+    /// Unseals the token and asks the vendor to revoke it. Never fails: every outcome is logged
+    /// by the connector's id and kind only, never the token or the vendor's body.
+    async fn revoke_token(&self, row: &ConnectorRow) {
+        let connector = row.connector.id;
+        let kind = row.connector.kind;
+        if row.connector.endpoint == ConnectorEndpoint::Era {
+            tracing::debug!(%connector, ?kind, "era connector: its demo token needs no revoke");
+            return;
+        }
+        let Some(sealed) = &row.secret else {
+            tracing::debug!(%connector, ?kind, "no token to revoke");
+            return;
+        };
+        let Some(revoke) = &self.revoke else {
+            tracing::warn!(%connector, ?kind, "connectors off: the token can't be opened to revoke");
+            return;
+        };
+        let token = match revoke.key.unseal(SealPurpose::Token, connector, sealed) {
+            Ok(plaintext) => token_to_revoke(&plaintext),
+            Err(error) => {
+                tracing::warn!(%connector, ?kind, error = %error, "token not revoked: it doesn't unseal");
+                return;
+            }
+        };
+        let Some(token) = token else {
+            tracing::warn!(%connector, ?kind, "token not revoked: the sealed value holds none");
+            return;
+        };
+        match revoke.vendors.revoke(kind, &token).await {
+            Ok(()) => tracing::info!(%connector, ?kind, "token revoked"),
+            Err(error) => tracing::warn!(
+                %connector,
+                ?kind,
+                error = %error,
+                "token revoke failed; the records are deleted anyway"
+            ),
+        }
+    }
+
+    /// Resumes every cascade a restart cut off: targets still marked `deleting_at`, account
+    /// deletions whose tombstone has no `clerk_deleted_at`, and connectors still marked
+    /// `deleting` outside a garden being deleted (a demotion's or a removal's, cut off between
+    /// the store's commit and the last batch).
     pub async fn resume(&self) -> Result<usize, StoreError> {
         let targets = self.store.unfinished_deletions().await?;
         let accounts = self.store.unfinished_account_deletions().await?;
-        let count = targets.len() + accounts.len();
+        let connectors = self.store.deleting_connectors(None).await?;
+        let count = targets.len() + accounts.len() + connectors.len();
+        if !connectors.is_empty() {
+            let runner = self.clone();
+            self.tasks.spawn(async move {
+                for row in connectors {
+                    let connector = row.connector.id;
+                    if let Err(error) = runner.finish_connector(row).await {
+                        tracing::error!(%connector, error = %error, "connector deletion stopped; it resumes on restart");
+                    }
+                }
+            });
+        }
         for marker in accounts {
             self.spawn_account_run(marker);
         }

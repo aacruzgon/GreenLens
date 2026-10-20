@@ -150,7 +150,8 @@ impl ConnectorKey {
     }
 
     /// Opens a value sealed for `connector`. The plaintext comes back as a secret, wiped when
-    /// dropped.
+    /// dropped. The deletion runner opens tokens to revoke them (E3.6); the routes (E3.4) and
+    /// the sync (E4.1) open them too.
     pub fn unseal(
         &self,
         purpose: SealPurpose,

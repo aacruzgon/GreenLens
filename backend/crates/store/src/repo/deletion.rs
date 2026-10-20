@@ -39,8 +39,10 @@ use crate::{
 /// equality (`plant = $plant`, `garden = $garden`), never `scan IN $scans` (#7593 ✓).
 pub mod sql {
     /// `DELETE /gardens/{id}`: `deleting_at`, the jobs cancelled, every step claim and
-    /// question step cleared, so a running step fails its commit check, and the garden queued
-    /// for erasure in Agent Memory (`belief_forget`). Returns the name and the other members
+    /// question step cleared, so a running step fails its commit check, the garden queued
+    /// for erasure in Agent Memory (`belief_forget`), and its farm connectors marked
+    /// `deleting`, so the sync stops reading them and their tokens stay until `api` revokes
+    /// them (EON E3.6). Returns the name and the other members
     /// for the `garden_deleted` push.
     pub const START_GARDEN: &str = "BEGIN;
 LET $g = (SELECT name, deleting_at FROM ONLY $garden);
@@ -51,6 +53,7 @@ UPDATE job SET status = 'cancelled', finished_at = $now WHERE scan IN $scans AND
 UPDATE scan SET pipeline_step = NONE, pipeline_step_run = NONE, pipeline_step_at = NONE WHERE garden = $garden AND pipeline_step != NONE;
 UPDATE question SET step = NONE, step_at = NONE WHERE scan IN $scans AND step != NONE;
 IF array::len(SELECT VALUE id FROM belief_forget WHERE garden = $garden AND plant = NONE) = 0 { CREATE belief_forget SET garden = $garden, requested_at = $now };
+UPDATE connector SET status = 'deleting' WHERE garden = $garden AND status != 'deleting';
 RETURN { name: $g.name, notify: (SELECT VALUE in FROM member_of WHERE out = $garden AND in != $user) };
 COMMIT;";
 
@@ -197,8 +200,9 @@ WHERE id IN $scans AND (plan != NONE OR diagnosis != NONE OR open_question != NO
 
     /// A garden's farm records (each holds a `REFERENCE ON DELETE REJECT` to its connector).
     pub const FARM_RECORDS_OF_GARDEN: &str = "DELETE (SELECT VALUE id FROM farm_record WHERE garden = $garden LIMIT 500) RETURN VALUE $before.id;";
-    /// A garden's farm connectors. Revoking their tokens is `api`'s, after this step commits (EON E3.6, not built yet): the store step
-    /// holds no vendor client.
+    /// A garden's farm connectors. Revoking their tokens is `api`'s (EON E3.6): `START_GARDEN`
+    /// marked them `deleting`, and the deletion runner revokes each token after that commit and
+    /// before this step deletes the rows that hold them. The store holds no vendor client.
     pub const CONNECTORS_OF_GARDEN: &str = "DELETE (SELECT VALUE id FROM connector WHERE garden = $garden LIMIT 500) RETURN VALUE $before.id;";
 
     // ---- step 4.7 (cont.): invites, memberships and the garden ----
@@ -232,12 +236,14 @@ RETURN array::complement($keys, $used);";
     pub const ACCOUNT_GARDENS: &str = "SELECT out AS garden, role,
        (SELECT in AS user, role, since FROM member_of WHERE out = $parent.out AND in != $user ORDER BY since) AS others
 FROM member_of WHERE in = $user AND out.deleting_at = NONE;";
-    /// Step 2: the heir becomes an owner in the leaver's place (the leaver drops to editor);
+    /// Step 2: the heir becomes an owner in the leaver's place (the leaver drops to editor,
+    /// which marks the connectors the leaver created there `deleting`, as a demotion does);
     /// the leaver's membership is then removed by the `Member` cascade.
     pub const TRANSFER_OWNERSHIP: &str = "BEGIN;
 IF array::len(SELECT VALUE id FROM $heir) = 0 { THROW 'not_found' };
 UPDATE $heir SET role = 'owner';
 UPDATE $leaver SET role = 'editor' WHERE role = 'owner';
+UPDATE connector SET status = 'deleting' WHERE garden = $garden AND created_by = $user AND status != 'deleting';
 COMMIT;";
     /// A member's conversations in a garden.
     pub const MEMBER_CONVERSATIONS: &str =
@@ -641,6 +647,8 @@ impl DeletionRepo for SurrealStore {
                 crate::ids::member_rid(transfer.new_owner_user_id, transfer.garden_id),
             ))
             .bind(("leaver", crate::ids::member_rid(from, transfer.garden_id)))
+            .bind(("garden", rid(&transfer.garden_id)))
+            .bind(("user", rid(&from)))
         })
         .await
         .map(drop)

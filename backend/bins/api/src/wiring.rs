@@ -35,11 +35,11 @@ use integrations::{
     clerk::{ClerkAdmin, ClerkAdminConfig, ClerkVerifier, ClerkVerifierConfig},
     expo_push::{ExpoPush, ExpoPushConfig},
     geocode::{CompositeGeocoder, GeocoderConfig, TimeZoneFinder},
-    google_drive::DriveClient,
+    google_drive::{DriveClient, DriveConfig},
     http::{HttpConfig, client},
     jev::{JevClassifier, JevConfig},
     open_meteo::{OpenMeteo, OpenMeteoConfig},
-    slack::SlackClient,
+    slack::{SlackClient, SlackConfig},
     soilgrids::{SoilGrids, SoilGridsConfig},
     svix::SvixVerifier,
 };
@@ -52,6 +52,7 @@ use crate::{
     events::{hub::EventHub, writer::ScanWriters},
     limits::RateLimits,
     push::Pusher,
+    revoke::{TokenRevoker, VendorRevoker},
     seams::{
         ChatTurns, FollowUp, Handled, ImageProcessing, PhotoInfo, PipelineApi, PipelineError,
         PreviewError, ProcessedImage, ProcessedUpload, RevisedPlan, SubmitOutcome, TurnError,
@@ -285,6 +286,8 @@ struct Outbound {
     classifier: Arc<dyn TextClassifier>,
     beliefs: Arc<dyn BeliefStore>,
     connect: Arc<dyn ConnectVendors>,
+    /// The farm connectors' token revoke, at the vendors' constant hosts.
+    revoker: Arc<dyn TokenRevoker>,
 }
 
 #[expect(
@@ -348,6 +351,10 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         Some(c) => Arc::new(AgentMemory::new(http.clone(), c)),
         None => Arc::new(NoBeliefs),
     };
+    let revoker: Arc<dyn TokenRevoker> = Arc::new(VendorRevoker::new(
+        SlackClient::new(http.clone(), SlackConfig::default()),
+        DriveClient::new(http.clone(), DriveConfig::default()),
+    ));
     Ok(Outbound {
         auth: Arc::new(ClerkVerifier::new(http.clone(), verifier)),
         webhooks: Arc::new(
@@ -391,6 +398,7 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         classifier,
         beliefs,
         connect,
+        revoker,
     })
 }
 
@@ -515,6 +523,10 @@ fn chat_turns(
 /// Builds every port and the state, in order: the databases (schema as root, then connect as
 /// `api`; the knowledge index), the object store, the outbound adapters, the CPU models, the
 /// species photo index, then `api`'s own pieces and the pipeline and agent that need the writer.
+#[expect(
+    clippy::too_many_lines,
+    reason = "every port and in-process piece is built here, in start-up order"
+)]
 pub async fn build(
     config: Config,
     shutdown: CancellationToken,
@@ -590,7 +602,7 @@ pub async fn build(
     );
     // The one delete queue: every RustFS delete in `api` goes through it, and `main` drains it.
     let deletes = blob::DeleteQueue::new(Arc::clone(&blob));
-    let deletions = DeletionRunner::new(
+    let mut deletions = DeletionRunner::new(
         store,
         deletes.clone(),
         out.auth_admin,
@@ -599,6 +611,9 @@ pub async fn build(
         tasks.clone(),
         shutdown.clone(),
     );
+    if let Some(key) = &config.connectors.key {
+        deletions = deletions.with_revoke(key.clone(), out.revoker);
+    }
     Ok(Arc::new(AppState {
         limits: RateLimits::new(config.rate_per_minute),
         upload_permits: Arc::new(Semaphore::new(config.upload_permits.max(1))),

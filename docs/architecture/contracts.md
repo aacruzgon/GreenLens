@@ -1,6 +1,8 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.12, 2026-10-19. v0.10.12: the farm connector routes' answers as built (section 9): `409 invalid_state` for a vendor without an OAuth client, the callback's nonce check and `error` redirect, `complete`'s `404` for another user or device, `400` for a refused code and `503` for a vendor outage, the sources' checks and the state's format. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.13, 2026-10-19. Companion to the [architecture document](README.md).
+> **v0.10.13**: an owner's demotion, removal or leaving, and their account's deletion, now delete the farm connectors they created, and the tokens are revoked after the store marks the connectors `deleting`, so a restart finishes the step (EON E3.6, section 9); no wire shape changed.
+> **v0.10.12**: the farm connector routes' answers as built (section 9): `409 invalid_state` for a vendor without an OAuth client, the callback's nonce check and `error` redirect, `complete`'s `404` for another user or device, `400` for a refused code and `503` for a vendor outage, the sources' checks and the state's format.
 > **v0.10.11**: `POST /gardens/{id}/connectors` answers `409 invalid_state` when the garden already has 2 connectors; no wire shape changed.
 > **v0.10.10**: the connector routes accept `Idempotency-Key`, and section 2 lists connectors under `invalid_state` and Sync now under `rate_limited`; no wire shape changed.
 > **v0.10.9** declares the farm connectors' contract ([connectors](../connectors/README.md)): the `Connector` types and eight routes (section 9), `search_farm_records` and `FarmCitation` (section 8), `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations` as optional fields (sections 7, 8), the `FarmRecordId` wire form, the roles rows and the deletion step. The routes answer `409 invalid_state` until E3 turns connectors on.
@@ -2002,7 +2004,7 @@ The request bodies refuse unknown fields (`400 invalid_request`, section 2). A n
 
 **`FarmRecordId`.** The `farm_record` key is the array `[connector, vendor_id, n]` ([database 3](../database/README.md#3-tables)). On the wire it is one string, `"<connector_id>.<n>.<vendor_id>"`: for example `01JAX3K9T6R2B8V0QZ4M7D1E5C.0.C024BE91L/1729000000.000100` for a Slack message (`vendor_id` is `"<channel>/<ts>"`) or `01JAX3K9T6R2B8V0QZ4M7D1E5C.0.1aBcD` for chunk 0 of a Drive file. The vendor id goes last because it may hold dots and slashes, so the first two dots split the string and the rest is the vendor id (1–255 printable bytes). `n` is 0 for a message and 0, 1, … for a document's chunks.
 
-**Deleting.** A garden's cascade (below) deletes its farm records, then its connectors, before the garden (`api` revokes their tokens after the step commits). Removing a member does not yet delete the connectors they created; that is [EON E3.6](../EON/README.md#e3-configuration-tokens-and-connecting).
+**Deleting.** A garden's cascade (below) deletes its farm records, then its connectors, before the garden. An owner who is demoted, removed, leaves or deletes the account loses the connectors they created in that garden, with their records ([EON E3.6](../EON/README.md#e3-configuration-tokens-and-connecting)). In both cases the store marks the connectors `deleting` in the transaction that starts it, and `api` revokes their tokens after that commit and before it deletes the records; a failed revoke is logged and the records still go.
 
 ### Garden map
 
@@ -2061,7 +2063,7 @@ interface GardenMap {
 
 **Agent Memory.** Starting a plant's or garden's cascade queues its Agent Memory scope for erasure in the same transaction, and `api`'s belief sweep erases it (`POST /scopes/forget`, permanent) within seconds while Agent Memory is up; nothing more of that plant or garden is recorded. When an owner deletes one shared memory, the row goes and its plant's (or the garden's) scope is queued in one transaction; the sweep erases the scope and records the remaining shared memories again. Erasure is eventual: while Agent Memory is down, the queued erase waits. Account deletion needs nothing: shared memories stay with the garden, and private ones were never sent.
 
-A deletion interrupted by a restart is resumed from its first step for every target still marked `deleting_at`. A garden's objects are deleted again by prefix; a resumed plant's or scan's objects, whose keys are gone with their records, are left to the daily orphan sweep, which deletes objects no record points to ([backend api 17](../backend/api.md#17-deletion); open question 41). A member's removal leaves no marker yet, so it can't be resumed (open question 30).
+A deletion interrupted by a restart is resumed from its first step for every target still marked `deleting_at`. A garden's objects are deleted again by prefix; a resumed plant's or scan's objects, whose keys are gone with their records, are left to the daily orphan sweep, which deletes objects no record points to ([backend api 17](../backend/api.md#17-deletion); open question 41). A member's removal leaves no marker yet, so it can't be resumed (open question 30); the farm connectors it deletes can, since they stay `deleting` until revoked and deleted.
 
 ### Tasks
 

@@ -611,6 +611,12 @@ mod farm_record_store {
                 .slack_team_connectors(team_id, except)
                 .await
         }
+        async fn deleting_connectors(
+            &self,
+            garden: Option<GardenId>,
+        ) -> Result<Vec<ConnectorRow>, StoreError> {
+            self.farm_record_store.deleting_connectors(garden).await
+        }
         async fn delete_expired_pending(&self, before: Timestamp) -> Result<u32, StoreError> {
             self.farm_record_store.delete_expired_pending(before).await
         }
