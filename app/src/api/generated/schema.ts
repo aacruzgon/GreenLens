@@ -9,9 +9,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * `GET /connectors/oauth/callback?code&state`: the vendor's redirect. Public: it checks only the
-         *     state's signature and expiry, stores nothing, and answers `302` to the app with the code and
-         *     state. `409 invalid_state` while connectors are off.
+         * `GET /connectors/oauth/callback?code&state&error`: the vendor's redirect. Public: no session
+         *     can say who consented, so it checks the state (signature, expiry, and that the pending
+         *     connector still holds its nonce), stores nothing, and answers `302` to the app with the
+         *     code and state, or the vendor's `error` (the owner declined). `400 invalid_request` for a
+         *     bad, expired or used state; `409 invalid_state` while connectors are off.
          */
         get: operations["oauth_callback"];
         put?: never;
@@ -33,8 +35,10 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * `DELETE /connectors/{id}`: `202`; the tokens are revoked, then the records deleted. Owner.
-         *     `409 invalid_state` while connectors are off.
+         * `DELETE /connectors/{id}`: `202`. The store marks the connector `deleting` (the list and the
+         *     sync skip it), then a background task revokes the tokens with the vendor and deletes the
+         *     records and the connector. Owner. `409 invalid_state` while connectors are off and for a
+         *     demo connector.
          */
         delete: operations["delete_connector"];
         options?: never;
@@ -51,7 +55,8 @@ export interface paths {
         };
         /**
          * `GET /connectors/{id}/available-sources`: the channels the bot is in, or the folders. Owner.
-         *     `409 invalid_state` while connectors are off.
+         *     `409 invalid_state` while connectors are off, for a demo connector, or one with no token
+         *     yet; a token the vendor refuses makes the connector `reauth_needed` and is `409` too.
          */
         get: operations["available_sources"];
         put?: never;
@@ -73,7 +78,14 @@ export interface paths {
         put?: never;
         /**
          * `POST /connectors/{id}/complete`: exchanges the code. The owner who started the connect, with
-         *     the `device_verifier` whose hash started it. `409 invalid_state` while connectors are off.
+         *     the `device_verifier` whose hash started it; anyone else, or a wrong verifier, gets
+         *     `404 not_found` and the pending connector is deleted. `400 invalid_request` for a bad,
+         *     expired or used state, or a code the vendor refused; `409 invalid_state` while connectors are
+         *     off.
+         * @description The timeout is 60 s. Past it the answer is `503`, but the exchange runs on: a retry with the
+         *     same `Idempotency-Key` gets `409 request_in_progress` until it ends, and then its answer when
+         *     that is a `2xx` or a deterministic `4xx` (the only answers stored); after a `5xx` the key is
+         *     released and the retry runs again.
          */
         post: operations["complete_connector"];
         delete?: never;
@@ -91,8 +103,10 @@ export interface paths {
         };
         get?: never;
         /**
-         * `PUT /connectors/{id}/sources`: Slack up to 10 channels, Drive 1 folder. Owner.
-         *     `409 invalid_state` while connectors are off.
+         * `PUT /connectors/{id}/sources`: Slack up to 10 channels, Drive 1 folder, each from
+         *     `available-sources` (its name comes from there). Owner. The records of a source no longer
+         *     chosen are deleted before the answer. `409 invalid_state` while connectors are off, for a
+         *     demo connector, or one with no token yet.
          */
         put: operations["set_sources"];
         post?: never;
@@ -112,10 +126,11 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * `POST /connectors/{id}/sync`: **Sync now**, `202`; `429` within 5 minutes of the last. Owner.
-         *     `409 invalid_state` while connectors are off. It has no body, and no body-less route holds an
-         *     idempotency record yet, so `Idempotency-Key` is documented here and honoured with the handler
-         *     (E3): sync-now is naturally idempotent, since a repeat inside 5 minutes is the `429`.
+         * `POST /connectors/{id}/sync`: **Sync now**, `202`; `429 rate_limited` with `retry_after_s`
+         *     within 5 minutes of the last accepted request (decision 12, a compare-and-set in the store).
+         *     Owner. `409 invalid_state` while connectors are off, for a demo connector, one that isn't
+         *     `active`, or one stopped until its sources change. It has no body and holds no idempotency
+         *     record: a repeat inside 5 minutes is the `429`, so it is naturally idempotent.
          */
         post: operations["sync_connector"];
         delete?: never;
@@ -285,7 +300,8 @@ export interface paths {
         put?: never;
         /**
          * `POST /gardens/{id}/connectors`: starts a connect, `pending`, and returns the vendor's consent
-         *     URL. Owner. `409 invalid_state` while connectors are off.
+         *     URL. Owner. `409 invalid_state` while connectors are off, when this server has no OAuth
+         *     client for the vendor, or when the garden already has 2 connectors.
          */
         post: operations["create_connector"];
         delete?: never;
@@ -4486,7 +4502,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description To the app with `code` and `state` */
+            /** @description To the app with `code` and `state`, or `error` and `state` */
             302: {
                 headers: {
                     [name: string]: unknown;
@@ -4597,6 +4613,14 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
         };
     };
     complete_connector: {
@@ -4657,6 +4681,14 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
         };
     };
     set_sources: {
@@ -4707,6 +4739,14 @@ export interface operations {
                 };
             };
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
