@@ -1790,79 +1790,43 @@ mints	inat_species/mints/331925141-602256214.jpg	Salvia mohavensis	plant	3319251
 mints	inat_species/mints/337184925-612899859.jpg	Phlomis lunariifolia	plant	337184925	612899859	2025-11-23	CC BY 4.0	(c) Marios Thoma, some rights reserved (CC BY); re-encoded, metadata removed	train
 mints	inat_species/mints/345030549-628730626.jpg	Callicarpa americana	plant	345030549	628730626	2025-09-28	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 mints	inat_species/mints/364656446-665714884.jpg	Lavandula pedunculata	plant	364656446	665714884	2020-06-05	CC BY 4.0	(c) zebedeugalinha, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/19686429-30323072.jpg	Capsicum annuum glabriusculum	crop	19686429	30323072	2019-01-14	CC BY 4.0	(c) Michelle W. （鍾偉瑋）, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/20084090-31014980.jpg	Capsicum annuum glabriusculum	crop	20084090	31014980	2019-02-04	CC BY 4.0	(c) Sophia K, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/20214108-31202016.jpg	Capsicum annuum	crop	20214108	31202016	2019-02-09	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
-pepper	inat_species/pepper/20244700-31246689.jpg	Capsicum annuum glabriusculum	crop	20244700	31246689	2019-02-09	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
-pepper	inat_species/pepper/20277261-31301950.jpg	Capsicum annuum glabriusculum	crop	20277261	31301950	2019-02-10	CC BY 4.0	(c) Michelle W. （鍾偉瑋）, some rights reserved (CC BY); re-encoded, metadata removed	val
-pepper	inat_species/pepper/20788882-32060910.jpg	Capsicum annuum glabriusculum	crop	20788882	32060910	2019-02-26	CC BY 4.0	(c) Sam Kieschnick, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/21260438-32870691.jpg	Capsicum annuum	crop	21260438	32870691	2019-03-15	CC BY 4.0	(c) Tyler Cannon, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/24052613-37196272.jpg	Capsicum annuum glabriusculum	crop	24052613	37196272	2019-04-29	CC BY 4.0	(c) Morgan Hay, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/24056892-37205092.jpg	Capsicum annuum	crop	24056892	37205092	2019-04-29	CC BY 4.0	(c) IDClaire, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/24216509-37446969.jpg	Capsicum annuum	crop	24216509	37446969	2019-04-30	CC BY 4.0	(c) Gary Rogers, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/26136492-40554897.jpg	Capsicum annuum glabriusculum	crop	26136492	40554897	2019-05-31	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
-pepper	inat_species/pepper/26239681-40728739.jpg	Capsicum annuum glabriusculum	crop	26239681	40728739	2019-06-02	CC BY 4.0	(c) elawrey, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/26363640-40932197.jpg	Capsicum annuum	crop	26363640	40932197	2019-06-03	CC BY 4.0	(c) Michelle Lay, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/26450812-41074097.jpg	Capsicum annuum	crop	26450812	41074097	2019-06-05	CC BY 4.0	(c) Gary Rogers, some rights reserved (CC BY); re-encoded, metadata removed	val
-pepper	inat_species/pepper/30589729-47796018.jpg	Capsicum annuum glabriusculum	crop	30589729	47796018	2019-08-04	CC BY 4.0	(c) Carlos Domínguez-Rodríguez, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/30737708-48038449.jpg	Capsicum annuum glabriusculum	crop	30737708	48038449	2019-08-10	CC BY 4.0	(c) Carlos Domínguez-Rodríguez, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/30737712-48038494.jpg	Capsicum annuum glabriusculum	crop	30737712	48038494	2019-08-10	CC BY 4.0	(c) Carlos Domínguez-Rodríguez, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/31411060-49157908.jpg	Capsicum annuum glabriusculum	crop	31411060	49157908	2019-08-24	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
-pepper	inat_species/pepper/31432708-49192173.jpg	Capsicum annuum glabriusculum	crop	31432708	49192173	2019-08-24	CC BY 4.0	(c) Clifton Ladd, C.W.B., some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/32191903-50464363.jpg	Capsicum annuum	crop	32191903	50464363	2019-09-03	CC BY 4.0	(c) Neptalí Ramírez Marcial, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/32393416-50802766.jpg	Capsicum annuum	crop	32393416	50802766	2019-09-08	CC BY 4.0	(c) Sam Kieschnick, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/32472867-50934550.jpg	Capsicum annuum annuum	crop	32472867	50934550	2019-09-10	CC BY 4.0	(c) Karim Haddad, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/33544787-52687316.jpg	Capsicum annuum glabriusculum	crop	33544787	52687316	2019-09-13	CC BY 4.0	(c) Carlos Domínguez-Rodríguez, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/33677525-71153509.jpg	Capsicum annuum	crop	33677525	71153509	2019-09-30	CC BY 4.0	(c) Diego López, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/33977654-53421939.jpg	Capsicum annuum	crop	33977654	53421939	2019-10-06	CC BY 4.0	(c) Diego López, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/34085974-53600711.jpg	Capsicum annuum	crop	34085974	53600711	2019-10-08	CC BY 4.0	(c) inbetweenbays, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/34145336-53700292.jpg	Capsicum annuum glabriusculum	crop	34145336	53700292	2019-10-03	CC BY 4.0	(c) Sophia K, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/35514396-56005968.jpg	Capsicum annuum	crop	35514396	56005968	2019-11-05	CC BY 4.0	(c) Carlos Domínguez-Rodríguez, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/35847500-56579627.jpg	Capsicum annuum	crop	35847500	56579627	2019-01-11	CC0 1.0	no rights reserved; re-encoded, metadata removed	val
-pepper	inat_species/pepper/36453435-57623917.jpg	Capsicum annuum glabriusculum	crop	36453435	57623917	2019-12-07	CC BY 4.0	(c) Cody Stricker, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/36596373-57869611.jpg	Capsicum annuum	crop	36596373	57869611	2019-12-11	CC BY 4.0	(c) Adriana Nelly Correa Sandoval, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/36634106-57933188.jpg	Capsicum annuum	crop	36634106	57933188	2019-12-12	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
-pepper	inat_species/pepper/36761102-58161295.jpg	Capsicum annuum glabriusculum	crop	36761102	58161295	2019-12-15	CC BY 4.0	(c) Michelle Lay, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/37193312-58921919.jpg	Capsicum annuum	crop	37193312	58921919	2020-01-01	CC BY 4.0	(c) Carlos Domínguez-Rodríguez, some rights reserved (CC BY); re-encoded, metadata removed	val
-pepper	inat_species/pepper/38637730-61436378.jpg	Capsicum annuum glabriusculum	crop	38637730	61436378	2020-02-12	CC BY 4.0	(c) Daniel Cahen, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/39619771-62874731.jpg	Capsicum annuum	crop	39619771	62874731	2020-03-06	CC BY 4.0	(c) Daniela Gámez, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/39855463-63270587.jpg	Capsicum annuum	crop	39855463	63270587	2020-03-07	CC BY 4.0	(c) Eric Knight, some rights reserved (CC BY); re-encoded, metadata removed	val
-pepper	inat_species/pepper/43221679-68602482.jpg	Capsicum annuum glabriusculum	crop	43221679	68602482	2020-04-24	CC BY 4.0	(c) Justin Quintanilla, some rights reserved (CC BY); re-encoded, metadata removed	val
-pepper	inat_species/pepper/43222465-68603785.jpg	Capsicum annuum glabriusculum	crop	43222465	68603785	2020-04-24	CC BY 4.0	(c) Justin Quintanilla, some rights reserved (CC BY); re-encoded, metadata removed	val
-pepper	inat_species/pepper/43222620-68603968.jpg	Capsicum annuum glabriusculum	crop	43222620	68603968	2020-04-24	CC BY 4.0	(c) Justin Quintanilla, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/43461922-68955853.jpg	Capsicum annuum	crop	43461922	68955853	2020-04-25	CC BY 4.0	(c) johnyochum, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/43508248-69028820.jpg	Capsicum annuum glabriusculum	crop	43508248	69028820	2020-04-25	CC BY 4.0	(c) IDClaire, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/44072763-69881427.jpg	Capsicum annuum glabriusculum	crop	44072763	69881427	2020-04-27	CC BY 4.0	(c) Justin Quintanilla, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/44393572-70385566.jpg	Capsicum annuum	crop	44393572	70385566	2019-01-28	CC BY 4.0	(c) Alison Guerra, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/48090650-76289935.jpg	Capsicum annuum	crop	48090650	76289935	2020-05-31	CC BY 4.0	(c) Afsar Nayakkan, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/49375587-78380980.jpg	Capsicum annuum	crop	49375587	78380980	2020-06-13	CC0 1.0	no rights reserved; re-encoded, metadata removed	val
-pepper	inat_species/pepper/50442283-80094061.jpg	Capsicum annuum glabriusculum	crop	50442283	80094061	2020-06-21	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/51042036-81077999.jpg	Capsicum annuum	crop	51042036	81077999	2020-06-02	CC BY 4.0	(c) elawrey, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/54353967-86484933.jpg	Capsicum annuum glabriusculum	crop	54353967	86484933	2020-07-23	CC BY 4.0	(c) Cody Stricker, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/54355016-86486253.jpg	Capsicum annuum glabriusculum	crop	54355016	86486253	2020-07-23	CC BY 4.0	(c) Cody Stricker, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/55358548-88144922.jpg	Capsicum annuum	crop	55358548	88144922	2020-08-03	CC BY 4.0	(c) Tyler Cannon, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/55885572-89018203.jpg	Capsicum annuum	crop	55885572	89018203	2019-12-08	CC BY 4.0	(c) Sabarni Sarker, some rights reserved (CC BY); re-encoded, metadata removed	val
-pepper	inat_species/pepper/56448185-89956445.jpg	Capsicum annuum glabriusculum	crop	56448185	89956445	2020-08-14	CC BY 4.0	(c) Gary Rogers, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/57628018-91941018.jpg	Capsicum annuum	crop	57628018	91941018	2020-07-28	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/58516290-93430654.jpg	Capsicum annuum	crop	58516290	93430654	2020-09-04	CC0 1.0	no rights reserved; re-encoded, metadata removed	val
 pepper	inat_species/pepper/60789174-97215724.jpg	Capsicum annuum	crop	60789174	97215724	2020-09-25	CC BY 4.0	(c) Diogo Luiz, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/60858261-97335857.jpg	Capsicum annuum	crop	60858261	97335857	2020-09-26	CC BY 4.0	(c) Tyler Cannon, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/60892600-97391869.jpg	Capsicum annuum annuum	crop	60892600	97391869	2020-09-26	CC BY 4.0	(c) Regina Piazza, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/61999741-99273759.jpg	Capsicum annuum glabriusculum	crop	61999741	99273759	2020-10-07	CC BY 4.0	(c) Carlos Domínguez-Rodríguez, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/62865210-100797940.jpg	Capsicum annuum	crop	62865210	100797940	2020-10-16	CC BY 4.0	(c) Megan Kossa, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/63009835-101053743.jpg	Capsicum annuum glabriusculum	crop	63009835	101053743	2020-10-03	CC BY 4.0	(c) Carlos Domínguez-Rodríguez, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/63115923-101239482.jpg	Capsicum annuum glabriusculum	crop	63115923	101239482	2020-10-20	CC BY 4.0	(c) Dan Johnson, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/63974273-102766279.jpg	Capsicum annuum glabriusculum	crop	63974273	102766279	2020-11-01	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/64901864-104414601.jpg	Capsicum annuum	crop	64901864	104414601	2020-11-14	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
-pepper	inat_species/pepper/65322794-105117428.jpg	Capsicum annuum glabriusculum	crop	65322794	105117428	2020-11-18	CC BY 4.0	(c) Michelle W. （鍾偉瑋）, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/65639926-105683422.jpg	Capsicum annuum glabriusculum	crop	65639926	105683422	2020-11-21	CC BY 4.0	(c) mattmsa, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/66220115-106697299.jpg	Capsicum annuum	crop	66220115	106697299	2020-12-03	CC BY 4.0	(c) Rich Sommer, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/67921671-109863846.jpg	Capsicum annuum	crop	67921671	109863846	2021-01-06	CC BY 4.0	(c) Carlos Domínguez-Rodríguez, some rights reserved (CC BY); re-encoded, metadata removed	val
-pepper	inat_species/pepper/67943390-109903027.jpg	Capsicum annuum glabriusculum	crop	67943390	109903027	2021-01-08	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
-pepper	inat_species/pepper/67943681-109903425.jpg	Capsicum annuum glabriusculum	crop	67943681	109903425	2021-01-08	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/67997966-110002875.jpg	Capsicum annuum	crop	67997966	110002875	2021-01-13	CC BY 4.0	(c) Thomas Mesaglio, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/69002294-111868090.jpg	Capsicum annuum	crop	69002294	111868090	2021-01-29	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
-pepper	inat_species/pepper/69092217-112034287.jpg	Capsicum annuum glabriusculum	crop	69092217	112034287	2021-01-18	CC BY 4.0	(c) GERMAN LEONEL SARMIENTO CRUZ, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/69724497-113199441.jpg	Capsicum annuum	crop	69724497	113199441	2021-02-14	CC BY 4.0	(c) Carlos Domínguez-Rodríguez, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/69923618-113575203.jpg	Capsicum annuum	crop	69923618	113575203	2021-02-20	CC BY 4.0	(c) Antonio W. Salas, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/70655714-114904319.jpg	Capsicum annuum	crop	70655714	114904319	2020-03-10	CC BY 4.0	(c) Beah Vega, some rights reserved (CC BY); re-encoded, metadata removed	train
@@ -1870,37 +1834,24 @@ pepper	inat_species/pepper/70685976-114957487.jpg	Capsicum annuum	crop	70685976	
 pepper	inat_species/pepper/71408040-116257272.jpg	Capsicum annuum	crop	71408040	116257272	2021-03-17	CC BY 4.0	(c) Greg III Espera, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/75017800-122680362.jpg	Capsicum annuum	crop	75017800	122680362	2021-04-23	CC BY 4.0	(c) Mitch Van Dyke, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/76581416-125259594.jpg	Capsicum annuum	crop	76581416	125259594	2021-05-02	CC BY 4.0	(c) Elizabeth Rodríguez Estrada, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/76678134-125412746.jpg	Capsicum annuum glabriusculum	crop	76678134	125412746	2021-05-02	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/77307498-126417960.jpg	Capsicum annuum	crop	77307498	126417960	2021-04-30	CC BY 4.0	(c) johnyochum, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/77492074-126718305.jpg	Capsicum annuum	crop	77492074	126718305	2021-05-01	CC BY 4.0	(c) Diogo Luiz, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/81399716-133512809.jpg	Capsicum annuum	crop	81399716	133512809	2021-05-28	CC BY 4.0	(c) Afsar Nayakkan, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/82349175-135146432.jpg	Capsicum annuum	crop	82349175	135146432	2021-06-05	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/83300892-136796881.jpg	Capsicum annuum	crop	83300892	136796881	2021-06-16	CC BY 4.0	(c) Tyler Cannon, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/83608515-137337068.jpg	Capsicum annuum	crop	83608515	137337068	2021-06-19	CC BY 4.0	(c) tsh__jessie, some rights reserved (CC BY); re-encoded, metadata removed	val
-pepper	inat_species/pepper/84459628-138819661.jpg	Capsicum annuum glabriusculum	crop	84459628	138819661	2021-06-25	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/85718508-141084522.jpg	Capsicum annuum	crop	85718508	141084522	2021-07-04	CC BY 4.0	(c) Reid Hardin, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/86733092-142932525.jpg	Capsicum annuum	crop	86733092	142932525	2021-07-12	CC BY 4.0	(c) Chris Hughes, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/89930539-148558533.jpg	Capsicum annuum glabriusculum	crop	89930539	148558533	2021-08-04	CC BY 4.0	(c) Carlos Domínguez-Rodríguez, some rights reserved (CC BY); re-encoded, metadata removed	val
-pepper	inat_species/pepper/91675453-151680954.jpg	Capsicum annuum glabriusculum	crop	91675453	151680954	2021-08-18	CC0 1.0	no rights reserved; re-encoded, metadata removed	val
-pepper	inat_species/pepper/93047270-154153737.jpg	Capsicum annuum glabriusculum	crop	93047270	154153737	2021-08-27	CC BY 4.0	(c) Carlos Domínguez-Rodríguez, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/93700550-155336248.jpg	Capsicum annuum	crop	93700550	155336248	2021-08-28	CC BY 4.0	(c) PRIYA RAUTELA, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/94400784-156592610.jpg	Capsicum annuum glabriusculum	crop	94400784	156592610	2021-09-10	CC BY 4.0	(c) Megan Kossa, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/96090068-159593453.jpg	Capsicum annuum	crop	96090068	159593453	2021-09-25	CC BY 4.0	(c) mattmsa, some rights reserved (CC BY); re-encoded, metadata removed	val
-pepper	inat_species/pepper/96091978-159596604.jpg	Capsicum annuum glabriusculum	crop	96091978	159596604	2021-09-25	CC BY 4.0	(c) mattmsa, some rights reserved (CC BY); re-encoded, metadata removed	val
-pepper	inat_species/pepper/96860724-160977914.jpg	Capsicum annuum glabriusculum	crop	96860724	160977914	2021-10-01	CC BY 4.0	(c) Tyler Cannon, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/97898448-162892608.jpg	Capsicum annuum glabriusculum	crop	97898448	162892608	2021-10-08	CC BY 4.0	(c) mattmsa, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/101228128-169026062.jpg	Capsicum annuum glabriusculum	crop	101228128	169026062	2021-10-29	CC BY 4.0	(c) Tom Field, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/102299727-170974789.jpg	Capsicum annuum glabriusculum	crop	102299727	170974789	2021-11-30	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/102304052-170981776.jpg	Capsicum annuum	crop	102304052	170981776	2020-12-08	CC BY 4.0	(c) 卢江离, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/102329114-171027796.jpg	Capsicum annuum	crop	102329114	171027796	2021-12-01	CC BY 4.0	(c) Reid Hardin, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/102518547-171392250.jpg	Capsicum annuum	crop	102518547	171392250	2021-12-04	CC BY 4.0	(c) Reid Hardin, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/102677493-171691742.jpg	Capsicum annuum	crop	102677493	171691742	2021-12-06	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/102680068-171696225.jpg	Capsicum annuum	crop	102680068	171696225	2021-12-06	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
-pepper	inat_species/pepper/103483406-173206018.jpg	Capsicum annuum glabriusculum	crop	103483406	173206018	2021-12-17	CC BY 4.0	(c) mattmsa, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/105170768-176393784.jpg	Capsicum annuum	crop	105170768	176393784	2022-01-12	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/105229277-176505652.jpg	Capsicum annuum	crop	105229277	176505652	2022-01-18	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/105562953-177144095.jpg	Capsicum annuum	crop	105562953	177144095	2022-01-24	CC0 1.0	no rights reserved; re-encoded, metadata removed	val
-pepper	inat_species/pepper/106501654-178911484.jpg	Capsicum annuum glabriusculum	crop	106501654	178911484	2022-02-08	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/106836447-179561904.jpg	Capsicum annuum	crop	106836447	179561904	2022-01-27	CC BY 4.0	(c) Annika Lindqvist, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/106988204-179849648.jpg	Capsicum annuum	crop	106988204	179849648	2022-02-17	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/107379780-180583876.jpg	Capsicum annuum	crop	107379780	180583876	2022-02-22	CC0 1.0	no rights reserved; re-encoded, metadata removed	val
@@ -1910,37 +1861,25 @@ pepper	inat_species/pepper/108472384-182636600.jpg	Capsicum annuum	crop	10847238
 pepper	inat_species/pepper/110255187-185962595.jpg	Capsicum annuum	crop	110255187	185962595	2022-04-01	CC BY 4.0	(c) Adela Ferreira, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/110672316-186727735.jpg	Capsicum annuum	crop	110672316	186727735	2022-04-06	CC0 1.0	no rights reserved; re-encoded, metadata removed	val
 pepper	inat_species/pepper/111342149-187935655.jpg	Capsicum annuum	crop	111342149	187935655	2022-04-12	CC0 1.0	no rights reserved; re-encoded, metadata removed	val
-pepper	inat_species/pepper/113374969-191561900.jpg	Capsicum annuum glabriusculum	crop	113374969	191561900	2022-04-29	CC BY 4.0	(c) Claire Herzog, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/113426879-191635678.jpg	Capsicum annuum	crop	113426879	191635678	2022-04-29	CC BY 4.0	(c) Judith, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/115534079-194989738.jpg	Capsicum annuum	crop	115534079	194989738	2022-05-02	CC BY 4.0	(c) Jon Sullivan, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/121962122-206442763.jpg	Capsicum annuum glabriusculum	crop	121962122	206442763	2022-06-15	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
-pepper	inat_species/pepper/122349364-207144341.jpg	Capsicum annuum glabriusculum	crop	122349364	207144341	2022-06-18	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/123114736-208499496.jpg	Capsicum annuum	crop	123114736	208499496	2022-06-23	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/123983402-210100709.jpg	Capsicum annuum	crop	123983402	210100709	2020-08-25	CC BY 4.0	(c) monictoz, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/124123038-210334672.jpg	Capsicum annuum	crop	124123038	210334672	2022-06-29	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/125217453-212317084.jpg	Capsicum annuum	crop	125217453	212317084	2022-07-07	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/126069498-213865076.jpg	Capsicum annuum	crop	126069498	213865076	2022-07-13	CC BY 4.0	(c) Agnes, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/126238579-214152578.jpg	Capsicum annuum	crop	126238579	214152578	2022-07-14	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
-pepper	inat_species/pepper/127095373-215727419.jpg	Capsicum annuum glabriusculum	crop	127095373	215727419	2022-07-19	CC BY 4.0	(c) Carlos Domínguez-Rodríguez, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/130414182-221726480.jpg	Capsicum annuum	crop	130414182	221726480	2022-08-10	CC0 1.0	no rights reserved; re-encoded, metadata removed	val
 pepper	inat_species/pepper/130895058-222659814.jpg	Capsicum annuum	crop	130895058	222659814	2022-08-14	CC BY 4.0	(c) Urgamal Magsar, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/130895474-222664347.jpg	Capsicum annuum	crop	130895474	222664347	2022-08-14	CC BY 4.0	(c) Urgamal Magsar, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/130895485-222664338.jpg	Capsicum annuum	crop	130895485	222664338	2022-08-14	CC BY 4.0	(c) Urgamal Magsar, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/133256464-226942585.jpg	Capsicum annuum	crop	133256464	226942585	2022-09-01	CC0 1.0	no rights reserved; re-encoded, metadata removed	val
-pepper	inat_species/pepper/134469964-229444274.jpg	Capsicum annuum glabriusculum	crop	134469964	229444274	2022-09-10	CC BY 4.0	(c) Michelle Lay, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/138578354-236878994.jpg	Capsicum annuum	crop	138578354	236878994	2019-02-23	CC BY 4.0	(c) Diogo Luiz, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/138662361-237043825.jpg	Capsicum annuum	crop	138662361	237043825	2022-10-13	CC BY 4.0	(c) Jo Roberts, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/139264204-238162999.jpg	Capsicum annuum glabriusculum	crop	139264204	238162999	2022-10-18	CC BY 4.0	(c) Nate Sabo, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/139677832-238946952.jpg	Capsicum annuum glabriusculum	crop	139677832	238946952	2022-10-22	CC BY 4.0	(c) Daniel Mesa, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/140456332-240429787.jpg	Capsicum annuum glabriusculum	crop	140456332	240429787	2022-10-29	CC BY 4.0	(c) Michelle W. （鍾偉瑋）, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/140766530-241006668.jpg	Capsicum annuum glabriusculum	crop	140766530	241006668	2022-10-25	CC BY 4.0	(c) Andy Jordan, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/141094512-241632105.jpg	Capsicum annuum glabriusculum	crop	141094512	241632105	2022-11-04	CC BY 4.0	(c) Alan Rockefeller, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/142015617-243395441.jpg	Capsicum annuum	crop	142015617	243395441	2022-11-14	CC0 1.0	no rights reserved; re-encoded, metadata removed	val
 pepper	inat_species/pepper/142683293-244659236.jpg	Capsicum annuum	crop	142683293	244659236	2022-11-22	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/143432158-245979460.jpg	Capsicum annuum	crop	143432158	245979460	2022-11-28	CC0 1.0	no rights reserved; re-encoded, metadata removed	val
-pepper	inat_species/pepper/143979571-247023656.jpg	Capsicum annuum glabriusculum	crop	143979571	247023656	2022-12-08	CC BY 4.0	(c) Enrique Martínez Núñez, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/150517669-259557885.jpg	Capsicum annuum	crop	150517669	259557885	2023-02-05	CC BY 4.0	(c) Mark Richman, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/155244379-268322872.jpg	Capsicum annuum glabriusculum	crop	155244379	268322872	2023-04-16	CC BY 4.0	(c) Ben Machado, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/155787621-269326691.jpg	Capsicum annuum	crop	155787621	269326691	2023-04-20	CC BY 4.0	(c) Vítor Jorge, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/156183979-270042073.jpg	Capsicum annuum	crop	156183979	270042073	2023-04-23	CC0 1.0	no rights reserved; re-encoded, metadata removed	val
 pepper	inat_species/pepper/157885706-272929621.jpg	Capsicum annuum	crop	157885706	272929621	2023-04-29	CC BY 4.0	(c) Chet Burrier, some rights reserved (CC BY); re-encoded, metadata removed	train
@@ -1950,12 +1889,9 @@ pepper	inat_species/pepper/161069280-278380275.jpg	Capsicum annuum	crop	16106928
 pepper	inat_species/pepper/161369627-278924538.jpg	Capsicum annuum	crop	161369627	278924538	2023-05-12	CC BY 4.0	(c) Ellky Arteta Paredes, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/166289495-287940293.jpg	Capsicum annuum	crop	166289495	287940293	2023-06-07	CC BY 4.0	(c) Carlos Domínguez-Rodríguez, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/172706372-299843412.jpg	Capsicum annuum	crop	172706372	299843412	2023-07-13	CC BY 4.0	(c) Gary Rogers, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/173691774-301662755.jpg	Capsicum annuum glabriusculum	crop	173691774	301662755	2023-07-18	CC BY 4.0	(c) Suanne Pyle, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/178127232-309905925.jpg	Capsicum annuum	crop	178127232	309905925	2023-08-13	CC BY 4.0	(c) Thomas Mesaglio, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/179248054-312036984.jpg	Capsicum annuum	crop	179248054	312036984	2023-08-19	CC BY 4.0	(c) Huey, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/179490840-312499286.jpg	Capsicum annuum	crop	179490840	312499286	2023-08-21	CC BY 4.0	(c) Thomas Mesaglio, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/181195771-315756213.jpg	Capsicum annuum glabriusculum	crop	181195771	315756213	2023-08-29	CC BY 4.0	(c) Carlos Domínguez-Rodríguez, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/181195775-315756530.jpg	Capsicum annuum glabriusculum	crop	181195775	315756530	2023-08-29	CC BY 4.0	(c) Carlos Domínguez-Rodríguez, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/182149041-317537111.jpg	Capsicum annuum	crop	182149041	317537111	2023-09-06	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/184397780-321872589.jpg	Capsicum annuum	crop	184397780	321872589	2023-07-17	CC BY 4.0	(c) Letícia Dias Martins, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/186329671-325607277.jpg	Capsicum annuum	crop	186329671	325607277	2023-10-05	CC BY 4.0	(c) Gary Rogers, some rights reserved (CC BY); re-encoded, metadata removed	train
@@ -1965,36 +1901,26 @@ pepper	inat_species/pepper/186795897-326516781.jpg	Capsicum annuum	crop	18679589
 pepper	inat_species/pepper/190708281-334380652.jpg	Capsicum annuum	crop	190708281	334380652	2023-11-11	CC BY 4.0	(c) Gary Rogers, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/190962226-334880619.jpg	Capsicum annuum	crop	190962226	334880619	2023-11-09	CC BY 4.0	(c) beth_snow, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/192616449-338176352.jpg	Capsicum annuum	crop	192616449	338176352	2023-11-29	CC BY 4.0	(c) Mitul and Vijul Singh, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/193822494-340538897.jpg	Capsicum annuum glabriusculum	crop	193822494	340538897	2023-12-12	CC BY 4.0	(c) Jo Roberts, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/194320039-341543551.jpg	Capsicum annuum	crop	194320039	341543551	2023-12-16	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
-pepper	inat_species/pepper/194774313-342464847.jpg	Capsicum annuum glabriusculum	crop	194774313	342464847	2023-12-24	CC BY 4.0	(c) Tereso Hernández Morales, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/196080156-345113004.jpg	Capsicum annuum	crop	196080156	345113004	2024-01-04	CC BY 4.0	(c) Rich Sommer, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/196691427-346230750.jpg	Capsicum annuum	crop	196691427	346230750	2024-01-14	CC BY 4.0	(c) skelico, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/197143188-347148235.jpg	Capsicum annuum	crop	197143188	347148235	2024-01-20	CC BY 4.0	(c) Floro Ortiz Contreras, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/197158128-347194902.jpg	Capsicum annuum	crop	197158128	347194902	2024-01-20	CC BY 4.0	(c) Floro Ortiz Contreras, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/197632033-348136047.jpg	Capsicum annuum	crop	197632033	348136047	2024-01-24	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/197845767-348562423.jpg	Capsicum annuum	crop	197845767	348562423	2024-01-26	CC BY 4.0	(c) CH Hemphill, some rights reserved (CC BY); re-encoded, metadata removed	val
-pepper	inat_species/pepper/197940696-348758260.jpg	Capsicum annuum glabriusculum	crop	197940696	348758260	2021-12-12	CC BY 4.0	(c) November Fury, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/200868713-354453630.jpg	Capsicum annuum	crop	200868713	354453630	2023-09-14	CC BY 4.0	(c) Liliana Ramírez-Freire, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/205802343-363937185.jpg	Capsicum annuum	crop	205802343	363937185	2024-04-05	CC BY 4.0	(c) johnyochum, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/205834813-363999885.jpg	Capsicum annuum	crop	205834813	363999885	2024-04-07	CC BY 4.0	(c) Roman A. Lagazyuk (Роман А. Лагазюк), some rights reserved (CC BY); re-encoded, metadata removed	val
-pepper	inat_species/pepper/210480213-372278596.jpg	Capsicum annuum glabriusculum	crop	210480213	372278596	2024-04-27	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/211117573-373297685.jpg	Capsicum annuum	crop	211117573	373297685	2024-04-29	CC BY 4.0	(c) naturewatchwidow, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/211441258-373812877.jpg	Capsicum annuum	crop	211441258	373812877	2024-04-29	CC BY 4.0	(c) Emily Roberts, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/212478606-375490620.jpg	Capsicum annuum	crop	212478606	375490620	2024-04-29	CC BY 4.0	(c) IDClaire, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/212945345-376313167.jpg	Capsicum annuum glabriusculum	crop	212945345	376313167	2024-04-29	CC BY 4.0	(c) Justin Quintanilla, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/216682393-383236907.jpg	Capsicum annuum glabriusculum	crop	216682393	383236907	2024-05-18	CC BY 4.0	(c) Jackie T, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/218302245-386286662.jpg	Capsicum annuum	crop	218302245	386286662	2024-05-26	CC BY 4.0	(c) Matt B, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/231623858-411409338.jpg	Capsicum annuum glabriusculum	crop	231623858	411409338	2024-07-25	CC BY 4.0	(c) jen242, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/232389485-412854366.jpg	Capsicum annuum	crop	232389485	412854366	2024-07-28	CC0 1.0	no rights reserved; re-encoded, metadata removed	val
 pepper	inat_species/pepper/234074035-415697288.jpg	Capsicum annuum	crop	234074035	415697288	2024-08-04	CC BY 4.0	(c) Urgamal Magsar, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/238613548-424835272.jpg	Capsicum annuum	crop	238613548	424835272	2024-08-29	CC BY 4.0	(c) Gary Rogers, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/239946742-427424868.jpg	Capsicum annuum	crop	239946742	427424868	2024-08-11	CC BY 4.0	(c) Wilson Alexander Arteaga Mejía, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/240128634-427770470.jpg	Capsicum annuum	crop	240128634	427770470	2024-09-06	CC BY 4.0	(c) CKonecna, some rights reserved (CC BY); re-encoded, metadata removed	val
-pepper	inat_species/pepper/243831315-434842744.jpg	Capsicum annuum glabriusculum	crop	243831315	434842744	2024-09-24	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/245285650-437665381.jpg	Capsicum annuum	crop	245285650	437665381	2024-09-18	CC BY 4.0	(c) Claude Kolwelter, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/246657465-440378749.jpg	Capsicum annuum glabriusculum	crop	246657465	440378749	2024-09-16	CC BY 4.0	(c) Carlos Domínguez-Rodríguez, some rights reserved (CC BY); re-encoded, metadata removed	val
-pepper	inat_species/pepper/248312653-443652363.jpg	Capsicum annuum glabriusculum	crop	248312653	443652363	2024-10-19	CC BY 4.0	(c) Ashe Orsak, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/248318339-443663598.jpg	Capsicum annuum	crop	248318339	443663598	2024-10-20	CC BY 4.0	(c) Chet Burrier, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/249068237-445158618.jpg	Capsicum annuum	crop	249068237	445158618	2024-10-25	CC BY 4.0	(c) Sue Ann Kendall, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/249103830-445231340.jpg	Capsicum annuum	crop	249103830	445231340	2024-10-25	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
@@ -2002,13 +1928,8 @@ pepper	inat_species/pepper/249104143-445231987.jpg	Capsicum annuum	crop	24910414
 pepper	inat_species/pepper/249150833-445361940.jpg	Capsicum annuum	crop	249150833	445361940	2024-10-25	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/252209848-451442012.jpg	Capsicum annuum	crop	252209848	451442012	2024-11-18	CC BY 4.0	(c) Gary Rogers, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/254289815-455449970.jpg	Capsicum annuum	crop	254289815	455449970	2024-12-06	CC BY 4.0	(c) Алёна Осипова, some rights reserved (CC BY); re-encoded, metadata removed	val
-pepper	inat_species/pepper/256319408-459536120.jpg	Capsicum annuum glabriusculum	crop	256319408	459536120	2024-12-26	CC BY 4.0	(c) Noland Martin, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/257390534-461715944.jpg	Capsicum annuum	crop	257390534	461715944	2025-01-04	CC BY 4.0	(c) zhangshen, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/257889305-462632254.jpg	Capsicum annuum glabriusculum	crop	257889305	462632254	2025-01-03	CC BY 4.0	(c) Ricardo Jaimes-López, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/259101814-465033267.jpg	Capsicum annuum glabriusculum	crop	259101814	465033267	2025-01-17	CC BY 4.0	(c) Michelle W. （鍾偉瑋）, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/259154389-465142921.jpg	Capsicum annuum	crop	259154389	465142921	2025-01-16	CC BY 4.0	(c) Brand R, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/259471812-465785655.jpg	Capsicum annuum glabriusculum	crop	259471812	465785655	2025-01-18	CC0 1.0	no rights reserved; re-encoded, metadata removed	val
-pepper	inat_species/pepper/259700242-466241136.jpg	Capsicum annuum glabriusculum	crop	259700242	466241136	2019-10-06	CC BY 4.0	(c) Sue Carnahan, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/260205314-467241245.jpg	Capsicum annuum	crop	260205314	467241245	2025-01-31	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/266115216-478098767.jpg	Capsicum annuum	crop	266115216	478098767	2025-03-08	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/266967164-479704938.jpg	Capsicum annuum	crop	266967164	479704938	2025-03-25	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
@@ -2018,7 +1939,6 @@ pepper	inat_species/pepper/273628271-492102200.jpg	Capsicum annuum	crop	27362827
 pepper	inat_species/pepper/273936982-492565324.jpg	Capsicum annuum	crop	273936982	492565324	2025-04-26	CC BY 4.0	(c) Gary Rogers, some rights reserved (CC BY); re-encoded, metadata removed	val
 pepper	inat_species/pepper/274110501-492842636.jpg	Capsicum annuum	crop	274110501	492842636	2025-04-26	CC BY 4.0	(c) IDClaire, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/275146224-494479674.jpg	Capsicum annuum	crop	275146224	494479674	2025-04-27	CC BY 4.0	(c) Chet Burrier, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/275206419-494577223.jpg	Capsicum annuum glabriusculum	crop	275206419	494577223	2025-04-27	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/276172556-496020948.jpg	Capsicum annuum	crop	276172556	496020948	2025-04-28	CC BY 4.0	(c) johnyochum, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/276209847-496077950.jpg	Capsicum annuum	crop	276209847	496077950	2025-04-28	CC BY 4.0	(c) Gary Rogers, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/287739273-517392652.jpg	Capsicum annuum	crop	287739273	517392652	2025-06-08	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
@@ -2027,21 +1947,11 @@ pepper	inat_species/pepper/306452727-552653152.jpg	Capsicum annuum	crop	30645272
 pepper	inat_species/pepper/307402968-554467217.jpg	Capsicum annuum	crop	307402968	554467217	2025-08-18	CC BY 4.0	(c) JD Flores, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/307897072-555428139.jpg	Capsicum annuum annuum	crop	307897072	555428139	2025-08-20	CC BY 4.0	(c) Senna Bryce Robeson, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/309056286-557651842.jpg	Capsicum annuum	crop	309056286	557651842	2025-08-25	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
-pepper	inat_species/pepper/310307778-560031954.jpg	Capsicum annuum glabriusculum	crop	310307778	560031954	2025-08-30	CC BY 4.0	(c) Jessica Moulton, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/311044979-561451422.jpg	Capsicum annuum glabriusculum	crop	311044979	561451422	2025-09-02	CC BY 4.0	(c) Cody Stricker, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/315630525-570195210.jpg	Capsicum annuum	crop	315630525	570195210	2025-09-21	CC BY 4.0	(c) Gary Rogers, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/317635484-573984429.jpg	Capsicum annuum	crop	317635484	573984429	2025-09-29	CC BY 4.0	(c) Daniel Mesa, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/317867393-574424357.jpg	Capsicum annuum	crop	317867393	574424357	2025-09-21	CC0 1.0	no rights reserved; re-encoded, metadata removed	val
-pepper	inat_species/pepper/318645036-576166890.jpg	Capsicum annuum glabriusculum	crop	318645036	576166890	2025-10-04	CC BY 4.0	(c) Aspen Frisch, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/322474190-583372359.jpg	Capsicum annuum glabriusculum	crop	322474190	583372359	2025-10-22	CC BY 4.0	(c) Justin Williams, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/323384199-585134478.jpg	Capsicum annuum glabriusculum	crop	323384199	585134478	2025-10-25	CC BY 4.0	(c) Aspen Frisch, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/324347084-587034045.jpg	Capsicum annuum	crop	324347084	587034045	2025-11-01	CC BY 4.0	(c) Jane Weeden, some rights reserved (CC BY); re-encoded, metadata removed	val
-pepper	inat_species/pepper/324392242-587125379.jpg	Capsicum annuum glabriusculum	crop	324392242	587125379	2025-11-01	CC BY 4.0	(c) mattmsa, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/325414905-589178302.jpg	Capsicum annuum	crop	325414905	589178302	2025-11-07	CC BY 4.0	(c) Jacqueline Raiford, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/329367409-597022537.jpg	Capsicum annuum glabriusculum	crop	329367409	597022537	2025-12-03	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
-pepper	inat_species/pepper/329757396-597807489.jpg	Capsicum annuum glabriusculum	crop	329757396	597807489	2025-12-06	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
-pepper	inat_species/pepper/331688662-601770633.jpg	Capsicum annuum glabriusculum	crop	331688662	601770633	2025-12-22	CC BY 4.0	(c) Sam Kieschnick, some rights reserved (CC BY); re-encoded, metadata removed	train
-pepper	inat_species/pepper/332457452-603350389.jpg	Capsicum annuum glabriusculum	crop	332457452	603350389	2025-12-25	CC0 1.0	no rights reserved; re-encoded, metadata removed	train
 pepper	inat_species/pepper/342361468-623442763.jpg	Capsicum annuum	crop	342361468	623442763	2024-08-08	CC BY 4.0	(c) Nicole, some rights reserved (CC BY); re-encoded, metadata removed	train
 pepper	inat_species/pepper/350292854-639115172.jpg	Capsicum annuum	crop	350292854	639115172	2024-10-20	CC BY 4.0	(c) JR Ferrer-Paris, some rights reserved (CC BY); re-encoded, metadata removed	train
 stonecrops	inat_species/stonecrops/19961498-30801805.jpg	Crassulaceae	plant	19961498	30801805	2019-01-29	CC0 1.0	no rights reserved; re-encoded, metadata removed	train

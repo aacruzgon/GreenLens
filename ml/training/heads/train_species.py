@@ -108,6 +108,9 @@ def main(argv=None) -> int:
     sets = {
         "train": dataset_rows("train", sup) + inat_rows("train", sup),
         "val": dataset_rows("val", sup) + inat_rows("val", sup),
+        # C and T are chosen on val, so test (the leaf datasets' test split; iNaturalist has none)
+        # and dev are the unbiased numbers (review of #85).
+        "test": dataset_rows("test", sup),
         "dev": dev_rows(args.manifest),
     }
     emb = Embedder()
@@ -170,7 +173,8 @@ def main(argv=None) -> int:
     report = {
         "version": args.version, "supported": sup, "C": C, "temperature": T,
         "label_matrix": label_version, "logit_scale": LOGIT_SCALE,
-        "counts": counts, "val": evaluate("val"), "dev": evaluate("dev") if sets["dev"] else None,
+        "counts": counts, "C_selected_on": "val: the mean of the two sources' top-1",
+        "val": evaluate("val"), "test": evaluate("test"), "dev": evaluate("dev") if sets["dev"] else None,
         "note": ("Zero-shot is over every species row of the manifest's label matrix (a stand-in of 20 species "
                  "until the seed's matrix exists), with T_species 1. Combined is models.md 6's rule. Dev is every "
                  "plant shot of the evaluation set's dev cases, which are tomato and corn only."),
@@ -187,7 +191,7 @@ def main(argv=None) -> int:
     REPORTS.mkdir(parents=True, exist_ok=True)
     (REPORTS / f"{args.version}.json").write_text(json.dumps(report, indent=2) + "\n")
     print(f"C={C}, T={T:.3f}")
-    for n in ("val", "dev"):
+    for n in ("val", "test", "dev"):
         for s, v in (report[n] or {}).items():
             print(f"{n:4s} {s:15s} n={v['n']:5d} zero-shot {v['zero_shot_top1']:.3f} "
                   f"(over supported {v['zero_shot_top1_over_supported']:.3f}) | head {v['head_top1_over_supported']:.3f} "

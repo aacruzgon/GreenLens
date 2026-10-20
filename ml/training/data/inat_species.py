@@ -1,6 +1,7 @@
 """iNaturalist photos for the species head and the trained plant probe (training.md §6; M13).
 
     python -m ml.training.data.inat_species [--per-taxon 280] [--only tomato --only corn]
+    python -m ml.training.data.inat_species --prune     (drop EXCLUDE's rows from the index; no fetch)
 
 Training photos, never evaluation photos: only observations made before 2026-01-01, while every
 iNaturalist case of the evaluation set (`ml.training.eval.inat`) was observed in 2026 or later;
@@ -58,6 +59,15 @@ TAXA = [
 ]
 
 
+# Taxa below a slug's taxon that the slug's head mustn't learn. The wild chiltepin is a Capsicum
+# annuum variety, so the descendants match let in 90 of 254 pepper photos (review of #85).
+EXCLUDE = {"pepper": ["Capsicum annuum glabriusculum"]}
+
+
+def excluded(row: dict) -> bool:
+    return any(row["taxon"] == t or row["taxon"].startswith(t + " ") for t in EXCLUDE.get(row["slug"], []))
+
+
 def api(path: str, **query) -> dict:
     """`inat.api` with retries: a busy or failing API waits and tries again, up to 4 times."""
     for wait in (10, 30, 90, None):
@@ -96,8 +106,9 @@ def evaluation_observations() -> set[int]:
     return ids
 
 
-def window(tid: int, year: int, q: tuple[str, str], want: int, skip: set[int]) -> list[dict]:
-    res = api("observations", taxon_id=tid, d1=f"{year}-{q[0]}", d2=f"{year}-{q[1]}",
+def window(tid: int, year: int, q: tuple[str, str], want: int, skip: set[int], without: list[int] = ()) -> list[dict]:
+    extra = {"without_taxon_id": ",".join(map(str, without))} if without else {}
+    res = api("observations", taxon_id=tid, d1=f"{year}-{q[0]}", d2=f"{year}-{q[1]}", **extra,
               photo_license=",".join(inat.LICENCES), photos="true", identifications="most_agree",
               per_page=min(200, max(want * 4, 30)), order_by="votes", order="desc")
     out = []
@@ -117,15 +128,17 @@ def window(tid: int, year: int, q: tuple[str, str], want: int, skip: set[int]) -
 
 def fetch_taxon(slug: str, names: list[str], rank: str, role: str, per_taxon: int, skip: set[int]) -> list[dict]:
     tid, name = resolve(names, rank)
+    without = [resolve([t], "variety" if t.count(" ") == 2 else "species")[0] for t in EXCLUDE.get(slug, [])]
     windows = [(y, q) for y in YEARS for q in QUARTERS]
     want = -(-per_taxon // len(windows))
     rows = []
     for y, q in windows:
         try:
-            found = window(tid, y, q, want, skip)
+            found = window(tid, y, q, want, skip, without)
         except Exception as e:  # one window failing costs its photos, not the night
             print(f"  {slug} {y} {q[0]}: skipped: {e}", file=sys.stderr, flush=True)
             continue
+        found = [o for o in found if not excluded({"slug": slug, "taxon": o["taxon"]["name"]})]
         for obs in found:
             p = inat.usable_photos(obs)[0]
             rows.append({
@@ -147,7 +160,15 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--per-taxon", type=int, default=280)
     ap.add_argument("--only", action="append", help="a slug; repeatable")
+    ap.add_argument("--prune", action="store_true", help="only drop EXCLUDE's rows from the index")
     args = ap.parse_args(argv)
+    if args.prune:
+        lines = INDEX.read_text().splitlines()
+        rows = [dict(zip(COLUMNS, line.split("\t"))) for line in lines[1:]]
+        kept = [r for r in rows if not excluded(r)]
+        INDEX.write_text("\t".join(COLUMNS) + "\n" + "".join("\t".join(r[c] for c in COLUMNS) + "\n" for r in kept))
+        print(f"{len(rows) - len(kept)} rows dropped, {len(kept)} kept in {INDEX}")
+        return 0
     skip = evaluation_observations()
     print(f"{len(skip)} evaluation observation ids excluded", file=sys.stderr)
     old = {}
@@ -163,7 +184,7 @@ def main(argv=None) -> int:
         rows += fetch_taxon(slug, names, rank, role, args.per_taxon, skip)
     with ThreadPoolExecutor(4) as pool:
         ok = list(pool.map(lambda r: "url" not in r or download(r), rows))
-    kept = [r for r, o in zip(rows, ok) if o and (RAW / r["path"]).exists()]
+    kept = [r for r, o in zip(rows, ok) if o and (RAW / r["path"]).exists() and not excluded(r)]
     kept.sort(key=lambda r: (r["slug"], int(r["observation"])))
     INDEX.write_text("\t".join(COLUMNS) + "\n" + "".join("\t".join(str(r[c]) for c in COLUMNS) + "\n" for r in kept))
     counts = {}
