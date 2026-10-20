@@ -23,11 +23,12 @@ use secrecy::SecretString;
 use domain::{
     connectors::{ConnectorAccount, ConnectorKind, ConnectorSource},
     id::{ConnectorId, DeviceHash, DeviceVerifier},
+    ports::{Sealed, Store},
 };
 
 pub use oauth::{OAuthState, StateError};
 
-use crate::sealing::StoredTokens;
+use crate::sealing::{ConnectorKey, StoredTokens};
 
 /// Slack's consent page ([connectors 5]). A constant: no configuration can move it.
 ///
@@ -197,14 +198,16 @@ pub trait ConnectVendors: Send + Sync {
     ) -> Result<Exchanged, VendorError>;
 
     /// Google's tokens with a new access token when the stored one has less than 5 minutes
-    /// left and a refresh token is there to renew it; `None` when they are fine as they are
-    /// (always for Slack, whose bot token doesn't expire). The caller stores what comes back
+    /// left, or at once with `force` (the vendor just refused it), and a refresh token is there
+    /// to renew it; `None` when they are fine as they are (always for Slack, whose bot token
+    /// doesn't expire). Callers go through [`refresh_and_store`], which stores what comes back
     /// with `FarmRecordStore::replace_secret`, a compare-and-set against the sealed value it
     /// read, so two refreshes at once keep one.
     async fn refresh(
         &self,
         kind: ConnectorKind,
         tokens: &StoredTokens,
+        force: bool,
     ) -> Result<Option<StoredTokens>, VendorError>;
 
     /// The channels the bot is a member of, or the folders the Google account can open, with
@@ -221,6 +224,44 @@ pub trait ConnectVendors: Send + Sync {
     /// directly for a stored connector: `DeletionRunner::finish_connector` decides whether a
     /// shared account's token may go.
     async fn revoke(&self, kind: ConnectorKind, tokens: &StoredTokens) -> Result<(), VendorError>;
+}
+
+/// A connector's tokens renewed through `vendors` ([`ConnectVendors::refresh`]): Google's
+/// access token when it has less than 5 minutes left, or at once with `force`, for the source
+/// picker and the sync. A renewed grant is stored over `sealed`, the value the caller unsealed,
+/// with `replace_secret`, a compare-and-set, and `sealed` then holds the new value, so a second
+/// renewal in the same run compares against it. When the stored value changed meanwhile
+/// (another refresh stored first, or the connector was disconnected, deleted or reconnected),
+/// nothing is stored and the caller still uses its own token, which is as good; a store
+/// failure is logged and leaves the same. Returns the tokens to use: the renewed ones, or
+/// `tokens` as they were.
+pub async fn refresh_and_store(
+    vendors: &dyn ConnectVendors,
+    store: &dyn Store,
+    key: &ConnectorKey,
+    (id, kind): (ConnectorId, ConnectorKind),
+    sealed: &mut Option<Sealed>,
+    (tokens, force): (StoredTokens, bool),
+) -> Result<StoredTokens, VendorError> {
+    let Some(fresh) = vendors.refresh(kind, &tokens, force).await? else {
+        return Ok(tokens);
+    };
+    if let Some(read) = sealed.clone() {
+        let new = fresh.seal(key, id);
+        match store.replace_secret(id, read, new.clone()).await {
+            Ok(true) => {
+                tracing::debug!(connector = %id, "refreshed token stored");
+                *sealed = Some(new);
+            }
+            Ok(false) => {
+                tracing::debug!(connector = %id, "refreshed token not stored: the connector changed or went meanwhile");
+            }
+            Err(error) => {
+                tracing::warn!(connector = %id, error = %error, "refreshed token not stored");
+            }
+        }
+    }
+    Ok(fresh)
 }
 
 #[cfg(test)]

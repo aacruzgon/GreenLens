@@ -71,6 +71,8 @@ async fn owner(role: Role) -> ConversationOwner<Viewer> {
 struct Seen {
     stored: Mutex<Vec<NewMessage>>,
     usage_added: Mutex<Vec<Usage>>,
+    /// Every task the classifier was asked.
+    classified: Mutex<Vec<ClassifierTask>>,
 }
 
 struct Setup {
@@ -81,6 +83,8 @@ struct Setup {
     farm: MockFarmRecordStore,
     /// The first embedding (the memory search) works; every later one fails.
     embed_fails_after_memory: bool,
+    /// What the classifier scores a route task: a clear care question unless a test says.
+    route_scores: Vec<(&'static str, f64)>,
 }
 
 impl Setup {
@@ -95,6 +99,7 @@ impl Setup {
             memory,
             farm: crate::testing::no_connectors(),
             embed_fails_after_memory: false,
+            route_scores: vec![("care_question", 0.9), ("off_topic", 0.05)],
         }
     }
 }
@@ -191,21 +196,21 @@ fn harness(setup: Setup) -> (ChatAgent, Arc<ScriptedModel>, Arc<Seen>) {
     maps.expect_map().returning(|_| Ok(None));
 
     let mut classifier = MockTextClassifier::new();
-    classifier.expect_classify().returning(|task, _| {
-        let (label, other) = match task {
-            ClassifierTask::Route => ("care_question", "off_topic"),
-            _ => ("skip", "remember"),
+    let recorder = Arc::clone(&seen);
+    let route_scores = setup.route_scores;
+    classifier.expect_classify().returning(move |task, _| {
+        recorder.classified.lock().unwrap().push(task);
+        let scores = match task {
+            ClassifierTask::Route { .. } => route_scores.clone(),
+            _ => vec![("skip", 0.9), ("remember", 0.05)],
         };
-        Ok(vec![
-            LabelScore {
+        Ok(scores
+            .into_iter()
+            .map(|(label, score)| LabelScore {
                 label: label.to_owned(),
-                score: 0.9,
-            },
-            LabelScore {
-                label: other.to_owned(),
-                score: 0.05,
-            },
-        ])
+                score,
+            })
+            .collect())
     });
     let mut embedder = MockTextEmbedder::new();
     if setup.embed_fails_after_memory {
@@ -345,6 +350,72 @@ async fn a_failing_sentence_is_replaced_before_it_is_streamed() {
     assert_eq!(seen.usage_added.lock().unwrap()[0].tokens_out, 40);
 }
 
+/// The streamed and the stored text of a turn whose model writes `before`, calls a tool, then
+/// writes `after`.
+async fn text_around_a_tool_round(before: &str, after: &str) -> (String, String) {
+    let (agent, _, seen) = harness(Setup::new(vec![
+        vec![
+            ChatChunk::TextDelta(before.to_owned()),
+            ChatChunk::ToolCall {
+                call_id: "toolu_1".to_owned(),
+                name: "list_tasks".to_owned(),
+                arguments: json!({}),
+            },
+            usage(900, 30),
+            ChatChunk::Done(StopReason::ToolUse),
+        ],
+        vec![
+            ChatChunk::TextDelta(after.to_owned()),
+            usage(950, 10),
+            ChatChunk::Done(StopReason::EndTurn),
+        ],
+    ]));
+    let stream = agent
+        .start_turn(request(
+            owner(Role::Viewer).await,
+            "Where was the zucchini?",
+        ))
+        .await
+        .unwrap();
+    let (events, _) = collect(stream).await;
+    let streamed: String = events
+        .iter()
+        .filter_map(|e| match e {
+            ChatEvent::TextDelta(d) => Some(d.text.as_str()),
+            _ => None,
+        })
+        .collect();
+    let stored = seen.stored.lock().unwrap()[1].text.clone();
+    (streamed, stored)
+}
+
+#[tokio::test]
+async fn text_after_a_tool_round_starts_a_new_paragraph() {
+    let after = "The zucchini was in Bed 4.";
+    for (before, expected) in [
+        (
+            "Let me check the farm's own records too.",
+            "Let me check the farm's own records too.\n\nThe zucchini was in Bed 4.",
+        ),
+        // Text that already ends in whitespace gets no second break.
+        (
+            "Let me check.\n",
+            "Let me check.\nThe zucchini was in Bed 4.",
+        ),
+        // No text before the tool: nothing to separate.
+        ("", "The zucchini was in Bed 4."),
+    ] {
+        let (streamed, stored) = text_around_a_tool_round(before, after).await;
+        assert_eq!(streamed, expected, "{before:?}");
+        assert_eq!(stored, expected, "{before:?}");
+    }
+    // The model's own break is kept, not doubled.
+    let (streamed, stored) =
+        text_around_a_tool_round("Let me check.", "\n\nThe zucchini was in Bed 4.").await;
+    assert_eq!(streamed, "Let me check.\n\nThe zucchini was in Bed 4.");
+    assert_eq!(stored, streamed);
+}
+
 #[tokio::test]
 async fn tool_calls_loop_with_reasoning_replayed_unchanged() {
     let thinking = ReasoningBlock::Thinking {
@@ -381,6 +452,7 @@ async fn tool_calls_loop_with_reasoning_replayed_unchanged() {
             "text_delta",
             "tool_started",
             "tool_finished",
+            "text_delta",
             "text_delta",
             "message_completed"
         ]
@@ -647,8 +719,9 @@ async fn search_farm_records_is_offered_only_to_a_garden_with_farm_records() {
 async fn a_failed_connector_read_leaves_the_tool_out_and_the_turn_goes_on() {
     let mut farm = MockFarmRecordStore::new();
     farm.expect_connectors()
+        .times(1)
         .returning(|_| Err(StoreError::Unavailable("offline".into())));
-    let (agent, model, _) = harness(Setup {
+    let (agent, model, seen) = harness(Setup {
         farm,
         ..Setup::new(vec![vec![
             ChatChunk::TextDelta("Hello.".to_owned()),
@@ -661,6 +734,13 @@ async fn a_failed_connector_read_leaves_the_tool_out_and_the_turn_goes_on() {
         .unwrap();
     let (_, outcome) = collect(stream).await;
     assert!(matches!(outcome, TurnOutcome::Completed(_)));
+    // Routed as a garden without farm records.
+    assert_eq!(
+        seen.classified.lock().unwrap()[0],
+        ClassifierTask::Route {
+            farm_records: false
+        }
+    );
     assert!(
         !tools_offered(&model)
             .iter()
@@ -759,7 +839,7 @@ async fn a_cited_farm_record_is_stored_and_its_rate_never_reaches_the_app() {
     assert_eq!(stored[1].farm_citations, [hit.citation]);
     assert_eq!(
         stored[1].prompt_version.as_deref(),
-        Some("chat/2026-10-19.2")
+        Some("chat/2026-10-20.3")
     );
 
     // The records reach the model as farm_records data.
@@ -794,8 +874,9 @@ async fn a_failed_farm_search_or_embedding_is_an_unavailable_refusal_without_cit
             // The search is never reached.
             farm.expect_search_records().never();
         } else {
+            // Without `kind`, both kinds are searched side by side, and either failing fails it.
             farm.expect_search_records()
-                .times(1)
+                .times(1..=2)
                 .returning(|_, _, _, _| {
                     Err(StoreError::Unavailable(
                         "secret slack token xoxb-123 in the error".into(),
@@ -1031,4 +1112,152 @@ async fn a_model_failure_ends_with_an_error_event() {
 fn ids_used_by_the_fixtures_parse() {
     let _: UserId = USER.parse().unwrap();
     let _: GardenId = GARDEN.parse().unwrap();
+}
+
+/// Gap G10: in a garden with farm records, the classifier is asked for the `farm_records` label
+/// and a question about the records reaches the chat model, with `search_farm_records`, as a
+/// care question. The connectors are read once, before routing.
+#[tokio::test]
+async fn a_farm_records_question_reaches_the_chat_model_in_a_garden_with_records() {
+    use domain::connectors::ConnectorStatus::Active;
+    let mut farm = MockFarmRecordStore::new();
+    farm.expect_connectors()
+        .times(1)
+        .returning(|_| Ok(vec![crate::testing::connector(Active, 12)]));
+    let (agent, model, seen) = harness(Setup {
+        farm,
+        route_scores: vec![
+            ("farm_records", 0.9),
+            ("off_topic", 0.4),
+            ("care_question", 0.2),
+        ],
+        ..Setup::new(vec![vec![
+            ChatChunk::TextDelta("Riley posted twice.".to_owned()),
+            ChatChunk::Done(StopReason::EndTurn),
+        ]])
+    });
+    let stream = agent
+        .start_turn(request(
+            owner(Role::Viewer).await,
+            "What did Riley post in #field-reports on August 31?",
+        ))
+        .await
+        .unwrap();
+    let (events, outcome) = collect(stream).await;
+    assert!(matches!(outcome, TurnOutcome::Completed(_)));
+    let ChatEvent::MessageStarted(started) = &events[0] else {
+        panic!("{events:?}")
+    };
+    assert_eq!(started.route, ChatRoute::CareQuestion);
+    assert_eq!(
+        seen.classified.lock().unwrap()[0],
+        ClassifierTask::Route { farm_records: true }
+    );
+    assert_eq!(model.sent()[0].purpose, ChatPurpose::Chat);
+    assert!(
+        tools_offered(&model)
+            .iter()
+            .any(|n| n == "search_farm_records")
+    );
+    assert_eq!(
+        seen.stored.lock().unwrap()[0].route,
+        Some(ChatRoute::CareQuestion)
+    );
+}
+
+/// Gap G10's other half: a garden without farm records is asked exactly as before, and the same
+/// question, scored off-topic, gets the cheap redirect with no tools.
+#[tokio::test]
+async fn without_farm_records_the_router_is_asked_as_before() {
+    let (agent, model, seen) = harness(Setup {
+        route_scores: vec![("off_topic", 0.9), ("care_question", 0.1)],
+        ..Setup::new(vec![vec![
+            ChatChunk::TextDelta("I can help with your garden.".to_owned()),
+            ChatChunk::Done(StopReason::EndTurn),
+        ]])
+    });
+    let stream = agent
+        .start_turn(request(
+            owner(Role::Editor).await,
+            "What did Riley post in #field-reports on August 31?",
+        ))
+        .await
+        .unwrap();
+    let (events, _) = collect(stream).await;
+    let ChatEvent::MessageStarted(started) = &events[0] else {
+        panic!("{events:?}")
+    };
+    assert_eq!(started.route, ChatRoute::OffTopic);
+    assert_eq!(
+        seen.classified.lock().unwrap()[0],
+        ClassifierTask::Route {
+            farm_records: false
+        }
+    );
+    let sent = model.sent();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].purpose, ChatPurpose::OffTopic);
+    assert_eq!(sent[0].tools, []);
+}
+
+/// A poisoning message in a garden with farm records still gets poison control, whatever the
+/// classifier says about the records.
+#[tokio::test]
+async fn poisoning_in_a_garden_with_farm_records_gets_poison_control() {
+    use domain::connectors::ConnectorStatus::Active;
+    let mut farm = MockFarmRecordStore::new();
+    farm.expect_connectors()
+        .times(1)
+        .returning(|_| Ok(vec![crate::testing::connector(Active, 12)]));
+    let (agent, model, _) = harness(Setup {
+        farm,
+        route_scores: vec![("farm_records", 0.9), ("care_question", 0.1)],
+        ..Setup::new(Vec::new())
+    });
+    let stream = agent
+        .start_turn(request(
+            owner(Role::Editor).await,
+            "My dog ate the slug pellets, what did the crew log?",
+        ))
+        .await
+        .unwrap();
+    let (events, outcome) = collect(stream).await;
+    assert!(matches!(outcome, TurnOutcome::Completed(_)));
+    assert!(text_of(&events).contains("poison control"));
+    assert_eq!(model.sent().len(), 0);
+}
+
+/// A clearly off-topic message stays off-topic in a garden with farm records.
+#[tokio::test]
+async fn farm_records_leave_an_off_topic_message_off_topic() {
+    use domain::connectors::ConnectorStatus::Active;
+    let mut farm = MockFarmRecordStore::new();
+    farm.expect_connectors()
+        .times(1)
+        .returning(|_| Ok(vec![crate::testing::connector(Active, 12)]));
+    let (agent, model, _) = harness(Setup {
+        farm,
+        route_scores: vec![
+            ("off_topic", 0.95),
+            ("farm_records", 0.05),
+            ("care_question", 0.05),
+        ],
+        ..Setup::new(vec![vec![
+            ChatChunk::TextDelta("I can help with your garden.".to_owned()),
+            ChatChunk::Done(StopReason::EndTurn),
+        ]])
+    });
+    let stream = agent
+        .start_turn(request(
+            owner(Role::Editor).await,
+            "Write me a poem about football",
+        ))
+        .await
+        .unwrap();
+    let (events, _) = collect(stream).await;
+    let ChatEvent::MessageStarted(started) = &events[0] else {
+        panic!("{events:?}")
+    };
+    assert_eq!(started.route, ChatRoute::OffTopic);
+    assert_eq!(model.sent()[0].purpose, ChatPurpose::OffTopic);
 }

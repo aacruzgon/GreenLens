@@ -1,10 +1,9 @@
 // Generates src/api/generated/schema.ts from the backend's OpenAPI spec (docs/frontend/README.md §9).
 //
-// Two workarounds until the backend fixes its spec (docs/frontend/roadmap.md §17):
-// - a $ref to a schema the spec doesn't define becomes a plain string (none since #65 registered AnchorType and TaskState);
+// One workaround until the backend fixes its spec (docs/frontend/roadmap.md §17):
 // - description-only members of an allOf ({ "description": "…" }, or { "type": "object", "description": "…" }) are dropped,
 //   because openapi-typescript renders them as Record<string, never>, which makes the type unbuildable.
-// Each workaround prints a warning, so they are removed once the spec is clean.
+// It prints a warning, so it is removed once the spec is clean.
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -16,8 +15,6 @@ const specPath = resolve(here, "../../backend/openapi.json");
 const outPath = resolve(here, "../src/api/generated/schema.ts");
 
 const spec = JSON.parse(readFileSync(specPath, "utf8"));
-const defined = new Set(Object.keys(spec.components?.schemas ?? {}));
-const missing = new Set();
 let dropped = 0;
 
 const typeKeys = ["type", "$ref", "allOf", "oneOf", "anyOf", "properties", "items", "enum", "const", "additionalProperties"];
@@ -25,13 +22,6 @@ const typeKeys = ["type", "$ref", "allOf", "oneOf", "anyOf", "properties", "item
 function walk(node) {
   if (Array.isArray(node)) return node.map(walk);
   if (node === null || typeof node !== "object") return node;
-  if (typeof node.$ref === "string" && node.$ref.startsWith("#/components/schemas/")) {
-    const name = node.$ref.slice("#/components/schemas/".length);
-    if (!defined.has(name)) {
-      missing.add(name);
-      return { type: "string" };
-    }
-  }
   const out = {};
   for (const [key, value] of Object.entries(node)) {
     if (key === "allOf" && Array.isArray(value)) {
@@ -53,9 +43,6 @@ function walk(node) {
 }
 
 const cleaned = walk(spec);
-for (const name of missing) {
-  console.warn(`gen-api: ${name} is referenced but not defined in openapi.json; generated as string.`);
-}
 if (dropped > 0) {
   console.warn(`gen-api: dropped ${dropped} description-only allOf members.`);
 }

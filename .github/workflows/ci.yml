@@ -92,7 +92,7 @@ jobs:
           out() { if has "$2"; then echo "$1=true"; else echo "$1=false"; fi >> "$GITHUB_OUTPUT"; }
           # store's tests read ml/'s manifest and templates (the copies inside backend/ must match them),
           # and domain's compare ml/knowledge/schema/ with the seed types.
-          out rust   '^backend/(crates|bins|migrations)/|^backend/(Cargo\.toml|Cargo\.lock|clippy\.toml|rust-toolchain\.toml|openapi\.json|deny\.toml)$|^ml/models/(manifest\.toml|templates/)|^ml/knowledge/schema/'
+          out rust   '^backend/(crates|bins|migrations|tools/era-eval)/|^backend/(Cargo\.toml|Cargo\.lock|clippy\.toml|rust-toolchain\.toml|openapi\.json|deny\.toml)$|^ml/models/(manifest\.toml|templates/)|^ml/knowledge/schema/'
           out docs   '\.md$|^backend/tools/docgen/'
           # check_examples.py copies the schema into its crate.
           out skills '^\.claude/skills/rust|^backend/migrations/'
@@ -103,8 +103,9 @@ jobs:
           # The Era tests run the clients and the sync against Era's simulators with the Maple Row fixture
           # (backend/tests/fixtures/era/).
           out era    '^backend/'
-          # What the image build context holds (backend/.dockerignore leaves out tools/).
-          out images '^backend/(crates|bins|migrations)/|^backend/(Cargo\.toml|Cargo\.lock|rust-toolchain\.toml|openapi\.json|Dockerfile|docker-bake\.hcl|\.dockerignore)$'
+          # What the image build context holds (backend/.dockerignore leaves out tools/, except
+          # era-eval, a workspace member).
+          out images '^backend/(crates|bins|migrations|tools/era-eval)/|^backend/(Cargo\.toml|Cargo\.lock|rust-toolchain\.toml|openapi\.json|Dockerfile|docker-bake\.hcl|\.dockerignore)$'
           cat "$GITHUB_OUTPUT"
 
   lint:
@@ -273,7 +274,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci
@@ -390,7 +391,8 @@ jobs:
   # and the pairs are separate containers, so the steps cannot disturb each other. Each step runs
   # even when an earlier one failed. Health is checked on /_admin/tenants, which faults never touch
   # (the image has python3 but no curl). In ci's needs since 2026-10-20, after five green runs on
-  # main (docs/EON E6.3).
+  # main (docs/EON E6.3). The era_hosted_ tests call our hosted Era company, which meters every
+  # request, so this job leaves them out; era-hosted.yml runs them nightly (E6.5).
   era:
     needs: [changes, lint, test]
     if: ${{ !cancelled() && !failure() && (needs.changes.outputs.era == 'true' || github.event_name == 'push') }}
@@ -518,7 +520,7 @@ jobs:
           ERA_GOOGLE_BASE: http://127.0.0.1:${{ job.services.era-drive.ports['8080'] }}
         run: >-
           cargo nextest run -p integrations -p api --run-ignored only --locked
-          -E 'test(/(^|::)era_/) and not test(/(^|::)era_fault_/) and not test(/(^|::)era_strict_/)'
+          -E 'test(/(^|::)era_/) and not test(/(^|::)era_fault_/) and not test(/(^|::)era_strict_/) and not test(/(^|::)era_hosted_/)'
       - name: Era fault tests
         if: ${{ !cancelled() }}
         working-directory: backend

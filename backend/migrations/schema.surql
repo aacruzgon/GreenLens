@@ -550,7 +550,7 @@ DEFINE FIELD OVERWRITE title      ON farm_record TYPE string;   -- "#field-repor
 DEFINE FIELD OVERWRITE author     ON farm_record TYPE option<string>;   -- display name only
 DEFINE FIELD OVERWRITE link       ON farm_record TYPE string;   -- built at sync time: Slack permalink or Drive webViewLink
 DEFINE FIELD OVERWRITE text       ON farm_record TYPE string;   -- one chunk, at most 2,000 characters
-DEFINE FIELD OVERWRITE text_hash  ON farm_record TYPE string;   -- unchanged text keeps its vector
+DEFINE FIELD OVERWRITE text_hash  ON farm_record TYPE string;   -- of the embedded text (author and title, then text): unchanged, the vector is kept
 DEFINE FIELD OVERWRITE embedding  ON farm_record TYPE array<float>;
 DEFINE FIELD OVERWRITE embedding_model ON farm_record TYPE string;
 DEFINE FIELD OVERWRITE at         ON farm_record TYPE datetime;   -- the message's time, or the document's modifiedTime

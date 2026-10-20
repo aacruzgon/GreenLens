@@ -13,15 +13,25 @@ let generation = 0;
 let refreshed: string | null = null;
 let inFlight: Promise<string | null> | null = null;
 
+// Bumped whenever the provider changes. A refresh started under an older session must not touch
+// the state of a newer one when it settles.
+let session = 0;
+
 export function setTokenProvider(fn: TokenProvider): void {
+  session += 1;
   provider = fn;
+  inFlight = null;
+  refreshed = null;
+  generation = 0;
   signedOutSent = false;
 }
 
 export function clearTokenProvider(): void {
+  session += 1;
   provider = null;
   inFlight = null;
   refreshed = null;
+  generation = 0;
 }
 
 export function setOnSignedOut(cb: (() => void) | null): void {
@@ -48,15 +58,19 @@ function refreshToken(gen: number): Promise<string | null> {
   if (generation > gen) return Promise.resolve(refreshed);
   const p = provider;
   if (!p) return Promise.resolve(null);
-  inFlight = p({ skipCache: true })
+  const startedIn = session;
+  const refresh: Promise<string | null> = p({ skipCache: true })
     .catch(() => null)
     .then((token) => {
+      // Signed out or in again meanwhile: the new session's state is not ours to change.
+      if (startedIn !== session) return null;
       refreshed = token;
       generation += 1;
       inFlight = null;
       return token;
     });
-  return inFlight;
+  inFlight = refresh;
+  return refresh;
 }
 
 function withToken(request: Request, token: string | null): Request {
@@ -92,6 +106,7 @@ export function resetAuthForTests(): void {
   provider = null;
   onSignedOut = null;
   signedOutSent = false;
+  session += 1;
   generation = 0;
   refreshed = null;
   inFlight = null;

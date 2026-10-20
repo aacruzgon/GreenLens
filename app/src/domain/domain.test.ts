@@ -1,5 +1,5 @@
 import { ACTIONS, can, REQUIRED_ROLE, ROLES, type Action } from "./permissions";
-import { canAddImage, canSubmit, IMAGE_KIND_LIMITS, isAtRest, STAGE_ORDER } from "./scan";
+import { canAddImage, canSubmit, IMAGE_KIND_LIMITS, isAtRest, STAGE_ORDER, needsStream } from "./scan";
 import {
   diagnosisCopy,
   LOW_EVIDENCE_HEADLINE,
@@ -207,5 +207,15 @@ describe("dates", () => {
     const now = new Date("2026-10-20T02:30:00Z");
     expect(formatDay("2026-10-19T20:00:00Z", "America/Toronto", now)).toBe("Today");
     expect(formatDay("2026-10-18T20:00:00Z", "America/Toronto", now)).toBe("Yesterday");
+  });
+});
+
+describe("needsStream", () => {
+  it("never streams a pending scan, which has no run yet", () => {
+    expect(needsStream({ status: "pending", guided_checks: [] })).toBe(false);
+  });
+  it("streams a running scan and not one at rest", () => {
+    expect(needsStream({ status: "analysing", guided_checks: [] })).toBe(true);
+    expect(needsStream({ status: "planned", guided_checks: [] })).toBe(false);
   });
 });

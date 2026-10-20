@@ -769,7 +769,7 @@ async fn the_search_stays_in_its_garden_and_ranks_by_similarity() {
             &query,
             FarmRecordFilter {
                 kind: Some(FarmRecordKind::Document),
-                since: None,
+                ..FarmRecordFilter::default()
             },
             10,
         )
@@ -782,8 +782,8 @@ async fn the_search_stays_in_its_garden_and_ranks_by_similarity() {
             viewer,
             &query,
             FarmRecordFilter {
-                kind: None,
                 since: Some(at(60)),
+                ..FarmRecordFilter::default()
             },
             10,
         )
@@ -802,6 +802,91 @@ async fn the_search_stays_in_its_garden_and_ranks_by_similarity() {
     assert_eq!(theirs[0].hit.text, "other garden");
 
     // A disconnected connector's records leave the search at once.
+    let owner = owner_of(&store, &f).await;
+    store.start_connector_deletion(owner, c).await.unwrap();
+    assert_eq!(
+        store
+            .search_records(viewer, &query, FarmRecordFilter::default(), 10)
+            .await
+            .unwrap(),
+        Vec::new()
+    );
+}
+
+/// `until` keeps what came before the instant; `author` matches part of the display name,
+/// ignoring case, and never a record without an author (EON gap G12).
+#[tokio::test]
+async fn the_search_filters_by_until_and_author() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let viewer: Membership<Viewer> = owner_of(&store, &f).await.at_least();
+    let c = active_slack(&store, &f, f.garden).await;
+    let by = |vendor_id: &str, text: &str, author: Option<&str>, when| NewFarmRecord {
+        author: author.map(str::to_owned),
+        ..record(c, vendor_id, 0, text, Some(one_hot(0)), when)
+    };
+    store
+        .upsert_records(
+            c,
+            vec![
+                by("C1/1.000100", "riley early", Some("Riley"), t0()),
+                by("C1/2.000100", "riley late", Some("Riley Shaw"), at(120)),
+                by("C1/3.000100", "maria", Some("Maria"), at(60)),
+                by("C1/4.000100", "nobody", None, at(60)),
+            ],
+        )
+        .await
+        .unwrap();
+    let query = Embedding(one_hot(0));
+    let search = |filter: FarmRecordFilter| {
+        let store = &store;
+        let query = &query;
+        async move {
+            let mut texts: Vec<String> = store
+                .search_records(viewer, query, filter, 10)
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|m| m.hit.text)
+                .collect();
+            texts.sort();
+            texts
+        }
+    };
+    assert_eq!(
+        search(FarmRecordFilter {
+            until: Some(at(60)),
+            ..FarmRecordFilter::default()
+        })
+        .await,
+        ["riley early"]
+    );
+    assert_eq!(
+        search(FarmRecordFilter {
+            author: Some("rILEY".into()),
+            ..FarmRecordFilter::default()
+        })
+        .await,
+        ["riley early", "riley late"]
+    );
+    assert_eq!(
+        search(FarmRecordFilter {
+            author: Some("Riley".into()),
+            since: Some(at(60)),
+            until: Some(at(121)),
+            ..FarmRecordFilter::default()
+        })
+        .await,
+        ["riley late"]
+    );
+    assert_eq!(
+        search(FarmRecordFilter {
+            author: Some("Dev".into()),
+            ..FarmRecordFilter::default()
+        })
+        .await,
+        Vec::<String>::new()
+    );
     let owner = owner_of(&store, &f).await;
     store.start_connector_deletion(owner, c).await.unwrap();
     assert_eq!(

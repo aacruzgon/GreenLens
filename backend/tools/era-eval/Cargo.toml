@@ -1,0 +1,42 @@
+[package]
+name = "era-eval"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The farm connectors' agent evaluation on Era's simulators (docs/EON E8, docs/connectors 9.3)"
+
+[lints]
+workspace = true
+
+[dependencies]
+# The real farm sync, through api's library target.
+api = { path = "../../bins/api" }
+domain.workspace = true
+store.workspace = true
+blob.workspace = true
+agent.workspace = true
+knowledge.workspace = true
+vision.workspace = true
+# Era's simulator harness (tenants, minted credentials, the request journal). The api image is
+# built with `-p api` alone, so this feature never reaches it.
+integrations = { workspace = true, features = ["era-sim"] }
+# The embedded engine: each evaluation gets a fresh in-memory store.
+surrealdb = { workspace = true, features = ["kv-mem"] }
+
+anyhow.workspace = true
+async-trait.workspace = true
+bytes.workspace = true
+chrono.workspace = true
+clap.workspace = true
+futures.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+toml.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

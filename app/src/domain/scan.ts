@@ -79,3 +79,11 @@ export function isAtRest(scan: {
   if (scan.status === "failed") return true;
   return scan.status === "planned" && !scan.open_question;
 }
+
+/**
+ * Whether the scan screen opens the event stream: only for a submitted scan that isn't at rest.
+ * A `pending` scan is still being captured, so it has no run to follow (contracts 3 and 4).
+ */
+export function needsStream(scan: Parameters<typeof isAtRest>[0]): boolean {
+  return scan.status !== "pending" && !isAtRest(scan);
+}

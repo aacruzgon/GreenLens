@@ -1,6 +1,7 @@
 import { SseParser } from "../sse";
 import type { S } from "./util";
-import { IDS, mockTransport, resetMock, scenario } from "./index";
+import { IDS, mockStore, mockTransport, resetMock, scenario } from "./index";
+import { bandFor } from "./util";
 
 const BASE = "https://mock.pdm.local";
 
@@ -288,8 +289,8 @@ describe("scripted runs", () => {
     expect(after.diagnosis?.organisms[0]).toMatchObject({ name: "Ladybug larva", role: "beneficial", preys_on: [{ name: "Aphids" }] });
     expect(after.plan?.task_ids.length).toBeGreaterThan(0);
     expect(after.plant.status).toBe("sick");
-    const heights = (await call("GET", `/plants/${IDS.tomato2}/measurements?quantity=plant_height_cm`)).json.items as S["MeasurementPoint"][];
-    expect(heights.at(-1)?.value).toBe(56);
+    // Mock uploads have no depth, so the run measures nothing (contracts 4).
+    expect(after.observations.some((o) => o.detail?.measurement?.quantity === "plant_height_cm" && o.scan_id === scanId)).toBe(false);
   });
 
   it("Not sure gives an uncertain diagnosis and a provisional plan", async () => {
@@ -339,5 +340,136 @@ describe("scripted runs", () => {
     }
     expect(events.raw).toContain(": keepalive\n\n");
     await events.cancel();
+  });
+});
+
+describe("review fixes", () => {
+  it("every seeded scan is at rest: planned with its plan, or failed", async () => {
+    const plants = (await call("GET", `/plants?garden_id=${IDS.garden}`)).json.items as S["Plant"][];
+    let n = 0;
+    for (const p of plants) {
+      const tl = (await call("GET", `/plants/${p.id}/timeline?limit=100`)).json.items as S["TimelineEntry"][];
+      for (const e of tl) {
+        n += 1;
+        expect(["planned", "failed"]).toContain(e.status);
+        if (e.status === "planned") {
+          const d = (await call("GET", `/scans/${e.scan_id}`)).json as S["ScanDetail"];
+          expect(d.plan?.id).toBe(d.plan_id);
+        }
+      }
+    }
+    expect(n).toBeGreaterThan(20);
+  });
+
+  it("confidence bands: high from 0.8, medium from 0.5", async () => {
+    expect([0.8, 0.79, 0.5, 0.49].map(bandFor)).toEqual(["high", "medium", "medium", "low"]);
+  });
+
+  it("submit is idempotent, and DELETE only takes a pending scan", async () => {
+    const scanId = await newScan(IDS.kale);
+    expect((await call("POST", `/scans/${scanId}/submit`)).status).toBe(202);
+    const again = await call("POST", `/scans/${scanId}/submit`);
+    expect(again.status).toBe(200);
+    expect(again.json.id).toBe(scanId);
+    expect((await call("DELETE", `/scans/${scanId}`)).json.error).toMatchObject({ code: "invalid_state", details: { status: expect.any(String) } });
+    const pending = await newScan(IDS.basil);
+    expect((await call("DELETE", `/scans/${pending}`)).status).toBe(204);
+    expect((await call("GET", `/scans/${pending}`)).status).toBe(404);
+  });
+
+  it("a non-retryable failed scan refuses submit; a retryable one starts a new run", async () => {
+    scenario.set({ nextScan: "no_plant_found" });
+    const scanId = await newScan(IDS.lettuce);
+    await call("POST", `/scans/${scanId}/submit`);
+    await (await open(scanId)).rest();
+    const refused = await call("POST", `/scans/${scanId}/submit`);
+    expect(refused.status).toBe(409);
+    expect(refused.json.error.details.hint).toBe("new_scan");
+    mockStore.scan(scanId)!.scan.failure!.retryable = true;
+    const retry = await call("POST", `/scans/${scanId}/submit`);
+    expect(retry.status).toBe(202);
+    expect(retry.json.run).toBe(2);
+  });
+
+  it("kind limits apply before submit; guided checks after submit are unlimited", async () => {
+    const scanId = await newScan(IDS.kale);
+    expect((await upload(scanId, "jar_test")).status).toBe(201);
+    expect((await upload(scanId, "jar_test")).json.error.code).toBe("too_many_images");
+    await call("POST", `/scans/${scanId}/submit`);
+    expect((await upload(scanId, "jar_test")).status).toBe(201);
+    expect((await upload(scanId, "jar_test")).status).toBe(201);
+  });
+
+  it("feedback needs reviewer, a submitted scan, and returns 201 { id }", async () => {
+    const scanId = await newScan(IDS.kale);
+    expect((await call("POST", `/scans/${scanId}/feedback`, { verdict: "correct" })).json.error.code).toBe("invalid_state");
+    await call("POST", `/scans/${scanId}/submit`);
+    const ok = await call("POST", `/scans/${scanId}/feedback`, { verdict: "correct" });
+    expect(ok.status).toBe(201);
+    expect(typeof ok.json.id).toBe("string");
+    scenario.set({ role: "viewer" });
+    const denied = await call("POST", `/scans/${scanId}/feedback`, { verdict: "correct" });
+    expect(denied.status).toBe(403);
+    expect(denied.json.error.details.required_role).toBe("reviewer");
+    scenario.set({ role: "reviewer" });
+    expect((await call("POST", `/scans/${scanId}/feedback`, { verdict: "wrong" })).status).toBe(201);
+  });
+
+  it("renaming a garden is owner only", async () => {
+    scenario.set({ role: "editor" });
+    const r = await call("PATCH", `/gardens/${IDS.garden}`, { name: "Front" });
+    expect(r.status).toBe(403);
+    expect(r.json.error.details.required_role).toBe("owner");
+    scenario.set({ role: "owner" });
+    expect((await call("PATCH", `/gardens/${IDS.garden}`, { name: "Front" })).json.name).toBe("Front");
+  });
+
+  it("timestamps have whole seconds", async () => {
+    const re = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+    const scanId = await newScan(IDS.kale);
+    const detail = (await call("GET", `/scans/${scanId}`)).json as S["ScanDetail"];
+    expect(detail.created_at).toMatch(re);
+    expect(detail.images[0].uploaded_at).toMatch(re);
+    await call("POST", `/scans/${scanId}/submit`);
+    const all = await (await open(scanId)).rest();
+    for (const e of all) expect(e.ts).toMatch(re);
+    expect((await call("GET", `/plants/${IDS.tomato1}/timeline`)).json.items[0].created_at).toMatch(re);
+  });
+
+  it("the measurement stage runs only when a photo has depth", async () => {
+    const stages = (all: S["ScanEvent"][]) =>
+      all.filter((e) => e.type === "stage_started").map((e) => (e as { stage: string }).stage);
+    const a = await newScan(IDS.kale);
+    const sub = await call("POST", `/scans/${a}/submit`);
+    expect(sub.status).toBe(202);
+    const evs = await (await open(a)).rest();
+    expect(stages(evs)).not.toContain("measurement");
+    const started = evs[0] as Extract<S["ScanEvent"], { type: "run_started" }>;
+    expect(started.rerun_stages).not.toContain("measurement");
+
+    const b = (await call("POST", "/scans", { garden_id: IDS.garden, plant_id: IDS.basil })).json.id as string;
+    const form = new FormData();
+    form.append("kind", "whole_plant");
+    form.append("file", new Blob(["x"], { type: "image/jpeg" }), "p.jpg");
+    form.append("depth", new Blob(["d"]), "d.bin");
+    expect((await mockTransport.fetch(`${BASE}/scans/${b}/images`, { method: "POST", body: form })).status).toBe(201);
+    await call("POST", `/scans/${b}/submit`);
+    expect(stages(await (await open(b)).rest())).toContain("measurement");
+  });
+
+  it("the empty-account control hides the demo until a garden is created", async () => {
+    scenario.get().setEmptyAccount(true);
+    expect((await call("GET", "/me")).json.display_name).toBe("");
+    expect((await call("GET", "/gardens")).json.items).toEqual([]);
+    const made = await call("POST", "/gardens", { name: "Mine", location: { city: "Ottawa" } });
+    expect(made.status).toBe(201);
+    expect(scenario.get().emptyAccount).toBe(false);
+    const list = (await call("GET", "/gardens")).json.items as S["Garden"][];
+    expect(list.map((g) => g.name)).toEqual(["Mine"]);
+    expect((await call("GET", "/me")).json.display_name).toBe("");
+    expect((await call("PATCH", "/me", { display_name: "Sam" })).json.display_name).toBe("Sam");
+    scenario.get().setEmptyAccount(true);
+    resetMock();
+    expect(scenario.get().emptyAccount).toBe(false);
   });
 });
