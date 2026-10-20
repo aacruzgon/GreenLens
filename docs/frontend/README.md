@@ -1,6 +1,7 @@
 # PDM Frontend Architecture
 
-> **Status:** Draft v0.4.3, 2026-10-19. v0.4.3: the build plan (section 18) follows the new [roadmap](roadmap.md): the iPhone first in the Conservatory direction, F0 on Oct 20 to the web build on Oct 25. v0.4.2: the backend's OpenAPI spec is committed, so the app uses generated contract types from day 1 instead of hand-written ones (section 9, generated types; build plan). v0.4.1: the schema links point to `backend/migrations/schema.surql`. v0.4 applies the third audit and contracts v0.8.2: species photo paths carry a content hash, a failed scan never holds a question, push coverage, invalidations for confirmed plan revisions, the closer-photo rule, the `SFSafariViewController` cookie note and the CORS preflight reason.
+> **Status:** Draft v0.4.6, 2026-10-19. v0.4.6: two-step sign-in is a code by text to the phone given at sign-up, with Clerk's test numbers in development (section 8). v0.4.5: sign-in has no authenticator-app second factor; a new device is confirmed with an email code. v0.4.4: section 4 adds `expo-symbols` and Urbanist, which F0 uses.
+> v0.4.3: the build plan (section 18) follows the new [roadmap](roadmap.md): the iPhone first in the Conservatory direction, F0 on Oct 20 to the web build on Oct 25. v0.4.2: the backend's OpenAPI spec is committed, so the app uses generated contract types from day 1 instead of hand-written ones (section 9, generated types; build plan). v0.4.1: the schema links point to `backend/migrations/schema.surql`. v0.4 applies the third audit and contracts v0.8.2: species photo paths carry a content hash, a failed scan never holds a question, push coverage, invalidations for confirmed plan revisions, the closer-photo rule, the `SFSafariViewController` cookie note and the CORS preflight reason.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Images:** event URLs arrive fresh, and the cache key is the image ID or the URL path; species photos carry their credit.
 >   - **Scan stream:** the resting rule counts guided checks on failed scans too.
@@ -73,7 +74,7 @@ This is the frontend's architecture. It is built on the [system architecture](..
 ```
                      ┌─────────────────────────────┐
                      │ Clerk                       │
-                     │ sign-in · MFA · sessions    │
+                     │ sign-in · sessions          │
                      │ JWKS · webhooks (to the API)│
                      └──────▲──────────────────────┘
                             │ hooks: useSignIn, useSSO, useAuth().getToken()
@@ -159,6 +160,8 @@ Each concern has one library. A dependency not in this table needs a reason in t
 | Links | `expo-linking` | Invite links and notification routes | [Linking](https://docs.expo.dev/linking/overview/), [expo-linking](https://docs.expo.dev/versions/v57.0.0/sdk/linking/) |
 | Dates | `date-fns` v4, `@date-fns/tz` | `LocalDate` values are in the garden's `time_zone`, never the phone's | [date-fns](https://date-fns.org/), [@date-fns/tz](https://github.com/date-fns/tz) |
 | Icons | `@expo/vector-icons` | Works on every target | [Icons](https://docs.expo.dev/guides/icons/) |
+| SF Symbols | `expo-symbols` | Tab bar icons on iOS through `NativeTabs`' `sf` (roadmap F0) | [expo-symbols](https://docs.expo.dev/versions/v57.0.0/sdk/symbols/) |
+| Display font | `@expo-google-fonts/urbanist` (600 only) with the `expo-font` config plugin | Conservatory's content heroes at 22 pt and above ([design 3.1](../design/design.md#31-conservatory)); also loaded with `useFonts` so it works in Expo Go. The system font stands in if it fails to load | [Fonts](https://docs.expo.dev/develop/user-interface/fonts/) |
 | LiDAR | Expo Modules API (Swift), `app/modules/lidar` | Section 13 | [Modules overview](https://docs.expo.dev/modules/overview/), [Module API](https://docs.expo.dev/modules/module-api/), [native views](https://docs.expo.dev/modules/native-view-tutorial/) |
 | Tests | `jest-expo`, `@testing-library/react-native` v14 | Section 16 | [Unit testing](https://docs.expo.dev/develop/unit-testing/), [Testing Library](https://callstack.github.io/react-native-testing-library/) |
 | Lint | `eslint-config-expo`, `eslint-plugin-import` (`no-restricted-paths`) | The import rules of section 5 are lint errors | [Using ESLint](https://docs.expo.dev/guides/using-eslint/) |
@@ -272,7 +275,7 @@ app/
 └─ src/
    ├─ app/                        routes only (screens.md 1)
    ├─ features/
-   │  ├─ auth/                    sign-in, sign-up, verification and MFA, onboarding, session bootstrap
+   │  ├─ auth/                    sign-in, sign-up, email-code verification, onboarding, session bootstrap
    │  ├─ gardens/                 garden home, create and edit, location consent, active garden, garden switcher
    │  ├─ members/                 members, roles, invites, invite acceptance
    │  ├─ plants/                  plant list and detail, timeline, growth curve, species confirmation, notes
@@ -281,7 +284,7 @@ app/
    │  ├─ tasks/                   task list, alert inbox, task editor
    │  ├─ chat/                    conversations, streaming messages, confirmation cards, memories, message feedback
    │  ├─ map/                     garden map view and LiDAR mapping session
-   │  └─ account/                 profile, MFA settings, notifications, account deletion
+   │  └─ account/                 profile, notifications, account deletion
    │     every feature:
    │     ├─ index.ts              public API
    │     ├─ screens/              one component per route the feature owns
@@ -400,7 +403,8 @@ Custom screens built with Clerk's hooks, `useSignIn`, `useSignUp` and `useSSO` �
 |---|---|---|
 | Email and password | Sign-up sends an email code; `verify` takes it | Everywhere, including in-app browsers |
 | Google, Apple | `useSSO` in a browser session (`expo-web-browser`), returning to the `pdm` scheme; a redirect on the web | Native builds, browsers, and the system's in-app views (`SFSafariViewController`, Custom Tabs). **Not in embedded web views** (`in_app`: Instagram, Facebook, LinkedIn): Google refuses OAuth in embedded browsers ([Google's policy](https://developers.googleblog.com/upcoming-security-changes-to-googles-oauth-20-authorization-endpoint-in-embedded-webviews/)), so the app hides both and shows "Open in Safari or Chrome" instead (section 13) |
-| Second factor (MFA) | When sign-in needs a second factor, `verify` asks for the TOTP code or a backup code. Users turn MFA on in Settings; the Clerk instance enables TOTP and backup codes | Everywhere |
+| Phone and two-step sign-in | Sign-up asks for a phone number and verifies it with a code by text after the email code. Once signed in, that phone is reserved for the second factor, so every later sign-in asks for a code by SMS (`signIn.mfa.sendPhoneCode`, `verifyPhoneCode`). The authenticator app and backup codes are off (Oct 19, the team). On the development instance, Clerk's test numbers (+1 XXX 555-0100 to 0199) send no text and take the code 424242 | Everywhere |
+| New device (Device Trust) | An account without a second factor that signs in on a new device gets `needs_client_trust`: the app sends an email code (`signIn.mfa.sendEmailCode`) and `verify` checks it | Everywhere |
 
 Clerk Core 3 changed the sign-in and sign-up calls (`signUp.password(...)`, `signUp.verifications.sendEmailCode()` in the quickstart, *unverified*). The screens follow the docs of the installed version. They all live in `features/auth`, so a change touches one folder. `app.config.ts` lists the `expo-secure-store` and `@clerk/expo` config plugins (*unverified*, Clerk quickstart).
 
@@ -666,7 +670,7 @@ Each feature's `model/` is the logic that lives outside React and is tested on i
 | `tasks` | Task list, alert inbox, task editor | Grouping by due date in the garden's time zone; which fields each source may edit | `/tasks` |
 | `chat` | Conversation list, conversation, composer with photos, cards, remembered facts, message feedback | `messageReducer`, pending-action card state | `/conversations`, `/messages/{id}/feedback`, `/pending-actions`, `/memories` |
 | `map` | Map view, mapping session | Map draft and upload conflicts | `/gardens/{id}/map`, `GET /plants` (all pages) |
-| `account` | Profile, MFA, notifications, account deletion | | `/me`, `/me/push-tokens` |
+| `account` | Profile, notifications, account deletion | | `/me`, `/me/push-tokens` |
 
 ### Capture
 

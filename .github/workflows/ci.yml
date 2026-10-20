@@ -1,5 +1,5 @@
 # CI for the repository, designed in docs/infra/README.md section 2. It runs in stages:
-#   1. changes, then lint, test, examples, docs and infra. Each runs only when its inputs changed.
+#   1. changes, then lint, test, examples, docs, infra and app. Each runs only when its inputs changed.
 #      A skipped job reports success.
 #   2. security and live, only once lint (and, for live, test) have passed, so a broken pull
 #      request stops early and spends fewer runner minutes.
@@ -50,6 +50,7 @@ jobs:
       infra: ${{ steps.diff.outputs.infra }}
       live: ${{ steps.diff.outputs.live }}
       images: ${{ steps.diff.outputs.images }}
+      app: ${{ steps.diff.outputs.app }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -83,6 +84,8 @@ jobs:
           # check_examples.py copies the schema into its crate.
           out skills '^\.claude/skills/rust|^backend/migrations/'
           out infra  '^infra/|^\.github/'
+          # The generated types come from backend/openapi.json, so a contract change runs the app job too.
+          out app    '^app/|^backend/openapi\.json$'
           out live   '^backend/crates/(store|blob)/|^backend/migrations/|^backend/Cargo\.(toml|lock)$|^\.claude/skills/rust'
           # What the image build context holds (backend/.dockerignore leaves out tools/).
           out images '^backend/(crates|bins|migrations)/|^backend/(Cargo\.toml|Cargo\.lock|rust-toolchain\.toml|openapi\.json|Dockerfile|docker-bake\.hcl|\.dockerignore)$'
@@ -219,6 +222,36 @@ jobs:
       - name: The Discord mention script's tests pass
         run: python3 -m unittest discover -s .github/scripts -b
 
+  app:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      # The generated types must match backend/openapi.json.
+      - name: The generated types match the spec
+        run: |
+          npm run gen:api
+          git diff --exit-code src/api/generated/schema.ts || {
+            echo "::error::app/src/api/generated/schema.ts is stale: run npm run gen:api in app/ and commit the result"
+            exit 1
+          }
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test -- --ci
+      - run: npm run check:contrast
+      - run: npx expo install --check
+
   # --- stage 2: only after lint (and test) pass --------------------------------------------------
   # `!cancelled() && !failure()` lets a job run when a job it needs was skipped for having no
   # changes, and stops it when one failed.
@@ -299,7 +332,7 @@ jobs:
 
   ci:
     # live joined after it passed on four consecutive pushes to main (infra §2).
-    needs: [changes, lint, test, examples, docs, infra, security, live]
+    needs: [changes, lint, test, examples, docs, infra, app, security, live]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5
@@ -314,7 +347,7 @@ jobs:
   # --- stage 4: images on main and tags; the release on tags -------------------------------------
 
   images:
-    needs: [changes, lint, test, examples, docs, infra, security, live]
+    needs: [changes, lint, test, examples, docs, infra, app, security, live]
     if: >-
       ${{ !cancelled() && !failure() && github.event_name == 'push' &&
           (startsWith(github.ref, 'refs/tags/v') ||
