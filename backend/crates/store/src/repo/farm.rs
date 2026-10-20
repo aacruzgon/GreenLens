@@ -68,7 +68,8 @@ pub mod sql {
         };
     }
 
-    /// Keeps the entries of the cursor object `$from` whose source id is in `$ids`.
+    /// Keeps the entries of the cursor object `$from` whose source id is in `$ids`, and the
+    /// sync's own state (`#sync`, [`domain::ports::SYNC_STATE_KEY`]).
     macro_rules! kept_cursor {
         ($from:literal, $ids:literal) => {
             concat!(
@@ -76,7 +77,7 @@ pub mod sql {
                 $from,
                 " ?? {}), |$e| $e[0] IN ",
                 $ids,
-                "))"
+                " OR $e[0] = '#sync'))"
             )
         };
     }

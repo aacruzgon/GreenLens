@@ -24,8 +24,8 @@ use domain::{
     ports::{
         ChatRepo, CompletedConnect, Conflict, Embedding, FarmRecordFilter, FarmRecordStore,
         FarmVector, GardenRepo, IdGenExt, NewConnector, NewConversation, NewFarmRecord, NewGarden,
-        NewMessage, PendingConnect, PlanRepo, PlanWrite, ResolvedLocation, Sealed, StoreError,
-        SyncCursor, SyncOutcome, SyncRequest,
+        NewMessage, PendingConnect, PlanRepo, PlanWrite, ResolvedLocation, SYNC_STATE_KEY, Sealed,
+        StoreError, SyncCursor, SyncOutcome, SyncRequest,
     },
     records::{
         plan::{ActionPlan, PlanReason, PlanStep, PlanWhen, StepCategory},
@@ -300,6 +300,10 @@ async fn connectors_and_the_due_query() {
                 cursors: BTreeMap::from([
                     ("C1".to_owned(), SyncCursor("1729000000.000100".into())),
                     ("C9".to_owned(), SyncCursor("dropped meanwhile".into())),
+                    (
+                        SYNC_STATE_KEY.to_owned(),
+                        SyncCursor(r#"{"round":2}"#.into()),
+                    ),
                 ]),
                 due_at: t0(),
                 synced_at: Some(at(2)),
@@ -312,10 +316,17 @@ async fn connectors_and_the_due_query() {
     let row = store.connector_row(seeded).await.unwrap().unwrap();
     assert_eq!(row.connector.synced_at, Some(at(2)));
     assert_eq!(row.next_sync_at, at(17));
+    let sync_state = (
+        SYNC_STATE_KEY.to_owned(),
+        SyncCursor(r#"{"round":2}"#.into()),
+    );
     assert_eq!(
         row.cursors,
-        BTreeMap::from([("C1".to_owned(), SyncCursor("1729000000.000100".into()))]),
-        "only chosen sources keep a cursor"
+        BTreeMap::from([
+            ("C1".to_owned(), SyncCursor("1729000000.000100".into())),
+            sync_state.clone(),
+        ]),
+        "only chosen sources keep a cursor, and the sync keeps its state"
     );
     assert!(
         due(at(20)).await.is_empty(),
@@ -329,7 +340,11 @@ async fn connectors_and_the_due_query() {
         .unwrap();
     assert_eq!(changed.sources, vec![source("C2", "spray-log")]);
     let row = store.connector_row(seeded).await.unwrap().unwrap();
-    assert!(row.cursors.is_empty(), "C1 was dropped");
+    assert_eq!(
+        row.cursors,
+        BTreeMap::from([sync_state]),
+        "C1 was dropped; the sync's state stays"
+    );
     assert_eq!(row.last_error, None);
     assert_eq!(due(at(21)).await, vec![seeded]);
 

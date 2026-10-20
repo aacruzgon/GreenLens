@@ -12,12 +12,16 @@
 //! - **Passes and cursors** ([`state`]): a source's stored cursor wraps the adapter's own. A pass
 //!   with pages left (a throttled first sync, a spent budget) continues from it on a later run,
 //!   and records are keyed by `(connector, vendor_id, n)`, so nothing is stored twice.
-//! - **Rounds**: each source's state holds the round in which it last finished a pass. A run
-//!   reads only the sources in the lowest round, in order, starting one source further on each
-//!   round, so a run whose budget runs out (Slack's Tier 1 pacing makes ten channels take
-//!   several runs) is followed a minute later by one that continues with the next source, and
-//!   every chosen source is read once a round. The round ends when every source has finished
-//!   its pass: only then is `synced_at` set and the next sync 15 minutes away.
+//! - **Rounds** ([`Rotation`]): each source's state holds the round in which it last finished a
+//!   pass, and the connector's sync state (under [`SYNC_STATE_KEY`]) the round in progress and
+//!   the source the next run starts from. A run reads, in order from there, the sources that
+//!   haven't finished their pass in the round, and the next run starts after the last source
+//!   this one asked for a page, whether the run stopped on the budget (Slack's Tier 1 pacing
+//!   makes ten channels take several runs), on a vendor error or at the round's end. So a
+//!   source with a long first pass, or one that keeps failing, doesn't hold up the others, and
+//!   one left mid-pass resumes from its cursor when its turn comes again. A source just added
+//!   joins the round in progress. The round ends when every chosen source has finished its
+//!   pass in it: only then is `synced_at` set and the next sync 15 minutes away.
 //! - **Older-item checks** ([`FarmPageRequest::probe_limit`], Slack's older threads): at most
 //!   [`PROBES_PER_RUN`] a run over all the connector's sources, none on a source's first pass,
 //!   and on each page only as many as the budget left covers ([`probes_offered`]): under
@@ -65,8 +69,8 @@ use domain::{
     id::{ConnectorId, FarmRecordId, GardenId},
     ports::{
         BoxError, Clock, ConnectorRow, EmbedMode, FarmPage, FarmPageRequest, FarmSource,
-        FarmSourceError, FarmVector, NewFarmRecord, Store, StoreError, SyncCursor, SyncOutcome,
-        TextEmbedder, VendorToken,
+        FarmSourceError, FarmVector, NewFarmRecord, SYNC_STATE_KEY, Store, StoreError, SyncCursor,
+        SyncOutcome, TextEmbedder, VendorToken,
     },
     rules::limits::{FARM_RECORD_KEEP, MAX_FARM_RECORDS_PER_GARDEN},
     wire::Timestamp,
@@ -77,7 +81,7 @@ use crate::{
     sealing::{ConnectorKey, SealPurpose},
 };
 
-use state::{Reread, SourceState};
+use state::{Reread, Rotation, SourceState};
 
 /// A connector is synced again this long after a sync that finished, or after an outage
 /// ([connectors 6]; the `soil` task's pattern).
@@ -191,9 +195,9 @@ enum Read {
 /// How one connector's run ended, for the logs and the tests.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunEnd {
-    /// The round ended: every source has finished a pass since the last round.
+    /// The round ended: every source has finished its pass in it.
     Synced,
-    /// Pages or sources of the round left for the next run.
+    /// Sources of the round with pages left, or not reached, for the next run.
     PagesLeft,
     /// Stopped with this code.
     Failed(SyncErrorCode),
@@ -318,50 +322,16 @@ impl FarmSync {
             deadline: tokio::time::Instant::now() + self.config.run_budget,
         };
         let mut cursors = row.cursors.clone();
-        let sources = &row.connector.sources;
-        let rounds: Vec<u32> = sources
-            .iter()
-            .map(|s| SourceState::parse(cursors.get(&s.id)).round)
-            .collect();
-        let low = rounds.iter().copied().min().unwrap_or(0);
-        let high = rounds.iter().copied().max().unwrap_or(0);
-        // A source that finishes its pass moves to the next round, or joins the others when
-        // it is behind them (a source just added).
-        let next_round = low.saturating_add(1).max(high);
-        // Each round starts one source further on, so the first sources of a run, which get
-        // the run's older-item checks first, aren't always the same.
-        let start = usize::try_from(low).unwrap_or(0) % sources.len().max(1);
-        let mut probes = PROBES_PER_RUN;
-        let mut left = false;
-        for src in sources.iter().cycle().skip(start).take(sources.len()) {
-            let mut state = SourceState::parse(cursors.get(&src.id));
-            if state.round > low {
-                // Finished its pass in this round already.
-                continue;
-            }
-            let read = self
-                .read_source(&run, src, &mut state, &mut probes, shutdown)
-                .await;
-            if matches!(read, Ok(Read::Done)) {
-                state.round = next_round;
-            }
-            cursors.insert(src.id.clone(), state.to_cursor());
-            match read {
-                Ok(Read::Done) => {}
-                Ok(Read::PagesLeft) => {
-                    left = true;
-                    break;
-                }
-                Err(Stop::Internal(e)) => return self.internal(&row, cursors, e).await,
-                Err(Stop::Vendor(e)) => return self.stop(&row, cursors, &Halt::Vendor(e)).await,
-                Err(Stop::TooLarge) => return self.stop(&row, cursors, &Halt::TooLarge).await,
-            }
-        }
+        let read = self
+            .read_round(&run, &row.connector.sources, &mut cursors, shutdown)
+            .await;
         let end_now = self.clock.now();
-        let (synced_at, next, end) = if left {
-            (None, end_now, RunEnd::PagesLeft)
-        } else {
-            (Some(end_now), end_now.plus(SYNC_EVERY), RunEnd::Synced)
+        let (synced_at, next, end) = match read {
+            Ok(Read::Done) => (Some(end_now), end_now.plus(SYNC_EVERY), RunEnd::Synced),
+            Ok(Read::PagesLeft) => (None, end_now, RunEnd::PagesLeft),
+            Err(Stop::Internal(e)) => return self.internal(&row, cursors, e).await,
+            Err(Stop::Vendor(e)) => return self.stop(&row, cursors, &Halt::Vendor(e)).await,
+            Err(Stop::TooLarge) => return self.stop(&row, cursors, &Halt::TooLarge).await,
         };
         let outcome = SyncOutcome {
             due_at,
@@ -385,14 +355,87 @@ impl FarmSync {
             .map(VendorToken::new)
     }
 
+    /// One run's share of the round in progress ([`Rotation`]): reads the sources that haven't
+    /// finished their pass in it, in order from where the last run stopped, until the round
+    /// ends, the budget runs out, shutdown comes or one fails. Stores each source's state and
+    /// the rotation in `cursors`, whatever the end. `Done` when the round ended: every source
+    /// has finished its pass in it.
+    async fn read_round(
+        &self,
+        run: &Run<'_>,
+        sources: &[ConnectorSource],
+        cursors: &mut BTreeMap<String, SyncCursor>,
+        shutdown: &CancellationToken,
+    ) -> Result<Read, Stop> {
+        let mut states: Vec<SourceState> = sources
+            .iter()
+            .map(|s| SourceState::parse(cursors.get(&s.id)))
+            .collect();
+        let lowest = states.iter().map(|s| s.round).min().unwrap_or(0);
+        let mut rotation = Rotation::parse(cursors.get(SYNC_STATE_KEY), lowest);
+        if states.iter().all(|s| s.round >= rotation.round) {
+            // Every source still chosen has finished this round (the last one left was
+            // dropped): the next round starts.
+            rotation.round = rotation.round.saturating_add(1);
+        }
+        let n = sources.len();
+        let start = rotation
+            .next
+            .as_ref()
+            .and_then(|id| sources.iter().position(|s| &s.id == id))
+            .unwrap_or(0);
+        let mut probes = PROBES_PER_RUN;
+        // The last source this run asked the vendor for a page of.
+        let mut last = None;
+        let mut read = Ok(Read::Done);
+        for i in (0..n).map(|k| (start + k) % n) {
+            let state = &mut states[i];
+            if state.round >= rotation.round {
+                // Finished its pass in this round already.
+                continue;
+            }
+            let src = &sources[i];
+            let mut asked = false;
+            read = self
+                .read_source(run, src, state, (&mut probes, &mut asked), shutdown)
+                .await;
+            if asked {
+                last = Some(i);
+            }
+            if matches!(read, Ok(Read::Done)) {
+                state.round = rotation.round;
+            }
+            cursors.insert(src.id.clone(), state.to_cursor());
+            if !matches!(read, Ok(Read::Done)) {
+                break;
+            }
+        }
+        // The next run starts after the last source this one asked for a page, so a source
+        // that keeps the budget (a long first pass) or keeps failing doesn't hold up the
+        // others; a source left mid-pass resumes from its cursor when its turn comes again. A
+        // new round starts one source further on still, so the sources that come first in a
+        // run, which get its older-item checks, change from round to round.
+        let ended = matches!(read, Ok(Read::Done));
+        if let Some(i) = last {
+            let step = if ended { 2 } else { 1 };
+            rotation.next = Some(sources[(i + step) % n].id.clone());
+        }
+        if ended {
+            rotation.round = rotation.round.saturating_add(1);
+        }
+        cursors.insert(SYNC_STATE_KEY.to_owned(), rotation.to_cursor());
+        read
+    }
+
     /// Reads one source's pages until its pass ends, the budget runs out or shutdown comes.
-    /// `probes` follows the run's older-item checks left.
+    /// `probes` follows the run's older-item checks left; `asked` is set once a page was asked
+    /// for.
     async fn read_source(
         &self,
         run: &Run<'_>,
         src: &ConnectorSource,
         state: &mut SourceState,
-        probes: &mut u32,
+        (probes, asked): (&mut u32, &mut bool),
         shutdown: &CancellationToken,
     ) -> Result<Read, Stop> {
         let window = run.source.reread_window();
@@ -430,6 +473,7 @@ impl FarmSync {
                     probes_offered(remaining, *probes)
                 },
             };
+            *asked = true;
             // Shutdown interrupts a page in flight (a Tier 1 page can wait a minute per call);
             // nothing of it is stored yet. The budget is not raced: it is checked between pages.
             let page = tokio::select! {

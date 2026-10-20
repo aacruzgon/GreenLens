@@ -7004,6 +7004,12 @@ pub struct NewConnector {
     pub created_at: Timestamp,
 }
 
+/// The entry of a connector's cursors ([`ConnectorRow::cursors`], [`SyncOutcome::cursors`])
+/// that holds the sync's own state across the sources (the round and where the next run
+/// starts), beside the cursors keyed by source id. No vendor's source id starts with `#`. The
+/// store keeps it when it drops the cursors of sources no longer chosen.
+pub const SYNC_STATE_KEY: &str = "#sync";
+
 /// A connector with everything the sync and the routes need beside its wire shape. Never sent:
 /// it holds the sealed tokens.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -7016,7 +7022,8 @@ pub struct ConnectorRow {
     pub secret: Option<Sealed>,
     /// The pending connect's state.
     pub oauth: Option<PendingConnect>,
-    /// Each source's sync cursor, by source id.
+    /// Each source's sync cursor, by source id, and the sync's own state under
+    /// [`SYNC_STATE_KEY`].
     pub cursors: BTreeMap<String, SyncCursor>,
     /// When the sync is due.
     pub next_sync_at: Timestamp,
@@ -7048,7 +7055,9 @@ pub struct SyncOutcome {
     /// of sources landed during the run: the store keeps that time, doesn't store a stopping
     /// failure (`too_large`, `source_missing`) over it, and doesn't set `synced_at`.
     pub due_at: Timestamp,
-    /// Each source's cursor after the run.
+    /// Each source's cursor after the run, and the sync's own state under
+    /// [`SYNC_STATE_KEY`]. The store keeps the cursors of the sources still chosen and that
+    /// state.
     pub cursors: BTreeMap<String, SyncCursor>,
     /// Set when every source was read to its end.
     pub synced_at: Option<Timestamp>,
@@ -7170,7 +7179,7 @@ pub trait FarmRecordStore: Send + Sync {
     ) -> Result<Connector, StoreError>;
 
     /// `PUT /connectors/{id}/sources`: replaces the sources, drops the cursors of sources no
-    /// longer chosen and makes the sync due now.
+    /// longer chosen (keeping the sync's state, [`SYNC_STATE_KEY`]) and makes the sync due now.
     async fn set_sources(
         &self,
         owner: Membership<Owner>,

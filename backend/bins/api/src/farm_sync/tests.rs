@@ -1107,11 +1107,16 @@ async fn a_spent_budget_moves_on_to_the_next_sources_on_the_next_run() {
     assert_eq!(row.connector.synced_at, Some(pinned()));
     assert_eq!(row.next_sync_at, pinned().plus(SYNC_EVERY));
 
-    // The next round starts one channel further on.
+    // The next round starts one channel further on than where this one stopped (after C9),
+    // and again reads each channel once.
     let before = source.requests().len();
     b.clock.advance(SYNC_EVERY);
-    b.run().await;
-    assert_eq!(read(before).first().map(String::as_str), Some("C1"));
+    b.until_synced(id, 10).await;
+    let next = read(before);
+    assert_eq!(next.first().map(String::as_str), Some("C1"));
+    let mut sorted = next.clone();
+    sorted.sort();
+    assert_eq!(sorted, channels, "each channel once: {next:?}");
 }
 
 /// A vendor that uses `uses` of each page's older-item checks, as far as the limit allows.
@@ -1208,8 +1213,95 @@ async fn no_older_item_check_is_offered_at_the_end_of_the_budget() {
     assert!(requests.iter().all(|r| r.probe_limit == 0), "{requests:?}");
 }
 
+impl Bench {
+    /// The connector's sources become `sources`, due now, as `PUT sources` leaves them.
+    async fn choose(&self, id: ConnectorId, sources: &[&str]) {
+        let sources: Vec<ConnectorSource> = sources
+            .iter()
+            .map(|s| ConnectorSource {
+                id: (*s).to_owned(),
+                name: s.to_lowercase(),
+            })
+            .collect();
+        self.store
+            .db()
+            .query("UPDATE $c SET sources = $sources, next_sync_at = $now;")
+            .bind(("c", store::ids::rid(&id)))
+            .bind((
+                "sources",
+                serde_json::to_value(&sources).expect("sources serialise"),
+            ))
+            .bind(("now", self.clock.now().into_inner()))
+            .await
+            .expect("sources updated")
+            .check()
+            .expect("sources updated");
+    }
+
+    /// Runs until the round ends, at most `runs` times; every run before it has pages left.
+    async fn until_synced(&self, id: ConnectorId, runs: usize) -> usize {
+        for n in 1..=runs {
+            let end = self.run().await;
+            assert_eq!(end.len(), 1, "due again at once until the round ends");
+            if end[0].1 == RunEnd::Synced {
+                return n;
+            }
+            assert_eq!(end[0], (id, RunEnd::PagesLeft));
+        }
+        panic!("the round didn't end in {runs} runs");
+    }
+}
+
+/// The sources of the requests from `from` on.
+fn reads(source: &FakeSource, from: usize) -> Vec<String> {
+    source.requests()[from..]
+        .iter()
+        .map(|r| r.source.id.clone())
+        .collect()
+}
+
+/// A vendor whose every page takes 100 ms (a paced vendor; with a 250 ms budget a run reads at
+/// most three pages) and whose sources have the passes `pages` gives, by source id and pass
+/// number: the pages of that pass. Each page's cursor is `<source>:<pass>:<page>`, and each
+/// request must carry the cursor of the source's last page.
+fn paced(pages: impl Fn(&str, u32) -> u32 + Send + 'static) -> Arc<FakeSource> {
+    let mut at: BTreeMap<String, (u32, u32)> = BTreeMap::new();
+    FakeSource::new(
+        None,
+        Box::new(move |r| {
+            std::thread::sleep(Duration::from_millis(100));
+            let id = r.source.id.clone();
+            let (pass, page_no) = at.entry(id.clone()).or_insert((0, 0));
+            let expected = (*pass > 0 || *page_no > 0).then(|| {
+                let (p, n) = if *page_no == 0 {
+                    (*pass - 1, pages(&id, *pass - 1))
+                } else {
+                    (*pass, *page_no)
+                };
+                SyncCursor(format!("{id}:{p}:{n}"))
+            });
+            assert_eq!(r.cursor, expected, "{id} resumes from its last page");
+            *page_no += 1;
+            let cursor = format!("{id}:{pass}:{page_no}");
+            let more = *page_no < pages(&id, *pass);
+            if !more {
+                *pass += 1;
+                *page_no = 0;
+            }
+            Ok(page(Vec::new(), more, &cursor))
+        }),
+    )
+}
+
+fn paced_budget() -> SyncConfig {
+    SyncConfig {
+        run_budget: Duration::from_millis(250),
+        ..SyncConfig::default()
+    }
+}
+
 #[tokio::test]
-async fn a_source_added_later_is_read_alone_and_ends_the_round() {
+async fn a_source_added_later_joins_the_others_in_the_next_round() {
     let source = FakeSource::new(None, Box::new(|_| Ok(page(Vec::new(), false, "c"))));
     let b = bench(store().await, source.clone(), SyncConfig::default());
     let owner = garden(&b.store, &b.ids, "a").await;
@@ -1227,27 +1319,195 @@ async fn a_source_added_later_is_read_alone_and_ends_the_round() {
         assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
         b.clock.advance(SYNC_EVERY);
     }
-    // A third channel joins, as `PUT sources` would leave it: due now, with no cursor.
-    b.store
-        .db()
-        .query("UPDATE $c SET sources += { id: 'C3', name: 'c3' }, next_sync_at = $now;")
-        .bind(("c", store::ids::rid(&id)))
-        .bind(("now", b.clock.now().into_inner()))
-        .await
-        .expect("sources updated")
-        .check()
-        .expect("sources updated");
+    // A third channel joins: due now, with no cursor.
+    b.choose(id, &["C1", "C2", "C3"]).await;
     let before = source.requests().len();
     assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
-    let read: Vec<String> = source.requests()[before..]
-        .iter()
-        .map(|r| r.source.id.clone())
-        .collect();
-    assert_eq!(read, ["C3"], "only the new channel");
+    let mut read = reads(&source, before);
+    read.sort();
+    assert_eq!(read, ["C1", "C2", "C3"], "read with the others, not alone");
+}
+
+/// The audit's case: A and B finished round 1; in round 2 A finished, B was left mid-pass by
+/// the budget, and then C was added. The round must wait for B.
+#[tokio::test]
+async fn a_source_left_mid_pass_keeps_the_round_open_when_a_source_is_added() {
+    // B's second pass is ten pages; every other pass is one.
+    let source = paced(|id, pass| if id == "B" && pass == 1 { 10 } else { 1 });
+    let b = bench(store().await, source.clone(), paced_budget());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["A", "B"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    b.until_synced(id, 3).await;
+    b.clock.advance(SYNC_EVERY);
+
+    // Round 2 until A has finished it and B is mid-pass: at most three pages a run, so B's
+    // ten take several runs.
+    let before = source.requests().len();
+    while !reads(&source, before).contains(&"A".to_owned()) {
+        assert_eq!(b.run().await, [(id, RunEnd::PagesLeft)]);
+    }
+    let b_pages = reads(&source, before).iter().filter(|s| *s == "B").count();
+    assert!(b_pages < 10, "B is mid-pass: {b_pages} pages");
+
+    b.choose(id, &["A", "B", "C"]).await;
+    let before = source.requests().len();
+    b.until_synced(id, 10).await;
+    let read = reads(&source, before);
+    assert_eq!(
+        read.iter().filter(|s| *s == "B").count(),
+        10 - b_pages,
+        "the round ended only after B's pass: {read:?}"
+    );
+    assert_eq!(read.iter().filter(|s| *s == "C").count(), 1);
+    assert!(!read.contains(&"A".to_owned()), "A had finished the round");
+    assert_eq!(b.row(id).await.connector.synced_at, Some(b.clock.now()));
+}
+
+#[tokio::test]
+async fn a_new_source_with_a_long_first_pass_does_not_hold_up_the_others() {
+    // N's first pass is far longer than the test.
+    let source = paced(|id, pass| if id == "N" && pass == 0 { 1000 } else { 1 });
+    let b = bench(store().await, source.clone(), paced_budget());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let channels: Vec<String> = (0..9).map(|i| format!("C{i}")).collect();
+    let names: Vec<&str> = channels.iter().map(String::as_str).collect();
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &names,
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    b.until_synced(id, 9).await;
+    b.clock.advance(SYNC_EVERY);
+
+    // N joins first in the order. Within a few runs every other channel is read once.
+    let mut chosen = vec!["N"];
+    chosen.extend(&names);
+    b.choose(id, &chosen).await;
+    let before = source.requests().len();
+    let mut runs = 0;
+    loop {
+        assert_eq!(b.run().await, [(id, RunEnd::PagesLeft)], "N has pages left");
+        runs += 1;
+        let read = reads(&source, before);
+        if channels.iter().all(|c| read.contains(c)) {
+            break;
+        }
+        assert!(runs < 10, "the others are held up: {read:?}");
+    }
+    let read = reads(&source, before);
+    for c in &channels {
+        assert_eq!(
+            read.iter().filter(|s| *s == c).count(),
+            1,
+            "{c} once: {read:?}"
+        );
+    }
+    assert!(read.contains(&"N".to_owned()));
+}
+
+#[tokio::test]
+async fn a_source_that_keeps_failing_does_not_stop_the_others() {
+    let broken = Arc::new(Mutex::new(true));
+    let fails = broken.clone();
+    let source = FakeSource::new(
+        None,
+        Box::new(move |r| {
+            if r.source.id == "C2" && *fails.lock().expect("flag") {
+                return Err(FarmSourceError::Unavailable {
+                    vendor: ConnectorKind::Slack,
+                    source: "a channel the vendor can't serve".into(),
+                });
+            }
+            Ok(page(Vec::new(), false, "c"))
+        }),
+    );
+    let b = bench(store().await, source.clone(), SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1", "C2", "C3"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    let failed = [(id, RunEnd::Failed(SyncErrorCode::VendorUnavailable))];
+
+    // C2 stops the first run; the next starts after it, so C3 is read too.
+    assert_eq!(b.run().await, failed);
+    assert_eq!(reads(&source, 0), ["C1", "C2"]);
+    b.clock.advance(SYNC_EVERY);
+    let before = source.requests().len();
+    assert_eq!(b.run().await, failed);
+    assert_eq!(reads(&source, before), ["C3", "C2"]);
+    let row = b.row(id).await;
+    assert_eq!(row.last_error, Some(SyncErrorCode::VendorUnavailable));
+    assert_eq!(row.connector.synced_at, None, "the round waits for C2");
+
+    // Once C2 answers, the round ends; the next reads all three.
+    *broken.lock().expect("flag") = false;
     b.clock.advance(SYNC_EVERY);
     let before = source.requests().len();
     assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
-    assert_eq!(source.requests().len() - before, 3, "then all three again");
+    assert_eq!(reads(&source, before), ["C2"]);
+    assert_eq!(b.row(id).await.last_error, None);
+    b.clock.advance(SYNC_EVERY);
+    let before = source.requests().len();
+    assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+    assert_eq!(reads(&source, before).len(), 3);
+}
+
+#[tokio::test]
+async fn a_source_left_mid_pass_resumes_from_its_cursor() {
+    // A's first pass is five pages; `paced` checks each request carries the last cursor.
+    let source = paced(|id, pass| if id == "A" && pass == 0 { 5 } else { 1 });
+    let b = bench(store().await, source.clone(), paced_budget());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["A", "B"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    let runs = b.until_synced(id, 6).await;
+    assert!(runs >= 2, "five pages take more than one run");
+    let cursors: Vec<Option<String>> = source
+        .requests()
+        .iter()
+        .filter(|r| r.source.id == "A")
+        .map(|r| r.cursor.clone().map(|c| c.0))
+        .collect();
+    assert_eq!(
+        cursors,
+        [
+            None,
+            Some("A:0:1".into()),
+            Some("A:0:2".into()),
+            Some("A:0:3".into()),
+            Some("A:0:4".into()),
+        ]
+    );
+    assert_eq!(reads(&source, 0).iter().filter(|s| *s == "B").count(), 1);
 }
 
 #[tokio::test]
