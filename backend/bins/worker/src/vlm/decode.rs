@@ -1,7 +1,7 @@
 //! After decoding ([contracts 6]): parse the model's JSON into the raw shapes, validate it
 //! against the call (aliases, enums from the payload, every indicator key, the `unsure`-only
-//! rule), truncate strings and clamp boxes, map aliases back to image ids, convert boxes from
-//! the adapter's format, and turn certainty words into confidences.
+//! rule), truncate strings and clamp boxes, drop repeated damage findings, map aliases back to
+//! image ids, convert boxes from the adapter's format, and turn certainty words into confidences.
 
 use domain::{
     id::{ImageId, IndicatorId, OrganismId, SpeciesId},
@@ -235,7 +235,8 @@ fn organism_findings(
     Ok(organism_findings)
 }
 
-/// The damage of a findings answer, at most `max_items`.
+/// The damage of a findings answer, at most `max_items`. A finding that repeats an earlier one
+/// (pattern, image, box and description) is dropped: a model in a loop can fill the list with one.
 fn damage_findings(
     raw: Vec<DamageRaw>,
     images: &CallImages<'_>,
@@ -250,7 +251,7 @@ fn damage_findings(
             .bbox_2d
             .and_then(|b| convert_box(b, format, (image.width, image.height)))
             .map(|bbox| Region::unmasked(image.image_id, bbox, None));
-        damage_findings.push(DamageFinding {
+        let finding = DamageFinding {
             pattern: d.pattern,
             // Only `other` keeps its description, as `other_name` with a known id.
             other_description: (d.pattern == DamagePattern::Other)
@@ -263,7 +264,16 @@ fn damage_findings(
             region,
             image_id: image.image_id,
             confidence: certainty.confidence(d.certainty),
+        };
+        let repeated = damage_findings.iter().any(|f: &DamageFinding| {
+            f.pattern == finding.pattern
+                && f.image_id == finding.image_id
+                && f.region == finding.region
+                && f.other_description == finding.other_description
         });
+        if !repeated {
+            damage_findings.push(finding);
+        }
     }
     Ok(damage_findings)
 }
@@ -528,6 +538,48 @@ mod tests {
             f.damage[1].other_description.as_deref(),
             Some("bark stripped")
         );
+    }
+
+    #[test]
+    fn repeated_damage_is_dropped() {
+        let a = prepared(IMG1, 100, 100);
+        let b = prepared(IMG2, 100, 100);
+        // Like Qwen3.5's corn answer with `findings@3`, one finding repeated up to the cap of 10.
+        // The same pattern in another box, or in no box, is a finding of its own.
+        let mine = r#"{"pattern":"leaf_mines","other_description":"pale tunnels","image":"img2","bbox_2d":[138,333,422,422],"certainty":"high"}"#;
+        let other_box = mine.replace("[138,333,422,422]", "[500,500,600,600]");
+        let no_box = mine.replace("[138,333,422,422]", "null");
+        let damage = [mine; 7]
+            .into_iter()
+            .chain([other_box.as_str(), no_box.as_str(), no_box.as_str()])
+            .collect::<Vec<_>>()
+            .join(",");
+        let json = findings_json("[0,0,10,10]").replace(
+            r#""damage":[{"pattern":"shot_holes","other_description":null,"image":"img2","bbox_2d":[0,0,0,0],"certainty":"high"}]"#,
+            &format!(r#""damage":[{damage}]"#),
+        );
+        let f = findings(
+            &json,
+            &CallImages::new(vec![&a, &b]),
+            &[SpeciesOption {
+                id: "tomato".parse().unwrap(),
+                name: "Tomato".to_owned(),
+            }],
+            &[],
+            BoxFormat::Norm1000,
+            &CertaintyMap::default(),
+            Limits::CONTRACT,
+        )
+        .unwrap();
+        assert_eq!(f.damage.len(), 3);
+        assert!(
+            f.damage
+                .iter()
+                .all(|d| d.pattern == DamagePattern::LeafMines)
+        );
+        assert!(f.damage[0].region.is_some() && f.damage[1].region.is_some());
+        assert_ne!(f.damage[0].region, f.damage[1].region);
+        assert!(f.damage[2].region.is_none());
     }
 
     #[test]
