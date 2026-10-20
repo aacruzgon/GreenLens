@@ -1,4 +1,4 @@
-import type { TaskSource, TaskState } from "@/domain/types";
+import type { AnchorType, TaskSource, TaskState } from "@/domain/types";
 
 // Every query key, named as the table in docs/frontend/README.md §9 (query keys and invalidation).
 // Optional trailing parts are left off when absent, so `qk.tasks(gardenId)` is a prefix of
@@ -9,9 +9,10 @@ export interface TaskFilter {
   state?: TaskState;
 }
 
+/** The `anchor_type` and `anchor_id` query parameters of `GET /conversations`. */
 export interface ConversationAnchor {
-  plantId?: string;
-  scanId?: string;
+  type: AnchorType;
+  id: string;
 }
 
 function tail<T>(v: T | undefined): [] | [T] {

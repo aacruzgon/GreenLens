@@ -26,7 +26,8 @@ export function OnboardingScreen() {
   const [locationRefused, setLocationRefused] = useState(false);
 
   const location = device ? { ...device, precision } : locationFromText(place);
-  const fieldError = createGarden.error && isApiError(createGarden.error) ? createGarden.error.message : undefined;
+  const failed = updateMe.error ?? createGarden.error;
+  const fieldError = failed ? (isApiError(failed) ? failed.message : "Something went wrong. Try again.") : undefined;
 
   async function useMyLocation() {
     setLocating(true);
@@ -38,7 +39,10 @@ export function OnboardingScreen() {
 
   async function submit() {
     if (!location) return;
-    if (needsName && displayName.trim()) await updateMe.mutateAsync({ display_name: displayName.trim() });
+    if (needsName && displayName.trim()) {
+      const named = await updateMe.mutateAsync({ display_name: displayName.trim() }).then(() => true, () => false);
+      if (!named) return;
+    }
     const garden = await createGarden.mutateAsync({ name: name.trim(), location }).catch(() => null);
     if (garden) setGardenId(garden.id);
   }
@@ -76,7 +80,7 @@ export function OnboardingScreen() {
                 Location is off for PDM. Type a postal code or city instead.
               </Text>
             ) : null}
-            <TextField label="or postal code or city" placeholder="M5V 2T6 or Guelph, ON" value={place} onChangeText={setPlace} autoCapitalize="characters" />
+            <TextField label="or postal code or city" placeholder="M5V 2T6 or Guelph, ON" value={place} onChangeText={setPlace} autoCapitalize="words" />
           </View>
         )}
 

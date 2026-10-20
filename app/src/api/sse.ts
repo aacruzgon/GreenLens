@@ -97,8 +97,19 @@ export class SseParser {
   }
 }
 
+export interface ReadSseOptions {
+  /** Aborting closes the connection and ends the iteration. */
+  signal?: AbortSignal;
+  /**
+   * Called for every chunk of bytes that arrives, keepalive comments included, so the caller can
+   * tell a waiting stream from a dead one (README §10: no bytes for 45 s → reconnect).
+   */
+  onActivity?: () => void;
+}
+
 /** Reads a byte stream into SSE messages. Stops when the stream ends or `signal` aborts. */
-export async function* readSse(body: ReadableStream<Uint8Array>, signal?: AbortSignal): AsyncGenerator<SseMessage> {
+export async function* readSse(body: ReadableStream<Uint8Array>, opts: ReadSseOptions = {}): AsyncGenerator<SseMessage> {
+  const { signal, onActivity } = opts;
   const reader = body.getReader();
   const parser = new SseParser();
   const onAbort = () => {
@@ -115,6 +126,7 @@ export async function* readSse(body: ReadableStream<Uint8Array>, signal?: AbortS
         yield* parser.end();
         return;
       }
+      onActivity?.();
       yield* parser.push(value);
     }
   } finally {

@@ -1,17 +1,13 @@
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { client, ok } from "../client";
-import type { components } from "../generated/schema";
+import type { CreateGardenRequest, Garden, GardenWeather, Page } from "@/domain/types";
 import { useIdempotentMutation, type IdempotencyKey } from "../idempotency";
 import { nextCursor } from "../pages";
 import { STALE } from "../queryClient";
 import { qk } from "../queryKeys";
 
-type S = components["schemas"];
-export type Garden = S["Garden"];
-export type GardenPage = S["Page_Garden"];
-export type CreateGardenRequest = S["CreateGardenRequest"];
-export type GardenWeather = S["GardenWeather"];
+type GardenPage = Page<Garden>;
 
 export const gardens = {
   list: async (cursor?: string): Promise<GardenPage> =>

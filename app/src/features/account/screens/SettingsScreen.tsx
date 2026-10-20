@@ -1,11 +1,9 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { View } from "react-native";
 
 import { useMe } from "@/api";
 import { envResult } from "@/config/env";
 import { useSession } from "@/features/auth";
-import { useActiveGardenStore } from "@/features/gardens";
 import { Button, ListItem, Screen, Section, Text, space } from "@/ui";
 
 import { DemoControls } from "../components/DemoControls";
@@ -14,16 +12,12 @@ import { DemoControls } from "../components/DemoControls";
 export function SettingsScreen() {
   const me = useMe();
   const session = useSession();
-  const queryClient = useQueryClient();
-  const setGardenId = useActiveGardenStore((s) => s.setGardenId);
   const [signingOut, setSigningOut] = useState(false);
   const mock = envResult.ok && envResult.env.apiMode === "mock";
 
-  // Sign-out (README §8): clear the cache and client state, then end the session.
+  // The session layer clears the cache and client state on every sign-out (features/shell).
   async function signOut() {
     setSigningOut(true);
-    queryClient.clear();
-    setGardenId(null);
     await session.signOut();
     setSigningOut(false);
   }

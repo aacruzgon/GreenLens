@@ -7,7 +7,7 @@ import { answerRun, scriptFor, startRun, takeOutcome } from "./runs";
 import { scenario } from "./scenario";
 import { mockStore, type MockStore } from "./store";
 import { MOCK_IMAGE_SIZE, mockImageUrl, type MockImageName } from "./images";
-import { emptyResponse, errorResponse, jsonResponse, MOCK_ORIGIN, paginate, type S } from "./util";
+import { emptyResponse, errorResponse, jsonResponse, MOCK_ORIGIN, nowTs, paginate, type S } from "./util";
 
 // ---- request context
 
@@ -35,19 +35,22 @@ interface Route {
   method: string;
   re: RegExp;
   keys: string[];
-  /** Needs the editor role. */
-  write: boolean;
+  /** The lowest role allowed, or none. */
+  minRole?: S["Role"];
   handler: Handler;
 }
 
 const routes: Route[] = [];
 
-function route(method: string, pattern: string, handler: Handler, write = false): void {
+const RANK: Record<S["Role"], number> = { viewer: 0, reviewer: 1, editor: 2, owner: 3 };
+
+/** `minRole`: `true` means editor. */
+function route(method: string, pattern: string, handler: Handler, minRole: S["Role"] | boolean = false): void {
   const keys: string[] = [];
   const re = new RegExp(
     "^" + pattern.replace(/:([a-z_]+)/g, (_m, k: string) => (keys.push(k), "([^/]+)")) + "/?$",
   );
-  routes.push({ method, re, keys, write, handler });
+  routes.push({ method, re, keys, minRole: minRole === true ? "editor" : minRole || undefined, handler });
 }
 
 class BadRequest extends Error {
@@ -148,17 +151,15 @@ function photoFor(store: MockStore, plantId: string, kind: S["ImageKind"]): Mock
   return own;
 }
 
-function isGrownUp(role: S["Role"]): boolean {
-  return role === "editor" || role === "owner";
-}
-
 function gardenView(store: MockStore, g: S["Garden"]): S["Garden"] {
   return { ...g, my_role: scenario.get().role };
 }
 
 // ---- /me
 
-route("GET", "/me", (c) => jsonResponse(200, c.store.user));
+route("GET", "/me", (c) =>
+  jsonResponse(200, scenario.get().emptyAccount && !c.store.nameSet ? { ...c.store.user, display_name: "" } : c.store.user),
+);
 
 route("PATCH", "/me", async (c) => {
   const body = await jsonObject(c);
@@ -168,6 +169,7 @@ route("PATCH", "/me", async (c) => {
       return invalid("display_name", "must be a non-empty string");
     }
     user.display_name = body.display_name.trim();
+    c.store.nameSet = true;
   }
   if (body.location_consent !== undefined) {
     if (typeof body.location_consent !== "boolean") return invalid("location_consent", "must be a boolean");
@@ -193,7 +195,10 @@ route("DELETE", "/me/push-tokens/:token", (c) => {
 // ---- gardens
 
 route("GET", "/gardens", (c) =>
-  jsonResponse(200, paginate([...c.store.gardens.values()].map((g) => gardenView(c.store, g)), c.query)),
+  jsonResponse(
+    200,
+    paginate(scenario.get().emptyAccount ? [] : [...c.store.gardens.values()].map((g) => gardenView(c.store, g)), c.query),
+  ),
 );
 
 route("POST", "/gardens", async (c) => {
@@ -216,8 +221,13 @@ route("POST", "/gardens", async (c) => {
     member_count: 1,
     my_role: "owner",
     soil_profile_status: "pending",
-    created_at: new Date().toISOString(),
+    created_at: nowTs(),
   };
+  if (scenario.get().emptyAccount) {
+    // The account starts empty: the demo data goes, and the name stays unset until PATCH /me.
+    c.store.clearAccount();
+    scenario.set({ emptyAccount: false });
+  }
   c.store.gardens.set(garden.id, garden);
   c.store.maps.set(garden.id, null);
   return jsonResponse(201, gardenView(c.store, garden));
@@ -234,7 +244,7 @@ route("PATCH", "/gardens/:id", async (c) => {
   const body = await jsonObject(c);
   if (body.name !== undefined) g.name = str(body, "name")!;
   return jsonResponse(200, gardenView(c.store, g));
-}, true);
+}, "owner");
 
 route("GET", "/gardens/:id/weather", (c) =>
   c.store.gardens.has(c.params.id) ? jsonResponse(200, { weather: c.store.weather }) : notFound(),
@@ -280,7 +290,7 @@ function createPlant(store: MockStore, gardenId: string, name: string, speciesId
     status: "healthy",
     species_status: species ? "confirmed" : "unknown",
     species_candidates: [],
-    created_at: new Date().toISOString(),
+    created_at: nowTs(),
     ...(species
       ? { species: { id: species.id, common_name: species.common_name, scientific_name: species.scientific_name } }
       : {}),
@@ -357,7 +367,7 @@ route("POST", "/tasks", async (c) => {
     garden_id: gardenId,
     source: "user",
     title: str(body, "title")!,
-    created_at: new Date().toISOString(),
+    created_at: nowTs(),
     ...(typeof body.detail === "string" ? { detail: body.detail } : {}),
     ...(typeof body.due === "string" ? { due: body.due } : {}),
     ...(typeof body.plant_id === "string" ? { plant_id: body.plant_id } : {}),
@@ -372,7 +382,7 @@ route("PATCH", "/tasks/:id", async (c) => {
   const task = c.store.tasks.find((t) => t.id === c.params.id);
   if (!task) return notFound();
   const body = await jsonObject(c);
-  const now = new Date().toISOString();
+  const now = nowTs();
   if (body.title !== undefined) task.title = str(body, "title")!;
   if (typeof body.detail === "string") task.detail = body.detail;
   if (typeof body.due === "string") task.due = body.due;
@@ -431,7 +441,7 @@ route("POST", "/memories", async (c) => {
     shared: true,
     topic: (typeof body.topic === "string" ? body.topic : "other") as S["MemoryTopic"],
     text: str(body, "text")!,
-    created_at: new Date().toISOString(),
+    created_at: nowTs(),
     ...(typeof body.plant_id === "string" ? { plant_id: body.plant_id } : {}),
   };
   c.store.memories.push(memory);
@@ -473,7 +483,7 @@ route("POST", "/scans", async (c) => {
     if (typeof made === "string") return invalid("new_plant.species_id", made);
     plant = made;
   }
-  const now = new Date().toISOString();
+  const now = nowTs();
   const scan: S["Scan"] = {
     id: c.store.nextId("scan"),
     garden_id: gardenId,
@@ -496,7 +506,13 @@ route("GET", "/scans/:id", (c) => {
 });
 
 route("DELETE", "/scans/:id", (c) => {
-  if (!c.store.scans.delete(c.params.id)) return notFound();
+  const st = c.store.scan(c.params.id);
+  if (!st) return notFound();
+  if (st.scan.status !== "pending") {
+    return errorResponse("invalid_state", { status: st.scan.status, allowed: ["pending"] });
+  }
+  c.store.scans.delete(c.params.id);
+  c.store.tasks = c.store.tasks.filter((t) => t.scan_id !== c.params.id);
   c.store.scripts.delete(c.params.id);
   c.store.notify(c.params.id);
   return emptyResponse(204);
@@ -530,17 +546,22 @@ route("POST", "/scans/:id/images", async (c) => {
     if (!q || q.id !== answering || q.status !== "open") {
       return errorResponse("invalid_state", { status: st.scan.status, allowed: ["open"] });
     }
-  } else if (kind !== "squeeze_test" && kind !== "jar_test" && st.scan.status !== "pending") {
+  } else if (kind === "squeeze_test" || kind === "jar_test") {
+    if (st.scan.status === "failed") {
+      return errorResponse("invalid_state", { status: st.scan.status, allowed: ["pending", "queued", "analysing", "awaiting_answer", "diagnosed", "planned"] });
+    }
+  } else if (st.scan.status !== "pending") {
     return errorResponse("invalid_state", { status: st.scan.status, allowed: ["pending"] });
   }
-  if (!answering && st.scan.images.filter((i) => i.kind === kind && !i.answers_question_id).length >= KIND_LIMIT[kind]) {
+  // Limits apply to the capture before submit; guided checks after submit have none.
+  if (!answering && st.scan.status === "pending" && st.scan.images.filter((i) => i.kind === kind && !i.answers_question_id).length >= KIND_LIMIT[kind]) {
     return errorResponse("too_many_images", { kind, max: KIND_LIMIT[kind] });
   }
   const photo = photoFor(c.store, st.scan.plant_id, kind);
   const image: S["ScanImage"] = {
     id: c.store.nextId("img"),
     kind,
-    uploaded_at: new Date().toISOString(),
+    uploaded_at: nowTs(),
     url: mockImageUrl(photo),
     ...MOCK_IMAGE_SIZE[photo],
     ...(answering ? { answers_question_id: answering } : {}),
@@ -570,9 +591,11 @@ route("DELETE", "/scans/:id/images/:image_id", (c) => {
 route("POST", "/scans/:id/submit", (c) => {
   const st = c.store.scan(c.params.id);
   if (!st) return notFound();
-  if (st.scan.status !== "pending") {
+  const failure = st.scan.status === "failed" ? st.scan.failure : undefined;
+  if (st.scan.status === "failed" && !failure?.retryable) {
     return errorResponse("invalid_state", { status: st.scan.status, allowed: ["pending"], hint: "new_scan" });
   }
+  if (st.scan.status !== "pending" && !failure) return jsonResponse(200, st.scan);
   if (!st.scan.images.some((i) => i.kind === "whole_plant")) {
     return errorResponse("missing_required_shot", { missing: ["whole_plant"] });
   }
@@ -597,11 +620,13 @@ route("POST", "/scans/:id/answers", async (c) => {
 }, true);
 
 route("POST", "/scans/:id/feedback", async (c) => {
-  if (!c.store.scan(c.params.id)) return notFound();
+  const st = c.store.scan(c.params.id);
+  if (!st) return notFound();
   const body = await jsonObject(c);
   if (!["correct", "wrong", "unsure"].includes(String(body.verdict))) return invalid("verdict", "correct, wrong or unsure");
-  return emptyResponse(204);
-});
+  if (st.scan.status === "pending") return errorResponse("invalid_state", { status: st.scan.status });
+  return jsonResponse(201, { id: c.store.nextId("fb") });
+}, "reviewer");
 
 // ---- the event stream
 
@@ -685,7 +710,7 @@ function faultResponse(fault: NonNullable<ReturnType<typeof scenario.get>["callF
     case "budget_exceeded":
       return errorResponse("budget_exceeded", {
         budget: "scans",
-        resets_at: new Date(Date.now() + 8 * 3_600_000).toISOString(),
+        resets_at: nowTs(8 * 3_600_000),
       });
     case "invalid_state":
       return errorResponse("invalid_state", { status: "planned", allowed: ["pending"], hint: "new_scan" });
@@ -720,8 +745,9 @@ export const mockTransport: Transport = {
       scenario.set({ callFault: null });
       return faultResponse(fault);
     }
-    if (matched.r.write && !isGrownUp(sc.role) && !path.startsWith("/me")) {
-      return errorResponse("forbidden", { required_role: "editor" });
+    const need = matched.r.minRole;
+    if (need && RANK[sc.role] < RANK[need] && !path.startsWith("/me")) {
+      return errorResponse("forbidden", { required_role: need });
     }
 
     let cached: Promise<unknown> | undefined;

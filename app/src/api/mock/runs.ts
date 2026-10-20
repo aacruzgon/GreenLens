@@ -23,7 +23,7 @@ import {
 } from "./fixtures";
 import { scenario, type NextScan } from "./scenario";
 import type { MockStore, RunCtx, Script, Step } from "./store";
-import type { S } from "./util";
+import { nowTs, type S } from "./util";
 
 export const ALL_STAGES: S["Stage"][] = [
   "plant_check", "segmentation", "species", "disease", "image_embedding", "measurement", "context",
@@ -48,6 +48,11 @@ function stage(name: S["Stage"], ms: number, mid: Step[] = [], skipped?: string)
       ...(skipped ? { skipped: { reason: skipped } } : {}),
     })),
   ];
+}
+
+/** Steps of the `measurement` stage run only when a photo has depth (contracts 4). */
+function depthStage(name: S["Stage"], ms: number, mid: Step[] = []): Step[] {
+  return stage(name, ms, mid).map((s) => ({ ...s, needsDepth: true }));
 }
 
 function status(from: S["ScanStatus"], to: S["ScanStatus"], delay = 100): Step {
@@ -182,7 +187,7 @@ function liveBlight(): Script {
         })),
     ]),
     ...stage("image_embedding", 400),
-    ...stage("measurement", 900, [
+    ...depthStage("measurement", 900, [
       finding(250, (ctx) => measureObs({ ...spec(ctx), quantity: "plant_height_cm", value: 56, min: 54, max: 58, n: 3, confidence: 0.86, imageId: images(ctx).whole })),
       finding(100, (ctx) => measureObs({ ...spec(ctx), quantity: "canopy_width_cm", value: 44, min: 42, max: 46, n: 3, confidence: 0.82, imageId: images(ctx).whole })),
       finding(150, (ctx) => measureObs({ ...spec(ctx), quantity: "lesion_diameter_mm", value: 9, min: 8, max: 12, n: 3, distance: 0.4, imageId: images(ctx).leaf })),
@@ -235,7 +240,7 @@ function liveBlight(): Script {
         run: ctx.run,
         status: "open",
         asked_at: ctx.ts(),
-        continue_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+        continue_at: nowTs(10 * 60_000),
         candidates: [PROBLEMS.earlyBlight.id, PROBLEMS.septoria.id],
         text: "Do the spots on the lower leaves have target-like rings, dark circles inside circles?",
         options: [
@@ -344,7 +349,7 @@ function healthy(): Script {
           })),
       ]),
       ...stage("image_embedding", 400),
-      ...stage("measurement", 800, [
+      ...depthStage("measurement", 800, [
         finding(250, (ctx) => measureObs({ ...spec(ctx), quantity: "plant_height_cm", value: lastValue(ctx, "plant_height_cm", 30) + 2, n: 3, confidence: 0.86, imageId: images(ctx).whole })),
         finding(100, (ctx) => measureObs({ ...spec(ctx), quantity: "canopy_width_cm", value: lastValue(ctx, "canopy_width_cm", 30) + 1, n: 3, confidence: 0.82, imageId: images(ctx).whole })),
       ]),
@@ -463,9 +468,14 @@ export function takeOutcome(plantId: string): Exclude<NextScan, "auto"> {
 
 // ---- the runner
 
+function hasDepth(store: MockStore, scanId: string): boolean {
+  return (store.scan(scanId)?.scan.images ?? []).some((i) => i.depth);
+}
+
 async function play(store: MockStore, scanId: string, steps: Step[], onDone: () => void): Promise<void> {
   const gen = store.generation;
   for (const step of steps) {
+    if (step.needsDepth && !hasDepth(store, scanId)) continue;
     await store.sleep(step.delay * scenario.get().delayScale);
     if (store.generation !== gen || !store.scan(scanId)) return;
     store.emit(scanId, step.body(store.runCtx(scanId)));
@@ -479,11 +489,14 @@ export function startRun(store: MockStore, scanId: string, script: Script): void
   const st = store.scan(scanId);
   if (!st) return;
   st.scan.run += 1;
-  st.scan.submitted_at = new Date().toISOString();
+  st.scan.submitted_at = nowTs();
+  const from = st.scan.status === "failed" ? "failed" : "pending";
+  delete st.scan.failure;
   st.running = true;
   store.scripts.set(scanId, script);
-  store.emit(scanId, { type: "run_started", reason: "submit", rerun_stages: ALL_STAGES });
-  store.emit(scanId, { type: "status_changed", from: "pending", to: "queued" });
+  const stages = hasDepth(store, scanId) ? ALL_STAGES : ALL_STAGES.filter((x) => x !== "measurement");
+  store.emit(scanId, { type: "run_started", reason: "submit", rerun_stages: stages });
+  store.emit(scanId, { type: "status_changed", from, to: "queued" });
   void play(store, scanId, script.start(store.runCtx(scanId)), () => {
     st.running = false;
     store.notify(scanId);

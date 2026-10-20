@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { View } from "react-native";
 
 import { useScenario, type NextScan, type UploadFault } from "@/api/mock";
@@ -23,6 +24,7 @@ const ROLES: Role[] = ["owner", "editor", "reviewer", "viewer"];
 
 export function DemoControls() {
   const s = useScenario();
+  const queryClient = useQueryClient();
   return (
     <Section title="Demo controls">
       <View style={{ gap: space[4] }}>
@@ -35,6 +37,18 @@ export function DemoControls() {
           {UPLOAD_FAULTS.map((o) => (
             <Chip key={o.label} label={o.label} selected={s.uploadFault === o.value} onPress={() => s.setUploadFault(o.value)} />
           ))}
+        </ChipRow>
+        <ChipRow label="Account">
+          <Chip label="The demo garden" selected={!s.emptyAccount} onPress={() => s.setEmptyAccount(false)} />
+          <Chip
+            label="A new account"
+            selected={s.emptyAccount}
+            onPress={() => {
+              // No name and no garden, so the session gate opens onboarding.
+              s.setEmptyAccount(true);
+              void queryClient.invalidateQueries();
+            }}
+          />
         </ChipRow>
         <ChipRow label="Your role">
           {ROLES.map((r) => (
