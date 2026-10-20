@@ -11,8 +11,8 @@
 # request's head in this job, and never drop the branches filter. The text is untrusted: it reaches
 # the script only through the event file, never through an expression in a shell command.
 #
-# It runs where ci.yml does: the self-hosted runners named in RUNNER_LABELS, or GitHub's ubuntu-26.04
-# without the variable. On the rig, earlier pull-request jobs ran as the same user, so the webhook
+# It runs where ci.yml's light jobs do: the runners named in LIGHT_RUNNER_LABELS, else
+# RUNNER_LABELS, else GitHub's ubuntu-26.04 (docs/infra/README.md section 2). On the rig, earlier pull-request jobs ran as the same user, so the webhook
 # URLs reach a runner that pull-request code could have tampered with (docs/infra/discord-mentions.md
 # section 4). A leaked webhook can only post to its channel.
 name: Discord mentions
@@ -50,7 +50,7 @@ jobs:
                    format(' {0} ', github.event.issue.user.login)) ||
           contains(format(' {0} {1} {2} {3} ', vars.GH_USER_SARAH, vars.GH_USER_SAM, vars.GH_USER_ALAN, vars.GH_USER_MARK),
                    format(' @{0} ', github.event.issue.user.login))))))
-    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
+    runs-on: ${{ fromJSON(vars.LIGHT_RUNNER_LABELS || vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
