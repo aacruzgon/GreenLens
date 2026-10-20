@@ -1,12 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { client, ok } from "../client";
-import type { components } from "../generated/schema";
+import type { Me, UpdateMeRequest } from "@/domain/types";
 import { qk } from "../queryKeys";
-
-type S = components["schemas"];
-export type Me = S["Me"];
-export type UpdateMeRequest = S["UpdateMeRequest"];
 
 export const me = {
   get: async (): Promise<Me> => ok(await client().GET("/me")),

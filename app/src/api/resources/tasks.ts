@@ -1,14 +1,11 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { client, ok } from "../client";
-import type { components } from "../generated/schema";
+import type { Page, Task, UpdateTaskRequest } from "@/domain/types";
 import { nextCursor } from "../pages";
 import { qk, type TaskFilter } from "../queryKeys";
 
-type S = components["schemas"];
-export type Task = S["Task"];
-export type TaskPage = S["Page_Task"];
-export type UpdateTaskRequest = S["UpdateTaskRequest"];
+type TaskPage = Page<Task>;
 
 export const tasks = {
   list: async (gardenId: string, filter: TaskFilter = {}, cursor?: string): Promise<TaskPage> =>

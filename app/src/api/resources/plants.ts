@@ -1,16 +1,13 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 import { client, ok } from "../client";
-import type { components } from "../generated/schema";
+import type { Page, Plant, TimelineEntry } from "@/domain/types";
 import { fetchAllPages, MAX_PAGE_SIZE, nextCursor } from "../pages";
 import { STALE } from "../queryClient";
 import { qk } from "../queryKeys";
 
-type S = components["schemas"];
-export type Plant = S["Plant"];
-export type PlantPage = S["Page_Plant"];
-export type TimelineEntry = S["TimelineEntry"];
-export type TimelinePage = S["Page_TimelineEntry"];
+type PlantPage = Page<Plant>;
+type TimelinePage = Page<TimelineEntry>;
 
 export const plants = {
   list: async (gardenId: string, cursor?: string, limit?: number): Promise<PlantPage> =>

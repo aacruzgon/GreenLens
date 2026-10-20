@@ -1,4 +1,3 @@
-import type { DeviceLocation } from "@/platform";
 import type { GardenLocationInput } from "@/domain/types";
 
 /** What the user may choose with consent: exact, or about 1 km. */
@@ -16,6 +15,6 @@ export function locationFromText(text: string): GardenLocationInput | null {
   return { city: value };
 }
 
-export function locationFromDevice(position: DeviceLocation, precision: ConsentPrecision): GardenLocationInput {
+export function locationFromDevice(position: { lat: number; lon: number }, precision: ConsentPrecision): GardenLocationInput {
   return { lat: position.lat, lon: position.lon, precision };
 }

@@ -1,18 +1,11 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 
 import { client, ok } from "../client";
-import type { components } from "../generated/schema";
+import type { AnswerRequest, CreateScanRequest, ImageKind, Scan, ScanDetail, UploadImageResponse } from "@/domain/types";
 import { useIdempotentMutation, type IdempotencyKey } from "../idempotency";
 import { STALE } from "../queryClient";
 import { qk } from "../queryKeys";
 
-type S = components["schemas"];
-export type Scan = S["Scan"];
-export type ScanDetail = S["ScanDetail"];
-export type CreateScanRequest = S["CreateScanRequest"];
-export type AnswerRequest = S["AnswerRequest"];
-export type ImageKind = S["ImageKind"];
-export type UploadImageResponse = S["UploadImageResponse"];
 
 /** A file part: a Blob on the web, React Native's `{ uri, name, type }` on phones. */
 export type UploadFile = Blob | { uri: string; name: string; type: string };

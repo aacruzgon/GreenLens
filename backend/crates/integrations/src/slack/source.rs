@@ -367,6 +367,7 @@ impl SlackSource {
             kept: kept_ids,
             cursor: cursor.into_sync_cursor(),
             more,
+            listed: None,
             probes: probed.calls,
         })
     }

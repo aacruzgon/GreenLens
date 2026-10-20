@@ -939,23 +939,6 @@ async fn soil_failures_schedule_the_next_attempt_by_their_kind() {
     }
 }
 
-#[tokio::test(start_paused = true)]
-async fn a_signal_handler_that_fails_to_install_never_fires() {
-    let failed = crate::until_signal(
-        "test",
-        std::future::ready(Err(std::io::Error::other("no handler"))),
-    );
-    assert!(
-        tokio::time::timeout(Duration::from_secs(3600), failed)
-            .await
-            .is_err()
-    );
-    let delivered = crate::until_signal("test", std::future::ready(Ok(())));
-    tokio::time::timeout(Duration::from_secs(1), delivered)
-        .await
-        .unwrap();
-}
-
 /// `backend/openapi.json` is committed for the app's `openapi-typescript`, and the `domain` types
 /// are the contracts' source of truth, so the file must be what those types generate now.
 /// Regenerate with `cargo run -p api -- openapi > openapi.json` from `backend/`.

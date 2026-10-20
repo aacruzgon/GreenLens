@@ -2,7 +2,7 @@
 // Resettable: `mockStore.reset()` re-seeds the demo story with dates relative to now.
 
 import { buildSeed, type StoredPlant, type StoredScan, type Seed } from "./fixtures";
-import { DateKit, type S } from "./util";
+import { DateKit, nowTs, type S } from "./util";
 
 export type { StoredScan, StoredPlant };
 
@@ -22,6 +22,8 @@ export type RunCtx = {
 export interface Step {
   delay: number;
   body: (ctx: RunCtx) => S["ScanEventBody"];
+  /** Only played when one of the scan's photos has depth. */
+  needsDepth?: boolean;
 }
 
 /** A scripted scan run. `afterAnswer` exists when the run stops at an indicator question. */
@@ -49,6 +51,8 @@ export class MockStore {
   /** Bumped by every reset; running scripts and open streams stop when it changes. */
   generation = 0;
   dates = new DateKit();
+  /** True once PATCH /me has set a name (the empty-account demo). */
+  nameSet = false;
 
   private counter = 1000;
   private timers = new Set<ReturnType<typeof setTimeout>>();
@@ -80,6 +84,19 @@ export class MockStore {
     this.pushTokens = new Set();
     this.scripts = new Map();
     this.counter = 1000;
+    this.nameSet = false;
+  }
+
+  /** The empty-account demo: drops the seeded garden and everything in it. */
+  clearAccount(): void {
+    this.gardens.clear();
+    this.maps.clear();
+    this.plants.clear();
+    this.scans.clear();
+    this.tasks = [];
+    this.memories = [];
+    this.scripts.clear();
+    if (!this.nameSet) this.user.display_name = "";
   }
 
   nextId(prefix: string): string {
@@ -243,7 +260,7 @@ export class MockStore {
       seq: st.scan.last_event_seq + 1,
       run: st.scan.run,
       scan_id: scanId,
-      ts: new Date().toISOString(),
+      ts: nowTs(),
     } as S["ScanEvent"];
     st.scan.last_event_seq = event.seq;
     st.events.push(event);
@@ -321,7 +338,7 @@ export class MockStore {
       run: st.scan.run,
       dates: new DateKit(),
       id: (prefix) => this.nextId(prefix),
-      ts: () => new Date().toISOString(),
+      ts: () => nowTs(),
     };
   }
 }

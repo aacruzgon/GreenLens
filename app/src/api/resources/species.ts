@@ -1,14 +1,12 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 import { client, ok } from "../client";
-import type { components } from "../generated/schema";
+import type { Page, SpeciesSummary } from "@/domain/types";
 import { nextCursor } from "../pages";
 import { STALE } from "../queryClient";
 import { qk } from "../queryKeys";
 
-type S = components["schemas"];
-export type SpeciesSummary = S["SpeciesSummary"];
-export type SpeciesPage = S["Page_SpeciesSummary"];
+type SpeciesPage = Page<SpeciesSummary>;
 
 export const species = {
   list: async (q?: string, cursor?: string): Promise<SpeciesPage> =>

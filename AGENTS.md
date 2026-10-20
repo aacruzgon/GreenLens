@@ -10,7 +10,7 @@ A user photographs a plant. Computer vision on a home GPU rig assesses the plant
 
 **Stack:** Expo SDK 57 / React Native app with Clerk authentication (and a Swift LiDAR module), Rust backend (axum, tokio) in a Cargo workspace, SurrealDB 3.3.4, RustFS 1.0.1 for images, pull-based GPU workers (`ort`/CUDA and a vLLM or llama.cpp VLM sidecar), Python for model training and knowledge ingestion.
 
-**Current state:** the repository holds the design documents and the Rust backend workspace in `backend/` ([docs/backend §6](docs/backend/README.md#6-workspace-layout)), from which the crate documents in `docs/backend` are generated, the training, export and evaluation code in `ml/` ([ml/README.md](ml/README.md)), and in `infra/` the rig's VLM server ([infra/README.md](infra/README.md)) and the dev services for a laptop (`infra/dev.compose.yml`, [docs/infra §4](docs/infra/README.md#infradevcomposeyml)). CI runs from `.github/workflows/ci.yml` on two self-hosted runners on the rig ([docs/infra §2](docs/infra/README.md#runners-and-budget)). The app doesn't exist yet. When it lands, follow the layout below and update this file.
+**Current state:** the repository holds the design documents and the Rust backend workspace in `backend/` ([docs/backend §6](docs/backend/README.md#6-workspace-layout)), from which the crate documents in `docs/backend` are generated, the training, export and evaluation code in `ml/` ([ml/README.md](ml/README.md)), and in `infra/` the rig's VLM server ([infra/README.md](infra/README.md)) and the dev services for a laptop (`infra/dev.compose.yml`, [docs/infra §4](docs/infra/README.md#infradevcomposeyml)). CI runs from `.github/workflows/ci.yml` on two self-hosted runners on the rig ([docs/infra §2](docs/infra/README.md#runners-and-budget)). The Expo app is in `app/` ([app/AGENTS.md](app/AGENTS.md)): slice F0 of the [app roadmap](docs/frontend/roadmap.md), with its layers, the api layer, mock mode, Conservatory's design layer and Clerk sign-in. The LiDAR module (`app/modules/lidar`) doesn't exist yet.
 
 ## Where to find things
 
@@ -92,7 +92,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 ## Sources of truth
 
 - **Contracts:** the Rust types in the `domain` crate (`backend/crates/domain`) are the source of truth, and `contracts.md` explains them. Where the two disagree, the types win and the document is corrected. A contract change updates the Rust type, its exact-JSON test and `contracts.md` in the same pull request.
-- **Generated from the types:** `utoipa` generates the OpenAPI spec, committed as `backend/openapi.json` (an `api` test fails when it falls behind the types; regenerate it with `cargo run -p api -- openapi > openapi.json` in `backend/`). `openapi-typescript` generates the app's types from that file once `app/` exists. `schemars` generates JSON Schema for the fixed shapes.
+- **Generated from the types:** `utoipa` generates the OpenAPI spec, committed as `backend/openapi.json` (an `api` test fails when it falls behind the types; regenerate it with `cargo run -p api -- openapi > openapi.json` in `backend/`). `openapi-typescript` generates the app's types from that file (`npm run gen:api` in `app/`; CI fails when they differ). `schemars` generates JSON Schema for the fixed shapes.
 - **Stored shapes** are defined in `backend/migrations/schema.surql`. Change it in the same pull request as any contract change that affects what is stored.
 - **The architecture document follows the contracts.** When `contracts.md` changes, bring `docs/architecture/README.md` in line, bump both status lines, and add a row to contracts §11 listing the affected architecture sections.
 - **Model files:** [`ml/models/FORMATS.md`](ml/models/FORMATS.md) defines the head and label-matrix files and the `label_set_version` recipe. `ml/` writes them and `vision` and `store` read them, so a format change updates both sides and `FORMATS.md` in the same pull request.
@@ -102,7 +102,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 
 ## Repository layout
 
-From architecture §13. `backend/` exists, with `tools/` beside its crates for the `docs/backend` generator and `api`'s test-store generator; `ml/` holds the training and export code; `infra/` holds the rig's VLM server so far; `app/` doesn't exist yet.
+From architecture §13. `backend/` exists, with `tools/` beside its crates for the `docs/backend` generator and `api`'s test-store generator; `ml/` holds the training and export code; `infra/` holds the rig's VLM server so far; `app/` holds the Expo app, without its LiDAR module yet.
 
 ```
 PDM/
