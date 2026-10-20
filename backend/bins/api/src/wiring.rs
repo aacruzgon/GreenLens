@@ -35,11 +35,11 @@ use integrations::{
     clerk::{ClerkAdmin, ClerkAdminConfig, ClerkVerifier, ClerkVerifierConfig},
     expo_push::{ExpoPush, ExpoPushConfig},
     geocode::{CompositeGeocoder, GeocoderConfig, TimeZoneFinder},
-    google_drive::{DriveClient, DriveConfig},
+    google_drive::DriveClient,
     http::{HttpConfig, client},
     jev::{JevClassifier, JevConfig},
     open_meteo::{OpenMeteo, OpenMeteoConfig},
-    slack::{SlackClient, SlackConfig},
+    slack::SlackClient,
     soilgrids::{SoilGrids, SoilGridsConfig},
     svix::SvixVerifier,
 };
@@ -52,7 +52,6 @@ use crate::{
     events::{hub::EventHub, writer::ScanWriters},
     limits::RateLimits,
     push::Pusher,
-    revoke::{TokenRevoker, VendorRevoker},
     seams::{
         ChatTurns, FollowUp, Handled, ImageProcessing, PhotoInfo, PipelineApi, PipelineError,
         PreviewError, ProcessedImage, ProcessedUpload, RevisedPlan, SubmitOutcome, TurnError,
@@ -286,8 +285,6 @@ struct Outbound {
     classifier: Arc<dyn TextClassifier>,
     beliefs: Arc<dyn BeliefStore>,
     connect: Arc<dyn ConnectVendors>,
-    /// The farm connectors' token revoke, at the vendors' constant hosts.
-    revoker: Arc<dyn TokenRevoker>,
 }
 
 #[expect(
@@ -351,10 +348,6 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         Some(c) => Arc::new(AgentMemory::new(http.clone(), c)),
         None => Arc::new(NoBeliefs),
     };
-    let revoker: Arc<dyn TokenRevoker> = Arc::new(VendorRevoker::new(
-        SlackClient::new(http.clone(), SlackConfig::default()),
-        DriveClient::new(http.clone(), DriveConfig::default()),
-    ));
     Ok(Outbound {
         auth: Arc::new(ClerkVerifier::new(http.clone(), verifier)),
         webhooks: Arc::new(
@@ -398,7 +391,6 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         classifier,
         beliefs,
         connect,
-        revoker,
     })
 }
 
@@ -611,8 +603,9 @@ pub async fn build(
         tasks.clone(),
         shutdown.clone(),
     );
+    // Connectors on: the deletion runner revokes through the routes' own vendor seam.
     if let Some(key) = &config.connectors.key {
-        deletions = deletions.with_revoke(key.clone(), out.revoker);
+        deletions = deletions.with_revoke(key.clone(), Arc::clone(&out.connect));
     }
     Ok(Arc::new(AppState {
         limits: RateLimits::new(config.rate_per_minute),

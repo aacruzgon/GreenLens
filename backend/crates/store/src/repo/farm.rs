@@ -205,9 +205,11 @@ COMMIT;";
     /// The connectors a member created in a garden.
     pub const CREATED_BY: &str =
         "SELECT VALUE id FROM connector WHERE garden = $garden AND created_by = $user ORDER BY id;";
-    /// Other Slack connectors holding a token of this workspace. No index: the table holds at
-    /// most two connectors a garden.
-    pub const SLACK_TEAM_CONNECTORS: &str = "RETURN count(SELECT VALUE id FROM connector WHERE kind = 'slack' AND status IN ['active', 'reauth_needed'] AND account.team_id = $team AND id != $except);";
+    /// Other live `vendor` connectors holding a token of this Slack workspace. No index: the
+    /// table holds at most two connectors a garden.
+    pub const SLACK_ACCOUNT_CONNECTORS: &str = "RETURN count(SELECT VALUE id FROM connector WHERE kind = 'slack' AND endpoint = 'vendor' AND status IN ['active', 'reauth_needed'] AND account.team_id = $account AND id != $except);";
+    /// Other live `vendor` connectors holding a grant of this Google account.
+    pub const GOOGLE_ACCOUNT_CONNECTORS: &str = "RETURN count(SELECT VALUE id FROM connector WHERE kind = 'google_drive' AND endpoint = 'vendor' AND status IN ['active', 'reauth_needed'] AND account.email = $account AND id != $except);";
     /// A garden's connectors marked `deleting` (index `connector_garden`), for a cascade or a
     /// demotion to revoke and delete.
     pub const DELETING_OF_GARDEN: &str = concat!(
@@ -810,14 +812,19 @@ impl FarmRecordStore for SurrealStore {
             .map_err(|e| e.into_store(WHAT))
     }
 
-    async fn slack_team_connectors(
+    async fn shared_account_connectors(
         &self,
-        team_id: String,
+        kind: ConnectorKind,
+        account: String,
         except: ConnectorId,
     ) -> Result<u32, StoreError> {
-        const WHAT: &str = "slack team connectors";
-        let mut r = run_tx(&self.db, sql::SLACK_TEAM_CONNECTORS, |q| {
-            q.bind(("team", team_id.clone()))
+        const WHAT: &str = "shared account connectors";
+        let statement = match kind {
+            ConnectorKind::Slack => sql::SLACK_ACCOUNT_CONNECTORS,
+            ConnectorKind::GoogleDrive => sql::GOOGLE_ACCOUNT_CONNECTORS,
+        };
+        let mut r = run_tx(&self.db, statement, |q| {
+            q.bind(("account", account.clone()))
                 .bind(("except", rid(&except)))
         })
         .await

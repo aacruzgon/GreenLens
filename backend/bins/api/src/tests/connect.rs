@@ -20,8 +20,8 @@ use domain::{
 
 use super::*;
 use crate::{
-    connect::{Exchanged, MockConnectVendors, OAuthState, StoredTokens, VendorError},
-    sealing::{ConnectorKey, SealPurpose},
+    connect::{Exchanged, MockConnectVendors, OAuthState, VendorError},
+    sealing::{ConnectorKey, SealPurpose, StoredTokens},
 };
 
 const CONNECTOR: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5C";
@@ -1053,11 +1053,11 @@ async fn a_disconnect_revokes_after_the_store_marks_it_then_deletes_the_records(
         });
     store
         .farm_record_store
-        .expect_slack_team_connectors()
-        .with(eq("T0123".to_owned()), eq(id()))
+        .expect_shared_account_connectors()
+        .with(eq(ConnectorKind::Slack), eq("T0123".to_owned()), eq(id()))
         .times(1)
         .in_sequence(&mut seq)
-        .returning(|_, _| Ok(0));
+        .returning(|_, _, _| Ok(0));
     vendors
         .expect_revoke()
         .withf(|kind, tokens| {
@@ -1096,8 +1096,8 @@ async fn a_workspace_token_another_connector_holds_is_not_revoked() {
         .returning(|_, _| Ok(active_row()));
     store
         .farm_record_store
-        .expect_slack_team_connectors()
-        .returning(|_, _| Ok(1));
+        .expect_shared_account_connectors()
+        .returning(|_, _, _| Ok(1));
     vendors.expect_revoke().never();
     store
         .farm_record_store
@@ -1125,8 +1125,8 @@ async fn a_failed_revoke_still_deletes_the_records() {
         .returning(|_, _| Ok(active_row()));
     store
         .farm_record_store
-        .expect_slack_team_connectors()
-        .returning(|_, _| Ok(0));
+        .expect_shared_account_connectors()
+        .returning(|_, _, _| Ok(0));
     vendors.expect_revoke().times(1).returning(|kind, _| {
         Err(VendorError::Unavailable {
             vendor: kind,

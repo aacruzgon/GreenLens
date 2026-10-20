@@ -183,17 +183,25 @@ async fn demoting_the_creating_owner_marks_only_their_connectors() {
     let by_bob = owner(&store, bob, f.garden).await;
 
     // Making an owner an owner again marks nothing.
-    store
+    let same = store
         .change_role(by_bob, f.user, Role::Owner)
         .await
         .unwrap();
+    assert!(!same.demoted_owner);
     assert_eq!(store.deleting_connectors(None).await.unwrap(), []);
 
     let demoted = store
         .change_role(by_bob, f.user, Role::Editor)
         .await
         .unwrap();
-    assert_eq!(demoted.role, Role::Editor);
+    assert_eq!(demoted.member.role, Role::Editor);
+    assert!(demoted.demoted_owner);
+    // Changing a non-owner's role demotes no owner.
+    let again = store
+        .change_role(by_bob, f.user, Role::Viewer)
+        .await
+        .unwrap();
+    assert!(!again.demoted_owner);
     assert_eq!(status(&store, mine).await, Some(ConnectorStatus::Deleting));
     assert_eq!(
         status(&store, bobs).await,

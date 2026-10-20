@@ -1,6 +1,7 @@
 //! Connecting a farm connector ([connectors 5], roadmap E3.3 and E3.4): the signed OAuth
-//! state, the vendors' consent URLs, the tokens as they are sealed, and the [`ConnectVendors`]
-//! seam the connector routes call for everything that talks to Slack or Google.
+//! state, the vendors' consent URLs, and the [`ConnectVendors`] seam the connector routes and
+//! the deletion runner call for everything that talks to Slack or Google. The tokens as they
+//! are sealed are `sealing::StoredTokens`.
 //!
 //! - **Fixed hosts (decision 8).** The consent URLs are constants here, and `wiring.rs` builds
 //!   the vendor clients with the vendors' own hosts only. No route takes a URL, and no route
@@ -8,32 +9,25 @@
 //!   `409 invalid_state` (decision 11), so a real token never goes to a simulator and a
 //!   simulator's token never goes to a vendor.
 //! - **The seam.** The routes call [`ConnectVendors`], held in `AppState` like the other seams,
-//!   so their tests use a mock and never real HTTP. The real exchanges are tested in the
-//!   clients (`integrations::slack`, `integrations::google_drive`; decision 2).
+//!   and the deletion runner revokes through the same instance, so their tests use a mock and
+//!   never real HTTP. The real exchanges are tested in the clients (`integrations::slack`,
+//!   `integrations::google_drive`; decision 2).
 //!
 //! [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
 
 mod oauth;
 
-use std::fmt;
-
 use async_trait::async_trait;
-use secrecy::{ExposeSecret, SecretString, zeroize::Zeroize};
-use serde::{Deserialize, Serialize};
+use secrecy::SecretString;
 
 use domain::{
-    connectors::{ConnectorAccount, ConnectorEndpoint, ConnectorKind, ConnectorSource},
+    connectors::{ConnectorAccount, ConnectorKind, ConnectorSource},
     id::{ConnectorId, DeviceHash, DeviceVerifier},
-    ports::{ConnectorRow, Sealed},
-    wire::Timestamp,
 };
 
 pub use oauth::{OAuthState, StateError};
 
-use crate::{
-    sealing::{ConnectorKey, SealPurpose, UnsealError},
-    state::AppState,
-};
+use crate::sealing::StoredTokens;
 
 /// Slack's consent page ([connectors 5]). A constant: no configuration can move it.
 ///
@@ -135,127 +129,6 @@ pub fn device_matches(verifier: &DeviceVerifier, hash: &DeviceHash) -> bool {
         .is_ok()
 }
 
-/// A connector's vendor tokens, as they are sealed in `connector.secret` with
-/// [`SealPurpose::Token`]. Two forms, which the deletion's revoke (E3.6) and the sync (E4)
-/// read too:
-///
-/// - **A plain string**, the token's own bytes: Slack's `xoxb-…` bot token, which has neither a
-///   refresh token nor an expiry, and a seeded connector's fixed token (roadmap E4.6).
-/// - **A JSON object** `{"access_token", "refresh_token"?, "expires_at"?}`: Google's grant.
-///   `expires_at` is RFC 3339. A revoke prefers `refresh_token`, which ends the whole grant.
-///
-/// [`seal`](Self::seal) writes the plain string exactly when there is no refresh token and no
-/// expiry; [`unseal`](Self::unseal) reads a value that starts with `{` as JSON, anything else
-/// as a plain token.
-pub struct StoredTokens {
-    /// Slack's `xoxb-…` bot token, or Google's access token.
-    pub access_token: SecretString,
-    /// Google's refresh token.
-    pub refresh_token: Option<SecretString>,
-    /// When Google's access token expires.
-    pub expires_at: Option<Timestamp>,
-}
-
-impl fmt::Debug for StoredTokens {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("StoredTokens")
-            .field("refresh_token", &self.refresh_token.is_some())
-            .field("expires_at", &self.expires_at)
-            .finish_non_exhaustive()
-    }
-}
-
-/// The JSON inside the seal. No `Debug`: it holds the tokens in the clear.
-#[derive(Serialize, Deserialize)]
-struct TokensJson {
-    access_token: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    refresh_token: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    expires_at: Option<Timestamp>,
-}
-
-/// Why sealed tokens couldn't be read.
-#[derive(Debug, thiserror::Error)]
-pub enum TokensError {
-    /// The seal didn't open under this key for this connector.
-    #[error("the connector's tokens don't open")]
-    Unseal(#[source] UnsealError),
-    /// It opened, but isn't what [`StoredTokens::seal`] writes.
-    #[error("the connector's tokens are unreadable")]
-    Format,
-}
-
-impl StoredTokens {
-    /// A bare access token, with no refresh token or expiry: Slack's bot token.
-    pub fn bearer(token: SecretString) -> Self {
-        Self {
-            access_token: token,
-            refresh_token: None,
-            expires_at: None,
-        }
-    }
-
-    /// Seals the tokens for `connector`: a bare bearer token as its plain string, a grant
-    /// with a refresh token or an expiry as JSON.
-    pub fn seal(&self, key: &ConnectorKey, connector: ConnectorId) -> Sealed {
-        if self.refresh_token.is_none() && self.expires_at.is_none() {
-            return key.seal(
-                SealPurpose::Token,
-                connector,
-                self.access_token.expose_secret().as_bytes(),
-            );
-        }
-        let json = TokensJson {
-            access_token: self.access_token.expose_secret().to_owned(),
-            refresh_token: self
-                .refresh_token
-                .as_ref()
-                .map(|t| t.expose_secret().to_owned()),
-            expires_at: self.expires_at,
-        };
-        let mut plain =
-            serde_json::to_vec(&json).expect("strings and a timestamp always serialise");
-        let TokensJson {
-            mut access_token,
-            refresh_token,
-            ..
-        } = json;
-        access_token.zeroize();
-        if let Some(mut t) = refresh_token {
-            t.zeroize();
-        }
-        let sealed = key.seal(SealPurpose::Token, connector, &plain);
-        plain.zeroize();
-        sealed
-    }
-
-    /// Opens the tokens sealed for `connector`.
-    pub fn unseal(
-        key: &ConnectorKey,
-        connector: ConnectorId,
-        sealed: &Sealed,
-    ) -> Result<Self, TokensError> {
-        let plain = key
-            .unseal(SealPurpose::Token, connector, sealed)
-            .map_err(TokensError::Unseal)?;
-        let bytes = plain.expose_secret();
-        if bytes.first() != Some(&b'{') {
-            let token = std::str::from_utf8(bytes).map_err(|_| TokensError::Format)?;
-            if token.is_empty() {
-                return Err(TokensError::Format);
-            }
-            return Ok(Self::bearer(SecretString::from(token)));
-        }
-        let json: TokensJson = serde_json::from_slice(bytes).map_err(|_| TokensError::Format)?;
-        Ok(Self {
-            access_token: SecretString::from(json.access_token),
-            refresh_token: json.refresh_token.map(SecretString::from),
-            expires_at: json.expires_at,
-        })
-    }
-}
-
 /// What a code exchange gives: the tokens to seal and the account to show.
 #[derive(Debug)]
 pub struct Exchanged {
@@ -323,100 +196,27 @@ pub trait ConnectVendors: Send + Sync {
         redirect_uri: &str,
     ) -> Result<Exchanged, VendorError>;
 
-    /// The channels the bot is a member of, or the folders the Google account can open.
+    /// The channels the bot is a member of, or the folders the Google account can open,
+    /// with Google's access token refreshed for the call when it is about to expire.
     async fn available_sources(
         &self,
         kind: ConnectorKind,
         tokens: &StoredTokens,
     ) -> Result<Vec<ConnectorSource>, VendorError>;
 
-    /// Revokes the tokens (`auth.revoke`; Google's `revoke` with the refresh token, which ends
-    /// the whole grant).
+    /// Revokes the tokens: Slack's `auth.revoke`; Google's `revoke` with the refresh token,
+    /// which ends the whole grant of that account to this OAuth client, or the access token
+    /// when there is none. A token the vendor already forgot counts as revoked. Never call it
+    /// directly for a stored connector: `DeletionRunner::finish_connector` decides whether a
+    /// shared account's token may go.
     async fn revoke(&self, kind: ConnectorKind, tokens: &StoredTokens) -> Result<(), VendorError>;
-}
-
-/// Disconnects a connector the store has already marked `deleting`: revokes its tokens with the
-/// vendor, then deletes its records and itself, 500 records a batch. A failed revoke is logged
-/// and the records are deleted anyway ([connectors 8]): the token is gone from our side either
-/// way. Runs on the task tracker; a store failure stops it, logged, and leaves the connector
-/// `deleting`, hidden from the list and the sync.
-///
-/// The owner's `DELETE /connectors/{id}` calls only this after the store marks the connector,
-/// so the deletion cascades' revoke-then-delete step (E3.6) can take its place in one line.
-///
-/// [connectors 8]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#8-privacy-and-security
-pub async fn disconnect(state: &AppState, row: ConnectorRow) {
-    let id = row.connector.id;
-    revoke_tokens(state, &row).await;
-    loop {
-        match state.ports.store.delete_connector_batch(id).await {
-            Ok(0) => break,
-            Ok(_) => {}
-            Err(error) => {
-                tracing::warn!(connector = %id, error = %error,
-                    "connector deletion stopped; it stays `deleting`");
-                return;
-            }
-        }
-    }
-    tracing::info!(connector = %id, "connector disconnected");
-}
-
-/// The revoke step of [`disconnect`]: nothing for an `era` connector (its token is the
-/// simulator's, never a vendor's), for one with no tokens (still pending), or for a Slack
-/// workspace whose token another connector still holds.
-async fn revoke_tokens(state: &AppState, row: &ConnectorRow) {
-    let connector = &row.connector;
-    let (Some(sealed), Some(key)) = (&row.secret, state.connector_key()) else {
-        return;
-    };
-    if connector.endpoint == ConnectorEndpoint::Era {
-        return;
-    }
-    if let Some(ConnectorAccount::Slack { team_id, .. }) = &connector.account {
-        match state
-            .ports
-            .store
-            .slack_team_connectors(team_id.clone(), connector.id)
-            .await
-        {
-            Ok(0) => {}
-            Ok(_) => {
-                tracing::info!(connector = %connector.id,
-                    "another connector holds this workspace's token; not revoked");
-                return;
-            }
-            Err(error) => {
-                tracing::warn!(connector = %connector.id, error = %error,
-                    "couldn't check the workspace's other connectors; not revoked");
-                return;
-            }
-        }
-    }
-    let tokens = match StoredTokens::unseal(key, connector.id, sealed) {
-        Ok(tokens) => tokens,
-        Err(error) => {
-            tracing::warn!(connector = %connector.id, error = %error,
-                "tokens unreadable; not revoked");
-            return;
-        }
-    };
-    if let Err(error) = state.connect.revoke(connector.kind, &tokens).await {
-        tracing::warn!(connector = %connector.id, error = %error,
-            "revoke failed; the records are deleted anyway");
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const KEY_HEX: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
     const CONNECTOR: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5C";
-
-    fn key() -> ConnectorKey {
-        ConnectorKey::from_hex(KEY_HEX).unwrap()
-    }
 
     fn id() -> ConnectorId {
         CONNECTOR.parse().unwrap()
@@ -486,65 +286,5 @@ mod tests {
         assert!(device_matches(&verifier, &hash));
         let other: DeviceHash = "A".repeat(43).parse().unwrap();
         assert!(!device_matches(&verifier, &other));
-    }
-
-    #[test]
-    fn tokens_round_trip_through_the_seal() {
-        let tokens = StoredTokens {
-            access_token: SecretString::from("ya29.access"),
-            refresh_token: Some(SecretString::from("1//refresh")),
-            expires_at: Some("2026-10-19T10:00:00Z".parse().unwrap()),
-        };
-        let sealed = tokens.seal(&key(), id());
-        let back = StoredTokens::unseal(&key(), id(), &sealed).unwrap();
-        assert_eq!(back.access_token.expose_secret(), "ya29.access");
-        assert_eq!(
-            back.refresh_token.as_ref().map(ExposeSecret::expose_secret),
-            Some("1//refresh")
-        );
-        assert_eq!(back.expires_at, tokens.expires_at);
-        assert!(!format!("{back:?}").contains("ya29"));
-        let other: ConnectorId = "01JAX3K9T6R2B8V0QZ4M7D1E5D".parse().unwrap();
-        assert!(matches!(
-            StoredTokens::unseal(&key(), other, &sealed),
-            Err(TokensError::Unseal(_))
-        ));
-    }
-
-    #[test]
-    fn a_slack_token_is_sealed_as_its_plain_string() {
-        let sealed = StoredTokens::bearer(SecretString::from("xoxb-1234-bot")).seal(&key(), id());
-        let plain = key().unseal(SealPurpose::Token, id(), &sealed).unwrap();
-        assert_eq!(plain.expose_secret(), b"xoxb-1234-bot");
-    }
-
-    #[test]
-    fn a_google_grant_is_sealed_as_json() {
-        let tokens = StoredTokens {
-            access_token: SecretString::from("ya29.access"),
-            refresh_token: Some(SecretString::from("1//refresh")),
-            expires_at: Some("2026-10-19T10:00:00Z".parse().unwrap()),
-        };
-        let sealed = tokens.seal(&key(), id());
-        let plain = key().unseal(SealPurpose::Token, id(), &sealed).unwrap();
-        let json: serde_json::Value = serde_json::from_slice(plain.expose_secret()).unwrap();
-        assert_eq!(
-            json,
-            serde_json::json!({
-                "access_token": "ya29.access",
-                "refresh_token": "1//refresh",
-                "expires_at": "2026-10-19T10:00:00Z"
-            })
-        );
-    }
-
-    #[test]
-    fn a_bare_sealed_token_reads_as_a_bearer_token() {
-        let sealed = key().seal(SealPurpose::Token, id(), b"xoxb-era-demo");
-        let tokens = StoredTokens::unseal(&key(), id(), &sealed).unwrap();
-        assert_eq!(tokens.access_token.expose_secret(), "xoxb-era-demo");
-        assert!(tokens.refresh_token.is_none() && tokens.expires_at.is_none());
-        let pkce = key().seal(SealPurpose::Pkce, id(), b"xoxb-era-demo");
-        assert!(StoredTokens::unseal(&key(), id(), &pkce).is_err());
     }
 }

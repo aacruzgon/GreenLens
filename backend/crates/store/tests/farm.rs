@@ -1244,11 +1244,12 @@ async fn the_cleanup_leaves_old_drive_documents() {
     assert_eq!(left[0].0.vendor_id.to_string(), "1aBcD");
 }
 
-/// A Slack disconnect revokes the workspace's token only when no other connector holds it:
-/// active or `reauth_needed` Slack connectors of the same team count, in any garden; the one
-/// being disconnected, pending ones, those being deleted and Drive connectors don't.
+/// A deletion revokes an account's token only when no other connector holds it: live
+/// (`active` or `reauth_needed`) `vendor` connectors of the same Slack team or Google account
+/// count, in any garden; the one being deleted, pending ones, those being deleted, `era`
+/// connectors and the other kind don't.
 #[tokio::test]
-async fn other_holders_of_a_slack_teams_token_are_counted() {
+async fn other_holders_of_an_accounts_token_are_counted() {
     let store = support::store().await;
     let f = fixture(&store).await;
     let owner = owner_of(&store, &f).await;
@@ -1258,14 +1259,23 @@ async fn other_holders_of_a_slack_teams_token_are_counted() {
         .expect("the creator owns the second garden");
     let here = active_slack(&store, &f, f.garden).await;
     let there = active_slack(&store, &f, other).await;
-    let team = || "T0123".to_owned();
-    assert_eq!(store.slack_team_connectors(team(), here).await.unwrap(), 1);
+    let slack =
+        |except| store.shared_account_connectors(ConnectorKind::Slack, "T0123".to_owned(), except);
+    assert_eq!(slack(here).await.unwrap(), 1);
     assert_eq!(
         store
-            .slack_team_connectors("T9999".into(), here)
+            .shared_account_connectors(ConnectorKind::Slack, "T9999".into(), here)
             .await
             .unwrap(),
         0
+    );
+    assert_eq!(
+        store
+            .shared_account_connectors(ConnectorKind::GoogleDrive, "T0123".into(), here)
+            .await
+            .unwrap(),
+        0,
+        "a Slack team is never a Google account"
     );
     store
         .set_status(
@@ -1275,7 +1285,7 @@ async fn other_holders_of_a_slack_teams_token_are_counted() {
         )
         .await
         .unwrap();
-    assert_eq!(store.slack_team_connectors(team(), here).await.unwrap(), 1);
+    assert_eq!(slack(here).await.unwrap(), 1);
     store
         .create_connector(owner, new_connector(&f, ConnectorKind::Slack))
         .await
@@ -1284,8 +1294,42 @@ async fn other_holders_of_a_slack_teams_token_are_counted() {
         .start_connector_deletion(other_owner, there)
         .await
         .unwrap();
-    assert_eq!(store.slack_team_connectors(team(), here).await.unwrap(), 0);
-    assert_eq!(store.slack_team_connectors(team(), there).await.unwrap(), 1);
+    assert_eq!(slack(here).await.unwrap(), 0);
+    assert_eq!(slack(there).await.unwrap(), 1);
+
+    // Google: keyed on the account's email; an `era` connector of the same account doesn't
+    // count, since its token is the simulator's.
+    let google = |id: ConnectorId, endpoint| {
+        let mut c = new_connector(&f, ConnectorKind::GoogleDrive);
+        c.id = id;
+        c.status = ConnectorStatus::Active;
+        c.endpoint = endpoint;
+        c.oauth = None;
+        c.account = Some(ConnectorAccount::GoogleDrive {
+            email: "farm@example.org".into(),
+        });
+        c.secret = Some(sealed(b"sealed-grant"));
+        c
+    };
+    let drive = f.ids.id();
+    let demo = f.ids.id();
+    store
+        .seed_connector(other, google(drive, ConnectorEndpoint::Vendor))
+        .await
+        .unwrap();
+    store
+        .seed_connector(other, google(demo, ConnectorEndpoint::Era))
+        .await
+        .unwrap();
+    let email = |except| {
+        store.shared_account_connectors(
+            ConnectorKind::GoogleDrive,
+            "farm@example.org".to_owned(),
+            except,
+        )
+    };
+    assert_eq!(email(drive).await.unwrap(), 0, "the era one doesn't count");
+    assert_eq!(email(demo).await.unwrap(), 1);
 }
 
 /// T-E3.6 (docs/EON): the cleanup's cutoff is 10 minutes before now. A pending connector

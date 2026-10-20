@@ -294,6 +294,20 @@ fn state_with_vendors(
     ));
     let auth_admin = Arc::new(MockAuthAdmin::new());
     let deletes = blob::DeleteQueue::new(blob.clone());
+    let vendors: Arc<dyn crate::connect::ConnectVendors> = Arc::new(vendors);
+    // As `wiring.rs` builds it: with connectors on, the runner revokes through the same seam.
+    let mut deletions = DeletionRunner::new(
+        store.clone(),
+        deletes.clone(),
+        auth_admin,
+        pusher.clone(),
+        clock.clone(),
+        tasks.clone(),
+        shutdown.clone(),
+    );
+    if let Some(key) = &config.connectors.key {
+        deletions = deletions.with_revoke(key.clone(), Arc::clone(&vendors));
+    }
     Arc::new(AppState {
         limits: RateLimits::new(1000),
         upload_permits: Arc::new(Semaphore::new(1)),
@@ -323,17 +337,9 @@ fn state_with_vendors(
         hub,
         writers,
         broker,
-        deletions: DeletionRunner::new(
-            store,
-            deletes.clone(),
-            auth_admin,
-            pusher,
-            clock,
-            tasks.clone(),
-            shutdown.clone(),
-        ),
+        deletions,
         deletes,
-        connect: Arc::new(vendors),
+        connect: vendors,
         shutdown,
         tasks,
     })

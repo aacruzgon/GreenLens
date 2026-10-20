@@ -14,21 +14,24 @@ use std::{
 };
 
 use domain::{
-    connectors::{Connector, ConnectorEndpoint, ConnectorKind, ConnectorStatus},
+    connectors::{
+        Connector, ConnectorAccount, ConnectorEndpoint, ConnectorKind, ConnectorSource,
+        ConnectorStatus,
+    },
     garden::{account::GardenTransfer, members::Member},
     id::ConnectorId,
     ports::{
         AccountDeletionPlan, AuthAdmin, ConnectorRow, DeletionStarted, DeletionTarget,
-        RemovedMember, VendorToken,
+        RemovedMember, RoleChange,
     },
 };
-use integrations::farm::FarmClientError;
+use secrecy::{ExposeSecret, SecretString};
 use serde_json::json;
 
 use super::*;
 use crate::{
-    revoke::TokenRevoker,
-    sealing::{ConnectorKey, SealPurpose},
+    connect::{ConnectVendors, Exchanged, VendorError},
+    sealing::{ConnectorKey, SealPurpose, StoredTokens},
 };
 
 /// The demoted, removed or leaving owner's connectors (Slack, then a Google grant).
@@ -62,27 +65,64 @@ impl Log {
     }
 }
 
-/// Records each revoke by the token it was given; fails every one when `fail`.
+/// How the recorded revoke answers.
+#[derive(Clone, Copy)]
+enum Revoke {
+    Ok,
+    Fail,
+    Panic,
+}
+
+/// The `ConnectVendors` seam as the deletion runner uses it: records each revoke by the token
+/// Google's grant or Slack's bot token gives (the refresh token first), and answers as told.
 struct Recorder {
     log: Arc<Log>,
-    fail: bool,
+    revoke: Revoke,
 }
 
 #[async_trait::async_trait]
-impl TokenRevoker for Recorder {
-    async fn revoke(
+impl ConnectVendors for Recorder {
+    async fn exchange(
         &self,
         kind: ConnectorKind,
-        token: &VendorToken,
-    ) -> Result<(), FarmClientError> {
-        self.log.push(format!("revoke:{kind:?}:{}", token.expose()));
-        if self.fail {
-            return Err(FarmClientError::Unavailable {
-                vendor: "slack",
+        _: &str,
+        _: Option<SecretString>,
+        _: &str,
+    ) -> Result<Exchanged, VendorError> {
+        Err(VendorError::NotConfigured(kind))
+    }
+
+    async fn available_sources(
+        &self,
+        kind: ConnectorKind,
+        _: &StoredTokens,
+    ) -> Result<Vec<ConnectorSource>, VendorError> {
+        Err(VendorError::NotConfigured(kind))
+    }
+
+    async fn revoke(&self, kind: ConnectorKind, tokens: &StoredTokens) -> Result<(), VendorError> {
+        let token = tokens
+            .refresh_token
+            .as_ref()
+            .unwrap_or(&tokens.access_token)
+            .expose_secret();
+        self.log.push(format!("revoke:{kind:?}:{token}"));
+        match self.revoke {
+            Revoke::Ok => Ok(()),
+            Revoke::Fail => Err(VendorError::Unavailable {
+                vendor: kind,
+                retry_after_s: None,
                 source: None,
-            });
+            }),
+            Revoke::Panic => panic!("the vendor call panicked"),
         }
-        Ok(())
+    }
+}
+
+fn recorder(log: &Arc<Log>) -> Recorder {
+    Recorder {
+        log: Arc::clone(log),
+        revoke: Revoke::Ok,
     }
 }
 
@@ -168,6 +208,11 @@ fn connector_store(store: &mut FakeStore, log: &Arc<Log>, rows: Vec<ConnectorRow
             l.push(format!("delete:{connector}:{deleted}"));
             Ok(deleted)
         });
+    // No other connector shares these accounts.
+    store
+        .farm_record_store
+        .expect_shared_account_connectors()
+        .returning(|_, _, _| Ok(0));
     // The cascades' own steps find nothing left.
     store
         .deletion_repo
@@ -175,15 +220,25 @@ fn connector_store(store: &mut FakeStore, log: &Arc<Log>, rows: Vec<ConnectorRow
         .returning(|_, _| Ok(0));
 }
 
-/// `state` with a runner that revokes through `revoker` and deletes the Clerk account through
-/// `admin`.
+/// `state` with a runner that revokes through `revoker`, as `wiring.rs` gives it the routes'
+/// `ConnectVendors`, and deletes the Clerk account through `admin`.
 fn revoking_state(
     store: FakeStore,
     auth: MockAuthVerifier,
     revoker: Recorder,
     admin: MockAuthAdmin,
 ) -> Arc<AppState> {
-    let mut app_state = state(store, auth, MockBlobStore::new(), no_images());
+    revoking_state_with_blob(store, auth, revoker, admin, MockBlobStore::new())
+}
+
+fn revoking_state_with_blob(
+    store: FakeStore,
+    auth: MockAuthVerifier,
+    revoker: Recorder,
+    admin: MockAuthAdmin,
+    blob: MockBlobStore,
+) -> Arc<AppState> {
+    let mut app_state = state(store, auth, blob, no_images());
     let inner = Arc::get_mut(&mut app_state).expect("the test holds the only state");
     let admin: Arc<dyn AuthAdmin> = Arc::new(admin);
     inner.deletions = DeletionRunner::new(
@@ -198,7 +253,7 @@ fn revoking_state(
         inner.tasks.clone(),
         inner.shutdown.clone(),
     )
-    .with_revoke(key(), Arc::new(revoker));
+    .with_revoke(key(), Arc::new(revoker) as Arc<dyn ConnectVendors>);
     app_state
 }
 
@@ -302,10 +357,7 @@ async fn deleting_a_garden_revokes_each_token_once_after_the_mark_then_deletes_t
         "xoxb-era-demo",
     ));
     connector_store(&mut store, &log, rows);
-    let recorder = Recorder {
-        log: Arc::clone(&log),
-        fail: false,
-    };
+    let recorder = recorder(&log);
     let app_state = revoking_state(store, auth, recorder, MockAuthAdmin::new());
 
     let status = send(
@@ -342,11 +394,14 @@ async fn demoting_the_creating_owner_deletes_only_their_connectors() {
         .times(1)
         .returning(move |_, member, role| {
             l.push("mark:change_role");
-            Ok(Member {
-                user_id: member,
-                display_name: "Ada".to_owned(),
-                role,
-                since: NOW.parse().unwrap(),
+            Ok(RoleChange {
+                member: Member {
+                    user_id: member,
+                    display_name: "Ada".to_owned(),
+                    role,
+                    since: NOW.parse().unwrap(),
+                },
+                demoted_owner: true,
             })
         });
     // Another owner's connector is being deleted too (their own disconnect): not this task's.
@@ -359,10 +414,7 @@ async fn demoting_the_creating_owner_deletes_only_their_connectors() {
         "xoxb-theirs",
     ));
     connector_store(&mut store, &log, rows);
-    let recorder = Recorder {
-        log: Arc::clone(&log),
-        fail: false,
-    };
+    let recorder = recorder(&log);
     let app_state = revoking_state(store, auth, recorder, MockAuthAdmin::new());
 
     let status = send(
@@ -397,40 +449,43 @@ async fn demoting_the_creating_owner_deletes_only_their_connectors() {
     );
 }
 
+/// A role change that demotes no owner (making someone an owner, or an editor a viewer)
+/// marks nothing, so the route starts nothing (B's finding 4).
 #[tokio::test]
-async fn making_someone_an_owner_deletes_nothing() {
-    let mut store = FakeStore::default();
-    let auth = signed_in(&mut store, Some(Role::Owner));
-    store
-        .garden_repo
-        .expect_change_role()
-        .times(1)
-        .returning(|_, member, role| {
-            Ok(Member {
-                user_id: member,
-                display_name: "Bo".to_owned(),
-                role,
-                since: NOW.parse().unwrap(),
-            })
-        });
-    store.farm_record_store.expect_deleting_connectors().never();
-    let log = Arc::new(Log::default());
-    let recorder = Recorder {
-        log: Arc::clone(&log),
-        fail: false,
-    };
-    let app_state = revoking_state(store, auth, recorder, MockAuthAdmin::new());
-    let status = send(
-        &app_state,
-        request(
-            "PATCH",
-            &format!("/gardens/{GARDEN}/members/{MEMBER}"),
-            Some(json!({ "role": "owner" })),
-        ),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(log.events(), [] as [String; 0]);
+async fn a_role_change_that_demotes_no_owner_starts_nothing() {
+    for role in ["owner", "viewer"] {
+        let mut store = FakeStore::default();
+        let auth = signed_in(&mut store, Some(Role::Owner));
+        store
+            .garden_repo
+            .expect_change_role()
+            .times(1)
+            .returning(|_, member, role| {
+                Ok(RoleChange {
+                    member: Member {
+                        user_id: member,
+                        display_name: "Bo".to_owned(),
+                        role,
+                        since: NOW.parse().unwrap(),
+                    },
+                    demoted_owner: false,
+                })
+            });
+        store.farm_record_store.expect_deleting_connectors().never();
+        let log = Arc::new(Log::default());
+        let app_state = revoking_state(store, auth, recorder(&log), MockAuthAdmin::new());
+        let status = send(
+            &app_state,
+            request(
+                "PATCH",
+                &format!("/gardens/{GARDEN}/members/{MEMBER}"),
+                Some(json!({ "role": role })),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(log.events(), [] as [String; 0], "{role}");
+    }
 }
 
 /// `DELETE /gardens/{id}/members/{target}` by `USER`, an owner: a removal, or leaving when
@@ -461,10 +516,7 @@ async fn remove(target: &str) -> Vec<String> {
         })
         .collect();
     connector_store(&mut store, &log, rows);
-    let recorder = Recorder {
-        log: Arc::clone(&log),
-        fail: false,
-    };
+    let recorder = recorder(&log);
     let app_state = revoking_state(store, auth, recorder, MockAuthAdmin::new());
     let status = send(
         &app_state,
@@ -582,10 +634,7 @@ async fn deleting_the_account_deletes_their_connectors_before_the_user() {
         .returning(|_, _| Ok(()));
     let mut admin = MockAuthAdmin::new();
     admin.expect_delete_account().times(1).returning(|_| Ok(()));
-    let recorder = Recorder {
-        log: Arc::clone(&log),
-        fail: false,
-    };
+    let recorder = recorder(&log);
     let app_state = revoking_state(store, auth, recorder, admin);
 
     let status = send(&app_state, request("DELETE", "/me", None)).await;
@@ -614,17 +663,20 @@ async fn a_failed_revoke_still_deletes_the_records() {
         .times(1)
         .returning(move |_, member, role| {
             l.push("mark:change_role");
-            Ok(Member {
-                user_id: member,
-                display_name: "Ada".to_owned(),
-                role,
-                since: NOW.parse().unwrap(),
+            Ok(RoleChange {
+                member: Member {
+                    user_id: member,
+                    display_name: "Ada".to_owned(),
+                    role,
+                    since: NOW.parse().unwrap(),
+                },
+                demoted_owner: true,
             })
         });
     connector_store(&mut store, &log, mine());
     let recorder = Recorder {
         log: Arc::clone(&log),
-        fail: true,
+        revoke: Revoke::Fail,
     };
     let app_state = revoking_state(store, auth, recorder, MockAuthAdmin::new());
     let status = send(
@@ -669,10 +721,7 @@ async fn a_restart_between_the_commit_and_the_revoke_finishes_on_resume() {
         .returning(|| Ok(Vec::new()));
     log.push("mark:committed before the restart");
     connector_store(&mut store, &log, mine());
-    let recorder = Recorder {
-        log: Arc::clone(&log),
-        fail: false,
-    };
+    let recorder = recorder(&log);
     let app_state = revoking_state(store, auth, recorder, MockAuthAdmin::new());
 
     assert_eq!(app_state.deletions.resume().await.unwrap(), 2);
@@ -686,10 +735,10 @@ async fn a_restart_between_the_commit_and_the_revoke_finishes_on_resume() {
     revoked_once_then_deleted(&events, mark, MINE_DRIVE, "revoke:GoogleDrive:1//mine");
 }
 
+/// Without `CONNECTOR_KEY` no token can be opened: a former owner's connectors stay
+/// `deleting`, with their tokens, until the key is configured (B's finding 6).
 #[tokio::test]
-async fn with_connectors_off_the_records_are_still_deleted() {
-    // No `CONNECTOR_KEY`: the token can't be opened, so nothing is revoked, but the connector
-    // and its records still go.
+async fn with_connectors_off_a_former_owners_connectors_wait_for_the_key() {
     let log = Arc::new(Log::default());
     let mut store = FakeStore::default();
     store
@@ -701,17 +750,231 @@ async fn with_connectors_off_the_records_are_still_deleted() {
         .expect_unfinished_account_deletions()
         .returning(|| Ok(Vec::new()));
     connector_store(&mut store, &log, mine());
+    store.farm_record_store.checkpoint();
+    let l = Arc::clone(&log);
+    store
+        .farm_record_store
+        .expect_deleting_connectors()
+        .returning(move |_| {
+            l.push("list:resume");
+            Ok(mine())
+        });
+    store
+        .farm_record_store
+        .expect_delete_connector_batch()
+        .never();
     let app_state = state(
         store,
         MockAuthVerifier::new(),
         MockBlobStore::new(),
         no_images(),
     );
-    assert_eq!(app_state.deletions.resume().await.unwrap(), 2);
+    assert_eq!(app_state.deletions.resume().await.unwrap(), 0);
     app_state.tasks.close();
     app_state.tasks.wait().await;
+    assert_eq!(log.events(), ["list:resume"]);
+}
+
+/// A garden's cascade can't wait for the key: the garden goes, so its connectors are deleted,
+/// unrevoked.
+#[tokio::test]
+async fn with_connectors_off_a_garden_cascade_still_deletes_its_connectors() {
+    let log = Arc::new(Log::default());
+    let mut store = FakeStore::default();
+    connector_store(&mut store, &log, mine());
+    let app_state = state(
+        store,
+        MockAuthVerifier::new(),
+        MockBlobStore::new(),
+        no_images(),
+    );
+    app_state
+        .deletions
+        .delete_records(DeletionTarget::Garden(GARDEN.parse().unwrap()))
+        .await
+        .unwrap();
     let events = log.events();
     assert_eq!(revokes(&events), [] as [&str; 0]);
     assert!(events.contains(&format!("delete:{MINE_SLACK}:0")));
     assert!(events.contains(&format!("delete:{MINE_DRIVE}:0")));
+}
+
+/// A revoke that panics is one failed revoke: it runs in a task of its own, so the records
+/// are still deleted and the cascade goes on (B's finding 3).
+#[tokio::test]
+async fn a_panicking_revoke_still_deletes_the_records() {
+    let log = Arc::new(Log::default());
+    let mut store = FakeStore::default();
+    connector_store(&mut store, &log, mine());
+    let recorder = Recorder {
+        log: Arc::clone(&log),
+        revoke: Revoke::Panic,
+    };
+    let app_state = revoking_state(
+        store,
+        MockAuthVerifier::new(),
+        recorder,
+        MockAuthAdmin::new(),
+    );
+    app_state
+        .deletions
+        .delete_records(DeletionTarget::Garden(GARDEN.parse().unwrap()))
+        .await
+        .unwrap();
+    let events = log.events();
+    assert_eq!(
+        revokes(&events),
+        ["revoke:Slack:xoxb-mine", "revoke:GoogleDrive:1//mine"]
+    );
+    assert!(events.contains(&format!("delete:{MINE_SLACK}:0")));
+    assert!(events.contains(&format!("delete:{MINE_DRIVE}:0")));
+}
+
+/// Revoking Google's refresh token ends the whole grant of that account, and Slack's bot token
+/// is one per workspace: neither is revoked while another live connector holds the same
+/// account (A's finding 1, nit 7).
+#[tokio::test]
+async fn a_token_another_connector_holds_is_not_revoked() {
+    let log = Arc::new(Log::default());
+    let mut store = FakeStore::default();
+    let mut rows = mine();
+    rows[0].connector.account = Some(ConnectorAccount::Slack {
+        team_id: "T0123".into(),
+        team_name: "Maple Row Farm".into(),
+        url: "https://maplerow.slack.com/".into(),
+    });
+    rows[1].connector.account = Some(ConnectorAccount::GoogleDrive {
+        email: "farm@example.org".into(),
+    });
+    store
+        .farm_record_store
+        .expect_deleting_connectors()
+        .returning(move |_| Ok(rows.clone()));
+    store
+        .farm_record_store
+        .expect_delete_connector_batch()
+        .returning(|_| Ok(0));
+    store
+        .deletion_repo
+        .expect_delete_batch()
+        .returning(|_, _| Ok(0));
+    // The Slack workspace is held by no one else; the Google account by one other connector.
+    store
+        .farm_record_store
+        .expect_shared_account_connectors()
+        .withf(|kind, account, except| {
+            *kind == ConnectorKind::Slack
+                && account == "T0123"
+                && *except == MINE_SLACK.parse::<ConnectorId>().unwrap()
+        })
+        .returning(|_, _, _| Ok(0));
+    store
+        .farm_record_store
+        .expect_shared_account_connectors()
+        .withf(|kind, account, except| {
+            *kind == ConnectorKind::GoogleDrive
+                && account == "farm@example.org"
+                && *except == MINE_DRIVE.parse::<ConnectorId>().unwrap()
+        })
+        .returning(|_, _, _| Ok(1));
+    let app_state = revoking_state(
+        store,
+        MockAuthVerifier::new(),
+        recorder(&log),
+        MockAuthAdmin::new(),
+    );
+    app_state
+        .deletions
+        .delete_records(DeletionTarget::Garden(GARDEN.parse().unwrap()))
+        .await
+        .unwrap();
+    assert_eq!(revokes(&log.events()), ["revoke:Slack:xoxb-mine"]);
+}
+
+/// A removed member's connectors go before their chat objects, and a store error listing them
+/// skips none of the chat steps: it is logged, and `resume` finishes the connectors (B's
+/// finding 5).
+#[tokio::test]
+async fn a_removal_finishes_connectors_before_the_objects_and_survives_a_listing_error() {
+    for listing_fails in [false, true] {
+        let log = Arc::new(Log::default());
+        let mut store = FakeStore::default();
+        let auth = signed_in(&mut store, Some(Role::Owner));
+        let l = Arc::clone(&log);
+        store
+            .garden_repo
+            .expect_remove_member()
+            .times(1)
+            .returning(move |member, user| {
+                l.push("mark:remove_member");
+                Ok(RemovedMember {
+                    garden: member.garden(),
+                    user,
+                    conversations: Vec::new(),
+                    chat_prefixes: vec![domain::ports::ObjectPrefix::garden(member.garden())],
+                })
+            });
+        let rows: Vec<ConnectorRow> = mine()
+            .into_iter()
+            .map(|mut r| {
+                r.created_by = MEMBER.parse().unwrap();
+                r
+            })
+            .collect();
+        connector_store(&mut store, &log, rows);
+        store.deletion_repo.checkpoint();
+        let l = Arc::clone(&log);
+        store
+            .deletion_repo
+            .expect_delete_batch()
+            .returning(move |_, _| {
+                l.push("records");
+                Ok(0)
+            });
+        if listing_fails {
+            store.farm_record_store.checkpoint();
+            let l = Arc::clone(&log);
+            store
+                .farm_record_store
+                .expect_deleting_connectors()
+                .returning(move |_| {
+                    l.push("list:failed");
+                    Err(domain::ports::StoreError::Unavailable(
+                        "connection reset".into(),
+                    ))
+                });
+        }
+        let mut blob = MockBlobStore::new();
+        let l = Arc::clone(&log);
+        blob.expect_delete_prefix().returning(move |_| {
+            l.push("objects");
+            Ok(domain::ports::DeleteReport {
+                deleted: 1,
+                failed: Vec::new(),
+            })
+        });
+        let app_state =
+            revoking_state_with_blob(store, auth, recorder(&log), MockAuthAdmin::new(), blob);
+        let status = send(
+            &app_state,
+            request(
+                "DELETE",
+                &format!("/gardens/{GARDEN}/members/{MEMBER}"),
+                None,
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let events = log.events();
+        let objects = position(&events, "objects");
+        assert!(objects < position(&events, "records"), "{events:?}");
+        if listing_fails {
+            assert_eq!(revokes(&events), [] as [&str; 0]);
+        } else {
+            assert!(
+                position(&events, &format!("delete:{MINE_DRIVE}:0")) < objects,
+                "connectors before objects: {events:?}"
+            );
+        }
+    }
 }

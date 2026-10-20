@@ -12,12 +12,13 @@
 //! - **Demo connectors** (`endpoint: "era"`) refuse every owner route with `409 invalid_state`
 //!   (decision 11): only server configuration manages them.
 //! - **Vendor calls** go through [`ConnectVendors`](crate::connect::ConnectVendors), on the
-//!   vendors' fixed hosts (decision 8).
+//!   vendors' fixed hosts (decision 8). A disconnect is the deletion runner's
+//!   `finish_connector`, the one revoke-then-delete path.
 //!
 //! [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
 //! [connectors 11]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#11-changes-to-other-documents
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::collections::BTreeSet;
 
 use axum::{
     extract::State,
@@ -46,13 +47,13 @@ use integrations::google_drive::Pkce;
 use crate::{
     config::OAuthClient,
     connect::{
-        self, OAuthState, StateError, StoredTokens, TokensError, VendorError, authorize_url,
-        device_matches, redirect_uri, return_location,
+        OAuthState, StateError, VendorError, authorize_url, device_matches, redirect_uri,
+        return_location,
     },
     error::ApiError,
     extract::{ApiJson, ApiQuery, access::Access, idempotency::IdemJson},
     reply::Wire,
-    sealing::{ConnectorKey, SealPurpose},
+    sealing::{ConnectorKey, SealPurpose, StoredTokens, TokensError},
     state::{AppState, SharedState},
 };
 
@@ -185,6 +186,25 @@ fn vendor_failure(error: VendorError) -> ApiError {
     }
 }
 
+/// A vendor failure on a stored token: a refused one makes the connector `reauth_needed`
+/// first, so the app shows **Reconnect**.
+async fn token_failure(state: &AppState, row: &ConnectorRow, error: VendorError) -> ApiError {
+    if matches!(error, VendorError::AuthRefused { .. })
+        && let Err(store) = state
+            .ports
+            .store
+            .set_status(
+                row.connector.id,
+                ConnectorStatus::ReauthNeeded,
+                Some(domain::connectors::SyncErrorCode::AuthRefused),
+            )
+            .await
+    {
+        return store.into();
+    }
+    vendor_failure(error)
+}
+
 /// The connector's sources at the vendor; a refused token makes it `reauth_needed`.
 async fn vendor_sources(
     state: &AppState,
@@ -198,19 +218,7 @@ async fn vendor_sources(
         .await
     {
         Ok(sources) => Ok(sources),
-        Err(error @ VendorError::AuthRefused { .. }) => {
-            state
-                .ports
-                .store
-                .set_status(
-                    row.connector.id,
-                    ConnectorStatus::ReauthNeeded,
-                    Some(domain::connectors::SyncErrorCode::AuthRefused),
-                )
-                .await?;
-            Err(vendor_failure(error))
-        }
-        Err(error) => Err(vendor_failure(error)),
+        Err(error) => Err(token_failure(state, row, error).await),
     }
 }
 
@@ -428,7 +436,7 @@ async fn complete(
             .store
             .start_connector_deletion(access.member, access.id)
             .await?;
-        connect::disconnect(state, doomed).await;
+        state.deletions.spawn_connector(doomed);
         return Err(ApiError::not_found());
     }
     let kind = row.connector.kind;
@@ -664,9 +672,6 @@ pub async fn delete_connector(
         .store
         .start_connector_deletion(member, access.id)
         .await?;
-    let task_state = Arc::clone(&state);
-    state.tasks.spawn(async move {
-        connect::disconnect(&task_state, row).await;
-    });
+    state.deletions.spawn_connector(row);
     Ok(StatusCode::ACCEPTED)
 }

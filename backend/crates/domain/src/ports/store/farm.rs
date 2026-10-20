@@ -315,15 +315,19 @@ pub trait FarmRecordStore: Send + Sync {
         user: UserId,
     ) -> Result<Vec<ConnectorId>, StoreError>;
 
-    /// How many other Slack connectors, in any garden, hold a token of this workspace
-    /// (`active` or `reauth_needed`, not `except`). A disconnect revokes the token with
-    /// `auth.revoke` only when there are none: Slack gives one bot token per app and workspace,
-    /// so revoking it would stop every connector of that workspace ([connectors 5]).
+    /// How many other live connectors, in any garden, hold a token of this account: `vendor`
+    /// connectors of `kind`, `active` or `reauth_needed`, not `except`, whose account is
+    /// `account` (Slack's team id, or the Google account's email). A deletion revokes the token
+    /// only when there are none ([connectors 5]): Slack gives one bot token per app and
+    /// workspace, and revoking Google's refresh token ends the whole grant of that account to
+    /// this OAuth client, so either would stop every connector of the account. `era`
+    /// connectors hold the simulator's tokens and never count.
     ///
     /// [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
-    async fn slack_team_connectors(
+    async fn shared_account_connectors(
         &self,
-        team_id: String,
+        kind: ConnectorKind,
+        account: String,
         except: ConnectorId,
     ) -> Result<u32, StoreError>;
 

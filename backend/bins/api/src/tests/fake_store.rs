@@ -602,13 +602,14 @@ mod farm_record_store {
                 .connectors_created_by(garden, user)
                 .await
         }
-        async fn slack_team_connectors(
+        async fn shared_account_connectors(
             &self,
-            team_id: String,
+            kind: ConnectorKind,
+            account: String,
             except: ConnectorId,
         ) -> Result<u32, StoreError> {
             self.farm_record_store
-                .slack_team_connectors(team_id, except)
+                .shared_account_connectors(kind, account, except)
                 .await
         }
         async fn deleting_connectors(
@@ -818,7 +819,7 @@ mod garden_repo {
             owner: Membership<Owner>,
             member: UserId,
             role: Role,
-        ) -> Result<Member, StoreError> {
+        ) -> Result<RoleChange, StoreError> {
             self.garden_repo.change_role(owner, member, role).await
         }
         async fn remove_member(

@@ -11,7 +11,7 @@ use domain::{
     knowledge::SoilProfile,
     ports::{
         AcceptedInvite, GardenContext, GardenPatch, GardenRepo, NewGarden, NewInvite, ObjectPrefix,
-        RemovedMember, StoreError,
+        RemovedMember, RoleChange, StoreError,
     },
     records::weather::Coordinates,
     wire::{Page, PageRequest, Role, Timestamp},
@@ -91,6 +91,7 @@ IF $current = 'owner' AND $role != 'owner' AND $owners <= 1 { THROW 'invalid_sta
 UPDATE $member SET role = $role;
 IF $current = 'owner' AND $role != 'owner' { UPDATE connector SET status = 'deleting' WHERE garden = $garden AND created_by = $user AND status != 'deleting' };
 SELECT in AS user_id, in.display_name AS display_name, role, since FROM ONLY $member;
+RETURN $current = 'owner' AND $role != 'owner';
 COMMIT;";
 
     /// `DELETE /gardens/{id}/members/{user_id}`; the last owner can't leave. The member's
@@ -593,7 +594,7 @@ impl GardenRepo for SurrealStore {
         owner: Membership<Owner>,
         member: UserId,
         role: Role,
-    ) -> Result<Member, StoreError> {
+    ) -> Result<RoleChange, StoreError> {
         const WHAT: &str = "change role";
         let mut r = run_tx(&self.db, sql::CHANGE_ROLE, |q| {
             q.bind(("garden", rid(&owner.garden())))
@@ -603,8 +604,15 @@ impl GardenRepo for SurrealStore {
         })
         .await
         .map_err(|f| last_owner(f, WHAT))?;
-        let last = r.num_statements().saturating_sub(2);
-        take_one(&mut r, last, WHAT)?.ok_or(StoreError::NotFound)
+        // The member's row, then the demotion flag, then `COMMIT`.
+        let row = r.num_statements().saturating_sub(3);
+        let flag = r.num_statements().saturating_sub(2);
+        let member = take_one(&mut r, row, WHAT)?.ok_or(StoreError::NotFound)?;
+        let demoted_owner: Option<bool> = r.take(flag).map_err(|e| take_failed(WHAT, e))?;
+        Ok(RoleChange {
+            member,
+            demoted_owner: demoted_owner.unwrap_or(false),
+        })
     }
 
     async fn remove_member(

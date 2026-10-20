@@ -21,7 +21,8 @@ use integrations::{
 
 use crate::{
     config::{ConnectorSettings, OAuthClient},
-    connect::{ConnectVendors, Exchanged, StoredTokens, VendorError},
+    connect::{ConnectVendors, Exchanged, VendorError},
+    sealing::StoredTokens,
 };
 
 /// Google's access token is refreshed when it has less than this left ([connectors 5]).
@@ -191,11 +192,13 @@ impl ConnectVendors for VendorClients {
     async fn revoke(&self, kind: ConnectorKind, tokens: &StoredTokens) -> Result<(), VendorError> {
         let error = |e| vendor_error(kind, e);
         match kind {
-            ConnectorKind::Slack => match self.slack.auth_revoke(&tokens.access_token).await {
-                // Already revoked: the token is gone either way.
-                Ok(()) | Err(FarmClientError::AuthRefused { .. }) => Ok(()),
-                Err(e) => Err(error(e)),
-            },
+            // The clients count an already-revoked token as revoked (Slack's `token_revoked` and
+            // `invalid_auth`, Google's `invalid_token`).
+            ConnectorKind::Slack => self
+                .slack
+                .auth_revoke(&tokens.access_token)
+                .await
+                .map_err(error),
             ConnectorKind::GoogleDrive => {
                 let token = tokens
                     .refresh_token
