@@ -25,7 +25,7 @@
 use std::sync::Arc;
 
 use domain::{
-    authz::{ConversationOwner, Viewer},
+    authz::{ConversationOwner, Membership, Viewer},
     chat::{
         Anchor, ChatErrorEvent, ChatEvent, ChatRoute, CitationEvent, MemorySaved, Message,
         MessageCompleted, MessageRole, MessageStarted, PendingActionEvent, RescanRequested,
@@ -148,6 +148,8 @@ struct Turn {
     user_message: MessageId,
     message_id: MessageId,
     decision: RouteDecision,
+    /// The garden has farm records to search, read once before routing (gaps G6, G10).
+    farm_records: bool,
     now: Timestamp,
     /// Tokens left in the user's daily budget when the turn started.
     budget_left: u64,
@@ -225,14 +227,7 @@ impl ChatAgent {
             image_keys.push(object.key);
         }
 
-        let scores = tokio::time::timeout(
-            deps.config.classifier_timeout,
-            deps.classifier.classify(ClassifierTask::Route, &text),
-        )
-        .await
-        .ok()
-        .and_then(Result::ok);
-        let decision = decide_route(&text, scores.as_deref(), &deps.config.calibration);
+        let (decision, farm_records) = route(deps, member, &text).await;
 
         let user_message = deps.ids.id();
         deps.stores
@@ -266,6 +261,7 @@ impl ChatAgent {
             user_message,
             message_id: deps.ids.id(),
             decision,
+            farm_records,
             now,
             budget_left: budget - spent,
             shutdown: req.shutdown,
@@ -281,6 +277,29 @@ impl ChatAgent {
             outcome: outcome_rx,
         })
     }
+}
+
+/// Routes the message. Whether the garden has farm records is read first, once per turn: the
+/// classifier is asked for the `farm_records` label only then, so a question about the garden's
+/// own records is on topic only then (gap G10), and the same fact offers `search_farm_records`
+/// (gap G6). A classifier that fails or is slower than `classifier_timeout` leaves no scores.
+async fn route(deps: &AgentDeps, member: Membership<Viewer>, text: &str) -> (RouteDecision, bool) {
+    let farm_records = context::has_farm_records(deps, member).await;
+    let scores = tokio::time::timeout(
+        deps.config.classifier_timeout,
+        deps.classifier
+            .classify(ClassifierTask::Route { farm_records }, text),
+    )
+    .await
+    .ok()
+    .and_then(Result::ok);
+    let decision = decide_route(
+        text,
+        scores.as_deref(),
+        &deps.config.calibration,
+        farm_records,
+    );
+    (decision, farm_records)
 }
 
 /// `SendMessageRequest`'s limits: at most 2,000 characters and 3 images.
@@ -726,10 +745,10 @@ async fn model_turn(
     let mut messages = ctx.history.clone();
     messages.push(last);
 
-    // Offered by role and by whether the garden has farm records, read once with the context.
+    // Offered by role and by whether the garden has farm records, read once before routing.
     let offer = Offer {
         role: turn.owner.membership().role(),
-        farm_records: ctx.farm_records,
+        farm_records: turn.farm_records,
     };
     let mut request = ChatRequest {
         purpose: ChatPurpose::Chat,

@@ -73,6 +73,8 @@ pub struct RunReport {
     /// How the turn ended: `completed`, `failed` or `interrupted`. A question that errored
     /// before or during its turn is `failed`, with the error's code in `errors`.
     pub outcome: String,
+    /// The route of `message_started` (`care_question`, `off_topic`, …); empty if none came.
+    pub route: String,
     /// The stored answer.
     pub text: String,
     /// The scores.
@@ -135,14 +137,18 @@ impl Report {
             let _ = writeln!(out, "### {model}\n");
             let _ = writeln!(
                 out,
-                "| Q | Measure | Answer | Citation | Cross-source | Safety | Injection | Failed turns | Tools | Tokens in / out | Cost (US$) |"
+                "| Q | Measure | Route | Answer | Citation | Cross-source | Safety | Injection | Failed turns | Tools | Tokens in / out | Cost (US$) |"
             );
-            let _ = writeln!(out, "|---|---|---|---|---|---|---|---|---|---|---|");
+            let _ = writeln!(out, "|---|---|---|---|---|---|---|---|---|---|---|---|");
             let mut total = 0.0;
             for q in &self.questions {
                 let runs: Vec<&RunReport> = q.runs.iter().filter(|r| &r.model == model).collect();
                 if let Some(why) = &q.skipped {
-                    let _ = writeln!(out, "| {} | {} | {why} | | | | | | | | |", q.id, q.measure);
+                    let _ = writeln!(
+                        out,
+                        "| {} | {} | | {why} | | | | | | | | |",
+                        q.id, q.measure
+                    );
                     continue;
                 }
                 if runs.is_empty() {
@@ -151,12 +157,21 @@ impl Report {
                 let n = runs.len() as f64;
                 let mean = |f: fn(&RunReport) -> f64| runs.iter().map(|r| f(r)).sum::<f64>() / n;
                 let cost: f64 = runs.iter().map(|r| r.cost_usd).sum();
+                // A failed run may have no route.
+                let mut routes: Vec<&str> = runs
+                    .iter()
+                    .map(|r| r.route.as_str())
+                    .filter(|r| !r.is_empty())
+                    .collect();
+                routes.sort_unstable();
+                routes.dedup();
                 total += cost;
                 let _ = writeln!(
                     out,
-                    "| {} | {} | {} | {} | {} | {} | {} | {}/{} | {:.1} | {:.0} / {:.0} | {:.3} |",
+                    "| {} | {} | {} | {} | {} | {} | {} | {} | {}/{} | {:.1} | {:.0} / {:.0} | {:.3} |",
                     q.id,
                     q.measure,
+                    routes.join(", "),
                     tally(runs.iter().map(|r| &r.scores.answer)),
                     tally(runs.iter().map(|r| &r.scores.citation)),
                     tally(runs.iter().map(|r| &r.scores.cross_source)),

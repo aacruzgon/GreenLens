@@ -404,6 +404,7 @@ fn failed_run(
         model: model.to_owned(),
         run: n,
         outcome: outcome.to_owned(),
+        route: String::new(),
         text: String::new(),
         scores: score::failed_turn(q, ctx, outcome),
         tools: Vec::new(),
@@ -442,6 +443,39 @@ fn skip_reason(q: &Question, drive_synced: bool) -> Option<String> {
         return Some("skipped: needs Drive's records (E4.3)".into());
     }
     None
+}
+
+/// What a turn's events showed.
+#[derive(Debug, Default)]
+struct Streamed {
+    /// The route of `message_started`, so a question sent off-topic shows (gap G10).
+    route: String,
+    /// The text deltas, joined.
+    text: String,
+    /// The tools started, in order.
+    tools: Vec<String>,
+    /// The memories the turn saved.
+    saved: Vec<domain::id::MemoryId>,
+    /// The error events.
+    errors: Vec<String>,
+}
+
+/// Reads a turn's events to the end.
+async fn drain(mut events: impl futures::Stream<Item = ChatEvent> + Unpin) -> Streamed {
+    let mut seen = Streamed::default();
+    while let Some(event) = events.next().await {
+        match event {
+            ChatEvent::MessageStarted(m) => {
+                agent::safety::route_label(m.route).clone_into(&mut seen.route);
+            }
+            ChatEvent::TextDelta(d) => seen.text.push_str(&d.text),
+            ChatEvent::ToolStarted(t) => seen.tools.push(t.tool),
+            ChatEvent::MemorySaved(m) => seen.saved.push(m.memory.id),
+            ChatEvent::Error(e) => seen.errors.push(format!("{:?}: {}", e.code, e.message)),
+            _ => {}
+        }
+    }
+    seen
 }
 
 #[expect(
@@ -514,18 +548,14 @@ async fn ask(
             ));
         }
     };
-    let (mut events, outcome) = turn.into_parts();
-    let (mut tools, mut errors, mut saved, mut streamed) =
-        (Vec::new(), Vec::new(), Vec::new(), String::new());
-    while let Some(event) = events.next().await {
-        match event {
-            ChatEvent::TextDelta(d) => streamed.push_str(&d.text),
-            ChatEvent::ToolStarted(t) => tools.push(t.tool),
-            ChatEvent::MemorySaved(m) => saved.push(m.memory.id),
-            ChatEvent::Error(e) => errors.push(format!("{:?}: {}", e.code, e.message)),
-            _ => {}
-        }
-    }
+    let (events, outcome) = turn.into_parts();
+    let Streamed {
+        route,
+        text: streamed,
+        tools,
+        saved,
+        errors,
+    } = drain(events).await;
     let (outcome, text, farm_citations) = match outcome.await {
         Ok(agent::TurnOutcome::Completed(message)) => (
             "completed",
@@ -554,6 +584,7 @@ async fn ask(
         model: model.to_owned(),
         run: n,
         outcome: outcome.to_owned(),
+        route,
         text,
         scores,
         tools,
