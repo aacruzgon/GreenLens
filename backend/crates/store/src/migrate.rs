@@ -123,6 +123,17 @@ pub enum MigrationError {
         #[source]
         source: Box<StoreError>,
     },
+    /// The file's transaction committed without writing its record: a top-level `RETURN` (or
+    /// another statement that ends the transaction early) skipped the runner's tail. The
+    /// file's own writes may have committed; fix the file before the next start runs it again.
+    #[error(
+        "{name} committed without its migration record: a top-level RETURN or transaction \
+         statement in the file ended the runner's wrapper early"
+    )]
+    Unrecorded {
+        /// The file.
+        name: String,
+    },
     /// Another process kept changing the file's record while this one applied it.
     #[error("{name}: its record changed under every attempt")]
     Raced {
@@ -181,6 +192,13 @@ const WRAP_HEAD: &str = "BEGIN; LET $migration_prev = (SELECT VALUE hash FROM ON
 /// without one, after a last line that may be a comment.
 const WRAP_TAIL: &str = "\n;\nUPSERT type::record('migration', $migration_name) CONTENT { kind: \
      $migration_kind, hash: $migration_hash, applied_at: time::now() } RETURN NONE;\nCOMMIT;\n";
+
+/// A numbered file's tail: as [`WRAP_TAIL`], and it deletes `knowledge.surql`'s record in the
+/// same transaction, so the knowledge set is applied again even if this start dies before it
+/// commits (a numbered file may delete knowledge rows).
+const WRAP_TAIL_VERSIONED: &str = "\n;\nUPSERT type::record('migration', $migration_name) CONTENT \
+     { kind: $migration_kind, hash: $migration_hash, applied_at: time::now() } RETURN NONE;\n\
+     DELETE type::record('migration', 'knowledge.surql') RETURN NONE;\nCOMMIT;\n";
 
 /// Statements in the wrapper before the file's first.
 const HEAD_STATEMENTS: usize = 3;
@@ -271,8 +289,13 @@ pub async fn apply_migrations(
         }
     }
     if let Some(file) = knowledge {
-        let recorded = records.0.get(file.name).map(|r| r.hash.clone());
-        if recorded.as_deref() != Some(file.hash().as_str()) || !applied.numbered.is_empty() {
+        // A numbered file applied in this run deleted the knowledge record in its transaction.
+        let recorded = if applied.numbered.is_empty() {
+            records.0.get(file.name).map(|r| r.hash.clone())
+        } else {
+            None
+        };
+        if recorded.as_deref() != Some(file.hash().as_str()) {
             applied.knowledge = apply_file(root, &file, RecordKind::Knowledge, recorded).await?;
         }
     }
@@ -332,7 +355,11 @@ async fn apply_file(
     mut expected: Option<String>,
 ) -> Result<bool, MigrationError> {
     let hash = file.hash();
-    let sql = [WRAP_HEAD, file.sql, WRAP_TAIL].concat();
+    let tail = match kind {
+        RecordKind::Versioned => WRAP_TAIL_VERSIONED,
+        RecordKind::Knowledge => WRAP_TAIL,
+    };
+    let sql = [WRAP_HEAD, file.sql, tail].concat();
     for _ in 0..RACE_ATTEMPTS {
         let started = Instant::now();
         let result = run_tx_at(root, &sql, |q| {
@@ -344,6 +371,11 @@ async fn apply_file(
         .await;
         match result {
             Ok(_) => {
+                if recorded_hash(root, file.name).await?.as_deref() != Some(hash.as_str()) {
+                    return Err(MigrationError::Unrecorded {
+                        name: file.name.to_owned(),
+                    });
+                }
                 tracing::info!(
                     file = file.name,
                     ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
@@ -419,9 +451,11 @@ const KNOWLEDGE_TABLES: &[&str] = &[
 ];
 
 /// What a migration file may contain ([database 1]), checked line by line: no line starts
-/// with `USE`, `BEGIN`, `COMMIT`, `CANCEL`, `OPTION`, or `DEFINE` of a `NAMESPACE`, `DATABASE`,
-/// `USER` or `ACCESS`, since the runner selects `pdm`/`main` and wraps each file in its own
-/// transaction. In `knowledge.surql`, every statement is one line that writes a knowledge
+/// with `USE`, `BEGIN`, `COMMIT`, `CANCEL`, `OPTION`, `RETURN`, or `DEFINE` of a `NAMESPACE`,
+/// `DATABASE`, `USER` or `ACCESS`, since the runner selects `pdm`/`main` and wraps each file in
+/// its own transaction. A top-level `RETURN` ends that transaction early: the file's writes
+/// commit and its record is never written (on 3.3.4), so a `RETURN` inside a block must not
+/// start a line either. In `knowledge.surql`, every statement is one line that writes a knowledge
 /// table or `knowledge_meta` and ends with `RETURN NONE;`. A statement that starts after
 /// another on the same line isn't seen; the loader writes one statement per line.
 ///
@@ -438,17 +472,19 @@ pub fn check_contents(name: &str, sql: &str) -> Result<(), String> {
             .split(|c: char| c.is_whitespace() || c == ';')
             .filter(|w| !w.is_empty());
         let first = words.next().unwrap_or_default();
-        let forbidden = matches!(first, "USE" | "BEGIN" | "COMMIT" | "CANCEL" | "OPTION")
-            || (first == "DEFINE"
-                && matches!(
-                    words.next(),
-                    Some("NAMESPACE" | "NS" | "DATABASE" | "DB" | "USER" | "ACCESS")
-                ));
+        let forbidden = matches!(
+            first,
+            "USE" | "BEGIN" | "COMMIT" | "CANCEL" | "OPTION" | "RETURN"
+        ) || (first == "DEFINE"
+            && matches!(
+                words.next(),
+                Some("NAMESPACE" | "NS" | "DATABASE" | "DB" | "USER" | "ACCESS")
+            ));
         if forbidden {
             return Err(format!(
                 "{name}:{}: the runner selects pdm/main and wraps each file in its own \
-                 transaction, so a file has no USE, BEGIN, COMMIT, CANCEL, OPTION or DEFINE of a \
-                 namespace, database, user or access",
+                 transaction, so no line starts with USE, BEGIN, COMMIT, CANCEL, OPTION, RETURN \
+                 or DEFINE of a namespace, database, user or access",
                 n + 1
             ));
         }
@@ -580,6 +616,8 @@ mod tests {
             "DEFINE DATABASE OVERWRITE y;",
             "DEFINE USER a ON DATABASE PASSWORD 'p' ROLES EDITOR;",
             "define access a ON DATABASE TYPE RECORD;",
+            "RETURN 'done';",
+            "  return NONE;",
         ] {
             assert!(
                 check_contents("0001_x.surql", bad).is_err(),

@@ -363,6 +363,58 @@ async fn a_numbered_file_reapplies_the_knowledge() {
 }
 
 #[tokio::test]
+async fn a_return_that_skips_the_record_stops_the_start() {
+    let db = root().await;
+    // A top-level RETURN ends the wrapper's transaction early on 3.3.4: the file's write
+    // commits and the runner's record is never written.
+    let early = file(
+        "0001_early.surql",
+        "CREATE product:`p9` CONTENT { name: 'p9', broad_spectrum: false };\nRETURN 'done';\n",
+    );
+    let err = migrate_with(&db, &[early]).await.unwrap_err();
+    assert!(
+        matches!(&err, MigrationError::Unrecorded { name } if name == "0001_early.surql"),
+        "{err:?}"
+    );
+    assert!(
+        check_contents(early.name, early.sql).is_err(),
+        "the content rule refuses it too"
+    );
+}
+
+#[tokio::test]
+async fn a_start_that_dies_after_a_numbered_file_still_reapplies_the_knowledge() {
+    let db = root().await;
+    let knowledge = file("knowledge.surql", KNOWLEDGE_V1);
+    migrate_with(&db, &[knowledge]).await.expect("first start");
+    let drop_chunks = file("0001_drop_chunks.surql", "DELETE knowledge_chunk;");
+    // The second start applies the numbered file, then dies in the knowledge file: here a
+    // knowledge set whose last statement fails, as a lost connection would end it.
+    let failing = file(
+        "knowledge.surql",
+        Box::leak(format!("{KNOWLEDGE_V1}CREATE nosuch:`x` RETURN NONE;\n").into_boxed_str()),
+    );
+    migrate_with(&db, &[drop_chunks, failing])
+        .await
+        .expect_err("the knowledge file fails");
+    assert_eq!(
+        count(&db, "RETURN count(SELECT VALUE id FROM knowledge_chunk);").await,
+        0
+    );
+    // The third start has the first start's knowledge file, whose hash was recorded before.
+    // The numbered file deleted that record in its own transaction, so it runs again.
+    let applied = migrate_with(&db, &[drop_chunks, knowledge])
+        .await
+        .expect("third start");
+    assert_eq!(applied.numbered, [] as [&str; 0]);
+    assert!(applied.knowledge, "the knowledge set is applied again");
+    assert_eq!(
+        count(&db, "RETURN count(SELECT VALUE id FROM knowledge_chunk);").await,
+        3
+    );
+}
+
+#[tokio::test]
 async fn the_knowledge_meta_and_the_fixture_follow_the_rules() {
     check_contents("knowledge.surql", KNOWLEDGE_V1).expect("the loader's output follows the rules");
     let db = root().await;
