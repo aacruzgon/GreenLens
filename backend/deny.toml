@@ -15,4 +15,7 @@ exclude = ["era-eval"]
 ignore = [
   # Unmaintained, with no vulnerability; it reaches vision and api through tokenizers 0.23.
   { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained, not vulnerable; it comes through tokenizers" },
+  # webpki-roots 0.26.11 (through surrealdb's tokio-tungstenite) is a semver shim that re-exports
+  # webpki-roots 1.x's TLS_SERVER_ROOTS, which the lock file pins at 1.0.10, the fixed version.
+  { id = "RUSTSEC-2026-0381", reason = "webpki-roots 0.26.11 re-exports the roots of webpki-roots 1.0.10" },
 ]
