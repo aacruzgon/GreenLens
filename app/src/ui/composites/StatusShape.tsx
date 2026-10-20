@@ -3,6 +3,7 @@
 // Decorative: the word next to it is what assistive technology reads.
 import Svg, { Circle, Polygon, Rect } from "react-native-svg";
 
+import { hiddenSvg } from "../svgId";
 import { useTheme } from "../theme";
 import { statusRoles, type PlantStatus } from "../tokens";
 
@@ -31,8 +32,7 @@ export function StatusShape({ status, size = 9, color }: StatusShapeProps) {
       height={size}
       viewBox="0 0 10 10"
       testID={`status-shape-${shape}`}
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      {...hiddenSvg}
     >
       {shape === "circle" ? <Circle cx={5} cy={5} r={4.2} fill={fill} /> : null}
       {shape === "triangle" ? <Polygon points="5,0.6 9.8,9.2 0.2,9.2" fill={fill} /> : null}
