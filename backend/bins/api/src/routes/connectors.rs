@@ -18,7 +18,7 @@
 //! [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
 //! [connectors 11]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#11-changes-to-other-documents
 
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::Arc};
 
 use axum::{
     extract::State,
@@ -447,6 +447,15 @@ pub async fn oauth_callback(
 /// `404 not_found` and the pending connector is deleted. `400 invalid_request` for a bad,
 /// expired or used state, or a code the vendor refused; `409 invalid_state` while connectors are
 /// off.
+///
+/// The work runs as a task on the tracker, and this handler only awaits it: when the route's
+/// timeout fires (the slow routes' 60 s, `router.rs`) or the client goes away, axum drops the
+/// handler, which must not cancel a claimed exchange halfway. The task still stores the tokens
+/// (or revokes them, or releases the claim) and finishes the idempotency record, so the app's
+/// retry with the same `Idempotency-Key` gets `409 request_in_progress` until it is done and
+/// then its answer ([contracts 9], farm connectors).
+///
+/// [contracts 9]: https://github.com/aacruzgon/GreenLens/blob/main/docs/architecture/contracts.md#farm-connectors
 #[utoipa::path(post, path = "/connectors/{id}/complete", tag = "connectors",
     params(("id" = String, Path), ("Idempotency-Key" = Option<String>, Header, description = "UUID per user action")),
     request_body = CompleteConnectorRequest,
@@ -459,8 +468,29 @@ pub async fn complete_connector(
     request: IdemJson<CompleteConnectorRequest>,
 ) -> Response {
     let IdemJson { body, begun, .. } = request;
-    let result = complete(&state, &access, body).await;
-    begun.finish(result).await
+    let tasks = state.tasks.clone();
+    let work = tasks.spawn(async move {
+        let result = complete(&state, &access, body).await;
+        begun.finish(result).await
+    });
+    match work.await {
+        Ok(response) => response,
+        // A panic before the claim (after it, `complete` catches its own): `Begun`'s drop
+        // released the idempotency key.
+        Err(error) => {
+            tracing::error!(error = %error, "complete task failed");
+            ApiError::internal(error).into_response()
+        }
+    }
+}
+
+/// A claimed pending state: what the exchange and the final write need.
+#[derive(Clone)]
+struct Claim {
+    member: Membership<Owner>,
+    id: ConnectorId,
+    kind: ConnectorKind,
+    nonce: String,
 }
 
 async fn complete(
@@ -501,8 +531,9 @@ async fn complete(
     };
     // Claim the state before the exchange: of two `complete`s at once, one claims and the
     // other is refused here, so the code is spent at most once.
-    let store = &state.ports.store;
-    store
+    state
+        .ports
+        .store
         .claim_connect(
             access.member,
             access.id,
@@ -514,17 +545,62 @@ async fn complete(
             StoreError::Conflict(Conflict::AlreadyExists) => bad_state("the state was used"),
             e => e.into(),
         })?;
-    let exchanged =
-        exchange_claimed(state, access, kind, &body.code, verifier, &oauth.nonce).await?;
-    let secret = exchanged.tokens.seal(key, access.id);
-    let account = exchanged.account;
-    match store
+    let claim = Claim {
+        member: access.member,
+        id: access.id,
+        kind,
+        nonce: oauth.nonce,
+    };
+    // The claimed part in a task of its own: a panic in it (a vendor client's, say) comes back
+    // here as a `JoinError`, and the claim is released, so a retry can claim again.
+    let work = state.tasks.spawn(exchange_and_store(
+        Arc::clone(state),
+        key.clone(),
+        claim.clone(),
+        body.code,
+        verifier,
+    ));
+    match work.await {
+        Ok(result) => result,
+        Err(error) => {
+            tracing::error!(connector = %claim.id, error = %error, "the exchange failed unexpectedly; its claim is released");
+            release_claim(state, &claim).await;
+            Err(ApiError::internal(error))
+        }
+    }
+}
+
+/// Clears the claim, so a retry of this `complete` can claim the state again.
+async fn release_claim(state: &AppState, claim: &Claim) {
+    if let Err(error) = state
+        .ports
+        .store
+        .release_connect(claim.member, claim.id, claim.nonce.clone())
+        .await
+    {
+        tracing::warn!(connector = %claim.id, error = %error, "claim not released");
+    }
+}
+
+/// The exchange of a claimed state, then the write that activates the connector.
+async fn exchange_and_store(
+    state: SharedState,
+    key: ConnectorKey,
+    claim: Claim,
+    code: String,
+    verifier: Option<SecretString>,
+) -> Result<Wire<Connector>, ApiError> {
+    let exchanged = exchange_claimed(&state, &claim, &code, verifier).await?;
+    let secret = exchanged.tokens.seal(&key, claim.id);
+    match state
+        .ports
+        .store
         .complete_connect(
-            access.member,
-            access.id,
+            claim.member,
+            claim.id,
             CompletedConnect {
-                nonce: oauth.nonce,
-                account: account.clone(),
+                nonce: claim.nonce.clone(),
+                account: exchanged.account.clone(),
                 secret,
                 now: state.ports.clock.now(),
             },
@@ -532,26 +608,34 @@ async fn complete(
         .await
     {
         Ok(connector) => {
-            tracing::info!(connector = %access.id, %kind, "connector connected");
+            tracing::info!(connector = %claim.id, kind = %claim.kind, "connector connected");
             Ok(Wire::ok(connector))
         }
-        Err(error) => {
-            // The vendor gave tokens that nothing will store (the connector was deleted or
-            // cleaned up during the exchange): revoke them, in the background, unless another
-            // connector holds the same account's.
-            tracing::warn!(connector = %access.id, error = %error, "connect lost after the exchange; revoking its tokens");
-            let runner = state.deletions.clone();
-            let id = access.id;
-            let tokens = exchanged.tokens;
-            state.tasks.spawn(async move {
-                runner.revoke_tokens(id, kind, Some(&account), tokens).await;
-            });
-            Err(match error {
-                StoreError::Conflict(Conflict::AlreadyExists) => bad_state("the state was used"),
-                e => e.into(),
-            })
-        }
+        Err(error) => connect_lost(&state, &claim, exchanged, error),
     }
+}
+
+/// The final write failed after the vendor gave tokens that nothing will store (the connector
+/// was deleted or cleaned up during the exchange): they are revoked in the background, unless
+/// another connector holds the same account's.
+fn connect_lost(
+    state: &SharedState,
+    claim: &Claim,
+    exchanged: Exchanged,
+    error: StoreError,
+) -> Result<Wire<Connector>, ApiError> {
+    let id = claim.id;
+    tracing::warn!(connector = %id, error = %error, "connect lost after the exchange; revoking its tokens");
+    let runner = state.deletions.clone();
+    let kind = claim.kind;
+    let Exchanged { tokens, account } = exchanged;
+    state.tasks.spawn(async move {
+        runner.revoke_tokens(id, kind, Some(&account), tokens).await;
+    });
+    Err(match error {
+        StoreError::Conflict(Conflict::AlreadyExists) => bad_state("the state was used"),
+        e => e.into(),
+    })
 }
 
 /// The code exchange of a claimed state. When it fails, no tokens were given: the claim is
@@ -559,34 +643,25 @@ async fn complete(
 /// code stays refused at the vendor.
 async fn exchange_claimed(
     state: &AppState,
-    access: &Access<Owner, table::Connector>,
-    kind: ConnectorKind,
+    claim: &Claim,
     code: &str,
     verifier: Option<SecretString>,
-    nonce: &str,
 ) -> Result<Exchanged, ApiError> {
     let redirect = redirect_uri(&state.config.public_base);
     let error = match state
         .connect
-        .exchange(kind, code, verifier, &redirect)
+        .exchange(claim.kind, code, verifier, &redirect)
         .await
     {
         Ok(exchanged) => return Ok(exchanged),
         Err(error) => error,
     };
-    if let Err(release) = state
-        .ports
-        .store
-        .release_connect(access.member, access.id, nonce.to_owned())
-        .await
-    {
-        tracing::warn!(connector = %access.id, error = %release, "claim not released");
-    }
+    release_claim(state, claim).await;
     Err(match error {
         // The owner's code: used, expired or wrong. A rejection of our own request (a
         // misconfigured client) is not the owner's to fix and goes to `vendor_failure` (500).
         VendorError::AuthRefused { vendor, code } => {
-            tracing::info!(connector = %access.id, %vendor, code, "the vendor refused the code");
+            tracing::info!(connector = %claim.id, %vendor, code, "the vendor refused the code");
             ApiError::invalid_request(
                 "code",
                 "The authorization code was refused. Start the connection again.",

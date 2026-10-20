@@ -753,6 +753,228 @@ async fn a_vendor_outage_at_complete_is_503_upstream_unavailable() {
     assert_eq!(answer.body["error"]["retry_after_s"], 30);
 }
 
+/// Google's answer to a good code.
+fn google_exchanged() -> Exchanged {
+    Exchanged {
+        tokens: StoredTokens {
+            access_token: SecretString::from("ya29.access"),
+            refresh_token: Some(SecretString::from("1//refresh")),
+            expires_at: Some("2026-10-18T15:00:00Z".parse().unwrap()),
+        },
+        account: ConnectorAccount::GoogleDrive {
+            email: "owner@example.org".to_owned(),
+        },
+    }
+}
+
+const IDEMPOTENCY_KEY: &str = "7d444840-9dc0-11d1-b245-5ffdce74fad2";
+
+fn keyed_complete_request() -> Request<Body> {
+    let mut request = complete_request(&good_state(), VERIFIER);
+    request.headers_mut().insert(
+        "idempotency-key",
+        axum::http::HeaderValue::from_static(IDEMPOTENCY_KEY),
+    );
+    request
+}
+
+/// A vendor exchange that signals when it starts and then blocks its thread until the test
+/// lets it answer `answer`, so a test can drop the request while the exchange is in flight.
+/// Needs the multi-thread runtime.
+fn held_exchange(
+    vendors: &mut MockConnectVendors,
+    seq: &mut Sequence,
+    answer: fn() -> Result<Exchanged, VendorError>,
+) -> (std::sync::mpsc::Receiver<()>, std::sync::mpsc::Sender<()>) {
+    let (started, on_start) = std::sync::mpsc::channel();
+    let (release, on_release) = std::sync::mpsc::channel::<()>();
+    let on_release = Mutex::new(on_release);
+    vendors
+        .expect_exchange()
+        .times(1)
+        .in_sequence(seq)
+        .returning(move |_, _, _, _| {
+            started.send(()).unwrap();
+            on_release.lock().unwrap().recv().unwrap();
+            answer()
+        });
+    (on_start, release)
+}
+
+/// Sends `request` and drops it once the exchange has started, as the route's timeout or a
+/// client that went away does; then lets the exchange answer and waits for the tasks.
+async fn drop_mid_exchange(
+    state: &Arc<AppState>,
+    request: Request<Body>,
+    (on_start, release): (std::sync::mpsc::Receiver<()>, std::sync::mpsc::Sender<()>),
+) {
+    let call = tokio::spawn(crate::router::app(Arc::clone(state)).oneshot(request));
+    tokio::task::spawn_blocking(move || on_start.recv().unwrap())
+        .await
+        .unwrap();
+    // The handler only awaits the work's task, so it is dropped at once; a handler running
+    // the exchange itself would still be blocked in it.
+    call.abort();
+    let dropped = tokio::time::timeout(Duration::from_secs(5), call)
+        .await
+        .expect("the handler doesn't run the exchange itself");
+    assert!(dropped.unwrap_err().is_cancelled());
+    release.send(()).unwrap();
+}
+
+/// Audit of PR 72, finding 1: the handler dropped mid-exchange doesn't cancel the claimed
+/// work. The tokens are stored, and the answer is recorded under the idempotency key, so the
+/// app's retry with that key gets it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_complete_dropped_mid_exchange_still_stores_and_records_its_answer() {
+    let mut vendors = MockConnectVendors::new();
+    let held = held_exchange(
+        &mut vendors,
+        &mut Sequence::new(),
+        || Ok(google_exchanged()),
+    );
+    let mut store = store_with(pending_row(ConnectorKind::GoogleDrive));
+    claims(&mut store, 0);
+    store
+        .farm_record_store
+        .expect_complete_connect()
+        .times(1)
+        .returning(|_, _, done| {
+            let mut c = connector(ConnectorKind::GoogleDrive, ConnectorStatus::Active);
+            c.account = Some(done.account);
+            Ok(c)
+        });
+    vendors.expect_revoke().never();
+    store
+        .idempotency_repo
+        .expect_begin()
+        .times(1)
+        .returning(|_, _, _| Ok(IdempotencyBegin::Started));
+    store
+        .idempotency_repo
+        .expect_finish()
+        .withf(|scope, response| {
+            scope.route == format!("POST /connectors/{CONNECTOR}/complete")
+                && response.status == 200
+                && response.body["status"] == "active"
+        })
+        .times(1)
+        .returning(|_, _| Ok(()));
+    store.idempotency_repo.expect_release().never();
+    let auth = signed_in(&mut store, Some(Role::Owner));
+    let state = state_with_vendors(
+        store,
+        auth,
+        on(),
+        vendors,
+        (MockBlobStore::new(), no_images(), Arc::new(NoBeliefs)),
+    );
+    drop_mid_exchange(&state, keyed_complete_request(), held).await;
+    state.tasks.close();
+    state.tasks.wait().await;
+}
+
+/// Finding 1: an exchange that fails after its request was dropped still releases the claim
+/// and the idempotency key, so the retry runs again and connects.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_complete_dropped_mid_outage_releases_its_claim_and_a_retry_connects() {
+    let mut vendors = MockConnectVendors::new();
+    let mut seq = Sequence::new();
+    let held = held_exchange(&mut vendors, &mut seq, || {
+        Err(VendorError::Unavailable {
+            vendor: ConnectorKind::GoogleDrive,
+            retry_after_s: None,
+            source: None,
+        })
+    });
+    vendors
+        .expect_exchange()
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(|_, _, _, _| Ok(google_exchanged()));
+    let mut store = store_with(pending_row(ConnectorKind::GoogleDrive));
+    store
+        .farm_record_store
+        .expect_claim_connect()
+        .times(2)
+        .returning(|_, _, _, _| Ok(()));
+    store
+        .farm_record_store
+        .expect_release_connect()
+        .withf(|_, c, nonce| *c == id() && nonce == NONCE)
+        .times(1)
+        .returning(|_, _, _| Ok(()));
+    store
+        .farm_record_store
+        .expect_complete_connect()
+        .times(1)
+        .returning(|_, _, done| {
+            let mut c = connector(ConnectorKind::GoogleDrive, ConnectorStatus::Active);
+            c.account = Some(done.account);
+            Ok(c)
+        });
+    store
+        .idempotency_repo
+        .expect_begin()
+        .times(2)
+        .returning(|_, _, _| Ok(IdempotencyBegin::Started));
+    store
+        .idempotency_repo
+        .expect_release()
+        .times(1)
+        .returning(|_| Ok(()));
+    store
+        .idempotency_repo
+        .expect_finish()
+        .withf(|_, response| response.status == 200)
+        .times(1)
+        .returning(|_, _| Ok(()));
+    let auth = signed_in(&mut store, Some(Role::Owner));
+    let state = state_with_vendors(
+        store,
+        auth,
+        on(),
+        vendors,
+        (MockBlobStore::new(), no_images(), Arc::new(NoBeliefs)),
+    );
+    drop_mid_exchange(&state, keyed_complete_request(), held).await;
+    // The first task is done once its claim and key are released.
+    while !state.tasks.is_empty() {
+        tokio::task::yield_now().await;
+    }
+    let response = crate::router::app(Arc::clone(&state))
+        .oneshot(keyed_complete_request())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    state.tasks.close();
+    state.tasks.wait().await;
+}
+
+/// Finding 1: a panic in the claimed exchange (a vendor client's bug) is `500`, and the claim
+/// is released, so a retry can claim again.
+#[tokio::test]
+async fn a_panicking_exchange_releases_the_claim() {
+    let mut vendors = MockConnectVendors::new();
+    vendors
+        .expect_exchange()
+        .times(1)
+        .returning(|_, _, _, _| panic!("a vendor client bug"));
+    let mut store = store_with(pending_row(ConnectorKind::Slack));
+    claims(&mut store, 1);
+    store.farm_record_store.expect_complete_connect().never();
+    let answer = send(
+        store,
+        on(),
+        Some(Role::Owner),
+        vendors,
+        complete_request(&good_state(), VERIFIER),
+    )
+    .await;
+    assert_eq!(answer.status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(answer.body["error"]["code"], "internal");
+}
+
 /// T-E3.4: a `complete` from another owner than the starter, or with the wrong
 /// `device_verifier`, is `404` and deletes the pending connector; the code is never exchanged.
 #[tokio::test]

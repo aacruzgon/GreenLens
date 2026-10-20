@@ -77,7 +77,7 @@ sequenceDiagram
     Layers->>Layers: TraceLayer span (request_id, method, matched route)
     Layers->>Layers: CorsLayer (answers preflights here)
     Layers->>Layers: CompressionLayer, render_errors, CatchPanicLayer, RequestBodyLimitLayer 20 MiB + 128 KiB
-    Layers->>Group: TimeoutLayer (10 s app, 60 s uploads and worker, 35 s claim), DefaultBodyLimit
+    Layers->>Group: TimeoutLayer (10 s app, 60 s uploads, connect and worker, 35 s claim), DefaultBodyLimit
     Group->>Ext: AuthUser
     Ext->>Ints: authz::authenticate, AuthVerifier::verify (JWKS, exp, nbf, iss, azp)
     Ints-->>Ext: VerifiedToken (sub)
