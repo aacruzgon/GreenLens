@@ -1012,7 +1012,12 @@ fn probing(uses: Arc<Mutex<Vec<u32>>>) -> Arc<FakeSource> {
 async fn older_item_checks_are_two_a_run_over_every_source_and_none_on_a_first_pass() {
     let uses = Arc::new(Mutex::new(Vec::new()));
     let source = probing(uses.clone());
-    let b = bench(store().await, source.clone(), SyncConfig::default());
+    // A budget that covers a page and two checks on every page.
+    let config = SyncConfig {
+        run_budget: Duration::from_mins(10),
+        ..SyncConfig::default()
+    };
+    let b = bench(store().await, source.clone(), config);
     let owner = garden(&b.store, &b.ids, "a").await;
     let id = connector(
         &b.store,
@@ -1061,7 +1066,7 @@ async fn older_item_checks_are_two_a_run_over_every_source_and_none_on_a_first_p
 async fn no_older_item_check_is_offered_at_the_end_of_the_budget() {
     let source = probing(Arc::default());
     let config = SyncConfig {
-        run_budget: Duration::from_secs(60),
+        run_budget: Duration::from_secs(130),
         ..SyncConfig::default()
     };
     let b = bench(store().await, source.clone(), config);
@@ -1298,6 +1303,22 @@ fn retry_after_is_kept_between_a_minute_and_an_hour() {
     assert_eq!(secs(Some(3600)), 3600);
     assert_eq!(secs(Some(86_400)), 3600, "a day is cut to an hour");
     assert_eq!(secs(Some(u32::MAX)), 3600);
+}
+
+#[test]
+fn a_page_is_offered_only_the_checks_its_budget_covers() {
+    use super::probes_offered;
+    let offered = |secs: u64, left: u32| probes_offered(Duration::from_secs(secs), left);
+    // 70 s for the page's own call, then 70 s for each check.
+    assert_eq!(offered(0, 2), 0);
+    assert_eq!(offered(139, 2), 0, "the page and one check would overrun");
+    assert_eq!(offered(140, 2), 1);
+    assert_eq!(offered(180, 2), 1, "a 3-minute run's first page");
+    assert_eq!(offered(209, 2), 1);
+    assert_eq!(offered(210, 2), 2);
+    assert_eq!(offered(600, 2), 2, "never more than the run has left");
+    assert_eq!(offered(600, 1), 1);
+    assert_eq!(offered(600, 0), 0);
 }
 
 /// A vendor whose page never comes, counting the calls.

@@ -4831,20 +4831,23 @@ impl FarmSync {
                     seen: std::collections::BTreeSet::new(),
                 });
             }
-            // No checks on a source's first pass, which reads every item in full, nor at the
-            // end of the run's budget.
+            // No checks on a source's first pass, which reads every item in full, and only as
+            // many as the run's budget left covers.
             let first_pass = state.reread_at.is_none();
-            let late = run
+            let remaining = run
                 .deadline
-                .saturating_duration_since(tokio::time::Instant::now())
-                < PROBE_MIN_BUDGET;
+                .saturating_duration_since(tokio::time::Instant::now());
             let request = FarmPageRequest {
                 account: run.account.clone(),
                 source: src.clone(),
                 cursor: state.vendor_cursor(),
                 oldest: run.now.minus(FARM_RECORD_KEEP),
                 reread_from: state.reread.as_ref().map(|r| r.from),
-                probe_limit: if first_pass || late { 0 } else { *probes },
+                probe_limit: if first_pass {
+                    0
+                } else {
+                    probes_offered(remaining, *probes)
+                },
             };
             // Shutdown interrupts a page in flight (a Tier 1 page can wait a minute per call);
             // nothing of it is stored yet. The budget is not raced: it is checked between pages.

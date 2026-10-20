@@ -19,8 +19,9 @@
 //!   every chosen source is read once a round. The round ends when every source has finished
 //!   its pass: only then is `synced_at` set and the next sync 15 minutes away.
 //! - **Older-item checks** ([`FarmPageRequest::probe_limit`], Slack's older threads): at most
-//!   [`PROBES_PER_RUN`] a run over all the connector's sources, none on a source's first pass
-//!   and none with less than 70 s of the budget left.
+//!   [`PROBES_PER_RUN`] a run over all the connector's sources, none on a source's first pass,
+//!   and on each page only as many as the budget left covers ([`probes_offered`]): under
+//!   Tier 1 the page's own call and each check can wait a paced minute.
 //! - **The daily re-read**: for a vendor with a [`FarmSource::reread_window`] (Slack's 7 days),
 //!   once a day after a finished pass the sync starts a pass from that far back; at its end, the
 //!   source's records in the window ([`FarmRecordStore::source_vendor_ids_since`]) that the pass
@@ -94,9 +95,9 @@ const EMBED_BATCH: usize = 32;
 /// pacer, which the threads that changed need too.
 pub const PROBES_PER_RUN: u32 = 2;
 
-/// No check is offered with less of the run's budget left than this: a paced check waits up to
-/// a minute.
-const PROBE_MIN_BUDGET: Duration = Duration::from_secs(70);
+/// The budget one paced vendor call may take: under Slack's Tier 1 pacing a call waits up to a
+/// minute for its turn, plus the call itself.
+const PACED_CALL: Duration = Duration::from_secs(70);
 
 /// The sync's settings.
 #[derive(Debug, Clone, Copy)]
@@ -414,20 +415,23 @@ impl FarmSync {
                     seen: std::collections::BTreeSet::new(),
                 });
             }
-            // No checks on a source's first pass, which reads every item in full, nor at the
-            // end of the run's budget.
+            // No checks on a source's first pass, which reads every item in full, and only as
+            // many as the run's budget left covers.
             let first_pass = state.reread_at.is_none();
-            let late = run
+            let remaining = run
                 .deadline
-                .saturating_duration_since(tokio::time::Instant::now())
-                < PROBE_MIN_BUDGET;
+                .saturating_duration_since(tokio::time::Instant::now());
             let request = FarmPageRequest {
                 account: run.account.clone(),
                 source: src.clone(),
                 cursor: state.vendor_cursor(),
                 oldest: run.now.minus(FARM_RECORD_KEEP),
                 reread_from: state.reread.as_ref().map(|r| r.from),
-                probe_limit: if first_pass || late { 0 } else { *probes },
+                probe_limit: if first_pass {
+                    0
+                } else {
+                    probes_offered(remaining, *probes)
+                },
             };
             // Shutdown interrupts a page in flight (a Tier 1 page can wait a minute per call);
             // nothing of it is stored yet. The budget is not raced: it is checked between pages.
@@ -698,6 +702,16 @@ fn outcome(stop: &Halt, now: Timestamp) -> (SyncErrorCode, Timestamp) {
         Halt::Vendor(e) => (e.code(), now.plus(SYNC_EVERY)),
         Halt::TooLarge => (SyncErrorCode::TooLarge, now.plus(SYNC_EVERY)),
     }
+}
+
+/// The older-item checks a page is offered with `remaining` of the run's budget and `left` of
+/// its checks: the page's own call and each check may each wait a paced minute
+/// ([`PACED_CALL`]), so a page is offered a check only for each [`PACED_CALL`] left after its
+/// own. With the 3-minute budget that is one check on a run's first page and none after two
+/// minutes, so a run overruns its budget by at most one paced call.
+fn probes_offered(remaining: Duration, left: u32) -> u32 {
+    let fit = remaining.saturating_sub(PACED_CALL).as_secs() / PACED_CALL.as_secs();
+    left.min(u32::try_from(fit).unwrap_or(u32::MAX))
 }
 
 /// The wait after a `429`: the vendor's `Retry-After`, kept within a minute (a missing or tiny

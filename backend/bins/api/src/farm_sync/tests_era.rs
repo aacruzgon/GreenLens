@@ -355,15 +355,15 @@ async fn era_slack_later_syncs_read_only_what_is_new() {
     );
 
     // Nothing new: one `conversations.history` call per channel, no embedding, and no thread
-    // read in full. The run's two older-thread checks (connectors 6) go to the only threads
-    // due one at the pinned clock, both in `#crew` (parent over 7 days old, last reply within
-    // 30), which are unchanged.
+    // read in full. The run's older-thread check (connectors 6: one a page under the
+    // 3-minute budget) goes to one of the only threads due one at the pinned clock, both in
+    // `#crew` (parent over 7 days old, last reply within 30), which are unchanged.
     let history = farm.calls(HISTORY).await;
     let mark = farm.proxy.len();
     farm.clock.advance(SYNC_EVERY);
     assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
     assert_eq!(farm.calls(HISTORY).await - history, 2);
-    assert_eq!(farm.proxy.replies_since(mark), (2, 0));
+    assert_eq!(farm.proxy.replies_since(mark), (1, 0));
     assert_eq!(
         farm.embedder.texts(),
         embedded,
@@ -382,10 +382,10 @@ async fn era_slack_later_syncs_read_only_what_is_new() {
     farm.run().await;
     assert_eq!(farm.count().await, 95);
     assert_eq!(farm.embedder.texts(), embedded + 1);
-    assert_eq!(farm.proxy.replies_since(mark), (2, 0));
+    assert_eq!(farm.proxy.replies_since(mark), (1, 0));
 
     // A new reply to a thread of the last 7 days shows in its parent's `latest_reply`, which
-    // the daily re-read reads: only that thread is read in full, besides the run's two checks.
+    // the daily re-read reads: only that thread is read in full, besides the run's check.
     let parent = "1792008000.012200";
     farm.tenant
         .inject(&json!({"messages": [{
@@ -397,7 +397,7 @@ async fn era_slack_later_syncs_read_only_what_is_new() {
     let mark = farm.proxy.len();
     farm.clock.advance(Duration::from_hours(24));
     farm.run().await;
-    assert_eq!(farm.proxy.replies_since(mark), (2, 1));
+    assert_eq!(farm.proxy.replies_since(mark), (1, 1));
     let records = farm.records().await;
     assert!(
         records[&format!("C_CREW/{parent}")]
@@ -434,12 +434,17 @@ async fn era_slack_a_check_finds_a_reply_to_a_thread_older_than_7_days() {
     farm.tenant.reset().await;
     farm.tenant.inject(&slack).await;
 
-    // No pass reads a parent that old; the run's two checks go to the two threads due one
-    // (both in `#crew`), and the one with the new reply is read in full.
+    // No pass reads a parent that old. Each run's check (one a page under the 3-minute
+    // budget, connectors 6) takes the next of the two threads due one, both in `#crew`: the
+    // first is unchanged, and the second, with the new reply, is read in full.
     let mark = farm.proxy.len();
     farm.clock.advance(SYNC_EVERY);
     assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
-    assert_eq!(farm.proxy.replies_since(mark), (2, 1));
+    assert_eq!(farm.proxy.replies_since(mark), (1, 0));
+    let mark = farm.proxy.len();
+    farm.clock.advance(SYNC_EVERY);
+    assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
+    assert_eq!(farm.proxy.replies_since(mark), (1, 1));
     let records = farm.records().await;
     assert!(
         records[&format!("C_CREW/{older}")]
@@ -449,10 +454,12 @@ async fn era_slack_a_check_finds_a_reply_to_a_thread_older_than_7_days() {
     );
     assert_eq!(farm.count().await, 94, "the thread is still one record");
 
-    // Checked again on the next run, it is unchanged: no full read.
+    // Checked again two runs later, it is unchanged: no full read.
     let mark = farm.proxy.len();
-    farm.clock.advance(SYNC_EVERY);
-    farm.run().await;
+    for _ in 0..2 {
+        farm.clock.advance(SYNC_EVERY);
+        farm.run().await;
+    }
     assert_eq!(farm.proxy.replies_since(mark), (2, 0));
     farm.tenant.close().await;
 }
