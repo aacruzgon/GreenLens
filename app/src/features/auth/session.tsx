@@ -27,20 +27,37 @@ export function useSession(): Session {
   return session;
 }
 
-export function SessionProvider({ publishableKey, children }: { publishableKey: string; children: ReactNode }) {
-  if (!publishableKey) return <DemoSession>{children}</DemoSession>;
+interface SessionProviderProps {
+  publishableKey: string;
+  /** Runs whenever a signed-in session ends, by any path: Settings, a second 401, or Clerk ending it (README 8). */
+  onSignedOut: () => void;
+  children: ReactNode;
+}
+
+export function SessionProvider({ publishableKey, onSignedOut, children }: SessionProviderProps) {
+  if (!publishableKey) return <DemoSession onSignedOut={onSignedOut}>{children}</DemoSession>;
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <ClerkLoaded>
-        <ClerkSession>{children}</ClerkSession>
+        <ClerkSession onSignedOut={onSignedOut}>{children}</ClerkSession>
       </ClerkLoaded>
     </ClerkProvider>
   );
 }
 
-function ClerkSession({ children }: { children: ReactNode }) {
+// Calls onSignedOut when isSignedIn goes from true to false.
+function useSignOutCleanup(isSignedIn: boolean, onSignedOut: () => void) {
+  const was = useRef(isSignedIn);
+  useEffect(() => {
+    if (was.current && !isSignedIn) onSignedOut();
+    was.current = isSignedIn;
+  }, [isSignedIn, onSignedOut]);
+}
+
+function ClerkSession({ onSignedOut, children }: { onSignedOut: () => void; children: ReactNode }) {
   const { isLoaded, isSignedIn, getToken, signOut } = useAuth();
   const { user } = useUser();
+  useSignOutCleanup(Boolean(isSignedIn), onSignedOut);
 
   // AuthBridge: the api layer never imports Clerk, so the session hands it a token function.
   useEffect(() => {
@@ -85,8 +102,9 @@ function ClerkSession({ children }: { children: ReactNode }) {
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 
-function DemoSession({ children }: { children: ReactNode }) {
+function DemoSession({ onSignedOut, children }: { onSignedOut: () => void; children: ReactNode }) {
   const [isSignedIn, setSignedIn] = useState(false);
+  useSignOutCleanup(isSignedIn, onSignedOut);
 
   useEffect(() => {
     if (!isSignedIn) {
