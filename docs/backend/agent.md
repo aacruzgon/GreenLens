@@ -1,6 +1,6 @@
 # PDM Backend: `agent` crate
 
-> **Status:** Draft v0.6.7, 2026-10-20. v0.6.7: gap G19 (docs/EON): the dose check's `Rate` also matches `RATE_BASE`: `per` before a field measure (`hectare`, `ha`, `acre`, optionally after a number, a fraction, `half` or `quarter`), a container (`tank`, `spray tank`, `tankful`, `tankload`, `backpack`, `knapsack`, `sprayer`, `jerry can`, `bucket`, `watering can`) or an area with a number ("100 m²", "10 square metres", "100 sq. ft."), and `/` before a field measure or an area with a number only, so "1/2 acre" and "rainwater/tank water" pass; `sq` joins the sentence splitter's abbreviations; `RATE_UNIT` adds `ℓ`, `ltr`, `lt`, `qt`, `pt` and an optional `US`, `UK` or `imperial`, so "a bag per acre" and "a capful per qt" fail while spacing passes; three new tests (117 in all) cover the new rates, spacing and sizes, and the known misses (a rate per plant, per length of row, per area without a number). v0.6.6: gap G13 (docs/EON): the dose check's `Rate` is a sentence rule (`Condition::QuantityOrStart`): a unit phrase (`RATE_PHRASE` and `RATE_UNIT`: `per`, `each` or `every` and a volume, or `/` and a volume, with quarts and pints) fails a sentence that holds a `QUANTITY` or a `RATE_AMOUNT` anywhere (vague, fractional and multiplying words, plural measure nouns, a rate from a record or a habit) or has at most three words before it (`LINE_START`), so a refusal that only names the unit passes while "a capful per litre", "Per litre, add a capful." and a rate split from its amount by a sentence break fail; `QUANTITY` adds `thirty` … `ninety`, `hundred`, `thousand` and more fraction glyphs; `has_quantity` is whether the sentence holds an amount, so `Rate` without one marks the short-prefix case; the advice rules tell the model not to name a volume unit when it declines a rate, and the chat and plan prompts moved to `chat/2026-10-20.4` and `plan/2026-10-20.1`; 114 unit tests. v0.6.5: `search_farm_records`' `since` and `until` window Slack messages only, and a Drive document is returned whatever the window (gap G18); the chat prompt is `chat/2026-10-20.3`. v0.6.4: `search_farm_records` takes `until?` and `author?` (gap G12), and without `kind` searches each kind apart and keeps `FARM_KIND_RESERVED` (3) of the 8 hits for each (`merge_kinds`, gap G16); its description says so, and the chat prompt's version is `chat/2026-10-20.2`; 110 unit tests. v0.6.3: gaps G13, G14 and G17 (docs/EON): the reply starts the text of a call after a tool round with a paragraph break (`\n\n`, once per call, only when the reply already has text that does not end in whitespace; sent as a `text_delta` and stored like any text), so "…records too." and "The zucchini…" no longer run together, and the budget note after a tool round gets the same break; the dose check logs an info event `dose check replaced a sentence` with the `message_id`, the `rule` and `has_quantity` (`DoseMatch::has_quantity`: whether the sentence holds a number or a number word), never the text; the chat prompt tells the model to mention instructions it ignores in a record, document or memory only when the question is about that item, and moved to `2026-10-20.1`; 108 unit tests. v0.6.2: gap G10: a garden with farm records is routed knowing it, so a question about its own Slack channels or documents reaches the chat model instead of the off-topic reply: the turn reads `has_farm_records` once before routing, `ClassifierTask::Route { farm_records }` adds a `farm_records` label to the classifier's labels and prompt only then (`classify/2026-10-20.2`), and `decide` counts that label as a care question with farm records and as unknown without; a `farm_records` win with `safety_sensitive` at 0.5 or more is safety-sensitive, and the prompt keeps a question about the doses or products the records hold `safety_sensitive`; the connectors read before routing gives up after 2 s; a garden without farm records is asked exactly as before; 107 unit tests and a live router check. v0.6.1: `AnthropicChat::stream` sends the call's final usage just before `Done`, since the `message_delta` that carries the stop reason also carries the final output count and the accumulator merged it without emitting it, so a turn's stored `tokens_out` (and the daily budget) kept an earlier, smaller count (found by `era-eval`, docs/EON E8.1). v0.6: `search_farm_records` (roadmap E5.2), a read tool for every role that embeds its query, searches the garden's farm records exactly with `kind` and `since` (the garden's midnight) and returns at most 8 hits framed as `farm_records` data; it is offered only when the garden has farm records or a connector past `pending` (gap G6: `Offer` carries the role and that fact, which the context reads once per turn from `FarmRecordStore::connectors`); its hits fill `Message.farm_citations` (E5.3), as knowledge hits fill `citations`; the chat prompt says what was applied and when, never the rate, and moved to `2026-10-19.2` (E5.5); 98 unit tests. v0.5: every successful tool result reaches the model inside a `<data kind="tool_result">` block (`prompt::tool_result`; a tool may pick another kind through `Tool::DATA_KIND`), refusals stay plain, and the stored copy keeps the tool's JSON; `DataKind` gains `ToolResult` and `FarmRecords`; the `<data` escape also catches a tag at the very end of a body, Unicode whitespace and zero-width characters after `<` or `/` (also in a JSON result's strings and keys, before it is written), the fullwidth and small `<`, and a multi-byte character after `data`; the chat prompt says where tool results arrive and moved to `2026-10-19.1`; 85 unit tests. v0.4: shared memories are recorded in `SurrealDB` Agent Memory through the new `beliefs` module (the `sync_pending` sweep, the only writer, and the reads `current_beliefs` and `search_beliefs`); memories and beliefs reach the model with their day; the context carries the current beliefs in their own `beliefs` block, `search_memory` returns `MemorySearch` with belief hits, the plan writer reads the plant's current beliefs, memories carry a `topic` (extraction and `remember`), and the chat, plan and extraction prompts moved to `2026-10-17.1`; 77 unit tests. v0.3: only the three tools that propose changes are `strict` (`ToolSpec::strict`), because all nineteen made a grammar the API refused as too large in the first live call; the Anthropic adapter maps `model_context_window_exceeded` to `MaxTokens` and ends a stream cut off before its stop reason with `Unavailable`; 62 unit tests and three ignored live tests (`tests/live_anthropic.rs`). v0.2: one `embedder` in `AgentDeps`, called with `EmbedMode::Query` for the user's message and searches and `EmbedMode::Document` for the memories it stores (`document_embedder` is gone). v0.1: the agent core (the chat turn and its stream, nineteen tools, the dose check, plan validation, the router and safety gate, the plan writer, the context builder, memory extraction and the Anthropic and classifier adapters), compiled on Rust 1.99.1 with 60 unit tests.
+> **Status:** Draft v0.6.8, 2026-10-20. v0.6.8: gap G22 (docs/EON): the ratio rules let dates, years, clock times and labels through: each rule has an `Exempt`, and `first_match` walks a rule's matches until one isn't exempt, so a ratio after an exempt match still fails ("Bed 3: 1:10 copper"); `in_exempt` passes "<n> in <year>" (1901–2099, not a multiple of 100) and a period after the second term ("1 in 14 days"); `colon_exempt` passes a clock time (`is_clock_time`: a leading zero, `:00`, `am` or `pm` after it, an hour from 13 after a time word or a date, an hour from 6 to 12 before a part of the day, an ISO timestamp) and a label or a date before a colon with a space after it ("Bed 3: 2 July", "2026-07-15: 420 bulbs"); two new dose tests and a `remember` test (contracts v0.10.21). v0.6.7: gap G19 (docs/EON): the dose check's `Rate` also matches `RATE_BASE`: `per` before a field measure (`hectare`, `ha`, `acre`, optionally after a number, a fraction, `half` or `quarter`), a container (`tank`, `spray tank`, `tankful`, `tankload`, `backpack`, `knapsack`, `sprayer`, `jerry can`, `bucket`, `watering can`) or an area with a number ("100 m²", "10 square metres", "100 sq. ft."), and `/` before a field measure or an area with a number only, so "1/2 acre" and "rainwater/tank water" pass; `sq` joins the sentence splitter's abbreviations; `RATE_UNIT` adds `ℓ`, `ltr`, `lt`, `qt`, `pt` and an optional `US`, `UK` or `imperial`, so "a bag per acre" and "a capful per qt" fail while spacing passes; three new tests (117 in all) cover the new rates, spacing and sizes, and the known misses (a rate per plant, per length of row, per area without a number). v0.6.6: gap G13 (docs/EON): the dose check's `Rate` is a sentence rule (`Condition::QuantityOrStart`): a unit phrase (`RATE_PHRASE` and `RATE_UNIT`: `per`, `each` or `every` and a volume, or `/` and a volume, with quarts and pints) fails a sentence that holds a `QUANTITY` or a `RATE_AMOUNT` anywhere (vague, fractional and multiplying words, plural measure nouns, a rate from a record or a habit) or has at most three words before it (`LINE_START`), so a refusal that only names the unit passes while "a capful per litre", "Per litre, add a capful." and a rate split from its amount by a sentence break fail; `QUANTITY` adds `thirty` … `ninety`, `hundred`, `thousand` and more fraction glyphs; `has_quantity` is whether the sentence holds an amount, so `Rate` without one marks the short-prefix case; the advice rules tell the model not to name a volume unit when it declines a rate, and the chat and plan prompts moved to `chat/2026-10-20.4` and `plan/2026-10-20.1`; 114 unit tests. v0.6.5: `search_farm_records`' `since` and `until` window Slack messages only, and a Drive document is returned whatever the window (gap G18); the chat prompt is `chat/2026-10-20.3`. v0.6.4: `search_farm_records` takes `until?` and `author?` (gap G12), and without `kind` searches each kind apart and keeps `FARM_KIND_RESERVED` (3) of the 8 hits for each (`merge_kinds`, gap G16); its description says so, and the chat prompt's version is `chat/2026-10-20.2`; 110 unit tests. v0.6.3: gaps G13, G14 and G17 (docs/EON): the reply starts the text of a call after a tool round with a paragraph break (`\n\n`, once per call, only when the reply already has text that does not end in whitespace; sent as a `text_delta` and stored like any text), so "…records too." and "The zucchini…" no longer run together, and the budget note after a tool round gets the same break; the dose check logs an info event `dose check replaced a sentence` with the `message_id`, the `rule` and `has_quantity` (`DoseMatch::has_quantity`: whether the sentence holds a number or a number word), never the text; the chat prompt tells the model to mention instructions it ignores in a record, document or memory only when the question is about that item, and moved to `2026-10-20.1`; 108 unit tests. v0.6.2: gap G10: a garden with farm records is routed knowing it, so a question about its own Slack channels or documents reaches the chat model instead of the off-topic reply: the turn reads `has_farm_records` once before routing, `ClassifierTask::Route { farm_records }` adds a `farm_records` label to the classifier's labels and prompt only then (`classify/2026-10-20.2`), and `decide` counts that label as a care question with farm records and as unknown without; a `farm_records` win with `safety_sensitive` at 0.5 or more is safety-sensitive, and the prompt keeps a question about the doses or products the records hold `safety_sensitive`; the connectors read before routing gives up after 2 s; a garden without farm records is asked exactly as before; 107 unit tests and a live router check. v0.6.1: `AnthropicChat::stream` sends the call's final usage just before `Done`, since the `message_delta` that carries the stop reason also carries the final output count and the accumulator merged it without emitting it, so a turn's stored `tokens_out` (and the daily budget) kept an earlier, smaller count (found by `era-eval`, docs/EON E8.1). v0.6: `search_farm_records` (roadmap E5.2), a read tool for every role that embeds its query, searches the garden's farm records exactly with `kind` and `since` (the garden's midnight) and returns at most 8 hits framed as `farm_records` data; it is offered only when the garden has farm records or a connector past `pending` (gap G6: `Offer` carries the role and that fact, which the context reads once per turn from `FarmRecordStore::connectors`); its hits fill `Message.farm_citations` (E5.3), as knowledge hits fill `citations`; the chat prompt says what was applied and when, never the rate, and moved to `2026-10-19.2` (E5.5); 98 unit tests. v0.5: every successful tool result reaches the model inside a `<data kind="tool_result">` block (`prompt::tool_result`; a tool may pick another kind through `Tool::DATA_KIND`), refusals stay plain, and the stored copy keeps the tool's JSON; `DataKind` gains `ToolResult` and `FarmRecords`; the `<data` escape also catches a tag at the very end of a body, Unicode whitespace and zero-width characters after `<` or `/` (also in a JSON result's strings and keys, before it is written), the fullwidth and small `<`, and a multi-byte character after `data`; the chat prompt says where tool results arrive and moved to `2026-10-19.1`; 85 unit tests. v0.4: shared memories are recorded in `SurrealDB` Agent Memory through the new `beliefs` module (the `sync_pending` sweep, the only writer, and the reads `current_beliefs` and `search_beliefs`); memories and beliefs reach the model with their day; the context carries the current beliefs in their own `beliefs` block, `search_memory` returns `MemorySearch` with belief hits, the plan writer reads the plant's current beliefs, memories carry a `topic` (extraction and `remember`), and the chat, plan and extraction prompts moved to `2026-10-17.1`; 77 unit tests. v0.3: only the three tools that propose changes are `strict` (`ToolSpec::strict`), because all nineteen made a grammar the API refused as too large in the first live call; the Anthropic adapter maps `model_context_window_exceeded` to `MaxTokens` and ends a stream cut off before its stop reason with `Unavailable`; 62 unit tests and three ignored live tests (`tests/live_anthropic.rs`). v0.2: one `embedder` in `AgentDeps`, called with `EmbedMode::Query` for the user's message and searches and `EmbedMode::Document` for the memories it stores (`document_embedder` is gone). v0.1: the agent core (the chat turn and its stream, nineteen tools, the dose check, plan validation, the router and safety gate, the plan writer, the context builder, memory extraction and the Anthropic and classifier adapters), compiled on Rust 1.99.1 with 60 unit tests.
 
 Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate uses and implements. It implements [architecture 7](../architecture/README.md#7-chat-and-agent-core), [8.2](../architecture/README.md#82-chat-turn) and the safety rules of [architecture 11](../architecture/README.md#11-security-privacy-and-safety), over the shapes of [contracts 7](../architecture/contracts.md#7-pipeline-records) and [contracts 8](../architecture/contracts.md#8-chat-and-memory). Every listing below is copied from the compiled source of `crates/agent`: `cargo check --workspace`, `cargo clippy -p agent --all-targets` (no warnings in `agent`) and `cargo test -p agent` (83 tests) pass.
 
@@ -214,9 +214,9 @@ const RATE_AMOUNT: &str = r"\b(?:several|some|dozens?|double|twice|triple|thrice
 | `drop`, `cup`, `spoonful`, `capful`, `pinch` with `of` within three words | `EverydayMeasure` | `QUANTITY \s*-?\s* EVERYDAY \b OF_WITHIN_THREE` | none |
 | "a few drops", "a splash", "a squirt" with `of` within three words | `VagueMeasure` | `\ba\s+(?:few\s+drops\|splash\|squirt)\b OF_WITHIN_THREE` | none |
 | `per`, `each` or `every` and a volume, or `/` and a volume; or `per` and a field measure, a container or an area with a number, or `/` and a field measure or an area with a number (gap G19); in a sentence with an amount anywhere or with at most three words before it | `Rate` | `RATE_PHRASE RATE_UNIT \b \| RATE_BASE` | a `QUANTITY` or `RATE_AMOUNT` in the sentence, or `LINE_START` before the match |
-| Two numbers around a colon | `ColonRatio` | `\d+\s*:\s*\d+` | none |
+| Two numbers around a colon | `ColonRatio` | `(?P<l>\d+)(?P<sb>\s*):(?P<sa>\s*)(?P<r>\d+)` | none; not a clock time or a label (`colon_exempt`, gap G22) |
 | "<q> part(s) … to <q> part(s)" | `PartsRatio` | `RATIO_QUANTITY\s+parts?\b.*?\bto\s+RATIO_QUANTITY\s+parts?\b` | none |
-| "<q> part(s) … to <q>", "<q> in <q>" | `MixtureRatio` | `…parts?\b.*?\bto\s+RATIO_QUANTITY`, `RATIO_QUANTITY\s+in\s+RATIO_QUANTITY` | a product name or a mixture word in the sentence |
+| "<q> part(s) … to <q>", "<q> in <q>" | `MixtureRatio` | `…parts?\b.*?\bto\s+RATIO_QUANTITY`, `(?P<l>RATIO_QUANTITY)\s+in\s+(?P<r>RATIO_QUANTITY)` | a product name or a mixture word in the sentence; for `in`, not a year or a period after the second term (`in_exempt`, gap G22) |
 | A percentage | `Percentage` | `\d+(?:[.,]\d+)?\s*(?:%\|percent\b\|per\s+cent\b)` | a product name or a mixture word in the sentence |
 
 ```rust
@@ -238,12 +238,15 @@ pub enum DoseRule {
     /// field measure, a container or an area with a number counts as a unit phrase too: "a bag
     /// per acre", "Use a capful per tank.", "a scoop per 100 m²" (EON gap G19).
     Rate,
-    /// Two numbers around a colon: "1:10" (clock times are a known false positive).
+    /// Two numbers around a colon: "1:10", "1 : 100", "Mix 1: 10". Not a clock time ("at
+    /// 18:40", "06:30", "7:00", "6:30 am", "10:30 in the morning") or a label or a date before a
+    /// colon ("Bed 3: 2 July", "2026-07-15: 420 bulbs") (EON gap G22).
     ColonRatio,
     /// "<quantity> part(s) … to <quantity> part(s)".
     PartsRatio,
     /// "<quantity> part(s) … to <quantity>" or "<quantity> in <quantity>", in a sentence with a
-    /// product name or a mixture word.
+    /// product name or a mixture word. Not "<quantity> in <year>" ("bed 1 in 2026") or a period
+    /// after `in` ("1 in 10 days") (EON gap G22).
     MixtureRatio,
     /// A percentage in a sentence with a product name or a mixture word.
     Percentage,
@@ -251,52 +254,61 @@ pub enum DoseRule {
 ```
 
 ```rust
-fn patterns() -> [(DoseRule, String, Condition); 9] {
+fn patterns() -> [(DoseRule, String, Condition, Exempt); 9] {
     [
         (
             DoseRule::Measure,
             format!(r"{QUANTITY}\s*-?\s*{MEASURE}\b"),
             Condition::None,
+            Exempt::Nothing,
         ),
         (
             DoseRule::EverydayMeasure,
             format!(r"{QUANTITY}\s*-?\s*{EVERYDAY}\b{OF_WITHIN_THREE}"),
             Condition::None,
+            Exempt::Nothing,
         ),
         (
             DoseRule::VagueMeasure,
             format!(r"\ba\s+(?:few\s+drops|splash|squirt)\b{OF_WITHIN_THREE}"),
             Condition::None,
+            Exempt::Nothing,
         ),
         (
             DoseRule::Rate,
             format!(r"{RATE_PHRASE}{RATE_UNIT}\b|{RATE_BASE}"),
             Condition::QuantityOrStart,
+            Exempt::Nothing,
         ),
         (
             DoseRule::ColonRatio,
-            r"\d+\s*:\s*\d+".to_owned(),
+            r"(?P<l>\d+)(?P<sb>\s*):(?P<sa>\s*)(?P<r>\d+)".to_owned(),
             Condition::None,
+            Exempt::TimeOrLabel,
         ),
         (
             DoseRule::PartsRatio,
             format!(r"{RATIO_QUANTITY}\s+parts?\b.*?\bto\s+{RATIO_QUANTITY}\s+parts?\b"),
             Condition::None,
+            Exempt::Nothing,
         ),
         (
             DoseRule::MixtureRatio,
             format!(r"{RATIO_QUANTITY}\s+parts?\b.*?\bto\s+{RATIO_QUANTITY}"),
             Condition::Mixture,
+            Exempt::Nothing,
         ),
         (
             DoseRule::MixtureRatio,
-            format!(r"{RATIO_QUANTITY}\s+in\s+{RATIO_QUANTITY}"),
+            format!(r"(?P<l>{RATIO_QUANTITY})\s+in\s+(?P<r>{RATIO_QUANTITY})"),
             Condition::Mixture,
+            Exempt::YearOrPeriod,
         ),
         (
             DoseRule::Percentage,
             r"\d+(?:[.,]\d+)?\s*(?:%|percent\b|per\s+cent\b)".to_owned(),
             Condition::Mixture,
+            Exempt::Nothing,
         ),
     ]
 }
@@ -304,10 +316,11 @@ fn patterns() -> [(DoseRule, String, Condition); 9] {
 static RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
     patterns()
         .into_iter()
-        .map(|(kind, pattern, condition)| Rule {
+        .map(|(kind, pattern, condition, exempt)| Rule {
             kind,
             regex: ci(&pattern),
             condition,
+            exempt,
         })
         .collect()
 });
@@ -315,7 +328,7 @@ static RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
 /// Every rule in one set: a sentence that matches none of them (almost every sentence) is
 /// rejected in a single pass before any rule is run on its own.
 static ANY: LazyLock<RegexSet> = LazyLock::new(|| {
-    RegexSetBuilder::new(patterns().map(|(_, p, _)| p))
+    RegexSetBuilder::new(patterns().map(|(_, p, _, _)| p))
         .case_insensitive(true)
         .build()
         // reason: the same patterns as RULES.
@@ -328,6 +341,164 @@ static MIXTURE: LazyLock<Regex> = LazyLock::new(|| {
         r"\b(?:solutions?|mix(?:es|ed|ing)?|mixtures?|spray(?:s|ed|ing)?|dilut(?:e|es|ed|ing|ion)|concentrations?)\b",
     )
 });
+```
+
+**Dates, years, clock times and labels** (gap G22 of the [connectors roadmap](../EON/README.md)). The colon rule and the `in` rule carry an `Exempt`, and `first_match` walks their matches with `captures_at` until one is not exempt: after an exempt clock time it goes on after the minutes, after an exempt label or year at the second number, so "Bed 3: 1:10 copper", "Spray at 6:30 am with a 1:10 mix" and "Mix copper 1 in 2000 in 2026" still fail. A ratio's first term is small and has no leading zero, which is what lets a clock time through: `1:10`, "at 1:20 in the evening" and "a 20:20 feed" stay ratios.
+
+```rust
+/// Which matches of a rule are not what the rule is about, checked match by match (EON gap G22).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Exempt {
+    /// Every match counts.
+    Nothing,
+    /// The colon rule: a clock time, or a label or a date before a colon.
+    TimeOrLabel,
+    /// The `in` rule: a year as the second term, or a period after it.
+    YearOrPeriod,
+}
+
+/// The words that number a place, a period or an item, so that a number after them and a colon
+/// is a label ("Bed 3: 2 July", "Q3: 4 sprays"), not the first term of a ratio: the word, an
+/// optional `#`, and the earlier numbers of a list that ends in `and`, `or`, `&` or a dash
+/// ("Beds 1, 5 and 6: 2 July", "Rows 2-4: 3 sprays"); "bed 3, 1" is no list. Not `part`, `mix`
+/// or `ratio`, which ratios use.
+const NUMBERED: &str = r"\b(?:beds?|plots?|rows?|weeks?|days?|steps?|stages?|phases?|zones?|sections?|blocks?|areas?|fields?|tunnels?|greenhouses?|houses?|trays?|pots?|trees?|lines?|items?|entry|entries|notes?|questions?|runs?|rounds?|trials?|samples?|visits?|pages?|tables?|figures?|fig\.?|chapters?|sites?|scans?|photos?|tasks?|q)\s*#?\s*(?:\d+[a-z]?(?:\s*,\s*\d+[a-z]?)*(?:\s*,?\s*(?:and|or|&)\s+|\s*[-–]\s*))?$";
+
+/// The month names and their abbreviations.
+const MONTH: &str = r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
+
+/// A label before a colon: [`NUMBERED`], or the start of a date that the number ends
+/// ("2026-07-15", "15/07/2026", "July 15").
+static LABEL_BEFORE: LazyLock<Regex> = LazyLock::new(|| {
+    ci(&format!(
+        r"{NUMBERED}|(?:\d{{4}}-\d{{1,2}}-|\d{{1,2}}[/.]\d{{1,2}}[/.]|\d{{4}}[/.]\d{{1,2}}[/.]|\b{MONTH}\.?\s+)$"
+    ))
+});
+
+/// A date that starts after a colon: "2 July", "2nd of July", "02/07/2026", "2026-07-02".
+static DATE_AFTER: LazyLock<Regex> = LazyLock::new(|| {
+    ci(&format!(
+        r"^(?:\d{{1,2}}(?:st|nd|rd|th)?\s+(?:of\s+)?{MONTH}\b|\d{{1,2}}[/.]\d{{1,2}}[/.]\d{{2,4}}\b|\d{{4}}-\d{{1,2}}-\d{{1,2}}\b)"
+    ))
+});
+
+/// A period after the second term of `<n> in <n>`: "1 in 10 days".
+static PERIOD_AFTER: LazyLock<Regex> = LazyLock::new(|| {
+    ci(r"^\s+(?:days?|weeks?|months?|years?|hours?|hrs?|minutes?|mins?|seasons?|nights?)\b")
+});
+
+/// What makes `H:MM` a clock time after it: `am`, `pm`, `o'clock`, `h`, `hrs`, `UTC`, `GMT`.
+static CLOCK_AFTER: LazyLock<Regex> =
+    LazyLock::new(|| ci(r"^\s*(?:a\.?\s?m\b|p\.?\s?m\b|o['’]?clock\b|h\b|hrs?\b|utc\b|gmt\b)"));
+
+/// A part of the day after `H:MM`: "10:30 in the morning", "7:15 tonight".
+static DAYTIME_AFTER: LazyLock<Regex> = LazyLock::new(|| {
+    ci(
+        r"^\s*(?:in\s+the\s+(?:morning|afternoon|evening)|(?:this|tomorrow|yesterday|each|every)\s+(?:morning|afternoon|evening|night)|tonight|at\s+night)\b",
+    )
+});
+
+/// What makes a 24-hour `H:MM` a clock time before it: a word that introduces a time ("at
+/// 18:40", "from 18:40 to 19:10", "18:40–19:10") or a date ("2 July 18:40", "July 2, 18:40").
+static TIME_BEFORE: LazyLock<Regex> = LazyLock::new(|| {
+    ci(&format!(
+        r"(?:\b(?:at|by|from|until|till|before|after|around|about|between|since|to|and|or|past)\s+|[-–]\s*|(?:\b\d{{1,2}}(?:st|nd|rd|th)?\s+{MONTH}|\b{MONTH}\.?\s+\d{{1,2}}(?:st|nd|rd|th)?|\d{{4}}-\d{{2}}-\d{{2}}),?\s+)$"
+    ))
+});
+
+/// An ISO date and `T` just before a time: "2026-07-15T18:40:00Z".
+static ISO_DATE_BEFORE: LazyLock<Regex> = LazyLock::new(|| ci(r"\d{4}-\d{2}-\d{2}t$"));
+
+/// A colon and a number just before `H:MM`, as in the last two of "20:20:20" (a fertiliser's
+/// analysis).
+static COLON_BEFORE: LazyLock<Regex> = LazyLock::new(|| ci(r"\d\s*:\s*$"));
+
+/// A colon and a number just after `H:MM`, as in "20:20:20" or "18:40:00".
+static COLON_AFTER: LazyLock<Regex> = LazyLock::new(|| ci(r"^\s*:\s*\d"));
+
+/// Whether `n` is a year that no dilution reads as: four digits from 1901 to 2099 that are not
+/// a multiple of 100, so "1 in 2026" is a year and "1 in 2000" stays a ratio.
+fn is_year(n: &str) -> bool {
+    n.len() == 4
+        && (n.starts_with("19") || n.starts_with("20"))
+        && !n.ends_with("00")
+        && n.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// Whether the colon rule's `H:MM` match is a clock time (EON gap G22): no space around the
+/// colon, `H` one or two digits up to 23, `MM` two digits up to 59, not one of three
+/// colon-separated numbers ("20:20:20", "18:40:00") unless after an ISO date and `T`, and one
+/// of: after an ISO date and `T`; a leading zero ("06:30"); `MM` `00` ("7:00"); `am`, `pm`, `o'clock`,
+/// `h`, `UTC` or `GMT` after it ("6:30 am"); `H` from 13 with a time word or a date before it
+/// ("at 18:40", "2 July 18:40"); `H` from 6 to 12 with a part of the day after it ("10:30 in
+/// the morning"). A ratio's first term is small and has no leading zero, so "1:10", "at 1:20 in
+/// the evening" and "a 20:20 feed" stay ratios.
+fn is_clock_time(before: &str, l: &str, r: &str, after: &str) -> bool {
+    let (Ok(hour), Ok(minute)) = (l.parse::<u32>(), r.parse::<u32>()) else {
+        return false;
+    };
+    if l.len() > 2 || r.len() != 2 || hour > 23 || minute > 59 {
+        return false;
+    }
+    if l.len() == 2 && ISO_DATE_BEFORE.is_match(before) {
+        return true;
+    }
+    if COLON_BEFORE.is_match(before) || COLON_AFTER.is_match(after) {
+        return false;
+    }
+    (l.len() == 2 && l.starts_with('0'))
+        || minute == 0
+        || CLOCK_AFTER.is_match(after)
+        || (hour >= 13 && TIME_BEFORE.is_match(before))
+        || ((6..=12).contains(&hour) && DAYTIME_AFTER.is_match(after))
+}
+
+/// The colon rule's exemptions (EON gap G22): a clock time ([`is_clock_time`]), or a label: a
+/// number, no space, a colon and a space or more, where the number ends a label or a date or is
+/// a year ("Bed 3: 2 July", "2026-07-15: 420 bulbs", "2026: 3 sprays"), or a date starts after
+/// the colon ("…: 2 July"). Returns where to look for the next match, or `None` when this match
+/// counts: after a time, or at the second number after a label, so "Bed 3: 1:10" still fails.
+fn colon_exempt(sentence: &str, caps: &Captures<'_>) -> Option<usize> {
+    let (l, r) = (caps.name("l")?, caps.name("r")?);
+    let tight = caps.name("sb").is_none_or(|m| m.is_empty());
+    let spaced = caps.name("sa").is_some_and(|m| !m.is_empty());
+    let before = &sentence[..l.start()];
+    if tight && !spaced && is_clock_time(before, l.as_str(), r.as_str(), &sentence[r.end()..]) {
+        return Some(r.end());
+    }
+    let label = tight
+        && spaced
+        && (LABEL_BEFORE.is_match(before)
+            || is_year(l.as_str())
+            || DATE_AFTER.is_match(&sentence[r.start()..]));
+    label.then_some(r.start())
+}
+
+/// The `in` rule's exemptions (EON gap G22): a year as the second term ("bed 1 in 2026",
+/// "beds 1, 5 or 6 in 2026") or a period after it ("spray again 1 in 14 days"). Returns where to
+/// look for the next match (the second term), or `None` when this match counts.
+fn in_exempt(sentence: &str, caps: &Captures<'_>) -> Option<usize> {
+    let r = caps.name("r")?;
+    let exempt = is_year(r.as_str()) || PERIOD_AFTER.is_match(&sentence[r.end()..]);
+    exempt.then_some(r.start())
+}
+
+/// The first match of a rule in a sentence that its exemptions leave.
+fn first_match(rule: &Rule, sentence: &str) -> Option<Range<usize>> {
+    let exempt = match rule.exempt {
+        Exempt::Nothing => return rule.regex.find(sentence).map(|m| m.range()),
+        Exempt::TimeOrLabel => colon_exempt,
+        Exempt::YearOrPeriod => in_exempt,
+    };
+    let mut at = 0;
+    while let Some(caps) = rule.regex.captures_at(sentence, at) {
+        match exempt(sentence, &caps) {
+            Some(next) => at = next,
+            None => return caps.get(0).map(|m| m.range()),
+        }
+    }
+    None
+}
 ```
 
 The mixture words of contracts 7 are matched with their inflections (`sprayed`, `mixing`, `diluted`, `dilution`), so a rewording doesn't slip past the condition. A product name is anything in the [`ProductCatalogue`](#5-sentences-and-products).
@@ -394,7 +565,7 @@ fn check_sentence(sentence: &str, products: &ProductCatalogue) -> Option<(DoseRu
             r.condition != Condition::Mixture
                 || *mixture.get_or_insert_with(|| mixture_context(sentence, products))
         })
-        .filter_map(|(_, r)| r.regex.find(sentence).map(|m| (r, m.range())))
+        .filter_map(|(_, r)| first_match(r, sentence).map(|m| (r, m)))
         .filter(|(r, m)| {
             r.condition != Condition::QuantityOrStart
                 || ANY_QUANTITY.is_match(sentence)
@@ -418,6 +589,8 @@ Every example of contracts 7, failing and passing, is a test case (`safety::dose
 | "Add a few drops of dish soap.", "Add a splash of vinegar.", "a squirt of soap" | fails: `VagueMeasure` |
 | "Add a capful per litre.", "Add half a cup per gallon.", "two scoops of it per liter", "two scoops of the copper product per gallon", "Per litre, add a capful.", "a capful (per litre)", "thirty capfuls per litre", "some powder per litre", "twice the label rate per litre", "2x per litre", "Use ⅜ cup per litre.", "Add few caps per litre.", "ADD CAPFULS PER GALLON.", "Use capfuls/L.", "Use the same rate per litre as last time.", "Add two capfuls. Do this per litre of water.", "Add two capfuls.\nThat is per litre.", "a\ncapful per litre", "Use it per litre of water.", "dilute to /gal", "Apply 2/l.", "Apply 3 capfuls/gal.", "a bag per acre", "a capful per hectare", "a scoop per 100 m²", "two scoops per 10 square metres", "a bag per 1,000 sq ft", "Use a bag per 100 sq. ft.", "a bag per half an acre", "Use a capful per tank.", "a capful per spray tank", "a sachet per knapsack", "a capful per sprayer", "a capful per jerry can", "three capfuls per backpack", "a capful per bucket", "a capful per watering can", "a capful per ℓ", "a capful per ltr", "a capful per qt", "a capful per pt", "a capful per US gallon" | fails: `Rate` ("5 ml per litre", "25 g per litre", "two tablespoons per gallon", "5 g/l" and "5 ml/l" fail at the same position as `Measure`, which comes first; "fifty grams" and "Add thirty ml of Kocide." are `Measure`) |
 | "Mix at 1:10." | fails: `ColonRatio` |
+| "1:10", "a 1:1 mix", "1 : 100", "Mix 1: 10 with water.", "Apply at 1:20 in the evening.", "A 20:20:20 feed.", "Bed 3: 1:10 copper.", "Kocide: 1: 10.", "2026-07-15T1:10 copper on bed 3.", "Spray at 6:30 am with a 1:10 mix." / "dilute 1 in 50", "Mix copper 1 in 2000 with water.", "Mix copper 1 in 2000 in 2026.", "Spray bed 3, 1 in 10." | fails: `ColonRatio` / `MixtureRatio`, beside the G22 exemptions |
+| "Sprayed bed 1 in 2026.", "No copper on bed 1 in 2026.", "Spray again 1 in 14 days.", "Bed 3: 2 July", "2026-07-15: 420 bulbs", "Q3: 4 sprays on bed 3.", "Beds 1 and 2: 6 sprays in all.", "2026: 3 sprays on bed 3.", "On 2 July at 18:40 Maria sprayed bed 3.", "Riley posted at 09:15.", "Spray at 6:30 am before the bees fly.", "Spray copper between 7:00 and 9:00 in the morning.", "Water at 10:30 in the morning.", "The sync ran at 2026-07-15T18:40:00Z." | passes: dates, years, clock times and labels (gap G22) |
 | "Use one part soap to ten parts water.", "Use 1 part milk to 9 parts water." | fails: `PartsRatio` |
 | "Mix 1 in 10 with water.", "One part neem to ten of water." | fails: `MixtureRatio` |
 | "Use a 2% soap spray.", "A 0.5 percent copper solution." | fails: `Percentage` |
@@ -425,7 +598,7 @@ Every example of contracts 7, failing and passing, is a test case (`safety::dose
 | "Space the plants 30 cm apart, two per square metre.", "Plant four lettuces per square foot.", "Plant one seedling per pot.", "Water each bed per week", "Mulch a 5 cm layer per bed", "Rinse the sprayer after each tank.", "The beds cover about 100 m² in all.", "I can't give you the rate per hectare.", "Your plot is 1/2 acre.", "Use rainwater/tank water if you can.", "Two buckets of compost per bed are enough." | passes: `each` and `every` count before a volume only, `/` takes no number or container, and an area without a number is spacing (gap G19) |
 | "a capful per plant", "a capful per square foot", "use a capful per 10 m of row" | passes: the **known misses** of gap G19, which can't be told from spacing |
 | "I can't tell you how much Kocide went into the backpack per litre.", "I can't give the amount per litre.", "I can't say how many grams go in each litre.", "Follow the label's rate per litre.", "Use the label rate per litre.", "The label gives the rate in g/l or ml/l.", "Collect some litres of rainwater.", "Water with several gallons each week." | passes: a unit phrase with no amount in the sentence and four or more words before it (EON gap G13; the first two are the refusals of E8.3), and the vague words count only beside a unit phrase |
-| "Use a 1 gallon sprayer." / "Water at 10:30 in the morning." / "Spots cover 12% of the leaf, so spray the healthy leaves too." / "A drop in temperature of 5 °C." / "…went into a backpack per litre.", "I can't give you an amount per litre.", "How much Kocide 3000 to use per litre is on the label.", "Some growers ask about the rate per litre.", "Rates per litre are on the label.", "DiPel's rate per litre is on its label.", "Scout a few rows per hectare.", "Set one trap per acre.", "One tree per 20 m².", "Take one soil sample per hectare.", "See https://example.org/pt/garden for a guide." | fails: the five **known false positives** (`Measure`, `ColonRatio`, `Percentage`, `EverydayMeasure`, `Rate`); the prompts steer around the first three |
+| "Use a 1 gallon sprayer." / "Sprayed at 9:15.", "The spray started at 18:40:00.", "Bed 3 sprayed, 18:40.", "Bed 3:2 July" / "Spots cover 12% of the leaf, so spray the healthy leaves too." / "A drop in temperature of 5 °C." / "…went into a backpack per litre.", "I can't give you an amount per litre.", "How much Kocide 3000 to use per litre is on the label.", "Some growers ask about the rate per litre.", "Rates per litre are on the label.", "DiPel's rate per litre is on its label.", "Scout a few rows per hectare.", "Set one trap per acre.", "One tree per 20 m².", "Take one soil sample per hectare.", "See https://example.org/pt/garden for a guide." | fails: the five **known false positives** (`Measure`, `ColonRatio`, `Percentage`, `EverydayMeasure`, `Rate`); the prompts steer around the first three |
 | "Add a capful per litre." / "Add two capfuls.\nThat is per litre." | `has_quantity()` true / false: whether the sentence holds an amount, what the turn logs when it replaces a sentence; `Rate` with `false` is the short-prefix case |
 | "Spots cover 12% of the leaf. Spray the healthy leaves too." | passes: the condition is per sentence, which is how the prompts tell the model to write a measured share |
 
@@ -3131,11 +3304,11 @@ pub enum MemoryError {
 
 ## 17. Testing
 
-117 unit tests, run with `cargo test -p agent` (or `cargo nextest run -p agent`):
+120 unit tests, run with `cargo test -p agent` (or `cargo nextest run -p agent`):
 
 | Module | Tests | What |
 |---|---|---|
-| `safety::dose` | 12 | Every contracts 7 example, failing and passing, and every rate an audit found (a rate is a unit phrase in a sentence with an amount or with at most three words before it, so the refusals of EON gap G13 pass); rates per field measure, container or area and the volume abbreviations, and the spacing and sizes that pass (gap G19); the five known false positives and G19's known misses; `has_quantity` reads the sentence; per-sentence conditions; the borrowed match and its span; earliest match; `dose_check_all` |
+| `safety::dose` | 14 | Every contracts 7 example, failing and passing, and every rate an audit found (a rate is a unit phrase in a sentence with an amount or with at most three words before it, so the refusals of EON gap G13 pass); rates per field measure, container or area and the volume abbreviations, and the spacing and sizes that pass (gap G19); dates, years, clock times and labels that pass, and ratios with a colon or `in` beside them that fail (gap G22); the five known false positives and G19's known misses; `has_quantity` reads the sentence; per-sentence conditions; the borrowed match and its span; earliest match; `dose_check_all` |
 | `safety::sentences` | 6 | Terminators and line breaks; decimals, abbreviations and list numbers; closing quotes; the undecided full stop; streamed pieces concatenating to the text; the cap |
 | `safety::products` | 2 | Built-in words, plurals, case, whole words; knowledge-base products and `broad_spectrum` |
 | `safety::plan` | 9 | Every row of the validation table |
@@ -3144,7 +3317,7 @@ pub enum MemoryError {
 | `model::anthropic` | 4 | A stream cut off before its stop reason ends in an error (`wiremock`); the last usage before `Done` has the final output count. The request body: sorted tools, `strict` only where the spec says, stripped keywords, no `tool_choice` or `thinking`, effort, the reasoning block replayed, `tool_result` with `is_error` and an image after it, the cache breakpoint |
 | `model::classifier` | 4 | Parsing and clamping scores, the strict schema, a refusal routed as `safety_sensitive` with or without farm records; the route task's labels and prompt unchanged without farm records and with `farm_records` with them (gap G10) |
 | `plan_writer` | 7 | Private memories refused; one call when clean; exactly one validation round-trip, append-only; one parse retry; a refusal; the prompt's data blocks, the beliefs block with `key`, `value`, `about_plant` and the day only; no beliefs, no block |
-| `tools` | 19 | Twenty tools, sorted, filtered by role (17 for viewers and reviewers); only the three write tools strict; schemas from the argument types; `apply_preview`; crops; `remember`'s optional topic; `search_memory` merges belief hits, and a slow belief store gives empty `beliefs` after 4 s (paused time); `search_farm_records` left out without farm records, framed as `farm_records` (the only tool that overrides `DATA_KIND`), at most 8 hits from the proof's garden with `kind` and `since` passed through (T-E5.1), without `kind` one search per kind and each kind's reserve kept (`merge_kinds`: reserve, free slots by similarity, one kind missing, out-of-order input, NaN left out), `until` to the midnight after its day and `author` trimmed and searching messages only (Riley's August 31 message in the Maple Row fixture), unknown arguments, `until` before `since` and `author` for documents refused before the search, `since` at the garden's midnight (DST gap included); a date window applies to Slack messages and never to Drive documents (gap G18) |
+| `tools` | 20 | Twenty tools, sorted, filtered by role (17 for viewers and reviewers); only the three write tools strict; schemas from the argument types; `apply_preview`; crops; `remember`'s optional topic, and its fact "2026-07-15: 420 bulbs" passing the dose check while a ratio fails (gap G22); `search_memory` merges belief hits, and a slow belief store gives empty `beliefs` after 4 s (paused time); `search_farm_records` left out without farm records, framed as `farm_records` (the only tool that overrides `DATA_KIND`), at most 8 hits from the proof's garden with `kind` and `since` passed through (T-E5.1), without `kind` one search per kind and each kind's reserve kept (`merge_kinds`: reserve, free slots by similarity, one kind missing, out-of-order input, NaN left out), `until` to the midnight after its day and `author` trimmed and searching messages only (Riley's August 31 message in the Maple Row fixture), unknown arguments, `until` before `since` and `author` for documents refused before the search, `since` at the garden's midnight (DST gap included); a date window applies to Slack messages and never to Drive documents (gap G18) |
 | `beliefs` | 8 | Queued erases run before any record; a failed record doesn't hold up the rest; a failed erase stays queued and holds back its plant's records; a failed garden erase holds back its plants'; a private memory is never recorded; with Agent Memory off the queue is emptied and nothing is called; reads empty on error and on timeout (paused time) |
 | `context` | 2 | The beliefs block, with each belief's day, between the context and the memories; a slow belief store leaves it out after 1.5 s (paused time) while the memory hits arrive |
 | `turn` | 22 | Gap G14: text after a tool round starts a new paragraph, in the stream and the stored message; Gap G10: with farm records the classifier is asked `Route { farm_records: true }` and a `farm_records` question reaches the chat model as `care_question` with `search_farm_records`; without them it is asked `Route { farm_records: false }` and the same question, scored off-topic, gets the cheap redirect with no tools; a poisoning message in a garden with farm records gets poison control; a failed connectors read routes as without farm records; a clearly off-topic message stays off-topic with farm records; `search_farm_records` offered with a record or an `active` or `reauth_needed` connector, not with none or only a `pending` one (T-E5.2), and left out when the connectors can't be read; a call to it without records answered as unknown; a failed search or a failed query embedding answered with the plain "unavailable" refusal, no vendor text and no farm citation; an answer citing the fixture's spray log stores its `FarmCitation` once with title, author, time and link (T-E5.3), its hits reach the model as `farm_records`, and the sentence repeating the log's rate is replaced (T-E5.6); the offering rule; a dosed sentence replaced before streaming; the tool loop with the reasoning block replayed unchanged; a dose in tool arguments refused before the tool runs; a write tool unknown to a reviewer; the Maple Row fixture's planted injection, returned by `search_memory`, reaches the model only inside `<data>` with its planted tags escaped, while the stored result keeps the JSON (T-E5.4); the budget; validation; a disconnect stored as interrupted; poison control with no model call; a model failure as an `error` event |

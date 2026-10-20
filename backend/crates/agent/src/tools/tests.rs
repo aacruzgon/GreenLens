@@ -688,6 +688,30 @@ mod search_farm_records {
     }
 }
 
+/// `remember`'s fact is dose-checked before the tool runs; a date before a colon is no ratio
+/// (EON gap G22: E8.3's third run had Opus's `remember` refused twice for this fact).
+#[test]
+fn remember_keeps_a_dated_fact_and_refuses_a_ratio() {
+    let args = |fact: &str| -> ui::RememberArgs {
+        serde_json::from_value(json!({ "fact": fact })).unwrap()
+    };
+    let products = ProductCatalogue::builtin();
+    for fact in [
+        "2026-07-15: 420 bulbs",
+        "2026-07-15: 420 bulbs went into bed 4.",
+        "Bed 3 was sprayed with copper on 2 July at 18:40.",
+        "Bed 1 had no sprays in 2026.",
+    ] {
+        let a = args(fact);
+        assert!(
+            dose_check_all(ui::Remember::model_strings(&a), products).is_none(),
+            "{fact:?} should pass"
+        );
+    }
+    let a = args("Maria mixes the copper 1:10.");
+    assert!(dose_check_all(ui::Remember::model_strings(&a), products).is_some());
+}
+
 #[test]
 fn remember_takes_an_optional_topic() {
     let specs = ToolRegistry::standard().specs_for(Offer::everything(Role::Viewer));

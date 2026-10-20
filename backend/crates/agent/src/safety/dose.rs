@@ -9,7 +9,7 @@
 
 use std::{ops::Range, sync::LazyLock};
 
-use regex::{Regex, RegexBuilder, RegexSet, RegexSetBuilder};
+use regex::{Captures, Regex, RegexBuilder, RegexSet, RegexSetBuilder};
 
 use super::{ProductCatalogue, sentences::sentence_spans};
 
@@ -75,12 +75,15 @@ pub enum DoseRule {
     /// field measure, a container or an area with a number counts as a unit phrase too: "a bag
     /// per acre", "Use a capful per tank.", "a scoop per 100 m²" (EON gap G19).
     Rate,
-    /// Two numbers around a colon: "1:10" (clock times are a known false positive).
+    /// Two numbers around a colon: "1:10", "1 : 100", "Mix 1: 10". Not a clock time ("at
+    /// 18:40", "06:30", "7:00", "6:30 am", "10:30 in the morning") or a label or a date before a
+    /// colon ("Bed 3: 2 July", "2026-07-15: 420 bulbs") (EON gap G22).
     ColonRatio,
     /// "<quantity> part(s) … to <quantity> part(s)".
     PartsRatio,
     /// "<quantity> part(s) … to <quantity>" or "<quantity> in <quantity>", in a sentence with a
-    /// product name or a mixture word.
+    /// product name or a mixture word. Not "<quantity> in <year>" ("bed 1 in 2026") or a period
+    /// after `in` ("1 in 10 days") (EON gap G22).
     MixtureRatio,
     /// A percentage in a sentence with a product name or a mixture word.
     Percentage,
@@ -166,6 +169,17 @@ pub struct OwnedDoseMatch {
     pub span: Range<usize>,
 }
 
+/// Which matches of a rule are not what the rule is about, checked match by match (EON gap G22).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Exempt {
+    /// Every match counts.
+    Nothing,
+    /// The colon rule: a clock time, or a label or a date before a colon.
+    TimeOrLabel,
+    /// The `in` rule: a year as the second term, or a period after it.
+    YearOrPeriod,
+}
+
 /// What else a rule's sentence must hold for its match to count.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Condition {
@@ -182,6 +196,7 @@ struct Rule {
     kind: DoseRule,
     regex: Regex,
     condition: Condition,
+    exempt: Exempt,
 }
 
 fn ci(pattern: &str) -> Regex {
@@ -192,52 +207,61 @@ fn ci(pattern: &str) -> Regex {
         .expect("dose pattern compiles")
 }
 
-fn patterns() -> [(DoseRule, String, Condition); 9] {
+fn patterns() -> [(DoseRule, String, Condition, Exempt); 9] {
     [
         (
             DoseRule::Measure,
             format!(r"{QUANTITY}\s*-?\s*{MEASURE}\b"),
             Condition::None,
+            Exempt::Nothing,
         ),
         (
             DoseRule::EverydayMeasure,
             format!(r"{QUANTITY}\s*-?\s*{EVERYDAY}\b{OF_WITHIN_THREE}"),
             Condition::None,
+            Exempt::Nothing,
         ),
         (
             DoseRule::VagueMeasure,
             format!(r"\ba\s+(?:few\s+drops|splash|squirt)\b{OF_WITHIN_THREE}"),
             Condition::None,
+            Exempt::Nothing,
         ),
         (
             DoseRule::Rate,
             format!(r"{RATE_PHRASE}{RATE_UNIT}\b|{RATE_BASE}"),
             Condition::QuantityOrStart,
+            Exempt::Nothing,
         ),
         (
             DoseRule::ColonRatio,
-            r"\d+\s*:\s*\d+".to_owned(),
+            r"(?P<l>\d+)(?P<sb>\s*):(?P<sa>\s*)(?P<r>\d+)".to_owned(),
             Condition::None,
+            Exempt::TimeOrLabel,
         ),
         (
             DoseRule::PartsRatio,
             format!(r"{RATIO_QUANTITY}\s+parts?\b.*?\bto\s+{RATIO_QUANTITY}\s+parts?\b"),
             Condition::None,
+            Exempt::Nothing,
         ),
         (
             DoseRule::MixtureRatio,
             format!(r"{RATIO_QUANTITY}\s+parts?\b.*?\bto\s+{RATIO_QUANTITY}"),
             Condition::Mixture,
+            Exempt::Nothing,
         ),
         (
             DoseRule::MixtureRatio,
-            format!(r"{RATIO_QUANTITY}\s+in\s+{RATIO_QUANTITY}"),
+            format!(r"(?P<l>{RATIO_QUANTITY})\s+in\s+(?P<r>{RATIO_QUANTITY})"),
             Condition::Mixture,
+            Exempt::YearOrPeriod,
         ),
         (
             DoseRule::Percentage,
             r"\d+(?:[.,]\d+)?\s*(?:%|percent\b|per\s+cent\b)".to_owned(),
             Condition::Mixture,
+            Exempt::Nothing,
         ),
     ]
 }
@@ -245,10 +269,11 @@ fn patterns() -> [(DoseRule, String, Condition); 9] {
 static RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
     patterns()
         .into_iter()
-        .map(|(kind, pattern, condition)| Rule {
+        .map(|(kind, pattern, condition, exempt)| Rule {
             kind,
             regex: ci(&pattern),
             condition,
+            exempt,
         })
         .collect()
 });
@@ -256,7 +281,7 @@ static RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
 /// Every rule in one set: a sentence that matches none of them (almost every sentence) is
 /// rejected in a single pass before any rule is run on its own.
 static ANY: LazyLock<RegexSet> = LazyLock::new(|| {
-    RegexSetBuilder::new(patterns().map(|(_, p, _)| p))
+    RegexSetBuilder::new(patterns().map(|(_, p, _, _)| p))
         .case_insensitive(true)
         .build()
         // reason: the same patterns as RULES.
@@ -274,6 +299,149 @@ static MIXTURE: LazyLock<Regex> = LazyLock::new(|| {
 /// percentage rules.
 fn mixture_context(sentence: &str, products: &ProductCatalogue) -> bool {
     MIXTURE.is_match(sentence) || products.is_named_in(sentence)
+}
+
+/// The words that number a place, a period or an item, so that a number after them and a colon
+/// is a label ("Bed 3: 2 July", "Q3: 4 sprays"), not the first term of a ratio: the word, an
+/// optional `#`, and the earlier numbers of a list that ends in `and`, `or`, `&` or a dash
+/// ("Beds 1, 5 and 6: 2 July", "Rows 2-4: 3 sprays"); "bed 3, 1" is no list. Not `part`, `mix`
+/// or `ratio`, which ratios use.
+const NUMBERED: &str = r"\b(?:beds?|plots?|rows?|weeks?|days?|steps?|stages?|phases?|zones?|sections?|blocks?|areas?|fields?|tunnels?|greenhouses?|houses?|trays?|pots?|trees?|lines?|items?|entry|entries|notes?|questions?|runs?|rounds?|trials?|samples?|visits?|pages?|tables?|figures?|fig\.?|chapters?|sites?|scans?|photos?|tasks?|q)\s*#?\s*(?:\d+[a-z]?(?:\s*,\s*\d+[a-z]?)*(?:\s*,?\s*(?:and|or|&)\s+|\s*[-–]\s*))?$";
+
+/// The month names and their abbreviations.
+const MONTH: &str = r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
+
+/// A label before a colon: [`NUMBERED`], or the start of a date that the number ends
+/// ("2026-07-15", "15/07/2026", "July 15").
+static LABEL_BEFORE: LazyLock<Regex> = LazyLock::new(|| {
+    ci(&format!(
+        r"{NUMBERED}|(?:\d{{4}}-\d{{1,2}}-|\d{{1,2}}[/.]\d{{1,2}}[/.]|\d{{4}}[/.]\d{{1,2}}[/.]|\b{MONTH}\.?\s+)$"
+    ))
+});
+
+/// A date that starts after a colon: "2 July", "2nd of July", "02/07/2026", "2026-07-02".
+static DATE_AFTER: LazyLock<Regex> = LazyLock::new(|| {
+    ci(&format!(
+        r"^(?:\d{{1,2}}(?:st|nd|rd|th)?\s+(?:of\s+)?{MONTH}\b|\d{{1,2}}[/.]\d{{1,2}}[/.]\d{{2,4}}\b|\d{{4}}-\d{{1,2}}-\d{{1,2}}\b)"
+    ))
+});
+
+/// A period after the second term of `<n> in <n>`: "1 in 10 days".
+static PERIOD_AFTER: LazyLock<Regex> = LazyLock::new(|| {
+    ci(r"^\s+(?:days?|weeks?|months?|years?|hours?|hrs?|minutes?|mins?|seasons?|nights?)\b")
+});
+
+/// What makes `H:MM` a clock time after it: `am`, `pm`, `o'clock`, `h`, `hrs`, `UTC`, `GMT`.
+static CLOCK_AFTER: LazyLock<Regex> =
+    LazyLock::new(|| ci(r"^\s*(?:a\.?\s?m\b|p\.?\s?m\b|o['’]?clock\b|h\b|hrs?\b|utc\b|gmt\b)"));
+
+/// A part of the day after `H:MM`: "10:30 in the morning", "7:15 tonight".
+static DAYTIME_AFTER: LazyLock<Regex> = LazyLock::new(|| {
+    ci(
+        r"^\s*(?:in\s+the\s+(?:morning|afternoon|evening)|(?:this|tomorrow|yesterday|each|every)\s+(?:morning|afternoon|evening|night)|tonight|at\s+night)\b",
+    )
+});
+
+/// What makes a 24-hour `H:MM` a clock time before it: a word that introduces a time ("at
+/// 18:40", "from 18:40 to 19:10", "18:40–19:10") or a date ("2 July 18:40", "July 2, 18:40").
+static TIME_BEFORE: LazyLock<Regex> = LazyLock::new(|| {
+    ci(&format!(
+        r"(?:\b(?:at|by|from|until|till|before|after|around|about|between|since|to|and|or|past)\s+|[-–]\s*|(?:\b\d{{1,2}}(?:st|nd|rd|th)?\s+{MONTH}|\b{MONTH}\.?\s+\d{{1,2}}(?:st|nd|rd|th)?|\d{{4}}-\d{{2}}-\d{{2}}),?\s+)$"
+    ))
+});
+
+/// An ISO date and `T` just before a time: "2026-07-15T18:40:00Z".
+static ISO_DATE_BEFORE: LazyLock<Regex> = LazyLock::new(|| ci(r"\d{4}-\d{2}-\d{2}t$"));
+
+/// A colon and a number just before `H:MM`, as in the last two of "20:20:20" (a fertiliser's
+/// analysis).
+static COLON_BEFORE: LazyLock<Regex> = LazyLock::new(|| ci(r"\d\s*:\s*$"));
+
+/// A colon and a number just after `H:MM`, as in "20:20:20" or "18:40:00".
+static COLON_AFTER: LazyLock<Regex> = LazyLock::new(|| ci(r"^\s*:\s*\d"));
+
+/// Whether `n` is a year that no dilution reads as: four digits from 1901 to 2099 that are not
+/// a multiple of 100, so "1 in 2026" is a year and "1 in 2000" stays a ratio.
+fn is_year(n: &str) -> bool {
+    n.len() == 4
+        && (n.starts_with("19") || n.starts_with("20"))
+        && !n.ends_with("00")
+        && n.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// Whether the colon rule's `H:MM` match is a clock time (EON gap G22): no space around the
+/// colon, `H` one or two digits up to 23, `MM` two digits up to 59, not one of three
+/// colon-separated numbers ("20:20:20", "18:40:00") unless after an ISO date and `T`, and one
+/// of: after an ISO date and `T`; a leading zero ("06:30"); `MM` `00` ("7:00"); `am`, `pm`, `o'clock`,
+/// `h`, `UTC` or `GMT` after it ("6:30 am"); `H` from 13 with a time word or a date before it
+/// ("at 18:40", "2 July 18:40"); `H` from 6 to 12 with a part of the day after it ("10:30 in
+/// the morning"). A ratio's first term is small and has no leading zero, so "1:10", "at 1:20 in
+/// the evening" and "a 20:20 feed" stay ratios.
+fn is_clock_time(before: &str, l: &str, r: &str, after: &str) -> bool {
+    let (Ok(hour), Ok(minute)) = (l.parse::<u32>(), r.parse::<u32>()) else {
+        return false;
+    };
+    if l.len() > 2 || r.len() != 2 || hour > 23 || minute > 59 {
+        return false;
+    }
+    if l.len() == 2 && ISO_DATE_BEFORE.is_match(before) {
+        return true;
+    }
+    if COLON_BEFORE.is_match(before) || COLON_AFTER.is_match(after) {
+        return false;
+    }
+    (l.len() == 2 && l.starts_with('0'))
+        || minute == 0
+        || CLOCK_AFTER.is_match(after)
+        || (hour >= 13 && TIME_BEFORE.is_match(before))
+        || ((6..=12).contains(&hour) && DAYTIME_AFTER.is_match(after))
+}
+
+/// The colon rule's exemptions (EON gap G22): a clock time ([`is_clock_time`]), or a label: a
+/// number, no space, a colon and a space or more, where the number ends a label or a date or is
+/// a year ("Bed 3: 2 July", "2026-07-15: 420 bulbs", "2026: 3 sprays"), or a date starts after
+/// the colon ("…: 2 July"). Returns where to look for the next match, or `None` when this match
+/// counts: after a time, or at the second number after a label, so "Bed 3: 1:10" still fails.
+fn colon_exempt(sentence: &str, caps: &Captures<'_>) -> Option<usize> {
+    let (l, r) = (caps.name("l")?, caps.name("r")?);
+    let tight = caps.name("sb").is_none_or(|m| m.is_empty());
+    let spaced = caps.name("sa").is_some_and(|m| !m.is_empty());
+    let before = &sentence[..l.start()];
+    if tight && !spaced && is_clock_time(before, l.as_str(), r.as_str(), &sentence[r.end()..]) {
+        return Some(r.end());
+    }
+    let label = tight
+        && spaced
+        && (LABEL_BEFORE.is_match(before)
+            || is_year(l.as_str())
+            || DATE_AFTER.is_match(&sentence[r.start()..]));
+    label.then_some(r.start())
+}
+
+/// The `in` rule's exemptions (EON gap G22): a year as the second term ("bed 1 in 2026",
+/// "beds 1, 5 or 6 in 2026") or a period after it ("spray again 1 in 14 days"). Returns where to
+/// look for the next match (the second term), or `None` when this match counts.
+fn in_exempt(sentence: &str, caps: &Captures<'_>) -> Option<usize> {
+    let r = caps.name("r")?;
+    let exempt = is_year(r.as_str()) || PERIOD_AFTER.is_match(&sentence[r.end()..]);
+    exempt.then_some(r.start())
+}
+
+/// The first match of a rule in a sentence that its exemptions leave.
+fn first_match(rule: &Rule, sentence: &str) -> Option<Range<usize>> {
+    let exempt = match rule.exempt {
+        Exempt::Nothing => return rule.regex.find(sentence).map(|m| m.range()),
+        Exempt::TimeOrLabel => colon_exempt,
+        Exempt::YearOrPeriod => in_exempt,
+    };
+    let mut at = 0;
+    while let Some(caps) = rule.regex.captures_at(sentence, at) {
+        match exempt(sentence, &caps) {
+            Some(next) => at = next,
+            None => return caps.get(0).map(|m| m.range()),
+        }
+    }
+    None
 }
 
 /// Checks a text. Returns the first failing match (earliest sentence, then earliest position),
@@ -317,7 +485,7 @@ fn check_sentence(sentence: &str, products: &ProductCatalogue) -> Option<(DoseRu
             r.condition != Condition::Mixture
                 || *mixture.get_or_insert_with(|| mixture_context(sentence, products))
         })
-        .filter_map(|(_, r)| r.regex.find(sentence).map(|m| (r, m.range())))
+        .filter_map(|(_, r)| first_match(r, sentence).map(|m| (r, m)))
         .filter(|(r, m)| {
             r.condition != Condition::QuantityOrStart
                 || ANY_QUANTITY.is_match(sentence)
@@ -592,14 +760,121 @@ mod tests {
         }
     }
 
+    /// Dates, years, clock times and labels with a colon pass (EON gap G22): the sentences E8.3's
+    /// third run most likely replaced, and the forms the farm records use.
+    #[test]
+    fn dates_times_and_labels_pass() {
+        let cases = [
+            // `<n> in <year>` and `<n> in <n> <period>`.
+            "Sprayed bed 1 in 2026.",
+            "No copper on bed 1 in 2026.",
+            "Spray log 2026 shows no sprays on bed 1 in 2026.",
+            "The spray log has no sprays on beds 1, 5 or 6 in 2026.",
+            "We sprayed 3 in 2025 and 4 in 2026.",
+            "One in 2026 and two in 2025 were neem sprays.",
+            "Spray bed 2 in 10 days if the spots spread.",
+            "Spray again 1 in 14 days.",
+            // A label or a date, a colon and a space.
+            "Bed 3: 2 July",
+            "Maria sprayed copper on bed 3: 2 July and 16 July.",
+            "Bed 3: 2 July and 16 July (Kocide).",
+            "2026-07-15: 420 bulbs",
+            "2026-07-15: 420 bulbs planted in bed 4.",
+            "Q3: 4 sprays on bed 3.",
+            "Week 3: 2 sprays of copper on bed 3.",
+            "Step 2: 3 rows of lettuce.",
+            "Row 2: 15 plants, row 3: 14 plants.",
+            "Beds 1 and 2: 6 sprays in all.",
+            "Zone 2: 3 sprays of neem in June.",
+            "July 15: 2 sprays of copper.",
+            "15/07/2026: 3 copper sprays.",
+            "2026: 3 sprays on bed 3.",
+            "In 2025: 4 copper sprays on bed 2.",
+            "Item 1: 10 copper sprays were logged.",
+            // Clock times.
+            "On 2 July at 18:40 Maria sprayed bed 3.",
+            "Sprayed Kocide at 19:30 on 2 July.",
+            "The spray went on from 18:40 to 19:10.",
+            "Riley posted at 09:15.",
+            "Spray before 06:30, while it is calm.",
+            "Spray at 6:30 am before the bees fly.",
+            "Maria sprayed at 7:45 pm.",
+            "Spray copper between 7:00 and 9:00 in the morning.",
+            "Water at 10:30 in the morning.",
+            "Sprayed bed 3 at 10:30 in the morning.",
+            "Water the beds at 7:15 tonight.",
+            "The sync ran at 2026-07-15T18:40:00Z.",
+            "Spray at 5 a.m. or after 20:00.",
+        ];
+        for text in cases {
+            assert_eq!(check(text), None, "{text:?} should pass");
+        }
+    }
+
+    /// Ratios with a colon or `in` still fail beside the G22 exemptions: a ratio's first term is
+    /// small and has no leading zero, a space before the colon or none after it is no label, and
+    /// the search goes on after an exempt time or label.
+    #[test]
+    fn ratios_beside_dates_and_times_fail() {
+        use DoseRule::*;
+        let cases: &[(&str, DoseRule)] = &[
+            ("1:10", ColonRatio),
+            ("mix 1:4 with water", ColonRatio),
+            ("a 1:1 mix", ColonRatio),
+            ("3:1 water to vinegar", ColonRatio),
+            ("1 : 100", ColonRatio),
+            ("Mix 1: 10 with water.", ColonRatio),
+            ("Use it at 1:10 with water.", ColonRatio),
+            ("Apply at 1:20 in the evening.", ColonRatio),
+            ("Spray copper 1:10 in the morning.", ColonRatio),
+            ("Use neem at 2:30 in the morning.", ColonRatio),
+            ("Use 2:15.", ColonRatio),
+            ("A 20:20:20 feed.", ColonRatio),
+            ("Use 10:10:10.", ColonRatio),
+            ("Mix at 10:1.", ColonRatio),
+            ("Bed 3: 1:10 copper.", ColonRatio),
+            ("Beds 1 and 2: 1:10 neem.", ColonRatio),
+            ("Bed 3: mix 1: 10.", ColonRatio),
+            ("Kocide: 1: 10.", ColonRatio),
+            ("2026-07-15: 1:10 copper.", ColonRatio),
+            ("2026-07-15 1:10 copper on bed 3.", ColonRatio),
+            ("2026-07-15T1:10 copper on bed 3.", ColonRatio),
+            ("Spray at 6:30 am with a 1:10 mix.", ColonRatio),
+            ("At 18:40 Maria mixed 1:10.", ColonRatio),
+            ("Spray 1:10 on 2 July at 18:40.", ColonRatio),
+            ("Dilute 1:1000.", ColonRatio),
+            ("Mix 1 in 10 with water.", MixtureRatio),
+            ("dilute 1 in 50", MixtureRatio),
+            ("Dilute 2 in 1000.", MixtureRatio),
+            ("Mix copper 1 in 2000 with water.", MixtureRatio),
+            ("Use a 1 in 1900 dilution of copper.", MixtureRatio),
+            ("Mix copper 1 in 2000 in 2026.", MixtureRatio),
+            ("In 2026 mix 1 in 10.", MixtureRatio),
+            ("Spray bed 3, 1 in 10.", MixtureRatio),
+            ("Dilute the neem for day 1 in 10 parts water.", MixtureRatio),
+            ("Dilute 1 in 10 in 14 days.", MixtureRatio),
+            ("Mix one in ten with water.", MixtureRatio),
+        ];
+        for (text, rule) in cases {
+            assert_eq!(check(text), Some(*rule), "{text:?} should fail as {rule:?}");
+        }
+    }
+
     /// The known false positives of contracts 7: they fail. The prompts avoid the first three.
     #[test]
     fn known_false_positives_fail() {
         assert_eq!(check("Use a 1 gallon sprayer."), Some(DoseRule::Measure));
-        assert_eq!(
-            check("Water at 10:30 in the morning."),
-            Some(DoseRule::ColonRatio)
-        );
+        // A 12-hour time with nothing after it that says so, a time with seconds, a 24-hour time
+        // with no time word or date before it, and a label with no space after its colon (EON
+        // gap G22).
+        for text in [
+            "Sprayed at 9:15.",
+            "The spray started at 18:40:00.",
+            "Bed 3 sprayed, 18:40.",
+            "Bed 3:2 July",
+        ] {
+            assert_eq!(check(text), Some(DoseRule::ColonRatio), "{text:?}");
+        }
         assert_eq!(
             check("Spots cover 12% of the leaf, so spray the healthy leaves too."),
             Some(DoseRule::Percentage)
