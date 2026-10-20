@@ -350,6 +350,72 @@ async fn a_failing_sentence_is_replaced_before_it_is_streamed() {
     assert_eq!(seen.usage_added.lock().unwrap()[0].tokens_out, 40);
 }
 
+/// The streamed and the stored text of a turn whose model writes `before`, calls a tool, then
+/// writes `after`.
+async fn text_around_a_tool_round(before: &str, after: &str) -> (String, String) {
+    let (agent, _, seen) = harness(Setup::new(vec![
+        vec![
+            ChatChunk::TextDelta(before.to_owned()),
+            ChatChunk::ToolCall {
+                call_id: "toolu_1".to_owned(),
+                name: "list_tasks".to_owned(),
+                arguments: json!({}),
+            },
+            usage(900, 30),
+            ChatChunk::Done(StopReason::ToolUse),
+        ],
+        vec![
+            ChatChunk::TextDelta(after.to_owned()),
+            usage(950, 10),
+            ChatChunk::Done(StopReason::EndTurn),
+        ],
+    ]));
+    let stream = agent
+        .start_turn(request(
+            owner(Role::Viewer).await,
+            "Where was the zucchini?",
+        ))
+        .await
+        .unwrap();
+    let (events, _) = collect(stream).await;
+    let streamed: String = events
+        .iter()
+        .filter_map(|e| match e {
+            ChatEvent::TextDelta(d) => Some(d.text.as_str()),
+            _ => None,
+        })
+        .collect();
+    let stored = seen.stored.lock().unwrap()[1].text.clone();
+    (streamed, stored)
+}
+
+#[tokio::test]
+async fn text_after_a_tool_round_starts_a_new_paragraph() {
+    let after = "The zucchini was in Bed 4.";
+    for (before, expected) in [
+        (
+            "Let me check the farm's own records too.",
+            "Let me check the farm's own records too.\n\nThe zucchini was in Bed 4.",
+        ),
+        // Text that already ends in whitespace gets no second break.
+        (
+            "Let me check.\n",
+            "Let me check.\nThe zucchini was in Bed 4.",
+        ),
+        // No text before the tool: nothing to separate.
+        ("", "The zucchini was in Bed 4."),
+    ] {
+        let (streamed, stored) = text_around_a_tool_round(before, after).await;
+        assert_eq!(streamed, expected, "{before:?}");
+        assert_eq!(stored, expected, "{before:?}");
+    }
+    // The model's own break is kept, not doubled.
+    let (streamed, stored) =
+        text_around_a_tool_round("Let me check.", "\n\nThe zucchini was in Bed 4.").await;
+    assert_eq!(streamed, "Let me check.\n\nThe zucchini was in Bed 4.");
+    assert_eq!(stored, streamed);
+}
+
 #[tokio::test]
 async fn tool_calls_loop_with_reasoning_replayed_unchanged() {
     let thinking = ReasoningBlock::Thinking {
@@ -386,6 +452,7 @@ async fn tool_calls_loop_with_reasoning_replayed_unchanged() {
             "text_delta",
             "tool_started",
             "tool_finished",
+            "text_delta",
             "text_delta",
             "message_completed"
         ]
@@ -772,7 +839,7 @@ async fn a_cited_farm_record_is_stored_and_its_rate_never_reaches_the_app() {
     assert_eq!(stored[1].farm_citations, [hit.citation]);
     assert_eq!(
         stored[1].prompt_version.as_deref(),
-        Some("chat/2026-10-19.2")
+        Some("chat/2026-10-20.1")
     );
 
     // The records reach the model as farm_records data.
