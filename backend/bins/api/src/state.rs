@@ -151,7 +151,7 @@ impl AppState {
             let state = Arc::clone(self);
             self.tasks.spawn(async move {
                 if let Err(error) = state.pipeline.follow_up(follow_up).await {
-                    tracing::warn!(?follow_up, error = %error, "follow-up failed; the sweep retries it");
+                    tracing::warn!(?follow_up, error = %crate::error::chain(&error), "follow-up failed; the sweep retries it");
                 }
             });
         }

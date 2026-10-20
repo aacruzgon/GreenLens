@@ -1,6 +1,8 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.20, 2026-10-20. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.22, 2026-10-20. Companion to the [architecture document](README.md).
+> **v0.10.22**: a user's write that sets a species (`POST /plants`, `POST /plants/{id}/species`, a `new_plant` of `POST /scans` or of a map pin) must name a species the knowledge base holds, or gets `400 invalid_request` and stores nothing (sections 2, 3, 9); a `guided` job's `complete` sends no catch-up stage events, because the `guided` stage is shared by the run's checks (section 5); no wire shape changed.
+> **v0.10.21**: section 5 says what `complete` sends for stage events the stream missed: a stage left started gets its `stage_completed`, and a stage of the result with no stage event in the run gets `stage_started` and `stage_completed`, before the job's `finding` events, with `duration_ms: 0` (backend roadmap gap 9); no wire shape changed.
 > **v0.10.20**: the dose check's rate also catches rates per field measure, container or area and the volume abbreviations: `ℓ`, `ltr`, `lt`, `qt` and `pt` join the volumes, `per` (not `each` or `every`) before a field measure (`hectare`, `ha`, `acre`, optionally after a number, a fraction, `half` or `quarter`), a container (`tank`, `sprayer`, `backpack`, `knapsack`, `bucket`, `watering can` and others) or an area with a number ("100 m²", "10 square metres", "100 sq. ft."), and `/` before a field measure or an area with a number, are unit phrases, and `sq.` no longer ends a sentence, so "a bag per acre", "Use a capful per tank." and "a capful per qt" fail while spacing per unnumbered area ("two plants per square metre"), "a 1/2 acre plot" and "rainwater/tank water" pass; spacing and sampling or trap density per field measure or numbered area ("Set one trap per acre", "One tree per 20 m²") and a URL path such as `/pt/` beside an amount are new known false positives, and a rate per plant, row or unnumbered area stays a known miss (EON gap G19, section 7); no wire shape changed.
 > **v0.10.19**: the dose check's rate is a sentence rule: a unit phrase (`per`, `each` or `every` and a volume, or `/` and a volume) fails a sentence that holds an amount anywhere (a quantity, a fraction glyph, a vague or multiplying word, a plural measure noun, or a rate from a record or a habit) or has at most three words before it, so a refusal such as "I can't give the amount per litre" passes and "a capful per litre", "Per litre, add a capful" and a rate split from its amount by a sentence break still fail; the measure rule's quantity adds `thirty` … `ninety`, `hundred`, `thousand` and more fraction glyphs, the volumes add quarts and pints, and the prompts are told not to name a volume when they decline a rate (EON gap G13, section 7); no wire shape changed.
 > **v0.10.18**: section 8 says `since` and `until` window Slack messages only: a Drive document is returned whatever the window, also with `kind: "document"` (EON gap G18); no wire shape changed.
@@ -210,7 +212,7 @@ interface ErrorBody {
 
 | HTTP | `code` | When | `details` |
 |---|---|---|---|
-| 400 | `invalid_request` | Malformed JSON; a missing, wrong-typed or unknown field (section 1, versioning); a malformed ID in a body or query; a JSON body over 1 MiB (`field: "body"`, the limit in `message`); a location that can't be geocoded (`field` is `location.postal_code`, `location.city` or `location.lat`); a worker call without `X-Lease-Token` (`field: "X-Lease-Token"`) | `{ field, problem }`; `field` is the JSON path |
+| 400 | `invalid_request` | Malformed JSON; a missing, wrong-typed or unknown field (section 1, versioning); a malformed ID in a body or query; a JSON body over 1 MiB (`field: "body"`, the limit in `message`); a location that can't be geocoded (`field` is `location.postal_code`, `location.city` or `location.lat`); a worker call without `X-Lease-Token` (`field: "X-Lease-Token"`); a species the knowledge base doesn't hold in a user's write (section 9, plants) | `{ field, problem }`; `field` is the JSON path |
 | 401 | `unauthenticated` | Missing, expired or invalid JWT; an auth webhook whose Svix signature fails or whose timestamp is more than 5 minutes away in either direction (section 9) | |
 | 403 | `forbidden` | A member whose role is too low (section 1) | `{ required_role }` |
 | 403 | `invalid_signature` | Expired or tampered signed image URL. Only signed URLs: a webhook signature failure is `401` | |
@@ -449,6 +451,8 @@ interface CreateScanRequest {
 // 201 → Scan
 ```
 
+A `new_plant.species_id` the knowledge base doesn't hold gets `400 invalid_request` with `{ field: "new_plant.species_id" }`, and nothing is stored (section 9, plants).
+
 ### `POST /scans/{id}/images`
 
 `multipart/form-data` with the fields `kind` (an `ImageKind`), `file`, optionally `question_id` when the photo answers a `photo_request` question, and, from a LiDAR phone, `depth`, `depth_confidence` and `depth_meta` (below). Role: editor.
@@ -584,6 +588,8 @@ interface ConfirmSpeciesRequest {
 }
 // 200 → Plant
 ```
+
+A `species_id` the knowledge base doesn't hold gets `400 invalid_request` with `{ field: "species_id" }`, and the plant is unchanged (section 9, plants).
 
 The plant is updated. Then the plant's **most recent scan**, if it was created in the last 24 hours and isn't `failed`, follows the species:
 
@@ -910,6 +916,8 @@ type PartialResult =
 ```
 
 **Partial results.** A `partial_result` carries the complete output of **one finished stage**, so findings reach the app before the job ends. The `complete` body repeats every stage. The API stores each stage's output once: if `complete` matches the partial result, nothing changes; if it differs, the `complete` version wins, and the API sends `finding` events for new findings and `finding_retracted` for dropped ones.
+
+**Stage events the stream missed.** Worker events are best effort: a worker that can't reach the API drops them and carries on, because `complete` repeats every stage. So when a job completes, the API folds the run's stored stage events and, for each stage of the job's kind, sends what the stream is missing, before the job's `finding` events. A stage left started (its last stage event is `stage_started`) gets its `stage_completed`, without a second `stage_started`. A stage with no stage event in the run gets `stage_started` and `stage_completed` when the result has output for it and, for a perception stage, the run's `rerun_stages` lists it. A completed stage gets nothing, so when every event arrived `complete` adds none. These `stage_completed` events carry `duration_ms: 0`, because the API never timed the stage; `skipped` is what the result shows (`disease_skipped`'s reason, `all_measured` for a `vlm` result with no indicator answers) and absent otherwise ([backend pipeline 10](../backend/pipeline.md#10-events)). A `guided` job gets none of this: its `guided` stage is one stage shared by every guided check of the run, and two checks can run at once, so the stored events can't tell which check left it started. One check's completion would close another's stage. Its `guided_check_done` tells the app the check finished. The catch-up covers completed jobs only: a `guided` or a late `verify` job that fails for good leaves its started stage open.
 
 ### `POST /internal/jobs/{id}/complete`
 
@@ -1899,6 +1907,8 @@ interface Invite {
 | `GET /plants/{id}/timeline` | any | | `200 Page<TimelineEntry>`, newest first |
 | `GET /plants/{id}/measurements?quantity=` | any | | `200 Page<MeasurementPoint>`, oldest first: the growth series (section 7) |
 
+**Species ids on user writes.** A write by a user that sets a species must name one the knowledge base holds: `POST /plants`, `POST /plants/{id}/species`, a `new_plant` of `POST /scans` and a `new_plant` of a map pin. Any other gets `400 invalid_request` with `{ field, problem: "not a species of the knowledge base" }`, where `field` is `species_id`, `new_plant.species_id` or `pins`, and nothing is stored. The API checks it in the write's own transaction. The pipeline's own suggestion isn't checked: BioCLIP can pick a species before the knowledge base is loaded, and a plant whose species names a record the knowledge base doesn't hold reads as having no `species`.
+
 ```ts
 interface TimelineEntry {
   scan_id: Id;
@@ -2464,6 +2474,8 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.18: `search_farm_records`' `since` and `until` window Slack messages only; Drive documents are returned whatever the window | 7 (tools: `search_farm_records`) |
 | v0.10.19: the dose check's rate fails a sentence with a unit phrase and an amount anywhere, or with at most three words before the unit phrase, so a refusal that only names the unit passes | 11 (security, privacy and safety: the dose check) |
 | v0.10.20: the dose check's rate also counts `per` before a field measure, a container or an area with a number, `/` before a field measure or an area with a number, and the volume abbreviations `ℓ`, `ltr`, `lt`, `qt`, `pt` | 11 (security, privacy and safety: the dose check) |
+| v0.10.21: `complete` sends the stage events the stream missed, before the job's findings | 8.1 (step 4) |
+| v0.10.22: a user's write that sets a species must name one the knowledge base holds (`400 invalid_request`); a `guided` job's `complete` sends no catch-up stage events | 6.2 (step 5); 8.1 (step 4) is unchanged, since it describes the perception job |
 
 ---
 

@@ -42,6 +42,12 @@ COMMIT;";
       AND plant.deleting_at = NONE AND garden.deleting_at = NONE) = 0 { THROW 'not_found' };
 SELECT * FROM scan_event:[$scan, $after + 1]..=[$scan, ..];";
 
+    /// A run's `run_started` and stage events, for a job's `complete` ([contracts 5], partial
+    /// results): the scan's key range, filtered by run and type, in `seq` order. No garden
+    /// scope: `api` reads it for a job it holds the lease of. Statements: 0 `SELECT`.
+    pub const RUN_STAGE_EVENTS: &str = "SELECT * FROM scan_event:[$scan, 1]..=[$scan, ..]
+WHERE run = $run AND type IN ['run_started', 'stage_started', 'stage_completed'];";
+
     /// What the closing rule needs ([contracts 4], when the stream closes).
     pub const STREAM_STATE: &str = "SELECT status, open_question.status AS question_status, pipeline_step != NONE AS step_claimed,
        array::len(SELECT VALUE id FROM guided_check WHERE scan = $parent.id AND status = 'analysing') AS checks_analysing
@@ -182,6 +188,27 @@ impl EventRepo for SurrealStore {
         let rows: Vec<EventRow> = results.take(1).map_err(|e| take_failed(WHAT, e))?;
         rows.into_iter()
             .map(|row| ScanEvent::try_from(row).map_err(|e| e.into_store(WHAT)))
+            .collect()
+    }
+
+    async fn run_stage_events(
+        &self,
+        scan: ScanId,
+        run: Run,
+    ) -> Result<Vec<ScanEventBody<Stored>>, StoreError> {
+        const WHAT: &str = "read a run's stage events";
+        let mut results = run_tx(&self.db, sql::RUN_STAGE_EVENTS, |q| {
+            q.bind(("scan", rid(&scan))).bind(("run", i64::from(run.0)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        let rows: Vec<EventRow> = results.take(0).map_err(|e| take_failed(WHAT, e))?;
+        rows.into_iter()
+            .map(|row| {
+                ScanEvent::try_from(row)
+                    .map(|e| e.body)
+                    .map_err(|e| e.into_store(WHAT))
+            })
             .collect()
     }
 
