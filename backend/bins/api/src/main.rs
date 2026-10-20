@@ -10,6 +10,7 @@ mod deletion;
 mod error;
 mod events;
 mod extract;
+mod farm_sync;
 mod limits;
 mod media;
 mod openapi;

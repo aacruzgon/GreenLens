@@ -38,7 +38,7 @@ pub struct Task {
 
 /// Every task of the table in api.md section 16. The 10-minute question continuation is part
 /// of `sweep` (`Pipeline::sweep` owns it), not a task of its own.
-pub const TASKS: [Task; 9] = [
+pub const TASKS: [Task; 10] = [
     Task {
         name: "requeue",
         every: Duration::from_secs(5),
@@ -75,6 +75,11 @@ pub const TASKS: [Task; 9] = [
         first_after: Duration::from_mins(2),
     },
     Task {
+        name: "connectors",
+        every: Duration::from_mins(1),
+        first_after: Duration::from_mins(1),
+    },
+    Task {
         name: "receipts",
         every: Duration::from_mins(15),
         first_after: Duration::from_mins(15),
@@ -86,11 +91,8 @@ pub const TASKS: [Task; 9] = [
     },
 ];
 
-/// Starts every task on the tracker.
-///
-/// The farm connectors' `connectors` task (roadmap E4.1) isn't here yet. When it comes, it
-/// starts only when [`AppState::connector_key`] is `Some`, so with connectors off (no
-/// `CONNECTOR_KEY`, decision 9) it never runs, and it takes that key to unseal the tokens.
+/// Starts every task on the tracker. The farm connectors' `connectors` task starts only when
+/// connectors are on ([`AppState::farm_sync`], decision 9 of docs/EON).
 pub fn start(state: &Arc<AppState>) {
     for task in &TASKS {
         match task.name {
@@ -101,6 +103,11 @@ pub fn start(state: &Arc<AppState>) {
             "cleanup" => every(state, task, cleanup),
             "weather" => every(state, task, weather_and_triggers),
             "soil" => every(state, task, soil),
+            "connectors" => {
+                if state.farm_sync.is_some() {
+                    every(state, task, connectors);
+                }
+            }
             "receipts" => every(state, task, receipts),
             _ => every(state, task, orphans),
         }
@@ -196,8 +203,9 @@ async fn beliefs(state: Arc<AppState>) -> Result<(), ApiError> {
 }
 
 /// No TTL in `SurrealDB` ([database 4], cleanup): expired idempotency keys, weather older than
-/// 2 hours, expired pending actions, finished jobs older than 7 days, and account tombstones a
-/// day after the account was confirmed gone at Clerk.
+/// 2 hours, expired pending actions, finished jobs older than 7 days, account tombstones a day
+/// after the account was confirmed gone at Clerk, and synced Slack messages older than 180 days
+/// ([`crate::farm_sync::delete_old_messages`]).
 async fn cleanup(state: Arc<AppState>) -> Result<(), ApiError> {
     let now = state.ports.clock.now();
     let store = &state.ports.store;
@@ -210,6 +218,7 @@ async fn cleanup(state: Arc<AppState>) -> Result<(), ApiError> {
     store
         .delete_finished_tombstones(now.minus(TOMBSTONE_KEEP))
         .await?;
+    crate::farm_sync::delete_old_messages(store.as_ref(), now).await?;
     Ok(())
 }
 
@@ -408,6 +417,17 @@ pub async fn fetch_soil_profile(
                 .soil_profile_failed(garden, retry_at)
                 .await?;
         }
+    }
+    Ok(())
+}
+
+/// The farm connectors' sync ([connectors 6]): at most 4 due connectors a run, side by side;
+/// each is synced again 15 minutes after a sync that finished ([`crate::farm_sync`]).
+///
+/// [connectors 6]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#6-sync
+async fn connectors(state: Arc<AppState>) -> Result<(), ApiError> {
+    if let Some(sync) = &state.farm_sync {
+        sync.run_due(&state.shutdown).await?;
     }
     Ok(())
 }

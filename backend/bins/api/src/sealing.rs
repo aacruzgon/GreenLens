@@ -44,14 +44,14 @@ pub struct ConnectorKey {
 /// What a sealed value is for. It is part of the associated data, so a value sealed as one
 /// purpose never opens as another (the token can't be swapped for the PKCE verifier).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "chosen by the connect routes (E3.3, E3.4)")
-)]
 pub enum SealPurpose {
     /// The vendor's access token, in `connector.secret`.
     Token,
     /// The pending connect's PKCE verifier.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "sealed by the connect routes (E3.3, E3.4)")
+    )]
     Pkce,
 }
 
@@ -163,10 +163,6 @@ impl ConnectorKey {
 
     /// Opens a value sealed for `connector`. The plaintext comes back as a secret, wiped when
     /// dropped.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "opened by the routes (E3.4) and the sync (E4.1)")
-    )]
     pub fn unseal(
         &self,
         purpose: SealPurpose,

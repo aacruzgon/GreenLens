@@ -314,6 +314,7 @@ fn state_with_config(
             shutdown.clone(),
         ),
         deletes,
+        farm_sync: None,
         shutdown,
         tasks,
     })

@@ -1,6 +1,6 @@
 # PDM Backend: `api` binary
 
-> **Status:** Draft v0.7.2, 2026-10-19. v0.7.2: farm connectors are configured (roadmap E3.0–E3.2): `CONNECTOR_KEY` (64 hex characters) is the one switch, read through `AppState::connector_key`; without it the list answers `available: false` and the owner routes `409 invalid_state`, and with it the list comes from the store. The Slack and Google OAuth clients (each pair together or not at all), `CONNECTOR_RETURN_URL` and the Era bases are read for the routes and seeding to come. `sealing.rs` seals vendor tokens with AES-256-GCM (`aes-gcm` 0.11.1), a random nonce per seal and the connector id as associated data. v0.7.1: the farm connector routes are declared (roadmap E1.4): `GET /gardens/{id}/connectors` answers `available: false`, and the owner routes and the public OAuth callback answer `409 invalid_state` until connectors are configured; `Access<R, table::Connector>` resolves a connector's garden. v0.7: shared memories are recorded in `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs`, the new `GET /plants/{id}/beliefs` (never a 5xx), the `beliefs` scheduler task every 10 s (the only writer to Agent Memory: queued erases, then unsynced shared memories), deletions that queue their erase in their first transaction, and `POST /memories` taking a `topic`; 42 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
+> **Status:** Draft v0.7.3, 2026-10-19. v0.7.3: the farm sync (roadmap E4.1, E4.2, E4.4, E4.5): `farm_sync.rs` runs the `connectors` task every minute when connectors are on (`AppState::farm_sync`), at most 4 due connectors a run side by side, over the `FarmSource` adapters by kind and endpoint (`FarmSources`): pages from each source's saved cursor, chunks of at most 2,000 characters with a SHA-256 `text_hash`, only changed chunks embedded, the daily 7-day re-read that deletes what the vendor no longer has, the 10,000-record limit, and `last_error` and the next attempt by failure; `cleanup` deletes Slack messages older than 180 days (section 16). v0.7.2: farm connectors are configured (roadmap E3.0–E3.2): `CONNECTOR_KEY` (64 hex characters) is the one switch, read through `AppState::connector_key`; without it the list answers `available: false` and the owner routes `409 invalid_state`, and with it the list comes from the store. The Slack and Google OAuth clients (each pair together or not at all), `CONNECTOR_RETURN_URL` and the Era bases are read for the routes and seeding to come. `sealing.rs` seals vendor tokens with AES-256-GCM (`aes-gcm` 0.11.1), a random nonce per seal and the connector id as associated data. v0.7.1: the farm connector routes are declared (roadmap E1.4): `GET /gardens/{id}/connectors` answers `available: false`, and the owner routes and the public OAuth callback answer `409 invalid_state` until connectors are configured; `Access<R, table::Connector>` resolves a connector's garden. v0.7: shared memories are recorded in `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs`, the new `GET /plants/{id}/beliefs` (never a 5xx), the `beliefs` scheduler task every 10 s (the only writer to Agent Memory: queued erases, then unsynced shared memories), deletions that queue their erase in their first transaction, and `POST /memories` taking a `topic`; 42 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
 
 Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports and types `api` wires, and [domain-types](domain-types.md) for every wire shape. Every listing below is copied from the compiled source of `bins/api` by the docgen tool. `cargo check -p api`, `cargo clippy -p api --all-targets` (no warning in `api`) and `cargo test -p api` pass: 42 tests, among them handler tests that drive the real router with `tower::ServiceExt::oneshot`. `cargo check --workspace` passes, the binary links, and `api openapi` writes the document.
 
@@ -120,6 +120,8 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 domain = { workspace = true, features = ["mock", "test-util"] }
+# The farm sync's tests: the embedded engine (kv-mem, tests only).
+surrealdb = { workspace = true, features = ["kv-mem"] }
 http-body-util.workspace = true
 mockall.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
@@ -177,6 +179,10 @@ bins/api/src/
 ├─ push.rs           Pusher: who gets which push
 ├─ scheduler.rs      the background tasks
 │  └─ triggers.rs    the trigger rules (frost, heat, humid stretch, heavy rain, after rain, dry soil)
+├─ farm_sync.rs      FarmSync: the connectors task's body over the FarmSource adapters; FarmSources
+│  ├─ chunk.rs       chunks of at most 2,000 characters and their text_hash
+│  ├─ state.rs       SourceState: a source's stored cursor around the adapter's own
+│  └─ tests.rs       the sync on the embedded store with a scripted source
 ├─ deletion.rs       DeletionRunner: cascades (objects, Agent Memory, records), account deletion, resume
 ├─ media.rs          signature check, object streaming
 ├─ routes.rs
@@ -631,7 +637,7 @@ fn oauth_client<F: Fn(&str) -> Option<String>>(
 
 Every secret is a `SecretString`: `Debug` prints `[REDACTED]` (the test checks the signing key never appears in the formatted config). `Config::from_lookup` takes any variable source, so tests build a config from a map.
 
-**Sealing.** `CONNECTOR_KEY` parses into a `ConnectorKey`, which holds the expanded AES-256-GCM key (wiped on drop through `aes-gcm`'s `zeroize` feature) and prints as `ConnectorKey([REDACTED])`. `seal` draws a fresh 96-bit nonce from the OS for every call, so sealing one token twice gives two values, and writes `nonce (12 bytes) || ciphertext || tag (16 bytes)` into `domain::ports::Sealed`, whose `Debug` prints only the length. The associated data is the connector's id as it is written on the wire, so a sealed value opens only on its own connector ([connectors 4](../connectors/README.md#4-data)). `unseal` returns the plaintext as a `SecretSlice<u8>`, wiped on drop; a wrong key, another connector's id or any changed byte is the same opaque `UnsealError::Rejected`. It lives in `api` because every caller does: the connect routes (E3.3, E3.4), the `connectors` scheduler task (E4.1) and start-up seeding (E4.6). The `FarmSource` adapters in `integrations` get an unsealed `VendorToken` and never see the key, and `domain` holds only the opaque bytes, so neither depends on a cipher. `seal` and `unseal` have no caller outside the tests until E3.4, which removes their `expect(dead_code)`.
+**Sealing.** `CONNECTOR_KEY` parses into a `ConnectorKey`, which holds the expanded AES-256-GCM key (wiped on drop through `aes-gcm`'s `zeroize` feature) and prints as `ConnectorKey([REDACTED])`. `seal` draws a fresh 96-bit nonce from the OS for every call, so sealing one token twice gives two values, and writes `nonce (12 bytes) || ciphertext || tag (16 bytes)` into `domain::ports::Sealed`, whose `Debug` prints only the length. The associated data is the connector's id as it is written on the wire, so a sealed value opens only on its own connector ([connectors 4](../connectors/README.md#4-data)). `unseal` returns the plaintext as a `SecretSlice<u8>`, wiped on drop; a wrong key, another connector's id or any changed byte is the same opaque `UnsealError::Rejected`. It lives in `api` because every caller does: the connect routes (E3.3, E3.4), the `connectors` scheduler task (E4.1) and start-up seeding (E4.6). The `FarmSource` adapters in `integrations` get an unsealed `VendorToken` and never see the key, and `domain` holds only the opaque bytes, so neither depends on a cipher. The sync unseals every connector's token. `seal` has no caller outside the tests until seeding (E4.6) and the code exchange (E3.4), and `SealPurpose::Pkce` none until the connect routes seal the PKCE verifier (E3.3); both keep an `expect(dead_code)` until then.
 
 ```rust
 /// `CONNECTOR_KEY`: 32 bytes, written as 64 hex characters (`openssl rand -hex 32`, the way every
@@ -738,10 +744,6 @@ impl ConnectorKey {
 
     /// Opens a value sealed for `connector`. The plaintext comes back as a secret, wiped when
     /// dropped.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "opened by the routes (E3.4) and the sync (E4.1)")
-    )]
     pub fn unseal(
         &self,
         purpose: SealPurpose,
@@ -838,6 +840,9 @@ pub struct AppState {
     pub workers: WorkerTokens,
     /// Garden, plant, scan and account cascades.
     pub deletions: DeletionRunner,
+    /// The farm connectors' sync and their adapters; `None` when connectors are off (no
+    /// `CONNECTOR_KEY`), so the `connectors` task and start-up seeding don't run.
+    pub farm_sync: Option<Arc<FarmSync>>,
     /// The one path to `RustFS` deletes ([storage 4]): detached, never cancelled, retried, and
     /// drained at shutdown for at least one full attempt. Shared with `deletions`.
     pub deletes: blob::DeleteQueue,
@@ -875,7 +880,7 @@ impl AppState {
     /// Whether farm connectors are on, and the key that seals their tokens: the one switch
     /// (decision 9 of docs/EON). `None` without `CONNECTOR_KEY`: the list answers
     /// `available: false`, every owner write `409 invalid_state`, and the `connectors` scheduler
-    /// task (E4.1) and start-up seeding (E4.6) must do nothing.
+    /// task (E4.1) and start-up seeding (E4.6) do nothing ([`Self::farm_sync`] is `None`).
     pub fn connector_key(&self) -> Option<&ConnectorKey> {
         self.config.connectors.key.as_ref()
     }
@@ -1141,6 +1146,7 @@ struct Outbound {
     chat_model: Arc<dyn ChatModel>,
     classifier: Arc<dyn TextClassifier>,
     beliefs: Arc<dyn BeliefStore>,
+    farm: FarmSources,
 }
 
 async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Outbound> {
@@ -1190,6 +1196,7 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
             256,
         )),
     };
+    let farm = farm_sources(config, |c| SlackClient::new(http.clone(), c));
     let beliefs: Arc<dyn BeliefStore> = match agent_memory(config) {
         Some(c) => Arc::new(AgentMemory::new(http.clone(), c)),
         None => Arc::new(NoBeliefs),
@@ -1236,7 +1243,39 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         chat_model,
         classifier,
         beliefs,
+        farm,
     })
+}
+
+/// The sync when connectors are on (decision 9 of docs/EON): the `connectors` task and
+/// start-up seeding run only with it.
+fn farm_sync(config: &Config, ports: &Ports, sources: FarmSources) -> Option<Arc<FarmSync>> {
+    config.connectors.key.clone().map(|key| {
+        Arc::new(FarmSync::new(
+            Arc::clone(&ports.store),
+            Arc::clone(&ports.embedder),
+            Arc::clone(&ports.clock),
+            key,
+            sources,
+            SyncConfig::default(),
+        ))
+    })
+}
+
+/// The farm connectors' adapters: the real Slack, with Tier 1 pacing, for owners' connectors;
+/// Era's Slack simulator, without pacing, for the seeded `era` ones when `ERA_SLACK_BASE` is
+/// set. Drive's (E4.3) go beside them.
+fn farm_sources(config: &Config, slack_client: impl Fn(SlackConfig) -> SlackClient) -> FarmSources {
+    let slack = |c: SlackConfig| Arc::new(SlackSource::new(slack_client(c)));
+    let mut sources =
+        FarmSources::default().with(ConnectorEndpoint::Vendor, slack(SlackConfig::default()));
+    if let Some(base) = &config.connectors.era_slack_base {
+        sources = sources.with(
+            ConnectorEndpoint::Era,
+            slack(SlackConfig::era(base.clone())),
+        );
+    }
+    sources
 }
 
 /// Agent Memory's settings when it is configured, logging whether it is on; the key is never
@@ -1330,6 +1369,7 @@ pub async fn build(
         clock: Arc::clone(&clock),
         ids,
     };
+    let farm_sync = farm_sync(&config, &ports, out.farm);
     let hub = Arc::new(EventHub::default());
     let broker = Arc::new(JobBroker::new(
         store.clone(),
@@ -1385,6 +1425,7 @@ pub async fn build(
         broker,
         deletions,
         deletes,
+        farm_sync,
         shutdown,
         tasks,
     }))
@@ -4259,7 +4300,7 @@ pub struct Task {
 
 /// Every task of the table in api.md section 16. The 10-minute question continuation is part
 /// of `sweep` (`Pipeline::sweep` owns it), not a task of its own.
-pub const TASKS: [Task; 9] = [
+pub const TASKS: [Task; 10] = [
     Task {
         name: "requeue",
         every: Duration::from_secs(5),
@@ -4296,6 +4337,11 @@ pub const TASKS: [Task; 9] = [
         first_after: Duration::from_mins(2),
     },
     Task {
+        name: "connectors",
+        every: Duration::from_mins(1),
+        first_after: Duration::from_mins(1),
+    },
+    Task {
         name: "receipts",
         every: Duration::from_mins(15),
         first_after: Duration::from_mins(15),
@@ -4307,11 +4353,8 @@ pub const TASKS: [Task; 9] = [
     },
 ];
 
-/// Starts every task on the tracker.
-///
-/// The farm connectors' `connectors` task (roadmap E4.1) isn't here yet. When it comes, it
-/// starts only when [`AppState::connector_key`] is `Some`, so with connectors off (no
-/// `CONNECTOR_KEY`, decision 9) it never runs, and it takes that key to unseal the tokens.
+/// Starts every task on the tracker. The farm connectors' `connectors` task starts only when
+/// connectors are on ([`AppState::farm_sync`], decision 9 of docs/EON).
 pub fn start(state: &Arc<AppState>) {
     for task in &TASKS {
         match task.name {
@@ -4322,6 +4365,11 @@ pub fn start(state: &Arc<AppState>) {
             "cleanup" => every(state, task, cleanup),
             "weather" => every(state, task, weather_and_triggers),
             "soil" => every(state, task, soil),
+            "connectors" => {
+                if state.farm_sync.is_some() {
+                    every(state, task, connectors);
+                }
+            }
             "receipts" => every(state, task, receipts),
             _ => every(state, task, orphans),
         }
@@ -4392,9 +4440,10 @@ Each task is a loop on the process `TaskTracker`: `interval_at` with a first del
 | `sweep` | 30 s | `Pipeline::sweep`, the one owner of recovery and continuation: stale steps (2 min; 5 for `plan`) and question photos stuck in `measuring` for 2 min, re-claimed and re-run; questions unanswered for 10 minutes, continued with the best candidate marked uncertain (skipped while a photo for it is analysing). Follow-ups spawned | Compare-and-set on the old stamp and run ([database 4](../database/README.md#steps-between-jobs-)); the `score` claim |
 | `idle` | 60 s | Limiter keys (`retain_recent`, `shrink_to_fit`), idle broadcast channels, unheld plan locks | In memory |
 | `beliefs` | 10 s | `agent::beliefs::sync_pending(…, 50)`, the only writer to Agent Memory: erases the subjects queued in `belief_forget` (then re-marks their remaining shared memories unsynced), then records the unsynced shared memories, oldest first. A failure is logged and retried next run without holding up the rest; a failed erase holds back the records under its subject. The counts are logged when any is above 0. With Agent Memory off it only empties the queue | `belief_forget` (`belief_forgets`, `finish_belief_forget`); `memory.belief_synced_at` (`unsynced_shared`, `mark_synced`) |
-| `cleanup` | 10 min | Expired idempotency keys, weather older than 2 hours, expired pending actions, finished jobs older than 7 days, account tombstones 24 h after Clerk confirmed the deletion (`TOMBSTONE_KEEP`) | Batches of 500; `weather_cache` by key range ([database 4](../database/README.md#cleanup-no-ttl)) |
+| `cleanup` | 10 min | Expired idempotency keys, weather older than 2 hours, expired pending actions, finished jobs older than 7 days, account tombstones 24 h after Clerk confirmed the deletion (`TOMBSTONE_KEEP`), synced Slack messages older than 180 days (`farm_sync::delete_old_messages`; Drive documents stay while they are under the folder) | Batches of 500; `weather_cache` by key range ([database 4](../database/README.md#cleanup-no-ttl)) |
 | `weather` | 1 h | Group gardens by cell, fetch each missing cell once (batches of 50, a failed batch retried once, then cell by cell, `integrations::open_meteo::fetch_cells`), cache them; fire forecast alerts (task + push to every member) and plan triggers (task on the rule's plant) | `weather_cache:[hour, cell]`; tasks deduplicated by the unique `alert_key` ([database 4](../database/README.md#alert-dedupe-)) |
 | `soil` | 15 min | `SoilGrids` for due gardens, at most 4 a run (its limit is 5 calls a minute): `pending`, or `unavailable` past `soil_retry_at`. A failure stores `unavailable` with the next attempt `soil_retry_after` it ([contracts 9](../architecture/contracts.md#gardens)): 15 minutes after an outage (timeout, connection error, `5xx`, `429`), 7 days after `NotFound` (null pixels at the point and the 8 nearby probes). So a null-pixel garden costs its 9 paced calls once a week, not every 15 minutes; an outage stops at the first call. `POST /gardens` makes the first attempt the same way (`fetch_soil_profile`) | `garden.soil_profile`, `garden.soil_retry_at`; `gardens_due_soil_profile`, `soil_profile_failed` |
+| `connectors` | 1 min | Only when connectors are on. `FarmSync::run_due`: at most 4 due connectors (`active`, `next_sync_at` passed, not stopped by `too_large` or `source_missing`), synced side by side; each is due again 15 minutes after a sync that finished (below) | `connector_due` index (`due_connectors`), `finish_sync`, `farm_record` upserts by `(connector, vendor_id, n)` |
 | `receipts` | 15 min | Expo push receipts: forget `DeviceNotRegistered` tokens (`Notifier::check_receipts`) | `push_token` deletes |
 | `orphans` | 24 h | Objects older than an hour under each garden's prefix that no record points to, deleted through the delete queue ([storage 4](../storage/README.md#4-writes-and-deletes)) | `DeletionRepo::unreferenced_keys` over every key field |
 
@@ -4517,6 +4566,509 @@ async fn weather_and_triggers(state: Arc<AppState>) -> Result<(), ApiError> {
     Ok(())
 }
 ```
+
+### The farm sync
+
+```rust
+/// A connector is synced again this long after a sync that finished, or after an outage
+/// ([connectors 6]; the `soil` task's pattern).
+///
+/// [connectors 6]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#6-sync
+pub const SYNC_EVERY: Duration = Duration::from_mins(15);
+
+/// The re-read of a vendor's trailing window runs this long after the last.
+pub const REREAD_EVERY: Duration = Duration::from_hours(24);
+
+/// The sync's settings.
+#[derive(Debug, Clone, Copy)]
+pub struct SyncConfig {
+    /// Due connectors taken per run.
+    pub batch: u32,
+    /// How long one connector reads in a run before it saves its cursor and leaves the rest
+    /// for the next run (checked between pages: under Slack's Tier 1 pacing a page can wait a
+    /// minute per call).
+    pub run_budget: Duration,
+    /// Records a garden may hold.
+    pub max_records: u32,
+}
+
+/// The adapters, by vendor and endpoint: the real vendor for owners' connectors, Era's
+/// simulators for the seeded demo ones. Cheap to clone.
+#[derive(Clone, Default)]
+pub struct FarmSources(HashMap<(ConnectorKind, ConnectorEndpoint), Arc<dyn FarmSource>>);
+
+/// How one connector's run ended, for the logs and the tests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunEnd {
+    /// Every source read to its end.
+    Synced,
+    /// Pages left for the next run.
+    PagesLeft,
+    /// Stopped with this code.
+    Failed(SyncErrorCode),
+    /// No adapter for its kind and endpoint here; tried again later.
+    NoAdapter,
+    /// The store or the embedder failed; tried again after [`SYNC_EVERY`].
+    Internal,
+}
+
+/// The sync. One per process, built only when connectors are on.
+pub struct FarmSync {
+    store: Arc<dyn Store>,
+    embedder: Arc<dyn TextEmbedder>,
+    clock: Arc<dyn Clock>,
+    key: ConnectorKey,
+    sources: FarmSources,
+    config: SyncConfig,
+}
+```
+
+```rust
+impl FarmSync {
+    /// The sync over these ports.
+    pub fn new(
+        store: Arc<dyn Store>,
+        embedder: Arc<dyn TextEmbedder>,
+        clock: Arc<dyn Clock>,
+        key: ConnectorKey,
+        sources: FarmSources,
+        config: SyncConfig,
+    ) -> Self {
+        Self {
+            store,
+            embedder,
+            clock,
+            key,
+            sources,
+            config,
+        }
+    }
+
+    /// The `connectors` task: syncs at most [`SyncConfig::batch`] due connectors, side by side,
+    /// and returns how each ended. A connector's failure is logged and stored; only a failure
+    /// to list the due connectors is an error.
+    pub async fn run_due(
+        &self,
+        shutdown: &CancellationToken,
+    ) -> Result<Vec<(ConnectorId, RunEnd)>, ApiError> {
+        let due = self
+            .store
+            .due_connectors(self.clock.now(), self.config.batch)
+            .await?;
+        let runs = due.into_iter().map(|row| async move {
+            let id = row.connector.id;
+            (id, self.sync_connector(row, shutdown).await)
+        });
+        Ok(futures::future::join_all(runs).await)
+    }
+
+    /// One connector's run, from its row as [`FarmRecordStore::due_connectors`] returned it.
+    pub async fn sync_connector(&self, row: ConnectorRow, shutdown: &CancellationToken) -> RunEnd {
+        let id = row.connector.id;
+        let kind = row.connector.kind;
+        let span = tracing::info_span!("farm_sync", connector = %id, kind = kind.as_str());
+        let end = tracing::Instrument::instrument(self.run(row, shutdown), span.clone()).await;
+        let _entered = span.enter();
+        match end {
+            RunEnd::Synced | RunEnd::PagesLeft | RunEnd::NoAdapter => {
+                tracing::info!(end = ?end, "farm sync");
+            }
+            RunEnd::Failed(code) => {
+                tracing::warn!(last_error = code.as_str(), "farm sync stopped");
+            }
+            RunEnd::Internal => {}
+        }
+        end
+    }
+
+    async fn run(&self, row: ConnectorRow, shutdown: &CancellationToken) -> RunEnd {
+        let id = row.connector.id;
+        let due_at = row.next_sync_at;
+        let now = self.clock.now();
+        let Some(source) = self.sources.get(row.connector.kind, row.connector.endpoint) else {
+            let outcome = SyncOutcome {
+                due_at,
+                cursors: row.cursors.clone(),
+                synced_at: None,
+                next_sync_at: now.plus(SYNC_EVERY),
+                last_error: row.last_error,
+            };
+            return self.finish(id, outcome, RunEnd::NoAdapter).await;
+        };
+        let opened = self.token(&row);
+        let (Some(token), Some(account)) = (opened, row.connector.account.clone()) else {
+            // A token that doesn't open (another key) or a connector without its account:
+            // only reconnecting fixes it.
+            return self
+                .stop(
+                    &row,
+                    row.cursors.clone(),
+                    &Stop::Vendor(refused(row.connector.kind)),
+                )
+                .await;
+        };
+        let run = Run {
+            id,
+            garden: row.connector.garden_id,
+            source: source.as_ref(),
+            token,
+            account,
+            now,
+            deadline: tokio::time::Instant::now() + self.config.run_budget,
+        };
+        let mut cursors = row.cursors.clone();
+        let mut count = match self.store.garden_record_count(run.garden).await {
+            Ok(n) => n,
+            Err(e) => return self.internal(&row, cursors, Box::new(e)).await,
+        };
+        let mut left = false;
+        for src in &row.connector.sources {
+            let mut state = SourceState::parse(cursors.get(&src.id));
+            let read = self
+                .read_source(&run, src, &mut state, &mut count, shutdown)
+                .await;
+            cursors.insert(src.id.clone(), state.to_cursor());
+            match read {
+                Ok(Read::Done) => {}
+                Ok(Read::PagesLeft) => {
+                    left = true;
+                    break;
+                }
+                Err(Stop::Internal(e)) => return self.internal(&row, cursors, e).await,
+                Err(stop) => return self.stop(&row, cursors, &stop).await,
+            }
+        }
+        let end_now = self.clock.now();
+        let (synced_at, next, end) = if left {
+            (None, end_now, RunEnd::PagesLeft)
+        } else {
+            (Some(end_now), end_now.plus(SYNC_EVERY), RunEnd::Synced)
+        };
+        let outcome = SyncOutcome {
+            due_at,
+            cursors,
+            synced_at,
+            next_sync_at: next,
+            last_error: None,
+        };
+        self.finish(id, outcome, end).await
+    }
+
+    /// The connector's token, unsealed.
+    fn token(&self, row: &ConnectorRow) -> Option<VendorToken> {
+        let sealed = row.secret.as_ref()?;
+        let opened = self
+            .key
+            .unseal(SealPurpose::Token, row.connector.id, sealed)
+            .ok()?;
+        std::str::from_utf8(opened.expose_secret())
+            .ok()
+            .map(VendorToken::new)
+    }
+
+    /// Reads one source's pages until its pass ends, the budget runs out or shutdown comes.
+    async fn read_source(
+        &self,
+        run: &Run<'_>,
+        src: &ConnectorSource,
+        state: &mut SourceState,
+        count: &mut u32,
+        shutdown: &CancellationToken,
+    ) -> Result<Read, Stop> {
+        let window = run.source.reread_window();
+        loop {
+            if shutdown.is_cancelled() || tokio::time::Instant::now() >= run.deadline {
+                return Ok(Read::PagesLeft);
+            }
+            if state.reread.is_none()
+                && !state.more
+                && let Some(window) = window
+                && state
+                    .reread_at
+                    .is_some_and(|at| run.now >= at.plus(REREAD_EVERY))
+            {
+                state.reread = Some(Reread {
+                    from: run.now.minus(window),
+                    seen: std::collections::BTreeSet::new(),
+                });
+            }
+            let request = FarmPageRequest {
+                account: run.account.clone(),
+                source: src.clone(),
+                cursor: state.vendor_cursor(),
+                oldest: run.now.minus(FARM_RECORD_KEEP),
+                reread_from: state.reread.as_ref().map(|r| r.from),
+            };
+            let page = run
+                .source
+                .read_page(&run.token, request)
+                .await
+                .map_err(Stop::Vendor)?;
+            self.store_page(run, src, &page, count).await?;
+            if let Some(reread) = state.reread.as_mut() {
+                reread
+                    .seen
+                    .extend(page.items.iter().map(|i| i.vendor_id.clone()));
+                reread.seen.extend(page.kept.iter().cloned());
+            }
+            let SyncCursor(cursor) = page.cursor;
+            state.vendor = Some(cursor);
+            state.more = page.more;
+            if !page.more {
+                if let Some(reread) = state.reread.take() {
+                    self.delete_unseen(run, src, &reread, count).await?;
+                    state.reread_at = Some(run.now);
+                } else if state.reread_at.is_none() {
+                    // The first pass read the whole 180 days, the re-read window included.
+                    state.reread_at = Some(run.now);
+                }
+                return Ok(Read::Done);
+            }
+        }
+    }
+
+    /// At a re-read's end: the source's records in the window that the pass didn't see are
+    /// gone at the vendor. The window starts a second late, so a message on the boundary
+    /// second, which the vendor's exclusive `oldest` may leave out, is never deleted.
+    async fn delete_unseen(
+        &self,
+        run: &Run<'_>,
+        src: &ConnectorSource,
+        reread: &Reread,
+        count: &mut u32,
+    ) -> Result<(), Stop> {
+        let stored = self
+            .store
+            .source_vendor_ids_since(
+                run.id,
+                src.id.clone(),
+                reread.from.plus(Duration::from_secs(1)),
+            )
+            .await?;
+        let gone: Vec<String> = stored
+            .into_iter()
+            .filter(|v| !reread.seen.contains(v))
+            .collect();
+        if !gone.is_empty() {
+            let deleted = self.store.delete_records(run.id, gone).await?;
+            *count = count.saturating_sub(deleted);
+            tracing::info!(source = %src.id, deleted, "records gone at the vendor deleted");
+        }
+        Ok(())
+    }
+
+    /// Chunks, hashes, embeds the changed chunks and stores one page; deletes what it reports
+    /// gone. `count` follows the garden's records.
+    async fn store_page(
+        &self,
+        run: &Run<'_>,
+        src: &ConnectorSource,
+        page: &FarmPage,
+        count: &mut u32,
+    ) -> Result<(), Stop> {
+        // One item per vendor id; a later copy wins.
+        let mut items: BTreeMap<&str, &domain::ports::FarmItem> = BTreeMap::new();
+        for item in &page.items {
+            items.insert(item.vendor_id.as_str(), item);
+        }
+        let mut records: Vec<NewFarmRecord> = Vec::new();
+        let mut changed: Vec<usize> = Vec::new();
+        let mut shrunk: Vec<(String, u32)> = Vec::new();
+        let mut new = 0_u32;
+        if !items.is_empty() {
+            let stored = self
+                .store
+                .record_hashes(run.id, items.keys().map(|v| (*v).to_owned()).collect())
+                .await?;
+            let mut hashes: HashMap<(&str, u32), &str> = HashMap::new();
+            let mut held: HashMap<&str, u32> = HashMap::new();
+            for (id, hash) in &stored {
+                hashes.insert((&id.vendor_id, id.n), hash);
+                let n = held.entry(&id.vendor_id).or_default();
+                *n = (*n).max(id.n + 1);
+            }
+            'items: for (vendor_id, item) in &items {
+                let texts = chunk::chunks(item.kind, &item.text, &item.title);
+                let mut item_records = Vec::with_capacity(texts.len());
+                let mut item_changed = Vec::new();
+                let mut item_new = 0;
+                for (n, text) in texts.into_iter().enumerate() {
+                    let n = u32::try_from(n).unwrap_or(u32::MAX);
+                    let Ok(id) = FarmRecordId::new(run.id, vendor_id, n) else {
+                        tracing::warn!(source = %src.id, "an item with an unusable id skipped");
+                        continue 'items;
+                    };
+                    let hash = chunk::text_hash(&text);
+                    let old = hashes.get(&(*vendor_id, n)).copied();
+                    if old.is_none() {
+                        item_new += 1;
+                    }
+                    if old != Some(hash.as_str()) {
+                        item_changed.push(records.len() + item_records.len());
+                    }
+                    item_records.push(NewFarmRecord {
+                        id,
+                        kind: item.kind,
+                        source: src.id.clone(),
+                        title: item.title.clone(),
+                        author: item.author.clone(),
+                        link: item.link.clone(),
+                        text,
+                        text_hash: hash,
+                        vector: None,
+                        at: item.at,
+                    });
+                }
+                let chunks = u32::try_from(item_records.len()).unwrap_or(u32::MAX);
+                if held.get(vendor_id).is_some_and(|&h| h > chunks) {
+                    shrunk.push(((*vendor_id).to_owned(), chunks));
+                }
+                new += item_new;
+                changed.extend(item_changed);
+                records.extend(item_records);
+            }
+        }
+        if count.saturating_add(new) > self.config.max_records {
+            return Err(Stop::TooLarge);
+        }
+        self.embed(&mut records, &changed).await?;
+        if !records.is_empty() {
+            self.store.upsert_records(run.id, records).await?;
+            *count += new;
+        }
+        for (vendor_id, from) in shrunk {
+            let deleted = self
+                .store
+                .delete_chunks_from(run.id, vendor_id, from)
+                .await?;
+            *count = count.saturating_sub(deleted);
+        }
+        if !page.removed.is_empty() {
+            let deleted = self
+                .store
+                .delete_records(run.id, page.removed.clone())
+                .await?;
+            *count = count.saturating_sub(deleted);
+        }
+        Ok(())
+    }
+
+    /// Embeds the chunks at `changed` in `Document` mode, in batches; the others keep their
+    /// stored vector.
+    async fn embed(&self, records: &mut [NewFarmRecord], changed: &[usize]) -> Result<(), Stop> {
+        if changed.is_empty() {
+            return Ok(());
+        }
+        let model = self.embedder.model().name;
+        for batch in changed.chunks(EMBED_BATCH) {
+            let texts: Vec<String> = batch.iter().map(|&i| records[i].text.clone()).collect();
+            let vectors = self
+                .embedder
+                .embed(EmbedMode::Document, &texts)
+                .await
+                .map_err(|e| Stop::Internal(Box::new(e)))?;
+            if vectors.len() != batch.len() {
+                return Err(Stop::Internal(
+                    "the embedder returned a vector count that differs from its input".into(),
+                ));
+            }
+            for (&i, embedding) in batch.iter().zip(vectors) {
+                records[i].vector = Some(FarmVector {
+                    embedding,
+                    model: model.clone(),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// A run that stopped on the vendor or the limit: the cursors so far, the code, and when to
+    /// try again. A refused token also makes the connector `reauth_needed`.
+    async fn stop(
+        &self,
+        row: &ConnectorRow,
+        cursors: BTreeMap<String, SyncCursor>,
+        stop: &Stop,
+    ) -> RunEnd {
+        let now = self.clock.now();
+        let (code, next) = outcome(stop, now);
+        if let Stop::Vendor(error) = stop {
+            tracing::info!(error = %chain(error), "vendor stopped the sync");
+        }
+        let outcome = SyncOutcome {
+            due_at: row.next_sync_at,
+            cursors,
+            synced_at: None,
+            next_sync_at: next,
+            last_error: Some(code),
+        };
+        let end = self
+            .finish(row.connector.id, outcome, RunEnd::Failed(code))
+            .await;
+        if code == SyncErrorCode::AuthRefused
+            && let Err(e) = self
+                .store
+                .set_status(row.connector.id, ConnectorStatus::ReauthNeeded, Some(code))
+                .await
+        {
+            tracing::warn!(error = %chain(&e), "reauth_needed not stored");
+            return RunEnd::Internal;
+        }
+        end
+    }
+
+    /// A run that the store or the embedder stopped: logged, the cursors so far kept, and tried
+    /// again after [`SYNC_EVERY`], so a lasting failure doesn't spend vendor calls every minute.
+    async fn internal(
+        &self,
+        row: &ConnectorRow,
+        cursors: BTreeMap<String, SyncCursor>,
+        error: BoxError,
+    ) -> RunEnd {
+        tracing::warn!(error = %chain(&*error), "farm sync failed");
+        let outcome = SyncOutcome {
+            due_at: row.next_sync_at,
+            cursors,
+            synced_at: None,
+            next_sync_at: self.clock.now().plus(SYNC_EVERY),
+            last_error: row.last_error,
+        };
+        self.finish(row.connector.id, outcome, RunEnd::Internal)
+            .await;
+        RunEnd::Internal
+    }
+
+    async fn finish(&self, id: ConnectorId, outcome: SyncOutcome, end: RunEnd) -> RunEnd {
+        match self.store.finish_sync(id, outcome).await {
+            Ok(()) => end,
+            Err(e) => {
+                tracing::warn!(error = %chain(&e), "sync state not stored; the connector stays due");
+                RunEnd::Internal
+            }
+        }
+    }
+}
+```
+
+**One connector's run.** The sync picks the adapter by the connector's kind and endpoint (`FarmSources`: the real Slack for owners' connectors, Era's simulator for the seeded `era` ones; Drive's go beside them in E4.3), unseals the token, and reads each chosen source page by page from its stored cursor until the pass ends, the run's budget (3 minutes, checked between pages) is spent, or shutdown comes. For each page it chunks every item (`chunk::chunks`: a message is one chunk with its replies joined, cut at 2,000 characters; a document is split on paragraphs; a file listed by name only is its title), hashes each chunk (`chunk::text_hash`, SHA-256 in hex, EON gap G5), reads the stored hashes of the page's items (`record_hashes`), embeds only the new or changed chunks in `Document` mode in batches of 32, upserts them all (an unchanged chunk keeps its vector), drops a shortened document's extra chunks (`delete_chunks_from`) and deletes what the page reports gone. One `finish_sync` at the end stores every source's cursor, `synced_at` when every source was read to its end, `next_sync_at` and `last_error`.
+
+**Cursors.** A source's stored cursor is `state::SourceState` as JSON: the adapter's own opaque cursor, whether the last page said more follow, when a pass covering the re-read window last finished (`reread_at`), and the re-read pass in progress with the vendor ids it has seen. A pass with pages left (a `429`, a spent budget) continues from it on a later run; records are keyed by `(connector, vendor_id, n)`, so nothing is stored twice.
+
+**The daily re-read.** For an adapter with a `reread_window` (Slack's 7 days), once `REREAD_EVERY` (a day) has passed since the last finished pass, the next pass starts 7 days back (`FarmPageRequest::reread_from`). At its end, the source's records from a second after that instant (`source_vendor_ids_since`) that the pass neither sent nor reported as kept are deleted: gone at the vendor. An adapter without one (Drive) is never deleted by absence; it reports removals in `FarmPage::removed`.
+
+| How the run ended | `last_error` | `next_sync_at` | Also |
+|---|---|---|---|
+| Every source read to its end | none | 15 min later (`SYNC_EVERY`) | `synced_at` now |
+| Budget spent or shutdown, pages left | none | now: the next run continues | |
+| `429` past the client's retries | `rate_limited` | the vendor's `Retry-After` later (the next run at the earliest) | cursor kept |
+| Down, `5xx`, an answer that didn't parse | `vendor_unavailable` | 15 min later | |
+| Token refused, or one that doesn't open under the key, or no account | `auth_refused` | 15 min later | `reauth_needed`; records stay searchable; nothing runs until the owner reconnects |
+| A chosen channel or folder gone | `source_missing` | 15 min later | the due query skips it until the owner changes the sources |
+| A page would take the garden past 10,000 records | `too_large` | 15 min later | nothing of that page is written; skipped until the sources change |
+| The store or the embedder failed | unchanged | 15 min later | logged with its chain |
+| No adapter for its kind and endpoint here | unchanged | 15 min later | |
+
+Nothing a vendor sent reaches a log line: lines carry the connector id, the source id, the vendor and the code (`FarmSourceError`'s `Display`). The store keeps the author's display name only.
 
 **Alert and plan-trigger dedupe.** A forecast alert's key is `<garden>:<trigger>:<date>` and a plan trigger's `plan:<plan>:<step>:<date>` ([contracts 7](../architecture/contracts.md#task)); the store's insert fails on a duplicate and `create_alert_task` answers `None`, so overlapping runs, or a run repeated after a crash, create each task once and push once. "Today" is the forecast's first day: Open-Meteo answers in the cell's time zone, so no time-zone database is needed.
 
@@ -5016,6 +5568,7 @@ The hub, writer and plan-lock maps use `std::sync::Mutex`: their critical sectio
 | Handlers | The real router (`router::app`), so layers, extractors, the renderer and request ids are under test, driven with `tower::ServiceExt::oneshot`. The ports are mockall mocks from `domain`'s `mock` feature; the store is `tests/fake_store.rs`, a `Store` made of one mock per repository trait with every method delegated, **generated** from `domain::ports::store` by `backend/tools/apigen/gen_fake_store.py` (regenerate when a store trait changes). The generator scans each trait body for `async fn` signatures that end in `;` or open a default body, skipping the body by brace matching, so a method with a default body (`live_lease`, `soil_profile_failed`, `gardens_due_soil_profile`, the account-tombstone methods) is delegated like any other and a test sets its expectations. The seams are small fakes: `NoPipeline` and `NoChat` (`unreachable!()`), `FixedImages` with a fixed answer |
 | Time | `FixedClock`; tokio's paused clock (`start_paused = true`) for the broker's long poll |
 | Scheduler | `scheduler::fetch_soil_profile` called directly, with a mocked `SoilProvider` |
+| Farm sync | `farm_sync/tests.rs`: `FarmSync` on the embedded `SurrealDB` 3.3.4 engine (`surrealdb` with `kv-mem`, a dev-dependency) with a scripted `FarmSource`, a counting embedder and `FixedClock`: at most 4 due connectors a run and `next_sync_at` 15 minutes on (T-E4.1); unchanged text costs no embedding and a changed chunk is embedded (T-E4.7); a refused token makes the connector `reauth_needed` and keeps the records, the 10,001st record stops it with `too_large`, and the cleanup deletes old Slack messages but keeps an old document (T-E4.9); a throttled pass resumes from its cursor; the daily re-read deletes what the vendor dropped and keeps what it reported as kept; an outage waits 15 minutes |
 | Pure parts | Config parsing, error mapping and statuses, the fallback renderer, canonical fingerprints, multipart fingerprints, the HMAC signer, the invite limiter, trigger rules, hour truncation, worker tokens |
 
 ```rust

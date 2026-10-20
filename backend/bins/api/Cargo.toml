@@ -61,6 +61,8 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 domain = { workspace = true, features = ["mock", "test-util"] }
+# The farm sync's tests: the embedded engine (kv-mem, tests only).
+surrealdb = { workspace = true, features = ["kv-mem"] }
 http-body-util.workspace = true
 mockall.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
