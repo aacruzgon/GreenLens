@@ -76,7 +76,7 @@ export function SignUpScreen() {
         disabled={!email.trim() || !phone.trim() || !password}
         size="large"
       />
-      <Link href="/sign-in" asChild>
+      <Link dismissTo href="/sign-in" asChild>
         <Text variant="body" color="textMuted" accessibilityRole="link">
           Already have an account? Sign in
         </Text>

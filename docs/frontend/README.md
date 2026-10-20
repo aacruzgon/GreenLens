@@ -1,6 +1,6 @@
 # PDM Frontend Architecture
 
-> **Status:** Draft v0.4.7, 2026-10-20. v0.4.7: "Forgot password?" resets the password with an email code (section 8). v0.4.6: two-step sign-in is a code by text to the phone given at sign-up, with Clerk's test numbers in development (section 8). v0.4.5: sign-in has no authenticator-app second factor; a new device is confirmed with an email code. v0.4.4: section 4 adds `expo-symbols` and Urbanist, which F0 uses.
+> **Status:** Draft v0.4.7, 2026-10-20. v0.4.7: "Forgot password?" resets the password with an email code (sections 6 and 8). v0.4.6: two-step sign-in is a code by text to the phone given at sign-up, with Clerk's test numbers in development (section 8). v0.4.5: sign-in has no authenticator-app second factor; a new device is confirmed with an email code. v0.4.4: section 4 adds `expo-symbols` and Urbanist, which F0 uses.
 > v0.4.3: the build plan (section 18) follows the new [roadmap](roadmap.md): the iPhone first in the Conservatory direction, F0 on Oct 20 to the web build on Oct 25. v0.4.2: the backend's OpenAPI spec is committed, so the app uses generated contract types from day 1 instead of hand-written ones (section 9, generated types; build plan). v0.4.1: the schema links point to `backend/migrations/schema.surql`. v0.4 applies the third audit and contracts v0.8.2: species photo paths carry a content hash, a failed scan never holds a question, push coverage, invalidations for confirmed plan revisions, the closer-photo rule, the `SFSafariViewController` cookie note and the CORS preflight reason.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Images:** event URLs arrive fresh, and the cache key is the image ID or the URL path; species photos carry their credit.
@@ -275,7 +275,7 @@ app/
 └─ src/
    ├─ app/                        routes only (screens.md 1)
    ├─ features/
-   │  ├─ auth/                    sign-in, sign-up, email-code verification, onboarding, session bootstrap
+   │  ├─ auth/                    sign-in, sign-up, code verification, password reset, onboarding, session bootstrap
    │  ├─ gardens/                 garden home, create and edit, location consent, active garden, garden switcher
    │  ├─ members/                 members, roles, invites, invite acceptance
    │  ├─ plants/                  plant list and detail, timeline, growth curve, species confirmation, notes

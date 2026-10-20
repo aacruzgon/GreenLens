@@ -6,7 +6,10 @@ import { ThemeProvider } from "@/ui";
 // A Clerk sign-in and sign-up whose calls the tests script; `status` moves the way Clerk's does.
 const mockSignIn = {
   status: "needs_identifier" as string,
-  create: jest.fn(async (_: unknown) => ({ error: null as unknown })),
+  create: jest.fn(async (_: unknown) => {
+    mockSignIn.status = "needs_first_factor";
+    return { error: null as unknown };
+  }),
   resetPasswordEmailCode: {
     sendCode: jest.fn(async () => ({ error: null as unknown })),
     verifyCode: jest.fn(async (_: unknown) => ({ error: null as unknown })),
@@ -101,6 +104,48 @@ it("keeps the checked code when the new password is refused", async () => {
 
   expect(mockSignIn.resetPasswordEmailCode.verifyCode).toHaveBeenCalledTimes(1);
   expect(mockSignIn.finalize).toHaveBeenCalled();
+});
+
+// Review of #113: the password changed, then the text code failed to send; the retry must not check the code again.
+it("after the reset, a retry only sends the text code again", async () => {
+  await sendCodeTo("sam@example.com");
+  mockSignIn.resetPasswordEmailCode.verifyCode.mockImplementationOnce(async () => {
+    mockSignIn.status = "needs_new_password";
+    return { error: null };
+  });
+  mockSignIn.resetPasswordEmailCode.submitPassword.mockImplementationOnce(async () => {
+    mockSignIn.status = "needs_second_factor";
+    return { error: null };
+  });
+  mockSignIn.mfa.sendPhoneCode.mockResolvedValueOnce({ error: { longMessage: "Too many requests." } });
+
+  await fireEvent.changeText(screen.getByLabelText("Code"), "123456");
+  await fireEvent.changeText(screen.getByLabelText("New password"), "a new long password");
+  await fireEvent.press(screen.getByRole("button", { name: "Reset password" }));
+  expect(await screen.findByText("Too many requests.")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Send a new code" })).toBeNull();
+
+  await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+  expect(mockSignIn.resetPasswordEmailCode.verifyCode).toHaveBeenCalledTimes(1);
+  expect(mockSignIn.resetPasswordEmailCode.submitPassword).toHaveBeenCalledTimes(1);
+  expect(mockSignIn.mfa.sendPhoneCode).toHaveBeenCalledTimes(2);
+  expect(mockRouter.replace).toHaveBeenCalledWith({ pathname: "/verify", params: { mode: "sms" } });
+});
+
+it("says so when the account has no password to reset", async () => {
+  mockSignIn.resetPasswordEmailCode.sendCode.mockResolvedValueOnce({
+    error: { code: "factor_not_found", message: "Reset password email code factor not found" },
+  });
+  mockParams = { email: "sam@example.com" };
+  await render(
+    <ThemeProvider>
+      <ResetPasswordScreen />
+    </ThemeProvider>,
+  );
+  await fireEvent.press(screen.getByRole("button", { name: "Send code" }));
+  expect(
+    await screen.findByText("This account signs in without a password, so there's no password to reset."),
+  ).toBeTruthy();
 });
 
 it("offers a reset when sign-up finds the email taken", async () => {

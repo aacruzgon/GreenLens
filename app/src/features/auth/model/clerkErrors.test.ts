@@ -1,4 +1,4 @@
-import { clerkErrorMessage, isEmailTaken } from "./clerkErrors";
+import { clerkErrorCode, clerkErrorMessage, isEmailTaken } from "./clerkErrors";
 
 describe("clerkErrorMessage", () => {
   it("prefers the long message", () => {
@@ -29,5 +29,13 @@ describe("isEmailTaken", () => {
     expect(isEmailTaken({ code: "form_identifier_exists", meta: { paramName: "phone_number" } })).toBe(false);
     expect(isEmailTaken({ code: "form_password_pwned" })).toBe(false);
     expect(isEmailTaken(undefined)).toBe(false);
+  });
+});
+
+describe("clerkErrorCode", () => {
+  it("reads the code of the error or of the first in a list", () => {
+    expect(clerkErrorCode({ code: "factor_not_found" })).toBe("factor_not_found");
+    expect(clerkErrorCode({ errors: [{ code: "form_code_incorrect" }] })).toBe("form_code_incorrect");
+    expect(clerkErrorCode({ message: "no code" })).toBeUndefined();
   });
 });

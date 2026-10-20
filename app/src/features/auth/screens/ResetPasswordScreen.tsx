@@ -5,8 +5,15 @@ import { useState } from "react";
 import { Button, TextField } from "@/ui";
 
 import { AuthShell } from "../components/AuthShell";
-import { clerkErrorMessage } from "../model/clerkErrors";
+import { clerkErrorCode, clerkErrorMessage } from "../model/clerkErrors";
 import { continueSignIn } from "../signInSteps";
+
+// An account that signs in only with Google or Apple has no reset factor; Clerk's own text names the factor.
+function sendCodeMessage(error: unknown): string {
+  return clerkErrorCode(error) === "factor_not_found"
+    ? "This account signs in without a password, so there's no password to reset."
+    : clerkErrorMessage(error);
+}
 
 // Forgot password (Clerk's forgot-password custom flow): a code to the account's email, then a new password.
 // Resetting signs out every other session, and the code by text is still asked for after it.
@@ -22,29 +29,34 @@ export function ResetPasswordScreen() {
   const [codeError, setCodeError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const busy = fetchStatus === "fetching";
+  // Past the new password, the reset is done: a retry only moves the sign-in on (review of #113).
+  const passwordChanged = sent && signIn.status !== "needs_first_factor" && signIn.status !== "needs_new_password";
 
   async function sendCode() {
     setEmailError(null);
     const { error: createError } = await signIn.create({ identifier: email.trim() });
     if (createError) return setEmailError(clerkErrorMessage(createError));
     const { error: sendError } = await signIn.resetPasswordEmailCode.sendCode();
-    if (sendError) return setEmailError(clerkErrorMessage(sendError));
+    if (sendError) return setEmailError(sendCodeMessage(sendError));
     setSent(true);
   }
 
   async function reset() {
     setCodeError(null);
     setPasswordError(null);
-    // A refused password leaves the code verified, so a second try only sends the new password.
-    if (signIn.status !== "needs_new_password") {
+    // Each step runs only when it's due, so a retry starts where the last try stopped: a refused password
+    // keeps the checked code, and a failed text code after the reset doesn't check the used code again.
+    if (signIn.status === "needs_first_factor") {
       const { error: verifyError } = await signIn.resetPasswordEmailCode.verifyCode({ code: code.trim() });
       if (verifyError) return setCodeError(clerkErrorMessage(verifyError));
     }
-    const { error: submitError } = await signIn.resetPasswordEmailCode.submitPassword({
-      password,
-      signOutOfOtherSessions: true,
-    });
-    if (submitError) return setPasswordError(clerkErrorMessage(submitError));
+    if (signIn.status === "needs_new_password") {
+      const { error: submitError } = await signIn.resetPasswordEmailCode.submitPassword({
+        password,
+        signOutOfOtherSessions: true,
+      });
+      if (submitError) return setPasswordError(clerkErrorMessage(submitError));
+    }
     setPasswordError(await continueSignIn(signIn, router, true));
   }
 
@@ -87,20 +99,22 @@ export function ResetPasswordScreen() {
         error={passwordError ?? undefined}
       />
       <Button
-        label="Reset password"
+        label={passwordChanged ? "Continue" : "Reset password"}
         onPress={reset}
         busy={busy}
         disabled={code.trim().length < 6 || !password}
         size="large"
       />
-      <Button
-        label="Send a new code"
-        variant="plain"
-        onPress={async () => {
-          const { error: sendError } = await signIn.resetPasswordEmailCode.sendCode();
-          setCodeError(sendError ? clerkErrorMessage(sendError) : null);
-        }}
-      />
+      {passwordChanged ? null : (
+        <Button
+          label="Send a new code"
+          variant="plain"
+          onPress={async () => {
+            const { error: sendError } = await signIn.resetPasswordEmailCode.sendCode();
+            setCodeError(sendError ? sendCodeMessage(sendError) : null);
+          }}
+        />
+      )}
     </AuthShell>
   );
 }

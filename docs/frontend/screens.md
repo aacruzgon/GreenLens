@@ -1,6 +1,6 @@
 # PDM Frontend Screens
 
-> **Status:** Draft v0.4.3, 2026-10-20. v0.4.3: a password reset by email code, from sign-in and from a sign-up whose email is taken (3.10). v0.4.2: sign-up takes a phone number, and sign-in asks for a code by text. v0.4.1: no authenticator-app second factor.
+> **Status:** Draft v0.4.3, 2026-10-20. v0.4.3: a password reset by email code, from sign-in and from a sign-up whose email is taken (1, 3.10). v0.4.2: sign-up takes a phone number, and sign-in asks for a code by text. v0.4.1: no authenticator-app second factor.
 > v0.4 applies the third audit: Google and Apple sign-in are hidden only in embedded web views, and the note delete rule names who deletes which note.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **New-plant sheet:** added, with `POST /plants`.
@@ -64,7 +64,8 @@ Wireframes show layout and content, not visual design. They are drawn at phone w
    ┌─────────────────────┐                               ┌────────────────────┐   no garden   ┌────────────┐
    │ (auth)              │                               │ SessionGate        │ ────────────▶ │ onboarding │
    │ sign-in · sign-up · │                               │ /me · /gardens     │               └────────────┘
-   │ verify (email code) │                               └─────────┬──────────┘
+   │ reset-password ·    │                               └─────────┬──────────┘
+   │ verify (codes)      │                                         │
    └─────────────────────┘                                         ▼
                                  ┌─────────────────────────── TABS ───────────────────────────┐
                                  │  Garden            Tasks             Chat          Settings │
@@ -449,7 +450,7 @@ Wireframes show layout and content, not visual design. They are drawn at phone w
 └─────────────────────────────────────┘
 ```
 
-- **Forgot password?** opens **Reset password** with the typed email: "Send code", then the 6-digit code and a new password, with "Send a new code". Resetting signs out the account's other sessions, and the code by text still follows ([flows 1](flows.md#1-app-start-and-sign-in)).
+- **Forgot password?** opens "Reset your password" with the typed email: "Send code", then the 6-digit code and a new password, with "Send a new code". Resetting signs out the account's other sessions, and the code by text still follows ([flows 1](flows.md#1-app-start-and-sign-in)).
 - **Sign-up with a taken email** shows "You already have an account" with **Reset password**, instead of the code steps. A taken phone number shows Clerk's message, since its account's email is unknown. Sign-up links back with "Already have an account? Sign in".
 - **Verify** shows a 6-digit code field with "Send a new code": the sign-up email code, then the phone's; the code by text at every sign-in; or the email code that confirms a new device. In development builds, the phone steps show Clerk's test numbers (+1 555 555 0100 to 0199, code 424242).
 - The postal-code-or-city field sends `postal_code` when it looks like a Canadian postal code, otherwise `city`.
