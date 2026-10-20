@@ -44,4 +44,13 @@ pub trait EventRepo: Send + Sync {
 
     /// What the stream's closing rule needs ([contracts 4], when the stream closes).
     async fn stream_state(&self, scan: ScanId) -> Result<StreamState, StoreError>;
+
+    /// The run's `run_started`, `stage_started` and `stage_completed` events, in `seq` order.
+    /// `api`'s own read, with no membership proof: a job's `complete` uses it to find the
+    /// stages whose events never reached the stream ([contracts 5], partial results).
+    async fn run_stage_events(
+        &self,
+        scan: ScanId,
+        run: Run,
+    ) -> Result<Vec<ScanEventBody<Stored>>, StoreError>;
 }
