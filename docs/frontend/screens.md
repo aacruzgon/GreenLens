@@ -1,6 +1,6 @@
 # PDM Frontend Screens
 
-> **Status:** Draft v0.4.2, 2026-10-19. v0.4.2: sign-up takes a phone number, and sign-in asks for a code by text. v0.4.1: no authenticator-app second factor.
+> **Status:** Draft v0.4.3, 2026-10-20. v0.4.3: capture as built in F2, after the Camera app: the mode bar and the coverage dial replace the shot strip, the instruction drops from the top, and a full mode's shutter retakes its shot. v0.4.2: sign-up takes a phone number, and sign-in asks for a code by text. v0.4.1: no authenticator-app second factor.
 > v0.4 applies the third audit: Google and Apple sign-in are hidden only in embedded web views, and the note delete rule names who deletes which note.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **New-plant sheet:** added, with `POST /plants`.
@@ -168,30 +168,36 @@ Wireframes show layout and content, not visual design. They are drawn at phone w
 
 ```
 ┌─────────────────────────────────────┐   Phone browser variant
-│ ✕  Scan · Tomato 1        [Discard] │   ┌─────────────────────────────────────┐
-├─────────────────────────────────────┤   │ ✕  Scan · Tomato 1        [Discard] │
-│                                     │   ├─────────────────────────────────────┤
-│          [ camera preview ]         │   │ Whole plant                         │
-│                                     │   │ Step back about 1 m and get the     │
-│       ┌───────────────────┐         │   │ whole plant in the frame.           │
-│       │   frame guide     │         │   │                                     │
-│       └───────────────────┘         │   │       [ 📷  Take photo ]            │  launchCameraAsync, in the press handler
-│     ◉ 1.2 m · good distance         │   │       [ Choose from library ]       │
-├─────────────────────────────────────┤   ├─────────────────────────────────────┤
-│ Whole plant: get the whole plant in │   │ [✓ Whole] [+ Leaf] [+ Leaf] …       │
-│ the frame, about 1 m back           │   ├─────────────────────────────────────┤
-├─────────────────────────────────────┤   │                        [ Analyse ]  │
-│ [✓ Whole] [⟳ Leaf] [+ Leaf] [+ Under│   └─────────────────────────────────────┘
-│ side] [+ Soil] [+ Fruit]            │
-├─────────────────────────────────────┤   LiDAR: LidarCameraView with the distance hint.
-│   [ Library ]   ( ◯ )   [ Analyse ] │   Other phones: expo-camera. Desktop: file picker
-└─────────────────────────────────────┘   and drag and drop.
+│ (✕)       Scan · Tomato 2   Discard │   ┌─────────────────────────────────────┐
+│ ┌─────────────────────────────────┐ │   │ ✕  Scan · Tomato 1        [Discard] │
+│ │ Leaf close-up                   │ │   ├─────────────────────────────────────┤
+│ │ Fill the frame with one affected│ │   │ Whole plant                         │
+│ │ leaf, about 30 cm away. Tap the │ │   │ Step back about 1 m and get the     │
+│ │ leaf to focus.                  │ │   │ whole plant in the frame.           │
+│ │ [▣ ✕]                           │ │   │                                     │
+│ │              ───                │ │   │       [ 📷  Take photo ]            │  launchCameraAsync, in the press handler
+│ └─────────────────────────────────┘ │   │       [ Choose from library ]       │
+│       ┌──                   ──┐     │   ├─────────────────────────────────────┤
+│         [ camera, full screen ]     │   │ [✓ Whole] [+ Leaf] [+ Leaf] …       │
+│       └──                   ──┘     │   ├─────────────────────────────────────┤
+│     ◉ 32 cm · good distance         │   │                        [ Analyse ]  │
+│  ( 1 of 2 needed shots · Suspect… ) │   └─────────────────────────────────────┘
+│                                     │
+│   [▤]        (( ◯ ))      [Analyse] │   LiDAR: LidarCameraView with the distance hint.
+│ ( •WHOLE PLANT  CLOSE-UP  UNDERSIDE │   Other phones: expo-camera. Desktop: file picker
+│   SOIL  FRUIT )                     │   and drag and drop.
+└─────────────────────────────────────┘
 ```
 
-- The **shot strip** has one chip per slot: `+` empty, `⟳` uploading, `✓` stored, `!` retake. **Analyse** is enabled when `whole_plant` is stored and nothing is uploading.
-- A **rejected** shot shows the server's message in a banner ("This photo is too blurry. Hold the phone still and tap the leaf to focus."), with an icon for its hint, and the slot's chip turns to retake.
-- **Optional slots** are labelled by when they help: "Something looks wrong? Add a close-up", "Suspect pests? Photograph the underside", "Add the soil around the base".
-- **Discard** asks "Discard this scan? Its photos will be deleted.", adding "and its jar-test task" when one was started, and deletes the pending scan.
+Capture is always dark and follows the Camera app ([design 3.1](../design/design.md#31-conservatory)): the camera fills the screen, and the controls on it are neutral, white and solid dark, never tinted.
+
+- The **mode bar** has one mode per shot kind: WHOLE PLANT · CLOSE-UP · UNDERSIDE · SOIL · FRUIT, in a solid dark pill, the chosen one in white on a lighter pill and kept centred. FRUIT is `flower_fruit`, and its instruction says flower or fruit. A dot marks a mode with a stored shot, a ring a shot on its way, and `!` one to retake. It replaces the strip of shot chips. CLOSE-UP holds two shots.
+- The **instruction card** drops from the top with a grabber: the chosen shot's title and instruction, the mode's shots as thumbnails, each stored one with **✕** to remove it, and, when a shot didn't store, the server's message with its hint's icon. A shot the quality check refused is retaken with the shutter; a failed upload has **Try again**, after the app has already retried it twice under the same key.
+- The **framing guide**'s corners sit where the shot's subject goes. The **distance chip** ("32 cm · good distance") appears once the LiDAR module sends distances (roadmap F5).
+- The **shutter** is white, with the **coverage dial** around it: one segment per needed shot, the whole plant and a close-up, each turning white once stored. The pill above says "1 of 2 needed shots" and the next suggestion, or "Start with the whole plant" until that shot is stored. On a mode whose slots are full, the shutter retakes its last shot: the stored image is deleted, then the new one uploads (flows 4, replacing).
+- **Library** sits left of the shutter, **Analyse** right of it, white on the black. **Analyse** is enabled when `whole_plant` is stored and nothing is uploading.
+- **✕** closes capture and keeps the draft for later. **Discard** asks "Discard this scan? Its photos will be deleted.", adding "and its jar-test task" when one was started, and deletes the pending scan.
+- **Camera access** is asked by the system's own alert when capture opens, with no screen of ours before it ([HIG Privacy](https://developer.apple.com/design/human-interface-guidelines/privacy#Pre-alert-screens-windows-or-views)). After a refusal, the preview says why the camera is needed and offers **Open Settings**; Library still works.
 - **Question mode** has one slot, the question's `photo_hint` as the instruction and **Send** instead of Analyse.
 - **Guided mode** shows the squeeze or jar instructions first, then one slot.
 

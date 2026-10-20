@@ -22,6 +22,8 @@ export default function AppLayout() {
         />
         {/* Capture is a camera: it covers the screen, like the Camera app (design 3.1). */}
         <Stack.Screen name="capture/[scanId]" options={{ presentation: "fullScreenModal" }} />
+        {/* Analyse replaces capture with the scan, which stays full screen and dark like the camera (design 3.1). */}
+        <Stack.Screen name="scans/[scanId]" options={{ presentation: "fullScreenModal" }} />
       </Stack>
     </SessionGate>
   );

@@ -25,3 +25,4 @@ export { StatusChip, type StatusChipProps } from "./composites/StatusChip";
 export { MeltPhoto, type MeltPhotoProps, type MeltKind } from "./composites/MeltPhoto";
 export { hiddenSvg, useSvgId } from "./svgId";
 export { ConfidenceBadge, type ConfidenceBadgeProps } from "./composites/ConfidenceBadge";
+export { DropCard, type DropCardProps } from "./composites/DropCard";
