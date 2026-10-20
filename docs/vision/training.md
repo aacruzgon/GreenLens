@@ -216,7 +216,7 @@ Both heads sit on frozen BioCLIP 2 image features ([models 6–7](models.md#7-di
   | Test, leaf datasets | 565 | 0.773 | 0.982 | 0.779 |
   | Evaluation dev cases, supported crops | 134 | 0.642 | 0.896 | 0.664 |
 
-  - **The head beats zero-shot clearly** on every set, by 25 points on the dev cases.
+  - **The head beats zero-shot clearly** on every set, by 25 points on the dev cases. The dev row was measured before two microscope photos of a mite were dropped from the evaluation set (one of them dev), so a rerun moves it by under a point.
   - **The rule as written keeps little of that.** It keeps zero-shot's share for the unsupported species, so a photo that zero-shot gives mostly to another species stays wrong whatever the head says. Models 6 records the change to decide.
 
 ### Trained plant probe
