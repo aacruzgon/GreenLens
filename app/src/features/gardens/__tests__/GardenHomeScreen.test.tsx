@@ -10,7 +10,7 @@ import { ActiveGardenContext } from "../hooks/useActiveGarden";
 import { GardenHomeScreen } from "../screens/GardenHomeScreen";
 
 // The home over the mock transport with no delays (the mock's own timers stay off: delayScale 0).
-async function renderHome(firstTask = "Check Tomato 2's lower leaves") {
+async function renderHome(firstTask: string | null = "Check Tomato 2's lower leaves") {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   await render(
     <QueryClientProvider client={qc}>
@@ -22,8 +22,19 @@ async function renderHome(firstTask = "Check Tomato 2's lower leaves") {
     </QueryClientProvider>,
   );
   await screen.findByRole("header", { name: "Back garden" });
-  await screen.findByText(firstTask);
+  if (firstTask) await screen.findByText(firstTask);
 }
+
+/** Whether the status-bar strip is shown; it never takes a touch either way. */
+function scrimShown(): boolean {
+  expect(screen.getByTestId("status-bar-scrim", { includeHiddenElements: true }).props.pointerEvents).toBe("none");
+  return !screen.getByTestId("status-bar-scrim-fade", { includeHiddenElements: true }).props.accessibilityElementsHidden;
+}
+
+function scrollTo(y: number) {
+  return fireEvent.scroll(screen.getByTestId("garden-home-scroll"), { nativeEvent: { contentOffset: { x: 0, y } } });
+}
+
 
 beforeEach(() => {
   resetMock();
@@ -82,6 +93,24 @@ describe("GardenHomeScreen", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
     expect(screen.queryByText(`Couldn't mark "Check Tomato 2's lower leaves" done`)).toBeNull();
     await waitFor(() => expect(mockStore.tasks.find((t) => t.id === "task_t2_check_b")?.done_at).toBeTruthy());
+  });
+
+  it("shows the status-bar strip only once the hero has scrolled away", async () => {
+    await renderHome();
+    expect(scrimShown()).toBe(false);
+    await scrollTo(400);
+    expect(scrimShown()).toBe(true);
+    await scrollTo(0);
+    expect(scrimShown()).toBe(false);
+  });
+
+  it("keeps the strip off a garden with no photo until it scrolls, so it never covers +", async () => {
+    for (const [id, p] of mockStore.plants) if (p.garden_id === IDS.garden) mockStore.plants.delete(id);
+    await renderHome(null);
+    await screen.findByRole("button", { name: "Add a plant" });
+    expect(scrimShown()).toBe(false);
+    await scrollTo(400);
+    expect(scrimShown()).toBe(true);
   });
 
   it("shows a viewer no check boxes and no Done", async () => {

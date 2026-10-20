@@ -104,6 +104,7 @@ export function GardenHomeScreen() {
       {/* Light over the photo (roadmap F1 item 1); the scheme's own once it has scrolled away. */}
       {focused ? <StatusBar style={hasPhoto && overHero ? "light" : "auto"} /> : null}
       <ScrollView
+        testID="garden-home-scroll"
         contentInsetAdjustmentBehavior="never"
         onScroll={onScroll}
         scrollEventThrottle={32}
@@ -205,7 +206,7 @@ export function GardenHomeScreen() {
           </Enter>
         </View>
       </ScrollView>
-      <StatusBarScrim topInset={insets.top} visible={!(hasPhoto && overHero)} />
+      <StatusBarScrim topInset={insets.top} visible={!overHero} />
     </View>
   );
 }
