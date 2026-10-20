@@ -240,6 +240,8 @@ async fn era_slack_oauth_code_exchange() {
 }
 
 /// Runs `test` with `faults` set on the Slack simulator, and always clears them afterwards.
+/// Faults are global to the simulator and the admin API's calls use them up too (an inject
+/// spends `fail_next` and counts against `quota_limit`), so a test creates its tenant first.
 async fn with_faults(faults: Value, test: impl Future<Output = ()>) {
     Faults::reset(SimKind::Slack).await;
     Faults::set(SimKind::Slack, faults).await;
@@ -253,8 +255,8 @@ async fn with_faults(faults: Value, test: impl Future<Output = ()>) {
 #[tokio::test]
 #[ignore = "needs Era's simulators"]
 async fn era_fault_fail_next_is_retried_after_retry_after() {
+    let (tenant, token) = farm().await;
     with_faults(json!({ "fail_next": 1, "retry_after_seconds": 1 }), async {
-        let (tenant, token) = farm().await;
         let slack = client(tenant.base(), |_| {});
         let start = Instant::now();
         let auth = slack.auth_test(&token).await.unwrap();
@@ -272,10 +274,10 @@ async fn era_fault_fail_next_is_retried_after_retry_after() {
 #[tokio::test]
 #[ignore = "needs Era's simulators"]
 async fn era_fault_throttle_is_honoured_until_it_lifts() {
+    let (tenant, token) = farm().await;
     with_faults(
         json!({ "throttle": true, "retry_after_seconds": 1 }),
         async {
-            let (tenant, token) = farm().await;
             let slack = client(tenant.base(), |c| c.retry.max_retries = 5);
             let start = Instant::now();
             let lift = async {
@@ -299,8 +301,8 @@ async fn era_fault_throttle_is_honoured_until_it_lifts() {
 #[tokio::test]
 #[ignore = "needs Era's simulators"]
 async fn era_fault_error_rate_is_unavailable() {
+    let (tenant, token) = farm().await;
     with_faults(json!({ "error_rate": 1 }), async {
-        let (tenant, token) = farm().await;
         let slack = client(tenant.base(), |_| {});
         let error = slack.users_info(&token, "U_MARIA").await.unwrap_err();
         assert!(
@@ -316,8 +318,8 @@ async fn era_fault_error_rate_is_unavailable() {
 #[tokio::test]
 #[ignore = "needs Era's simulators"]
 async fn era_fault_quota_limit_paces_to_a_minute() {
+    let (tenant, token) = farm().await;
     with_faults(json!({ "quota_limit": 1 }), async {
-        let (tenant, token) = farm().await;
         // Gives up on a `Retry-After` over 10 s instead of sleeping the minute.
         let slack = client(tenant.base(), |c| {
             c.retry = RetryPolicy {
