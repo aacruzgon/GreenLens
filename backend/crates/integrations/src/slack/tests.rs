@@ -628,15 +628,33 @@ async fn oauth_v2_access_is_not_retried_after_a_5xx() {
     );
     assert_eq!(requests(&server).await, 1);
 
-    let server = answering("oauth.v2.access", refused("invalid_code")).await;
-    let error = client(&server)
-        .oauth_v2_access("used", "https://x", "1", &SecretString::from("s"))
-        .await
-        .unwrap_err();
-    assert!(
-        matches!(&error, FarmClientError::Refused { code, .. } if code == "invalid_code"),
-        "{error:?}"
-    );
+    for bad in ["invalid_code", "code_already_used", "code_expired"] {
+        let server = answering("oauth.v2.access", refused(bad)).await;
+        let error = client(&server)
+            .oauth_v2_access("used", "https://x", "1", &SecretString::from("s"))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&error, FarmClientError::AuthRefused { code, .. } if code == bad),
+            "{error:?}"
+        );
+    }
+    for ours in [
+        "bad_redirect_uri",
+        "invalid_client_id",
+        "bad_client_secret",
+        "invalid_client",
+    ] {
+        let server = answering("oauth.v2.access", refused(ours)).await;
+        let error = client(&server)
+            .oauth_v2_access("c0de", "https://x", "1", &SecretString::from("s"))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&error, FarmClientError::Refused { code, .. } if code == ours),
+            "{error:?}"
+        );
+    }
 }
 
 #[test]

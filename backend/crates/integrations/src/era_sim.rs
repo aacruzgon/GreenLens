@@ -39,6 +39,11 @@ impl SimKind {
     }
 }
 
+/// The request timeout the Era tests give their clients. A simulator generates its company on
+/// the first call that needs it (about 8 s locally, over 20 s on a CI runner), so the clients'
+/// production defaults (20 s Slack, 30 s Drive) are too tight for a test's first call.
+pub const ERA_TIMEOUT: Duration = Duration::from_secs(90);
+
 /// The simulator's base URL (no trailing slash) from `ERA_SLACK_BASE` or `ERA_GOOGLE_BASE`.
 /// Panics when the variable is unset, so an Era test fails rather than skips.
 #[must_use]
@@ -50,6 +55,26 @@ pub fn base_url(kind: SimKind) -> String {
              --profile era up -d --wait era-slack era-drive) and set ERA_SLACK_BASE and \
              ERA_GOOGLE_BASE (docs/EON)",
             kind.env_var()
+        ),
+    }
+}
+
+/// The base URL of the strict-mode simulator (`AUTH_MODE=strict`, docs/EON E6.4) from
+/// `ERA_STRICT_SLACK_BASE` or `ERA_STRICT_GOOGLE_BASE`. It answers the vendors' OAuth paths and
+/// checks Drive's scopes. Panics when the variable is unset, so a strict test fails rather than
+/// skips.
+#[must_use]
+pub fn strict_base_url(kind: SimKind) -> String {
+    let var = match kind {
+        SimKind::Slack => "ERA_STRICT_SLACK_BASE",
+        SimKind::Drive => "ERA_STRICT_GOOGLE_BASE",
+    };
+    match std::env::var(var) {
+        Ok(url) if !url.is_empty() => url.trim_end_matches('/').to_owned(),
+        _ => panic!(
+            "{var} is not set: start the strict-mode simulators (AUTH_MODE=strict; the `era` job \
+             in .github/workflows/ci.yml shows how) and set ERA_STRICT_SLACK_BASE and \
+             ERA_STRICT_GOOGLE_BASE (docs/EON E6.4)"
         ),
     }
 }
