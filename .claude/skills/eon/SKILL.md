@@ -105,10 +105,10 @@ The harness is `integrations::era_sim`, behind the `era-sim` feature, so it is n
 cd backend
 ERA_SLACK_BASE=http://127.0.0.1:8091 ERA_GOOGLE_BASE=http://127.0.0.1:8092 \
   cargo nextest run -p integrations -p api --run-ignored only \
-  -E 'test(/(^|::)era_/) and not test(/(^|::)era_strict_/)'
+  -E 'test(/(^|::)era_/) and not test(/(^|::)era_strict_/) and not test(/(^|::)era_hosted_/)'
 ```
 
-- **Marking:** Era tests are `#[ignore = "needs Era's simulators"]`, and their names start with `era_`. Fault tests start with `era_fault_`.
+- **Marking:** Era tests are `#[ignore = "needs Era's simulators"]`, and their names start with `era_`. Fault tests start with `era_fault_`. The hosted tests start with `era_hosted_`; every simulator filter leaves them out, since each of their requests is metered (below).
 - **Missing variables fail the test,** they don't skip it, so a misconfigured CI job can't pass by doing nothing.
 - **They run one at a time.** `backend/.config/nextest.toml` puts every `era_` test in the `era` group (`max-threads = 1`), because a fault reaches every test on that simulator. In CI, the fault tests have their own simulators (E6.2), and the strict-mode tests a third pair (E6.4): the `era` job in `ci.yml` has three nextest steps, one per pair ([infra 2](../../../docs/infra/README.md#the-era-job)). Strict tests read `ERA_STRICT_SLACK_BASE` and `ERA_STRICT_GOOGLE_BASE`; a locally started pair needs `-e AUTH_MODE=strict`, and the strict tests run alone with `ERA_STRICT_SLACK_BASE` and `ERA_STRICT_GOOGLE_BASE` set to that pair and `-E 'test(/(^|::)era_strict_/)'`.
 - **Setting a fault:** create the tenant and inject first, so only the call under test meets the fault.
@@ -128,9 +128,9 @@ Our company is **Holling Holdings**: e-commerce, B2B, small, with `slack` and `g
 | `era systems`, `era options` | The systems; the industries, sizes, models and scenarios |
 | `era plan --size small --model b2b --systems slack,google-drive` | What a company would hold, before building it |
 | `era new --industry ecommerce --model b2b --size small --systems slack,google-drive --env infra/env/.env.era --strict` | Build a company and write its env block. `--strict` exits 6 if a system failed |
-| `era token <tenant> --env infra/env/.env.era` | A new token, which retires the old one at once, for CI and every teammate too, so ask the user first. **Tokens last 7 days**: `ERA_TENANT_TOKEN_EXPIRES_AT` in the env file says when |
+| `era token <tenant> --env infra/env/.env.era` | A new token, which retires the old one at once, for every teammate too (and CI, when `era-hosted` uses the tenant token), so ask the user first. **Tokens last 7 days**: `ERA_TENANT_TOKEN_EXPIRES_AT` in the env file says when. The weekly step is [infra 6](../../../docs/infra/README.md#6-secrets-and-configuration) |
 | `era env <tenant> --env infra/env/.env.era` | Rewrite the env block for an existing company |
-| `era client <tenant>` | OAuth client credentials for a pipeline (E7.3 checks them against our OAuth exchanges) |
+| `era client <tenant>` | OAuth client credentials for a pipeline: `client_id`, `client_secret` (only with `--reveal`), `token_endpoint` `https://console.era.eon.io/token`. **Each call registers a new client.** The `client_credentials` grant gives a one-hour bearer token, not metered; they don't run the vendors' code exchanges on the hosted systems (E7.3) |
 | `era mcp <tenant> --client claude` | The `claude mcp add` lines, one per system |
 | `era rm <tenant>` | Delete a company. Ask the user first; it can't be undone |
 | `era skill` | Prints Era's own generic skill: how to work across a company's systems |
@@ -144,8 +144,9 @@ Our company is **Holling Holdings**: e-commerce, B2B, small, with `slack` and `g
 The REST routes take the same `Authorization` header as MCP. Load the file with `set -a; . infra/env/.env.era; set +a`.
 
 **Spend calls deliberately.** Each REST or MCP call to the hosted systems costs one of the 2,000 a month. Check `era usage` before and after, and record the cost in the PR.
-- The first `curl` check cost 5 calls.
-- A B2B small company keeps listings to a page or two.
+- The first `curl` check cost 5 calls; a run of the two `era_hosted_` tests costs 5 (Slack 2, Drive 3), and each test prints its count.
+- **The Drive is big despite "small":** over 1,000 folders and 1,000 Google Docs, not the 60 documents `era plan` gave. `list_folder` costs a call per folder, so never list from the root; the test lists one named folder. Slack's channel list is one page.
+- Requests without a bearer token (OAuth consent and exchange) weren't metered, and neither is the token endpoint.
 - `era` commands that only talk to the console, such as `ls`, `usage` and `doctor`, aren't metered: `era usage` stayed at 5 after several of them on Oct 19.
 
 **What the hosted company differs on:**
@@ -153,7 +154,9 @@ The REST routes take the same `Authorization` header as MCP. Load the file with 
 - Its data is Era's own, not our farm.
 - Slack's `auth.test` `url` looks real (`https://hollingholdings.slack.com/`).
 
-**In CI** (E6.5, not built yet): the nightly `era-hosted` job is to read `SLACK_BASE_URL`, `GOOGLE_DRIVE_BASE_URL` and `ERA_TENANT_TOKEN` from the GitHub environment `era-hosted`, which only `main` can use. The CLI's own CI credential is `ERA_TOKEN`. The job is to stay out of `ci`'s `needs`, so a hosted outage or an expired token can't block a merge.
+**In CI** (E6.5): `.github/workflows/era-hosted.yml` runs the `era_hosted_` tests nightly and on `workflow_dispatch`, outside `ci`'s `needs`, so a hosted outage or an expired token can't block a merge. It reads the GitHub environment `era-hosted`, which only `main` can use: secrets `ERA_CLIENT_ID` and `ERA_CLIENT_SECRET` (it mints a one-hour token with them), or `ERA_TENANT_TOKEN` when those are unset; variables `SLACK_BASE_URL` and `GOOGLE_DRIVE_BASE_URL`. Setting it up and the weekly rotation: [infra 6](../../../docs/infra/README.md#6-secrets-and-configuration). The CLI's own CI credential is `ERA_TOKEN`; the job doesn't use the CLI.
+
+**By hand:** from `backend/`, `set -a; . ../infra/env/.env.era; set +a`, then `cargo nextest run -p integrations --run-ignored only --no-capture -E 'test(/(^|::)era_hosted_/)'`, with `era usage <tenant>` before and after.
 
 ## Sources
 
