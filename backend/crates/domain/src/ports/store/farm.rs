@@ -84,6 +84,13 @@ pub struct NewConnector {
     pub created_at: Timestamp,
 }
 
+/// The entry of a connector's cursors ([`ConnectorRow::cursors`], [`SyncOutcome::cursors`])
+/// that holds the sync's own state across the sources (the round, the sources that have had
+/// their turn in it, and where the next run starts), beside the cursors keyed by source id. No
+/// vendor's source id starts with `#` (Slack's are `[A-Z0-9]`, Drive's `[A-Za-z0-9_-]`). The
+/// store keeps it when it drops the cursors of sources no longer chosen.
+pub const SYNC_STATE_KEY: &str = "#sync";
+
 /// A connector with everything the sync and the routes need beside its wire shape. Never sent:
 /// it holds the sealed tokens.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,7 +103,8 @@ pub struct ConnectorRow {
     pub secret: Option<Sealed>,
     /// The pending connect's state.
     pub oauth: Option<PendingConnect>,
-    /// Each source's sync cursor, by source id.
+    /// Each source's sync cursor, by source id, and the sync's own state under
+    /// [`SYNC_STATE_KEY`].
     pub cursors: BTreeMap<String, SyncCursor>,
     /// When the sync is due.
     pub next_sync_at: Timestamp,
@@ -125,16 +133,21 @@ pub struct CompletedConnect {
 pub struct SyncOutcome {
     /// The connector's `next_sync_at` as [`due_connectors`](FarmRecordStore::due_connectors)
     /// returned it. If the stored value is later when the run ends, a **Sync now** or a new set
-    /// of sources landed during the run: the store keeps that time, and doesn't store a
-    /// stopping failure (`too_large`, `source_missing`) over it.
+    /// of sources landed during the run: the store keeps that time, doesn't store a stopping
+    /// failure (`too_large`, `source_missing`) over it, and doesn't set `synced_at`.
     pub due_at: Timestamp,
-    /// Each source's cursor after the run.
+    /// Each source's cursor after the run, and the sync's own state under
+    /// [`SYNC_STATE_KEY`]. The store keeps the cursors of the sources still chosen and that
+    /// state.
     pub cursors: BTreeMap<String, SyncCursor>,
-    /// Set when every source was read to its end.
+    /// Set when the round ended with every source caught up: no pages left, and no source's
+    /// last turn failed.
     pub synced_at: Option<Timestamp>,
-    /// 15 minutes after a finished sync or an outage; now when pages are left.
+    /// 15 minutes after a round's end, an outage or a connector without sources; now when
+    /// sources still wait for their turn in the round.
     pub next_sync_at: Timestamp,
-    /// The failure that stopped it, if any.
+    /// The failure that stopped it, if any; or the stored one, kept while a source's last turn
+    /// failed.
     pub last_error: Option<SyncErrorCode>,
 }
 
@@ -219,7 +232,10 @@ pub trait FarmRecordStore: Send + Sync {
         connector: NewConnector,
     ) -> Result<Connector, StoreError>;
 
-    /// Start-up seeding of the demo garden's `era` connectors: idempotent by the fixed id.
+    /// Start-up seeding of the demo garden's `era` connectors: idempotent by the fixed id. An
+    /// existing connector in this garden (not being deleted) is repaired: the new sealed
+    /// token, `status` and no `last_error`. One elsewhere is returned unchanged, so the caller
+    /// can compare its `garden_id`.
     async fn seed_connector(
         &self,
         garden: GardenId,
@@ -274,7 +290,7 @@ pub trait FarmRecordStore: Send + Sync {
     ) -> Result<Connector, StoreError>;
 
     /// `PUT /connectors/{id}/sources`: replaces the sources, drops the cursors of sources no
-    /// longer chosen and makes the sync due now.
+    /// longer chosen (keeping the sync's state, [`SYNC_STATE_KEY`]) and makes the sync due now.
     async fn set_sources(
         &self,
         owner: Membership<Owner>,
@@ -416,8 +432,9 @@ pub trait FarmRecordStore: Send + Sync {
     ) -> Result<Vec<(FarmRecordId, String)>, StoreError>;
 
     /// Upserts chunks by `(connector, vendor_id, n)`, keeping the stored vector when
-    /// `vector` is `None`. Returns how many were written. `NotFound` when the connector is
-    /// missing or being deleted, so no record outlives its connector's deletion.
+    /// `vector` is `None`. A record whose `source` the connector no longer has is skipped.
+    /// Returns how many were written. `NotFound` when the connector is missing or being
+    /// deleted, so no record outlives its connector's deletion.
     async fn upsert_records(
         &self,
         connector: ConnectorId,

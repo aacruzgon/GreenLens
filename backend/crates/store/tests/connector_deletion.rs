@@ -14,7 +14,9 @@ mod support;
 
 use domain::{
     authz::{Membership, Owner, Viewer, check_membership_of},
-    connectors::{ConnectorEndpoint, ConnectorKind, ConnectorStatus, FarmRecordKind},
+    connectors::{
+        ConnectorEndpoint, ConnectorKind, ConnectorSource, ConnectorStatus, FarmRecordKind,
+    },
     error::DomainError,
     garden::account::GardenTransfer,
     id::{AuthId, ConnectorId, FarmRecordId, GardenId, UserId},
@@ -72,7 +74,11 @@ async fn connector(
                 account: None,
                 secret: Some(Sealed(format!("sealed-{id}").into_bytes().into())),
                 oauth: None,
-                sources: Vec::new(),
+                // The store writes only records of a chosen source.
+                sources: vec![ConnectorSource {
+                    id: "C1".into(),
+                    name: "field-reports".into(),
+                }],
                 created_at: t0(),
             },
         )

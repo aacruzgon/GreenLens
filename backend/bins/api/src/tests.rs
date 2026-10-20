@@ -340,6 +340,7 @@ fn state_with_vendors(
         deletions,
         deletes,
         connect: vendors,
+        farm_sync: None,
         shutdown,
         tasks,
     })
