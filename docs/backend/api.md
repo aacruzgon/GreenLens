@@ -936,7 +936,7 @@ impl AppState {
             let state = Arc::clone(self);
             self.tasks.spawn(async move {
                 if let Err(error) = state.pipeline.follow_up(follow_up).await {
-                    tracing::warn!(?follow_up, error = %error, "follow-up failed; the sweep retries it");
+                    tracing::warn!(?follow_up, error = %crate::error::chain(&error), "follow-up failed; the sweep retries it");
                 }
             });
         }
@@ -4668,7 +4668,7 @@ where
                 _ = ticks.tick() => {}
             }
             if let Err(error) = body(Arc::clone(&state)).await {
-                tracing::warn!(task = name, error = %error, "scheduled task failed");
+                tracing::warn!(task = name, error = %error.chain(), "scheduled task failed");
             }
         }
     });
@@ -4750,7 +4750,7 @@ pub async fn fetch_soil_profile(
         }
         Err(error) => {
             let wait = soil_retry_after(&error);
-            tracing::info!(%garden, error = %error, retry_in_s = wait.as_secs(), "SoilGrids failed; retried later");
+            tracing::info!(%garden, error = %crate::error::chain(&error), retry_in_s = wait.as_secs(), "SoilGrids failed; retried later");
             let retry_at = state.ports.clock.now().plus(wait);
             state
                 .ports
