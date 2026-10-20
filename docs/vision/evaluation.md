@@ -1,6 +1,6 @@
 # PDM Vision Evaluation
 
-> **Status:** Draft v0.2, 2026-10-16. v0.2: the fallback run also measures whether 8,000-token calls finish within its `max_runtime`. v0.1, 2026-10-15: First evaluation plan: the evaluation set of real field photos, its labels, metrics and acceptance targets per stage, calibration of the certainty words, the classifier and the diagnosis margin, the thresholds the set decides, and the day-1 checks and day-2 benchmarks.
+> **Status:** Draft v0.3, 2026-10-19. v0.3: section 2 adds `ml.training.eval.inat` for licensed iNaturalist photos, only from 2026 and reviewed before they become cases, and records that iNaturalist can't supply tomato or corn diseases. v0.2: the fallback run also measures whether 8,000-token calls finish within its `max_runtime`. v0.1, 2026-10-15: First evaluation plan: the evaluation set of real field photos, its labels, metrics and acceptance targets per stage, calibration of the certainty words, the classifier and the diagnosis margin, the thresholds the set decides, and the day-1 checks and day-2 benchmarks.
 > **Checked:** nothing in this document has run yet. Every target is a proposal to confirm or move on Oct 24, when the test split is scored.
 
 This is how PDM measures its models and sets the numbers the [contracts](../architecture/contracts.md) leave open. The models themselves are in [README.md](README.md) and [models.md](models.md), the VLM in [vlm.md](vlm.md), and the datasets and training in [training.md](training.md).
@@ -60,6 +60,10 @@ That is about 130 cases and 30 face photos. Size matters less than spread: every
 
 - **The team's own photos**, taken in gardens and community gardens around Toronto with the gardener's permission, Oct 16–23. They are the core of the set because they match what the app will see.
 - **Licensed photos** fill the gaps (a disease we can't find locally in October), only when the licence allows reuse with credit: CC0 or CC BY observations on iNaturalist, and extension photo libraries whose terms allow it. Each one records its source, author and licence.
+  - **iNaturalist:** `python -m ml.training.eval.inat` searches the taxa in `ml/training/eval/inat_targets.yaml` (a disease is listed under its pathogen), downloads the CC0 and CC BY photos without metadata, and writes a contact sheet and a review file. A teammate keeps an observation only after checking the host plant and giving each photo its shot kind, and `add` writes it to the manifest as a `source_caption` case, `probable` unless the identification is research grade and the signs are clear. A case is one scan, so it needs a photo that can serve as the `whole_plant` shot.
+  - **Only photos from 2026.** BioCLIP 2's training data, TreeOfLife-200M, was compiled before 2026 and draws on GBIF, which holds iNaturalist's licensed observations *unverified*, so an older photo may be one BioCLIP has seen. The script refuses an earlier date. Never use a photo from a web search: PlantDoc was scraped from Google Images.
+  - **Not for tomato or corn** (✓ ran 2026-10-19): iNaturalist holds no research-grade CC0 or CC BY observation from 2026 of Septoria leaf spot, early or late blight, common rust or northern leaf blight, and at most 6 unverified ones of each. Apple scab (67), cedar-apple rust (119), grape black rot (99), two-spotted spider mites (41) and ladybug larvae (over 1,000) have enough. Tomato and corn cases come from the team.
+  - The species head's iNaturalist training photos ([training 6](training.md#6-disease-and-species-heads)) leave out every observation in the manifest.
 - **Never** from a training source. A PlantDoc, PlantVillage or other training image in the evaluation set would measure memory, not generalisation. The harness checks each file's perceptual hash against the training sets and refuses a match (section 9).
 
 ### Splits
@@ -343,6 +347,7 @@ The same 20 cases through the fallback worker, with the hosted model it uses ([v
 ```
 ml/training/eval/
 ├─ manifest.jsonl          the cases (section 3)
+├─ inat.py                 licensed iNaturalist photos: search, contact sheet, review, cases (section 2)
 ├─ fetch.py                downloads the photos by SHA-256 from the photo store
 ├─ check_leakage.py        perceptual hashes against every training set; fails on a match
 ├─ components.py           runs each ONNX model offline, the same files the worker loads

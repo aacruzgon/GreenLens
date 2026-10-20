@@ -1,0 +1,20 @@
+# GitHub Actions runner rig-%i (a systemd user template unit; instances 1 and 2).
+# Installed by install.sh in ~/.config/systemd/user/ of the ci-runner user, and enabled once by hand
+# as gh-runner@1 and gh-runner@2 (docs/setup/README.md, CI runner).
+# Each instance runs ~/runner-%i. Rootless Docker (docker.service, user unit) must be up first.
+[Unit]
+Description=GitHub Actions runner rig-%i
+After=docker.service
+Wants=docker.service
+
+[Service]
+WorkingDirectory=%h/runner-%i
+ExecStart=%h/runner-%i/runsvc.sh
+KillMode=process
+KillSignal=SIGTERM
+TimeoutStopSec=5min
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
