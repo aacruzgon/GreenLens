@@ -36,7 +36,7 @@ use integrations::{
     clerk::{ClerkAdmin, ClerkAdminConfig, ClerkVerifier, ClerkVerifierConfig},
     expo_push::{ExpoPush, ExpoPushConfig},
     geocode::{CompositeGeocoder, GeocoderConfig, TimeZoneFinder},
-    google_drive::DriveClient,
+    google_drive::{DriveClient, DriveConfig, DriveSource},
     http::{HttpConfig, client},
     jev::{JevClassifier, JevConfig},
     open_meteo::{OpenMeteo, OpenMeteoConfig},
@@ -291,31 +291,50 @@ struct Outbound {
 }
 
 /// The sync when connectors are on (decision 9 of docs/EON): the `connectors` task and
-/// start-up seeding run only with it.
-fn farm_sync(config: &Config, ports: &Ports, sources: FarmSources) -> Option<Arc<FarmSync>> {
+/// start-up seeding run only with it. It renews Google's tokens through `vendors`, the same
+/// instance as the routes, on Google's own token endpoint.
+fn farm_sync(
+    config: &Config,
+    ports: &Ports,
+    vendors: Arc<dyn ConnectVendors>,
+    sources: FarmSources,
+) -> Option<Arc<FarmSync>> {
     config.connectors.key.clone().map(|key| {
         Arc::new(FarmSync::new(
             Arc::clone(&ports.store),
             Arc::clone(&ports.embedder),
             Arc::clone(&ports.clock),
             key,
+            vendors,
             sources,
             SyncConfig::default(),
         ))
     })
 }
 
-/// The farm connectors' adapters: the real Slack, with Tier 1 pacing, for owners' connectors;
-/// Era's Slack simulator, without pacing, for the seeded `era` ones when `ERA_SLACK_BASE` is
-/// set. Drive's (E4.3) go beside them.
-fn farm_sources(config: &Config, slack_client: impl Fn(SlackConfig) -> SlackClient) -> FarmSources {
+/// The farm connectors' adapters: the real Slack, with Tier 1 pacing, and Google Drive for
+/// owners' connectors; Era's simulators, without pacing or back-off, for the seeded `era` ones
+/// when `ERA_SLACK_BASE` and `ERA_GOOGLE_BASE` are set.
+fn farm_sources(
+    config: &Config,
+    slack_client: impl Fn(SlackConfig) -> SlackClient,
+    drive_client: impl Fn(DriveConfig) -> DriveClient,
+) -> FarmSources {
     let slack = |c: SlackConfig| Arc::new(SlackSource::new(slack_client(c)));
-    let mut sources =
-        FarmSources::default().with(ConnectorEndpoint::Vendor, slack(SlackConfig::default()));
+    let drive = |c: DriveConfig| Arc::new(DriveSource::new(drive_client(c)));
+    let mut sources = FarmSources::default()
+        .with(ConnectorEndpoint::Vendor, slack(SlackConfig::default()))
+        .with(ConnectorEndpoint::Vendor, drive(DriveConfig::default()));
     if let Some(base) = &config.connectors.era_slack_base {
         sources = sources.with(
             ConnectorEndpoint::Era,
             slack(SlackConfig::era(base.clone())),
+        );
+    }
+    if let Some(base) = &config.connectors.era_google_base {
+        sources = sources.with(
+            ConnectorEndpoint::Era,
+            drive(DriveConfig::era(base.clone())),
         );
     }
     sources
@@ -378,7 +397,11 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         &config.connectors,
         Arc::clone(clock),
     ));
-    let farm = farm_sources(config, |c| SlackClient::new(http.clone(), c));
+    let farm = farm_sources(
+        config,
+        |c| SlackClient::new(http.clone(), c),
+        |c| DriveClient::new(http.clone(), c),
+    );
     let beliefs: Arc<dyn BeliefStore> = match agent_memory(config) {
         Some(c) => Arc::new(AgentMemory::new(http.clone(), c)),
         None => Arc::new(NoBeliefs),
@@ -598,7 +621,7 @@ pub async fn build(
         clock: Arc::clone(&clock),
         ids,
     };
-    let farm_sync = farm_sync(&config, &ports, out.farm);
+    let farm_sync = farm_sync(&config, &ports, Arc::clone(&out.connect), out.farm);
     let hub = Arc::new(EventHub::default());
     let broker = Arc::new(JobBroker::new(
         store.clone(),

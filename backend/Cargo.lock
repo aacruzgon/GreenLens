@@ -260,6 +260,7 @@ dependencies = [
  "utoipa-axum",
  "uuid",
  "vision",
+ "wiremock",
 ]
 
 [[package]]

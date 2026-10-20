@@ -62,16 +62,23 @@ pub struct DriveFile {
     pub trashed: bool,
 }
 
+impl FileKind {
+    /// How the sync treats a file of this MIME type.
+    pub fn of(mime_type: &str) -> Self {
+        match mime_type {
+            FOLDER_MIME => Self::Folder,
+            DOCUMENT_MIME => Self::Document,
+            SPREADSHEET_MIME => Self::Spreadsheet,
+            PLAIN_TEXT_MIME => Self::PlainText,
+            _ => Self::Other,
+        }
+    }
+}
+
 impl DriveFile {
     /// How the sync treats the file.
     pub fn kind(&self) -> FileKind {
-        match self.mime_type.as_str() {
-            FOLDER_MIME => FileKind::Folder,
-            DOCUMENT_MIME => FileKind::Document,
-            SPREADSHEET_MIME => FileKind::Spreadsheet,
-            PLAIN_TEXT_MIME => FileKind::PlainText,
-            _ => FileKind::Other,
-        }
+        FileKind::of(&self.mime_type)
     }
 }
 
@@ -84,6 +91,9 @@ pub struct FolderListing {
     /// The folder and every folder found under it, the folder first. A change is under the
     /// chosen folder when one of its parents is in this list.
     pub folders: Vec<String>,
+    /// Every folder found under the chosen one, with the folder it was listed in: the tree a
+    /// sync keeps to tell whether a later change is still under the chosen folder.
+    pub tree: Vec<(String, String)>,
     /// The listing stopped at [`super::MAX_FILES`] files or [`super::MAX_FOLDERS`] folders.
     pub truncated: bool,
 }
@@ -111,7 +121,10 @@ impl std::fmt::Debug for FileText {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Change {
-    /// The changed file's id.
+    /// The changed file's id. Empty for a change that isn't a file's: with
+    /// `includeItemsFromAllDrives`, Google also lists shared drives' own changes
+    /// (`changeType: "drive"`, a `driveId` and no `fileId`).
+    #[serde(default)]
     pub file_id: String,
     /// The file was deleted or the token lost access to it; `file` is then absent.
     #[serde(default)]
@@ -122,6 +135,17 @@ pub struct Change {
     /// The file as it is now.
     #[serde(default)]
     pub file: Option<DriveFile>,
+}
+
+/// One page of `changes.list`, from [`super::DriveClient::changes_page`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangePage {
+    /// The page's changes, in the order Drive sent them.
+    pub changes: Vec<Change>,
+    /// The token of the next page, while the backlog goes on.
+    pub next_page_token: Option<String>,
+    /// On the last page: the token to save for the next sync.
+    pub new_start_page_token: Option<String>,
 }
 
 /// Every change since a page token, from [`super::DriveClient::changes`].

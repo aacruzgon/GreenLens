@@ -96,6 +96,7 @@ impl ConnectVendors for Recorder {
         &self,
         _: ConnectorKind,
         _: &StoredTokens,
+        _: bool,
     ) -> Result<Option<StoredTokens>, VendorError> {
         Ok(None)
     }

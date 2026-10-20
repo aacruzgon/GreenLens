@@ -105,6 +105,11 @@ pub struct FarmPage {
     /// not sent again (Slack: a thread whose parent and `latest_reply` are as before, whose
     /// replies aren't re-read). A re-read counts them as seen, so their records stay.
     pub kept: Vec<String>,
+    /// Every vendor id the source holds at the vendor, when the adapter listed the whole source
+    /// on this page (Drive's first sync, or a resync after its change feed lost its place). The
+    /// sync then deletes the source's records whose vendor id isn't here, after storing the
+    /// page; `None` on every other page.
+    pub listed: Option<Vec<String>>,
     /// The cursor to save after this page.
     pub cursor: SyncCursor,
     /// `true` when another page follows; the sync reads it now or on its next run.

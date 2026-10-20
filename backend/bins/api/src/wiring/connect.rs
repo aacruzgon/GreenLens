@@ -136,11 +136,13 @@ impl ConnectVendors for VendorClients {
         &self,
         kind: ConnectorKind,
         tokens: &StoredTokens,
+        force: bool,
     ) -> Result<Option<StoredTokens>, VendorError> {
         let now = self.clock.now();
-        let fresh = tokens
-            .expires_at
-            .is_none_or(|at| at > now.plus(REFRESH_BEFORE));
+        let fresh = !force
+            && tokens
+                .expires_at
+                .is_none_or(|at| at > now.plus(REFRESH_BEFORE));
         let (ConnectorKind::GoogleDrive, Some(refresh), false) =
             (kind, &tokens.refresh_token, fresh)
         else {
@@ -291,6 +293,105 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    /// `refresh` against a mocked token endpoint: an expiring token is renewed and a fresh one
+    /// isn't, `force` renews a fresh one, an answer without a refresh token keeps the old one,
+    /// and `expires_at` is the clock plus `expires_in`.
+    #[tokio::test]
+    async fn refresh_renews_an_expiring_token_or_a_forced_one() {
+        use domain::{testing::FixedClock, wire::Timestamp};
+        use integrations::http::{HttpConfig, client};
+        use secrecy::ExposeSecret;
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{body_string_contains, method, path},
+        };
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .and(body_string_contains("grant_type=refresh_token"))
+            .and(body_string_contains("refresh_token=1%2F%2Fkeep"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(
+                    serde_json::json!({"access_token": "ya29.new", "expires_in": 1800}),
+                ),
+            )
+            .mount(&server)
+            .await;
+        let now: Timestamp = "2026-10-15T12:00:00Z".parse().expect("a timestamp");
+        let settings = ConnectorSettings {
+            key: None,
+            slack: None,
+            google: Some(OAuthClient {
+                client_id: "id.apps.googleusercontent.com".into(),
+                client_secret: SecretString::from("secret"),
+            }),
+            return_url: "pdm://connectors".into(),
+            era_slack_base: None,
+            era_google_base: None,
+            era_demo_garden: None,
+        };
+        let uri = server.uri();
+        let http = client(&HttpConfig::default()).expect("the HTTP client builds");
+        let clients = VendorClients::new(
+            |c| SlackClient::new(http.clone(), c),
+            |_| {
+                DriveClient::new(
+                    http.clone(),
+                    DriveConfig {
+                        api_base: uri.clone(),
+                        token_url: format!("{uri}/token"),
+                        revoke_url: format!("{uri}/revoke"),
+                        ..DriveConfig::default()
+                    },
+                )
+            },
+            &settings,
+            Arc::new(FixedClock::at(now)),
+        );
+        let tokens = |expires_in: Duration| StoredTokens {
+            access_token: SecretString::from("ya29.old"),
+            refresh_token: Some(SecretString::from("1//keep")),
+            expires_at: Some(now.plus(expires_in)),
+        };
+        let kind = ConnectorKind::GoogleDrive;
+
+        let fresh = tokens(Duration::from_mins(30));
+        assert!(
+            clients
+                .refresh(kind, &fresh, false)
+                .await
+                .expect("ok")
+                .is_none()
+        );
+        assert!(
+            server
+                .received_requests()
+                .await
+                .expect("recorded")
+                .is_empty()
+        );
+
+        for (stored, force) in [(tokens(Duration::from_mins(4)), false), (fresh, true)] {
+            let renewed = clients
+                .refresh(kind, &stored, force)
+                .await
+                .expect("ok")
+                .expect("renewed");
+            assert_eq!(renewed.access_token.expose_secret(), "ya29.new");
+            assert_eq!(
+                renewed
+                    .refresh_token
+                    .as_ref()
+                    .map(ExposeSecret::expose_secret),
+                Some("1//keep"),
+                "Google sent no refresh token: the old one stays"
+            );
+            assert_eq!(renewed.expires_at, Some(now.plus(Duration::from_mins(30))));
+        }
+        assert_eq!(server.received_requests().await.expect("recorded").len(), 2);
     }
 
     #[test]
