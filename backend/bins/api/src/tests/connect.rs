@@ -420,12 +420,15 @@ async fn a_declined_consent_returns_the_vendors_error_to_the_app() {
 /// becomes `vendor_error`.
 #[tokio::test]
 async fn the_callback_passes_on_only_a_short_vendor_error_code() {
+    let longest = "a".repeat(64);
     let long = "a".repeat(65);
     for (error, expected) in [
         ("server_error", "server_error"),
         ("Access%20Denied", "vendor_error"),
         ("javascript%3Aalert(1)", "vendor_error"),
+        (longest.as_str(), longest.as_str()),
         (long.as_str(), "vendor_error"),
+        ("", "vendor_error"),
     ] {
         let state = good_state();
         let answer = send(

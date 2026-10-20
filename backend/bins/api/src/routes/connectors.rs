@@ -207,8 +207,9 @@ async fn token_failure(state: &AppState, row: &ConnectorRow, error: VendorError)
 
 /// The connector's tokens, with Google's access token refreshed when it is about to expire.
 /// A refreshed token is stored over the sealed value it came from (`replace_secret`, a
-/// compare-and-set): when another refresh was stored first, this call still uses its own,
-/// which is as good.
+/// compare-and-set): when that value changed meanwhile (another refresh stored first, or the
+/// connector was disconnected, deleted or reconnected), nothing is stored and this call still
+/// uses its own, which is as good.
 async fn fresh_tokens(
     state: &AppState,
     key: &ConnectorKey,
@@ -230,7 +231,7 @@ async fn fresh_tokens(
         {
             Ok(true) => tracing::debug!(connector = %id, "refreshed token stored"),
             Ok(false) => {
-                tracing::debug!(connector = %id, "another refresh was stored first");
+                tracing::debug!(connector = %id, "refreshed token not stored: the connector changed or went meanwhile");
             }
             Err(error) => {
                 tracing::warn!(connector = %id, error = %error, "refreshed token not stored");
