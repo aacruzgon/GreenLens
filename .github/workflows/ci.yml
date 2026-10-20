@@ -544,8 +544,8 @@ jobs:
   # --- stage 3: the one required check -----------------------------------------------------------
 
   ci:
-    # live joined after it passed on four consecutive pushes to main (infra §2).
-    needs: [changes, lint, test, examples, docs, infra, app, security, live]
+    # live and era each joined after they passed on four consecutive pushes to main (infra §2).
+    needs: [changes, lint, test, examples, docs, infra, app, security, live, era]
     if: always()
     runs-on: ${{ fromJSON(vars.LIGHT_RUNNER_LABELS || vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 5
@@ -560,7 +560,7 @@ jobs:
   # --- stage 4: images on main and tags; the release on tags -------------------------------------
 
   images:
-    needs: [changes, lint, test, examples, docs, infra, app, security, live]
+    needs: [changes, lint, test, examples, docs, infra, app, security, live, era]
     if: >-
       ${{ !cancelled() && !failure() && github.event_name == 'push' &&
           (startsWith(github.ref, 'refs/tags/v') ||
