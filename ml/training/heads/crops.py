@@ -18,7 +18,10 @@ the same steps on every photo of the committed splits, each taken as a leaf clos
 The worker's leaf regions carry the detector's own boxes (`perception.rs`, the `Leaf` regions),
 so no mask model is needed here.
 
-Cached per photo (by its SHA-256) under data/cache/crops/<detector>-<bioclip>/ as `.npz` with
+Cached per photo (by its SHA-256) under data/cache/crops/<detector>-<bioclip>-<settings>/, where
+<settings> hashes every setting that changes a crop (the detector's `score_threshold`,
+`min_side_px`, `nms_iou` and `max_per_image`, the stored long side, `crop_grow` and the crop
+rounding; `settings.json` beside the files lists them), as `.npz` with
 `boxes` `[n, 4]` (normalised x, y, w, h), `scores` `[n]` and `emb` `[n, 768]`, so a head trains
 from the cache in seconds. A photo with no kept leaf has n = 0; the head then uses its whole-photo
 embedding, as the worker does for a close-up.
@@ -34,6 +37,8 @@ from __future__ import annotations
 
 import argparse
 import collections
+import hashlib
+import json
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -48,6 +53,8 @@ SPLITS = ROOT / "ml/training/data/splits"
 RAW = ROOT / "ml/training/data/raw"
 CACHE = ROOT / "ml/training/data/cache/crops"
 STORED_LONG_SIDE = 1600
+# Bumped whenever `pp.crop_box` changes how a box becomes pixels. 2: the worker's floor and ceil.
+CROP_ROUNDING = 2
 
 
 def iou(a: np.ndarray, b: np.ndarray) -> float:
@@ -72,7 +79,9 @@ def decode(dets: np.ndarray, logits: np.ndarray, stored: tuple[int, int], cfg: d
         cx, cy, w, h = d[q]
         x0, y0 = np.clip(cx - w / 2, 0, 1), np.clip(cy - h / 2, 0, 1)
         x1, y1 = np.clip(cx + w / 2, 0, 1), np.clip(cy + h / 2, 0, 1)
-        if x1 - x0 > 0 and y1 - y0 > 0:   # BBox::new refuses an empty box
+        # BBox::new refuses only non-finite values or a box outside the image, so a box clamped
+        # to zero width or height keeps its place and can take a `max_per_image` slot.
+        if np.isfinite([x0, y0, x1, y1]).all():
             found.append((scores[q], np.array([x0, y0, x1 - x0, y1 - y0], np.float64)))
     found.sort(key=lambda f: -f[0])     # stable, as Rust's sort_by
     kept: list[tuple[np.float32, np.ndarray]] = []
@@ -126,7 +135,13 @@ class CropEmbedder:
             # The fp16 exports keep fp32 inputs and outputs, so the session says what it takes.
             self.in_dtype = np.float16 if self.det.sess.get_inputs()[0].type == "tensor(float16)" else np.float32
         self.det_sha = file_sha256(self.det.model_file)[:16]
-        self.dir = CACHE / f"{self.det_sha}-{self.emb.cache_dir.name}-g{self.crop_grow}"
+        self.settings = {
+            "detector_sha256_16": self.det_sha, "embedder": self.emb.cache_dir.name,
+            **{k: self.cfg[k] for k in ("score_threshold", "min_side_px", "nms_iou", "max_per_image")},
+            "stored_long_side": STORED_LONG_SIDE, "crop_grow": self.crop_grow, "crop_rounding": CROP_ROUNDING,
+        }
+        key = hashlib.sha256(json.dumps(self.settings, sort_keys=True).encode()).hexdigest()[:10]
+        self.dir = CACHE / f"{self.det_sha}-{self.emb.cache_dir.name}-{key}"
 
     def path(self, key: str) -> Path:
         return self.dir / f"{key}.npz"
@@ -139,6 +154,7 @@ class CropEmbedder:
     def run(self, paths: list[Path], workers: int = 12) -> int:
         """Computes and caches every photo not cached yet; returns how many it computed."""
         self.dir.mkdir(parents=True, exist_ok=True)
+        (self.dir / "settings.json").write_text(json.dumps(self.settings, indent=1, sort_keys=True) + "\n")
         keys = [file_sha256(p) for p in paths]
         todo = [(p, k) for p, k in zip(paths, keys) if not self.path(k).exists()]
         step = int(self.cfg.get("max_batch", 8))

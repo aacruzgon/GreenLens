@@ -37,6 +37,28 @@ def test_small_boxes_and_low_scores_are_dropped():
     assert len(boxes) == 0 and len(scores) == 0
 
 
+def test_a_box_clamped_to_zero_width_keeps_its_slot_as_in_rust():
+    # BBox::new accepts w = 0, so a box past the right edge takes a max_per_image slot (review of #85).
+    dets = np.array([[1.2, 0.5, 0.3, 0.3], [0.5, 0.5, 0.3, 0.3]], np.float32)
+    logits = np.array([[3.0], [2.0]], np.float32)
+    boxes, scores = decode(dets, logits, (1000, 1000), {**CFG, "max_per_image": 1})
+    assert len(boxes) == 1 and boxes[0][0] == 1.0 and boxes[0][2] == 0.0
+
+
+def test_a_crop_is_cut_with_the_workers_rounding():
+    from PIL import Image
+
+    from ml.pdm_vision.preprocess import crop_box
+
+    # imaging.rs `PixelRect::from_normalised([0.101, 0.25, 0.3, 0.5], (100, 50))` -> 10, 12, 31 x 26
+    im = Image.new("RGB", (100, 50))
+    assert crop_box(im, (0.101, 0.25, 0.3, 0.5), 0.0).size == (31, 26)
+    # Grown 10% a side as perception.rs grows it: x 0.071..0.431 -> 7..44, y 0.2..0.8 -> 10..40.
+    assert crop_box(im, (0.101, 0.25, 0.3, 0.5), 0.10).size == (37, 30)
+    # Zero width: 1 px here, where the worker's would be empty; y 0.15..0.75 -> 7..38.
+    assert crop_box(im, (1.0, 0.2, 0.0, 0.5), 0.10).size == (1, 31)
+
+
 def test_views_are_made_per_crop_cached_and_repeatable(tmp_path):
     from types import SimpleNamespace
 
