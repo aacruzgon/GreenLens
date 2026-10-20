@@ -41,6 +41,7 @@ use integrations::{
     jev::{JevClassifier, JevConfig},
     open_meteo::{OpenMeteo, OpenMeteoConfig},
     slack::{SlackClient, SlackConfig, SlackSource},
+    slc::SoilLandscapes,
     soilgrids::{SoilGrids, SoilGridsConfig},
     svix::SvixVerifier,
 };
@@ -387,6 +388,8 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
     verifier.allowed_azp.clone_from(&config.web_origins);
     // The time-zone boundaries are a few megabytes to parse: off the async threads.
     let zones = Arc::new(tokio::task::spawn_blocking(TimeZoneFinder::default).await?);
+    // Soil Landscapes of Canada, for the Canadian points where SoilGrids has no data.
+    let landscapes = Arc::new(SoilLandscapes::embedded().context("Soil Landscapes of Canada")?);
     let defaults = ModelIds::default();
     let strong = config
         .providers
@@ -465,11 +468,10 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
             },
             Arc::clone(clock),
         )),
-        soil: Arc::new(SoilGrids::new(
-            http.clone(),
-            SoilGridsConfig::default(),
-            Arc::clone(clock),
-        )),
+        soil: Arc::new(
+            SoilGrids::new(http.clone(), SoilGridsConfig::default(), Arc::clone(clock))
+                .with_local_fallback(landscapes),
+        ),
         geocoder: Arc::new(CompositeGeocoder::new(
             http.clone(),
             GeocoderConfig::default(),
