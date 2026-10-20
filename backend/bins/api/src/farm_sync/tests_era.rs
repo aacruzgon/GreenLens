@@ -49,10 +49,91 @@ use super::{
 const HISTORY: &str = "/api/conversations.history";
 const REPLIES: &str = "/api/conversations.replies";
 
+/// One call through the [`Proxy`]: its path, its `limit` (empty when none) and its status.
+type Seen = (String, String, u16);
+
+/// Forwards every call to the tenant and records it with its `limit`, so a test can tell an
+/// older-thread check (`conversations.replies` with `limit=1`) from a thread's full read: the
+/// simulator's journal keeps a query's keys but not their values.
+struct Proxy {
+    base: String,
+    calls: Arc<Mutex<Vec<Seen>>>,
+}
+
+impl Proxy {
+    async fn start(target: String) -> Self {
+        let calls: Arc<Mutex<Vec<Seen>>> = Arc::default();
+        let seen = calls.clone();
+        let client = http::client(&HttpConfig::default()).expect("the HTTP client builds");
+        let forward = move |method: axum::http::Method,
+                            uri: axum::http::Uri,
+                            headers: axum::http::HeaderMap| {
+            let (client, target, seen) = (client.clone(), target.clone(), seen.clone());
+            async move {
+                use axum::http::header::{AUTHORIZATION, CONTENT_TYPE, RETRY_AFTER};
+                let limit = uri
+                    .query()
+                    .and_then(|q| q.split('&').find_map(|kv| kv.strip_prefix("limit=")))
+                    .unwrap_or_default()
+                    .to_owned();
+                let mut request = client.request(method, format!("{target}{uri}"));
+                if let Some(auth) = headers.get(AUTHORIZATION) {
+                    request = request.header(AUTHORIZATION, auth);
+                }
+                let response = request.send().await.expect("the simulator answers");
+                let status = response.status();
+                seen.lock()
+                    .expect("calls")
+                    .push((uri.path().to_owned(), limit, status.as_u16()));
+                let mut out = axum::http::Response::builder().status(status);
+                for name in [CONTENT_TYPE, RETRY_AFTER] {
+                    if let Some(value) = response.headers().get(&name) {
+                        out = out.header(name, value.clone());
+                    }
+                }
+                let body = response.bytes().await.expect("the body");
+                out.body(axum::body::Body::from(body)).expect("a response")
+            }
+        };
+        let app = axum::Router::new().fallback(forward);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a local port");
+        let addr = listener.local_addr().expect("its address");
+        tokio::spawn(async move { axum::serve(listener, app).await });
+        Self {
+            base: format!("http://{addr}"),
+            calls,
+        }
+    }
+
+    /// Calls so far.
+    fn len(&self) -> usize {
+        self.calls.lock().expect("calls").len()
+    }
+
+    /// `conversations.replies` calls answered 200 since `from`: the older-thread checks
+    /// (`limit=1`) and the threads read in full.
+    fn replies_since(&self, from: usize) -> (usize, usize) {
+        let calls = self.calls.lock().expect("calls");
+        let replies = calls[from..]
+            .iter()
+            .filter(|(path, _, status)| path == REPLIES && *status == 200);
+        replies.fold((0, 0), |(checks, full), (_, limit, _)| {
+            if limit == "1" {
+                (checks + 1, full)
+            } else {
+                (checks, full + 1)
+            }
+        })
+    }
+}
+
 /// A synced farm: the tenant with the fixture, a garden with one `era` Slack connector over
 /// the chosen channels, and the sync pointed at the tenant.
 struct Farm {
     tenant: Tenant,
+    proxy: Proxy,
     store: Arc<SurrealStore>,
     clock: Arc<FixedClock>,
     embedder: Arc<CountingEmbedder>,
@@ -65,7 +146,8 @@ struct Farm {
 async fn farm(channels: &[&str], edit: impl FnOnce(&mut SlackConfig)) -> Farm {
     let tenant = Tenant::create(SimKind::Slack, Some(&fixture("maple-row", "slack.json"))).await;
     let token = tenant.token().await;
-    let mut config = SlackConfig::era(tenant.base());
+    let proxy = Proxy::start(tenant.base().to_owned()).await;
+    let mut config = SlackConfig::era(proxy.base.clone());
     edit(&mut config);
     let http = http::client(&HttpConfig::default()).expect("the HTTP client builds");
     let source = Arc::new(SlackSource::new(SlackClient::new(http, config)));
@@ -107,6 +189,7 @@ async fn farm(channels: &[&str], edit: impl FnOnce(&mut SlackConfig)) -> Farm {
         .expect("the owner views");
     Farm {
         tenant,
+        proxy,
         store,
         clock,
         embedder,
@@ -264,17 +347,23 @@ async fn era_slack_later_syncs_read_only_what_is_new() {
     assert_eq!(farm.count().await, 94);
     let embedded = farm.embedder.texts();
 
+    // The first pass read every thread in full and checked no older one.
+    assert_eq!(
+        farm.proxy.replies_since(0),
+        (0, 20),
+        "the fixture's 20 threads"
+    );
+
     // Nothing new: one `conversations.history` call per channel, no embedding, and no thread
-    // read in full. Each pass also probes up to two older threads per channel with a
-    // `limit=1` `conversations.replies` call (connectors 6), and the fixture's are unchanged.
-    let (history, replies) = (farm.calls(HISTORY).await, farm.calls(REPLIES).await);
+    // read in full. The run's two older-thread checks (connectors 6) go to the only threads
+    // due one at the pinned clock, both in `#crew` (parent over 7 days old, last reply within
+    // 30), which are unchanged.
+    let history = farm.calls(HISTORY).await;
+    let mark = farm.proxy.len();
     farm.clock.advance(SYNC_EVERY);
     assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
     assert_eq!(farm.calls(HISTORY).await - history, 2);
-    assert!(
-        farm.calls(REPLIES).await - replies <= 4,
-        "two probes a channel"
-    );
+    assert_eq!(farm.proxy.replies_since(mark), (2, 0));
     assert_eq!(
         farm.embedder.texts(),
         embedded,
@@ -288,14 +377,15 @@ async fn era_slack_later_syncs_read_only_what_is_new() {
             "text": "Garlic bed 4 mulched with straw."
         }]}))
         .await;
+    let mark = farm.proxy.len();
     farm.clock.advance(SYNC_EVERY);
     farm.run().await;
     assert_eq!(farm.count().await, 95);
     assert_eq!(farm.embedder.texts(), embedded + 1);
+    assert_eq!(farm.proxy.replies_since(mark), (2, 0));
 
     // A new reply to a thread of the last 7 days shows in its parent's `latest_reply`, which
-    // the daily re-read reads: only that thread's replies are fetched (besides the older-thread
-    // probes, at most two a channel).
+    // the daily re-read reads: only that thread is read in full, besides the run's two checks.
     let parent = "1792008000.012200";
     farm.tenant
         .inject(&json!({"messages": [{
@@ -304,14 +394,10 @@ async fn era_slack_later_syncs_read_only_what_is_new() {
             "reply": [{"user": "U_DEV", "ts": "1792016000.000100", "text": "I'll bring the cider."}]
         }]}))
         .await;
-    let replies = farm.calls(REPLIES).await;
+    let mark = farm.proxy.len();
     farm.clock.advance(Duration::from_hours(24));
     farm.run().await;
-    let made = farm.calls(REPLIES).await - replies;
-    assert!(
-        (1..=5).contains(&made),
-        "one thread read and up to four probes: {made}"
-    );
+    assert_eq!(farm.proxy.replies_since(mark), (2, 1));
     let records = farm.records().await;
     assert!(
         records[&format!("C_CREW/{parent}")]
@@ -320,6 +406,54 @@ async fn era_slack_later_syncs_read_only_what_is_new() {
             .contains("Dev: I'll bring the cider.")
     );
     assert_eq!(farm.count().await, 95, "the thread is still one record");
+
+    farm.tenant.close().await;
+}
+
+#[tokio::test]
+#[ignore = "needs Era's simulators"]
+async fn era_slack_a_check_finds_a_reply_to_a_thread_older_than_7_days() {
+    let farm = farm(&["C_FIELD", "C_CREW"], |_| {}).await;
+    farm.run().await;
+    assert_eq!(farm.count().await, 94);
+
+    // The tenant again, with a new reply to a `#crew` thread whose parent is 12 days old. The
+    // simulator answers a parent injected a second time with its first copy, so the fixture
+    // is injected afresh with the reply in place.
+    let older = "1791033300.011600";
+    let mut slack = fixture("maple-row", "slack.json");
+    let thread = slack["messages"]
+        .as_array_mut()
+        .expect("messages")
+        .iter_mut()
+        .find(|m| m["ts"] == older)
+        .expect("the thread");
+    thread["reply"].as_array_mut().expect("its replies").push(
+        json!({"user": "U_SAM", "ts": "1792017000.000100", "text": "Mine are on the clipboard."}),
+    );
+    farm.tenant.reset().await;
+    farm.tenant.inject(&slack).await;
+
+    // No pass reads a parent that old; the run's two checks go to the two threads due one
+    // (both in `#crew`), and the one with the new reply is read in full.
+    let mark = farm.proxy.len();
+    farm.clock.advance(SYNC_EVERY);
+    assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
+    assert_eq!(farm.proxy.replies_since(mark), (2, 1));
+    let records = farm.records().await;
+    assert!(
+        records[&format!("C_CREW/{older}")]
+            .hit
+            .text
+            .contains("Sam: Mine are on the clipboard.")
+    );
+    assert_eq!(farm.count().await, 94, "the thread is still one record");
+
+    // Checked again on the next run, it is unchanged: no full read.
+    let mark = farm.proxy.len();
+    farm.clock.advance(SYNC_EVERY);
+    farm.run().await;
+    assert_eq!(farm.proxy.replies_since(mark), (2, 0));
     farm.tenant.close().await;
 }
 
@@ -392,13 +526,14 @@ async fn era_fault_a_throttled_first_sync_resumes_without_duplicates() {
     assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
     assert_eq!(farm.count().await, 94, "every message once");
     assert_eq!(farm.records().await.len(), 94);
-    // 4 pages of `#field-reports` and 3 of `#crew`, plus one call for the channel whose pass
-    // had finished (nothing new). Only the page the throttle interrupted after its history
-    // call (on a reply or a name) is read again.
-    let total = farm.calls(HISTORY).await;
-    assert!(
-        (8..=9).contains(&total),
-        "{total} history pages, {history} before the resume"
+    // 4 pages of `#field-reports` and 3 of `#crew`. The throttle stops the run on `#crew`'s
+    // first page, after its history call (on a reply or a name), so that page is read again;
+    // `#field-reports` finished its pass in this round and isn't read on the resume.
+    assert_eq!(history, 5, "4 pages of #field-reports and #crew's first");
+    assert_eq!(
+        farm.calls(HISTORY).await,
+        8,
+        "#crew's 3 pages on the resume"
     );
     assert_eq!(farm.row().await.last_error, None);
     farm.tenant.close().await;
