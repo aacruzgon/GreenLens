@@ -52,6 +52,10 @@ export const scans = {
   submit: async (id: string): Promise<Scan> => ok(await client().POST("/scans/{id}/submit", { params: { path: { id } } })),
   answer: async (id: string, body: AnswerRequest, key: IdempotencyKey): Promise<Scan> =>
     ok(await client().POST("/scans/{id}/answers", { params: { path: { id }, header: idem(key) }, body })),
+  /** Removes a stored shot while the scan is `pending`, to replace it (contracts 3). */
+  deleteImage: async (id: string, imageId: string): Promise<void> => {
+    await client().DELETE("/scans/{id}/images/{image_id}", { params: { path: { id, image_id: imageId } } });
+  },
   /** Only a `pending` scan; `409 invalid_state` otherwise. */
   delete: async (id: string): Promise<void> => {
     await client().DELETE("/scans/{id}", { params: { path: { id } } });

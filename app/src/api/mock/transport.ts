@@ -527,12 +527,19 @@ route("POST", "/scans/:id/images", async (c) => {
     scenario.set({ uploadFault: null });
     if (fault === "unsupported_media_type") return errorResponse("unsupported_media_type", { accepted: ACCEPTED });
     const dark = fault === "image_too_dark";
-    return errorResponse("image_quality", {
-      problem: dark ? "too_dark" : "too_blurry",
-      blur_score: dark ? 210.4 : 38.2,
-      exposure: dark ? 0.08 : 0.5,
-      hint: dark ? "more_light" : "tap_to_focus",
-    });
+    // The server's message names the problem and its fix (contracts 2, QualityHint; screens 3.2's example).
+    return errorResponse(
+      "image_quality",
+      {
+        problem: dark ? "too_dark" : "too_blurry",
+        blur_score: dark ? 210.4 : 38.2,
+        exposure: dark ? 0.08 : 0.5,
+        hint: dark ? "more_light" : "tap_to_focus",
+      },
+      dark
+        ? "This photo is too dark. Move into better light or turn the plant to face it."
+        : "This photo is too blurry. Hold the phone still and tap the leaf to focus.",
+    );
   }
   const form = await c.form();
   const kind = (form.kind ?? "whole_plant") as S["ImageKind"];
