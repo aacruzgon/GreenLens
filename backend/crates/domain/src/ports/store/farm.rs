@@ -329,8 +329,9 @@ pub trait FarmRecordStore: Send + Sync {
     ) -> Result<Vec<(FarmRecordId, String)>, StoreError>;
 
     /// Upserts chunks by `(connector, vendor_id, n)`, keeping the stored vector when
-    /// `vector` is `None`. Returns how many were written. `NotFound` when the connector is
-    /// missing or being deleted, so no record outlives its connector's deletion.
+    /// `vector` is `None`. A record whose `source` the connector no longer has is skipped.
+    /// Returns how many were written. `NotFound` when the connector is missing or being
+    /// deleted, so no record outlives its connector's deletion.
     async fn upsert_records(
         &self,
         connector: ConnectorId,

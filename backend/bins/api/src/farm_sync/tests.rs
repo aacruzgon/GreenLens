@@ -599,6 +599,87 @@ async fn t_e4_9_the_10001st_record_stops_the_sync_with_too_large() {
     );
 }
 
+/// A vendor whose read of `C1` coincides with the owner dropping `C1` from the sources.
+struct DroppingSource {
+    store: Arc<SurrealStore>,
+    connector: std::sync::OnceLock<ConnectorId>,
+}
+
+#[async_trait]
+impl FarmSource for DroppingSource {
+    fn kind(&self) -> ConnectorKind {
+        ConnectorKind::Slack
+    }
+
+    fn reread_window(&self) -> Option<Duration> {
+        None
+    }
+
+    async fn available_sources(
+        &self,
+        _token: &VendorToken,
+    ) -> Result<Vec<ConnectorSource>, FarmSourceError> {
+        Ok(Vec::new())
+    }
+
+    async fn read_page(
+        &self,
+        _token: &VendorToken,
+        request: FarmPageRequest,
+    ) -> Result<FarmPage, FarmSourceError> {
+        let source = request.source.id;
+        if source == "C1" {
+            let id = self.connector.get().expect("the connector is set");
+            self.store
+                .db()
+                .query("UPDATE $c SET sources = [{ id: 'C2', name: 'c2' }];")
+                .bind(("c", store::ids::rid(id)))
+                .await
+                .expect("sources updated")
+                .check()
+                .expect("sources updated");
+        }
+        Ok(page(
+            vec![item(&source, "1.0", "a message", pinned())],
+            false,
+            "c",
+        ))
+    }
+
+    async fn revoke(&self, _token: &VendorToken) -> Result<(), FarmSourceError> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn a_page_of_a_source_dropped_meanwhile_does_not_count_toward_the_limit() {
+    let store = store().await;
+    let source = Arc::new(DroppingSource {
+        store: store.clone(),
+        connector: std::sync::OnceLock::new(),
+    });
+    let config = SyncConfig {
+        max_records: 1,
+        ..SyncConfig::default()
+    };
+    let b = bench(store, source.clone(), config);
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1", "C2"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    source.connector.set(id).expect("set once");
+    // C1's record is skipped by the store; counted anyway, C2's would pass the limit of 1.
+    assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+    assert_eq!(b.count(owner.1).await, 1);
+}
+
 #[tokio::test]
 async fn t_e4_9_cleanup_deletes_old_slack_messages_and_keeps_old_documents() {
     let b = bench(

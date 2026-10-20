@@ -225,7 +225,13 @@ COMMIT;";
     /// connector must be syncing (`active` or `reauth_needed`), so no record is written for a
     /// connector being deleted. A record whose `source` is no longer among the connector's
     /// `sources` is skipped in the same transaction: `PUT .../sources` can drop a source while
-    /// a sync that read it is still running, and its records must not come back.
+    /// a sync that read it is still running, and its records must not come back. The last
+    /// statement returns how many were written. The check reads `sources` from the
+    /// transaction's snapshot: a `PUT .../sources` that commits while it runs isn't seen, so
+    /// that page's records of the dropped source can still land (a known narrow window,
+    /// [connectors 6]).
+    ///
+    /// [connectors 6]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#6-sync
     pub const UPSERT_RECORDS: &str = "BEGIN;
 LET $c = (SELECT garden, status, sources FROM ONLY $connector);
 IF $c = NONE OR !($c.status IN ['active', 'reauth_needed']) { THROW 'not_found' };
@@ -243,6 +249,7 @@ FOR $r IN $records {
     };
   };
 };
+RETURN count($records.filter(|$r| $r.source IN $c.sources.id));
 COMMIT;";
     /// Every chunk of these items.
     pub const DELETE_RECORDS: &str = "DELETE farm_record WHERE connector = $connector AND vendor_id IN $vendor_ids RETURN VALUE $before.id;";
@@ -852,13 +859,15 @@ impl FarmRecordStore for SurrealStore {
             .into_store(WHAT));
         }
         let rows: Vec<FarmRecordWriteRow> = records.iter().map(FarmRecordWriteRow::new).collect();
-        run_tx(&self.db, sql::UPSERT_RECORDS, |q| {
+        let mut r = run_tx(&self.db, sql::UPSERT_RECORDS, |q| {
             q.bind(("connector", rid(&connector)))
                 .bind(("records", rows.clone()))
         })
         .await
         .map_err(|f| f.into_store(WHAT))?;
-        Ok(u32::try_from(records.len()).unwrap_or(u32::MAX))
+        let last = r.num_statements().saturating_sub(2);
+        let written: Option<i64> = r.take(last).map_err(|e| take_failed(WHAT, e))?;
+        Ok(written.map_or(0, |n| u32::try_from(n).unwrap_or(u32::MAX)))
     }
 
     async fn delete_records(

@@ -1319,7 +1319,7 @@ async fn an_upsert_skips_records_of_a_dropped_source() {
         .set_sources(owner, c, vec![source("C2", "spray-log")], at(1))
         .await
         .unwrap();
-    store
+    let written = store
         .upsert_records(
             c,
             vec![
@@ -1332,6 +1332,7 @@ async fn an_upsert_skips_records_of_a_dropped_source() {
         )
         .await
         .unwrap();
+    assert_eq!(written, 1, "only the kept record counts");
     let ids = vec![
         "C1/1.000100".into(),
         "C2/1.000100".into(),

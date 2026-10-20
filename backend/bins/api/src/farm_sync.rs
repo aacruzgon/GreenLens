@@ -566,8 +566,12 @@ impl FarmSync {
         }
         self.embed(&mut records, &changed).await?;
         if !records.is_empty() {
-            self.store.upsert_records(run.id, records).await?;
-            *count += new;
+            let written = self.store.upsert_records(run.id, records).await?;
+            // A page is one source's, so the store writes all of it or, when the owner dropped
+            // the source meanwhile, none: then none of it counts toward the garden's records.
+            if written > 0 {
+                *count += new;
+            }
         }
         for (vendor_id, from) in shrunk {
             let deleted = self
