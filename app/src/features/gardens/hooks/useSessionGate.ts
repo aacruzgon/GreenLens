@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import { flattenPages, useGardens, useMe, useUpdateMe } from "@/api";
 import { useSession } from "@/features/auth";
 
-import { pickActiveGarden } from "../model/activeGarden";
+import { gateShowsError, pickActiveGarden } from "../model/activeGarden";
 import { useActiveGardenStore } from "./activeGardenStore";
 
 export type GateState =
@@ -36,7 +36,7 @@ export function useSessionGate(): GateState {
     if (active && active !== remembered) setGardenId(active);
   }, [active, remembered, setGardenId]);
 
-  if (me.error || gardens.error) {
+  if (gateShowsError(me, gardens)) {
     return {
       kind: "error",
       error: me.error ?? gardens.error,

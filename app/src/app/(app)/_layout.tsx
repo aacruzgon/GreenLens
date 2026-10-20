@@ -10,7 +10,19 @@ export default function AppLayout() {
   if (!session.isSignedIn) return <Redirect href="/sign-in" />;
   return (
     <SessionGate>
-      <Stack screenOptions={{ headerShown: false }} />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="scan/new"
+          options={{ presentation: "formSheet", sheetAllowedDetents: [0.6, 1], sheetGrabberVisible: true }}
+        />
+        <Stack.Screen
+          name="notes/new"
+          options={{ presentation: "formSheet", sheetAllowedDetents: [0.5], sheetGrabberVisible: true }}
+        />
+        {/* Capture is a camera: it covers the screen, like the Camera app (design 3.1). */}
+        <Stack.Screen name="capture/[scanId]" options={{ presentation: "fullScreenModal" }} />
+      </Stack>
     </SessionGate>
   );
 }

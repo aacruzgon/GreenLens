@@ -18,9 +18,9 @@ use serde::Serialize;
 use serde_json::Value;
 
 /// The chat system prompt's version.
-pub const CHAT_PROMPT_VERSION: &str = "chat/2026-10-20.3";
+pub const CHAT_PROMPT_VERSION: &str = "chat/2026-10-20.4";
 /// The plan writer's version.
-pub const PLAN_PROMPT_VERSION: &str = "plan/2026-10-17.1";
+pub const PLAN_PROMPT_VERSION: &str = "plan/2026-10-20.1";
 /// The off-topic redirect's version.
 pub const OFF_TOPIC_PROMPT_VERSION: &str = "off_topic/2026-10-16.1";
 /// The memory extraction prompt's version.
@@ -39,6 +39,8 @@ const ADVICE_RULES: &str = "\
 - Never give a dose, an amount of a product, a rate, a mixing ratio or a percentage of a mixture. \
 If a product is appropriate, name the kind of product and say to use one registered for this use \
 where the user lives and to follow its label exactly.
+- When you decline to give a rate or an amount, don't name a volume unit; say to follow the \
+product label.
 - Describe equipment without sizes (\"a sprayer\", not a size in litres or gallons).
 - Write times of day in words (\"early morning\"), never as clock times.
 - Give a measured share (\"spots cover 12% of the leaf\") in a sentence of its own.
@@ -459,7 +461,19 @@ mod tests {
         assert!(p.contains("say what was applied, to which bed or crop, and when"));
         assert!(p.contains("Never repeat a rate"));
         assert!(p.contains("only when the user's question is about that item"));
-        assert_eq!(CHAT_PROMPT_VERSION, "chat/2026-10-20.3");
+        assert_eq!(CHAT_PROMPT_VERSION, "chat/2026-10-20.4");
+    }
+
+    /// EON gap G13: a refusal that names the unit beside any quantity fails the dose check, so
+    /// both advice-writing prompts tell the model to leave the unit out.
+    #[test]
+    fn advice_prompts_say_to_decline_a_rate_without_its_unit() {
+        for p in [chat_system(), plan_system()] {
+            assert!(
+                p.contains("When you decline to give a rate or an amount, don't name a volume")
+            );
+        }
+        assert_eq!(PLAN_PROMPT_VERSION, "plan/2026-10-20.1");
     }
 
     #[test]

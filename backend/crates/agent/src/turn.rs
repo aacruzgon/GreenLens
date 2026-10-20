@@ -562,7 +562,8 @@ async fn store_reply(
 /// safety note, keeping the piece's surrounding whitespace ([contracts 7]).
 async fn emit_piece(deps: &AgentDeps, out: &mut Emitter, reply: &mut Reply, piece: String) -> bool {
     let checked = if let Some(found) = dose_check(&piece, &deps.products) {
-        // The rule and whether the sentence held a quantity; never the matched text or the
+        // The rule and whether the sentence held a quantity (`Rate` without one: the unit
+        // started the sentence, as after a line break); never the matched text or the
         // sentence, which may hold a rate.
         tracing::info!(
             message_id = reply.message_id.as_ref().map(tracing::field::display),

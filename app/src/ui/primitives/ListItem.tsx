@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Pressable, View, type StyleProp, type ViewStyle } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
+import { hiddenSvg } from "../svgId";
 import { useTheme } from "../theme";
 import { minTouch, space } from "../tokens";
 import { Text } from "./Text";
@@ -23,7 +24,7 @@ export interface ListItemProps {
 
 function Chevron({ color }: { color: string }) {
   return (
-    <Svg width={8} height={14} viewBox="0 0 8 14" accessibilityElementsHidden importantForAccessibility="no">
+    <Svg width={8} height={14} viewBox="0 0 8 14" {...hiddenSvg}>
       <Path d="M1 1l6 6-6 6" stroke={color} strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   );

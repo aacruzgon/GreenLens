@@ -9,6 +9,6 @@ module.exports = {
   testPathIgnorePatterns: ["/node_modules/", "/\\.expo/", "/dist/"],
   // ESM-only or untranspiled packages that must go through babel.
   transformIgnorePatterns: [
-    "node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@clerk/.*|openapi-fetch|date-fns|@date-fns/.*|@shopify/flash-list|react-native-svg|zustand|@tanstack/.*))",
+    "node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@clerk/.*|openapi-fetch|date-fns|@date-fns/.*|@shopify/flash-list|react-native-svg|zustand|@tanstack/.*|standard-navigation))",
   ],
 };
