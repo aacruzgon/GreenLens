@@ -5,9 +5,11 @@
 //! in the demo garden it is repaired on every start: the token is sealed again under the current
 //! `CONNECTOR_KEY` (a rotated key would otherwise leave the demo unable to sync), `status` goes
 //! back to `active` and `last_error` is cleared. A connector with that id in another garden is
-//! left alone and logged as a warning ([`Seeded::Elsewhere`]); a garden being deleted has no
-//! owner to the store, so it is skipped like one that doesn't exist yet. Their tokens are the fixed strings the simulators accept in open
-//! mode, sealed under `CONNECTOR_KEY` like any token. No route can create an `era` connector.
+//! left alone and logged as a warning ([`Seeded::Elsewhere`]). A garden being deleted
+//! ([`Seeded::GardenDeleting`]) and a connector being deleted ([`Seeded::ConnectorDeleting`])
+//! are left to their deletion and logged; once it finishes, the next start seeds afresh.
+//! Their tokens are the fixed strings the simulators accept in open mode, sealed under
+//! `CONNECTOR_KEY` like any token. No route can create an `era` connector.
 //!
 //! The garden is the one `ERA_DEMO_GARDEN_ID` names: E9.0 creates it through the API, so its
 //! id is known only after, and the deploy sets the variable. A garden that doesn't exist yet
@@ -26,7 +28,7 @@ use domain::{
         ConnectorAccount, ConnectorEndpoint, ConnectorKind, ConnectorSource, ConnectorStatus,
     },
     id::{ConnectorId, GardenId, UserId},
-    ports::{Clock, NewConnector, Store, StoreError},
+    ports::{Clock, DeletionTarget, NewConnector, Store, StoreError},
     wire::Role,
 };
 
@@ -62,8 +64,13 @@ pub enum Seeded {
     /// A connector with a fixed id lives in another garden and was left as it was; this is
     /// that garden. The demo garden is missing it.
     Elsewhere(GardenId),
+    /// A connector with a fixed id is being deleted in the demo garden and was left so; the
+    /// first start after its deletion finishes creates it again.
+    ConnectorDeleting,
     /// The garden has no owner (it doesn't exist yet): nothing was created.
     NoGarden,
+    /// The garden is being deleted: nothing was created or repaired.
+    GardenDeleting,
 }
 
 /// The start-up step: seeds when connectors are on and the three variables are set, and logs
@@ -95,9 +102,17 @@ pub async fn at_start(state: &AppState) {
             %other,
             "era connectors not seeded: a connector with a fixed id lives in another garden"
         ),
+        Ok(Seeded::ConnectorDeleting) => tracing::info!(
+            %garden,
+            "era connectors not all seeded: one is being deleted; a start after its deletion seeds it"
+        ),
         Ok(Seeded::NoGarden) => tracing::info!(
             %garden,
             "era connectors not seeded: the demo garden has no owner yet; the next start seeds it"
+        ),
+        Ok(Seeded::GardenDeleting) => tracing::warn!(
+            %garden,
+            "era connectors not seeded: the demo garden is being deleted; point ERA_DEMO_GARDEN_ID at another"
         ),
         Err(e) => tracing::warn!(%garden, error = %chain(&e), "era connectors not seeded"),
     }
@@ -112,7 +127,16 @@ pub async fn seed_era_connectors(
     seed: &EraSeed,
 ) -> Result<Seeded, StoreError> {
     let Some(owner) = first_owner(store, seed.garden).await? else {
-        return Ok(Seeded::NoGarden);
+        // A garden being deleted has no owner to the store either.
+        let deleting = store
+            .unfinished_deletions()
+            .await?
+            .contains(&DeletionTarget::Garden(seed.garden));
+        return Ok(if deleting {
+            Seeded::GardenDeleting
+        } else {
+            Seeded::NoGarden
+        });
     };
     let now = clock.now();
     let slack: ConnectorId = ERA_SLACK_CONNECTOR.parse().expect("a fixed, valid ULID");
@@ -140,6 +164,7 @@ pub async fn seed_era_connectors(
         ),
     ];
     let mut elsewhere = None;
+    let mut deleting = false;
     for (id, kind, account, sources, token) in connectors {
         let connector = NewConnector {
             id,
@@ -156,9 +181,15 @@ pub async fn seed_era_connectors(
         let stored = store.seed_connector(seed.garden, connector).await?;
         if stored.garden_id != seed.garden {
             elsewhere = Some(stored.garden_id);
+        } else if stored.status == ConnectorStatus::Deleting {
+            deleting = true;
         }
     }
-    Ok(elsewhere.map_or(Seeded::Done, Seeded::Elsewhere))
+    Ok(match (elsewhere, deleting) {
+        (Some(other), _) => Seeded::Elsewhere(other),
+        (None, true) => Seeded::ConnectorDeleting,
+        (None, false) => Seeded::Done,
+    })
 }
 
 /// The garden's first owner, in the store's member order; `None` when it has none.

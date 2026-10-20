@@ -1460,6 +1460,59 @@ async fn seeding_skips_a_garden_whose_deletion_is_under_way() {
         seed::seed_era_connectors(store.as_ref(), &key(), &clock, &seed)
             .await
             .expect("no error"),
-        Seeded::NoGarden
+        Seeded::GardenDeleting
     );
+    assert!(
+        store
+            .connector_row(seed::ERA_SLACK_CONNECTOR.parse().expect("id"))
+            .await
+            .expect("read")
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn seeding_leaves_a_connector_being_deleted_to_its_deletion() {
+    let store = store().await;
+    let ids = SequentialIds::default();
+    let (user, garden) = garden(&store, &ids, "maple").await;
+    let clock = FixedClock::at(pinned());
+    let seed = EraSeed {
+        slack_base: "http://era-slack:8080".into(),
+        garden,
+    };
+    seed::seed_era_connectors(store.as_ref(), &key(), &clock, &seed)
+        .await
+        .expect("seeded");
+    let id: ConnectorId = seed::ERA_SLACK_CONNECTOR.parse().expect("id");
+    let owner = check_membership_of(store.as_ref(), user, garden)
+        .await
+        .expect("owner");
+    store
+        .start_connector_deletion(owner, id)
+        .await
+        .expect("deletion started");
+    let before = store
+        .connector_row(id)
+        .await
+        .expect("read")
+        .expect("exists");
+
+    assert_eq!(
+        seed::seed_era_connectors(store.as_ref(), &key(), &clock, &seed)
+            .await
+            .expect("no error"),
+        Seeded::ConnectorDeleting
+    );
+    let after = store
+        .connector_row(id)
+        .await
+        .expect("read")
+        .expect("exists");
+    assert_eq!(
+        after.connector.status,
+        ConnectorStatus::Deleting,
+        "not revived"
+    );
+    assert_eq!(after.secret, before.secret, "its token isn't sealed again");
 }
