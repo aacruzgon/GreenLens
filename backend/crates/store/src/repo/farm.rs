@@ -210,6 +210,9 @@ COMMIT;";
     pub const SLACK_ACCOUNT_CONNECTORS: &str = "RETURN count(SELECT VALUE id FROM connector WHERE kind = 'slack' AND endpoint = 'vendor' AND status IN ['active', 'reauth_needed'] AND account.team_id = $account AND id != $except);";
     /// Other live `vendor` connectors holding a grant of this Google account.
     pub const GOOGLE_ACCOUNT_CONNECTORS: &str = "RETURN count(SELECT VALUE id FROM connector WHERE kind = 'google_drive' AND endpoint = 'vendor' AND status IN ['active', 'reauth_needed'] AND account.email = $account AND id != $except);";
+    /// A refreshed token: a compare-and-set on the sealed value the caller read. One record by
+    /// its id, so the statement touches at most one row.
+    pub const REPLACE_SECRET: &str = "UPDATE $connector SET secret = $new WHERE secret = $read AND status IN ['active', 'reauth_needed'] RETURN VALUE id;";
     /// A garden's connectors marked `deleting` (index `connector_garden`), for a cascade or a
     /// demotion to revoke and delete.
     pub const DELETING_OF_GARDEN: &str = concat!(
@@ -831,6 +834,24 @@ impl FarmRecordStore for SurrealStore {
         .map_err(|f| f.into_store(WHAT))?;
         let count: Option<i64> = r.take(0).map_err(|e| take_failed(WHAT, e))?;
         Ok(u32::try_from(count.unwrap_or(0)).unwrap_or(u32::MAX))
+    }
+
+    async fn replace_secret(
+        &self,
+        connector: ConnectorId,
+        read: Sealed,
+        new: Sealed,
+    ) -> Result<bool, StoreError> {
+        const WHAT: &str = "replace connector secret";
+        let mut r = run_tx(&self.db, sql::REPLACE_SECRET, |q| {
+            q.bind(("connector", rid(&connector)))
+                .bind(("read", sealed_bytes(&read)))
+                .bind(("new", sealed_bytes(&new)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        let ids: Vec<RecordId> = r.take(0).map_err(|e| take_failed(WHAT, e))?;
+        Ok(!ids.is_empty())
     }
 
     async fn deleting_connectors(

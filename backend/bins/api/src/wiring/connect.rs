@@ -64,28 +64,6 @@ impl VendorClients {
         }
         .ok_or(VendorError::NotConfigured(kind))
     }
-
-    /// Google's access token, refreshed for this call when it is about to expire. The refreshed
-    /// token isn't stored: the sync keeps the stored one current (E4), and Google's refresh
-    /// token stays valid.
-    async fn google_access(&self, tokens: &StoredTokens) -> Result<SecretString, VendorError> {
-        let now = self.clock.now();
-        let fresh = tokens
-            .expires_at
-            .is_none_or(|at| at > now.plus(REFRESH_BEFORE));
-        match (&tokens.refresh_token, fresh) {
-            (Some(refresh), false) => {
-                let client = self.client(ConnectorKind::GoogleDrive)?;
-                let grant = self
-                    .drive
-                    .refresh(refresh, &client.client_id, &client.client_secret)
-                    .await
-                    .map_err(|e| vendor_error(ConnectorKind::GoogleDrive, e))?;
-                Ok(grant.access_token)
-            }
-            _ => Ok(tokens.access_token.clone()),
-        }
-    }
 }
 
 #[async_trait]
@@ -154,6 +132,34 @@ impl ConnectVendors for VendorClients {
         }
     }
 
+    async fn refresh(
+        &self,
+        kind: ConnectorKind,
+        tokens: &StoredTokens,
+    ) -> Result<Option<StoredTokens>, VendorError> {
+        let now = self.clock.now();
+        let fresh = tokens
+            .expires_at
+            .is_none_or(|at| at > now.plus(REFRESH_BEFORE));
+        let (ConnectorKind::GoogleDrive, Some(refresh), false) =
+            (kind, &tokens.refresh_token, fresh)
+        else {
+            return Ok(None);
+        };
+        let client = self.client(kind)?;
+        let grant = self
+            .drive
+            .refresh(refresh, &client.client_id, &client.client_secret)
+            .await
+            .map_err(|e| vendor_error(kind, e))?;
+        Ok(Some(StoredTokens {
+            access_token: grant.access_token,
+            // Google sends a new refresh token only sometimes; the old one stays good otherwise.
+            refresh_token: grant.refresh_token.or_else(|| Some(refresh.clone())),
+            expires_at: Some(now.plus(grant.expires_in)),
+        }))
+    }
+
     async fn available_sources(
         &self,
         kind: ConnectorKind,
@@ -172,20 +178,17 @@ impl ConnectVendors for VendorClients {
                     name: c.name,
                 })
                 .collect()),
-            ConnectorKind::GoogleDrive => {
-                let access = self.google_access(tokens).await?;
-                Ok(self
-                    .drive
-                    .folders(&access)
-                    .await
-                    .map_err(error)?
-                    .into_iter()
-                    .map(|f| ConnectorSource {
-                        id: f.id,
-                        name: f.name,
-                    })
-                    .collect())
-            }
+            ConnectorKind::GoogleDrive => Ok(self
+                .drive
+                .folders(&tokens.access_token)
+                .await
+                .map_err(error)?
+                .into_iter()
+                .map(|f| ConnectorSource {
+                    id: f.id,
+                    name: f.name,
+                })
+                .collect()),
         }
     }
 

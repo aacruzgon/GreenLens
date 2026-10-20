@@ -331,6 +331,18 @@ pub trait FarmRecordStore: Send + Sync {
         except: ConnectorId,
     ) -> Result<u32, StoreError>;
 
+    /// Replaces a connector's sealed tokens with `new` (a refreshed Google access token) only
+    /// when the stored value is still `read`, the one the caller unsealed, and the connector is
+    /// `active` or `reauth_needed`: a compare-and-set, so of two refreshes at once one is
+    /// stored and the other keeps its token for its own call. `true` when it was stored.
+    /// Used by the source picker and the sync (E4).
+    async fn replace_secret(
+        &self,
+        connector: ConnectorId,
+        read: Sealed,
+        new: Sealed,
+    ) -> Result<bool, StoreError>;
+
     /// Connectors marked `deleting` whose deletion hasn't finished, with their sealed tokens,
     /// oldest id first: with `Some(garden)`, that garden's (a cascade or a demotion finishing
     /// them); with `None`, those of every garden not itself being deleted (`api`'s

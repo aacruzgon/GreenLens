@@ -196,8 +196,19 @@ pub trait ConnectVendors: Send + Sync {
         redirect_uri: &str,
     ) -> Result<Exchanged, VendorError>;
 
-    /// The channels the bot is a member of, or the folders the Google account can open,
-    /// with Google's access token refreshed for the call when it is about to expire.
+    /// Google's tokens with a new access token when the stored one has less than 5 minutes
+    /// left and a refresh token is there to renew it; `None` when they are fine as they are
+    /// (always for Slack, whose bot token doesn't expire). The caller stores what comes back
+    /// with `FarmRecordStore::replace_secret`, a compare-and-set against the sealed value it
+    /// read, so two refreshes at once keep one.
+    async fn refresh(
+        &self,
+        kind: ConnectorKind,
+        tokens: &StoredTokens,
+    ) -> Result<Option<StoredTokens>, VendorError>;
+
+    /// The channels the bot is a member of, or the folders the Google account can open, with
+    /// the access token as given: refresh it first.
     async fn available_sources(
         &self,
         kind: ConnectorKind,

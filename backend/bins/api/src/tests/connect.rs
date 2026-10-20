@@ -186,6 +186,11 @@ fn era_row() -> ConnectorRow {
     row
 }
 
+/// The vendors with no refresh due: Slack's bot token doesn't expire.
+fn no_refresh(vendors: &mut MockConnectVendors) {
+    vendors.expect_refresh().returning(|_, _| Ok(None));
+}
+
 /// A store whose `connector_row` answers `row` for `CONNECTOR`.
 fn store_with(row: ConnectorRow) -> FakeStore {
     let mut store = FakeStore::default();
@@ -737,6 +742,7 @@ async fn every_owner_route_refuses_an_era_connector() {
 #[tokio::test]
 async fn available_sources_lists_the_vendors_channels() {
     let mut vendors = MockConnectVendors::new();
+    no_refresh(&mut vendors);
     vendors
         .expect_available_sources()
         .withf(|kind, tokens| {
@@ -764,9 +770,72 @@ async fn available_sources_lists_the_vendors_channels() {
     );
 }
 
+/// A2: Google's access token about to expire is refreshed for the call and stored over the
+/// sealed value it came from. Here another refresh was stored first (the compare-and-set
+/// answers `false`), and this call still uses its own token.
+#[tokio::test]
+async fn an_expiring_google_token_is_refreshed_and_stored_over_the_one_read() {
+    let mut row = active_row();
+    row.connector.kind = ConnectorKind::GoogleDrive;
+    row.connector.account = Some(ConnectorAccount::GoogleDrive {
+        email: "owner@example.org".to_owned(),
+    });
+    let read = StoredTokens {
+        access_token: SecretString::from("ya29.old"),
+        refresh_token: Some(SecretString::from("1//refresh")),
+        expires_at: Some(now().plus(Duration::from_secs(60))),
+    }
+    .seal(&key(), id());
+    row.secret = Some(read.clone());
+    let mut vendors = MockConnectVendors::new();
+    vendors
+        .expect_refresh()
+        .withf(|kind, tokens| {
+            *kind == ConnectorKind::GoogleDrive && tokens.access_token.expose_secret() == "ya29.old"
+        })
+        .times(1)
+        .returning(|_, _| {
+            Ok(Some(StoredTokens {
+                access_token: SecretString::from("ya29.new"),
+                refresh_token: Some(SecretString::from("1//refresh")),
+                expires_at: Some(now().plus(Duration::from_secs(3600))),
+            }))
+        });
+    vendors
+        .expect_available_sources()
+        .withf(|_, tokens| tokens.access_token.expose_secret() == "ya29.new")
+        .times(1)
+        .returning(|_, _| Ok(vec![source("folder-1")]));
+    let mut store = store_with(row);
+    store
+        .farm_record_store
+        .expect_replace_secret()
+        .withf(move |c, old, new| {
+            let stored = StoredTokens::unseal(&key(), *c, new).unwrap();
+            *c == id() && *old == read && stored.access_token.expose_secret() == "ya29.new"
+        })
+        .times(1)
+        .returning(|_, _, _| Ok(false));
+    let answer = send(
+        store,
+        on(),
+        Some(Role::Owner),
+        vendors,
+        request(
+            Method::GET,
+            &format!("/connectors/{CONNECTOR}/available-sources"),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
+    assert_eq!(answer.body["sources"][0]["id"], "folder-1");
+}
+
 #[tokio::test]
 async fn a_refused_token_makes_the_connector_reauth_needed() {
     let mut vendors = MockConnectVendors::new();
+    no_refresh(&mut vendors);
     vendors.expect_available_sources().returning(|kind, _| {
         Err(VendorError::AuthRefused {
             vendor: kind,
@@ -866,6 +935,7 @@ async fn too_many_sources_are_refused() {
 async fn ten_channels_are_allowed() {
     let ten: Vec<Value> = (0..10).map(|i| json!({ "id": format!("C{i}") })).collect();
     let mut vendors = MockConnectVendors::new();
+    no_refresh(&mut vendors);
     vendors
         .expect_available_sources()
         .returning(|_, _| Ok((0..12).map(|i| source(&format!("C{i}"))).collect()));
@@ -903,6 +973,7 @@ async fn ten_channels_are_allowed() {
 #[tokio::test]
 async fn a_source_the_vendor_doesnt_offer_is_refused() {
     let mut vendors = MockConnectVendors::new();
+    no_refresh(&mut vendors);
     vendors
         .expect_available_sources()
         .returning(|_, _| Ok(vec![source("C1")]));
@@ -930,6 +1001,7 @@ async fn a_source_the_vendor_doesnt_offer_is_refused() {
 #[tokio::test]
 async fn dropping_a_channel_deletes_only_its_records() {
     let mut vendors = MockConnectVendors::new();
+    no_refresh(&mut vendors);
     vendors
         .expect_available_sources()
         .returning(|_, _| Ok(vec![source("C1"), source("C2")]));

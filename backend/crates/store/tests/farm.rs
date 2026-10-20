@@ -1332,6 +1332,55 @@ async fn other_holders_of_an_accounts_token_are_counted() {
     assert_eq!(email(demo).await.unwrap(), 1);
 }
 
+/// A refreshed token is stored only over the sealed value it was refreshed from: of two
+/// refreshes racing from the same read, exactly one is stored; a stale read, or a connector
+/// being deleted, stores nothing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_refreshed_secret_replaces_only_the_value_it_was_read_from() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let c = active_slack(&store, &f, f.garden).await;
+    let read = sealed(b"sealed-token");
+
+    let (a, b) = tokio::join!(
+        store.replace_secret(c, read.clone(), sealed(b"refreshed-a")),
+        store.replace_secret(c, read.clone(), sealed(b"refreshed-b")),
+    );
+    let (a, b) = (a.unwrap(), b.unwrap());
+    assert!(a ^ b, "exactly one refresh is stored: {a} {b}");
+    let stored = store.connector_row(c).await.unwrap().unwrap().secret;
+    let winner = if a {
+        sealed(b"refreshed-a")
+    } else {
+        sealed(b"refreshed-b")
+    };
+    assert_eq!(stored, Some(winner.clone()));
+
+    assert!(
+        !store
+            .replace_secret(c, read, sealed(b"stale"))
+            .await
+            .unwrap(),
+        "a stale read stores nothing"
+    );
+    store.start_connector_deletion(owner, c).await.unwrap();
+    assert!(
+        !store
+            .replace_secret(c, winner.clone(), sealed(b"late"))
+            .await
+            .unwrap(),
+        "a connector being deleted keeps the token it is revoked with"
+    );
+    let missing: ConnectorId = f.ids.id();
+    assert!(
+        !store
+            .replace_secret(missing, winner, sealed(b"x"))
+            .await
+            .unwrap()
+    );
+}
+
 /// T-E3.6 (docs/EON): the cleanup's cutoff is 10 minutes before now. A pending connector
 /// started 11 minutes ago is gone after it; one started 9 minutes ago and an active one stay.
 #[tokio::test]

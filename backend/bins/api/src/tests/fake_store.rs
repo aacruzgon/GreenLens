@@ -612,6 +612,16 @@ mod farm_record_store {
                 .shared_account_connectors(kind, account, except)
                 .await
         }
+        async fn replace_secret(
+            &self,
+            connector: ConnectorId,
+            read: Sealed,
+            new: Sealed,
+        ) -> Result<bool, StoreError> {
+            self.farm_record_store
+                .replace_secret(connector, read, new)
+                .await
+        }
         async fn deleting_connectors(
             &self,
             garden: Option<GardenId>,

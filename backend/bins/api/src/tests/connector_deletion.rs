@@ -92,6 +92,14 @@ impl ConnectVendors for Recorder {
         Err(VendorError::NotConfigured(kind))
     }
 
+    async fn refresh(
+        &self,
+        _: ConnectorKind,
+        _: &StoredTokens,
+    ) -> Result<Option<StoredTokens>, VendorError> {
+        Ok(None)
+    }
+
     async fn available_sources(
         &self,
         kind: ConnectorKind,

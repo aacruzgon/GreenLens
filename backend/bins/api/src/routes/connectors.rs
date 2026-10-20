@@ -205,13 +205,48 @@ async fn token_failure(state: &AppState, row: &ConnectorRow, error: VendorError)
     vendor_failure(error)
 }
 
+/// The connector's tokens, with Google's access token refreshed when it is about to expire.
+/// A refreshed token is stored over the sealed value it came from (`replace_secret`, a
+/// compare-and-set): when another refresh was stored first, this call still uses its own,
+/// which is as good.
+async fn fresh_tokens(
+    state: &AppState,
+    key: &ConnectorKey,
+    row: &ConnectorRow,
+) -> Result<StoredTokens, ApiError> {
+    let tokens = tokens_of(key, row)?;
+    let fresh = match state.connect.refresh(row.connector.kind, &tokens).await {
+        Ok(Some(fresh)) => fresh,
+        Ok(None) => return Ok(tokens),
+        Err(error) => return Err(token_failure(state, row, error).await),
+    };
+    let id = row.connector.id;
+    if let Some(read) = row.secret.clone() {
+        match state
+            .ports
+            .store
+            .replace_secret(id, read, fresh.seal(key, id))
+            .await
+        {
+            Ok(true) => tracing::debug!(connector = %id, "refreshed token stored"),
+            Ok(false) => {
+                tracing::debug!(connector = %id, "another refresh was stored first");
+            }
+            Err(error) => {
+                tracing::warn!(connector = %id, error = %error, "refreshed token not stored");
+            }
+        }
+    }
+    Ok(fresh)
+}
+
 /// The connector's sources at the vendor; a refused token makes it `reauth_needed`.
 async fn vendor_sources(
     state: &AppState,
     key: &ConnectorKey,
     row: &ConnectorRow,
 ) -> Result<Vec<ConnectorSource>, ApiError> {
-    let tokens = tokens_of(key, row)?;
+    let tokens = fresh_tokens(state, key, row).await?;
     match state
         .connect
         .available_sources(row.connector.kind, &tokens)
