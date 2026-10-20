@@ -15,7 +15,8 @@
 //!   neither and is missed.
 //! - `probed`: the parent `ts` of the last older thread checked (below), the round-robin
 //!   position.
-//! - `watched` and `away`: when the last pass ended, and the time away (below).
+//! - `watched` and `gaps`: when the last page was read, and the gaps of over 7 days between
+//!   pages of the last 180 days (below).
 //!
 //! The daily re-read ([`FarmPageRequest::reread_from`]) starts a pass from 7 days back, or from
 //! `newest` when that is older (a sync after a week or more without one), so it skips nothing
@@ -30,10 +31,13 @@
 //! whose parent is older than 7 days and whose last reply is within 30 days, round-robin by
 //! `probed`, with `conversations.replies` and `limit=1`: the parent comes back first with its
 //! current `latest_reply` and `reply_count`, and the thread is read in full when either
-//! differs. The 30 days count only time the channel was read: a pass that starts more than 7
-//! days after the last one ended ([`AWAY_AFTER`]) adds the gap to `away`, which the age
-//! leaves out, so a thread active when the sync stopped is still checked when it resumes. The sync allows two such checks per connector run, over all its channels, so they
-//! never crowd out the replies of threads that changed under Tier 1 pacing.
+//! differs. The 30 days count only time the channel was read: a page read more than 7 days
+//! after the last one ([`AWAY_AFTER`]), whether a pass was starting or had pages left, records
+//! the gap in `gaps`, and a thread's quiet time leaves out the gaps after its last reply, so a
+//! thread active when the sync stopped is still checked when it resumes, while one whose last
+//! reply came after a gap is aged without it. The sync allows two such checks per connector
+//! run, over all its channels, so they never crowd out the replies of threads that changed
+//! under Tier 1 pacing.
 //!
 //! Authors: `users.info` once per user and team a day, keeping one name ([`SlackUser::label`]),
 //! never the email. Links: built from the workspace URL `auth.test` gave at connect
@@ -77,9 +81,10 @@ const PROBE_PARENT_AGE: Duration = REREAD_WINDOW;
 /// A thread is checked only if its last reply is newer than this, leaving out time away.
 const PROBE_REPLY_AGE: Duration = Duration::from_hours(30 * 24);
 
-/// A gap between passes longer than this is time away: the channel went unread (an outage, a
-/// paused API, a token refused for a while), so it doesn't count toward a thread's quiet days.
-/// The re-read's window: a longer gap is also when a re-read starts at `newest`.
+/// A gap between pages longer than this is time away: the channel went unread (an outage, a
+/// paused API, a token refused for a while), so it doesn't count toward the quiet days of a
+/// thread whose last reply came before it. The re-read's window: a longer gap is also when a
+/// re-read starts at `newest`.
 const AWAY_AFTER: Duration = REREAD_WINDOW;
 
 /// How long an author's name is kept per team ([connectors 6]).
@@ -127,21 +132,13 @@ struct Cursor {
     /// The parent `ts` of the last older thread checked: the round-robin position.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     probed: Option<String>,
-    /// When the last pass ended, in Unix seconds.
+    /// When the last page was read, in Unix seconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     watched: Option<i64>,
-    /// The seconds of every gap over [`AWAY_AFTER`] between passes: left out of a thread's
-    /// quiet days.
-    #[serde(default, skip_serializing_if = "is_zero")]
-    away: i64,
-}
-
-#[expect(
-    clippy::trivially_copy_pass_by_ref,
-    reason = "serde's skip_serializing_if passes a reference"
-)]
-const fn is_zero(n: &i64) -> bool {
-    *n == 0
+    /// Each gap of over [`AWAY_AFTER`] between pages, as `[start, seconds]`, its start in the
+    /// last 180 days: left out of the quiet days of the threads whose last reply came before it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    gaps: Vec<(i64, i64)>,
 }
 
 /// What the older-thread checks of one page found.
@@ -206,13 +203,34 @@ impl Cursor {
             .unwrap_or_default()
     }
 
+    /// A page read at `now`: a gap of over [`AWAY_AFTER`] since the last one is recorded, and
+    /// gaps that started over 180 days ago are dropped.
+    fn read_at(&mut self, now: i64) {
+        let away_after = i64::try_from(AWAY_AFTER.as_secs()).unwrap_or(i64::MAX);
+        if let Some(watched) = self.watched
+            && now - watched > away_after
+        {
+            self.gaps.push((watched, now - watched));
+        }
+        let keep = i64::try_from(FARM_RECORD_KEEP.as_secs()).unwrap_or(i64::MAX);
+        self.gaps.retain(|&(start, _)| start >= now - keep);
+        self.watched = Some(now);
+    }
+
+    /// The seconds of the gaps after `latest`, a thread's last reply.
+    fn away_since(&self, latest: i64) -> i64 {
+        self.gaps
+            .iter()
+            .map(|&(start, len)| (start + len - start.max(latest)).max(0))
+            .sum()
+    }
+
     /// After a history page: the pass continues from Slack's `next` page cursor, or it ended
-    /// at `now` and `newest` moves up to the newest `ts` it saw.
-    fn after_page(&mut self, oldest: String, next: Option<String>, top: Option<String>, now: i64) {
+    /// and `newest` moves up to the newest `ts` it saw.
+    fn after_page(&mut self, oldest: String, next: Option<String>, top: Option<String>) {
         if let Some(page) = next {
             self.pass = Some(Pass { oldest, page, top });
         } else {
-            self.watched = Some(now);
             self.newest = [self.newest.take(), top]
                 .into_iter()
                 .flatten()
@@ -311,18 +329,12 @@ impl SlackSource {
         };
         let channel = request.source.id.as_str();
         let floor = unix_ts(request.oldest);
-        let now = request.oldest.plus(FARM_RECORD_KEEP).unix_seconds();
         let mut cursor = Cursor::parse(request.cursor.as_ref());
+        // Stored only with the page, so a page that fails records nothing.
+        cursor.read_at(request.oldest.plus(FARM_RECORD_KEEP).unix_seconds());
         let (oldest, page) = if let Some(pass) = cursor.pass.take() {
             (pass.oldest, Some((pass.page, pass.top)))
         } else {
-            // A pass starting over 7 days after the last one ended: the gap is time away.
-            let away_after = i64::try_from(AWAY_AFTER.as_secs()).unwrap_or(i64::MAX);
-            if let Some(watched) = cursor.watched
-                && now - watched > away_after
-            {
-                cursor.away += now - watched;
-            }
             // A re-read starts 7 days back, or at the newest message seen when that is older
             // (a sync after a week or more without one), so nothing between them is skipped.
             let from = match (request.reread_from, cursor.newest.as_deref()) {
@@ -396,7 +408,7 @@ impl SlackSource {
         items.extend(probed.items);
 
         let more = history.next_cursor.is_some();
-        cursor.after_page(oldest, history.next_cursor, page_top, now);
+        cursor.after_page(oldest, history.next_cursor, page_top);
         Ok(FarmPage {
             items,
             removed: probed.removed,
@@ -410,7 +422,7 @@ impl SlackSource {
 
     /// Checks up to `request.probe_limit` older threads for replies no pass would see: the
     /// next ones after `cursor.probed` among the threads whose parent is older than 7 days and
-    /// whose last reply is within 30 days of the request's now. A thread whose `latest_reply` or
+    /// whose last reply is within 30 days of the request's now, leaving out the gaps after it. A thread whose `latest_reply` or
     /// `reply_count` moved is read in full and returned as an item; one Slack no longer has is
     /// forgotten, and one whose parent was deleted is forgotten and its record removed. A
     /// failure other than a refused token ends the checks and moves `probed` past the thread
@@ -427,12 +439,14 @@ impl SlackSource {
         let channel = request.source.id.as_str();
         let now = request.oldest.plus(FARM_RECORD_KEEP);
         let parent_before = now.minus(PROBE_PARENT_AGE).unix_seconds();
-        let reply_after = now.minus(PROBE_REPLY_AGE).unix_seconds() - cursor.away;
+        let now_s = now.unix_seconds();
+        let quiet_for = i64::try_from(PROBE_REPLY_AGE.as_secs()).unwrap_or(i64::MAX);
         let secs = |ts: &str| i64::try_from(ts_key(ts).0).unwrap_or(0);
+        let recent = |latest: i64| now_s - latest - cursor.away_since(latest) <= quiet_for;
         let mut due: Vec<&String> = cursor
             .threads
             .iter()
-            .filter(|(ts, t)| secs(ts) < parent_before && secs(&t.latest_reply) >= reply_after)
+            .filter(|(ts, t)| secs(ts) < parent_before && recent(secs(&t.latest_reply)))
             .map(|(ts, _)| ts)
             .collect();
         due.sort_by_key(|ts| ts_key(ts));
@@ -737,7 +751,7 @@ mod tests {
             threads: BTreeMap::new(),
             probed: None,
             watched: None,
-            away: 0,
+            gaps: Vec::new(),
         };
         let round = cursor.clone().into_sync_cursor();
         assert_eq!(round.0, r#"{"newest":"1.000100"}"#);
@@ -1298,77 +1312,138 @@ mod threads {
         }
     }
 
-    /// A gap of over 7 days between passes is time away, left out of a thread's 30 quiet days:
-    /// a thread with a reply 4 days before the last pass is checked 91 days on, one quiet for
-    /// 49 days then isn't, and the gap is kept for later passes.
+    /// The gap tests' gaps: 50 days from 140 days ago (a token refused, say), then 25 days from
+    /// 30 days ago; the sync is back 5 days ago.
+    fn two_gaps() -> Vec<(i64, i64)> {
+        let n = now().unix_seconds();
+        vec![(n - 140 * DAY, 50 * DAY), (n - 30 * DAY, 25 * DAY)]
+    }
+
+    /// Their threads, as `(parent, last reply)`: one replied to 3 days before the second gap,
+    /// one quiet for 10 days before the first, and one replied to 15 days after the sync came
+    /// back from the first and quiet for 75 days since, 50 of them read.
+    fn gap_threads() -> [(String, String); 3] {
+        [
+            (days_ago(40), days_ago(33)),
+            (days_ago(160), days_ago(150)),
+            (days_ago(100), days_ago(75)),
+        ]
+    }
+
+    /// Time away is left out only of the quiet days of threads whose last reply came before it:
+    /// the thread active before the second gap is checked (8 days quiet), the one quiet before
+    /// the first isn't (75), and neither is the one replied to between them (50), which one
+    /// total of 75 days away would have taken as due.
     #[tokio::test]
-    async fn time_away_does_not_count_toward_a_thread_s_quiet_days() {
+    async fn a_gap_counts_only_for_threads_whose_last_reply_came_before_it() {
         let server = MockServer::start().await;
         users(&server).await;
         history(&server, Vec::new()).await;
-        let (active, quiet) = (days_ago(100), days_ago(150));
+        let threads = gap_threads();
         let calls = replies(
             &server,
-            vec![
-                (active.clone(), parent(&active, 1, &days_ago(95))),
-                (quiet.clone(), parent(&quiet, 1, &days_ago(140))),
-            ],
+            threads
+                .iter()
+                .map(|(ts, latest)| (ts.clone(), parent(ts, 1, latest)))
+                .collect(),
         )
         .await;
-        let threads = || {
-            [
-                (active.clone(), thread(&days_ago(95), 1)),
-                (quiet.clone(), thread(&days_ago(140), 1)),
-            ]
-            .into_iter()
-            .collect::<BTreeMap<_, _>>()
-        };
+        let stored: BTreeMap<String, Thread> = threads
+            .iter()
+            .map(|(ts, latest)| (ts.clone(), thread(latest, 1)))
+            .collect();
         let source = source(&server);
         let checked = || -> Vec<String> {
             let mut calls = calls.lock().unwrap();
             calls.drain(..).map(|(ts, _)| ts).collect()
         };
+        let back = Some(now().unix_seconds() - 5 * DAY);
 
-        // Without a pass on record, the age runs from now: both are quiet.
-        let unknown = Cursor {
-            threads: threads(),
+        // No gap on record: the age runs from now, and every thread is quiet.
+        let none = Cursor {
+            threads: stored.clone(),
+            watched: back,
             ..Cursor::default()
         };
         let page = source
-            .page(&token(), &request(Some(unknown.into_sync_cursor())))
+            .page(&token(), &request(Some(none.into_sync_cursor())))
             .await
             .unwrap();
         assert_eq!(checked(), Vec::<String>::new());
-        let stored = Cursor::parse(Some(&page.cursor));
-        assert_eq!(stored.watched, Some(now().unix_seconds()));
-        assert_eq!(stored.away, 0);
+        let cursor = Cursor::parse(Some(&page.cursor));
+        assert_eq!(cursor.watched, Some(now().unix_seconds()));
+        assert_eq!(cursor.gaps, []);
+        assert!(!page.cursor.0.contains("gaps"), "not written when empty");
 
-        // The last pass ended 91 days ago.
-        let gap = 91 * DAY;
         let away = Cursor {
-            threads: threads(),
-            watched: Some(now().unix_seconds() - gap),
+            threads: stored,
+            watched: back,
+            gaps: two_gaps(),
             ..Cursor::default()
         };
         let page = source
             .page(&token(), &request(Some(away.into_sync_cursor())))
             .await
             .unwrap();
-        assert_eq!(checked(), std::slice::from_ref(&active));
-        let stored = Cursor::parse(Some(&page.cursor));
-        assert_eq!(stored.away, gap);
-        assert_eq!(stored.watched, Some(now().unix_seconds()));
+        assert_eq!(checked(), std::slice::from_ref(&threads[0].0));
+        assert_eq!(Cursor::parse(Some(&page.cursor)).gaps, two_gaps());
+    }
 
-        // A pass 7 days after the last one isn't away.
-        let week = Cursor {
-            threads: threads(),
-            watched: Some(now().unix_seconds() - 7 * DAY),
+    /// A page read over 7 days after the last one records the gap, whether a pass was starting
+    /// or had pages left; one 7 days later doesn't; gaps that started over 180 days ago go.
+    #[tokio::test]
+    async fn gaps_are_recorded_on_any_page_and_dropped_after_180_days() {
+        let server = MockServer::start().await;
+        users(&server).await;
+        history(&server, Vec::new()).await;
+        let source = source(&server);
+        let n = now().unix_seconds();
+        let gaps = |cursor: Cursor| async {
+            let page = source
+                .page(&token(), &request(Some(cursor.into_sync_cursor())))
+                .await
+                .unwrap();
+            Cursor::parse(Some(&page.cursor)).gaps
+        };
+
+        let starting = Cursor {
+            watched: Some(n - 91 * DAY),
             ..Cursor::default()
         };
-        let page = source
-            .page(&token(), &request(Some(week.into_sync_cursor())))
-            .await
-            .unwrap();
-        assert_eq!(Cursor::parse(Some(&page.cursor)).away, 0);
+        assert_eq!(gaps(starting).await, [(n - 91 * DAY, 91 * DAY)]);
+
+        let mid_pass = Cursor {
+            watched: Some(n - 20 * DAY),
+            pass: Some(Pass {
+                oldest: days_ago(30),
+                page: "next".into(),
+                top: None,
+            }),
+            ..Cursor::default()
+        };
+        assert_eq!(gaps(mid_pass).await, [(n - 20 * DAY, 20 * DAY)]);
+
+        let week = Cursor {
+            watched: Some(n - 7 * DAY),
+            ..Cursor::default()
+        };
+        assert_eq!(gaps(week).await, []);
+
+        let old = Cursor {
+            watched: Some(n - DAY),
+            gaps: vec![(n - 200 * DAY, 10 * DAY), (n - 100 * DAY, 10 * DAY)],
+            ..Cursor::default()
+        };
+        assert_eq!(gaps(old).await, [(n - 100 * DAY, 10 * DAY)]);
+    }
+
+    /// A cursor written with the `away` total of an unreleased build still parses, with no gap.
+    #[test]
+    fn a_cursor_with_an_away_total_still_parses() {
+        let cursor = SyncCursor(r#"{"newest":"1.000100","watched":5,"away":100}"#.into());
+        let parsed = Cursor::parse(Some(&cursor));
+        assert_eq!(parsed.newest.as_deref(), Some("1.000100"));
+        assert_eq!(parsed.watched, Some(5));
+        assert_eq!(parsed.gaps, []);
     }
 }

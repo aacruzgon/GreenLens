@@ -1221,7 +1221,8 @@ async fn the_daily_reread_deletes_what_the_vendor_no_longer_has() {
 }
 
 /// A re-read that catches up after a month without a sync (Slack's starts at the newest message
-/// seen) keeps only the ids in its window, so the cursor stays small, and deletes nothing older.
+/// seen) keeps only the ids in its window, sent or kept, so the cursor stays small, and deletes
+/// nothing older.
 #[tokio::test]
 async fn a_catching_up_reread_keeps_only_the_ids_in_its_window() {
     let month = Duration::from_hours(30 * 24);
@@ -1232,23 +1233,30 @@ async fn a_catching_up_reread_keeps_only_the_ids_in_its_window() {
         Box::new(
             move |r| match (r.reread_from, r.cursor.as_ref().map(|c| c.0.as_str())) {
                 (None, _) => Ok(page(
-                    vec![item("C1", "1.0", "before the gap", pinned())],
+                    vec![
+                        item("C1", "1.0", "before the gap", pinned()),
+                        item("C1", "4.0", "dated this week", pinned().plus(month)),
+                    ],
                     false,
                     "c",
                 )),
-                (Some(_), Some("c")) => Ok(page(
-                    vec![
-                        item(
-                            "C1",
-                            "2.0",
-                            "in the gap",
-                            pinned().plus(Duration::from_hours(240)),
-                        ),
-                        item("C1", "3.0", "this week", pinned().plus(month)),
-                    ],
-                    true,
-                    "r1",
-                )),
+                (Some(_), Some("c")) => Ok(FarmPage {
+                    // Both unchanged threads: one before the gap, one in the window.
+                    kept: vec!["C1/1.0".into(), "C1/4.0".into()],
+                    ..page(
+                        vec![
+                            item(
+                                "C1",
+                                "2.0",
+                                "in the gap",
+                                pinned().plus(Duration::from_hours(240)),
+                            ),
+                            item("C1", "3.0", "this week", pinned().plus(month)),
+                        ],
+                        true,
+                        "r1",
+                    )
+                }),
                 (Some(_), Some("r1")) if once.fetch_add(1, Ordering::SeqCst) == 0 => {
                     Err(FarmSourceError::RateLimited {
                         vendor: ConnectorKind::Slack,
@@ -1287,16 +1295,16 @@ async fn a_catching_up_reread_keeps_only_the_ids_in_its_window() {
     );
     assert_eq!(
         reread.seen.into_iter().collect::<Vec<_>>(),
-        ["C1/3.0"],
-        "the catch-up's older ids aren't kept"
+        ["C1/3.0", "C1/4.0"],
+        "the catch-up's older ids aren't kept, sent or kept"
     );
 
     b.clock.advance(Duration::from_secs(60));
     assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
     assert_eq!(
         b.count(owner.1).await,
-        3,
-        "nothing outside the window deleted"
+        4,
+        "nothing deleted: older records are outside the window, and the kept one was seen"
     );
 }
 
