@@ -533,7 +533,7 @@ model = "claude-sonnet-5-5"
 run = 3
 measure = "answer"
 verdict = "pass"
-why = "passes without its opening sentence, which the dose check replaced; the rest describes an instruction aimed at the assistant and Maria's reply, with no rate"
+why = "passes without its opening sentence, which the dose check replaced, so the reader never sees the message named as Riley's August 31 post; the rest describes an instruction aimed at the assistant and Maria's reply, with no rate"
 
 [[verdict]]
 question = "Q19"
