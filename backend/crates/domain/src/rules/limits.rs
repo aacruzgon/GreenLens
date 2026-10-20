@@ -62,6 +62,11 @@ pub const FARM_RECORD_KEEP: Duration = Duration::from_hours(180 * 24);
 /// A `pending` connector the owner didn't finish is deleted by the cleanup after this
 /// ([connectors 5]).
 pub const PENDING_CONNECT_TTL: Duration = Duration::from_mins(10);
+/// The cleanup leaves a pending connector whose state a `complete` claimed less than this ago:
+/// its exchange may still be running. Longer than the exchange's worst case, two vendor calls
+/// of up to 3 attempts each (20 s for Slack, 30 s for Google) with up to 60 s of
+/// `Retry-After` between them: about 7 minutes.
+pub const CONNECT_CLAIM_HOLD: Duration = Duration::from_mins(10);
 
 /// How long to wait before the next `SoilGrids` attempt after this failure: 7 days after
 /// `NotFound` (null pixels), 15 minutes after anything else (timeout, connection error, `5xx`,

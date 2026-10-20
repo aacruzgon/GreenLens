@@ -387,8 +387,14 @@ pub trait FarmRecordStore: Send + Sync {
         garden: Option<GardenId>,
     ) -> Result<Vec<ConnectorRow>, StoreError>;
 
-    /// The cleanup: deletes `pending` connectors created before the cutoff (10 minutes ago).
-    async fn delete_expired_pending(&self, before: Timestamp) -> Result<u32, StoreError>;
+    /// The cleanup: deletes `pending` connectors created before `before` (10 minutes ago),
+    /// except those a `complete` claimed at or after `claimed_before` (`CONNECT_CLAIM_HOLD`
+    /// ago), whose exchange may still be running; up to 500 a call.
+    async fn delete_expired_pending(
+        &self,
+        before: Timestamp,
+        claimed_before: Timestamp,
+    ) -> Result<u32, StoreError>;
 
     // ---- farm records ----
 

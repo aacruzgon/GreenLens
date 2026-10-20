@@ -31,7 +31,7 @@ use domain::{
         plan::{ActionPlan, PlanReason, PlanStep, PlanWhen, StepCategory},
         weather::{Coordinates, LocationPrecision},
     },
-    rules::limits::{FARM_RECORD_KEEP, PENDING_CONNECT_TTL, SYNC_NOW_INTERVAL},
+    rules::limits::{CONNECT_CLAIM_HOLD, FARM_RECORD_KEEP, PENDING_CONNECT_TTL, SYNC_NOW_INTERVAL},
     wire::Timestamp,
 };
 use store::{SurrealStore, apply_schema_with, ids::rid};
@@ -841,11 +841,20 @@ async fn counts_cleanup_and_deletion() {
     let pending = new_connector(&f, ConnectorKind::GoogleDrive);
     let pending_id = pending.id;
     store.create_connector(owner, pending).await.unwrap();
-    assert_eq!(store.delete_expired_pending(t0()).await.unwrap(), 0);
+    assert_eq!(
+        store
+            .delete_expired_pending(t0(), t0().minus(CONNECT_CLAIM_HOLD))
+            .await
+            .unwrap(),
+        0
+    );
     let ten_minutes_on = t0().plus(PENDING_CONNECT_TTL).plus(Duration::from_secs(1));
     assert_eq!(
         store
-            .delete_expired_pending(ten_minutes_on.minus(PENDING_CONNECT_TTL))
+            .delete_expired_pending(
+                ten_minutes_on.minus(PENDING_CONNECT_TTL),
+                ten_minutes_on.minus(CONNECT_CLAIM_HOLD)
+            )
             .await
             .unwrap(),
         1
@@ -1445,6 +1454,9 @@ async fn a_refreshed_secret_replaces_only_the_value_it_was_read_from() {
 
 /// T-E3.6 (docs/EON): the cleanup's cutoff is 10 minutes before now. A pending connector
 /// started 11 minutes ago is gone after it; one started 9 minutes ago and an active one stay.
+/// So does one started 11 minutes ago whose state a `complete` claimed 2 minutes ago (audit of
+/// PR 72): its exchange may still be running, so it goes only `CONNECT_CLAIM_HOLD` after the
+/// claim.
 #[tokio::test]
 async fn pending_connectors_older_than_ten_minutes_are_cleaned_up() {
     let store = support::store().await;
@@ -1463,17 +1475,30 @@ async fn pending_connectors_older_than_ten_minutes_are_cleaned_up() {
         .await
         .expect("the creator owns the second garden");
     store.create_connector(other_owner, fresh).await.unwrap();
+    let claimed = new_connector(&f, ConnectorKind::Slack);
+    let claimed_id = claimed.id;
+    store.create_connector(other_owner, claimed).await.unwrap();
+    store
+        .claim_connect(other_owner, claimed_id, "nonce-1".into(), at(9))
+        .await
+        .unwrap();
 
-    let now = at(11);
-    assert_eq!(
-        store
-            .delete_expired_pending(now.minus(PENDING_CONNECT_TTL))
-            .await
-            .unwrap(),
-        1
-    );
+    let cleanup = |now: Timestamp| {
+        store.delete_expired_pending(
+            now.minus(PENDING_CONNECT_TTL),
+            now.minus(CONNECT_CLAIM_HOLD),
+        )
+    };
+    assert_eq!(cleanup(at(11)).await.unwrap(), 1);
     assert!(store.connector_row(old_id).await.unwrap().is_none());
     assert!(store.connector_row(fresh_id).await.unwrap().is_some());
+    assert!(store.connector_row(claimed_id).await.unwrap().is_some());
+    assert!(store.connector_row(active).await.unwrap().is_some());
+
+    // Over 10 minutes after the claim, the claimed one goes too (and the fresh one, now old).
+    assert_eq!(cleanup(at(20)).await.unwrap(), 2);
+    assert!(store.connector_row(claimed_id).await.unwrap().is_none());
+    assert!(store.connector_row(fresh_id).await.unwrap().is_none());
     assert!(store.connector_row(active).await.unwrap().is_some());
 }
 

@@ -241,9 +241,10 @@ COMMIT;";
         row_fields!(),
         " FROM connector WHERE status = 'deleting' AND garden.deleting_at = NONE ORDER BY id;"
     );
-    /// The cleanup: one batch of `pending` connectors started before the cutoff. A pending
+    /// The cleanup: one batch of `pending` connectors started before the cutoff, leaving those
+    /// claimed since `$claimed_cutoff`, whose exchange may still be running. A pending
     /// connector holds no records.
-    pub const DELETE_EXPIRED_PENDING: &str = "DELETE (SELECT VALUE id FROM connector WHERE status = 'pending' AND created_at < $cutoff LIMIT 500) RETURN VALUE $before.id;";
+    pub const DELETE_EXPIRED_PENDING: &str = "DELETE (SELECT VALUE id FROM connector WHERE status = 'pending' AND created_at < $cutoff AND (oauth.claimed_at = NONE OR oauth.claimed_at < $claimed_cutoff) LIMIT 500) RETURN VALUE $before.id;";
 
     /// The stored hash of every chunk of these items (index `farm_record_connector`).
     pub const RECORD_HASHES: &str = "SELECT id, text_hash FROM farm_record WHERE connector = $connector AND vendor_id IN $vendor_ids;";
@@ -925,10 +926,15 @@ impl FarmRecordStore for SurrealStore {
         take_rows(&mut r, 0, WHAT)
     }
 
-    async fn delete_expired_pending(&self, before: Timestamp) -> Result<u32, StoreError> {
+    async fn delete_expired_pending(
+        &self,
+        before: Timestamp,
+        claimed_before: Timestamp,
+    ) -> Result<u32, StoreError> {
         const WHAT: &str = "delete expired pending connectors";
         let mut r = run_tx(&self.db, sql::DELETE_EXPIRED_PENDING, |q| {
             q.bind(("cutoff", dt(before)))
+                .bind(("claimed_cutoff", dt(claimed_before)))
         })
         .await
         .map_err(|f| f.into_store(WHAT))?;

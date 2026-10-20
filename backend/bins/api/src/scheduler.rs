@@ -19,8 +19,8 @@ use domain::{
         weather::{CellWeather, WeatherCell},
     },
     rules::limits::{
-        DELETE_BATCH, FINISHED_JOB_KEEP, PENDING_CONNECT_TTL, TOMBSTONE_KEEP, WEATHER_CACHE_KEEP,
-        soil_retry_after,
+        CONNECT_CLAIM_HOLD, DELETE_BATCH, FINISHED_JOB_KEEP, PENDING_CONNECT_TTL, TOMBSTONE_KEEP,
+        WEATHER_CACHE_KEEP, soil_retry_after,
     },
     wire::{LocalDate, Timestamp, V1},
 };
@@ -221,12 +221,18 @@ async fn cleanup(state: Arc<AppState>) -> Result<(), ApiError> {
 }
 
 /// Deletes the pending connectors whose connect started more than [`PENDING_CONNECT_TTL`]
-/// before `now`, a batch of up to 500 at a time until a batch comes back short. A pending
-/// connector holds no tokens and no records, so nothing is revoked.
+/// before `now`, a batch of up to 500 at a time until a batch comes back short, except those
+/// a `complete` claimed less than [`CONNECT_CLAIM_HOLD`] ago, whose exchange may still be
+/// running. A pending connector holds no tokens and no records, so nothing is revoked.
 pub async fn delete_expired_connects(state: &AppState, now: Timestamp) -> Result<(), ApiError> {
     let cutoff = now.minus(PENDING_CONNECT_TTL);
+    let claimed_cutoff = now.minus(CONNECT_CLAIM_HOLD);
     loop {
-        let deleted = state.ports.store.delete_expired_pending(cutoff).await?;
+        let deleted = state
+            .ports
+            .store
+            .delete_expired_pending(cutoff, claimed_cutoff)
+            .await?;
         if deleted > 0 {
             tracing::info!(deleted, "expired pending connectors deleted");
         }

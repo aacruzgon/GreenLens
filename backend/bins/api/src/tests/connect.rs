@@ -1728,10 +1728,13 @@ async fn the_cleanup_deletes_pending_connectors_older_than_ten_minutes() {
         store
             .farm_record_store
             .expect_delete_expired_pending()
-            .with(eq(now().minus(Duration::from_mins(10))))
+            .with(
+                eq(now().minus(Duration::from_mins(10))),
+                eq(now().minus(Duration::from_mins(10))),
+            )
             .times(1)
             .in_sequence(&mut seq)
-            .returning(move |_| Ok(deleted));
+            .returning(move |_, _| Ok(deleted));
     }
     let auth = signed_in(&mut store, None);
     let state = state_with_vendors(

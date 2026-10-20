@@ -529,7 +529,7 @@ The fragments that write observations (replacement per image, [database 5](../da
 | `due_connectors` | `DUE_CONNECTORS` on `connector_due`: `active`, `next_sync_at <= $now`, not waiting on new sources, earliest first |
 | `finish_sync`, `set_status` | `FINISH_SYNC`, `SET_STATUS`: never on a connector being deleted, never creating one; `FINISH_SYNC` is a transaction that keeps `next_sync_at` (and does not store a stopping failure) when it moved past `SyncOutcome::due_at` during the run |
 | `start_connector_deletion`, `delete_connector_batch` | `START_DELETION`; `DELETE_CONNECTOR_RECORDS` 500 at a time (only for a `deleting` connector), then `DELETE_CONNECTOR` |
-| `connectors_created_by`, `delete_expired_pending` | `CREATED_BY`; `DELETE_EXPIRED_PENDING`, 500 at a time |
+| `connectors_created_by`, `delete_expired_pending` | `CREATED_BY`; `DELETE_EXPIRED_PENDING`, 500 at a time, leaving a claim younger than `claimed_before` |
 | `record_hashes`, `upsert_records` | `RECORD_HASHES`; `UPSERT_RECORDS`, one transaction: a chunk without a vector keeps the stored one only when its `text_hash` is unchanged (`missing_vector` otherwise), and nothing is written for a connector that isn't `active` or `reauth_needed` (`NotFound`) |
 | `delete_records`, `delete_chunks_from`, `delete_source_records` | `DELETE_RECORDS` (`vendor_id IN $vendor_ids` on `farm_record_connector`); `DELETE_CHUNKS_FROM`, a key range `farm_record:[$connector, $vendor_id, $from]..=[$connector, $vendor_id, ..]`; `DELETE_SOURCE_RECORDS`, by the `source` stored on each record (index `farm_record_source`), 500 at a time |
 | `source_vendor_ids_since` | `SOURCE_VENDOR_IDS_SINCE`, the same source filter with `at >= $since` |
