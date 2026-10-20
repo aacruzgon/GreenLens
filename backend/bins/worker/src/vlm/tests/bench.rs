@@ -13,8 +13,9 @@ use std::{
 };
 
 use domain::{
-    jobs::{JobImage, VlmPayload},
+    jobs::{Indicator, JobImage, VlmPayload},
     ports::{LoadedImage, VisionModel},
+    rules::routing::{RoutableImage, findings_images, indicator_images},
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -30,6 +31,45 @@ struct Case {
     id: String,
     payload: VlmPayload,
     photos: BTreeMap<String, String>,
+}
+
+/// The images numbered within their kind, in the order given, for the routing rules.
+fn routable(images: &[JobImage]) -> Vec<RoutableImage<JobImage>> {
+    let mut out: Vec<RoutableImage<JobImage>> = Vec::new();
+    for image in images {
+        let nth = out.iter().filter(|r| r.kind == image.kind).count();
+        out.push(RoutableImage {
+            kind: image.kind,
+            nth_of_kind: u32::try_from(nth).unwrap_or(u32::MAX),
+            item: image.clone(),
+        });
+    }
+    out
+}
+
+/// Picks and orders both calls' images with the pipeline's own rules, as
+/// `pipeline::payloads::vlm_payload` does, so the bench sends what a scan would. The case
+/// offers its shots as `findings_images`, and in `indicator_images` any extra image for the
+/// indicators call (a one-photo case's photo again, as a `leaf_closeup`).
+fn route(payload: &mut VlmPayload) {
+    let shots = std::mem::take(&mut payload.findings_images);
+    let mut offered = shots.clone();
+    for image in &payload.indicator_images {
+        if !offered.iter().any(|o| o.image_id == image.image_id) {
+            offered.push(image.clone());
+        }
+    }
+    payload.findings_images = findings_images(&routable(&shots));
+    let indicators: Vec<&Indicator> = payload
+        .candidates
+        .iter()
+        .flat_map(|c| &c.indicators)
+        .collect();
+    payload.indicator_images = if indicators.is_empty() {
+        Vec::new()
+    } else {
+        indicator_images(&routable(&offered), &indicators, None)
+    };
 }
 
 /// Every image of the payload once, stored as the bucket would hold it, with the payload's
@@ -88,6 +128,9 @@ fn env_or<T: std::str::FromStr>(name: &str, default: T) -> T {
 ///   limit must be at least this, or it shrinks the images again.
 /// - `VLM_BENCH_CONCURRENCY`: jobs in flight at once, as a worker with that many `VLM_SLOTS`
 ///   would run them (default 1).
+/// - `CPU_PERMITS`: image preparations at once, as the worker's setting (default 2).
+///
+/// Both calls' images are chosen by the pipeline's routing rules (`route`).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs a VLM server"]
 #[allow(
@@ -111,7 +154,7 @@ async fn bench_cases() {
         .collect();
     let total = cases.len();
     let out = Arc::new(Mutex::new(std::fs::File::create(&out_path).unwrap()));
-    let cpu = Arc::new(Semaphore::new(4));
+    let cpu = Arc::new(Semaphore::new(env_or("CPU_PERMITS", 2_usize).max(1)));
     let slots = Arc::new(Semaphore::new(concurrency.max(1)));
     let started = Instant::now();
 
@@ -125,6 +168,7 @@ async fn bench_cases() {
             let _slot = slots.acquire_owned().await.unwrap();
             let a = adapter_with(&base_url, max_pixels, cpu).await;
             let mut payload = case.payload;
+            route(&mut payload);
             let images = load(&case.photos, &mut payload);
             let job = Instant::now();
             let result = a.analyse(ctx(), &payload, &images, Arc::new(Discard)).await;
@@ -185,5 +229,53 @@ async fn bench_cases() {
     eprintln!(
         "{total} cases, {failed} failed, {} s, max_pixels {max_pixels}, concurrency {concurrency}: {out_path}",
         started.elapsed().as_secs()
+    );
+}
+
+#[test]
+fn route_picks_both_calls_images_as_the_pipeline_does() {
+    use domain::scan::ImageKind as K;
+    let fixture: VlmPayload =
+        serde_json::from_str(include_str!("fixtures/tomato_leaf.json")).unwrap();
+    let template = fixture.findings_images[0].clone();
+    let shot = |n: u8, kind: K| JobImage {
+        image_id: format!("01JAX5AAAAAAAAAAAAAAAAAAA{n}").parse().unwrap(),
+        kind,
+        ..template.clone()
+    };
+    let ids = |images: &[JobImage]| images.iter().map(|i| i.image_id).collect::<Vec<_>>();
+
+    // Six shots in upload order: findings take the first 4 in the findings order, and the
+    // indicators call skips the flower and soil shots that no tomato question names.
+    let shots = [
+        shot(1, K::FlowerFruit),
+        shot(2, K::LeafUnderside),
+        shot(3, K::WholePlant),
+        shot(4, K::LeafCloseup),
+        shot(5, K::LeafCloseup),
+        shot(6, K::SoilSurface),
+    ];
+    let mut payload = VlmPayload {
+        findings_images: shots.to_vec(),
+        indicator_images: Vec::new(),
+        ..fixture.clone()
+    };
+    route(&mut payload);
+    let s = |n: usize| shots[n - 1].image_id;
+    assert_eq!(ids(&payload.findings_images), [s(3), s(4), s(2), s(6)]);
+    assert_eq!(ids(&payload.indicator_images), [s(4), s(5), s(3), s(2)]);
+
+    // A one-photo case offers its photo again as a close-up, for the indicators call only.
+    let (whole, closeup) = (shot(7, K::WholePlant), shot(8, K::LeafCloseup));
+    let mut payload = VlmPayload {
+        findings_images: vec![whole.clone()],
+        indicator_images: vec![closeup.clone(), whole.clone()],
+        ..fixture
+    };
+    route(&mut payload);
+    assert_eq!(ids(&payload.findings_images), [whole.image_id]);
+    assert_eq!(
+        ids(&payload.indicator_images),
+        [closeup.image_id, whole.image_id]
     );
 }
