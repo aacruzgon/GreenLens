@@ -63,6 +63,7 @@ fn new_connector(f: &Fixture, kind: ConnectorKind) -> NewConnector {
             device_hash: "h".repeat(43).parse().expect("a device hash"),
             verifier: Some(sealed(b"sealed-verifier")),
             expires_at: at(10),
+            claimed_at: None,
         }),
         sources: Vec::new(),
         created_at: t0(),
@@ -176,13 +177,46 @@ async fn connectors_and_the_due_query() {
     assert_eq!(oauth.expires_at, at(10));
     assert!(row.secret.is_none() && row.cursors.is_empty());
 
-    // The exchange: a wrong nonce loses, the right one activates, and a second use loses.
+    // The claim: a wrong nonce loses, the right one claims once, and a second claim loses.
+    let lost =
+        |r: Result<(), StoreError>| matches!(r, Err(StoreError::Conflict(Conflict::AlreadyExists)));
+    let claim =
+        |nonce: &'static str, now| store.claim_connect(owner, pending_id, nonce.into(), now);
+    assert!(lost(claim("other", at(1)).await));
     let done = |nonce: &str, now| CompletedConnect {
         nonce: nonce.into(),
         account: slack_account(),
         secret: sealed(b"sealed-token"),
         now,
     };
+    // Unclaimed, the exchange's compare-and-set loses.
+    assert!(matches!(
+        store
+            .complete_connect(owner, pending_id, done("nonce-1", at(1)))
+            .await,
+        Err(StoreError::Conflict(Conflict::AlreadyExists))
+    ));
+    claim("nonce-1", at(1)).await.unwrap();
+    assert!(
+        lost(claim("nonce-1", at(1)).await),
+        "a state is claimed once"
+    );
+    let row = store.connector_row(pending_id).await.unwrap().unwrap();
+    assert_eq!(row.oauth.and_then(|o| o.claimed_at), Some(at(1)));
+    // A release after a failed exchange lets the same state claim again; another nonce's
+    // release changes nothing.
+    store
+        .release_connect(owner, pending_id, "other".into())
+        .await
+        .unwrap();
+    assert!(lost(claim("nonce-1", at(1)).await));
+    store
+        .release_connect(owner, pending_id, "nonce-1".into())
+        .await
+        .unwrap();
+    claim("nonce-1", at(1)).await.unwrap();
+
+    // The exchange: a wrong nonce loses, the claimed one activates, and a second use loses.
     assert!(matches!(
         store
             .complete_connect(owner, pending_id, done("other", at(1)))
@@ -206,13 +240,18 @@ async fn connectors_and_the_due_query() {
     assert_eq!(row.secret, Some(sealed(b"sealed-token")));
     assert_eq!(row.next_sync_at, at(1), "due at once");
 
-    // An expired state loses too.
+    assert!(
+        lost(claim("nonce-1", at(2)).await),
+        "an active connector has no state"
+    );
+
+    // An expired state can't be claimed.
     let late = new_connector(&f, ConnectorKind::GoogleDrive);
     let late_id = late.id;
     store.create_connector(owner, late).await.unwrap();
     assert!(matches!(
         store
-            .complete_connect(owner, late_id, done("nonce-1", at(10)))
+            .claim_connect(owner, late_id, "nonce-1".into(), at(10))
             .await,
         Err(StoreError::Conflict(Conflict::AlreadyExists))
     ));
@@ -1330,6 +1369,29 @@ async fn other_holders_of_an_accounts_token_are_counted() {
     };
     assert_eq!(email(drive).await.unwrap(), 0, "the era one doesn't count");
     assert_eq!(email(demo).await.unwrap(), 1);
+}
+
+/// A3: two `complete`s claiming the same pending state at once: exactly one claims it, so the
+/// code is exchanged at most once.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn two_claims_at_once_spend_the_state_once() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let pending = new_connector(&f, ConnectorKind::GoogleDrive);
+    let id = pending.id;
+    store.create_connector(owner, pending).await.unwrap();
+    let (a, b) = tokio::join!(
+        store.claim_connect(owner, id, "nonce-1".into(), at(1)),
+        store.claim_connect(owner, id, "nonce-1".into(), at(1)),
+    );
+    let claimed = [&a, &b].iter().filter(|r| r.is_ok()).count();
+    assert_eq!(claimed, 1, "{a:?} {b:?}");
+    let lost = if a.is_ok() { b } else { a };
+    assert!(matches!(
+        lost,
+        Err(StoreError::Conflict(Conflict::AlreadyExists))
+    ));
 }
 
 /// A refreshed token is stored only over the sealed value it was refreshed from: of two

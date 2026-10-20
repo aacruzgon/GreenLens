@@ -47,8 +47,8 @@ use integrations::google_drive::Pkce;
 use crate::{
     config::OAuthClient,
     connect::{
-        OAuthState, StateError, VendorError, authorize_url, device_matches, redirect_uri,
-        return_location,
+        Exchanged, OAuthState, StateError, VendorError, authorize_url, device_matches,
+        redirect_uri, return_location,
     },
     error::ApiError,
     extract::{ApiJson, ApiQuery, access::Access, idempotency::IdemJson},
@@ -333,6 +333,7 @@ async fn start_connect(
                     device_hash: body.device_hash,
                     verifier,
                     expires_at: oauth.expires_at,
+                    claimed_at: None,
                 }),
                 sources: Vec::new(),
                 created_at: now,
@@ -354,8 +355,9 @@ async fn start_connect(
 }
 
 /// Checks a state against the pending connector it names: signed under this key, not expired,
-/// for `expected` when given, and still the pending connector's nonce (a used state no longer
-/// is: the exchange clears it). Returns the state and the connector.
+/// for `expected` when given, and still the pending connector's unclaimed nonce (a used state
+/// no longer is: `complete` claims it before the exchange, which then clears it). Returns the
+/// state and the connector.
 async fn check_state(
     state: &AppState,
     key: &ConnectorKey,
@@ -375,10 +377,9 @@ async fn check_state(
         .await?
         .ok_or_else(|| bad_state("the connector is gone"))?;
     let live = row.connector.status == ConnectorStatus::Pending
-        && row
-            .oauth
-            .as_ref()
-            .is_some_and(|p| p.nonce == oauth.nonce && p.expires_at > now);
+        && row.oauth.as_ref().is_some_and(|p| {
+            p.nonce == oauth.nonce && p.expires_at > now && p.claimed_at.is_none()
+        });
     if !live {
         return Err(bad_state("the state was used or replaced"));
     }
@@ -486,50 +487,101 @@ async fn complete(
         }
         None => None,
     };
-    let exchanged = match state
-        .connect
-        .exchange(
-            kind,
-            &body.code,
-            verifier,
-            &redirect_uri(&state.config.public_base),
+    // Claim the state before the exchange: of two `complete`s at once, one claims and the
+    // other is refused here, so the code is spent at most once.
+    let store = &state.ports.store;
+    store
+        .claim_connect(
+            access.member,
+            access.id,
+            oauth.nonce.clone(),
+            state.ports.clock.now(),
         )
         .await
-    {
-        Ok(exchanged) => exchanged,
-        // The owner's code: used, expired or wrong. A rejection of our own request (a
-        // misconfigured client) is not the owner's to fix and goes to `vendor_failure` (500).
-        Err(VendorError::AuthRefused { vendor, code }) => {
-            tracing::info!(connector = %access.id, %vendor, code, "the vendor refused the code");
-            return Err(ApiError::invalid_request(
-                "code",
-                "The authorization code was refused. Start the connection again.",
-            ));
-        }
-        Err(error) => return Err(vendor_failure(error)),
-    };
+        .map_err(|e| match e {
+            StoreError::Conflict(Conflict::AlreadyExists) => bad_state("the state was used"),
+            e => e.into(),
+        })?;
+    let exchanged =
+        exchange_claimed(state, access, kind, &body.code, verifier, &oauth.nonce).await?;
     let secret = exchanged.tokens.seal(key, access.id);
-    let connector = state
-        .ports
-        .store
+    let account = exchanged.account;
+    match store
         .complete_connect(
             access.member,
             access.id,
             CompletedConnect {
                 nonce: oauth.nonce,
-                account: exchanged.account,
+                account: account.clone(),
                 secret,
                 now: state.ports.clock.now(),
             },
         )
         .await
-        .map_err(|e| match e {
-            // Another `complete` with the same state won the compare-and-set.
-            StoreError::Conflict(Conflict::AlreadyExists) => bad_state("the state was used"),
-            e => e.into(),
-        })?;
-    tracing::info!(connector = %access.id, %kind, "connector connected");
-    Ok(Wire::ok(connector))
+    {
+        Ok(connector) => {
+            tracing::info!(connector = %access.id, %kind, "connector connected");
+            Ok(Wire::ok(connector))
+        }
+        Err(error) => {
+            // The vendor gave tokens that nothing will store (the connector was deleted or
+            // cleaned up during the exchange): revoke them, in the background, unless another
+            // connector holds the same account's.
+            tracing::warn!(connector = %access.id, error = %error, "connect lost after the exchange; revoking its tokens");
+            let runner = state.deletions.clone();
+            let id = access.id;
+            let tokens = exchanged.tokens;
+            state.tasks.spawn(async move {
+                runner.revoke_tokens(id, kind, Some(&account), tokens).await;
+            });
+            Err(match error {
+                StoreError::Conflict(Conflict::AlreadyExists) => bad_state("the state was used"),
+                e => e.into(),
+            })
+        }
+    }
+}
+
+/// The code exchange of a claimed state. When it fails, no tokens were given: the claim is
+/// released, so a retry of this `complete` (after an outage, say) can claim again; a refused
+/// code stays refused at the vendor.
+async fn exchange_claimed(
+    state: &AppState,
+    access: &Access<Owner, table::Connector>,
+    kind: ConnectorKind,
+    code: &str,
+    verifier: Option<SecretString>,
+    nonce: &str,
+) -> Result<Exchanged, ApiError> {
+    let redirect = redirect_uri(&state.config.public_base);
+    let error = match state
+        .connect
+        .exchange(kind, code, verifier, &redirect)
+        .await
+    {
+        Ok(exchanged) => return Ok(exchanged),
+        Err(error) => error,
+    };
+    if let Err(release) = state
+        .ports
+        .store
+        .release_connect(access.member, access.id, nonce.to_owned())
+        .await
+    {
+        tracing::warn!(connector = %access.id, error = %release, "claim not released");
+    }
+    Err(match error {
+        // The owner's code: used, expired or wrong. A rejection of our own request (a
+        // misconfigured client) is not the owner's to fix and goes to `vendor_failure` (500).
+        VendorError::AuthRefused { vendor, code } => {
+            tracing::info!(connector = %access.id, %vendor, code, "the vendor refused the code");
+            ApiError::invalid_request(
+                "code",
+                "The authorization code was refused. Start the connection again.",
+            )
+        }
+        error => vendor_failure(error),
+    })
 }
 
 /// `GET /connectors/{id}/available-sources`: the channels the bot is in, or the folders. Owner.

@@ -41,6 +41,10 @@ pub struct PendingConnect {
     pub verifier: Option<Sealed>,
     /// 10 minutes after the start.
     pub expires_at: Timestamp,
+    /// When a `complete` claimed the state ([`FarmRecordStore::claim_connect`]) to exchange the
+    /// code; `None` until then. A claimed state is spent: the callback and every other
+    /// `complete` refuse it.
+    pub claimed_at: Option<Timestamp>,
 }
 
 impl fmt::Debug for PendingConnect {
@@ -50,6 +54,7 @@ impl fmt::Debug for PendingConnect {
             .field("device_hash", &self.device_hash)
             .field("verifier", &self.verifier)
             .field("expires_at", &self.expires_at)
+            .field("claimed_at", &self.claimed_at)
             .finish()
     }
 }
@@ -231,9 +236,36 @@ pub trait FarmRecordStore: Send + Sync {
         connector: ConnectorId,
     ) -> Result<Option<ConnectorRow>, StoreError>;
 
-    /// `POST /connectors/{id}/complete`: a compare-and-set on `status = 'pending'`, the stored
-    /// nonce and its `expires_at` being after `done.now`; `Conflict(AlreadyExists)` when any
-    /// no longer holds (the state was used, replaced or expired).
+    /// `POST /connectors/{id}/complete`, before the code exchange: claims the pending state, a
+    /// compare-and-set on `status = 'pending'`, the stored nonce, its `expires_at` being after
+    /// `now` and no earlier claim, which sets `oauth.claimed_at`. Single use: of two
+    /// concurrent `complete`s, one claims and the other gets `Conflict(AlreadyExists)`, so the
+    /// code is spent at most once. `Conflict(AlreadyExists)` too when the state was used,
+    /// replaced or expired; `NotFound` when the connector is gone.
+    async fn claim_connect(
+        &self,
+        owner: Membership<Owner>,
+        connector: ConnectorId,
+        nonce: String,
+        now: Timestamp,
+    ) -> Result<(), StoreError>;
+
+    /// Undoes [`claim_connect`](Self::claim_connect) when the exchange failed before the vendor
+    /// gave tokens (an outage, a refused code), so a retry of the same `complete` can claim
+    /// again. Only the claim of `nonce` on a connector still `pending` is cleared; anything
+    /// else is left as it is.
+    async fn release_connect(
+        &self,
+        owner: Membership<Owner>,
+        connector: ConnectorId,
+        nonce: String,
+    ) -> Result<(), StoreError>;
+
+    /// `POST /connectors/{id}/complete`, after the exchange: a compare-and-set on
+    /// `status = 'pending'` and the stored nonce having been claimed; `Conflict(AlreadyExists)`
+    /// when that no longer holds, and `NotFound` when the connector is gone (deleted, or
+    /// removed by the pending cleanup while the exchange ran). The caller then revokes the
+    /// tokens it was given, which nothing stores.
     async fn complete_connect(
         &self,
         owner: Membership<Owner>,
@@ -448,6 +480,7 @@ mod tests {
             device_hash: "h".repeat(43).parse().unwrap(),
             verifier: None,
             expires_at: Timestamp::from(chrono::DateTime::UNIX_EPOCH),
+            claimed_at: None,
         };
         assert!(!format!("{pending:?}").contains("the-secret-nonce"));
     }

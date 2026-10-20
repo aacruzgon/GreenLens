@@ -113,13 +113,26 @@ COMMIT;"
     );
     /// One connector with its sync state.
     pub const CONNECTOR_ROW: &str = concat!("SELECT ", row_fields!(), " FROM ONLY $connector;");
-    /// `POST /connectors/{id}/complete`: a compare-and-set on `status = 'pending'`, the
-    /// stored nonce and its expiry, so a state works once.
+    /// `POST /connectors/{id}/complete`, before the exchange: claims the pending state, a
+    /// compare-and-set on `status = 'pending'`, the stored nonce, its expiry and no earlier
+    /// claim. Two claims at once write the same record, so one conflicts, is retried, and then
+    /// finds the claim and throws.
+    pub const CLAIM_CONNECT: &str = "BEGIN;
+LET $c = (SELECT status, oauth FROM ONLY $connector WHERE garden = $garden);
+IF $c = NONE { THROW 'not_found' };
+IF $c.status != 'pending' OR $c.oauth.nonce != $nonce OR $c.oauth.expires_at <= $now OR $c.oauth.claimed_at != NONE { THROW 'connect_lost' };
+UPDATE $connector SET oauth.claimed_at = $now;
+COMMIT;";
+    /// Clears this nonce's claim after a failed exchange; a no-op for anything else.
+    pub const RELEASE_CONNECT: &str = "UPDATE $connector SET oauth.claimed_at = NONE WHERE garden = $garden AND status = 'pending' AND oauth.nonce = $nonce;";
+    /// `POST /connectors/{id}/complete`, after the exchange: a compare-and-set on
+    /// `status = 'pending'` and the claimed nonce, so a state works once. The expiry was checked
+    /// by the claim.
     pub const COMPLETE_CONNECT: &str = concat!(
         "BEGIN;
 LET $c = (SELECT status, oauth FROM ONLY $connector WHERE garden = $garden);
 IF $c = NONE { THROW 'not_found' };
-IF $c.status != 'pending' OR $c.oauth.nonce != $nonce OR $c.oauth.expires_at <= $now { THROW 'connect_lost' };
+IF $c.status != 'pending' OR $c.oauth.nonce != $nonce OR $c.oauth.claimed_at = NONE { THROW 'connect_lost' };
 UPDATE $connector SET status = 'active', oauth = NONE, account = $account, secret = $secret,
   next_sync_at = $now, last_error = NONE;
 SELECT ", connector_fields!(), " FROM ONLY $connector;
@@ -301,6 +314,8 @@ pub struct OAuthRow {
     pub verifier: Option<Bytes>,
     /// 10 minutes after the start.
     pub expires_at: DateTime<Utc>,
+    /// When a `complete` claimed the state.
+    pub claimed_at: Option<DateTime<Utc>>,
 }
 
 /// A `connector` as created. No `Debug`: it holds the sealed tokens.
@@ -438,6 +453,7 @@ impl From<&PendingConnect> for OAuthRow {
             device_hash: p.device_hash.to_string(),
             verifier: p.verifier.as_ref().map(sealed_bytes),
             expires_at: dt(p.expires_at),
+            claimed_at: p.claimed_at.map(dt),
         }
     }
 }
@@ -454,6 +470,7 @@ impl TryFrom<OAuthRow> for PendingConnect {
             })?,
             verifier: row.verifier.map(|b| Sealed(b.into())),
             expires_at: ts(row.expires_at),
+            claimed_at: row.claimed_at.map(ts),
         })
     }
 }
@@ -647,6 +664,42 @@ impl FarmRecordStore for SurrealStore {
         .map_err(|f| farm_failure(f, WHAT))?;
         let last = r.num_statements().saturating_sub(2);
         take_one(&mut r, last, WHAT)?.ok_or(StoreError::NotFound)
+    }
+
+    async fn claim_connect(
+        &self,
+        owner: Membership<Owner>,
+        connector: ConnectorId,
+        nonce: String,
+        now: Timestamp,
+    ) -> Result<(), StoreError> {
+        const WHAT: &str = "claim connect";
+        run_tx(&self.db, sql::CLAIM_CONNECT, |q| {
+            q.bind(("connector", rid(&connector)))
+                .bind(("garden", rid(&owner.garden())))
+                .bind(("nonce", nonce.clone()))
+                .bind(("now", dt(now)))
+        })
+        .await
+        .map_err(|f| farm_failure(f, WHAT))?;
+        Ok(())
+    }
+
+    async fn release_connect(
+        &self,
+        owner: Membership<Owner>,
+        connector: ConnectorId,
+        nonce: String,
+    ) -> Result<(), StoreError> {
+        const WHAT: &str = "release connect";
+        run_tx(&self.db, sql::RELEASE_CONNECT, |q| {
+            q.bind(("connector", rid(&connector)))
+                .bind(("garden", rid(&owner.garden())))
+                .bind(("nonce", nonce.clone()))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        Ok(())
     }
 
     async fn set_sources(

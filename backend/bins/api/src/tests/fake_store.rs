@@ -524,6 +524,27 @@ mod farm_record_store {
         ) -> Result<Option<ConnectorRow>, StoreError> {
             self.farm_record_store.connector_row(connector).await
         }
+        async fn claim_connect(
+            &self,
+            owner: Membership<Owner>,
+            connector: ConnectorId,
+            nonce: String,
+            now: Timestamp,
+        ) -> Result<(), StoreError> {
+            self.farm_record_store
+                .claim_connect(owner, connector, nonce, now)
+                .await
+        }
+        async fn release_connect(
+            &self,
+            owner: Membership<Owner>,
+            connector: ConnectorId,
+            nonce: String,
+        ) -> Result<(), StoreError> {
+            self.farm_record_store
+                .release_connect(owner, connector, nonce)
+                .await
+        }
         async fn complete_connect(
             &self,
             owner: Membership<Owner>,

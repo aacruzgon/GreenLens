@@ -15,7 +15,7 @@ use domain::{
         ConnectorStatus, SyncErrorCode,
     },
     id::ConnectorId,
-    ports::{ConnectorRow, NewConnector, PendingConnect, SyncRequest},
+    ports::{Conflict, ConnectorRow, NewConnector, PendingConnect, StoreError, SyncRequest},
 };
 
 use super::*;
@@ -154,6 +154,7 @@ fn pending_row(kind: ConnectorKind) -> ConnectorRow {
             verifier: (kind == ConnectorKind::GoogleDrive)
                 .then(|| key().seal(SealPurpose::Pkce, id(), VERIFIER.as_bytes())),
             expires_at: now().plus(Duration::from_mins(10)),
+            claimed_at: None,
         }),
         cursors: BTreeMap::new(),
         next_sync_at: now(),
@@ -189,6 +190,22 @@ fn era_row() -> ConnectorRow {
 /// The vendors with no refresh due: Slack's bot token doesn't expire.
 fn no_refresh(vendors: &mut MockConnectVendors) {
     vendors.expect_refresh().returning(|_, _| Ok(None));
+}
+
+/// The store lets `complete` claim the pending state once, and release it `released` times.
+fn claims(store: &mut FakeStore, released: usize) {
+    store
+        .farm_record_store
+        .expect_claim_connect()
+        .withf(|_, c, nonce, at| *c == id() && nonce == NONCE && *at == now())
+        .times(1)
+        .returning(|_, _, _, _| Ok(()));
+    store
+        .farm_record_store
+        .expect_release_connect()
+        .withf(|_, c, nonce| *c == id() && nonce == NONCE)
+        .times(released)
+        .returning(|_, _, _| Ok(()));
 }
 
 /// A store whose `connector_row` answers `row` for `CONNECTOR`.
@@ -512,6 +529,7 @@ async fn complete_exchanges_the_code_and_seals_the_tokens() {
             })
         });
     let mut store = store_with(pending_row(ConnectorKind::GoogleDrive));
+    claims(&mut store, 0);
     store
         .farm_record_store
         .expect_complete_connect()
@@ -555,6 +573,7 @@ async fn a_code_the_vendor_refuses_is_400_and_the_connector_stays_pending() {
         })
     });
     let mut store = store_with(pending_row(ConnectorKind::Slack));
+    claims(&mut store, 1);
     store.farm_record_store.expect_complete_connect().never();
     let answer = send(
         store,
@@ -566,6 +585,89 @@ async fn a_code_the_vendor_refuses_is_400_and_the_connector_stays_pending() {
     .await;
     assert_eq!(answer.status, StatusCode::BAD_REQUEST);
     assert_eq!(answer.body["error"]["details"]["field"], "code");
+}
+
+/// A3: of two `complete`s with the same state, the one that loses the claim is refused
+/// before the exchange, so the code is spent at most once. (The claim's race itself runs on
+/// the embedded store: `two_claims_at_once_spend_the_state_once`.)
+#[tokio::test]
+async fn a_complete_that_loses_the_claim_never_exchanges_the_code() {
+    let mut vendors = MockConnectVendors::new();
+    vendors.expect_exchange().never();
+    let mut store = store_with(pending_row(ConnectorKind::GoogleDrive));
+    store
+        .farm_record_store
+        .expect_claim_connect()
+        .times(1)
+        .returning(|_, _, _, _| Err(StoreError::Conflict(Conflict::AlreadyExists)));
+    store.farm_record_store.expect_release_connect().never();
+    store.farm_record_store.expect_complete_connect().never();
+    let answer = send(
+        store,
+        on(),
+        Some(Role::Owner),
+        vendors,
+        complete_request(&good_state(), VERIFIER),
+    )
+    .await;
+    assert_eq!(answer.status, StatusCode::BAD_REQUEST);
+    assert_eq!(answer.body["error"]["details"]["field"], "state");
+}
+
+/// A3: the exchange gave tokens, but the final compare-and-set lost (the connector was deleted
+/// or cleaned up meanwhile): nothing stores them, so the grant is revoked.
+#[tokio::test]
+async fn tokens_the_store_no_longer_takes_are_revoked() {
+    let mut vendors = MockConnectVendors::new();
+    vendors.expect_exchange().times(1).returning(|_, _, _, _| {
+        Ok(Exchanged {
+            tokens: StoredTokens {
+                access_token: SecretString::from("ya29.access"),
+                refresh_token: Some(SecretString::from("1//refresh")),
+                expires_at: Some("2026-10-18T15:00:00Z".parse().unwrap()),
+            },
+            account: ConnectorAccount::GoogleDrive {
+                email: "owner@example.org".to_owned(),
+            },
+        })
+    });
+    vendors
+        .expect_revoke()
+        .withf(|kind, tokens| {
+            *kind == ConnectorKind::GoogleDrive
+                && tokens
+                    .refresh_token
+                    .as_ref()
+                    .is_some_and(|t| t.expose_secret() == "1//refresh")
+        })
+        .times(1)
+        .returning(|_, _| Ok(()));
+    let mut store = store_with(pending_row(ConnectorKind::GoogleDrive));
+    claims(&mut store, 0);
+    store
+        .farm_record_store
+        .expect_complete_connect()
+        .times(1)
+        .returning(|_, _, _| Err(StoreError::NotFound));
+    store
+        .farm_record_store
+        .expect_shared_account_connectors()
+        .with(
+            eq(ConnectorKind::GoogleDrive),
+            eq("owner@example.org".to_owned()),
+            eq(id()),
+        )
+        .times(1)
+        .returning(|_, _, _| Ok(0));
+    let answer = send(
+        store,
+        on(),
+        Some(Role::Owner),
+        vendors,
+        complete_request(&good_state(), VERIFIER),
+    )
+    .await;
+    assert_eq!(answer.status, StatusCode::NOT_FOUND);
 }
 
 /// Our own request rejected (a misconfigured OAuth client: Slack's `bad_client_secret`,
@@ -580,6 +682,7 @@ async fn a_rejected_client_at_complete_is_500_not_400() {
         })
     });
     let mut store = store_with(pending_row(ConnectorKind::Slack));
+    claims(&mut store, 1);
     store.farm_record_store.expect_complete_connect().never();
     let answer = send(
         store,
@@ -604,8 +707,11 @@ async fn a_vendor_outage_at_complete_is_503_upstream_unavailable() {
             source: None,
         })
     });
+    // The claim is released, so a retry of the same `complete` can claim again.
+    let mut store = store_with(pending_row(ConnectorKind::Slack));
+    claims(&mut store, 1);
     let answer = send(
-        store_with(pending_row(ConnectorKind::Slack)),
+        store,
         on(),
         Some(Role::Owner),
         vendors,
