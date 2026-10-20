@@ -128,6 +128,21 @@ struct Probed {
     calls: u32,
 }
 
+/// What one older thread's check found.
+#[derive(Debug)]
+enum Check {
+    /// As stored.
+    Unchanged,
+    /// Slack no longer has the thread: forgotten; its record leaves with the 180-day cleanup.
+    Gone,
+    /// A reply arrived or went: the thread read in full, and what to remember of it (`None`
+    /// when no reply is left).
+    Changed {
+        item: FarmItem,
+        thread: Option<Thread>,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Pass {
     /// The pass's `oldest`, which Slack's page cursor belongs to.
@@ -353,7 +368,8 @@ impl SlackSource {
     /// next ones after `cursor.probed` among the threads whose parent is older than 7 days and
     /// whose last reply is within 30 days of the request's now. A thread whose `latest_reply` or
     /// `reply_count` moved is read in full and returned as an item; one Slack no longer has is
-    /// forgotten.
+    /// forgotten. A failure other than a refused token ends the checks and keeps `probed` before the thread
+    /// that failed: the page stands.
     async fn probe_older_threads(
         &self,
         token: &SecretString,
@@ -362,7 +378,6 @@ impl SlackSource {
         request: &FarmPageRequest,
         cursor: &mut Cursor,
     ) -> Result<Probed, FarmClientError> {
-        let channel = request.source.id.as_str();
         let now = request.oldest.plus(FARM_RECORD_KEEP);
         let parent_before = now.minus(PROBE_PARENT_AGE).unix_seconds();
         let reply_after = now.minus(PROBE_REPLY_AGE).unix_seconds();
@@ -386,46 +401,76 @@ impl SlackSource {
         let mut probed = Probed::default();
         for ts in chosen {
             probed.calls += 1;
-            cursor.probed = Some(ts.clone());
-            let found = match self
-                .client
-                .conversations_thread_parent(token, team_id, channel, &ts)
+            let stored = cursor.threads.get(&ts);
+            let check = match self
+                .check_thread(token, team_id, url, request, &ts, stored)
                 .await
             {
-                Ok(found) => found,
-                Err(FarmClientError::NotFound { .. }) => None,
-                Err(e) => return Err(e),
+                Ok(check) => check,
+                Err(e @ FarmClientError::AuthRefused { .. }) => return Err(e),
+                Err(e) => {
+                    // The page stands; this thread is the first checked next time.
+                    tracing::debug!(error = %e, "older-thread checks stopped");
+                    break;
+                }
             };
-            let Some(parent) = found else {
-                cursor.threads.remove(&ts);
-                continue;
-            };
-            let latest = parent.latest_reply.clone().unwrap_or_default();
-            let stored = cursor.threads.get(&ts);
-            if stored
-                .is_some_and(|t| t.latest_reply == latest && t.reply_count == parent.reply_count)
-            {
-                continue;
+            cursor.probed = Some(ts.clone());
+            match check {
+                Check::Unchanged => {}
+                Check::Gone => {
+                    cursor.threads.remove(&ts);
+                }
+                Check::Changed { item, thread } => {
+                    match thread {
+                        Some(thread) => cursor.threads.insert(ts, thread),
+                        None => cursor.threads.remove(&ts),
+                    };
+                    probed.items.push(item);
+                }
             }
-            let replies = self.replies(token, team_id, channel, &ts).await?;
-            if parent.reply_count > 0 {
-                cursor.threads.insert(
-                    ts.clone(),
-                    Thread {
-                        latest_reply: latest,
-                        reply_count: parent.reply_count,
-                        text: short_hash(&parent.text),
-                    },
-                );
-            } else {
-                cursor.threads.remove(&ts);
-            }
-            probed.items.push(
-                self.item(token, team_id, url, &request.source, parent, replies)
-                    .await?,
-            );
         }
         Ok(probed)
+    }
+
+    /// One older thread's check: its parent alone, then, when its `latest_reply` or
+    /// `reply_count` moved from `stored`, the thread in full. Nothing is changed here, so a
+    /// failure leaves the cursor as it was.
+    async fn check_thread(
+        &self,
+        token: &SecretString,
+        team_id: &str,
+        url: &str,
+        request: &FarmPageRequest,
+        ts: &str,
+        stored: Option<&Thread>,
+    ) -> Result<Check, FarmClientError> {
+        let channel = request.source.id.as_str();
+        let found = match self
+            .client
+            .conversations_thread_parent(token, team_id, channel, ts)
+            .await
+        {
+            Ok(found) => found,
+            Err(FarmClientError::NotFound { .. }) => None,
+            Err(e) => return Err(e),
+        };
+        let Some(parent) = found else {
+            return Ok(Check::Gone);
+        };
+        let latest = parent.latest_reply.clone().unwrap_or_default();
+        if stored.is_some_and(|t| t.latest_reply == latest && t.reply_count == parent.reply_count) {
+            return Ok(Check::Unchanged);
+        }
+        let replies = self.replies(token, team_id, channel, ts).await?;
+        let thread = (parent.reply_count > 0).then(|| Thread {
+            latest_reply: latest,
+            reply_count: parent.reply_count,
+            text: short_hash(&parent.text),
+        });
+        let item = self
+            .item(token, team_id, url, &request.source, parent, replies)
+            .await?;
+        Ok(Check::Changed { item, thread })
     }
 
     /// A message with its replies joined, each reply on its own paragraph after its author's
@@ -906,5 +951,115 @@ mod threads {
         assert_eq!(calls.lock().unwrap().len(), 1);
         assert_eq!(page.items.len(), 0);
         assert!(Cursor::parse(Some(&page.cursor)).threads.is_empty());
+    }
+
+    /// Answers `conversations.replies` with `body(ts, limit)`, recording each call.
+    async fn replies_by(
+        server: &MockServer,
+        body: impl Fn(&str, &str) -> Value + Send + Sync + 'static,
+    ) -> Calls {
+        let calls: Calls = Arc::default();
+        let seen = calls.clone();
+        Mock::given(method("GET"))
+            .and(path("/api/conversations.replies"))
+            .respond_with(move |r: &Request| {
+                let q = |k: &str| {
+                    r.url
+                        .query_pairs()
+                        .find(|(key, _)| key == k)
+                        .map(|(_, v)| v.into_owned())
+                        .unwrap_or_default()
+                };
+                let (ts, limit) = (q("ts"), q("limit"));
+                seen.lock().unwrap().push((ts.clone(), limit.clone()));
+                ResponseTemplate::new(200).set_body_json(body(&ts, &limit))
+            })
+            .mount(server)
+            .await;
+        calls
+    }
+
+    /// A cursor with two older threads due a check, `p1` before `p2`, and a history page with
+    /// one new message.
+    async fn two_due(server: &MockServer) -> (String, String, String, SyncCursor) {
+        users(server).await;
+        let new = days_ago(0);
+        history(
+            server,
+            vec![json!({ "ts": new, "user": "U1", "text": "new" })],
+        )
+        .await;
+        let (p1, p2) = (days_ago(60), days_ago(50));
+        let start = cursor_of(vec![
+            (&p1, thread(&days_ago(20), 1)),
+            (&p2, thread(&days_ago(20), 1)),
+        ]);
+        (p1, p2, new, start)
+    }
+
+    #[tokio::test]
+    async fn a_failed_check_ends_the_checks_and_keeps_the_page() {
+        let server = MockServer::start().await;
+        let (p1, _p2, new, start) = two_due(&server).await;
+        let calls = replies_by(
+            &server,
+            |_, _| json!({ "ok": false, "error": "invalid_arguments" }),
+        )
+        .await;
+        let page = source(&server)
+            .page(&token(), &request(Some(start.clone())))
+            .await
+            .expect("the page stands");
+        assert_eq!(calls.lock().unwrap().len(), 1, "no second check");
+        assert_eq!(page.probes, 1);
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].vendor_id, format!("C_FIELD/{new}"));
+        let cursor = Cursor::parse(Some(&page.cursor));
+        assert_eq!(
+            cursor.probed, None,
+            "the failed thread is checked first next time"
+        );
+        assert_eq!(cursor.threads, Cursor::parse(Some(&start)).threads);
+
+        // A check that finds a reply, then fails to read the thread: as if never checked.
+        let server = MockServer::start().await;
+        let (_, _, _, start) = two_due(&server).await;
+        let latest = days_ago(1);
+        let answer = parent(&p1, 2, &latest);
+        replies_by(&server, move |_, limit| {
+            if limit == "1" {
+                json!({ "ok": true, "messages": [answer] })
+            } else {
+                json!({ "ok": false, "error": "invalid_arguments" })
+            }
+        })
+        .await;
+        let page = source(&server)
+            .page(&token(), &request(Some(start.clone())))
+            .await
+            .expect("the page stands");
+        assert_eq!(page.items.len(), 1, "only the new message");
+        let cursor = Cursor::parse(Some(&page.cursor));
+        assert_eq!(cursor.probed, None);
+        assert_eq!(cursor.threads, Cursor::parse(Some(&start)).threads);
+    }
+
+    #[tokio::test]
+    async fn a_refused_token_on_a_check_fails_the_page() {
+        let server = MockServer::start().await;
+        let (_, _, _, start) = two_due(&server).await;
+        replies_by(
+            &server,
+            |_, _| json!({ "ok": false, "error": "invalid_auth" }),
+        )
+        .await;
+        let failed = source(&server)
+            .page(&token(), &request(Some(start)))
+            .await
+            .expect_err("refused");
+        assert!(
+            matches!(failed, FarmClientError::AuthRefused { .. }),
+            "{failed:?}"
+        );
     }
 }
