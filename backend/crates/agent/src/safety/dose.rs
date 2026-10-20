@@ -13,10 +13,17 @@ use regex::{Regex, RegexBuilder, RegexSet, RegexSetBuilder};
 
 use super::{ProductCatalogue, sentences::sentence_spans};
 
-/// A quantity in the measure and rate rules: a number (`2`, `0.5`, `1/2`, `1 1/2`, `½`, the
-/// `2` of `2x`) or a quantity word (`one` … `twenty`, `thirty` … `ninety`, `hundred`,
-/// `thousand`, `dozen`, `several`, `some`, `double`, `twice`, `half`, `a`, `an`).
-const QUANTITY: &str = r"(?:(?:\d+(?:[.,]\d+)?(?:\s+\d+\s*/\s*\d+)?|\d+\s*/\s*\d+|\d*[½¼¾⅓⅔⅛])|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|dozen|several|some|double|twice|half|a|an)\b)";
+/// A quantity in the measure rules: a number (`2`, `0.5`, `1/2`, `1 1/2`, `½`, `⅜`, the `2` of
+/// `2x`) or a number word (`one` … `twenty`, `thirty` … `ninety`, `hundred`, `thousand`, `half`,
+/// `a`, `an`).
+const QUANTITY: &str = r"(?:(?:\d+(?:[.,]\d+)?(?:\s+\d+\s*/\s*\d+)?|\d+\s*/\s*\d+|\d*[½¼¾⅓⅔⅛⅕⅖⅗⅘⅙⅚⅜⅝⅞⅐⅑⅒])|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|half|a|an)\b)";
+
+/// What else counts as an amount beside a rate's unit phrase: vague, fractional and multiplying
+/// words, plural measure nouns ("capfuls per litre"), and a rate taken from a record or a habit
+/// ("the same rate", "the logged rate", "last week's dose"). Not `many`, which refusals use
+/// ("how many grams go in each litre"), and not the label's rate, which is what the advice says
+/// to follow.
+const RATE_AMOUNT: &str = r"\b(?:several|some|dozens?|double|twice|triple|thrice|quarters?|thirds?|tenths?|few|couple|pair|handful|hundreds|thousands|lots|plenty|capfuls|caps|scoops|drops|cups|spoons|teaspoons|tablespoons|tsps|tbsps|handfuls|sachets|tablets|pumps|squirts)\b|\b(?:same|usual|normal|previous|logged|recorded|log['’]s|last\s+[\p{L}]+['’]s)\s+(?:rate|dose|dosage|amount)s?\b";
 
 /// A quantity in the ratio rules: a number or `one` … `twenty`, never `a`, `an` or `half`.
 const RATIO_QUANTITY: &str = r"(?:\d+(?:[.,]\d+)?|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b)";
@@ -34,8 +41,8 @@ const OF_WITHIN_THREE: &str = r"(?:\s+[\p{L}'’-]+){0,2}\s+of\b";
 const RATE_UNIT: &str = r"(?:litres?|liters?|l|gallons?|gal|quarts?|pints?)";
 
 /// A rate's unit phrase: `per`, `each` or `every` and a volume, or `/` and a volume. It fails a
-/// sentence that also holds a [`QUANTITY`] anywhere, or where at most one word comes before it
-/// (EON gap G13).
+/// sentence that also holds a [`QUANTITY`] or a [`RATE_AMOUNT`] anywhere, or where at most three
+/// words come before it (EON gap G13).
 const RATE_PHRASE: &str = r"(?:\b(?:per|each|every)\s+|/\s*)";
 
 /// Which rule a text broke. The order is the order of contracts 7's list.
@@ -49,10 +56,10 @@ pub enum DoseRule {
     /// "a few drops", "a splash" or "a squirt" with `of` within three words.
     VagueMeasure,
     /// `per`, `each` or `every` and a volume, or `/` and a volume, in a sentence that holds a
-    /// quantity anywhere, or where at most one word comes before that phrase: "a capful per
-    /// litre", "Per litre, add two scoops.", "2/l", "per litre of water" or "capful per litre"
-    /// after a line break. A sentence with the unit, no quantity and two or more words before it
-    /// ("I can't give you the amount per litre.") passes.
+    /// quantity anywhere, or where at most three words come before that phrase: "a capful per
+    /// litre", "Per litre, add two scoops.", "2/l", "Use capfuls/L.", "Do this per litre of
+    /// water." after "Add two capfuls.". A sentence with the unit, no quantity and four or more
+    /// words before it ("I can't give you the amount per litre.") passes.
     Rate,
     /// Two numbers around a colon: "1:10" (clock times are a known false positive).
     ColonRatio,
@@ -96,17 +103,18 @@ pub struct DoseMatch<'t> {
     pub sentence: &'t str,
 }
 
-/// A [`QUANTITY`] anywhere: the condition of the rate rule.
-static ANY_QUANTITY: LazyLock<Regex> = LazyLock::new(|| ci(QUANTITY));
+/// A [`QUANTITY`] or a [`RATE_AMOUNT`] anywhere: the condition of the rate rule.
+static ANY_QUANTITY: LazyLock<Regex> = LazyLock::new(|| ci(&format!("{QUANTITY}|{RATE_AMOUNT}")));
 
 /// What may come before a rate's unit phrase for it to count without a quantity: list markers
-/// and at most one word, as when a line break splits a rate ("a\ncapful per litre").
-static LINE_START: LazyLock<Regex> = LazyLock::new(|| ci(r"^[\s*•·>\-–—]*(?:[^\s/]+\s*)?$"));
+/// and at most three words, as when a sentence break splits a rate from its amount ("Add two
+/// capfuls. Do this per litre.", "a\ncapful per litre").
+static LINE_START: LazyLock<Regex> = LazyLock::new(|| ci(r"^[\s*•·>\-–—]*(?:[^\s/]+\s*){0,3}$"));
 
 impl DoseMatch<'_> {
-    /// Whether the sentence holds a [`QUANTITY`] ("2", "two", "a", "some"). A `Rate` match
-    /// without one is a unit phrase with at most one word before it, as after a line break;
-    /// logged without the text (EON gap G13).
+    /// Whether the sentence holds a [`QUANTITY`] or a [`RATE_AMOUNT`] ("2", "two", "a", "some",
+    /// "capfuls"). A `Rate` match without one is a unit phrase with at most three words before
+    /// it, as after a sentence break; logged without the text (EON gap G13).
     pub fn has_quantity(&self) -> bool {
         ANY_QUANTITY.is_match(self.sentence)
     }
@@ -151,7 +159,7 @@ enum Condition {
     None,
     /// A product name or a mixture word.
     Mixture,
-    /// A [`QUANTITY`] anywhere, or at most one word before the match (the rate rule).
+    /// An amount anywhere, or at most three words before the match (the rate rule).
     QuantityOrStart,
 }
 
@@ -357,6 +365,28 @@ mod tests {
             ("Add a splash of vinegar.", VagueMeasure),
             ("a squirt of soap", VagueMeasure),
             ("Use it at 5 ml per litre.", Measure),
+            ("Use 5 g/l.", Measure),
+            ("Use 5 ml/l.", Measure),
+            ("Mix at 1:10.", ColonRatio),
+            ("Use one part soap to ten parts water.", PartsRatio),
+            ("Use 1 part milk to 9 parts water.", PartsRatio),
+            ("Mix 1 in 10 with water.", MixtureRatio),
+            ("One part neem to ten of water.", MixtureRatio),
+            ("Use a 2% soap spray.", Percentage),
+            ("A 0.5 percent copper solution.", Percentage),
+        ];
+        for (text, rule) in cases {
+            assert_eq!(check(text), Some(*rule), "{text:?} should fail as {rule:?}");
+        }
+    }
+
+    /// The rate rule (EON gap G13): a unit phrase fails beside an amount anywhere in the
+    /// sentence, or with at most three words before it. Each case is a rate the earlier rules
+    /// or an audit found; some fail first as another rule.
+    #[test]
+    fn rates_fail() {
+        use DoseRule::*;
+        let cases: &[(&str, DoseRule)] = &[
             ("Use 25 g per litre.", Measure),
             ("Add a capful per litre.", Rate),
             ("Add half a cup per gallon.", Rate),
@@ -388,7 +418,28 @@ mod tests {
             ("per gallon", Rate),
             ("a\ncapful per litre", Rate),
             ("fifty grams", Measure),
-            ("several drops of soap", EverydayMeasure),
+            ("Add thirty ml of Kocide.", Measure),
+            // Fraction glyphs, fraction and vague words, plural measure nouns, multiples.
+            ("Use ⅜ cup per litre.", Rate),
+            ("Use quarter cup per litre.", Rate),
+            ("Add few caps per litre.", Rate),
+            ("Add dozens of drops per litre.", Rate),
+            ("Triple the label rate per litre.", Rate),
+            ("Use lots of soap per gallon.", Rate),
+            ("Use capfuls/L.", Rate),
+            ("ADD CAPFULS PER GALLON.", Rate),
+            // A rate taken from a record or a habit.
+            ("Use the same rate per litre as last time.", Rate),
+            ("Use the log's dose per litre.", Rate),
+            ("Repeat last week's rate per litre.", Rate),
+            // The amount in one sentence, the unit in the next.
+            ("Add two capfuls. Do this per litre of water.", Rate),
+            ("Add a capful. That is per litre.", Rate),
+            ("Add two capfuls.\nThat is per litre.", Rate),
+            ("Two capfuls. Mix that per litre.", Rate),
+            ("Use the product at 2. Rate is per litre of water.", Rate),
+            ("Use it per litre of water.", Rate),
+            ("dilute to /gal", Rate),
             ("Add a capful to every litre.", Rate),
             ("One scoop for each gallon.", Rate),
             ("Add a scoop of product per litre of water.", Rate),
@@ -396,15 +447,6 @@ mod tests {
             ("½ capful per pint", Rate),
             ("Apply 2/l.", Rate),
             ("Apply 3 capfuls/gal.", Rate),
-            ("Use 5 g/l.", Measure),
-            ("Use 5 ml/l.", Measure),
-            ("Mix at 1:10.", ColonRatio),
-            ("Use one part soap to ten parts water.", PartsRatio),
-            ("Use 1 part milk to 9 parts water.", PartsRatio),
-            ("Mix 1 in 10 with water.", MixtureRatio),
-            ("One part neem to ten of water.", MixtureRatio),
-            ("Use a 2% soap spray.", Percentage),
-            ("A 0.5 percent copper solution.", Percentage),
         ];
         for (text, rule) in cases {
             assert_eq!(check(text), Some(*rule), "{text:?} should fail as {rule:?}");
@@ -431,13 +473,19 @@ mod tests {
             "Water early in the morning.",
             "Spray the plant with water to knock off aphids.",
             "Use a product registered for this use and follow its label exactly.",
-            // A unit in a sentence with no quantity (EON gap G13: refusals E8.3 replaced).
+            // A unit in a sentence with no amount and four or more words before it (EON gap
+            // G13: the first two are refusals E8.3 replaced).
             "I can't tell you how much Kocide went into the backpack per litre.",
             "I can't give the amount per litre.",
             "I can't give you the amount per litre.",
-            "Use it per litre of water.",
+            "I can't say how many grams go in each litre.",
+            "Follow the label's rate per litre.",
+            "Use the label rate per litre.",
+            "Maria logged the rate in g/L for each spray.",
             "The label gives the rate in g/l or ml/l.",
-            "dilute to /gal",
+            // Quantity words that count only beside a rate's unit.
+            "Collect some litres of rainwater.",
+            "Water with several gallons each week.",
             "",
         ];
         for text in cases {
@@ -468,15 +516,16 @@ mod tests {
             "I can't give you an amount per litre.",
             "How much Kocide 3000 to use per litre is on the label.",
             "Some growers ask about the rate per litre.",
-            // At most one word before the unit, no quantity.
+            // At most three words before the unit, no amount.
             "Rates per litre are on the label.",
+            "DiPel's rate per litre is on its label.",
         ] {
             assert_eq!(check(text), Some(DoseRule::Rate), "{text:?}");
         }
     }
 
-    /// `has_quantity` (EON gap G13's log) is whether the sentence holds a quantity, so a rate
-    /// caught only because its unit starts the sentence logs `false`.
+    /// `has_quantity` (EON gap G13's log) is whether the sentence holds an amount, so a rate
+    /// caught only because at most three words come before its unit logs `false`.
     #[test]
     fn has_quantity_reads_the_sentence() {
         let products = ProductCatalogue::builtin();
@@ -488,7 +537,12 @@ mod tests {
         assert_eq!(quantity("Then\nper litre of water."), Some(false));
         assert_eq!(quantity("- per gallon"), Some(false));
         assert_eq!(quantity("a\ncapful per litre"), Some(false));
-        assert_eq!(quantity("Use the amount per litre."), None);
+        assert_eq!(
+            quantity("Add two capfuls.\nThat is per litre."),
+            Some(false)
+        );
+        assert_eq!(quantity("Use capfuls/L."), Some(true));
+        assert_eq!(quantity("I can't give you the amount per litre."), None);
     }
 
     /// The percentage and `in` rules look at the sentence, not the whole text: a measured share
