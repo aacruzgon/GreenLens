@@ -264,12 +264,17 @@ async fn era_slack_later_syncs_read_only_what_is_new() {
     assert_eq!(farm.count().await, 94);
     let embedded = farm.embedder.texts();
 
-    // Nothing new: one `conversations.history` call per channel, no replies, no embedding.
+    // Nothing new: one `conversations.history` call per channel, no embedding, and no thread
+    // read in full. Each pass also probes up to two older threads per channel with a
+    // `limit=1` `conversations.replies` call (connectors 6), and the fixture's are unchanged.
     let (history, replies) = (farm.calls(HISTORY).await, farm.calls(REPLIES).await);
     farm.clock.advance(SYNC_EVERY);
     assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
     assert_eq!(farm.calls(HISTORY).await - history, 2);
-    assert_eq!(farm.calls(REPLIES).await - replies, 0);
+    assert!(
+        farm.calls(REPLIES).await - replies <= 4,
+        "two probes a channel"
+    );
     assert_eq!(
         farm.embedder.texts(),
         embedded,
@@ -289,7 +294,8 @@ async fn era_slack_later_syncs_read_only_what_is_new() {
     assert_eq!(farm.embedder.texts(), embedded + 1);
 
     // A new reply to a thread of the last 7 days shows in its parent's `latest_reply`, which
-    // the daily re-read reads: only that thread's replies are fetched.
+    // the daily re-read reads: only that thread's replies are fetched (besides the older-thread
+    // probes, at most two a channel).
     let parent = "1792008000.012200";
     farm.tenant
         .inject(&json!({"messages": [{
@@ -301,7 +307,11 @@ async fn era_slack_later_syncs_read_only_what_is_new() {
     let replies = farm.calls(REPLIES).await;
     farm.clock.advance(Duration::from_hours(24));
     farm.run().await;
-    assert_eq!(farm.calls(REPLIES).await - replies, 1);
+    let made = farm.calls(REPLIES).await - replies;
+    assert!(
+        (1..=5).contains(&made),
+        "one thread read and up to four probes: {made}"
+    );
     let records = farm.records().await;
     assert!(
         records[&format!("C_CREW/{parent}")]
