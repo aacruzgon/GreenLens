@@ -29,9 +29,27 @@ def test_taxa_match_exactly_unless_descendants_are_asked_for():
 
 def test_only_cc0_and_cc_by_photos_are_kept_at_full_size():
     c = inat.candidate(obs(), TARGET)
-    assert [(p["id"], p["licence"]) for p in c["photos"]] == [(100, "CC BY"), (102, "CC0")]
+    assert [(p["id"], p["licence"]) for p in c["photos"]] == [(100, "CC BY 4.0"), (102, "CC0 1.0")]
     assert c["photos"][0]["url"].endswith("/photos/100/original.jpg")
     assert c["photos"][0]["file"] == "inat/42-100.jpg"
+    assert c["photos"][0]["credit"].endswith("; re-encoded, metadata removed")
+
+
+def test_a_photo_url_without_a_size_is_skipped_not_fetched_as_a_thumbnail():
+    o = obs(licences=("cc-by", "cc0"))
+    o["photos"][1]["url"] = "https://inaturalist-open-data.s3.amazonaws.com/photos/101/photo.jpg"
+    assert [p["id"] for p in inat.candidate(o, TARGET)["photos"]] == [100]
+    with pytest.raises(ValueError, match="/square."):
+        inat.original_url(o["photos"][1]["url"])
+
+
+def test_a_failed_download_is_skipped(tmp_path, monkeypatch):
+    def gone(*a, **k):
+        raise OSError("HTTP Error 404")
+    monkeypatch.setattr(inat.urllib.request, "urlopen", gone)
+    photo = inat.candidate(obs(), TARGET)["photos"][0]
+    assert inat.download(photo, tmp_path) is False
+    assert not (tmp_path / photo["file"]).exists()
 
 
 def test_strip_drops_the_metadata_and_applies_the_orientation():
@@ -75,7 +93,7 @@ def test_a_kept_observation_becomes_a_case(photos):
     assert c["images"][0]["file"] == "inat/42-102.jpg" and len(c["images"][0]["sha256"]) == 64
     assert c["truth"] == {"outcome": "diagnosed", "species_id": "apple", "problems": ["apple_scab"],
                           "organisms": [], "damage": []}
-    assert (c["label_basis"], c["label_confidence"], c["licence"]) == ("source_caption", "probable", "CC BY and CC0")
+    assert (c["label_basis"], c["label_confidence"], c["licence"]) == ("source_caption", "probable", "CC BY 4.0 and CC0 1.0")
     assert c["source"] == "https://www.inaturalist.org/observations/42" and c["reviewed_by"] == ""
     assert c["split"] == inat.split_of("inat-42") and c["split"] in ("dev", "test")
     assert inat.case({**entry, "split": "test"}, cand, photos, "x")["split"] == "test"
@@ -101,9 +119,26 @@ def test_the_split_is_stable_and_mostly_dev():
     assert 0.55 < splits.count("dev") / 1000 < 0.65
 
 
-def test_fetch_refuses_photos_from_before_2026(tmp_path):
-    with pytest.raises(SystemExit, match="2026-01-01"):
-        inat.main(["fetch", "--since", "2025-06-01", "--photos", str(tmp_path)])
+@pytest.mark.parametrize("since, needle", [("2025-06-01", "2026-01-01"), ("26-01-01", "YYYY-MM-DD"),
+                                            ("2026-13-01", "YYYY-MM-DD")])
+def test_fetch_refuses_photos_from_before_2026(tmp_path, since, needle):
+    with pytest.raises(SystemExit, match=needle):
+        inat.main(["fetch", "--since", since, "--photos", str(tmp_path)])
+
+
+def test_add_skips_an_observation_already_in_the_manifest_after_a_species_fix(photos, tmp_path):
+    import json
+    import yaml
+    entry, cand = kept({100: "leaf_closeup", 102: "whole_plant"})
+    inat_dir = photos / "inat"
+    (inat_dir / "candidates.json").write_text(json.dumps([cand]))
+    (inat_dir / "review.yaml").write_text(yaml.safe_dump([entry]))
+    manifest = tmp_path / "manifest.jsonl"
+    args = ["add", "--labeller", "x", "--photos", str(photos), "--manifest", str(manifest)]
+    assert inat.main(args) == 0
+    (inat_dir / "review.yaml").write_text(yaml.safe_dump([{**entry, "species_id": "pear"}]))
+    assert inat.main(args) == 0
+    assert len(manifest.read_text().splitlines()) == 1
 
 
 def test_a_name_shared_by_a_complex_and_a_species_picks_the_species():
