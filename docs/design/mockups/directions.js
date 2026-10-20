@@ -22,7 +22,7 @@
 const SYSTEM = '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif';
 const SYSTEM_DISPLAY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, "Segoe UI", Roboto, sans-serif';
 
-// The palette in Mark's F0 scaffold (app/src/ui/tokens.ts on feat/app-scaffold). Conservatory uses it too.
+// F0's baseline palette. Conservatory uses it too.
 const F0_COLORS = {
   light: {
     background: "#F6F7F2", surface: "#FFFFFF", surfaceMuted: "#EEF1E8", border: "#D9DFD2",
@@ -46,9 +46,9 @@ window.PDM_DIRECTIONS = [
     name: "Current F0",
     words: "Baseline · as built",
     summary:
-      "The palette, type and shapes in Mark's F0 scaffold (app/src/ui/tokens.ts on feat/app-scaffold), unchanged, so every direction can be compared with what exists.",
+      "F0's baseline palette, type and shapes, unchanged, so every direction can be compared with what exists.",
     philosophy: "Apple-native defaults: iOS text styles in the system font, inset cards, leaf green on warm off-white. Its accent and healthy are nearly the same green, and watch and sick look alike to colour-blind users (philosophies.md 7).",
-    references: [{ label: "PR #42", url: "https://github.com/aacruzgon/GreenLens/pull/42" }],
+    references: [],
     type: "System font throughout, iOS text styles 34 to 12 pt",
     motionNote: "Fades of about 250 ms, the spinner and the check; no springs.",
     garden3dNote: "Organic plant shapes in species greens, with a status ring under each plant; slow auto-orbit.",

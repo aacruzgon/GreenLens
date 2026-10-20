@@ -9,6 +9,438 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/connectors/oauth/callback": {
+      "get": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "`GET /connectors/oauth/callback?code&state&error`: the vendor's redirect. Public: no session\ncan say who consented, so it checks the state (signature, expiry, and that the pending\nconnector still holds its nonce), stores nothing, and answers `302` to the app with the\ncode and state, or the vendor's `error` (the owner declined). `400 invalid_request` for a\nbad, expired or used state; `409 invalid_state` while connectors are off.",
+        "operationId": "oauth_callback",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "description": "The authorization code; absent when the owner declined.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "description": "The state the API signed.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "description": "The vendor's error, such as `access_denied`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "To the app with `code` and `state`, or `error` and `state`"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/connectors/{id}": {
+      "delete": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "`DELETE /connectors/{id}`: `202`. The store marks the connector `deleting` (the list and the\nsync skip it), then a background task revokes the tokens with the vendor and deletes the\nrecords and the connector. Owner. `409 invalid_state` while connectors are off and for a\ndemo connector.",
+        "operationId": "delete_connector",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {},
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/{id}/available-sources": {
+      "get": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "`GET /connectors/{id}/available-sources`: the channels the bot is in, or the folders. Owner.\n`409 invalid_state` while connectors are off, for a demo connector, or one with no token\nyet; a token the vendor refuses makes the connector `reauth_needed` and is `409` too.",
+        "operationId": "available_sources",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailableSources"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/{id}/complete": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "`POST /connectors/{id}/complete`: exchanges the code. The owner who started the connect, with\nthe `device_verifier` whose hash started it; anyone else, or a wrong verifier, gets\n`404 not_found` and the pending connector is deleted. `400 invalid_request` for a bad,\nexpired or used state, or a code the vendor refused; `409 invalid_state` while connectors are\noff.",
+        "description": "The timeout is 60 s. Past it the answer is `503`, but the exchange runs on: a retry with the\nsame `Idempotency-Key` gets `409 request_in_progress` until it ends, and then its answer when\nthat is a `2xx` or a deterministic `4xx` (the only answers stored); after a `5xx` the key is\nreleased and the retry runs again.",
+        "operationId": "complete_connector",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID per user action",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteConnectorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connector"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/{id}/sources": {
+      "put": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "`PUT /connectors/{id}/sources`: Slack up to 10 channels, Drive 1 folder, each from\n`available-sources` (its name comes from there). Owner. The records of a source no longer\nchosen are deleted before the answer. `409 invalid_state` while connectors are off, for a\ndemo connector, or one with no token yet.",
+        "operationId": "set_sources",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetSourcesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connector"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/{id}/sync": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "`POST /connectors/{id}/sync`: **Sync now**, `202`; `429 rate_limited` with `retry_after_s`\nwithin 5 minutes of the last accepted request (decision 12, a compare-and-set in the store).\nOwner. `409 invalid_state` while connectors are off, for a demo connector, one that isn't\n`active`, or one stopped until its sources change. It has no body and holds no idempotency\nrecord: a repeat inside 5 minutes is the `429`, so it is naturally idempotent.",
+        "operationId": "sync_connector",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID per user action",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "202": {},
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/conversations": {
       "get": {
         "tags": [
@@ -660,6 +1092,131 @@
             }
           },
           "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/gardens/{id}/connectors": {
+      "get": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "`GET /gardens/{id}/connectors`: the garden's connectors with their sources, last sync and\nrecord counts. Any member. `available: false` with an empty list while connectors are off.",
+        "operationId": "list_connectors",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorList"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "`POST /gardens/{id}/connectors`: starts a connect, `pending`, and returns the vendor's consent\nURL. Owner. `409 invalid_state` while connectors are off, when this server has no OAuth\nclient for the vendor, or when the garden already has 2 connectors.",
+        "operationId": "create_connector",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID per user action",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateConnectorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateConnectorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
             "content": {
               "application/json": {
                 "schema": {
@@ -3788,6 +4345,13 @@
             "$ref": "#/components/schemas/Id",
             "description": "The diagnosis this version was written from."
           },
+          "farm_records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FarmCitation"
+            },
+            "description": "Every farm record the steps cite, resolved ([connectors 7]); absent when empty."
+          },
           "id": {
             "$ref": "#/components/schemas/Id",
             "description": "The plan version."
@@ -3918,6 +4482,15 @@
         ],
         "description": "`anchor`: `{ type: \"scan\" | \"plant\" | \"garden\"; id: Id }`, adjacently tagged."
       },
+      "AnchorType": {
+        "type": "string",
+        "description": "`anchor_type` query values.",
+        "enum": [
+          "scan",
+          "plant",
+          "garden"
+        ]
+      },
       "Answer": {
         "type": "string",
         "description": "`\"yes\" | \"no\" | \"unsure\"`: question options, indicator answers and evidence.",
@@ -3961,6 +4534,22 @@
           "url": {
             "$ref": "#/components/schemas/SignedUrl",
             "description": "Signed."
+          }
+        }
+      },
+      "AvailableSources": {
+        "type": "object",
+        "description": "`GET /connectors/{id}/available-sources` (owner): the channels the bot is a member of, or\nthe folders.",
+        "required": [
+          "sources"
+        ],
+        "properties": {
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorSource"
+            },
+            "description": "What the owner may choose from."
           }
         }
       },
@@ -4397,6 +4986,30 @@
           }
         }
       },
+      "CompleteConnectorRequest": {
+        "type": "object",
+        "description": "`POST /connectors/{id}/complete` (the owner who started it): exchanges the code.",
+        "required": [
+          "code",
+          "state",
+          "device_verifier"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "The vendor's authorization code, from the redirect to the app."
+          },
+          "device_verifier": {
+            "$ref": "#/components/schemas/DeviceVerifier",
+            "description": "The 32 random bytes whose hash started the connect."
+          },
+          "state": {
+            "type": "string",
+            "description": "The state from the same redirect."
+          }
+        },
+        "additionalProperties": false
+      },
       "CompleteJob": {
         "allOf": [
           {
@@ -4504,6 +5117,187 @@
         },
         "additionalProperties": false
       },
+      "Connector": {
+        "type": "object",
+        "description": "`Connector` ([connectors 5]): what `GET /gardens/{id}/connectors` lists and the connect\ncalls return. Tokens and the pending connect's state are never part of it.",
+        "required": [
+          "id",
+          "garden_id",
+          "kind",
+          "status",
+          "endpoint",
+          "sources",
+          "record_count",
+          "created_at"
+        ],
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/ConnectorAccount",
+            "description": "The connected workspace or account; absent while `pending`."
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/Timestamp",
+            "description": "When the connect started."
+          },
+          "endpoint": {
+            "$ref": "#/components/schemas/ConnectorEndpoint",
+            "description": "`vendor`, or `era` for the demo garden's synthetic data."
+          },
+          "garden_id": {
+            "$ref": "#/components/schemas/Id",
+            "description": "Its garden."
+          },
+          "id": {
+            "$ref": "#/components/schemas/Id",
+            "description": "The connector."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ConnectorKind",
+            "description": "Slack or Google Drive."
+          },
+          "record_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Synced records (chunks) held for the garden by this connector.",
+            "minimum": 0
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorSource"
+            },
+            "description": "The chosen channels (Slack, up to 10) or folder (Drive, 1); empty until chosen."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ConnectorStatus",
+            "description": "Where it stands."
+          },
+          "synced_at": {
+            "$ref": "#/components/schemas/Timestamp",
+            "description": "When the last sync finished; absent before the first."
+          }
+        }
+      },
+      "ConnectorAccount": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "From Slack's `auth.test` at connect.",
+            "required": [
+              "team_id",
+              "team_name",
+              "url",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "slack"
+                ]
+              },
+              "team_id": {
+                "type": "string",
+                "description": "The workspace's team id; one pacer and one token per team."
+              },
+              "team_name": {
+                "type": "string",
+                "description": "The workspace's name."
+              },
+              "url": {
+                "type": "string",
+                "description": "The workspace URL, which permalinks are built from."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "From the token response's `id_token`, or `about.get`.",
+            "required": [
+              "email",
+              "kind"
+            ],
+            "properties": {
+              "email": {
+                "type": "string",
+                "description": "The Google account."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "google_drive"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "`Connector.account`: whose workspace or Drive was connected, tagged by `kind`."
+      },
+      "ConnectorEndpoint": {
+        "type": "string",
+        "description": "`Connector.endpoint` ([connectors 9.4]): where the connector's vendor calls go. Set by server\nconfiguration only; no route creates an `era` connector.",
+        "enum": [
+          "vendor",
+          "era"
+        ]
+      },
+      "ConnectorKind": {
+        "type": "string",
+        "description": "`Connector.kind`, and `FarmCitation.system`: which vendor.",
+        "enum": [
+          "slack",
+          "google_drive"
+        ]
+      },
+      "ConnectorList": {
+        "type": "object",
+        "description": "`GET /gardens/{id}/connectors` ([connectors 11]). `available: false` when connectors are off\non this server (no `CONNECTOR_KEY`), with an empty list, as beliefs do.",
+        "required": [
+          "available",
+          "connectors"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "Connectors are configured on this server."
+          },
+          "connectors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Connector"
+            },
+            "description": "The garden's connectors, oldest first; empty when not available."
+          }
+        }
+      },
+      "ConnectorSource": {
+        "type": "object",
+        "description": "A chosen source: a Slack channel or the Drive folder.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The vendor's id: a channel id (`\"C024BE91L\"`) or a folder id."
+          },
+          "name": {
+            "type": "string",
+            "description": "`\"field-reports\"`, `\"Farm records\"`."
+          }
+        }
+      },
+      "ConnectorStatus": {
+        "type": "string",
+        "description": "`Connector.status` ([connectors 4], `connector.status`).",
+        "enum": [
+          "pending",
+          "active",
+          "reauth_needed",
+          "deleting"
+        ]
+      },
       "ConsentPrecision": {
         "type": "string",
         "description": "`GardenLocationInput.precision`: what the phone's location consent allows.",
@@ -4568,6 +5362,43 @@
           }
         ],
         "description": "`ConversationDetail extends Conversation` ([contracts 8])."
+      },
+      "CreateConnectorRequest": {
+        "type": "object",
+        "description": "`POST /gardens/{id}/connectors` (owner): starts a connect.",
+        "required": [
+          "kind",
+          "device_hash"
+        ],
+        "properties": {
+          "device_hash": {
+            "$ref": "#/components/schemas/DeviceHash",
+            "description": "`SHA-256(device_verifier)`; `complete` must bring the verifier."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ConnectorKind",
+            "description": "Which vendor."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateConnectorResponse": {
+        "type": "object",
+        "description": "`POST /gardens/{id}/connectors`' answer: the `pending` connector and the vendor's consent\nURL, opened with `openAuthSessionAsync`.",
+        "required": [
+          "connector",
+          "authorize_url"
+        ],
+        "properties": {
+          "authorize_url": {
+            "type": "string",
+            "description": "The vendor's consent page, with `state` = HMAC(connector, nonce, expiry)."
+          },
+          "connector": {
+            "$ref": "#/components/schemas/Connector",
+            "description": "The pending connector."
+          }
+        }
       },
       "CreateConversationRequest": {
         "type": "object",
@@ -4911,6 +5742,16 @@
           "not_for_this_kind",
           "storage_error"
         ]
+      },
+      "DeviceHash": {
+        "type": "string",
+        "description": "device hash",
+        "pattern": "^[A-Za-z0-9_-]{43}$"
+      },
+      "DeviceVerifier": {
+        "type": "string",
+        "description": "device verifier",
+        "pattern": "^[A-Za-z0-9_-]{43}$"
       },
       "Diagnosis": {
         "type": "object",
@@ -5692,6 +6533,48 @@
         "enum": [
           false
         ]
+      },
+      "FarmCitation": {
+        "type": "object",
+        "description": "`FarmCitation` ([connectors 7]): a synced farm record cited by a plan step or an assistant\nmessage. Stored with the plan or message as it was, so a deleted record's citation stays.",
+        "required": [
+          "record_id",
+          "system",
+          "title",
+          "at",
+          "link"
+        ],
+        "properties": {
+          "at": {
+            "$ref": "#/components/schemas/Timestamp",
+            "description": "The message's time, or the document's `modifiedTime`."
+          },
+          "author": {
+            "type": "string",
+            "description": "The author's display name."
+          },
+          "link": {
+            "type": "string",
+            "description": "Opens the record in Slack or Drive (or, for an `era` connector, the simulator)."
+          },
+          "record_id": {
+            "$ref": "#/components/schemas/FarmRecordId",
+            "description": "The `farm_record` cited."
+          },
+          "system": {
+            "$ref": "#/components/schemas/ConnectorKind",
+            "description": "Slack or Google Drive."
+          },
+          "title": {
+            "type": "string",
+            "description": "`\"#field-reports\"`, `\"Spray log 2026\"`."
+          }
+        }
+      },
+      "FarmRecordId": {
+        "type": "string",
+        "description": "<connector_id>.<n>.<vendor_id>",
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}\\.[0-9]+\\..+$"
       },
       "FeedbackRequest": {
         "type": "object",
@@ -7762,6 +8645,13 @@
                   "$ref": "#/components/schemas/Timestamp",
                   "description": "When it was stored."
                 },
+                "farm_citations": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FarmCitation"
+                  },
+                  "description": "The farm records an assistant message cites ([connectors 7]); absent when it cites none,\nand read as empty from a message stored before connectors."
+                },
                 "id": {
                   "$ref": "#/components/schemas/Id",
                   "description": "The message."
@@ -8527,6 +9417,13 @@
           "detail": {
             "type": "string",
             "description": "Detail."
+          },
+          "farm_citations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FarmRecordId"
+            },
+            "description": "Farm records the step cites ([connectors 7]): the farm's history, never the advice, so a\nstep still needs a knowledge source. Each appears in `ActionPlan.farm_records`.\nAbsent when empty; a plan stored before connectors reads as citing none."
           },
           "id": {
             "$ref": "#/components/schemas/StepId",
@@ -10197,6 +11094,23 @@
         },
         "additionalProperties": false
       },
+      "SetSourcesRequest": {
+        "type": "object",
+        "description": "`PUT /connectors/{id}/sources` (owner): Slack up to 10 channels, Drive 1 folder.",
+        "required": [
+          "sources"
+        ],
+        "properties": {
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceChoice"
+            },
+            "description": "The chosen sources; replaces the previous choice."
+          }
+        },
+        "additionalProperties": false
+      },
       "SignedUrl": {
         "type": "string",
         "description": "signed, short-lived image URL (15 minutes)"
@@ -10302,6 +11216,20 @@
           "ready",
           "unavailable"
         ]
+      },
+      "SourceChoice": {
+        "type": "object",
+        "description": "One chosen source in `PUT /connectors/{id}/sources`.",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "A channel id or a folder id from `available-sources`."
+          }
+        },
+        "additionalProperties": false
       },
       "SpeciesCandidate": {
         "type": "object",
@@ -10662,6 +11590,15 @@
           "forecast_alert",
           "chat",
           "user"
+        ]
+      },
+      "TaskState": {
+        "type": "string",
+        "description": "`?state=open|done|dismissed`, stored as `task.state` ([database 3]).",
+        "enum": [
+          "open",
+          "done",
+          "dismissed"
         ]
       },
       "TaskTrigger": {
@@ -11455,6 +12392,10 @@
     {
       "name": "chat",
       "description": "contracts 8"
+    },
+    {
+      "name": "connectors",
+      "description": "farm connectors, docs/connectors 5 and 11"
     },
     {
       "name": "media",

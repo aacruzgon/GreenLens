@@ -138,6 +138,7 @@ pub fn plan(d: &Diagnosis<Stored>) -> ActionPlan {
         steps: Vec::new(),
         watch_for: Vec::new(),
         citations: Vec::new(),
+        farm_records: Vec::new(),
         task_ids: Vec::new(),
         llm_model: "m".into(),
         prompt_version: "p".into(),

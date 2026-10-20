@@ -103,6 +103,19 @@ pub struct RemovedMember {
     pub chat_prefixes: Vec<ObjectPrefix>,
 }
 
+/// What a role change did: the member as they are now, and whether an owner lost the role, in
+/// which case the transaction also marked the farm connectors they created in the garden
+/// `deleting` ([connectors 8]), for the deletion runner to finish after the commit.
+///
+/// [connectors 8]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#8-privacy-and-security
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoleChange {
+    /// The member after the change.
+    pub member: Member,
+    /// The member was an owner and no longer is.
+    pub demoted_owner: bool,
+}
+
 /// The `garden`, `member_of` and `invite` tables.
 #[cfg_attr(feature = "mock", mockall::automock)]
 #[async_trait::async_trait]
@@ -217,13 +230,14 @@ pub trait GardenRepo: Send + Sync {
     ) -> Result<AcceptedInvite, StoreError>;
 
     /// `PATCH /gardens/{id}/members/{user_id}`. Demoting the last owner is
-    /// `Rejected(InvalidState)`, checked in the transaction.
+    /// `Rejected(InvalidState)`, checked in the transaction; demoting any other owner marks
+    /// their connectors in the garden `deleting` in it ([`RoleChange::demoted_owner`]).
     async fn change_role(
         &self,
         owner: Membership<Owner>,
         member: UserId,
         role: Role,
-    ) -> Result<Member, StoreError>;
+    ) -> Result<RoleChange, StoreError>;
 
     /// `DELETE /gardens/{id}/members/{user_id}`: by an owner, or the member themselves (the
     /// caller checks which). The last owner can't leave. Deletes the membership and returns what

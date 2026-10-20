@@ -1,9 +1,9 @@
 # PlantDoc class name → (species_id, problem_id | healthy)  (training.md §4, step 3)
 #
-# PROPOSED slugs, in the seed convention of contracts §10 (species: `tomato`; problems:
-# `<crop>_<problem>`). They must match the knowledge base's species/ and problems/ files once
-# those exist; the knowledge-base owner confirms or renames them. A class whose problem has
-# no knowledge-base profile is dropped (problem_id: null), never guessed.
+# Slugs in the seed convention of contracts §10 (species: `tomato`; problems:
+# `<crop>_<problem>`), confirmed by the knowledge-base owner on issue #4 (2026-10-18). They must
+# match the knowledge base's species/ and problems/ files. A class whose problem has no
+# knowledge-base profile is dropped (problem_id: null), never guessed.
 # Used for both the classification split and the detection split (whose classes are the same
 # names; the detector collapses them all to `leaf`).
 
@@ -41,4 +41,4 @@ classes:
   "Tomato leaf yellow virus":           { species_id: tomato,     problem_id: tomato_yellow_leaf_curl_virus }
   "Tomato mold leaf":                   { species_id: tomato,     problem_id: tomato_leaf_mold }
   "Tomato Septoria leaf spot":          { species_id: tomato,     problem_id: tomato_septoria_leaf_spot }
-  "Tomato two spotted spider mites leaf": { species_id: tomato,   problem_id: tomato_two_spotted_spider_mite }
+  "Tomato two spotted spider mites leaf": { species_id: tomato,   problem_id: tomato_spider_mites }

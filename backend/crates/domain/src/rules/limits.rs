@@ -13,6 +13,11 @@ pub const PENDING_ACTION_TTL: Duration = Duration::from_hours(24);
 pub const INVITE_TTL: Duration = Duration::from_hours(168);
 /// Idempotency keys are kept for 24 hours ([contracts 1]).
 pub const IDEMPOTENCY_TTL: Duration = Duration::from_hours(24);
+/// A `running` idempotency key older than this is taken over by the next retry: the process
+/// that began it died before it released or finished the key (a `complete` exchange outlives
+/// its request, so a restart mid-exchange leaves no `Drop` to release it). The longest request
+/// is a `complete` exchange, under 10 minutes (see [`CONNECT_CLAIM_HOLD`]).
+pub const IDEMPOTENCY_RUNNING_STALE: Duration = Duration::from_mins(10);
 /// Invite-code attempts per user per minute ([contracts 9]).
 pub const INVITE_ATTEMPTS_PER_MINUTE: u32 = 10;
 /// A chat message's text, in characters ([contracts 8]).
@@ -48,6 +53,26 @@ pub const SOIL_RETRY_OUTAGE: Duration = Duration::from_mins(15);
 /// `SoilGrids` retry after no data at the point and every nearby probe: a null pixel doesn't
 /// change on a quick retry.
 pub const SOIL_RETRY_NO_DATA: Duration = Duration::from_hours(168);
+/// Farm connectors per garden, `deleting` ones left out ([connectors 8], abuse and cost).
+pub const MAX_CONNECTORS_PER_GARDEN: u32 = 2;
+/// Farm records (chunks) per garden: a sync that would exceed it stops with `too_large`
+/// ([connectors 8]).
+pub const MAX_FARM_RECORDS_PER_GARDEN: u32 = 10_000;
+/// **Sync now** is accepted once per connector in this window (EON decision 12; contracts 2,
+/// `rate_limited`).
+pub const SYNC_NOW_INTERVAL: Duration = Duration::from_mins(5);
+/// Slack messages older than this are deleted by the cleanup; Drive files stay while they are
+/// under the folder ([connectors 6]).
+pub const FARM_RECORD_KEEP: Duration = Duration::from_hours(180 * 24);
+/// A `pending` connector the owner didn't finish is deleted by the cleanup after this
+/// ([connectors 5]).
+pub const PENDING_CONNECT_TTL: Duration = Duration::from_mins(10);
+/// The cleanup leaves a pending connector whose state a `complete` claimed less than this ago:
+/// its exchange may still be running. Longer than the exchange's worst case, two vendor calls
+/// (Slack: up to 3 attempts each, 20 s per attempt; Google: one attempt each, 30 s, because its
+/// `exchange_code` uses `RetryPolicy::NONE`) with up to 60 s of `Retry-After` between Slack's
+/// attempts: about 7 minutes at most.
+pub const CONNECT_CLAIM_HOLD: Duration = Duration::from_mins(10);
 
 /// How long to wait before the next `SoilGrids` attempt after this failure: 7 days after
 /// `NotFound` (null pixels), 15 minutes after anything else (timeout, connection error, `5xx`,

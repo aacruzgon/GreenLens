@@ -17,6 +17,10 @@
 //! **Disconnects.** Dropping the stream (the client went away) closes the channel. The task
 //! notices at its next send or while waiting for the model (`Sender::closed`), stops the model
 //! call by dropping its stream, and stores the message with `interrupted: true`.
+//!
+//! **Tool results are data.** A successful result goes back to the model inside a `data` block
+//! ([`crate::prompt::tool_result`]), like every other text the server didn't write; the stored
+//! copy keeps the tool's JSON. A refusal stays plain: the server wrote it for the model to act on.
 
 use std::sync::Arc;
 
@@ -27,6 +31,7 @@ use domain::{
         MessageCompleted, MessageRole, MessageStarted, PendingActionEvent, RescanRequested,
         SendMessageRequest, TextDelta, ToolFinished, ToolStarted, Usage,
     },
+    connectors::FarmCitation,
     error::{Budget, DomainError, ErrorCode},
     id::{ChatImageId, MessageId},
     ports::{
@@ -50,12 +55,12 @@ use crate::{
     memory,
     prompt::{
         BUDGET_TEXT, CHAT_PROMPT_VERSION, DataKind, LOOP_CAP_TEXT, OFF_TOPIC_PROMPT_VERSION,
-        POISON_CONTROL_VERSION, REFUSAL_TEXT, chat_system, data, off_topic_system,
+        POISON_CONTROL_VERSION, REFUSAL_TEXT, chat_system, data, off_topic_system, tool_result,
     },
     safety::{
         REPLACED_SENTENCE, RouteDecision, SAFETY_POLICY, SentenceSplitter, decide_route, dose_check,
     },
-    tools::{ToolCtx, ToolEffect, ToolRegistry},
+    tools::{Offer, ToolCtx, ToolEffect, ToolRegistry},
 };
 
 /// Events buffered between the turn task and the response body. Small: the body drains it as
@@ -240,6 +245,7 @@ impl ChatAgent {
                     text: text.clone(),
                     attachments: image_ids,
                     citations: Vec::new(),
+                    farm_citations: Vec::new(),
                     tool_calls: Vec::new(),
                     route: Some(decision.route()),
                     interrupted: false,
@@ -339,6 +345,8 @@ struct Reply {
     /// The text as streamed, failing sentences replaced.
     text: String,
     citations: Vec<Citation>,
+    /// The farm records the tools returned, each once (`Message.farm_citations`).
+    farm_citations: Vec<FarmCitation>,
     /// Tool calls and results, in order (stored, never sent to the app).
     tool_calls: Vec<ContentPart>,
     usage: Usage,
@@ -510,6 +518,7 @@ async fn store_reply(
                 text: reply.text.clone(),
                 attachments: Vec::new(),
                 citations: reply.citations.clone(),
+                farm_citations: reply.farm_citations.clone(),
                 tool_calls: reply.tool_calls.clone(),
                 route: Some(route),
                 interrupted,
@@ -717,12 +726,16 @@ async fn model_turn(
     let mut messages = ctx.history.clone();
     messages.push(last);
 
-    let role = turn.owner.membership().role();
+    // Offered by role and by whether the garden has farm records, read once with the context.
+    let offer = Offer {
+        role: turn.owner.membership().role(),
+        farm_records: ctx.farm_records,
+    };
     let mut request = ChatRequest {
         purpose: ChatPurpose::Chat,
         system: chat_system(),
         messages,
-        tools: inner.tools.specs_for(role),
+        tools: inner.tools.specs_for(offer),
         response_schema: None,
         max_tokens: deps.config.chat_max_tokens,
     };
@@ -757,8 +770,10 @@ async fn model_turn(
         let mut results = Vec::with_capacity(result.calls.len());
         let mut extra = Vec::new();
         for (call_id, name, arguments) in result.calls {
-            let Some((part, mut images)) =
-                run_tool(inner, &tool_ctx, role, out, reply, call_id, name, arguments).await
+            let Some((part, mut images)) = run_tool(
+                inner, &tool_ctx, offer, out, reply, call_id, name, arguments,
+            )
+            .await
             else {
                 return Ended::Interrupted;
             };
@@ -782,14 +797,14 @@ async fn model_turn(
 async fn run_tool(
     inner: &Inner,
     ctx: &ToolCtx<'_>,
-    role: domain::wire::Role,
+    offer: Offer,
     out: &mut Emitter,
     reply: &mut Reply,
     call_id: String,
     name: String,
     arguments: serde_json::Value,
 ) -> Option<(ContentPart, Vec<ContentPart>)> {
-    let tool = inner.tools.find(&name, role);
+    let tool = inner.tools.find(&name, offer);
     let label = tool.map_or("Working", |t| t.label());
     let started = ToolStarted {
         v: V1,
@@ -829,12 +844,24 @@ async fn run_tool(
             )
         }
     };
-    let part = ContentPart::ToolResult {
+    // The model reads a successful result inside a `data` block (gap G1); the stored copy keeps
+    // the tool's JSON as the app's records have it. A refusal is the server's own text.
+    let framed = if is_error {
+        content.clone()
+    } else {
+        let kind = tool.map_or(DataKind::ToolResult, crate::tools::DynTool::data_kind);
+        tool_result(kind, &content)
+    };
+    reply.tool_calls.push(ContentPart::ToolResult {
         call_id: call_id.clone(),
         content,
         is_error,
+    });
+    let part = ContentPart::ToolResult {
+        call_id: call_id.clone(),
+        content: framed,
+        is_error,
     };
-    reply.tool_calls.push(part.clone());
     let finished = ToolFinished {
         v: V1,
         call_id,
@@ -858,6 +885,17 @@ async fn send_effect(out: &mut Emitter, reply: &mut Reply, effect: ToolEffect) -
             }
             reply.citations.push(citation.clone());
             ChatEvent::Citation(CitationEvent { v: V1, citation })
+        }
+        ToolEffect::FarmCitation(citation) => {
+            // Stored with the message as `farm_citations`; contracts 8 has no event for it.
+            if !reply
+                .farm_citations
+                .iter()
+                .any(|c| c.record_id == citation.record_id)
+            {
+                reply.farm_citations.push(citation);
+            }
+            return true;
         }
         ToolEffect::PendingAction(a) => ChatEvent::PendingAction(PendingActionEvent {
             v: V1,

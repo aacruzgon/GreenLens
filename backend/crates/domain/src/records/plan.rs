@@ -5,9 +5,10 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::{
+    connectors::FarmCitation,
     id::{
-        DiagnosisId, OrganismId, PendingActionId, PlanId, PlantId, ProblemId, ScanId, SourceId,
-        StepId, TaskId, TreatmentId,
+        DiagnosisId, FarmRecordId, OrganismId, PendingActionId, PlanId, PlantId, ProblemId, ScanId,
+        SourceId, StepId, TaskId, TreatmentId,
     },
     records::diagnosis::Citation,
     scan::Question,
@@ -155,6 +156,11 @@ pub struct PlanStep {
     pub plant_id: Option<PlantId>,
     /// Source ids; at least one.
     pub citations: Vec<SourceId>,
+    /// Farm records the step cites ([connectors 7]): the farm's history, never the advice, so a
+    /// step still needs a knowledge source. Each appears in `ActionPlan.farm_records`.
+    /// Absent when empty; a plan stored before connectors reads as citing none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub farm_citations: Vec<FarmRecordId>,
     /// Added by the server to every chemical step.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(nullable = false)]
@@ -205,6 +211,9 @@ pub struct ActionPlan {
     pub watch_for: Vec<String>,
     /// Every source the steps cite, resolved.
     pub citations: Vec<Citation>,
+    /// Every farm record the steps cite, resolved ([connectors 7]); absent when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub farm_records: Vec<FarmCitation>,
     /// The tasks the steps created.
     pub task_ids: Vec<TaskId>,
     /// The LLM that wrote it.
@@ -307,7 +316,102 @@ pub struct PlanWriterOutput {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
+
+    const RECORD: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5C.0.C024BE91L/1729000000.000100";
+
+    fn step(farm_citations: Vec<FarmRecordId>) -> PlanStep {
+        PlanStep {
+            id: "s1".parse().unwrap(),
+            order: 1,
+            title: "Remove the lowest infected leaves".to_owned(),
+            detail: "Bag them; don't compost.".to_owned(),
+            treatment_id: None,
+            category: StepCategory::Cultural,
+            when: PlanWhen::Now,
+            targets: Vec::new(),
+            plant_id: None,
+            citations: vec!["example_extension_tomato_diseases".parse().unwrap()],
+            farm_citations,
+            safety_note: None,
+        }
+    }
+
+    fn plan(steps: Vec<PlanStep>, farm_records: Vec<FarmCitation>) -> ActionPlan {
+        ActionPlan {
+            id: "01JAX3K9T6R2B8V0QZ4M7D1E5A".parse().unwrap(),
+            scan_id: "01JAX3K9T6R2B8V0QZ4M7D1E5S".parse().unwrap(),
+            plant_id: "01JAX3K9T6R2B8V0QZ4M7D1E5P".parse().unwrap(),
+            version: 1,
+            supersedes: None,
+            provisional: false,
+            diagnosis_id: "01JAX3K9T6R2B8V0QZ4M7D1E5D".parse().unwrap(),
+            open_question: None,
+            constraints: Vec::new(),
+            summary: "Remove spotted leaves.".to_owned(),
+            steps,
+            watch_for: Vec::new(),
+            citations: Vec::new(),
+            farm_records,
+            task_ids: Vec::new(),
+            llm_model: "big".to_owned(),
+            prompt_version: "plan-v1".to_owned(),
+            created_at: "2026-10-19T09:00:00Z".parse().unwrap(),
+        }
+    }
+
+    fn old_plan_json() -> serde_json::Value {
+        json!({
+            "id": "01JAX3K9T6R2B8V0QZ4M7D1E5A", "scan_id": "01JAX3K9T6R2B8V0QZ4M7D1E5S",
+            "plant_id": "01JAX3K9T6R2B8V0QZ4M7D1E5P", "version": 1, "provisional": false,
+            "diagnosis_id": "01JAX3K9T6R2B8V0QZ4M7D1E5D", "constraints": [],
+            "summary": "Remove spotted leaves.",
+            "steps": [{
+                "id": "s1", "order": 1, "title": "Remove the lowest infected leaves",
+                "detail": "Bag them; don't compost.", "category": "cultural",
+                "when": {"kind": "now"}, "targets": [],
+                "citations": ["example_extension_tomato_diseases"]
+            }],
+            "watch_for": [], "citations": [], "task_ids": [], "llm_model": "big",
+            "prompt_version": "plan-v1", "created_at": "2026-10-19T09:00:00Z"
+        })
+    }
+
+    #[test]
+    fn a_plan_without_farm_records_leaves_both_fields_out() {
+        let p = plan(vec![step(Vec::new())], Vec::new());
+        assert_eq!(serde_json::to_value(&p).unwrap(), old_plan_json());
+        // A plan stored before connectors still reads.
+        assert_eq!(
+            serde_json::from_value::<ActionPlan>(old_plan_json()).unwrap(),
+            p
+        );
+    }
+
+    #[test]
+    fn a_plan_citing_a_farm_record_lists_it_in_the_step_and_the_plan() {
+        let record: FarmRecordId = RECORD.parse().unwrap();
+        let citation = FarmCitation {
+            record_id: record.clone(),
+            system: crate::connectors::ConnectorKind::Slack,
+            title: "#field-reports".to_owned(),
+            author: Some("Sam".to_owned()),
+            at: "2026-10-12T07:30:00Z".parse().unwrap(),
+            link: "https://maplerow.slack.com/archives/C024BE91L/p1729000000000100".to_owned(),
+        };
+        let p = plan(vec![step(vec![record])], vec![citation]);
+        let mut expected = old_plan_json();
+        expected["steps"][0]["farm_citations"] = json!([RECORD]);
+        expected["farm_records"] = json!([{
+            "record_id": RECORD, "system": "slack", "title": "#field-reports", "author": "Sam",
+            "at": "2026-10-12T07:30:00Z",
+            "link": "https://maplerow.slack.com/archives/C024BE91L/p1729000000000100"
+        }]);
+        assert_eq!(serde_json::to_value(&p).unwrap(), expected);
+        assert_eq!(serde_json::from_value::<ActionPlan>(expected).unwrap(), p);
+    }
 
     #[test]
     fn plan_writer_schema_is_strict_but_serde_is_tolerant() {

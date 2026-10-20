@@ -3,6 +3,9 @@
 //! fakes of the seams.
 
 mod beliefs;
+mod connect;
+mod connector_deletion;
+mod connectors;
 mod fake_store;
 
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
@@ -169,8 +172,13 @@ impl ImageProcessing for FixedImages {
 }
 
 fn config() -> Config {
+    config_with(&[])
+}
+
+/// [`config`] with extra variables of the test's.
+fn config_with(extra: &[(&'static str, &str)]) -> Config {
     let long = "x".repeat(40);
-    let vars = BTreeMap::from([
+    let mut vars = BTreeMap::from([
         ("CLERK_ISSUER", "https://clerk.example.org".to_owned()),
         ("API_URL_SIGNING_KEY", long.clone()),
         ("API_PUBLIC_BASE", "https://api.example.org".to_owned()),
@@ -186,6 +194,7 @@ fn config() -> Config {
         ("LLM_CHEAP_MODEL", "small".to_owned()),
         ("API_WEB_ORIGINS", "https://app.example.org".to_owned()),
     ]);
+    vars.extend(extra.iter().map(|&(k, v)| (k, v.to_owned())));
     Config::from_lookup(|k| vars.get(k).cloned()).unwrap()
 }
 
@@ -232,11 +241,40 @@ fn state_with_beliefs(
     images: FixedImages,
     beliefs: Arc<dyn BeliefStore>,
 ) -> Arc<AppState> {
+    state_with_config(store, auth, blob, images, beliefs, config())
+}
+
+/// [`state`] with a belief store and a configuration of the test's.
+fn state_with_config(
+    store: FakeStore,
+    auth: MockAuthVerifier,
+    blob: MockBlobStore,
+    images: FixedImages,
+    beliefs: Arc<dyn BeliefStore>,
+    config: Config,
+) -> Arc<AppState> {
+    state_with_vendors(
+        store,
+        auth,
+        config,
+        crate::connect::MockConnectVendors::new(),
+        (blob, images, beliefs),
+    )
+}
+
+/// [`state_with_config`] with the farm connectors' vendor calls of the test's.
+fn state_with_vendors(
+    store: FakeStore,
+    auth: MockAuthVerifier,
+    config: Config,
+    vendors: crate::connect::MockConnectVendors,
+    (blob, images, beliefs): (MockBlobStore, FixedImages, Arc<dyn BeliefStore>),
+) -> Arc<AppState> {
     let store: Arc<FakeStore> = Arc::new(store);
     let clock = Arc::new(FixedClock::at(NOW.parse().unwrap()));
     let tasks = TaskTracker::new();
     let shutdown = CancellationToken::new();
-    let config = Arc::new(config());
+    let config = Arc::new(config);
     let blob: Arc<MockBlobStore> = Arc::new(blob);
     let notifier = Arc::new(MockNotifier::new());
     let hub = Arc::new(EventHub::default());
@@ -256,6 +294,20 @@ fn state_with_beliefs(
     ));
     let auth_admin = Arc::new(MockAuthAdmin::new());
     let deletes = blob::DeleteQueue::new(blob.clone());
+    let vendors: Arc<dyn crate::connect::ConnectVendors> = Arc::new(vendors);
+    // As `wiring.rs` builds it: with connectors on, the runner revokes through the same seam.
+    let mut deletions = DeletionRunner::new(
+        store.clone(),
+        deletes.clone(),
+        auth_admin,
+        pusher.clone(),
+        clock.clone(),
+        tasks.clone(),
+        shutdown.clone(),
+    );
+    if let Some(key) = &config.connectors.key {
+        deletions = deletions.with_revoke(key.clone(), Arc::clone(&vendors));
+    }
     Arc::new(AppState {
         limits: RateLimits::new(1000),
         upload_permits: Arc::new(Semaphore::new(1)),
@@ -285,16 +337,10 @@ fn state_with_beliefs(
         hub,
         writers,
         broker,
-        deletions: DeletionRunner::new(
-            store,
-            deletes.clone(),
-            auth_admin,
-            pusher,
-            clock,
-            tasks.clone(),
-            shutdown.clone(),
-        ),
+        deletions,
         deletes,
+        connect: vendors,
+        farm_sync: None,
         shutdown,
         tasks,
     })

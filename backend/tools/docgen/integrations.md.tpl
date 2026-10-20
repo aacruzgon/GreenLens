@@ -1,6 +1,6 @@
 # PDM Backend: `integrations` crate
 
-> **Status:** Draft v0.5, 2026-10-17. v0.5: adds `agent_memory`, the `BeliefStore` over `SurrealDB` Agent Memory's REST API (section 14; the sections after it moved down one), 13 tests; 77 in all. v0.4: checked against Anthropic's documentation and the first live calls: the sanitiser turns `oneOf` into `enum` or `anyOf` (refused live), turns a nullable enum into one `enum` holding `null` so it isn't a union-typed parameter, and drops `format`s the API doesn't list; token counts that are `null` read as 0 and a missing `usage` defaults; `StopReason::ModelContextWindowExceeded`; 64 tests. v0.3.3: the Clerk tests generate their RSA key pair at run time, so no key file is committed, and the Svix tests use a made-up secret. v0.3.2: section 4 says the worker builds its client with a 600 s read timeout, not the 60 s default, because its VLM and hosted LLM calls aren't streamed, and their 240 s and 300 s deadlines end a slow call; the skills table became a plain list of the extra dependencies. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
+> **Status:** Draft v0.7.1, 2026-10-19. v0.7.1: a Slack thread's cursor keeps `reply_count`, so a deleted reply reads the thread again, and the end of a pass checks older threads for new replies (`conversations.replies`, `limit=1`, round-robin) up to the sync's `probe_limit`, two per connector run; a failed check other than a refused token keeps the page, a deleted parent is forgotten and its record removed, an answer for another message is skipped, and threads past 180 days are forgotten before any check; transport errors drop the request URL. v0.7: `slack::SlackSource` implements the `FarmSource` port for the sync (E4.2): one history page a call, the replies of changed threads, a name per user and team for a day, and its own cursor; `FarmClientError::into_source_error` maps a client failure to the port's error (section 15). v0.6: adds `farm`, `slack` and `google_drive`, the standalone clients for the farm connectors, and `era_sim`, the test support for Era's simulators (section 15, which moves the sections after it down one); the Era tests run in one serial nextest group (section 18). v0.5: adds `agent_memory`, the `BeliefStore` over `SurrealDB` Agent Memory's REST API (section 14; the sections after it moved down one), 13 tests; 77 in all. v0.4: checked against Anthropic's documentation and the first live calls: the sanitiser turns `oneOf` into `enum` or `anyOf` (refused live), turns a nullable enum into one `enum` holding `null` so it isn't a union-typed parameter, and drops `format`s the API doesn't list; token counts that are `null` read as 0 and a missing `usage` defaults; `StopReason::ModelContextWindowExceeded`; 64 tests. v0.3.3: the Clerk tests generate their RSA key pair at run time, so no key file is committed, and the Svix tests use a made-up secret. v0.3.2: section 4 says the worker builds its client with a 600 s read timeout, not the 60 s default, because its VLM and hosted LLM calls aren't streamed, and their 240 s and 300 s deadlines end a slow call; the skills table became a plain list of the extra dependencies. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
 
 Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate implements. Every listing below is copied from the compiled source of `crates/integrations`. `cargo check`, `cargo clippy -p integrations --all-targets` and `cargo test -p integrations` all pass: 77 tests, against `wiremock` servers and the live responses recorded on 2026-10-15.
 
@@ -20,11 +20,12 @@ Companion to the [backend architecture](README.md) and the [`domain` crate](doma
 12. [Expo Push](#12-expo-push)
 13. [Jev](#13-jev)
 14. [Agent Memory](#14-agent-memory)
-15. [Concurrency and lifetimes](#15-concurrency-and-lifetimes)
-16. [Errors](#16-errors)
-17. [Testing](#17-testing)
-18. [Open questions](#18-open-questions)
-19. [Sources](#19-sources)
+15. [Farm sources: Slack and Google Drive](#15-farm-sources-slack-and-google-drive)
+16. [Concurrency and lifetimes](#16-concurrency-and-lifetimes)
+17. [Errors](#17-errors)
+18. [Testing](#18-testing)
+19. [Open questions](#19-open-questions)
+20. [Sources](#20-sources)
 
 ---
 
@@ -46,6 +47,8 @@ Companion to the [backend architecture](README.md) and the [`domain` crate](doma
 | Expo Push | `expo_push` | `Notifier` | `api` |
 | Jev | `jev` | `TextClassifier` | `api`, when configured |
 | `SurrealDB` Agent Memory | `agent_memory` | `BeliefStore` | `api` (memory mirror, beliefs endpoint, `search_memory`), when configured |
+| Slack Web API | `slack` | a typed client, and `SlackSource`, the `FarmSource` port on it | `api`, the `connectors` task (E4) |
+| Google Drive API and OAuth | `google_drive` | a typed client (E4's sync builds the `FarmSource` port on it) | `api`, the `connectors` task (E4) |
 
 **What it never does.** It reads no database and no object store, and it holds no business rule. A failed fetch is reported, and the caller decides what to do: skip the gardens in a weather cell, set `soil_profile_status`, answer `503 upstream_unavailable`. It never reads the system clock for domain time: adapters that stamp `fetched_at` take an `Arc<dyn Clock>`, and token checks take `now` as an argument. No `reqwest` type appears in a public signature. Errors leave as the port's enum ([domain 9](domain.md#9-boundary-traits)), or as the client's own enum for the two LLM clients. The library error is kept as the `source`.
 
@@ -110,9 +113,23 @@ crates/integrations/
    ├─ clerk.rs                 ClerkVerifier: AuthVerifier; ClerkAdmin: AuthAdmin
    ├─ svix.rs                  SvixVerifier: WebhookVerifier; map_clerk_event
    ├─ agent_memory.rs          AgentMemory: BeliefStore (REST: scopes, facts, entities, query, forget)
+   ├─ farm.rs                  FarmClientError, FarmErrorCode: what both farm clients share
+   ├─ slack.rs                 SlackClient, SlackConfig, permalink
+   ├─ slack/
+   │  ├─ source.rs             SlackSource: the FarmSource port for the sync
+   │  ├─ wire.rs               Slack's response shapes (private)
+   │  └─ tests.rs              wiremock tests
+   ├─ google_drive.rs          DriveClient, DriveConfig, ExportFormat; the byte and count caps
+   ├─ google_drive/
+   │  ├─ wire.rs               Drive's and Google's response shapes
+   │  ├─ pkce.rs               Pkce: verifier and S256 challenge
+   │  └─ tests.rs              wiremock tests
+   ├─ era_sim.rs               feature `era-sim`, test support only: Tenant, Faults, fixture()
    ├─ expo_push.rs             ExpoPush: Notifier (push, check_receipts)
    └─ jev.rs                   JevClassifier: TextClassifier (stub)
 ```
+
+`tests/` holds the Era tests (`era_fixture.rs`, `era_slack.rs`, `era_drive.rs`; section 18). `era_sim` is compiled only with the `era-sim` feature, which the crate enables for its own tests, so no release build contains it.
 
 ---
 
@@ -466,7 +483,92 @@ Any transport failure or error status is `ModelError::Unavailable { model: "jev"
 
 ---
 
-## 15. Concurrency and lifetimes
+## 15. Farm sources: Slack and Google Drive
+
+**What they are.** Two standalone clients for a garden's farm connectors ([connectors 5 and 6](../connectors/README.md#5-connecting-and-tokens)). Slack's implements the `FarmSource` port through `SlackSource` (below), which the `connectors` task in `api` calls ([EON E4](../EON/README.md)); Drive's is next (E4.3). Both take the token as an argument of each call, so one client serves every workspace and account, and both reuse the shared `retry`, `RetryPolicy` and `Pacer` of section 4. Tokens are `SecretString` and never appear in an error or a log line.
+
+### The shared error
+
+One error type for both, with the codes a connector's `last_error` stores ([connectors 6](../connectors/README.md#6-sync)).
+
+@@items farm.rs FarmErrorCode FarmClientError@@
+
+`FarmClientError::code()` maps a failure to the stored string:
+
+| Failure | `last_error` |
+|---|---|
+| `AuthRefused` | `auth_refused`: the owner must reconnect |
+| `RateLimited` | `rate_limited`: the sync resumes from its cursor on a later run |
+| `NotFound` | `source_missing`: a chosen channel or folder is gone or not visible |
+| `Unavailable`, `Refused`, `Malformed` | `vendor_unavailable` |
+| (set by the sync, never by a client) | `too_large` |
+
+`Refused` is `vendor_unavailable` because nothing the owner does to the token fixes it, and the sync skips a refused single file instead of stopping.
+
+`FarmClientError::into_source_error(vendor, source_id)` turns a failure into the port's `FarmSourceError`, keeping the same `last_error` code: a `NotFound` while reading a chosen source is `SourceMissing` with that source's id; one on a call about the token or a user says nothing about the owner's choice and is `BadResponse`. Each adapter maps its client's errors through it.
+
+### Slack
+
+Read methods only, plus the OAuth exchange and the revoke: `auth.test`, `conversations.list`, `conversations.history`, `conversations.replies`, `users.info`, `auth.revoke` and `oauth.v2.access`.
+
+@@items slack.rs VENDOR SLACK_BASE_URL TIER_1_INTERVAL TIER_1_PAGE_LIMIT SlackConfig AuthTest SlackChannel SlackMessage HistoryPage SlackUser OAuthAccess SlackClient@@
+
+@@impl slack.rs impl SlackClient@@
+
+**`ok: false` at HTTP 200.** Slack refuses with status 200 and `{"ok": false, "error": "<code>"}`, so the client reads `ok` before anything else. `not_authed`, `invalid_auth`, `token_revoked`, `token_expired` and `account_inactive` are `AuthRefused`, and so are `missing_scope` and `no_permission`: the owner must reconnect to grant the scope. `channel_not_found`, `not_in_channel`, `thread_not_found` and `user_not_found` are `NotFound`. `ratelimited` and HTTP 429 are retried after the `Retry-After` the server sent, then `RateLimited`. A 5xx, `internal_error` or a timeout is retried, then `Unavailable`. Any other code is `Refused`, never retried. A code that isn't a short `snake_case` word is replaced by `unrecognised`, so a body can't leak through the code.
+
+**The pacer.** `conversations.history` and `conversations.replies` are Tier 1 for a new install of an app outside the Slack Marketplace: about one call a minute per method and workspace ([connectors 3](../connectors/README.md#3-decisions)). `TIER_1_INTERVAL` is 1 minute and `TIER_1_PAGE_LIMIT` 15 messages a page. Each (team, method) pair has its own `Pacer`, so every connector holding one team's token shares it. The pacers live in a `moka` cache bounded by `SlackConfig::max_pacers` (10,000), dropped after idling for twice the interval and at least 10 minutes, so the map can't grow without bound and a pacer is never dropped while its last call is inside its interval. A call waits for its turn. The sync bounds a run and continues from its cursor on the next one.
+
+**`SlackConfig::era`.** Points the client at an Era simulator: no pacing and no back-off, but a `Retry-After` is still honoured (up to 60 s). Pages stay at 15, so paging is exercised.
+
+**`users.info` without the email.** The method returns the user's names only (`SlackUser::label` picks the display name, then the real name). The email is never read, even when Slack sends one ([connectors 8](../connectors/README.md#8-privacy-and-security)).
+
+**Permalinks.** `permalink(workspace_url, channel, ts, thread_ts)` builds a message's link from `auth.test`'s workspace URL: `<url>/archives/<channel>/p<ts without the dot>`, with `?thread_ts=<parent>&cid=<channel>` for a reply. A parent (its `thread_ts` equal to its `ts`) gets the plain link. It makes no call.
+
+@@items slack.rs permalink@@
+
+### `SlackSource`: the port for the sync
+
+`SlackSource` wraps a `SlackClient` and implements `FarmSource` (E4.2, [connectors 6](../connectors/README.md#6-sync)). `api` builds one per endpoint: the real Slack with Tier 1 pacing, and an Era simulator with `SlackConfig::era`.
+
+@@items slack/source.rs REREAD_WINDOW USER_NAME_TTL SlackSource@@
+
+- **A page** is one `conversations.history` page of one channel (newest first), with the replies of the threads on it whose parent changed, and each author's name. A message's record joins its replies, each on its own paragraph after its author's name; joins, topic changes and pins are left out, and a reply sent to the channel too arrives with its thread.
+- **The cursor** is the adapter's own JSON in `SyncCursor`: `newest`, the newest `ts` of the finished passes; `pass`, a pass with pages left (its `oldest`, Slack's page cursor and the newest `ts` it has seen); `threads`, each thread parent's `latest_reply`, `reply_count` and a short hash of its text when its replies were read; and `probed`, the round-robin position of the older-thread checks. A new pass reads only what is after `newest` (`oldest` is exclusive), so a quiet channel costs one call. A pass interrupted by a `429` resumes from its page cursor on the next run, reading no page twice. A parent seen again with an unchanged `latest_reply`, `reply_count` and text costs no `conversations.replies` call and isn't sent again: its id comes back in `FarmPage::kept`.
+- **Older threads.** At the end of a pass, up to `FarmPageRequest::probe_limit` threads whose parent is older than 7 days and whose last reply is within 30 days are checked, round-robin from `probed`, with `conversations.replies` and `limit=1` (`SlackClient::conversations_thread_parent`); `FarmPage::probes` counts them. A thread whose `latest_reply` or `reply_count` moved is read in full and sent. Slack no longer having it forgets it; a deleted parent (a `tombstone`) forgets it and reports its id in `FarmPage::removed`; an answer for another message is skipped. Each check gathers what it found before touching the cursor: a refused token fails the page, and any other failure ends the checks with `probed` moved past the thread that failed, so a thread whose check keeps failing doesn't hold up the others, and returns the page. Threads whose parent left the 180 days are forgotten before the checks.
+- **The daily re-read.** `reread_window()` is 7 days. When the sync sets `reread_from`, a new pass starts there instead of at `newest`, so an edited message is sent again; Slack reports no deletion, so the sync deletes what the pass didn't see. A new reply to a thread shows in its parent's `latest_reply`, which a pass reads when the parent is in its window: the next pass when the parent is new, the daily re-read for the last 7 days.
+- **Authors.** `users.info` once per (team, user) a day in a `moka` cache, keeping `SlackUser::label()` only, never the email; a user Slack doesn't know has no name.
+- **Links** come from the workspace URL in the connector's account (`auth.test`'s `url` at connect), through `permalink`.
+- **Duplicates.** Era's simulator lists a parent injected a second time (to add a reply) twice in one page; the copy with the newest `latest_reply` wins.
+
+### Google Drive
+
+@@items google_drive.rs VENDOR SCOPE MAX_FILES MAX_FOLDERS MAX_TEXT_BYTES DriveConfig ExportFormat DriveClient@@
+
+@@items google_drive/pkce.rs Pkce InvalidVerifier@@
+
+@@impl google_drive.rs impl DriveClient@@
+
+**OAuth with PKCE.** `Pkce::generate` makes a verifier and its S256 challenge; the app sends the challenge and `exchange_code` sends the verifier. `refresh` trades a refresh token for an access token, and `revoke` ends the grant on disconnect. The only scope is `drive.readonly`, so the token response has no `id_token`. `about_email` calls `about.get` for the account's email. `invalid_grant` on a refresh is `AuthRefused`.
+
+**Reading.** `list_folder` walks a folder recursively across `nextPageToken`, and stops at 500 files or 500 folders (`MAX_FILES`, `MAX_FOLDERS`); `FolderListing::truncated` says so. Trashed files are left out, and a shared drive's folder works. `export` returns a Doc as text or a Sheet as CSV, and `download_text` returns a plain-text file. Both cut the text at `MAX_TEXT_BYTES` (1 MB), so one large file can't fill memory. `start_page_token` gives the cursor a first sync saves, and `changes` reads `changes.list` page by page up to the last page, the one carrying `newStartPageToken`. Drive doesn't order the pages by time, so the caller gets all of them or an error.
+
+**Errors** come in Google's shape, `{"error":{"code","status","errors":[{"reason"}]}}`:
+
+| Answer | Result |
+|---|---|
+| `401` | `AuthRefused` |
+| `429`; `403` with reason `userRateLimitExceeded` or `rateLimitExceeded` | retried, honouring `Retry-After`, then `RateLimited` |
+| `403` for a missing scope (`ACCESS_TOKEN_SCOPE_INSUFFICIENT`, or `insufficientPermissions` on a call that reads with the token's scope) | `AuthRefused`, never retried |
+| any other `403` (such as `fileNotDownloadable`) | `Refused`, never retried |
+| `404` | `NotFound` |
+| `408`, 5xx, transport failure | retried, then `Unavailable` |
+
+**No vendor body is kept.** Neither client keeps a response body in an error, a log line or a stored value, because a body may echo the farm's own records ([connectors 8](../connectors/README.md#8-privacy-and-security)). A log line has the method, the status and the short code (Slack's `error`, Google's `reason`). The text that `export` and `download_text` return goes to the caller and nowhere else.
+
+---
+
+## 16. Concurrency and lifetimes
 
 **What is shared.** Every adapter is `Send + Sync + 'static` and is held by `api` as `Arc<dyn Port>`. The clients are cheap to clone: an `Arc` around their configuration plus the shared `reqwest::Client`. State that must be one per process is behind an `Arc` inside:
 
@@ -499,7 +601,7 @@ The pattern is the brief's convention 4: borrowed views for the synchronous work
 
 ---
 
-## 16. Errors
+## 17. Errors
 
 Each module maps its failures to the port's error enum ([domain 9](domain.md#9-boundary-traits)). The library error is kept as the `source`, so `api`'s log prints the whole chain. Only `api` turns these into HTTP ([contracts 2](../architecture/contracts.md#2-errors)):
 
@@ -517,7 +619,7 @@ The two LLM clients keep their own enums (`AnthropicError`, `OpenAiCompatError`)
 
 ---
 
-## 17. Testing
+## 18. Testing
 
 | What | How |
 |---|---|
@@ -533,13 +635,27 @@ The two LLM clients keep their own enums (`AnthropicError`, `OpenAiCompatError`)
 | Clerk | tokens signed with a throwaway RSA key, generated once per test run with `aws-lc-rs` so no private key is committed, and served as a JWKS by `wiremock`: issuer, expiry, `nbf`, `azp`, leeway, missing `nbf`, refetch limit; `DELETE` 200, 404 and 429 |
 | Svix | the `svix` crate's `Webhook::sign` as the oracle; rotation (several entries), tampering, ±301 s |
 | Agent Memory | `wiremock`, exact request bodies (the service ignores unknown fields silently): `record` and the scope cache (one registration for two writes, none after the first), the `400 unknown scope node` re-register and single retry, a 5xx write retried twice, `current` (plant and garden merged, superseded dropped, label and both timestamp forms, 404 as empty), `history` (cursor followed through a short page, newest first), `search` (exact lens, hit filter, prefix stripped), `forget` (trailing slash, cache dropped), the 500, 429, 401, 403 and 422 mapping, `Debug` without the key |
+| Slack, Google Drive | `wiremock`, exact requests: `ok:false` at 200 for each code group, `Retry-After`, 5xx retries, the pacer per (team, method) and its bounded cache, paging by cursor, `users.info` without the email, `permalink`; Drive's OAuth with PKCE, `about.get`, the recursive listing and its cap of 500, the 1 MB cut, `changes` to the last page, the `403` reasons, a refused scope as `auth_refused`; no body in any error or log |
+| Era | see below |
 | Expo | ticket order, `DeviceNotRegistered` in tickets and receipts, batches of 100, a failed whole push |
+
+**The Era tests** (`tests/era_fixture.rs`, `era_slack.rs`, `era_drive.rs`) run the two clients against Era's Slack and Google Drive simulators on the Maple Row Farm fixture. They are `#[ignore]`d, so `cargo nextest run` skips them. Start the simulators and run them with:
+
+```sh
+docker compose -f infra/dev.compose.yml --profile era up -d --wait era-slack era-drive
+ERA_SLACK_BASE=http://127.0.0.1:8091 ERA_GOOGLE_BASE=http://127.0.0.1:8092 \
+  cargo nextest run -p integrations --run-ignored only -E 'test(/era/)'
+```
+
+- **They fail, they don't skip.** `era_sim::base_url` panics when `ERA_SLACK_BASE` or `ERA_GOOGLE_BASE` is unset, so a run without the simulators is red.
+- **Minted tenant credentials.** Each test creates a `Tenant`, an isolated copy of the company, and passes the credential the simulator mints for it as the client's bearer token. The credential selects the tenant: no `X-Sim-Tenant` header and no test-only constructor exist.
+- **One at a time.** Faults are global to a simulator, so a fault set by one test reaches every other test. [`backend/.config/nextest.toml`](../../backend/.config/nextest.toml) puts every test named `era_*` in the nextest group `era` (`max-threads = 1`). The fault tests also hold a file lock and clear the faults when they end, also when they fail. The `era` CI job comes with [EON E6](../EON/README.md#e6-ci).
 
 Paused time (`start_paused`) is used only where no real I/O runs: the retry and pacer tests. With a mock server in the loop, tokio's auto-advance would jump to the request's timeout while the server answers, which the Clerk refetch test showed. Not run: live calls to Anthropic, Clerk, Expo and Nominatim (no keys or accounts on 2026-10-15), and the VLM servers (no GPU here).
 
 ---
 
-## 18. Open questions
+## 19. Open questions
 
 1. **Frost threshold.** Settled in [domain 7](domain.md#weather-thresholds): one `WeatherThresholds` for `frost_risk`, the frost alert rule of [architecture 8.3](../architecture/README.md#83-forecast-alerts) and fusion, with frost at a 2 m minimum ≤ 0.5 °C. The number itself is still a proposal ([domain 12](domain.md#12-open-questions), item 17).
 2. **SoilGrids `NotFound` versus `Unavailable`.** Settled in contracts v0.10 ([contracts 9, the soil profile](../architecture/contracts.md#gardens)): one `unavailable` value on the wire, retried after 7 days for no data and after 15 minutes for an outage (section 8; `api`'s `soil` task). Still open: architecture 6.4's Soil Landscapes of Canada fallback for null pixels.
@@ -552,7 +668,7 @@ Paused time (`start_paused`) is used only where no real I/O runs: the retry and 
 
 ---
 
-## 19. Sources
+## 20. Sources
 
 **Rust language**
 - The Book: [10.1 generics](https://doc.rust-lang.org/book/ch10-01-syntax.html) · [10.3 lifetimes](https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html) · [18.2 trait objects](https://doc.rust-lang.org/book/ch18-02-trait-objects.html) · [17 async and await](https://doc.rust-lang.org/book/ch17-00-async-await.html)

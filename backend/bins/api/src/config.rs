@@ -4,8 +4,13 @@
 
 use std::{collections::BTreeMap, net::SocketAddr, str::FromStr, time::Duration};
 
-use domain::{id::WorkerId, rules::weather::WeatherThresholds};
+use domain::{
+    id::{GardenId, WorkerId},
+    rules::weather::WeatherThresholds,
+};
 use secrecy::{ExposeSecret, SecretString};
+
+use crate::sealing::ConnectorKey;
 
 /// Why the configuration couldn't be read. Start-up turns it into an `anyhow` error and exits.
 #[derive(Debug, thiserror::Error)]
@@ -84,6 +89,50 @@ const AGENT_MEMORY_VARS: [&str; 3] = [
     "AGENT_MEMORY_API_KEY",
 ];
 
+/// A vendor's OAuth client for the farm connectors ([connectors 5]): both variables or neither.
+///
+/// [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
+#[derive(Debug, Clone)]
+pub struct OAuthClient {
+    /// `SLACK_CLIENT_ID` or `GOOGLE_CLIENT_ID`: public, it goes in the consent URL.
+    pub client_id: String,
+    /// `SLACK_CLIENT_SECRET` or `GOOGLE_CLIENT_SECRET`: sent only in the code exchange.
+    pub client_secret: SecretString,
+}
+
+/// The two Slack variables, set together or not at all.
+const SLACK_VARS: [&str; 2] = ["SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET"];
+/// The two Google variables, set together or not at all.
+const GOOGLE_VARS: [&str; 2] = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"];
+
+/// Farm connectors ([connectors 4], [connectors 5]). `key` is the one switch: without
+/// `CONNECTOR_KEY` connectors are off (decision 9 of docs/EON), whatever else is set.
+///
+/// [connectors 4]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#4-data
+/// [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
+#[derive(Debug, Clone)]
+pub struct ConnectorSettings {
+    /// `CONNECTOR_KEY`: 64 hex characters (32 bytes, `openssl rand -hex 32`), the AES-256-GCM
+    /// key that seals vendor tokens. Unset turns connectors off.
+    pub key: Option<ConnectorKey>,
+    /// `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET`.
+    pub slack: Option<OAuthClient>,
+    /// `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`: a Web application client.
+    pub google: Option<OAuthClient>,
+    /// `CONNECTOR_RETURN_URL` (default `pdm://connectors`): where the OAuth callback's `302`
+    /// sends the app, as `{return_url}/{connector id}/callback?code&state`. The callback
+    /// itself is `{API_PUBLIC_BASE}/connectors/oauth/callback`.
+    pub return_url: String,
+    /// `ERA_SLACK_BASE`: Era's Slack simulator, for start-up seeding of the demo garden's
+    /// `era` connectors (roadmap E4.6). Never used by a route (decision 8).
+    pub era_slack_base: Option<String>,
+    /// `ERA_GOOGLE_BASE`: Era's Google Drive simulator, as above.
+    pub era_google_base: Option<String>,
+    /// `ERA_DEMO_GARDEN_ID`: the demo garden (E9.0 creates it through the API, so its id is
+    /// known only after) that start-up seeding gives the two `era` connectors.
+    pub era_demo_garden: Option<GardenId>,
+}
+
 /// Outbound providers, handed to the `integrations` and `agent` constructors.
 #[derive(Debug, Clone)]
 pub struct ProviderConfig {
@@ -148,6 +197,8 @@ pub struct Config {
     pub clerk: ClerkConfig,
     /// Outbound providers.
     pub providers: ProviderConfig,
+    /// Farm connectors.
+    pub connectors: ConnectorSettings,
 }
 
 /// One variable source: the process environment, or a map in tests.
@@ -254,8 +305,106 @@ impl Config {
                 open_meteo_api_key: env.get("OPEN_METEO_API_KEY").map(SecretString::from),
                 agent_memory: agent_memory(&env)?,
             },
+            connectors: connectors(&env)?,
         })
     }
+}
+
+/// Whether `url` may be the app's return target: `https`, or a custom app scheme, never a
+/// scheme a browser would run or read; no query or fragment, and something after `://`.
+fn return_url_ok(url: &str) -> bool {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return false;
+    };
+    let mut chars = scheme.chars();
+    let scheme_ok = chars.next().is_some_and(|c| c.is_ascii_lowercase())
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "+.-".contains(c));
+    scheme_ok
+        && !["http", "javascript", "data", "file", "vbscript"].contains(&scheme)
+        && !rest.is_empty()
+        && !url.contains(['?', '#'])
+}
+
+/// The connector settings; a partial vendor pair names its first missing variable.
+fn connectors<F: Fn(&str) -> Option<String>>(
+    env: &Env<F>,
+) -> Result<ConnectorSettings, ConfigError> {
+    let key = env
+        .get("CONNECTOR_KEY")
+        .map(|value| {
+            ConnectorKey::from_hex(&value).map_err(|e| ConfigError::Invalid {
+                name: "CONNECTOR_KEY",
+                problem: e.to_string(),
+            })
+        })
+        .transpose()?;
+    let return_url = env
+        .or("CONNECTOR_RETURN_URL", "pdm://connectors")
+        .trim()
+        .trim_end_matches('/')
+        .to_owned();
+    if !return_url_ok(&return_url) {
+        return Err(ConfigError::Invalid {
+            name: "CONNECTOR_RETURN_URL",
+            problem: "expected an https URL or an app scheme (not http, javascript, data, file or vbscript), with no query, such as pdm://connectors"
+                .to_owned(),
+        });
+    }
+    Ok(ConnectorSettings {
+        key,
+        slack: oauth_client(env, SLACK_VARS)?,
+        google: oauth_client(env, GOOGLE_VARS)?,
+        return_url,
+        era_slack_base: http_base(env, "ERA_SLACK_BASE")?,
+        era_google_base: http_base(env, "ERA_GOOGLE_BASE")?,
+        era_demo_garden: env
+            .get("ERA_DEMO_GARDEN_ID")
+            .map(|value| {
+                value.trim().parse().map_err(|_| ConfigError::Invalid {
+                    name: "ERA_DEMO_GARDEN_ID",
+                    problem: "expected a garden id (a ULID)".to_owned(),
+                })
+            })
+            .transpose()?,
+    })
+}
+
+/// A vendor's client id and secret, both or neither; a partial pair names the missing one.
+fn oauth_client<F: Fn(&str) -> Option<String>>(
+    env: &Env<F>,
+    [id_var, secret_var]: [&'static str; 2],
+) -> Result<Option<OAuthClient>, ConfigError> {
+    match (env.get(id_var), env.get(secret_var)) {
+        (None, None) => Ok(None),
+        (Some(id), Some(secret)) => Ok(Some(OAuthClient {
+            client_id: id.trim().to_owned(),
+            client_secret: SecretString::from(secret),
+        })),
+        (id, _) => Err(ConfigError::Invalid {
+            name: if id.is_none() { id_var } else { secret_var },
+            problem: format!("{id_var} and {secret_var} are set together or not at all"),
+        }),
+    }
+}
+
+/// An optional `http(s)://` origin, without its trailing slash.
+fn http_base<F: Fn(&str) -> Option<String>>(
+    env: &Env<F>,
+    name: &'static str,
+) -> Result<Option<String>, ConfigError> {
+    env.get(name)
+        .map(|value| {
+            let value = value.trim().trim_end_matches('/');
+            if value.starts_with("http://") || value.starts_with("https://") {
+                Ok(value.to_owned())
+            } else {
+                Err(ConfigError::Invalid {
+                    name,
+                    problem: "expected an http:// or https:// URL".to_owned(),
+                })
+            }
+        })
+        .transpose()
 }
 
 /// All three Agent Memory variables, or none; a partial set names the first missing one.
@@ -378,6 +527,184 @@ mod tests {
             }
         ));
         assert!(err.to_string().contains("set together or not at all"));
+    }
+
+    const CONNECTOR_KEY: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+
+    fn load(vars: &BTreeMap<&'static str, String>) -> Result<Config, ConfigError> {
+        Config::from_lookup(|k| vars.get(k).cloned())
+    }
+
+    #[test]
+    fn connectors_are_off_without_their_key() {
+        let mut vars = base();
+        vars.insert("SLACK_CLIENT_ID", "123.456".to_owned());
+        vars.insert("SLACK_CLIENT_SECRET", "slack-secret".to_owned());
+        let config = load(&vars).unwrap();
+        assert!(config.connectors.key.is_none());
+        assert_eq!(config.connectors.return_url, "pdm://connectors");
+        assert!(config.connectors.google.is_none());
+        assert!(config.connectors.era_slack_base.is_none());
+        assert!(config.connectors.era_demo_garden.is_none());
+    }
+
+    #[test]
+    fn a_demo_garden_id_that_is_not_a_ulid_is_refused() {
+        let mut vars = base();
+        vars.insert("ERA_DEMO_GARDEN_ID", "maple-row".to_owned());
+        assert!(matches!(
+            load(&vars),
+            Err(ConfigError::Invalid {
+                name: "ERA_DEMO_GARDEN_ID",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn every_connector_setting_is_read() {
+        let mut vars = base();
+        vars.insert("CONNECTOR_KEY", CONNECTOR_KEY.to_owned());
+        vars.insert("SLACK_CLIENT_ID", "123.456".to_owned());
+        vars.insert("SLACK_CLIENT_SECRET", "slack-secret".to_owned());
+        vars.insert(
+            "GOOGLE_CLIENT_ID",
+            "abc.apps.googleusercontent.com".to_owned(),
+        );
+        vars.insert("GOOGLE_CLIENT_SECRET", "google-secret".to_owned());
+        vars.insert(
+            "CONNECTOR_RETURN_URL",
+            "https://app.example.org/connectors/".to_owned(),
+        );
+        vars.insert("ERA_SLACK_BASE", "http://era-slack:8080/".to_owned());
+        vars.insert("ERA_GOOGLE_BASE", "http://era-google:8080".to_owned());
+        vars.insert(
+            "ERA_DEMO_GARDEN_ID",
+            "01JAX3K9T6R2B8V0QZ4M7D1E5G".to_owned(),
+        );
+        let config = load(&vars).unwrap();
+        let c = &config.connectors;
+        assert_eq!(
+            c.era_demo_garden.map(|g| g.to_string()).as_deref(),
+            Some("01JAX3K9T6R2B8V0QZ4M7D1E5G")
+        );
+        assert!(c.key.is_some());
+        let slack = c.slack.as_ref().unwrap();
+        assert_eq!(slack.client_id, "123.456");
+        assert_eq!(slack.client_secret.expose_secret(), "slack-secret");
+        let google = c.google.as_ref().unwrap();
+        assert_eq!(google.client_secret.expose_secret(), "google-secret");
+        assert_eq!(c.return_url, "https://app.example.org/connectors");
+        assert_eq!(c.era_slack_base.as_deref(), Some("http://era-slack:8080"));
+        assert_eq!(c.era_google_base.as_deref(), Some("http://era-google:8080"));
+        let printed = format!("{config:?}");
+        for secret in ["slack-secret", "google-secret", CONNECTOR_KEY] {
+            assert!(!printed.contains(secret), "{secret}");
+        }
+    }
+
+    #[test]
+    fn a_partial_vendor_pair_names_its_missing_variable() {
+        for (set, missing) in [
+            ("SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET"),
+            ("SLACK_CLIENT_SECRET", "SLACK_CLIENT_ID"),
+            ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"),
+            ("GOOGLE_CLIENT_SECRET", "GOOGLE_CLIENT_ID"),
+        ] {
+            let mut vars = base();
+            vars.insert("CONNECTOR_KEY", CONNECTOR_KEY.to_owned());
+            vars.insert(set, "value".to_owned());
+            let err = load(&vars).unwrap_err();
+            assert!(
+                matches!(err, ConfigError::Invalid { name, .. } if name == missing),
+                "{set}: {err}"
+            );
+            assert!(
+                err.to_string().starts_with(&format!("{missing}: ")),
+                "{err}"
+            );
+            assert!(err.to_string().contains("set together or not at all"));
+        }
+    }
+
+    #[test]
+    fn a_malformed_connector_key_is_refused_without_quoting_it() {
+        for bad in [
+            &CONNECTOR_KEY[..62],
+            "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+            "change-me",
+        ] {
+            let mut vars = base();
+            vars.insert("CONNECTOR_KEY", bad.to_owned());
+            let err = load(&vars).unwrap_err();
+            assert!(
+                matches!(
+                    err,
+                    ConfigError::Invalid {
+                        name: "CONNECTOR_KEY",
+                        ..
+                    }
+                ),
+                "{bad}: {err}"
+            );
+            assert!(!err.to_string().contains(bad), "{err}");
+        }
+    }
+
+    #[test]
+    fn connector_urls_are_checked() {
+        let mut vars = base();
+        vars.insert("CONNECTOR_RETURN_URL", "pdm://connectors?x=1".to_owned());
+        assert!(matches!(
+            load(&vars),
+            Err(ConfigError::Invalid {
+                name: "CONNECTOR_RETURN_URL",
+                ..
+            })
+        ));
+        for bad in [
+            "http://app.example.org",
+            "javascript://x",
+            "data://x",
+            "file:///etc",
+            "vbscript://x",
+            "HTTPS://x",
+            "1pdm://x",
+            "pdm://",
+            "pdm://a#b",
+            "no-scheme",
+        ] {
+            let mut vars = base();
+            vars.insert("CONNECTOR_RETURN_URL", bad.to_owned());
+            assert!(
+                matches!(
+                    load(&vars),
+                    Err(ConfigError::Invalid {
+                        name: "CONNECTOR_RETURN_URL",
+                        ..
+                    })
+                ),
+                "{bad}"
+            );
+        }
+        for good in [
+            "https://app.example.org/c",
+            "pdm://connectors",
+            "exp+pdm://x",
+        ] {
+            let mut vars = base();
+            vars.insert("CONNECTOR_RETURN_URL", good.to_owned());
+            assert!(load(&vars).is_ok(), "{good}");
+        }
+        let mut vars = base();
+        vars.insert("ERA_GOOGLE_BASE", "era-google:8080".to_owned());
+        assert!(matches!(
+            load(&vars),
+            Err(ConfigError::Invalid {
+                name: "ERA_GOOGLE_BASE",
+                ..
+            })
+        ));
     }
 
     #[test]

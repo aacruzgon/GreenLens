@@ -37,7 +37,7 @@ fn user(text: &str) -> Vec<ChatMessage> {
     }]
 }
 
-/// A chat call with all nineteen tools (three strict), streamed, on the chat model. Prints when
+/// A chat call with all twenty tools (three strict), streamed, on the chat model. Prints when
 /// each text delta arrived, to show the answer streams in pieces rather than at the end.
 #[tokio::test]
 #[ignore = "calls the real Anthropic API"]
@@ -47,7 +47,8 @@ async fn live_chat_accepts_every_tool_schema_and_streams() {
         purpose: ChatPurpose::Chat,
         system: "You are a test. Call no tools.".to_owned(),
         messages: user("In three short sentences, say how often to water a potted tomato."),
-        tools: ToolRegistry::standard().specs_for(domain::wire::Role::Owner),
+        tools: ToolRegistry::standard()
+            .specs_for(agent::tools::Offer::everything(domain::wire::Role::Owner)),
         response_schema: None,
         max_tokens: 4_096,
     };

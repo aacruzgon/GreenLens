@@ -2,6 +2,8 @@
 //! configuration and assembles `AppState`, in the start-up order of api.md section 4, and it
 //! implements `api`'s seam traits for the library crates' types.
 
+mod connect;
+
 use std::{path::Path, sync::Arc, time::Duration};
 
 use anyhow::Context as _;
@@ -14,6 +16,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use domain::{
     authz::{Editor, Membership},
     chat::Preview,
+    connectors::ConnectorEndpoint,
     id::{PendingActionId, PlantId, QuestionId, ScanId},
     jobs::{CompleteJob, WorkerEvent},
     ports::{
@@ -33,9 +36,11 @@ use integrations::{
     clerk::{ClerkAdmin, ClerkAdminConfig, ClerkVerifier, ClerkVerifierConfig},
     expo_push::{ExpoPush, ExpoPushConfig},
     geocode::{CompositeGeocoder, GeocoderConfig, TimeZoneFinder},
+    google_drive::DriveClient,
     http::{HttpConfig, client},
     jev::{JevClassifier, JevConfig},
     open_meteo::{OpenMeteo, OpenMeteoConfig},
+    slack::{SlackClient, SlackConfig, SlackSource},
     soilgrids::{SoilGrids, SoilGridsConfig},
     svix::SvixVerifier,
 };
@@ -43,8 +48,10 @@ use integrations::{
 use crate::{
     broker::JobBroker,
     config::Config,
+    connect::ConnectVendors,
     deletion::DeletionRunner,
     events::{hub::EventHub, writer::ScanWriters},
+    farm_sync::{FarmSources, FarmSync, SyncConfig},
     limits::RateLimits,
     push::Pusher,
     seams::{
@@ -279,8 +286,45 @@ struct Outbound {
     chat_model: Arc<dyn ChatModel>,
     classifier: Arc<dyn TextClassifier>,
     beliefs: Arc<dyn BeliefStore>,
+    connect: Arc<dyn ConnectVendors>,
+    farm: FarmSources,
 }
 
+/// The sync when connectors are on (decision 9 of docs/EON): the `connectors` task and
+/// start-up seeding run only with it.
+fn farm_sync(config: &Config, ports: &Ports, sources: FarmSources) -> Option<Arc<FarmSync>> {
+    config.connectors.key.clone().map(|key| {
+        Arc::new(FarmSync::new(
+            Arc::clone(&ports.store),
+            Arc::clone(&ports.embedder),
+            Arc::clone(&ports.clock),
+            key,
+            sources,
+            SyncConfig::default(),
+        ))
+    })
+}
+
+/// The farm connectors' adapters: the real Slack, with Tier 1 pacing, for owners' connectors;
+/// Era's Slack simulator, without pacing, for the seeded `era` ones when `ERA_SLACK_BASE` is
+/// set. Drive's (E4.3) go beside them.
+fn farm_sources(config: &Config, slack_client: impl Fn(SlackConfig) -> SlackClient) -> FarmSources {
+    let slack = |c: SlackConfig| Arc::new(SlackSource::new(slack_client(c)));
+    let mut sources =
+        FarmSources::default().with(ConnectorEndpoint::Vendor, slack(SlackConfig::default()));
+    if let Some(base) = &config.connectors.era_slack_base {
+        sources = sources.with(
+            ConnectorEndpoint::Era,
+            slack(SlackConfig::era(base.clone())),
+        );
+    }
+    sources
+}
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "every outbound adapter is built here, one after another, over one HTTP client"
+)]
 async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Outbound> {
     let http = client(&HttpConfig::default()).context("HTTP client")?;
     let mut verifier = ClerkVerifierConfig::new(config.clerk.issuer.clone());
@@ -328,6 +372,13 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
             256,
         )),
     };
+    let connect: Arc<dyn ConnectVendors> = Arc::new(connect::VendorClients::new(
+        |c| SlackClient::new(http.clone(), c),
+        |c| DriveClient::new(http.clone(), c),
+        &config.connectors,
+        Arc::clone(clock),
+    ));
+    let farm = farm_sources(config, |c| SlackClient::new(http.clone(), c));
     let beliefs: Arc<dyn BeliefStore> = match agent_memory(config) {
         Some(c) => Arc::new(AgentMemory::new(http.clone(), c)),
         None => Arc::new(NoBeliefs),
@@ -374,6 +425,8 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         chat_model,
         classifier,
         beliefs,
+        connect,
+        farm,
     })
 }
 
@@ -390,6 +443,36 @@ fn agent_memory(config: &Config) -> Option<AgentMemoryConfig> {
         m.context_id.clone(),
         m.api_key.clone(),
     ))
+}
+
+/// Logs whether farm connectors are on, which vendors and simulators are configured, and a
+/// warning when vendor or Era settings are set without `CONNECTOR_KEY`, which turns them off.
+/// Neither the key nor a client secret is logged.
+fn log_connectors(config: &Config) {
+    let c = &config.connectors;
+    let (slack, google) = (c.slack.is_some(), c.google.is_some());
+    let era = c.era_slack_base.is_some() || c.era_google_base.is_some();
+    if c.key.is_none() {
+        if slack || google || era {
+            tracing::warn!(
+                slack,
+                google,
+                era,
+                "farm connectors off: CONNECTOR_KEY is not set, so the other connector settings are unused"
+            );
+        } else {
+            tracing::info!("farm connectors off: CONNECTOR_KEY is not set");
+        }
+        return;
+    }
+    tracing::info!(
+        slack = c.slack.as_ref().map(|s| s.client_id.as_str()),
+        google = c.google.as_ref().map(|g| g.client_id.as_str()),
+        return_url = %c.return_url,
+        era_slack = c.era_slack_base.is_some(),
+        era_google = c.era_google_base.is_some(),
+        "farm connectors on"
+    );
 }
 
 /// The object store the config points at.
@@ -468,6 +551,10 @@ fn chat_turns(
 /// Builds every port and the state, in order: the databases (schema as root, then connect as
 /// `api`; the knowledge index), the object store, the outbound adapters, the CPU models, the
 /// species photo index, then `api`'s own pieces and the pipeline and agent that need the writer.
+#[expect(
+    clippy::too_many_lines,
+    reason = "every port and in-process piece is built here, in start-up order"
+)]
 pub async fn build(
     config: Config,
     shutdown: CancellationToken,
@@ -479,6 +566,7 @@ pub async fn build(
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
     let ids: Arc<dyn IdGen> = Arc::new(UlidGen);
     let out = outbound(&config, &clock).await?;
+    log_connectors(&config);
     let models = load_models(&config.models_dir).await.context("models")?;
     let snapshot = dbs
         .knowledge_repo
@@ -510,6 +598,7 @@ pub async fn build(
         clock: Arc::clone(&clock),
         ids,
     };
+    let farm_sync = farm_sync(&config, &ports, out.farm);
     let hub = Arc::new(EventHub::default());
     let broker = Arc::new(JobBroker::new(
         store.clone(),
@@ -542,7 +631,7 @@ pub async fn build(
     );
     // The one delete queue: every RustFS delete in `api` goes through it, and `main` drains it.
     let deletes = blob::DeleteQueue::new(Arc::clone(&blob));
-    let deletions = DeletionRunner::new(
+    let mut deletions = DeletionRunner::new(
         store,
         deletes.clone(),
         out.auth_admin,
@@ -551,6 +640,10 @@ pub async fn build(
         tasks.clone(),
         shutdown.clone(),
     );
+    // Connectors on: the deletion runner revokes through the routes' own vendor seam.
+    if let Some(key) = &config.connectors.key {
+        deletions = deletions.with_revoke(key.clone(), Arc::clone(&out.connect));
+    }
     Ok(Arc::new(AppState {
         limits: RateLimits::new(config.rate_per_minute),
         upload_permits: Arc::new(Semaphore::new(config.upload_permits.max(1))),
@@ -565,6 +658,8 @@ pub async fn build(
         broker,
         deletions,
         deletes,
+        connect: out.connect,
+        farm_sync,
         shutdown,
         tasks,
     }))

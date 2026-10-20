@@ -1,0 +1,343 @@
+import { SseParser } from "../sse";
+import type { S } from "./util";
+import { IDS, mockTransport, resetMock, scenario } from "./index";
+
+const BASE = "https://mock.pdm.local";
+
+async function call(method: string, path: string, body?: unknown, headers?: Record<string, string>) {
+  const res = await mockTransport.fetch(`${BASE}${path}`, {
+    method,
+    headers: { "content-type": "application/json", ...headers },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = res.status === 204 ? "" : await res.text();
+  return { status: res.status, json: text ? JSON.parse(text) : undefined };
+}
+
+async function upload(scanId: string, kind: string) {
+  const form = new FormData();
+  form.append("kind", kind);
+  form.append("file", new Blob(["x"], { type: "image/jpeg" }), "photo.jpg");
+  const res = await mockTransport.fetch(`${BASE}/scans/${scanId}/images`, { method: "POST", body: form });
+  return { status: res.status, json: JSON.parse(await res.text()) };
+}
+
+/** Reads an SSE response; `until` stops early and leaves the reader open for `rest()`. */
+class Events {
+  readonly seen: S["ScanEvent"][] = [];
+  private readonly reader: ReadableStreamDefaultReader<Uint8Array>;
+  private readonly parser = new SseParser();
+  closed = false;
+  raw = "";
+  private readonly decoder = new TextDecoder();
+
+  constructor(res: Response) {
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/event-stream");
+    this.reader = res.body!.getReader();
+  }
+
+  async until(pred: (e: S["ScanEvent"]) => boolean): Promise<void> {
+    while (!this.closed) {
+      if (this.seen.some(pred)) return;
+      const { done, value } = await this.reader.read();
+      if (done) {
+        this.closed = true;
+        break;
+      }
+      this.raw += this.decoder.decode(value, { stream: true });
+      for (const m of this.parser.push(value)) {
+        const e = JSON.parse(m.data) as S["ScanEvent"];
+        expect(m.id).toBe(String(e.seq));
+        expect(m.event).toBe(e.type);
+        this.seen.push(e);
+      }
+    }
+  }
+
+  async rest(): Promise<S["ScanEvent"][]> {
+    await this.until(() => false);
+    return this.seen;
+  }
+
+  cancel() {
+    return this.reader.cancel();
+  }
+}
+
+function open(scanId: string, lastEventId?: number) {
+  return mockTransport
+    .fetch(`${BASE}/scans/${scanId}/events`, {
+      headers: lastEventId === undefined ? {} : { "Last-Event-ID": String(lastEventId) },
+    })
+    .then((r) => new Events(r));
+}
+
+async function newScan(plantId: string, withPhoto = true): Promise<string> {
+  const created = await call("POST", "/scans", { garden_id: IDS.garden, plant_id: plantId });
+  expect(created.status).toBe(201);
+  if (withPhoto) expect((await upload(created.json.id, "whole_plant")).status).toBe(201);
+  return created.json.id;
+}
+
+function expectOrdered(events: S["ScanEvent"][]) {
+  expect(events.length).toBeGreaterThan(0);
+  events.forEach((e, i) => {
+    expect(e.seq).toBe(i + 1);
+    expect(e.v).toBe(1);
+  });
+}
+
+beforeEach(() => {
+  resetMock();
+  scenario.set({ delayScale: 0, keepaliveMs: 50 });
+});
+
+afterAll(() => {
+  resetMock();
+});
+
+describe("fixtures over REST", () => {
+  it("GET /gardens returns the Back garden", async () => {
+    const r = await call("GET", "/gardens");
+    expect(r.status).toBe(200);
+    expect(r.json.items).toHaveLength(1);
+    expect(r.json.items[0]).toMatchObject({
+      id: IDS.garden,
+      name: "Back garden",
+      time_zone: "America/Toronto",
+      location_label: "Toronto, ON",
+      my_role: "owner",
+    });
+    expect((await call("GET", "/me")).json.display_name).toBe("Alex Doe");
+  });
+
+  it("has the six plants with their statuses and Tomato 1's growth series", async () => {
+    const plants = (await call("GET", `/plants?garden_id=${IDS.garden}`)).json.items as S["Plant"][];
+    expect(plants.map((p) => p.name).sort()).toEqual(["Basil", "Kale", "Lettuce", "Pepper", "Tomato 1", "Tomato 2"]);
+    const status = Object.fromEntries(plants.map((p) => [p.name, p.status]));
+    expect(status).toMatchObject({ "Tomato 1": "sick", "Tomato 2": "healthy", Pepper: "watch", Basil: "healthy" });
+
+    const pts = (await call("GET", `/plants/${IDS.tomato1}/measurements?quantity=plant_height_cm`)).json.items as S["MeasurementPoint"][];
+    expect(pts.map((p) => p.value)).toEqual([32, 41, 50, 58, 60, 62]);
+    const widths = (await call("GET", `/plants/${IDS.tomato1}/measurements?quantity=canopy_width_cm`)).json.items as S["MeasurementPoint"][];
+    expect(widths.at(-1)?.value).toBe(48);
+  });
+
+  it("dates the scans relative to today", async () => {
+    const tl = (await call("GET", `/plants/${IDS.tomato1}/timeline`)).json.items as S["TimelineEntry"][];
+    expect(tl).toHaveLength(6);
+    const days = tl.map((e) => Math.round((Date.now() - Date.parse(e.created_at)) / 86_400_000));
+    expect(days[0]).toBeLessThanOrEqual(1);
+    expect(days.at(-1)).toBeGreaterThanOrEqual(26);
+    expect(tl[2].primary?.name).toBe("Early blight");
+  });
+
+  it("holds Tomato 1's plan, the tasks, the frost alert and the garden note", async () => {
+    const open = (await call("GET", `/tasks?garden_id=${IDS.garden}&state=open`)).json.items as S["Task"][];
+    const today = new Date();
+    const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    expect(open.find((t) => t.plant_id === IDS.tomato2 && t.due === ymd(today))?.title).toBe("Check Tomato 2's lower leaves");
+    const alerts = (await call("GET", `/tasks?garden_id=${IDS.garden}&source=forecast_alert`)).json.items as S["Task"][];
+    expect(alerts).toHaveLength(2);
+    const upcoming = alerts.find((t) => !t.done_at)!;
+    expect(upcoming.trigger?.kind).toBe("frost");
+
+    const weather = (await call("GET", `/gardens/${IDS.garden}/weather`)).json.weather as S["WeatherSummary"];
+    expect(weather.forecast).toHaveLength(7);
+    const frost = weather.forecast.find((d) => d.frost_risk)!;
+    expect(frost.t_min_c).toBe(-1);
+    expect(new Date(`${frost.date}T12:00:00`).getDay()).toBe(4);
+    expect(upcoming.trigger?.date).toBe(frost.date);
+
+    const memories = (await call("GET", `/memories?garden_id=${IDS.garden}`)).json.items as S["Memory"][];
+    expect(memories.some((m) => m.text === "Everything is in containers")).toBe(true);
+
+    const scan = (await call("GET", "/scans/scan_tomato1_6")).json as S["ScanDetail"];
+    expect(scan.plan?.version).toBe(1);
+    expect(scan.diagnosis?.risks[0]).toMatchObject({ risk: "fungal_spread", level: "medium", drivers: ["3 humid days in a row"] });
+    const area = scan.observations.find((o) => o.detail?.measurement?.quantity === "affected_area_pct")!;
+    expect(area.detail?.measurement).toMatchObject({ value: 14, min: 9, max: 21, n: 3 });
+    expect(scan.weather?.past_7_days).toMatchObject({ hours_rh_over_90: 46, longest_humid_run_days: 3 });
+  });
+
+  it("answers with ErrorBody: 404, 400, 403 for a viewer", async () => {
+    const nf = await call("GET", "/nope");
+    expect(nf.status).toBe(404);
+    expect(nf.json.error).toMatchObject({ code: "not_found", retryable: false });
+    expect(typeof nf.json.error.request_id).toBe("string");
+    expect((await call("GET", "/plants")).json.error.code).toBe("invalid_request");
+    expect((await call("GET", "/plants/missing")).status).toBe(404);
+    scenario.set({ role: "viewer" });
+    const denied = await call("POST", "/scans", { garden_id: IDS.garden, plant_id: IDS.kale });
+    expect(denied.status).toBe(403);
+    expect(denied.json.error).toMatchObject({ code: "forbidden", details: { required_role: "editor" } });
+    expect((await call("GET", "/gardens")).json.items[0].my_role).toBe("viewer");
+  });
+
+  it("completing a repeating task opens the next one", async () => {
+    const before = (await call("GET", `/tasks?garden_id=${IDS.garden}&state=open`)).json.items as S["Task"][];
+    const check = before.find((t) => t.plant_id === IDS.tomato2)!;
+    const done = await call("PATCH", `/tasks/${check.id}`, { done: true });
+    expect(done.status).toBe(200);
+    expect(done.json.done_at).toBeDefined();
+    const after = (await call("GET", `/tasks?garden_id=${IDS.garden}&state=open`)).json.items as S["Task"][];
+    expect(after.some((t) => t.id === check.id)).toBe(false);
+    expect(after.some((t) => t.plant_id === IDS.tomato2 && t.due && t.due > check.due!)).toBe(true);
+  });
+});
+
+describe("uploads and faults", () => {
+  it("a fault makes the next upload return 422 image_quality, then clears", async () => {
+    const scanId = (await call("POST", "/scans", { garden_id: IDS.garden, plant_id: IDS.tomato2 })).json.id;
+    scenario.set({ uploadFault: "image_quality" });
+    const bad = await upload(scanId, "whole_plant");
+    expect(bad.status).toBe(422);
+    expect(bad.json.error).toMatchObject({ code: "image_quality", details: { problem: "too_blurry", hint: "tap_to_focus" } });
+    const good = await upload(scanId, "whole_plant");
+    expect(good.status).toBe(201);
+    expect(good.json.quality.passed).toBe(true);
+    expect(good.json.image.url).toMatch(/^mock:\/\/images\//);
+    expect((await upload(scanId, "whole_plant")).json.error.code).toBe("too_many_images");
+  });
+
+  it("refuses submit without a whole_plant shot, and other faults hit the next call", async () => {
+    const scanId = await newScan(IDS.kale, false);
+    const r = await call("POST", `/scans/${scanId}/submit`);
+    expect(r.status).toBe(422);
+    expect(r.json.error).toMatchObject({ code: "missing_required_shot", details: { missing: ["whole_plant"] } });
+    scenario.set({ callFault: "budget_exceeded" });
+    const b = await call("GET", "/me");
+    expect(b.status).toBe(429);
+    expect(b.json.error.details.budget).toBe("scans");
+    expect((await call("GET", "/me")).status).toBe(200);
+  });
+});
+
+describe("scripted runs", () => {
+  async function runToEnd(plantId: string, nextScan: "auto" | "healthy" | "low_evidence" | "no_plant_found" | "early_blight" = "auto") {
+    scenario.set({ nextScan });
+    const scanId = await newScan(plantId);
+    const submit = await call("POST", `/scans/${scanId}/submit`);
+    expect(submit.status).toBe(202);
+    expect(submit.json.status).toBe("queued");
+    const events = await open(scanId);
+    return { scanId, events };
+  }
+
+  it("a healthy plant ends planned with every event in seq order", async () => {
+    const { scanId, events } = await runToEnd(IDS.kale);
+    const all = await events.rest();
+    expectOrdered(all);
+    expect(all[0]).toMatchObject({ type: "run_started", reason: "submit" });
+    expect(all.at(-1)).toMatchObject({ type: "plan_ready", provisional: false });
+    const detail = (await call("GET", `/scans/${scanId}`)).json as S["ScanDetail"];
+    expect(detail.status).toBe("planned");
+    expect(detail.diagnosis?.status).toBe("healthy");
+    expect(detail.last_event_seq).toBe(all.length);
+  });
+
+  it("low_evidence gives an uncertain, low-evidence result with a provisional plan", async () => {
+    const { scanId, events } = await runToEnd(IDS.basil, "low_evidence");
+    expectOrdered(await events.rest());
+    const d = (await call("GET", `/scans/${scanId}`)).json as S["ScanDetail"];
+    expect(d.diagnosis).toMatchObject({ status: "uncertain", low_evidence: true });
+    expect(d.plan?.provisional).toBe(true);
+    expect((await call("GET", `/plants/${IDS.basil}`)).json.status).toBe("watch");
+  });
+
+  it("no_plant_found fails the scan and closes the stream", async () => {
+    const { scanId, events } = await runToEnd(IDS.lettuce, "no_plant_found");
+    const all = await events.rest();
+    expectOrdered(all);
+    expect(all.at(-1)).toMatchObject({ type: "failed", failure: { code: "no_plant_found", retryable: false } });
+    expect((await call("GET", `/scans/${scanId}`)).json.status).toBe("failed");
+  });
+
+  it("Tomato 2's live scan: uncertain until the rings question, then early blight after Yes", async () => {
+    const { scanId, events } = await runToEnd(IDS.tomato2);
+    await events.until((e) => e.type === "question");
+    const q = events.seen.find((e) => e.type === "question") as Extract<S["ScanEvent"], { type: "question" }>;
+    expect(q.question).toMatchObject({ kind: "indicator", status: "open" });
+    expect(q.question.options?.map((o) => o.label)).toEqual(["Yes", "No", "Not sure"]);
+    // The classifier is torn between early blight and Septoria leaf spot.
+    const names = events.seen.flatMap((e) => (e.type === "finding" && e.observation.stage === "disease" ? [e.observation.label] : []));
+    expect(names).toEqual(["Early blight", "Septoria leaf spot"]);
+    expect(events.seen.some((e) => e.type === "finding" && e.observation.role === "beneficial")).toBe(true);
+
+    await events.until((e) => e.type === "status_changed" && e.to === "awaiting_answer");
+    const mid = (await call("GET", `/scans/${scanId}`)).json as S["ScanDetail"];
+    expect(mid.status).toBe("awaiting_answer");
+    expect(mid.open_question?.id).toBe(q.question.id);
+    expect(mid.diagnosis).toBeUndefined();
+
+    const ans = await call("POST", `/scans/${scanId}/answers`, { question_id: q.question.id, option_id: "yes" });
+    expect(ans.status).toBe(202);
+    expect(ans.json.open_question.status).toBe("answering");
+    expect((await call("POST", `/scans/${scanId}/answers`, { question_id: q.question.id, option_id: "yes" })).status).toBe(409);
+
+    const all = await events.rest();
+    expectOrdered(all);
+    expect(all.at(-1)).toMatchObject({ type: "plan_ready", provisional: false });
+    const after = (await call("GET", `/scans/${scanId}`)).json as S["ScanDetail"];
+    expect(after.status).toBe("planned");
+    expect(after.open_question).toBeUndefined();
+    expect(after.diagnosis).toMatchObject({ status: "confirmed", primary: { problem_id: "tomato_early_blight" } });
+    expect(after.diagnosis?.risks[0]).toMatchObject({ level: "high" });
+    expect(after.diagnosis?.risks[0].drivers).toEqual(["4 humid days in the forecast", "Crowded: 40 cm from Tomato 1"]);
+    expect(after.diagnosis?.organisms[0]).toMatchObject({ name: "Ladybug larva", role: "beneficial", preys_on: [{ name: "Aphids" }] });
+    expect(after.plan?.task_ids.length).toBeGreaterThan(0);
+    expect(after.plant.status).toBe("sick");
+    const heights = (await call("GET", `/plants/${IDS.tomato2}/measurements?quantity=plant_height_cm`)).json.items as S["MeasurementPoint"][];
+    expect(heights.at(-1)?.value).toBe(56);
+  });
+
+  it("Not sure gives an uncertain diagnosis and a provisional plan", async () => {
+    const { scanId, events } = await runToEnd(IDS.tomato2);
+    await events.until((e) => e.type === "status_changed" && e.to === "awaiting_answer");
+    const qid = (await call("GET", `/scans/${scanId}`)).json.open_question.id;
+    expect((await call("POST", `/scans/${scanId}/answers`, { question_id: qid, option_id: "unsure" })).status).toBe(202);
+    const all = await events.rest();
+    expectOrdered(all);
+    expect(all.at(-1)).toMatchObject({ type: "plan_ready", provisional: true });
+    const d = (await call("GET", `/scans/${scanId}`)).json as S["ScanDetail"];
+    expect(d.diagnosis?.status).toBe("uncertain");
+    expect(d.diagnosis?.primary).toBeUndefined();
+    expect(d.plan?.provisional).toBe(true);
+    expect(d.plant.status).toBe("watch");
+  });
+
+  it("replay with Last-Event-ID resumes after it and the run is unaffected", async () => {
+    const { scanId, events } = await runToEnd(IDS.kale);
+    const all = await events.rest();
+    const cut = 7;
+    const replay = await (await open(scanId, cut)).rest();
+    expect(replay.map((e) => e.seq)).toEqual(all.slice(cut).map((e) => e.seq));
+    expect(replay[0].seq).toBe(cut + 1);
+    expect(await (await open(scanId, all.length)).rest()).toEqual([]);
+    // Without Last-Event-ID the whole history is replayed.
+    expect((await (await open(scanId)).rest()).length).toBe(all.length);
+  });
+
+  it("a dropped stream resumes where it stopped", async () => {
+    const { scanId, events } = await runToEnd(IDS.kale);
+    await events.rest();
+    scenario.set({ dropNextStream: true });
+    const dropped = await open(scanId);
+    await expect(dropped.rest()).rejects.toThrow();
+    expect(dropped.seen.map((e) => e.seq)).toEqual([1, 2, 3]);
+    const resumed = await (await open(scanId, 3)).rest();
+    expect(resumed[0].seq).toBe(4);
+  });
+
+  it("sends a keepalive comment while a question waits", async () => {
+    const { events } = await runToEnd(IDS.tomato2);
+    await events.until((e) => e.type === "status_changed" && e.to === "awaiting_answer");
+    for (let i = 0; i < 40 && !events.raw.includes(": keepalive"); i++) {
+      await new Promise((r) => setTimeout(r, 20));
+      await Promise.race([events.until(() => false), new Promise((r) => setTimeout(r, 20))]);
+    }
+    expect(events.raw).toContain(": keepalive\n\n");
+    await events.cancel();
+  });
+});
