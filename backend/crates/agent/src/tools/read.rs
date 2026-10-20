@@ -5,18 +5,19 @@ use std::io::Cursor;
 
 use domain::{
     chat::{GardenMapView, Memory, MemorySearch, SoilProfileView, ToolName},
+    connectors::{FarmRecordHit, FarmRecordKind},
     garden::{map::neighbours, plants::GrowthQuantity, tasks::TaskQuery},
     id::{ChatImageId, ImageId, OrganismId, PlantId, ProblemId, ScanId, SourceId, SpeciesId},
     knowledge::ChunkTopic,
-    ports::{ChunkFilter, ContentPart, ObjectKey},
+    ports::{ChunkFilter, ContentPart, FarmRecordFilter, ObjectKey},
     records::task::TaskState,
-    wire::PageRequest,
+    wire::{LocalDate, PageRequest, Timestamp},
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::{Tool, ToolCtx, ToolEffect, ToolKind, ToolOutput};
-use crate::{beliefs::search_beliefs, context::garden_weather, error::ToolError};
+use crate::{beliefs::search_beliefs, context::garden_weather, error::ToolError, prompt::DataKind};
 
 const fn page(limit: u32) -> PageRequest {
     PageRequest {
@@ -739,4 +740,105 @@ impl Tool for ListTasks {
             .items;
         Ok(ToolOutput::json(&tasks))
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+
+/// The most hits `search_farm_records` returns ([connectors 7]).
+pub const FARM_RECORD_HITS: usize = 8;
+
+/// `search_farm_records(query, kind?, since?)` ([connectors 7]): the garden's synced Slack
+/// messages and Drive documents, closest first.
+#[derive(Debug)]
+pub struct SearchFarmRecords;
+
+/// Arguments of `search_farm_records`.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SearchFarmRecordsArgs {
+    /// What to look for.
+    pub query: String,
+    /// Slack messages (`message`) or Drive documents (`document`) only.
+    #[serde(default)]
+    pub kind: Option<FarmRecordKind>,
+    /// Records from this day on, in the garden's time zone (YYYY-MM-DD).
+    #[serde(default)]
+    pub since: Option<LocalDate>,
+}
+
+impl Tool for SearchFarmRecords {
+    type Args = SearchFarmRecordsArgs;
+    const NAME: ToolName = ToolName::SearchFarmRecords;
+    const DESCRIPTION: &'static str = "Search the farm's own records, synced from its Slack \
+        channels and Google Drive folder: field reports, spray logs, procedures. Each hit comes \
+        with its title, author, time and link. Say what was applied and when, never a rate from \
+        a record.";
+    const LABEL: &'static str = "Checking the farm records";
+    const KIND: ToolKind = ToolKind::Read;
+    const DATA_KIND: DataKind = DataKind::FarmRecords;
+    const NEEDS_FARM_RECORDS: bool = true;
+
+    async fn run(
+        &self,
+        ctx: &ToolCtx<'_>,
+        args: SearchFarmRecordsArgs,
+    ) -> Result<ToolOutput, ToolError> {
+        let member = ctx.owner.membership();
+        let since = match args.since {
+            Some(day) => {
+                let garden = ctx
+                    .deps
+                    .stores
+                    .gardens
+                    .garden_context(member.garden())
+                    .await?;
+                Some(local_midnight(day, &garden.time_zone.0))
+            }
+            None => None,
+        };
+        let query = embed(ctx, &args.query).await?;
+        let filter = FarmRecordFilter {
+            kind: args.kind,
+            since,
+        };
+        // An exact cosine search within the proof's garden: another garden's records are never
+        // read.
+        let mut hits: Vec<FarmRecordHit> = ctx
+            .deps
+            .stores
+            .farm
+            .search_records(member, &query, filter, FARM_RECORD_HITS)
+            .await?
+            .into_iter()
+            .map(|m| m.hit)
+            .collect();
+        hits.truncate(FARM_RECORD_HITS);
+        let mut out = ToolOutput::json(&hits);
+        out.effects = hits
+            .into_iter()
+            .map(|h| ToolEffect::FarmCitation(h.citation))
+            .collect();
+        Ok(out)
+    }
+}
+
+/// The first instant of `day` in the garden's IANA time zone; UTC midnight when the zone doesn't
+/// parse. A day whose midnight falls in a DST gap starts an hour later.
+pub fn local_midnight(day: LocalDate, time_zone: &str) -> Timestamp {
+    use chrono::TimeZone as _;
+    let naive = day.into_inner().and_time(chrono::NaiveTime::MIN);
+    let start = time_zone
+        .parse::<chrono_tz::Tz>()
+        .ok()
+        .and_then(|tz| {
+            tz.from_local_datetime(&naive)
+                .earliest()
+                .or_else(|| {
+                    let later = naive + chrono::TimeDelta::hours(1);
+                    tz.from_local_datetime(&later).earliest()
+                })
+                .map(|t| t.with_timezone(&chrono::Utc))
+        })
+        .unwrap_or_else(|| naive.and_utc());
+    Timestamp::from(start)
 }

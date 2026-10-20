@@ -226,6 +226,7 @@ pub fn garden_deps(
             maps: Arc::new(maps),
             usage: Arc::new(MockUsageRepo::new()),
             weather_cache: Arc::new(MockWeatherCacheRepo::new()),
+            farm: Arc::new(no_connectors()),
         },
         memory: Arc::new(memory),
         beliefs,
@@ -242,6 +243,50 @@ pub fn garden_deps(
         )),
         config: crate::AgentConfig::default(),
     }
+}
+
+/// A farm store for a garden with no connectors: `search_farm_records` isn't offered.
+pub fn no_connectors() -> domain::ports::MockFarmRecordStore {
+    let mut farm = domain::ports::MockFarmRecordStore::new();
+    farm.expect_connectors().returning(|_| Ok(Vec::new()));
+    farm
+}
+
+/// A connector of [`GARDEN`] with this status and record count.
+pub fn connector(
+    status: domain::connectors::ConnectorStatus,
+    record_count: u32,
+) -> domain::connectors::Connector {
+    serde_json::from_value(serde_json::json!({
+        "id": "01JAX3K9T6R2B8V0QZ4M7D1E5C", "garden_id": GARDEN, "kind": "google_drive",
+        "status": status, "endpoint": "era", "sources": [], "record_count": record_count,
+        "created_at": "2026-10-01T00:00:00Z"
+    }))
+    .expect("a valid connector")
+}
+
+/// The Maple Row fixture's spray log (`D_SPRAY` in `google-drive.json`) as one search hit.
+pub fn spray_log_hit() -> domain::connectors::FarmRecordHit {
+    let drive: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/era/maple-row/google-drive.json"
+    ))
+    .expect("the fixture is JSON");
+    let file = drive["files"]
+        .as_array()
+        .and_then(|files| files.iter().find(|f| f["id"] == "D_SPRAY"))
+        .expect("the fixture has the spray log");
+    serde_json::from_value(serde_json::json!({
+        "text": file["text"],
+        "citation": {
+            "record_id": "01JAX3K9T6R2B8V0QZ4M7D1E5C.0.D_SPRAY",
+            "system": "google_drive",
+            "title": file["name"],
+            "author": "Maria Lopez",
+            "at": "2026-09-04T18:00:00Z",
+            "link": "http://localhost:4003/file/d/D_SPRAY/view"
+        }
+    }))
+    .expect("a valid hit")
 }
 
 /// A belief store that answers every read after a minute.

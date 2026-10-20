@@ -1,9 +1,10 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.14, 2026-10-19. Companion to the [architecture document](README.md).
-> **v0.10.14**: section 9 states `complete`'s `500` for our own misconfigured OAuth client, a claimed state's `400`, the retry after a `503`, the callback's bounded `error`, a replayed create's possibly expired `authorize_url`, and a disconnect that keeps a token another connector holds; section 11 lists the architecture sections the connector deletion triggers changed and keeps its rows in version order; no wire shape changed.
-> **v0.10.13**: an owner's demotion, removal or leaving, and their account's deletion, now delete the farm connectors they created, and the tokens are revoked after the store marks the connectors `deleting`, so a restart finishes the step (EON E3.6, section 9); no wire shape changed.
-> **v0.10.12**: the farm connector routes' answers as built (section 9): `409 invalid_state` for a vendor without an OAuth client, the callback's nonce check and `error` redirect, `complete`'s `404` for another user or device, `400` for a refused code and `503` for a vendor outage, the sources' checks and the state's format.
+> **Status:** Draft v0.10.15, 2026-10-19. Companion to the [architecture document](README.md).
+> **v0.10.15**: section 9 states `complete`'s `500` for our own misconfigured OAuth client, a claimed state's `400`, the retry after a `503`, the callback's bounded `error`, a replayed create's possibly expired `authorize_url`, and a disconnect that keeps a token another connector holds; section 11 lists the architecture sections the connector deletion triggers changed and keeps its rows in version order; no wire shape changed.
+> **v0.10.14**: an owner's demotion, removal or leaving, and their account's deletion, now delete the farm connectors they created, and the tokens are revoked after the store marks the connectors `deleting`, so a restart finishes the step (EON E3.6, section 9); no wire shape changed.
+> **v0.10.13**: the farm connector routes' answers as built (section 9): `409 invalid_state` for a vendor without an OAuth client, the callback's nonce check and `error` redirect, `complete`'s `404` for another user or device, `400` for a refused code and `503` for a vendor outage, the sources' checks and the state's format.
+> **v0.10.12**: section 8 says when `search_farm_records` is offered, how `since` is read and that it returns at most 8 hits framed as `kind="farm_records"`; `Message.farm_citations` are the records the turn's tool calls returned, once per record id, with no SSE event; no wire shape changed.
 > **v0.10.11**: `POST /gardens/{id}/connectors` answers `409 invalid_state` when the garden already has 2 connectors; no wire shape changed.
 > **v0.10.10**: the connector routes accept `Idempotency-Key`, and section 2 lists connectors under `invalid_state` and Sync now under `rate_limited`; no wire shape changed.
 > **v0.10.9** declares the farm connectors' contract ([connectors](../connectors/README.md)): the `Connector` types and eight routes (section 9), `search_farm_records` and `FarmCitation` (section 8), `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations` as optional fields (sections 7, 8), the `FarmRecordId` wire form, the roles rows and the deletion step. The routes answer `409 invalid_state` until E3 turns connectors on.
@@ -1606,7 +1607,7 @@ interface Message {
   text: string;
   attachments: { image_id: Id; url: string }[];
   citations: Citation[];
-  farm_citations?: FarmCitation[];   // farm records an assistant message cites; omitted when empty (section 9, farm connectors)
+  farm_citations?: FarmCitation[];   // farm records the turn's tool calls returned ("records checked"), once per record id; omitted when empty; no SSE event, the app reads them from the stored message (section 9, farm connectors)
   pending_actions: PendingAction[];
   interrupted: boolean;              // the stream dropped before message_completed
   created_at: Timestamp;
@@ -1792,7 +1793,7 @@ The agent's tools return the same records the app sees. Every tool runs as the s
 | `get_plant_measurements` | `plant_id`, `quantity?` | Plants of the garden | `MeasurementPoint[]` (section 9): the latest 50, oldest first |
 | `get_garden_map` | none | The garden | `{ map: GardenMap \| null; neighbours: Record<Id, Id[]> }` (section 9) |
 | `list_tasks` | `state?`: `open` (default), `done` or `dismissed` | The garden | `Task[]` |
-| `search_farm_records` | `query`, `kind?` (`message` or `document`), `since?` (a date) | The garden's synced farm records; every role | `{ text: string; citation: FarmCitation }[]`, at most 8 (`FarmRecordHit`). Lands with the agent work, [EON E5.2](../EON/README.md#e5-the-agent) |
+| `search_farm_records` | `query`, `kind?` (`message` or `document`), `since?` (a date) | The garden's synced farm records; every role. Offered when the garden has a farm record or an `active` or `reauth_needed` connector. `since` is `YYYY-MM-DD`, from that day's midnight in the garden's time zone | `{ text: string; citation: FarmCitation }[]`, at most 8 (`FarmRecordHit`), framed as `kind="farm_records"`. Built in [EON E5.2](../EON/README.md#e5-the-agent) |
 | `remember` | `fact`, `plant_id?` | The garden | `Memory` with `source: "chat"`, and a `memory_saved` event |
 | `request_rescan` | `plant_id`, `photo_kind`, `instructions` | Live plants of the garden | `{ plant_id: Id; photo_kind: ImageKind; instructions: string }`, and a `rescan_requested` event |
 | `create_task` | `title`, `detail?`, `plant_id?`, `due?`, `repeat_every_days?` | The garden; editors and owners only | `PendingAction` (preview `task`) |
@@ -2450,8 +2451,9 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.7: `Memory.topic`; shared memories mirrored into SurrealDB Agent Memory as beliefs; `GET /plants/{plant_id}/beliefs`; `search_memory` returns `MemorySearch`; scope erase in the plant and garden cascades | 1, 5, 7, 8.2, 9, 10, 11, 15 |
 | v0.10.8: `vlm_prompts` names `findings@2` | none (the architecture document doesn't list prompt versions) |
 | v0.10.9: the farm connectors' contract: `Connector` and its eight routes, `FarmCitation` and `FarmRecordId`, `search_farm_records`, `PlanStep.farm_citations`, `ActionPlan.farm_records`, `Message.farm_citations`, the owner-only roles rows and the garden cascade's connector step | 5 (tables, deletion), 7 (tools), 9 (API surface) |
-| v0.10.12: the farm connector routes' answers as built: a vendor without an OAuth client, the callback's nonce check and `error` redirect, `complete`'s device check and vendor errors, the sources' checks, the state's format | 9 (the farm connectors' route list no longer says they answer `409` until configured) |
-| v0.10.13: farm connectors go with the owner who created them when that owner is demoted, removed, leaves or deletes the account, as well as with their garden; the tokens are revoked after the store marks the connectors `deleting`, and kept while another connector holds the same account | 5 (deletion: an owner who stops being one, deleting a plant or a garden), 11 (privacy: farm connectors) |
+| v0.10.12: `search_farm_records`' offering rule, `since` and framing; `Message.farm_citations` are the records the turn returned | 7 (tools) |
+| v0.10.13: the farm connector routes' answers as built: a vendor without an OAuth client, the callback's nonce check and `error` redirect, `complete`'s device check and vendor errors, the sources' checks, the state's format | 9 (the farm connectors' route list no longer says they answer `409` until configured) |
+| v0.10.14: farm connectors go with the owner who created them when that owner is demoted, removed, leaves or deletes the account, as well as with their garden; the tokens are revoked after the store marks the connectors `deleting`, and kept while another connector holds the same account | 5 (deletion: an owner who stops being one, deleting a plant or a garden), 11 (privacy: farm connectors) |
 
 ---
 
