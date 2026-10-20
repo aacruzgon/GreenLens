@@ -37,7 +37,7 @@ use domain::{
     error::{ErrorBody, InvalidStateDetails},
     id::{ConnectorId, table},
     ports::{
-        CompletedConnect, Conflict, ConnectorRow, IdGenExt, NewConnector, PendingConnect,
+        CompletedConnect, Conflict, ConnectorRow, IdGenExt, NewConnector, PendingConnect, Sealed,
         StoreError, SyncRequest,
     },
     rules::limits::PENDING_CONNECT_TTL,
@@ -601,7 +601,7 @@ async fn exchange_and_store(
             CompletedConnect {
                 nonce: claim.nonce.clone(),
                 account: exchanged.account.clone(),
-                secret,
+                secret: secret.clone(),
                 now: state.ports.clock.now(),
             },
         )
@@ -611,27 +611,48 @@ async fn exchange_and_store(
             tracing::info!(connector = %claim.id, kind = %claim.kind, "connector connected");
             Ok(Wire::ok(connector))
         }
-        Err(error) => connect_lost(&state, &claim, exchanged, error),
+        Err(error) => connect_lost(&state, &claim, exchanged, &secret, error).await,
     }
 }
 
-/// The final write failed after the vendor gave tokens that nothing will store (the connector
-/// was deleted or cleaned up during the exchange): they are revoked in the background, unless
-/// another connector holds the same account's.
-fn connect_lost(
+/// The final write failed after the vendor gave tokens. When the store says nothing took them
+/// (the compare-and-set lost, or the connector was deleted or cleaned up during the exchange),
+/// they are revoked in the background, unless another connector holds the same account's. Any
+/// other error may have come after the commit applied (the connection lost on the way back),
+/// so the row decides: holding these very tokens, the connect worked and is answered as such;
+/// otherwise they are revoked; and when the row can't be read, they are left alone and logged,
+/// since revoking tokens a live connector holds would break it.
+async fn connect_lost(
     state: &SharedState,
     claim: &Claim,
     exchanged: Exchanged,
+    secret: &Sealed,
     error: StoreError,
 ) -> Result<Wire<Connector>, ApiError> {
     let id = claim.id;
-    tracing::warn!(connector = %id, error = %error, "connect lost after the exchange; revoking its tokens");
-    let runner = state.deletions.clone();
-    let kind = claim.kind;
-    let Exchanged { tokens, account } = exchanged;
-    state.tasks.spawn(async move {
-        runner.revoke_tokens(id, kind, Some(&account), tokens).await;
-    });
+    let revoke = match &error {
+        StoreError::Conflict(_) | StoreError::NotFound => true,
+        _ => match state.ports.store.connector_row(id).await {
+            Ok(Some(row)) if row.secret.as_ref() == Some(secret) => {
+                tracing::info!(connector = %id, kind = %claim.kind, error = %error, "connector connected; the store's answer was lost");
+                return Ok(Wire::ok(row.connector));
+            }
+            Ok(_) => true,
+            Err(read) => {
+                tracing::error!(connector = %id, kind = %claim.kind, error = %error, read = %read, "connect outcome unknown; its tokens are neither stored for sure nor revoked");
+                false
+            }
+        },
+    };
+    if revoke {
+        tracing::warn!(connector = %id, error = %error, "connect lost after the exchange; revoking its tokens");
+        let runner = state.deletions.clone();
+        let kind = claim.kind;
+        let Exchanged { tokens, account } = exchanged;
+        state.tasks.spawn(async move {
+            runner.revoke_tokens(id, kind, Some(&account), tokens).await;
+        });
+    }
     Err(match error {
         StoreError::Conflict(Conflict::AlreadyExists) => bad_state("the state was used"),
         e => e.into(),

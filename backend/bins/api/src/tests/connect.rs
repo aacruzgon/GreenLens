@@ -15,7 +15,9 @@ use domain::{
         ConnectorStatus, SyncErrorCode,
     },
     id::ConnectorId,
-    ports::{Conflict, ConnectorRow, NewConnector, PendingConnect, StoreError, SyncRequest},
+    ports::{
+        Conflict, ConnectorRow, NewConnector, PendingConnect, Sealed, StoreError, SyncRequest,
+    },
 };
 
 use super::*;
@@ -698,6 +700,133 @@ async fn tokens_the_store_no_longer_takes_are_revoked() {
     )
     .await;
     assert_eq!(answer.status, StatusCode::NOT_FOUND);
+}
+
+/// A store error after which the commit may have applied: the connection lost on the way
+/// back.
+fn lost_answer() -> StoreError {
+    StoreError::Unavailable("connection reset".into())
+}
+
+/// A Google exchange that gives tokens, with the store's `connector_row` answering the
+/// pending row for the route's checks and then `reread` for the read after the failed write,
+/// which gets the sealed value the write sent. The write fails with `lost_answer`.
+fn ambiguous_write(
+    vendors: &mut MockConnectVendors,
+    reread: impl Fn(Sealed) -> Result<Option<ConnectorRow>, StoreError> + Send + 'static,
+) -> FakeStore {
+    vendors
+        .expect_exchange()
+        .times(1)
+        .returning(|_, _, _, _| Ok(google_exchanged()));
+    let mut store = FakeStore::default();
+    let mut seq = Sequence::new();
+    store
+        .farm_record_store
+        .expect_connector_row()
+        .with(eq(id()))
+        .times(2)
+        .in_sequence(&mut seq)
+        .returning(|_| Ok(Some(pending_row(ConnectorKind::GoogleDrive))));
+    let sent = Arc::new(Mutex::new(None::<Sealed>));
+    let read = Arc::clone(&sent);
+    store
+        .farm_record_store
+        .expect_connector_row()
+        .with(eq(id()))
+        .times(1)
+        .in_sequence(&mut seq)
+        .returning(move |_| reread(read.lock().unwrap().clone().unwrap()));
+    claims(&mut store, 0);
+    store
+        .farm_record_store
+        .expect_complete_connect()
+        .times(1)
+        .returning(move |_, _, done| {
+            *sent.lock().unwrap() = Some(done.secret);
+            Err(lost_answer())
+        });
+    store
+}
+
+/// Audit of PR 72, finding 2: a write whose answer was lost but whose commit applied leaves
+/// the connector `active` with these tokens; they are kept, and the connect is answered.
+#[tokio::test]
+async fn a_lost_answer_after_the_commit_keeps_the_tokens_and_answers_200() {
+    let mut vendors = MockConnectVendors::new();
+    vendors.expect_revoke().never();
+    let store = ambiguous_write(&mut vendors, |secret| {
+        let mut row = active_row();
+        row.connector.kind = ConnectorKind::GoogleDrive;
+        row.connector.account = Some(ConnectorAccount::GoogleDrive {
+            email: "owner@example.org".to_owned(),
+        });
+        row.secret = Some(secret);
+        Ok(Some(row))
+    });
+    let answer = send(
+        store,
+        on(),
+        Some(Role::Owner),
+        vendors,
+        complete_request(&good_state(), VERIFIER),
+    )
+    .await;
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
+    assert_eq!(answer.body["status"], "active");
+}
+
+/// Finding 2: a lost answer whose commit didn't apply (the row is still pending): nothing
+/// holds the tokens, so they are revoked.
+#[tokio::test]
+async fn a_lost_answer_before_the_commit_revokes_the_tokens() {
+    let mut vendors = MockConnectVendors::new();
+    vendors.expect_revoke().times(1).returning(|_, _| Ok(()));
+    let mut store = ambiguous_write(&mut vendors, |_| {
+        Ok(Some(pending_row(ConnectorKind::GoogleDrive)))
+    });
+    store
+        .farm_record_store
+        .expect_shared_account_connectors()
+        .times(1)
+        .returning(|_, _, _| Ok(0));
+    let answer = send(
+        store,
+        on(),
+        Some(Role::Owner),
+        vendors,
+        complete_request(&good_state(), VERIFIER),
+    )
+    .await;
+    assert_eq!(
+        answer.status,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "{}",
+        answer.body
+    );
+}
+
+/// Finding 2: when the row can't be read either, the outcome is unknown, and tokens a live
+/// connector may hold are left alone.
+#[tokio::test]
+async fn a_lost_answer_with_no_row_to_read_leaves_the_tokens() {
+    let mut vendors = MockConnectVendors::new();
+    vendors.expect_revoke().never();
+    let store = ambiguous_write(&mut vendors, |_| Err(lost_answer()));
+    let answer = send(
+        store,
+        on(),
+        Some(Role::Owner),
+        vendors,
+        complete_request(&good_state(), VERIFIER),
+    )
+    .await;
+    assert_eq!(
+        answer.status,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "{}",
+        answer.body
+    );
 }
 
 /// Our own request rejected (a misconfigured OAuth client: Slack's `bad_client_secret`,
