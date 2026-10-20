@@ -1,6 +1,6 @@
 # PDM Backend Flows
 
-> **Status:** Draft v0.2.3, 2026-10-19. v0.2.3: farm connectors go with their garden and with the owner who created them (demoted, removed, leaving, or deleting the account): the store marks them `deleting` in the transaction that changes the garden or the membership, and the deletion runner revokes each token after that commit and then deletes the records and the row, resumed at start while the mark remains (section 10, EON E3.6). v0.2.2: the scan stream closes on a 15-second re-check (rest without an event, a deleted scan), a stream can close before a step's last events (the app refetches on close), image bodies end on shutdown, and the worker's shutdown drops a `complete` or heartbeat in flight, so it ends within `DRAIN_SECONDS`. v0.2.1: the scan stream ends on a duplicate flagged `rests`, the global body cap is 20 MiB + 128 KiB, and the `api` container's grace period is 190 s. v0.2: the diagrams follow the cross-crate fixes (one wake-up path for the claim long poll, one `fail_scan` per final failure, the sweep as the only question continuation, late events dropped, deletes through one `DeleteQueue`, the account tombstone, SoilGrids retry times, guided stage events, the plan step's release after 3 lost compare-and-sets), and section 20 marks each gap fixed and where. v0.1: sequence diagrams and state machines for every server-side flow, from a request's layers to a scan's steps, a job's lease, a chat turn, deletion, the scheduler and start-up. Every name is a type, trait or function from the crate documents and the compiled scratch workspace.
+> **Status:** Draft v0.2.4, 2026-10-19. v0.2.4: the farm connector deletion has one path, `DeletionRunner::finish_connector`, which the owner's disconnect uses too; it revokes through `ConnectVendors` in a task of its own, keeps a token another live connector of the same Slack team or Google account holds, finishes a removed member's connectors before their objects, and leaves a former owner's connectors `deleting` while `CONNECTOR_KEY` is missing. v0.2.3: farm connectors go with their garden and with the owner who created them (demoted, removed, leaving, or deleting the account): the store marks them `deleting` in the transaction that changes the garden or the membership, and the deletion runner revokes each token after that commit and then deletes the records and the row, resumed at start while the mark remains (section 10, EON E3.6). v0.2.2: the scan stream closes on a 15-second re-check (rest without an event, a deleted scan), a stream can close before a step's last events (the app refetches on close), image bodies end on shutdown, and the worker's shutdown drops a `complete` or heartbeat in flight, so it ends within `DRAIN_SECONDS`. v0.2.1: the scan stream ends on a duplicate flagged `rests`, the global body cap is 20 MiB + 128 KiB, and the `api` container's grace period is 190 s. v0.2: the diagrams follow the cross-crate fixes (one wake-up path for the claim long poll, one `fail_scan` per final failure, the sweep as the only question continuation, late events dropped, deletes through one `DeleteQueue`, the account tombstone, SoilGrids retry times, guided stage events, the plan step's release after 3 lost compare-and-sets), and section 20 marks each gap fixed and where. v0.1: sequence diagrams and state machines for every server-side flow, from a request's layers to a scan's steps, a job's lease, a chat turn, deletion, the scheduler and start-up. Every name is a type, trait or function from the crate documents and the compiled scratch workspace.
 
 Companion to the [backend architecture](README.md) and the server-side half of the [frontend flows](../frontend/flows.md). Every request, event and job here is defined in the [data contracts](../architecture/contracts.md). The system-level flows are in [architecture 8](../architecture/README.md#8-main-flows). This document shows how the crates work together at run time: which handler, entry point, repository method and adapter each arrow is.
 
@@ -1003,7 +1003,7 @@ sequenceDiagram
 
 ### Farm connectors
 
-A connector goes with its garden, and with the owner who created it when that owner stops being one, because the consent was theirs ([connectors 8](../connectors/README.md#8-privacy-and-security), EON E3.6). The store marks it `deleting` inside the transaction that changes the garden or the membership (`start_garden_deletion`, `change_role` from `owner`, `remove_member`, and `transfer_ownership` at account deletion), so the sync and the list skip it at once and its row keeps the sealed token. The vendor's revoke is an HTTP call, so the runner makes it after that commit, outside every transaction:
+A connector goes with its garden, and with the owner who created it when that owner stops being one, because the consent was theirs ([connectors 8](../connectors/README.md#8-privacy-and-security), EON E3.6). The store marks it `deleting` inside the transaction that changes the garden or the membership (`start_garden_deletion`, `change_role` from `owner`, `remove_member`, and `transfer_ownership` at account deletion), so the sync and the list skip it at once and its row keeps the sealed token; the owner's `DELETE /connectors/{id}` marks it the same way (`start_connector_deletion`). The vendor's revoke is an HTTP call, so the runner makes it after that commit, outside every transaction, in `finish_connector`, the one revoke-then-delete path:
 
 ```mermaid
 sequenceDiagram
@@ -1011,24 +1011,30 @@ sequenceDiagram
     participant Runner as DeletionRunner
     participant Store
     participant Key as ConnectorKey
-    participant Vendor as TokenRevoker (Slack auth.revoke, Google revoke)
+    participant Vendor as ConnectVendors (Slack auth.revoke, Google revoke)
     Runner->>Store: FarmRecordStore::deleting_connectors(Some(garden))
     Store-->>Runner: ConnectorRow (sealed token), for a member only those they created
-    loop each connector
+    loop each connector: finish_connector
         alt endpoint era, or no token
             Note over Runner: nothing to revoke (era's demo token is a fixed string)
         else
-            Runner->>Key: unseal(SealPurpose::Token, connector, secret)
-            Runner->>Vendor: revoke(kind, token)
-            Note over Runner,Vendor: the outcome is logged by connector id and kind, never the token or the body; a failure doesn't stop the deletion
+            Runner->>Key: StoredTokens::unseal(key, connector, secret)
+            Runner->>Store: shared_account_connectors(kind, team id or email, except)
+            alt another live vendor connector holds the account
+                Note over Runner: not revoked: the token is theirs too
+            else
+                Runner->>Vendor: revoke(kind, tokens), in a task of its own
+                Note over Runner,Vendor: logged by connector id and kind, never the token or the body; a failure or a panic doesn't stop the deletion
+            end
         end
         Runner->>Store: delete_connector_batch until it deletes 0 (records 500 at a time, then the row)
     end
 ```
 
 - **Revoke before the delete, after the mark.** Revoking after the rows were gone would hold the only copy of the token in memory, and a crash would lose the revoke for good. With the mark committed first, a restart anywhere before the last batch leaves the row `deleting` with its token, and `DeletionRunner::resume` finishes it (`deleting_connectors(None)`: every such connector outside a garden being deleted; a garden being deleted finishes its own in its resumed cascade). The worst case is a second revoke of a token already revoked, which the vendor refuses and the log records.
-- **The account cascade** marks the leaver's connectors in `transfer_ownership` (the leaver drops to editor) and `remove_member`, and finishes them in the `Member` step, before `delete_user`: `connector.created_by` rejects the user's deletion while one remains.
-- **Connectors off** (no `CONNECTOR_KEY`): nothing can be unsealed, so nothing is revoked, but the records and rows are still deleted.
+- **A removed member** (`Member` cascade, also the account cascade's leave step) has their connectors finished before their chat objects; a store error listing them is logged and the chat steps go on, since `resume` finishes the connectors. The account cascade marks the leaver's connectors in `transfer_ownership` (the leaver drops to editor) and `remove_member`, and finishes them before `delete_user`: `connector.created_by` rejects the user's deletion while one remains.
+- **A demotion** starts `spawn_connectors_of` only when `change_role` says an owner was demoted (`RoleChange::demoted_owner`).
+- **Connectors off** (no `CONNECTOR_KEY`): nothing can be unsealed. A garden's cascade still deletes its connectors, unrevoked; a demoted, removed or leaving owner's stay `deleting`, with a warning at each start, so their tokens are revoked once the key is configured.
 
 ---
 
@@ -1201,8 +1207,9 @@ sequenceDiagram
     end
     loop each shared garden
         Runner->>Store: check_membership_of Viewer, remove_member (marks the user's connectors there deleting)
+        Runner->>Store: the user's connectors there, revoked and deleted (finish_connector, flow 10)
         Runner->>Blob: chat prefixes
-        Runner->>Store: delete_records DeletionTarget::Member (the connectors revoked and deleted first, flow 10)
+        Runner->>Store: delete_records DeletionTarget::Member
     end
     Runner->>Store: delete_user_feedback, delete_user (push tokens cascade, author links unset)
     loop until it succeeds or shutdown, back-off 1 s doubling to ADMIN_BACKOFF_MAX

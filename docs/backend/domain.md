@@ -4948,6 +4948,19 @@ pub struct RemovedMember {
     pub chat_prefixes: Vec<ObjectPrefix>,
 }
 
+/// What a role change did: the member as they are now, and whether an owner lost the role, in
+/// which case the transaction also marked the farm connectors they created in the garden
+/// `deleting` ([connectors 8]), for the deletion runner to finish after the commit.
+///
+/// [connectors 8]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#8-privacy-and-security
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoleChange {
+    /// The member after the change.
+    pub member: Member,
+    /// The member was an owner and no longer is.
+    pub demoted_owner: bool,
+}
+
 /// The `garden`, `member_of` and `invite` tables.
 #[cfg_attr(feature = "mock", mockall::automock)]
 #[async_trait::async_trait]
@@ -5062,13 +5075,14 @@ pub trait GardenRepo: Send + Sync {
     ) -> Result<AcceptedInvite, StoreError>;
 
     /// `PATCH /gardens/{id}/members/{user_id}`. Demoting the last owner is
-    /// `Rejected(InvalidState)`, checked in the transaction.
+    /// `Rejected(InvalidState)`, checked in the transaction; demoting any other owner marks
+    /// their connectors in the garden `deleting` in it ([`RoleChange::demoted_owner`]).
     async fn change_role(
         &self,
         owner: Membership<Owner>,
         member: UserId,
         role: Role,
-    ) -> Result<Member, StoreError>;
+    ) -> Result<RoleChange, StoreError>;
 
     /// `DELETE /gardens/{id}/members/{user_id}`: by an owner, or the member themselves (the
     /// caller checks which). The last owner can't leave. Deletes the membership and returns what
@@ -6940,6 +6954,10 @@ pub struct PendingConnect {
     pub verifier: Option<Sealed>,
     /// 10 minutes after the start.
     pub expires_at: Timestamp,
+    /// When a `complete` claimed the state ([`FarmRecordStore::claim_connect`]) to exchange the
+    /// code; `None` until then. A claimed state is spent: the callback and every other
+    /// `complete` refuse it.
+    pub claimed_at: Option<Timestamp>,
 }
 
 impl fmt::Debug for PendingConnect {
@@ -6949,6 +6967,7 @@ impl fmt::Debug for PendingConnect {
             .field("device_hash", &self.device_hash)
             .field("verifier", &self.verifier)
             .field("expires_at", &self.expires_at)
+            .field("claimed_at", &self.claimed_at)
             .finish()
     }
 }
@@ -7130,9 +7149,36 @@ pub trait FarmRecordStore: Send + Sync {
         connector: ConnectorId,
     ) -> Result<Option<ConnectorRow>, StoreError>;
 
-    /// `POST /connectors/{id}/complete`: a compare-and-set on `status = 'pending'`, the stored
-    /// nonce and its `expires_at` being after `done.now`; `Conflict(AlreadyExists)` when any
-    /// no longer holds (the state was used, replaced or expired).
+    /// `POST /connectors/{id}/complete`, before the code exchange: claims the pending state, a
+    /// compare-and-set on `status = 'pending'`, the stored nonce, its `expires_at` being after
+    /// `now` and no earlier claim, which sets `oauth.claimed_at`. Single use: of two
+    /// concurrent `complete`s, one claims and the other gets `Conflict(AlreadyExists)`, so the
+    /// code is spent at most once. `Conflict(AlreadyExists)` too when the state was used,
+    /// replaced or expired; `NotFound` when the connector is gone.
+    async fn claim_connect(
+        &self,
+        owner: Membership<Owner>,
+        connector: ConnectorId,
+        nonce: String,
+        now: Timestamp,
+    ) -> Result<(), StoreError>;
+
+    /// Undoes [`claim_connect`](Self::claim_connect) when the exchange failed before the vendor
+    /// gave tokens (an outage, a refused code), so a retry of the same `complete` can claim
+    /// again. Only the claim of `nonce` on a connector still `pending` is cleared; anything
+    /// else is left as it is.
+    async fn release_connect(
+        &self,
+        owner: Membership<Owner>,
+        connector: ConnectorId,
+        nonce: String,
+    ) -> Result<(), StoreError>;
+
+    /// `POST /connectors/{id}/complete`, after the exchange: a compare-and-set on
+    /// `status = 'pending'` and the stored nonce having been claimed; `Conflict(AlreadyExists)`
+    /// when that no longer holds, and `NotFound` when the connector is gone (deleted, or
+    /// removed by the pending cleanup while the exchange ran). The caller then revokes the
+    /// tokens it was given, which nothing stores.
     async fn complete_connect(
         &self,
         owner: Membership<Owner>,
@@ -7214,17 +7260,33 @@ pub trait FarmRecordStore: Send + Sync {
         user: UserId,
     ) -> Result<Vec<ConnectorId>, StoreError>;
 
-    /// How many other Slack connectors, in any garden, hold a token of this workspace
-    /// (`active` or `reauth_needed`, not `except`). A disconnect revokes the token with
-    /// `auth.revoke` only when there are none: Slack gives one bot token per app and workspace,
-    /// so revoking it would stop every connector of that workspace ([connectors 5]).
+    /// How many other live connectors, in any garden, hold a token of this account: `vendor`
+    /// connectors of `kind`, `active` or `reauth_needed`, not `except`, whose account is
+    /// `account` (Slack's team id, or the Google account's email). A deletion revokes the token
+    /// only when there are none ([connectors 5]): Slack gives one bot token per app and
+    /// workspace, and revoking Google's refresh token ends the whole grant of that account to
+    /// this OAuth client, so either would stop every connector of the account. `era`
+    /// connectors hold the simulator's tokens and never count.
     ///
     /// [connectors 5]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#5-connecting-and-tokens
-    async fn slack_team_connectors(
+    async fn shared_account_connectors(
         &self,
-        team_id: String,
+        kind: ConnectorKind,
+        account: String,
         except: ConnectorId,
     ) -> Result<u32, StoreError>;
+
+    /// Replaces a connector's sealed tokens with `new` (a refreshed Google access token) only
+    /// when the stored value is still `read`, the one the caller unsealed, and the connector is
+    /// `active` or `reauth_needed`: a compare-and-set, so of two refreshes at once one is
+    /// stored and the other keeps its token for its own call. `true` when it was stored.
+    /// Used by the source picker and the sync (E4).
+    async fn replace_secret(
+        &self,
+        connector: ConnectorId,
+        read: Sealed,
+        new: Sealed,
+    ) -> Result<bool, StoreError>;
 
     /// Connectors marked `deleting` whose deletion hasn't finished, with their sealed tokens,
     /// oldest id first: with `Some(garden)`, that garden's (a cascade or a demotion finishing
