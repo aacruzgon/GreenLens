@@ -73,13 +73,16 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "$ERA_CLIENT_ID" ] && [ -n "$ERA_CLIENT_SECRET" ]; then
-            answer=$(curl -sS -m 30 -X POST "$ERA_TOKEN_URL" \
+            # The secret goes on stdin, never on curl's command line, where other processes on
+            # the host could read it.
+            answer=$(printf %s "$ERA_CLIENT_SECRET" | curl -sS -m 30 -X POST "$ERA_TOKEN_URL" \
               --data-urlencode grant_type=client_credentials \
               --data-urlencode "client_id=$ERA_CLIENT_ID" \
-              --data-urlencode "client_secret=$ERA_CLIENT_SECRET")
-            token=$(jq -r '.access_token // empty' <<<"$answer")
+              --data-urlencode client_secret@-)
+            token=$(jq -r '.access_token // empty' <<<"$answer" 2>/dev/null || true)
             if [ -z "$token" ]; then
-              echo "::error::the client_credentials grant gave no token: $(jq -c 'del(.access_token)' <<<"$answer" 2>/dev/null || echo 'not JSON')"
+              # Only the error fields: any other field could be a credential under another name.
+              echo "::error::the client_credentials grant gave no token: $(jq -c '{error, error_description}' <<<"$answer" 2>/dev/null || echo 'not JSON')"
               exit 1
             fi
             echo "::add-mask::$token"
@@ -98,5 +101,5 @@ jobs:
           SLACK_BASE_URL: ${{ vars.SLACK_BASE_URL }}
           GOOGLE_DRIVE_BASE_URL: ${{ vars.GOOGLE_DRIVE_BASE_URL }}
         run: >-
-          cargo nextest run -p integrations --run-ignored only --locked --no-capture
+          cargo nextest run -p integrations --run-ignored only --locked --no-capture --retries 0
           -E 'test(/(^|::)era_hosted_/)'

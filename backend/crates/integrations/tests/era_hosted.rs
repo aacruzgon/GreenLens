@@ -11,7 +11,13 @@
 //! ```
 //!
 //! **Every request costs one of the account's 2,000 calls a month,** so each test makes as few as
-//! it can and prints how many it made. The hosted company has no admin API: no inject, no faults,
+//! it can, prints how many it made, and has a hard budget: past it, the next host lookup fails,
+//! so no request is sent and the test fails instead of spending more. A change in the hosted data
+//! (a subfolder, a second page of channels) or a retry storm then costs at most the budget.
+//!
+//! The client is the production one's settings (user agent, connect and read timeouts, the vendor
+//! clients' own timeouts) except that it speaks HTTP/1.1 and keeps no idle connection, so that
+//! every request does its own host lookup and can be counted. The hosted company has no admin API: no inject, no faults,
 //! no journal, and its data is Era's own, not our farm. The token is the company's: a tenant token
 //! (7 days) or one minted with `era client` credentials (1 hour).
 
@@ -26,7 +32,6 @@ use std::sync::{
 };
 
 use integrations::{
-    era_sim::ERA_TIMEOUT,
     google_drive::{DriveClient, DriveConfig, ExportFormat, FileKind},
     http::{HttpConfig, SecretString},
     slack::{SlackClient, SlackConfig},
@@ -56,16 +61,33 @@ fn var(name: &str) -> String {
     }
 }
 
-/// Counts DNS lookups. The client keeps no idle connections, so each request opens its own
-/// connection and looks the host up once: the count is the number of requests, retries
-/// included, which is what Era meters.
-struct CountingResolver(Arc<AtomicUsize>);
+/// The Slack test's budget: `conversations.list` and `conversations.history`, and room for two
+/// retries.
+const SLACK_BUDGET: usize = 4;
+
+/// The Drive test's budget: the picker's `files.list`, the folder's and the export, and room for
+/// two retries.
+const DRIVE_BUDGET: usize = 5;
+
+/// Counts DNS lookups, and refuses them past the budget. The client keeps no idle connections,
+/// so each request opens its own connection and looks the host up once: the count is the number
+/// of requests, retries included, which is what Era meters. A refused lookup sends nothing.
+struct CountingResolver {
+    calls: Arc<AtomicUsize>,
+    budget: usize,
+}
 
 impl Resolve for CountingResolver {
     fn resolve(&self, name: Name) -> Resolving {
-        self.0.fetch_add(1, Ordering::Relaxed);
+        let n = self.calls.fetch_add(1, Ordering::Relaxed) + 1;
+        let budget = self.budget;
         let host = name.as_str().to_owned();
         Box::pin(async move {
+            if n > budget {
+                return Err(
+                    format!("era-hosted: request {n} is over the budget of {budget}").into(),
+                );
+            }
             let addrs: Vec<_> = tokio::net::lookup_host((host.as_str(), 0)).await?.collect();
             Ok(Box::new(addrs.into_iter()) as Addrs)
         })
@@ -82,7 +104,7 @@ struct Hosted {
 }
 
 impl Hosted {
-    fn new(system: &'static str) -> Self {
+    fn new(system: &'static str, budget: usize) -> Self {
         let calls = Arc::new(AtomicUsize::new(0));
         let config = HttpConfig::default();
         let http = reqwest::Client::builder()
@@ -91,7 +113,10 @@ impl Hosted {
             .user_agent(config.user_agent)
             .pool_max_idle_per_host(0)
             .http1_only()
-            .dns_resolver(Arc::new(CountingResolver(Arc::clone(&calls))))
+            .dns_resolver(Arc::new(CountingResolver {
+                calls: Arc::clone(&calls),
+                budget,
+            }))
             .build()
             .expect("the HTTP client builds");
         Self {
@@ -116,14 +141,8 @@ impl Drop for Hosted {
 #[tokio::test]
 #[ignore = "needs our hosted Era company; each request is metered"]
 async fn era_hosted_slack_lists_channels_and_reads_history() {
-    let hosted = Hosted::new("slack");
-    let slack = SlackClient::new(
-        hosted.http.clone(),
-        SlackConfig {
-            timeout: ERA_TIMEOUT,
-            ..SlackConfig::era(var("SLACK_BASE_URL"))
-        },
-    );
+    let hosted = Hosted::new("slack", SLACK_BUDGET);
+    let slack = SlackClient::new(hosted.http.clone(), SlackConfig::era(var("SLACK_BASE_URL")));
 
     let mut channels = slack.conversations_list(&hosted.token).await.unwrap();
     assert!(!channels.is_empty(), "the bot is in no channel");
@@ -146,12 +165,11 @@ async fn era_hosted_slack_lists_channels_and_reads_history() {
 #[tokio::test]
 #[ignore = "needs our hosted Era company; each request is metered"]
 async fn era_hosted_drive_lists_a_folder_and_exports_a_doc() {
-    let hosted = Hosted::new("drive");
+    let hosted = Hosted::new("drive", DRIVE_BUDGET);
     let drive = DriveClient::new(
         hosted.http.clone(),
         DriveConfig {
             api_base: var("GOOGLE_DRIVE_BASE_URL"),
-            timeout: ERA_TIMEOUT,
             ..DriveConfig::default()
         },
     );
