@@ -365,6 +365,8 @@ struct Reply {
     text: String,
     /// The message being written, for the dose check's log line.
     message_id: Option<MessageId>,
+    /// A tool round ended since the last text: the next text starts a new paragraph.
+    after_tool_round: bool,
     citations: Vec<Citation>,
     /// The farm records the tools returned, each once (`Message.farm_citations`).
     farm_citations: Vec<FarmCitation>,
@@ -560,12 +562,12 @@ async fn store_reply(
 /// safety note, keeping the piece's surrounding whitespace ([contracts 7]).
 async fn emit_piece(deps: &AgentDeps, out: &mut Emitter, reply: &mut Reply, piece: String) -> bool {
     let checked = if let Some(found) = dose_check(&piece, &deps.products) {
-        // The rule and whether the match held a digit; never the matched text or the sentence,
-        // which may hold a rate.
+        // The rule and whether the sentence held a quantity; never the matched text or the
+        // sentence, which may hold a rate.
         tracing::info!(
-            message_id = ?reply.message_id,
+            message_id = reply.message_id.as_ref().map(tracing::field::display),
             rule = ?found.rule,
-            has_digit = found.matched.chars().any(|c| c.is_ascii_digit()),
+            has_quantity = found.has_quantity(),
             "dose check replaced a sentence"
         );
         let lead = &piece[..piece.len() - piece.trim_start().len()];
@@ -574,21 +576,18 @@ async fn emit_piece(deps: &AgentDeps, out: &mut Emitter, reply: &mut Reply, piec
     } else {
         piece
     };
+    if std::mem::take(&mut reply.after_tool_round)
+        && !reply.text.is_empty()
+        && !reply.text.ends_with(char::is_whitespace)
+        && !checked.starts_with(char::is_whitespace)
+    {
+        reply.text.push_str(PARAGRAPH_BREAK);
+        if !out.text(PARAGRAPH_BREAK.to_owned()).await {
+            return false;
+        }
+    }
     reply.text.push_str(&checked);
     out.text(checked).await
-}
-
-/// Starts the text of a call that follows a tool round with a paragraph break, once, when the
-/// reply already has text that does not end in whitespace; it goes the way of any other text.
-async fn break_after_tool_round(out: &mut Emitter, reply: &mut Reply, pending: &mut bool) -> bool {
-    if !std::mem::take(pending)
-        || reply.text.is_empty()
-        || reply.text.ends_with(char::is_whitespace)
-    {
-        return true;
-    }
-    reply.text.push_str(PARAGRAPH_BREAK);
-    out.text(PARAGRAPH_BREAK.to_owned()).await
 }
 
 /// Separates the text before a tool call from the text after it.
@@ -633,7 +632,6 @@ async fn stream_call(
     let mut result = CallResult::default();
     let mut raw = String::new();
     let mut usage = Usage::default();
-    let mut break_pending = true;
     let mut stream = deps.chat.stream(request);
     loop {
         let next = tokio::select! {
@@ -654,9 +652,7 @@ async fn stream_call(
             ChatChunk::TextDelta(t) => {
                 raw.push_str(&t);
                 for piece in splitter.push(&t) {
-                    if !break_after_tool_round(out, reply, &mut break_pending).await
-                        || !emit_piece(deps, out, reply, piece).await
-                    {
+                    if !emit_piece(deps, out, reply, piece).await {
                         reply.add_usage(usage);
                         return Err(Ended::Interrupted);
                     }
@@ -689,8 +685,7 @@ async fn stream_call(
     reply.add_usage(usage);
     // Text before a tool call may not end with a full stop: check and send it now.
     if let Some(rest) = splitter.finish()
-        && (!break_after_tool_round(out, reply, &mut break_pending).await
-            || !emit_piece(deps, out, reply, rest).await)
+        && !emit_piece(deps, out, reply, rest).await
     {
         return Err(Ended::Interrupted);
     }
@@ -867,6 +862,7 @@ async fn run_tool(
     if !out.send(ChatEvent::ToolStarted(started)).await {
         return None;
     }
+    reply.after_tool_round = true;
     reply.tool_calls.push(ContentPart::ToolCall {
         call_id: call_id.clone(),
         name: name.clone(),

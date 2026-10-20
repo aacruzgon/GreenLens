@@ -350,11 +350,12 @@ async fn a_failing_sentence_is_replaced_before_it_is_streamed() {
     assert_eq!(seen.usage_added.lock().unwrap()[0].tokens_out, 40);
 }
 
-#[tokio::test]
-async fn text_after_a_tool_round_starts_a_new_paragraph() {
+/// The streamed and the stored text of a turn whose model writes `before`, calls a tool, then
+/// writes `after`.
+async fn text_around_a_tool_round(before: &str, after: &str) -> (String, String) {
     let (agent, _, seen) = harness(Setup::new(vec![
         vec![
-            ChatChunk::TextDelta("Let me check the farm's own records too.".to_owned()),
+            ChatChunk::TextDelta(before.to_owned()),
             ChatChunk::ToolCall {
                 call_id: "toolu_1".to_owned(),
                 name: "list_tasks".to_owned(),
@@ -364,7 +365,7 @@ async fn text_after_a_tool_round_starts_a_new_paragraph() {
             ChatChunk::Done(StopReason::ToolUse),
         ],
         vec![
-            ChatChunk::TextDelta("The zucchini was in Bed 4.".to_owned()),
+            ChatChunk::TextDelta(after.to_owned()),
             usage(950, 10),
             ChatChunk::Done(StopReason::EndTurn),
         ],
@@ -384,9 +385,35 @@ async fn text_after_a_tool_round_starts_a_new_paragraph() {
             _ => None,
         })
         .collect();
-    let expected = "Let me check the farm's own records too.\n\nThe zucchini was in Bed 4.";
-    assert_eq!(streamed, expected);
-    assert_eq!(seen.stored.lock().unwrap()[1].text, expected);
+    let stored = seen.stored.lock().unwrap()[1].text.clone();
+    (streamed, stored)
+}
+
+#[tokio::test]
+async fn text_after_a_tool_round_starts_a_new_paragraph() {
+    let after = "The zucchini was in Bed 4.";
+    for (before, expected) in [
+        (
+            "Let me check the farm's own records too.",
+            "Let me check the farm's own records too.\n\nThe zucchini was in Bed 4.",
+        ),
+        // Text that already ends in whitespace gets no second break.
+        (
+            "Let me check.\n",
+            "Let me check.\nThe zucchini was in Bed 4.",
+        ),
+        // No text before the tool: nothing to separate.
+        ("", "The zucchini was in Bed 4."),
+    ] {
+        let (streamed, stored) = text_around_a_tool_round(before, after).await;
+        assert_eq!(streamed, expected, "{before:?}");
+        assert_eq!(stored, expected, "{before:?}");
+    }
+    // The model's own break is kept, not doubled.
+    let (streamed, stored) =
+        text_around_a_tool_round("Let me check.", "\n\nThe zucchini was in Bed 4.").await;
+    assert_eq!(streamed, "Let me check.\n\nThe zucchini was in Bed 4.");
+    assert_eq!(stored, streamed);
 }
 
 #[tokio::test]
