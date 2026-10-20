@@ -393,7 +393,7 @@ model = "claude-sonnet-5-5"
 run = 1
 measure = "answer"
 verdict = "pass"
-why = "2026-05-22 is the answer; the other dates are the sowing, the expected first harvest and later events in the bed"
+why = "2026-05-22 is the answer; the other dates are the sowing and later events in the bed"
 
 [[verdict]]
 question = "Q14"
@@ -401,7 +401,7 @@ model = "claude-sonnet-5-5"
 run = 2
 measure = "answer"
 verdict = "pass"
-why = "2026-05-22 is the answer; the other dates are the sowing, the expected first harvest and later events in the bed"
+why = "2026-05-22 is the answer; the other dates are the sowing and the plants' removal"
 
 [[verdict]]
 question = "Q14"
@@ -409,7 +409,7 @@ model = "claude-sonnet-5-5"
 run = 3
 measure = "answer"
 verdict = "pass"
-why = "2026-05-22 is the answer; the other dates are the sowing, the expected first harvest and later events in the bed"
+why = "2026-05-22 is the answer; the other dates are the sowing and the plants' removal"
 
 [[verdict]]
 question = "Q14"
@@ -417,7 +417,7 @@ model = "claude-opus-5-5"
 run = 1
 measure = "answer"
 verdict = "pass"
-why = "2026-05-22 is the answer; the other dates are the sowing, the expected first harvest and later events in the bed"
+why = "2026-05-22 is the answer; the other dates are the sowing, the expected first harvest and the plan's last edit"
 
 [[verdict]]
 question = "Q14"
@@ -425,7 +425,7 @@ model = "claude-opus-5-5"
 run = 2
 measure = "answer"
 verdict = "pass"
-why = "2026-05-22 is the answer; the other dates are the sowing, the expected first harvest and later events in the bed"
+why = "2026-05-22 is the answer; the other dates are the sowing and the expected first harvest"
 
 [[verdict]]
 question = "Q14"
@@ -433,7 +433,7 @@ model = "claude-opus-5-5"
 run = 3
 measure = "answer"
 verdict = "pass"
-why = "2026-05-22 is the answer; the other dates are the sowing, the expected first harvest and later events in the bed"
+why = "2026-05-22 is the answer; the other dates are the sowing, the expected first harvest and the plants' removal"
 
 [[verdict]]
 question = "Q15"
@@ -441,7 +441,7 @@ model = "claude-sonnet-5-5"
 run = 1
 measure = "answer"
 verdict = "pass"
-why = "2026-07-15 is the answer; the other dates are the planting in October 2025 and the seed cloves planted on 2026-10-12"
+why = "2026-07-15 is the answer; the other date is the seed cloves planted on 2026-10-12"
 
 [[verdict]]
 question = "Q15"
@@ -449,7 +449,7 @@ model = "claude-sonnet-5-5"
 run = 2
 measure = "answer"
 verdict = "pass"
-why = "2026-07-15 is the answer; the other dates are the planting in October 2025 and the seed cloves planted on 2026-10-12"
+why = "2026-07-15 is the answer; the other date is the seed cloves planted on 2026-10-12"
 
 [[verdict]]
 question = "Q15"
@@ -473,7 +473,7 @@ model = "claude-opus-5-5"
 run = 3
 measure = "answer"
 verdict = "pass"
-why = "2026-07-15 is the answer; the other dates are the planting in October 2025 and the seed cloves planted on 2026-10-12"
+why = "2026-07-15 is the answer; the other date is the seed cloves planted on 2026-10-12"
 
 [[verdict]]
 question = "Q16"
