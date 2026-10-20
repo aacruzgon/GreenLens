@@ -80,7 +80,7 @@ targets:
   - taxon: Tetranychus urticae
     group: pests
     species_id: tomato
-    problems: [tomato_two_spotted_spider_mite]
+    problems: [tomato_spider_mites]
     outcome: diagnosed
     quality: any
     note: keep tomato hosts only, or change species_id and problems

@@ -75,7 +75,7 @@ sets:
         {species_id: tomato, problems: [tomato_bacterial_spot], outcome: diagnosed}
       "Tomato Leaf/Spider Mites":
         species_id: tomato
-        problems: [tomato_two_spotted_spider_mite]
+        problems: [tomato_spider_mites]
         outcome: diagnosed
         note: The set doesn't name the mite species. Keep photos with webbing or fine yellow stippling.
       "Tomato Leaf/Healthy":
