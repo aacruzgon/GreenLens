@@ -298,8 +298,9 @@ class Follower:
             self.started[d["stage"]] = seq
             self.starts.setdefault(d["stage"], []).append(seq)
             if self.args.perception_only and not self.resting and d["stage"] == "context":
-                # The perception job completed, even if some of its stage events were lost
-                # (roadmap gap 7); the open-stage check below reports those.
+                # The perception job completed. Since roadmap gap 9 was fixed, `complete` sends
+                # any stage events the worker couldn't deliver before this, so the open-stage
+                # check below fails only on a regression.
                 info("the context step started (--perception-only): stopping here")
                 self.resting = True
             if not self.kill_done and d["stage"] in PERCEPTION_STAGES:

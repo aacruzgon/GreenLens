@@ -30,7 +30,11 @@ use domain::{
 };
 use knowledge::scoring::AnswerSet;
 
-use crate::{FollowUp, Handled, Pipeline, PipelineError, payloads, results};
+use crate::{
+    FollowUp, Handled, Pipeline, PipelineError,
+    catch_up::{self, ResultStages},
+    payloads, results,
+};
 
 pub use crate::runs::SubmitOutcome;
 
@@ -385,6 +389,7 @@ impl Pipeline {
         job: LeasedJob,
         complete: CompleteJob,
     ) -> Result<Handled<CompletionOutcome>, PipelineError> {
+        let mut stages = None;
         let completion = match complete.outcome {
             JobOutcome::Failed { error } => JobCompletion::Failed { error },
             JobOutcome::Done { result } => match JobResult::decode(job.kind, result.clone()) {
@@ -399,6 +404,7 @@ impl Pipeline {
                     },
                 },
                 Ok(decoded) => {
+                    stages = Some(ResultStages::of(&decoded));
                     self.done(&job, &complete.model_versions, result, decoded)
                         .await?
                 }
@@ -408,7 +414,13 @@ impl Pipeline {
             && let JobCompletion::Done { result, .. } = &completion
         {
             return self
-                .guided_done(lease, &job, &complete.model_versions, result.clone())
+                .guided_done(
+                    lease,
+                    &job,
+                    &complete.model_versions,
+                    result.clone(),
+                    stages.as_ref(),
+                )
                 .await;
         }
         let is_vlm = matches!(job.kind, JobKind::Vlm);
@@ -420,17 +432,11 @@ impl Pipeline {
         let follow_up = match &outcome {
             CompletionOutcome::Stored { claim, diff } => {
                 let run = job.run.unwrap_or_default();
-                let mut events: Vec<ScanEventBody<Stored>> = diff
-                    .added
-                    .iter()
-                    .cloned()
-                    .map(|observation| ScanEventBody::Finding { observation })
-                    .collect();
-                events.extend(
-                    diff.retracted
-                        .iter()
-                        .map(|&observation_id| ScanEventBody::FindingRetracted { observation_id }),
-                );
+                let run_events = match &stages {
+                    Some(_) => self.run_stage_events(job.scan, run).await,
+                    None => Vec::new(),
+                };
+                let events = catch_up::completion_events(stages.as_ref(), &run_events, diff);
                 self.emit(job.scan, run, events).await?;
                 if is_vlm {
                     self.suggest_species(job.scan).await?;
@@ -455,6 +461,25 @@ impl Pipeline {
             value: outcome,
             follow_up,
         })
+    }
+
+    /// The run's stored `run_started` and stage events, for the stage events a completed job
+    /// stands in for ([`ResultStages`]). Best effort: the result is already stored, so a failed
+    /// read is logged and sends no stage events rather than failing `complete`, whose retry
+    /// would find the job completed and send nothing at all.
+    async fn run_stage_events(
+        &self,
+        scan: ScanId,
+        run: domain::wire::Run,
+    ) -> Vec<ScanEventBody<Stored>> {
+        self.deps
+            .store
+            .run_stage_events(scan, run)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(%scan, error = %e, "run's stage events not read; no missing stage events sent");
+                Vec::new()
+            })
     }
 
     /// The organism profiles a `vlm` result's findings name.
@@ -604,6 +629,7 @@ impl Pipeline {
         job: &LeasedJob,
         versions: &std::collections::BTreeMap<String, String>,
         raw: serde_json::Value,
+        stages: Option<&ResultStages>,
     ) -> Result<Handled<CompletionOutcome>, PipelineError> {
         let snap = self.deps.store.snapshot(job.scan).await?;
         let JobResult::Guided(result) = JobResult::decode(JobKind::Guided, raw)
@@ -649,12 +675,12 @@ impl Pipeline {
         if let Some(mut check) = check {
             check.status = domain::scan::GuidedCheckStatus::Done;
             check.result = observation;
-            self.emit(
-                job.scan,
-                snap.scan.run,
-                vec![ScanEventBody::GuidedCheckDone { check }],
-            )
-            .await?;
+            let mut events = match stages {
+                Some(s) => s.missing(&self.run_stage_events(job.scan, snap.scan.run).await),
+                None => Vec::new(),
+            };
+            events.push(ScanEventBody::GuidedCheckDone { check });
+            self.emit(job.scan, snap.scan.run, events).await?;
         }
         Ok(Handled {
             value: CompletionOutcome::Stored {
