@@ -768,10 +768,12 @@ pub struct SearchFarmRecordsArgs {
     /// Slack messages (`message`) or Drive documents (`document`) only.
     #[serde(default)]
     pub kind: Option<FarmRecordKind>,
-    /// Records from this day on, in the garden's time zone (YYYY-MM-DD).
+    /// Slack messages from this day on, in the garden's time zone (YYYY-MM-DD). Drive documents
+    /// are returned whatever the window.
     #[serde(default)]
     pub since: Option<LocalDate>,
-    /// Records up to the end of this day, in the garden's time zone (YYYY-MM-DD).
+    /// Slack messages up to the end of this day, in the garden's time zone (YYYY-MM-DD). Drive
+    /// documents are returned whatever the window.
     #[serde(default)]
     pub until: Option<LocalDate>,
     /// Slack messages whose author's name contains this, ignoring case ("Riley"). Drive
@@ -787,10 +789,12 @@ impl Tool for SearchFarmRecords {
         channels and Google Drive folder: field reports, spray logs, procedures. Each hit comes \
         with its title, author, time and link. Without `kind`, both are searched and each keeps \
         a few of the hits; for logs, plans and procedures, also search with `kind: \"document\"`. \
-        `since` and `until` are days in the garden's time zone, both included. `author` matches \
-        part of a name and searches Slack messages only. A Slack thread is one record with the \
-        author and time of its first message, so `author`, `since` and `until` don't find a \
-        reply by its own author or day. Say what was applied and when, never a rate from a \
+        `since` and `until` are days in the garden's time zone, both included, and window Slack \
+        messages only: a Drive document is returned whatever the window, because its time is \
+        when it was last edited, not the period it records. `author` matches part of a name and \
+        searches Slack messages only. A Slack thread is one record with the author and time of \
+        its first message, so `author`, `since` and `until` don't find a reply by its own \
+        author or day. Say what was applied and when, never a rate from a \
         record.";
     const LABEL: &'static str = "Checking the farm records";
     const KIND: ToolKind = ToolKind::Read;
@@ -859,6 +863,7 @@ impl Tool for SearchFarmRecords {
         // An exact cosine search within the proof's garden: another garden's records are never
         // read. Without `kind`, each kind is searched on its own and keeps its reserve.
         let farm = &ctx.deps.stores.farm;
+        let filter = unwindowed_documents(filter);
         let matches = if filter.kind.is_some() {
             let mut found = farm
                 .search_records(member, &query, filter, FARM_RECORD_HITS)
@@ -870,6 +875,7 @@ impl Tool for SearchFarmRecords {
                 kind: Some(kind),
                 ..filter.clone()
             };
+            let documents_of = unwindowed_documents(of(FarmRecordKind::Document));
             let (messages, documents) = futures::try_join!(
                 farm.search_records(
                     member,
@@ -877,12 +883,7 @@ impl Tool for SearchFarmRecords {
                     of(FarmRecordKind::Message),
                     FARM_RECORD_HITS
                 ),
-                farm.search_records(
-                    member,
-                    &query,
-                    of(FarmRecordKind::Document),
-                    FARM_RECORD_HITS
-                ),
+                farm.search_records(member, &query, documents_of, FARM_RECORD_HITS),
             )?;
             merge_kinds(messages, documents, FARM_RECORD_HITS, FARM_KIND_RESERVED)
         };
@@ -893,6 +894,20 @@ impl Tool for SearchFarmRecords {
             .map(|h| ToolEffect::FarmCitation(h.citation))
             .collect();
         Ok(out)
+    }
+}
+
+/// A document search without the window. A Drive document's time is its last edit, not the
+/// period it records (EON gap G18), so `since` and `until` apply to Slack messages only.
+fn unwindowed_documents(filter: FarmRecordFilter) -> FarmRecordFilter {
+    if filter.kind == Some(FarmRecordKind::Document) {
+        FarmRecordFilter {
+            since: None,
+            until: None,
+            ..filter
+        }
+    } else {
+        filter
     }
 }
 
