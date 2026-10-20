@@ -1,0 +1,2436 @@
+{
+  "date": "2026-10-20",
+  "species": {
+    "cases": 115,
+    "left_out": {},
+    "labels": 20,
+    "fitted_temperature": 1.8795,
+    "t_1": {
+      "temperature": 1.0,
+      "top1": 0.5652173913043478,
+      "nll": 1.6829167604446411,
+      "ece": 0.19256398211354794,
+      "at_agreement": {
+        "n": 59,
+        "accuracy": 0.9152542372881356
+      },
+      "lowest_threshold_at_95": 0.85,
+      "sweep": [
+        {
+          "threshold": 0.5,
+          "n": 87,
+          "accuracy": 0.7011494252873564
+        },
+        {
+          "threshold": 0.55,
+          "n": 84,
+          "accuracy": 0.7261904761904762
+        },
+        {
+          "threshold": 0.6,
+          "n": 77,
+          "accuracy": 0.7922077922077922
+        },
+        {
+          "threshold": 0.65,
+          "n": 69,
+          "accuracy": 0.855072463768116
+        },
+        {
+          "threshold": 0.7,
+          "n": 66,
+          "accuracy": 0.8939393939393939
+        },
+        {
+          "threshold": 0.75,
+          "n": 63,
+          "accuracy": 0.9047619047619048
+        },
+        {
+          "threshold": 0.8,
+          "n": 59,
+          "accuracy": 0.9152542372881356
+        },
+        {
+          "threshold": 0.85,
+          "n": 54,
+          "accuracy": 0.9629629629629629
+        },
+        {
+          "threshold": 0.9,
+          "n": 48,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.95,
+          "n": 41,
+          "accuracy": 1.0
+        }
+      ],
+      "reliability": [
+        {
+          "lo": 0.1,
+          "hi": 0.2,
+          "n": 1,
+          "confidence": 0.1691609025001526,
+          "accuracy": 0.0
+        },
+        {
+          "lo": 0.2,
+          "hi": 0.3,
+          "n": 2,
+          "confidence": 0.2785513401031494,
+          "accuracy": 0.0
+        },
+        {
+          "lo": 0.3,
+          "hi": 0.4,
+          "n": 13,
+          "confidence": 0.35790979862213135,
+          "accuracy": 0.3076923076923077
+        },
+        {
+          "lo": 0.4,
+          "hi": 0.5,
+          "n": 12,
+          "confidence": 0.4529306888580322,
+          "accuracy": 0.0
+        },
+        {
+          "lo": 0.5,
+          "hi": 0.6,
+          "n": 10,
+          "confidence": 0.5641366839408875,
+          "accuracy": 0.0
+        },
+        {
+          "lo": 0.6,
+          "hi": 0.7,
+          "n": 11,
+          "confidence": 0.6347215175628662,
+          "accuracy": 0.18181818181818182
+        },
+        {
+          "lo": 0.7,
+          "hi": 0.8,
+          "n": 7,
+          "confidence": 0.748991072177887,
+          "accuracy": 0.7142857142857143
+        },
+        {
+          "lo": 0.8,
+          "hi": 0.9,
+          "n": 11,
+          "confidence": 0.8592280745506287,
+          "accuracy": 0.5454545454545454
+        },
+        {
+          "lo": 0.9,
+          "hi": 1.0,
+          "n": 48,
+          "confidence": 0.9789447784423828,
+          "accuracy": 1.0
+        }
+      ],
+      "per_species": {
+        "apple": {
+          "n": 15,
+          "top1": 0.8
+        },
+        "corn": {
+          "n": 16,
+          "top1": 0.9375
+        },
+        "grape": {
+          "n": 11,
+          "top1": 0.9090909090909091
+        },
+        "squash": {
+          "n": 10,
+          "top1": 0.0
+        },
+        "tomato": {
+          "n": 63,
+          "top1": 0.4444444444444444
+        }
+      },
+      "wrong": [
+        {
+          "case": "corn-maize-bd-2026-corn-leaf-blight-img-649",
+          "truth": "corn",
+          "top": "hosta",
+          "score": 0.812
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-73",
+          "truth": "tomato",
+          "top": "blueberry",
+          "score": 0.611
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-410",
+          "truth": "tomato",
+          "top": "apple",
+          "score": 0.273
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-487",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.576
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-173",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.506
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-474",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.62
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-111",
+          "truth": "tomato",
+          "top": "peach",
+          "score": 0.649
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-30",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.393
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-7",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.467
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-98",
+          "truth": "tomato",
+          "top": "blueberry",
+          "score": 0.483
+        },
+        {
+          "case": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-118",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.405
+        },
+        {
+          "case": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-7",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.708
+        },
+        {
+          "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-60",
+          "truth": "tomato",
+          "top": "bean",
+          "score": 0.579
+        },
+        {
+          "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-187",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.597
+        },
+        {
+          "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-171",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.387
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2705",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.473
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2662",
+          "truth": "tomato",
+          "top": "bean",
+          "score": 0.323
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2647",
+          "truth": "tomato",
+          "top": "hosta",
+          "score": 0.897
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5576-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.672
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5536-02d",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.581
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5629-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.371
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5561-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.773
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-4135-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.68
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3717-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.338
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3652-02d",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.476
+        },
+        {
+          "case": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1143",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.586
+        },
+        {
+          "case": "apple-inat-408169430",
+          "truth": "apple",
+          "top": "peach",
+          "score": 0.553
+        },
+        {
+          "case": "apple-inat-386321336",
+          "truth": "apple",
+          "top": "blueberry",
+          "score": 0.357
+        },
+        {
+          "case": "apple-inat-371778242",
+          "truth": "apple",
+          "top": "blueberry",
+          "score": 0.656
+        },
+        {
+          "case": "grape-inat-401311005",
+          "truth": "grape",
+          "top": "apple",
+          "score": 0.483
+        },
+        {
+          "case": "squash-inat-407881529",
+          "truth": "squash",
+          "top": "bean",
+          "score": 0.546
+        },
+        {
+          "case": "squash-inat-407471919",
+          "truth": "squash",
+          "top": "soybean",
+          "score": 0.477
+        },
+        {
+          "case": "squash-inat-405307409",
+          "truth": "squash",
+          "top": "cucumber",
+          "score": 0.422
+        },
+        {
+          "case": "squash-inat-405307085",
+          "truth": "squash",
+          "top": "cucumber",
+          "score": 0.433
+        },
+        {
+          "case": "squash-inat-402785468",
+          "truth": "squash",
+          "top": "basil",
+          "score": 0.441
+        },
+        {
+          "case": "squash-inat-401345730",
+          "truth": "squash",
+          "top": "cucumber",
+          "score": 0.619
+        },
+        {
+          "case": "squash-inat-400031065",
+          "truth": "squash",
+          "top": "grape",
+          "score": 0.537
+        },
+        {
+          "case": "squash-inat-362922124",
+          "truth": "squash",
+          "top": "grape",
+          "score": 0.844
+        },
+        {
+          "case": "squash-inat-360057285",
+          "truth": "squash",
+          "top": "grape",
+          "score": 0.622
+        },
+        {
+          "case": "squash-inat-359769884",
+          "truth": "squash",
+          "top": "soybean",
+          "score": 0.325
+        },
+        {
+          "case": "tomato-inat-404337653",
+          "truth": "tomato",
+          "top": "hosta",
+          "score": 0.284
+        },
+        {
+          "case": "tomato-inat-402407638",
+          "truth": "tomato",
+          "top": "hosta",
+          "score": 0.581
+        },
+        {
+          "case": "tomato-inat-400434286",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.329
+        },
+        {
+          "case": "tomato-inat-394771244",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.643
+        },
+        {
+          "case": "tomato-inat-394770049",
+          "truth": "tomato",
+          "top": "cucumber",
+          "score": 0.374
+        },
+        {
+          "case": "tomato-inat-394769945",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.446
+        },
+        {
+          "case": "tomato-inat-388547158",
+          "truth": "tomato",
+          "top": "cucumber",
+          "score": 0.429
+        },
+        {
+          "case": "tomato-inat-387638491",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.826
+        },
+        {
+          "case": "tomato-inat-382214503",
+          "truth": "tomato",
+          "top": "cucumber",
+          "score": 0.862
+        },
+        {
+          "case": "tomato-inat-379206522",
+          "truth": "tomato",
+          "top": "onion",
+          "score": 0.169
+        }
+      ]
+    },
+    "fitted": {
+      "temperature": 1.8795,
+      "top1": 0.5652173913043478,
+      "nll": 1.3983334302902222,
+      "ece": 0.18753079162991565,
+      "at_agreement": {
+        "n": 32,
+        "accuracy": 1.0
+      },
+      "lowest_threshold_at_95": 0.5,
+      "sweep": [
+        {
+          "threshold": 0.5,
+          "n": 60,
+          "accuracy": 0.95
+        },
+        {
+          "threshold": 0.55,
+          "n": 56,
+          "accuracy": 0.9642857142857143
+        },
+        {
+          "threshold": 0.6,
+          "n": 54,
+          "accuracy": 0.9814814814814815
+        },
+        {
+          "threshold": 0.65,
+          "n": 48,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.7,
+          "n": 44,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.75,
+          "n": 42,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.8,
+          "n": 32,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.85,
+          "n": 22,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.9,
+          "n": 13,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.95,
+          "n": 9,
+          "accuracy": 1.0
+        }
+      ],
+      "reliability": [
+        {
+          "lo": 0.1,
+          "hi": 0.2,
+          "n": 7,
+          "confidence": 0.17775262892246246,
+          "accuracy": 0.14285714285714285
+        },
+        {
+          "lo": 0.2,
+          "hi": 0.3,
+          "n": 15,
+          "confidence": 0.2590179443359375,
+          "accuracy": 0.2
+        },
+        {
+          "lo": 0.3,
+          "hi": 0.4,
+          "n": 20,
+          "confidence": 0.33172833919525146,
+          "accuracy": 0.0
+        },
+        {
+          "lo": 0.4,
+          "hi": 0.5,
+          "n": 13,
+          "confidence": 0.44380444288253784,
+          "accuracy": 0.3076923076923077
+        },
+        {
+          "lo": 0.5,
+          "hi": 0.6,
+          "n": 6,
+          "confidence": 0.5387544631958008,
+          "accuracy": 0.6666666666666666
+        },
+        {
+          "lo": 0.6,
+          "hi": 0.7,
+          "n": 10,
+          "confidence": 0.634446382522583,
+          "accuracy": 0.9
+        },
+        {
+          "lo": 0.7,
+          "hi": 0.8,
+          "n": 12,
+          "confidence": 0.7752230167388916,
+          "accuracy": 1.0
+        },
+        {
+          "lo": 0.8,
+          "hi": 0.9,
+          "n": 19,
+          "confidence": 0.8478584289550781,
+          "accuracy": 1.0
+        },
+        {
+          "lo": 0.9,
+          "hi": 1.0,
+          "n": 13,
+          "confidence": 0.959904134273529,
+          "accuracy": 1.0
+        }
+      ],
+      "per_species": {
+        "apple": {
+          "n": 15,
+          "top1": 0.8
+        },
+        "corn": {
+          "n": 16,
+          "top1": 0.9375
+        },
+        "grape": {
+          "n": 11,
+          "top1": 0.9090909090909091
+        },
+        "squash": {
+          "n": 10,
+          "top1": 0.0
+        },
+        "tomato": {
+          "n": 63,
+          "top1": 0.4444444444444444
+        }
+      },
+      "wrong": [
+        {
+          "case": "corn-maize-bd-2026-corn-leaf-blight-img-649",
+          "truth": "corn",
+          "top": "hosta",
+          "score": 0.588
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-73",
+          "truth": "tomato",
+          "top": "blueberry",
+          "score": 0.445
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-410",
+          "truth": "tomato",
+          "top": "apple",
+          "score": 0.196
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-487",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.339
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-173",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.299
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-474",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.408
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-111",
+          "truth": "tomato",
+          "top": "peach",
+          "score": 0.349
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-30",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.243
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-7",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.314
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-98",
+          "truth": "tomato",
+          "top": "blueberry",
+          "score": 0.256
+        },
+        {
+          "case": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-118",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.3
+        },
+        {
+          "case": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-7",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.46
+        },
+        {
+          "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-60",
+          "truth": "tomato",
+          "top": "bean",
+          "score": 0.327
+        },
+        {
+          "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-187",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.305
+        },
+        {
+          "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-171",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.249
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2705",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.28
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2662",
+          "truth": "tomato",
+          "top": "bean",
+          "score": 0.204
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2647",
+          "truth": "tomato",
+          "top": "hosta",
+          "score": 0.541
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5576-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.338
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5536-02d",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.32
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5629-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.239
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5561-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.422
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-4135-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.39
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3717-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.243
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3652-02d",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.303
+        },
+        {
+          "case": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1143",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.416
+        },
+        {
+          "case": "apple-inat-408169430",
+          "truth": "apple",
+          "top": "peach",
+          "score": 0.445
+        },
+        {
+          "case": "apple-inat-386321336",
+          "truth": "apple",
+          "top": "blueberry",
+          "score": 0.188
+        },
+        {
+          "case": "apple-inat-371778242",
+          "truth": "apple",
+          "top": "blueberry",
+          "score": 0.321
+        },
+        {
+          "case": "grape-inat-401311005",
+          "truth": "grape",
+          "top": "apple",
+          "score": 0.336
+        },
+        {
+          "case": "squash-inat-407881529",
+          "truth": "squash",
+          "top": "bean",
+          "score": 0.386
+        },
+        {
+          "case": "squash-inat-407471919",
+          "truth": "squash",
+          "top": "soybean",
+          "score": 0.346
+        },
+        {
+          "case": "squash-inat-405307409",
+          "truth": "squash",
+          "top": "cucumber",
+          "score": 0.293
+        },
+        {
+          "case": "squash-inat-405307085",
+          "truth": "squash",
+          "top": "cucumber",
+          "score": 0.284
+        },
+        {
+          "case": "squash-inat-402785468",
+          "truth": "squash",
+          "top": "tomato",
+          "score": 0.316
+        },
+        {
+          "case": "squash-inat-401345730",
+          "truth": "squash",
+          "top": "cucumber",
+          "score": 0.449
+        },
+        {
+          "case": "squash-inat-400031065",
+          "truth": "squash",
+          "top": "grape",
+          "score": 0.303
+        },
+        {
+          "case": "squash-inat-362922124",
+          "truth": "squash",
+          "top": "grape",
+          "score": 0.478
+        },
+        {
+          "case": "squash-inat-360057285",
+          "truth": "squash",
+          "top": "grape",
+          "score": 0.358
+        },
+        {
+          "case": "squash-inat-359769884",
+          "truth": "squash",
+          "top": "soybean",
+          "score": 0.199
+        },
+        {
+          "case": "tomato-inat-404337653",
+          "truth": "tomato",
+          "top": "grape",
+          "score": 0.159
+        },
+        {
+          "case": "tomato-inat-402407638",
+          "truth": "tomato",
+          "top": "hosta",
+          "score": 0.307
+        },
+        {
+          "case": "tomato-inat-400434286",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.194
+        },
+        {
+          "case": "tomato-inat-394771244",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.359
+        },
+        {
+          "case": "tomato-inat-394770049",
+          "truth": "tomato",
+          "top": "cucumber",
+          "score": 0.25
+        },
+        {
+          "case": "tomato-inat-394769945",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.261
+        },
+        {
+          "case": "tomato-inat-388547158",
+          "truth": "tomato",
+          "top": "cucumber",
+          "score": 0.317
+        },
+        {
+          "case": "tomato-inat-387638491",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.409
+        },
+        {
+          "case": "tomato-inat-382214503",
+          "truth": "tomato",
+          "top": "cucumber",
+          "score": 0.602
+        },
+        {
+          "case": "tomato-inat-379206522",
+          "truth": "tomato",
+          "top": "onion",
+          "score": 0.126
+        }
+      ]
+    }
+  },
+  "disease": [
+    {
+      "head": "disease-head-v2-2026-10-20",
+      "classes": 21,
+      "dev_photos": 94,
+      "val_photos": 318,
+      "left_out": {
+        "leaf photos with several crops": 18,
+        "no leaf shot": 2,
+        "species without head classes": 10
+      },
+      "t_file": 0.8098,
+      "t_dev": 2.016,
+      "t_val_and_dev": 1.0485,
+      "dev": {
+        "t_1": {
+          "n": 94,
+          "top1": 0.3617021276595745,
+          "ece": 0.24726586994972635,
+          "nll": 1.7110599279403687,
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 1,
+              "confidence": 0.18219290673732758,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 9,
+              "confidence": 0.2618429660797119,
+              "accuracy": 0.3333333333333333
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 13,
+              "confidence": 0.3681221008300781,
+              "accuracy": 0.23076923076923078
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 19,
+              "confidence": 0.44792070984840393,
+              "accuracy": 0.15789473684210525
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 17,
+              "confidence": 0.5433046221733093,
+              "accuracy": 0.23529411764705882
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 9,
+              "confidence": 0.6304188966751099,
+              "accuracy": 0.2222222222222222
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 8,
+              "confidence": 0.7383177280426025,
+              "accuracy": 0.75
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 5,
+              "confidence": 0.8337701559066772,
+              "accuracy": 0.4
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 13,
+              "confidence": 0.9620851278305054,
+              "accuracy": 0.8461538461538461
+            }
+          ]
+        },
+        "t_file": {
+          "n": 94,
+          "top1": 0.3617021276595745,
+          "ece": 0.28828606580166105,
+          "nll": 1.8590503931045532,
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 1,
+              "confidence": 0.19375713169574738,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 4,
+              "confidence": 0.25140780210494995,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 9,
+              "confidence": 0.34072813391685486,
+              "accuracy": 0.1111111111111111
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 18,
+              "confidence": 0.45977625250816345,
+              "accuracy": 0.2222222222222222
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 14,
+              "confidence": 0.5529121160507202,
+              "accuracy": 0.21428571428571427
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 16,
+              "confidence": 0.6357014179229736,
+              "accuracy": 0.25
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 9,
+              "confidence": 0.7468131184577942,
+              "accuracy": 0.4444444444444444
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 8,
+              "confidence": 0.8442994952201843,
+              "accuracy": 0.625
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 15,
+              "confidence": 0.9732235074043274,
+              "accuracy": 0.7333333333333333
+            }
+          ]
+        },
+        "t_val_and_dev": {
+          "n": 94,
+          "top1": 0.3617021276595745,
+          "ece": 0.24293833162556303,
+          "nll": 1.685835838317871,
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 1,
+              "confidence": 0.17981092631816864,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 9,
+              "confidence": 0.25649505853652954,
+              "accuracy": 0.3333333333333333
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 15,
+              "confidence": 0.36247286200523376,
+              "accuracy": 0.2
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 20,
+              "confidence": 0.44670286774635315,
+              "accuracy": 0.15
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 17,
+              "confidence": 0.544964611530304,
+              "accuracy": 0.23529411764705882
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 8,
+              "confidence": 0.6404125690460205,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 8,
+              "confidence": 0.7497377395629883,
+              "accuracy": 0.625
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 5,
+              "confidence": 0.8552328944206238,
+              "accuracy": 0.4
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 11,
+              "confidence": 0.9684116244316101,
+              "accuracy": 0.9090909090909091
+            }
+          ]
+        }
+      },
+      "val": {
+        "t_file": {
+          "n": 318,
+          "top1": 0.8176100628930818,
+          "ece": 0.043132949362760825,
+          "nll": 0.5269262194633484,
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 4,
+              "confidence": 0.27028071880340576,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 11,
+              "confidence": 0.35021284222602844,
+              "accuracy": 0.36363636363636365
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 21,
+              "confidence": 0.45342859625816345,
+              "accuracy": 0.2857142857142857
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 30,
+              "confidence": 0.5481778979301453,
+              "accuracy": 0.5666666666666667
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 22,
+              "confidence": 0.6481133103370667,
+              "accuracy": 0.7727272727272727
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 18,
+              "confidence": 0.7543541193008423,
+              "accuracy": 0.8333333333333334
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 43,
+              "confidence": 0.8545148372650146,
+              "accuracy": 0.9069767441860465
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 169,
+              "confidence": 0.9727762341499329,
+              "accuracy": 0.9585798816568047
+            }
+          ]
+        },
+        "t_val_and_dev": {
+          "n": 318,
+          "top1": 0.8176100628930818,
+          "ece": 0.06801264334774618,
+          "nll": 0.5451744794845581,
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 8,
+              "confidence": 0.258422315120697,
+              "accuracy": 0.125
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 19,
+              "confidence": 0.35663625597953796,
+              "accuracy": 0.42105263157894735
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 31,
+              "confidence": 0.45409122109413147,
+              "accuracy": 0.45161290322580644
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 26,
+              "confidence": 0.5421612858772278,
+              "accuracy": 0.6923076923076923
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 24,
+              "confidence": 0.6539539098739624,
+              "accuracy": 0.8333333333333334
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 36,
+              "confidence": 0.7548972368240356,
+              "accuracy": 0.8888888888888888
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 46,
+              "confidence": 0.8574123382568359,
+              "accuracy": 0.8913043478260869
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 128,
+              "confidence": 0.9583256244659424,
+              "accuracy": 0.984375
+            }
+          ]
+        }
+      },
+      "dev_per_species": {
+        "apple": {
+          "n": 11,
+          "top1": 0.7272727272727273,
+          "ece": 0.33906498822298914,
+          "nll": 0.8518983721733093,
+          "reliability": [
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 1,
+              "confidence": 0.5537747740745544,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 1,
+              "confidence": 0.6424353718757629,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 4,
+              "confidence": 0.7383298277854919,
+              "accuracy": 0.75
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 2,
+              "confidence": 0.8534176349639893,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 3,
+              "confidence": 0.9261814951896667,
+              "accuracy": 0.6666666666666666
+            }
+          ]
+        },
+        "corn": {
+          "n": 15,
+          "top1": 0.5333333333333333,
+          "ece": 0.21047070225079856,
+          "nll": 1.012152075767517,
+          "reliability": [
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 5,
+              "confidence": 0.45466312766075134,
+              "accuracy": 0.4
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 5,
+              "confidence": 0.5478757619857788,
+              "accuracy": 0.4
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 2,
+              "confidence": 0.6568714380264282,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 3,
+              "confidence": 0.7505916953086853,
+              "accuracy": 0.6666666666666666
+            }
+          ]
+        },
+        "grape": {
+          "n": 8,
+          "top1": 1.0,
+          "ece": 0.022027119994163513,
+          "nll": 0.022890668362379074,
+          "reliability": [
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 1,
+              "confidence": 0.8927123546600342,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 7,
+              "confidence": 0.9901529550552368,
+              "accuracy": 1.0
+            }
+          ]
+        },
+        "tomato": {
+          "n": 60,
+          "top1": 0.16666666666666666,
+          "ece": 0.32614787891507147,
+          "nll": 2.2288711071014404,
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 1,
+              "confidence": 0.17981092631816864,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 9,
+              "confidence": 0.25649505853652954,
+              "accuracy": 0.3333333333333333
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 15,
+              "confidence": 0.36247286200523376,
+              "accuracy": 0.2
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 15,
+              "confidence": 0.4440494775772095,
+              "accuracy": 0.06666666666666667
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 11,
+              "confidence": 0.5428404808044434,
+              "accuracy": 0.09090909090909091
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 5,
+              "confidence": 0.6334245204925537,
+              "accuracy": 0.2
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 1,
+              "confidence": 0.7928072810173035,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 2,
+              "confidence": 0.838308572769165,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 1,
+              "confidence": 0.9429123997688293,
+              "accuracy": 1.0
+            }
+          ]
+        }
+      },
+      "dev_per_source": {
+        "fieldsets/ccmt-2023": {
+          "n": 5,
+          "top1": 0.2,
+          "ece": 0.4274294376373291,
+          "nll": 1.4433497190475464,
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 1,
+              "confidence": 0.25629323720932007,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 2,
+              "confidence": 0.3440653383731842,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 1,
+              "confidence": 0.40650123357772827,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 1,
+              "confidence": 0.5091142058372498,
+              "accuracy": 0.0
+            }
+          ]
+        },
+        "fieldsets/maize-bd-2026": {
+          "n": 15,
+          "top1": 0.5333333333333333,
+          "ece": 0.21047070225079856,
+          "nll": 1.012152075767517,
+          "reliability": [
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 5,
+              "confidence": 0.45466312766075134,
+              "accuracy": 0.4
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 5,
+              "confidence": 0.5478757619857788,
+              "accuracy": 0.4
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 2,
+              "confidence": 0.6568714380264282,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 3,
+              "confidence": 0.7505916953086853,
+              "accuracy": 0.6666666666666666
+            }
+          ]
+        },
+        "fieldsets/tomato-bd-2025": {
+          "n": 23,
+          "top1": 0.2608695652173913,
+          "ece": 0.3052166998386383,
+          "nll": 1.818555474281311,
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 1,
+              "confidence": 0.17981092631816864,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 5,
+              "confidence": 0.24532592296600342,
+              "accuracy": 0.4
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 5,
+              "confidence": 0.3704614043235779,
+              "accuracy": 0.2
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 7,
+              "confidence": 0.43437060713768005,
+              "accuracy": 0.14285714285714285
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 2,
+              "confidence": 0.5183855891227722,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 2,
+              "confidence": 0.6452598571777344,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 1,
+              "confidence": 0.9429123997688293,
+              "accuracy": 1.0
+            }
+          ]
+        },
+        "fieldsets/tomato-bd-iphone-2025": {
+          "n": 20,
+          "top1": 0.15,
+          "ece": 0.3997641205787659,
+          "nll": 2.318871259689331,
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 1,
+              "confidence": 0.29209381341934204,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 5,
+              "confidence": 0.35504430532455444,
+              "accuracy": 0.2
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 3,
+              "confidence": 0.4373302459716797,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 6,
+              "confidence": 0.5573515295982361,
+              "accuracy": 0.16666666666666666
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 3,
+              "confidence": 0.6255342364311218,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 1,
+              "confidence": 0.7928072810173035,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 1,
+              "confidence": 0.8175708651542664,
+              "accuracy": 0.0
+            }
+          ]
+        },
+        "inat": {
+          "n": 31,
+          "top1": 0.5161290322580645,
+          "ece": 0.2513781564850961,
+          "nll": 1.5440424680709839,
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 2,
+              "confidence": 0.2667192816734314,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 3,
+              "confidence": 0.3738112449645996,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 4,
+              "confidence": 0.47541385889053345,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 3,
+              "confidence": 0.5450084209442139,
+              "accuracy": 0.3333333333333333
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 1,
+              "confidence": 0.6424353718757629,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 4,
+              "confidence": 0.7383298277854919,
+              "accuracy": 0.75
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 4,
+              "confidence": 0.8646484613418579,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 10,
+              "confidence": 0.9709614515304565,
+              "accuracy": 0.9
+            }
+          ]
+        }
+      }
+    },
+    {
+      "head": "disease-head-v2c-2026-10-20",
+      "classes": 19,
+      "dev_photos": 94,
+      "val_photos": 286,
+      "left_out": {
+        "leaf photos with several crops": 18,
+        "no leaf shot": 2,
+        "species without head classes": 10
+      },
+      "t_file": 1.1474,
+      "t_dev": 3.6646,
+      "t_val_and_dev": 1.6553,
+      "dev": {
+        "t_1": {
+          "n": 94,
+          "top1": 0.40425531914893614,
+          "ece": 0.31070767469862676,
+          "nll": 2.172762870788574,
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 1,
+              "confidence": 0.2573064863681793,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 9,
+              "confidence": 0.35073885321617126,
+              "accuracy": 0.4444444444444444
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 13,
+              "confidence": 0.4674760401248932,
+              "accuracy": 0.23076923076923078
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 15,
+              "confidence": 0.5380268692970276,
+              "accuracy": 0.3333333333333333
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 10,
+              "confidence": 0.6467224359512329,
+              "accuracy": 0.2
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 11,
+              "confidence": 0.7547529339790344,
+              "accuracy": 0.45454545454545453
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 13,
+              "confidence": 0.8417971730232239,
+              "accuracy": 0.38461538461538464
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 22,
+              "confidence": 0.9652581810951233,
+              "accuracy": 0.6363636363636364
+            }
+          ]
+        },
+        "t_file": {
+          "n": 94,
+          "top1": 0.40425531914893614,
+          "ece": 0.26620386081173064,
+          "nll": 2.0039827823638916,
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 5,
+              "confidence": 0.2768634259700775,
+              "accuracy": 0.2
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 6,
+              "confidence": 0.36674606800079346,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 20,
+              "confidence": 0.45546621084213257,
+              "accuracy": 0.25
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 11,
+              "confidence": 0.541942834854126,
+              "accuracy": 0.36363636363636365
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 9,
+              "confidence": 0.6390236020088196,
+              "accuracy": 0.3333333333333333
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 15,
+              "confidence": 0.7484676241874695,
+              "accuracy": 0.4
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 11,
+              "confidence": 0.8543358445167542,
+              "accuracy": 0.2727272727272727
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 17,
+              "confidence": 0.9642767906188965,
+              "accuracy": 0.7647058823529411
+            }
+          ]
+        },
+        "t_val_and_dev": {
+          "n": 94,
+          "top1": 0.40425531914893614,
+          "ece": 0.2225438492729309,
+          "nll": 1.7029740810394287,
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 6,
+              "confidence": 0.2424956113100052,
+              "accuracy": 0.16666666666666666
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 22,
+              "confidence": 0.3506907820701599,
+              "accuracy": 0.3181818181818182
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 17,
+              "confidence": 0.4445820450782776,
+              "accuracy": 0.29411764705882354
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 6,
+              "confidence": 0.5545371174812317,
+              "accuracy": 0.6666666666666666
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 20,
+              "confidence": 0.6481080055236816,
+              "accuracy": 0.3
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 9,
+              "confidence": 0.7611322402954102,
+              "accuracy": 0.3333333333333333
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 5,
+              "confidence": 0.8513113260269165,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 9,
+              "confidence": 0.9734594821929932,
+              "accuracy": 0.7777777777777778
+            }
+          ]
+        }
+      },
+      "val": {
+        "t_file": {
+          "n": 286,
+          "top1": 0.8426573426573427,
+          "ece": 0.03611545322033078,
+          "nll": 0.46951955556869507,
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 1,
+              "confidence": 0.23734860122203827,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 11,
+              "confidence": 0.3603147268295288,
+              "accuracy": 0.2727272727272727
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 14,
+              "confidence": 0.45434194803237915,
+              "accuracy": 0.5714285714285714
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 20,
+              "confidence": 0.5469056367874146,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 22,
+              "confidence": 0.6507429480552673,
+              "accuracy": 0.6363636363636364
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 22,
+              "confidence": 0.7569870352745056,
+              "accuracy": 0.8636363636363636
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 36,
+              "confidence": 0.8587908148765564,
+              "accuracy": 0.8333333333333334
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 160,
+              "confidence": 0.9774681329727173,
+              "accuracy": 0.98125
+            }
+          ]
+        },
+        "t_val_and_dev": {
+          "n": 286,
+          "top1": 0.8426573426573427,
+          "ece": 0.08762548051097176,
+          "nll": 0.503038763999939,
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 6,
+              "confidence": 0.2645813822746277,
+              "accuracy": 0.16666666666666666
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 17,
+              "confidence": 0.35635748505592346,
+              "accuracy": 0.4117647058823529
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 27,
+              "confidence": 0.4430921971797943,
+              "accuracy": 0.5185185185185185
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 22,
+              "confidence": 0.5473293662071228,
+              "accuracy": 0.7272727272727273
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 29,
+              "confidence": 0.6514758467674255,
+              "accuracy": 0.896551724137931
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 28,
+              "confidence": 0.7504343390464783,
+              "accuracy": 0.8571428571428571
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 46,
+              "confidence": 0.8585559129714966,
+              "accuracy": 0.9130434782608695
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 111,
+              "confidence": 0.961821436882019,
+              "accuracy": 1.0
+            }
+          ]
+        }
+      },
+      "dev_per_species": {
+        "apple": {
+          "n": 11,
+          "top1": 0.45454545454545453,
+          "ece": 0.4115306464108554,
+          "nll": 1.2169036865234375,
+          "reliability": [
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 1,
+              "confidence": 0.462030291557312,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 1,
+              "confidence": 0.5701061487197876,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 5,
+              "confidence": 0.6473426818847656,
+              "accuracy": 0.4
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 2,
+              "confidence": 0.8733397722244263,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 2,
+              "confidence": 0.964363694190979,
+              "accuracy": 0.0
+            }
+          ]
+        },
+        "corn": {
+          "n": 15,
+          "top1": 0.7333333333333333,
+          "ece": 0.1593115091323853,
+          "nll": 0.8189041614532471,
+          "reliability": [
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 2,
+              "confidence": 0.4510500431060791,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 3,
+              "confidence": 0.5793917179107666,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 5,
+              "confidence": 0.6719196438789368,
+              "accuracy": 0.6
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 4,
+              "confidence": 0.7599458694458008,
+              "accuracy": 0.75
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 1,
+              "confidence": 0.8433194160461426,
+              "accuracy": 1.0
+            }
+          ]
+        },
+        "grape": {
+          "n": 8,
+          "top1": 1.0,
+          "ece": 0.04124334454536438,
+          "nll": 0.04378563165664673,
+          "reliability": [
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 1,
+              "confidence": 0.8376457095146179,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 7,
+              "confidence": 0.976058304309845,
+              "accuracy": 1.0
+            }
+          ]
+        },
+        "tomato": {
+          "n": 60,
+          "top1": 0.23333333333333334,
+          "ece": 0.278344763815403,
+          "nll": 2.2343292236328125,
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 6,
+              "confidence": 0.2424956113100052,
+              "accuracy": 0.16666666666666666
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 22,
+              "confidence": 0.3506907820701599,
+              "accuracy": 0.3181818181818182
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 14,
+              "confidence": 0.4424116909503937,
+              "accuracy": 0.21428571428571427
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 2,
+              "confidence": 0.5094708204269409,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 10,
+              "confidence": 0.6365848779678345,
+              "accuracy": 0.1
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 5,
+              "confidence": 0.7620813846588135,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 1,
+              "confidence": 0.8289121389389038,
+              "accuracy": 1.0
+            }
+          ]
+        }
+      },
+      "dev_per_source": {
+        "fieldsets/ccmt-2023": {
+          "n": 5,
+          "top1": 0.6,
+          "ece": 0.5049956023693085,
+          "nll": 1.055257797241211,
+          "reliability": [
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 3,
+              "confidence": 0.3569490909576416,
+              "accuracy": 0.3333333333333333
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 1,
+              "confidence": 0.42066797614097595,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 1,
+              "confidence": 0.5148177742958069,
+              "accuracy": 1.0
+            }
+          ]
+        },
+        "fieldsets/maize-bd-2026": {
+          "n": 15,
+          "top1": 0.7333333333333333,
+          "ece": 0.1593115091323853,
+          "nll": 0.8189041614532471,
+          "reliability": [
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 2,
+              "confidence": 0.4510500431060791,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 3,
+              "confidence": 0.5793917179107666,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 5,
+              "confidence": 0.6719196438789368,
+              "accuracy": 0.6
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 4,
+              "confidence": 0.7599458694458008,
+              "accuracy": 0.75
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 1,
+              "confidence": 0.8433194160461426,
+              "accuracy": 1.0
+            }
+          ]
+        },
+        "fieldsets/tomato-bd-2025": {
+          "n": 23,
+          "top1": 0.21739130434782608,
+          "ece": 0.24523176965506183,
+          "nll": 2.029494285583496,
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 4,
+              "confidence": 0.24014167487621307,
+              "accuracy": 0.25
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 10,
+              "confidence": 0.35725095868110657,
+              "accuracy": 0.2
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 4,
+              "confidence": 0.4313795566558838,
+              "accuracy": 0.25
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 4,
+              "confidence": 0.6408637762069702,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 1,
+              "confidence": 0.8289121389389038,
+              "accuracy": 1.0
+            }
+          ]
+        },
+        "fieldsets/tomato-bd-iphone-2025": {
+          "n": 20,
+          "top1": 0.25,
+          "ece": 0.38828577995300295,
+          "nll": 2.0555665493011475,
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 1,
+              "confidence": 0.25431501865386963,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 5,
+              "confidence": 0.3354734778404236,
+              "accuracy": 0.6
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 5,
+              "confidence": 0.4530286192893982,
+              "accuracy": 0.2
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 1,
+              "confidence": 0.504123866558075,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 5,
+              "confidence": 0.62078458070755,
+              "accuracy": 0.2
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 3,
+              "confidence": 0.771859347820282,
+              "accuracy": 0.0
+            }
+          ]
+        },
+        "inat": {
+          "n": 31,
+          "top1": 0.45161290322580644,
+          "ece": 0.31065970034368573,
+          "nll": 1.7654834985733032,
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 1,
+              "confidence": 0.24009208381175995,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 4,
+              "confidence": 0.34861820936203003,
+              "accuracy": 0.25
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 5,
+              "confidence": 0.4488929808139801,
+              "accuracy": 0.2
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 1,
+              "confidence": 0.5701061487197876,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 6,
+              "confidence": 0.6558639407157898,
+              "accuracy": 0.3333333333333333
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 2,
+              "confidence": 0.7474144697189331,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 3,
+              "confidence": 0.8614417910575867,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 9,
+              "confidence": 0.9734594821929932,
+              "accuracy": 0.7777777777777778
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
