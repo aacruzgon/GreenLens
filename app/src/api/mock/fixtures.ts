@@ -760,6 +760,17 @@ export function buildSeed(k: DateKit = new DateKit()): Seed {
           watchFor: ["New spots on upper leaves within 5 days", "Spots on Tomato 2's lower leaves"],
           citations: [CITATIONS.blight],
         });
+      } else {
+        // The follow-up checks of plan v1 (analytics 6): a short plan, no new tasks.
+        plan = makePlan({
+          id: planId, scanId: id, plantId: p.id, diagnosisId: diagId, ts,
+          summary: s.ago === 3
+            ? "The spots are fewer. Keep checking Tomato 1 every 3 days."
+            : "The spots are down to a few. Keep checking Tomato 1 every 3 days.",
+          steps: blightSteps(k, s.ago, named("tomato1")).filter((st) => st.id === "check_plant").map((st) => ({ ...st, order: 1 })),
+          watchFor: ["New spots on upper leaves within 5 days"],
+          citations: [CITATIONS.blight],
+        });
       }
     } else if (s.outcome === "aphids" || s.outcome === "aphids_ladybug") {
       const lady = s.outcome === "aphids_ladybug";
@@ -784,15 +795,15 @@ export function buildSeed(k: DateKit = new DateKit()): Seed {
     const stored: StoredScan = {
       scan: {
         id, plant_id: p.id, garden_id: IDS.garden, created_by: creator,
-        status: plan ? (s.outcome === "blight" && s.ago !== 6 ? "diagnosed" : "planned") : "diagnosed",
+        status: plan ? "planned" : "failed",
         run: 1, last_event_seq: 0, created_at: ts, submitted_at: ts,
         images, guided_checks: [],
         diagnosis_id: diagId,
-        ...(plan && !(s.outcome === "blight" && s.ago !== 6) ? { plan_id: planId } : {}),
+        ...(plan ? { plan_id: planId } : {}),
       },
       observations: obs,
       diagnosis,
-      plan: plan && !(s.outcome === "blight" && s.ago !== 6) ? plan : undefined,
+      plan,
       weather: makeWeather(k, { ago: s.ago, rh90, run }),
       events: [],
       running: false,
