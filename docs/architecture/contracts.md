@@ -1,7 +1,8 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.15, 2026-10-19. Companion to the [architecture document](README.md).
-> **v0.10.15**: section 9 states `complete`'s `500` for our own misconfigured OAuth client, a claimed state's `400`, the retry after a `503`, the callback's bounded `error`, a replayed create's possibly expired `authorize_url`, and a disconnect that keeps a token another connector holds; section 11 lists the architecture sections the connector deletion triggers changed and keeps its rows in version order; no wire shape changed.
+> **Status:** Draft v0.10.16, 2026-10-19. Companion to the [architecture document](README.md).
+> **v0.10.16**: `POST /connectors/{id}/complete` has a 60 s timeout, and its exchange runs on past a timeout and keeps its idempotency key until it ends, so the retry with the same key gets `409 request_in_progress` and then the answer (sections 2, 9); no wire shape changed and no architecture section is affected.
+> **v0.10.15**: section 9 states `complete`'s `500` for our own misconfigured OAuth client, a claimed state's `400`, the retry after a `503`, the callback's bounded `error`, a replayed create's possibly expired `authorize_url`, and a disconnect that keeps a token another connector holds; section 11's v0.10.14 row lists the architecture sections the connector deletion triggers changed, and section 11 keeps its rows in version order; no wire shape changed.
 > **v0.10.14**: an owner's demotion, removal or leaving, and their account's deletion, now delete the farm connectors they created, and the tokens are revoked after the store marks the connectors `deleting`, so a restart finishes the step (EON E3.6, section 9); no wire shape changed.
 > **v0.10.13**: the farm connector routes' answers as built (section 9): `409 invalid_state` for a vendor without an OAuth client, the callback's nonce check and `error` redirect, `complete`'s `404` for another user or device, `400` for a refused code and `503` for a vendor outage, the sources' checks and the state's format.
 > **v0.10.12**: section 8 says when `search_farm_records` is offered, how `since` is read and that it returns at most 8 hits framed as `kind="farm_records"`; `Message.farm_citations` are the records the turn's tool calls returned, once per record id, with no SSE event; no wire shape changed.
@@ -242,7 +243,7 @@ type QualityHint =
 
 **`retry_after_s`** is 2 for `request_in_progress` and `processing_unavailable`, 5 for `upstream_unavailable` unless the provider named a longer wait, and the rate limiter's wait, rounded up to whole seconds, for `rate_limited`.
 
-**Timeouts.** A request past the API's timeout gets `503 upstream_unavailable` with `upstream: "api"`, `retryable: true` and `retry_after_s: 5`: such a request is almost always waiting on a slow dependency, every create call is idempotent, and the timeout releases the request's idempotency key. `405`, `408` and `504` are never produced. In a chat stream, a model call that times out ends with an `error` event of code `upstream_unavailable`, `retryable: true` ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions), [agent 18](../backend/agent.md#18-open-questions)).
+**Timeouts.** A request past the API's timeout gets `503 upstream_unavailable` with `upstream: "api"`, `retryable: true` and `retry_after_s: 5`: such a request is almost always waiting on a slow dependency, every create call is idempotent, and the timeout releases the request's idempotency key, except on `POST /connectors/{id}/complete`, whose exchange runs on and keeps the key until it ends (section 9). `405`, `408` and `504` are never produced. In a chat stream, a model call that times out ends with an `error` event of code `upstream_unavailable`, `retryable: true` ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions), [agent 18](../backend/agent.md#18-open-questions)).
 
 Example:
 
