@@ -18,6 +18,9 @@
 //!   several runs) is followed a minute later by one that continues with the next source, and
 //!   every chosen source is read once a round. The round ends when every source has finished
 //!   its pass: only then is `synced_at` set and the next sync 15 minutes away.
+//! - **Older-item checks** ([`FarmPageRequest::probe_limit`], Slack's older threads): at most
+//!   [`PROBES_PER_RUN`] a run over all the connector's sources, none on a source's first pass
+//!   and none with less than 70 s of the budget left.
 //! - **The daily re-read**: for a vendor with a [`FarmSource::reread_window`] (Slack's 7 days),
 //!   once a day after a finished pass the sync starts a pass from that far back; at its end, the
 //!   source's records in the window ([`FarmRecordStore::source_vendor_ids_since`]) that the pass
@@ -85,6 +88,15 @@ pub const REREAD_EVERY: Duration = Duration::from_hours(24);
 
 /// Texts per embedder call.
 const EMBED_BATCH: usize = 32;
+
+/// Older-item checks ([`FarmPageRequest::probe_limit`]) one connector's run may make, over all
+/// its sources: under Slack's Tier 1 pacing each is a minute of the `conversations.replies`
+/// pacer, which the threads that changed need too.
+pub const PROBES_PER_RUN: u32 = 2;
+
+/// No check is offered with less of the run's budget left than this: a paced check waits up to
+/// a minute.
+const PROBE_MIN_BUDGET: Duration = Duration::from_secs(70);
 
 /// The sync's settings.
 #[derive(Debug, Clone, Copy)]
@@ -321,6 +333,7 @@ impl FarmSync {
         // Each round starts one source further on, so the first sources of a run, which get
         // the run's older-item checks first, aren't always the same.
         let start = usize::try_from(low).unwrap_or(0) % sources.len().max(1);
+        let mut probes = PROBES_PER_RUN;
         let mut left = false;
         for src in sources.iter().cycle().skip(start).take(sources.len()) {
             let mut state = SourceState::parse(cursors.get(&src.id));
@@ -329,7 +342,7 @@ impl FarmSync {
                 continue;
             }
             let read = self
-                .read_source(&run, src, &mut state, &mut count, shutdown)
+                .read_source(&run, src, &mut state, (&mut count, &mut probes), shutdown)
                 .await;
             if matches!(read, Ok(Read::Done)) {
                 state.round = next_round;
@@ -375,12 +388,13 @@ impl FarmSync {
     }
 
     /// Reads one source's pages until its pass ends, the budget runs out or shutdown comes.
+    /// `count` follows the garden's records and `probes` the run's older-item checks left.
     async fn read_source(
         &self,
         run: &Run<'_>,
         src: &ConnectorSource,
         state: &mut SourceState,
-        count: &mut u32,
+        (count, probes): (&mut u32, &mut u32),
         shutdown: &CancellationToken,
     ) -> Result<Read, Stop> {
         let window = run.source.reread_window();
@@ -400,12 +414,20 @@ impl FarmSync {
                     seen: std::collections::BTreeSet::new(),
                 });
             }
+            // No checks on a source's first pass, which reads every item in full, nor at the
+            // end of the run's budget.
+            let first_pass = state.reread_at.is_none();
+            let late = run
+                .deadline
+                .saturating_duration_since(tokio::time::Instant::now())
+                < PROBE_MIN_BUDGET;
             let request = FarmPageRequest {
                 account: run.account.clone(),
                 source: src.clone(),
                 cursor: state.vendor_cursor(),
                 oldest: run.now.minus(FARM_RECORD_KEEP),
                 reread_from: state.reread.as_ref().map(|r| r.from),
+                probe_limit: if first_pass || late { 0 } else { *probes },
             };
             // Shutdown interrupts a page in flight (a Tier 1 page can wait a minute per call);
             // nothing of it is stored yet. The budget is not raced: it is checked between pages.
@@ -414,6 +436,7 @@ impl FarmSync {
                 () = shutdown.cancelled() => return Ok(Read::PagesLeft),
                 page = run.source.read_page(&run.token, request) => page.map_err(Stop::Vendor)?,
             };
+            *probes = probes.saturating_sub(page.probes);
             self.store_page(run, src, &page, count).await?;
             if let Some(reread) = state.reread.as_mut() {
                 reread

@@ -22,11 +22,13 @@
 //! its window: a later pass when the parent is new, the daily re-read for the last 7 days.
 //!
 //! **Replies to older threads.** `conversations.history` lists a parent by its own time, so a
-//! reply to a thread whose parent is older than 7 days is seen by no pass. At the end of every
-//! pass the adapter therefore checks [`PROBES_PER_PASS`] threads from `threads` whose parent is
-//! older than 7 days and whose last reply is within 30 days, round-robin by `probed`, with
-//! `conversations.replies` and `limit=1`: the parent comes back first with its current
-//! `latest_reply` and `reply_count`, and the thread is read in full when either differs.
+//! reply to a thread whose parent is older than 7 days is seen by no pass. At the end of a pass
+//! the adapter therefore checks up to [`FarmPageRequest::probe_limit`] threads from `threads`
+//! whose parent is older than 7 days and whose last reply is within 30 days, round-robin by
+//! `probed`, with `conversations.replies` and `limit=1`: the parent comes back first with its
+//! current `latest_reply` and `reply_count`, and the thread is read in full when either
+//! differs. The sync allows two such checks per connector run, over all its channels, so they
+//! never crowd out the replies of threads that changed under Tier 1 pacing.
 //!
 //! Authors: `users.info` once per user and team a day, keeping one name ([`SlackUser::label`]),
 //! never the email. Links: built from the workspace URL `auth.test` gave at connect
@@ -62,9 +64,6 @@ use crate::farm::FarmClientError;
 ///
 /// [connectors 6]: ../../../docs/connectors/README.md#6-sync
 pub const REREAD_WINDOW: Duration = Duration::from_hours(7 * 24);
-
-/// Older threads checked for new replies at the end of each pass.
-pub const PROBES_PER_PASS: usize = 2;
 
 /// A thread's parent must be older than this to be checked by the round-robin (younger ones are
 /// in the daily re-read's window).
@@ -120,6 +119,15 @@ struct Cursor {
     probed: Option<String>,
 }
 
+/// What the older-thread checks of one page found.
+#[derive(Debug, Default)]
+struct Probed {
+    /// The threads that changed, read in full.
+    items: Vec<FarmItem>,
+    /// `conversations.replies` checks made (`limit=1`), failed ones included.
+    calls: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Pass {
     /// The pass's `oldest`, which Slack's page cursor belongs to.
@@ -150,6 +158,20 @@ impl Cursor {
         cursor
             .and_then(|c| serde_json::from_str(&c.0).ok())
             .unwrap_or_default()
+    }
+
+    /// After a history page: the pass continues from Slack's `next` page cursor, or it ended
+    /// and `newest` moves up to the newest `ts` it saw.
+    fn after_page(&mut self, oldest: String, next: Option<String>, top: Option<String>) {
+        match next {
+            Some(page) => self.pass = Some(Pass { oldest, page, top }),
+            None => {
+                self.newest = [self.newest.take(), top]
+                    .into_iter()
+                    .flatten()
+                    .max_by_key(|t| ts_key(t));
+            }
+        }
     }
 
     fn into_sync_cursor(self) -> SyncCursor {
@@ -304,30 +326,16 @@ impl SlackSource {
             );
         }
 
-        if history.next_cursor.is_none() {
-            let now = request.oldest.plus(FARM_RECORD_KEEP);
-            items.extend(
-                self.probe_older_threads(token, team_id, url, request, &mut cursor, now)
-                    .await?,
-            );
-        }
+        let probed = if history.next_cursor.is_none() && request.probe_limit > 0 {
+            self.probe_older_threads(token, team_id, url, request, &mut cursor)
+                .await?
+        } else {
+            Probed::default()
+        };
+        items.extend(probed.items);
 
         let more = history.next_cursor.is_some();
-        match history.next_cursor {
-            Some(next) => {
-                cursor.pass = Some(Pass {
-                    oldest,
-                    page: next,
-                    top: page_top,
-                });
-            }
-            None => {
-                cursor.newest = [cursor.newest.take(), page_top]
-                    .into_iter()
-                    .flatten()
-                    .max_by_key(|t| ts_key(t));
-            }
-        }
+        cursor.after_page(oldest, history.next_cursor, page_top);
         // Threads whose parent left the 180 days are forgotten with their records.
         let floor_key = ts_key(&floor);
         cursor.threads.retain(|ts, _| ts_key(ts) >= floor_key);
@@ -337,13 +345,15 @@ impl SlackSource {
             kept: kept_ids,
             cursor: cursor.into_sync_cursor(),
             more,
+            probes: probed.calls,
         })
     }
 
-    /// Checks up to [`PROBES_PER_PASS`] older threads for replies no pass would see: the next
-    /// ones after `cursor.probed` among the threads whose parent is older than 7 days and whose
-    /// last reply is within 30 days of `now`. A thread whose `latest_reply` or `reply_count`
-    /// moved is read in full and returned as an item; one Slack no longer has is forgotten.
+    /// Checks up to `request.probe_limit` older threads for replies no pass would see: the
+    /// next ones after `cursor.probed` among the threads whose parent is older than 7 days and
+    /// whose last reply is within 30 days of the request's now. A thread whose `latest_reply` or
+    /// `reply_count` moved is read in full and returned as an item; one Slack no longer has is
+    /// forgotten.
     async fn probe_older_threads(
         &self,
         token: &SecretString,
@@ -351,9 +361,9 @@ impl SlackSource {
         url: &str,
         request: &FarmPageRequest,
         cursor: &mut Cursor,
-        now: Timestamp,
-    ) -> Result<Vec<FarmItem>, FarmClientError> {
+    ) -> Result<Probed, FarmClientError> {
         let channel = request.source.id.as_str();
+        let now = request.oldest.plus(FARM_RECORD_KEEP);
         let parent_before = now.minus(PROBE_PARENT_AGE).unix_seconds();
         let reply_after = now.minus(PROBE_REPLY_AGE).unix_seconds();
         let secs = |ts: &str| i64::try_from(ts_key(ts).0).unwrap_or(0);
@@ -370,11 +380,12 @@ impl SlackSource {
         let chosen: Vec<String> = later
             .into_iter()
             .chain(earlier)
-            .take(PROBES_PER_PASS)
+            .take(usize::try_from(request.probe_limit).unwrap_or(usize::MAX))
             .cloned()
             .collect();
-        let mut items = Vec::new();
+        let mut probed = Probed::default();
         for ts in chosen {
+            probed.calls += 1;
             cursor.probed = Some(ts.clone());
             let found = match self
                 .client
@@ -409,12 +420,12 @@ impl SlackSource {
             } else {
                 cursor.threads.remove(&ts);
             }
-            items.push(
+            probed.items.push(
                 self.item(token, team_id, url, &request.source, parent, replies)
                     .await?,
             );
         }
-        Ok(items)
+        Ok(probed)
     }
 
     /// A message with its replies joined, each reply on its own paragraph after its author's
@@ -680,6 +691,7 @@ mod threads {
             cursor,
             oldest: now().minus(FARM_RECORD_KEEP),
             reread_from: None,
+            probe_limit: 2,
         }
     }
 
@@ -801,7 +813,7 @@ mod threads {
     }
 
     #[tokio::test]
-    async fn older_threads_are_checked_two_a_pass_round_robin() {
+    async fn older_threads_are_checked_round_robin_up_to_the_limit() {
         let server = MockServer::start().await;
         users(&server).await;
         history(&server, Vec::new()).await;
@@ -841,6 +853,7 @@ mod threads {
                 .collect()
         };
         assert_eq!(probes(&calls), [p1.clone(), p2.clone()]);
+        assert_eq!(page.probes, 2);
         assert_eq!(page.items.len(), 1);
         assert_eq!(page.items[0].vendor_id, format!("C_FIELD/{p1}"));
         let cursor = Cursor::parse(Some(&page.cursor));
@@ -858,6 +871,23 @@ mod threads {
         assert_eq!(
             Cursor::parse(Some(&page.cursor)).probed.as_deref(),
             Some(p1.as_str())
+        );
+
+        // The sync's limit: one check, then none.
+        calls.lock().unwrap().clear();
+        let mut one = request(Some(page.cursor));
+        one.probe_limit = 1;
+        let page = source.page(&token(), &one).await.unwrap();
+        assert_eq!(probes(&calls), [p2.as_str()]);
+        assert_eq!(page.probes, 1);
+        let mut none = request(Some(page.cursor));
+        none.probe_limit = 0;
+        let page = source.page(&token(), &none).await.unwrap();
+        assert_eq!(probes(&calls), [p2.as_str()], "no call");
+        assert_eq!(page.probes, 0);
+        assert_eq!(
+            Cursor::parse(Some(&page.cursor)).probed.as_deref(),
+            Some(p2.as_str())
         );
     }
 

@@ -250,6 +250,7 @@ fn page(items: Vec<FarmItem>, more: bool, cursor: &str) -> FarmPage {
         kept: Vec::new(),
         cursor: SyncCursor(cursor.into()),
         more,
+        probes: 0,
     }
 }
 
@@ -897,7 +898,11 @@ async fn a_spent_budget_moves_on_to_the_next_sources_on_the_next_run() {
     }
     assert_eq!(ends.last(), Some(&RunEnd::Synced), "{ends:?}");
     assert!(ends.len() >= 3, "a run read more than the budget: {ends:?}");
-    assert_eq!(read(0), channels, "each channel once, in order, none starved");
+    assert_eq!(
+        read(0),
+        channels,
+        "each channel once, in order, none starved"
+    );
     let row = b.row(id).await;
     assert_eq!(row.connector.synced_at, Some(pinned()));
     assert_eq!(row.next_sync_at, pinned().plus(SYNC_EVERY));
@@ -907,6 +912,95 @@ async fn a_spent_budget_moves_on_to_the_next_sources_on_the_next_run() {
     b.clock.advance(SYNC_EVERY);
     b.run().await;
     assert_eq!(read(before).first().map(String::as_str), Some("C1"));
+}
+
+/// A vendor that uses `uses` of each page's older-item checks, as far as the limit allows.
+fn probing(uses: Arc<Mutex<Vec<u32>>>) -> Arc<FakeSource> {
+    FakeSource::new(
+        None,
+        Box::new(move |r| {
+            let want = uses.lock().expect("uses").pop().unwrap_or(0);
+            let mut p = page(Vec::new(), false, "c");
+            p.probes = want.min(r.probe_limit);
+            Ok(p)
+        }),
+    )
+}
+
+#[tokio::test]
+async fn older_item_checks_are_two_a_run_over_every_source_and_none_on_a_first_pass() {
+    let uses = Arc::new(Mutex::new(Vec::new()));
+    let source = probing(uses.clone());
+    let b = bench(store().await, source.clone(), SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1", "C2", "C3"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    let limits = |from: usize| -> Vec<(String, u32)> {
+        source.requests()[from..]
+            .iter()
+            .map(|r| (r.source.id.clone(), r.probe_limit))
+            .collect()
+    };
+    let pair = |s: &str, n: u32| (s.to_owned(), n);
+
+    // The first pass reads every thread in full: no checks.
+    assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+    assert_eq!(limits(0), [pair("C1", 0), pair("C2", 0), pair("C3", 0)]);
+
+    // Round 2 starts at C2, which uses both checks: none left for the others.
+    *uses.lock().expect("uses") = vec![2, 2, 2];
+    b.clock.advance(SYNC_EVERY);
+    let before = source.requests().len();
+    b.run().await;
+    assert_eq!(
+        limits(before),
+        [pair("C2", 2), pair("C3", 0), pair("C1", 0)]
+    );
+
+    // Round 3 starts at C3, which uses one; C1 gets the other.
+    *uses.lock().expect("uses") = vec![2, 2, 1];
+    b.clock.advance(SYNC_EVERY);
+    let before = source.requests().len();
+    b.run().await;
+    assert_eq!(
+        limits(before),
+        [pair("C3", 2), pair("C1", 1), pair("C2", 0)]
+    );
+}
+
+#[tokio::test]
+async fn no_older_item_check_is_offered_at_the_end_of_the_budget() {
+    let source = probing(Arc::default());
+    let config = SyncConfig {
+        run_budget: Duration::from_secs(60),
+        ..SyncConfig::default()
+    };
+    let b = bench(store().await, source.clone(), config);
+    let owner = garden(&b.store, &b.ids, "a").await;
+    connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    b.run().await;
+    b.clock.advance(SYNC_EVERY);
+    b.run().await;
+    let requests = source.requests();
+    assert_eq!(requests.len(), 2);
+    assert!(requests.iter().all(|r| r.probe_limit == 0), "{requests:?}");
 }
 
 #[tokio::test]
