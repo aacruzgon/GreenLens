@@ -919,6 +919,30 @@ async fn a_refused_refresh_is_auth_refused() {
 }
 
 #[tokio::test]
+async fn a_bad_client_secret_is_our_misconfiguration_not_auth_refused() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/token"))
+        .respond_with(
+            ResponseTemplate::new(401).set_body_json(
+                json!({"error": "invalid_client", "error_description": "Unauthorized"}),
+            ),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let error = client(&server)
+        .refresh(&SecretString::from("1//r"), "c", &SecretString::from("bad"))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&error, FarmClientError::Refused { status: 401, code, .. } if code == "invalid_client"),
+        "{error:?}"
+    );
+    assert_eq!(error.code(), crate::farm::FarmErrorCode::VendorUnavailable);
+}
+
+#[tokio::test]
 async fn a_refresh_gives_a_new_access_token() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

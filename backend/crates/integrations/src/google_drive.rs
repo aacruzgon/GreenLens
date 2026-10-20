@@ -10,7 +10,7 @@
 //!   page token, and `changes.list` read to its last page.
 //!
 //! **Errors** come in Google's shape, `{"error":{"code","status","errors":[{"reason"}]}}`:
-//! `401` is `AuthRefused`; `429`, and a `403` whose reason is `userRateLimitExceeded` or
+//! `401` is `AuthRefused` (but `401 invalid_client`, a bad client secret of ours, is `Refused`); `429`, and a `403` whose reason is `userRateLimitExceeded` or
 //! `rateLimitExceeded`, are retried honouring `Retry-After`, then `RateLimited`; a `403` for a
 //! missing scope (`ACCESS_TOKEN_SCOPE_INSUFFICIENT`, or `insufficientPermissions` on a call that
 //! reads with the token's scope) is `AuthRefused`, never retried; any other `403` (such as
@@ -583,6 +583,14 @@ fn classify<T>(
         retry_after,
     };
     match status {
+        // A bad client secret is our own configuration, not the user's token.
+        StatusCode::UNAUTHORIZED if code == "invalid_client" => {
+            Attempt::Fail(FarmClientError::Refused {
+                vendor: VENDOR,
+                status: status.as_u16(),
+                code,
+            })
+        }
         StatusCode::UNAUTHORIZED => Attempt::Fail(FarmClientError::AuthRefused {
             vendor: VENDOR,
             code,
