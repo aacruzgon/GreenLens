@@ -1,7 +1,7 @@
-//! The Slack sync against Era's Slack simulator, on the Maple Row Farm fixture (docs/EON
-//! T-E4.2, T-E4.4, T-E4.6, T-E4.7, T-E4.8, T-E4.11): the embedded store, a counting embedder and
-//! the clock pinned to 2026-10-15T12:00:00Z; the client's token is the tenant's minted
-//! credential. Ignored by default; with the simulators up:
+//! The Slack and Drive syncs against Era's simulators, on the Maple Row Farm fixture (docs/EON
+//! T-E4.2, T-E4.3, T-E4.4, T-E4.5's Drive half, T-E4.6, T-E4.7, T-E4.8, T-E4.11): the embedded
+//! store, a counting embedder and the clock pinned to 2026-10-15T12:00:00Z; the client's token
+//! is the tenant's minted credential. Ignored by default; with the simulators up:
 //!
 //! ```sh
 //! docker compose -f infra/dev.compose.yml --profile era up -d --wait era-slack era-drive
@@ -10,8 +10,7 @@
 //! ```
 //!
 //! Faults are global to the simulator: the nextest group `era` runs these one at a time, and a
-//! fault test clears the Slack simulator's faults before and after, also when it fails. Only the
-//! Slack simulator's faults are used here.
+//! fault test clears its simulator's faults before and after, also when it fails.
 
 use std::{
     collections::BTreeMap,
@@ -43,7 +42,7 @@ use store::SurrealStore;
 
 use super::{
     FarmSources, FarmSync, RunEnd, SYNC_EVERY, SyncConfig,
-    tests::{CountingEmbedder, connector, garden, key, pinned, store},
+    tests::{CountingEmbedder, connector, garden, key, pinned, store, vendors},
 };
 
 const HISTORY: &str = "/api/conversations.history";
@@ -181,6 +180,7 @@ async fn farm(channels: &[&str], edit: impl FnOnce(&mut SlackConfig)) -> Farm {
         embedder.clone(),
         clock.clone(),
         key(),
+        vendors(),
         FarmSources::default().with(ConnectorEndpoint::Era, source),
         SyncConfig::default(),
     );
@@ -283,10 +283,16 @@ fn names() -> BTreeMap<String, String> {
 /// Runs `test` with the Slack simulator's faults set, clearing them before and after, also
 /// when the test panics.
 async fn with_faults(faults: Value, test: impl Future<Output = ()>) {
-    Faults::reset(SimKind::Slack).await;
-    Faults::set(SimKind::Slack, faults).await;
+    with_faults_on(SimKind::Slack, faults, test).await;
+}
+
+/// Runs `test` with `kind`'s simulator's faults set, clearing them before and after, also when
+/// the test panics.
+async fn with_faults_on(kind: SimKind, faults: Value, test: impl Future<Output = ()>) {
+    Faults::reset(kind).await;
+    Faults::set(kind, faults).await;
     let outcome = AssertUnwindSafe(test).catch_unwind().await;
-    Faults::reset(SimKind::Slack).await;
+    Faults::reset(kind).await;
     if let Err(panic) = outcome {
         std::panic::resume_unwind(panic);
     }
@@ -655,4 +661,291 @@ async fn era_fault_logs_and_records_hold_no_email_and_no_vendor_body() {
     }
     assert!(!logged.contains("\"ok\":"), "a Slack body in the logs");
     farm.tenant.close().await;
+}
+
+/// The Drive sync against Era's Drive simulator (docs/EON T-E4.3, T-E4.5's Drive half): one
+/// `era` connector on the fixture's folder `F_FARM`, its token the tenant's minted credential,
+/// sealed as a bare bearer token like the seeded `ya29.era-demo`.
+mod drive {
+    use domain::{
+        connectors::{ConnectorAccount, ConnectorKind, ConnectorSource},
+        ports::{IdGenExt as _, NewConnector},
+    };
+    use integrations::google_drive::{DriveClient, DriveConfig, DriveSource};
+    use secrecy::SecretString;
+
+    use super::*;
+    use crate::{connect::MockConnectVendors, sealing::StoredTokens};
+
+    const FILES: &str = "/drive/v3/files";
+    const CHANGES: &str = "/drive/v3/changes";
+    const START: &str = "/drive/v3/changes/startPageToken";
+
+    /// The fixture's files under `F_FARM`.
+    const FARM: [&str; 5] = ["D_BEDMAP", "D_SOP", "D_SPRAY", "F_LABEL", "S_PLAN"];
+
+    struct DriveFarm {
+        tenant: Tenant,
+        store: Arc<SurrealStore>,
+        clock: Arc<FixedClock>,
+        sync: FarmSync,
+        garden: GardenId,
+        viewer: domain::authz::Membership<Viewer>,
+        connector: ConnectorId,
+    }
+
+    /// The tenant with the fixture and `extra` injected, and the sync over one `era` Drive
+    /// connector on `F_FARM`, whose token is never renewed.
+    async fn drive_farm(extra: Option<Value>, edit: impl FnOnce(&mut DriveConfig)) -> DriveFarm {
+        let tenant = Tenant::create(
+            SimKind::Drive,
+            Some(&fixture("maple-row", "google-drive.json")),
+        )
+        .await;
+        if let Some(extra) = extra {
+            tenant.inject(&extra).await;
+        }
+        let store = store().await;
+        let ids = SequentialIds::default();
+        let (user, garden_id) = garden(&store, &ids, "maple").await;
+        let clock = Arc::new(FixedClock::at(pinned()));
+        let id: ConnectorId = ids.id();
+        let tokens = StoredTokens::bearer(SecretString::from(tenant.token().await));
+        store
+            .seed_connector(
+                garden_id,
+                NewConnector {
+                    id,
+                    kind: ConnectorKind::GoogleDrive,
+                    status: ConnectorStatus::Active,
+                    endpoint: ConnectorEndpoint::Era,
+                    created_by: user,
+                    account: Some(ConnectorAccount::GoogleDrive {
+                        email: "farm@maplerow.example".into(),
+                    }),
+                    secret: Some(tokens.seal(&key(), id)),
+                    oauth: None,
+                    sources: vec![ConnectorSource {
+                        id: "F_FARM".into(),
+                        name: "Farm records".into(),
+                    }],
+                    created_at: clock.now(),
+                },
+            )
+            .await
+            .expect("connector");
+        let http = http::client(&HttpConfig::default()).expect("the HTTP client builds");
+        let mut config = DriveConfig::era(tenant.base());
+        edit(&mut config);
+        let source = Arc::new(DriveSource::new(DriveClient::new(http, config)));
+        let mut vendors = MockConnectVendors::new();
+        vendors.expect_refresh().never();
+        let sync = FarmSync::new(
+            store.clone(),
+            Arc::new(CountingEmbedder::default()),
+            clock.clone(),
+            key(),
+            Arc::new(vendors),
+            FarmSources::default().with(ConnectorEndpoint::Era, source),
+            SyncConfig::default(),
+        );
+        let viewer = check_membership_of(store.as_ref(), user, garden_id)
+            .await
+            .expect("the owner views");
+        DriveFarm {
+            tenant,
+            store,
+            clock,
+            sync,
+            garden: garden_id,
+            viewer,
+            connector: id,
+        }
+    }
+
+    impl DriveFarm {
+        async fn run(&self) -> Vec<(ConnectorId, RunEnd)> {
+            self.sync
+                .run_due(&CancellationToken::new())
+                .await
+                .expect("due connectors listed")
+        }
+
+        /// Every chunk, by vendor id and chunk number.
+        async fn records(&self) -> BTreeMap<(String, u32), FarmRecordMatch> {
+            self.store
+                .search_records(
+                    self.viewer,
+                    &Embedding(vec![1.0, 0.0, 0.0, 0.0]),
+                    FarmRecordFilter::default(),
+                    1_000,
+                )
+                .await
+                .expect("search")
+                .into_iter()
+                .map(|m| {
+                    let id = &m.hit.citation.record_id;
+                    ((id.vendor_id.to_string(), id.n), m)
+                })
+                .collect()
+        }
+
+        async fn files(&self) -> Vec<String> {
+            let mut files: Vec<String> = self.records().await.into_keys().map(|(v, _)| v).collect();
+            files.dedup();
+            files
+        }
+
+        async fn calls(&self, route: &str) -> usize {
+            count(&self.tenant.requests().await, route)
+        }
+    }
+
+    /// T-E4.3: every file under the folder, nested ones included, becomes records; nothing
+    /// outside it does; the Sheet's text is its first tab; the PDF is kept by name.
+    #[tokio::test]
+    #[ignore = "needs Era's simulators"]
+    async fn era_drive_first_sync_reads_every_file_under_the_folder_and_nothing_else() {
+        let extra = json!({ "files": [
+            { "id": "F_SUB", "name": "Old seasons",
+              "mimeType": "application/vnd.google-apps.folder", "parents": ["F_FARM"] },
+            { "id": "D_SUB", "name": "Spray log 2025", "parents": ["F_SUB"],
+              "text": "Spray log 2025\n\nCopper on bed 2, 12 June." },
+            { "id": "D_OUT", "name": "Robot fleet notes", "parents": ["F_ELSEWHERE"],
+              "text": "Not the farm's." },
+        ]});
+        let farm = drive_farm(Some(extra), |_| {}).await;
+        assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
+
+        let mut expected: Vec<&str> = FARM.to_vec();
+        expected.push("D_SUB");
+        expected.sort_unstable();
+        assert_eq!(farm.files().await, expected, "nothing from outside F_FARM");
+        let records = farm.records().await;
+        let first = |id: &str| &records[&(id.to_owned(), 0)];
+        assert!(first("D_SPRAY").hit.text.starts_with("Spray log 2026"));
+        assert!(first("D_SUB").hit.text.starts_with("Spray log 2025"));
+        assert_eq!(first("D_SPRAY").hit.citation.title, "Spray log 2026");
+        assert_eq!(
+            first("D_SPRAY").hit.citation.system,
+            ConnectorKind::GoogleDrive
+        );
+        assert_eq!(
+            first("D_SPRAY").hit.citation.link,
+            "https://docs.google.com/document/d/D_SPRAY/edit"
+        );
+        // The Sheet's CSV export is its first tab, `Beds`; `Cover crops` isn't in it.
+        let plan: String = records
+            .iter()
+            .filter(|((v, _), _)| v == "S_PLAN")
+            .map(|(_, m)| m.hit.text.as_str())
+            .collect();
+        assert!(
+            plan.starts_with("bed,crop,variety,sown,transplanted,spacing_cm"),
+            "{plan}"
+        );
+        assert!(!plan.contains("cover_crop"), "only the first tab");
+        assert_eq!(
+            first("F_LABEL").hit.text,
+            "Kocide 3000 label.pdf",
+            "by name"
+        );
+        // The start token once, before the folder and its subfolder were listed.
+        assert_eq!(farm.calls(START).await, 1);
+        assert_eq!(farm.calls(FILES).await, 2);
+        assert_eq!(farm.calls(CHANGES).await, 0);
+        let row = farm
+            .store
+            .connector_row(farm.connector)
+            .await
+            .expect("read")
+            .expect("exists");
+        assert_eq!(row.connector.synced_at, Some(pinned()));
+        farm.tenant.close().await;
+    }
+
+    /// T-E4.5, Drive's half: synced on `day1`, the tenant moved to `day2` and the clock 91 days
+    /// on, the fixture injected again: the changed files arrive through `changes.list`, read to
+    /// its last page past the thousands of Northwind's changes, and nothing else is stored.
+    #[tokio::test]
+    #[ignore = "needs Era's simulators"]
+    async fn era_drive_a_quarter_later_the_changes_arrive_through_changes_list() {
+        let farm = drive_farm(None, |_| {}).await;
+        assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
+        let before = farm.records().await;
+        assert!(
+            before
+                .values()
+                .all(|m| m.hit.citation.at.to_string() == "2026-10-15T12:00:00Z")
+        );
+        let listed = farm.calls(FILES).await;
+
+        farm.tenant.state("day2").await;
+        farm.tenant
+            .inject(&fixture("maple-row", "google-drive.json"))
+            .await;
+        farm.clock.advance(Duration::from_hours(91 * 24));
+        assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
+
+        let pages = farm.calls(CHANGES).await;
+        assert!(
+            pages > 1,
+            "{pages} pages: with SIMCORE_FIDELITY=high a quarter of Northwind is thousands of \
+             changes, several pages at 1,000 a page"
+        );
+        assert_eq!(farm.calls(FILES).await, listed, "not listed again");
+        assert_eq!(farm.files().await, FARM, "nothing from Northwind's changes");
+        let after = farm.records().await;
+        assert_eq!(after.len(), before.len());
+        let stored = farm
+            .store
+            .garden_record_count(farm.garden)
+            .await
+            .expect("count");
+        assert_eq!(stored as usize, before.len(), "no record stored twice");
+        assert!(
+            after
+                .values()
+                .all(|m| m.hit.citation.at.to_string() == "2027-01-14T12:00:00Z"),
+            "each file read again at its new modifiedTime"
+        );
+        farm.tenant.close().await;
+    }
+
+    /// A throttled Drive sync stops with `rate_limited`, keeps its cursor and finishes on a
+    /// later run with every file once.
+    #[tokio::test]
+    #[ignore = "needs Era's simulators"]
+    async fn era_fault_a_throttled_drive_sync_finishes_on_a_later_run() {
+        // The client gives up on a `Retry-After` over 10 s, as a run must not wait a minute.
+        let farm = drive_farm(None, |c| {
+            c.retry = RetryPolicy {
+                max_retry_after: Duration::from_secs(10),
+                ..c.retry
+            };
+        })
+        .await;
+        // The start token, the listing and one export pass; the next call gets `429` with
+        // `retry-after: 60`, which an `era` client won't wait past its run.
+        with_faults_on(SimKind::Drive, json!({ "quota_limit": 3 }), async {
+            assert_eq!(
+                farm.run().await,
+                [(farm.connector, RunEnd::Failed(SyncErrorCode::RateLimited))]
+            );
+        })
+        .await;
+        let row = farm
+            .store
+            .connector_row(farm.connector)
+            .await
+            .expect("read")
+            .expect("exists");
+        assert_eq!(row.last_error, Some(SyncErrorCode::RateLimited));
+        assert_eq!(row.next_sync_at, pinned().plus(Duration::from_secs(60)));
+
+        farm.clock.advance(Duration::from_secs(60));
+        assert_eq!(farm.run().await, [(farm.connector, RunEnd::Synced)]);
+        assert_eq!(farm.files().await, FARM);
+        farm.tenant.close().await;
+    }
 }

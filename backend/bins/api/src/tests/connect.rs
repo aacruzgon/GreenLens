@@ -191,7 +191,7 @@ fn era_row() -> ConnectorRow {
 
 /// The vendors with no refresh due: Slack's bot token doesn't expire.
 fn no_refresh(vendors: &mut MockConnectVendors) {
-    vendors.expect_refresh().returning(|_, _| Ok(None));
+    vendors.expect_refresh().returning(|_, _, _| Ok(None));
 }
 
 /// The store lets `complete` claim the pending state once, and release it `released` times.
@@ -1305,11 +1305,13 @@ async fn an_expiring_google_token_is_refreshed_and_stored_over_the_one_read() {
     let mut vendors = MockConnectVendors::new();
     vendors
         .expect_refresh()
-        .withf(|kind, tokens| {
-            *kind == ConnectorKind::GoogleDrive && tokens.access_token.expose_secret() == "ya29.old"
+        .withf(|kind, tokens, force| {
+            *kind == ConnectorKind::GoogleDrive
+                && tokens.access_token.expose_secret() == "ya29.old"
+                && !force
         })
         .times(1)
-        .returning(|_, _| {
+        .returning(|_, _, _| {
             Ok(Some(StoredTokens {
                 access_token: SecretString::from("ya29.new"),
                 refresh_token: Some(SecretString::from("1//refresh")),

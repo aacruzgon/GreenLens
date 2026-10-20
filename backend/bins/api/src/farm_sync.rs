@@ -38,9 +38,17 @@
 //!   ([`outcome`]). `last_error` is a fixed code, never the vendor's text, and nothing the
 //!   vendor sent is logged: lines carry the connector id, the source id and the code.
 //!
-//! Drive (E4.3) plugs in as another [`FarmSource`] in [`FarmSources`], keyed by kind and
-//! endpoint; it returns `None` from `reread_window` and reports deletions in
-//! `FarmPage::removed`.
+//! - **Tokens**: Google's access token lives an hour. Before a connector of the vendor's own
+//!   endpoint reads, a token with less than 5 minutes left is renewed with its refresh token,
+//!   and once a run a token the vendor refuses is renewed at once and the page asked again;
+//!   each renewed grant is stored over the sealed value it came from
+//!   ([`connect::refresh_and_store`], a compare-and-set shared with the source picker). A
+//!   refused refresh is a refused token. An `era` connector's token is never sent to Google:
+//!   it has no refresh token, and the sync never renews one.
+//!
+//! Slack and Drive (E4.3) are each a [`FarmSource`] in [`FarmSources`], keyed by kind and
+//! endpoint. Drive returns `None` from `reread_window`, so the sync never deletes its records by
+//! absence, and reports the files moved out, trashed or deleted in `FarmPage::removed`.
 //!
 //! [connectors 6]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#6-sync
 
@@ -56,7 +64,7 @@ mod tests_era;
 
 use std::{
     collections::{BTreeMap, HashMap},
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -70,14 +78,15 @@ use domain::{
     id::{ConnectorId, FarmRecordId, GardenId},
     ports::{
         BoxError, Clock, ConnectorRow, EmbedMode, FarmPage, FarmPageRequest, FarmSource,
-        FarmSourceError, FarmVector, NewFarmRecord, SYNC_STATE_KEY, Store, StoreError, SyncCursor,
-        SyncOutcome, TextEmbedder, VendorToken,
+        FarmSourceError, FarmVector, NewFarmRecord, SYNC_STATE_KEY, Sealed, Store, StoreError,
+        SyncCursor, SyncOutcome, TextEmbedder, VendorToken,
     },
     rules::limits::{FARM_RECORD_KEEP, MAX_FARM_RECORDS_PER_GARDEN},
     wire::Timestamp,
 };
 
 use crate::{
+    connect::{self, ConnectVendors, VendorError},
     error::{ApiError, chain},
     sealing::{ConnectorKey, StoredTokens},
 };
@@ -230,6 +239,8 @@ pub struct FarmSync {
     embedder: Arc<dyn TextEmbedder>,
     clock: Arc<dyn Clock>,
     key: ConnectorKey,
+    /// Renews Google's access tokens, on the vendor's own token endpoint.
+    vendors: Arc<dyn ConnectVendors>,
     sources: FarmSources,
     config: SyncConfig,
 }
@@ -237,13 +248,39 @@ pub struct FarmSync {
 /// One connector's fixed facts during a run.
 struct Run<'a> {
     id: ConnectorId,
+    kind: ConnectorKind,
     garden: GardenId,
     source: &'a dyn FarmSource,
-    token: VendorToken,
+    /// The tokens, renewed during the run when the vendor refuses them.
+    grant: Mutex<Grant>,
+    /// A connector of the vendor's own endpoint, whose tokens may be renewed; an `era`
+    /// connector's never are.
+    renewable: bool,
     account: domain::connectors::ConnectorAccount,
     /// The run's start, for the windows.
     now: Timestamp,
     deadline: tokio::time::Instant,
+}
+
+/// A connector's tokens during a run, and the sealed value they are stored as.
+struct Grant {
+    tokens: StoredTokens,
+    /// What `connector.secret` held when the tokens were read or last stored: the
+    /// compare-and-set of the next renewal compares against it.
+    sealed: Option<Sealed>,
+    /// A refused token was renewed in this run; a second refusal stands.
+    renewed: bool,
+}
+
+impl Run<'_> {
+    /// The access token to send.
+    fn token(&self) -> VendorToken {
+        let grant = self
+            .grant
+            .lock()
+            .expect("the grant's lock is never poisoned");
+        VendorToken::new(grant.tokens.access_token.expose_secret())
+    }
 }
 
 impl FarmSync {
@@ -253,6 +290,7 @@ impl FarmSync {
         embedder: Arc<dyn TextEmbedder>,
         clock: Arc<dyn Clock>,
         key: ConnectorKey,
+        vendors: Arc<dyn ConnectVendors>,
         sources: FarmSources,
         config: SyncConfig,
     ) -> Self {
@@ -261,6 +299,7 @@ impl FarmSync {
             embedder,
             clock,
             key,
+            vendors,
             sources,
             config,
         }
@@ -321,8 +360,8 @@ impl FarmSync {
             };
             return self.finish(id, outcome, RunEnd::NoAdapter).await;
         };
-        let opened = self.token(&row);
-        let (Some(token), Some(account)) = (opened, row.connector.account.clone()) else {
+        let opened = self.tokens(&row);
+        let (Some(tokens), Some(account)) = (opened, row.connector.account.clone()) else {
             // A token that doesn't open (another key) or a connector without its account:
             // only reconnecting fixes it.
             return self
@@ -343,11 +382,27 @@ impl FarmSync {
             };
             return self.finish(id, outcome, RunEnd::NoSources).await;
         }
+        let renewable = row.connector.endpoint == ConnectorEndpoint::Vendor;
+        // Shutdown interrupts a renewal in flight: nothing is read, and the connector stays due.
+        let grant = tokio::select! {
+            biased;
+            () = shutdown.cancelled() => None,
+            grant = self.grant(&row, tokens, renewable) => Some(grant),
+        };
+        let Some(grant) = grant else {
+            return self.leave_due(&row, now).await;
+        };
+        let grant = match grant {
+            Ok(grant) => grant,
+            Err(e) => return self.stop(&row, row.cursors.clone(), &Halt::Vendor(e)).await,
+        };
         let run = Run {
             id,
+            kind: row.connector.kind,
             garden: row.connector.garden_id,
             source: source.as_ref(),
-            token,
+            grant: Mutex::new(grant),
+            renewable,
             account,
             now,
             deadline: tokio::time::Instant::now() + self.config.run_budget,
@@ -398,12 +453,108 @@ impl FarmSync {
         self.finish(id, outcome, end).await
     }
 
-    /// The connector's access token, unsealed through [`StoredTokens`], which reads both forms
-    /// the connect routes seal: Slack's bot token as its plain string, Google's grant as JSON.
-    fn token(&self, row: &ConnectorRow) -> Option<VendorToken> {
+    /// The connector's tokens, unsealed through [`StoredTokens`], which reads both forms the
+    /// connect routes seal: Slack's bot token as its plain string, Google's grant as JSON.
+    fn tokens(&self, row: &ConnectorRow) -> Option<StoredTokens> {
         let sealed = row.secret.as_ref()?;
-        let tokens = StoredTokens::unseal(&self.key, row.connector.id, sealed).ok()?;
-        Some(VendorToken::new(tokens.access_token.expose_secret()))
+        StoredTokens::unseal(&self.key, row.connector.id, sealed).ok()
+    }
+
+    /// A run that read nothing and leaves the connector due, as it was, for the next run.
+    async fn leave_due(&self, row: &ConnectorRow, now: Timestamp) -> RunEnd {
+        let outcome = SyncOutcome {
+            due_at: row.next_sync_at,
+            cursors: row.cursors.clone(),
+            synced_at: None,
+            next_sync_at: now,
+            last_error: row.last_error,
+        };
+        self.finish(row.connector.id, outcome, RunEnd::PagesLeft)
+            .await
+    }
+
+    /// The run's tokens: a connector of the vendor's own endpoint with a refresh token has
+    /// Google's access token renewed first when it has less than 5 minutes left.
+    async fn grant(
+        &self,
+        row: &ConnectorRow,
+        tokens: StoredTokens,
+        renewable: bool,
+    ) -> Result<Grant, FarmSourceError> {
+        let mut sealed = row.secret.clone();
+        let tokens = if renewable && tokens.refresh_token.is_some() {
+            let kind = row.connector.kind;
+            connect::refresh_and_store(
+                self.vendors.as_ref(),
+                self.store.as_ref(),
+                &self.key,
+                (row.connector.id, kind),
+                &mut sealed,
+                (tokens, false),
+            )
+            .await
+            .map_err(|e| renewal_error(kind, e))?
+        } else {
+            tokens
+        };
+        Ok(Grant {
+            tokens,
+            sealed,
+            renewed: false,
+        })
+    }
+
+    /// One page from the vendor. A refused token is renewed once a run and the page asked
+    /// again ([`Self::renew`]).
+    async fn read_page(
+        &self,
+        run: &Run<'_>,
+        request: FarmPageRequest,
+    ) -> Result<FarmPage, FarmSourceError> {
+        let refused = match run.source.read_page(&run.token(), request.clone()).await {
+            Err(e @ FarmSourceError::AuthRefused { .. }) => e,
+            other => return other,
+        };
+        match self.renew(run).await? {
+            Some(token) => run.source.read_page(&token, request).await,
+            None => Err(refused),
+        }
+    }
+
+    /// After a refused token: Google's grant renewed at once and stored, once a run, for a
+    /// connector of the vendor's own endpoint that has a refresh token. `None` when it can't be
+    /// (Slack, an `era` connector, no refresh token, renewed already in this run). A refused
+    /// refresh is [`FarmSourceError::AuthRefused`].
+    async fn renew(&self, run: &Run<'_>) -> Result<Option<VendorToken>, FarmSourceError> {
+        let (tokens, mut sealed) = {
+            let mut grant = run
+                .grant
+                .lock()
+                .expect("the grant's lock is never poisoned");
+            if !run.renewable || grant.renewed || grant.tokens.refresh_token.is_none() {
+                return Ok(None);
+            }
+            grant.renewed = true;
+            (grant.tokens.clone(), grant.sealed.clone())
+        };
+        let fresh = connect::refresh_and_store(
+            self.vendors.as_ref(),
+            self.store.as_ref(),
+            &self.key,
+            (run.id, run.kind),
+            &mut sealed,
+            (tokens, true),
+        )
+        .await
+        .map_err(|e| renewal_error(run.kind, e))?;
+        let token = VendorToken::new(fresh.access_token.expose_secret());
+        let mut grant = run
+            .grant
+            .lock()
+            .expect("the grant's lock is never poisoned");
+        grant.tokens = fresh;
+        grant.sealed = sealed;
+        Ok(Some(token))
     }
 
     /// One run's share of the round in progress ([`Rotation`]). First the sources that haven't
@@ -562,11 +713,16 @@ impl FarmSync {
             let page = tokio::select! {
                 biased;
                 () = shutdown.cancelled() => return Ok(Read::PagesLeft),
-                page = run.source.read_page(&run.token, request) => page,
+                page = self.read_page(run, request) => page,
             };
             *asked = true;
             let page = page.map_err(Stop::Vendor)?;
             *probes = probes.saturating_sub(page.probes);
+            // A resync's deletions go first, so the records it drops don't count against the
+            // garden's limit when the page is stored; every item of the page is in `listed`.
+            if let Some(listed) = &page.listed {
+                self.delete_unlisted(run, src, listed).await?;
+            }
             self.store_page(run, src, &page).await?;
             state.failing = false;
             if let Some(reread) = state.reread.as_mut() {
@@ -615,6 +771,34 @@ impl FarmSync {
         if !gone.is_empty() {
             let deleted = self.store.delete_records(run.id, gone).await?;
             tracing::info!(source = %src.id, deleted, "records gone at the vendor deleted");
+        }
+        Ok(())
+    }
+
+    /// After a page that listed the whole source ([`FarmPage::listed`]): the source's records
+    /// whose vendor id the listing didn't hold are gone at the vendor.
+    async fn delete_unlisted(
+        &self,
+        run: &Run<'_>,
+        src: &ConnectorSource,
+        listed: &[String],
+    ) -> Result<(), Stop> {
+        let listed: std::collections::HashSet<&str> = listed.iter().map(String::as_str).collect();
+        let stored = self
+            .store
+            .source_vendor_ids_since(
+                run.id,
+                src.id.clone(),
+                Timestamp::from(chrono::DateTime::UNIX_EPOCH),
+            )
+            .await?;
+        let gone: Vec<String> = stored
+            .into_iter()
+            .filter(|v| !listed.contains(v.as_str()))
+            .collect();
+        if !gone.is_empty() {
+            let deleted = self.store.delete_records(run.id, gone).await?;
+            tracing::info!(source = %src.id, deleted, "records no longer listed deleted");
         }
         Ok(())
     }
@@ -844,6 +1028,33 @@ fn retry_wait(retry_after_s: Option<u32>) -> Duration {
     const MIN: u32 = 60;
     const MAX: u32 = 3600;
     Duration::from_secs(u64::from(retry_after_s.unwrap_or(0).clamp(MIN, MAX)))
+}
+
+/// A failed renewal as the port's error: a refused refresh token is a refused token, a
+/// throttle is a `429`, and everything else (Google down, or our own OAuth client missing or
+/// refused, which no owner can fix by reconnecting) is the vendor being unavailable.
+fn renewal_error(vendor: ConnectorKind, error: VendorError) -> FarmSourceError {
+    match error {
+        VendorError::AuthRefused { .. } => FarmSourceError::AuthRefused { vendor },
+        VendorError::Unavailable {
+            retry_after_s: Some(retry_after_s),
+            ..
+        } => FarmSourceError::RateLimited {
+            vendor,
+            retry_after_s: Some(retry_after_s),
+        },
+        e @ VendorError::Unavailable { .. } => FarmSourceError::Unavailable {
+            vendor,
+            source: Box::new(e),
+        },
+        e @ (VendorError::Rejected { .. } | VendorError::NotConfigured(_)) => {
+            tracing::warn!(error = %e, "the token can't be renewed; check the OAuth client");
+            FarmSourceError::Unavailable {
+                vendor,
+                source: Box::new(e),
+            }
+        }
+    }
 }
 
 /// The refusal for a token that can't be used.

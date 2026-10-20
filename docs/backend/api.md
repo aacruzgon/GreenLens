@@ -1,6 +1,6 @@
 # PDM Backend: `api` binary
 
-> **Status:** Draft v0.7.9, 2026-10-19. v0.7.9: the account deletion finishes the user's `deleting` connectors through `deleting_connectors_of_user`, so one in a garden being deleted no longer blocks `DELETE $user`, and a connect lost to a deletion is answered as not found; `complete` runs its work on the tracker in a `connect` route group with a 60 s timeout, so a dropped request neither keeps a claim nor orphans tokens, and a panic releases the claim; a final write that fails ambiguously re-reads the row before revoking; the pending cleanup leaves claims younger than `CONNECT_CLAIM_HOLD`; without `CONNECTOR_KEY` an account cascade deletes the user's connectors unrevoked (sections 7, 11, 16, 17). v0.7.8: the connect and deletion branches share one path: `DeletionRunner::finish_connector` is the only revoke-then-delete (the owner's `DELETE /connectors/{id}` spawns it; `revoke.rs` and `connect::disconnect` are gone), `sealing::StoredTokens` the only reader of a sealed token, and `ConnectVendors` the only revoke seam; a token another live `vendor` connector of the same Slack team or Google account holds isn't revoked; each revoke runs in a task of its own; a demotion starts the task only when an owner was demoted; `complete` claims the state before the exchange and revokes tokens it can't store; a refreshed Google token is stored with a compare-and-set; the callback passes on only a short vendor error code (sections 11, 17). v0.7.7: connector deletion (roadmap E3.6): a garden's cascade, an owner's demotion, removal or leaving, and account deletion delete the connectors that owner created; the store marks them `deleting` in its transaction, and the deletion runner unseals each token, revokes it through the `TokenRevoker` seam (`revoke.rs`, Slack's `auth.revoke` and Google's `revoke`; never for an `era` connector) after that commit, then deletes the records and the row, resumed at start while the mark remains; the deletion runner opens tokens with `unseal` too (section 17). v0.7.6: farm connectors connect (roadmap E3.3–E3.5): `connect.rs` signs the OAuth state (`OAuthState`, an HMAC-SHA256 under `ConnectorKey::state_key` over the connector id, the nonce and the expiry), seals the tokens as `StoredTokens` (Slack's bot token as its plain string, Google's grant as JSON `{access_token, refresh_token, expires_at}`), and holds the `ConnectVendors` seam that `wiring/connect.rs` implements over the Slack and Drive clients on the vendors' own hosts; the seven connector routes are built (section 11), refuse an `era` connector with `409 invalid_state`, and the `cleanup` task deletes pending connectors after 10 minutes (section 16). v0.7.5: the farm sync's rounds decide turns and `synced_at`, never who is read (section 16): a round gives every chosen source a turn, a page asked whatever follows (`Rotation::turned`), the budget left then goes to the passes in progress, and the round ends with `Synced` only when every source is caught up, `RoundEnded` when one has pages left or a failed last turn (`SourceState::failing`, which keeps `last_error`), and `NoSources` for a connector without sources; older-item checks need 140 s left, and a page can still overrun the budget by several paced calls. The farm sync's audit fixes (section 16): the sources rotate per run (`state::Rotation`, stored under `SYNC_STATE_KEY`), so each run starts after the last source the previous one read, a new source joins the round in progress, and the run reports `Synced` (setting `synced_at`) only when every chosen source has finished its pass in the round; older-thread checks are two per connector run (`PROBES_PER_RUN`), none on a first pass, and a page is offered only as many as 70 s each of the budget left covers after 70 s for the page; the garden's record count is read before each page is stored; a page of a source dropped meanwhile doesn't count toward the record limit; seeding reports a garden or a connector being deleted (`Seeded::GardenDeleting`, `Seeded::ConnectorDeleting`); shutdown interrupts a page in flight (the budget is still checked between pages), a `429`'s wait is kept between 60 s and 1 h, and seeding repairs an existing demo connector (token sealed again, status and `last_error` reset) and warns when the fixed id lives in another garden. v0.7.4: start-up seeds the demo garden's two `era` connectors after resuming deletions (roadmap E4.6), by fixed id, into the garden `ERA_DEMO_GARDEN_ID` names, with their tokens sealed under `CONNECTOR_KEY` (sections 4, 5 and 16). v0.7.3: the farm sync (roadmap E4.1, E4.2, E4.4, E4.5): `farm_sync.rs` runs the `connectors` task every minute when connectors are on (`AppState::farm_sync`), at most 4 due connectors a run side by side, over the `FarmSource` adapters by kind and endpoint (`FarmSources`): pages from each source's saved cursor, chunks of at most 2,000 characters with a SHA-256 `text_hash`, only changed chunks embedded, the daily 7-day re-read that deletes what the vendor no longer has, the 10,000-record limit, and `last_error` and the next attempt by failure; `cleanup` deletes Slack messages older than 180 days (section 16). v0.7.2: farm connectors are configured (roadmap E3.0–E3.2): `CONNECTOR_KEY` (64 hex characters) is the one switch, read through `AppState::connector_key`; without it the list answers `available: false` and the owner routes `409 invalid_state`, and with it the list comes from the store. The Slack and Google OAuth clients (each pair together or not at all), `CONNECTOR_RETURN_URL` and the Era bases are read for the routes and seeding to come. `sealing.rs` seals vendor tokens with AES-256-GCM (`aes-gcm` 0.11.1), a random nonce per seal and the connector id as associated data. v0.7.1: the farm connector routes are declared (roadmap E1.4): `GET /gardens/{id}/connectors` answers `available: false`, and the owner routes and the public OAuth callback answer `409 invalid_state` until connectors are configured; `Access<R, table::Connector>` resolves a connector's garden. v0.7: shared memories are recorded in `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs`, the new `GET /plants/{id}/beliefs` (never a 5xx), the `beliefs` scheduler task every 10 s (the only writer to Agent Memory: queued erases, then unsynced shared memories), deletions that queue their erase in their first transaction, and `POST /memories` taking a `topic`; 42 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
+> **Status:** Draft v0.7.10, 2026-10-20. v0.7.10: the farm sync reads Google Drive (roadmap E4.3): `FarmSources` holds `DriveSource` for owners' connectors and, with `ERA_GOOGLE_BASE`, for the `era` ones; the sync renews Google's access token before a run when it has under 5 minutes left and once a run after Google refuses it, storing each grant through `connect::refresh_and_store`, the compare-and-set the source picker now shares (`ConnectVendors::refresh` takes `force`); an `era` connector is never renewed (section 16); after its audit, a page that lists the whole source (`FarmPage::listed`) makes the sync delete the source's other records, `TooLarge` from an adapter stops with `too_large`, the renewal before a run gives way to shutdown, and one Drive page can overrun the 3-minute budget (section 16). v0.7.9: the account deletion finishes the user's `deleting` connectors through `deleting_connectors_of_user`, so one in a garden being deleted no longer blocks `DELETE $user`, and a connect lost to a deletion is answered as not found; `complete` runs its work on the tracker in a `connect` route group with a 60 s timeout, so a dropped request neither keeps a claim nor orphans tokens, and a panic releases the claim; a final write that fails ambiguously re-reads the row before revoking; the pending cleanup leaves claims younger than `CONNECT_CLAIM_HOLD`; without `CONNECTOR_KEY` an account cascade deletes the user's connectors unrevoked (sections 7, 11, 16, 17). v0.7.8: the connect and deletion branches share one path: `DeletionRunner::finish_connector` is the only revoke-then-delete (the owner's `DELETE /connectors/{id}` spawns it; `revoke.rs` and `connect::disconnect` are gone), `sealing::StoredTokens` the only reader of a sealed token, and `ConnectVendors` the only revoke seam; a token another live `vendor` connector of the same Slack team or Google account holds isn't revoked; each revoke runs in a task of its own; a demotion starts the task only when an owner was demoted; `complete` claims the state before the exchange and revokes tokens it can't store; a refreshed Google token is stored with a compare-and-set; the callback passes on only a short vendor error code (sections 11, 17). v0.7.7: connector deletion (roadmap E3.6): a garden's cascade, an owner's demotion, removal or leaving, and account deletion delete the connectors that owner created; the store marks them `deleting` in its transaction, and the deletion runner unseals each token, revokes it through the `TokenRevoker` seam (`revoke.rs`, Slack's `auth.revoke` and Google's `revoke`; never for an `era` connector) after that commit, then deletes the records and the row, resumed at start while the mark remains; the deletion runner opens tokens with `unseal` too (section 17). v0.7.6: farm connectors connect (roadmap E3.3–E3.5): `connect.rs` signs the OAuth state (`OAuthState`, an HMAC-SHA256 under `ConnectorKey::state_key` over the connector id, the nonce and the expiry), seals the tokens as `StoredTokens` (Slack's bot token as its plain string, Google's grant as JSON `{access_token, refresh_token, expires_at}`), and holds the `ConnectVendors` seam that `wiring/connect.rs` implements over the Slack and Drive clients on the vendors' own hosts; the seven connector routes are built (section 11), refuse an `era` connector with `409 invalid_state`, and the `cleanup` task deletes pending connectors after 10 minutes (section 16). v0.7.5: the farm sync's rounds decide turns and `synced_at`, never who is read (section 16): a round gives every chosen source a turn, a page asked whatever follows (`Rotation::turned`), the budget left then goes to the passes in progress, and the round ends with `Synced` only when every source is caught up, `RoundEnded` when one has pages left or a failed last turn (`SourceState::failing`, which keeps `last_error`), and `NoSources` for a connector without sources; older-item checks need 140 s left, and a page can still overrun the budget by several paced calls. The farm sync's audit fixes (section 16): the sources rotate per run (`state::Rotation`, stored under `SYNC_STATE_KEY`), so each run starts after the last source the previous one read, a new source joins the round in progress, and the run reports `Synced` (setting `synced_at`) only when every chosen source has finished its pass in the round; older-thread checks are two per connector run (`PROBES_PER_RUN`), none on a first pass, and a page is offered only as many as 70 s each of the budget left covers after 70 s for the page; the garden's record count is read before each page is stored; a page of a source dropped meanwhile doesn't count toward the record limit; seeding reports a garden or a connector being deleted (`Seeded::GardenDeleting`, `Seeded::ConnectorDeleting`); shutdown interrupts a page in flight (the budget is still checked between pages), a `429`'s wait is kept between 60 s and 1 h, and seeding repairs an existing demo connector (token sealed again, status and `last_error` reset) and warns when the fixed id lives in another garden. v0.7.4: start-up seeds the demo garden's two `era` connectors after resuming deletions (roadmap E4.6), by fixed id, into the garden `ERA_DEMO_GARDEN_ID` names, with their tokens sealed under `CONNECTOR_KEY` (sections 4, 5 and 16). v0.7.3: the farm sync (roadmap E4.1, E4.2, E4.4, E4.5): `farm_sync.rs` runs the `connectors` task every minute when connectors are on (`AppState::farm_sync`), at most 4 due connectors a run side by side, over the `FarmSource` adapters by kind and endpoint (`FarmSources`): pages from each source's saved cursor, chunks of at most 2,000 characters with a SHA-256 `text_hash`, only changed chunks embedded, the daily 7-day re-read that deletes what the vendor no longer has, the 10,000-record limit, and `last_error` and the next attempt by failure; `cleanup` deletes Slack messages older than 180 days (section 16). v0.7.2: farm connectors are configured (roadmap E3.0–E3.2): `CONNECTOR_KEY` (64 hex characters) is the one switch, read through `AppState::connector_key`; without it the list answers `available: false` and the owner routes `409 invalid_state`, and with it the list comes from the store. The Slack and Google OAuth clients (each pair together or not at all), `CONNECTOR_RETURN_URL` and the Era bases are read for the routes and seeding to come. `sealing.rs` seals vendor tokens with AES-256-GCM (`aes-gcm` 0.11.1), a random nonce per seal and the connector id as associated data. v0.7.1: the farm connector routes are declared (roadmap E1.4): `GET /gardens/{id}/connectors` answers `available: false`, and the owner routes and the public OAuth callback answer `409 invalid_state` until connectors are configured; `Access<R, table::Connector>` resolves a connector's garden. v0.7: shared memories are recorded in `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs`, the new `GET /plants/{id}/beliefs` (never a 5xx), the `beliefs` scheduler task every 10 s (the only writer to Agent Memory: queued erases, then unsynced shared memories), deletions that queue their erase in their first transaction, and `POST /memories` taking a `topic`; 42 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
 
 Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports and types `api` wires, and [domain-types](domain-types.md) for every wire shape. Every listing below is copied from the compiled source of `bins/api` by the docgen tool. `cargo check -p api`, `cargo clippy -p api --all-targets` (no warning in `api`) and `cargo test -p api` pass: 42 tests, among them handler tests that drive the real router with `tower::ServiceExt::oneshot`. `cargo check --workspace` passes, the binary links, and `api openapi` writes the document.
 
@@ -126,6 +126,8 @@ integrations = { workspace = true, features = ["era-sim"] }
 http-body-util.workspace = true
 mockall.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
+# The Drive sync's tests: Google's API mocked over HTTP.
+wiremock.workspace = true
 ```
 
 The `heic` feature turns on `vision`'s HEIC decoder, which links the system libheif (1.19 or newer). The `api` image builds with it ([infra 3](../infra/README.md#3-images)); without it, a HEIC upload is refused as an unsupported type.
@@ -171,7 +173,7 @@ bins/api/src/
 ├─ workers.rs        worker tokens
 ├─ signing.rs        HmacSigner (UrlSigner), PhotoIndex (SpeciesPhotos)
 ├─ sealing.rs        ConnectorKey: AES-256-GCM seal and unseal; StoredTokens, the sealed tokens
-├─ connect.rs        the consent URLs, ConnectVendors (the vendor seam: exchange, refresh, sources, revoke)
+├─ connect.rs        the consent URLs, ConnectVendors (the vendor seam: exchange, refresh, sources, revoke), refresh_and_store
 │  └─ oauth.rs       OAuthState: the signed OAuth state
 ├─ uploads.rs        multipart reading, fingerprint, the CPU pipeline, blob puts
 ├─ events.rs
@@ -705,6 +707,7 @@ pub enum UnsealError {
 /// [`seal`](Self::seal) writes the plain string exactly when there is no refresh token and no
 /// expiry; [`unseal`](Self::unseal) reads a value that starts with `{` as JSON, anything else
 /// as a plain token.
+#[derive(Clone)]
 pub struct StoredTokens {
     /// Slack's `xoxb-…` bot token, or Google's access token.
     pub access_token: SecretString,
@@ -1242,7 +1245,11 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         &config.connectors,
         Arc::clone(clock),
     ));
-    let farm = farm_sources(config, |c| SlackClient::new(http.clone(), c));
+    let farm = farm_sources(
+        config,
+        |c| SlackClient::new(http.clone(), c),
+        |c| DriveClient::new(http.clone(), c),
+    );
     let beliefs: Arc<dyn BeliefStore> = match agent_memory(config) {
         Some(c) => Arc::new(AgentMemory::new(http.clone(), c)),
         None => Arc::new(NoBeliefs),
@@ -1295,31 +1302,50 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
 }
 
 /// The sync when connectors are on (decision 9 of docs/EON): the `connectors` task and
-/// start-up seeding run only with it.
-fn farm_sync(config: &Config, ports: &Ports, sources: FarmSources) -> Option<Arc<FarmSync>> {
+/// start-up seeding run only with it. It renews Google's tokens through `vendors`, the same
+/// instance as the routes, on Google's own token endpoint.
+fn farm_sync(
+    config: &Config,
+    ports: &Ports,
+    vendors: Arc<dyn ConnectVendors>,
+    sources: FarmSources,
+) -> Option<Arc<FarmSync>> {
     config.connectors.key.clone().map(|key| {
         Arc::new(FarmSync::new(
             Arc::clone(&ports.store),
             Arc::clone(&ports.embedder),
             Arc::clone(&ports.clock),
             key,
+            vendors,
             sources,
             SyncConfig::default(),
         ))
     })
 }
 
-/// The farm connectors' adapters: the real Slack, with Tier 1 pacing, for owners' connectors;
-/// Era's Slack simulator, without pacing, for the seeded `era` ones when `ERA_SLACK_BASE` is
-/// set. Drive's (E4.3) go beside them.
-fn farm_sources(config: &Config, slack_client: impl Fn(SlackConfig) -> SlackClient) -> FarmSources {
+/// The farm connectors' adapters: the real Slack, with Tier 1 pacing, and Google Drive for
+/// owners' connectors; Era's simulators, without pacing or back-off, for the seeded `era` ones
+/// when `ERA_SLACK_BASE` and `ERA_GOOGLE_BASE` are set.
+fn farm_sources(
+    config: &Config,
+    slack_client: impl Fn(SlackConfig) -> SlackClient,
+    drive_client: impl Fn(DriveConfig) -> DriveClient,
+) -> FarmSources {
     let slack = |c: SlackConfig| Arc::new(SlackSource::new(slack_client(c)));
-    let mut sources =
-        FarmSources::default().with(ConnectorEndpoint::Vendor, slack(SlackConfig::default()));
+    let drive = |c: DriveConfig| Arc::new(DriveSource::new(drive_client(c)));
+    let mut sources = FarmSources::default()
+        .with(ConnectorEndpoint::Vendor, slack(SlackConfig::default()))
+        .with(ConnectorEndpoint::Vendor, drive(DriveConfig::default()));
     if let Some(base) = &config.connectors.era_slack_base {
         sources = sources.with(
             ConnectorEndpoint::Era,
             slack(SlackConfig::era(base.clone())),
+        );
+    }
+    if let Some(base) = &config.connectors.era_google_base {
+        sources = sources.with(
+            ConnectorEndpoint::Era,
+            drive(DriveConfig::era(base.clone())),
         );
     }
     sources
@@ -1420,7 +1446,7 @@ pub async fn build(
         clock: Arc::clone(&clock),
         ids,
     };
-    let farm_sync = farm_sync(&config, &ports, out.farm);
+    let farm_sync = farm_sync(&config, &ports, Arc::clone(&out.connect), out.farm);
     let hub = Arc::new(EventHub::default());
     let broker = Arc::new(JobBroker::new(
         store.clone(),
@@ -2941,7 +2967,7 @@ pub async fn plant_beliefs(
 - **`complete`** (owner) checks the state against the `{id}` in the path, then the device: anyone but the owner who started it, or a `device_verifier` whose SHA-256 isn't the stored hash, gets `404 not_found`, and the pending connector is deleted (`finish_connector` on the tracker). Then it claims the state (`claim_connect`, a compare-and-set on `pending`, the nonce, the expiry and no earlier claim), so of two concurrent `complete`s only one exchanges the code and the other gets the used-state `400`. Then it exchanges the code: a code the vendor refuses (the client's `AuthRefused`) is `400 invalid_request` on `code`; our own request rejected (the client's `Refused`, a misconfigured OAuth client) is `500`; an outage is `503 upstream_unavailable` with `upstream: "slack"` or `"google_drive"`. A failed exchange gave no tokens, so `release_connect` clears the claim and a retry can claim again. The tokens are sealed and the store's compare-and-set on the claimed nonce activates the connector; when it loses (the connector was deleted or cleaned up during the exchange) the answer is the used-state `400` or `404`, and the tokens nothing stores are revoked in the background (`DeletionRunner::revoke_tokens`, with the shared-account rule). Any other store error may have come after the commit applied, so `connect_lost` reads the row again: holding the same sealed value, the connect worked and is `200`; otherwise the tokens are revoked; and when the read fails too, they are left alone and logged.
 
   **Not cancelled with its request.** The handler spawns the work on the tracker and only awaits its `JoinHandle`, so the route's timeout (the `connect` group's 60 s) or a client that goes away drops the handler, not the exchange: the task still stores the tokens, revokes them or releases the claim, and finishes the idempotency record, so a retry with the same `Idempotency-Key` gets `409 request_in_progress` until it is done and then its answer. The claimed part (exchange, then `complete_connect`) is a task of its own: a panic in it comes back as a `JoinError`, which releases the claim and answers `500`.
-- **Sources.** `available-sources` first asks `ConnectVendors::refresh` for a Google access token with under 5 minutes left, and stores what comes back with `replace_secret`, a compare-and-set against the sealed value it read (of two refreshes at once one is stored, and the other call uses its own token); then it asks the vendor (channels where the bot is a member, or the Google account's folders); a refused token makes the connector `reauth_needed` and answers `409 invalid_state` with that status. `PUT sources` takes at most 10 channels or 1 folder, each id from the vendor's list (its name comes from there), stores them, then deletes each dropped source's records, 500 at a time, before answering with the fresh record count.
+- **Sources.** `available-sources` first renews a Google access token with under 5 minutes left through `connect::refresh_and_store`, which the sync uses too: `ConnectVendors::refresh`, then `replace_secret`, a compare-and-set against the sealed value it read (of two refreshes at once one is stored, and the other call uses its own token); then it asks the vendor (channels where the bot is a member, or the Google account's folders); a refused token makes the connector `reauth_needed` and answers `409 invalid_state` with that status. `PUT sources` takes at most 10 channels or 1 folder, each id from the vendor's list (its name comes from there), stores them, then deletes each dropped source's records, 500 at a time, before answering with the fresh record count.
 - **Sync now** is the store's compare-and-set (decision 12): `202`, or `429 rate_limited` with `retry_after_s` up to the next allowed instant.
 - **Disconnect.** `DELETE` has the store mark the connector `deleting` (the list and the sync skip it) and answers `202`; a task on the tracker runs `DeletionRunner::finish_connector` (section 17), the one revoke-then-delete path, which every cascade uses too.
 - **Demo connectors** (`endpoint: "era"`) refuse every owner route with `409 invalid_state` (decision 11). No route takes a URL: the consent URLs are constants, and `wiring/connect.rs` builds the Slack and Drive clients with their default configurations, the vendors' own hosts (decision 8).
@@ -3088,14 +3114,16 @@ pub trait ConnectVendors: Send + Sync {
     ) -> Result<Exchanged, VendorError>;
 
     /// Google's tokens with a new access token when the stored one has less than 5 minutes
-    /// left and a refresh token is there to renew it; `None` when they are fine as they are
-    /// (always for Slack, whose bot token doesn't expire). The caller stores what comes back
+    /// left, or at once with `force` (the vendor just refused it), and a refresh token is there
+    /// to renew it; `None` when they are fine as they are (always for Slack, whose bot token
+    /// doesn't expire). Callers go through [`refresh_and_store`], which stores what comes back
     /// with `FarmRecordStore::replace_secret`, a compare-and-set against the sealed value it
     /// read, so two refreshes at once keep one.
     async fn refresh(
         &self,
         kind: ConnectorKind,
         tokens: &StoredTokens,
+        force: bool,
     ) -> Result<Option<StoredTokens>, VendorError>;
 
     /// The channels the bot is a member of, or the folders the Google account can open, with
@@ -3112,6 +3140,44 @@ pub trait ConnectVendors: Send + Sync {
     /// directly for a stored connector: `DeletionRunner::finish_connector` decides whether a
     /// shared account's token may go.
     async fn revoke(&self, kind: ConnectorKind, tokens: &StoredTokens) -> Result<(), VendorError>;
+}
+
+/// A connector's tokens renewed through `vendors` ([`ConnectVendors::refresh`]): Google's
+/// access token when it has less than 5 minutes left, or at once with `force`, for the source
+/// picker and the sync. A renewed grant is stored over `sealed`, the value the caller unsealed,
+/// with `replace_secret`, a compare-and-set, and `sealed` then holds the new value, so a second
+/// renewal in the same run compares against it. When the stored value changed meanwhile
+/// (another refresh stored first, or the connector was disconnected, deleted or reconnected),
+/// nothing is stored and the caller still uses its own token, which is as good; a store
+/// failure is logged and leaves the same. Returns the tokens to use: the renewed ones, or
+/// `tokens` as they were.
+pub async fn refresh_and_store(
+    vendors: &dyn ConnectVendors,
+    store: &dyn Store,
+    key: &ConnectorKey,
+    (id, kind): (ConnectorId, ConnectorKind),
+    sealed: &mut Option<Sealed>,
+    (tokens, force): (StoredTokens, bool),
+) -> Result<StoredTokens, VendorError> {
+    let Some(fresh) = vendors.refresh(kind, &tokens, force).await? else {
+        return Ok(tokens);
+    };
+    if let Some(read) = sealed.clone() {
+        let new = fresh.seal(key, id);
+        match store.replace_secret(id, read, new.clone()).await {
+            Ok(true) => {
+                tracing::debug!(connector = %id, "refreshed token stored");
+                *sealed = Some(new);
+            }
+            Ok(false) => {
+                tracing::debug!(connector = %id, "refreshed token not stored: the connector changed or went meanwhile");
+            }
+            Err(error) => {
+                tracing::warn!(connector = %id, error = %error, "refreshed token not stored");
+            }
+        }
+    }
+    Ok(fresh)
 }
 ```
 
@@ -4828,6 +4894,8 @@ pub struct FarmSync {
     embedder: Arc<dyn TextEmbedder>,
     clock: Arc<dyn Clock>,
     key: ConnectorKey,
+    /// Renews Google's access tokens, on the vendor's own token endpoint.
+    vendors: Arc<dyn ConnectVendors>,
     sources: FarmSources,
     config: SyncConfig,
 }
@@ -4841,6 +4909,7 @@ impl FarmSync {
         embedder: Arc<dyn TextEmbedder>,
         clock: Arc<dyn Clock>,
         key: ConnectorKey,
+        vendors: Arc<dyn ConnectVendors>,
         sources: FarmSources,
         config: SyncConfig,
     ) -> Self {
@@ -4849,6 +4918,7 @@ impl FarmSync {
             embedder,
             clock,
             key,
+            vendors,
             sources,
             config,
         }
@@ -4909,8 +4979,8 @@ impl FarmSync {
             };
             return self.finish(id, outcome, RunEnd::NoAdapter).await;
         };
-        let opened = self.token(&row);
-        let (Some(token), Some(account)) = (opened, row.connector.account.clone()) else {
+        let opened = self.tokens(&row);
+        let (Some(tokens), Some(account)) = (opened, row.connector.account.clone()) else {
             // A token that doesn't open (another key) or a connector without its account:
             // only reconnecting fixes it.
             return self
@@ -4931,11 +5001,27 @@ impl FarmSync {
             };
             return self.finish(id, outcome, RunEnd::NoSources).await;
         }
+        let renewable = row.connector.endpoint == ConnectorEndpoint::Vendor;
+        // Shutdown interrupts a renewal in flight: nothing is read, and the connector stays due.
+        let grant = tokio::select! {
+            biased;
+            () = shutdown.cancelled() => None,
+            grant = self.grant(&row, tokens, renewable) => Some(grant),
+        };
+        let Some(grant) = grant else {
+            return self.leave_due(&row, now).await;
+        };
+        let grant = match grant {
+            Ok(grant) => grant,
+            Err(e) => return self.stop(&row, row.cursors.clone(), &Halt::Vendor(e)).await,
+        };
         let run = Run {
             id,
+            kind: row.connector.kind,
             garden: row.connector.garden_id,
             source: source.as_ref(),
-            token,
+            grant: Mutex::new(grant),
+            renewable,
             account,
             now,
             deadline: tokio::time::Instant::now() + self.config.run_budget,
@@ -4986,12 +5072,108 @@ impl FarmSync {
         self.finish(id, outcome, end).await
     }
 
-    /// The connector's access token, unsealed through [`StoredTokens`], which reads both forms
-    /// the connect routes seal: Slack's bot token as its plain string, Google's grant as JSON.
-    fn token(&self, row: &ConnectorRow) -> Option<VendorToken> {
+    /// The connector's tokens, unsealed through [`StoredTokens`], which reads both forms the
+    /// connect routes seal: Slack's bot token as its plain string, Google's grant as JSON.
+    fn tokens(&self, row: &ConnectorRow) -> Option<StoredTokens> {
         let sealed = row.secret.as_ref()?;
-        let tokens = StoredTokens::unseal(&self.key, row.connector.id, sealed).ok()?;
-        Some(VendorToken::new(tokens.access_token.expose_secret()))
+        StoredTokens::unseal(&self.key, row.connector.id, sealed).ok()
+    }
+
+    /// A run that read nothing and leaves the connector due, as it was, for the next run.
+    async fn leave_due(&self, row: &ConnectorRow, now: Timestamp) -> RunEnd {
+        let outcome = SyncOutcome {
+            due_at: row.next_sync_at,
+            cursors: row.cursors.clone(),
+            synced_at: None,
+            next_sync_at: now,
+            last_error: row.last_error,
+        };
+        self.finish(row.connector.id, outcome, RunEnd::PagesLeft)
+            .await
+    }
+
+    /// The run's tokens: a connector of the vendor's own endpoint with a refresh token has
+    /// Google's access token renewed first when it has less than 5 minutes left.
+    async fn grant(
+        &self,
+        row: &ConnectorRow,
+        tokens: StoredTokens,
+        renewable: bool,
+    ) -> Result<Grant, FarmSourceError> {
+        let mut sealed = row.secret.clone();
+        let tokens = if renewable && tokens.refresh_token.is_some() {
+            let kind = row.connector.kind;
+            connect::refresh_and_store(
+                self.vendors.as_ref(),
+                self.store.as_ref(),
+                &self.key,
+                (row.connector.id, kind),
+                &mut sealed,
+                (tokens, false),
+            )
+            .await
+            .map_err(|e| renewal_error(kind, e))?
+        } else {
+            tokens
+        };
+        Ok(Grant {
+            tokens,
+            sealed,
+            renewed: false,
+        })
+    }
+
+    /// One page from the vendor. A refused token is renewed once a run and the page asked
+    /// again ([`Self::renew`]).
+    async fn read_page(
+        &self,
+        run: &Run<'_>,
+        request: FarmPageRequest,
+    ) -> Result<FarmPage, FarmSourceError> {
+        let refused = match run.source.read_page(&run.token(), request.clone()).await {
+            Err(e @ FarmSourceError::AuthRefused { .. }) => e,
+            other => return other,
+        };
+        match self.renew(run).await? {
+            Some(token) => run.source.read_page(&token, request).await,
+            None => Err(refused),
+        }
+    }
+
+    /// After a refused token: Google's grant renewed at once and stored, once a run, for a
+    /// connector of the vendor's own endpoint that has a refresh token. `None` when it can't be
+    /// (Slack, an `era` connector, no refresh token, renewed already in this run). A refused
+    /// refresh is [`FarmSourceError::AuthRefused`].
+    async fn renew(&self, run: &Run<'_>) -> Result<Option<VendorToken>, FarmSourceError> {
+        let (tokens, mut sealed) = {
+            let mut grant = run
+                .grant
+                .lock()
+                .expect("the grant's lock is never poisoned");
+            if !run.renewable || grant.renewed || grant.tokens.refresh_token.is_none() {
+                return Ok(None);
+            }
+            grant.renewed = true;
+            (grant.tokens.clone(), grant.sealed.clone())
+        };
+        let fresh = connect::refresh_and_store(
+            self.vendors.as_ref(),
+            self.store.as_ref(),
+            &self.key,
+            (run.id, run.kind),
+            &mut sealed,
+            (tokens, true),
+        )
+        .await
+        .map_err(|e| renewal_error(run.kind, e))?;
+        let token = VendorToken::new(fresh.access_token.expose_secret());
+        let mut grant = run
+            .grant
+            .lock()
+            .expect("the grant's lock is never poisoned");
+        grant.tokens = fresh;
+        grant.sealed = sealed;
+        Ok(Some(token))
     }
 
     /// One run's share of the round in progress ([`Rotation`]). First the sources that haven't
@@ -5150,11 +5332,16 @@ impl FarmSync {
             let page = tokio::select! {
                 biased;
                 () = shutdown.cancelled() => return Ok(Read::PagesLeft),
-                page = run.source.read_page(&run.token, request) => page,
+                page = self.read_page(run, request) => page,
             };
             *asked = true;
             let page = page.map_err(Stop::Vendor)?;
             *probes = probes.saturating_sub(page.probes);
+            // A resync's deletions go first, so the records it drops don't count against the
+            // garden's limit when the page is stored; every item of the page is in `listed`.
+            if let Some(listed) = &page.listed {
+                self.delete_unlisted(run, src, listed).await?;
+            }
             self.store_page(run, src, &page).await?;
             state.failing = false;
             if let Some(reread) = state.reread.as_mut() {
@@ -5203,6 +5390,34 @@ impl FarmSync {
         if !gone.is_empty() {
             let deleted = self.store.delete_records(run.id, gone).await?;
             tracing::info!(source = %src.id, deleted, "records gone at the vendor deleted");
+        }
+        Ok(())
+    }
+
+    /// After a page that listed the whole source ([`FarmPage::listed`]): the source's records
+    /// whose vendor id the listing didn't hold are gone at the vendor.
+    async fn delete_unlisted(
+        &self,
+        run: &Run<'_>,
+        src: &ConnectorSource,
+        listed: &[String],
+    ) -> Result<(), Stop> {
+        let listed: std::collections::HashSet<&str> = listed.iter().map(String::as_str).collect();
+        let stored = self
+            .store
+            .source_vendor_ids_since(
+                run.id,
+                src.id.clone(),
+                Timestamp::from(chrono::DateTime::UNIX_EPOCH),
+            )
+            .await?;
+        let gone: Vec<String> = stored
+            .into_iter()
+            .filter(|v| !listed.contains(v.as_str()))
+            .collect();
+        if !gone.is_empty() {
+            let deleted = self.store.delete_records(run.id, gone).await?;
+            tracing::info!(source = %src.id, deleted, "records no longer listed deleted");
         }
         Ok(())
     }
@@ -5400,9 +5615,15 @@ impl FarmSync {
 }
 ```
 
-**One connector's run.** The sync picks the adapter by the connector's kind and endpoint (`FarmSources`: the real Slack for owners' connectors, Era's simulator for the seeded `era` ones; Drive's go beside them in E4.3), unseals the token, and gives the sources their turns in the round (below), reading each page by page from their stored cursors until a pass ends, the run's budget (3 minutes, checked between pages) is spent, or shutdown comes. For each page it chunks every item (`chunk::chunks`: a message is one chunk with its replies joined, cut at 2,000 characters; a document is split on paragraphs; a file listed by name only is its title), hashes each chunk (`chunk::text_hash`, SHA-256 in hex, EON gap G5), reads the stored hashes of the page's items (`record_hashes`), reads the garden's record count (each page, so connectors of one garden syncing side by side pass the 10,000 limit by at most a page each), embeds only the new or changed chunks in `Document` mode in batches of 32, upserts them all (an unchanged chunk keeps its vector; a page of a source the owner dropped meanwhile is skipped by the store), drops a shortened document's extra chunks (`delete_chunks_from`) and deletes what the page reports gone. One `finish_sync` at the end stores every source's cursor, `synced_at` when the round ended with every source caught up, `next_sync_at` and `last_error`. A connector with no source chosen reads nothing and is due again 15 minutes later (`RunEnd::NoSources`).
+**One connector's run.** The sync picks the adapter by the connector's kind and endpoint (`FarmSources`: the real Slack and Google Drive for owners' connectors, Era's simulators for the seeded `era` ones), unseals the tokens (renewing Google's, below), and gives the sources their turns in the round (below), reading each page by page from their stored cursors until a pass ends, the run's budget (3 minutes, checked between pages) is spent, or shutdown comes. For each page it chunks every item (`chunk::chunks`: a message is one chunk with its replies joined, cut at 2,000 characters; a document is split on paragraphs; a file listed by name only is its title), hashes each chunk (`chunk::text_hash`, SHA-256 in hex, EON gap G5), reads the stored hashes of the page's items (`record_hashes`), reads the garden's record count (each page, so connectors of one garden syncing side by side pass the 10,000 limit by at most a page each), embeds only the new or changed chunks in `Document` mode in batches of 32, upserts them all (an unchanged chunk keeps its vector; a page of a source the owner dropped meanwhile is skipped by the store), drops a shortened document's extra chunks (`delete_chunks_from`) and deletes what the page reports gone. One `finish_sync` at the end stores every source's cursor, `synced_at` when the round ended with every source caught up, `next_sync_at` and `last_error`. A connector with no source chosen reads nothing and is due again 15 minutes later (`RunEnd::NoSources`).
 
 **Rounds and turns.** The connector's sync state (`state::Rotation`, stored in its cursors under `SYNC_STATE_KEY`, `"#sync"`, which the store keeps when it drops a source's cursor) holds the round in progress, the sources that have had their turn in it (`turned`) and the source the next run starts from. Source ids never start with `#` (Slack's are `[A-Z0-9]`, Drive's `[A-Za-z0-9_-]`), so the key can't clash with one. A turn is the run asking a source for at least one page, whether the source then finishes its pass, runs out of budget mid-pass or fails with a vendor error (a page that shutdown interrupts isn't one). A run first gives their turns to the sources without one in the round, in the connector's order from `next`; each reads until its pass ends, the budget is spent or shutdown comes, and a vendor error takes the turn and stops the run as before. Then, if every source has had its turn and budget is left, the rest goes to the sources with pages left (a long first pass, a re-read), in order. The next run starts after the last source this one asked, and one source further on still after the round's end, so the sources first in a run, which get its older-item checks, change from round to round. When every chosen source has had its turn, the round ends (`turned` empties and the round number moves on): the next sync is 15 minutes away, and `synced_at` is set only if every source is caught up, with no pages left and no failed last turn (`SourceState::failing`, set by a vendor error and cleared by the source's next stored page). While a source's last turn failed, a run that didn't ask it keeps the stored `last_error`. So a source with a long first pass or a re-read, or one that always fails (Slack's `missing_scope`, an unparseable message), holds up the others for one turn a round at most, a source left mid-pass resumes from its own cursor, and a source just added joins the round in progress. A cursor without a rotation, or with one of an earlier shape, starts a fresh round.
+
+**Google's tokens.** An access token lives an hour. For a connector of the vendor's own endpoint whose grant has a refresh token, the run first asks `ConnectVendors::refresh` (`force: false`), which renews a token with under 5 minutes left; the run's 3-minute budget then fits inside it. When Google refuses a token anyway (revoked early, a clock skew), the page's `AuthRefused` makes the run renew it at once (`force: true`) and ask the page again, once a run; a second refusal stands. Each renewed grant goes through `connect::refresh_and_store`, the source picker's compare-and-set against the sealed value the run read or last stored, so a refresh that loses to another keeps its own token for the run. A refused refresh (`invalid_grant`) is `auth_refused`, and the connector becomes `reauth_needed`; Google down is `vendor_unavailable`, and a missing or refused OAuth client of ours is logged as a warning and treated the same. An `era` connector is never renewed: its `ya29.era-demo` has no refresh token, and no simulator token goes to Google's token endpoint.
+
+**Drive.** `DriveSource` ([integrations 15](integrations.md#15-farm-sources-slack-and-google-drive)) has no `reread_window`, so the sync never deletes a Drive record by absence within a pass: it deletes the files the adapter reports in `FarmPage::removed` (moved out of the folder, trashed, deleted). After a page that listed the whole folder (`FarmPage::listed`: the first sync, or a resync after Google refused the change token), it deletes the source's records whose vendor id the listing didn't hold (`delete_unlisted`, over `source_vendor_ids_since` from the epoch). A pass reads 25 files a page and one page of `changes.list` at a time, so a `429` keeps the pages already stored; one that comes within the first page of a listing (the listing and its first 25 reads) lists again on the next run. A source past 500 files or folders is `FarmSourceError::TooLarge`, stored as `too_large` and skipped by the due query until the owner changes the sources. The budget is checked only between pages, and one Drive page can overrun it: a listing walks every folder, and each read can wait out a `Retry-After` of up to 60 s and the client's retries, two failed reads at most a page.
+
+**Shutdown** interrupts the renewal before a run as it does a page in flight: nothing is read, and the connector stays due (`RunEnd::PagesLeft`).
 
 **Older-item checks.** `FarmPageRequest::probe_limit` tells the adapter how many older items it may check with an extra call (Slack's threads older than the re-read window); `FarmPage::probes` says how many it made. A run offers `PROBES_PER_RUN` (2) over all the connector's sources, none on a source's first pass (which read everything in full). Under Tier 1 the page's own call and each check can wait a paced minute, so a page is offered only as many as the budget left covers at 70 s each after 70 s for the page itself (`probes_offered`): a check needs 140 s left, so with the 3-minute budget checks are offered only in a run's first 40 s or so. That bounds the checks, not the run: the budget is checked between pages, and one page makes a `conversations.replies` call per changed thread and a `users.info` call per new author, each of which can wait a paced minute, so a page can still overrun the budget by several paced calls. The cap is per connector: two connectors on one Slack workspace share the client's pacer, so each one's checks also wait for the other's calls.
 
@@ -6258,7 +6479,7 @@ The hub, writer and plan-lock maps use `std::sync::Mutex`: their critical sectio
 | Handlers | The real router (`router::app`), so layers, extractors, the renderer and request ids are under test, driven with `tower::ServiceExt::oneshot`. The ports are mockall mocks from `domain`'s `mock` feature; the store is `tests/fake_store.rs`, a `Store` made of one mock per repository trait with every method delegated, **generated** from `domain::ports::store` by `backend/tools/apigen/gen_fake_store.py` (regenerate when a store trait changes). The generator scans each trait body for `async fn` signatures that end in `;` or open a default body, skipping the body by brace matching, so a method with a default body (`live_lease`, `soil_profile_failed`, `gardens_due_soil_profile`, the account-tombstone methods) is delegated like any other and a test sets its expectations. The seams are small fakes: `NoPipeline` and `NoChat` (`unreachable!()`), `FixedImages` with a fixed answer |
 | Time | `FixedClock`; tokio's paused clock (`start_paused = true`) for the broker's long poll |
 | Scheduler | `scheduler::fetch_soil_profile` called directly, with a mocked `SoilProvider` |
-| Farm sync | `farm_sync/tests.rs`: `FarmSync` on the embedded `SurrealDB` 3.3.4 engine (`surrealdb` with `kv-mem`, a dev-dependency) with a scripted `FarmSource`, a counting embedder and `FixedClock`: at most 4 due connectors a run and `next_sync_at` 15 minutes on (T-E4.1); unchanged text costs no embedding and a changed chunk is embedded (T-E4.7); a refused token makes the connector `reauth_needed` and keeps the records, the 10,001st record stops it with `too_large`, and the cleanup deletes old Slack messages but keeps an old document (T-E4.9); seeding twice gives one pair of sealed `era` connectors, a missing garden is skipped, and a garden or a connector being deleted is reported and left so (T-E4.10); a throttled pass resumes from its cursor; ten quiet paced sources each have their turn within four runs, once and in order, the round then ends synced, and the next round starts one further on; no run reports `Synced` while a source is mid-pass, a source added meanwhile included, and a source left mid-pass resumes from its cursor; a new source with a 1,000-page first pass leaves nine others read in every round, and the round it finishes in sets `synced_at`; a source that always fails leaves the others read in every round, the connector keeps its error and no `synced_at` until it answers; a connector without sources reads nothing and waits 15 minutes; a source added later joins the others' round; older-item checks are two a run over every source, none on a first pass, and a page is offered only as many as its budget covers; a page of a source dropped meanwhile doesn't count toward the limit, and the limit counts what another connector stored during the run; the daily re-read deletes what the vendor dropped and keeps what it reported as kept; an outage waits 15 minutes. `farm_sync/tests_era.rs` runs the Slack sync against Era's Slack simulator on the Maple Row Farm fixture (`#[ignore]`d, `era_` names, the nextest `era` group), with `integrations`' `era-sim` harness as a dev-dependency: the first sync stores the chosen channel with authors, links and joined replies (T-E4.2); a quiet channel costs one `conversations.history` call and no embedding, a new message arrives, and a new reply arrives through the re-read, with the `conversations.replies` calls counted exactly through a forwarding proxy that records each `limit` (one check, the 3-minute budget's, and no full read on a quiet pass, one full read for the new reply) (T-E4.4, T-E4.7); a check, one a run in turn over the two threads due one, finds a new reply to a thread older than 7 days and reads it in full; the re-read deletes a message gone at the vendor (T-E4.6); a throttled first sync resumes without duplicates, `fail_next` is waited out, and an outage is `vendor_unavailable` for 15 minutes (T-E4.8); no log line or record holds a fixture email or a message's text (T-E4.11) |
+| Farm sync | `farm_sync/tests.rs`: `FarmSync` on the embedded `SurrealDB` 3.3.4 engine (`surrealdb` with `kv-mem`, a dev-dependency) with a scripted `FarmSource`, a counting embedder and `FixedClock`: at most 4 due connectors a run and `next_sync_at` 15 minutes on (T-E4.1); unchanged text costs no embedding and a changed chunk is embedded (T-E4.7); a refused token makes the connector `reauth_needed` and keeps the records, the 10,001st record stops it with `too_large`, and the cleanup deletes old Slack messages but keeps an old document (T-E4.9); seeding twice gives one pair of sealed `era` connectors, a missing garden is skipped, and a garden or a connector being deleted is reported and left so (T-E4.10); a throttled pass resumes from its cursor; ten quiet paced sources each have their turn within four runs, once and in order, the round then ends synced, and the next round starts one further on; no run reports `Synced` while a source is mid-pass, a source added meanwhile included, and a source left mid-pass resumes from its cursor; a new source with a 1,000-page first pass leaves nine others read in every round, and the round it finishes in sets `synced_at`; a source that always fails leaves the others read in every round, the connector keeps its error and no `synced_at` until it answers; a connector without sources reads nothing and waits 15 minutes; a source added later joins the others' round; older-item checks are two a run over every source, none on a first pass, and a page is offered only as many as its budget covers; a page of a source dropped meanwhile doesn't count toward the limit, and the limit counts what another connector stored during the run; the daily re-read deletes what the vendor dropped and keeps what it reported as kept; an outage waits 15 minutes. Its `drive` module runs `DriveSource` against a `wiremock` Google with a mocked `ConnectVendors`: an expiring token renewed before the run and stored over the one read, a refused token renewed once and the page asked again, a refused refresh making the connector `reauth_needed`, an `era` connector never renewed, a renewal that loses the compare-and-set keeping its own token for the run while the other grant stays stored, a token refused again after its renewal making the connector `reauth_needed`, nested folders read and a file moved out losing its records, a resync deleting the records of files no longer listed, a document cut at 1 MB before chunking, and a `429` that keeps the first page and the cursor (T-E4.3, T-E4.5). `wiring/connect.rs` tests `VendorClients::refresh` against a mocked token endpoint: an expiring token renewed and a fresh one left, `force` renewing a fresh one, the old refresh token kept when Google sends none, and `expires_at` the clock plus `expires_in`. `farm_sync/tests_era.rs` runs the Slack sync against Era's Slack simulator on the Maple Row Farm fixture (`#[ignore]`d, `era_` names, the nextest `era` group), with `integrations`' `era-sim` harness as a dev-dependency: the first sync stores the chosen channel with authors, links and joined replies (T-E4.2); a quiet channel costs one `conversations.history` call and no embedding, a new message arrives, and a new reply arrives through the re-read, with the `conversations.replies` calls counted exactly through a forwarding proxy that records each `limit` (one check, the 3-minute budget's, and no full read on a quiet pass, one full read for the new reply) (T-E4.4, T-E4.7); a check, one a run in turn over the two threads due one, finds a new reply to a thread older than 7 days and reads it in full; the re-read deletes a message gone at the vendor (T-E4.6); a throttled first sync resumes without duplicates, `fail_next` is waited out, and an outage is `vendor_unavailable` for 15 minutes (T-E4.8); no log line or record holds a fixture email or a message's text (T-E4.11). Its `drive` module runs the Drive sync on an `era` connector against Era's Drive simulator: every file under `F_FARM`, a nested folder's included, becomes records and nothing outside it does, the Sheet's text is its first tab and the PDF is kept by name (T-E4.3); after `day2` and 91 days, the changed files arrive through `changes.list`, read past Northwind's thousands of changes, with no listing again and no record stored twice (T-E4.5); a throttled Drive sync finishes on a later run |
 | Pure parts | Config parsing, error mapping and statuses, the fallback renderer, canonical fingerprints, multipart fingerprints, the HMAC signer, the invite limiter, trigger rules, hour truncation, worker tokens |
 
 ```rust

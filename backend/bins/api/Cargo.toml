@@ -67,3 +67,5 @@ integrations = { workspace = true, features = ["era-sim"] }
 http-body-util.workspace = true
 mockall.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
+# The Drive sync's tests: Google's API mocked over HTTP.
+wiremock.workspace = true
