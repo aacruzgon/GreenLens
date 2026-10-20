@@ -7130,7 +7130,10 @@ pub trait FarmRecordStore: Send + Sync {
         connector: NewConnector,
     ) -> Result<Connector, StoreError>;
 
-    /// Start-up seeding of the demo garden's `era` connectors: idempotent by the fixed id.
+    /// Start-up seeding of the demo garden's `era` connectors: idempotent by the fixed id. An
+    /// existing connector in this garden (not being deleted) is repaired: the new sealed
+    /// token, `status` and no `last_error`. One elsewhere is returned unchanged, so the caller
+    /// can compare its `garden_id`.
     async fn seed_connector(
         &self,
         garden: GardenId,

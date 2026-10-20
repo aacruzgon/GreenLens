@@ -1,6 +1,6 @@
 # PDM Backend: `integrations` crate
 
-> **Status:** Draft v0.7, 2026-10-19. v0.7: `slack::SlackSource` implements the `FarmSource` port for the sync (E4.2): one history page a call, the replies of changed threads, a name per user and team for a day, and its own cursor; `FarmClientError::into_source_error` maps a client failure to the port's error (section 15). v0.6: adds `farm`, `slack` and `google_drive`, the standalone clients for the farm connectors, and `era_sim`, the test support for Era's simulators (section 15, which moves the sections after it down one); the Era tests run in one serial nextest group (section 18). v0.5: adds `agent_memory`, the `BeliefStore` over `SurrealDB` Agent Memory's REST API (section 14; the sections after it moved down one), 13 tests; 77 in all. v0.4: checked against Anthropic's documentation and the first live calls: the sanitiser turns `oneOf` into `enum` or `anyOf` (refused live), turns a nullable enum into one `enum` holding `null` so it isn't a union-typed parameter, and drops `format`s the API doesn't list; token counts that are `null` read as 0 and a missing `usage` defaults; `StopReason::ModelContextWindowExceeded`; 64 tests. v0.3.3: the Clerk tests generate their RSA key pair at run time, so no key file is committed, and the Svix tests use a made-up secret. v0.3.2: section 4 says the worker builds its client with a 600 s read timeout, not the 60 s default, because its VLM and hosted LLM calls aren't streamed, and their 240 s and 300 s deadlines end a slow call; the skills table became a plain list of the extra dependencies. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
+> **Status:** Draft v0.7.1, 2026-10-19. v0.7.1: a Slack thread's cursor keeps `reply_count`, so a deleted reply reads the thread again, and each pass checks two older threads for new replies (`conversations.replies`, `limit=1`, round-robin); transport errors drop the request URL. v0.7: `slack::SlackSource` implements the `FarmSource` port for the sync (E4.2): one history page a call, the replies of changed threads, a name per user and team for a day, and its own cursor; `FarmClientError::into_source_error` maps a client failure to the port's error (section 15). v0.6: adds `farm`, `slack` and `google_drive`, the standalone clients for the farm connectors, and `era_sim`, the test support for Era's simulators (section 15, which moves the sections after it down one); the Era tests run in one serial nextest group (section 18). v0.5: adds `agent_memory`, the `BeliefStore` over `SurrealDB` Agent Memory's REST API (section 14; the sections after it moved down one), 13 tests; 77 in all. v0.4: checked against Anthropic's documentation and the first live calls: the sanitiser turns `oneOf` into `enum` or `anyOf` (refused live), turns a nullable enum into one `enum` holding `null` so it isn't a union-typed parameter, and drops `format`s the API doesn't list; token counts that are `null` read as 0 and a missing `usage` defaults; `StopReason::ModelContextWindowExceeded`; 64 tests. v0.3.3: the Clerk tests generate their RSA key pair at run time, so no key file is committed, and the Svix tests use a made-up secret. v0.3.2: section 4 says the worker builds its client with a 600 s read timeout, not the 60 s default, because its VLM and hosted LLM calls aren't streamed, and their 240 s and 300 s deadlines end a slow call; the skills table became a plain list of the extra dependencies. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
 
 Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate implements. Every listing below is copied from the compiled source of `crates/integrations`. `cargo check`, `cargo clippy -p integrations --all-targets` and `cargo test -p integrations` all pass: 77 tests, against `wiremock` servers and the live responses recorded on 2026-10-15.
 
@@ -3049,6 +3049,25 @@ impl SlackClient {
             }
         }
         Err(too_many_pages("conversations.replies"))
+    }
+
+    /// The parent of a thread and nothing else (`conversations.replies` with `limit=1`): one
+    /// call that shows its current `reply_count` and `latest_reply`. `None` when Slack returns
+    /// no message. Paced per `team_id`.
+    pub async fn conversations_thread_parent(
+        &self,
+        token: &SecretString,
+        team_id: &str,
+        channel: &str,
+        thread_ts: &str,
+    ) -> Result<Option<SlackMessage>, FarmClientError> {
+        let query = [("channel", channel), ("ts", thread_ts), ("limit", "1")];
+        let call = Call {
+            paced_team: Some(team_id),
+            ..Call::read("conversations.replies", token, &query)
+        };
+        let page: wire::Messages = self.call(&call).await?;
+        Ok(page.messages.into_iter().next().map(message))
     }
 
     /// `users.info`: the user's names. Never the email, even when Slack sends one.
