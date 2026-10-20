@@ -120,8 +120,8 @@ pub struct CompletedConnect {
 pub struct SyncOutcome {
     /// The connector's `next_sync_at` as [`due_connectors`](FarmRecordStore::due_connectors)
     /// returned it. If the stored value is later when the run ends, a **Sync now** or a new set
-    /// of sources landed during the run: the store keeps that time, and doesn't store a
-    /// stopping failure (`too_large`, `source_missing`) over it.
+    /// of sources landed during the run: the store keeps that time, doesn't store a stopping
+    /// failure (`too_large`, `source_missing`) over it, and doesn't set `synced_at`.
     pub due_at: Timestamp,
     /// Each source's cursor after the run.
     pub cursors: BTreeMap<String, SyncCursor>,

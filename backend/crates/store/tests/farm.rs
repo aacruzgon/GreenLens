@@ -1234,7 +1234,11 @@ async fn finish_sync_keeps_what_landed_during_the_run() {
     let row = store.connector_row(c).await.unwrap().unwrap();
     assert_eq!(row.next_sync_at, at(20), "the Sync now is not pushed out");
     assert_eq!(row.last_error, None);
-    assert_eq!(row.connector.synced_at, Some(at(36)));
+    assert_eq!(
+        row.connector.synced_at,
+        Some(at(16)),
+        "a run that overlapped a Sync now doesn't set synced_at"
+    );
 
     // New sources land during a run that stops on `too_large`: the wait isn't stored.
     let due_at = row.next_sync_at;
@@ -1249,15 +1253,35 @@ async fn finish_sync_keeps_what_landed_during_the_run() {
     let row = store.connector_row(c).await.unwrap().unwrap();
     assert_eq!(row.next_sync_at, at(40));
     assert_eq!(row.last_error, None, "the new sources run first");
+    assert_eq!(row.connector.synced_at, Some(at(16)));
     assert_eq!(
         store.due_connectors(at(41), 10).await.unwrap().len(),
         1,
         "still due"
     );
 
+    // A run that finished while new sources landed doesn't set synced_at: it didn't read them.
+    let due_at = row.next_sync_at;
+    store
+        .set_sources(
+            owner,
+            c,
+            vec![source("C2", "spray-log"), source("C3", "scouting")],
+            at(42),
+        )
+        .await
+        .unwrap();
+    store
+        .finish_sync(c, outcome(due_at, at(57), None))
+        .await
+        .unwrap();
+    let row = store.connector_row(c).await.unwrap().unwrap();
+    assert_eq!(row.connector.synced_at, Some(at(16)));
+    assert_eq!(row.next_sync_at, at(42));
+
     // Without anything landing, too_large is stored and stops the connector.
     store
-        .finish_sync(c, outcome(at(40), at(60), Some(SyncErrorCode::TooLarge)))
+        .finish_sync(c, outcome(at(42), at(60), Some(SyncErrorCode::TooLarge)))
         .await
         .unwrap();
     let row = store.connector_row(c).await.unwrap().unwrap();

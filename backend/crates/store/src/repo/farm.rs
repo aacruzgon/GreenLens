@@ -176,15 +176,16 @@ ORDER BY next_sync_at, id LIMIT $limit;"
     /// A sync run's end: the cursors of sources still chosen, the times and the failure. A
     /// connector being deleted is left alone, and a missing one is never created. When the
     /// connector's `next_sync_at` moved past `$due_at` (the value the run started from) while
-    /// the run was going, a **Sync now** or a new set of sources landed: that time stays, and
-    /// a stopping failure of the old sources isn't stored over the owner's change.
+    /// the run was going, a **Sync now** or a new set of sources landed: that time stays, a
+    /// stopping failure of the old sources isn't stored over the owner's change, and
+    /// `synced_at` isn't set, since the run may not have read the sources now chosen.
     pub const FINISH_SYNC: &str = concat!(
         "BEGIN;
 LET $moved = (SELECT VALUE next_sync_at FROM ONLY $connector) > $due_at;
 UPDATE $connector SET cursor = ",
         kept_cursor!("$cursor", "sources.id"),
         ",
-  synced_at = $synced_at ?? synced_at,
+  synced_at = IF $moved { synced_at } ELSE { $synced_at ?? synced_at },
   next_sync_at = IF $moved { next_sync_at } ELSE { $next },
   last_error = IF $moved AND $last_error IN ['too_large', 'source_missing'] { last_error } ELSE { $last_error }
 WHERE status != 'deleting';
