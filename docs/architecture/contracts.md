@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.18, 2026-10-20. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.19, 2026-10-20. Companion to the [architecture document](README.md).
+> **v0.10.19**: open questions 1 and 9 are settled for the RTX 5070 Ti by the day-2 benchmark: `VLM_MAX_PIXELS` stays 1,003,520 and `VLM_SLOTS` is 2 (section 5's slots table, section 12); the VLM is Qwen3.5-9B AWQ ([vision vlm.md 13](../vision/vlm.md#results-and-the-choice-2026-10-20--ran)); no wire shape changed.
 > **v0.10.18**: section 8 says `since` and `until` window Slack messages only: a Drive document is returned whatever the window, also with `kind: "document"` (EON gap G18); no wire shape changed.
 > **v0.10.17**: `search_farm_records` takes `until?` and `author?` beside `since?` (EON gap G12), and a search without `kind` searches messages and documents apart and keeps 3 of the 8 hits for each kind that has them (gap G16), section 8; no wire shape of the API changed.
 > **v0.10.16**: a `running` key older than 10 minutes is taken over by the next retry, so a restart mid-exchange doesn't hold it for 24 hours (section 1); a stored answer is only a `2xx` or a deterministic `4xx`, so after a `5xx` the retry runs again (section 9); `POST /connectors/{id}/complete` has a 60 s timeout, and its exchange runs on past a timeout and keeps its idempotency key until it ends, so the retry with the same key gets `409 request_in_progress` and then, when it ends in a `2xx` or a deterministic `4xx`, the answer (sections 2, 9); no wire shape changed and no architecture section is affected.
@@ -735,7 +736,7 @@ Example of a typical run, where the classifier suggests early blight and the ind
   | Worker | `slots` |
   |---|---|
   | perception-worker (RTX 3070) | 1. It batches inside a job instead (section 5, results) |
-  | vlm-worker (RTX 5070 Ti) | `VLM_SLOTS`: 1 or 2, deployment configuration set from the day-2 benchmark (open question 9). With 2, vLLM batches the two jobs' calls together; vLLM's `max_num_seqs` is set to the same value |
+  | vlm-worker (RTX 5070 Ti) | `VLM_SLOTS`: 2, deployment configuration set from the day-2 benchmark (open question 9). With 2, vLLM batches the two jobs' calls together; vLLM's `max_num_seqs` is set to the same value |
   | vlm-worker (RX 9070 XT) | Its own `VLM_SLOTS`, 1 or 2, from its own benchmark on its own server (vLLM on ROCm, or llama.cpp with Vulkan, open question 25) |
   | fallback-worker | Several (default 4), bounded by the LLM API's rate limit |
 
@@ -2460,12 +2461,13 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.14: farm connectors go with the owner who created them when that owner is demoted, removed, leaves or deletes the account, as well as with their garden; the tokens are revoked after the store marks the connectors `deleting`, and kept while another connector holds the same account | 5 (deletion: an owner who stops being one, deleting a plant or a garden), 11 (privacy: farm connectors) |
 | v0.10.17: `search_farm_records` takes `until?` and `author?`, and a search without `kind` keeps 3 of its 8 hits for each kind | 7 (tools: `search_farm_records`); 5 (data: `farm_record.text_hash` is of the embedded text) |
 | v0.10.18: `search_farm_records`' `since` and `until` window Slack messages only; Drive documents are returned whatever the window | 7 (tools: `search_farm_records`) |
+| v0.10.19: `VLM_SLOTS` 2 and `VLM_MAX_PIXELS` 1,003,520 on the 5070 Ti; the VLM is Qwen3.5-9B AWQ | 10 (the VLM row), 15 (open decisions 4 and 15) |
 
 ---
 
 ## 12. Open questions
 
-1. **`VLM_MAX_PIXELS`** for the VLM: it starts at 1,003,520 pixels (about 980 tokens per image), which keeps 4 images within context and VRAM on a 16 GB card. Measure on day 2 on both VLM cards, and confirm in practice that xgrammar enforces `maxLength`, `maxItems` and the integer bounds, as its source says.
+1. **`VLM_MAX_PIXELS`** for the VLM: it starts at 1,003,520 pixels (about 980 tokens per image), which keeps 4 images within context and VRAM on a 16 GB card. Measure on day 2 on both VLM cards, and confirm in practice that xgrammar enforces `maxLength`, `maxItems` and the integer bounds, as its source says. **Settled for the 5070 Ti (v0.10.19):** 1,003,520. From 0.6 to 2.0 MP the diagnosis moved by at most 2 of 26 cases, and the larger size keeps small organisms visible ([vision evaluation 8](../vision/evaluation.md#vlm-results-2026-10-20--ran)). The 9070 XT is measured when it joins.
 2. **Certainty mapping** for VLM answers (0.4 / 0.65 / 0.85): calibrate on the evaluation set's development split on Oct 22–23, within each band (section 6); Oct 24 is the single scoring on the test split. Whether measurements' confidence values should move with the VLM's when calibration moves them, as section 7 ties them, is decided then.
 3. **Diagnosis margin:** how far the top candidate must lead the second to count as `confirmed`. Set from the evaluation set. Until then the pipeline's default is 2, one weight-2 indicator ([backend knowledge 12](../backend/knowledge.md#12-open-questions)).
 4. **Indicator weights** of 1–3: enough resolution, or does scoring need finer weights?
@@ -2473,7 +2475,7 @@ The contracts changed these parts of the architecture document, which has been u
 6. **Species-change window:** re-running only the plant's most recent scan from the last 24 hours.
 7. **Daily scan limit** of 30 per user, and whether the fallback worker needs its own spending cap.
 8. **HEIC decoding** in the Rust image pipeline (libheif bindings): confirm on day 1; until then, the app converts HEIC to JPEG before upload.
-9. **`VLM_SLOTS`**, per VLM worker: 2 if the day-2 benchmark shows that two `vlm` jobs of 4 images each fit that card's KV cache next to the model at `VLM_MAX_PIXELS`, and that a job's p95 time with two running stays under half its `max_runtime` (2.5 minutes); otherwise 1. Measured separately on the 5070 Ti and the 9070 XT, alongside open question 1, with `PERCEPTION_MAX_BATCH` and the per-model caps on the 3070.
+9. **`VLM_SLOTS`**, per VLM worker: 2 if the day-2 benchmark shows that two `vlm` jobs of 4 images each fit that card's KV cache next to the model at `VLM_MAX_PIXELS`, and that a job's p95 time with two running stays under half its `max_runtime` (2.5 minutes); otherwise 1. Measured separately on the 5070 Ti and the 9070 XT, alongside open question 1, with `PERCEPTION_MAX_BATCH` and the per-model caps on the 3070. **Settled for the 5070 Ti (v0.10.19):** 2. Two jobs at once kept a job's p95 at most 9.6 s with no preemption ([vision evaluation 8](../vision/evaluation.md#vlm-results-2026-10-20--ran)). The 9070 XT and the 3070's caps are still open.
 10. **Measurement thresholds:** the indicator margin (10% of the bound, at least two pixels), the confidence rules (60% coverage, 5 mm residual), the spot colour thresholds, the smallest sized spot (4 pixels) and the stored size of photos with depth (a long side of at least 2048 pixels), the growth noise floor (2 cm or 5%), the crowding factor (0.75) and `NEIGHBOUR_RADIUS_M` (1.5 m). Set from LiDAR photos in the evaluation set.
 11. **LiDAR capture:** the shortest distance at which LiDAR depth is reliable, the depth map's size from the LiDAR depth camera, whether unfiltered depth keeps its holes, and whether the photo and its depth carry lens distortion (which decides whether `DepthMeta.distortion` is sent). Day-1 check; the distance sets the leaf kinds' valid range and the close-up distance hint. If AVFoundation's path fails the check, capture moves to ARKit's scene depth, which also sends `depth_confidence`.
 12. **Timestamp precision.** **Settled (v0.10):** whole seconds on the wire (`2026-10-18T14:03:22Z`), full precision in the database (section 1, wire format) ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions), [store 21](../backend/store.md#21-decisions-on-open-questions)).
