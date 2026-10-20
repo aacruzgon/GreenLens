@@ -1,6 +1,6 @@
 # PDM Vision Evaluation
 
-> **Status:** Draft v0.4, 2026-10-19. v0.4: tomato and corn diseases come from published field datasets no model trained on (`ml.training.eval.fieldsets`), checked against every training photo and sent one photo per case, and phone-condition variants of the cases (`ml.training.eval.variants`) are scored as their own slices. v0.3: section 2 adds `ml.training.eval.inat` for licensed iNaturalist photos, only from 2026 and reviewed before they become cases, and records that iNaturalist can't supply tomato or corn diseases. v0.2: the fallback run also measures whether 8,000-token calls finish within its `max_runtime`. v0.1, 2026-10-15: First evaluation plan: the evaluation set of real field photos, its labels, metrics and acceptance targets per stage, calibration of the certainty words, the classifier and the diagnosis margin, the thresholds the set decides, and the day-1 checks and day-2 benchmarks.
+> **Status:** Draft v0.5, 2026-10-20. v0.5: section 8 records the day-2 VLM benchmark on the 65 one-photo tomato and corn dev cases: every call valid and two jobs at once fit, but the indicator questions carry little signal on these photos for any candidate (Qwen3.5-9B AWQ diagnoses 35% of the sure cases, both Qwen3-VL-8B builds 12%). v0.4: tomato and corn diseases come from published field datasets no model trained on (`ml.training.eval.fieldsets`), checked against every training photo and sent one photo per case, and phone-condition variants of the cases (`ml.training.eval.variants`) are scored as their own slices. v0.3: section 2 adds `ml.training.eval.inat` for licensed iNaturalist photos, only from 2026 and reviewed before they become cases, and records that iNaturalist can't supply tomato or corn diseases. v0.2: the fallback run also measures whether 8,000-token calls finish within its `max_runtime`. v0.1, 2026-10-15: First evaluation plan: the evaluation set of real field photos, its labels, metrics and acceptance targets per stage, calibration of the certainty words, the classifier and the diagnosis margin, the thresholds the set decides, and the day-1 checks and day-2 benchmarks.
 > **Checked:** nothing in this document has run yet. Every target is a proposal to confirm or move on Oct 24, when the test split is scored.
 
 This is how PDM measures its models and sets the numbers the [contracts](../architecture/contracts.md) leave open. The models themselves are in [README.md](README.md) and [models.md](models.md), the VLM in [vlm.md](vlm.md), and the datasets and training in [training.md](training.md).
@@ -358,6 +358,39 @@ On 20 dev cases with the full shot set, for each of the two candidates in [vlm.m
 **Choosing.** First the candidate with 0 beneficial-as-pest errors and valid output; then the higher indicator accuracy; then organism recall; then speed. `VLM_SLOTS` is 2 only when two jobs fit next to the model at the chosen `VLM_MAX_PIXELS` and a job's p95 with two running stays under 2.5 minutes ([contracts 12](../architecture/contracts.md#12-open-questions), question 9).
 
 **Per card.** The run is repeated on each VLM card, with the same checkpoint. Each card gets its own `VLM_SLOTS` from its own timing. On 10 of the cases the two cards' outputs are compared: boxes drawn on the same prepared image should overlap, and indicator answers should agree on most questions. A large disagreement is a configuration problem (checkpoint, preparation or server flags) to fix before both serve.
+
+### VLM results, 2026-10-20 (✓ ran)
+
+`python -m ml.training.eval.vlm_bench` sent the 65 tomato and corn dev cases through the worker's own `VlmAdapter::analyse` (its prompts, schemas, image preparation and validation, in a release build) to each candidate, served by vLLM on the 5070 Ti at 0.90 of the card with 2 slots. It ran at `VLM_MAX_PIXELS` 602,112 and 1,003,520, with one and two jobs at once ([report](../../ml/training/eval/reports/vlm-bench-2026-10-20.md); per candidate: [FP8](../../ml/training/eval/reports/vlm-bench-2026-10-20-fp8.md), [Qwen3.5](../../ml/training/eval/reports/vlm-bench-2026-10-20-qwen35-awq.md), [Qwen3-VL AWQ](../../ml/training/eval/reports/vlm-bench-2026-10-20-qwen3vl-awq.md)).
+
+How it differs from the plan above:
+- **One photo per case, not 20 full shot sets.** The cases come from the field datasets (section 2), since the team's phones haven't supplied full cases yet ([#52](https://github.com/aacruzgon/GreenLens/issues/52)). So organism recall, small organisms, soil, beneficial-as-pest and the box check aren't measured, and neither is the 9070 XT.
+- **The candidates are the worker's test fixtures:** three per crop, with three questions each, since the knowledge base isn't loaded. 26 `sure` cases have their problem among them, and 11 are healthy.
+- **The photo goes to the indicator call twice.** A question gets only the images its indicator names, and most name `leaf_closeup`. So a one-photo case also sends its photo as the `leaf_closeup` it is. The first run, the night of Oct 19, sent only `whole_plant`, and 82–87% of every model's answers were `unsure` ([report](../../ml/training/eval/reports/vlm-bench-2026-10-20-whole-plant-only.md)).
+- **Two sizes, not four.** That night's four sizes, 0.6 to 2.0 MP, moved a model's diagnosis by at most 2 of the 26 cases.
+
+At 1,003,520 pixels, the worker's default:
+
+| Candidate | Valid on the first try | Job p50 / p95 | 65 jobs: 1 / 2 at once | Diagnosis, `sure` (n = 26) | `unsure` | "Yes" to the true problem's questions / to the others | Healthy kept clean (n = 11) | Damage reported | Organisms reported |
+|---|---|---|---|---|---|---|---|---|---|
+| Qwen3.5-9B AWQ | 65 of 65 | 5.3 / 6.4 s | 360 / 213 s | 35% | 25% | 15% / 11% | 91% | 79, 66 of them `other` | 0 |
+| Qwen3-VL-8B FP8 | 65 of 65 | 6.2 / 8.4 s | 423 / 234 s | 12% | 32% | 6% / 6% | 100% | 79: 31 `chewed_margins`, 13 `leaf_mines` | 19 |
+| Qwen3-VL-8B AWQ | 65 of 65 | 4.4 / 5.1 s | 302 / 176 s | 12% | 33% | 6% / 5% | 100% | 55 | 4 |
+
+- **Valid and fast.** No call needed its retry, and species agreed on 97–100% of cases.
+  - Two jobs at once finish the 65 in 0.55–0.6 of the time, with p95 at most 9.6 s, far under the 2.5-minute limit, so `VLM_SLOTS` 2 fits on the 5070 Ti at 1.0 MP (contracts question 9).
+  - vLLM holds about 14 GB at 0.90 whatever the model, and the KV cache peaked at 4–33%.
+- **The questions carry little signal on these photos.** On a leaf with a problem, every model answers "yes" to that problem's questions barely more often than to the other candidates' questions. Qwen3.5 is the only one with a gap, and it is small.
+  - **About a third of those answers are `unsure` by design:** the question needs the whole plant or an underside (`lower_leaves_first`, `dark_stem_lesions`, `white_mould_underside`), which one leaf can't show.
+  - **Most of the rest are "no".** Qwen3.5's examples:
+    - `concentric_rings`: 0 of 6 early-blight leaves;
+    - `water_soaked_patches`: 0 of 8 late-blight leaves;
+    - the common-rust pustules: 0 of 3.
+  - **`small_spots` and `yellow_halo` say "yes" to about 4 in 10 leaves with another problem.** So late blight is often scored as Septoria or early blight.
+  - No candidate meets section 4's indicator targets.
+- **Not the photo size.** Half the tomato cases are 0.16 or 0.41 MP, but Qwen3.5 gets 5 of those 11 right, against 4 of the 15 larger ones.
+- **False findings.** Every model reports damage these leaves don't show: Qwen3.5 under `other`, and FP8 as chewed margins and leaf mines (the known `leaf_mines` error, #45). Only FP8 reports organisms on them. None is labelled, so Qwen3.5's 0 could also be a miss.
+- **For D1.** By the choosing rule above, on what was measured, Qwen3.5-9B AWQ leads on indicator answers and is as fast; beneficial-as-pest and organism recall wait on the team's cases. Whichever is chosen, the diagnosis rests on the disease head's candidates until the questions get answered (the prompt pass, P5, and the questions' wording). The per-question tables in the report show which questions fail.
 
 ### Perception batch size
 
