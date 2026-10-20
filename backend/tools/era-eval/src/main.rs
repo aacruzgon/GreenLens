@@ -408,6 +408,7 @@ fn failed_run(
         text: String::new(),
         scores: score::failed_turn(q, ctx, outcome),
         tools: Vec::new(),
+        tool_calls: Vec::new(),
         farm_citations: Vec::new(),
         calls,
         tokens_in,
@@ -521,6 +522,7 @@ async fn ask(
         .map_err(|e| anyhow::anyhow!("conversation: {e:?}"))?;
 
     let mark = meter.len();
+    let tool_mark = meter.tool_calls_len();
     let started = agent
         .start_turn(agent::TurnRequest {
             owner,
@@ -588,6 +590,7 @@ async fn ask(
         text,
         scores,
         tools,
+        tool_calls: meter.tool_calls_since(tool_mark),
         farm_citations,
         calls,
         tokens_in,

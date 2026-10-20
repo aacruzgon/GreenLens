@@ -104,10 +104,20 @@ pub struct Call {
     pub tokens_out: u32,
 }
 
-/// Records every call to the model it wraps.
+/// One tool call the model made: its name and the arguments it gave (EON gap G18).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ToolCall {
+    /// The tool.
+    pub name: String,
+    /// The arguments, as the model sent them.
+    pub arguments: serde_json::Value,
+}
+
+/// Records every call to the model it wraps, and the tool calls the model makes.
 pub struct Meter {
     inner: Arc<dyn ChatModel>,
     calls: Mutex<Vec<Call>>,
+    tool_calls: Mutex<Vec<ToolCall>>,
 }
 
 impl Meter {
@@ -116,7 +126,28 @@ impl Meter {
         Self {
             inner,
             calls: Mutex::new(Vec::new()),
+            tool_calls: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Tool calls recorded so far.
+    pub fn tool_calls_len(&self) -> usize {
+        self.tool_calls
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len()
+    }
+
+    /// The tool calls since `from` (a [`Meter::tool_calls_len`]).
+    pub fn tool_calls_since(&self, from: usize) -> Vec<ToolCall> {
+        let calls = self
+            .tool_calls
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        calls
+            .get(from..)
+            .map(<[ToolCall]>::to_vec)
+            .unwrap_or_default()
     }
 
     /// Calls recorded so far.
@@ -171,6 +202,17 @@ impl Recorder<'_> {
         match chunk {
             Ok(ChatChunk::Usage(usage)) => self.latest = Some(*usage),
             Ok(ChatChunk::Done(_)) | Err(_) => self.flush(),
+            Ok(ChatChunk::ToolCall {
+                name, arguments, ..
+            }) => self
+                .meter
+                .tool_calls
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(ToolCall {
+                    name: name.clone(),
+                    arguments: arguments.clone(),
+                }),
             Ok(_) => {}
         }
     }
@@ -292,6 +334,18 @@ mod tests {
         let mut r = meter.recorder(ChatPurpose::Chat);
         r.see(&Ok(usage(30, 7)));
         drop(r);
+        // A tool call is kept with its arguments.
+        let mut r = meter.recorder(ChatPurpose::Chat);
+        r.see(&Ok(ChatChunk::ToolCall {
+            call_id: "c1".to_owned(),
+            name: "search_farm_records".to_owned(),
+            arguments: serde_json::json!({"query": "spray", "until": "2026-07-28"}),
+        }));
+        drop(r);
+        let tool_calls = meter.tool_calls_since(0);
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].name, "search_farm_records");
+        assert_eq!(tool_calls[0].arguments["until"], "2026-07-28");
         // No usage, no call.
         drop(meter.recorder(ChatPurpose::Chat));
         let calls = meter.since(0);
