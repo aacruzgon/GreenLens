@@ -6,8 +6,8 @@
 The team's own photos are the core of the evaluation set. Licensed photos fill the groups we can't
 find locally, such as diseased crops in late October. Three rules keep the scores meaningful:
 
-- Only CC0 and CC BY photos, with each photo's licence and credit recorded. iNaturalist's default
-  licence, CC BY-NC, is left out.
+- Only CC0 and CC BY photos, with each photo's licence and credit recorded, the credit saying the
+  photo was re-encoded without metadata. iNaturalist's default licence, CC BY-NC, is left out.
 - Only observations from 2026 on (`--since`). BioCLIP 2's training data, TreeOfLife-200M, was
   compiled before 2026 and draws on GBIF, which holds iNaturalist's licensed observations
   *unverified*; PlantDoc dates from 2019. Never use a photo from a web search: PlantDoc was scraped
@@ -38,6 +38,7 @@ observation listed in the manifest.
 from __future__ import annotations
 
 import argparse
+import datetime
 import hashlib
 import html
 import io
@@ -57,8 +58,11 @@ MANIFEST = HERE / "manifest.jsonl"
 PHOTOS = HERE / "photos"
 API = "https://api.inaturalist.org/v1/"
 HEADERS = {"User-Agent": "PDM-GreenLens-eval/0.1 (+https://github.com/aacruzgon/GreenLens)"}
-EARLIEST = "2026-01-01"
-LICENCES = {"cc0": "CC0", "cc-by": "CC BY"}  # iNaturalist's licence codes we may use
+EARLIEST = datetime.date(2026, 1, 1)
+# iNaturalist's licence codes we may use. Its licences are version 4.0: its help page links
+# CC BY to creativecommons.org/licenses/by/4.0 (read 2026-10-19).
+LICENCES = {"cc0": "CC0 1.0", "cc-by": "CC BY 4.0"}
+CHANGES = "re-encoded, metadata removed"  # CC BY asks that changes be indicated
 KINDS = {"whole_plant": 1, "leaf_closeup": 2, "leaf_underside": 1, "soil_surface": 1, "flower_fruit": 1}
 OUTCOMES = ("diagnosed", "healthy", "no_plant_found", "photos_unusable", "rejected_at_upload")
 LIFE_STAGES = {"larva": (1, 6)}  # iNaturalist's Life Stage annotation: term 1, value 6
@@ -72,6 +76,7 @@ REVIEW_HEADER = """\
 #   images: photo id -> whole_plant (exactly 1), leaf_closeup (at most 2), leaf_underside,
 #           soil_surface, flower_fruit (at most 1 each), or skip
 #   split: optional, dev or test (default: by plant, about 60% dev)
+# Skip any photo that shows a person's face: faces aren't blurred on import yet (evaluation.md §2).
 # Then: python -m ml.training.eval.inat add --labeller <your GitHub login>
 """
 
@@ -143,13 +148,28 @@ def search(target: dict, tid: int, since: str, limit: int, max_pages: int = 5) -
     return found, total
 
 
+def original_url(url: str) -> str:
+    """The full-size photo's URL from the API's thumbnail URL; ValueError when it has no size part,
+    so a changed API can't quietly give 75 px thumbnails."""
+    if "/square." not in url:
+        raise ValueError(f"no /square. in photo URL {url}")
+    return url.replace("/square.", "/original.")
+
+
 def candidate(obs: dict, target: dict) -> dict:
+    photos = []
+    for p in usable_photos(obs):
+        try:
+            url = original_url(p["url"])
+        except ValueError as e:
+            print(f"observation {obs['id']}: skipped a photo: {e}", file=sys.stderr)
+            continue
+        photos.append({"id": p["id"], "licence": LICENCES[p["license_code"]],
+                       "credit": f"{p['attribution']}; {CHANGES}", "url": url,
+                       "file": f"inat/{obs['id']}-{p['id']}.jpg"})
     return {
         "obs": obs["id"], "url": obs["uri"], "taxon": obs["taxon"]["name"], "quality": obs["quality_grade"],
-        "observed_on": obs.get("observed_on"), "target": target["taxon"],
-        "photos": [{"id": p["id"], "licence": LICENCES[p["license_code"]], "credit": p["attribution"],
-                    "url": p["url"].replace("/square.", "/original."), "file": f"inat/{obs['id']}-{p['id']}.jpg"}
-                   for p in usable_photos(obs)],
+        "observed_on": obs.get("observed_on"), "target": target["taxon"], "photos": photos,
     }
 
 
@@ -164,16 +184,23 @@ def strip(data: bytes) -> bytes:
     return buf.getvalue()
 
 
-def download(photo: dict, photos: Path) -> None:
+def download(photo: dict, photos: Path) -> bool:
+    """Whether the photo is on disk; a failed download is reported and skipped, so one photo
+    that's gone from iNaturalist doesn't block every rerun."""
     dest = photos / photo["file"]
     if dest.exists():
-        return
-    with urllib.request.urlopen(urllib.request.Request(photo["url"], headers=HEADERS), timeout=120) as r:
-        data = r.read()
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_suffix(".partial")
-    tmp.write_bytes(strip(data))
-    tmp.rename(dest)
+        return True
+    try:
+        with urllib.request.urlopen(urllib.request.Request(photo["url"], headers=HEADERS), timeout=120) as r:
+            data = r.read()
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_suffix(".partial")
+        tmp.write_bytes(strip(data))
+        tmp.rename(dest)
+        return True
+    except Exception as e:  # network errors, a 404, a file PIL can't read
+        print(f"photo {photo['id']}: download failed, skipped: {e}", file=sys.stderr)
+        return False
 
 
 def review_entry(cand: dict, target: dict) -> dict:
@@ -275,14 +302,24 @@ def load_targets(only: list[str] | None) -> list[dict]:
     return targets
 
 
+def since(value: str) -> datetime.date:
+    """`--since` as a date, refused before EARLIEST or when it isn't YYYY-MM-DD."""
+    try:
+        day = datetime.date.fromisoformat(value)
+    except ValueError:
+        raise SystemExit(f"--since {value}: not a date in YYYY-MM-DD form") from None
+    if day < EARLIEST:
+        raise SystemExit(f"--since {value}: only observations from {EARLIEST} on (see the module docstring)")
+    return day
+
+
 def fetch(args) -> int:
-    if args.since < EARLIEST:
-        raise SystemExit(f"--since {args.since}: only observations from {EARLIEST} on (see the module docstring)")
+    args.since = since(args.since).isoformat()
     targets = load_targets(args.only)
     inat = args.photos / "inat"
     cands_path, review_path = inat / "candidates.json", inat / "review.yaml"
     cands = json.loads(cands_path.read_text()) if cands_path.exists() else []
-    known = {c["obs"] for c in cands}
+    known = {c["obs"]: i for i, c in enumerate(cands)}
     new_entries = []
     for target in targets:
         tid = taxon_id(target["taxon"], target.get("rank"))
@@ -293,15 +330,21 @@ def fetch(args) -> int:
             continue
         for obs in found:
             c = candidate(obs, target)
-            if c["obs"] not in known:
+            if c["obs"] in known:
+                cands[known[c["obs"]]] = c  # found again: refresh its licences and credits
+            else:
+                known[c["obs"]] = len(cands)
                 cands.append(c)
-                known.add(c["obs"])
             new_entries.append(review_entry(c, target))
     if args.count:
         return 0
     photos = [p for c in cands for p in c["photos"]]
     with ThreadPoolExecutor(4) as pool:
-        list(pool.map(lambda p: download(p, args.photos), photos))
+        ok = dict(zip((p["file"] for p in photos), pool.map(lambda p: download(p, args.photos), photos)))
+    for c in cands:
+        c["photos"] = [p for p in c["photos"] if ok[p["file"]]]
+    cands = [c for c in cands if c["photos"]]
+    photos = [p for c in cands for p in c["photos"]]
     inat.mkdir(parents=True, exist_ok=True)
     cands_path.write_text(json.dumps(cands, indent=1) + "\n")
     all_targets = load_targets(None)
@@ -320,7 +363,8 @@ def add(args) -> int:
     cands = {c["obs"]: c for c in json.loads((inat / "candidates.json").read_text())}
     review = yaml.safe_load((inat / "review.yaml").read_text()) or []
     lines = args.manifest.read_text().splitlines() if args.manifest.exists() else []
-    have = {json.loads(line)["case_id"] for line in lines if line.strip()}
+    # By observation, not case_id: a species corrected after an `add` changes the case_id.
+    have = {json.loads(line)["source"] for line in lines if line.strip()}
     added, problems = [], []
     for entry in review:
         if not entry.get("keep"):
@@ -330,9 +374,9 @@ def add(args) -> int:
         except (ValueError, KeyError) as e:
             problems.append(str(e))
             continue
-        if c["case_id"] not in have:
+        if c["source"] not in have:
             added.append(c)
-            have.add(c["case_id"])
+            have.add(c["source"])
     if added:
         with args.manifest.open("a") as f:
             for c in added:
@@ -350,7 +394,7 @@ def main(argv=None) -> int:
     f = sub.add_parser("fetch", help="search, download and write the review files")
     f.add_argument("--per-target", type=int, default=20, help="observations per target")
     f.add_argument("--only", action="append", help="a target's taxon; repeatable")
-    f.add_argument("--since", default=EARLIEST, help=f"observed on or after (not before {EARLIEST})")
+    f.add_argument("--since", default=EARLIEST.isoformat(), help=f"observed on or after (not before {EARLIEST})")
     f.add_argument("--count", action="store_true", help="only print how many observations match")
     f.add_argument("--photos", type=Path, default=PHOTOS)
     a = sub.add_parser("add", help="append the kept observations to manifest.jsonl")
