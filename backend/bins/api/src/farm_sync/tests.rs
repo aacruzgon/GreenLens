@@ -40,6 +40,7 @@ use store::{SurrealStore, apply_schema_with};
 use super::{
     FarmSources, FarmSync, RunEnd, SYNC_EVERY, SyncConfig, chunk, delete_old_messages,
     seed::{self, EraSeed, Seeded},
+    state::SourceState,
 };
 use crate::{
     connect::{ConnectVendors, MockConnectVendors},
@@ -1216,6 +1217,86 @@ async fn the_daily_reread_deletes_what_the_vendor_no_longer_has() {
     assert_eq!(
         source.requests().pop().expect("a request").reread_from,
         None
+    );
+}
+
+/// A re-read that catches up after a month without a sync (Slack's starts at the newest message
+/// seen) keeps only the ids in its window, so the cursor stays small, and deletes nothing older.
+#[tokio::test]
+async fn a_catching_up_reread_keeps_only_the_ids_in_its_window() {
+    let month = Duration::from_hours(30 * 24);
+    let throttled = Arc::new(AtomicUsize::new(0));
+    let once = throttled.clone();
+    let source = FakeSource::new(
+        Some(Duration::from_hours(7 * 24)),
+        Box::new(
+            move |r| match (r.reread_from, r.cursor.as_ref().map(|c| c.0.as_str())) {
+                (None, _) => Ok(page(
+                    vec![item("C1", "1.0", "before the gap", pinned())],
+                    false,
+                    "c",
+                )),
+                (Some(_), Some("c")) => Ok(page(
+                    vec![
+                        item(
+                            "C1",
+                            "2.0",
+                            "in the gap",
+                            pinned().plus(Duration::from_hours(240)),
+                        ),
+                        item("C1", "3.0", "this week", pinned().plus(month)),
+                    ],
+                    true,
+                    "r1",
+                )),
+                (Some(_), Some("r1")) if once.fetch_add(1, Ordering::SeqCst) == 0 => {
+                    Err(FarmSourceError::RateLimited {
+                        vendor: ConnectorKind::Slack,
+                        retry_after_s: Some(60),
+                    })
+                }
+                (Some(_), _) => Ok(page(Vec::new(), false, "c2")),
+            },
+        ),
+    );
+    let b = bench(store().await, source.clone(), SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+
+    // A month on, the re-read's first page is stored and its second throttled.
+    b.clock.advance(month);
+    assert_eq!(
+        b.run().await,
+        [(id, RunEnd::Failed(SyncErrorCode::RateLimited))]
+    );
+    let state = SourceState::parse(b.row(id).await.cursors.get("C1"));
+    let reread = state.reread.expect("a re-read in progress");
+    assert_eq!(
+        reread.from,
+        b.clock.now().minus(Duration::from_hours(7 * 24))
+    );
+    assert_eq!(
+        reread.seen.into_iter().collect::<Vec<_>>(),
+        ["C1/3.0"],
+        "the catch-up's older ids aren't kept"
+    );
+
+    b.clock.advance(Duration::from_secs(60));
+    assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+    assert_eq!(
+        b.count(owner.1).await,
+        3,
+        "nothing outside the window deleted"
     );
 }
 

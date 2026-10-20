@@ -725,10 +725,16 @@ impl FarmSync {
             }
             self.store_page(run, src, &page).await?;
             state.failing = false;
+            // Only items in the window are kept: a re-read that catches up from older (after a
+            // week or more without a sync) would otherwise store every id of the catch-up.
             if let Some(reread) = state.reread.as_mut() {
-                reread
-                    .seen
-                    .extend(page.items.iter().map(|i| i.vendor_id.clone()));
+                let from = reread.from;
+                reread.seen.extend(
+                    page.items
+                        .iter()
+                        .filter(|i| i.at >= from)
+                        .map(|i| i.vendor_id.clone()),
+                );
                 reread.seen.extend(page.kept.iter().cloned());
             }
             let SyncCursor(cursor) = page.cursor;
