@@ -47,7 +47,7 @@ export function SignUpScreen() {
         label="Continue"
         onPress={submit}
         busy={fetchStatus === "fetching"}
-        disabled={!email.trim() || password.length < 8}
+        disabled={!email.trim() || !password}
         size="large"
       />
     </AuthShell>
