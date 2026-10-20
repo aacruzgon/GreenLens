@@ -1,6 +1,6 @@
 # PDM Backend Flows
 
-> **Status:** Draft v0.2.2, 2026-10-16. v0.2.2: the scan stream closes on a 15-second re-check (rest without an event, a deleted scan), a stream can close before a step's last events (the app refetches on close), image bodies end on shutdown, and the worker's shutdown drops a `complete` or heartbeat in flight, so it ends within `DRAIN_SECONDS`. v0.2.1: the scan stream ends on a duplicate flagged `rests`, the global body cap is 20 MiB + 128 KiB, and the `api` container's grace period is 190 s. v0.2: the diagrams follow the cross-crate fixes (one wake-up path for the claim long poll, one `fail_scan` per final failure, the sweep as the only question continuation, late events dropped, deletes through one `DeleteQueue`, the account tombstone, SoilGrids retry times, guided stage events, the plan step's release after 3 lost compare-and-sets), and section 20 marks each gap fixed and where. v0.1: sequence diagrams and state machines for every server-side flow, from a request's layers to a scan's steps, a job's lease, a chat turn, deletion, the scheduler and start-up. Every name is a type, trait or function from the crate documents and the compiled scratch workspace.
+> **Status:** Draft v0.2.3, 2026-10-19. v0.2.3: section 11 adds the farm connectors' `connectors` loop with the sync's sequence (pages from a saved cursor, only changed chunks embedded, the daily 7-day re-read, the stopping codes), the `beliefs` loop it lacked, and the cleanup of old Slack messages; section 13 seeds the demo garden's `era` connectors after resuming deletions. v0.2.2: the scan stream closes on a 15-second re-check (rest without an event, a deleted scan), a stream can close before a step's last events (the app refetches on close), image bodies end on shutdown, and the worker's shutdown drops a `complete` or heartbeat in flight, so it ends within `DRAIN_SECONDS`. v0.2.1: the scan stream ends on a duplicate flagged `rests`, the global body cap is 20 MiB + 128 KiB, and the `api` container's grace period is 190 s. v0.2: the diagrams follow the cross-crate fixes (one wake-up path for the claim long poll, one `fail_scan` per final failure, the sweep as the only question continuation, late events dropped, deletes through one `DeleteQueue`, the account tombstone, SoilGrids retry times, guided stage events, the plan step's release after 3 lost compare-and-sets), and section 20 marks each gap fixed and where. v0.1: sequence diagrams and state machines for every server-side flow, from a request's layers to a scan's steps, a job's lease, a chat turn, deletion, the scheduler and start-up. Every name is a type, trait or function from the crate documents and the compiled scratch workspace.
 
 Companion to the [backend architecture](README.md) and the server-side half of the [frontend flows](../frontend/flows.md). Every request, event and job here is defined in the [data contracts](../architecture/contracts.md). The system-level flows are in [architecture 8](../architecture/README.md#8-main-flows). This document shows how the crates work together at run time: which handler, entry point, repository method and adapter each arrow is.
 
@@ -1001,16 +1001,18 @@ sequenceDiagram
 
 ## 11. Scheduler loops
 
-Eight loops run on the process `TaskTracker` through `scheduler::every`: `interval_at` with a first delay, `MissedTickBehavior::Delay`, and a `select!` on the shutdown token. A failed run is logged and the next tick tries again ([api 16](api.md#16-the-scheduler)).
+Ten loops run on the process `TaskTracker` through `scheduler::every` (`connectors` only when connectors are on): `interval_at` with a first delay, `MissedTickBehavior::Delay`, and a `select!` on the shutdown token. A failed run is logged and the next tick tries again ([api 16](api.md#16-the-scheduler)).
 
 | Task | Every | What | Flow |
 |---|---|---|---|
 | `requeue` | 5 s | `JobRepo::requeue_stale` (the store wakes the claims); `job_failed_for_good` for exhausted jobs | [6](#6-a-jobs-lease) |
 | `sweep` | 30 s | `Pipeline::sweep`: stale steps, stalled `measuring`, and the 10-minute continuation of due questions (its only owner) | [4](#4-step-claims-the-sweep-and-plan-writes), [7](#continuing-without-an-answer) |
 | `idle` | 60 s | `RateLimits::retain_recent`, `EventHub::sweep_idle`, `ScanWriters::sweep_idle` | [19](#19-writer-actor-broadcast-channel-and-plan-lock) |
-| `cleanup` | 10 min | Expired idempotency keys, weather older than 2 h, expired pending actions, finished jobs older than 7 days, account tombstones 24 h after Clerk confirmed the deletion | [database 4](../database/README.md#cleanup-no-ttl) |
+| `beliefs` | 10 s | `agent::beliefs::sync_pending`: queued erases, then unsynced shared memories, the only writer to Agent Memory | [api 16](api.md#16-the-scheduler) |
+| `cleanup` | 10 min | Expired idempotency keys, weather older than 2 h, expired pending actions, finished jobs older than 7 days, account tombstones 24 h after Clerk confirmed the deletion, synced Slack messages older than 180 days (Drive documents stay) | [database 4](../database/README.md#cleanup-no-ttl) |
 | `weather` | 1 h | Weather by cell, forecast alerts, plan triggers | below |
 | `soil` | 15 min | SoilGrids for due gardens (`pending`, or past `soil_retry_at`), 4 a run | below |
+| `connectors` | 1 min | `FarmSync::run_due`: at most 4 due farm connectors, side by side | below |
 | `receipts` | 15 min | `Notifier::check_receipts`, `IdentityRepo::forget_push_tokens` | below |
 | `orphans` | 24 h | Objects older than an hour that no record points to | below |
 
@@ -1077,6 +1079,50 @@ sequenceDiagram
 ```
 
 The first fetch runs right after `POST /gardens` (`spawn_soil_fetch`, through `scheduler::fetch_soil_profile`); the `soil` task retries due gardens. A failure stores `unavailable` and `garden.soil_retry_at`: 15 minutes after an outage, 7 days after no data, so a null-pixel garden (Toronto, Guelph) costs its 9 paced calls once a week, not every 15 minutes ([contracts 9, the soil profile](../architecture/contracts.md#gardens), [integrations 8](integrations.md#8-soilgrids), [api 16](api.md#16-the-scheduler)).
+
+### Farm connectors' sync
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Sched as connectors (1 min)
+    participant Sync as FarmSync
+    participant Store
+    participant Src as FarmSource (SlackSource; Drive in E4.3)
+    participant Emb as TextEmbedder
+    Sched->>Store: due_connectors(now, 4): active, next_sync_at passed, not stopped by too_large or source_missing
+    par each connector, side by side
+        Sync->>Sync: FarmSources by kind and endpoint; ConnectorKey::unseal the token
+        Sync->>Store: garden_record_count
+        loop each chosen source, page by page from its SourceState, until the pass ends, 3 min pass or shutdown
+            Note over Sync: a day after the last finished pass, and with a reread_window, the pass starts 7 days back (reread_from)
+            Sync->>Src: read_page(token, cursor, oldest = now - 180 days, reread_from)
+            Src-->>Sync: FarmPage: items, removed, kept, cursor, more
+            Sync->>Store: record_hashes(page's vendor ids)
+            Sync->>Sync: chunk (2,000 chars), text_hash; stop with too_large past 10,000 records
+            Sync->>Emb: embed(Document, new or changed chunks only), 32 a call
+            Sync->>Store: upsert_records (no vector: the stored one stays), delete_chunks_from, delete_records(removed)
+            opt the re-read pass ended
+                Sync->>Store: source_vendor_ids_since(source, from + 1 s)
+                Sync->>Store: delete_records(not seen and not kept)
+            end
+        end
+        alt every source read to its end
+            Sync->>Store: finish_sync(cursors, synced_at now, next +15 min)
+        else pages left
+            Sync->>Store: finish_sync(cursors, next now)
+        else the vendor or the limit stopped it
+            Sync->>Store: finish_sync(cursors, last_error, next: Retry-After for rate_limited, else +15 min)
+            opt auth_refused
+                Sync->>Store: set_status(reauth_needed, auth_refused)
+            end
+        end
+    end
+```
+
+- **No duplicates.** Records are keyed by `(connector, vendor_id, n)` and a pass continues from its saved cursor, so a throttled first sync finishes on a later run without storing a message twice ([api 16](api.md#the-farm-sync)).
+- **Slack's cursor** holds the newest `ts` of finished passes, a pass with pages left and each thread's read state, so a quiet channel costs one `conversations.history` call and an unchanged thread no `conversations.replies` call ([integrations 15](integrations.md#slacksource-the-port-for-the-sync)).
+- **A Sync now during a run.** A **Sync now** or new sources during the run move `next_sync_at` past the value the run started from; `finish_sync` then keeps that time and doesn't store a stopping failure over the owner's change ([store](store.md)).
 
 ### Push receipts and orphans
 
@@ -1208,7 +1254,8 @@ sequenceDiagram
     Main->>Store: KnowledgeRepo::load_knowledge, PhotoIndex, HmacSigner
     Main->>State: EventHub, JobBroker, Pusher, ScanWriters, Pipeline, ChatAgent, DeletionRunner
     Main->>State: DeletionRunner::resume (deleting_at targets, unfinished account tombstones)
-    Main->>Sched: scheduler::start (eight loops on the tracker)
+    Main->>Store: farm_sync::seed::at_start: with CONNECTOR_KEY, both ERA_* bases and ERA_DEMO_GARDEN_ID, seed_connector the two era connectors by fixed id (skipped while the garden has no owner)
+    Main->>Sched: scheduler::start (ten loops on the tracker; connectors only when connectors are on)
     Main->>Main: spawn signal (Ctrl-C or SIGTERM cancels the token)
     Main->>Serve: bind, serve with_graceful_shutdown(token.cancelled_owned)
     Note over Serve: SSE streams and image bodies end through take_until, the claim long poll answers 204
@@ -1223,7 +1270,8 @@ sequenceDiagram
 | 4–5 | Exits on a bad secret | [api 6](api.md#6-application-state-wiring-and-the-seams), [integrations 4](integrations.md#4-shared-http-client-retries-pacing-sse) |
 | 6 | Exits: face blurring fails closed, so uploads can't run without it | [vision 7](vision.md#7-the-upload-pipeline), [vision 10](vision.md#10-the-text-embedder) |
 | 7–9 | Exits on a store error | [api 4](api.md#4-start-up-and-shutdown), [api 17](api.md#17-deletion) |
-| 12–14 | `with_graceful_shutdown` waits for every open connection, which is why every long response ends on the token | [api 4](api.md#4-start-up-and-shutdown) |
+| 10 | Logged, not fatal: the demo connectors come on the next start | [api 16](api.md#the-farm-sync) |
+| 13–15 | `with_graceful_shutdown` waits for every open connection, which is why every long response ends on the token | [api 4](api.md#4-start-up-and-shutdown) |
 
 The `api` service's `stop_grace_period` is 190 s, so Compose's SIGKILL doesn't land inside that drain: 60 s for the slowest request, 120 s for a delete attempt and 10 s of margin ([api 4](api.md#4-start-up-and-shutdown)).
 
