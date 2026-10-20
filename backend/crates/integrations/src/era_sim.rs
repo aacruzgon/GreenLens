@@ -79,6 +79,22 @@ pub fn strict_base_url(kind: SimKind) -> String {
     }
 }
 
+/// The simulator's fidelity from `GET /_meta` (`build.fidelity`): `high` with
+/// `SIMCORE_FIDELITY=high`, `legacy` when the variable is missing or was joined into another
+/// `-e` string. Legacy generates a far smaller company: on Oct 20, 52 Drive changes from `day1`
+/// to `day2` (one page) against 2,041 (three pages of 1,000) at high fidelity. `/_meta` is
+/// faulted, so call it only with no fault set.
+pub async fn fidelity(kind: SimKind) -> String {
+    let url = format!("{}/_meta", base_url(kind));
+    let response = reqwest::Client::new().get(url).send().await;
+    let body = expect_ok("meta", response.expect("simulator unreachable")).await;
+    let meta: Value = serde_json::from_str(&body).expect("/_meta is JSON");
+    meta["build"]["fidelity"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned()
+}
+
 /// Reads `backend/tests/fixtures/era/<name>/<file>` as JSON.
 #[must_use]
 pub fn fixture(name: &str, file: &str) -> Value {
