@@ -16,13 +16,9 @@
 //!   --out era-eval.json
 //! ```
 //!
-//! Until the Drive adapter is wired in ([`bench::drive_source`]), only Slack is synced and the
-//! questions that need Drive are skipped. Wiring it in is more than one line once the Drive sync
-//! (PR #82) merges: `api::connect` must be public (or re-exported), the harness needs a stub
-//! `ConnectVendors` (Era's connectors have no OAuth), `FarmSync::new` takes a new `vendors`
-//! argument, and the source is `DriveSource::new(DriveClient::new(client,
-//! DriveConfig::era(base)))`. The plan-writer question (`target = "plan"`) waits on E5.4 and is
-//! reported as not measured.
+//! Drive is synced when `ERA_GOOGLE_BASE` is set; without it the questions that need Drive
+//! are skipped. The plan-writer question (`target = "plan"`) waits on E5.4 and is reported as
+//! not measured.
 //!
 //! [connectors 9.3]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#93-the-agent-evaluation
 
