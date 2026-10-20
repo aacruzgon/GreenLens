@@ -161,7 +161,12 @@ jobs:
           workspaces: "backend -> target"
           shared-key: test
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      # HOME is the job's temp directory: the action downloads into ~/.install-action/tmp and deletes
+      # it after, and the rig's runners share one home, so two jobs installing at once broke each
+      # other's download (docs/infra/README.md section 2). The tool lands there and on PATH.
       - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        env:
+          HOME: ${{ runner.temp }}
         with:
           tool: cargo-nextest@0.9.148
       # Includes the api test that fails when backend/openapi.json is stale.
@@ -308,7 +313,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Its own HOME, as in test.
       - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        env:
+          HOME: ${{ runner.temp }}
         with:
           tool: cargo-deny@0.20.2
       # RustSec advisories for what ships, with the accepted ones in backend/deny.toml.
@@ -360,7 +368,10 @@ jobs:
           key: ${{ hashFiles('.claude/skills/rust/versions.md') }}
           cache-directories: ~/.cache/pdm-rust-skills-check/target
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      # Its own HOME, as in test.
       - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        env:
+          HOME: ${{ runner.temp }}
         with:
           tool: cargo-nextest@0.9.148
       - run: cargo nextest run -p store -p blob --run-ignored only --locked
@@ -480,7 +491,10 @@ jobs:
           shared-key: era
           key: ${{ hashFiles('.claude/skills/rust/versions.md') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      # Its own HOME, as in test.
       - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        env:
+          HOME: ${{ runner.temp }}
         with:
           tool: cargo-nextest@0.9.148
       # A simulator generates its company on the first call that needs it (8 s locally, over 20 s on a
