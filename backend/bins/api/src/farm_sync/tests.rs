@@ -1440,7 +1440,11 @@ async fn a_new_source_with_a_long_first_pass_does_not_hold_up_the_others() {
         assert!(runs < 30, "the rounds stall: {rounds:?}");
         let end = b.run_into(id, &source, &mut rounds).await;
         assert_ne!(end, RunEnd::Synced, "N has pages left");
-        assert_eq!(b.row(id).await.connector.synced_at, first);
+        let row = b.row(id).await;
+        assert_eq!(row.connector.synced_at, first);
+        if end == RunEnd::RoundEnded {
+            assert_eq!(row.next_sync_at, b.clock.now(), "N's pass goes on at once");
+        }
     }
     rounds.pop();
     for round in &rounds {
@@ -1510,6 +1514,13 @@ async fn a_source_that_keeps_failing_does_not_stop_the_others() {
             "reported after run {runs}: {rounds:?}"
         );
         assert_eq!(row.connector.synced_at, None, "C2 never synced");
+        if end == RunEnd::RoundEnded {
+            assert_eq!(
+                row.next_sync_at,
+                b.clock.now().plus(SYNC_EVERY),
+                "only a failing source is behind"
+            );
+        }
     }
     rounds.pop();
     for round in &rounds {

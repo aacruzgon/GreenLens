@@ -4619,7 +4619,8 @@ pub enum RunEnd {
     /// The round ended with every source caught up: `synced_at` is set.
     Synced,
     /// The round ended, but a source has pages left (a long first pass, a re-read) or its last
-    /// turn failed: no `synced_at`; the next round 15 minutes later.
+    /// turn failed: no `synced_at`. The next round starts at once while a pass is in progress,
+    /// and 15 minutes later when only a failing source is behind.
     RoundEnded,
     /// Sources wait for their turn in the round, for the next run.
     PagesLeft,
@@ -4761,7 +4762,19 @@ impl FarmSync {
                 (Some(end_now), end_now.plus(SYNC_EVERY), RunEnd::Synced)
             }
             Ok(Round::Ended { caught_up: false }) => {
-                (None, end_now.plus(SYNC_EVERY), RunEnd::RoundEnded)
+                // A pass still in progress (a long first pass, a re-read) goes on at once in the
+                // next round, so a busy channel's first sync isn't held to one run in 15
+                // minutes; only a failing source waits the 15 minutes.
+                let in_pass = row.connector.sources.iter().any(|s| {
+                    let state = SourceState::parse(cursors.get(&s.id));
+                    state.more && !state.failing
+                });
+                let next = if in_pass {
+                    end_now
+                } else {
+                    end_now.plus(SYNC_EVERY)
+                };
+                (None, next, RunEnd::RoundEnded)
             }
             Ok(Round::TurnsLeft) => (None, end_now, RunEnd::PagesLeft),
             Err(Stop::Internal(e)) => return self.internal(&row, cursors, e).await,
