@@ -258,6 +258,7 @@ fn page(items: Vec<FarmItem>, more: bool, cursor: &str) -> FarmPage {
         items,
         removed: Vec::new(),
         kept: Vec::new(),
+        listed: None,
         cursor: SyncCursor(cursor.into()),
         more,
         probes: 0,
@@ -2092,6 +2093,11 @@ mod drive {
     /// `<id> text`.
     async fn drive(server: &MockServer, folders: &[(&str, Vec<Value>)]) {
         Mock::given(method("GET"))
+            .and(path(format!("/drive/v3/files/{ROOT}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(file(ROOT, FOLDER, "root")))
+            .mount(server)
+            .await;
+        Mock::given(method("GET"))
             .and(path("/drive/v3/changes/startPageToken"))
             .respond_with(
                 ResponseTemplate::new(200).set_body_json(json!({ "startPageToken": "100" })),
@@ -2177,6 +2183,15 @@ mod drive {
         endpoint: ConnectorEndpoint,
         vendors: MockConnectVendors,
     ) -> Bench {
+        bench_with(store, server, endpoint, Arc::new(vendors))
+    }
+
+    fn bench_with(
+        store: Arc<SurrealStore>,
+        server: &MockServer,
+        endpoint: ConnectorEndpoint,
+        vendors: Arc<dyn ConnectVendors>,
+    ) -> Bench {
         let clock = Arc::new(FixedClock::at(pinned()));
         let embedder = Arc::new(CountingEmbedder::default());
         let source = Arc::new(DriveSource::new(DriveClient::new(
@@ -2189,7 +2204,7 @@ mod drive {
             embedder.clone(),
             clock.clone(),
             key(),
-            Arc::new(vendors),
+            vendors,
             FarmSources::default().with(endpoint, source),
             SyncConfig::default(),
         );
@@ -2453,5 +2468,184 @@ mod drive {
             "not started again"
         );
         assert_eq!(calls("/drive/v3/files"), 1, "not listed again");
+    }
+
+    /// Another refresh stores its grant while this run's renews: this run's compare-and-set
+    /// loses, the other grant stays stored, and the run reads with its own token.
+    struct Racing {
+        store: Arc<SurrealStore>,
+        connector: Mutex<Option<ConnectorId>>,
+    }
+
+    #[async_trait]
+    impl ConnectVendors for Racing {
+        async fn exchange(
+            &self,
+            kind: ConnectorKind,
+            _: &str,
+            _: Option<SecretString>,
+            _: &str,
+        ) -> Result<crate::connect::Exchanged, VendorError> {
+            Err(VendorError::NotConfigured(kind))
+        }
+
+        async fn refresh(
+            &self,
+            _: ConnectorKind,
+            _: &StoredTokens,
+            _: bool,
+        ) -> Result<Option<StoredTokens>, VendorError> {
+            let id = self
+                .connector
+                .lock()
+                .expect("connector")
+                .expect("set before the run");
+            let read = self
+                .store
+                .connector_row(id)
+                .await
+                .expect("read")
+                .expect("exists")
+                .secret
+                .expect("sealed");
+            let other = grant("ya29.other", Some("1//refresh"), Duration::from_hours(1));
+            assert!(
+                self.store
+                    .replace_secret(id, read, other.seal(&key(), id))
+                    .await
+                    .expect("stored")
+            );
+            Ok(Some(grant(
+                "ya29.mine",
+                Some("1//refresh"),
+                Duration::from_hours(1),
+            )))
+        }
+
+        async fn available_sources(
+            &self,
+            _: ConnectorKind,
+            _: &StoredTokens,
+        ) -> Result<Vec<ConnectorSource>, VendorError> {
+            Ok(Vec::new())
+        }
+
+        async fn revoke(&self, _: ConnectorKind, _: &StoredTokens) -> Result<(), VendorError> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn a_renewal_that_loses_the_compare_and_set_keeps_its_own_token_for_the_run() {
+        let server = MockServer::start().await;
+        drive(&server, &[(ROOT, vec![file("D1", DOC, ROOT)])]).await;
+        refuse(&server, "ya29.old").await;
+        let store = store().await;
+        let racing = Arc::new(Racing {
+            store: store.clone(),
+            connector: Mutex::new(None),
+        });
+        let b = bench_with(store, &server, ConnectorEndpoint::Vendor, racing.clone());
+        let old = grant("ya29.old", Some("1//refresh"), Duration::from_mins(1));
+        let (garden, id) = connector(&b, ConnectorEndpoint::Vendor, &old).await;
+        *racing.connector.lock().expect("connector") = Some(id);
+
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        assert_eq!(b.count(garden).await, 1);
+        assert_eq!(
+            stored_access(&b.row(id).await),
+            "ya29.other",
+            "the grant stored first stays"
+        );
+        let requests = server.received_requests().await.expect("recorded");
+        assert!(requests.iter().all(|r| {
+            r.headers.get("authorization").and_then(|v| v.to_str().ok()) == Some("Bearer ya29.mine")
+        }));
+    }
+
+    #[tokio::test]
+    async fn a_token_refused_again_after_its_renewal_makes_the_connector_reauth_needed() {
+        let server = MockServer::start().await;
+        drive(&server, &[(ROOT, vec![file("D1", DOC, ROOT)])]).await;
+        refuse(&server, "ya29.old").await;
+        refuse(&server, "ya29.new").await;
+        let mut vendors = MockConnectVendors::new();
+        vendors
+            .expect_refresh()
+            .withf(|_, _, force| !force)
+            .returning(|_, _, _| Ok(None));
+        vendors
+            .expect_refresh()
+            .withf(|_, _, force| *force)
+            .times(1)
+            .returning(|_, _, _| {
+                Ok(Some(grant(
+                    "ya29.new",
+                    Some("1//refresh"),
+                    Duration::from_hours(1),
+                )))
+            });
+        let b = bench(store().await, &server, ConnectorEndpoint::Vendor, vendors);
+        let old = grant("ya29.old", Some("1//refresh"), Duration::from_mins(40));
+        let (_, id) = connector(&b, ConnectorEndpoint::Vendor, &old).await;
+
+        assert_eq!(
+            b.run().await,
+            [(id, RunEnd::Failed(SyncErrorCode::AuthRefused))]
+        );
+        let row = b.row(id).await;
+        assert_eq!(row.connector.status, ConnectorStatus::ReauthNeeded);
+        assert_eq!(stored_access(&row), "ya29.new", "the renewal was stored");
+    }
+
+    /// A change token Drive no longer accepts: the folder is listed again, and the records of
+    /// files the listing doesn't hold are deleted after the page is stored.
+    #[tokio::test]
+    async fn a_resync_deletes_the_records_of_files_no_longer_listed() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/drive/v3/files"))
+            .and(query_param(
+                "q",
+                format!("'{ROOT}' in parents and trashed=false"),
+            ))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(
+                    json!({ "files": [file("D1", DOC, ROOT), file("D2", DOC, ROOT)] }),
+                ),
+            )
+            .up_to_n_times(1)
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        drive(&server, &[(ROOT, vec![file("D1", DOC, ROOT)])]).await;
+        Mock::given(method("GET"))
+            .and(path("/drive/v3/changes"))
+            .respond_with(
+                ResponseTemplate::new(400).set_body_json(
+                    json!({"error": {"code": 400, "errors": [{"reason": "invalid"}]}}),
+                ),
+            )
+            .mount(&server)
+            .await;
+        let b = bench(store().await, &server, ConnectorEndpoint::Vendor, {
+            let mut v = MockConnectVendors::new();
+            v.expect_refresh().returning(|_, _, _| Ok(None));
+            v
+        });
+        let tokens = grant("ya29.a", Some("1//r"), Duration::from_hours(1));
+        let (garden, id) = connector(&b, ConnectorEndpoint::Vendor, &tokens).await;
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        assert_eq!(b.count(garden).await, 2);
+
+        b.clock.advance(SYNC_EVERY);
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        let held = b
+            .store
+            .record_hashes(id, vec!["D1".into(), "D2".into()])
+            .await
+            .expect("hashes");
+        let ids: Vec<&str> = held.iter().map(|(r, _)| &*r.vendor_id).collect();
+        assert_eq!(ids, ["D1"]);
     }
 }

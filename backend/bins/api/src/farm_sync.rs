@@ -383,7 +383,16 @@ impl FarmSync {
             return self.finish(id, outcome, RunEnd::NoSources).await;
         }
         let renewable = row.connector.endpoint == ConnectorEndpoint::Vendor;
-        let grant = match self.grant(&row, tokens, renewable).await {
+        // Shutdown interrupts a renewal in flight: nothing is read, and the connector stays due.
+        let grant = tokio::select! {
+            biased;
+            () = shutdown.cancelled() => None,
+            grant = self.grant(&row, tokens, renewable) => Some(grant),
+        };
+        let Some(grant) = grant else {
+            return self.leave_due(&row, now).await;
+        };
+        let grant = match grant {
             Ok(grant) => grant,
             Err(e) => return self.stop(&row, row.cursors.clone(), &Halt::Vendor(e)).await,
         };
@@ -449,6 +458,19 @@ impl FarmSync {
     fn tokens(&self, row: &ConnectorRow) -> Option<StoredTokens> {
         let sealed = row.secret.as_ref()?;
         StoredTokens::unseal(&self.key, row.connector.id, sealed).ok()
+    }
+
+    /// A run that read nothing and leaves the connector due, as it was, for the next run.
+    async fn leave_due(&self, row: &ConnectorRow, now: Timestamp) -> RunEnd {
+        let outcome = SyncOutcome {
+            due_at: row.next_sync_at,
+            cursors: row.cursors.clone(),
+            synced_at: None,
+            next_sync_at: now,
+            last_error: row.last_error,
+        };
+        self.finish(row.connector.id, outcome, RunEnd::PagesLeft)
+            .await
     }
 
     /// The run's tokens: a connector of the vendor's own endpoint with a refresh token has
@@ -697,6 +719,9 @@ impl FarmSync {
             let page = page.map_err(Stop::Vendor)?;
             *probes = probes.saturating_sub(page.probes);
             self.store_page(run, src, &page).await?;
+            if let Some(listed) = &page.listed {
+                self.delete_unlisted(run, src, listed).await?;
+            }
             state.failing = false;
             if let Some(reread) = state.reread.as_mut() {
                 reread
@@ -744,6 +769,34 @@ impl FarmSync {
         if !gone.is_empty() {
             let deleted = self.store.delete_records(run.id, gone).await?;
             tracing::info!(source = %src.id, deleted, "records gone at the vendor deleted");
+        }
+        Ok(())
+    }
+
+    /// After a page that listed the whole source ([`FarmPage::listed`]): the source's records
+    /// whose vendor id the listing didn't hold are gone at the vendor.
+    async fn delete_unlisted(
+        &self,
+        run: &Run<'_>,
+        src: &ConnectorSource,
+        listed: &[String],
+    ) -> Result<(), Stop> {
+        let listed: std::collections::HashSet<&str> = listed.iter().map(String::as_str).collect();
+        let stored = self
+            .store
+            .source_vendor_ids_since(
+                run.id,
+                src.id.clone(),
+                Timestamp::from(chrono::DateTime::UNIX_EPOCH),
+            )
+            .await?;
+        let gone: Vec<String> = stored
+            .into_iter()
+            .filter(|v| !listed.contains(v.as_str()))
+            .collect();
+        if !gone.is_empty() {
+            let deleted = self.store.delete_records(run.id, gone).await?;
+            tracing::info!(source = %src.id, deleted, "records no longer listed deleted");
         }
         Ok(())
     }

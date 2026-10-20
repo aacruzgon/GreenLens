@@ -37,8 +37,8 @@ use serde::de::DeserializeOwned;
 pub use pkce::{InvalidVerifier, Pkce};
 pub use source::{DriveSource, FILES_PER_PAGE};
 pub use wire::{
-    Change, ChangeSet, DOCUMENT_MIME, DriveFile, FOLDER_MIME, FileKind, FileText, FolderListing,
-    PLAIN_TEXT_MIME, SPREADSHEET_MIME, TokenGrant,
+    Change, ChangePage, ChangeSet, DOCUMENT_MIME, DriveFile, FOLDER_MIME, FileKind, FileText,
+    FolderListing, PLAIN_TEXT_MIME, SPREADSHEET_MIME, TokenGrant,
 };
 
 use crate::{
@@ -431,6 +431,21 @@ impl DriveClient {
         read_text(response).await
     }
 
+    /// One file's or folder's metadata (`files.get` with the listing's fields). A file the token
+    /// can't see is `NotFound`.
+    pub async fn file(
+        &self,
+        token: &SecretString,
+        file_id: &str,
+    ) -> Result<DriveFile, FarmClientError> {
+        let path = format!("/drive/v3/files/{}", segment(file_id));
+        self.json("files.get", self.config.retry, || {
+            self.get(token, &path)
+                .query(&[("fields", FILE_FIELDS), ("supportsAllDrives", "true")])
+        })
+        .await
+    }
+
     /// `changes.getStartPageToken`: the token a first sync saves.
     pub async fn start_page_token(&self, token: &SecretString) -> Result<String, FarmClientError> {
         let start: wire::StartPageToken = self
@@ -442,18 +457,50 @@ impl DriveClient {
         Ok(start.start_page_token)
     }
 
+    /// One page of `changes.list` from `page_token`: its changes, and either the next page's
+    /// token or, on the last page, `newStartPageToken`. A page with neither is `Malformed`. An
+    /// unknown or expired token is `Refused` (`400`, reason `invalid`) or `NotFound`.
+    pub async fn changes_page(
+        &self,
+        token: &SecretString,
+        page_token: &str,
+    ) -> Result<ChangePage, FarmClientError> {
+        let fields = format!(
+            "nextPageToken,newStartPageToken,changes(fileId,removed,time,file({FILE_FIELDS}))"
+        );
+        let page_size = self.page_size();
+        let page: wire::ChangeList = self
+            .json("changes.list", self.config.retry, || {
+                self.get(token, "/drive/v3/changes").query(&[
+                    ("pageToken", page_token),
+                    ("fields", fields.as_str()),
+                    ("pageSize", page_size.as_str()),
+                    ("supportsAllDrives", "true"),
+                    ("includeItemsFromAllDrives", "true"),
+                    ("includeRemoved", "true"),
+                ])
+            })
+            .await?;
+        let page = ChangePage {
+            changes: page.changes,
+            next_page_token: page.next_page_token.filter(|t| !t.is_empty()),
+            new_start_page_token: page.new_start_page_token.filter(|t| !t.is_empty()),
+        };
+        if page.next_page_token.is_none() && page.new_start_page_token.is_none() {
+            return Err(malformed("changes.list"));
+        }
+        Ok(page)
+    }
+
     /// Every change since `page_token`, reading `changes.list` page by page until the page
     /// that carries `newStartPageToken`. Drive doesn't order the pages by time, so the caller
-    /// gets them all or an error.
+    /// gets them all or an error. The sync reads one page at a time instead
+    /// ([`Self::changes_page`]), so a long backlog never has to fit in one call.
     pub async fn changes(
         &self,
         token: &SecretString,
         page_token: &str,
     ) -> Result<ChangeSet, FarmClientError> {
-        let fields = format!(
-            "nextPageToken,newStartPageToken,changes(fileId,removed,time,file({FILE_FIELDS}))"
-        );
-        let page_size = self.page_size();
         let mut current = page_token.to_owned();
         let mut changes = Vec::new();
         let mut pages = 0_u32;
@@ -462,21 +509,10 @@ impl DriveClient {
             if pages == MAX_PAGES {
                 return Err(malformed("changes.list"));
             }
-            let page: wire::ChangeList = self
-                .json("changes.list", self.config.retry, || {
-                    self.get(token, "/drive/v3/changes").query(&[
-                        ("pageToken", current.as_str()),
-                        ("fields", fields.as_str()),
-                        ("pageSize", page_size.as_str()),
-                        ("supportsAllDrives", "true"),
-                        ("includeItemsFromAllDrives", "true"),
-                        ("includeRemoved", "true"),
-                    ])
-                })
-                .await?;
+            let page = self.changes_page(token, &current).await?;
             pages += 1;
             changes.extend(page.changes);
-            if let Some(new_start) = page.new_start_page_token.filter(|t| !t.is_empty()) {
+            if let Some(new_start) = page.new_start_page_token {
                 tracing::debug!(
                     vendor = VENDOR,
                     changes = changes.len(),

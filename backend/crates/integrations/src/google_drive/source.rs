@@ -1,21 +1,34 @@
 //! [`DriveSource`]: the `FarmSource` port over [`DriveClient`] ([connectors 6], docs/EON E4.3).
 //!
-//! A Drive connector has one chosen folder. A pass reads the files it has to read, at most
-//! [`FILES_PER_PAGE`] a page, so a throttled pass resumes from its cursor without reading a file
-//! twice:
+//! A Drive connector has one chosen folder. Each page does at most one vendor step that reads
+//! many files (the listing, or one page of `changes.list`) and then reads the next files of the
+//! queue, at most [`FILES_PER_PAGE`], so a throttled pass resumes from its cursor:
 //!
-//! - **The first sync** takes `changes.getStartPageToken` *before* it lists the folder, then
-//!   lists it recursively ([`DriveClient::list_folder`], at most 500 files), so a change made
-//!   during the listing is in the next read of `changes.list`.
-//! - **Later syncs** read `changes.list` from the saved token to its last page
-//!   ([`DriveClient::changes`]; Drive doesn't order its pages by time) and keep only the files
-//!   under the folder. A file moved out of it, trashed or deleted is reported in
-//!   [`FarmPage::removed`]; the sync never deletes by absence ([`FarmSource::reread_window`] is
-//!   `None`). The chosen folder itself deleted or trashed is `source_missing`.
+//! - **A listing** (the first sync, or a resync): `files.get` on the chosen folder, which is
+//!   `source_missing` when gone, trashed or not a folder; then `changes.getStartPageToken`
+//!   *before* the folder is listed recursively ([`DriveClient::list_folder`]), so a change made
+//!   during the listing is in the next read of `changes.list`. Every file is queued, and the
+//!   page reports every file listed in [`FarmPage::listed`], so the sync deletes the source's
+//!   records of files no longer there.
+//! - **Later syncs** read `changes.list` one page at a time from the cursor's token, Google's
+//!   own pattern: the cursor keeps `nextPageToken` while the backlog goes on, and
+//!   `newStartPageToken` once it ends, so a long backlog spreads over pages and runs and a `429`
+//!   loses at most one page. Only the files under the folder are kept. A file moved out of it,
+//!   trashed or deleted is reported in [`FarmPage::removed`]; the sync never deletes by absence
+//!   ([`FarmSource::reread_window`] is `None`). The chosen folder trashed or deleted is
+//!   `source_missing`. A token Drive no longer accepts (`400`, `404`) starts a resync: the
+//!   listing above.
 //! - **Text:** a Google Doc exported as `text/plain`, a Sheet as `text/csv` (its first tab only,
 //!   a Google fact), a `text/plain` file downloaded, anything else by name only; each cut at
 //!   1 MB by the client. A file Drive won't hand over (`403 fileNotDownloadable`, an export over
-//!   Google's 10 MB limit) is kept by name only; one gone since the change (`404`) is removed.
+//!   Google's 10 MB limit), and a "text" file that is mostly bytes no text has, is kept by name;
+//!   one gone since the change (`404`) is removed.
+//! - **One file that fails** (Drive down for it, a timeout, an answer that doesn't parse) goes
+//!   to the back of the queue with its tries counted, and the page goes on with the others; a
+//!   page stops after [`FAILURES_PER_PAGE`] such failures. A file is tried once a run, and after
+//!   [`MAX_TRIES`] runs it is skipped, its record left as it was. When only files that failed in
+//!   this run are left, the page fails with `vendor_unavailable`, so the run stops and the next
+//!   one, 15 minutes later, tries them again. A refused token or a `429` fails the page at once.
 //!
 //! **Under the folder.** Drive gives a file's `parents`, not its path, and moving a folder
 //! changes only that folder, never the files inside it. So the cursor keeps the tree: every
@@ -25,11 +38,16 @@
 //! tree takes its subfolders and their files with it (removed), and a folder moved in is listed
 //! recursively, since its files bring no changes of their own. Then each file change adds,
 //! re-reads or removes its file. Only files already held are reported removed, so the thousands
-//! of changes elsewhere in an account cost nothing but the reading.
+//! of changes elsewhere in an account cost nothing but the reading. A change with no file id (a
+//! shared drive's own change) or with no file that isn't a removal is ignored.
 //!
-//! The cursor is a small JSON object only this module reads: the page token, the tree, the
-//! files held and the files still to read. A cursor it can't read (none yet, another shape)
-//! starts a first sync, which reads again but loses no record.
+//! **Limits.** The folder may hold at most 500 files and 500 folders ([`MAX_FILES`],
+//! [`MAX_FOLDERS`]). Past either, the page fails with `too_large`, like the garden's 10,000
+//! records: nothing more runs until the owner chooses a smaller folder.
+//!
+//! The cursor is a small JSON object only this module reads: the page token, whether a
+//! backlog is in progress, the tree, the files held and the files still to read. A cursor it
+//! can't read (none yet, another shape) starts a listing, which deletes nothing it still finds.
 //!
 //! [connectors 6]: ../../../docs/connectors/README.md#6-sync
 
@@ -52,8 +70,8 @@ use domain::{
 };
 
 use super::{
-    Change, ChangeSet, DriveClient, DriveFile, ExportFormat, FileKind, MAX_FILES, MAX_FOLDERS,
-    MAX_TEXT_BYTES, VENDOR,
+    Change, DriveClient, DriveFile, ExportFormat, FileKind, MAX_FILES, MAX_FOLDERS, MAX_TEXT_BYTES,
+    VENDOR,
 };
 use crate::farm::FarmClientError;
 
@@ -62,6 +80,14 @@ pub const FILES_PER_PAGE: usize = 25;
 
 /// The text one page holds before it stops taking files: eight files at the 1 MB cut.
 const TEXT_PER_PAGE: usize = 8 * MAX_TEXT_BYTES;
+
+/// Failed file reads after which a page stops: each can take the client's retries and
+/// timeouts.
+pub const FAILURES_PER_PAGE: usize = 2;
+
+/// Runs a file's read may fail in before it is skipped, its record left as it was: about an
+/// hour of an outage at one run every 15 minutes.
+pub const MAX_TRIES: u8 = 5;
 
 const KIND: ConnectorKind = ConnectorKind::GoogleDrive;
 
@@ -75,9 +101,12 @@ pub struct DriveSource {
 /// The adapter's cursor, serialised into [`SyncCursor`].
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Cursor {
-    /// Where `changes.list` continues: the start token taken before the first listing, then
-    /// each read's `newStartPageToken`.
+    /// Where `changes.list` continues: the start token taken before the listing, then each
+    /// page's `nextPageToken` or, on the last page, `newStartPageToken`.
     token: String,
+    /// `token` is a `nextPageToken`: a backlog of changes is being read.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    paging: bool,
     /// Every folder under the chosen one (not the chosen one itself) → the folder it is in.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     folders: BTreeMap<String, String>,
@@ -99,6 +128,20 @@ struct Queued {
     at: Option<Timestamp>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     link: Option<String>,
+    /// Runs whose read of the file failed.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    tries: u8,
+    /// The start of the run whose read last failed: tried again in a later run only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    failed_at: Option<Timestamp>,
+}
+
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if passes a reference"
+)]
+fn is_zero(n: &u8) -> bool {
+    *n == 0
 }
 
 impl Queued {
@@ -109,6 +152,8 @@ impl Queued {
             mime: file.mime_type.clone(),
             at: file.modified_time.map(Timestamp::from),
             link: file.web_view_link.clone(),
+            tries: 0,
+            failed_at: None,
         }
     }
 
@@ -117,7 +162,7 @@ impl Queued {
     }
 }
 
-/// What a change set did to the cursor.
+/// What a change page did to the cursor.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Applied {
     /// Files held before and no longer under the folder.
@@ -127,12 +172,41 @@ struct Applied {
     joined: Vec<String>,
 }
 
-/// The chosen folder was deleted or trashed.
+/// Why the folder can't be followed.
 #[derive(Debug, PartialEq, Eq)]
-struct RootGone;
+enum Halt {
+    /// The chosen folder was deleted or trashed.
+    RootGone,
+    /// More than [`MAX_FILES`] files or [`MAX_FOLDERS`] folders under it.
+    TooLarge,
+}
+
+impl Halt {
+    fn into_error(self, root: &str) -> FarmSourceError {
+        let source_id = root.to_owned();
+        match self {
+            Self::RootGone => FarmSourceError::SourceMissing {
+                vendor: KIND,
+                source_id,
+            },
+            Self::TooLarge => FarmSourceError::TooLarge {
+                vendor: KIND,
+                source_id,
+            },
+        }
+    }
+}
+
+/// How a later sync's step ended.
+enum Step {
+    /// A change page applied: the cursor, and the files no longer under the folder.
+    Applied(Cursor, Vec<String>),
+    /// Drive no longer accepts the cursor's token: list the folder again.
+    Resync,
+}
 
 impl Cursor {
-    /// A cursor this module wrote; `None` for anything else, which starts a first sync.
+    /// A cursor this module wrote; `None` for anything else, which starts a listing.
     fn parse(cursor: Option<&SyncCursor>) -> Option<Self> {
         cursor
             .and_then(|c| serde_json::from_str::<Self>(&c.0).ok())
@@ -153,17 +227,30 @@ impl Cursor {
         parents.iter().find(|p| self.is_folder(root, p)).cloned()
     }
 
-    /// Adds a listed file to the files held and to the queue; one held already, or over the
-    /// 500-file cap, is left alone.
-    fn add_listed(&mut self, root: &str, file: &DriveFile) {
-        if self.files.contains_key(&file.id) || self.files.len() >= MAX_FILES {
-            return;
+    /// Adds a folder found by a listing under its parent.
+    fn add_folder(&mut self, id: String, parent: String) -> Result<(), Halt> {
+        if !self.folders.contains_key(&id) && self.folders.len() >= MAX_FOLDERS {
+            return Err(Halt::TooLarge);
         }
-        let home = self
-            .home(root, &file.parents)
-            .unwrap_or_else(|| root.to_owned());
+        self.folders.entry(id).or_insert(parent);
+        Ok(())
+    }
+
+    /// Adds a listed file to the files held and to the queue. One held already is left alone,
+    /// and so is one whose parent isn't a folder of the tree.
+    fn add_listed(&mut self, root: &str, file: &DriveFile) -> Result<(), Halt> {
+        if self.files.contains_key(&file.id) {
+            return Ok(());
+        }
+        let Some(home) = self.home(root, &file.parents) else {
+            return Ok(());
+        };
+        if self.files.len() >= MAX_FILES {
+            return Err(Halt::TooLarge);
+        }
         self.files.insert(file.id.clone(), home);
         self.queue.push_back(Queued::of(file));
+        Ok(())
     }
 
     /// Queues `file` to read, replacing an earlier entry for it.
@@ -172,13 +259,14 @@ impl Cursor {
         self.queue.push_back(Queued::of(file));
     }
 
-    /// Applies a change set: the folder tree first, then the files ([module docs](self)).
-    fn apply(&mut self, root: &str, set: &ChangeSet) -> Result<Applied, RootGone> {
-        let changes = latest(&set.changes);
+    /// Applies one page of changes: the folder tree first, then the files ([module
+    /// docs](self)). The page token is the caller's to move.
+    fn apply(&mut self, root: &str, changes: &[Change]) -> Result<Applied, Halt> {
+        let changes = latest(changes);
         if let Some(change) = changes.get(root)
-            && (change.removed || change.file.as_ref().is_none_or(|f| f.trashed))
+            && (change.removed || change.file.as_ref().is_some_and(|f| f.trashed))
         {
-            return Err(RootGone);
+            return Err(Halt::RootGone);
         }
         let held_before: Vec<String> = self.files.keys().cloned().collect();
         let folders_before = self.folders.clone();
@@ -188,7 +276,7 @@ impl Cursor {
             .values()
             .filter(|c| {
                 c.file.as_ref().map(DriveFile::kind) == Some(FileKind::Folder)
-                    || (c.file.is_none() && self.folders.contains_key(&c.file_id))
+                    || (c.removed && c.file.is_none() && self.folders.contains_key(&c.file_id))
             })
             .map(|c| c.file_id.as_str())
             .filter(|id| *id != root)
@@ -214,18 +302,13 @@ impl Cursor {
                 None => parent_of.remove(*id),
             };
         }
-        let mut tree: BTreeMap<String, String> = parent_of
+        let tree: BTreeMap<String, String> = parent_of
             .iter()
             .filter(|(id, _)| reaches(root, id, &parent_of))
             .map(|(id, p)| (id.clone(), p.clone()))
             .collect();
         if tree.len() > MAX_FOLDERS {
-            // Past the cap, no new folder is followed; those known before stay.
-            tracing::info!(
-                vendor = VENDOR,
-                "the folder holds more folders than are followed"
-            );
-            tree.retain(|id, _| folders_before.contains_key(id));
+            return Err(Halt::TooLarge);
         }
         self.folders = tree;
         let joined: Vec<String> = self
@@ -243,9 +326,9 @@ impl Cursor {
         self.files
             .retain(|_, home| home.as_str() == root || tree_now.contains_key(home.as_str()));
 
-        // Then each file change.
+        // Then each file change. A change with no file that isn't a removal says nothing about
+        // where the file is.
         for (id, change) in &changes {
-            // A change with no file that isn't a removal says nothing about where the file is.
             if changed_folders.contains(id)
                 || *id == root
                 || (!change.removed && change.file.is_none())
@@ -258,10 +341,11 @@ impl Cursor {
                 .filter(|f| !change.removed && !f.trashed);
             match file.and_then(|f| self.home(root, &f.parents).map(|h| (f, h))) {
                 Some((f, home)) => {
-                    if self.files.contains_key(*id) || self.files.len() < MAX_FILES {
-                        self.files.insert((*id).to_owned(), home);
-                        self.enqueue(f);
+                    if !self.files.contains_key(*id) && self.files.len() >= MAX_FILES {
+                        return Err(Halt::TooLarge);
                     }
+                    self.files.insert((*id).to_owned(), home);
+                    self.enqueue(f);
                 }
                 None => {
                     self.files.remove(*id);
@@ -270,7 +354,6 @@ impl Cursor {
         }
         let files = &self.files;
         self.queue.retain(|q| files.contains_key(&q.id));
-        self.token.clone_from(&set.new_start_page_token);
         Ok(Applied {
             removed: held_before
                 .into_iter()
@@ -281,10 +364,11 @@ impl Cursor {
     }
 }
 
-/// The last change of each file: the newest `time`, and of equal times the later in the set.
+/// The last change of each file: the newest `time`, and of equal times the later in the page.
+/// A change with no file id (a shared drive's own) is left out.
 fn latest(changes: &[Change]) -> BTreeMap<&str, &Change> {
     let mut out: BTreeMap<&str, &Change> = BTreeMap::new();
-    for change in changes {
+    for change in changes.iter().filter(|c| !c.file_id.is_empty()) {
         let newer = out
             .get(change.file_id.as_str())
             .is_none_or(|old| change.time >= old.time);
@@ -295,8 +379,8 @@ fn latest(changes: &[Change]) -> BTreeMap<&str, &Change> {
     out
 }
 
-/// A client error as the port's. Every call's `404` is about a file or a page token, never the
-/// chosen folder, whose loss shows in the changes instead.
+/// A client error as the port's. A `404` here is about a file or a page token: the chosen
+/// folder's own is checked by [`DriveSource::list`] and in the changes.
 fn source_error(error: FarmClientError) -> FarmSourceError {
     error.into_source_error(KIND, None)
 }
@@ -314,6 +398,19 @@ fn reaches(root: &str, id: &str, parent_of: &BTreeMap<String, String>) -> bool {
     false
 }
 
+/// A "text" file that is mostly bytes no text has (a binary file labelled `text/plain`): more
+/// than a tenth of its characters are U+FFFD, which stands for invalid UTF-8, or NUL.
+fn looks_binary(text: &str) -> bool {
+    let (mut total, mut bad) = (0_usize, 0_usize);
+    for c in text.chars() {
+        total += 1;
+        if c == '\u{FFFD}' || c == '\0' {
+            bad += 1;
+        }
+    }
+    bad * 10 > total
+}
+
 impl DriveSource {
     /// An adapter over `client`.
     pub fn new(client: DriveClient) -> Self {
@@ -325,127 +422,183 @@ impl DriveSource {
         &self.client
     }
 
-    /// One page: the listing on a first sync, else the changes when no pass is in progress;
-    /// then the next files of the queue.
+    /// One page: a listing when there is no cursor, else, when the queue is empty, the next
+    /// page of changes (a resync when Drive refuses the token); then the next files of the
+    /// queue.
     async fn page(
         &self,
         token: &SecretString,
         request: &FarmPageRequest,
     ) -> Result<FarmPage, FarmSourceError> {
         let root = request.source.id.as_str();
-        let (mut cursor, mut removed) = match Cursor::parse(request.cursor.as_ref()) {
-            None => (
-                self.first(token, root).await.map_err(source_error)?,
-                Vec::new(),
-            ),
-            Some(cursor) if !cursor.queue.is_empty() => (cursor, Vec::new()),
-            Some(cursor) => self.changes(token, root, cursor).await?,
-        };
         let now = request.oldest.plus(FARM_RECORD_KEEP);
-        let (items, gone) = self
-            .read_queue(token, &mut cursor, now)
-            .await
-            .map_err(source_error)?;
+        let mut listed = None;
+        let mut removed = Vec::new();
+        let mut cursor = match Cursor::parse(request.cursor.as_ref()) {
+            Some(cursor) if !cursor.queue.is_empty() => cursor,
+            Some(cursor) => match self.changes(token, root, cursor).await? {
+                Step::Applied(cursor, gone) => {
+                    removed = gone;
+                    cursor
+                }
+                Step::Resync => {
+                    let (cursor, ids) = self.list(token, root).await?;
+                    listed = Some(ids);
+                    cursor
+                }
+            },
+            None => {
+                let (cursor, ids) = self.list(token, root).await?;
+                listed = Some(ids);
+                cursor
+            }
+        };
+        let (items, gone) = self.read_queue(token, &mut cursor, now).await?;
         removed.extend(gone);
         Ok(FarmPage {
             items,
             removed,
             kept: Vec::new(),
-            more: !cursor.queue.is_empty(),
+            listed,
+            more: cursor.paging || !cursor.queue.is_empty(),
             cursor: cursor.to_sync_cursor(),
             probes: 0,
         })
     }
 
-    /// A later sync with no pass in progress: every change since the cursor's token, applied
-    /// to it, and the folders that joined the tree listed. Returns the cursor and the files
-    /// removed.
+    /// The next page of changes from the cursor's token, applied to it, and the folders that
+    /// joined the tree listed. A token Drive refuses (`400`) or doesn't know (`404`) asks for a
+    /// resync instead.
     async fn changes(
         &self,
         token: &SecretString,
         root: &str,
         mut cursor: Cursor,
-    ) -> Result<(Cursor, Vec<String>), FarmSourceError> {
-        let set = self
-            .client
-            .changes(token, &cursor.token)
-            .await
-            .map_err(source_error)?;
-        let applied =
-            cursor
-                .apply(root, &set)
-                .map_err(|RootGone| FarmSourceError::SourceMissing {
-                    vendor: KIND,
-                    source_id: root.to_owned(),
-                })?;
+    ) -> Result<Step, FarmSourceError> {
+        let page = match self.client.changes_page(token, &cursor.token).await {
+            Ok(page) => page,
+            Err(
+                FarmClientError::Refused { status: 400, .. } | FarmClientError::NotFound { .. },
+            ) => {
+                tracing::info!(
+                    vendor = VENDOR,
+                    "the change token is refused; listing again"
+                );
+                return Ok(Step::Resync);
+            }
+            Err(e) => return Err(source_error(e)),
+        };
+        let applied = cursor
+            .apply(root, &page.changes)
+            .map_err(|h| h.into_error(root))?;
         for folder in &applied.joined {
             let listing = self
                 .client
                 .list_folder(token, folder)
                 .await
                 .map_err(source_error)?;
+            if listing.truncated {
+                return Err(Halt::TooLarge.into_error(root));
+            }
             for (id, parent) in listing.tree {
-                if cursor.folders.len() < MAX_FOLDERS {
-                    cursor.folders.entry(id).or_insert(parent);
-                }
+                cursor
+                    .add_folder(id, parent)
+                    .map_err(|h| h.into_error(root))?;
             }
             for file in &listing.files {
-                cursor.add_listed(root, file);
+                cursor
+                    .add_listed(root, file)
+                    .map_err(|h| h.into_error(root))?;
             }
+        }
+        match (page.new_start_page_token, page.next_page_token) {
+            (Some(start), _) => {
+                cursor.token = start;
+                cursor.paging = false;
+            }
+            (None, Some(next)) => {
+                cursor.token = next;
+                cursor.paging = true;
+            }
+            (None, None) => unreachable!("changes_page refuses a page with neither token"),
         }
         tracing::debug!(
             vendor = VENDOR,
-            changes = set.changes.len(),
-            pages = set.pages,
+            changes = page.changes.len(),
+            paging = cursor.paging,
             queued = cursor.queue.len(),
             removed = applied.removed.len(),
-            "changes applied"
+            "change page applied"
         );
-        Ok((cursor, applied.removed))
+        Ok(Step::Applied(cursor, applied.removed))
     }
 
-    /// A first sync's cursor: the start token first, then the folder listed recursively, every
-    /// file queued.
-    async fn first(&self, token: &SecretString, root: &str) -> Result<Cursor, FarmClientError> {
-        let start = self.client.start_page_token(token).await?;
-        let listing = self.client.list_folder(token, root).await?;
+    /// A listing: the chosen folder checked, the start token first, then the folder listed
+    /// recursively and every file queued. Returns the cursor and every file id listed.
+    async fn list(
+        &self,
+        token: &SecretString,
+        root: &str,
+    ) -> Result<(Cursor, Vec<String>), FarmSourceError> {
+        match self.client.file(token, root).await {
+            Ok(folder) if folder.kind() == FileKind::Folder && !folder.trashed => {}
+            Ok(_) | Err(FarmClientError::NotFound { .. }) => {
+                return Err(Halt::RootGone.into_error(root));
+            }
+            Err(e) => return Err(source_error(e)),
+        }
+        let start = self
+            .client
+            .start_page_token(token)
+            .await
+            .map_err(source_error)?;
+        let listing = self
+            .client
+            .list_folder(token, root)
+            .await
+            .map_err(source_error)?;
         if listing.truncated {
-            tracing::info!(
-                vendor = VENDOR,
-                files = listing.files.len(),
-                "the folder holds more than the listing reads; the rest is left out"
-            );
+            return Err(Halt::TooLarge.into_error(root));
         }
         let mut cursor = Cursor {
             token: start,
-            folders: listing.tree.into_iter().collect(),
             ..Cursor::default()
         };
-        for file in &listing.files {
-            cursor.add_listed(root, file);
+        for (id, parent) in listing.tree {
+            cursor
+                .add_folder(id, parent)
+                .map_err(|h| h.into_error(root))?;
         }
-        Ok(cursor)
+        for file in &listing.files {
+            cursor
+                .add_listed(root, file)
+                .map_err(|h| h.into_error(root))?;
+        }
+        let ids = cursor.files.keys().cloned().collect();
+        Ok((cursor, ids))
     }
 
-    /// Reads the next files of the queue into items, up to [`FILES_PER_PAGE`] or
-    /// [`TEXT_PER_PAGE`]. Returns the items and the files gone since they were queued.
+    /// Reads the next files of the queue into items, up to [`FILES_PER_PAGE`],
+    /// [`TEXT_PER_PAGE`] or [`FAILURES_PER_PAGE`], skipping those that failed in this run
+    /// (`now`, the run's start). Returns the items and the files gone since they were queued.
     async fn read_queue(
         &self,
         token: &SecretString,
         cursor: &mut Cursor,
         now: Timestamp,
-    ) -> Result<(Vec<FarmItem>, Vec<String>), FarmClientError> {
+    ) -> Result<(Vec<FarmItem>, Vec<String>), FarmSourceError> {
         let mut items = Vec::new();
         let mut gone = Vec::new();
-        let mut bytes = 0;
-        let mut files = 0;
-        while files < FILES_PER_PAGE && bytes < TEXT_PER_PAGE {
-            let Some(file) = cursor.queue.front().cloned() else {
+        let (mut bytes, mut reads, mut failures) = (0, 0, 0);
+        while reads < FILES_PER_PAGE && bytes < TEXT_PER_PAGE && failures < FAILURES_PER_PAGE {
+            let Some(at) = cursor.queue.iter().position(|q| q.failed_at != Some(now)) else {
                 break;
             };
-            files += 1;
+            let file = cursor.queue[at].clone();
+            reads += 1;
             match self.text(token, &file).await {
                 Ok(text) => {
+                    cursor.queue.remove(at);
                     bytes += text.len();
                     items.push(FarmItem {
                         link: file.link.clone().unwrap_or_else(|| {
@@ -460,18 +613,51 @@ impl DriveSource {
                     });
                 }
                 Err(FarmClientError::NotFound { .. }) => {
+                    cursor.queue.remove(at);
                     cursor.files.remove(&file.id);
                     gone.push(file.id);
                 }
-                Err(e) => return Err(e),
+                Err(
+                    e @ (FarmClientError::AuthRefused { .. } | FarmClientError::RateLimited { .. }),
+                ) => {
+                    return Err(source_error(e));
+                }
+                Err(e) => {
+                    failures += 1;
+                    let mut failed = cursor.queue.remove(at).expect("the file at its position");
+                    failed.tries = failed.tries.saturating_add(1);
+                    failed.failed_at = Some(now);
+                    tracing::info!(
+                        vendor = VENDOR,
+                        tries = failed.tries,
+                        error = %e,
+                        "a file's read failed"
+                    );
+                    if failed.tries >= MAX_TRIES {
+                        tracing::warn!(
+                            vendor = VENDOR,
+                            "a file failed in {MAX_TRIES} runs; skipped, its record left as it was"
+                        );
+                    } else {
+                        cursor.queue.push_back(failed);
+                    }
+                }
             }
-            cursor.queue.pop_front();
+        }
+        // Only files that failed in this run are left, and none was tried on this page: the
+        // run stops here, and the next one tries them again.
+        if reads == 0 && !cursor.queue.is_empty() {
+            return Err(FarmSourceError::Unavailable {
+                vendor: KIND,
+                source: "the files left failed in this run".into(),
+            });
         }
         Ok((items, gone))
     }
 
     /// A file's text: a Doc exported as text, a Sheet as CSV, plain text downloaded, anything
-    /// else none. A file Drive refuses to hand over is kept by name only.
+    /// else none. A file Drive refuses to hand over, or a "text" file that isn't text, is kept
+    /// by name only.
     async fn text(&self, token: &SecretString, file: &Queued) -> Result<String, FarmClientError> {
         let read = match file.kind() {
             FileKind::Document => {
@@ -484,6 +670,10 @@ impl DriveSource {
             FileKind::Folder | FileKind::Other => return Ok(String::new()),
         };
         match read {
+            Ok(text) if file.kind() == FileKind::PlainText && looks_binary(&text.text) => {
+                tracing::debug!(vendor = VENDOR, "a binary file kept by name only");
+                Ok(String::new())
+            }
             Ok(text) => Ok(text.text),
             Err(FarmClientError::Refused { status, code, .. }) => {
                 tracing::debug!(
