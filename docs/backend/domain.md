@@ -3640,7 +3640,9 @@ pub enum ChatChunk {
     },
     /// A complete reasoning block, to replay on the next request of the tool loop.
     Reasoning(ReasoningBlock),
-    /// Token counts, once known.
+    /// Token counts, once known. The counts are cumulative for the call: a later `Usage`
+    /// replaces an earlier one (it is not added to it), and the last one before `Done` is the
+    /// call's total.
     Usage(Usage),
     /// The end.
     Done(StopReason),

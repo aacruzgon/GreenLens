@@ -239,7 +239,13 @@ impl ChatModel for AnthropicChat {
             while let Some(event) = events.next().await {
                 let event = event.map_err(|e| e.into_model_error(label))?;
                 let output = acc.apply(event).map_err(|e| e.into_model_error(label))?;
-                stopped |= matches!(output, Some(Output::Stop(_)));
+                if matches!(output, Some(Output::Stop(_))) {
+                    // The `message_delta` with the stop reason also carries the final output
+                    // count, which the accumulator merges without emitting: send it before
+                    // `Done`, or the call's usage stays at an earlier, smaller count.
+                    stopped = true;
+                    yield ChatChunk::Usage(acc.usage().to_domain());
+                }
                 if let Some(c) = output.and_then(chunk) {
                     yield c;
                 }
@@ -449,6 +455,70 @@ mod tests {
         assert!(matches!(
             items.last(),
             Some(Err(ModelError::Unavailable { .. }))
+        ));
+    }
+
+    /// The final output count comes in the `message_delta` that carries the stop reason; the
+    /// last `Usage` before `Done` must hold it (found by the era-eval harness, docs/EON E8.1).
+    #[tokio::test]
+    async fn the_last_usage_before_done_has_the_final_output_count() {
+        use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};
+
+        let server = MockServer::start().await;
+        let body = concat!(
+            "event: message_start\n",
+            "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-opus-5-5\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":5,\"output_tokens\":1}}}\n\n",
+            "event: content_block_start\n",
+            "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+            "event: content_block_delta\n",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Water the bed.\"}}\n\n",
+            "event: content_block_stop\n",
+            "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+            "event: message_delta\n",
+            "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":42}}\n\n",
+            "event: message_stop\n",
+            "data: {\"type\":\"message_stop\"}\n\n",
+        );
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(body),
+            )
+            .mount(&server)
+            .await;
+        let mut config = AnthropicConfig::new("test-key".to_owned().into());
+        config.base_url = server.uri();
+        config.retry = integrations::http::RetryPolicy::NONE;
+        let a = AnthropicChat::new(AnthropicClient::new(
+            integrations::http::client(&integrations::http::HttpConfig::default()).unwrap(),
+            config,
+        ));
+        let request = ChatRequest {
+            purpose: ChatPurpose::Chat,
+            system: "s".to_owned(),
+            messages: vec![ChatMessage {
+                role: ChatRole::User,
+                content: vec![ContentPart::Text("hi".to_owned())],
+            }],
+            tools: vec![],
+            response_schema: None,
+            max_tokens: 100,
+        };
+        let items: Vec<_> = a.stream(&request).map(Result::unwrap).collect().await;
+        let last_usage = items
+            .iter()
+            .rev()
+            .find_map(|c| match c {
+                ChatChunk::Usage(u) => Some(*u),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(last_usage.tokens_in, 5);
+        assert_eq!(last_usage.tokens_out, 42);
+        assert!(matches!(
+            items.last(),
+            Some(ChatChunk::Done(StopReason::EndTurn))
         ));
     }
 }

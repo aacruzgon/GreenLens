@@ -8,6 +8,11 @@ publish.workspace = true
 [lints]
 workspace = true
 
+# The modules are a library so `backend/tools/era-eval` can run the farm sync (src/lib.rs); the
+# binary is main.rs. Its doc comments hold shell listings, not doc tests.
+[lib]
+doctest = false
+
 [features]
 default = []
 # HEIC uploads through the system libheif (>= 1.19); the api image builds with it.
