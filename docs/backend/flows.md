@@ -1,6 +1,6 @@
 # PDM Backend Flows
 
-> **Status:** Draft v0.2.4, 2026-10-19. v0.2.4: the farm sync reads the sources of the lowest round, so a spent budget moves on to the next sources on the next run and `synced_at` is set when a round ends, and offers two older-item checks a run (`probe_limit`); section 11 adds the farm connectors' `connectors` loop with the sync's sequence (pages from a saved cursor, only changed chunks embedded, the daily 7-day re-read, the stopping codes), the `beliefs` loop it lacked, and the cleanup of old Slack messages; section 13 seeds the demo garden's `era` connectors after resuming deletions. v0.2.3: the chat turn offers `search_farm_records` only to a garden with farm records (EON E5.2, gap G6). v0.2.2: the scan stream closes on a 15-second re-check (rest without an event, a deleted scan), a stream can close before a step's last events (the app refetches on close), image bodies end on shutdown, and the worker's shutdown drops a `complete` or heartbeat in flight, so it ends within `DRAIN_SECONDS`. v0.2.1: the scan stream ends on a duplicate flagged `rests`, the global body cap is 20 MiB + 128 KiB, and the `api` container's grace period is 190 s. v0.2: the diagrams follow the cross-crate fixes (one wake-up path for the claim long poll, one `fail_scan` per final failure, the sweep as the only question continuation, late events dropped, deletes through one `DeleteQueue`, the account tombstone, SoilGrids retry times, guided stage events, the plan step's release after 3 lost compare-and-sets), and section 20 marks each gap fixed and where. v0.1: sequence diagrams and state machines for every server-side flow, from a request's layers to a scan's steps, a job's lease, a chat turn, deletion, the scheduler and start-up. Every name is a type, trait or function from the crate documents and the compiled scratch workspace.
+> **Status:** Draft v0.2.4, 2026-10-19. v0.2.4: the farm sync rotates the sources per run, each run starting after the last source the previous one read, with `synced_at` set only when every chosen source has finished its pass in the round, offers two older-item checks a run (`probe_limit`), as many on a page as its budget covers, and reads the garden's record count before each page; section 11 adds the farm connectors' `connectors` loop with the sync's sequence (pages from a saved cursor, only changed chunks embedded, the daily 7-day re-read, the stopping codes), the `beliefs` loop it lacked, and the cleanup of old Slack messages; section 13 seeds the demo garden's `era` connectors after resuming deletions. v0.2.3: the chat turn offers `search_farm_records` only to a garden with farm records (EON E5.2, gap G6). v0.2.2: the scan stream closes on a 15-second re-check (rest without an event, a deleted scan), a stream can close before a step's last events (the app refetches on close), image bodies end on shutdown, and the worker's shutdown drops a `complete` or heartbeat in flight, so it ends within `DRAIN_SECONDS`. v0.2.1: the scan stream ends on a duplicate flagged `rests`, the global body cap is 20 MiB + 128 KiB, and the `api` container's grace period is 190 s. v0.2: the diagrams follow the cross-crate fixes (one wake-up path for the claim long poll, one `fail_scan` per final failure, the sweep as the only question continuation, late events dropped, deletes through one `DeleteQueue`, the account tombstone, SoilGrids retry times, guided stage events, the plan step's release after 3 lost compare-and-sets), and section 20 marks each gap fixed and where. v0.1: sequence diagrams and state machines for every server-side flow, from a request's layers to a scan's steps, a job's lease, a chat turn, deletion, the scheduler and start-up. Every name is a type, trait or function from the crate documents and the compiled scratch workspace.
 
 Companion to the [backend architecture](README.md) and the server-side half of the [frontend flows](../frontend/flows.md). Every request, event and job here is defined in the [data contracts](../architecture/contracts.md). The system-level flows are in [architecture 8](../architecture/README.md#8-main-flows). This document shows how the crates work together at run time: which handler, entry point, repository method and adapter each arrow is.
 
@@ -1093,13 +1093,14 @@ sequenceDiagram
     Sched->>Store: due_connectors(now, 4): active, next_sync_at passed, not stopped by too_large or source_missing
     par each connector, side by side
         Sync->>Sync: FarmSources by kind and endpoint; ConnectorKey::unseal the token
-        Sync->>Store: garden_record_count
-        loop each source of the lowest round, from one further on each round, page by page from its SourceState, until the pass ends, 3 min pass or shutdown
+        Note over Sync: Rotation, in the cursors under SYNC_STATE_KEY: the round in progress and the source to start from
+        loop each source still to finish its pass in the round, in order from there, page by page from its SourceState, until a pass ends, 3 min pass, shutdown or a stop
             Note over Sync: a day after the last finished pass, and with a reread_window, the pass starts 7 days back (reread_from)
-            Sync->>Src: read_page(token, cursor, oldest = now - 180 days, reread_from, probe_limit: of 2 a run, 0 on a first pass or under 70 s left)
+            Sync->>Src: read_page(token, cursor, oldest = now - 180 days, reread_from, probe_limit: of 2 a run, 0 on a first pass, else what the budget left covers at 70 s each after 70 s for the page)
             Src-->>Sync: FarmPage: items, removed, kept, cursor, more, probes
             Sync->>Store: record_hashes(page's vendor ids)
-            Sync->>Sync: chunk (2,000 chars), text_hash; stop with too_large past 10,000 records
+            Sync->>Sync: chunk (2,000 chars), text_hash
+            Sync->>Store: garden_record_count for a page with new records: too_large past 10,000 stops the run
             Sync->>Emb: embed(Document, new or changed chunks only), 32 a call
             Sync->>Store: upsert_records (no vector: the stored one stays), delete_chunks_from, delete_records(removed)
             opt the re-read pass ended
@@ -1107,9 +1108,10 @@ sequenceDiagram
                 Sync->>Store: delete_records(not seen and not kept)
             end
         end
-        alt the round ended: every source finished a pass since the last
-            Sync->>Store: finish_sync(cursors, synced_at now, next +15 min)
-        else pages or sources of the round left
+        Note over Sync: the next run starts after the last source asked for a page (one further on at the round's end)
+        alt the round ended: every chosen source has finished its pass in it
+            Sync->>Store: finish_sync(cursors and rotation, synced_at now, next +15 min)
+        else a source of the round mid-pass or not reached
             Sync->>Store: finish_sync(cursors, next now)
         else the vendor or the limit stopped it
             Sync->>Store: finish_sync(cursors, last_error, next: Retry-After for rate_limited, else +15 min)
@@ -1121,9 +1123,9 @@ sequenceDiagram
 ```
 
 - **No duplicates.** Records are keyed by `(connector, vendor_id, n)` and a pass continues from its saved cursor, so a throttled first sync finishes on a later run without storing a message twice ([api 16](api.md#the-farm-sync)).
-- **Rounds.** A source that finishes its pass moves to the next round; a run reads only the sources in the lowest, so a run out of budget is followed by one that continues with the next source, not the first, and every chosen source is read once a round ([api 16](api.md#the-farm-sync)).
+- **Rounds.** The rotation moves every run: the next run starts after the last source this one asked for a page, whether it stopped on the budget, a vendor error or the round's end. So a source with a long first pass or one that keeps failing doesn't hold up the others, a source left mid-pass resumes from its cursor when its turn comes again, a source just added joins the round in progress, and every chosen source is read once a round; the round ends only when each has finished its pass in it ([api 16](api.md#the-farm-sync)).
 - **Slack's cursor** holds the newest `ts` of finished passes, a pass with pages left and each thread's read state, so a quiet channel costs one `conversations.history` call (up to a minute of the team's Tier 1 pacer) and an unchanged thread no `conversations.replies` call ([integrations 15](integrations.md#slacksource-the-port-for-the-sync)).
-- **A Sync now during a run.** A **Sync now** or new sources during the run move `next_sync_at` past the value the run started from; `finish_sync` then keeps that time and doesn't store a stopping failure over the owner's change ([store](store.md)).
+- **A Sync now during a run.** A **Sync now** or new sources during the run move `next_sync_at` past the value the run started from; `finish_sync` then keeps that time, doesn't store a stopping failure over the owner's change and doesn't set `synced_at` ([store](store.md)).
 
 ### Push receipts and orphans
 

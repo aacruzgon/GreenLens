@@ -528,7 +528,7 @@ DEFINE FIELD OVERWRITE sources    ON connector TYPE array<object> FLEXIBLE DEFAU
 DEFINE FIELD OVERWRITE secret     ON connector TYPE option<bytes>;   -- AES-256-GCM sealed tokens; never returned, never logged
 DEFINE FIELD OVERWRITE oauth      ON connector TYPE option<object> FLEXIBLE;   -- pending only: { nonce, device_hash, verifier (sealed), expires_at }; cleared by the exchange
 DEFINE FIELD OVERWRITE endpoint   ON connector TYPE "vendor" | "era";   -- set by server configuration only
-DEFINE FIELD OVERWRITE cursor     ON connector TYPE option<object> FLEXIBLE;   -- per source: Slack's newest ts, Drive's page token
+DEFINE FIELD OVERWRITE cursor     ON connector TYPE option<object> FLEXIBLE;   -- per source id: the sync's state around Slack's or Drive's cursor; '#sync': the rotation over the sources
 DEFINE FIELD OVERWRITE synced_at  ON connector TYPE option<datetime>;
 DEFINE FIELD OVERWRITE next_sync_at ON connector TYPE datetime DEFAULT time::now();
 -- Sync now: one accepted request per connector in 5 minutes, a compare-and-set on this field.
