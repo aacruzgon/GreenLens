@@ -18,12 +18,17 @@
 //! and the system prompt says they win over an older memory hit that disagrees. The system prompt and tools stay byte-identical across
 //! turns, so the provider's prompt cache keeps them, and nothing earlier in the conversation is
 //! ever edited inside a turn's tool loop (the thinking blocks the loop replays stay valid).
+//!
+//! **Farm records.** The context also reads, once per turn, whether the garden has farm records
+//! to search ([`farm_records_searchable`]): `search_farm_records` is offered only then (gap G6).
+//! The records themselves are never loaded into the context; the model searches them.
 
 use std::collections::BTreeMap;
 
 use domain::{
-    authz::{ConversationOwner, Viewer},
+    authz::{ConversationOwner, Membership, Viewer},
     chat::{Anchor, Belief, Memory, MessageRole},
+    connectors::{Connector, ConnectorStatus},
     garden::{
         gardens::Garden,
         map::{GardenMap, neighbours},
@@ -108,6 +113,9 @@ pub struct TurnContext {
     /// The current shared beliefs of the plant and its garden, or of the garden; empty when
     /// Agent Memory is off, down or slow.
     pub beliefs: Vec<Belief>,
+    /// The garden has farm records to search: `search_farm_records` is offered only then
+    /// ([`farm_records_searchable`]; gap G6).
+    pub farm_records: bool,
 }
 
 /// How many open tasks and timeline entries the context carries.
@@ -215,16 +223,41 @@ pub async fn load(
         plant,
         deps.config.beliefs_read_timeout,
     );
-    let (memories, beliefs) = tokio::join!(search, beliefs);
-    let memories = memories?;
-
+    let (memories, beliefs, farm_records) =
+        tokio::join!(search, beliefs, has_farm_records(deps, member));
     Ok(TurnContext {
         anchor,
         plant,
         history,
         data,
-        memories,
+        memories: memories?,
         beliefs,
+        farm_records,
+    })
+}
+
+/// Reads the garden's connectors for [`farm_records_searchable`]. A failed read leaves the tool
+/// out rather than failing the turn.
+async fn has_farm_records(deps: &AgentDeps, member: Membership<Viewer>) -> bool {
+    match deps.stores.farm.connectors(member).await {
+        Ok(connectors) => farm_records_searchable(&connectors),
+        Err(e) => {
+            tracing::warn!(error = %crate::beliefs::Chain(&e), "farm connectors not read; search_farm_records not offered");
+            false
+        }
+    }
+}
+
+/// Whether a garden with these connectors has farm records to search ([connectors 7]; gap G6):
+/// any synced record, or any connector past `pending`. A `reauth_needed` connector's records
+/// stay searchable; one being deleted is not listed by the store.
+pub fn farm_records_searchable(connectors: &[Connector]) -> bool {
+    connectors.iter().any(|c| {
+        c.record_count > 0
+            || matches!(
+                c.status,
+                ConnectorStatus::Active | ConnectorStatus::ReauthNeeded
+            )
     })
 }
 
