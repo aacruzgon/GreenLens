@@ -17,7 +17,7 @@ use std::{
 };
 
 use integrations::{
-    era_sim::{Faults, SimKind, Tenant, fixture},
+    era_sim::{ERA_TIMEOUT, Faults, SimKind, Tenant, fixture},
     farm::{FarmClientError, FarmErrorCode},
     google_drive::{DriveClient, DriveConfig, DriveFile, ExportFormat, FileKind},
     http::{RetryPolicy, SecretString},
@@ -37,7 +37,7 @@ fn drive(tenant: &Tenant, retry: RetryPolicy, page_size: u32) -> DriveClient {
             revoke_url: format!("{}/o/oauth2/revoke", tenant.base()),
             retry,
             page_size,
-            ..DriveConfig::default()
+            timeout: ERA_TIMEOUT,
         },
     )
 }

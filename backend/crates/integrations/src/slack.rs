@@ -14,7 +14,8 @@
 //! [`FarmClientError::NotFound`]; `ratelimited` or HTTP `429` is retried after the
 //! `Retry-After` the server sent, then [`FarmClientError::RateLimited`]; a 5xx, `internal_error`
 //! or a timeout is retried, then [`FarmClientError::Unavailable`]; any other code is
-//! [`FarmClientError::Refused`]. A response body is never kept in an error or logged, because
+//! [`FarmClientError::Refused`], except that `oauth.v2.access` maps `invalid_code`,
+//! `code_already_used` and `code_expired` (a bad user code) to `AuthRefused`. A response body is never kept in an error or logged, because
 //! it may echo the farm's records ([connectors 8]): the log lines carry the method, the status
 //! and the short code, and a code that isn't a short `snake_case` word is replaced.
 //!
@@ -82,6 +83,9 @@ const UNRECOGNISED: &str = "unrecognised";
 const MIN_PACER_IDLE: Duration = Duration::from_mins(10);
 
 /// The token is refused, or lacks a scope: either way only the owner reconnecting fixes it.
+/// The codes `oauth.v2.access` answers for a code the user brought that is wrong, spent or old.
+const BAD_CODES: [&str; 3] = ["invalid_code", "code_already_used", "code_expired"];
+
 const AUTH_CODES: [&str; 11] = [
     "not_authed",
     "invalid_auth",
@@ -557,7 +561,14 @@ impl SlackClient {
             paced_team: None,
             idempotent: false,
         };
-        let w: wire::OAuthAccess = self.call(&call).await?;
+        // A bad code is the user's (`AuthRefused`); a bad redirect URI, client id or secret is our
+        // own configuration and stays `Refused`.
+        let w: wire::OAuthAccess = self.call(&call).await.map_err(|error| match error {
+            FarmClientError::Refused { vendor, code, .. } if BAD_CODES.contains(&code.as_str()) => {
+                FarmClientError::AuthRefused { vendor, code }
+            }
+            other => other,
+        })?;
         Ok(OAuthAccess {
             access_token: SecretString::from(w.access_token),
             token_type: w.token_type,
