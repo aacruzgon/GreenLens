@@ -202,6 +202,138 @@ async fn uploads_run_start_and_snapshot() {
     assert_eq!(detail.plant.id, f.plant);
 }
 
+/// A suggested species the knowledge base doesn't hold (the stub worker's `tomato` with no seed
+/// loaded, as on the rig on 2026-10-20) reads as no species, so the snapshot, the plant and the
+/// plant lists don't fail on the dangling link, and the Score step that failed on it commits;
+/// once the species exists it reads with its names.
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one scan's path: the suggestion, the reads, the score commit"
+)]
+async fn a_species_outside_the_knowledge_base_reads_as_none() {
+    use domain::{
+        id::SpeciesId,
+        scan::{CandidateSource, SpeciesCandidate, SpeciesStatus},
+    };
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    set_status(&store, f.scan, "analysing").await;
+    let tomato: SpeciesId = "tomato".parse().unwrap();
+    // `suggest_species` as the pipeline calls it after the fallback's findings: the stub's
+    // BioCLIP pick and the VLM's `unknown`, working species `tomato`.
+    store
+        .suggest_species(
+            f.plant,
+            vec![
+                SpeciesCandidate {
+                    species_id: Some(tomato.clone()),
+                    name: "tomato (stub)".into(),
+                    score: Confidence::saturating(0.62),
+                    source: CandidateSource::Bioclip,
+                    reference_image: None,
+                },
+                SpeciesCandidate {
+                    species_id: None,
+                    name: "unknown".into(),
+                    score: Confidence::saturating(0.4),
+                    source: CandidateSource::Vlm,
+                    reference_image: None,
+                },
+            ],
+            Some(tomato.clone()),
+            SpeciesStatus::Suggested,
+        )
+        .await
+        .expect("suggested");
+
+    let snap = store.snapshot(f.scan).await.expect("snapshot");
+    assert_eq!(snap.plant.species, None);
+    assert_eq!(snap.plant.species_status, SpeciesStatus::Suggested);
+    assert_eq!(snap.plant.species_candidates.len(), 2);
+    let viewer = check_membership_of::<Viewer>(&*store, f.user, f.garden)
+        .await
+        .unwrap();
+    assert_eq!(
+        store.plant(viewer, f.plant).await.expect("plant").species,
+        None
+    );
+    let page = store
+        .plants(viewer, PageRequest::default())
+        .await
+        .expect("plants");
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(
+        store.garden_plants(f.garden).await.expect("garden").len(),
+        1
+    );
+
+    // The Score step that follows: no candidates (an empty knowledge base selects none), so an
+    // uncertain, low-evidence diagnosis, committed with the hand-over to `plan`.
+    let ClaimAttempt::Claimed(scoring) = store
+        .claim_step(f.scan, PipelineStep::Score, t0())
+        .await
+        .expect("claim")
+    else {
+        panic!("the scan is free");
+    };
+    let diagnosis = domain::records::diagnosis::Diagnosis {
+        id: f.ids.id(),
+        scan_id: f.scan,
+        run: Run(1),
+        supersedes: None,
+        status: domain::records::diagnosis::DiagnosisStatus::Uncertain,
+        low_evidence: true,
+        primary: None,
+        candidates: Vec::new(),
+        organisms: Vec::new(),
+        soil: Vec::new(),
+        risks: Vec::new(),
+        evidence_basis: domain::records::diagnosis::EvidenceBasis::default(),
+        citations: Vec::new(),
+        model_versions: BTreeMap::from([
+            ("bioclip".to_owned(), "stub".to_owned()),
+            ("llm_fallback".to_owned(), "claude-opus-5-5".to_owned()),
+        ]),
+        created_at: t0(),
+    };
+    let plan = store
+        .commit_step(
+            scoring,
+            StepOutput::Score {
+                diagnosis: diagnosis.clone(),
+                status: Some(ScanStatus::Diagnosed),
+                resolved_question: None,
+                needs_plan: true,
+            },
+            t0(),
+        )
+        .await
+        .expect("score commits")
+        .expect("hands over to plan");
+    assert_eq!(plan.step, PipelineStep::Plan);
+    let snap = store.snapshot(f.scan).await.expect("snapshot");
+    assert_eq!(snap.scan.status, ScanStatus::Diagnosed);
+    assert_eq!(snap.diagnosis.map(|d| d.id), Some(diagnosis.id));
+
+    exec(
+        &store,
+        "CREATE species:tomato SET scientific_name = 'Solanum lycopersicum', common_names = ['Tomato'], profile = 'full',
+           classifier_supported = true, bioclip_label = 'tomato', sources = [], reviewed_by = 'ada';",
+    )
+    .await;
+    let species = store
+        .snapshot(f.scan)
+        .await
+        .expect("snapshot")
+        .plant
+        .species
+        .expect("the species exists now");
+    assert_eq!(species.id, tomato);
+    assert_eq!(species.scientific_name, "Solanum lycopersicum");
+    assert_eq!(species.common_name, "Tomato");
+}
+
 fn lease_of(claimed: &domain::ports::ClaimedJob, worker: &str) -> Lease {
     Lease {
         job: claimed.job.job_id,
