@@ -69,7 +69,7 @@ module.exports = defineConfig([
             ),
             // features/*/model: pure TypeScript
             zone(
-              "./src/features/*/model",
+              "./src/features/*/model/**",
               ["./src/api", "./src/platform"],
               "A feature's model/ is pure: no api or platform (README 5).",
             ),

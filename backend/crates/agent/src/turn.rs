@@ -363,6 +363,10 @@ enum Ended {
 struct Reply {
     /// The text as streamed, failing sentences replaced.
     text: String,
+    /// The message being written, for the dose check's log line.
+    message_id: Option<MessageId>,
+    /// A tool round ended since the last text: the next text starts a new paragraph.
+    after_tool_round: bool,
     citations: Vec<Citation>,
     /// The farm records the tools returned, each once (`Message.farm_citations`).
     farm_citations: Vec<FarmCitation>,
@@ -393,7 +397,10 @@ async fn run(
 ) {
     let deps = &inner.deps;
     let mut out = Emitter { tx, gone: false };
-    let mut reply = Reply::default();
+    let mut reply = Reply {
+        message_id: Some(turn.message_id),
+        ..Reply::default()
+    };
     let route = turn.decision.route();
 
     let started = MessageStarted {
@@ -554,16 +561,37 @@ async fn store_reply(
 /// Dose-checks one streamed piece and sends it; a failing sentence is replaced by the fixed
 /// safety note, keeping the piece's surrounding whitespace ([contracts 7]).
 async fn emit_piece(deps: &AgentDeps, out: &mut Emitter, reply: &mut Reply, piece: String) -> bool {
-    let checked = if dose_check(&piece, &deps.products).is_some() {
+    let checked = if let Some(found) = dose_check(&piece, &deps.products) {
+        // The rule and whether the sentence held a quantity; never the matched text or the
+        // sentence, which may hold a rate.
+        tracing::info!(
+            message_id = reply.message_id.as_ref().map(tracing::field::display),
+            rule = ?found.rule,
+            has_quantity = found.has_quantity(),
+            "dose check replaced a sentence"
+        );
         let lead = &piece[..piece.len() - piece.trim_start().len()];
         let trail = &piece[piece.trim_end().len()..];
         format!("{lead}{REPLACED_SENTENCE}{trail}")
     } else {
         piece
     };
+    if std::mem::take(&mut reply.after_tool_round)
+        && !reply.text.is_empty()
+        && !reply.text.ends_with(char::is_whitespace)
+        && !checked.starts_with(char::is_whitespace)
+    {
+        reply.text.push_str(PARAGRAPH_BREAK);
+        if !out.text(PARAGRAPH_BREAK.to_owned()).await {
+            return false;
+        }
+    }
     reply.text.push_str(&checked);
     out.text(checked).await
 }
+
+/// Separates the text before a tool call from the text after it.
+const PARAGRAPH_BREAK: &str = "\n\n";
 
 /// Sends a fixed or complete text sentence by sentence.
 async fn emit_checked(
@@ -834,6 +862,7 @@ async fn run_tool(
     if !out.send(ChatEvent::ToolStarted(started)).await {
         return None;
     }
+    reply.after_tool_round = true;
     reply.tool_calls.push(ContentPart::ToolCall {
         call_id: call_id.clone(),
         name: name.clone(),

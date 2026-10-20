@@ -83,7 +83,21 @@ pub struct DoseMatch<'t> {
     pub sentence: &'t str,
 }
 
+/// A digit or a number word: what tells a rate from a sentence that only names a unit.
+static SENTENCE_QUANTITY: LazyLock<Regex> = LazyLock::new(|| {
+    RegexBuilder::new(RATIO_QUANTITY)
+        .case_insensitive(true)
+        .build()
+        .expect("a valid pattern")
+});
+
 impl DoseMatch<'_> {
+    /// Whether the sentence holds a quantity ("2", "two"). A `per litre` with none is more
+    /// likely a refusal than a rate; logged without the text (EON gap G13).
+    pub fn has_quantity(&self) -> bool {
+        SENTENCE_QUANTITY.is_match(self.sentence)
+    }
+
     /// The reason sent back to the model or the plan writer. Names the words, never repeats the
     /// whole sentence.
     pub fn reason(&self) -> String {

@@ -157,6 +157,7 @@ export type Bed = S["Bed"];
 export type Pin = S["Pin"];
 
 // Chat
+export type AnchorType = S["AnchorType"];
 export type Conversation = S["Conversation"];
 export type ConversationDetail = S["ConversationDetail"];
 export type ChatEvent = S["ChatEvent"];
