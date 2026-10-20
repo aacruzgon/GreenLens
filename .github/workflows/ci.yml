@@ -396,6 +396,27 @@ jobs:
       - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: cargo-nextest@0.9.148
+      # A simulator generates its company on the first call that needs it (8 s locally, over 20 s on a
+      # runner). One cheap call to each of the six makes the tests' first calls fast; the tests' own
+      # clients also wait up to 90 s (ERA_TIMEOUT). The open and fault pairs generate per tenant, so a
+      # minted credential and one data call warm the process; the strict pair needs no token for the
+      # consent step, which is the call that generates the default company.
+      - name: Warm up Era's simulators
+        run: |
+          set -eu
+          warm_open() {
+            token=$(curl -sS -m 180 -X POST -H 'content-type: application/json' -d '{}' "$1/_admin/tenants/warmup/credentials" | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
+            curl -sS -m 180 -o /dev/null -w "$1 %{http_code} %{time_total}s\n" -H "Authorization: Bearer $token" "$1/$2"
+          }
+          for port in 18091 18191; do warm_open "http://127.0.0.1:$port" api/auth.test; done
+          for port in 18092 18192; do warm_open "http://127.0.0.1:$port" drive/v3/files; done
+          curl -sS -m 180 -o /dev/null -w "strict slack %{http_code} %{time_total}s\n" -G "http://127.0.0.1:18291/oauth/v2/authorize" \
+            --data-urlencode client_id=pdm-test --data-urlencode scope=channels:read \
+            --data-urlencode redirect_uri=https://api.example/connectors/oauth/callback --data-urlencode state=warm
+          curl -sS -m 180 -o /dev/null -w "strict google %{http_code} %{time_total}s\n" -G "http://127.0.0.1:18292/o/oauth2/v2/auth" \
+            --data-urlencode client_id=pdm-test --data-urlencode response_type=code \
+            --data-urlencode scope=https://www.googleapis.com/auth/drive.readonly \
+            --data-urlencode redirect_uri=https://api.example/connectors/oauth/callback --data-urlencode state=warm
       - name: Era tests
         working-directory: backend
         env:

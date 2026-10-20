@@ -14,7 +14,7 @@
 //! carry no tenant, so the tests read the default one. Nothing here sets faults.
 
 use integrations::{
-    era_sim::{SimKind, strict_base_url},
+    era_sim::{ERA_TIMEOUT, SimKind, strict_base_url},
     farm::FarmClientError,
     google_drive::{DriveClient, DriveConfig, Pkce},
     http::{self, ExposeSecret, HttpConfig, SecretString},
@@ -62,7 +62,11 @@ async fn code_from(url: String, query: &[(&str, &str)], state: &str) -> String {
 
 fn slack(base: &str) -> SlackClient {
     let http = http::client(&HttpConfig::default()).expect("the HTTP client builds");
-    SlackClient::new(http, SlackConfig::era(base))
+    let config = SlackConfig {
+        timeout: ERA_TIMEOUT,
+        ..SlackConfig::era(base)
+    };
+    SlackClient::new(http, config)
 }
 
 fn drive(base: &str) -> DriveClient {
@@ -72,6 +76,7 @@ fn drive(base: &str) -> DriveClient {
             api_base: base.to_owned(),
             token_url: format!("{base}/token"),
             revoke_url: format!("{base}/o/oauth2/revoke"),
+            timeout: ERA_TIMEOUT,
             ..DriveConfig::default()
         },
     )

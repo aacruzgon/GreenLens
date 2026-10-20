@@ -39,6 +39,11 @@ impl SimKind {
     }
 }
 
+/// The request timeout the Era tests give their clients. A simulator generates its company on
+/// the first call that needs it (about 8 s locally, over 20 s on a CI runner), so the clients'
+/// production defaults (20 s Slack, 30 s Drive) are too tight for a test's first call.
+pub const ERA_TIMEOUT: Duration = Duration::from_secs(90);
+
 /// The simulator's base URL (no trailing slash) from `ERA_SLACK_BASE` or `ERA_GOOGLE_BASE`.
 /// Panics when the variable is unset, so an Era test fails rather than skips.
 #[must_use]

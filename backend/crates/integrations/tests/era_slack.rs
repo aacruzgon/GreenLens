@@ -20,7 +20,7 @@ use std::{
 
 use futures::FutureExt as _;
 use integrations::{
-    era_sim::{Faults, SimKind, Tenant, base_url, fixture},
+    era_sim::{ERA_TIMEOUT, Faults, SimKind, Tenant, base_url, fixture},
     farm::{FarmClientError, FarmErrorCode},
     http::{self, ExposeSecret, HttpConfig, RetryPolicy, SecretString},
     slack::{SlackClient, SlackConfig, SlackMessage, permalink},
@@ -29,6 +29,7 @@ use serde_json::{Value, json};
 
 fn client(base: &str, edit: impl FnOnce(&mut SlackConfig)) -> SlackClient {
     let mut config = SlackConfig::era(base);
+    config.timeout = ERA_TIMEOUT;
     edit(&mut config);
     let http = http::client(&HttpConfig::default()).expect("the HTTP client builds");
     SlackClient::new(http, config)
