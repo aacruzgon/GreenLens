@@ -95,7 +95,14 @@ async fn active_slack(store: &SurrealStore, f: &Fixture, garden: GardenId) -> Co
     c.oauth = None;
     c.account = Some(slack_account());
     c.secret = Some(sealed(b"sealed-token"));
-    c.sources = vec![source("C1", "field-reports"), source("C2", "spray-log")];
+    // `folder-1` and `C10` are for the tests that store records of other sources: an upsert
+    // skips a record whose source isn't the connector's.
+    c.sources = vec![
+        source("C1", "field-reports"),
+        source("C2", "spray-log"),
+        source("C10", "misc"),
+        source("folder-1", "Farm records"),
+    ];
     let id = c.id;
     store.seed_connector(garden, c).await.expect("seeded");
     id
@@ -1122,7 +1129,7 @@ async fn seeding_again_repairs_the_connector_where_it_belongs() {
     assert_eq!(row.secret, Some(sealed(b"new-key-token")));
     assert_eq!(
         row.connector.sources.len(),
-        2,
+        4,
         "its sources are the owner's"
     );
 
@@ -1267,7 +1274,10 @@ async fn dropping_a_drive_folder_keeps_the_new_folders_records() {
     let mut d = new_connector(&f, ConnectorKind::GoogleDrive);
     d.status = ConnectorStatus::Active;
     d.oauth = None;
-    d.sources = vec![source("folder-2", "New records")];
+    d.sources = vec![
+        source("folder-1", "Old records"),
+        source("folder-2", "New records"),
+    ];
     let c = d.id;
     store.seed_connector(f.garden, d).await.unwrap();
     let mut old = record(c, "1aBcD", 0, "old", Some(one_hot(0)), t0());
@@ -1275,6 +1285,11 @@ async fn dropping_a_drive_folder_keeps_the_new_folders_records() {
     let mut new = record(c, "2eFgH", 0, "new", Some(one_hot(1)), t0());
     new.source = "folder-2".into();
     store.upsert_records(c, vec![old, new]).await.unwrap();
+    let owner = owner_of(&store, &f).await;
+    store
+        .set_sources(owner, c, vec![source("folder-2", "New records")], at(1))
+        .await
+        .unwrap();
     assert_eq!(
         store
             .delete_source_records(c, "folder-1".into())
@@ -1289,6 +1304,42 @@ async fn dropping_a_drive_folder_keeps_the_new_folders_records() {
             .unwrap(),
         vec!["2eFgH".to_owned()]
     );
+    assert_eq!(store.garden_record_count(f.garden).await.unwrap(), 1);
+}
+
+/// A record whose source the owner dropped while a sync still read it is not written; the
+/// others in the same upsert are.
+#[tokio::test]
+async fn an_upsert_skips_records_of_a_dropped_source() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let c = active_slack(&store, &f, f.garden).await;
+    store
+        .set_sources(owner, c, vec![source("C2", "spray-log")], at(1))
+        .await
+        .unwrap();
+    store
+        .upsert_records(
+            c,
+            vec![
+                record(c, "C1/1.000100", 0, "dropped", Some(one_hot(0)), t0()),
+                record(c, "C2/1.000100", 0, "kept", Some(one_hot(1)), t0()),
+                // No vector and no stored row: it would be `missing_vector`, but its source
+                // is gone, so it is skipped before that check.
+                record(c, "C1/2.000100", 0, "dropped too", None, t0()),
+            ],
+        )
+        .await
+        .unwrap();
+    let ids = vec![
+        "C1/1.000100".into(),
+        "C2/1.000100".into(),
+        "C1/2.000100".into(),
+    ];
+    let stored = store.record_hashes(c, ids).await.unwrap();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0].0.vendor_id.to_string(), "C2/1.000100");
     assert_eq!(store.garden_record_count(f.garden).await.unwrap(), 1);
 }
 

@@ -223,20 +223,24 @@ COMMIT;";
     /// Chunks by `(connector, vendor_id, n)`. A chunk sent without a vector keeps the stored
     /// one, and only when its `text_hash` is unchanged (`missing_vector` otherwise); the
     /// connector must be syncing (`active` or `reauth_needed`), so no record is written for a
-    /// connector being deleted.
+    /// connector being deleted. A record whose `source` is no longer among the connector's
+    /// `sources` is skipped in the same transaction: `PUT .../sources` can drop a source while
+    /// a sync that read it is still running, and its records must not come back.
     pub const UPSERT_RECORDS: &str = "BEGIN;
-LET $c = (SELECT garden, status FROM ONLY $connector);
+LET $c = (SELECT garden, status, sources FROM ONLY $connector);
 IF $c = NONE OR !($c.status IN ['active', 'reauth_needed']) { THROW 'not_found' };
 FOR $r IN $records {
-  IF $r.embedding = NONE {
-    IF (SELECT VALUE text_hash FROM ONLY $r.id) != $r.text_hash { THROW 'missing_vector' };
-    UPDATE $r.id SET kind = $r.kind, source = $r.source, title = $r.title, author = $r.author, link = $r.link,
-      text = $r.text, at = $r.at;
-  } ELSE {
-    UPSERT $r.id CONTENT { garden: $c.garden, connector: $connector, kind: $r.kind,
-      vendor_id: $r.vendor_id, source: $r.source, title: $r.title, author: $r.author, link: $r.link, text: $r.text,
-      text_hash: $r.text_hash, embedding: $r.embedding, embedding_model: $r.embedding_model,
-      at: $r.at };
+  IF $r.source IN $c.sources.id {
+    IF $r.embedding = NONE {
+      IF (SELECT VALUE text_hash FROM ONLY $r.id) != $r.text_hash { THROW 'missing_vector' };
+      UPDATE $r.id SET kind = $r.kind, source = $r.source, title = $r.title, author = $r.author, link = $r.link,
+        text = $r.text, at = $r.at;
+    } ELSE {
+      UPSERT $r.id CONTENT { garden: $c.garden, connector: $connector, kind: $r.kind,
+        vendor_id: $r.vendor_id, source: $r.source, title: $r.title, author: $r.author, link: $r.link, text: $r.text,
+        text_hash: $r.text_hash, embedding: $r.embedding, embedding_model: $r.embedding_model,
+        at: $r.at };
+    };
   };
 };
 COMMIT;";
