@@ -23,3 +23,13 @@ def test_the_small_model_has_a_dynamic_batch(tmp_path):
     s = ort.InferenceSession(str(tmp_path / "m.onnx"), providers=["CPUExecutionProvider"])
     for b in (1, 4):
         assert s.run(None, {"x": np.zeros((b, 3, 64, 64), np.float32)})[0].shape == (b, 10)
+
+
+def test_the_exit_code_judges_only_what_ran_and_the_named_cap_sets():
+    ok, bad = {"pass": True}, {"pass": False}
+    assert pg.verdict({"check": ok}, ["manifest"])                                       # check alone (review note 1)
+    assert not pg.verdict({"check": bad}, ["manifest"])
+    sets = [{"spec": "det=4,enc=1,dec=8,clip=8", **ok}, {"spec": "manifest", **bad}]
+    assert not pg.verdict({"check": ok, "budget": sets}, ["manifest"])                   # a smaller set passing isn't enough (note 3)
+    assert pg.verdict({"budget": sets}, ["det=4,enc=1,dec=8,clip=8"])
+    assert not pg.verdict({"budget": sets[:1] + [{"spec": "x", **bad}]}, ["manifest"])  # manifest not run: every set counts

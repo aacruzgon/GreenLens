@@ -7,9 +7,9 @@
 
 It needs only numpy, onnx and onnxruntime-gpu 1.31 with the CUDA 13 wheels the training
 environment uses (the `[cuda,cudnn]` extra would pull newer CUDA 13.4 ones), so it runs on a host
-without that environment:
+without that environment. `uv` needs no sudo; `python3 -m venv` needs Debian's `python3-venv`:
 
-    python3 -m venv ~/pdm-gpu && ~/pdm-gpu/bin/pip install onnxruntime-gpu==1.31.0 \\
+    uv venv -p 3.13 ~/pdm-gpu && uv pip install -p ~/pdm-gpu/bin/python onnxruntime-gpu==1.31.0 \\
         nvidia-cuda-runtime==13.0.96 nvidia-cublas==13.1.1.3 nvidia-cudnn-cu13==9.24.0.43 \\
         nvidia-cufft==12.0.0.61 nvidia-curand==10.4.0.35 nvidia-cuda-nvrtc==13.0.88 \\
         nvidia-nvjitlink==13.3.33 numpy onnx
@@ -32,6 +32,11 @@ decoder with all 40 boxes on one image (the worst case), and BioCLIP 2 on the 40
 shots, each in batches of its cap. It reports the process's peak VRAM, the card's free memory at
 that peak and the median time per scan. A cap set passes when at least 1 GB of the card stays free.
 The worker's own run (P2) confirms the caps chosen here.
+
+Each check runs in its own process, so the parent never holds a CUDA context that a later
+measurement would count as another process's memory. The exit code is 0 when the check passed
+(if it ran) and every cap set named by `--must-pass` passed with the manifest's limits (default:
+the manifest's caps; when none of the named sets ran, every set that did).
 
 Writes `perception-gpu-<host>-<date>.json` in the current directory and prints a summary.
 """
@@ -253,12 +258,8 @@ def budget(models: Path, specs: list[str], limits: bool) -> list[dict]:
     out = []
     for spec in specs:
         caps = parse_caps(spec, es)
-        cmd = [sys.executable, "-m", "ml.training.eval.perception_gpu", "_child", "--models", str(models),
-               "--caps-json", json.dumps(caps)] + (["--no-limits"] if not limits else [])
-        p = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
-        line = next((l for l in reversed(p.stdout.splitlines()) if l.startswith("{")), None)
-        r = json.loads(line) if p.returncode == 0 and line else {"caps": caps, "limits": limits, "pass": False,
-                                                                  "error": (p.stderr or p.stdout)[-600:]}
+        r = run_child(["_child", "--models", str(models), "--caps-json", json.dumps(caps)]
+                      + (["--no-limits"] if not limits else []), {"caps": caps, "limits": limits})
         r["spec"] = spec
         out.append(r)
         print(summary_line(r), flush=True)
@@ -276,14 +277,35 @@ def summary_line(r: dict) -> str:
                    f"{'PASS' if r['pass'] else 'FAIL'}")
 
 
+def run_child(args: list[str], fallback: dict) -> dict:
+    """Runs this module in a fresh process and returns the JSON line it prints last."""
+    p = subprocess.run([sys.executable, "-m", "ml.training.eval.perception_gpu", *args],
+                       capture_output=True, text=True, cwd=ROOT)
+    line = next((l for l in reversed(p.stdout.splitlines()) if l.startswith("{")), None)
+    if p.returncode == 0 and line:
+        return json.loads(line)
+    return {**fallback, "pass": False, "error": (p.stderr or p.stdout)[-600:]}
+
+
+def verdict(report: dict, must_pass: list[str]) -> bool:
+    """The check, if it ran, and the cap sets that must pass, if a budget ran."""
+    ok = report["check"].get("pass", False) if "check" in report else True
+    if "budget" in report:
+        judged = [r for r in report["budget"] if r["spec"] in must_pass] or report["budget"]
+        ok = ok and all(r.get("pass") for r in judged)
+    return ok
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("what", choices=("check", "budget", "all", "_child"))
+    ap.add_argument("what", choices=("check", "budget", "all", "_child", "_check"))
     ap.add_argument("--models", type=Path, default=ROOT / "ml/models/files",
                     help="the directory `ml.models.fetch --for perception` wrote")
     ap.add_argument("--caps", nargs="*", default=DEFAULT_CAPS,
                     help="cap sets, e.g. det=8,enc=2,dec=16,clip=16, or 'manifest'")
     ap.add_argument("--no-limits", action="store_true", help="no gpu_mem_limit per session: what each set needs")
+    ap.add_argument("--must-pass", nargs="*", default=["manifest"],
+                    help="cap sets that must pass for exit code 0 (default: manifest)")
     ap.add_argument("--caps-json", help=argparse.SUPPRESS)
     ap.add_argument("--out", type=Path)
     args = ap.parse_args(argv)
@@ -292,14 +314,19 @@ def main(argv=None) -> int:
     if args.what == "_child":
         print(json.dumps(budget_child(models, json.loads(args.caps_json), not args.no_limits)))
         return 0
-
-    report = {"host": socket.gethostname(), "date": dt.date.today().isoformat()}
-    if args.what in ("check", "all"):
+    if args.what == "_check":
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmp:
-            report["check"] = check(models, Path(tmp))
-        c = report["check"]
+            print(json.dumps(check(models, Path(tmp))))
+        return 0
+
+    report = {"host": socket.gethostname(), "date": dt.date.today().isoformat()}
+    if args.what in ("check", "all"):
+        report["check"] = c = run_child(["_check", "--models", str(models)], {})
+        if "error" in c:
+            print("check FAILED: " + c["error"].strip().splitlines()[-1][:300])
+    if "gpu" in report.get("check", {}):
         print(f"{c['gpu']['name']} (compute {c['gpu']['compute_cap']}), driver {c['gpu']['driver']}, "
               f"ONNX Runtime {c['onnxruntime']}, uuid {c['gpu']['uuid']}")
         print(f"small fp32 model, CUDA vs CPU max abs diff: {c['small_model_max_abs_diff']} "
@@ -310,12 +337,15 @@ def main(argv=None) -> int:
         print("budget: every session loaded, warmed at its cap, then a scan of "
               f"{SCAN_SHOTS} shots and {SCAN_CROPS} crops (needs {FREE_AT_PEAK_MIB} MiB free at peak)")
         report["budget"] = budget(models, args.caps, not args.no_limits)
+        judged = [r["spec"] for r in report["budget"] if r["spec"] in args.must_pass] or args.caps
+        print(f"must pass: {', '.join(judged)}")
         if not args.no_limits:   # what each set needs without the manifest's limits
             report["budget_no_limits"] = budget(models, args.caps, False)
     out = args.out or Path(f"perception-gpu-{report['host']}-{report['date']}.json")
     out.write_text(json.dumps(report, indent=2) + "\n")
     print(f"wrote {out}")
-    ok = report.get("check", {}).get("pass", True) and any(r.get("pass") for r in report.get("budget", []))
+    ok = verdict(report, args.must_pass)
+    print("PASS" if ok else "FAIL")
     return 0 if ok else 1
 
 
