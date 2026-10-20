@@ -390,7 +390,8 @@ jobs:
   # and the pairs are separate containers, so the steps cannot disturb each other. Each step runs
   # even when an earlier one failed. Health is checked on /_admin/tenants, which faults never touch
   # (the image has python3 but no curl). In ci's needs since 2026-10-20, after five green runs on
-  # main (docs/EON E6.3).
+  # main (docs/EON E6.3). The era_hosted_ tests call our hosted Era company, which meters every
+  # request, so this job leaves them out; era-hosted.yml runs them nightly (E6.5).
   era:
     needs: [changes, lint, test]
     if: ${{ !cancelled() && !failure() && (needs.changes.outputs.era == 'true' || github.event_name == 'push') }}
@@ -518,7 +519,7 @@ jobs:
           ERA_GOOGLE_BASE: http://127.0.0.1:${{ job.services.era-drive.ports['8080'] }}
         run: >-
           cargo nextest run -p integrations -p api --run-ignored only --locked
-          -E 'test(/(^|::)era_/) and not test(/(^|::)era_fault_/) and not test(/(^|::)era_strict_/)'
+          -E 'test(/(^|::)era_/) and not test(/(^|::)era_fault_/) and not test(/(^|::)era_strict_/) and not test(/(^|::)era_hosted_/)'
       - name: Era fault tests
         if: ${{ !cancelled() }}
         working-directory: backend
