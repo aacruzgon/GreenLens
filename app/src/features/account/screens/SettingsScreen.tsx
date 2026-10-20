@@ -4,7 +4,7 @@ import { View } from "react-native";
 import { useMe } from "@/api";
 import { envResult } from "@/config/env";
 import { useSession } from "@/features/auth";
-import { Button, ListItem, Screen, Section, Text, space } from "@/ui";
+import { Banner, Button, ListItem, Screen, Section, Text, space } from "@/ui";
 
 import { DemoControls } from "../components/DemoControls";
 
@@ -30,6 +30,14 @@ export function SettingsScreen() {
         </Text>
         <Section title="Account">
           <ListItem title={me.data?.display_name || "Your account"} subtitle={session.mode === "demo" ? "Demo account" : undefined} />
+          {session.secondFactorProblem ? (
+            <Banner
+              tone="watch"
+              title="Sign-in codes by text aren't on yet"
+              message={`Signing in asks only for your password until this works. ${session.secondFactorProblem.message}`}
+              action={{ label: "Try again", onPress: session.secondFactorProblem.retry }}
+            />
+          ) : null}
         </Section>
         {mock ? <DemoControls /> : null}
         <Button label="Sign out" variant="secondary" onPress={signOut} busy={signingOut} />

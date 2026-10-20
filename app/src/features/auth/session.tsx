@@ -4,6 +4,8 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type R
 
 import { clearTokenProvider, setOnSignedOut, setTokenProvider } from "@/api";
 
+import { clerkErrorMessage } from "./model/clerkErrors";
+
 // The app's view of the session (docs/frontend/README.md §8). With a Clerk key it is Clerk's session;
 // in mock mode with no key it is a local demo user, so the app can be shown with no backend and no account.
 
@@ -17,6 +19,11 @@ export interface Session {
   profileName: string | null;
   signInDemo: () => void;
   signOut: () => Promise<void>;
+  /**
+   * The phone verified at sign-up couldn't be made the account's second factor, so sign-in doesn't ask for a
+   * code by text yet. Settings says so with a retry; undefined when there's nothing to say.
+   */
+  secondFactorProblem?: { message: string; retry: () => void };
 }
 
 const SessionContext = createContext<Session | null>(null);
@@ -71,8 +78,12 @@ function ClerkSession({ onSignedOut, children }: { onSignedOut: () => void; chil
   }, [isSignedIn, getToken, signOut]);
 
   // Two-step sign-in by text: the phone verified at sign-up becomes the account's second factor,
-  // so every later sign-in asks for a code by SMS (Clerk's phone_code second factor).
+  // so every later sign-in asks for a code by SMS (Clerk's phone_code second factor). A failure is
+  // kept and shown in Settings with a retry (#97): left silent, the account would sign in with a
+  // password alone and nobody would know.
   const reserving = useRef(false);
+  const [reserveError, setReserveError] = useState<string>();
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!user || user.twoFactorEnabled || reserving.current) return;
     const phone = user.phoneNumbers.find((p) => p.verification?.status === "verified");
@@ -80,11 +91,12 @@ function ClerkSession({ onSignedOut, children }: { onSignedOut: () => void; chil
     reserving.current = true;
     phone
       .setReservedForSecondFactor({ reserved: true })
-      .catch(() => {})
+      .then(() => setReserveError(undefined))
+      .catch((e: unknown) => setReserveError(clerkErrorMessage(e)))
       .finally(() => {
         reserving.current = false;
       });
-  }, [user]);
+  }, [user, attempt]);
 
   const value = useMemo<Session>(
     () => ({
@@ -96,8 +108,9 @@ function ClerkSession({ onSignedOut, children }: { onSignedOut: () => void; chil
       signOut: async () => {
         await signOut();
       },
+      secondFactorProblem: reserveError ? { message: reserveError, retry: () => setAttempt((n) => n + 1) } : undefined,
     }),
-    [isLoaded, isSignedIn, user?.fullName, user?.username, signOut],
+    [isLoaded, isSignedIn, user?.fullName, user?.username, signOut, reserveError],
   );
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
