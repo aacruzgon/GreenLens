@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.23, 2026-10-20. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.24, 2026-10-20. Companion to the [architecture document](README.md).
+> **v0.10.24**: the knowledge photo upload (`seed-upload`) only adds photos, never overwrites or deletes one, reads each back, and its image refuses to build unless its photo keys are those `knowledge.surql` names (section 10); no wire shape changed.
 > **v0.10.23**: the dose check's ratio rules no longer read dates, years, clock times and labels as ratios, and the search goes on after such a match, so "Bed 3: 1:10 copper" still fails: "<quantity> in <quantity>" passes with a year from 2016 to 2036 (not a multiple of 50) and no ratio word after it, or with a numbered bed before it and `days`, `weeks` or `months` ending the phrase; two numbers around a colon pass as a clock time after a time word (`at`, `by`, `until`, `from`, `before`, `after`, `since`, `between`), a date or a range's clock-time start, with an hour of 5 or more or `am` or `pm` after it, or as a label (a label word, month and day or numeric date at the start of the sentence or after `,`, `;` or `(`, an ISO date anywhere or a year at the start, with words after the count; or a label word anywhere with a date after the colon: "Bed 3: 2 July", "2026-07-15: 420 bulbs"); clock times such as "Water at 10:30 in the morning" leave the known false positives, a time without a time word, a time before 5:00 without `am` or `pm`, a time with seconds and several label forms stay in them, and a ratio written as a clock time from 5:00 after a time word or `in` a recent year is a known miss (EON gap G22, section 7); no wire shape changed.
 > **v0.10.22**: a user's write that sets a species (`POST /plants`, `POST /plants/{id}/species`, a `new_plant` of `POST /scans` or of a map pin) must name a species the knowledge base holds, or gets `400 invalid_request` and stores nothing (sections 2, 3, 9); a `guided` job's `complete` sends no catch-up stage events, because the `guided` stage is shared by the run's checks (section 5); no wire shape changed.
 > **v0.10.21**: section 5 says what `complete` sends for stage events the stream missed: a stage left started gets its `stage_completed`, and a stage of the result with no stage event in the run gets `stage_started` and `stage_completed`, before the job's `finding` events, with `duration_ms: 0` (backend roadmap gap 9); no wire shape changed.
@@ -2441,7 +2442,9 @@ It generates, alongside the migration:
 
 Changes that can't be written as a full replace, such as a new `chunk_vec` dimension, go in a hand-written numbered migration beside it.
 
-The loader also converts each reference image to WebP (long side 1024 pixels, metadata stripped), writes it to RustFS under `knowledge/species/{species_id}/{hash}.webp`, where `{hash}` is the first 16 hex digits of the WebP file's SHA-256, with its own storage identity ([storage 2](../storage/README.md#2-bucket-keys-and-access)), and deletes the objects of images no longer in the seed. RustFS is reachable only on the control plane's Docker network, so this upload runs there as a one-shot container, **before** the API starts with the migration that references the photos ([storage 2](../storage/README.md#2-bucket-keys-and-access)). A changed photo therefore gets a new key and a new URL, and an app never shows a cached old photo next to a new credit.
+The loader also converts each reference image to WebP (long side 1024 pixels, metadata stripped) and writes it to RustFS under `knowledge/species/{species_id}/{hash}.webp`, where `{hash}` is the first 16 hex digits of the WebP file's SHA-256, with its own storage identity ([storage 2](../storage/README.md#2-bucket-keys-and-access)). RustFS is reachable only on the control plane's Docker network, so this upload runs there as a one-shot container, `seed-upload`, **before** the API starts with the migration that references the photos ([storage 2](../storage/README.md#2-bucket-keys-and-access); `ml/knowledge/upload.py`). A changed photo therefore gets a new key and a new URL, and an app never shows a cached old photo next to a new credit.
+
+The upload only adds. It never overwrites a key and never deletes a photo, even one no longer in the seed, so an older API still finds its own photos during a deploy or after a rollback ([infra 7](../infra/README.md#7-deploying-and-rolling-back)). It reads every photo back and compares its SHA-256, and exits non-zero on any failure, which keeps the API down. Its image makes the photos when it is built and refuses to build unless their keys are exactly those `knowledge.surql` names ([infra 3](../infra/README.md#3-images)).
 
 ---
 
@@ -2483,6 +2486,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.21: `complete` sends the stage events the stream missed, before the job's findings | 8.1 (step 4) |
 | v0.10.22: a user's write that sets a species must name one the knowledge base holds (`400 invalid_request`); a `guided` job's `complete` sends no catch-up stage events | 6.2 (step 5); 8.1 (step 4) is unchanged, since it describes the perception job |
 | v0.10.23: the dose check's ratio rules let dates, years, clock times and labels through ("bed 1 in 2026", "Bed 3: 2 July", "at 18:40") | 11 (security, privacy and safety: the dose check) |
+| v0.10.24: the knowledge photo upload only adds photos and never deletes one | 5 (knowledge base, ingestion step 8) |
 
 ---
 
