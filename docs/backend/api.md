@@ -5337,10 +5337,12 @@ impl FarmSync {
             *asked = true;
             let page = page.map_err(Stop::Vendor)?;
             *probes = probes.saturating_sub(page.probes);
-            self.store_page(run, src, &page).await?;
+            // A resync's deletions go first, so the records it drops don't count against the
+            // garden's limit when the page is stored; every item of the page is in `listed`.
             if let Some(listed) = &page.listed {
                 self.delete_unlisted(run, src, listed).await?;
             }
+            self.store_page(run, src, &page).await?;
             state.failing = false;
             if let Some(reread) = state.reread.as_mut() {
                 reread

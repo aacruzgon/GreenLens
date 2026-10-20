@@ -312,7 +312,8 @@ impl DriveClient {
                         if !seen.insert(file.id.clone()) {
                             continue;
                         }
-                        if listing.folders.len() == MAX_FOLDERS {
+                        // The chosen folder is in `folders` too; `tree` holds only those under it.
+                        if listing.tree.len() == MAX_FOLDERS {
                             listing.truncated = true;
                             break 'folders;
                         }

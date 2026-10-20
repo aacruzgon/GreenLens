@@ -687,7 +687,7 @@ async fn a_file_drive_will_not_hand_over_is_kept_by_name_and_one_gone_is_removed
 }
 
 #[tokio::test]
-async fn a_file_whose_read_keeps_failing_holds_up_nothing_and_is_skipped_after_5_runs() {
+async fn a_file_whose_read_keeps_failing_holds_up_nothing_and_waits_a_day_after_5_runs() {
     let server = MockServer::start().await;
     start_token(&server, "100").await;
     listing(
@@ -696,6 +696,8 @@ async fn a_file_whose_read_keeps_failing_holds_up_nothing_and_is_skipped_after_5
         vec![file("D_BAD", DOC, ROOT), file("D_OK", DOC, ROOT)],
     )
     .await;
+    changes(&server, "100", Vec::new(), "200").await;
+    changes(&server, "200", Vec::new(), "200").await;
     Mock::given(method("GET"))
         .and(path("/drive/v3/files/D_BAD/export"))
         .respond_with(ResponseTemplate::new(500))
@@ -705,7 +707,8 @@ async fn a_file_whose_read_keeps_failing_holds_up_nothing_and_is_skipped_after_5
     contents(&server).await;
     let drive = source(&server);
 
-    // Run 0: the bad file goes to the back, the next one is read.
+    // Run 0: the bad file goes to the back, the next one is read, and the pass ends: the bad
+    // file waits for a later run.
     let page = drive
         .read_page(&token(), request(None))
         .await
@@ -714,19 +717,19 @@ async fn a_file_whose_read_keeps_failing_holds_up_nothing_and_is_skipped_after_5
         texts(&page),
         BTreeMap::from([("D_OK", "D_OK as text/plain")])
     );
-    assert!(page.more, "the bad file waits for the next run");
+    assert!(!page.more, "only a file that failed in this run is left");
     let queued = cursor_of(&page).queue;
-    let mut cursor = page.cursor;
     assert_eq!(queued.len(), 1);
     assert_eq!((queued[0].tries, queued[0].failed_at), (1, Some(now())));
-    // In the same run, only it is left: the page fails and the run stops.
-    let error = drive
-        .read_page(&token(), request(Some(cursor.clone())))
+    // In the same run, it doesn't hold up the changes.
+    let page = drive
+        .read_page(&token(), request(Some(page.cursor)))
         .await
-        .expect_err("only files that failed in this run");
-    assert_eq!(error.code().as_str(), "vendor_unavailable");
+        .expect("the changes are read");
+    assert_eq!(cursor_of(&page).token, "200");
+    let mut cursor = page.cursor;
 
-    // Each later run tries it once; the fifth failure skips it.
+    // Each later run tries it once.
     for run in 1..u32::from(MAX_TRIES) {
         let page = drive
             .read_page(&token(), request_in(run, Some(cursor)))
@@ -736,8 +739,25 @@ async fn a_file_whose_read_keeps_failing_holds_up_nothing_and_is_skipped_after_5
         cursor = page.cursor;
     }
     let left = Cursor::parse(Some(&cursor)).expect("a cursor");
-    assert!(left.queue.is_empty(), "skipped after {MAX_TRIES} runs");
+    assert_eq!(left.queue[0].tries, MAX_TRIES);
     assert!(left.files.contains_key("D_BAD"), "its record stays");
+
+    // After the fifth failure it waits a day: the runs in between read only the changes.
+    let last = u32::from(MAX_TRIES) - 1;
+    let a_day = 24 * 4;
+    let page = drive
+        .read_page(&token(), request_in(last + a_day - 1, Some(cursor.clone())))
+        .await
+        .expect("the changes only");
+    assert!(!page.more);
+    assert_eq!(cursor_of(&page).queue[0].tries, MAX_TRIES, "not tried");
+    let page = drive
+        .read_page(&token(), request_in(last + a_day, Some(cursor)))
+        .await
+        .expect("a page");
+    let queued = cursor_of(&page).queue;
+    assert_eq!(queued[0].tries, MAX_TRIES + 1, "tried again a day later");
+    assert_eq!(queued.len(), 1, "never dropped");
 }
 
 #[tokio::test]

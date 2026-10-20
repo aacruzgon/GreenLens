@@ -16,8 +16,8 @@
 //!   loses at most one page. Only the files under the folder are kept. A file moved out of it,
 //!   trashed or deleted is reported in [`FarmPage::removed`]; the sync never deletes by absence
 //!   ([`FarmSource::reread_window`] is `None`). The chosen folder trashed or deleted is
-//!   `source_missing`. A token Drive no longer accepts (`400`, `404`) starts a resync: the
-//!   listing above.
+//!   `source_missing`. A token Drive no longer accepts (`400` with reason `invalid`, or `404`)
+//!   starts a resync: the listing above.
 //! - **Text:** a Google Doc exported as `text/plain`, a Sheet as `text/csv` (its first tab only,
 //!   a Google fact), a `text/plain` file downloaded, anything else by name only; each cut at
 //!   1 MB by the client. A file Drive won't hand over (`403 fileNotDownloadable`, an export over
@@ -25,10 +25,11 @@
 //!   one gone since the change (`404`) is removed.
 //! - **One file that fails** (Drive down for it, a timeout, an answer that doesn't parse) goes
 //!   to the back of the queue with its tries counted, and the page goes on with the others; a
-//!   page stops after [`FAILURES_PER_PAGE`] such failures. A file is tried once a run, and after
-//!   [`MAX_TRIES`] runs it is skipped, its record left as it was. When only files that failed in
-//!   this run are left, the page fails with `vendor_unavailable`, so the run stops and the next
-//!   one, 15 minutes later, tries them again. A refused token or a `429` fails the page at once.
+//!   page stops after [`FAILURES_PER_PAGE`] such failures. A file is tried once a run; after
+//!   [`MAX_TRIES`] runs it is tried once a day ([`RETRY_AFTER_TRIES`]), its record left as it
+//!   was, so neither one bad file nor a long outage drops a file for good. Files waiting for a
+//!   later run don't hold up the rest: once only they are left, the page reads `changes.list`.
+//!   A refused token or a `429` fails the page at once.
 //!
 //! **Under the folder.** Drive gives a file's `parents`, not its path, and moving a folder
 //! changes only that folder, never the files inside it. So the cursor keeps the tree: every
@@ -85,9 +86,12 @@ const TEXT_PER_PAGE: usize = 8 * MAX_TEXT_BYTES;
 /// timeouts.
 pub const FAILURES_PER_PAGE: usize = 2;
 
-/// Runs a file's read may fail in before it is skipped, its record left as it was: about an
-/// hour of an outage at one run every 15 minutes.
+/// Runs a file's read may fail in before it is tried only once a day, its record left as it
+/// was: about an hour of an outage at one run every 15 minutes.
 pub const MAX_TRIES: u8 = 5;
+
+/// How long a file that failed in [`MAX_TRIES`] runs waits before it is tried again.
+pub const RETRY_AFTER_TRIES: Duration = Duration::from_hours(24);
 
 const KIND: ConnectorKind = ConnectorKind::GoogleDrive;
 
@@ -159,6 +163,23 @@ impl Queued {
 
     fn kind(&self) -> FileKind {
         FileKind::of(&self.mime)
+    }
+
+    /// Whether the run started at `now` reads it: not if it failed earlier in this run, nor,
+    /// after [`MAX_TRIES`] runs, until [`RETRY_AFTER_TRIES`] has passed.
+    fn due(&self, now: Timestamp) -> bool {
+        match self.failed_at {
+            None => true,
+            Some(at) if at == now => false,
+            Some(at) => self.tries < MAX_TRIES || now >= at.plus(RETRY_AFTER_TRIES),
+        }
+    }
+}
+
+impl Cursor {
+    /// Whether a queued file is due in the run started at `now`.
+    fn due(&self, now: Timestamp) -> bool {
+        self.queue.iter().any(|q| q.due(now))
     }
 }
 
@@ -435,7 +456,7 @@ impl DriveSource {
         let mut listed = None;
         let mut removed = Vec::new();
         let mut cursor = match Cursor::parse(request.cursor.as_ref()) {
-            Some(cursor) if !cursor.queue.is_empty() => cursor,
+            Some(cursor) if cursor.due(now) => cursor,
             Some(cursor) => match self.changes(token, root, cursor).await? {
                 Step::Applied(cursor, gone) => {
                     removed = gone;
@@ -460,7 +481,7 @@ impl DriveSource {
             removed,
             kept: Vec::new(),
             listed,
-            more: cursor.paging || !cursor.queue.is_empty(),
+            more: cursor.paging || cursor.due(now),
             cursor: cursor.to_sync_cursor(),
             probes: 0,
         })
@@ -477,9 +498,16 @@ impl DriveSource {
     ) -> Result<Step, FarmSourceError> {
         let page = match self.client.changes_page(token, &cursor.token).await {
             Ok(page) => page,
-            Err(
-                FarmClientError::Refused { status: 400, .. } | FarmClientError::NotFound { .. },
-            ) => {
+            Err(FarmClientError::Refused {
+                status: 400, code, ..
+            }) if code == "invalid" => {
+                tracing::info!(
+                    vendor = VENDOR,
+                    "the change token is refused; listing again"
+                );
+                return Ok(Step::Resync);
+            }
+            Err(FarmClientError::NotFound { .. }) => {
                 tracing::info!(
                     vendor = VENDOR,
                     "the change token is refused; listing again"
@@ -591,7 +619,7 @@ impl DriveSource {
         let mut gone = Vec::new();
         let (mut bytes, mut reads, mut failures) = (0, 0, 0);
         while reads < FILES_PER_PAGE && bytes < TEXT_PER_PAGE && failures < FAILURES_PER_PAGE {
-            let Some(at) = cursor.queue.iter().position(|q| q.failed_at != Some(now)) else {
+            let Some(at) = cursor.queue.iter().position(|q| q.due(now)) else {
                 break;
             };
             let file = cursor.queue[at].clone();
@@ -633,24 +661,15 @@ impl DriveSource {
                         error = %e,
                         "a file's read failed"
                     );
-                    if failed.tries >= MAX_TRIES {
+                    if failed.tries == MAX_TRIES {
                         tracing::warn!(
                             vendor = VENDOR,
-                            "a file failed in {MAX_TRIES} runs; skipped, its record left as it was"
+                            "a file failed in {MAX_TRIES} runs; tried once a day from now, its record left as it was"
                         );
-                    } else {
-                        cursor.queue.push_back(failed);
                     }
+                    cursor.queue.push_back(failed);
                 }
             }
-        }
-        // Only files that failed in this run are left, and none was tried on this page: the
-        // run stops here, and the next one tries them again.
-        if reads == 0 && !cursor.queue.is_empty() {
-            return Err(FarmSourceError::Unavailable {
-                vendor: KIND,
-                source: "the files left failed in this run".into(),
-            });
         }
         Ok((items, gone))
     }
