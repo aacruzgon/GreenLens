@@ -1,4 +1,4 @@
-//! The prompts of [vision vlm 7] (`system@2`, `findings@3`, `indicators@2`, `verify@2`,
+//! The prompts of [vision vlm 7] (`system@2`, `findings@4`, `indicators@2`, `verify@2`,
 //! `guided@1`), filled from the payload. They borrow the payload and return owned strings;
 //! nothing here allocates more than the text itself.
 //!
@@ -67,7 +67,7 @@ const BENEFICIALS: &str = "Many helpful insects look like pests. Check these bef
 - A swollen, bronze or papery aphid is a mummy: a parasitic wasp has used it. Report it as other, with the name aphid mummy.
 Only choose a pest label when you can see the features of that pest.";
 
-const SOIL: &str = "2. soil: for each aspect, the value you see in the image that shows the soil best, or null if no image shows it clearly. Soil glimpsed between leaves or blurred in the background doesn't count. Soil under mulch can't be judged for moisture, surface or structure. Write each aspect you can judge as an object, for example \"moisture\": {\"value\": \"moist\", \"image\": \"img1\", \"certainty\": \"medium\"}, and each one you can't as null, for example \"erosion\": null.
+const SOIL: &str = "2. soil: for each aspect, the value you see in the image that shows the soil best, or null if no image shows it clearly. A photo of the soil shows this plant's soil even when other plants, leaves or debris are in it; judge the soil from it. Soil glimpsed between leaves or blurred in the background doesn't count. Soil under mulch can't be judged for moisture, surface or structure. Write each aspect you can judge as an object, for example \"moisture\": {\"value\": \"moist\", \"image\": \"img1\", \"certainty\": \"medium\"}, and each one you can't as null, for example \"erosion\": null.
 - moisture: dry (light-coloured, dusty), moist (darker, holds together), wet (shiny, sticky), waterlogged (standing water)
 - surface: normal, crusted (a hard skin), cracked
 - structure: crumbly, cloddy (hard lumps), compacted (dense, smooth, no crumbs), unclear
@@ -77,11 +77,11 @@ const SOIL: &str = "2. soil: for each aspect, the value you see in the image tha
 - erosion: none, rills (small channels), exposed_roots
 - weeds: none, few, many";
 
-const DAMAGE: &str = "4. damage: patterns of damage done by animals (insects, mites, slugs, birds, mammals) on the leaves, stems, fruit or soil, up to 10, each with the image and a box when it is in one area (null when it is spread over the whole plant). Disease is not damage: leave out spots, rings, halos, lesions, yellowing, wilting, rot and mould caused by disease, whatever their colour or shape. They are not leaf_mines and not other.
+const DAMAGE: &str = "4. damage: patterns of damage done by animals (insects, mites, slugs, birds, mammals) on the leaves, stems, fruit or soil, up to 10, each with the image and a box when it is in one area (null when it is spread over the whole plant). List each pattern once for each area it covers, and never repeat a finding. Disease is not damage: leave out spots, rings, halos, lesions, yellowing, wilting, rot and mould caused by disease, whatever their colour or shape. They are not leaf_mines and not other.
 - shot_holes: many small round holes, a few millimetres across
 - ragged_holes: large irregular holes, often with slime nearby
 - chewed_margins: leaf edges eaten away
-- leaf_mines: pale winding tunnels, or pale see-through blotches, eaten inside the leaf by a larva, often with a thin dark line of droppings inside. Brown, black or yellow spots are not mines.
+- leaf_mines: winding tunnels, or irregular see-through blotches, eaten inside the leaf by a larva, often with a thin dark line of droppings inside. Spots of any colour are not mines, and neither are long straight streaks or stripes running along the leaf or its veins: those are disease lesions.
 - sticky_residue: shiny sticky coating on leaves
 - sooty_mould: black powdery coating
 - webbing: fine silk between leaves or stems
@@ -97,7 +97,7 @@ const DAMAGE: &str = "4. damage: patterns of damage done by animals (insects, mi
 - pecked_fruit: fruit with beak holes
 - other: other damage by an animal, described in other_description in a few words. other_description is null for every other pattern.
 
-5. notes: at most two short sentences about anything else important you see, or an empty string.";
+5. notes: at most two short sentences about anything else important you see, under 120 characters in all, or an empty string.";
 
 /// The findings call's instructions (after the image labels).
 pub fn findings(
