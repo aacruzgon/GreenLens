@@ -4451,6 +4451,12 @@ pub struct FarmPageRequest {
     /// page of a re-read pass and `None` otherwise. The adapter starts a pass from it only when
     /// its cursor has no page in progress; a vendor without a re-read ignores it.
     pub reread_from: Option<Timestamp>,
+    /// How many older items the adapter may check with an extra call each on this page, for
+    /// changes no pass can see (Slack: replies to threads whose parent is older than the
+    /// re-read window). The sync shares a fixed number among a connector's sources per run
+    /// and sends 0 on a source's first pass and when its run is nearly over. A vendor whose
+    /// change feed reports everything (Drive) ignores it.
+    pub probe_limit: u32,
 }
 
 /// One item as the vendor holds it, before chunking.
@@ -4489,6 +4495,9 @@ pub struct FarmPage {
     pub cursor: SyncCursor,
     /// `true` when another page follows; the sync reads it now or on its next run.
     pub more: bool,
+    /// How many of [`FarmPageRequest::probe_limit`]'s checks this page made, failed ones
+    /// included.
+    pub probes: u32,
 }
 
 /// A vendor behind the farm connectors (Slack or Google Drive).
@@ -7245,8 +7254,9 @@ pub trait FarmRecordStore: Send + Sync {
     ) -> Result<Vec<(FarmRecordId, String)>, StoreError>;
 
     /// Upserts chunks by `(connector, vendor_id, n)`, keeping the stored vector when
-    /// `vector` is `None`. Returns how many were written. `NotFound` when the connector is
-    /// missing or being deleted, so no record outlives its connector's deletion.
+    /// `vector` is `None`. A record whose `source` the connector no longer has is skipped.
+    /// Returns how many were written. `NotFound` when the connector is missing or being
+    /// deleted, so no record outlives its connector's deletion.
     async fn upsert_records(
         &self,
         connector: ConnectorId,
