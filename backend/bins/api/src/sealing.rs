@@ -135,13 +135,6 @@ impl ConnectorKey {
 
     /// Seals `plaintext` for `connector`, with a fresh random nonce, so sealing the same token
     /// twice gives two different values.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "sealed by the code exchange (E3.4) and seeding (E4.6)"
-        )
-    )]
     pub fn seal(&self, purpose: SealPurpose, connector: ConnectorId, plaintext: &[u8]) -> Sealed {
         let nonce = Nonce::generate();
         let mut body = Vec::with_capacity(plaintext.len() + TAG_LEN);

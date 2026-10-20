@@ -4,7 +4,10 @@
 
 use std::{collections::BTreeMap, net::SocketAddr, str::FromStr, time::Duration};
 
-use domain::{id::WorkerId, rules::weather::WeatherThresholds};
+use domain::{
+    id::{GardenId, WorkerId},
+    rules::weather::WeatherThresholds,
+};
 use secrecy::{ExposeSecret, SecretString};
 
 use crate::sealing::ConnectorKey;
@@ -129,6 +132,9 @@ pub struct ConnectorSettings {
     pub era_slack_base: Option<String>,
     /// `ERA_GOOGLE_BASE`: Era's Google Drive simulator, as above.
     pub era_google_base: Option<String>,
+    /// `ERA_DEMO_GARDEN_ID`: the demo garden (E9.0 creates it through the API, so its id is
+    /// known only after) that start-up seeding gives the two `era` connectors.
+    pub era_demo_garden: Option<GardenId>,
 }
 
 /// Outbound providers, handed to the `integrations` and `agent` constructors.
@@ -355,6 +361,15 @@ fn connectors<F: Fn(&str) -> Option<String>>(
         return_url,
         era_slack_base: http_base(env, "ERA_SLACK_BASE")?,
         era_google_base: http_base(env, "ERA_GOOGLE_BASE")?,
+        era_demo_garden: env
+            .get("ERA_DEMO_GARDEN_ID")
+            .map(|value| {
+                value.trim().parse().map_err(|_| ConfigError::Invalid {
+                    name: "ERA_DEMO_GARDEN_ID",
+                    problem: "expected a garden id (a ULID)".to_owned(),
+                })
+            })
+            .transpose()?,
     })
 }
 
@@ -534,6 +549,20 @@ mod tests {
         assert_eq!(config.connectors.return_url, "pdm://connectors");
         assert!(config.connectors.google.is_none());
         assert!(config.connectors.era_slack_base.is_none());
+        assert!(config.connectors.era_demo_garden.is_none());
+    }
+
+    #[test]
+    fn a_demo_garden_id_that_is_not_a_ulid_is_refused() {
+        let mut vars = base();
+        vars.insert("ERA_DEMO_GARDEN_ID", "maple-row".to_owned());
+        assert!(matches!(
+            load(&vars),
+            Err(ConfigError::Invalid {
+                name: "ERA_DEMO_GARDEN_ID",
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -553,8 +582,16 @@ mod tests {
         );
         vars.insert("ERA_SLACK_BASE", "http://era-slack:8080/".to_owned());
         vars.insert("ERA_GOOGLE_BASE", "http://era-google:8080".to_owned());
+        vars.insert(
+            "ERA_DEMO_GARDEN_ID",
+            "01JAX3K9T6R2B8V0QZ4M7D1E5G".to_owned(),
+        );
         let config = load(&vars).unwrap();
         let c = &config.connectors;
+        assert_eq!(
+            c.era_demo_garden.map(|g| g.to_string()).as_deref(),
+            Some("01JAX3K9T6R2B8V0QZ4M7D1E5G")
+        );
         assert!(c.key.is_some());
         let slack = c.slack.as_ref().unwrap();
         assert_eq!(slack.client_id, "123.456");

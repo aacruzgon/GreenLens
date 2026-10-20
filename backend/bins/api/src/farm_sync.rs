@@ -28,6 +28,7 @@
 //! [connectors 6]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#6-sync
 
 pub mod chunk;
+pub mod seed;
 pub mod state;
 
 #[cfg(test)]

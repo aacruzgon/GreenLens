@@ -36,8 +36,8 @@ use anyhow::Context as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 /// Start-up in order: tracing; configuration; the ports (store with schema, blob, adapters,
-/// models, the species photo index); resumed deletions; the scheduler; then serve until a signal,
-/// and drain.
+/// models, the species photo index); resumed deletions; the demo garden's `era` connectors; the
+/// scheduler; then serve until a signal, and drain.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     if std::env::args().nth(1).as_deref() == Some("openapi") {
@@ -59,6 +59,7 @@ async fn main() -> anyhow::Result<()> {
     if resumed > 0 {
         tracing::info!(resumed, "deletions resumed");
     }
+    farm_sync::seed::at_start(&state).await;
     scheduler::start(&state);
     let deletes = state.deletes.clone();
     tokio::spawn(signal(shutdown.clone()));

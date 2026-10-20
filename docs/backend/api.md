@@ -1,6 +1,6 @@
 # PDM Backend: `api` binary
 
-> **Status:** Draft v0.7.3, 2026-10-19. v0.7.3: the farm sync (roadmap E4.1, E4.2, E4.4, E4.5): `farm_sync.rs` runs the `connectors` task every minute when connectors are on (`AppState::farm_sync`), at most 4 due connectors a run side by side, over the `FarmSource` adapters by kind and endpoint (`FarmSources`): pages from each source's saved cursor, chunks of at most 2,000 characters with a SHA-256 `text_hash`, only changed chunks embedded, the daily 7-day re-read that deletes what the vendor no longer has, the 10,000-record limit, and `last_error` and the next attempt by failure; `cleanup` deletes Slack messages older than 180 days (section 16). v0.7.2: farm connectors are configured (roadmap E3.0–E3.2): `CONNECTOR_KEY` (64 hex characters) is the one switch, read through `AppState::connector_key`; without it the list answers `available: false` and the owner routes `409 invalid_state`, and with it the list comes from the store. The Slack and Google OAuth clients (each pair together or not at all), `CONNECTOR_RETURN_URL` and the Era bases are read for the routes and seeding to come. `sealing.rs` seals vendor tokens with AES-256-GCM (`aes-gcm` 0.11.1), a random nonce per seal and the connector id as associated data. v0.7.1: the farm connector routes are declared (roadmap E1.4): `GET /gardens/{id}/connectors` answers `available: false`, and the owner routes and the public OAuth callback answer `409 invalid_state` until connectors are configured; `Access<R, table::Connector>` resolves a connector's garden. v0.7: shared memories are recorded in `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs`, the new `GET /plants/{id}/beliefs` (never a 5xx), the `beliefs` scheduler task every 10 s (the only writer to Agent Memory: queued erases, then unsynced shared memories), deletions that queue their erase in their first transaction, and `POST /memories` taking a `topic`; 42 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
+> **Status:** Draft v0.7.4, 2026-10-19. v0.7.4: start-up seeds the demo garden's two `era` connectors after resuming deletions (roadmap E4.6), by fixed id, into the garden `ERA_DEMO_GARDEN_ID` names, with their tokens sealed under `CONNECTOR_KEY` (sections 4, 5 and 16). v0.7.3: the farm sync (roadmap E4.1, E4.2, E4.4, E4.5): `farm_sync.rs` runs the `connectors` task every minute when connectors are on (`AppState::farm_sync`), at most 4 due connectors a run side by side, over the `FarmSource` adapters by kind and endpoint (`FarmSources`): pages from each source's saved cursor, chunks of at most 2,000 characters with a SHA-256 `text_hash`, only changed chunks embedded, the daily 7-day re-read that deletes what the vendor no longer has, the 10,000-record limit, and `last_error` and the next attempt by failure; `cleanup` deletes Slack messages older than 180 days (section 16). v0.7.2: farm connectors are configured (roadmap E3.0–E3.2): `CONNECTOR_KEY` (64 hex characters) is the one switch, read through `AppState::connector_key`; without it the list answers `available: false` and the owner routes `409 invalid_state`, and with it the list comes from the store. The Slack and Google OAuth clients (each pair together or not at all), `CONNECTOR_RETURN_URL` and the Era bases are read for the routes and seeding to come. `sealing.rs` seals vendor tokens with AES-256-GCM (`aes-gcm` 0.11.1), a random nonce per seal and the connector id as associated data. v0.7.1: the farm connector routes are declared (roadmap E1.4): `GET /gardens/{id}/connectors` answers `available: false`, and the owner routes and the public OAuth callback answer `409 invalid_state` until connectors are configured; `Access<R, table::Connector>` resolves a connector's garden. v0.7: shared memories are recorded in `SurrealDB` Agent Memory: the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (all three or none), `Ports.beliefs`, the new `GET /plants/{id}/beliefs` (never a 5xx), the `beliefs` scheduler task every 10 s (the only writer to Agent Memory: queued erases, then unsynced shared memories), deletions that queue their erase in their first transaction, and `POST /memories` taking a `topic`; 42 tests. v0.6.5: `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket storage 2 creates, not `pdm`. v0.6.4: section 4 proposes that start-up step 3 applies the numbered migrations and the generated `knowledge.surql` after the schema, and that step 6 stops on an embedder that differs from the knowledge set's. v0.6.3: section 7 says `backend/openapi.json` is committed and a test fails when it falls behind the types. v0.6.2: section 21 names `gen_fake_store.py` at its place in the repository, `backend/tools/apigen/`. v0.6.1: worker tokens are kept as SHA-256 digests and compared digest to digest in constant time, so a token's length no longer shows in the comparison time. v0.6: a live scan stream re-reads the state after 15 s without an event, so a resting point reached without one and a deleted scan close it; image bodies end on the shutdown token; the claim group has the 1 MiB JSON limit (it had axum's 2 MiB default); a signal handler that fails to install no longer shuts the API down; invite accepts are held to at most 10 in any minute (a burst of 5, then one every 12 s); the replay-completeness claim is corrected; the section 1 skills table is gone, since the skills follow this design; the fake-store generator moves to `backend/tools/apigen/`. v0.5: the scan stream ends on a duplicate flagged `rests` (a resting event stored during the replay used to leave it open), the timeout's bare `503` gets `Retry-After` from `render_errors`, the global body cap is 20 MiB + 128 KiB (not 24 MiB), the `api` container's `stop_grace_period` is 190 s, the scheduler's `TASKS` listing is complete, and comments cite the settled contract sections. v0.4: the generated fake store now delegates every store method, default-bodied ones included, and four handler tests cover the v0.3 paths: late worker events dropped with `204`, a tombstoned account's token answered `401`, a second `DELETE /me` starting nothing, and the `SoilGrids` retry time by failure. v0.3: the cross-crate fixes: every `RustFS` delete goes through one `blob::DeleteQueue`, drained at shutdown for at least one full attempt; the store's `Notify` is the claim long poll's only wake-up; `complete` fails a job for good once; late `events` after `complete` are dropped with `204`; `Pipeline::sweep` owns the question continuation; `SoilGrids` retries 15 minutes after an outage and 7 days after no data; account deletion starts with a tombstone's compare-and-set that refuses the deleted account's tokens and resumes the Clerk deletion after a restart. v0.2: the trigger rules read `domain::rules::weather::WeatherThresholds` from `Config::weather`, the one instance also given to Open-Meteo and the pipeline, and one text embedder serves every consumer now that `TextEmbedder::embed` takes an `EmbedMode`. v0.1: the `api` binary designed down to every handler, extractor, layer and background task: start-up and shutdown, configuration, the layer stack, auth and membership proofs, idempotency, the error mapping, every endpoint of contracts v0.9, uploads, the resumable scan event stream, the chat stream, the job broker, the scheduler, the deletion runner and the signed media routes, compiled on Rust 1.99.1 against axum 0.8.9, tower-http 0.7.1 and utoipa 6, and wired to the real `store`, `blob`, `knowledge`, `vision`, `integrations`, `agent` and `pipeline` crates.
 
 Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports and types `api` wires, and [domain-types](domain-types.md) for every wire shape. Every listing below is copied from the compiled source of `bins/api` by the docgen tool. `cargo check -p api`, `cargo clippy -p api --all-targets` (no warning in `api`) and `cargo test -p api` pass: 42 tests, among them handler tests that drive the real router with `tower::ServiceExt::oneshot`. `cargo check --workspace` passes, the binary links, and `api openapi` writes the document.
 
@@ -182,6 +182,7 @@ bins/api/src/
 ├─ farm_sync.rs      FarmSync: the connectors task's body over the FarmSource adapters; FarmSources
 │  ├─ chunk.rs       chunks of at most 2,000 characters and their text_hash
 │  ├─ state.rs       SourceState: a source's stored cursor around the adapter's own
+│  ├─ seed.rs        start-up seeding of the demo garden's era connectors
 │  └─ tests.rs       the sync on the embedded store with a scripted source
 ├─ deletion.rs       DeletionRunner: cascades (objects, Agent Memory, records), account deletion, resume
 ├─ media.rs          signature check, object streaming
@@ -200,8 +201,8 @@ bins/api/src/
 
 ```rust
 /// Start-up in order: tracing; configuration; the ports (store with schema, blob, adapters,
-/// models, the species photo index); resumed deletions; the scheduler; then serve until a signal,
-/// and drain.
+/// models, the species photo index); resumed deletions; the demo garden's `era` connectors; the
+/// scheduler; then serve until a signal, and drain.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     if std::env::args().nth(1).as_deref() == Some("openapi") {
@@ -223,6 +224,7 @@ async fn main() -> anyhow::Result<()> {
     if resumed > 0 {
         tracing::info!(resumed, "deletions resumed");
     }
+    farm_sync::seed::at_start(&state).await;
     scheduler::start(&state);
     let deletes = state.deletes.clone();
     tokio::spawn(signal(shutdown.clone()));
@@ -318,8 +320,9 @@ async fn until_signal(name: &str, signal: impl Future<Output = std::io::Result<(
 | 7 | The species photo index from `KnowledgeRepo::load_knowledge`; the product catalogue for the dose and plan checks | Exits |
 | 8 | `api`'s own pieces: hub, broker, writers, pusher, deletion runner; then the pipeline and the agent, which need the writer | — |
 | 9 | Resume cascades marked `deleting_at`, and account deletions whose tombstone isn't finished (section 17) | Exits on a store error |
-| 10 | Start the scheduler's tasks on the `TaskTracker` (section 16) | — |
-| 11 | Bind and serve | Exits |
+| 10 | With connectors on and `ERA_SLACK_BASE`, `ERA_GOOGLE_BASE` and `ERA_DEMO_GARDEN_ID` set, seed the demo garden's two `era` connectors by fixed id (`farm_sync::seed`, section 16) | Logged, not fatal: a garden that doesn't exist yet is skipped until the next start |
+| 11 | Start the scheduler's tasks on the `TaskTracker` (section 16) | — |
+| 12 | Bind and serve | Exits |
 
 `seed-upload` has already finished when `api` starts (`depends_on` with `service_completed_successfully`, [architecture 12](../architecture/README.md#12-deployment)), so the migration that references the species photos and the photo index see them.
 
@@ -509,6 +512,9 @@ pub struct ConnectorSettings {
     pub era_slack_base: Option<String>,
     /// `ERA_GOOGLE_BASE`: Era's Google Drive simulator, as above.
     pub era_google_base: Option<String>,
+    /// `ERA_DEMO_GARDEN_ID`: the demo garden (E9.0 creates it through the API, so its id is
+    /// known only after) that start-up seeding gives the two `era` connectors.
+    pub era_demo_garden: Option<GardenId>,
 }
 ```
 
@@ -572,6 +578,15 @@ fn connectors<F: Fn(&str) -> Option<String>>(
         return_url,
         era_slack_base: http_base(env, "ERA_SLACK_BASE")?,
         era_google_base: http_base(env, "ERA_GOOGLE_BASE")?,
+        era_demo_garden: env
+            .get("ERA_DEMO_GARDEN_ID")
+            .map(|value| {
+                value.trim().parse().map_err(|_| ConfigError::Invalid {
+                    name: "ERA_DEMO_GARDEN_ID",
+                    problem: "expected a garden id (a ULID)".to_owned(),
+                })
+            })
+            .transpose()?,
     })
 }
 
@@ -633,11 +648,12 @@ fn oauth_client<F: Fn(&str) -> Option<String>>(
 | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | unset | The Slack app's OAuth client ([connectors 5](../connectors/README.md#5-connecting-and-tokens)). Both or neither: a partial pair stops start-up naming the missing one. The secret is a `SecretString` |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | unset | The Google Web application OAuth client; both or neither, as above |
 | `CONNECTOR_RETURN_URL` | `pdm://connectors` | Where `GET /connectors/oauth/callback` sends the app: `302` to `{this}/{connector id}/callback?code&state`. A scheme is required; a query or fragment is refused. The callback itself is `{API_PUBLIC_BASE}/connectors/oauth/callback` |
-| `ERA_SLACK_BASE`, `ERA_GOOGLE_BASE` | unset | Era's Slack and Drive simulators, `http(s)://` origins, for start-up seeding of the demo garden's `era` connectors (roadmap E4.6). No route reads them (decision 8) |
+| `ERA_SLACK_BASE`, `ERA_GOOGLE_BASE` | unset | Era's Slack and Drive simulators, `http(s)://` origins, for start-up seeding of the demo garden's `era` connectors (roadmap E4.6) and the adapters that read them. No route reads them (decision 8) |
+| `ERA_DEMO_GARDEN_ID` | unset | The demo garden's id (a ULID), which seeding gives the two `era` connectors. E9.0 creates the garden through the API, so the deploy sets it afterwards; until the garden exists, seeding logs and skips |
 
 Every secret is a `SecretString`: `Debug` prints `[REDACTED]` (the test checks the signing key never appears in the formatted config). `Config::from_lookup` takes any variable source, so tests build a config from a map.
 
-**Sealing.** `CONNECTOR_KEY` parses into a `ConnectorKey`, which holds the expanded AES-256-GCM key (wiped on drop through `aes-gcm`'s `zeroize` feature) and prints as `ConnectorKey([REDACTED])`. `seal` draws a fresh 96-bit nonce from the OS for every call, so sealing one token twice gives two values, and writes `nonce (12 bytes) || ciphertext || tag (16 bytes)` into `domain::ports::Sealed`, whose `Debug` prints only the length. The associated data is the connector's id as it is written on the wire, so a sealed value opens only on its own connector ([connectors 4](../connectors/README.md#4-data)). `unseal` returns the plaintext as a `SecretSlice<u8>`, wiped on drop; a wrong key, another connector's id or any changed byte is the same opaque `UnsealError::Rejected`. It lives in `api` because every caller does: the connect routes (E3.3, E3.4), the `connectors` scheduler task (E4.1) and start-up seeding (E4.6). The `FarmSource` adapters in `integrations` get an unsealed `VendorToken` and never see the key, and `domain` holds only the opaque bytes, so neither depends on a cipher. The sync unseals every connector's token. `seal` has no caller outside the tests until seeding (E4.6) and the code exchange (E3.4), and `SealPurpose::Pkce` none until the connect routes seal the PKCE verifier (E3.3); both keep an `expect(dead_code)` until then.
+**Sealing.** `CONNECTOR_KEY` parses into a `ConnectorKey`, which holds the expanded AES-256-GCM key (wiped on drop through `aes-gcm`'s `zeroize` feature) and prints as `ConnectorKey([REDACTED])`. `seal` draws a fresh 96-bit nonce from the OS for every call, so sealing one token twice gives two values, and writes `nonce (12 bytes) || ciphertext || tag (16 bytes)` into `domain::ports::Sealed`, whose `Debug` prints only the length. The associated data is the connector's id as it is written on the wire, so a sealed value opens only on its own connector ([connectors 4](../connectors/README.md#4-data)). `unseal` returns the plaintext as a `SecretSlice<u8>`, wiped on drop; a wrong key, another connector's id or any changed byte is the same opaque `UnsealError::Rejected`. It lives in `api` because every caller does: the connect routes (E3.3, E3.4), the `connectors` scheduler task (E4.1) and start-up seeding (E4.6). The `FarmSource` adapters in `integrations` get an unsealed `VendorToken` and never see the key, and `domain` holds only the opaque bytes, so neither depends on a cipher. Seeding seals the demo tokens and the sync unseals every connector's; `SealPurpose::Pkce` keeps its `expect(dead_code)` until the connect routes seal the PKCE verifier (E3.3).
 
 ```rust
 /// `CONNECTOR_KEY`: 32 bytes, written as 64 hex characters (`openssl rand -hex 32`, the way every
@@ -716,13 +732,6 @@ impl ConnectorKey {
 
     /// Seals `plaintext` for `connector`, with a fresh random nonce, so sealing the same token
     /// twice gives two different values.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "sealed by the code exchange (E3.4) and seeding (E4.6)"
-        )
-    )]
     pub fn seal(&self, purpose: SealPurpose, connector: ConnectorId, plaintext: &[u8]) -> Sealed {
         let nonce = Nonce::generate();
         let mut body = Vec::with_capacity(plaintext.len() + TAG_LEN);
@@ -5070,6 +5079,75 @@ impl FarmSync {
 
 Nothing a vendor sent reaches a log line: lines carry the connector id, the source id, the vendor and the code (`FarmSourceError`'s `Display`). The store keeps the author's display name only.
 
+**Start-up seeding** (`farm_sync::seed`, EON E4.6 and gap G4). After `deletions.resume()`, with connectors on and `ERA_SLACK_BASE`, `ERA_GOOGLE_BASE` and `ERA_DEMO_GARDEN_ID` set, `seed_era_connectors` creates the demo garden's Slack and Drive connectors with `endpoint: "era"`, `status: active`, fixed ids (`ERA_SLACK_CONNECTOR`, `ERA_DRIVE_CONNECTOR`) and the tokens `xoxb-era-demo` and `ya29.era-demo` sealed under `CONNECTOR_KEY`, through `seed_connector`, which creates a connector only when its id is free; so every start may run it. The creator is the garden's first owner. The sources are the Maple Row Farm fixture's (`#field-reports`, `#crew`, the `Farm records` folder); the Slack account's workspace URL is the simulator's base URL, so a link points at the simulator, and start-up makes no call to it. A garden with no owner yet (E9.0 hasn't created it) is logged and skipped.
+
+```rust
+/// The seeded Slack connector's fixed id.
+pub const ERA_SLACK_CONNECTOR: &str = "01K7ERA5EED000000000000001";
+
+/// The seeded Drive connector's fixed id.
+pub const ERA_DRIVE_CONNECTOR: &str = "01K7ERA5EED000000000000002";
+
+/// The Slack simulator's token in open mode: any `xoxb-…` works.
+pub const ERA_SLACK_TOKEN: &str = "xoxb-era-demo";
+
+/// The Drive simulator's token in open mode: any bearer works.
+pub const ERA_DRIVE_TOKEN: &str = "ya29.era-demo";
+
+/// Creates the two `era` connectors if their ids are free.
+pub async fn seed_era_connectors(
+    store: &dyn Store,
+    key: &ConnectorKey,
+    clock: &dyn Clock,
+    seed: &EraSeed,
+) -> Result<Seeded, StoreError> {
+    let Some(owner) = first_owner(store, seed.garden).await? else {
+        return Ok(Seeded::NoGarden);
+    };
+    let now = clock.now();
+    let slack: ConnectorId = ERA_SLACK_CONNECTOR.parse().expect("a fixed, valid ULID");
+    let drive: ConnectorId = ERA_DRIVE_CONNECTOR.parse().expect("a fixed, valid ULID");
+    let connectors = [
+        (
+            slack,
+            ConnectorKind::Slack,
+            ConnectorAccount::Slack {
+                team_id: "T_MAPLE".to_owned(),
+                team_name: "Maple Row Farm".to_owned(),
+                url: format!("{}/", seed.slack_base),
+            },
+            vec![source("C_FIELD", "field-reports"), source("C_CREW", "crew")],
+            ERA_SLACK_TOKEN,
+        ),
+        (
+            drive,
+            ConnectorKind::GoogleDrive,
+            ConnectorAccount::GoogleDrive {
+                email: "demo@maplerowfarm.example".to_owned(),
+            },
+            vec![source("F_FARM", "Farm records")],
+            ERA_DRIVE_TOKEN,
+        ),
+    ];
+    for (id, kind, account, sources, token) in connectors {
+        let connector = NewConnector {
+            id,
+            kind,
+            status: ConnectorStatus::Active,
+            endpoint: ConnectorEndpoint::Era,
+            created_by: owner,
+            account: Some(account),
+            secret: Some(key.seal(SealPurpose::Token, id, token.as_bytes())),
+            oauth: None,
+            sources,
+            created_at: now,
+        };
+        store.seed_connector(seed.garden, connector).await?;
+    }
+    Ok(Seeded::Done)
+}
+```
+
 **Alert and plan-trigger dedupe.** A forecast alert's key is `<garden>:<trigger>:<date>` and a plan trigger's `plan:<plan>:<step>:<date>` ([contracts 7](../architecture/contracts.md#task)); the store's insert fails on a duplicate and `create_alert_task` answers `None`, so overlapping runs, or a run repeated after a crash, create each task once and push once. "Today" is the forecast's first day: Open-Meteo answers in the cell's time zone, so no time-zone database is needed.
 
 **The trigger rules** are pure functions of a cell's weather. Their thresholds are `domain::rules::weather::WeatherThresholds` ([domain 7, weather thresholds](domain.md#weather-thresholds)), held in `Config::weather` and also given to Open-Meteo (each day's `frost_risk`) and the pipeline (fusion), so an alert and a diagnosis never disagree about frost or a humid stretch. The thresholds aren't in the contracts, so the defaults are a proposal (section 23). Only the 3-day horizon is the scheduler's own:
@@ -5568,7 +5646,7 @@ The hub, writer and plan-lock maps use `std::sync::Mutex`: their critical sectio
 | Handlers | The real router (`router::app`), so layers, extractors, the renderer and request ids are under test, driven with `tower::ServiceExt::oneshot`. The ports are mockall mocks from `domain`'s `mock` feature; the store is `tests/fake_store.rs`, a `Store` made of one mock per repository trait with every method delegated, **generated** from `domain::ports::store` by `backend/tools/apigen/gen_fake_store.py` (regenerate when a store trait changes). The generator scans each trait body for `async fn` signatures that end in `;` or open a default body, skipping the body by brace matching, so a method with a default body (`live_lease`, `soil_profile_failed`, `gardens_due_soil_profile`, the account-tombstone methods) is delegated like any other and a test sets its expectations. The seams are small fakes: `NoPipeline` and `NoChat` (`unreachable!()`), `FixedImages` with a fixed answer |
 | Time | `FixedClock`; tokio's paused clock (`start_paused = true`) for the broker's long poll |
 | Scheduler | `scheduler::fetch_soil_profile` called directly, with a mocked `SoilProvider` |
-| Farm sync | `farm_sync/tests.rs`: `FarmSync` on the embedded `SurrealDB` 3.3.4 engine (`surrealdb` with `kv-mem`, a dev-dependency) with a scripted `FarmSource`, a counting embedder and `FixedClock`: at most 4 due connectors a run and `next_sync_at` 15 minutes on (T-E4.1); unchanged text costs no embedding and a changed chunk is embedded (T-E4.7); a refused token makes the connector `reauth_needed` and keeps the records, the 10,001st record stops it with `too_large`, and the cleanup deletes old Slack messages but keeps an old document (T-E4.9); a throttled pass resumes from its cursor; the daily re-read deletes what the vendor dropped and keeps what it reported as kept; an outage waits 15 minutes |
+| Farm sync | `farm_sync/tests.rs`: `FarmSync` on the embedded `SurrealDB` 3.3.4 engine (`surrealdb` with `kv-mem`, a dev-dependency) with a scripted `FarmSource`, a counting embedder and `FixedClock`: at most 4 due connectors a run and `next_sync_at` 15 minutes on (T-E4.1); unchanged text costs no embedding and a changed chunk is embedded (T-E4.7); a refused token makes the connector `reauth_needed` and keeps the records, the 10,001st record stops it with `too_large`, and the cleanup deletes old Slack messages but keeps an old document (T-E4.9); seeding twice gives one pair of sealed `era` connectors, and a missing garden is skipped (T-E4.10); a throttled pass resumes from its cursor; the daily re-read deletes what the vendor dropped and keeps what it reported as kept; an outage waits 15 minutes |
 | Pure parts | Config parsing, error mapping and statuses, the fallback renderer, canonical fingerprints, multipart fingerprints, the HMAC signer, the invite limiter, trigger rules, hour truncation, worker tokens |
 
 ```rust
