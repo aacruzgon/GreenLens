@@ -107,19 +107,31 @@ def fit_temperature(logits: np.ndarray, y: np.ndarray) -> float:
     return float(minimize_scalar(nll, bounds=(0.05, 10.0), method="bounded").x)
 
 
-def main() -> None:
+def main(argv=None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--version", required=True)
-    ap.add_argument("--min-train", type=int, default=30)
+    ap.add_argument("--features", choices=("image", "crops"), default="image",
+                    help="image: one embedding per photo (v0-v1d); crops: one per leaf our detector keeps "
+                         "(ml.training.heads.crops), or the whole photo when it keeps none, as the worker does")
+    ap.add_argument("--supported", nargs="*",
+                    help="train only these species' classes (classifier_supported, issue #4); the others go to the VLM")
+    ap.add_argument("--min-train", type=int, default=30, help="training photos a class needs")
     ap.add_argument("--views", type=int, default=0)
     ap.add_argument("--not-supported", nargs="*", default=["bean"],
                     help="species left out of the headline numbers (still trained and reported)")
     ap.add_argument("--balance-sources", action="store_true",
                     help="within each class, give every dataset the same total weight")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.views and args.features == "crops":
+        ap.error("--views augments whole photos; it doesn't apply to --features crops")
 
-    train, val, test = read_split("train"), read_split("val"), read_split("test")
-    counts = collections.Counter(f"{r['species_id']}/{r['problem_id']}" for r in train)
+    splits = {n: read_split(n) for n in ("train", "val", "test")}
+    left_out_species = {}
+    if args.supported:
+        for n, rs in splits.items():
+            left_out_species[n] = dict(collections.Counter(r["species_id"] for r in rs if r["species_id"] not in args.supported))
+            splits[n] = [r for r in rs if r["species_id"] in args.supported]
+    counts = collections.Counter(f"{r['species_id']}/{r['problem_id']}" for r in splits["train"])
     classes = sorted(c for c, n in counts.items() if n >= args.min_train)
     left_out = {c: n for c, n in counts.items() if n < args.min_train}
     cidx = {c: i for i, c in enumerate(classes)}
@@ -128,45 +140,82 @@ def main() -> None:
     def keep(rs):
         return [r for r in rs if f"{r['species_id']}/{r['problem_id']}" in cidx]
 
-    left_out_images = {n: len(rs) - len(keep(rs)) for n, rs in (("val", val), ("test", test))}
-    train, val, test = keep(train), keep(val), keep(test)
+    left_out_images = {n: len(splits[n]) - len(keep(splits[n])) for n in ("val", "test")}
+    rows = {n: keep(rs) for n, rs in splits.items()}
     emb = Embedder()
-    feats = {n: emb.files([r["path"] for r in rs]) for n, rs in (("train", train), ("val", val), ("test", test))}
-    ys = {n: np.asarray([cidx[f"{r['species_id']}/{r['problem_id']}"] for r in rs]) for n, rs in (("train", train), ("val", val), ("test", test))}
-    sp = {n: [r["species_id"] for r in rs] for n, rs in (("train", train), ("val", val), ("test", test))}
-    dsets = {n: np.asarray([r["dataset"] for r in rs]) for n, rs in (("train", train), ("val", val), ("test", test))}
+    crop_source = None
+    if args.features == "crops":
+        from ml.training.heads.crops import CropEmbedder
+        crop_source = CropEmbedder()
 
-    Xtr, ytr = feats["train"], ys["train"]
+    # One feature row per crop (or per photo); `group` maps a row to its photo, `weight` makes
+    # every photo count once in total, `single` marks rows of photos with exactly one crop.
+    data = {}
+    for n, rs in rows.items():
+        whole = emb.files([r["path"] for r in rs])
+        crops = crop_source.load([r["path"] for r in rs]) if crop_source else None
+        X, group, weight, single, no_leaf = [], [], [], [], []
+        for i in range(len(rs)):
+            no_leaf.append(crops is not None and len(crops[i]["emb"]) == 0)
+            e = crops[i]["emb"] if crops is not None and len(crops[i]["emb"]) else whole[i : i + 1]
+            X.append(e)
+            group += [i] * len(e)
+            weight += [1.0 / len(e)] * len(e)
+            single += [len(e) == 1] * len(e)
+        group = np.asarray(group)
+        y_img = np.asarray([cidx[f"{r['species_id']}/{r['problem_id']}"] for r in rs])
+        data[n] = {
+            "X": np.concatenate(X), "group": group, "weight": np.asarray(weight), "single": np.asarray(single),
+            "y": y_img[group], "y_img": y_img,
+            "sp": np.asarray([r["species_id"] for r in rs])[group], "sp_img": np.asarray([r["species_id"] for r in rs]),
+            "ds_img": np.asarray([r["dataset"] for r in rs]),
+            "crops_per_photo": np.bincount(group, minlength=len(rs)), "no_leaf": np.asarray(no_leaf),
+        }
+
+    tr = data["train"]
+    Xtr, ytr, photo_w = tr["X"], tr["y"], tr["weight"]
+    src_rows = tr["ds_img"][tr["group"]]
     if args.views:
         rng = np.random.default_rng(0)
         extra, extra_y = [], []
-        for r, y in zip(train, ytr):
+        for r, y in zip(rows["train"], tr["y_img"]):
             im = pp.load_rgb(r["path"])
             views = [augment(im, rng) for _ in range(args.views)]
             extra.append(emb.images(views))
             extra_y += [y] * args.views
         Xtr = np.concatenate([Xtr] + extra)
         ytr = np.concatenate([ytr, np.asarray(extra_y)])
+        photo_w = np.concatenate([photo_w, np.ones(len(extra_y))])
+        src_rows = np.concatenate([src_rows, np.repeat(tr["ds_img"], args.views)])
 
-    freq = np.bincount(ytr, minlength=len(classes)).astype(float)
+    # Class weights by inverse frequency of photos, not crops, capped at 10 times the median.
+    freq = np.bincount(tr["y_img"], minlength=len(classes)).astype(float) * (1 + args.views)
     w = 1.0 / freq
     w = np.minimum(w / np.median(w), 10.0)
-    sample_w = w[ytr]
+    sample_w = w[ytr] * photo_w
     if args.balance_sources:
-        src = np.asarray([r["dataset"] for r in train] + [r["dataset"] for r, y in zip(train, ys["train"]) for _ in range(args.views)])
-        pair = collections.Counter(zip(src, ytr))
+        pair = collections.Counter()
+        for s_, y_, pw in zip(src_rows, ytr, photo_w):
+            pair[(s_, y_)] += pw
         n_src = collections.Counter(y for _, y in pair)
-        sample_w = sample_w * np.asarray([freq[y] / (n_src[y] * pair[(s, y)]) for s, y in zip(src, ytr)])
+        sample_w = sample_w * np.asarray([freq[y] / (n_src[y] * pair[(s_, y)]) for s_, y in zip(src_rows, ytr)])
+
+    def photo_probs(n: str, clf, T: float = 1.0) -> np.ndarray:
+        """Each photo's verdict: the mean of its crops' restricted, tempered probabilities."""
+        d = data[n]
+        p = softmax(restricted_logits(clf.decision_function(d["X"]), species_of_class, d["sp"]) / T)
+        out = np.zeros((len(d["y_img"]), len(classes)))
+        np.add.at(out, d["group"], p)
+        return out / d["crops_per_photo"][:, None]
 
     best = None
     grid = (1, 5, 20, 50, 100, 200, 500, 1000, 2000, 5000)
+    val_multi = np.asarray([(species_of_class == s).sum() > 1 for s in data["val"]["sp_img"]])
     for C in grid:
         clf = LogisticRegression(C=C, max_iter=3000)
         clf.fit(Xtr, ytr, sample_weight=sample_w)
-        lv = restricted_logits(clf.decision_function(feats["val"]), species_of_class, sp["val"])
-        multi = np.asarray([(species_of_class == s).sum() > 1 for s in sp["val"]])
-        acc = topk_acc(softmax(lv[multi]), ys["val"][multi], 1)
-        print(f"C={C}: restricted val top-1 {acc:.3f}")
+        acc = topk_acc(photo_probs("val", clf)[val_multi], data["val"]["y_img"][val_multi], 1)
+        print(f"C={C}: restricted val top-1 per photo {acc:.3f}")
         if best is None or acc > best[0]:
             best = (acc, C, clf)
     _, C, clf = best
@@ -174,16 +223,23 @@ def main() -> None:
     if c_at_edge:
         print(f"WARNING: C={C} is at the edge of the grid {grid}")
 
-    lv = restricted_logits(clf.decision_function(feats["val"]), species_of_class, sp["val"])
-    T = fit_temperature(lv, ys["val"])
+    # The worker tempers each crop. A crop carries its photo's label, which is wrong for a healthy
+    # leaf in a diseased photo, so T is fitted on the crops of photos with exactly one crop.
+    dv = data["val"]
+    lv = restricted_logits(clf.decision_function(dv["X"]), species_of_class, dv["sp"])
+    fit_on = dv["single"] if dv["single"].sum() >= 200 else np.ones(len(dv["y"]), bool)
+    T = fit_temperature(lv[fit_on], dv["y"][fit_on])
 
     def report(name: str) -> dict:
-        raw = clf.decision_function(feats[name])
-        full = softmax(raw)
-        res = softmax(restricted_logits(raw, species_of_class, sp[name]) / T)
-        res_untempered = softmax(restricted_logits(raw, species_of_class, sp[name]))
-        y = ys[name]
-        spn = np.asarray(sp[name])
+        d = data[name]
+        raw = clf.decision_function(d["X"])
+        res_crop = softmax(restricted_logits(raw, species_of_class, d["sp"]) / T)
+        res = photo_probs(name, clf, T)
+        res_untempered = photo_probs(name, clf)
+        full = np.zeros((len(d["y_img"]), len(classes)))
+        np.add.at(full, d["group"], softmax(raw))
+        full /= d["crops_per_photo"][:, None]
+        y, spn = d["y_img"], d["sp_img"]
         # Restricted to the true species, a crop with k or fewer classes is right at top-k by
         # construction (review of PR #6, item 1). Each top-k is reported only over crops with
         # more than k classes, and calibration only over crops with 2 or more.
@@ -200,16 +256,25 @@ def main() -> None:
         supported = ~np.isin(spn, args.not_supported)
         multi = supported & (k_of > 1)
         per_dataset = {}
-        for d in sorted(set(dsets[name])):
-            m = (dsets[name] == d) & (k_of > 1)
-            per_dataset[d] = {
+        for ds in sorted(set(d["ds_img"])):
+            m = (d["ds_img"] == ds) & (k_of > 1)
+            per_dataset[ds] = {
                 "restricted_top1_multiclass": over(m, lambda mm: topk_acc(res[mm], y[mm], 1)),
                 "ece_after_T_multiclass": over(m, lambda mm: ece(res[mm], y[mm])),
             }
-
-        return {
+        pred = res.argmax(1)
+        per_class = {}
+        for ci, cname in enumerate(classes):
+            sup, hit = y == ci, pred == ci
+            per_class[cname] = {"n": int(sup.sum()),
+                                "recall": float(hit[sup].mean()) if sup.any() else None,
+                                "precision": float((y[hit] == ci).mean()) if hit.any() else None}
+        k_crop = k_of[d["group"]]
+        one = d["single"] & (k_crop > 1)
+        out = {
             "n": int(len(y)),
             "left_out_class_images": left_out_images.get(name, 0),
+            "left_out_species_images": left_out_species.get(name, {}),
             "headline": {
                 "excludes": list(args.not_supported),
                 "restricted_top1_multiclass": over(multi, lambda m: topk_acc(res[m], y[m], 1)),
@@ -225,8 +290,26 @@ def main() -> None:
             "ece_after_T_multiclass": over(k_of > 1, lambda m: ece(res[m], y[m])),
             "trivial_share": float((k_of == 1).mean()),
             "per_crop": per_crop,
-            "note": "Restricted metrics assume the species is right. The head is trained and scored on whole images; the worker feeds it leaf crops.",
+            "per_class": per_class,
         }
+        if args.features == "crops":
+            yc = d["y"]
+            out["per_leaf_crop"] = {
+                "crops": int(len(yc)),
+                "photos_with_no_leaf_kept": int(d["no_leaf"].sum()),
+                "crops_per_photo_median": float(np.median(d["crops_per_photo"])),
+                "top1_multiclass": over(k_crop > 1, lambda m: topk_acc(res_crop[m], yc[m], 1)),
+                "top3_over_3_classes": over(k_crop > 3, lambda m: topk_acc(res_crop[m], yc[m], 3)),
+                "single_crop_photos_top1_multiclass": over(one, lambda m: topk_acc(res_crop[m], yc[m], 1)),
+                "single_crop_photos_ece_after_T": over(one, lambda m: ece(res_crop[m], yc[m])),
+            }
+            out["note"] = ("Headline numbers are per photo: the mean of its crops' restricted, tempered probabilities. "
+                           "Per-crop numbers score each crop against its photo's label, which is wrong for a healthy "
+                           "leaf in a diseased photo; photos with one crop are the cleanest. Restricted metrics assume "
+                           "the species is right.")
+        else:
+            out["note"] = "Restricted metrics assume the species is right. The head is trained and scored on whole images; the worker feeds it leaf crops."
+        return out
 
     out = RUNS / args.version
     out.mkdir(parents=True, exist_ok=True)
@@ -252,15 +335,20 @@ def main() -> None:
     )
     summary = {
         "version": args.version,
+        "features": args.features,
+        "detector": crop_source.det.entry["version"] if crop_source else None,
+        "supported": args.supported,
         "classes": len(classes),
         "left_out_below_min": left_out,
         "C": C,
         "C_grid": list(grid),
         "C_at_grid_edge": c_at_edge,
         "temperature": T,
+        "temperature_fitted_on": "val crops of photos with one crop" if fit_on is dv["single"] else "all val crops",
         "views": args.views,
         "balance_sources": args.balance_sources,
         "train_rows": int(len(ytr)),
+        "train_photos": int(len(tr["y_img"])),
         "val": report("val"),
         "test": report("test"),
     }
@@ -279,6 +367,14 @@ def main() -> None:
             print(f"   {d:22s} top-1 {fmt(v['restricted_top1_multiclass'])} ECE {fmt(v['ece_after_T_multiclass'])}")
         for s, v in r["per_crop"].items():
             print(f"   {s:11s} classes={v['classes']} n={v['n']:4d} top1 {v['top1']:.2f} top3 {v['top3']:.2f}")
+        for cname, v in r["per_class"].items():
+            rc = "n/a" if v["recall"] is None else f"{v['recall']:.2f}"
+            pc = "n/a" if v["precision"] is None else f"{v['precision']:.2f}"
+            print(f"      {cname:42s} n={v['n']:4d} recall {rc} precision {pc}")
+        if "per_leaf_crop" in r:
+            c = r["per_leaf_crop"]
+            print(f"   per leaf crop: {c['crops']} crops, top-1 {fmt(c['top1_multiclass'])}, "
+                  f"one-crop photos top-1 {fmt(c['single_crop_photos_top1_multiclass'])} ECE {fmt(c['single_crop_photos_ece_after_T'])}")
 
 
 if __name__ == "__main__":
