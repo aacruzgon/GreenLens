@@ -194,6 +194,7 @@
           "connectors"
         ],
         "summary": "`POST /connectors/{id}/complete`: exchanges the code. The owner who started the connect, with\nthe `device_verifier` whose hash started it; anyone else, or a wrong verifier, gets\n`404 not_found` and the pending connector is deleted. `400 invalid_request` for a bad,\nexpired or used state, or a code the vendor refused; `409 invalid_state` while connectors are\noff.",
+        "description": "The timeout is 60 s. Past it the answer is `503`, but the exchange runs on: a retry with the\nsame `Idempotency-Key` gets `409 request_in_progress` until it ends, and then its answer.",
         "operationId": "complete_connector",
         "parameters": [
           {

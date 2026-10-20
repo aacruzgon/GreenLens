@@ -449,14 +449,8 @@ pub async fn oauth_callback(
 /// expired or used state, or a code the vendor refused; `409 invalid_state` while connectors are
 /// off.
 ///
-/// The work runs as a task on the tracker, and this handler only awaits it: when the route's
-/// timeout fires (the slow routes' 60 s, `router.rs`) or the client goes away, axum drops the
-/// handler, which must not cancel a claimed exchange halfway. The task still stores the tokens
-/// (or revokes them, or releases the claim) and finishes the idempotency record, so the app's
-/// retry with the same `Idempotency-Key` gets `409 request_in_progress` until it is done and
-/// then its answer ([contracts 9], farm connectors).
-///
-/// [contracts 9]: https://github.com/aacruzgon/GreenLens/blob/main/docs/architecture/contracts.md#farm-connectors
+/// The timeout is 60 s. Past it the answer is `503`, but the exchange runs on: a retry with the
+/// same `Idempotency-Key` gets `409 request_in_progress` until it ends, and then its answer.
 #[utoipa::path(post, path = "/connectors/{id}/complete", tag = "connectors",
     params(("id" = String, Path), ("Idempotency-Key" = Option<String>, Header, description = "UUID per user action")),
     request_body = CompleteConnectorRequest,
@@ -469,6 +463,11 @@ pub async fn complete_connector(
     request: IdemJson<CompleteConnectorRequest>,
 ) -> Response {
     let IdemJson { body, begun, .. } = request;
+    // The work runs as a task on the tracker, and this handler only awaits it: when the
+    // route's timeout fires (the `connect` group's 60 s, `router.rs`) or the client goes away,
+    // axum drops the handler, which must not cancel a claimed exchange halfway. The task still
+    // stores the tokens (or revokes them, or releases the claim) and finishes the idempotency
+    // record (contracts 9, farm connectors).
     let tasks = state.tasks.clone();
     let work = tasks.spawn(async move {
         let result = complete(&state, &access, body).await;
