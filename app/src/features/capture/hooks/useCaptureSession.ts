@@ -182,9 +182,11 @@ export function useCaptureSession(scanId: string) {
           setTimeout(() => alive.current && void remove(slotId), backoffMs(n));
           return;
         }
-        // The shot stays stored, with the message and Try again; a retake waiting on the delete is dropped.
+        // The shot stays stored, with the message and Try again; a retake waiting on the delete is dropped, so the
+        // message says what Try again does then.
         attempts.current.delete(tries);
-        dispatch(slotId, { type: "deleteFailed", message: messageOf(error) });
+        const message = slot.next ? "Couldn't replace the photo. Try again removes it, then take a new one." : messageOf(error);
+        dispatch(slotId, { type: "deleteFailed", message });
         if (slot.next) files.remove(slot.next.file.uri);
         void haptics.warning();
         return;

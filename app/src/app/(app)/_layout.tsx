@@ -1,10 +1,13 @@
 import { Redirect, Stack } from "expo-router";
 
 import { useSession } from "@/features/auth";
+import { useDraftSweep } from "@/features/capture";
 import { SessionGate } from "@/features/gardens";
 
 export default function AppLayout() {
   const session = useSession();
+  // Capture drafts whose scan is gone or no longer pending, once per launch.
+  useDraftSweep(session.isSignedIn);
   // Stack.Protected in the root layout already keeps (app) out when signed out; this makes the rule
   // hold on a cold start too, where both groups answer "/" and the first match could win.
   if (!session.isSignedIn) return <Redirect href="/sign-in" />;

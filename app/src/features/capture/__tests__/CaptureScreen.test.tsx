@@ -8,6 +8,7 @@ import { files } from "@/platform";
 import { ThemeProvider } from "@/ui";
 
 import { useDraftStore } from "../hooks/draftStore";
+import { sweepDrafts } from "../hooks/useDraftSweep";
 import { applySlot, createDraft, takeShot } from "../model/draft";
 import { CaptureScreen } from "../screens/CaptureScreen";
 
@@ -213,6 +214,19 @@ describe("CaptureScreen", () => {
     expect(mockStore.scan(id)!.scan.images).toHaveLength(0);
   });
 
+  it("says what Try again does when a retake's delete fails", async () => {
+    const id = await newScan();
+    await renderCapture(id);
+    await fireEvent.press(shutter());
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Whole plant, taken" })).toBeTruthy());
+    jest
+      .spyOn(scans, "deleteImage")
+      .mockRejectedValueOnce(new ApiError({ code: "invalid_state", message: "This scan can't change now.", retryable: false, status: 409 }));
+    await fireEvent.press(shutter());
+    expect(await screen.findByText("Couldn't replace the photo. Try again removes it, then take a new one.")).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Whole plant, taken" })).toBeTruthy();
+  });
+
   it("treats a scan already deleted as discarded", async () => {
     const alert = jest.spyOn(Alert, "alert");
     const id = await newScan();
@@ -236,5 +250,19 @@ describe("CaptureScreen", () => {
     await fireEvent.press(shutter());
     await waitFor(() => expect(screen.getByRole("tab", { name: "Whole plant, taken" })).toBeTruthy());
     expect(files.remove).toHaveBeenCalledWith(first);
+  });
+});
+
+describe("sweepDrafts", () => {
+  it("drops the drafts whose scan is gone or no longer pending, and keeps the rest", async () => {
+    const [pending, submitted, gone] = [await newScan(), await newScan(), await newScan()];
+    for (const id of [pending, submitted, gone, "scan_from_an_old_launch"]) {
+      useDraftStore.getState().put(createDraft({ id, garden_id: IDS.garden, plant_id: IDS.tomato2 }));
+    }
+    mockStore.scan(submitted)!.scan.status = "queued";
+    await scans.delete(gone);
+    await sweepDrafts();
+    expect(Object.keys(useDraftStore.getState().drafts)).toEqual([pending]);
+    expect(files.drop).toHaveBeenCalledWith("scan_from_an_old_launch");
   });
 });
