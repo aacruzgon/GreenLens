@@ -2,8 +2,8 @@
 
 use crate::{
     id::{
-        ConversationId, GardenId, InviteId, MemoryId, PendingActionId, PlanId, PlantId, ScanId,
-        TaskId, UserId,
+        ConnectorId, ConversationId, GardenId, InviteId, MemoryId, PendingActionId, PlanId,
+        PlantId, ScanId, TaskId, UserId,
     },
     ports::StoreError,
     wire::Role,
@@ -24,6 +24,8 @@ pub enum GardenResource {
     Memory(MemoryId),
     /// An invite.
     Invite(InviteId),
+    /// A farm connector; one being deleted (`status: deleting`) reads as missing.
+    Connector(ConnectorId),
 }
 
 /// A conversation's owner and garden.

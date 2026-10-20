@@ -92,6 +92,7 @@ DEFINE FIELD OVERWRITE soil_profile_status ON garden TYPE "pending" | "ready" | 
 DEFINE FIELD OVERWRITE soil_retry_at       ON garden TYPE option<datetime>;   -- earliest next SoilGrids attempt after a failure (15 min outage, 7 days no data)
 DEFINE FIELD OVERWRITE map_version         ON garden TYPE int DEFAULT 0;      -- the current garden_map version, 0 for none
 DEFINE FIELD OVERWRITE deleting_at         ON garden TYPE option<datetime>;  -- set when DELETE starts; hides the garden
+DEFINE FIELD OVERWRITE connector_rev       ON garden TYPE int DEFAULT 0;      -- bumped by every connector create, so two racing creates conflict and the limit holds
 DEFINE FIELD OVERWRITE created_at          ON garden TYPE datetime DEFAULT time::now() READONLY;
 DEFINE INDEX IF NOT EXISTS garden_cell    ON garden FIELDS weather_cell;
 DEFINE INDEX IF NOT EXISTS garden_geohash ON garden FIELDS geohash;
@@ -359,6 +360,7 @@ DEFINE FIELD OVERWRITE summary       ON action_plan TYPE string;
 DEFINE FIELD OVERWRITE steps         ON action_plan TYPE array<object> FLEXIBLE;   -- PlanStep[], validated in Rust
 DEFINE FIELD OVERWRITE watch_for     ON action_plan TYPE array<string>;
 DEFINE FIELD OVERWRITE citations     ON action_plan TYPE array<object> FLEXIBLE;
+DEFINE FIELD OVERWRITE farm_records  ON action_plan TYPE array<object> FLEXIBLE DEFAULT [];   -- FarmCitation[] (connectors 7); kept when a record is deleted
 DEFINE FIELD OVERWRITE llm_model     ON action_plan TYPE string;
 DEFINE FIELD OVERWRITE prompt_version ON action_plan TYPE string;
 DEFINE FIELD OVERWRITE created_at    ON action_plan TYPE datetime DEFAULT time::now() READONLY;
@@ -441,6 +443,7 @@ DEFINE FIELD OVERWRITE role           ON message TYPE "user" | "assistant";
 DEFINE FIELD OVERWRITE text           ON message TYPE string;
 DEFINE FIELD OVERWRITE attachments    ON message TYPE array<record<chat_image>> DEFAULT [];
 DEFINE FIELD OVERWRITE citations      ON message TYPE array<object> FLEXIBLE DEFAULT [];
+DEFINE FIELD OVERWRITE farm_citations ON message TYPE array<object> FLEXIBLE DEFAULT [];   -- FarmCitation[] (connectors 7); kept when a record is deleted
 DEFINE FIELD OVERWRITE tool_calls     ON message TYPE array<object> FLEXIBLE DEFAULT [];   -- stored, never sent to the app
 DEFINE FIELD OVERWRITE route          ON message TYPE option<"diagnosis_question" | "care_question" | "task_change" | "safety_sensitive" | "off_topic">;
 DEFINE FIELD OVERWRITE interrupted    ON message TYPE bool DEFAULT false;
@@ -508,6 +511,56 @@ DEFINE FIELD OVERWRITE garden       ON belief_forget TYPE record<garden>;
 DEFINE FIELD OVERWRITE plant        ON belief_forget TYPE option<record<plant>>;   -- NONE: the whole garden
 DEFINE FIELD OVERWRITE requested_at ON belief_forget TYPE datetime;
 DEFINE INDEX IF NOT EXISTS belief_forget_subject ON belief_forget FIELDS garden, plant;
+
+-- ---------------------------------------------------------------------------------------
+-- Farm connectors (docs/connectors/README.md, section 4): a garden's Slack channels or Drive
+-- folder, synced into farm_record for the chat and the plan writer. Deleted with the garden,
+-- records before connectors (README.md, deletion).
+-- ---------------------------------------------------------------------------------------
+
+DEFINE TABLE OVERWRITE connector SCHEMAFULL;
+DEFINE FIELD OVERWRITE garden     ON connector TYPE record<garden> REFERENCE ON DELETE REJECT;
+DEFINE FIELD OVERWRITE kind       ON connector TYPE "slack" | "google_drive";
+DEFINE FIELD OVERWRITE status     ON connector TYPE "pending" | "active" | "reauth_needed" | "deleting";
+DEFINE FIELD OVERWRITE created_by ON connector TYPE record<user> REFERENCE ON DELETE REJECT;   -- the owner who consented
+DEFINE FIELD OVERWRITE account    ON connector TYPE option<object> FLEXIBLE;   -- Slack team id, name and workspace URL, or the Google account's email
+DEFINE FIELD OVERWRITE sources    ON connector TYPE array<object> FLEXIBLE DEFAULT [];   -- [{ id, name }]: channels, or one folder
+DEFINE FIELD OVERWRITE secret     ON connector TYPE option<bytes>;   -- AES-256-GCM sealed tokens; never returned, never logged
+DEFINE FIELD OVERWRITE oauth      ON connector TYPE option<object> FLEXIBLE;   -- pending only: { nonce, device_hash, verifier (sealed), expires_at, claimed_at }; cleared by the exchange
+DEFINE FIELD OVERWRITE endpoint   ON connector TYPE "vendor" | "era";   -- set by server configuration only
+DEFINE FIELD OVERWRITE cursor     ON connector TYPE option<object> FLEXIBLE;   -- per source id: the sync's state around Slack's or Drive's cursor; '#sync': the rotation over the sources
+DEFINE FIELD OVERWRITE synced_at  ON connector TYPE option<datetime>;
+DEFINE FIELD OVERWRITE next_sync_at ON connector TYPE datetime DEFAULT time::now();
+-- Sync now: one accepted request per connector in 5 minutes, a compare-and-set on this field.
+DEFINE FIELD OVERWRITE sync_requested_at ON connector TYPE option<datetime>;
+DEFINE FIELD OVERWRITE last_error ON connector TYPE option<"rate_limited" | "vendor_unavailable" | "auth_refused" | "too_large" | "source_missing">;   -- a fixed code, never the vendor's text
+DEFINE FIELD OVERWRITE created_at ON connector TYPE datetime DEFAULT time::now() READONLY;
+DEFINE INDEX IF NOT EXISTS connector_garden ON connector FIELDS garden;
+DEFINE INDEX IF NOT EXISTS connector_due    ON connector FIELDS status, next_sync_at;
+
+-- id farm_record:[connector, vendor_id, n]: an array key, because Slack ts values contain dots.
+-- Searched exactly within one garden, like memory: no HNSW index.
+DEFINE TABLE OVERWRITE farm_record SCHEMAFULL;
+DEFINE FIELD OVERWRITE garden     ON farm_record TYPE record<garden> REFERENCE ON DELETE REJECT;
+DEFINE FIELD OVERWRITE connector  ON farm_record TYPE record<connector> REFERENCE ON DELETE REJECT;
+DEFINE FIELD OVERWRITE kind       ON farm_record TYPE "message" | "document";
+DEFINE FIELD OVERWRITE vendor_id  ON farm_record TYPE string;   -- Slack "<channel>/<ts>", Drive file id
+DEFINE FIELD OVERWRITE source     ON farm_record TYPE string;   -- the connector source it came from: the Slack channel id or the Drive folder id
+DEFINE FIELD OVERWRITE title      ON farm_record TYPE string;   -- "#field-reports", "Spray log 2026"
+DEFINE FIELD OVERWRITE author     ON farm_record TYPE option<string>;   -- display name only
+DEFINE FIELD OVERWRITE link       ON farm_record TYPE string;   -- built at sync time: Slack permalink or Drive webViewLink
+DEFINE FIELD OVERWRITE text       ON farm_record TYPE string;   -- one chunk, at most 2,000 characters
+DEFINE FIELD OVERWRITE text_hash  ON farm_record TYPE string;   -- of the embedded text (author and title, then text): unchanged, the vector is kept
+DEFINE FIELD OVERWRITE embedding  ON farm_record TYPE array<float>;
+DEFINE FIELD OVERWRITE embedding_model ON farm_record TYPE string;
+DEFINE FIELD OVERWRITE at         ON farm_record TYPE datetime;   -- the message's time, or the document's modifiedTime
+DEFINE INDEX IF NOT EXISTS farm_record_garden    ON farm_record FIELDS garden;
+DEFINE INDEX IF NOT EXISTS farm_record_connector ON farm_record FIELDS connector, vendor_id;
+DEFINE INDEX IF NOT EXISTS farm_record_source    ON farm_record FIELDS connector, source;   -- dropping a source
+-- The 180-day cleanup of Slack messages. It replaces farm_record_at (at); an IF NOT EXISTS
+-- redefinition would not rebuild it, so the old one is removed first.
+REMOVE INDEX IF EXISTS farm_record_at ON farm_record;
+DEFINE INDEX IF NOT EXISTS farm_record_kind_at   ON farm_record FIELDS kind, at;
 
 -- ---------------------------------------------------------------------------------------
 -- Knowledge base (loaded by migrations from ml/knowledge/seed; ids are slugs)
@@ -616,6 +669,14 @@ DEFINE TABLE OVERWRITE preys_on       TYPE RELATION IN organism OUT organism LIG
 DEFINE TABLE OVERWRITE looks_like TYPE RELATION IN disease OUT disease ENFORCED SCHEMAFULL;
 DEFINE FIELD OVERWRITE id          ON looks_like TYPE [record<disease>, record<disease>];
 DEFINE FIELD OVERWRITE how_to_tell ON looks_like TYPE string;
+
+-- The generated values of the current knowledge set: one record, knowledge_meta:current,
+-- written first by knowledge.surql (docs/database, the knowledge file).
+DEFINE TABLE OVERWRITE knowledge_meta SCHEMAFULL;
+DEFINE FIELD OVERWRITE label_set_version         ON knowledge_meta TYPE string;
+DEFINE FIELD OVERWRITE classifier_labels_version ON knowledge_meta TYPE string;
+DEFINE FIELD OVERWRITE embedding_model           ON knowledge_meta TYPE string;
+DEFINE FIELD OVERWRITE embedding_dimension       ON knowledge_meta TYPE int;
 
 -- ---------------------------------------------------------------------------------------
 -- Operations

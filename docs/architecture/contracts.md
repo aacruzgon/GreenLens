@@ -1,6 +1,19 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.7, 2026-10-17. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.20, 2026-10-20. Companion to the [architecture document](README.md).
+> **v0.10.20**: the dose check's rate also catches rates per field measure, container or area and the volume abbreviations: `ℓ`, `ltr`, `lt`, `qt` and `pt` join the volumes, `per` (not `each` or `every`) before a field measure (`hectare`, `ha`, `acre`, optionally after a number, a fraction, `half` or `quarter`), a container (`tank`, `sprayer`, `backpack`, `knapsack`, `bucket`, `watering can` and others) or an area with a number ("100 m²", "10 square metres", "100 sq. ft."), and `/` before a field measure or an area with a number, are unit phrases, and `sq.` no longer ends a sentence, so "a bag per acre", "Use a capful per tank." and "a capful per qt" fail while spacing per unnumbered area ("two plants per square metre"), "a 1/2 acre plot" and "rainwater/tank water" pass; spacing and sampling or trap density per field measure or numbered area ("Set one trap per acre", "One tree per 20 m²") and a URL path such as `/pt/` beside an amount are new known false positives, and a rate per plant, row or unnumbered area stays a known miss (EON gap G19, section 7); no wire shape changed.
+> **v0.10.19**: the dose check's rate is a sentence rule: a unit phrase (`per`, `each` or `every` and a volume, or `/` and a volume) fails a sentence that holds an amount anywhere (a quantity, a fraction glyph, a vague or multiplying word, a plural measure noun, or a rate from a record or a habit) or has at most three words before it, so a refusal such as "I can't give the amount per litre" passes and "a capful per litre", "Per litre, add a capful" and a rate split from its amount by a sentence break still fail; the measure rule's quantity adds `thirty` … `ninety`, `hundred`, `thousand` and more fraction glyphs, the volumes add quarts and pints, and the prompts are told not to name a volume when they decline a rate (EON gap G13, section 7); no wire shape changed.
+> **v0.10.18**: section 8 says `since` and `until` window Slack messages only: a Drive document is returned whatever the window, also with `kind: "document"` (EON gap G18); no wire shape changed.
+> **v0.10.17**: `search_farm_records` takes `until?` and `author?` beside `since?` (EON gap G12), and a search without `kind` searches messages and documents apart and keeps 3 of the 8 hits for each kind that has them (gap G16), section 8; no wire shape of the API changed.
+> **v0.10.16**: a `running` key older than 10 minutes is taken over by the next retry, so a restart mid-exchange doesn't hold it for 24 hours (section 1); a stored answer is only a `2xx` or a deterministic `4xx`, so after a `5xx` the retry runs again (section 9); `POST /connectors/{id}/complete` has a 60 s timeout, and its exchange runs on past a timeout and keeps its idempotency key until it ends, so the retry with the same key gets `409 request_in_progress` and then, when it ends in a `2xx` or a deterministic `4xx`, the answer (sections 2, 9); no wire shape changed and no architecture section is affected.
+> **v0.10.15**: section 9 states `complete`'s `500` for our own misconfigured OAuth client, a claimed state's `400`, the retry after a `503`, the callback's bounded `error`, a replayed create's possibly expired `authorize_url`, and a disconnect that keeps a token another connector holds; section 11's v0.10.14 row lists the architecture sections the connector deletion triggers changed, and section 11 keeps its rows in version order; no wire shape changed.
+> **v0.10.14**: an owner's demotion, removal or leaving, and their account's deletion, now delete the farm connectors they created, and the tokens are revoked after the store marks the connectors `deleting`, so a restart finishes the step (EON E3.6, section 9); no wire shape changed.
+> **v0.10.13**: the farm connector routes' answers as built (section 9): `409 invalid_state` for a vendor without an OAuth client, the callback's nonce check and `error` redirect, `complete`'s `404` for another user or device, `400` for a refused code and `503` for a vendor outage, the sources' checks and the state's format.
+> **v0.10.12**: section 8 says when `search_farm_records` is offered, how `since` is read and that it returns at most 8 hits framed as `kind="farm_records"`; `Message.farm_citations` are the records the turn's tool calls returned, once per record id, with no SSE event; no wire shape changed.
+> **v0.10.11**: `POST /gardens/{id}/connectors` answers `409 invalid_state` when the garden already has 2 connectors; no wire shape changed.
+> **v0.10.10**: the connector routes accept `Idempotency-Key`, and section 2 lists connectors under `invalid_state` and Sync now under `rate_limited`; no wire shape changed.
+> **v0.10.9** declares the farm connectors' contract ([connectors](../connectors/README.md)): the `Connector` types and eight routes (section 9), `search_farm_records` and `FarmCitation` (section 8), `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations` as optional fields (sections 7, 8), the `FarmRecordId` wire form, the roles rows and the deletion step. The routes answer `409 invalid_state` until E3 turns connectors on.
+> **v0.10.8**: the findings prompt is `findings@2` (it shows the shape of a soil reading, vision vlm.md 7), so `vlm_prompts` reads `system@1,findings@2,indicators@1,verify@1,guided@1`; no wire shape changed.
 > **v0.10.7** adds `Memory.topic`, mirrors shared memories into SurrealDB Agent Memory as beliefs, adds `GET /plants/{plant_id}/beliefs` and gives `search_memory` the `MemorySearch` result (`BeliefHit` items); deleting a shared memory, a plant or a garden queues its Agent Memory scope for erasure by `api`'s belief sweep (sections 8, 9).
 > **v0.10.6** settles open question 31: xgrammar in vLLM v0.31.0 enforces `anyOf` with `null`, producing both branches and blocking values outside the schema (section 12); no wire shape changed.
 > **v0.10.5**: section 10 states the loader's migration output: one regenerated, deterministic `backend/migrations/knowledge.surql` that replaces the whole knowledge set and records the generated versions in `knowledge_meta`; no wire shape changed.
@@ -142,7 +155,7 @@ interface Page<T> {
 
 ### Idempotency
 
-Every create call accepts: `POST /gardens`, `POST /gardens/{id}/invites`, `POST /plants`, `POST /scans`, `POST /scans/{id}/images`, `POST /scans/{id}/answers`, `POST /scans/{id}/feedback`, `POST /conversations`, `POST /conversations/{id}/images`, `POST /conversations/{id}/messages`, `POST /memories`, `POST /tasks` and `PUT /gardens/{id}/map` accept an `Idempotency-Key` header (a UUID the app generates per user action and reuses only when retrying that action).
+Every create call accepts: `POST /gardens`, `POST /gardens/{id}/invites`, `POST /plants`, `POST /scans`, `POST /scans/{id}/images`, `POST /scans/{id}/answers`, `POST /scans/{id}/feedback`, `POST /conversations`, `POST /conversations/{id}/images`, `POST /conversations/{id}/messages`, `POST /memories`, `POST /tasks`, `PUT /gardens/{id}/map`, `POST /gardens/{id}/connectors`, `POST /connectors/{id}/complete` and `POST /connectors/{id}/sync` accept an `Idempotency-Key` header (a UUID the app generates per user action and reuses only when retrying that action).
 
 | Rule | Behaviour |
 |---|---|
@@ -150,6 +163,7 @@ Every create call accepts: `POST /gardens`, `POST /gardens/{id}/invites`, `POST 
 | Fingerprint | JSON bodies: a hash of the canonical JSON. Multipart: a hash of the form fields and the file bytes, never the raw body, whose boundary changes on each retry |
 | Same key, same fingerprint, finished | The stored response is returned with its original status. For chat messages, which answer with a stream, the replay is `200 { message: Message }` |
 | Same key, same fingerprint, still running | `409 request_in_progress`, `retryable: true`, with `retry_after_s` |
+| Same key, same fingerprint, running for over 10 minutes | The process that began it died before it released or finished the key (the longest request is a `complete` exchange, under 10 minutes). The retry takes the key over with a compare-and-set on its state and start time, so of two retries one runs and the other gets `409 request_in_progress`; a retry with a different fingerprint still gets `422` |
 | Same key, different fingerprint | `422 idempotency_conflict` |
 | What is stored | Only `2xx` responses and deterministic `4xx` responses (`400`, `403`, `404`, `413`, `415`, `422`). A `409`, `429` or `5xx` is not stored, so a retry runs again |
 | Interrupted chat message | Not stored as the replay. The key is released; the app's "resend" action sends a new key |
@@ -170,6 +184,8 @@ A user who is not a member of the garden, or not the owner of the conversation, 
 | Create and edit plants | | | ✓ | ✓ |
 | Share their own chat memories with the garden, add garden notes | | | ✓ | ✓ |
 | Rename the garden, manage invites and members, change roles, delete plants or the garden, delete shared memories | | | | ✓ |
+| Read the garden's connectors (`GET /gardens/{id}/connectors`), and chat with `search_farm_records` | ✓ | ✓ | ✓ | ✓ |
+| Connect, choose sources, sync now and disconnect a farm connector (`POST /gardens/{id}/connectors`, `POST /connectors/{id}/complete`, `GET /connectors/{id}/available-sources`, `PUT /connectors/{id}/sources`, `POST /connectors/{id}/sync`, `DELETE /connectors/{id}`) | | | | ✓ |
 
 The agent's tool list is filtered by role before each turn: viewers and reviewers get the read tools and `remember`, never the write tools, so they never receive a confirmation card. A garden may have several owners. The last owner can't leave or be demoted.
 
@@ -199,7 +215,7 @@ interface ErrorBody {
 | 403 | `forbidden` | A member whose role is too low (section 1) | `{ required_role }` |
 | 403 | `invalid_signature` | Expired or tampered signed image URL. Only signed URLs: a webhook signature failure is `401` | |
 | 404 | `not_found` | Unknown ID, or one the caller may not see; a malformed ID in a path, which can name no record; a method the route doesn't have (no `Allow` header, so it reads like an unknown path) | |
-| 409 | `invalid_state` | The scan, question, plan, task, invite, pending action or garden map isn't in a state that allows this call | `{ status?, allowed?: string[], current_plan_id?, current_map_version?, hint?: "new_scan" \| "neighbour_removed" \| "plant_removed" }` |
+| 409 | `invalid_state` | The scan, question, plan, task, invite, pending action, garden map or connector isn't in a state that allows this call, including any connector write while connectors are off (and a connector on `era`, not `vendor`, where a vendor-only call is refused) | `{ status?, allowed?: string[], current_plan_id?, current_map_version?, hint?: "new_scan" \| "neighbour_removed" \| "plant_removed" }` |
 | 409 | `request_in_progress` | Same `Idempotency-Key` while the first request is still running | |
 | 409 | `lease_lost` | Worker call for a job whose lease was requeued, expired or cancelled, including jobs of an older run | `{ job_id }` |
 | 413 | `upload_too_large` | Image over 12 MB | `{ max_bytes }` |
@@ -208,7 +224,7 @@ interface ErrorBody {
 | 422 | `missing_required_shot` | Submit without a `whole_plant` image | `{ missing: ImageKind[] }` |
 | 422 | `too_many_images` | Kind limit reached (section 3) | `{ kind, max }` |
 | 422 | `idempotency_conflict` | Reused `Idempotency-Key` with a different body | |
-| 429 | `rate_limited` | Request rate limit (per user, a placeholder of 120 requests a minute: open question 34), including invite-code attempts. `retryable: true`, with `retry_after_s` | |
+| 429 | `rate_limited` | Request rate limit (per user, a placeholder of 120 requests a minute: open question 34), including invite-code attempts and **Sync now**'s per-connector limit (one accepted request per 5 minutes). `retryable: true`, with `retry_after_s` | |
 | 429 | `budget_exceeded` | Daily chat token budget or daily scan limit used up. `retryable: false`: it lasts until `resets_at` | `{ budget: "chat_tokens" \| "scans", resets_at }` |
 | 500 | `internal` | Bug. Logged with `request_id` | |
 | 503 | `processing_unavailable` | Face blurring or another required upload step failed. The image was not stored (fails closed) | |
@@ -232,7 +248,7 @@ type QualityHint =
 
 **`retry_after_s`** is 2 for `request_in_progress` and `processing_unavailable`, 5 for `upstream_unavailable` unless the provider named a longer wait, and the rate limiter's wait, rounded up to whole seconds, for `rate_limited`.
 
-**Timeouts.** A request past the API's timeout gets `503 upstream_unavailable` with `upstream: "api"`, `retryable: true` and `retry_after_s: 5`: such a request is almost always waiting on a slow dependency, every create call is idempotent, and the timeout releases the request's idempotency key. `405`, `408` and `504` are never produced. In a chat stream, a model call that times out ends with an `error` event of code `upstream_unavailable`, `retryable: true` ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions), [agent 18](../backend/agent.md#18-open-questions)).
+**Timeouts.** A request past the API's timeout gets `503 upstream_unavailable` with `upstream: "api"`, `retryable: true` and `retry_after_s: 5`: such a request is almost always waiting on a slow dependency, every create call is idempotent, and the timeout releases the request's idempotency key, except on `POST /connectors/{id}/complete`, whose exchange runs on and keeps the key until it ends (section 9). `405`, `408` and `504` are never produced. In a chat stream, a model call that times out ends with an `error` event of code `upstream_unavailable`, `retryable: true` ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions), [agent 18](../backend/agent.md#18-open-questions)).
 
 Example:
 
@@ -937,7 +953,7 @@ type JobErrorCode =
 | `vlm_server` | `vllm@v0.31.0`, `vllm-rocm@v0.31.0`, `llama.cpp@b7123`, `anthropic` | VLM and fallback workers |
 | `vlm_box_format` | `norm_1000` (VLM workers), `abs_px_prepared` (fallback) | VLM and fallback workers (section 6) |
 | `vlm_max_pixels` | `1003520` | VLM and fallback workers |
-| `vlm_prompts` | `system@1,findings@1,indicators@1,verify@1,guided@1`: every prompt's name and version, comma-separated | VLM and fallback workers |
+| `vlm_prompts` | `system@1,findings@2,indicators@1,verify@1,guided@1`: every prompt's name and version, comma-separated | VLM and fallback workers |
 | `vlm_certainty` | `0.4/0.65/0.85`: the low, medium and high values, slash-separated | VLM and fallback workers |
 | `label_set_version` | the job's own in `complete`; every loaded one, comma-separated, in the heartbeat | Perception and fallback workers |
 | `classifier_labels_version` | as `label_set_version` | Perception and fallback workers |
@@ -1442,6 +1458,7 @@ interface PlanStep {
   targets: { table: "disease" | "organism"; id: Slug }[];  // what the step acts on; may be empty
   plant_id?: Id;                     // a neighbour this monitoring step is about (garden map); its task goes to that plant
   citations: Slug[];                 // source ids; at least one
+  farm_citations?: FarmRecordId[];   // farm records the step cites (section 9, farm connectors); omitted when empty
   safety_note?: string;              // added by the server to every chemical step (below)
 }
 
@@ -1463,12 +1480,15 @@ interface ActionPlan {
   steps: PlanStep[];
   watch_for: string[];               // "New spots on upper leaves within 5 days"
   citations: Citation[];             // every source the steps cite, resolved
+  farm_records?: FarmCitation[];     // every farm record the steps cite, resolved; omitted when empty
   task_ids: Id[];
   llm_model: string;
   prompt_version: string;
   created_at: Timestamp;
 }
 ```
+
+**Farm records in a plan.** `farm_citations` and `farm_records` are optional and omitted when empty, and a plan stored before connectors reads as citing none. A step still needs at least one knowledge source in `citations`: farm records add the farm's history, never the advice. Every id in a step's `farm_citations` must appear in `ActionPlan.farm_records` (the validation rule is written with the plan writer's search, [EON E5](../EON/README.md#e5-the-agent)). A deleted record leaves its `FarmCitation` in a stored plan as it was.
 
 **Steps to tasks.**
 
@@ -1519,15 +1539,15 @@ When a plan is **superseded**, the system dismisses its open tasks (`dismissed_r
 
 **The dose check.** Case-insensitive, with word boundaries (`\b`) around every unit, so "2 lowest leaves" or "3 large leaves" don't match. A text fails when it contains:
 
-- a quantity followed by a measure: the quantity is a number (`2`, `0.5`, `1/2`, `½`, `¼`) or a number word (`one` … `twenty`, `half`, `a`, `an`), and the measure is one of `ml`, `millilitre(s)`, `milliliter(s)`, `l`, `litre(s)`, `liter(s)`, `fl oz`, `oz`, `ounce(s)`, `pint(s)`, `quart(s)`, `gallon(s)`, `gal`, `g`, `gram(s)`, `kg`, `mg`, `lb(s)`, `pound(s)`, `tbsp`, `tablespoon(s)`, `tsp`, `teaspoon(s)`, `spoonful(s)`, `cup(s)`, `drop(s)`, `capful(s)`, `pinch(es)`, `ppm`. The everyday words `drop`, `cup`, `spoonful`, `capful` and `pinch` count only when `of` is one of the next three words ("a drop of soap", "two cups of water", "a cup or so of milk"), so "a drop in temperature" and "leaves curl into a cup" pass;
+- a quantity followed by a measure: the quantity is a number (`2`, `0.5`, `1/2`, `½`, `¼`, `⅜`, the `2` of `2x`) or a number word (`one` … `twenty`, `thirty` … `ninety`, `hundred`, `thousand`, `half`, `a`, `an`), and the measure is one of `ml`, `millilitre(s)`, `milliliter(s)`, `l`, `litre(s)`, `liter(s)`, `fl oz`, `oz`, `ounce(s)`, `pint(s)`, `quart(s)`, `gallon(s)`, `gal`, `g`, `gram(s)`, `kg`, `mg`, `lb(s)`, `pound(s)`, `tbsp`, `tablespoon(s)`, `tsp`, `teaspoon(s)`, `spoonful(s)`, `cup(s)`, `drop(s)`, `capful(s)`, `pinch(es)`, `ppm`. The everyday words `drop`, `cup`, `spoonful`, `capful` and `pinch` count only when `of` is one of the next three words ("a drop of soap", "two cups of water", "a cup or so of milk"), so "a drop in temperature" and "leaves curl into a cup" pass;
 - "a few drops", "a splash" or "a squirt" with `of` among the next three words;
-- a rate: `per litre`, `per liter`, `per gallon`, `/l`, `/gal`, `ml/l`, `g/l`;
+- a rate: a sentence that holds a unit phrase, `per`, `each` or `every` followed by a volume or `/` followed by a volume (the volumes are `litre(s)`, `liter(s)`, `l`, `ℓ`, `ltr(s)`, `lt`, `gallon(s)`, `gal`, `quart(s)`, `qt(s)`, `pint(s)`, `pt(s)`, optionally after `US`, `UK` or `imperial`), or `per` followed by a field measure (`hectare(s)`, `ha`, `acre(s)`, optionally after a number, a fraction, `half` or `quarter`), a container (`tank(s)`, `spray tank(s)`, `tankful(s)`, `tankload(s)`, `backpack(s)`, `knapsack(s)`, `sprayer(s)`, `jerry can(s)`, `bucket(s)`, `watering can(s)`) or an area with a number ("100 m²", "100 m2", "10 square metres", "1,000 sq ft", "100 sq. ft."), or `/` followed by a field measure with no number before it or by an area with a number (so "a 1/2 acre plot" and "rainwater/tank water" pass), and either an amount anywhere in the sentence or at most three words before the unit phrase, after any list marker. An amount is a quantity as above, a fraction glyph (`⅜`, `⅕` …), one of `several`, `some`, `dozen(s)`, `double`, `twice`, `triple`, `thrice`, `quarter(s)`, `third(s)`, `tenth(s)`, `few`, `couple`, `pair`, `handful`, `hundreds`, `thousands`, `lots`, `plenty`, a plural measure noun (`capfuls`, `caps`, `scoops`, `drops`, `cups`, `spoons`, `teaspoons`, `tablespoons`, `tsps`, `tbsps`, `handfuls`, `sachets`, `tablets`, `pumps`, `squirts`), or a rate taken from a record or a habit (`same`, `usual`, `normal`, `previous`, `logged`, `recorded`, `log's` or `last <word>'s` before `rate`, `dose`, `dosage` or `amount`); not `many`, and not the label's rate. These words count only beside a unit phrase, so "collect some litres of rainwater" passes the measure rule. The three-word case catches a rate that a sentence break split from its amount, since sentences split at full stops and line breaks: "Add two capfuls. Do this per litre of water.", "capful per litre" on its own line. So "a capful per litre", "half a cup per gallon", "two scoops of the copper product per gallon", "Per litre, add a capful.", "a capful (per litre)", "Use ⅜ cup per litre", "Add few caps per litre", "ADD CAPFULS PER GALLON", "Use capfuls/L", "twice the label rate per litre", "Use the same rate per litre as last time", "2x per litre", "Use it per litre of water", "2/l", "3 capfuls/gal", "a bag per acre", "a capful per hectare", "a scoop per 100 m²", "Use a capful per tank.", "three capfuls per backpack", "a capful per bucket", "a capful per watering can", "a capful per ℓ" and "a capful per qt" fail ("5 ml per litre", "25 g per litre" and "5 g/l" fail as a measure first). A sentence with a unit phrase, no amount and four or more words before it passes: "I can't tell you how much Kocide went into the backpack per litre", "I can't give the amount per litre", "I can't say how many grams go in each litre", "Follow the label's rate per litre", "the label gives the rate in g/l", "I can't give you the rate per hectare". `each` and `every` count before a volume only, so "water each plant" and "rinse the sprayer after every tank" pass, and an area without a number is spacing, so "two plants per square metre" and "plant four lettuces per square foot" pass; spacing per numbered area fails (known false positives below). `sq.` doesn't end a sentence, so "per 100 sq. ft." stays whole. Known misses (EON gap G19): a rate per plant ("a capful per plant"), per row, tree, vine, bed, plot, can or drum, per length of row ("a capful per 10 m of row") or per area without a number ("a capful per square foot", "a scoop per m²") passes, since it can't be told from spacing or ordinary advice ("Two buckets of compost per bed");
 - a ratio: `\d+\s*:\s*\d+`; "<quantity> part(s) … to <quantity> part(s)" ("one part soap to ten parts water"); or "<quantity> part(s) … to <quantity>" and "<quantity> in <quantity>" in a sentence that also contains a product name or a mixture word ("mix 1 in 10 with water"). In ratios a quantity is a number or `one` … `twenty`, never `a`, `an` or `half`, so "cut a part of the stem back to a healthy bud", "plant one in a pot" and "remove one in three canes" pass;
 - a percentage in the same sentence as a product name or a mixture word: "a 2% soap spray" fails; "more than 50% of the leaves" and "above 90% humidity" pass.
 
 The mixture words are `solution`, `mix`, `mixture`, `spray`, `dilute`, `concentration`, matched with their inflections (`solutions`, `mixes`, `mixed`, `mixing`, `mixtures`, `sprays`, `sprayed`, `spraying`, `dilutes`, `diluted`, `diluting`, `dilution`, `concentrations`), so a rewording doesn't slip past the condition. The product names are the list in the plan validation table above, with the British spelling `sulphur` beside `sulfur` and plurals allowed, plus every name in `products.yaml` ([backend agent 4](../backend/agent.md#4-the-dose-check), [agent 5](../backend/agent.md#5-sentences-and-products)).
 
-Time, spacing and measured sizes ("2 weeks", "every 3 days", "10 cm apart", "30 cm deep", "spots about 2 mm across") don't match any measure and pass. Four known false positives: "1 gallon sprayer"; clock times such as "10:30", which match the ratio form; a measured share in a sentence with a mixture word ("spots cover 12% of the leaf, so spray…"); and "a drop in temperature of 5 °C", where `of` is among the next three words. The plan writer and the chat prompt are told to describe equipment without sizes, to write times of day in words ("early morning"), and to give measured shares in a sentence of their own.
+Time, spacing and measured sizes ("2 weeks", "every 3 days", "10 cm apart", "30 cm deep", "spots about 2 mm across") don't match any measure and pass. Six known false positives: "1 gallon sprayer" and a measured volume with a number word ("thirty gallons of rain fell"); clock times such as "10:30", which match the ratio form; a measured share in a sentence with a mixture word ("spots cover 12% of the leaf, so spray…"); "a drop in temperature of 5 °C", where `of` is among the next three words; a rate's unit phrase in a sentence with any amount or with at most three words before it, as in "went into a backpack per litre", "I can't give you an amount per litre", "how much Kocide 3000 to use per litre", "Some growers ask about the rate per litre", "Rates per litre are on the label" or "DiPel's rate per litre is on its label" (a refusal written this way is replaced by the safety note, which says the same), which includes spacing and sampling or trap density per field measure or per area with a number ("Scout a few rows per hectare", "Set one trap per acre", "Take one soil sample per hectare", "Place a pheromone trap per hectare", "Keep one hive per acre", "One tree per 20 m²", "Run one sprinkler per 100 square feet"); and, in a sentence with an amount, a URL whose path holds a volume or field abbreviation (`/pt/`, `/lt/`, `/ha/`) or a field measure after `/` in another unit, as in "See https://example.org/pt/garden for a guide." or "a 2 m/ha slope". The plan writer and the chat prompt are told to describe equipment without sizes, to write times of day in words ("early morning"), to give measured shares in a sentence of their own, and, when they decline to give a rate or an amount, not to name a volume unit.
 
 The same check runs on **everything the chat model writes**, whatever the question's route (section 8), because a routine care question can still get a dose in its answer:
 
@@ -1593,6 +1613,7 @@ interface Message {
   text: string;
   attachments: { image_id: Id; url: string }[];
   citations: Citation[];
+  farm_citations?: FarmCitation[];   // farm records the turn's tool calls returned ("records checked"), once per record id; omitted when empty; no SSE event, the app reads them from the stored message (section 9, farm connectors)
   pending_actions: PendingAction[];
   interrupted: boolean;              // the stream dropped before message_completed
   created_at: Timestamp;
@@ -1778,6 +1799,7 @@ The agent's tools return the same records the app sees. Every tool runs as the s
 | `get_plant_measurements` | `plant_id`, `quantity?` | Plants of the garden | `MeasurementPoint[]` (section 9): the latest 50, oldest first |
 | `get_garden_map` | none | The garden | `{ map: GardenMap \| null; neighbours: Record<Id, Id[]> }` (section 9) |
 | `list_tasks` | `state?`: `open` (default), `done` or `dismissed` | The garden | `Task[]` |
+| `search_farm_records` | `query`, `kind?` (`message` or `document`), `since?` (a date), `until?` (a date), `author?` (part of a name) | The garden's synced farm records; every role. Offered when the garden has a farm record or an `active` or `reauth_needed` connector. `since` and `until` are `YYYY-MM-DD` in the garden's time zone, both days included: from `since`'s midnight to the midnight after `until`. `until` before `since` is refused (`Rejected`). The window applies to Slack messages only: a Drive document's time is when it was last edited, not the period it records, so documents are returned whatever the window, also with `kind: "document"`. `author` matches part of the author's display name, ignoring case, and applies to Slack messages only (Drive documents have no author): with `author`, only messages are searched, and `author` with `kind: "document"` is refused. A Slack thread is one record with its first message's author and time, so `author`, `since` and `until` don't find a reply by its own author or day. Without `kind`, messages and documents are searched apart and each kind keeps its 3 closest hits when it has them; the other slots go to the closest of the rest | `{ text: string; citation: FarmCitation }[]`, at most 8 (`FarmRecordHit`), closest first, framed as `kind="farm_records"`. Built in [EON E5.2](../EON/README.md#e5-the-agent); `until`, `author` and the kinds' reserve in gaps G12 and G16 |
 | `remember` | `fact`, `plant_id?` | The garden | `Memory` with `source: "chat"`, and a `memory_saved` event |
 | `request_rescan` | `plant_id`, `photo_kind`, `instructions` | Live plants of the garden | `{ plant_id: Id; photo_kind: ImageKind; instructions: string }`, and a `rescan_requested` event |
 | `create_task` | `title`, `detail?`, `plant_id?`, `due?`, `repeat_every_days?` | The garden; editors and owners only | `PendingAction` (preview `task`) |
@@ -1927,6 +1949,71 @@ interface SpeciesSummary extends SpeciesRef {
 
 `SpeciesCandidate.reference_image` is the first of these, with its credit, so the confirmation card needs no second call. It is computed from `species_id` each time a candidate is read or sent in an event, never stored with the candidate, so a reseed shows the new photo everywhere. Each photo's storage key carries a hash of its content (section 10), so its URL changes when the photo does.
 
+### Farm connectors
+
+A garden owner connects the farm's Slack channels or one Google Drive folder; a scheduler task syncs them into `farm_record` for the chat and the plan writer ([connectors](../connectors/README.md)). The types are `domain`'s `connectors` module.
+
+```ts
+type ConnectorKind = "slack" | "google_drive";
+type ConnectorStatus = "pending" | "active" | "reauth_needed" | "deleting";
+type ConnectorEndpoint = "vendor" | "era";   // "era": the demo garden's synthetic data, seeded by server configuration; no route creates one
+
+type ConnectorAccount =                       // whose workspace or Drive; absent while pending
+  | { kind: "slack"; team_id: string; team_name: string; url: string }
+  | { kind: "google_drive"; email: string };
+
+interface ConnectorSource { id: string; name: string }   // a Slack channel id ("C024BE91L") or a Drive folder id
+
+interface Connector {
+  id: Id;
+  garden_id: Id;
+  kind: ConnectorKind;
+  status: ConnectorStatus;
+  endpoint: ConnectorEndpoint;
+  account?: ConnectorAccount;
+  sources: ConnectorSource[];        // Slack up to 10 channels, Drive 1 folder; empty until chosen
+  synced_at?: Timestamp;             // when the last sync finished; absent before the first
+  record_count: number;              // synced records (chunks) this connector holds for the garden
+  created_at: Timestamp;
+}
+
+interface ConnectorList { available: boolean; connectors: Connector[] }   // oldest first
+
+type FarmRecordId = string;           // "<connector_id>.<n>.<vendor_id>", below
+
+interface FarmCitation {
+  record_id: FarmRecordId;
+  system: ConnectorKind;
+  title: string;                     // "#field-reports", "Spray log 2026"
+  author?: string;                   // display name
+  at: Timestamp;                     // the message's time, or the document's modifiedTime
+  link: string;                      // opens Slack or Drive (for an "era" connector, the simulator)
+}
+```
+
+Tokens (`connector.secret`), the pending connect's `oauth` state, the sync cursor, the last error and the record vectors are never part of a response.
+
+| Endpoint | Role | Body | Response |
+|---|---|---|---|
+| `GET /gardens/{id}/connectors` | any | | `200 ConnectorList`. `{ available: false, connectors: [] }` when connectors are off on this server (no `CONNECTOR_KEY`), as for beliefs |
+| `POST /gardens/{id}/connectors` | owner | `{ kind, device_hash }`, `device_hash` = `SHA-256(device_verifier)` as 43 base64url characters; `device_verifier` has the same shape | `201 { connector: Connector, authorize_url: string }`: the `pending` connector and the vendor's consent URL. `409 invalid_state` when the garden already has 2 connectors (those being deleted don't count), or when this server has no OAuth client for the vendor (`SLACK_CLIENT_ID` or `GOOGLE_CLIENT_ID` unset). A replay with the same `Idempotency-Key` (section 1) returns the stored `201`, whose `authorize_url` carries a state that expires 10 minutes after the first request: after that, start again with a new key |
+| `GET /connectors/oauth/callback?code&state&error` | public | | `302` to `{CONNECTOR_RETURN_URL}/{connector_id}/callback` with `code` and `state`, or with `error` and `state` when the owner declined at the vendor; `error` is the vendor's code when it is 1 to 64 characters of `[a-z_]`, and `vendor_error` otherwise. Checks the state's signature and expiry and that its pending connector still holds its nonce, not yet claimed by a `complete`, and stores nothing; unknown query parameters (Google's `scope`, `authuser`) are ignored. A bad, expired or used state gets `400 invalid_request` with `field: "state"` |
+| `POST /connectors/{id}/complete` | owner who started it | `{ code, state, device_verifier }` | `200 Connector` (`active`). Another user, or a `device_verifier` whose SHA-256 isn't the `device_hash`, gets `404 not_found` and the pending connector is deleted. `400 invalid_request` with `field: "state"` for a bad, expired or used state or one for another connector, or when another `complete` with the same state claimed it first (the code is exchanged once), and with `field: "code"` for a code the vendor refused; `500 internal` when the vendor rejects our own request (a misconfigured OAuth client, which no owner can fix); `503 upstream_unavailable` (`upstream: "slack"` or `"google_drive"`) when the vendor is down, after which the same `complete` may be retried. The route's timeout is 60 s, not the default 10 s, since the exchange makes two vendor calls with deadlines of 20 s (Slack) or 30 s (Google) each. When even that passes, the `503` comes from the timeout while the exchange goes on in the background: the same `complete` with the same `Idempotency-Key` then gets `409 request_in_progress` until it ends and then its answer when that is a `2xx` or a deterministic `4xx`, which are the only answers stored (after a `5xx` the key is released and the retry runs again), so the app sends the key |
+| `GET /connectors/{id}/available-sources` | owner | | `200 { sources: ConnectorSource[] }`: the channels the bot is a member of, or the folders the Google account can open. `409 invalid_state` with `status` while the connector is `pending`, and with `status: "reauth_needed"` when the vendor refuses its token (the connector becomes `reauth_needed`); `503 upstream_unavailable` when the vendor is down |
+| `PUT /connectors/{id}/sources` | owner | `{ sources: { id: string }[] }`, replacing the previous choice; each id from `available-sources` | `200 Connector`, after the records of every source no longer chosen are deleted. `400 invalid_request` with `field: "sources"` for more than 10 channels or 1 folder, and `"sources[i].id"` for an id chosen twice or not among the available sources; `409` and `503` as for `available-sources` |
+| `POST /connectors/{id}/sync` | owner | | `202`, no body. **Sync now**; `429 rate_limited` with `retry_after_s` within 5 minutes of the last accepted request; `409 invalid_state` unless the connector is `active` and not stopped until its sources change |
+| `DELETE /connectors/{id}` | owner | | `202`, no body. The tokens are revoked, then the connector's records and the connector are deleted in the background. The token is kept when another live connector holds the same Slack workspace's or Google account's, since revoking it would stop that one too |
+
+The request bodies refuse unknown fields (`400 invalid_request`, section 2). A non-member gets `404 not_found`; a member who is not an owner gets `403 forbidden` (section 1). The `/connectors/{id}` routes check the membership of the connector's garden, so an unknown connector is `404` too.
+
+**The state** is `<connector_id>.<nonce>.<expiry>.<mac>`: the connector's ULID, 22 base64url characters of nonce, the expiry in unix seconds (10 minutes after the start) and 43 base64url characters of HMAC-SHA256 over the first three fields, keyed from `CONNECTOR_KEY` ([connectors 5](../connectors/README.md#5-connecting-and-tokens)). The app treats it as opaque.
+
+**While connectors are off, and for demo data.** Until connectors are configured (E3, with `CONNECTOR_KEY`: [EON E3](../EON/README.md#e3-configuration-tokens-and-connecting)), `GET /gardens/{id}/connectors` answers `available: false` with an empty list, and every other route runs its access checks and then answers `409 invalid_state` (never `503`, which clients retry) with no details. Once they are on, `409 invalid_state` also answers every owner route on a connector whose `endpoint` is `era`: `complete`, `available-sources`, `PUT sources`, **Sync now** and `DELETE`.
+
+**`FarmRecordId`.** The `farm_record` key is the array `[connector, vendor_id, n]` ([database 3](../database/README.md#3-tables)). On the wire it is one string, `"<connector_id>.<n>.<vendor_id>"`: for example `01JAX3K9T6R2B8V0QZ4M7D1E5C.0.C024BE91L/1729000000.000100` for a Slack message (`vendor_id` is `"<channel>/<ts>"`) or `01JAX3K9T6R2B8V0QZ4M7D1E5C.0.1aBcD` for chunk 0 of a Drive file. The vendor id goes last because it may hold dots and slashes, so the first two dots split the string and the rest is the vendor id (1–255 printable bytes). `n` is 0 for a message and 0, 1, … for a document's chunks.
+
+**Deleting.** A garden's cascade (below) deletes its farm records, then its connectors, before the garden. An owner who is demoted, removed, leaves or deletes the account loses the connectors they created in that garden, with their records ([EON E3.6](../EON/README.md#e3-configuration-tokens-and-connecting)). In both cases the store marks the connectors `deleting` in the transaction that starts it, and `api` revokes their tokens after that commit and before it deletes the records; a failed revoke is logged and the records still go.
+
 ### Garden map
 
 Made on a LiDAR device (architecture 6.8). Viewing it needs no LiDAR.
@@ -1980,11 +2067,11 @@ interface GardenMap {
 |---|---|---|
 | A plant | Its scans with their images, depth maps, masks, observations, events, diagnoses, plans and questions; its tasks and plan trigger rules, including the neighbour tasks and trigger rules its plans made for other plants; the tasks and trigger rules other plants' plans made for it (those plans are not changed: section 7, when a neighbour is deleted); conversations anchored to the plant or its scans, with their messages, images, pending actions and feedback; memories about the plant; its pin on the garden map; its scope subtree in Agent Memory (`gardens/{garden_id}/plants/{plant_id}`, erased for good after its objects and before its records) | Queued and leased jobs of its scans are cancelled, and their step claims and question steps cleared, so no running step can commit afterwards |
 | A `pending` scan (`DELETE /scans/{id}`, section 3) | Its images with their depth maps, its guided checks with their observations and events, conversations anchored to it, and the tasks naming it (`Task.scan_id`) | Its guided jobs are cancelled |
-| A garden | Everything under `gardens/{garden_id}/` in RustFS, its scope subtree in Agent Memory, and every record of the garden: plants (as above), tasks, memories, conversations, invites, memberships, the garden map | All its jobs are cancelled, and every step claim and question step cleared |
+| A garden | Everything under `gardens/{garden_id}/` in RustFS, its scope subtree in Agent Memory, and every record of the garden: plants (as above), tasks, memories, conversations, invites, memberships, the garden map, its farm records and then its farm connectors (`api` revokes the tokens after the store step commits, [EON E3.6](../EON/README.md#e3-configuration-tokens-and-connecting)) | All its jobs are cancelled, and every step claim and question step cleared |
 
 **Agent Memory.** Starting a plant's or garden's cascade queues its Agent Memory scope for erasure in the same transaction, and `api`'s belief sweep erases it (`POST /scopes/forget`, permanent) within seconds while Agent Memory is up; nothing more of that plant or garden is recorded. When an owner deletes one shared memory, the row goes and its plant's (or the garden's) scope is queued in one transaction; the sweep erases the scope and records the remaining shared memories again. Erasure is eventual: while Agent Memory is down, the queued erase waits. Account deletion needs nothing: shared memories stay with the garden, and private ones were never sent.
 
-A deletion interrupted by a restart is resumed from its first step for every target still marked `deleting_at`. A garden's objects are deleted again by prefix; a resumed plant's or scan's objects, whose keys are gone with their records, are left to the daily orphan sweep, which deletes objects no record points to ([backend api 17](../backend/api.md#17-deletion); open question 41). A member's removal leaves no marker yet, so it can't be resumed (open question 30).
+A deletion interrupted by a restart is resumed from its first step for every target still marked `deleting_at`. A garden's objects are deleted again by prefix; a resumed plant's or scan's objects, whose keys are gone with their records, are left to the daily orphan sweep, which deletes objects no record points to ([backend api 17](../backend/api.md#17-deletion); open question 41). A member's removal leaves no marker yet, so it can't be resumed (open question 30); the farm connectors it deletes can, since they stay `deleting` until revoked and deleted.
 
 ### Tasks
 
@@ -2368,6 +2455,15 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.4: the `domain` types are the source of truth and the OpenAPI spec is committed as `backend/openapi.json` | 9 |
 | v0.10.6: open question 31 settled: xgrammar enforces `anyOf` with `null` in the VLM schemas | none (the architecture document doesn't mention it) |
 | v0.10.7: `Memory.topic`; shared memories mirrored into SurrealDB Agent Memory as beliefs; `GET /plants/{plant_id}/beliefs`; `search_memory` returns `MemorySearch`; scope erase in the plant and garden cascades | 1, 5, 7, 8.2, 9, 10, 11, 15 |
+| v0.10.8: `vlm_prompts` names `findings@2` | none (the architecture document doesn't list prompt versions) |
+| v0.10.9: the farm connectors' contract: `Connector` and its eight routes, `FarmCitation` and `FarmRecordId`, `search_farm_records`, `PlanStep.farm_citations`, `ActionPlan.farm_records`, `Message.farm_citations`, the owner-only roles rows and the garden cascade's connector step | 5 (tables, deletion), 7 (tools), 9 (API surface) |
+| v0.10.12: `search_farm_records`' offering rule, `since` and framing; `Message.farm_citations` are the records the turn returned | 7 (tools) |
+| v0.10.13: the farm connector routes' answers as built: a vendor without an OAuth client, the callback's nonce check and `error` redirect, `complete`'s device check and vendor errors, the sources' checks, the state's format | 9 (the farm connectors' route list no longer says they answer `409` until configured) |
+| v0.10.14: farm connectors go with the owner who created them when that owner is demoted, removed, leaves or deletes the account, as well as with their garden; the tokens are revoked after the store marks the connectors `deleting`, and kept while another connector holds the same account | 5 (deletion: an owner who stops being one, deleting a plant or a garden), 11 (privacy: farm connectors) |
+| v0.10.17: `search_farm_records` takes `until?` and `author?`, and a search without `kind` keeps 3 of its 8 hits for each kind | 7 (tools: `search_farm_records`); 5 (data: `farm_record.text_hash` is of the embedded text) |
+| v0.10.18: `search_farm_records`' `since` and `until` window Slack messages only; Drive documents are returned whatever the window | 7 (tools: `search_farm_records`) |
+| v0.10.19: the dose check's rate fails a sentence with a unit phrase and an amount anywhere, or with at most three words before the unit phrase, so a refusal that only names the unit passes | 11 (security, privacy and safety: the dose check) |
+| v0.10.20: the dose check's rate also counts `per` before a field measure, a container or an area with a number, `/` before a field measure or an area with a number, and the volume abbreviations `ℓ`, `ltr`, `lt`, `qt`, `pt` | 11 (security, privacy and safety: the dose check) |
 
 ---
 
@@ -2398,7 +2494,7 @@ The contracts changed these parts of the architecture document, which has been u
 23. **A missing `X-Lease-Token`.** **Settled (v0.10):** `400 invalid_request` with `field: "X-Lease-Token"`; a wrong or stale token stays `409 lease_lost` (sections 1 and 2) ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions)).
 24. **Auth webhook failures.** **Settled (v0.10):** `401 unauthenticated` for a bad signature or a timestamp more than 5 minutes away in either direction; `204` for an unhandled event type or an unreadable signed body; `user.created` is a no-op and the user record is created by the first authenticated request, which narrows architecture 4 (section 9, auth webhook) ([backend api 22](../backend/api.md#22-decisions-on-the-contracts-open-questions)).
 25. **The RX 9070 XT's VLM server:** vLLM on ROCm (`vllm-openai-rocm` v0.31.0, built for gfx1201) is proposed; llama.cpp with Vulkan is the fallback if the day-1 check fails. Whichever runs there, it serves the same checkpoint as the 5070 Ti: if the block-FP8 checkpoint doesn't run on gfx1201, both cards serve the 4-bit AWQ one. On day 2, its boxes and indicator answers on 10 evaluation photos are compared with the 5070 Ti's ([backend worker](../backend/worker.md)).
-26. **The fallback's box format:** `abs_px_prepared`, from the hosted LLM's documentation; one live call on day 2 confirms it before the fallback's organism boxes are trusted. The same call confirms the list of schema keywords the hosted API rejects (section 6), which also comes from its documentation, and the day-2 run measures whether calls with the 8,000-token thinking budget finish within the fallback's doubled `max_runtime` ([backend integrations 18](../backend/integrations.md#18-open-questions), [worker 17](../backend/worker.md#17-open-questions)).
+26. **The fallback's box format:** `abs_px_prepared`, from the hosted LLM's documentation; one live call on day 2 confirms it before the fallback's organism boxes are trusted. The same call confirms the list of schema keywords the hosted API rejects (section 6), which also comes from its documentation, and the day-2 run measures whether calls with the 8,000-token thinking budget finish within the fallback's doubled `max_runtime` ([backend integrations 19](../backend/integrations.md#19-open-questions), [worker 17](../backend/worker.md#17-open-questions)).
 27. **Weather and trigger thresholds.** The contracts fix the trigger vocabulary (`TriggerKind`) and the weather-fit values, not their numbers. The backend authors wrote different definitions: the frost threshold differs between the forecast's `frost_risk` and the frost alert rule, and the humid stretch differs between the alert rule and the fusion rule (two humid days in a row, or a count of hours over 90%). Give each threshold (frost, heat, humid stretch, heavy rain, after rain, dry soil, root-rot soil moisture, the weather-fit day counts and the fusion levels) one definition and one owner, and confirm the numbers from the evaluation set with open question 10. The weather thresholds now have one definition and one owner, [backend domain 7, weather thresholds](../backend/domain.md#weather-thresholds) (frost ≤ 0.5 °C at 2 m, hard frost ≤ −2 °C, heat ≥ 30 °C, a humid day ≥ 10 h over 90%, a humid stretch 2 such days in a row, forecast or in the past week, heavy rain ≥ 20 mm, after rain ≥ 5 mm in 24 h, dry soil < 0.15 m³/m³ with ET₀ ≥ 3 mm); the weather-fit day counts and fusion levels are in [knowledge 6](../backend/knowledge.md#6-weather-fit) and [pipeline 7](../backend/pipeline.md#7-score). The numbers still need confirming from the evaluation set.
 28. **Empty candidate sets.** A `label_only` species with no classifier result has no candidates, so "every candidate has at least 2 of its 3 indicators answered `no`" holds vacuously. The backend reads it as never `healthy` without the classifier's own `healthy` result, so such a scan is `uncertain`. Confirm ([backend knowledge 12](../backend/knowledge.md#12-open-questions)).
 29. **A plan-writer outage on a run's first plan** fails the scan with `upstream_unavailable` (section 3 lists "LLM API down"), which the user can resubmit. The alternative is to keep the scan `diagnosed` and let the sweep retry the `plan` step every 5 minutes, as it already does for a failing re-plan ([backend pipeline 17](../backend/pipeline.md#17-open-questions-and-decisions)).
@@ -2407,10 +2503,10 @@ The contracts changed these parts of the architecture document, which has been u
 32. **Apple's principal-point convention** and the exact use of the inverse-distortion table in `DepthMeta` are *unverified* until the LiDAR day-1 check (open question 11) ([backend vision 15](../backend/vision.md#15-open-questions)).
 33. **Cancelling a call on llama.cpp.** A worker stops a cancelled job by dropping its connection. Whether llama.cpp then frees the slot is *unverified*; it matters on the RX 9070 XT if it serves llama.cpp (open question 25) ([backend worker 17](../backend/worker.md#17-open-questions)).
 34. **Request limits.** The general rate limit (120 requests a minute per user) and the JSON body limit (1 MiB) are placeholders that no document gives. Confirm them, or set them from the build-week load ([backend api 23](../backend/api.md#23-open-questions)).
-35. **Jev's API.** The `TextClassifier` adapter for Jev is a placeholder until early access arrives; until then every call uses the LLM fallback ([backend integrations 18](../backend/integrations.md#18-open-questions)).
+35. **Jev's API.** The `TextClassifier` adapter for Jev is a placeholder until early access arrives; until then every call uses the LLM fallback ([backend integrations 19](../backend/integrations.md#19-open-questions)).
 36. **`organism_options` without recognition text.** The VLM payload's `organism_options` carry an id and a name only; adding each organism's `recognition` text to the prompt is a proposal of docs/vision, not yet in the contract ([backend worker 17](../backend/worker.md#17-open-questions)).
-37. **Reverse geocoding for a GPS garden.** A garden created from GPS needs a `location_label`, and a Nominatim failure today fails the request with `503 upstream_unavailable`. A fallback label (the time zone's city) would let creation go ahead ([backend integrations 18](../backend/integrations.md#18-open-questions)).
-38. **Zippopotam's terms** are unchecked. Confirm them, or switch it off and refuse a bare forward sortation area (section 9, geocoding) ([backend integrations 18](../backend/integrations.md#18-open-questions)).
-39. **Open-Meteo's licence.** The free API is for non-commercial use. Settle it before any public launch ([backend integrations 18](../backend/integrations.md#18-open-questions)).
+37. **Reverse geocoding for a GPS garden.** A garden created from GPS needs a `location_label`, and a Nominatim failure today fails the request with `503 upstream_unavailable`. A fallback label (the time zone's city) would let creation go ahead ([backend integrations 19](../backend/integrations.md#19-open-questions)).
+38. **Zippopotam's terms** are unchecked. Confirm them, or switch it off and refuse a bare forward sortation area (section 9, geocoding) ([backend integrations 19](../backend/integrations.md#19-open-questions)).
+39. **Open-Meteo's licence.** The free API is for non-commercial use. Settle it before any public launch ([backend integrations 19](../backend/integrations.md#19-open-questions)).
 40. **Clerk deletion after a restart.** **Settled (v0.10.1):** the account's deletion writes a durable tombstone (`deleted_user:[auth_id]`) before anything else. The API resumes unfinished account deletions at start, the Clerk retry included, and while the tombstone exists (until 24 hours after Clerk confirms) the account's still-valid session tokens get `401 unauthenticated` and never create a new user (section 9, account) ([backend api 17](../backend/api.md#17-deletion), [database 4](../database/README.md#deletion-)).
 41. **Objects of resumed deletions.** A resumed plant or scan deletion leaves its objects to the daily orphan sweep, up to a day later (section 9, deletion cascades). If that delay matters, the store can return each target's keys from the records still present ([backend api 23](../backend/api.md#23-open-questions)).

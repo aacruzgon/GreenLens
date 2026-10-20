@@ -149,13 +149,43 @@ pub trait SpeciesIdentifier: Send + Sync {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ClassifierTask {
     /// The chat route: `diagnosis_question`, `care_question`, `task_change`, `safety_sensitive`,
-    /// `off_topic`.
-    Route,
+    /// `off_topic`, and `farm_records` when the garden has farm records to search, so a
+    /// question about its own Slack channels or documents isn't taken for off-topic (gap G10).
+    Route {
+        /// The garden has farm records: a synced record, or a connector that is `active` or
+        /// `reauth_needed`, the condition that offers `search_farm_records`.
+        farm_records: bool,
+    },
     /// Whether a turn holds a fact worth remembering.
     MemoryWorthy,
     /// A knowledge chunk's topic, at ingestion.
     ChunkTopic,
 }
+
+/// The labels of [`ClassifierTask::Route`] for a garden without farm records, in the order of
+/// contracts 8. `agent`'s classifier and Jev share them.
+pub const ROUTE_LABELS: [&str; 5] = [
+    "diagnosis_question",
+    "care_question",
+    "task_change",
+    "safety_sensitive",
+    "off_topic",
+];
+
+/// The label for a question about the garden's own farm records (gap G10). It is no route of
+/// its own: the router answers it as a care question, and only when the garden has farm records.
+pub const FARM_RECORDS_LABEL: &str = "farm_records";
+
+/// The labels of [`ClassifierTask::Route`] for a garden with farm records: [`ROUTE_LABELS`]
+/// and [`FARM_RECORDS_LABEL`] before `off_topic`.
+pub const FARM_ROUTE_LABELS: [&str; 6] = [
+    "diagnosis_question",
+    "care_question",
+    "task_change",
+    "safety_sensitive",
+    FARM_RECORDS_LABEL,
+    "off_topic",
+];
 
 /// One label's score. Scores are compared with each other, not read as probabilities.
 #[derive(Debug, Clone, PartialEq)]
@@ -399,7 +429,9 @@ pub enum ChatChunk {
     },
     /// A complete reasoning block, to replay on the next request of the tool loop.
     Reasoning(ReasoningBlock),
-    /// Token counts, once known.
+    /// Token counts, once known. The counts are cumulative for the call: a later `Usage`
+    /// replaces an earlier one (it is not added to it), and the last one before `Done` is the
+    /// call's total.
     Usage(Usage),
     /// The end.
     Done(StopReason),

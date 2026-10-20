@@ -1,6 +1,6 @@
 # PDM Backend: `integrations` crate
 
-> **Status:** Draft v0.5, 2026-10-17. v0.5: adds `agent_memory`, the `BeliefStore` over `SurrealDB` Agent Memory's REST API (section 14; the sections after it moved down one), 13 tests; 77 in all. v0.4: checked against Anthropic's documentation and the first live calls: the sanitiser turns `oneOf` into `enum` or `anyOf` (refused live), turns a nullable enum into one `enum` holding `null` so it isn't a union-typed parameter, and drops `format`s the API doesn't list; token counts that are `null` read as 0 and a missing `usage` defaults; `StopReason::ModelContextWindowExceeded`; 64 tests. v0.3.3: the Clerk tests generate their RSA key pair at run time, so no key file is committed, and the Svix tests use a made-up secret. v0.3.2: section 4 says the worker builds its client with a 600 s read timeout, not the 60 s default, because its VLM and hosted LLM calls aren't streamed, and their 240 s and 300 s deadlines end a slow call; the skills table became a plain list of the extra dependencies. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
+> **Status:** Draft v0.7.4, 2026-10-20. v0.7.4: Jev's route task sends `FARM_ROUTE_LABELS`, the route labels with `farm_records`, for a garden with farm records (gap G10); the label lists come from `domain::ports`, and Jev keeps only the scores of the labels it sent. v0.7.3: `google_drive::DriveSource` implements the `FarmSource` port (E4.3): the start token taken before a recursive first listing, then `changes.list` read to its last page with only the files under the folder kept, through a cursor that holds the folder tree and the files held, so a folder moved out takes its files and one moved in is listed; 25 files a page; `FolderListing::tree` records each folder's parent, `DriveConfig::era` points the client at a simulator, and `era_sim::fidelity` reads a simulator's fidelity. After its audit: `changes_page` reads one page of `changes.list` and the sync's backlog goes a page at a time; a change with no file id (a shared drive's own) is skipped; a refused change token or an unreadable cursor resyncs with a listing that reports every file in `FarmPage::listed`; `files.get` (`DriveClient::file`) checks the chosen folder first; past 500 files or folders is `too_large`; a file whose read keeps failing is tried once a run, then once a day after 5; a binary `text/plain` file is kept by name. v0.7.2: `tests/era_hosted.rs` runs the two clients against the team's hosted Era company in the nightly `era-hosted` workflow, five metered calls a run, and the simulator command leaves out the strict and hosted tests (section 18). v0.7.1: a Slack thread's cursor keeps `reply_count`, so a deleted reply reads the thread again, and the end of a pass checks older threads for new replies (`conversations.replies`, `limit=1`, round-robin) up to the sync's `probe_limit`, two per connector run; a failed check other than a refused token keeps the page, a deleted parent is forgotten and its record removed, an answer for another message is skipped, and threads past 180 days are forgotten before any check; transport errors drop the request URL. v0.7: `slack::SlackSource` implements the `FarmSource` port for the sync (E4.2): one history page a call, the replies of changed threads, a name per user and team for a day, and its own cursor; `FarmClientError::into_source_error` maps a client failure to the port's error (section 15). v0.6: adds `farm`, `slack` and `google_drive`, the standalone clients for the farm connectors, and `era_sim`, the test support for Era's simulators (section 15, which moves the sections after it down one); the Era tests run in one serial nextest group (section 18). v0.5: adds `agent_memory`, the `BeliefStore` over `SurrealDB` Agent Memory's REST API (section 14; the sections after it moved down one), 13 tests; 77 in all. v0.4: checked against Anthropic's documentation and the first live calls: the sanitiser turns `oneOf` into `enum` or `anyOf` (refused live), turns a nullable enum into one `enum` holding `null` so it isn't a union-typed parameter, and drops `format`s the API doesn't list; token counts that are `null` read as 0 and a missing `usage` defaults; `StopReason::ModelContextWindowExceeded`; 64 tests. v0.3.3: the Clerk tests generate their RSA key pair at run time, so no key file is committed, and the Svix tests use a made-up secret. v0.3.2: section 4 says the worker builds its client with a 600 s read timeout, not the 60 s default, because its VLM and hosted LLM calls aren't streamed, and their 240 s and 300 s deadlines end a slow call; the skills table became a plain list of the extra dependencies. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
 
 Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate implements. Every listing below is copied from the compiled source of `crates/integrations`. `cargo check`, `cargo clippy -p integrations --all-targets` and `cargo test -p integrations` all pass: 77 tests, against `wiremock` servers and the live responses recorded on 2026-10-15.
 
@@ -20,11 +20,12 @@ Companion to the [backend architecture](README.md) and the [`domain` crate](doma
 12. [Expo Push](#12-expo-push)
 13. [Jev](#13-jev)
 14. [Agent Memory](#14-agent-memory)
-15. [Concurrency and lifetimes](#15-concurrency-and-lifetimes)
-16. [Errors](#16-errors)
-17. [Testing](#17-testing)
-18. [Open questions](#18-open-questions)
-19. [Sources](#19-sources)
+15. [Farm sources: Slack and Google Drive](#15-farm-sources-slack-and-google-drive)
+16. [Concurrency and lifetimes](#16-concurrency-and-lifetimes)
+17. [Errors](#17-errors)
+18. [Testing](#18-testing)
+19. [Open questions](#19-open-questions)
+20. [Sources](#20-sources)
 
 ---
 
@@ -46,6 +47,8 @@ Companion to the [backend architecture](README.md) and the [`domain` crate](doma
 | Expo Push | `expo_push` | `Notifier` | `api` |
 | Jev | `jev` | `TextClassifier` | `api`, when configured |
 | `SurrealDB` Agent Memory | `agent_memory` | `BeliefStore` | `api` (memory mirror, beliefs endpoint, `search_memory`), when configured |
+| Slack Web API | `slack` | a typed client, and `SlackSource`, the `FarmSource` port on it | `api`, the `connectors` task (E4) |
+| Google Drive API and OAuth | `google_drive` | a typed client, and `DriveSource`, the `FarmSource` port on it | `api`, the `connectors` task (E4) |
 
 **What it never does.** It reads no database and no object store, and it holds no business rule. A failed fetch is reported, and the caller decides what to do: skip the gardens in a weather cell, set `soil_profile_status`, answer `503 upstream_unavailable`. It never reads the system clock for domain time: adapters that stamp `fetched_at` take an `Arc<dyn Clock>`, and token checks take `now` as an argument. No `reqwest` type appears in a public signature. Errors leave as the port's enum ([domain 9](domain.md#9-boundary-traits)), or as the client's own enum for the two LLM clients. The library error is kept as the `source`.
 
@@ -86,9 +89,15 @@ thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tzf-rs.workspace = true
+ulid = { workspace = true, optional = true }
+
+[features]
+# Test support for Era's simulators (`era_sim`). Never enabled in a release build.
+era-sim = ["dep:ulid"]
 
 [dev-dependencies]
 domain = { workspace = true, features = ["test-util", "mock"] }
+integrations = { path = ".", features = ["era-sim"] }
 svix.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 ulid.workspace = true
@@ -148,9 +157,24 @@ crates/integrations/
    ├─ clerk.rs                 ClerkVerifier: AuthVerifier; ClerkAdmin: AuthAdmin
    ├─ svix.rs                  SvixVerifier: WebhookVerifier; map_clerk_event
    ├─ agent_memory.rs          AgentMemory: BeliefStore (REST: scopes, facts, entities, query, forget)
+   ├─ farm.rs                  FarmClientError, FarmErrorCode: what both farm clients share
+   ├─ slack.rs                 SlackClient, SlackConfig, permalink
+   ├─ slack/
+   │  ├─ source.rs             SlackSource: the FarmSource port for the sync
+   │  ├─ wire.rs               Slack's response shapes (private)
+   │  └─ tests.rs              wiremock tests
+   ├─ google_drive.rs          DriveClient, DriveConfig, ExportFormat; the byte and count caps
+   ├─ google_drive/
+   │  ├─ source.rs             DriveSource: the FarmSource port for the sync (tests in source/tests.rs)
+   │  ├─ wire.rs               Drive's and Google's response shapes
+   │  ├─ pkce.rs               Pkce: verifier and S256 challenge
+   │  └─ tests.rs              wiremock tests
+   ├─ era_sim.rs               feature `era-sim`, test support only: Tenant, Faults, fixture()
    ├─ expo_push.rs             ExpoPush: Notifier (push, check_receipts)
    └─ jev.rs                   JevClassifier: TextClassifier (stub)
 ```
+
+`tests/` holds the Era tests (`era_fixture.rs`, `era_slack.rs`, `era_drive.rs`, `era_strict.rs`, and `era_hosted.rs` for the hosted company; section 18). `era_sim` is compiled only with the `era-sim` feature, which the crate enables for its own tests, so no release build contains it.
 
 ---
 
@@ -2583,6 +2607,8 @@ pub struct JevClassifier {
 }
 ```
 
+`ClassifierTask::Route { farm_records }` is sent as task `route` with `ROUTE_LABELS`, or with `FARM_ROUTE_LABELS` (the same and `farm_records`) when the garden has farm records, as the LLM fallback asks (gap G10; [backend agent 7](agent.md#7-router-and-safety-gate)). Both lists are `domain::ports`' own, re-exported here. A score for a label that wasn't sent is dropped, so an unasked `farm_records` can't reach the router.
+
 Any transport failure or error status is `ModelError::Unavailable { model: "jev" }`. The router then falls back as `agent` decides.
 
 ---
@@ -2647,7 +2673,1200 @@ pub struct AgentMemory {
 
 ---
 
-## 15. Concurrency and lifetimes
+## 15. Farm sources: Slack and Google Drive
+
+**What they are.** Two standalone clients for a garden's farm connectors ([connectors 5 and 6](../connectors/README.md#5-connecting-and-tokens)). Slack's implements the `FarmSource` port through `SlackSource`, and Drive's through `DriveSource` (below), which the `connectors` task in `api` calls ([EON E4](../EON/README.md)). Both take the token as an argument of each call, so one client serves every workspace and account, and both reuse the shared `retry`, `RetryPolicy` and `Pacer` of section 4. Tokens are `SecretString` and never appear in an error or a log line.
+
+### The shared error
+
+One error type for both, with the codes a connector's `last_error` stores ([connectors 6](../connectors/README.md#6-sync)).
+
+```rust
+/// The code stored in a connector's `last_error` ([connectors 6]).
+///
+/// [connectors 6]: ../../../docs/connectors/README.md#6-sync
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FarmErrorCode {
+    /// The vendor throttled us; the sync resumes from its cursor on a later run.
+    RateLimited,
+    /// Down, timed out, a 5xx or an answer that didn't parse.
+    VendorUnavailable,
+    /// The token was refused or revoked: the owner must reconnect.
+    AuthRefused,
+    /// Over the garden's record limit. Set by the sync, never by a client.
+    TooLarge,
+    /// A chosen channel or folder is gone or no longer visible to the token: nothing more runs
+    /// until the owner changes the sources.
+    SourceMissing,
+}
+
+/// A failed call to Slack or Google Drive.
+#[derive(Debug, thiserror::Error)]
+pub enum FarmClientError {
+    /// The token is missing, wrong, expired, revoked or lacks a scope (Slack `not_authed`,
+    /// `invalid_auth`, `token_revoked`, `account_inactive`, `missing_scope`; Google `401`, a
+    /// `403` for an insufficient scope, or `invalid_grant` on a refresh). It is also a bad code
+    /// the user brought to an OAuth exchange (Slack `invalid_code`, `code_already_used`,
+    /// `code_expired`; Google `invalid_grant`). The rule: a bad user code or token is
+    /// `AuthRefused`; a fault in our own configuration is [`Self::Refused`].
+    #[error("{vendor}: token refused ({code})")]
+    AuthRefused {
+        /// `"slack"` or `"google_drive"`.
+        vendor: &'static str,
+        /// The vendor's short error code.
+        code: String,
+    },
+    /// `429`, or Drive's `403` with reason `userRateLimitExceeded` or `rateLimitExceeded`,
+    /// after the client's retries ran out.
+    #[error("{vendor}: rate limited")]
+    RateLimited {
+        /// The vendor.
+        vendor: &'static str,
+        /// The vendor's `Retry-After`, if it sent one.
+        retry_after: Option<Duration>,
+    },
+    /// Down, timed out or answering 5xx, after the client's retries ran out.
+    #[error("{vendor}: unavailable")]
+    Unavailable {
+        /// The vendor.
+        vendor: &'static str,
+        /// The transport failure, when there was one.
+        #[source]
+        source: Option<TransportError>,
+    },
+    /// The channel, file or folder doesn't exist or isn't visible to the token
+    /// (Slack `channel_not_found`, `not_in_channel`; Drive `404`).
+    #[error("{vendor}: not found ({code})")]
+    NotFound {
+        /// The vendor.
+        vendor: &'static str,
+        /// The vendor's short error code.
+        code: String,
+    },
+    /// Any other refusal: Slack's `ok: false` with another code, a Drive `403` that isn't a
+    /// rate limit, a `400`. Never retried. Includes our own misconfiguration of an OAuth exchange
+    /// (Slack `bad_redirect_uri`, `invalid_client_id`, `bad_client_secret`, `invalid_client`;
+    /// Google `401 invalid_client`), which is not the user's to fix.
+    #[error("{vendor}: refused ({code})")]
+    Refused {
+        /// The vendor.
+        vendor: &'static str,
+        /// The HTTP status.
+        status: u16,
+        /// The vendor's short error code.
+        code: String,
+    },
+    /// The answer didn't parse into the expected shape.
+    #[error("{vendor}: bad response")]
+    Malformed {
+        /// The vendor.
+        vendor: &'static str,
+    },
+}
+```
+
+`FarmClientError::code()` maps a failure to the stored string:
+
+| Failure | `last_error` |
+|---|---|
+| `AuthRefused` | `auth_refused`: the owner must reconnect |
+| `RateLimited` | `rate_limited`: the sync resumes from its cursor on a later run |
+| `NotFound` | `source_missing`: a chosen channel or folder is gone or not visible |
+| `Unavailable`, `Refused`, `Malformed` | `vendor_unavailable` |
+| (set by the sync, never by a client) | `too_large` |
+
+`Refused` is `vendor_unavailable` because nothing the owner does to the token fixes it, and the sync skips a refused single file instead of stopping.
+
+`FarmClientError::into_source_error(vendor, source_id)` turns a failure into the port's `FarmSourceError`, keeping the same `last_error` code: a `NotFound` while reading a chosen source is `SourceMissing` with that source's id; one on a call about the token or a user says nothing about the owner's choice and is `BadResponse`. Each adapter maps its client's errors through it.
+
+### Slack
+
+Read methods only, plus the OAuth exchange and the revoke: `auth.test`, `conversations.list`, `conversations.history`, `conversations.replies`, `users.info`, `auth.revoke` and `oauth.v2.access`.
+
+```rust
+/// The `vendor` of every [`FarmClientError`] this client returns.
+pub const VENDOR: &str = "slack";
+
+/// Slack's Web API host. A constant in `api` too: no route can point a connector elsewhere.
+pub const SLACK_BASE_URL: &str = "https://slack.com";
+
+/// Tier 1: one `conversations.history` or `conversations.replies` call a minute per workspace
+/// for a new install of an app not in the Slack Marketplace ([connectors 3]).
+///
+/// [connectors 3]: ../../../docs/connectors/README.md#3-decisions
+pub const TIER_1_INTERVAL: Duration = Duration::from_mins(1);
+
+/// Tier 1's largest page of `conversations.history` and `conversations.replies`: 15 messages.
+pub const TIER_1_PAGE_LIMIT: u32 = 15;
+
+/// Settings.
+#[derive(Debug, Clone)]
+pub struct SlackConfig {
+    /// `https://slack.com`, or an Era simulator for an `era` connector and the tests. The
+    /// methods are under `<base_url>/api/`.
+    pub base_url: String,
+    /// Total deadline of one request.
+    pub timeout: Duration,
+    /// Retries of `429`, 5xx, `internal_error` and transport failures.
+    pub retry: RetryPolicy,
+    /// The least time between two `conversations.history` (or two `conversations.replies`)
+    /// calls for one team. Zero turns pacing off.
+    pub history_interval: Duration,
+    /// `limit` of a `conversations.history` or `conversations.replies` page.
+    pub history_limit: u32,
+    /// `limit` of a `conversations.list` page (a Tier 2 method, not paced).
+    pub list_limit: u32,
+    /// Most (team, method) pacers kept at once.
+    pub max_pacers: u64,
+}
+
+/// `auth.test`: who the token is, and the workspace URL permalinks are built from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthTest {
+    /// The workspace's name.
+    pub team: String,
+    /// The workspace's id, which keys the pacers.
+    pub team_id: String,
+    /// The workspace URL, with a trailing slash: `https://maplerow.slack.com/`.
+    pub url: String,
+    /// The bot's user id.
+    pub user_id: String,
+    /// The bot's id.
+    pub bot_id: Option<String>,
+}
+
+/// A channel the bot is a member of.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SlackChannel {
+    /// `C…`.
+    pub id: String,
+    /// The name without `#`.
+    pub name: String,
+    /// A private channel (`groups:read`).
+    pub is_private: bool,
+}
+
+/// One message of a channel or a thread. Its `Debug` leaves the text out.
+#[derive(Clone, PartialEq, Eq)]
+pub struct SlackMessage {
+    /// The message's id within its channel: `1791792000.000100`.
+    pub ts: String,
+    /// The author's user id; absent for some bot and system messages.
+    pub user: Option<String>,
+    /// The text, in Slack's markup.
+    pub text: String,
+    /// The thread's parent `ts`: set on a parent that has replies and on each reply.
+    pub thread_ts: Option<String>,
+    /// Replies in the thread, on a parent.
+    pub reply_count: u32,
+    /// The newest reply's `ts`, on a parent; the sync reads the replies when it changes.
+    pub latest_reply: Option<String>,
+    /// `channel_join`, `bot_message` and the like; `None` for a plain message.
+    pub subtype: Option<String>,
+}
+
+/// One page of `conversations.history`, newest first.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct HistoryPage {
+    /// The messages.
+    pub messages: Vec<SlackMessage>,
+    /// The cursor of the next (older) page; `None` on the last.
+    pub next_cursor: Option<String>,
+}
+
+/// A Slack user, as the sync keeps one: the id and the names, never an email. Its `Debug`
+/// shows the id only, since names are personal data.
+#[derive(Clone, PartialEq, Eq)]
+pub struct SlackUser {
+    /// `U…`.
+    pub id: String,
+    /// The handle (`maria`).
+    pub name: Option<String>,
+    /// The full name (`Maria Lopez`).
+    pub real_name: Option<String>,
+    /// The display name the user chose (`Maria`); often empty in Slack, then `None`.
+    pub display_name: Option<String>,
+}
+
+/// `oauth.v2.access`: the bot token and the workspace it belongs to. The token's `Debug` is
+/// redacted.
+#[derive(Debug)]
+pub struct OAuthAccess {
+    /// `xoxb-…`, to be sealed at once.
+    pub access_token: SecretString,
+    /// `bot`.
+    pub token_type: Option<String>,
+    /// The granted scopes, comma-separated.
+    pub scope: String,
+    /// The bot's user id.
+    pub bot_user_id: Option<String>,
+    /// The Slack app's id.
+    pub app_id: Option<String>,
+    /// The workspace's id.
+    pub team_id: String,
+    /// The workspace's name.
+    pub team_name: String,
+}
+
+/// The Slack Web API client. One per process; `Clone` shares the pacers.
+#[derive(Clone)]
+pub struct SlackClient {
+    http: reqwest::Client,
+    config: Arc<SlackConfig>,
+    pacers: Cache<(String, &'static str), Arc<Pacer>>,
+}
+```
+
+```rust
+impl SlackClient {
+    /// A client over the shared `reqwest::Client`.
+    pub fn new(http: reqwest::Client, config: SlackConfig) -> Self {
+        let idle = config
+            .history_interval
+            .saturating_mul(2)
+            .max(MIN_PACER_IDLE);
+        let pacers = Cache::builder()
+            .max_capacity(config.max_pacers)
+            .time_to_idle(idle)
+            .build();
+        Self {
+            http,
+            config: Arc::new(config),
+            pacers,
+        }
+    }
+
+    /// The settings.
+    pub fn config(&self) -> &SlackConfig {
+        &self.config
+    }
+
+    /// `auth.test`: the workspace and the bot behind a token.
+    pub async fn auth_test(&self, token: &SecretString) -> Result<AuthTest, FarmClientError> {
+        let w: wire::AuthTest = self.call(&Call::read("auth.test", token, &[])).await?;
+        Ok(AuthTest {
+            team: w.team,
+            team_id: w.team_id,
+            url: w.url,
+            user_id: w.user_id,
+            bot_id: w.bot_id,
+        })
+    }
+
+    /// `conversations.list`, every page: the public and private channels the bot is a member
+    /// of, archived ones left out.
+    pub async fn conversations_list(
+        &self,
+        token: &SecretString,
+    ) -> Result<Vec<SlackChannel>, FarmClientError> {
+        let limit = self.config.list_limit.to_string();
+        let mut channels = Vec::new();
+        let mut cursor: Option<String> = None;
+        for _ in 0..MAX_PAGES {
+            let mut query = vec![
+                ("types", "public_channel,private_channel"),
+                ("exclude_archived", "true"),
+                ("limit", limit.as_str()),
+            ];
+            if let Some(c) = cursor.as_deref() {
+                query.push(("cursor", c));
+            }
+            let page: wire::ChannelList = self
+                .call(&Call::read("conversations.list", token, &query))
+                .await?;
+            channels.extend(page.channels.into_iter().filter(|c| c.is_member).map(|c| {
+                SlackChannel {
+                    id: c.id,
+                    name: c.name,
+                    is_private: c.is_private,
+                }
+            }));
+            cursor = page
+                .response_metadata
+                .and_then(wire::ResponseMetadata::next);
+            if cursor.is_none() {
+                return Ok(channels);
+            }
+        }
+        Err(too_many_pages("conversations.list"))
+    }
+
+    /// One page of `conversations.history`, newest first: messages after `oldest` (exclusive)
+    /// when given, from `cursor` when given. Paced per `team_id`.
+    pub async fn conversations_history(
+        &self,
+        token: &SecretString,
+        team_id: &str,
+        channel: &str,
+        oldest: Option<&str>,
+        cursor: Option<&str>,
+    ) -> Result<HistoryPage, FarmClientError> {
+        let limit = self.config.history_limit.to_string();
+        let mut query = vec![("channel", channel), ("limit", limit.as_str())];
+        if let Some(oldest) = oldest {
+            query.push(("oldest", oldest));
+        }
+        if let Some(cursor) = cursor {
+            query.push(("cursor", cursor));
+        }
+        let call = Call {
+            paced_team: Some(team_id),
+            ..Call::read("conversations.history", token, &query)
+        };
+        let page: wire::Messages = self.call(&call).await?;
+        Ok(HistoryPage {
+            messages: page.messages.into_iter().map(message).collect(),
+            next_cursor: page
+                .response_metadata
+                .and_then(wire::ResponseMetadata::next),
+        })
+    }
+
+    /// `conversations.replies`, every page: the parent, then its replies. Each page is paced
+    /// per `team_id`.
+    pub async fn conversations_replies(
+        &self,
+        token: &SecretString,
+        team_id: &str,
+        channel: &str,
+        thread_ts: &str,
+    ) -> Result<Vec<SlackMessage>, FarmClientError> {
+        let limit = self.config.history_limit.to_string();
+        let mut messages = Vec::new();
+        let mut cursor: Option<String> = None;
+        for _ in 0..MAX_PAGES {
+            let mut query = vec![
+                ("channel", channel),
+                ("ts", thread_ts),
+                ("limit", limit.as_str()),
+            ];
+            if let Some(c) = cursor.as_deref() {
+                query.push(("cursor", c));
+            }
+            let call = Call {
+                paced_team: Some(team_id),
+                ..Call::read("conversations.replies", token, &query)
+            };
+            let page: wire::Messages = self.call(&call).await?;
+            messages.extend(page.messages.into_iter().map(message));
+            cursor = page
+                .response_metadata
+                .and_then(wire::ResponseMetadata::next);
+            if cursor.is_none() {
+                return Ok(messages);
+            }
+        }
+        Err(too_many_pages("conversations.replies"))
+    }
+
+    /// The parent of a thread and nothing else (`conversations.replies` with `limit=1`): one
+    /// call that shows its current `reply_count` and `latest_reply`. `None` when Slack returns
+    /// no message. Paced per `team_id`.
+    pub async fn conversations_thread_parent(
+        &self,
+        token: &SecretString,
+        team_id: &str,
+        channel: &str,
+        thread_ts: &str,
+    ) -> Result<Option<SlackMessage>, FarmClientError> {
+        let query = [("channel", channel), ("ts", thread_ts), ("limit", "1")];
+        let call = Call {
+            paced_team: Some(team_id),
+            ..Call::read("conversations.replies", token, &query)
+        };
+        let page: wire::Messages = self.call(&call).await?;
+        Ok(page.messages.into_iter().next().map(message))
+    }
+
+    /// `users.info`: the user's names. Never the email, even when Slack sends one.
+    pub async fn users_info(
+        &self,
+        token: &SecretString,
+        user: &str,
+    ) -> Result<SlackUser, FarmClientError> {
+        let query = [("user", user)];
+        let w: wire::UserInfo = self.call(&Call::read("users.info", token, &query)).await?;
+        let profile = w.user.profile.unwrap_or_default();
+        Ok(SlackUser {
+            id: w.user.id,
+            name: non_empty(w.user.name),
+            real_name: non_empty(profile.real_name).or_else(|| non_empty(w.user.real_name)),
+            display_name: non_empty(profile.display_name),
+        })
+    }
+
+    /// `auth.revoke`: the token stops working. A token that is already revoked answers
+    /// `token_revoked` or `invalid_auth`, and that counts as revoked (`Ok`), as Google's
+    /// `invalid_token` does: the token is gone either way. Any other refusal is an error.
+    pub async fn auth_revoke(&self, token: &SecretString) -> Result<(), FarmClientError> {
+        let call = Call {
+            verb: Method::POST,
+            ..Call::read("auth.revoke", token, &[])
+        };
+        match self.call::<wire::Empty>(&call).await {
+            Ok(_) => Ok(()),
+            Err(FarmClientError::AuthRefused { code, .. })
+                if code == "token_revoked" || code == "invalid_auth" =>
+            {
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// `oauth.v2.access`: exchanges an authorization code for the bot token. The Slack app is a
+    /// confidential client, so the client secret goes with the code and there is no PKCE
+    /// ([connectors 5]). Not retried after a timeout or a 5xx, since a code works once.
+    ///
+    /// [connectors 5]: ../../../docs/connectors/README.md#5-connecting-and-tokens
+    pub async fn oauth_v2_access(
+        &self,
+        code: &str,
+        redirect_uri: &str,
+        client_id: &str,
+        client_secret: &SecretString,
+    ) -> Result<OAuthAccess, FarmClientError> {
+        let body = form(&[
+            ("code", code),
+            ("redirect_uri", redirect_uri),
+            ("client_id", client_id),
+            ("client_secret", client_secret.expose_secret()),
+        ]);
+        let call = Call {
+            method: "oauth.v2.access",
+            verb: Method::POST,
+            token: None,
+            query: &[],
+            form: Some(&body),
+            paced_team: None,
+            idempotent: false,
+        };
+        // A bad code is the user's (`AuthRefused`); a bad redirect URI, client id or secret is our
+        // own configuration and stays `Refused`.
+        let w: wire::OAuthAccess = self.call(&call).await.map_err(|error| match error {
+            FarmClientError::Refused { vendor, code, .. } if BAD_CODES.contains(&code.as_str()) => {
+                FarmClientError::AuthRefused { vendor, code }
+            }
+            other => other,
+        })?;
+        Ok(OAuthAccess {
+            access_token: SecretString::from(w.access_token),
+            token_type: w.token_type,
+            scope: w.scope,
+            bot_user_id: w.bot_user_id,
+            app_id: w.app_id,
+            team_id: w.team.id,
+            team_name: w.team.name,
+        })
+    }
+
+    /// The pacer of one team's method; `None` when pacing is off.
+    async fn pacer(&self, team: &str, method: &'static str) -> Option<Arc<Pacer>> {
+        let interval = self.config.history_interval;
+        if interval.is_zero() {
+            return None;
+        }
+        Some(
+            self.pacers
+                .get_with((team.to_owned(), method), async move {
+                    Arc::new(Pacer::new(interval))
+                })
+                .await,
+        )
+    }
+
+    /// One call with its retries; each attempt waits for the pacer first.
+    async fn call<T: DeserializeOwned>(&self, call: &Call<'_>) -> Result<T, FarmClientError> {
+        let pacer = match call.paced_team {
+            Some(team) => self.pacer(team, call.method).await,
+            None => None,
+        };
+        let pacer = pacer.as_deref();
+        http::retry(self.config.retry, |_| async move {
+            if let Some(pacer) = pacer {
+                pacer.wait().await;
+            }
+            self.attempt(call).await
+        })
+        .await
+    }
+
+    async fn attempt<T: DeserializeOwned>(&self, call: &Call<'_>) -> Attempt<T, FarmClientError> {
+        let url = format!("{}/api/{}", self.config.base_url, call.method);
+        let mut request = self
+            .http
+            .request(call.verb.clone(), url)
+            .timeout(self.config.timeout);
+        if !call.query.is_empty() {
+            request = request.query(call.query);
+        }
+        // An empty token sends no `Authorization` at all, which Slack answers `not_authed`.
+        if let Some(token) = call.token.map(ExposeSecret::expose_secret)
+            && !token.is_empty()
+        {
+            request = request.bearer_auth(token);
+        }
+        if let Some(form) = call.form {
+            request = request
+                .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(form.to_owned());
+        }
+        let response = match request.send().await {
+            Ok(response) => response,
+            Err(e) => return transport(call, e),
+        };
+        let status = response.status();
+        let retry_after = http::retry_after(response.headers());
+        match response.bytes().await {
+            Ok(body) => judge(call.method, call.idempotent, status, retry_after, &body),
+            Err(e) => transport(call, e),
+        }
+    }
+}
+```
+
+**`ok: false` at HTTP 200.** Slack refuses with status 200 and `{"ok": false, "error": "<code>"}`, so the client reads `ok` before anything else. `not_authed`, `invalid_auth`, `token_revoked`, `token_expired` and `account_inactive` are `AuthRefused`, and so are `missing_scope` and `no_permission`: the owner must reconnect to grant the scope. `channel_not_found`, `not_in_channel`, `thread_not_found` and `user_not_found` are `NotFound`. `ratelimited` and HTTP 429 are retried after the `Retry-After` the server sent, then `RateLimited`. A 5xx, `internal_error` or a timeout is retried, then `Unavailable`. Any other code is `Refused`, never retried. A code that isn't a short `snake_case` word is replaced by `unrecognised`, so a body can't leak through the code.
+
+**The pacer.** `conversations.history` and `conversations.replies` are Tier 1 for a new install of an app outside the Slack Marketplace: about one call a minute per method and workspace ([connectors 3](../connectors/README.md#3-decisions)). `TIER_1_INTERVAL` is 1 minute and `TIER_1_PAGE_LIMIT` 15 messages a page. Each (team, method) pair has its own `Pacer`, so every connector holding one team's token shares it. The pacers live in a `moka` cache bounded by `SlackConfig::max_pacers` (10,000), dropped after idling for twice the interval and at least 10 minutes, so the map can't grow without bound and a pacer is never dropped while its last call is inside its interval. A call waits for its turn. The sync bounds a run and continues from its cursor on the next one.
+
+**`SlackConfig::era`.** Points the client at an Era simulator: no pacing and no back-off, but a `Retry-After` is still honoured (up to 60 s). Pages stay at 15, so paging is exercised.
+
+**`users.info` without the email.** The method returns the user's names only (`SlackUser::label` picks the display name, then the real name). The email is never read, even when Slack sends one ([connectors 8](../connectors/README.md#8-privacy-and-security)).
+
+**Permalinks.** `permalink(workspace_url, channel, ts, thread_ts)` builds a message's link from `auth.test`'s workspace URL: `<url>/archives/<channel>/p<ts without the dot>`, with `?thread_ts=<parent>&cid=<channel>` for a reply. A parent (its `thread_ts` equal to its `ts`) gets the plain link. It makes no call.
+
+```rust
+/// A message's permalink, built from `auth.test`'s workspace URL ([connectors 6]):
+/// `<url>archives/<channel>/p<ts without the dot>`, with `?thread_ts=<parent>&cid=<channel>`
+/// for a reply. A parent (its `thread_ts` equal to its `ts`) gets the plain link.
+///
+/// [connectors 6]: ../../../docs/connectors/README.md#6-sync
+pub fn permalink(workspace_url: &str, channel: &str, ts: &str, thread_ts: Option<&str>) -> String {
+    let base = workspace_url.trim_end_matches('/');
+    let id: String = ts.chars().filter(|c| *c != '.').collect();
+    match thread_ts.filter(|parent| *parent != ts) {
+        Some(parent) => format!("{base}/archives/{channel}/p{id}?thread_ts={parent}&cid={channel}"),
+        None => format!("{base}/archives/{channel}/p{id}"),
+    }
+}
+```
+
+### `SlackSource`: the port for the sync
+
+`SlackSource` wraps a `SlackClient` and implements `FarmSource` (E4.2, [connectors 6](../connectors/README.md#6-sync)). `api` builds one per endpoint: the real Slack with Tier 1 pacing, and an Era simulator with `SlackConfig::era`.
+
+```rust
+/// The trailing window read again once a day ([connectors 6]).
+///
+/// [connectors 6]: ../../../docs/connectors/README.md#6-sync
+pub const REREAD_WINDOW: Duration = Duration::from_hours(7 * 24);
+
+/// How long an author's name is kept per team ([connectors 6]).
+///
+/// [connectors 6]: ../../../docs/connectors/README.md#6-sync
+pub const USER_NAME_TTL: Duration = Duration::from_hours(24);
+
+/// The farm-connector adapter for Slack: one per process and per endpoint (the real Slack, or
+/// an Era simulator), sharing the client's pacers and its own name cache.
+#[derive(Clone)]
+pub struct SlackSource {
+    client: SlackClient,
+    /// `(team, user)` → the user's name, or `None` for a user Slack doesn't know.
+    names: Cache<(String, String), Option<Arc<str>>>,
+}
+```
+
+- **A page** is one `conversations.history` page of one channel (newest first), with the replies of the threads on it whose parent changed, and each author's name. A message's record joins its replies, each on its own paragraph after its author's name; joins, topic changes and pins are left out, and a reply sent to the channel too arrives with its thread.
+- **The cursor** is the adapter's own JSON in `SyncCursor`: `newest`, the newest `ts` of the finished passes; `pass`, a pass with pages left (its `oldest`, Slack's page cursor and the newest `ts` it has seen); `threads`, each thread parent's `latest_reply`, `reply_count` and a short hash of its text when its replies were read; and `probed`, the round-robin position of the older-thread checks. A new pass reads only what is after `newest` (`oldest` is exclusive), so a quiet channel costs one call. A pass interrupted by a `429` resumes from its page cursor on the next run, reading no page twice. A parent seen again with an unchanged `latest_reply`, `reply_count` and text costs no `conversations.replies` call and isn't sent again: its id comes back in `FarmPage::kept`.
+- **Older threads.** At the end of a pass, up to `FarmPageRequest::probe_limit` threads whose parent is older than 7 days and whose last reply is within 30 days are checked, round-robin from `probed`, with `conversations.replies` and `limit=1` (`SlackClient::conversations_thread_parent`); `FarmPage::probes` counts them. A thread whose `latest_reply` or `reply_count` moved is read in full and sent. Slack no longer having it forgets it; a deleted parent (a `tombstone`) forgets it and reports its id in `FarmPage::removed`; an answer for another message is skipped. Each check gathers what it found before touching the cursor: a refused token fails the page, and any other failure ends the checks with `probed` moved past the thread that failed, so a thread whose check keeps failing doesn't hold up the others, and returns the page. Threads whose parent left the 180 days are forgotten before the checks.
+- **The daily re-read.** `reread_window()` is 7 days. When the sync sets `reread_from`, a new pass starts there instead of at `newest`, so an edited message is sent again; Slack reports no deletion, so the sync deletes what the pass didn't see. A new reply to a thread shows in its parent's `latest_reply`, which a pass reads when the parent is in its window: the next pass when the parent is new, the daily re-read for the last 7 days.
+- **Authors.** `users.info` once per (team, user) a day in a `moka` cache, keeping `SlackUser::label()` only, never the email; a user Slack doesn't know has no name.
+- **Links** come from the workspace URL in the connector's account (`auth.test`'s `url` at connect), through `permalink`.
+- **Duplicates.** Era's simulator lists a parent injected a second time (to add a reply) twice in one page; the copy with the newest `latest_reply` wins.
+
+### Google Drive
+
+```rust
+/// The `vendor` of every error and log line.
+pub const VENDOR: &str = "google_drive";
+
+/// The one scope PDM asks for ([connectors 5]).
+///
+/// [connectors 5]: ../../../docs/connectors/README.md#5-connecting-and-tokens
+pub const SCOPE: &str = "https://www.googleapis.com/auth/drive.readonly";
+
+/// Most files a folder listing returns ([connectors 6]).
+///
+/// [connectors 6]: ../../../docs/connectors/README.md#6-sync
+pub const MAX_FILES: usize = 500;
+
+/// Most folders a listing walks into, the chosen one included, so a tree of empty folders
+/// can't run without end.
+pub const MAX_FOLDERS: usize = 500;
+
+/// A file's text is cut at 1 MB ([connectors 6]).
+///
+/// [connectors 6]: ../../../docs/connectors/README.md#6-sync
+pub const MAX_TEXT_BYTES: usize = 1_000_000;
+
+/// Settings.
+#[derive(Debug, Clone)]
+pub struct DriveConfig {
+    /// `https://www.googleapis.com`, or a simulator's base URL. No trailing slash.
+    pub api_base: String,
+    /// `https://oauth2.googleapis.com/token`.
+    pub token_url: String,
+    /// `https://oauth2.googleapis.com/revoke`.
+    pub revoke_url: String,
+    /// Total deadline of one request, a download's body included.
+    pub timeout: Duration,
+    /// Retries of `429`, rate-limit `403`s, `408`, 5xx and transport failures. The code
+    /// exchange is never retried: a code works once.
+    pub retry: RetryPolicy,
+    /// `pageSize` of `files.list` and `changes.list`, 1 to 1000.
+    pub page_size: u32,
+}
+
+/// What `files.export` converts a Google file to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExportFormat {
+    /// `text/plain`, for a Google Doc.
+    PlainText,
+    /// `text/csv`, for a Google Sheet: its first tab only.
+    Csv,
+}
+
+/// The Drive client. Cheap to clone; every call takes the connector's access token.
+#[derive(Clone)]
+pub struct DriveClient {
+    http: reqwest::Client,
+    config: Arc<DriveConfig>,
+    /// `Some(config.timeout)`. Only the unit tests clear it (paused time: tokio would otherwise
+    /// auto-advance to the deadline while the mock server answers); production never does.
+    request_timeout: Option<Duration>,
+}
+```
+
+```rust
+/// A PKCE verifier and its `S256` challenge.
+#[derive(Debug)]
+pub struct Pkce {
+    verifier: SecretString,
+    challenge: String,
+}
+
+/// A verifier that RFC 7636 4.1 doesn't allow: 43 to 128 characters of
+/// `[A-Z] / [a-z] / [0-9] / "-" / "." / "_" / "~"`.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[error("PKCE verifier must be 43 to 128 unreserved characters")]
+pub struct InvalidVerifier;
+```
+
+```rust
+impl DriveClient {
+    /// A client over the shared `reqwest::Client` ([`crate::http::client`]).
+    pub fn new(http: reqwest::Client, config: DriveConfig) -> Self {
+        let request_timeout = Some(config.timeout);
+        Self {
+            http,
+            config: Arc::new(config),
+            request_timeout,
+        }
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // OAuth
+    // -----------------------------------------------------------------------------------------
+
+    /// Exchanges an authorization code with its PKCE verifier (`grant_type=authorization_code`).
+    /// Not retried: a code works once, and a reused one is `invalid_grant`.
+    pub async fn exchange_code(
+        &self,
+        code: &str,
+        verifier: &SecretString,
+        redirect_uri: &str,
+        client_id: &str,
+        client_secret: &SecretString,
+    ) -> Result<TokenGrant, FarmClientError> {
+        let body = form(&[
+            ("grant_type", "authorization_code"),
+            ("code", code),
+            ("code_verifier", verifier.expose_secret()),
+            ("redirect_uri", redirect_uri),
+            ("client_id", client_id),
+            ("client_secret", client_secret.expose_secret()),
+        ]);
+        let response: wire::TokenResponse = self
+            .json("oauth.token", RetryPolicy::NONE, || {
+                self.form_post(&self.config.token_url, body.clone())
+            })
+            .await?;
+        Ok(response.into())
+    }
+
+    /// A new access token from the refresh token (`grant_type=refresh_token`). A refused
+    /// refresh token (`invalid_grant`: revoked, expired, or a Testing-mode token over 7 days
+    /// old) is [`FarmClientError::AuthRefused`].
+    pub async fn refresh(
+        &self,
+        refresh_token: &SecretString,
+        client_id: &str,
+        client_secret: &SecretString,
+    ) -> Result<TokenGrant, FarmClientError> {
+        let body = form(&[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token.expose_secret()),
+            ("client_id", client_id),
+            ("client_secret", client_secret.expose_secret()),
+        ]);
+        let response: wire::TokenResponse = self
+            .json("oauth.refresh", self.config.retry, || {
+                self.form_post(&self.config.token_url, body.clone())
+            })
+            .await?;
+        Ok(response.into())
+    }
+
+    /// Revokes a token (the refresh token revokes the whole grant). A token Google no longer
+    /// knows (`400 invalid_token`) counts as revoked.
+    pub async fn revoke(&self, token: &SecretString) -> Result<(), FarmClientError> {
+        let body = form(&[("token", token.expose_secret())]);
+        match self
+            .send("oauth.revoke", self.config.retry, || {
+                self.form_post(&self.config.revoke_url, body.clone())
+            })
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(FarmClientError::Refused {
+                status: 400, code, ..
+            }) if code == "invalid_token" => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Drive
+    // -----------------------------------------------------------------------------------------
+
+    /// The account's email, from `about.get`.
+    pub async fn about_email(&self, token: &SecretString) -> Result<String, FarmClientError> {
+        let about: wire::About = self
+            .json("about.get", self.config.retry, || {
+                self.get(token, "/drive/v3/about")
+                    .query(&[("fields", "user(emailAddress)")])
+            })
+            .await?;
+        Ok(about.user.email_address)
+    }
+
+    /// Every file under `folder_id`, at any depth, across `nextPageToken`, stopping at
+    /// [`MAX_FILES`] files or [`MAX_FOLDERS`] folders (`truncated` says so). Trashed files are
+    /// left out; a shared drive's folder works.
+    pub async fn list_folder(
+        &self,
+        token: &SecretString,
+        folder_id: &str,
+    ) -> Result<FolderListing, FarmClientError> {
+        let mut listing = FolderListing {
+            files: Vec::new(),
+            folders: vec![folder_id.to_owned()],
+            tree: Vec::new(),
+            truncated: false,
+        };
+        let mut seen: HashSet<String> = HashSet::from([folder_id.to_owned()]);
+        let mut next = 0;
+        let mut pages = 0_u32;
+        let fields = format!("nextPageToken,files({FILE_FIELDS})");
+        let page_size = self.page_size();
+        'folders: while let Some(folder) = listing.folders.get(next).cloned() {
+            next += 1;
+            let q = format!("'{}' in parents and trashed=false", quote(&folder));
+            let mut page_token: Option<String> = None;
+            let mut tokens: HashSet<String> = HashSet::new();
+            loop {
+                pages += 1;
+                if pages > MAX_PAGES {
+                    return Err(malformed("files.list"));
+                }
+                let page: wire::FileList = self
+                    .json("files.list", self.config.retry, || {
+                        let mut query = vec![
+                            ("q", q.as_str()),
+                            ("fields", fields.as_str()),
+                            ("pageSize", page_size.as_str()),
+                            ("supportsAllDrives", "true"),
+                            ("includeItemsFromAllDrives", "true"),
+                        ];
+                        if let Some(t) = &page_token {
+                            query.push(("pageToken", t));
+                        }
+                        self.get(token, "/drive/v3/files").query(&query)
+                    })
+                    .await?;
+                for file in page.files {
+                    if file.kind() == FileKind::Folder {
+                        if !seen.insert(file.id.clone()) {
+                            continue;
+                        }
+                        // The chosen folder is in `folders` too; `tree` holds only those under it.
+                        if listing.tree.len() == MAX_FOLDERS {
+                            listing.truncated = true;
+                            break 'folders;
+                        }
+                        listing.tree.push((file.id.clone(), folder.clone()));
+                        listing.folders.push(file.id);
+                    } else {
+                        if listing.files.len() == MAX_FILES {
+                            listing.truncated = true;
+                            break 'folders;
+                        }
+                        listing.files.push(file);
+                    }
+                }
+                match page.next_page_token {
+                    // A token seen before in this folder is a cycle.
+                    Some(t) if !t.is_empty() => {
+                        if !tokens.insert(t.clone()) {
+                            return Err(malformed("files.list"));
+                        }
+                        page_token = Some(t);
+                    }
+                    _ => break,
+                }
+            }
+        }
+        tracing::debug!(
+            vendor = VENDOR,
+            files = listing.files.len(),
+            folders = listing.folders.len(),
+            truncated = listing.truncated,
+            "folder listed"
+        );
+        Ok(listing)
+    }
+
+    /// The folders the account can open, for the owner's source picker
+    /// (`GET /connectors/{id}/available-sources`): every folder not in the bin, the account's
+    /// own and those shared with it, shared drives' included, across `nextPageToken`, sorted by
+    /// name, at most [`MAX_FOLDERS`].
+    pub async fn folders(&self, token: &SecretString) -> Result<Vec<DriveFile>, FarmClientError> {
+        let q = format!("mimeType='{FOLDER_MIME}' and trashed=false");
+        let fields = format!("nextPageToken,files({FILE_FIELDS})");
+        let page_size = self.page_size();
+        let mut folders: Vec<DriveFile> = Vec::new();
+        let mut page_token: Option<String> = None;
+        let mut tokens: HashSet<String> = HashSet::new();
+        for _ in 0..MAX_PAGES {
+            let page: wire::FileList = self
+                .json("files.list", self.config.retry, || {
+                    let mut query = vec![
+                        ("q", q.as_str()),
+                        ("fields", fields.as_str()),
+                        ("pageSize", page_size.as_str()),
+                        ("supportsAllDrives", "true"),
+                        ("includeItemsFromAllDrives", "true"),
+                    ];
+                    if let Some(t) = &page_token {
+                        query.push(("pageToken", t));
+                    }
+                    self.get(token, "/drive/v3/files").query(&query)
+                })
+                .await?;
+            folders.extend(
+                page.files
+                    .into_iter()
+                    .filter(|f| f.kind() == FileKind::Folder && !f.trashed),
+            );
+            match page.next_page_token {
+                Some(t) if !t.is_empty() && folders.len() < MAX_FOLDERS => {
+                    if !tokens.insert(t.clone()) {
+                        return Err(malformed("files.list"));
+                    }
+                    page_token = Some(t);
+                }
+                _ => {
+                    folders.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.id.cmp(&b.id)));
+                    folders.truncate(MAX_FOLDERS);
+                    return Ok(folders);
+                }
+            }
+        }
+        Err(malformed("files.list"))
+    }
+
+    /// A Google Doc or Sheet converted by `files.export`, cut at [`MAX_TEXT_BYTES`].
+    pub async fn export(
+        &self,
+        token: &SecretString,
+        file_id: &str,
+        format: ExportFormat,
+    ) -> Result<FileText, FarmClientError> {
+        let path = format!("/drive/v3/files/{}/export", segment(file_id));
+        let response = self
+            .send("files.export", self.config.retry, || {
+                self.get(token, &path).query(&[("mimeType", format.mime())])
+            })
+            .await?;
+        read_text(response).await
+    }
+
+    /// A stored file's content (`alt=media`), for `text/plain` files, cut at
+    /// [`MAX_TEXT_BYTES`]. A Google file or a file without content is `Refused` with
+    /// `fileNotDownloadable`.
+    pub async fn download_text(
+        &self,
+        token: &SecretString,
+        file_id: &str,
+    ) -> Result<FileText, FarmClientError> {
+        let path = format!("/drive/v3/files/{}", segment(file_id));
+        let response = self
+            .send("files.get", self.config.retry, || {
+                self.get(token, &path)
+                    .query(&[("alt", "media"), ("supportsAllDrives", "true")])
+            })
+            .await?;
+        read_text(response).await
+    }
+
+    /// One file's or folder's metadata (`files.get` with the listing's fields). A file the token
+    /// can't see is `NotFound`.
+    pub async fn file(
+        &self,
+        token: &SecretString,
+        file_id: &str,
+    ) -> Result<DriveFile, FarmClientError> {
+        let path = format!("/drive/v3/files/{}", segment(file_id));
+        self.json("files.get", self.config.retry, || {
+            self.get(token, &path)
+                .query(&[("fields", FILE_FIELDS), ("supportsAllDrives", "true")])
+        })
+        .await
+    }
+
+    /// `changes.getStartPageToken`: the token a first sync saves.
+    pub async fn start_page_token(&self, token: &SecretString) -> Result<String, FarmClientError> {
+        let start: wire::StartPageToken = self
+            .json("changes.getStartPageToken", self.config.retry, || {
+                self.get(token, "/drive/v3/changes/startPageToken")
+                    .query(&[("supportsAllDrives", "true")])
+            })
+            .await?;
+        Ok(start.start_page_token)
+    }
+
+    /// One page of `changes.list` from `page_token`: its changes, and either the next page's
+    /// token or, on the last page, `newStartPageToken`. A page with neither is `Malformed`. An
+    /// unknown or expired token is `Refused` (`400`, reason `invalid`) or `NotFound`.
+    pub async fn changes_page(
+        &self,
+        token: &SecretString,
+        page_token: &str,
+    ) -> Result<ChangePage, FarmClientError> {
+        let fields = format!(
+            "nextPageToken,newStartPageToken,changes(fileId,removed,time,file({FILE_FIELDS}))"
+        );
+        let page_size = self.page_size();
+        let page: wire::ChangeList = self
+            .json("changes.list", self.config.retry, || {
+                self.get(token, "/drive/v3/changes").query(&[
+                    ("pageToken", page_token),
+                    ("fields", fields.as_str()),
+                    ("pageSize", page_size.as_str()),
+                    ("supportsAllDrives", "true"),
+                    ("includeItemsFromAllDrives", "true"),
+                    ("includeRemoved", "true"),
+                ])
+            })
+            .await?;
+        let page = ChangePage {
+            changes: page.changes,
+            next_page_token: page.next_page_token.filter(|t| !t.is_empty()),
+            new_start_page_token: page.new_start_page_token.filter(|t| !t.is_empty()),
+        };
+        if page.next_page_token.is_none() && page.new_start_page_token.is_none() {
+            return Err(malformed("changes.list"));
+        }
+        Ok(page)
+    }
+
+    /// Every change since `page_token`, reading `changes.list` page by page until the page
+    /// that carries `newStartPageToken`. Drive doesn't order the pages by time, so the caller
+    /// gets them all or an error. The sync reads one page at a time instead
+    /// ([`Self::changes_page`]), so a long backlog never has to fit in one call.
+    pub async fn changes(
+        &self,
+        token: &SecretString,
+        page_token: &str,
+    ) -> Result<ChangeSet, FarmClientError> {
+        let mut current = page_token.to_owned();
+        let mut changes = Vec::new();
+        let mut pages = 0_u32;
+        let mut tokens: HashSet<String> = HashSet::from([page_token.to_owned()]);
+        loop {
+            if pages == MAX_PAGES {
+                return Err(malformed("changes.list"));
+            }
+            let page = self.changes_page(token, &current).await?;
+            pages += 1;
+            changes.extend(page.changes);
+            if let Some(new_start) = page.new_start_page_token {
+                tracing::debug!(
+                    vendor = VENDOR,
+                    changes = changes.len(),
+                    pages,
+                    "changes read"
+                );
+                return Ok(ChangeSet {
+                    changes,
+                    new_start_page_token: new_start,
+                    pages,
+                });
+            }
+            match page.next_page_token {
+                // A token seen before (a page pointing to itself, or a cycle) would loop for ever.
+                Some(next) if !next.is_empty() && tokens.insert(next.clone()) => current = next,
+                _ => return Err(malformed("changes.list")),
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Requests
+    // -----------------------------------------------------------------------------------------
+
+    fn page_size(&self) -> String {
+        self.config.page_size.clamp(1, MAX_PAGE_SIZE).to_string()
+    }
+
+    fn get(&self, token: &SecretString, path: &str) -> RequestBuilder {
+        self.http
+            .get(format!("{}{path}", self.config.api_base))
+            .bearer_auth(token.expose_secret())
+    }
+
+    fn form_post(&self, url: &str, body: String) -> RequestBuilder {
+        self.http
+            .post(url)
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                "application/x-www-form-urlencoded",
+            )
+            .body(body)
+    }
+
+    /// A call whose success is JSON. A body that doesn't parse is `Malformed`, not retried.
+    async fn json<T: DeserializeOwned>(
+        &self,
+        call: &'static str,
+        policy: RetryPolicy,
+        build: impl Fn() -> RequestBuilder,
+    ) -> Result<T, FarmClientError> {
+        let response = self.send(call, policy, build).await?;
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| unavailable(Some(TransportError::from_reqwest(e.without_url()))))?;
+        serde_json::from_slice(&bytes).map_err(|_| malformed(call))
+    }
+
+    /// Sends the request `build` makes until it succeeds, fails for good, or `policy` runs out.
+    async fn send(
+        &self,
+        call: &'static str,
+        policy: RetryPolicy,
+        build: impl Fn() -> RequestBuilder,
+    ) -> Result<Response, FarmClientError> {
+        http::retry(policy, |_| {
+            let mut request = build();
+            if let Some(timeout) = self.request_timeout {
+                request = request.timeout(timeout);
+            }
+            async move {
+                let response = match request.send().await {
+                    Ok(response) => response,
+                    Err(e) => {
+                        let error = TransportError::from_reqwest(e.without_url());
+                        tracing::debug!(
+                            vendor = VENDOR,
+                            call,
+                            timeout = error.timeout,
+                            "google drive call failed"
+                        );
+                        return Attempt::Retry {
+                            error: unavailable(Some(error)),
+                            retry_after: None,
+                        };
+                    }
+                };
+                let status = response.status();
+                if status.is_success() {
+                    return Attempt::Done(response);
+                }
+                let retry_after = http::retry_after(response.headers());
+                let body = response.bytes().await.unwrap_or_default();
+                classify(call, status, retry_after, &wire::error_codes(&body))
+            }
+        })
+        .await
+    }
+}
+```
+
+**OAuth with PKCE.** `Pkce::generate` makes a verifier and its S256 challenge; the app sends the challenge and `exchange_code` sends the verifier. `refresh` trades a refresh token for an access token, and `revoke` ends the grant on disconnect. The only scope is `drive.readonly`, so the token response has no `id_token`. `about_email` calls `about.get` for the account's email. `invalid_grant` on a refresh is `AuthRefused`.
+
+**Reading.** `list_folder` walks a folder recursively across `nextPageToken`, and stops at 500 files or 500 folders (`MAX_FILES`, `MAX_FOLDERS`); `FolderListing::truncated` says so. Trashed files are left out, and a shared drive's folder works. `export` returns a Doc as text or a Sheet as CSV, and `download_text` returns a plain-text file. Both cut the text at `MAX_TEXT_BYTES` (1 MB), so one large file can't fill memory. `file` reads one file's or folder's metadata (`files.get`). `start_page_token` gives the cursor a first sync saves. `changes_page` reads one page of `changes.list`: its changes and either `nextPageToken` or, on the last page, `newStartPageToken` (a page with neither is `Malformed`; an unknown token is `400` reason `invalid` on the simulator, ran 2026-10-20). `changes` reads every page up to the last; the sync uses `changes_page`. A change with no `fileId` (a shared drive's own, `changeType: "drive"`) parses with an empty `file_id`. `FolderListing::tree` gives each folder found under the chosen one with the folder it was listed in. `DriveConfig::era` points the client at an Era simulator (its `/token` and `/o/oauth2/revoke`), with no back-off between retries; a `Retry-After` up to 60 s is still honoured.
+
+### `DriveSource`: the port for the sync
+
+`DriveSource` wraps a `DriveClient` and implements `FarmSource` (E4.3, [connectors 6](../connectors/README.md#6-sync)). `api` builds one per endpoint: Google with `DriveConfig::default()`, and an Era simulator with `DriveConfig::era`. It never renews a token: the sync does, in `api`.
+
+```rust
+/// Files read on one page. A page also stops once it holds [`TEXT_PER_PAGE`] bytes of text.
+pub const FILES_PER_PAGE: usize = 25;
+
+/// Failed file reads after which a page stops: each can take the client's retries and
+/// timeouts.
+pub const FAILURES_PER_PAGE: usize = 2;
+
+/// Runs a file's read may fail in before it is tried only once a day, its record left as it
+/// was: about an hour of an outage at one run every 15 minutes.
+pub const MAX_TRIES: u8 = 5;
+
+/// The farm-connector adapter for Google Drive: one per process and per endpoint (Google, or
+/// an Era simulator).
+#[derive(Debug, Clone)]
+pub struct DriveSource {
+    client: DriveClient,
+}
+```
+
+- **A listing** (the first sync, a resync): `files.get` on the chosen folder (gone, trashed or not a folder is `SourceMissing`), then `changes.getStartPageToken` before the folder is listed recursively, so a change made during the listing is read by the next sync. Every file found is queued, and the page reports every file id listed in `FarmPage::listed`, so the sync deletes the source's records of files no longer there, after storing the page.
+- **A page** reads the next files of the queue: at most `FILES_PER_PAGE` (25), and it stops early once it holds 8 MB of text. A Doc is exported as text, a Sheet as CSV (its first tab), a `text/plain` file downloaded, anything else kept by name with no text. A file Drive won't hand over (`Refused`, such as `fileNotDownloadable`), and a `text/plain` file whose characters are more than a tenth U+FFFD or NUL (a binary file), are kept by name; one gone since it was queued (`404`) is reported in `FarmPage::removed`. A refused token or a `429` fails the page, so the sync keeps its cursor. `more` is set while the queue has files or a backlog of changes goes on.
+- **A file whose read fails** another way (Drive down for it, a timeout, an answer that doesn't parse) goes to the back of the queue with its tries counted and the run's start (`FarmPageRequest::oldest` plus 180 days) noted, and the page goes on; it stops after `FAILURES_PER_PAGE` (2) such failures. A file is tried once a run; after `MAX_TRIES` (5) runs it is tried once a day (`RETRY_AFTER_TRIES`), never dropped, and its record stays as it was. Once only files waiting for a later run are left, the page reads `changes.list`, so they hold up nothing. A change token is refused only on `400` with reason `invalid`, or `404`.
+- **Later syncs**, when the queue is empty, read one page of `changes.list` from the saved token (`changes_page`) and save its `nextPageToken`, or `newStartPageToken` on the last page, so a long backlog spreads over pages and runs and a `429` loses at most one page. Each page's changes are applied to the cursor (folders first, then files) and the files to read again are queued. A token Drive refuses (`400`) or doesn't know (`404`) starts a resync: the listing above.
+- **The cursor** is the adapter's JSON in `SyncCursor`: `token`, where `changes.list` continues; `paging`, a backlog in progress; `folders`, every folder under the chosen one with the folder it is in; `files`, every file held with its folder; `queue`, the files still to read with their name, type, `modifiedTime`, `webViewLink` and failed tries. A cursor it can't read starts a listing.
+- **Under the folder.** Drive gives a file's `parents`, not its path, and moving a folder changes only that folder. A changed folder is placed under its new parent, or dropped when trashed or deleted, and the tree keeps the folders whose parents lead to the chosen folder. A folder that left takes its subfolders and their files with it; a folder that joined is listed recursively, since its files bring no change of their own. A file change is kept when one of its parents is the chosen folder or a folder of the tree; trashed, deleted or moved elsewhere, the file is dropped. Only files held before are reported in `removed`, so the thousands of changes elsewhere in an account cost only the reading. The latest change of a file wins; a change with no file id, or with no file that isn't a removal, is skipped. A listed file whose parent isn't a folder of the tree is left out.
+- **Limits.** Past 500 files or 500 folders under the chosen folder (`MAX_FILES`, `MAX_FOLDERS`; a truncated listing, a change or a folder moved in), the page fails with `FarmSourceError::TooLarge`, stored as `too_large` like the garden's 10,000 records: nothing more runs until the owner chooses a smaller folder.
+- **The chosen folder** trashed or deleted is `SourceMissing`; any other `404` (a file, a page token) is a bad answer, `vendor_unavailable`.
+- **No re-read.** `reread_window()` is `None`: `changes.list` reports what is gone, so the sync never deletes a Drive record by absence.
+
+**Errors** come in Google's shape, `{"error":{"code","status","errors":[{"reason"}]}}`:
+
+| Answer | Result |
+|---|---|
+| `401` | `AuthRefused` |
+| `429`; `403` with reason `userRateLimitExceeded` or `rateLimitExceeded` | retried, honouring `Retry-After`, then `RateLimited` |
+| `403` for a missing scope (`ACCESS_TOKEN_SCOPE_INSUFFICIENT`, or `insufficientPermissions` on a call that reads with the token's scope) | `AuthRefused`, never retried |
+| any other `403` (such as `fileNotDownloadable`) | `Refused`, never retried |
+| `404` | `NotFound` |
+| `408`, 5xx, transport failure | retried, then `Unavailable` |
+
+**No vendor body is kept.** Neither client keeps a response body in an error, a log line or a stored value, because a body may echo the farm's own records ([connectors 8](../connectors/README.md#8-privacy-and-security)). A log line has the method, the status and the short code (Slack's `error`, Google's `reason`). The text that `export` and `download_text` return goes to the caller and nowhere else.
+
+---
+
+## 16. Concurrency and lifetimes
 
 **What is shared.** Every adapter is `Send + Sync + 'static` and is held by `api` as `Arc<dyn Port>`. The clients are cheap to clone: an `Arc` around their configuration plus the shared `reqwest::Client`. State that must be one per process is behind an `Arc` inside:
 
@@ -2680,7 +3899,7 @@ The pattern is the brief's convention 4: borrowed views for the synchronous work
 
 ---
 
-## 16. Errors
+## 17. Errors
 
 Each module maps its failures to the port's error enum ([domain 9](domain.md#9-boundary-traits)). The library error is kept as the `source`, so `api`'s log prints the whole chain. Only `api` turns these into HTTP ([contracts 2](../architecture/contracts.md#2-errors)):
 
@@ -2698,7 +3917,7 @@ The two LLM clients keep their own enums (`AnthropicError`, `OpenAiCompatError`)
 
 ---
 
-## 17. Testing
+## 18. Testing
 
 | What | How |
 |---|---|
@@ -2714,13 +3933,30 @@ The two LLM clients keep their own enums (`AnthropicError`, `OpenAiCompatError`)
 | Clerk | tokens signed with a throwaway RSA key, generated once per test run with `aws-lc-rs` so no private key is committed, and served as a JWKS by `wiremock`: issuer, expiry, `nbf`, `azp`, leeway, missing `nbf`, refetch limit; `DELETE` 200, 404 and 429 |
 | Svix | the `svix` crate's `Webhook::sign` as the oracle; rotation (several entries), tampering, ±301 s |
 | Agent Memory | `wiremock`, exact request bodies (the service ignores unknown fields silently): `record` and the scope cache (one registration for two writes, none after the first), the `400 unknown scope node` re-register and single retry, a 5xx write retried twice, `current` (plant and garden merged, superseded dropped, label and both timestamp forms, 404 as empty), `history` (cursor followed through a short page, newest first), `search` (exact lens, hit filter, prefix stripped), `forget` (trailing slash, cache dropped), the 500, 429, 401, 403 and 422 mapping, `Debug` without the key |
+| Slack, Google Drive | `wiremock`, exact requests: `ok:false` at 200 for each code group, `Retry-After`, 5xx retries, the pacer per (team, method) and its bounded cache, paging by cursor, `users.info` without the email, `permalink`; Drive's OAuth with PKCE, `about.get`, the recursive listing and its cap of 500, the 1 MB cut, `changes` to the last page, the `403` reasons, a refused scope as `auth_refused`; no body in any error or log. `DriveSource`: the folder checked, then the start token before the listing, nested folders and every id listed; a chosen folder gone, trashed or not a folder as `source_missing`; 25 files a page from the cursor; 501 files as `too_large`, listed or by a change; changes kept under the folder (edited, moved out, trashed, deleted, created in a subfolder, elsewhere, a shared drive's change without a file id); a backlog read one page at a time; a refused or unknown change token, and an unreadable cursor, listing again; a folder moved out taking its file and one moved in listed with its subfolder; the chosen folder trashed as `source_missing`; a change with no file that isn't a removal ignored; a listed file outside the tree left out; the 1 MB cut, a three-byte character included; a locked file and a binary `text/plain` kept by name and a gone one removed; a file whose read keeps failing tried once a run and skipped after 5; a `429` with its `Retry-After` |
+| Era | see below |
 | Expo | ticket order, `DeviceNotRegistered` in tickets and receipts, batches of 100, a failed whole push |
+
+**The Era tests** (`tests/era_fixture.rs`, `era_slack.rs`, `era_drive.rs`) run the two clients against Era's Slack and Google Drive simulators on the Maple Row Farm fixture. They are `#[ignore]`d, so `cargo nextest run` skips them. Start the simulators and run them with:
+
+```sh
+docker compose -f infra/dev.compose.yml --profile era up -d --wait era-slack era-drive
+ERA_SLACK_BASE=http://127.0.0.1:8091 ERA_GOOGLE_BASE=http://127.0.0.1:8092 \
+  cargo nextest run -p integrations --run-ignored only \
+  -E 'test(/(^|::)era_/) and not test(/(^|::)era_strict_/) and not test(/(^|::)era_hosted_/)'
+```
+
+- **They fail, they don't skip.** `era_sim::base_url` panics when `ERA_SLACK_BASE` or `ERA_GOOGLE_BASE` is unset, so a run without the simulators is red.
+- **High fidelity.** Start each simulator with `-e SIMCORE_FIDELITY=high` as its own `-e`; a missing or joined setting gives `legacy`, a far smaller company. `era_drive_reads_the_farm_folder_and_its_changes` checks `era_sim::fidelity` first: at legacy fidelity a quarter of changes from `day1` to `day2` is 52 changes, one page, where high fidelity gives 2,041 in three pages of 1,000 (ran 2026-10-20). That was why the test failed locally with "1 pages" while passing in CI.
+- **Minted tenant credentials.** Each test creates a `Tenant`, an isolated copy of the company, and passes the credential the simulator mints for it as the client's bearer token. The credential selects the tenant: no `X-Sim-Tenant` header and no test-only constructor exist.
+- **One at a time.** Faults are global to a simulator, so a fault set by one test reaches every other test. [`backend/.config/nextest.toml`](../../backend/.config/nextest.toml) puts every test named `era_*` in the nextest group `era` (`max-threads = 1`). The fault tests also hold a file lock and clear the faults when they end, also when they fail. The `era` CI job comes with [EON E6](../EON/README.md#e6-ci).
+- **The hosted company** (`tests/era_hosted.rs`, EON T-E7.1). Two `era_hosted_` tests run the clients against Holling Holdings, the team's hosted Era company, with `SLACK_BASE_URL`, `GOOGLE_DRIVE_BASE_URL` and `ERA_TENANT_TOKEN`: Slack lists the channels and reads one history page, Drive lists the folders, one folder and exports a Doc. Every request is metered, so they make five in all and print the count, read from an HTTP client that keeps no idle connection and counts DNS lookups. Only the nightly `era-hosted` workflow runs them ([infra 2](../infra/README.md#the-era-hosted-job)).
 
 Paused time (`start_paused`) is used only where no real I/O runs: the retry and pacer tests. With a mock server in the loop, tokio's auto-advance would jump to the request's timeout while the server answers, which the Clerk refetch test showed. Not run: live calls to Anthropic, Clerk, Expo and Nominatim (no keys or accounts on 2026-10-15), and the VLM servers (no GPU here).
 
 ---
 
-## 18. Open questions
+## 19. Open questions
 
 1. **Frost threshold.** Settled in [domain 7](domain.md#weather-thresholds): one `WeatherThresholds` for `frost_risk`, the frost alert rule of [architecture 8.3](../architecture/README.md#83-forecast-alerts) and fusion, with frost at a 2 m minimum ≤ 0.5 °C. The number itself is still a proposal ([domain 12](domain.md#12-open-questions), item 17).
 2. **SoilGrids `NotFound` versus `Unavailable`.** Settled in contracts v0.10 ([contracts 9, the soil profile](../architecture/contracts.md#gardens)): one `unavailable` value on the wire, retried after 7 days for no data and after 15 minutes for an outage (section 8; `api`'s `soil` task). Still open: architecture 6.4's Soil Landscapes of Canada fallback for null pixels.
@@ -2733,7 +3969,7 @@ Paused time (`start_paused`) is used only where no real I/O runs: the retry and 
 
 ---
 
-## 19. Sources
+## 20. Sources
 
 **Rust language**
 - The Book: [10.1 generics](https://doc.rust-lang.org/book/ch10-01-syntax.html) · [10.3 lifetimes](https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html) · [18.2 trait objects](https://doc.rust-lang.org/book/ch18-02-trait-objects.html) · [17 async and await](https://doc.rust-lang.org/book/ch17-00-async-await.html)

@@ -1,0 +1,10 @@
+# Weekly clean-up of the CI runner's Docker data and Cargo build trees (see ci-prune.timer).
+# Installed by install.sh in ~/.config/systemd/user/ of the ci-runner user.
+[Unit]
+Description=Prune the CI runner's Docker data and old Cargo build trees
+
+[Service]
+Type=oneshot
+# The rootless daemon's socket; the runners get it from their .env, the timer from here.
+Environment=DOCKER_HOST=unix://%t/docker.sock
+ExecStart=%h/ci/bin/prune.sh

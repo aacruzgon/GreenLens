@@ -384,6 +384,7 @@ async fn guided_check_finishes() {
                 status: GuidedCheckStatus::Done,
                 observation: Some(texture.clone()),
             },
+            now,
         )
         .await
         .expect("finished");
@@ -804,6 +805,7 @@ async fn chat_flow() {
         text: text.into(),
         attachments: Vec::new(),
         citations: Vec::new(),
+        farm_citations: Vec::new(),
         tool_calls: parts,
         route: None,
         interrupted: false,

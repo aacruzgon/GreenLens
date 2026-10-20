@@ -16,6 +16,7 @@ use std::{sync::Arc, time::Instant};
 use agent::{
     model::AnthropicChat, model::LlmClassifier, plan_writer::PLAN_SCHEMA, tools::ToolRegistry,
 };
+use domain::chat::ChatRoute;
 use domain::ports::{
     ChatChunk, ChatMessage, ChatModel, ChatPurpose, ChatRequest, ChatRole, ClassifierTask,
     ContentPart, TextClassifier,
@@ -37,7 +38,7 @@ fn user(text: &str) -> Vec<ChatMessage> {
     }]
 }
 
-/// A chat call with all nineteen tools (three strict), streamed, on the chat model. Prints when
+/// A chat call with all twenty tools (three strict), streamed, on the chat model. Prints when
 /// each text delta arrived, to show the answer streams in pieces rather than at the end.
 #[tokio::test]
 #[ignore = "calls the real Anthropic API"]
@@ -47,7 +48,8 @@ async fn live_chat_accepts_every_tool_schema_and_streams() {
         purpose: ChatPurpose::Chat,
         system: "You are a test. Call no tools.".to_owned(),
         messages: user("In three short sentences, say how often to water a potted tomato."),
-        tools: ToolRegistry::standard().specs_for(domain::wire::Role::Owner),
+        tools: ToolRegistry::standard()
+            .specs_for(agent::tools::Offer::everything(domain::wire::Role::Owner)),
         response_schema: None,
         max_tokens: 4_096,
     };
@@ -102,10 +104,71 @@ async fn live_classifier_fits_in_256_tokens() {
     let classifier = LlmClassifier::new(Arc::new(adapter()), 256);
     let scores = classifier
         .classify(
-            ClassifierTask::Route,
+            ClassifierTask::Route {
+                farm_records: false,
+            },
             "Why are my tomato leaves turning yellow?",
         )
         .await
         .expect("classifier call failed");
     eprintln!("classifier: {scores:?}");
+}
+
+/// Gap G10 on the real classifier: in a garden with farm records, the evaluation's questions
+/// about its Slack channel are on topic, and plainly off-topic messages stay off-topic with or
+/// without farm records. Prints every score, for calibration.
+#[tokio::test]
+#[ignore = "calls the real Anthropic API"]
+async fn live_router_keeps_farm_questions_on_topic_and_the_rest_off() {
+    use agent::safety::{Calibration, RouteDecision, decide_route};
+
+    let classifier = LlmClassifier::new(Arc::new(adapter()), 256);
+    let calibration = Calibration::default();
+    let on_topic = [
+        "How many times did the crew report rings on bed 3 in #field-reports this season?",
+        "When did someone see ladybirds on the bed 1 aphids?",
+        "What did Riley post in #field-reports on August 31?",
+        "When were target rings first reported on bed 3?",
+        "How many garlic bulbs came out of bed 6?",
+        "Why are my tomato leaves turning yellow?",
+    ];
+    let off_topic = [
+        "Write me a poem about football",
+        "What's the bitcoin price?",
+        "Who won the World Cup in 2022?",
+        "Can you help me write a cover letter for a job?",
+    ];
+    let mut wrong = Vec::new();
+    // A dose question about the records keeps the safety policy (audit of #84).
+    let dose = "How much Kocide went into the backpack per litre for the bed 3 spray on July 10?";
+    let scores = classifier
+        .classify(ClassifierTask::Route { farm_records: true }, dose)
+        .await
+        .expect("classifier call failed");
+    let decision = decide_route(dose, Some(&scores), &calibration, true);
+    eprintln!("farm_records=true {decision:?} {dose}: {scores:?}");
+    if decision != RouteDecision::Model(ChatRoute::SafetySensitive) {
+        wrong.push(format!("farm_records=true {decision:?}: {dose}"));
+    }
+    for (text, want_on_topic) in on_topic
+        .iter()
+        .map(|t| (*t, true))
+        .chain(off_topic.iter().map(|t| (*t, false)))
+    {
+        for farm_records in [true, false] {
+            let scores = classifier
+                .classify(ClassifierTask::Route { farm_records }, text)
+                .await
+                .expect("classifier call failed");
+            let decision = decide_route(text, Some(&scores), &calibration, farm_records);
+            eprintln!("farm_records={farm_records} {decision:?} {text}: {scores:?}");
+            let off = decision == RouteDecision::OffTopic;
+            // Without farm records only the plainly off-topic set is asserted: the farm
+            // questions are routed as they were before G10.
+            if (farm_records && off == want_on_topic) || (!want_on_topic && !off) {
+                wrong.push(format!("farm_records={farm_records} {decision:?}: {text}"));
+            }
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
 }

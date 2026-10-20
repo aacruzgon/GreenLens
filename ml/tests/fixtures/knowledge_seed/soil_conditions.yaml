@@ -1,0 +1,5 @@
+- aspect: moisture
+  value: waterlogged
+  description: Water stands on the surface or the soil stays soaked.
+  what_to_do: Stop watering until the top few centimetres dry out, and improve drainage.
+  sources: [example_extension_tomato_diseases]

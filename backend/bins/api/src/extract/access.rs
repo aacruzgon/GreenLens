@@ -64,6 +64,11 @@ impl Scoped for table::Memory {
         Locate::Resource(GardenResource::Memory(id))
     }
 }
+impl Scoped for table::Connector {
+    fn locate(id: Id<Self>) -> Locate {
+        Locate::Resource(GardenResource::Connector(id))
+    }
+}
 
 /// The caller, the record in `{id}`, and a proof of at least role `R` in its garden.
 ///

@@ -1,6 +1,6 @@
 # PDM Backend: `store` crate
 
-> **Status:** Draft v0.4.6, 2026-10-17. v0.4.6: memories carry a `topic` and `belief_synced_at`, the `belief_forget` queue holds subjects to erase in Agent Memory (written by a shared memory's delete and by the plant and garden cascade starts), and `MemoryStore` gains the belief sweep's methods. v0.4.5: `label_set_version` follows `ml/models/FORMATS.md` (a SHA-256 over the BioCLIP revision, the 80 templates and the sorted labels) instead of an FNV-1a hash, and passes its test vector; open question 7 says so. v0.4.4: open question 4 is resolved: the vector search's bound `k` failed to parse on 3.3.4, so `search_chunks` writes it as a clamped literal, with a test on the embedded engine. v0.4.3: section 4 proposes the migration runner that applies the numbered migrations and the generated `knowledge.surql` after the schema, with its work items, tests and open questions. v0.4.2: the schema now lives at `backend/migrations/schema.surql` only, no longer a copy of a file in `docs/database`. v0.4.1: section 1 keeps only the `$now` difference from database 4, since the skills now follow this design; section 17 lists `TargetBinds`, which section 18 cites; research notes are no longer named by a path outside the repository. v0.4: the multi-line query listings are complete (a generator bug cut eight of them after their first line); the step-claim pair is described as conditional, as in database 4; the protected parameters are `auth`, `token`, `access` and `session`; a bound `$before` is overridden only in `RETURN`, and `Option` fails only from 2 ids; the closure-lifetime error has no code. v0.3: the account tombstone (`deleted_user`), SoilGrids retries, `live_lease`, and the store's `Notify` as the only claim wake-up (a requeue notifies too). v0.2: every repository method is real code (no `todo!()` left), reads decode straight into domain types through contract-shaped projections, and 12 more tests run on the embedded engine. v0.1: `SurrealStore`, which implements every repository of `domain::ports::store` and `MemoryStore` over SurrealDB 3.3.4, with every statement a named constant, one query per transaction with a conflict retry, one error classifier, and real code for each pattern that carries a guarantee, tested against the embedded 3.3.4 engine.
+> **Status:** Draft v0.4.13, 2026-10-20. v0.4.13: the farm search filters by `until` (before the instant) and `author` (part of the display name, lowercased, never a record without one) beside `kind` and `since` (EON gap G12). v0.4.12: `begin` takes over a `running` idempotency key older than 10 minutes with a compare-and-set, and `deleting_connectors_of_user` lists a user's `deleting` connectors with no garden filter; `delete_expired_pending` takes a second cutoff and leaves a pending connector claimed since then. v0.4.11: `UPSERT_RECORDS` skips a record whose source is no longer among the connector's sources, in the same transaction; `SEED_CONNECTOR` repairs an existing connector of the garden (token, `status`, `last_error`). v0.4.10: the audit's fixes to the farm repository: creates bump `garden.connector_rev` so the limit holds under a race, Sync now refuses a connector stopped until new sources, a record stores its `source`, the 180-day cleanup takes Slack messages only (`farm_record_kind_at`), and `finish_sync` keeps a `next_sync_at` that moved during the run (`SyncOutcome::due_at`). v0.4.9: `FarmRecordStore` is implemented (roadmap E1.6): connectors with the 2-per-garden limit, the connect compare-and-set, the due query, **Sync now** as a compare-and-set on `sync_requested_at`, upserts that keep a vector only while its `text_hash` holds, deletes by item, chunk range and source, the exact search within one garden, record counts and the cleanup; plans and messages write and read `farm_records` and `farm_citations`, and rows from before them read as empty; 8 tests in `tests/farm.rs`. v0.4.8: the farm connectors' `connector` and `farm_record` tables are in the schema (with `sync_requested_at`, and `farm_records` and `farm_citations` on `action_plan` and `message`), the garden cascade deletes them before the garden, `garden_of` resolves a connector, `farm_record:[connector, vendor_id, n]` keys map to `FarmRecordId`, and `FarmRecordStore` is stubbed until roadmap E1.6. v0.4.7: `knowledge_meta` is in the schema, and an embedded-engine test loads the knowledge loader's output (work items M1, M6). v0.4.6: memories carry a `topic` and `belief_synced_at`, the `belief_forget` queue holds subjects to erase in Agent Memory (written by a shared memory's delete and by the plant and garden cascade starts), and `MemoryStore` gains the belief sweep's methods. v0.4.5: `label_set_version` follows `ml/models/FORMATS.md` (a SHA-256 over the BioCLIP revision, the 80 templates and the sorted labels) instead of an FNV-1a hash, and passes its test vector; open question 7 says so. v0.4.4: open question 4 is resolved: the vector search's bound `k` failed to parse on 3.3.4, so `search_chunks` writes it as a clamped literal, with a test on the embedded engine. v0.4.3: section 4 proposes the migration runner that applies the numbered migrations and the generated `knowledge.surql` after the schema, with its work items, tests and open questions. v0.4.2: the schema now lives at `backend/migrations/schema.surql` only, no longer a copy of a file in `docs/database`. v0.4.1: section 1 keeps only the `$now` difference from database 4, since the skills now follow this design; section 17 lists `TargetBinds`, which section 18 cites; research notes are no longer named by a path outside the repository. v0.4: the multi-line query listings are complete (a generator bug cut eight of them after their first line); the step-claim pair is described as conditional, as in database 4; the protected parameters are `auth`, `token`, `access` and `session`; a bound `$before` is overridden only in `RETURN`, and `Option` fails only from 2 ids; the closure-lifetime error has no code. v0.3: the account tombstone (`deleted_user`), SoilGrids retries, `live_lease`, and the store's `Notify` as the only claim wake-up (a requeue notifies too). v0.2: every repository method is real code (no `todo!()` left), reads decode straight into domain types through contract-shaped projections, and 12 more tests run on the embedded engine. v0.1: `SurrealStore`, which implements every repository of `domain::ports::store` and `MemoryStore` over SurrealDB 3.3.4, with every statement a named constant, one query per transaction with a conflict retry, one error classifier, and real code for each pattern that carries a guarantee, tested against the embedded 3.3.4 engine.
 
 Companion to the [backend architecture](README.md), the [database notes](../database/README.md) (v1.4) and [`schema.surql`](../../backend/migrations/schema.surql). The ports it implements are in [domain 9](domain.md#9-boundary-traits). Every listing is copied from the compiled source of `crates/store` with the docgen tool: `cargo check -p store`, `cargo clippy -p store --all-targets` (clean) and `cargo test -p store` (7 unit tests and 25 tests against the embedded engine) pass on Rust 1.99.1 with `surrealdb = "=3.3.4"`.
 
@@ -122,11 +122,13 @@ crates/store/
 │  ├─ repo.rs         one module per repository area
 │  └─ repo/           access, identity, gardens, plants, map, scans, events, steps, analysis,
 │                     plans, jobs, idempotency (+ usage), weather, chat, memory, knowledge, deletion,
-│                     and load (the loaders and projections shared by several areas)
+│                     farm (connectors and farm records), and load (the loaders and projections shared by
+│                     several areas)
 ├─ tests/
 │  ├─ embedded.rs     the guarantees against the embedded 3.3.4 engine (one datastore per test)
 │  ├─ embedded/support.rs   fixtures built through the store's own methods
 │  ├─ flows.rs        uploads, completion, guided checks, answers, reads, chat, memory, deletions, knowledge
+│  ├─ farm.rs         the farm connectors' repository (EON T-E1.6)
 │  └─ server.rs       ignored: the schema applied twice on the pinned image
 └─ ../../migrations/schema.surql   the schema the crate embeds
 ```
@@ -314,7 +316,7 @@ pub async fn migrate_with(root: &Surreal<Any>, files: &[Migration]) -> Result<Ap
 
 | # | Slice | Work | Exit check |
 |---|---|---|---|
-| M1 | S2 | Add the `migration` and `knowledge_meta` tables to `schema.surql`, and list them in database 3 | The schema applies twice in a row on the embedded engine and on the pinned image |
+| M1 | S2 | Add the `migration` table to `schema.surql`, and list it in database 3 (`knowledge_meta` is in, with the loader) | The schema applies twice in a row on the embedded engine and on the pinned image |
 | M2 | S2 | `store/build.rs` and `MIGRATIONS`: names, numbering, and the forbidden statements (`USE`, `BEGIN`, `COMMIT`, `CANCEL`, `OPTION`, `DEFINE NAMESPACE`, `DATABASE`, `USER`, `ACCESS`) | A duplicate number or a bad name fails `cargo build`; `migration_files_follow_the_rules` passes on the committed files |
 | M3 | S2 | `migrate_with` and `migrate`, replacing `apply_schema` and `apply_schema_with` | The embedded-engine tests below pass |
 | M4 | S2 | `api` start-up: step 3 calls `migrate`; after step 6, the embedder check against `knowledge_meta` ([api 4](api.md#4-start-up-and-shutdown)) | `api` starts twice against the dev compose; the second start logs `numbered=[] knowledge=false` |
@@ -762,6 +764,39 @@ pub fn weather_rid(hour: DateTime<Utc>, cell: &str) -> RecordId {
         vec![hour.into_value(), Value::String(cell.to_owned())],
     )
 }
+
+/// `farm_record:[connector, vendor_id, n]` ([connectors 4]): an array key, because a Slack
+/// `ts` holds a dot.
+///
+/// [connectors 4]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#4-data
+pub fn farm_record_rid(id: &FarmRecordId) -> RecordId {
+    array_key(
+        "farm_record",
+        vec![
+            Value::RecordId(rid(&id.connector)),
+            Value::String(id.vendor_id.to_string()),
+            int(i64::from(id.n)),
+        ],
+    )
+}
+
+/// The [`FarmRecordId`] of a `farm_record:[connector, vendor_id, n]` key.
+pub fn farm_record_id_of(id: &RecordId) -> Result<FarmRecordId, RowError> {
+    if id.table.as_str() == "farm_record"
+        && let RecordIdKey::Array(parts) = &id.key
+        && let [
+            Value::RecordId(connector),
+            Value::String(vendor_id),
+            Value::Number(Number::Int(n)),
+        ] = parts.as_slice()
+        && let Ok(n) = u32::try_from(*n)
+        && let Ok(connector) = from_rid::<ConnectorId>(connector)
+        && let Ok(record) = FarmRecordId::new(connector, vendor_id, n)
+    {
+        return Ok(record);
+    }
+    Err(bad_id(id, "farm_record"))
+}
 ```
 
 ### Rows
@@ -1045,6 +1080,9 @@ pub mod sql {
     /// An invite's garden.
     pub const GARDEN_OF_INVITE: &str =
         "SELECT VALUE garden FROM $id WHERE garden.deleting_at = NONE;";
+    /// A farm connector's garden; a connector being deleted reads as missing.
+    pub const GARDEN_OF_CONNECTOR: &str =
+        "SELECT VALUE garden FROM $id WHERE status != 'deleting' AND garden.deleting_at = NONE;";
     /// A conversation's owner and garden.
     pub const CONVERSATION_OWNER: &str =
         "SELECT user, garden FROM $id WHERE garden.deleting_at = NONE;";
@@ -2387,6 +2425,10 @@ pub mod sql {
     pub const READ_KEY: &str = "SELECT * FROM ONLY $key;";
     /// An expired key the cleanup hasn't reached yet: deleted, then `BEGIN_KEY` again.
     pub const DELETE_EXPIRED_KEY: &str = "DELETE $key WHERE expires_at <= $now;";
+    /// A stale `running` key taken over by a retry: a compare-and-set on the state and the
+    /// start time (`expires_at` is the start plus 24 hours), so of two concurrent retries one
+    /// wins ([contracts 1], idempotency).
+    pub const TAKE_OVER_KEY: &str = "UPDATE $key SET expires_at = $new_expires_at WHERE state = 'running' AND expires_at = $read_expires_at RETURN VALUE id;";
     /// The finished response ([contracts 1]: `2xx` and the deterministic `4xx` only).
     pub const FINISH_KEY: &str =
         "UPDATE $key SET state = 'done', response_status = $status, response_body = $body;";
@@ -2451,6 +2493,25 @@ impl IdempotencyRepo for SurrealStore {
             }
             match self.read_key(&key).await? {
                 Some(row) if row.expires_at > dt(now) => {
+                    let stale = row.state == KeyStateRow::Running
+                        && row.fingerprint == fingerprint
+                        && row.expires_at <= dt(expires_at.minus(IDEMPOTENCY_RUNNING_STALE));
+                    if stale {
+                        let mut results = run_tx(&self.db, sql::TAKE_OVER_KEY, |q| {
+                            q.bind(("key", key.clone()))
+                                .bind(("new_expires_at", dt(expires_at)))
+                                .bind(("read_expires_at", row.expires_at))
+                        })
+                        .await
+                        .map_err(|f| f.into_store(WHAT))?;
+                        let won: Vec<RecordId> =
+                            results.take(0).map_err(|e| take_failed(WHAT, e))?;
+                        return Ok(if won.is_empty() {
+                            IdempotencyBegin::InProgress
+                        } else {
+                            IdempotencyBegin::Started
+                        });
+                    }
                     return decide(row, fingerprint).map_err(|e| e.into_store(WHAT));
                 }
                 // Expired but not yet cleaned up (reads hide expired keys, database 4).
@@ -2549,6 +2610,55 @@ WHERE garden = $garden AND (shared = true OR author = $user) AND ($plant = NONE 
 ORDER BY similarity DESC LIMIT $k;";
 ```
 
+### Farm connectors and records
+
+`repo::farm` implements `FarmRecordStore` ([connectors 4](../connectors/README.md#4-data), [6](../connectors/README.md#6-sync); EON E1.6). Plans write `farm_records` and messages `farm_citations` (`PlanRow`, `MessageRow`, both `#[surreal(default)]`), and `PLAN` and the message projection read them; `DEFAULT []` applies only on write, so a row stored before the fields reads as `NONE`, which the projection leaves out and the domain types' `#[serde(default)]` read as empty.
+
+| Method | Statement |
+|---|---|
+| `create_connector` | `CREATE_CONNECTOR`: bumps `garden.connector_rev` first, so creates racing on a garden conflict and the retry meets `connector_limit` (`Rejected(InvalidState)`) when the garden holds 2 connectors besides those being deleted |
+| `seed_connector` | `SEED_CONNECTOR`: creates the fixed id when it is free; otherwise, for a connector of this garden that is not being deleted (and whose garden is not), re-seals the token and sets `active` with no `last_error`; one elsewhere stays as it is. Every start may run it |
+| `connectors`, `connector_row` | `CONNECTORS` (oldest first, without `deleting`), `CONNECTOR_ROW`; `record_count` is counted per connector on `farm_record_connector`. The sealed `secret` and `oauth` are read by `SurrealValue` and removed before the JSON decode of `Connector` |
+| `complete_connect` | `COMPLETE_CONNECT`: a compare-and-set on `status = 'pending'`, the nonce and `expires_at`; `Conflict(AlreadyExists)` when it lost |
+| `set_sources` | `SET_SOURCES`: the chosen sources' cursors kept (`object::entries` filtered with a closure), `too_large` and `source_missing` cleared, due now |
+| `request_sync` | `REQUEST_SYNC` (EON decision 12): `invalid_state` for a connector stopped with `too_large` or `source_missing`, else the compare-and-set below; `SyncRequest::TooSoon { allowed_at }` from the last accepted request |
+| `due_connectors` | `DUE_CONNECTORS` on `connector_due`: `active`, `next_sync_at <= $now`, not waiting on new sources, earliest first |
+| `finish_sync`, `set_status` | `FINISH_SYNC`, `SET_STATUS`: never on a connector being deleted, never creating one; `FINISH_SYNC` is a transaction that keeps `next_sync_at` (and does not store a stopping failure) when it moved past `SyncOutcome::due_at` during the run |
+| `start_connector_deletion`, `delete_connector_batch` | `START_DELETION`; `DELETE_CONNECTOR_RECORDS` 500 at a time (only for a `deleting` connector), then `DELETE_CONNECTOR` |
+| `connectors_created_by`, `delete_expired_pending` | `CREATED_BY`; `DELETE_EXPIRED_PENDING`, 500 at a time, leaving a claim younger than `claimed_before` |
+| `record_hashes`, `upsert_records` | `RECORD_HASHES`; `UPSERT_RECORDS`, one transaction: a chunk without a vector keeps the stored one only when its `text_hash` is unchanged (`missing_vector` otherwise), and nothing is written for a connector that isn't `active` or `reauth_needed` (`NotFound`) |
+| `delete_records`, `delete_chunks_from`, `delete_source_records` | `DELETE_RECORDS` (`vendor_id IN $vendor_ids` on `farm_record_connector`); `DELETE_CHUNKS_FROM`, a key range `farm_record:[$connector, $vendor_id, $from]..=[$connector, $vendor_id, ..]`; `DELETE_SOURCE_RECORDS`, by the `source` stored on each record (index `farm_record_source`), 500 at a time |
+| `source_vendor_ids_since` | `SOURCE_VENDOR_IDS_SINCE`, the same source filter with `at >= $since` |
+| `garden_record_count` | `GARDEN_RECORD_COUNT` on `farm_record_garden` |
+| `search_records` | `SEARCH` below (EON gap G7): `kind`, `since`, `until` and `author` filters (gap G12) ✓ `the_search_filters_by_until_and_author` |
+| `delete_records_before` | `DELETE_RECORDS_BEFORE`, Slack messages only, on `farm_record_kind_at`, 500 at a time |
+
+```rust
+/// `POST /connectors/{id}/sync` (EON decision 12): a connector stopped until new sources
+/// (`too_large`, `source_missing`) is `invalid_state`, because the due query skips it. The
+/// conditional `UPDATE` is the compare-and-set. It returns the connector's id when it was accepted and nothing within
+/// 5 minutes of the last accepted request; the last statement returns that request's time.
+pub const REQUEST_SYNC: &str = "BEGIN;
+LET $c = (SELECT status, sync_requested_at, last_error FROM ONLY $connector WHERE garden = $garden);
+IF $c = NONE OR $c.status = 'deleting' { THROW 'not_found' };
+IF $c.status != 'active' OR $c.last_error IN ['too_large', 'source_missing'] { THROW 'invalid_state' };
+UPDATE $connector SET sync_requested_at = $now, next_sync_at = $now
+  WHERE sync_requested_at = NONE OR sync_requested_at <= $cutoff RETURN VALUE id;
+RETURN $c.sync_requested_at;
+COMMIT;";
+
+/// `search_farm_records` (EON gap G7): `memory`'s exact cosine search without its sharing
+/// filter, within one garden, leaving out a connector being deleted. `$author` comes
+/// lowercased (EON gap G12).
+pub const SEARCH: &str = "SELECT id, connector.kind AS system, title, author, link, text, at,
+  vector::similarity::cosine(embedding, $query) AS similarity FROM farm_record
+WHERE garden = $garden AND ($kind = NONE OR kind = $kind) AND ($since = NONE OR at >= $since)
+  AND ($until = NONE OR at < $until)
+  AND ($author = NONE OR string::contains(string::lowercase(author ?? ''), $author))
+  AND connector.status != 'deleting'
+ORDER BY similarity DESC LIMIT $k;";
+```
+
 `KnowledgeStore` belongs to the `knowledge` crate ([knowledge.md](knowledge.md)); `repo::knowledge` exposes its rows (`ChunkHitRow`, `ReferenceImageRow`, `LookalikeRow`) and statements so the loader and the migration can share them.
 
 ---
@@ -2608,10 +2718,13 @@ pub fn step_statements(target: DeletionTarget, step: CascadeStep) -> &'static [&
             &[sql::MEMORIES_OF_GARDEN, sql::PLANTS_OF_GARDEN, sql::MAPS]
         }
         (T::Plant(_), S::MemoriesPlantsMap) => &[sql::MEMORIES_OF_PLANT, sql::PLANT],
+        (T::Garden(_), S::FarmRecordsAndConnectors) => {
+            &[sql::FARM_RECORDS_OF_GARDEN, sql::CONNECTORS_OF_GARDEN]
+        }
         (T::Garden(_), S::Garden) => &[sql::INVITES, sql::MEMBERSHIPS, sql::GARDEN],
-        // A pending scan has no tasks, plans, diagnoses, memories or garden step
-        // (CascadeStep::steps_for never asks for them).
-        (T::PendingScan(_), _) | (T::Plant(_), S::Garden) => &[],
+        // A pending scan has no tasks, plans, diagnoses, memories or garden step, and a plant no
+        // connectors (CascadeStep::steps_for never asks for them).
+        (T::PendingScan(_), _) | (T::Plant(_), S::FarmRecordsAndConnectors | S::Garden) => &[],
     }
 }
 ```
@@ -2624,7 +2737,9 @@ pub fn step_statements(target: DeletionTarget, step: CascadeStep) -> &'static [&
 | 4.4 | masks, guided checks and **indicator answers** (schema v1.4), then observations, questions, scan feedback |
 | 4.5 | scan images, then scans |
 | 4.6 conversations | pending actions, message feedback, messages, chat images, conversations |
-| 4.7 | memories, plants (a plant lost its pin at start), the garden map; then invites, memberships, the garden |
+| 4.7 | memories, plants (a plant lost its pin at start), the garden map |
+| farm records and connectors | a garden's farm records, then its connectors ([connectors 8](../connectors/README.md#8-privacy-and-security)); revoking their tokens is the runner's |
+| 4.7 (cont.) | invites, memberships, the garden |
 
 **The target's binds.** `TargetBinds::of` picks the target's scope statement (`SCOPE_GARDEN`, `SCOPE_PLANT`, `SCOPE_SCAN` or `SCOPE_MEMBER`) and the record ids it binds; what the target lacks binds as `NONE`. `delete_batch` binds the same four values to the scope query and to every batch, adding `$scans` and `$conversations` from the scope's last two statements. `bind` is a function rather than a closure for the lifetime reason in section 18.
 
@@ -2688,7 +2803,7 @@ impl TargetBinds {
 }
 ```
 
-✓ A garden with a scan, an event, a job, a plan with a task, an indicator answer and a map deletes cleanly in this order (section 20). A `Member` target runs the conversations step and the member's unshared chat memories.
+✓ A garden with a scan, an event, a job, a plan with a task, an indicator answer and a map deletes cleanly in this order (section 20), and so does one with a connector, a farm record, a plan citing it and a message citing it. A `Member` target runs the conversations step and the member's unshared chat memories.
 
 **Cleanup** (database 4, every 10 minutes, batches of 500): `IdempotencyRepo::delete_expired`, `WeatherCacheRepo::delete_before`, `ChatRepo::expire_pending_actions`, `JobRepo::delete_finished_jobs`, each a real method returning how many rows it touched.
 
@@ -2738,7 +2853,7 @@ The store returns the domain's `StoreError` ([domain 6](domain.md#6-errors)); `a
 
 ## 20. Testing
 
-`cargo test -p store` runs 7 unit tests (error classification, the back-off range, id round trips, array keys, the JSON conversion, the growth series' one point per scan) and 25 tests against the **embedded SurrealDB 3.3.4 engine** (`kv-mem`, a dev-dependency only). Each test calls `support::store()`, which connects to a new `mem://` datastore and applies the schema, so tests never share rows. Fixtures go through the store's own methods (`upsert_user`, `create_garden`, the membership check, `create_scan`), so those paths run in every test. `SequentialIds` from `domain`'s `test-util` gives predictable ids; raw fixture SQL uses `type::record('scan', '…')` because sequential test ULIDs are all digits, which a bare `scan:000…1` literal would read as a number.
+`cargo test -p store` runs 7 unit tests (error classification, the back-off range, id round trips, array keys, the JSON conversion, the growth series' one point per scan) and 25 tests, plus the 18 farm connector tests of `tests/farm.rs`, against the **embedded SurrealDB 3.3.4 engine** (`kv-mem`, a dev-dependency only). Each test calls `support::store()`, which connects to a new `mem://` datastore and applies the schema, so tests never share rows. Fixtures go through the store's own methods (`upsert_user`, `create_garden`, the membership check, `create_scan`), so those paths run in every test. `SequentialIds` from `domain`'s `test-util` gives predictable ids; raw fixture SQL uses `type::record('scan', '…')` because sequential test ULIDs are all digits, which a bare `scan:000…1` literal would read as a number.
 
 | Test | What it proves |
 |---|---|
@@ -2767,6 +2882,14 @@ The store returns the domain's `StoreError` ([domain 6](domain.md#6-errors)); `a
 | `soil_profile_retries` | A failure waits until its retry time, then the garden is due again |
 | `live_lease_and_requeue_wake` | `live_lease` live, lost after a requeue, `None` after `complete`; the requeue wakes a waiting long poll |
 | `remove_fail_feedback_and_plant_deletion` | A shot removed with its key, feedback refused while `pending`, a failed run, feedback after, a plant's cascade leaving the garden; the cascade queues the plant's erase, and the queued row outlives its records |
+| `farm.rs`: `connectors_and_the_due_query` | Create, the connect compare-and-set (a wrong nonce, a reuse and an expired state lose), the 2-connector limit, idempotent seeding, the list; the due query skips `pending`, `reauth_needed`, `deleting` and a connector waiting on new sources; `finish_sync` keeps only chosen sources' cursors; `set_sources` clears the wait; a deleting connector stays deleting |
+| `sync_now_is_one_request_in_five_minutes` | Accepted at t, refused at t + 4:59 with `allowed_at` t + 5:00, refused from a second store over the same datastore, accepted at t + 5:00; a pending connector is `InvalidState`, another garden's owner `NotFound` |
+| `upserts_keep_the_vector_while_the_text_is_unchanged` | An unchanged hash without a vector keeps the vector and updates the other fields; a changed hash without one, or a new record without one, is refused; a changed one with its vector replaces it; a deleting connector takes no records |
+| `deletes_by_item_chunk_and_source` | `source_vendor_ids_since` by stored source and time (`C10/` isn't `C1`'s); a re-chunked document keeps chunk 0; delete by item; delete by source leaves the other channels' records |
+| `a_drive_source_is_all_its_records` | A Drive connector's folder is all its records |
+| `the_search_stays_in_its_garden_and_ranks_by_similarity` | Hits ranked by cosine, `k`, `kind` and `since`; another garden's record with the exact query vector never comes back; a deleting connector's records leave at once |
+| `counts_cleanup_and_deletion` | `garden_record_count` and `record_count` (501); the 180-day cleanup in batches; the pending cleanup; a connector's deletion in batches of 500, records before the connector, only once it is `deleting` |
+| `plans_and_messages_carry_farm_citations` | A plan's `farm_records` and a step's `farm_citations`, a message's `farm_citations`, through the store; a plan and messages whose fields were removed and defined again (no backfill) read as empty |
 | `server.rs` (ignored) | The schema applied twice, as root, on the pinned image by digest |
 
 Run against the pinned image as well with `PDM_TEST_SURREALDB_URL=ws://127.0.0.1:18000 cargo test -p store --test server -- --ignored` (the container command is in the file).
@@ -2795,7 +2918,7 @@ Answers this crate settles, for [contracts 12](../architecture/contracts.md#12-o
 | Contracts 5, a final failure | Non-retryable failures fail for good at once; retryable ones count an attempt; the failed job keeps its token, so a repeat is `AlreadyCompleted` too |
 | Account deletion (architecture 5) | A garden handed to an heir is also in `leave`: the leaver drops to editor in `transfer_ownership`, then the `Member` cascade removes them |
 | `GET /tasks` without `state` | Every state |
-| Ports with no time (open question 5) | `finish_guided_check` reads the database clock; `create_plant` and `register_push_token` take the `created_at` default |
+| Ports with no time (open question 5) | `create_plant` and `register_push_token` take the `created_at` default; `finish_guided_check` takes `now` like the other job completions |
 | `ScanSnapshot.questions` | Resolved questions read as `open` (open question 6) |
 
 **Schema changes (v1.4):** `indicator_answer`, `scan.candidates`, `question.indicator`, `mask.rle`.
@@ -2808,7 +2931,7 @@ Answers this crate settles, for [contracts 12](../architecture/contracts.md#12-o
 2. **`PlanRepo::write_plan` and `StepRepo::commit_step(Plan)` run the same transaction.** Both exist in the ports; one could go ([domain 9](domain.md#9-boundary-traits)).
 3. **The orphan sweep's key check scans tables.** `UNREFERENCED_KEYS` filters `storage_key`, `depth_key`, `depth_confidence_key` and the mask and chat image keys by `IN $keys` with no index on those fields. Once a day per garden this is cheap at hackathon scale; an index on each key field, or a garden filter in the port, would bound it.
 4. **Resolved: a bound `k` in `<|k, 40|>`** is a parse error on 3.3.4 ("expected an unsigned integer", ✓ [database 1](../database/README.md#1-version-and-setup)). `search_chunks` now writes `k` into the statement as a literal, clamped to 1–40 (`MAX_CHUNK_HITS`, the search's `ef`), and `knowledge_search_returns_the_nearest_chunks_first` runs the search on the embedded engine with 384-dimension vectors.
-5. **Four port methods pass no time.** `store_partial`, `finish_guided_check`, `create_plant` and `register_push_token` have no `now`. The store checks a partial result's lease by token, worker and status only (a requeue clears the token; `complete` checks expiry), `finish_guided_check` reads the database clock (`time::now()`) inside its transaction and returns the claim's stamp from the row, and the other two take the `created_at` default. Adding `now: Timestamp` to those four methods ([domain 9](domain.md#9-boundary-traits)) would put them back under the `Clock` port.
+5. **Three port methods pass no time.** `store_partial`, `create_plant` and `register_push_token` have no `now`. The store checks a partial result's lease by token, worker and status only (a requeue clears the token; `complete` checks expiry), and the other two take the `created_at` default. Adding `now: Timestamp` to those three methods ([domain 9](domain.md#9-boundary-traits)) would put them back under the `Clock` port. `finish_guided_check` took this step on 2026-10-19: it read the database clock, so a test whose fixed clock fell behind real time lost its lease.
 6. **Resolved questions have no wire status.** `Question.status` is `open | answering`, so `ScanSnapshot.questions`, which holds every question of the run, reads an answered, superseded or dropped question as `open`; the live state is `scan.open_question`. A server-side status on the snapshot's questions would remove the ambiguity.
 7. **`label_set_version` isn't stored.** The schema keeps no generated files (contracts 10), so `load_knowledge` computes it from every species' and organism's `bioclip_label` with the recipe of [`ml/models/FORMATS.md`](../../ml/models/FORMATS.md): the first 16 hex digits of a SHA-256 over `BIOCLIP_MODEL`, the 80 templates (`bioclip_templates.json`, a copy of `ml/`'s, kept equal by a test) and the sorted `"{table}:{id}\t{label}"` lines. It passes `FORMATS.md`'s test vector (`129f0395e8d89bd5`), so the knowledge loader, `ml/training` and the API agree. Database 1 proposes storing the loader's value in `knowledge_meta` once the migration runner exists.
 8. **The snapshot is several reads.** `snapshot` runs `SNAPSHOT_PARTS` and the loaders as separate queries. Under the step claim nothing else writes the run's outputs, and new input only sets `rescore_pending`, so the reads agree in practice; one read-only `BEGIN … COMMIT` would make it a single snapshot.

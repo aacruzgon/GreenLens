@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::{
+    connectors::FarmCitation,
     error::ErrorCode,
     garden::map::GardenMap,
     id::{
@@ -149,6 +150,10 @@ pub struct Message<U: UrlState = Signed> {
     pub attachments: Vec<Attachment<U>>,
     /// Sources cited.
     pub citations: Vec<Citation>,
+    /// The farm records an assistant message cites ([connectors 7]); absent when it cites none,
+    /// and read as empty from a message stored before connectors.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub farm_citations: Vec<FarmCitation>,
     /// Confirmation cards.
     pub pending_actions: Vec<PendingAction>,
     /// The stream dropped before `message_completed`.
@@ -167,6 +172,7 @@ impl Sign for Message<Stored> {
             role: self.role,
             text: self.text,
             citations: self.citations,
+            farm_citations: self.farm_citations,
             pending_actions: self.pending_actions,
             interrupted: self.interrupted,
             created_at: self.created_at,
@@ -790,6 +796,9 @@ pub enum ToolName {
     GetGardenMap,
     /// `Task[]`.
     ListTasks,
+    /// `FarmRecordHit` list, at most 8: the garden's synced Slack and Drive records
+    /// ([connectors 7]). Every role.
+    SearchFarmRecords,
     /// `Memory` and a `memory_saved` event.
     Remember,
     /// [`RescanRequest`] and a `rescan_requested` event.
@@ -970,6 +979,67 @@ mod tests {
             serde_json::to_string(&b).unwrap(),
             r#"{"available":true,"current":[{"key":"watering","value":"Watered every 2 days.","about_plant":true,"memory_id":"01JAX3K9T6R2B8V0QZ4M7D1E5F","learned_at":"2026-10-17T15:00:00Z"}],"history":[{"key":"watering","value":"Watered every 3 days.","about_plant":true,"learned_at":"2026-10-14T15:00:00Z","superseded_at":"2026-10-17T15:00:00Z"}]}"#
         );
+    }
+
+    fn message(farm_citations: Vec<FarmCitation>) -> Message {
+        Message {
+            id: "01JAX3K9T6R2B8V0QZ4M7D1E5F".parse().unwrap(),
+            role: MessageRole::Assistant,
+            text: "Bed 3 was sprayed on Oct 12.".to_owned(),
+            attachments: Vec::new(),
+            citations: Vec::new(),
+            farm_citations,
+            pending_actions: Vec::new(),
+            interrupted: false,
+            created_at: "2026-10-19T09:00:00Z".parse().unwrap(),
+        }
+    }
+
+    #[test]
+    fn a_message_without_farm_citations_leaves_the_field_out() {
+        let json = serde_json::json!({
+            "id": "01JAX3K9T6R2B8V0QZ4M7D1E5F", "role": "assistant",
+            "text": "Bed 3 was sprayed on Oct 12.", "attachments": [], "citations": [],
+            "pending_actions": [], "interrupted": false, "created_at": "2026-10-19T09:00:00Z"
+        });
+        assert_eq!(serde_json::to_value(message(Vec::new())).unwrap(), json);
+        // A message stored before connectors reads as citing no farm record.
+        assert_eq!(
+            serde_json::from_value::<Message>(json).unwrap(),
+            message(Vec::new())
+        );
+    }
+
+    #[test]
+    fn a_message_citing_a_farm_record_carries_it() {
+        let citation = crate::connectors::FarmCitation {
+            record_id: "01JAX3K9T6R2B8V0QZ4M7D1E5C.0.1aBcD".parse().unwrap(),
+            system: crate::connectors::ConnectorKind::GoogleDrive,
+            title: "Spray log 2026".to_owned(),
+            author: None,
+            at: "2026-10-12T07:30:00Z".parse().unwrap(),
+            link: "https://docs.google.com/document/d/1aBcD/edit".to_owned(),
+        };
+        let m = message(vec![citation]);
+        let v = serde_json::to_value(&m).unwrap();
+        assert_eq!(
+            v["farm_citations"],
+            serde_json::json!([{
+                "record_id": "01JAX3K9T6R2B8V0QZ4M7D1E5C.0.1aBcD", "system": "google_drive",
+                "title": "Spray log 2026", "at": "2026-10-12T07:30:00Z",
+                "link": "https://docs.google.com/document/d/1aBcD/edit"
+            }])
+        );
+        assert_eq!(serde_json::from_value::<Message>(v).unwrap(), m);
+    }
+
+    #[test]
+    fn search_farm_records_is_a_read_tool() {
+        assert_eq!(
+            serde_json::to_value(ToolName::SearchFarmRecords).unwrap(),
+            serde_json::json!("search_farm_records")
+        );
+        assert!(!ToolName::SearchFarmRecords.is_write());
     }
 
     #[test]

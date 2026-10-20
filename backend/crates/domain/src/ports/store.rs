@@ -20,6 +20,7 @@ mod analysis;
 mod chat;
 mod deletion;
 mod events;
+mod farm;
 mod gardens;
 mod idempotency;
 mod identity;
@@ -37,6 +38,7 @@ pub use analysis::*;
 pub use chat::*;
 pub use deletion::*;
 pub use events::*;
+pub use farm::*;
 pub use gardens::*;
 pub use idempotency::*;
 pub use identity::*;
@@ -143,6 +145,7 @@ pub trait Store:
     + WeatherCacheRepo
     + DeletionRepo
     + MapRepo
+    + FarmRecordStore
 {
 }
 
@@ -164,5 +167,6 @@ impl<T> Store for T where
         + WeatherCacheRepo
         + DeletionRepo
         + MapRepo
+        + FarmRecordStore
 {
 }

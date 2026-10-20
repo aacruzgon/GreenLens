@@ -102,6 +102,7 @@ moka = { version = "0.12.16", features = ["future"] }
 tzf-rs = { version = "2.1.3", default-features = false, features = ["bundled"] }
 regex = "1.13.1"
 hmac = "0.13.0"
+aes-gcm = { version = "0.11.1", features = ["zeroize"] }
 sha2 = "0.11.1"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
 imageproc = { version = "0.27.0", default-features = false }

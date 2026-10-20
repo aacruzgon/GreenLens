@@ -17,16 +17,21 @@
 //! **Disconnects.** Dropping the stream (the client went away) closes the channel. The task
 //! notices at its next send or while waiting for the model (`Sender::closed`), stops the model
 //! call by dropping its stream, and stores the message with `interrupted: true`.
+//!
+//! **Tool results are data.** A successful result goes back to the model inside a `data` block
+//! ([`crate::prompt::tool_result`]), like every other text the server didn't write; the stored
+//! copy keeps the tool's JSON. A refusal stays plain: the server wrote it for the model to act on.
 
 use std::sync::Arc;
 
 use domain::{
-    authz::{ConversationOwner, Viewer},
+    authz::{ConversationOwner, Membership, Viewer},
     chat::{
         Anchor, ChatErrorEvent, ChatEvent, ChatRoute, CitationEvent, MemorySaved, Message,
         MessageCompleted, MessageRole, MessageStarted, PendingActionEvent, RescanRequested,
         SendMessageRequest, TextDelta, ToolFinished, ToolStarted, Usage,
     },
+    connectors::FarmCitation,
     error::{Budget, DomainError, ErrorCode},
     id::{ChatImageId, MessageId},
     ports::{
@@ -50,12 +55,12 @@ use crate::{
     memory,
     prompt::{
         BUDGET_TEXT, CHAT_PROMPT_VERSION, DataKind, LOOP_CAP_TEXT, OFF_TOPIC_PROMPT_VERSION,
-        POISON_CONTROL_VERSION, REFUSAL_TEXT, chat_system, data, off_topic_system,
+        POISON_CONTROL_VERSION, REFUSAL_TEXT, chat_system, data, off_topic_system, tool_result,
     },
     safety::{
         REPLACED_SENTENCE, RouteDecision, SAFETY_POLICY, SentenceSplitter, decide_route, dose_check,
     },
-    tools::{ToolCtx, ToolEffect, ToolRegistry},
+    tools::{Offer, ToolCtx, ToolEffect, ToolRegistry},
 };
 
 /// Events buffered between the turn task and the response body. Small: the body drains it as
@@ -143,6 +148,8 @@ struct Turn {
     user_message: MessageId,
     message_id: MessageId,
     decision: RouteDecision,
+    /// The garden has farm records to search, read once before routing (gaps G6, G10).
+    farm_records: bool,
     now: Timestamp,
     /// Tokens left in the user's daily budget when the turn started.
     budget_left: u64,
@@ -220,14 +227,7 @@ impl ChatAgent {
             image_keys.push(object.key);
         }
 
-        let scores = tokio::time::timeout(
-            deps.config.classifier_timeout,
-            deps.classifier.classify(ClassifierTask::Route, &text),
-        )
-        .await
-        .ok()
-        .and_then(Result::ok);
-        let decision = decide_route(&text, scores.as_deref(), &deps.config.calibration);
+        let (decision, farm_records) = route(deps, member, &text).await;
 
         let user_message = deps.ids.id();
         deps.stores
@@ -240,6 +240,7 @@ impl ChatAgent {
                     text: text.clone(),
                     attachments: image_ids,
                     citations: Vec::new(),
+                    farm_citations: Vec::new(),
                     tool_calls: Vec::new(),
                     route: Some(decision.route()),
                     interrupted: false,
@@ -260,6 +261,7 @@ impl ChatAgent {
             user_message,
             message_id: deps.ids.id(),
             decision,
+            farm_records,
             now,
             budget_left: budget - spent,
             shutdown: req.shutdown,
@@ -275,6 +277,29 @@ impl ChatAgent {
             outcome: outcome_rx,
         })
     }
+}
+
+/// Routes the message. Whether the garden has farm records is read first, once per turn: the
+/// classifier is asked for the `farm_records` label only then, so a question about the garden's
+/// own records is on topic only then (gap G10), and the same fact offers `search_farm_records`
+/// (gap G6). A classifier that fails or is slower than `classifier_timeout` leaves no scores.
+async fn route(deps: &AgentDeps, member: Membership<Viewer>, text: &str) -> (RouteDecision, bool) {
+    let farm_records = context::has_farm_records(deps, member).await;
+    let scores = tokio::time::timeout(
+        deps.config.classifier_timeout,
+        deps.classifier
+            .classify(ClassifierTask::Route { farm_records }, text),
+    )
+    .await
+    .ok()
+    .and_then(Result::ok);
+    let decision = decide_route(
+        text,
+        scores.as_deref(),
+        &deps.config.calibration,
+        farm_records,
+    );
+    (decision, farm_records)
 }
 
 /// `SendMessageRequest`'s limits: at most 2,000 characters and 3 images.
@@ -338,7 +363,13 @@ enum Ended {
 struct Reply {
     /// The text as streamed, failing sentences replaced.
     text: String,
+    /// The message being written, for the dose check's log line.
+    message_id: Option<MessageId>,
+    /// A tool round ended since the last text: the next text starts a new paragraph.
+    after_tool_round: bool,
     citations: Vec<Citation>,
+    /// The farm records the tools returned, each once (`Message.farm_citations`).
+    farm_citations: Vec<FarmCitation>,
     /// Tool calls and results, in order (stored, never sent to the app).
     tool_calls: Vec<ContentPart>,
     usage: Usage,
@@ -366,7 +397,10 @@ async fn run(
 ) {
     let deps = &inner.deps;
     let mut out = Emitter { tx, gone: false };
-    let mut reply = Reply::default();
+    let mut reply = Reply {
+        message_id: Some(turn.message_id),
+        ..Reply::default()
+    };
     let route = turn.decision.route();
 
     let started = MessageStarted {
@@ -510,6 +544,7 @@ async fn store_reply(
                 text: reply.text.clone(),
                 attachments: Vec::new(),
                 citations: reply.citations.clone(),
+                farm_citations: reply.farm_citations.clone(),
                 tool_calls: reply.tool_calls.clone(),
                 route: Some(route),
                 interrupted,
@@ -526,16 +561,38 @@ async fn store_reply(
 /// Dose-checks one streamed piece and sends it; a failing sentence is replaced by the fixed
 /// safety note, keeping the piece's surrounding whitespace ([contracts 7]).
 async fn emit_piece(deps: &AgentDeps, out: &mut Emitter, reply: &mut Reply, piece: String) -> bool {
-    let checked = if dose_check(&piece, &deps.products).is_some() {
+    let checked = if let Some(found) = dose_check(&piece, &deps.products) {
+        // The rule and whether the sentence held a quantity (`Rate` without one: the unit
+        // started the sentence, as after a line break); never the matched text or the
+        // sentence, which may hold a rate.
+        tracing::info!(
+            message_id = reply.message_id.as_ref().map(tracing::field::display),
+            rule = ?found.rule,
+            has_quantity = found.has_quantity(),
+            "dose check replaced a sentence"
+        );
         let lead = &piece[..piece.len() - piece.trim_start().len()];
         let trail = &piece[piece.trim_end().len()..];
         format!("{lead}{REPLACED_SENTENCE}{trail}")
     } else {
         piece
     };
+    if std::mem::take(&mut reply.after_tool_round)
+        && !reply.text.is_empty()
+        && !reply.text.ends_with(char::is_whitespace)
+        && !checked.starts_with(char::is_whitespace)
+    {
+        reply.text.push_str(PARAGRAPH_BREAK);
+        if !out.text(PARAGRAPH_BREAK.to_owned()).await {
+            return false;
+        }
+    }
     reply.text.push_str(&checked);
     out.text(checked).await
 }
+
+/// Separates the text before a tool call from the text after it.
+const PARAGRAPH_BREAK: &str = "\n\n";
 
 /// Sends a fixed or complete text sentence by sentence.
 async fn emit_checked(
@@ -717,12 +774,16 @@ async fn model_turn(
     let mut messages = ctx.history.clone();
     messages.push(last);
 
-    let role = turn.owner.membership().role();
+    // Offered by role and by whether the garden has farm records, read once before routing.
+    let offer = Offer {
+        role: turn.owner.membership().role(),
+        farm_records: turn.farm_records,
+    };
     let mut request = ChatRequest {
         purpose: ChatPurpose::Chat,
         system: chat_system(),
         messages,
-        tools: inner.tools.specs_for(role),
+        tools: inner.tools.specs_for(offer),
         response_schema: None,
         max_tokens: deps.config.chat_max_tokens,
     };
@@ -757,8 +818,10 @@ async fn model_turn(
         let mut results = Vec::with_capacity(result.calls.len());
         let mut extra = Vec::new();
         for (call_id, name, arguments) in result.calls {
-            let Some((part, mut images)) =
-                run_tool(inner, &tool_ctx, role, out, reply, call_id, name, arguments).await
+            let Some((part, mut images)) = run_tool(
+                inner, &tool_ctx, offer, out, reply, call_id, name, arguments,
+            )
+            .await
             else {
                 return Ended::Interrupted;
             };
@@ -782,14 +845,14 @@ async fn model_turn(
 async fn run_tool(
     inner: &Inner,
     ctx: &ToolCtx<'_>,
-    role: domain::wire::Role,
+    offer: Offer,
     out: &mut Emitter,
     reply: &mut Reply,
     call_id: String,
     name: String,
     arguments: serde_json::Value,
 ) -> Option<(ContentPart, Vec<ContentPart>)> {
-    let tool = inner.tools.find(&name, role);
+    let tool = inner.tools.find(&name, offer);
     let label = tool.map_or("Working", |t| t.label());
     let started = ToolStarted {
         v: V1,
@@ -800,6 +863,7 @@ async fn run_tool(
     if !out.send(ChatEvent::ToolStarted(started)).await {
         return None;
     }
+    reply.after_tool_round = true;
     reply.tool_calls.push(ContentPart::ToolCall {
         call_id: call_id.clone(),
         name: name.clone(),
@@ -829,12 +893,24 @@ async fn run_tool(
             )
         }
     };
-    let part = ContentPart::ToolResult {
+    // The model reads a successful result inside a `data` block (gap G1); the stored copy keeps
+    // the tool's JSON as the app's records have it. A refusal is the server's own text.
+    let framed = if is_error {
+        content.clone()
+    } else {
+        let kind = tool.map_or(DataKind::ToolResult, crate::tools::DynTool::data_kind);
+        tool_result(kind, &content)
+    };
+    reply.tool_calls.push(ContentPart::ToolResult {
         call_id: call_id.clone(),
         content,
         is_error,
+    });
+    let part = ContentPart::ToolResult {
+        call_id: call_id.clone(),
+        content: framed,
+        is_error,
     };
-    reply.tool_calls.push(part.clone());
     let finished = ToolFinished {
         v: V1,
         call_id,
@@ -858,6 +934,17 @@ async fn send_effect(out: &mut Emitter, reply: &mut Reply, effect: ToolEffect) -
             }
             reply.citations.push(citation.clone());
             ChatEvent::Citation(CitationEvent { v: V1, citation })
+        }
+        ToolEffect::FarmCitation(citation) => {
+            // Stored with the message as `farm_citations`; contracts 8 has no event for it.
+            if !reply
+                .farm_citations
+                .iter()
+                .any(|c| c.record_id == citation.record_id)
+            {
+                reply.farm_citations.push(citation);
+            }
+            return true;
         }
         ToolEffect::PendingAction(a) => ChatEvent::PendingAction(PendingActionEvent {
             v: V1,

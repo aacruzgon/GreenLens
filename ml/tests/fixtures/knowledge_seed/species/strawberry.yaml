@@ -1,0 +1,8 @@
+id: strawberry
+scientific_name: Fragaria × ananassa
+common_names: [Strawberry]
+profile: label_only
+classifier_supported: false
+bioclip_label: Fragaria × ananassa with common name strawberry
+sources: []
+reviewed_by: fixture

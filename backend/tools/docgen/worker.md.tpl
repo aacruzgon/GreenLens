@@ -194,7 +194,7 @@ The backoffs are 1 s doubling to 30 s for the claim, 0.5 s doubling to 8 s for `
 | `label_set_version`, `classifier_labels_version` | ✓: the job's in `complete`; every loaded one, comma-separated, in the heartbeat | | |
 | `<model name>` (manifest entry names: `leaf_detector`, `sam_encoder`, `sam_decoder`, `bioclip`, `disease_head…`, `plant_probe`) | ✓ | | |
 
-`vlm_prompts` is `system@1,findings@1,indicators@1,verify@1,guided@1`, in the contract's `name@n` form with the prompt versions of [vision vlm 7](../vision/vlm.md#7-prompts); `vlm_certainty` is `0.4/0.65/0.85`.
+`vlm_prompts` is `system@1,findings@2,indicators@1,verify@1,guided@1`, in the contract's `name@n` form with the prompt versions of [vision vlm 7](../vision/vlm.md#7-prompts); `vlm_certainty` is `0.4/0.65/0.85`.
 
 ---
 

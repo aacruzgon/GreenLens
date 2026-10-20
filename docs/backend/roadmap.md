@@ -1,6 +1,6 @@
 # PDM Backend Roadmap
 
-> **Status:** Draft v0.12, 2026-10-17. v0.12: S1's laptop half is done and recorded in section 5 (what passed, what is left for the rig); gap 7 (a stage the API never heard about stays open) and the six bugs found by running S1 are in section 13. v0.11: adds S9, farm connectors (Slack and Google Drive) tested on Era by Eon's simulators, with the agent evaluation ([docs/connectors](../connectors/README.md)); the gaps and tracking sections become 13 and 14. v0.10: S5 adds the Agent Memory mirror (work 7, exit check). v0.9: S1's hosting decision is made: the control plane runs on the rig behind Tailscale Funnel, with the ingress as a compose profile (section 5). v0.8: section 1 says the `images` job pushes to GHCR, now that its first run on `main` passed. v0.7: S0 is done; section 4 records its exit checks and the pull requests that closed it, and section 1 says what S0 added; section 13 says how S0 was tracked. v0.6: gap 6 adds that the perception worker reads its tensor names and thresholds from the manifest ([issue #12](https://github.com/aacruzgon/GreenLens/issues/12)). v0.5: S3's schema check is done: xgrammar enforces `anyOf` with `null`. v0.4: gap 6 is fixed: the loaders and `label_set_version` follow `ml/models/FORMATS.md`. v0.3: gap 6, found when PR #6 merged: the Rust loader doesn't read `ml/models/FORMATS.md`; section 1 says what `ml/` holds now. v0.2: every gap in section 12 now has a design, and the slices link to them: [infra](../infra/README.md) for CI, images and compose files, [database 1](../database/README.md#1-version-and-setup) for applying the migrations, [worker 15.1](worker.md#151-stub-vision) for stub vision, and [vision 6](../vision/README.md#delivering-model-files-to-the-backend) for model files; two bugs found on the way (the vector search's `k`, the bucket default) are fixed. v0.1: the backend's work for build week, as nine slices (S0–S8) from the code merged on Oct 16 to the final deploy. Each slice has its goal, its work, what it needs from the other tracks, its exit checks and the decisions it closes. Section 12 lists the gaps found while writing it.
+> **Status:** Draft v0.13, 2026-10-20. v0.13: S1's laptop half is done and recorded in section 5 (what passed, what is left for the rig); gap 9 (a stage the API never heard about stays open) and the six bugs found by running S1 are in section 13. v0.12: aligns the slices with the app's roadmap ([frontend roadmap](../frontend/roadmap.md)): S4's exit check runs through the API's smoke script and the app's results screens join it on Oct 22, push waits on a paid Apple Developer account, S7's CORS follows app roadmap F8, and the `answer_block` and Insights contract changes are listed as gaps 7 and 8. v0.11: adds S9, farm connectors (Slack and Google Drive) tested on Era by Eon's simulators, with the agent evaluation ([docs/connectors](../connectors/README.md)); the gaps and tracking sections become 13 and 14. v0.10: S5 adds the Agent Memory mirror (work 7, exit check). v0.9: S1's hosting decision is made: the control plane runs on the rig behind Tailscale Funnel, with the ingress as a compose profile (section 5). v0.8: section 1 says the `images` job pushes to GHCR, now that its first run on `main` passed. v0.7: S0 is done; section 4 records its exit checks and the pull requests that closed it, and section 1 says what S0 added; section 13 says how S0 was tracked. v0.6: gap 6 adds that the perception worker reads its tensor names and thresholds from the manifest ([issue #12](https://github.com/aacruzgon/GreenLens/issues/12)). v0.5: S3's schema check is done: xgrammar enforces `anyOf` with `null`. v0.4: gap 6 is fixed: the loaders and `label_set_version` follow `ml/models/FORMATS.md`. v0.3: gap 6, found when PR #6 merged: the Rust loader doesn't read `ml/models/FORMATS.md`; section 1 says what `ml/` holds now. v0.2: every gap in section 12 now has a design, and the slices link to them: [infra](../infra/README.md) for CI, images and compose files, [database 1](../database/README.md#1-version-and-setup) for applying the migrations, [worker 15.1](worker.md#151-stub-vision) for stub vision, and [vision 6](../vision/README.md#delivering-model-files-to-the-backend) for model files; two bugs found on the way (the vector search's `k`, the bucket default) are fixed. v0.1: the backend's work for build week, as nine slices (S0–S8) from the code merged on Oct 16 to the final deploy. Each slice has its goal, its work, what it needs from the other tracks, its exit checks and the decisions it closes. Section 12 lists the gaps found while writing it.
 
 Companion to the [backend architecture](README.md). Its [build plan](README.md#13-build-plan) and [architecture 14](../architecture/README.md#14-build-plan) say what is done on each date. This document says how the backend gets there: the order of the work, what each step depends on, and how we know a step is finished.
 
@@ -69,9 +69,9 @@ So the roadmap is mostly about **bringing the code up on real dependencies and p
 | [S1](#5-s1-walking-skeleton) laptop half ✓ done | Oct 16–17 | A scan runs app → API → worker → SSE on the control plane, with stub vision. The laptop half is done and in a draft pull request; the deployed checks are next, on the rig | S0 | Clerk dev instance; the embedder and face-detector files (ml) |
 | [S2](#6-s2-perception-site-data-and-knowledge) | Oct 18–19 | Real perception on the 3070, real weather and soil, the first knowledge loaded | S1 | Model manifest and ONNX files (ml); seed files (knowledge); the rig |
 | [S3](#7-s3-vlm-workers-and-the-fallback) | Oct 18–21 | VLM jobs on the 5070 Ti and the 9070 XT, and the hosted fallback | S1 | VLM benchmark and choice (vision) |
-| [S4](#8-s4-the-diagnosis-loop) | Oct 20–21 | Photo → diagnosis → plan with citations, on real models | S2, S3 | Reviewed profiles (knowledge); results UI (app) |
+| [S4](#8-s4-the-diagnosis-loop) | Oct 20–21 | Photo → diagnosis → plan with citations, on real models | S2, S3 | Reviewed profiles (knowledge); results UI (app, F3–F4, Oct 21–22) |
 | [S5](#9-s5-chat-and-the-garden-map) | Oct 22 | Chat with tools, cards and memory; the garden map | S1 (start), S4 (finish) | Chat UI and map view (app) |
-| [S6](#10-s6-background-work-and-resilience) | Oct 23 | Alerts, push, deletion cascades, the rig-failure test | S1 (start), S4 (finish) | Development build for push (app) |
+| [S6](#10-s6-background-work-and-resilience) | Oct 23 | Alerts, push, deletion cascades, the rig-failure test | S1 (start), S4 (finish) | Development build for push (app); a paid Apple Developer account |
 | [S7](#11-s7-hardening-and-s8-ship) | Oct 24 | Security review, tuned limits and thresholds, evaluation run | S2–S6 | Evaluation set (vision) |
 | [S8](#11-s7-hardening-and-s8-ship) | Oct 25 | Final deploy | S7 | Demo video, Devpost |
 | [S9](#12-s9-farm-connectors-and-era) | Oct 21–23 | Farm connectors for Slack and Google Drive, tested on Era's simulators; the agent evaluation | S1 (start), S5 (finish) | Connectors screen (app); Slack app and Google OAuth client |
@@ -193,7 +193,7 @@ What S0 changed in the design, each found by running it:
 **Still to run on the rig:**
 - The deployed exit checks: Funnel, the Clerk webhook, images by digest, `deploy.sh`, the smoke script against the public URL, and `stop api` within 190 s.
 - The fallback worker and the full run to `planned`. The BioCLIP label files are in the private `GreenLens/pdm-models` repository and need an `HF_TOKEN`; M3 is still open.
-- Gap 7 ([section 13](#13-gaps-found-while-writing-this-roadmap)), to finish on the rig before the deployed restart check.
+- Gap 9 ([section 13](#13-gaps-found-while-writing-this-roadmap)), to finish on the rig before the deployed restart check.
 
 **Decided before it started (2026-10-16):** where the control plane runs ([architecture open decision 2](../architecture/README.md#15-open-decisions)): on the rig, behind Tailscale Funnel. Everything in S1 except the deployed exit checks runs on a laptop against `infra/dev.compose.yml`, because the worker uses stub vision and `api`'s models run on the CPU; the 3070 is first needed in S2.
 
@@ -220,7 +220,7 @@ What S0 changed in the design, each found by running it:
 4. **Live site data:**
    - fresh fixtures for Open-Meteo, SoilGrids and the geocoders;
    - SoilGrids has no data in central Toronto, so decide its replacement there ([architecture open decision 10](../architecture/README.md#15-open-decisions));
-   - a fallback label when reverse geocoding fails ([integrations 18](integrations.md#18-open-questions), item 4).
+   - a fallback label when reverse geocoding fails ([integrations 19](integrations.md#19-open-questions), item 4).
 5. **Species confirmation** end to end: the perception top 3, the card, and the confirmed species on the scan.
 6. **Knowledge loading:**
    - build the migration runner and apply the loader's `knowledge.surql` ([database 1](../database/README.md#1-version-and-setup), [store 4](store.md#4-connecting-and-the-schema));
@@ -257,7 +257,7 @@ What S0 changed in the design, each found by running it:
 3. **The schema check:** done on 2026-10-16: xgrammar 0.2.7 enforces `anyOf` with `null` ([contracts open question 31](../architecture/contracts.md#12-open-questions); [worker 17](worker.md#17-open-questions), item 3; [vision 15](vision.md#15-open-questions), item 4). Had it failed, the nullable shapes would have changed before S4.
 4. **`VLM_SLOTS` for each card, from the benchmark** (open decision 15).
 5. **The fallback:**
-   - one live hosted call confirms the box format and the stripped schema keywords ([integrations 18](integrations.md#18-open-questions), item 6);
+   - one live hosted call confirms the box format and the stripped schema keywords ([integrations 19](integrations.md#19-open-questions), item 6);
    - time a full 8,000-token call against the doubled `max_runtime` ([worker 17](worker.md#17-open-questions), item 2).
 
 **Exit checks**
@@ -283,7 +283,7 @@ What S0 changed in the design, each found by running it:
 4. **Measurement with LiDAR depth:** measurable indicators answered from a real depth map.
 5. **The plan writer on the hosted LLM:** validation, citations and the dose check on every step.
 
-**Needs:** reviewed profiles (knowledge); the results UI to show it (app).
+**Needs:** reviewed profiles (knowledge). The results UI is not a dependency of the exit checks: the app builds it on Oct 21–22 (F3–F4 in the [app roadmap](../frontend/roadmap.md)), after S4 starts. S4's exit checks run through the API's smoke script, and the app's results screens join them on Oct 22.
 
 **Exit checks**
 
@@ -343,7 +343,7 @@ What S0 changed in the design, each found by running it:
 4. **The orphan sweep** removes objects no record references. Resumed plant and scan deletions leave their objects to it ([api 23](api.md#23-open-questions), item 4).
 5. **The rig-failure test:** kill the rig in the middle of a scan. The fallback must take over within about 45 seconds ([architecture 14](../architecture/README.md#14-build-plan)).
 
-**Needs:** a development build for push (app).
+**Needs:** a development build for push (app). Push from a development build is blocked until the team buys a paid Apple Developer account, because a free Apple ID can't use APNs. Until then the alert inbox covers forecast alerts, and push is tested only up to Expo's push service (the sender and the receipts).
 
 **Exit checks**
 
@@ -362,8 +362,8 @@ What S0 changed in the design, each found by running it:
    - signed image URLs;
    - EXIF stripped and faces blurred;
    - no secrets, tokens, signed URLs or locations in logs;
-   - CORS limited to the configured origins.
-2. **Limits:** set the general rate limit and the JSON body limit from what the app actually sends. Both are placeholders today ([api 23](api.md#23-open-questions), item 2).
+   - CORS limited to the configured origins. [App roadmap F8](../frontend/roadmap.md) settles the web origin (a subdomain needs CORS, the same origin doesn't) and gives the app's request and body sizes before the Oct 24 review.
+2. **Limits:** set the general rate limit and the JSON body limit from what the app actually sends (the sizes are in [app roadmap F8](../frontend/roadmap.md)). Both are placeholders today ([api 23](api.md#23-open-questions), item 2).
 3. **Thresholds:** the weather and trigger thresholds and the measurement thresholds, from the evaluation set (open decisions 17 and 20; contracts open question 27).
 4. **The evaluation run** with [vision evaluation](../vision/evaluation.md), with its numbers recorded.
 5. **Operations:** SurrealDB backups as [database](../database/README.md) describes them, the JSON logs with request ids, and a short runbook for restarting each service.
@@ -410,7 +410,7 @@ What S0 changed in the design, each found by running it:
 
 ## 13. Gaps found while writing this roadmap
 
-Gaps 1 to 5 have a design; gap 6 is fixed; gap 7 is open. The designs are proposals until their slice builds them; each ends with numbered work items and exit checks.
+Gaps 1 to 5 have a design; gap 6 is fixed; gaps 7 and 8 have no slice yet; gap 9 is open. The designs are proposals until their slice builds them; each ends with numbered work items and exit checks.
 
 | # | Gap | Slice | Designed in | Work items |
 |---|---|---|---|---|
@@ -420,7 +420,9 @@ Gaps 1 to 5 have a design; gap 6 is fixed; gap 7 is open. The designs are propos
 | 4 | Model files and seed data come from `ml/`, which had no delivery path | S1, S2, S3 | [Vision 6, delivering model files](../vision/README.md#delivering-model-files-to-the-backend): one manifest, our files in a private Hugging Face repository (the team's choice), `sources.toml` and `fetch.py` | [M1–M11](../vision/README.md#roadmap) |
 | 5 | Pipeline open question 3 was out of date | none | Resolved: the run's evidence fields are in the schema ([pipeline 17](pipeline.md#17-open-questions-and-decisions)) | none |
 | 6 | The Rust loader didn't read `ml/`'s file formats: a label matrix and the plant probe failed to load, every disease class would have loaded as `healthy`, and `store`'s `label_set_version` differed | S2 | **Fixed:** the loaders read [`ml/models/FORMATS.md`](../../ml/models/FORMATS.md), heads must name the manifest's `bioclip` export, and `label_set_version` passes the format's test vector ([vision 6](../vision/README.md#delivering-model-files-to-the-backend)). The perception worker takes its tensor names and thresholds from the manifest and refuses fp16 on the CPU ([issue #12](https://github.com/aacruzgon/GreenLens/issues/12)) | none |
-| 7 | While `api` is down, the worker's `POST /internal/jobs/{id}/events` calls fail. By design (`ApiProgress`) the worker drops them and goes on, because `complete` repeats every stage's output. `api` stores the findings from `complete` but emits no `stage_completed` for a stage it never heard about. Seen: `plant_check` started at seq 4, its `stage_completed` and every later perception stage event were lost, and `complete` gave findings at seq 6–9 and then `context`. An app following the scan shows `plant_check` running forever. The exit check as worded (every missed stored event replayed once) passes; the smoke script's open-stage check fails | S1 | **Proposed, not built:** on `complete`, `api` emits `stage_started` and `stage_completed` for each stage in the result that has no `stage_completed` in this run, before the findings. To finish on the rig before the deployed restart check | S1, one work item |
+| 7 | The app's chat answer blocks have no contract or slice: the `answer_block` SSE event, `Message.blocks`, `AnswerBlock` and the `show_block` tool ([design 5](../design/design.md#chat-answers-you-can-interact-with)) | none yet; S5 could take it | Proposed in design 5; no backend design yet | A `domain` type change with its exact-JSON test and `contracts.md` in one pull request; the app builds the blocks in F6 ([app roadmap](../frontend/roadmap.md)) |
+| 8 | The app's Insights screen needs fields the API doesn't carry: `GET /plants/{id}/measurements` with every quantity and its band, `TimelineEntry` additions, `GET /gardens/{id}/timeline` and `/measurements`, `GET /tasks?plant_id=&plan_id=`, `spacing_cm` and `mature_height_cm` ([analytics 5](../design/analytics.md#5-buildable-now-and-backend-work)) | none yet | Proposed in analytics 5; no backend design yet | Contract change, schema where stored, `openapi.json`; the app builds Insights in F7 |
+| 9 | While `api` is down, the worker's `POST /internal/jobs/{id}/events` calls fail. By design (`ApiProgress`) the worker drops them and goes on, because `complete` repeats every stage's output. `api` stores the findings from `complete` but emits no `stage_completed` for a stage it never heard about. Seen: `plant_check` started at seq 4, its `stage_completed` and every later perception stage event were lost, and `complete` gave findings at seq 6–9 and then `context`. An app following the scan shows `plant_check` running forever. The exit check as worded (every missed stored event replayed once) passes; the smoke script's open-stage check fails | S1 | **Proposed, not built:** on `complete`, `api` emits `stage_started` and `stage_completed` for each stage in the result that has no `stage_completed` in this run, before the findings. To finish on the rig before the deployed restart check | S1, one work item |
 
 **Bugs found running S1 on a laptop,** all fixed in the S1 branch:
 - **`blur_faces` took 48 s per upload.** It used `imageops::blur`, a direct convolution whose cost grows with sigma (a quarter of the face box). A 12 MP photo with a large false-positive box took 48 s in release, 52 s for HEIC. It now uses `imageops::fast_blur`: 0.9 s.

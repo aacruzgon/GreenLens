@@ -1,0 +1,1418 @@
+{
+  "about": "Generated from the domain crate's seed types by its test the_seed_schema_file_is_current; set UPDATE_SEED_SCHEMA=1 to rewrite it.",
+  "measurable_from": {
+    "affected_area_pct": [
+      "leaf_closeup",
+      "leaf_underside"
+    ],
+    "canopy_width_cm": [
+      "whole_plant"
+    ],
+    "hole_count": [
+      "leaf_closeup",
+      "leaf_underside"
+    ],
+    "hole_diameter_mm": [
+      "leaf_closeup",
+      "leaf_underside"
+    ],
+    "leaf_area_cm2": [
+      "leaf_closeup",
+      "leaf_underside"
+    ],
+    "leaf_length_cm": [
+      "leaf_closeup",
+      "leaf_underside"
+    ],
+    "lesion_count": [
+      "leaf_closeup",
+      "leaf_underside"
+    ],
+    "lesion_diameter_mm": [
+      "leaf_closeup",
+      "leaf_underside"
+    ],
+    "plant_height_cm": [
+      "whole_plant"
+    ]
+  },
+  "schemas": {
+    "ChunkSeed": {
+      "$defs": {
+        "ChunkTopic": {
+          "description": "`ChunkSeed.topic`.",
+          "oneOf": [
+            {
+              "const": "symptoms",
+              "description": "Symptoms.",
+              "type": "string"
+            },
+            {
+              "const": "conditions",
+              "description": "Conditions.",
+              "type": "string"
+            },
+            {
+              "const": "management",
+              "description": "Management.",
+              "type": "string"
+            },
+            {
+              "const": "care",
+              "description": "Care.",
+              "type": "string"
+            },
+            {
+              "const": "recognition",
+              "description": "Recognition.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`ChunkSeed` ([contracts 10]): one line of `chunks/<source_id>.jsonl`. Embeddings are\ncomputed at load time with the pinned model, never stored in the seed.",
+      "properties": {
+        "crop": {
+          "description": "The crop.",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "`\"<source_id>.<n>\"`.",
+          "pattern": "^[a-z][a-z0-9_]*\\.[0-9]+$",
+          "type": "string"
+        },
+        "organism": {
+          "description": "The organism.",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "problem": {
+          "description": "The problem.",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_id": {
+          "description": "The source.",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "type": "string"
+        },
+        "text": {
+          "description": "A short excerpt, at most about 200 words.",
+          "type": "string"
+        },
+        "topic": {
+          "$ref": "#/$defs/ChunkTopic",
+          "description": "The topic."
+        }
+      },
+      "required": [
+        "id",
+        "source_id",
+        "topic",
+        "text"
+      ],
+      "title": "ChunkSeed",
+      "type": "object"
+    },
+    "ClassifierLabels": {
+      "$defs": {
+        "ClassifierLabel": {
+          "additionalProperties": false,
+          "description": "`ClassifierLabels.labels[]`.",
+          "properties": {
+            "index": {
+              "description": "The classifier's output index.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "label": {
+              "description": "The training dataset's class name.",
+              "type": "string"
+            },
+            "problem_id": {
+              "description": "The problem, or `\"healthy\"`.",
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "type": "string"
+            },
+            "species_id": {
+              "description": "The species.",
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "index",
+            "label",
+            "species_id",
+            "problem_id"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`ClassifierLabels` ([contracts 10]): `classifier_labels.yaml`.",
+      "properties": {
+        "labels": {
+          "description": "One per output.",
+          "items": {
+            "$ref": "#/$defs/ClassifierLabel"
+          },
+          "type": "array"
+        },
+        "model_version": {
+          "description": "The classifier version these labels belong to.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model_version",
+        "labels"
+      ],
+      "title": "ClassifierLabels",
+      "type": "object"
+    },
+    "OrganismSeed": {
+      "$defs": {
+        "SeedOrganismRole": {
+          "description": "`OrganismSeed.role`: the seeded roles; `unknown` exists only for \"other\" findings.",
+          "oneOf": [
+            {
+              "const": "pest",
+              "description": "Pest.",
+              "type": "string"
+            },
+            {
+              "const": "beneficial",
+              "description": "Beneficial.",
+              "type": "string"
+            },
+            {
+              "const": "neutral",
+              "description": "Neutral.",
+              "type": "string"
+            },
+            {
+              "const": "invasive",
+              "description": "Invasive: `reporting_url` required.",
+              "type": "string"
+            }
+          ]
+        },
+        "TaxonGroup": {
+          "description": "`OrganismSeed.taxon_group`.",
+          "oneOf": [
+            {
+              "const": "insect",
+              "description": "Insects.",
+              "type": "string"
+            },
+            {
+              "const": "mite",
+              "description": "Mites.",
+              "type": "string"
+            },
+            {
+              "const": "mollusc",
+              "description": "Slugs and snails.",
+              "type": "string"
+            },
+            {
+              "const": "worm",
+              "description": "Worms.",
+              "type": "string"
+            },
+            {
+              "const": "mammal",
+              "description": "Mammals.",
+              "type": "string"
+            },
+            {
+              "const": "bird",
+              "description": "Birds.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`OrganismSeed` ([contracts 10]): `organisms/<organism_id>.yaml`.",
+      "properties": {
+        "bioclip_label": {
+          "description": "`BioCLIP` prompt.",
+          "type": "string"
+        },
+        "id": {
+          "description": "The slug.",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "type": "string"
+        },
+        "name": {
+          "description": "\"Ladybug larva\".",
+          "type": "string"
+        },
+        "preys_on": {
+          "description": "Beneficial → pest edges.",
+          "items": {
+            "description": "knowledge-base id",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "recognition": {
+          "description": "How to recognise it in a photo.",
+          "type": "string"
+        },
+        "reporting_url": {
+          "description": "Required when invasive.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reviewed_by": {
+          "description": "Reviewer.",
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/SeedOrganismRole",
+          "description": "Role."
+        },
+        "scientific_name": {
+          "description": "Scientific name.",
+          "type": "string"
+        },
+        "sources": {
+          "description": "Sources.",
+          "items": {
+            "description": "knowledge-base id",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "taxon_group": {
+          "$ref": "#/$defs/TaxonGroup",
+          "description": "Group."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "scientific_name",
+        "taxon_group",
+        "role",
+        "recognition",
+        "bioclip_label",
+        "sources",
+        "reviewed_by"
+      ],
+      "title": "OrganismSeed",
+      "type": "object"
+    },
+    "ProblemSeed": {
+      "$defs": {
+        "Conditions": {
+          "additionalProperties": false,
+          "description": "`ProblemSeed.conditions`: the weather that favours the problem.",
+          "properties": {
+            "humid_hours_min": {
+              "description": "Hours with RH over 90% in the past 7 days (leaf-wetness proxy).",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "notes": {
+              "description": "Notes.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "rh_pct_min": {
+              "description": "Relative humidity, %.",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "temp_c": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Range"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "°C."
+            }
+          },
+          "type": "object"
+        },
+        "DamagePattern": {
+          "description": "`DamagePattern` ([contracts 6]).",
+          "oneOf": [
+            {
+              "const": "shot_holes",
+              "description": "Small round holes (flea beetles).",
+              "type": "string"
+            },
+            {
+              "const": "ragged_holes",
+              "description": "Ragged holes (slugs).",
+              "type": "string"
+            },
+            {
+              "const": "chewed_margins",
+              "description": "Chewed leaf margins.",
+              "type": "string"
+            },
+            {
+              "const": "leaf_mines",
+              "description": "Tunnels inside leaves (leaf miners).",
+              "type": "string"
+            },
+            {
+              "const": "sticky_residue",
+              "description": "Honeydew (aphids).",
+              "type": "string"
+            },
+            {
+              "const": "sooty_mould",
+              "description": "Black mould on honeydew.",
+              "type": "string"
+            },
+            {
+              "const": "webbing",
+              "description": "Webbing (spider mites).",
+              "type": "string"
+            },
+            {
+              "const": "slime_trails",
+              "description": "Slime trails (slugs, snails).",
+              "type": "string"
+            },
+            {
+              "const": "frass",
+              "description": "Insect droppings.",
+              "type": "string"
+            },
+            {
+              "const": "skeletonised_leaves",
+              "description": "Only the veins left.",
+              "type": "string"
+            },
+            {
+              "const": "cut_stems",
+              "description": "Cleanly cut stems (rabbits).",
+              "type": "string"
+            },
+            {
+              "const": "torn_stems",
+              "description": "Torn stems (deer).",
+              "type": "string"
+            },
+            {
+              "const": "digging",
+              "description": "Digging.",
+              "type": "string"
+            },
+            {
+              "const": "tunnels_or_mounds",
+              "description": "Vole or mole tunnels and mounds.",
+              "type": "string"
+            },
+            {
+              "const": "tracks",
+              "description": "Tracks.",
+              "type": "string"
+            },
+            {
+              "const": "droppings",
+              "description": "Animal droppings.",
+              "type": "string"
+            },
+            {
+              "const": "pecked_fruit",
+              "description": "Birds pecking fruit.",
+              "type": "string"
+            },
+            {
+              "const": "other",
+              "description": "Anything else, with `other_description`.",
+              "type": "string"
+            }
+          ]
+        },
+        "ImageKind": {
+          "description": "`ImageKind` ([contracts 3]). The kind limits are in [`crate::rules::uploads`].",
+          "oneOf": [
+            {
+              "const": "whole_plant",
+              "description": "Required, at most 1.",
+              "type": "string"
+            },
+            {
+              "const": "leaf_closeup",
+              "description": "At most 2.",
+              "type": "string"
+            },
+            {
+              "const": "leaf_underside",
+              "description": "At most 1.",
+              "type": "string"
+            },
+            {
+              "const": "soil_surface",
+              "description": "At most 1.",
+              "type": "string"
+            },
+            {
+              "const": "flower_fruit",
+              "description": "At most 1.",
+              "type": "string"
+            },
+            {
+              "const": "squeeze_test",
+              "description": "Guided soil check: at most 1 before submit, any number after.",
+              "type": "string"
+            },
+            {
+              "const": "jar_test",
+              "description": "Guided soil check: at most 1 before submit, any number after.",
+              "type": "string"
+            }
+          ]
+        },
+        "IndicatorMeasure": {
+          "additionalProperties": false,
+          "description": "`IndicatorMeasure` ([contracts 10]): at least one of `min` and `max`, in the quantity's\nunit, `min` < `max`.",
+          "properties": {
+            "max": {
+              "description": "Upper bound.",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "Lower bound.",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "quantity": {
+              "$ref": "#/$defs/MeasureQuantity",
+              "description": "The quantity."
+            },
+            "stat": {
+              "$ref": "#/$defs/MeasureStat",
+              "description": "Which statistic."
+            }
+          },
+          "required": [
+            "quantity",
+            "stat"
+          ],
+          "type": "object"
+        },
+        "IndicatorSeed": {
+          "additionalProperties": false,
+          "description": "`ProblemSeed.indicators[]`.",
+          "properties": {
+            "discriminating": {
+              "description": "Exactly 3 per problem.",
+              "type": "boolean"
+            },
+            "id": {
+              "description": "`\"<problem_id>.<slug>\"`.",
+              "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+              "type": "string"
+            },
+            "image_kinds": {
+              "description": "Which shots can show it.",
+              "items": {
+                "$ref": "#/$defs/ImageKind"
+              },
+              "type": "array"
+            },
+            "measure": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/IndicatorMeasure"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Answered from `LiDAR` measurements when possible."
+            },
+            "question": {
+              "description": "Asked to the VLM verbatim.",
+              "type": "string"
+            },
+            "text": {
+              "description": "\"Brown spots with concentric rings, like a target\".",
+              "type": "string"
+            },
+            "weight": {
+              "description": "1–3.",
+              "enum": [
+                1,
+                2,
+                3
+              ],
+              "type": "integer"
+            },
+            "where": {
+              "$ref": "#/$defs/IndicatorWhere",
+              "description": "Where it shows."
+            }
+          },
+          "required": [
+            "id",
+            "text",
+            "question",
+            "weight",
+            "discriminating",
+            "where",
+            "image_kinds"
+          ],
+          "type": "object"
+        },
+        "IndicatorWhere": {
+          "description": "`IndicatorWhere` ([contracts 10]): where on the plant an indicator shows.",
+          "oneOf": [
+            {
+              "const": "lower_leaves",
+              "description": "Lower leaves.",
+              "type": "string"
+            },
+            {
+              "const": "upper_leaves",
+              "description": "Upper leaves.",
+              "type": "string"
+            },
+            {
+              "const": "whole_plant",
+              "description": "The whole plant.",
+              "type": "string"
+            },
+            {
+              "const": "leaf_underside",
+              "description": "The leaf underside.",
+              "type": "string"
+            },
+            {
+              "const": "stem",
+              "description": "The stem.",
+              "type": "string"
+            },
+            {
+              "const": "fruit",
+              "description": "The fruit.",
+              "type": "string"
+            },
+            {
+              "const": "soil",
+              "description": "The soil.",
+              "type": "string"
+            }
+          ]
+        },
+        "LocalDate": {
+          "description": "A calendar date in the garden's time zone, `YYYY-MM-DD` ([contracts 1]). A newtype over\n`chrono::NaiveDate` (whose serde form is already `\"2026-10-20\"`) so the `OpenAPI` and JSON\nSchema generators see `format: date` through any alias, and so a UTC day can't be passed\nwhere a garden-local one is meant without saying so.",
+          "format": "date",
+          "type": "string"
+        },
+        "LooksLikeSeed": {
+          "additionalProperties": false,
+          "description": "`ProblemSeed.looks_like[]`, written once in either problem's file.",
+          "properties": {
+            "how_to_tell": {
+              "description": "How to tell them apart.",
+              "type": "string"
+            },
+            "problem": {
+              "description": "The look-alike.",
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "problem",
+            "how_to_tell"
+          ],
+          "type": "object"
+        },
+        "MeasureQuantity": {
+          "description": "`MeasureQuantity` ([contracts 7]). The unit is in the name.",
+          "oneOf": [
+            {
+              "const": "plant_height_cm",
+              "description": "From `whole_plant`: one value; needs gravity and a ground plane.",
+              "type": "string"
+            },
+            {
+              "const": "canopy_width_cm",
+              "description": "From `whole_plant`: one value; needs gravity.",
+              "type": "string"
+            },
+            {
+              "const": "leaf_length_cm",
+              "description": "Per leaf with a mask.",
+              "type": "string"
+            },
+            {
+              "const": "leaf_area_cm2",
+              "description": "Per leaf with a mask.",
+              "type": "string"
+            },
+            {
+              "const": "lesion_diameter_mm",
+              "description": "Per spot at least 4 pixels across.",
+              "type": "string"
+            },
+            {
+              "const": "lesion_count",
+              "description": "Spots per leaf with a mask.",
+              "type": "string"
+            },
+            {
+              "const": "affected_area_pct",
+              "description": "Share of each leaf covered by spots and their yellowing.",
+              "type": "string"
+            },
+            {
+              "const": "hole_diameter_mm",
+              "description": "Per hole at least 4 pixels across.",
+              "type": "string"
+            },
+            {
+              "const": "hole_count",
+              "description": "Holes per leaf with a mask, of any size.",
+              "type": "string"
+            }
+          ]
+        },
+        "MeasureStat": {
+          "description": "`IndicatorMeasure.stat`: which value of the measurement the range applies to.",
+          "oneOf": [
+            {
+              "const": "median",
+              "description": "`value`.",
+              "type": "string"
+            },
+            {
+              "const": "max",
+              "description": "`max`.",
+              "type": "string"
+            },
+            {
+              "const": "min",
+              "description": "`min`.",
+              "type": "string"
+            }
+          ]
+        },
+        "Prevalence": {
+          "description": "`ProblemSeed.prevalence`: the tie-breaker in the candidate ranking.",
+          "oneOf": [
+            {
+              "const": "common",
+              "description": "Common.",
+              "type": "string"
+            },
+            {
+              "const": "occasional",
+              "description": "Occasional.",
+              "type": "string"
+            },
+            {
+              "const": "rare",
+              "description": "Rare.",
+              "type": "string"
+            }
+          ]
+        },
+        "ProblemKind": {
+          "description": "`ProblemKind` ([contracts 4]).",
+          "oneOf": [
+            {
+              "const": "fungal",
+              "description": "Fungal disease.",
+              "type": "string"
+            },
+            {
+              "const": "bacterial",
+              "description": "Bacterial disease.",
+              "type": "string"
+            },
+            {
+              "const": "viral",
+              "description": "Viral disease.",
+              "type": "string"
+            },
+            {
+              "const": "pest",
+              "description": "Insect and other pests.",
+              "type": "string"
+            },
+            {
+              "const": "wildlife",
+              "description": "Larger animals.",
+              "type": "string"
+            },
+            {
+              "const": "abiotic",
+              "description": "Non-living causes: nutrients, water, sun, cold.",
+              "type": "string"
+            }
+          ]
+        },
+        "Range": {
+          "additionalProperties": false,
+          "description": "`ProblemSeed.conditions.temp_c` and `SpeciesSeed.care.soil_ph`.",
+          "properties": {
+            "max": {
+              "description": "Upper bound.",
+              "format": "double",
+              "type": "number"
+            },
+            "min": {
+              "description": "Lower bound.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "min",
+            "max"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`ProblemSeed` ([contracts 10]): `problems/<problem_id>.yaml`, the `disease` table.",
+      "properties": {
+        "affects": {
+          "description": "Species → `susceptible_to` edges.",
+          "items": {
+            "description": "knowledge-base id",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "caused_by": {
+          "description": "Organisms, for pest and wildlife problems.",
+          "items": {
+            "description": "knowledge-base id",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "conditions": {
+          "$ref": "#/$defs/Conditions",
+          "description": "Favourable weather."
+        },
+        "damage_patterns": {
+          "description": "Patterns that point to this problem.",
+          "items": {
+            "$ref": "#/$defs/DamagePattern"
+          },
+          "type": "array"
+        },
+        "id": {
+          "description": "The slug.",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "type": "string"
+        },
+        "indicators": {
+          "description": "Indicators; exactly 3 discriminating.",
+          "items": {
+            "$ref": "#/$defs/IndicatorSeed"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/$defs/ProblemKind",
+          "description": "Its kind."
+        },
+        "looks_like": {
+          "description": "Look-alikes.",
+          "items": {
+            "$ref": "#/$defs/LooksLikeSeed"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "\"Early blight\".",
+          "type": "string"
+        },
+        "prevalence": {
+          "$ref": "#/$defs/Prevalence",
+          "description": "Tie-breaker in the ranking."
+        },
+        "reviewed_at": {
+          "$ref": "#/$defs/LocalDate",
+          "description": "When."
+        },
+        "reviewed_by": {
+          "description": "The teammate who reviewed it.",
+          "type": "string"
+        },
+        "sources": {
+          "description": "Its sources.",
+          "items": {
+            "description": "knowledge-base id",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "treatments": {
+          "description": "`manages` edges.",
+          "items": {
+            "description": "knowledge-base id",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "affects",
+        "caused_by",
+        "damage_patterns",
+        "prevalence",
+        "indicators",
+        "conditions",
+        "looks_like",
+        "treatments",
+        "sources",
+        "reviewed_by",
+        "reviewed_at"
+      ],
+      "title": "ProblemSeed",
+      "type": "object"
+    },
+    "ProductsSeed": {
+      "$defs": {
+        "ProductSeed": {
+          "additionalProperties": false,
+          "description": "`ProductsSeed.products[]`.",
+          "properties": {
+            "broad_spectrum": {
+              "description": "Harms beneficial insects too.",
+              "type": "boolean"
+            },
+            "name": {
+              "description": "Matched case-insensitively; a step naming one becomes chemical.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "broad_spectrum"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`ProductsSeed` ([contracts 10]): `products.yaml`.",
+      "properties": {
+        "products": {
+          "description": "Every pest-control product name.",
+          "items": {
+            "$ref": "#/$defs/ProductSeed"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "products"
+      ],
+      "title": "ProductsSeed",
+      "type": "object"
+    },
+    "SoilConditionSeed": {
+      "$defs": {
+        "SoilAspect": {
+          "description": "`SoilAspect` ([contracts 6], after decoding). `texture` comes from guided checks.",
+          "oneOf": [
+            {
+              "const": "moisture",
+              "description": "Moisture.",
+              "type": "string"
+            },
+            {
+              "const": "surface",
+              "description": "Surface.",
+              "type": "string"
+            },
+            {
+              "const": "structure",
+              "description": "Structure.",
+              "type": "string"
+            },
+            {
+              "const": "colour",
+              "description": "Colour.",
+              "type": "string"
+            },
+            {
+              "const": "cover",
+              "description": "Cover.",
+              "type": "string"
+            },
+            {
+              "const": "deposits",
+              "description": "Deposits.",
+              "type": "string"
+            },
+            {
+              "const": "erosion",
+              "description": "Erosion.",
+              "type": "string"
+            },
+            {
+              "const": "weeds",
+              "description": "Weeds.",
+              "type": "string"
+            },
+            {
+              "const": "texture",
+              "description": "From guided checks.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "One entry of `soil_conditions.yaml`: a description for each `SoilAspect` and value, with\nwhat to do and its sources ([contracts 10]; the file's shape is not spelled out there, so\nthis follows `schema.surql`'s `soil_condition` table).",
+      "properties": {
+        "aspect": {
+          "$ref": "#/$defs/SoilAspect",
+          "description": "The aspect."
+        },
+        "description": {
+          "description": "What it means.",
+          "type": "string"
+        },
+        "sources": {
+          "description": "Sources.",
+          "items": {
+            "description": "knowledge-base id",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "value": {
+          "description": "The value, such as `\"compacted\"`.",
+          "type": "string"
+        },
+        "what_to_do": {
+          "description": "What to do.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "aspect",
+        "value",
+        "description",
+        "what_to_do",
+        "sources"
+      ],
+      "title": "SoilConditionSeed",
+      "type": "object"
+    },
+    "SourceSeed": {
+      "$defs": {
+        "LocalDate": {
+          "description": "A calendar date in the garden's time zone, `YYYY-MM-DD` ([contracts 1]). A newtype over\n`chrono::NaiveDate` (whose serde form is already `\"2026-10-20\"`) so the `OpenAPI` and JSON\nSchema generators see `format: date` through any alias, and so a UTC day can't be passed\nwhere a garden-local one is meant without saying so.",
+          "format": "date",
+          "type": "string"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`SourceSeed` ([contracts 10]): `sources.yaml`.",
+      "properties": {
+        "id": {
+          "description": "The slug.",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "type": "string"
+        },
+        "licence": {
+          "description": "Reuse terms; required for photo sources.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "publisher": {
+          "description": "Publisher.",
+          "type": "string"
+        },
+        "retrieved_at": {
+          "$ref": "#/$defs/LocalDate",
+          "description": "When it was retrieved."
+        },
+        "title": {
+          "description": "Title.",
+          "type": "string"
+        },
+        "url": {
+          "description": "Its page.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "publisher",
+        "url",
+        "retrieved_at"
+      ],
+      "title": "SourceSeed",
+      "type": "object"
+    },
+    "SpeciesSeed": {
+      "$defs": {
+        "Care": {
+          "additionalProperties": false,
+          "description": "`SpeciesSeed.care`: required when `profile` is `full`.",
+          "properties": {
+            "hardiness_zones": {
+              "description": "Canadian plant hardiness zones, such as `\"annual\"` or `\"4-8\"`.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "light": {
+              "$ref": "#/$defs/LightNeed",
+              "description": "Light."
+            },
+            "mature_height_cm": {
+              "description": "The `growth_stalled` rule stops here.",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "notes": {
+              "description": "Notes.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "soil_ph": {
+              "$ref": "#/$defs/Range",
+              "description": "Soil pH."
+            },
+            "spacing_cm": {
+              "description": "Recommended distance between plants; the crowding rule.",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "water": {
+              "$ref": "#/$defs/WaterNeed",
+              "description": "Water."
+            }
+          },
+          "required": [
+            "water",
+            "light",
+            "soil_ph"
+          ],
+          "type": "object"
+        },
+        "LightNeed": {
+          "description": "`SpeciesSeed.care.light`.",
+          "oneOf": [
+            {
+              "const": "full_sun",
+              "description": "Full sun.",
+              "type": "string"
+            },
+            {
+              "const": "part_shade",
+              "description": "Part shade.",
+              "type": "string"
+            },
+            {
+              "const": "shade",
+              "description": "Shade.",
+              "type": "string"
+            }
+          ]
+        },
+        "Range": {
+          "additionalProperties": false,
+          "description": "`ProblemSeed.conditions.temp_c` and `SpeciesSeed.care.soil_ph`.",
+          "properties": {
+            "max": {
+              "description": "Upper bound.",
+              "format": "double",
+              "type": "number"
+            },
+            "min": {
+              "description": "Lower bound.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "min",
+            "max"
+          ],
+          "type": "object"
+        },
+        "ReferenceImageSeed": {
+          "additionalProperties": false,
+          "description": "`SpeciesSeed.reference_images[]`.",
+          "properties": {
+            "credit": {
+              "description": "\"Photo: A. Author, CC BY-SA 4.0\", shown with the photo.",
+              "type": "string"
+            },
+            "file": {
+              "description": "Under `ml/knowledge/seed/images/`, e.g. `\"species/tomato-1.jpg\"`.",
+              "type": "string"
+            },
+            "source_id": {
+              "description": "A source whose licence allows reuse with credit.",
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "file",
+            "source_id",
+            "credit"
+          ],
+          "type": "object"
+        },
+        "SpeciesProfileKind": {
+          "description": "`SpeciesSummary.profile` and `SpeciesSeed.profile`.",
+          "oneOf": [
+            {
+              "const": "full",
+              "description": "Care profile and problems.",
+              "type": "string"
+            },
+            {
+              "const": "label_only",
+              "description": "Recognised by `BioCLIP`, no care profile or problems yet.",
+              "type": "string"
+            }
+          ]
+        },
+        "WaterNeed": {
+          "description": "`SpeciesSeed.care.water`.",
+          "oneOf": [
+            {
+              "const": "low",
+              "description": "Low.",
+              "type": "string"
+            },
+            {
+              "const": "medium",
+              "description": "Medium.",
+              "type": "string"
+            },
+            {
+              "const": "high",
+              "description": "High.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`SpeciesSeed` ([contracts 10]): `species/<species_id>.yaml`.",
+      "properties": {
+        "bioclip_label": {
+          "description": "The text prompt `BioCLIP` scores against.",
+          "type": "string"
+        },
+        "care": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Care"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Required when `full`."
+        },
+        "classifier_supported": {
+          "description": "Checked against `classifier_labels.yaml` at ingestion.",
+          "type": "boolean"
+        },
+        "common_names": {
+          "description": "The first is the common name shown.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "description": "The slug.",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "type": "string"
+        },
+        "profile": {
+          "$ref": "#/$defs/SpeciesProfileKind",
+          "description": "`label_only`: recognised by `BioCLIP`, no care profile or problems yet."
+        },
+        "reference_images": {
+          "description": "At most 3, for the confirmation card.",
+          "items": {
+            "$ref": "#/$defs/ReferenceImageSeed"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "reviewed_by": {
+          "description": "The reviewer.",
+          "type": "string"
+        },
+        "scientific_name": {
+          "description": "\"Solanum lycopersicum\".",
+          "type": "string"
+        },
+        "sources": {
+          "description": "May be empty for `label_only`.",
+          "items": {
+            "description": "knowledge-base id",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "scientific_name",
+        "common_names",
+        "profile",
+        "classifier_supported",
+        "bioclip_label",
+        "sources",
+        "reviewed_by"
+      ],
+      "title": "SpeciesSeed",
+      "type": "object"
+    },
+    "TreatmentSeed": {
+      "$defs": {
+        "TreatmentKind": {
+          "description": "`TreatmentSeed.kind`: a step that applies the treatment takes its category from this.",
+          "oneOf": [
+            {
+              "const": "cultural",
+              "description": "Cultural.",
+              "type": "string"
+            },
+            {
+              "const": "biological",
+              "description": "Biological.",
+              "type": "string"
+            },
+            {
+              "const": "mechanical",
+              "description": "Mechanical.",
+              "type": "string"
+            },
+            {
+              "const": "chemical",
+              "description": "Chemical.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`TreatmentSeed` ([contracts 10]): no doses, ever; checked like plan steps.",
+      "properties": {
+        "id": {
+          "description": "The slug.",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/TreatmentKind",
+          "description": "Category."
+        },
+        "sources": {
+          "description": "Sources.",
+          "items": {
+            "description": "knowledge-base id",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "text": {
+          "description": "The advice.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "text",
+        "sources"
+      ],
+      "title": "TreatmentSeed",
+      "type": "object"
+    }
+  }
+}

@@ -167,6 +167,7 @@ impl Pipeline {
             steps: written.steps,
             watch_for: written.watch_for,
             citations,
+            farm_records: Vec::new(),
             task_ids: tasks.iter().map(|t| t.id).collect(),
             llm_model: written.llm_model,
             prompt_version: written.prompt_version,

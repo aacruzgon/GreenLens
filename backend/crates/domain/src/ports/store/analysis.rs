@@ -209,11 +209,12 @@ pub trait AnalysisRepo: Send + Sync {
         k: u32,
     ) -> Result<Vec<SimilarCase>, StoreError>;
 
-    /// A `guided` job's result, under its lease: updates the check, stores its observation and
-    /// claims `score` when the scan is `diagnosed` or `planned`.
+    /// A `guided` job's result, under its lease at `now`: updates the check, stores its
+    /// observation and claims `score` when the scan is `diagnosed` or `planned`.
     async fn finish_guided_check(
         &self,
         lease: &Lease,
         outcome: GuidedOutcome,
+        now: Timestamp,
     ) -> Result<GuidedFinish, StoreError>;
 }

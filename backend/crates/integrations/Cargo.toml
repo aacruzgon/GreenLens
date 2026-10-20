@@ -28,9 +28,15 @@ thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tzf-rs.workspace = true
+ulid = { workspace = true, optional = true }
+
+[features]
+# Test support for Era's simulators (`era_sim`). Never enabled in a release build.
+era-sim = ["dep:ulid"]
 
 [dev-dependencies]
 domain = { workspace = true, features = ["test-util", "mock"] }
+integrations = { path = ".", features = ["era-sim"] }
 svix.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 ulid.workspace = true

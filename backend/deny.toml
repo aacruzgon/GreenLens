@@ -2,10 +2,14 @@
 # `cargo deny --locked check advisories` in backend/.
 
 [graph]
-# Only what ships. SurrealDB's embedded kv-mem engine, a dev-dependency for store's tests, brings in
-# bincode (unmaintained), quick-xml (RUSTSEC-2026-0194, -0195) and rsa (RUSTSEC-2023-0071), none of
-# which reaches a binary. To see them, run cargo-deny with exclude-dev removed.
+# Only what ships. SurrealDB's embedded kv-mem engine, a dev-dependency for store's tests and a
+# normal dependency of the evaluation tool, brings in bincode (RUSTSEC-2025-0141), quick-xml
+# (RUSTSEC-2026-0194, -0195), rsa (RUSTSEC-2023-0071) and ammonia (RUSTSEC-2026-0373), none of
+# which reaches a shipped binary. To see them, run cargo-deny with exclude-dev and exclude removed.
 exclude-dev = true
+# era-eval is a dev-only tool for the agent evaluation: the images build `-p api` and `-p worker`
+# alone, so it never ships.
+exclude = ["era-eval"]
 
 [advisories]
 ignore = [

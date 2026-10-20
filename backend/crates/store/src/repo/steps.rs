@@ -125,8 +125,7 @@ pub struct ClaimRow {
     pub outcome: String,
     /// The run the claim belongs to, when claimed.
     pub run: Option<i64>,
-    /// The claim's stamp as stored (equal to the bound `$now`, except where the port passes
-    /// no time and the transaction uses `time::now()`).
+    /// The claim's stamp as stored (equal to the bound `$now`).
     pub stamp: Option<DateTime<Utc>>,
     /// The scan's status when the claim was tried.
     pub status: Option<ScanStatusRow>,

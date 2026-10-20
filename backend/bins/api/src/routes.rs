@@ -3,6 +3,7 @@
 
 pub mod account;
 pub mod chat;
+pub mod connectors;
 pub mod gardens;
 pub mod internal;
 pub mod media;

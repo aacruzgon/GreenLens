@@ -36,7 +36,196 @@ async fn schema_applies_twice() {
         .expect("second application");
     let mut r = exec(&store, "INFO FOR DB;").await;
     let info: Option<surrealdb::types::Value> = r.take(0).unwrap();
-    assert!(format!("{info:?}").contains("indicator_answer"));
+    let info = format!("{info:?}");
+    for table in ["indicator_answer", "connector", "farm_record"] {
+        assert!(info.contains(table), "{table} missing");
+    }
+}
+
+/// T-E1.3 ([connectors 4]): a `farm_record` keyed `[connector, vendor_id, n]` with a dotted
+/// Slack `ts` round-trips; a plan's `farm_records` (and a step's `farm_citations`) and a
+/// message's `farm_citations` are stored by the `SCHEMAFULL` tables; and the garden cascade
+/// leaves no connector and no farm record.
+#[tokio::test]
+#[expect(clippy::too_many_lines, reason = "one fixture per new table and field")]
+async fn farm_connectors_store_and_go_with_their_garden() {
+    use domain::{
+        authz::Owner,
+        connectors::{ConnectorKind, FarmCitation},
+        id::{ConnectorId, ConversationId, FarmRecordId, MessageId},
+        ports::{CascadeStep, DeletionTarget},
+        records::plan::{PlanStep, PlanWhen, StepCategory},
+    };
+    use store::ids::{farm_record_id_of, farm_record_rid, rid};
+    use surrealdb::types::RecordId;
+
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let connector: ConnectorId = f.ids.id();
+    let record = FarmRecordId::new(connector, "C024BE91L/1729000000.000100", 0).unwrap();
+
+    // A connector and one of its records, written as the sync will (E1.6).
+    let mut r = store
+        .db()
+        .query(
+            "CREATE $connector SET garden = $garden, kind = 'slack', status = 'active',
+                created_by = $user, endpoint = 'vendor', sources = [{ id: 'C024BE91L', name: 'field-reports' }],
+                sync_requested_at = $now, last_error = 'rate_limited';
+             CREATE $record SET garden = $garden, connector = $connector, kind = 'message',
+                vendor_id = 'C024BE91L/1729000000.000100', source = 'C024BE91L', title = '#field-reports', author = 'Sam',
+                link = 'https://maplerow.slack.com/archives/C024BE91L/p1729000000000100',
+                text = 'Rings on bed 3 again.', text_hash = 'h1', embedding = [0.1, 0.2],
+                embedding_model = 'test', at = $now;
+             SELECT VALUE id FROM farm_record WHERE connector = $connector;",
+        )
+        .bind(("connector", rid(&connector)))
+        .bind(("record", farm_record_rid(&record)))
+        .bind(("garden", rid(&f.garden)))
+        .bind(("user", rid(&f.user)))
+        .bind(("now", t0().into_inner()))
+        .await
+        .unwrap();
+    assert!(r.take_errors().is_empty());
+    let ids: Vec<RecordId> = r.take(2).unwrap();
+    assert_eq!(ids.len(), 1);
+    assert_eq!(farm_record_id_of(&ids[0]).unwrap(), record);
+
+    // A plan whose step cites the record, and the plan's resolved farm records.
+    let citation = FarmCitation {
+        record_id: record.clone(),
+        system: ConnectorKind::Slack,
+        title: "#field-reports".into(),
+        author: Some("Sam".into()),
+        at: t0(),
+        link: "https://maplerow.slack.com/archives/C024BE91L/p1729000000000100".into(),
+    };
+    let citation_json = serde_json::to_value(&citation).unwrap();
+    let v1: PlanId = f.ids.id();
+    let mut p = plan(&f, v1, 1, None);
+    p.steps = vec![PlanStep {
+        id: "s1".parse().unwrap(),
+        order: 1,
+        title: "Check bed 3 for new rings".into(),
+        detail: "The crew saw rings twice.".into(),
+        treatment_id: None,
+        category: StepCategory::Monitoring,
+        when: PlanWhen::Now,
+        targets: Vec::new(),
+        plant_id: None,
+        citations: vec!["example_extension_tomato_diseases".parse().unwrap()],
+        farm_citations: vec![record.clone()],
+        safety_note: None,
+    }];
+    store
+        .write_revision(
+            f.editor,
+            PlanWrite {
+                plan: p,
+                reason: PlanReason::Initial,
+                expected: None,
+                tasks: Vec::new(),
+                triggers: Vec::new(),
+            },
+        )
+        .await
+        .unwrap();
+    let mut r = store
+        .db()
+        .query(
+            "UPDATE $plan SET farm_records = [$citation];
+             SELECT VALUE farm_records FROM ONLY $plan;",
+        )
+        .bind(("plan", rid(&v1)))
+        .bind(("citation", citation_json.clone()))
+        .await
+        .unwrap();
+    assert!(r.take_errors().is_empty());
+    // An array takes as `Vec`: as `Option`, an array of one reads as its element.
+    let stored: Vec<serde_json::Value> = r.take(1).unwrap();
+    assert_eq!(stored, vec![citation_json.clone()]);
+    let read = store.current_plan(f.scan).await.unwrap().expect("the plan");
+    assert_eq!(read.steps[0].farm_citations, vec![record.clone()]);
+
+    // A message citing the record.
+    let conversation: ConversationId = f.ids.id();
+    let message: MessageId = f.ids.id();
+    let mut r = store
+        .db()
+        .query(
+            "CREATE $conversation SET user = $user, garden = $garden, anchor = $garden;
+             CREATE $message SET conversation = $conversation, role = 'assistant',
+                text = 'Bed 3 had rings on Oct 12.', farm_citations = [$citation];
+             SELECT VALUE farm_citations FROM ONLY $message;",
+        )
+        .bind(("conversation", rid(&conversation)))
+        .bind(("message", rid(&message)))
+        .bind(("garden", rid(&f.garden)))
+        .bind(("user", rid(&f.user)))
+        .bind(("citation", citation_json.clone()))
+        .await
+        .unwrap();
+    assert!(r.take_errors().is_empty());
+    let stored: Vec<serde_json::Value> = r.take(2).unwrap();
+    let stored: Vec<FarmCitation> = stored
+        .into_iter()
+        .map(|c| serde_json::from_value(c).unwrap())
+        .collect();
+    assert_eq!(stored, vec![citation]);
+
+    // A message stored before connectors gets the field's default.
+    let old: MessageId = f.ids.id();
+    let mut r = store
+        .db()
+        .query(
+            "CREATE $message SET conversation = $conversation, role = 'user', text = 'Hi';
+             SELECT VALUE farm_citations FROM ONLY $message;",
+        )
+        .bind(("conversation", rid(&conversation)))
+        .bind(("message", rid(&old)))
+        .await
+        .unwrap();
+    assert!(r.take_errors().is_empty());
+    assert_eq!(
+        r.take::<Vec<serde_json::Value>>(1).unwrap(),
+        Vec::<serde_json::Value>::new()
+    );
+
+    // The garden goes, its records before its connector.
+    let owner = check_membership_of::<Owner>(&*store, f.user, f.garden)
+        .await
+        .unwrap();
+    store.start_garden_deletion(owner, t0()).await.unwrap();
+    let target = DeletionTarget::Garden(f.garden);
+    for step in CascadeStep::steps_for(target) {
+        let mut guard = 0;
+        while store
+            .delete_batch(target, *step)
+            .await
+            .unwrap_or_else(|e| panic!("{step:?}: {e:?}"))
+            > 0
+        {
+            guard += 1;
+            assert!(guard < 50, "{step:?} never finished");
+        }
+    }
+    for table in [
+        "garden",
+        "connector",
+        "farm_record",
+        "action_plan",
+        "message",
+    ] {
+        let mut r = exec(
+            &store,
+            &format!("RETURN count(SELECT VALUE id FROM {table});"),
+        )
+        .await;
+        assert_eq!(
+            r.take::<Option<i64>>(0).unwrap(),
+            Some(0),
+            "{table} left behind"
+        );
+    }
 }
 
 /// [database 4] scan events: concurrent appends conflict on the scan row, the store retries
@@ -107,6 +296,7 @@ fn plan(f: &support::Fixture, id: PlanId, version: u32, supersedes: Option<PlanI
         steps: Vec::new(),
         watch_for: Vec::new(),
         citations: Vec::new(),
+        farm_records: Vec::new(),
         task_ids: Vec::new(),
         llm_model: "test".into(),
         prompt_version: "v1".into(),
@@ -564,6 +754,56 @@ async fn idempotency_begin_finish_release() {
     assert_eq!(store.delete_expired(after).await.unwrap(), 0);
 }
 
+/// [contracts 1] idempotency: a `running` key older than `IDEMPOTENCY_RUNNING_STALE` is taken
+/// over by a retry, a younger one is in progress, and of two concurrent takeovers one wins.
+#[tokio::test]
+async fn idempotency_takes_over_a_stale_running_key() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let scope = IdempotencyScope {
+        user: f.user,
+        route: "POST /gardens/x/connectors/y/complete".into(),
+        key: "6f1c2a7e-0b8e-4d55-9a31-2f1f6c3b9d11"
+            .parse::<IdempotencyKey>()
+            .unwrap(),
+    };
+    let day = Duration::from_hours(24);
+    let expires_at = |minutes: u64| t0().plus(Duration::from_mins(minutes)).plus(day);
+    assert_eq!(
+        store.begin(&scope, "fp", expires_at(0)).await.unwrap(),
+        IdempotencyBegin::Started
+    );
+    assert_eq!(
+        store.begin(&scope, "fp", expires_at(5)).await.unwrap(),
+        IdempotencyBegin::InProgress
+    );
+    // A different body is a conflict even when the key is stale.
+    assert_eq!(
+        store.begin(&scope, "other", expires_at(11)).await.unwrap(),
+        IdempotencyBegin::Conflict
+    );
+    assert_eq!(
+        store.begin(&scope, "fp", expires_at(11)).await.unwrap(),
+        IdempotencyBegin::Started
+    );
+    // The takeover restarted the clock: 5 minutes later it is running again.
+    assert_eq!(
+        store.begin(&scope, "fp", expires_at(16)).await.unwrap(),
+        IdempotencyBegin::InProgress
+    );
+    // Two concurrent takeovers of the next stale window: one wins.
+    let (a, b) = tokio::join!(
+        store.begin(&scope, "fp", expires_at(30)),
+        store.begin(&scope, "fp", expires_at(30)),
+    );
+    let mut results = [a.unwrap(), b.unwrap()];
+    results.sort_by_key(|r| matches!(r, IdempotencyBegin::InProgress));
+    assert_eq!(
+        results,
+        [IdempotencyBegin::Started, IdempotencyBegin::InProgress]
+    );
+}
+
 /// [database 4] limits: the 31st scan of a UTC day is refused and nothing is stored.
 #[tokio::test]
 async fn daily_scan_limit() {
@@ -807,6 +1047,112 @@ fn one_hot(i: usize) -> Vec<f32> {
     let mut v = vec![0.0; 384];
     v[i] = 1.0;
     v
+}
+
+/// The knowledge loader's output on the real schema: `knowledge_fixture.surql` is what
+/// `ml/knowledge/build_migration.py` writes for the fixture seed in `ml/tests/fixtures/` (its
+/// test keeps the copy current), with one-hot vectors in chunk order.
+#[tokio::test]
+async fn the_knowledge_loaders_file_loads_and_reads_back() {
+    use domain::ports::{ChunkFilter, Embedding, KnowledgeRepo};
+
+    const FILE: &str = include_str!("embedded/knowledge_fixture.surql");
+    let store = support::store().await;
+    // Twice: the file replaces the whole set, so a second run changes nothing.
+    exec(&store, FILE).await;
+    exec(&store, FILE).await;
+
+    let k = store.load_knowledge().await.expect("the knowledge loads");
+    let ids = |v: Vec<String>| v.join(",");
+    assert_eq!(
+        ids(k.species.iter().map(|s| s.id.to_string()).collect()),
+        "strawberry,tomato"
+    );
+    assert_eq!(k.problems.len(), 3);
+    let blight = k
+        .problems
+        .iter()
+        .find(|p| p.id.as_str() == "tomato_early_blight")
+        .unwrap();
+    assert_eq!(blight.discriminating().count(), 3);
+    assert_eq!(
+        blight.affects.len(),
+        1,
+        "affects comes back from susceptible_to"
+    );
+    assert_eq!(
+        blight.treatments.len(),
+        3,
+        "treatments come back from manages"
+    );
+    assert!(
+        (blight.conditions.temp_c.unwrap().min - 24.0).abs() < 1e-9,
+        "an integer in the seed reads as f64"
+    );
+    let septoria = k
+        .problems
+        .iter()
+        .find(|p| p.id.as_str() == "tomato_septoria_leaf_spot")
+        .unwrap();
+    assert!(septoria.indicators[0].measure.is_some());
+    assert_eq!(k.lookalikes.len(), 2, "looks_like is written both ways");
+    let aphids = k
+        .problems
+        .iter()
+        .find(|p| p.id.as_str() == "tomato_aphids")
+        .unwrap();
+    assert_eq!(aphids.caused_by.len(), 1);
+    let larva = k
+        .organisms
+        .iter()
+        .find(|o| o.id.as_str() == "ladybug_larva")
+        .unwrap();
+    assert_eq!(larva.preys_on.as_ref().map(Vec::len), Some(1));
+    let tomato_photos = &k
+        .species_photos
+        .iter()
+        .find(|(s, _)| s.as_str() == "tomato")
+        .unwrap()
+        .1;
+    assert_eq!(tomato_photos.len(), 1);
+    assert_eq!(
+        tomato_photos[0].credit,
+        "Generated test image, not a real photo"
+    );
+    assert_eq!(k.treatments.len(), 4);
+    assert!(
+        k.treatments
+            .iter()
+            .any(|t| t.text.contains("it's an 'easy' first step")),
+        "quotes survive the escaping"
+    );
+    assert_eq!(k.products.products.len(), 2);
+    assert_eq!(k.classifier_labels.model_version, "fixture_v1");
+    assert_eq!(k.classifier_labels.labels.len(), 2);
+    assert_eq!(k.soil_conditions.len(), 1);
+
+    // The loader and the store compute label_set_version the same way.
+    let mut meta = exec(
+        &store,
+        "SELECT VALUE label_set_version FROM ONLY knowledge_meta:current;",
+    )
+    .await;
+    let written: Option<String> = meta.take(0).unwrap();
+    assert_eq!(
+        written.as_deref(),
+        Some(k.vlm_options.label_set_version.as_str())
+    );
+
+    // Chunk i has the one-hot vector i, in id order.
+    let hits = store
+        .search_chunks(&Embedding(one_hot(2)), ChunkFilter::default(), 1)
+        .await
+        .expect("the vector search runs");
+    assert_eq!(
+        hits[0].text,
+        "Water at the base of the plant and mulch the soil.\nRemove infected leaves."
+    );
+    assert_eq!(hits[0].citation.title, "Tomato diseases (example)");
 }
 
 #[tokio::test]
