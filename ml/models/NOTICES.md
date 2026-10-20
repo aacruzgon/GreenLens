@@ -91,6 +91,7 @@ CC BY 4.0 requires attribution, a link to the licence, and a note of changes. Ou
 | TOM2024 | CC BY 4.0 | Appiah O. et al. (2024), Mendeley Data V1, doi:10.17632/3d4yg89rtr.1; Data in Brief 59, 111357, doi:10.1016/j.dib.2025.111357 | <https://data.mendeley.com/datasets/3d4yg89rtr/1> |
 | Tomato-Pakistan 2026 | CC BY 4.0 as published; it can't cover photos the authors didn't take | Malik M.N., Ali S.H., Ali H. (2026), Mendeley Data V1, doi:10.17632/3mbnb82mxd.1 | <https://data.mendeley.com/datasets/3mbnb82mxd/1> |
 | iBean | MIT, "Copyright (c) 2020 AIR Lab Makerere University" | Makerere AI Lab (2020), Bean disease dataset | <https://github.com/AI-Lab-Makerere/ibean/> |
+| iNaturalist (the species head's and the trained plant probe's photos, `ml/training/data/splits/inat_species.tsv`) | CC0 1.0 or CC BY 4.0, per photo | each photo's observer, credited in the index with the change made (re-encoded, metadata removed) | <https://www.inaturalist.org> |
 | WIDER FACE (YuNet's training data) | CC BY-NC-ND 4.0, see `yunet` | Yang et al., "WIDER FACE: A Face Detection Benchmark", CVPR 2016 (*unverified*) | <http://shuoyang1213.me/WIDERFACE/> |
 | COCO 2017 (`leaf_detector`'s background photos; evaluation negatives) | CC BY 4.0 for the annotations; each image keeps its Flickr licence, most of them non-commercial. The background photos are only CC BY, CC BY-SA or no known copyright | Lin et al., "Microsoft COCO: Common Objects in Context", ECCV 2014 | <https://cocodataset.org> |
 | TreeOfLife-200M (BioCLIP 2's training data) | CC0 as a compilation; images may keep their own terms, see `bioclip` | see the BioCLIP 2 paper | <https://huggingface.co/datasets/imageomics/TreeOfLife-200M> |
@@ -98,5 +99,7 @@ CC BY 4.0 requires attribution, a link to the licence, and a note of changes. Ou
 **PlantDoc.** The photos were scraped from the web, so their owners keep their copyright (§9 item 3). This is fine for training; we never redistribute the images.
 
 **Tomato-Pakistan 2026.** Every file is an augmented copy, about 934 originals. 302 of the originals are PlantDoc's scraped photos, and our mapping drops them. Any other scraped photos keep their owners' copyright (*unverified*). Shipping weights trained on this set is a team decision (§9). No Data in Brief paper was found.
+
+**iNaturalist.** Research-grade observations with an agreeing identification, observed 2019 to 2025, one photo each; only CC0 and CC BY photos are used. CC BY needs each observer's credit: the index lists every photo's licence and credit, and that list ships with any head trained on it. Not in `manifest.toml` yet: the species head and the trained plant probe get their own sections when they ship.
 
 **iBean.** Smartphone field photos of bean leaves from Uganda, annotated by NaCRRI. The head uses it only if beans become supported.

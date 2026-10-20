@@ -59,10 +59,10 @@ NEGATIVES = DATA / "splits/negatives_coco.tsv"
 MAX_NEGATIVE_PASS = 0.05
 MAX_FALSE_NO_PLANT = 0.01
 GRID = np.round(np.arange(0.01, 1.0, 0.01), 2)
-# The current detector's pair in manifest.toml: the joint optimum for prompt set A is τ_leaf 0.91,
-# τ_plant 0.67; τ_leaf is taken one step lower for margin on plant photos (0.78% false
-# no_plant_found instead of 0.95%).
-MANIFEST_PAIR = {"set": "A", "tau_leaf": 0.90, "tau_plant": 0.67}
+# The pair in manifest.toml, with leaf_detector rfdetr-s-leaf-2026-10-19-bglic: prompt set A,
+# chosen on the val split with at most 1% false no_plant_found on every dataset
+# (reports/plant-check-val-2026-10-19-detector-bglic).
+MANIFEST_PAIR = {"set": "A", "tau_leaf": 0.40, "tau_plant": 0.70}
 LEAF_ONLY_SWEEP = (0.35, 0.5, 0.7, 0.9)
 
 
@@ -73,10 +73,9 @@ def read_tsv(path: Path) -> list[dict]:
 
 
 def parse_pair(text: str) -> dict:
-    """`A:0.48:0.96` -> prompt set A, τ_leaf 0.48, τ_plant 0.96."""
-    name, tl, tp = text.split(":")
-    if name not in plant_probe.PROMPT_SETS:
-        raise argparse.ArgumentTypeError(f"unknown prompt set {name!r}")
+    """`A:0.48:0.96` -> prompt set A, τ_leaf 0.48, τ_plant 0.96. The name may also be the version
+    of a trained probe given with --probe."""
+    name, tl, tp = text.rsplit(":", 2)
     return {"set": name, "tau_leaf": float(tl), "tau_plant": float(tp)}
 
 
@@ -147,13 +146,26 @@ def main(argv=None) -> int:
     ap.add_argument("--out", type=Path, default=ROOT / "ml/training/eval/reports")
     ap.add_argument("--rescore", type=Path, help="a previous report's JSON: re-analyse its per-photo scores")
     ap.add_argument("--detector", type=Path, help="a candidate fp32 detector file instead of the manifest's")
-    ap.add_argument("--negatives", type=Path, default=NEGATIVES, help="the no-plant photos (a negatives TSV)")
+    ap.add_argument("--negatives", type=Path, default=None,
+                    help="the no-plant photos (a negatives TSV); default negatives_coco.tsv, or with --probe the "
+                         "negatives_tune.tsv beside the probe (the half of negatives_coco.tsv it didn't train on)")
     ap.add_argument("--pair", type=parse_pair, action="append", default=[],
                     help="a fixed pair to report, PROMPTS:TAU_LEAF:TAU_PLANT (repeatable)")
     ap.add_argument("--note", help="a line for the report's header, such as what the detector was trained on")
+    ap.add_argument("--probe", type=Path, action="append", default=[],
+                    help="a trained probe file (pdm-linear-head/1, kind plant_probe) scored beside the prompt sets; repeatable")
     args = ap.parse_args(argv)
-    if args.rescore:
-        prev = json.loads(args.rescore.read_text())
+    prev = json.loads(args.rescore.read_text()) if args.rescore else None
+    known = set(prev["sets"]) if prev else set(plant_probe.PROMPT_SETS) | {headfile_version(f) for f in args.probe}
+    for pair in args.pair:
+        if pair["set"] not in known:
+            ap.error(f"--pair: unknown prompt set or probe {pair['set']!r} (known: {', '.join(sorted(known))})")
+    if not prev:
+        try:
+            args.negatives = negatives_for(args.probe, args.negatives)
+        except ValueError as e:
+            ap.error(str(e))
+    if prev:
         pos, neg = prev["positives"], prev["negatives"]
         pos_leaf = np.array([r["leaf"] for r in pos], np.float32)
         neg_leaf = np.array([r["leaf"] for r in neg], np.float32)
@@ -165,7 +177,7 @@ def main(argv=None) -> int:
         detector = prev.get("detector", "manifest.cpu.toml's leaf_detector")
         note = args.note or prev.get("note")
     else:
-        pos, neg, pos_leaf, neg_leaf, probs, tau_leaf, scale, embedder = score(args.split, args.detector, args.negatives)
+        pos, neg, pos_leaf, neg_leaf, probs, tau_leaf, scale, embedder = score(args.split, args.detector, args.negatives, args.probe)
         split, negatives = args.split, args.negatives.name
         detector = str(args.detector.resolve().relative_to(ROOT)) if args.detector else "manifest.cpu.toml's leaf_detector"
         note = args.note
@@ -181,7 +193,33 @@ def main(argv=None) -> int:
     return 0
 
 
-def score(split: str, detector: Path | None = None, negatives: Path = NEGATIVES):
+def headfile_version(path: Path) -> str:
+    return json.loads(path.read_text())["version"]
+
+
+def negatives_for(probes: list[Path], negatives: Path | None) -> Path:
+    """The negatives to score: `negatives` or the default, refusing any photo a trained probe
+    trained on. `train_plant_probe` trains on half of negatives_coco.tsv and writes the other
+    half beside the probe as negatives_tune.tsv; a probe scored on its own training photos would
+    get an optimistic τ_plant (review of #85)."""
+    tunes = [f.parent / "negatives_tune.tsv" for f in probes]
+    for f, t in zip(probes, tunes):
+        if not t.exists():
+            raise ValueError(f"--probe {f}: no negatives_tune.tsv beside it, so the photos it trained on are unknown")
+    if negatives is None:
+        if len({t.resolve() for t in tunes}) > 1:
+            raise ValueError("--probe: probes with different tune halves; give --negatives")
+        negatives = tunes[0] if tunes else NEGATIVES
+    given = {r["path"] for r in read_tsv(negatives)}
+    for f, t in zip(probes, tunes):
+        trained = {r["path"] for r in read_tsv(NEGATIVES)} - {r["path"] for r in read_tsv(t)}
+        if overlap := given & trained:
+            raise ValueError(f"--negatives {negatives.name}: {len(overlap)} photos are ones {f.name} trained on")
+    return negatives
+
+
+def score(split: str, detector: Path | None = None, negatives: Path = NEGATIVES, probes: list[Path] = ()):
+    from ml.pdm_vision import headfile
     from ml.pdm_vision.features import Embedder
 
     pos = read_tsv(DATA / f"splits/{split}.tsv")
@@ -197,6 +235,12 @@ def score(split: str, detector: Path | None = None, negatives: Path = NEGATIVES)
     neg_e = emb.files([DATA / "raw" / r["path"] for r in neg])
     weights, scale = plant_probe.weights("cpu")
     probs = {n: (plant_probe.probability(pos_e, w), plant_probe.probability(neg_e, w)) for n, w in weights.items()}
+    for f in probes:   # a trained probe: sigma(w . e + b), the worker's PlantProbe
+        doc = headfile.read_linear_head(f)
+        if doc["kind"] != "plant_probe":
+            raise SystemExit(f"{f}: kind {doc['kind']}, not plant_probe")
+        w, b = doc["weight"][0], float(doc["bias"][0])
+        probs[doc["version"]] = (plant_probe.probability(pos_e, w, b), plant_probe.probability(neg_e, w, b))
     return pos, neg, pos_leaf, neg_leaf, probs, tau_leaf, scale, emb.model_sha
 
 
@@ -208,7 +252,7 @@ def analyse(split, label, pos, neg, pos_leaf, neg_leaf, probs, tau_leaf, scale, 
         tau = choose_tau(neg_p)
         sweep = [summary(pos_leaf, pos_p, neg_leaf, neg_p, groups, tau_leaf, float(t))
                  for t in (0.5, 0.6, 0.7, 0.8, 0.9, 0.95)]
-        sets[name] = {"labels": plant_probe.PROMPT_SETS[name], "chosen": summary(
+        sets[name] = {"labels": plant_probe.PROMPT_SETS.get(name, f"trained probe {name}"), "chosen": summary(
             pos_leaf, pos_p, neg_leaf, neg_p, groups, tau_leaf, tau), "sweep": sweep,
             "joint": joint(pos_leaf, pos_p, neg_leaf, neg_p),
             "joint_every_dataset": joint(pos_leaf, pos_p, neg_leaf, neg_p, datasets=datasets),
@@ -338,6 +382,7 @@ def markdown(r: dict) -> str:
                    f"{pct(c['no_leaf_rescued'])} | {pct(c['negatives_pass_probe'])} | {pct(c['negatives_pass_check'])} |\n")
     out.append("\nPrompt sets: " + "; ".join(
         f"{n}: plant = {', '.join(s['labels']['plant'])}; not = {', '.join(s['labels']['not'])}"
+        if isinstance(s["labels"], dict) else f"{n}: {s['labels']}"   # a trained probe has no prompts
         for n, s in r["sets"].items()) + ".\n\n")
     w = r["sets"][r["winner"]]["chosen"]
     out += [f"## Negatives by group, prompts {r['winner']} at τ_plant {w['tau_plant']:.2f}\n\n",

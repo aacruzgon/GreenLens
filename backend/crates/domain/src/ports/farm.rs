@@ -63,7 +63,8 @@ pub struct FarmPageRequest {
     /// The daily re-read ([`FarmSource::reread_window`]): read everything from this instant
     /// again, not only what is new, so edits and deletions are seen. The sync sets it on every
     /// page of a re-read pass and `None` otherwise. The adapter starts a pass from it only when
-    /// its cursor has no page in progress; a vendor without a re-read ignores it.
+    /// its cursor has no page in progress, and from the newest item it has seen when that is
+    /// older, so nothing since is skipped; a vendor without a re-read ignores it.
     pub reread_from: Option<Timestamp>,
     /// How many older items the adapter may check with an extra call each on this page, for
     /// changes no pass can see (Slack: replies to threads whose parent is older than the

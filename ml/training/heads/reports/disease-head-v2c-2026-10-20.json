@@ -1,0 +1,567 @@
+{
+  "version": "disease-head-v2c-2026-10-20",
+  "features": "crops",
+  "detector": "rfdetr-s-leaf-2026-10-19-bglic",
+  "supported": [
+    "tomato",
+    "apple",
+    "grape",
+    "pepper",
+    "corn"
+  ],
+  "classes": 19,
+  "left_out_below_min": {},
+  "C": 100,
+  "C_grid": [
+    1,
+    5,
+    20,
+    50,
+    100,
+    200,
+    500,
+    1000,
+    2000,
+    5000
+  ],
+  "C_at_grid_edge": false,
+  "C_selected_on": "val top-1 per crop, photos with one crop",
+  "C_grid_scores": [
+    {
+      "C": 1,
+      "val_top1_per_photo": 0.8133561643835616,
+      "val_top1_per_crop": 0.7918088737201365
+    },
+    {
+      "C": 5,
+      "val_top1_per_photo": 0.8407534246575342,
+      "val_top1_per_crop": 0.8191126279863481
+    },
+    {
+      "C": 20,
+      "val_top1_per_photo": 0.851027397260274,
+      "val_top1_per_crop": 0.8327645051194539
+    },
+    {
+      "C": 50,
+      "val_top1_per_photo": 0.8578767123287672,
+      "val_top1_per_crop": 0.8395904436860068
+    },
+    {
+      "C": 100,
+      "val_top1_per_photo": 0.8595890410958904,
+      "val_top1_per_crop": 0.8464163822525598
+    },
+    {
+      "C": 200,
+      "val_top1_per_photo": 0.8561643835616438,
+      "val_top1_per_crop": 0.8395904436860068
+    },
+    {
+      "C": 500,
+      "val_top1_per_photo": 0.8647260273972602,
+      "val_top1_per_crop": 0.8464163822525598
+    },
+    {
+      "C": 1000,
+      "val_top1_per_photo": 0.8561643835616438,
+      "val_top1_per_crop": 0.8327645051194539
+    },
+    {
+      "C": 2000,
+      "val_top1_per_photo": 0.8476027397260274,
+      "val_top1_per_crop": 0.8225255972696246
+    },
+    {
+      "C": 5000,
+      "val_top1_per_photo": 0.8424657534246576,
+      "val_top1_per_crop": 0.8156996587030717
+    }
+  ],
+  "temperature": 1.1473606423091303,
+  "temperature_fitted_on": "val crops of photos with one crop",
+  "views": 4,
+  "dropped_classes": [
+    "tomato/tomato_mosaic_virus",
+    "corn/corn_curvularia_leaf_spot"
+  ],
+  "balance_sources": false,
+  "train_rows": 40475,
+  "train_photos": 2966,
+  "val": {
+    "n": 584,
+    "left_out_class_images": 44,
+    "left_out_species_images": {
+      "bean": 289,
+      "blueberry": 16,
+      "cherry": 7,
+      "peach": 15,
+      "potato": 27,
+      "raspberry": 17,
+      "soybean": 9,
+      "squash": 18,
+      "strawberry": 13
+    },
+    "headline": {
+      "excludes": [
+        "bean"
+      ],
+      "restricted_top1_multiclass": {
+        "value": 0.8613013698630136,
+        "n": 584
+      },
+      "restricted_top3_over_3_classes": {
+        "value": 0.9670542635658915,
+        "n": 516
+      },
+      "ece_after_T_multiclass": {
+        "value": 0.0816226360286587,
+        "n": 584
+      }
+    },
+    "per_dataset": {
+      "plantdoc": {
+        "restricted_top1_multiclass": {
+          "value": 0.7952380952380952,
+          "n": 210
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.07988199694998638,
+          "n": 210
+        }
+      },
+      "tom2024": {
+        "restricted_top1_multiclass": {
+          "value": 0.9522184300341296,
+          "n": 293
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.1309250536837618,
+          "n": 293
+        }
+      },
+      "tomato_pakistan_2026": {
+        "restricted_top1_multiclass": {
+          "value": 0.7037037037037037,
+          "n": 81
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.09912981636943224,
+          "n": 81
+        }
+      }
+    },
+    "full_top1": 0.8544520547945206,
+    "full_top3": 0.9674657534246576,
+    "restricted_top1_multiclass": {
+      "value": 0.8613013698630136,
+      "n": 584
+    },
+    "restricted_top3_over_3_classes": {
+      "value": 0.9670542635658915,
+      "n": 516
+    },
+    "ece_before_T_multiclass": {
+      "value": 0.05801580827784794,
+      "n": 584
+    },
+    "ece_after_T_multiclass": {
+      "value": 0.0816226360286587,
+      "n": 584
+    },
+    "trivial_share": 0.0,
+    "per_crop": {
+      "apple": {
+        "n": 36,
+        "classes": 3,
+        "top1": 0.9166666666666666,
+        "top3": 1.0
+      },
+      "corn": {
+        "n": 142,
+        "classes": 4,
+        "top1": 0.9154929577464789,
+        "top3": 1.0
+      },
+      "grape": {
+        "n": 16,
+        "classes": 2,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "pepper": {
+        "n": 16,
+        "classes": 2,
+        "top1": 0.75,
+        "top3": 1.0
+      },
+      "tomato": {
+        "n": 374,
+        "classes": 8,
+        "top1": 0.8342245989304813,
+        "top3": 0.9545454545454546
+      }
+    },
+    "per_class": {
+      "apple/apple_cedar_apple_rust": {
+        "n": 12,
+        "recall": 1.0,
+        "precision": 0.8571428571428571
+      },
+      "apple/apple_scab": {
+        "n": 12,
+        "recall": 0.9166666666666666,
+        "precision": 0.9166666666666666
+      },
+      "apple/healthy": {
+        "n": 12,
+        "recall": 0.8333333333333334,
+        "precision": 1.0
+      },
+      "corn/corn_common_rust": {
+        "n": 18,
+        "recall": 0.7777777777777778,
+        "precision": 0.875
+      },
+      "corn/corn_gray_leaf_spot": {
+        "n": 9,
+        "recall": 0.6666666666666666,
+        "precision": 0.6666666666666666
+      },
+      "corn/corn_northern_leaf_blight": {
+        "n": 42,
+        "recall": 0.9285714285714286,
+        "precision": 0.8666666666666667
+      },
+      "corn/healthy": {
+        "n": 73,
+        "recall": 0.9726027397260274,
+        "precision": 0.9861111111111112
+      },
+      "grape/grape_black_rot": {
+        "n": 8,
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "grape/healthy": {
+        "n": 8,
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "pepper/healthy": {
+        "n": 8,
+        "recall": 0.75,
+        "precision": 0.75
+      },
+      "pepper/pepper_bacterial_leaf_spot": {
+        "n": 8,
+        "recall": 0.75,
+        "precision": 0.75
+      },
+      "tomato/healthy": {
+        "n": 167,
+        "recall": 0.9700598802395209,
+        "precision": 0.9418604651162791
+      },
+      "tomato/tomato_bacterial_spot": {
+        "n": 15,
+        "recall": 0.4,
+        "precision": 0.6
+      },
+      "tomato/tomato_early_blight": {
+        "n": 20,
+        "recall": 0.65,
+        "precision": 0.5909090909090909
+      },
+      "tomato/tomato_late_blight": {
+        "n": 25,
+        "recall": 0.68,
+        "precision": 0.6296296296296297
+      },
+      "tomato/tomato_leaf_mold": {
+        "n": 47,
+        "recall": 0.7021276595744681,
+        "precision": 0.7333333333333333
+      },
+      "tomato/tomato_septoria_leaf_spot": {
+        "n": 33,
+        "recall": 0.7575757575757576,
+        "precision": 0.7142857142857143
+      },
+      "tomato/tomato_spider_mites": {
+        "n": 52,
+        "recall": 0.8461538461538461,
+        "precision": 0.9166666666666666
+      },
+      "tomato/tomato_yellow_leaf_curl_virus": {
+        "n": 15,
+        "recall": 0.8,
+        "precision": 0.8
+      }
+    },
+    "per_leaf_crop": {
+      "crops": 1786,
+      "photos_with_no_leaf_kept": 7,
+      "crops_per_photo_median": 1.0,
+      "top1_multiclass": {
+        "value": 0.7917133258678611,
+        "n": 1786
+      },
+      "top3_over_3_classes": {
+        "value": 0.9519792342634653,
+        "n": 1541
+      },
+      "single_crop_photos_top1_multiclass": {
+        "value": 0.8464163822525598,
+        "n": 293
+      },
+      "single_crop_photos_ece_before_T": {
+        "value": 0.02570148112424,
+        "n": 293
+      },
+      "single_crop_photos_ece_after_T": {
+        "value": 0.0370948229735215,
+        "n": 293
+      }
+    },
+    "note": "Headline numbers are per photo: the mean of its crops' restricted, tempered probabilities; the worker doesn't average, it returns each crop's top 3. per_leaf_crop scores each crop against its photo's label, which is wrong for a healthy leaf in a diseased photo; photos with one crop are the cleanest and the closest to what the worker returns. Restricted metrics assume the species is right."
+  },
+  "test": {
+    "n": 521,
+    "left_out_class_images": 44,
+    "left_out_species_images": {
+      "bean": 128,
+      "blueberry": 11,
+      "cherry": 10,
+      "peach": 9,
+      "potato": 11,
+      "raspberry": 7,
+      "soybean": 8,
+      "squash": 6,
+      "strawberry": 8
+    },
+    "headline": {
+      "excludes": [
+        "bean"
+      ],
+      "restricted_top1_multiclass": {
+        "value": 0.8771593090211133,
+        "n": 521
+      },
+      "restricted_top3_over_3_classes": {
+        "value": 0.9758241758241758,
+        "n": 455
+      },
+      "ece_after_T_multiclass": {
+        "value": 0.05331913676814461,
+        "n": 521
+      }
+    },
+    "per_dataset": {
+      "plantdoc": {
+        "restricted_top1_multiclass": {
+          "value": 0.8013698630136986,
+          "n": 146
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.0740898940443369,
+          "n": 146
+        }
+      },
+      "tom2024": {
+        "restricted_top1_multiclass": {
+          "value": 0.9457627118644067,
+          "n": 295
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.07904720924352698,
+          "n": 295
+        }
+      },
+      "tomato_pakistan_2026": {
+        "restricted_top1_multiclass": {
+          "value": 0.7625,
+          "n": 80
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.08723224198375693,
+          "n": 80
+        }
+      }
+    },
+    "full_top1": 0.8752399232245681,
+    "full_top3": 0.9750479846449136,
+    "restricted_top1_multiclass": {
+      "value": 0.8771593090211133,
+      "n": 521
+    },
+    "restricted_top3_over_3_classes": {
+      "value": 0.9758241758241758,
+      "n": 455
+    },
+    "ece_before_T_multiclass": {
+      "value": 0.04574826505622487,
+      "n": 521
+    },
+    "ece_after_T_multiclass": {
+      "value": 0.05331913676814461,
+      "n": 521
+    },
+    "trivial_share": 0.0,
+    "per_crop": {
+      "apple": {
+        "n": 29,
+        "classes": 3,
+        "top1": 0.8620689655172413,
+        "top3": 1.0
+      },
+      "corn": {
+        "n": 123,
+        "classes": 4,
+        "top1": 0.9349593495934959,
+        "top3": 1.0
+      },
+      "grape": {
+        "n": 20,
+        "classes": 2,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "pepper": {
+        "n": 17,
+        "classes": 2,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "tomato": {
+        "n": 332,
+        "classes": 8,
+        "top1": 0.8433734939759037,
+        "top3": 0.9668674698795181
+      }
+    },
+    "per_class": {
+      "apple/apple_cedar_apple_rust": {
+        "n": 10,
+        "recall": 1.0,
+        "precision": 0.8333333333333334
+      },
+      "apple/apple_scab": {
+        "n": 10,
+        "recall": 0.9,
+        "precision": 0.8181818181818182
+      },
+      "apple/healthy": {
+        "n": 9,
+        "recall": 0.6666666666666666,
+        "precision": 1.0
+      },
+      "corn/corn_common_rust": {
+        "n": 16,
+        "recall": 0.8125,
+        "precision": 1.0
+      },
+      "corn/corn_gray_leaf_spot": {
+        "n": 3,
+        "recall": 1.0,
+        "precision": 0.42857142857142855
+      },
+      "corn/corn_northern_leaf_blight": {
+        "n": 28,
+        "recall": 0.8571428571428571,
+        "precision": 0.96
+      },
+      "corn/healthy": {
+        "n": 76,
+        "recall": 0.9868421052631579,
+        "precision": 0.9615384615384616
+      },
+      "grape/grape_black_rot": {
+        "n": 8,
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "grape/healthy": {
+        "n": 12,
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "pepper/healthy": {
+        "n": 8,
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "pepper/pepper_bacterial_leaf_spot": {
+        "n": 9,
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "tomato/healthy": {
+        "n": 141,
+        "recall": 0.9361702127659575,
+        "precision": 0.9428571428571428
+      },
+      "tomato/tomato_bacterial_spot": {
+        "n": 8,
+        "recall": 0.625,
+        "precision": 0.35714285714285715
+      },
+      "tomato/tomato_early_blight": {
+        "n": 18,
+        "recall": 0.4444444444444444,
+        "precision": 0.8
+      },
+      "tomato/tomato_late_blight": {
+        "n": 35,
+        "recall": 0.7142857142857143,
+        "precision": 0.7575757575757576
+      },
+      "tomato/tomato_leaf_mold": {
+        "n": 40,
+        "recall": 0.875,
+        "precision": 0.8333333333333334
+      },
+      "tomato/tomato_septoria_leaf_spot": {
+        "n": 24,
+        "recall": 0.75,
+        "precision": 0.8181818181818182
+      },
+      "tomato/tomato_spider_mites": {
+        "n": 55,
+        "recall": 0.8909090909090909,
+        "precision": 0.8909090909090909
+      },
+      "tomato/tomato_yellow_leaf_curl_virus": {
+        "n": 11,
+        "recall": 0.7272727272727273,
+        "precision": 0.5
+      }
+    },
+    "per_leaf_crop": {
+      "crops": 1127,
+      "photos_with_no_leaf_kept": 18,
+      "crops_per_photo_median": 1.0,
+      "top1_multiclass": {
+        "value": 0.831410825199645,
+        "n": 1127
+      },
+      "top3_over_3_classes": {
+        "value": 0.9628571428571429,
+        "n": 1050
+      },
+      "single_crop_photos_top1_multiclass": {
+        "value": 0.8805031446540881,
+        "n": 318
+      },
+      "single_crop_photos_ece_before_T": {
+        "value": 0.039529834996979166,
+        "n": 318
+      },
+      "single_crop_photos_ece_after_T": {
+        "value": 0.037353019575652825,
+        "n": 318
+      }
+    },
+    "note": "Headline numbers are per photo: the mean of its crops' restricted, tempered probabilities; the worker doesn't average, it returns each crop's top 3. per_leaf_crop scores each crop against its photo's label, which is wrong for a healthy leaf in a diseased photo; photos with one crop are the cleanest and the closest to what the worker returns. Restricted metrics assume the species is right."
+  }
+}

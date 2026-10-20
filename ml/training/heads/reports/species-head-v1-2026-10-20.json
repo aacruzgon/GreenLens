@@ -1,0 +1,131 @@
+{
+  "version": "species-head-v1-2026-10-20",
+  "supported": [
+    "tomato",
+    "apple",
+    "grape",
+    "pepper",
+    "corn"
+  ],
+  "C": 200,
+  "temperature": 1.1740443303219397,
+  "label_matrix": "233482ce598f591b",
+  "logit_scale": 100.0,
+  "counts": {
+    "train": {
+      "apple/leaf datasets": 206,
+      "pepper/leaf datasets": 92,
+      "corn/leaf datasets": 1068,
+      "tomato/leaf datasets": 1718,
+      "grape/leaf datasets": 95,
+      "apple/inaturalist": 216,
+      "corn/inaturalist": 155,
+      "grape/inaturalist": 180,
+      "pepper/inaturalist": 124,
+      "tomato/inaturalist": 231
+    },
+    "val": {
+      "apple/leaf datasets": 36,
+      "pepper/leaf datasets": 16,
+      "corn/leaf datasets": 180,
+      "tomato/leaf datasets": 380,
+      "grape/leaf datasets": 16,
+      "apple/inaturalist": 51,
+      "corn/inaturalist": 28,
+      "grape/inaturalist": 41,
+      "pepper/inaturalist": 40,
+      "tomato/inaturalist": 49
+    },
+    "test": {
+      "apple/leaf datasets": 29,
+      "pepper/leaf datasets": 17,
+      "corn/leaf datasets": 157,
+      "tomato/leaf datasets": 342,
+      "grape/leaf datasets": 20
+    },
+    "dev": {
+      "corn/evaluation dev": 16,
+      "tomato/evaluation dev": 71,
+      "apple/evaluation dev": 28,
+      "grape/evaluation dev": 19,
+      "squash/evaluation dev": 19
+    }
+  },
+  "C_selected_on": "val: the mean of the two sources' top-1",
+  "val": {
+    "inaturalist": {
+      "n": 209,
+      "zero_shot_top1": 0.9856459330143541,
+      "head_top1_over_supported": 1.0,
+      "combined_top1": 0.9904306220095693,
+      "zero_shot_top1_over_supported": 0.9952153110047847,
+      "by_species": {
+        "apple": 51,
+        "corn": 28,
+        "grape": 41,
+        "pepper": 40,
+        "tomato": 49
+      }
+    },
+    "leaf datasets": {
+      "n": 628,
+      "zero_shot_top1": 0.8439490445859873,
+      "head_top1_over_supported": 0.9936305732484076,
+      "combined_top1": 0.8535031847133758,
+      "zero_shot_top1_over_supported": 0.947452229299363,
+      "by_species": {
+        "apple": 36,
+        "pepper": 16,
+        "corn": 180,
+        "tomato": 380,
+        "grape": 16
+      }
+    }
+  },
+  "test": {
+    "leaf datasets": {
+      "n": 565,
+      "zero_shot_top1": 0.7734513274336283,
+      "head_top1_over_supported": 0.9823008849557522,
+      "combined_top1": 0.7787610619469026,
+      "zero_shot_top1_over_supported": 0.952212389380531,
+      "by_species": {
+        "apple": 29,
+        "pepper": 17,
+        "corn": 157,
+        "tomato": 342,
+        "grape": 20
+      }
+    }
+  },
+  "dev": {
+    "evaluation dev": {
+      "n": 153,
+      "zero_shot_top1": 0.5686274509803921,
+      "head_top1_over_supported": 0.7843137254901961,
+      "combined_top1": 0.5882352941176471,
+      "zero_shot_top1_over_supported": 0.6928104575163399,
+      "by_species": {
+        "corn": 16,
+        "tomato": 71,
+        "apple": 28,
+        "grape": 19,
+        "squash": 19
+      }
+    },
+    "evaluation dev, supported crops only": {
+      "n": 134,
+      "zero_shot_top1": 0.6417910447761194,
+      "head_top1_over_supported": 0.8955223880597015,
+      "combined_top1": 0.664179104477612,
+      "zero_shot_top1_over_supported": 0.7910447761194029,
+      "by_species": {
+        "corn": 16,
+        "tomato": 71,
+        "apple": 28,
+        "grape": 19
+      }
+    }
+  },
+  "note": "Zero-shot is over every species row of the manifest's label matrix (a stand-in of 20 species until the seed's matrix exists), with T_species 1. Combined is models.md 6's rule. Dev is every plant shot of the evaluation set's dev cases; where a source holds photos of an unsupported species (squash), the head can't name them, so a second row scores the supported crops only. Test is the leaf datasets' test split: C and T are chosen on val."
+}

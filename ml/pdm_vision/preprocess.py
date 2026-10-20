@@ -120,13 +120,17 @@ def batch(images: list[Image.Image], recipe: Recipe) -> np.ndarray:
 
 
 def crop_box(im: Image.Image, bbox: tuple[float, float, float, float], grow: float = 0.10) -> Image.Image:
-    """A leaf crop for the disease head: a normalised `[x, y, w, h]` box grown by `grow` on
-    each side and clamped to the image (models.md §7, `crop_grow`)."""
+    """A leaf crop for the disease head, as the worker cuts it (models.md §7, `crop_grow`): the
+    normalised `[x, y, w, h]` box grown by `grow` of its size on each side (`perception.rs`,
+    `classify`), then `PixelRect::from_normalised`: left and top edges floored, right and bottom
+    ceiled, each clamped to the image. A zero-area box, which the worker would cut as an empty
+    image, gets 1 px here."""
     W, H = im.size
-    x, y, w, h = bbox
-    dx, dy = w * grow, h * grow
-    x0, y0 = max(x - dx, 0.0), max(y - dy, 0.0)
-    x1, y1 = min(x + w + dx, 1.0), min(y + h + dy, 1.0)
-    box = (rust_round(x0 * W), rust_round(y0 * H), max(rust_round(x1 * W), rust_round(x0 * W) + 1),
-           max(rust_round(y1 * H), rust_round(y0 * H) + 1))
-    return im.crop(box)
+    x, y, w, h = (float(v) for v in bbox)   # f64, as `BBox` holds it
+    gx, gy, gw, gh = x - w * grow, y - h * grow, w * (1.0 + 2.0 * grow), h * (1.0 + 2.0 * grow)
+    x0 = min(max(math.floor(gx * W), 0), W)
+    y0 = min(max(math.floor(gy * H), 0), H)
+    x1 = min(max(math.ceil((gx + gw) * W), 0), W)
+    y1 = min(max(math.ceil((gy + gh) * H), 0), H)
+    x0, y0 = min(x0, W - 1), min(y0, H - 1)
+    return im.crop((x0, y0, max(x1, x0 + 1), max(y1, y0 + 1)))
