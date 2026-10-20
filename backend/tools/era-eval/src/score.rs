@@ -138,11 +138,11 @@ pub fn score(
 // Normalising
 // ---------------------------------------------------------------------------------------------
 
-/// The text without Markdown emphasis markers (`**six**`, `*six*`, `__6__`), so a number in bold
-/// still binds to its unit (EON gap G21). Used by the count, number and bed readers; the
+/// The text with Markdown emphasis markers (`**six**`, `*six*`, `__6__`) blanked, so a number in
+/// bold still binds to its unit (EON gap G21); a space, not nothing, so "2*3" stays two numbers. Used by the count, number and bed readers; the
 /// yes or no reader handles bold itself (G15).
 fn unemphasised(text: &str) -> String {
-    text.replace(['*', '_'], "")
+    text.replace(['*', '_'], " ")
 }
 
 /// Lower case, straight quotes and hyphens, one space between words.
@@ -1168,6 +1168,7 @@ mod tests {
         ] {
             assert_eq!(answer(&q05, 2026, text), Verdict::Pass, "{text}");
         }
+        assert_eq!(counts("2*3 sprays", 2026, None), BTreeSet::from([2, 3]));
         assert_eq!(
             counts("**48** hours", 2026, Some("hours")),
             BTreeSet::from([48])
