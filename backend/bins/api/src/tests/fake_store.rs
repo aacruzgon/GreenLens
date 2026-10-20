@@ -197,6 +197,7 @@ mod chat_repo {
             Anchor, ChatRoute, ConfirmResult, Conversation, ConversationDetail, ConversationQuery,
             Message, MessageFeedbackRequest, MessageRole, PendingAction,
         },
+        connectors::FarmCitation,
         id::{ChatImageId, ConversationId, MessageId, PendingActionId, UserId},
         ports::{ContentPart, ObjectKey, ObjectRef, StoreError},
         records::diagnosis::Citation,
@@ -549,7 +550,7 @@ mod farm_record_store {
             owner: Membership<Owner>,
             connector: ConnectorId,
             now: Timestamp,
-        ) -> Result<bool, StoreError> {
+        ) -> Result<SyncRequest, StoreError> {
             self.farm_record_store
                 .request_sync(owner, connector, now)
                 .await
@@ -629,6 +630,26 @@ mod farm_record_store {
         ) -> Result<u32, StoreError> {
             self.farm_record_store
                 .delete_records(connector, vendor_ids)
+                .await
+        }
+        async fn delete_chunks_from(
+            &self,
+            connector: ConnectorId,
+            vendor_id: String,
+            from: u32,
+        ) -> Result<u32, StoreError> {
+            self.farm_record_store
+                .delete_chunks_from(connector, vendor_id, from)
+                .await
+        }
+        async fn source_vendor_ids_since(
+            &self,
+            connector: ConnectorId,
+            source: String,
+            since: Timestamp,
+        ) -> Result<Vec<String>, StoreError> {
+            self.farm_record_store
+                .source_vendor_ids_since(connector, source, since)
                 .await
         }
         async fn delete_source_records(

@@ -6,6 +6,7 @@ use crate::{
         Anchor, ChatRoute, ConfirmResult, Conversation, ConversationDetail, ConversationQuery,
         Message, MessageFeedbackRequest, MessageRole, PendingAction,
     },
+    connectors::FarmCitation,
     id::{ChatImageId, ConversationId, MessageId, PendingActionId, UserId},
     ports::{ContentPart, ObjectKey, ObjectRef, StoreError},
     records::diagnosis::Citation,
@@ -54,6 +55,10 @@ pub struct NewMessage {
     pub attachments: Vec<ChatImageId>,
     /// Sources cited.
     pub citations: Vec<Citation>,
+    /// Farm records an assistant message cites ([connectors 7]); empty for a user message.
+    ///
+    /// [connectors 7]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#7-the-agent
+    pub farm_citations: Vec<FarmCitation>,
     /// Tool calls and results, in order.
     pub tool_calls: Vec<ContentPart>,
     /// The classifier's route.

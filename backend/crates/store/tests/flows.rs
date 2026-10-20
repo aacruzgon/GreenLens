@@ -805,6 +805,7 @@ async fn chat_flow() {
         text: text.into(),
         attachments: Vec::new(),
         citations: Vec::new(),
+        farm_citations: Vec::new(),
         tool_calls: parts,
         route: None,
         interrupted: false,

@@ -13,6 +13,7 @@ use utoipa::{
     info(title = "PDM API", description = "Plant, crop and garden health monitoring."),
     modifiers(&BearerAuth),
     security(("clerk" = [])),
+    components(schemas(domain::chat::AnchorType, domain::records::task::TaskState)),
     tags(
         (name = "scans", description = "contracts 3 and 4"),
         (name = "gardens", description = "contracts 9"),

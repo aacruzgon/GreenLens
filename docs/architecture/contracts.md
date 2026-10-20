@@ -1,6 +1,8 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.10, 2026-10-19. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.12, 2026-10-19. Companion to the [architecture document](README.md).
+> **v0.10.12**: section 8 says when `search_farm_records` is offered, how `since` is read and that it returns at most 8 hits framed as `kind="farm_records"`; `Message.farm_citations` are the records the turn's tool calls returned, once per record id, with no SSE event; no wire shape changed.
+> **v0.10.11**: `POST /gardens/{id}/connectors` answers `409 invalid_state` when the garden already has 2 connectors; no wire shape changed.
 > **v0.10.10**: the connector routes accept `Idempotency-Key`, and section 2 lists connectors under `invalid_state` and Sync now under `rate_limited`; no wire shape changed.
 > **v0.10.9** declares the farm connectors' contract ([connectors](../connectors/README.md)): the `Connector` types and eight routes (section 9), `search_farm_records` and `FarmCitation` (section 8), `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations` as optional fields (sections 7, 8), the `FarmRecordId` wire form, the roles rows and the deletion step. The routes answer `409 invalid_state` until E3 turns connectors on.
 > **v0.10.8**: the findings prompt is `findings@2` (it shows the shape of a soil reading, vision vlm.md 7), so `vlm_prompts` reads `system@1,findings@2,indicators@1,verify@1,guided@1`; no wire shape changed.
@@ -1602,7 +1604,7 @@ interface Message {
   text: string;
   attachments: { image_id: Id; url: string }[];
   citations: Citation[];
-  farm_citations?: FarmCitation[];   // farm records an assistant message cites; omitted when empty (section 9, farm connectors)
+  farm_citations?: FarmCitation[];   // farm records the turn's tool calls returned ("records checked"), once per record id; omitted when empty; no SSE event, the app reads them from the stored message (section 9, farm connectors)
   pending_actions: PendingAction[];
   interrupted: boolean;              // the stream dropped before message_completed
   created_at: Timestamp;
@@ -1788,7 +1790,7 @@ The agent's tools return the same records the app sees. Every tool runs as the s
 | `get_plant_measurements` | `plant_id`, `quantity?` | Plants of the garden | `MeasurementPoint[]` (section 9): the latest 50, oldest first |
 | `get_garden_map` | none | The garden | `{ map: GardenMap \| null; neighbours: Record<Id, Id[]> }` (section 9) |
 | `list_tasks` | `state?`: `open` (default), `done` or `dismissed` | The garden | `Task[]` |
-| `search_farm_records` | `query`, `kind?` (`message` or `document`), `since?` (a date) | The garden's synced farm records; every role | `{ text: string; citation: FarmCitation }[]`, at most 8 (`FarmRecordHit`). Lands with the agent work, [EON E5.2](../EON/README.md#e5-the-agent) |
+| `search_farm_records` | `query`, `kind?` (`message` or `document`), `since?` (a date) | The garden's synced farm records; every role. Offered when the garden has a farm record or an `active` or `reauth_needed` connector. `since` is `YYYY-MM-DD`, from that day's midnight in the garden's time zone | `{ text: string; citation: FarmCitation }[]`, at most 8 (`FarmRecordHit`), framed as `kind="farm_records"`. Built in [EON E5.2](../EON/README.md#e5-the-agent) |
 | `remember` | `fact`, `plant_id?` | The garden | `Memory` with `source: "chat"`, and a `memory_saved` event |
 | `request_rescan` | `plant_id`, `photo_kind`, `instructions` | Live plants of the garden | `{ plant_id: Id; photo_kind: ImageKind; instructions: string }`, and a `rescan_requested` event |
 | `create_task` | `title`, `detail?`, `plant_id?`, `due?`, `repeat_every_days?` | The garden; editors and owners only | `PendingAction` (preview `task`) |
@@ -1985,7 +1987,7 @@ Tokens (`connector.secret`), the pending connect's `oauth` state, the sync curso
 | Endpoint | Role | Body | Response |
 |---|---|---|---|
 | `GET /gardens/{id}/connectors` | any | | `200 ConnectorList`. `{ available: false, connectors: [] }` when connectors are off on this server (no `CONNECTOR_KEY`), as for beliefs |
-| `POST /gardens/{id}/connectors` | owner | `{ kind, device_hash }`, `device_hash` = `SHA-256(device_verifier)` as 43 base64url characters; `device_verifier` has the same shape | `201 { connector: Connector, authorize_url: string }`: the `pending` connector and the vendor's consent URL |
+| `POST /gardens/{id}/connectors` | owner | `{ kind, device_hash }`, `device_hash` = `SHA-256(device_verifier)` as 43 base64url characters; `device_verifier` has the same shape | `201 { connector: Connector, authorize_url: string }`: the `pending` connector and the vendor's consent URL. `409 invalid_state` when the garden already has 2 connectors (those being deleted don't count) |
 | `GET /connectors/oauth/callback?code&state&error` | public | | `302` to the app with `code` and `state`. Checks only the state's signature and expiry and stores nothing; unknown query parameters (Google's `scope`, `authuser`) are ignored. A bad, expired or reused state gets `400 invalid_request` |
 | `POST /connectors/{id}/complete` | owner who started it | `{ code, state, device_verifier }` | `200 Connector` (`active`) |
 | `GET /connectors/{id}/available-sources` | owner | | `200 { sources: ConnectorSource[] }`: the channels the bot is a member of, or the folders |
@@ -2444,6 +2446,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.7: `Memory.topic`; shared memories mirrored into SurrealDB Agent Memory as beliefs; `GET /plants/{plant_id}/beliefs`; `search_memory` returns `MemorySearch`; scope erase in the plant and garden cascades | 1, 5, 7, 8.2, 9, 10, 11, 15 |
 | v0.10.8: `vlm_prompts` names `findings@2` | none (the architecture document doesn't list prompt versions) |
 | v0.10.9: the farm connectors' contract: `Connector` and its eight routes, `FarmCitation` and `FarmRecordId`, `search_farm_records`, `PlanStep.farm_citations`, `ActionPlan.farm_records`, `Message.farm_citations`, the owner-only roles rows and the garden cascade's connector step | 5 (tables, deletion), 7 (tools), 9 (API surface) |
+| v0.10.12: `search_farm_records`' offering rule, `since` and framing; `Message.farm_citations` are the records the turn returned | 7 (tools) |
 
 ---
 

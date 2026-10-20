@@ -16,35 +16,98 @@ use crate::{
 fn the_registry_has_every_tool_sorted_and_filters_by_role() {
     let r = ToolRegistry::standard();
     let all: Vec<_> = r
-        .specs_for(Role::Owner)
+        .specs_for(Offer::everything(Role::Owner))
         .into_iter()
         .map(|s| s.name)
         .collect();
-    assert_eq!(all.len(), 19);
+    assert_eq!(all.len(), 20);
     let mut sorted = all.clone();
     sorted.sort();
     assert_eq!(all, sorted, "a stable order keeps the prompt cache");
 
     for role in [Role::Viewer, Role::Reviewer] {
-        let names: Vec<_> = r.specs_for(role).into_iter().map(|s| s.name).collect();
-        assert_eq!(names.len(), 16);
+        let names: Vec<_> = r
+            .specs_for(Offer::everything(role))
+            .into_iter()
+            .map(|s| s.name)
+            .collect();
+        assert_eq!(names.len(), 17);
         for write in ["create_task", "complete_task", "revise_plan"] {
             assert!(
                 !names.iter().any(|n| n == write),
                 "{role:?} is offered {write}"
             );
-            assert!(r.find(write, role).is_none());
+            assert!(r.find(write, Offer::everything(role)).is_none());
         }
         assert!(names.iter().any(|n| n == "remember"));
         assert!(names.iter().any(|n| n == "request_rescan"));
+        assert!(names.iter().any(|n| n == "search_farm_records"));
     }
-    assert!(r.find("revise_plan", Role::Editor).is_some());
+    assert!(
+        r.find("revise_plan", Offer::everything(Role::Editor))
+            .is_some()
+    );
+}
+
+#[test]
+fn search_farm_records_is_left_out_of_a_garden_without_farm_records() {
+    let r = ToolRegistry::standard();
+    for role in [Role::Viewer, Role::Reviewer, Role::Editor, Role::Owner] {
+        let without = Offer {
+            role,
+            farm_records: false,
+        };
+        let names: Vec<_> = r.specs_for(without).into_iter().map(|s| s.name).collect();
+        assert!(
+            !names.iter().any(|n| n == "search_farm_records"),
+            "{role:?}"
+        );
+        assert!(r.find("search_farm_records", without).is_none());
+        assert_eq!(
+            names.len() + 1,
+            r.specs_for(Offer::everything(role)).len(),
+            "only the farm tool goes"
+        );
+        assert!(
+            r.find("search_farm_records", Offer::everything(role))
+                .is_some()
+        );
+    }
+}
+
+#[test]
+fn search_farm_records_frames_its_results_as_farm_records() {
+    let r = ToolRegistry::standard();
+    let offer = Offer::everything(Role::Viewer);
+    let farm = r.find("search_farm_records", offer).unwrap();
+    assert_eq!(farm.data_kind(), DataKind::FarmRecords);
+    assert!(farm.needs_farm_records());
+    assert_eq!(farm.kind(), ToolKind::Read);
+    assert!(!farm.spec().strict);
+    // Every other tool keeps the default.
+    for t in r
+        .offered(offer)
+        .filter(|t| t.name() != ToolName::SearchFarmRecords)
+    {
+        assert_eq!(
+            t.data_kind(),
+            DataKind::ToolResult,
+            "{}",
+            tool_name(t.name())
+        );
+        assert!(!t.needs_farm_records());
+    }
+    let params = &farm.spec().parameters;
+    assert_eq!(params["required"], json!(["query"]));
+    for arg in ["query", "kind", "since"] {
+        assert!(params["properties"][arg].is_object(), "{arg}: {params}");
+    }
 }
 
 #[test]
 fn specs_carry_a_json_schema_of_the_typed_arguments() {
     let r = ToolRegistry::standard();
-    let specs = r.specs_for(Role::Owner);
+    let specs = r.specs_for(Offer::everything(Role::Owner));
     let remember = specs.iter().find(|s| s.name == "remember").unwrap();
     assert_eq!(remember.parameters["type"], "object");
     assert!(remember.parameters["properties"]["fact"].is_object());
@@ -199,7 +262,7 @@ fn write_tools_offer_only_to_editors() {
 #[test]
 fn only_the_tools_that_propose_changes_are_strict() {
     let strict: Vec<String> = ToolRegistry::standard()
-        .specs_for(Role::Owner)
+        .specs_for(Offer::everything(Role::Owner))
         .into_iter()
         .filter(|s| s.strict)
         .map(|s| s.name)
@@ -285,9 +348,171 @@ mod search_memory {
     }
 }
 
+mod search_farm_records {
+    use std::sync::Arc;
+
+    use domain::{
+        authz::{ConversationOwner, Viewer},
+        chat::Anchor,
+        connectors::{FarmRecordHit, FarmRecordKind},
+        garden::gardens::TimeZone,
+        ports::{
+            FarmRecordFilter, FarmRecordMatch, GardenContext, MockFarmRecordStore, MockGardenRepo,
+            MockMemoryStore, NoBeliefs,
+        },
+        records::weather::{Coordinates, LocationPrecision, WeatherCell},
+        wire::{LocalDate, Timestamp},
+    };
+
+    use super::*;
+    use crate::{
+        error::ToolError,
+        testing::{GARDEN, garden_deps, now, owner, spray_log_hit},
+        tools::read::{FARM_RECORD_HITS, local_midnight},
+    };
+
+    fn toronto() -> MockGardenRepo {
+        let mut gardens = MockGardenRepo::new();
+        gardens.expect_garden_context().returning(|garden| {
+            let at = Coordinates {
+                lat: 43.65,
+                lon: -79.38,
+            };
+            Ok(GardenContext {
+                id: garden,
+                name: "Maple Row Farm".to_owned(),
+                coordinates: at,
+                precision: LocationPrecision::About1Km,
+                weather_cell: WeatherCell::of(at),
+                time_zone: TimeZone("America/Toronto".to_owned()),
+                soil_profile: None,
+                map_version: 0,
+            })
+        });
+        gardens
+    }
+
+    /// `n` copies of the spray log hit, numbered as distinct chunks.
+    fn hits(n: u32) -> Vec<FarmRecordMatch> {
+        (0..n)
+            .map(|i| {
+                let mut hit = spray_log_hit();
+                hit.citation.record_id = format!("01JAX3K9T6R2B8V0QZ4M7D1E5C.{i}.D_SPRAY")
+                    .parse()
+                    .unwrap();
+                FarmRecordMatch {
+                    hit,
+                    similarity: 0.9,
+                }
+            })
+            .collect()
+    }
+
+    async fn call(
+        farm: MockFarmRecordStore,
+        args: serde_json::Value,
+    ) -> Result<ToolOutput, ToolError> {
+        let mut deps = garden_deps(MockMemoryStore::new(), Arc::new(NoBeliefs));
+        deps.stores.farm = Arc::new(farm);
+        deps.stores.gardens = Arc::new(toronto());
+        let owner: ConversationOwner<Viewer> = owner(Role::Viewer).await;
+        let ctx = ToolCtx {
+            deps: &deps,
+            owner,
+            anchor: Anchor::Garden(GARDEN.parse().unwrap()),
+            plant: None,
+            message_id: "01JAX3K9T6R2B8V0QZ4M7D1E72".parse().unwrap(),
+            now: now(),
+        };
+        Erased::new(read::SearchFarmRecords).call(&ctx, args).await
+    }
+
+    #[tokio::test]
+    async fn at_most_8_hits_from_its_own_garden_filtered_by_kind_and_since() {
+        let mut farm = MockFarmRecordStore::new();
+        farm.expect_search_records()
+            .withf(|member, query, filter, k| {
+                // Midnight in Toronto on 1 July is 04:00 UTC (EDT).
+                let since: Timestamp = "2026-07-01T04:00:00Z".parse().unwrap();
+                member.garden().to_string() == GARDEN
+                    && query.0.len() == 4
+                    && *filter
+                        == FarmRecordFilter {
+                            kind: Some(FarmRecordKind::Document),
+                            since: Some(since),
+                        }
+                    && *k == FARM_RECORD_HITS
+            })
+            .times(1)
+            // A store that returned too many is cut to 8.
+            .returning(|_, _, _, _| Ok(hits(10)));
+        let out = call(
+            farm,
+            json!({"query": "copper on bed 3", "kind": "document", "since": "2026-07-01"}),
+        )
+        .await
+        .unwrap();
+        let returned: Vec<FarmRecordHit> = serde_json::from_value(out.content).unwrap();
+        assert_eq!(returned.len(), 8);
+        assert_eq!(returned[0], spray_log_hit());
+        assert_eq!(out.effects.len(), 8);
+        assert!(
+            out.effects
+                .iter()
+                .zip(&returned)
+                .all(|(e, h)| *e == ToolEffect::FarmCitation(h.citation.clone()))
+        );
+    }
+
+    #[tokio::test]
+    async fn without_filters_the_search_takes_none() {
+        let mut farm = MockFarmRecordStore::new();
+        farm.expect_search_records()
+            .withf(|_, _, filter, _| *filter == FarmRecordFilter::default())
+            .times(1)
+            .returning(|_, _, _, _| Ok(hits(2)));
+        let out = call(farm, json!({"query": "late blight"})).await.unwrap();
+        assert_eq!(out.content.as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn unknown_arguments_and_kinds_are_refused_before_the_search() {
+        for args in [
+            json!({"query": "x", "garden_id": GARDEN}),
+            json!({"query": "x", "kind": "email"}),
+            json!({"query": "x", "since": "1 July"}),
+        ] {
+            // No expectation: a search would panic the test.
+            let err = call(MockFarmRecordStore::new(), args.clone())
+                .await
+                .unwrap_err();
+            assert!(matches!(err, ToolError::Rejected(_)), "{args}");
+        }
+    }
+
+    #[test]
+    fn since_is_the_gardens_midnight() {
+        let day: LocalDate = "2026-01-15".parse().unwrap();
+        assert_eq!(
+            local_midnight(day, "America/Toronto"),
+            "2026-01-15T05:00:00Z".parse().unwrap()
+        );
+        assert_eq!(
+            local_midnight(day, "not a zone"),
+            "2026-01-15T00:00:00Z".parse().unwrap()
+        );
+        // Midnight doesn't exist in Santiago on the day DST starts (2026-09-06): 01:00 local.
+        let gap: LocalDate = "2026-09-06".parse().unwrap();
+        assert_eq!(
+            local_midnight(gap, "America/Santiago"),
+            "2026-09-06T04:00:00Z".parse().unwrap()
+        );
+    }
+}
+
 #[test]
 fn remember_takes_an_optional_topic() {
-    let specs = ToolRegistry::standard().specs_for(Role::Viewer);
+    let specs = ToolRegistry::standard().specs_for(Offer::everything(Role::Viewer));
     let remember = specs.iter().find(|s| s.name == "remember").unwrap();
     assert!(remember.parameters["properties"]["topic"].is_object());
     let args: ui::RememberArgs = serde_json::from_value(json!({"fact": "x"})).unwrap();
