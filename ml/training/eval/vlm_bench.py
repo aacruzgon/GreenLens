@@ -12,7 +12,8 @@ would draw them from isn't loaded yet. So a case of another species is left out,
 diagnosed case whose problem isn't one of its fixture's three candidates is kept for validity,
 timing and false signs, but not scored for diagnosis. A case without a leaf close-up (a one-photo
 case, sent as the whole_plant shot) also sends its photo to the indicator call as a leaf close-up,
-since a question gets only the images its indicator names.
+since a question gets only the images its indicator names. The case offers its shots and that
+close-up; the Rust test picks and orders each call's images with the pipeline's routing rules.
 
 `run` drives the Rust test `bench_cases` (backend/bins/worker/src/vlm/tests/bench.rs), which
 sends each case through the worker's real `analyse` (its prompts, schemas, image preparation and
@@ -68,6 +69,8 @@ CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 KIND_ORDER = ("whole_plant", "leaf_closeup", "leaf_underside", "flower_fruit", "soil_surface")
 INDICATOR_KINDS = ("leaf_closeup", "leaf_underside", "whole_plant", "flower_fruit")
 DEFAULT_PIXELS = (602112, 1003520, 1404928, 2007040)   # about 0.6, 1.0, 1.4 and 2.0 MP, evaluation 8
+DIAGNOSIS_NOTE = ("Diagnosis is the top candidate by its unweighted share of \"yes\" answers. The payload carries no "
+                  "indicator weights and no disease-head scores, so it measures the VLM's answers alone, not the app's diagnosis.")
 
 
 def ulid(seed: str) -> str:
@@ -412,6 +415,7 @@ def score(args) -> int:
                      f"{f(r['job_ms_p50'])} | {f(r['job_ms_p95'])} | {f(r['species_agree'], True)} | "
                      f"{f(r['diagnosis_top1_sure'], True)} (n={r['diagnosis_n']}) | {sizes(r)} | {r['top_ties']} | {f(r['healthy_no_candidate'], True)} (n={r['healthy_n']}) | "
                      f"{f(r['yes_on_healthy'], True)} | {f(r['unsure_share'], True)} | {dmg} | {r['organisms_reported']} | {r['peak_gpu_mib']:,} MiB |")
+    lines += ["", DIAGNOSIS_NOTE]
     lines += indicator_tables(report)
     (REPORTS / f"vlm-bench-{args.out}.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))

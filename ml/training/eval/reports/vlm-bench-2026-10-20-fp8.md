@@ -7,6 +7,8 @@
 | fp8 | 1,003,520 | 1 | 65/65 | 0 | 6.2 s | 8.4 s | 100% | 12% (n=26) | 2/11 / 1/15 | 0 | 100% (n=11) | 0% | 32% | other 22, chewed_margins 31, leaf_mines 13, shot_holes 4, ragged_holes 7, sooty_mould 1, skeletonised_leaves 1 | 19 | 14,538 MiB |
 | fp8 | 1,003,520 | 2 | 65/65 | 0 | 6.8 s | 9.6 s | 97% | 15% (n=26) | 3/11 / 1/15 | 1 | 100% (n=11) | 0% | 32% | chewed_margins 30, other 17, leaf_mines 13, shot_holes 14, ragged_holes 7, sooty_mould 1, skeletonised_leaves 1 | 31 | 14,538 MiB |
 
+Diagnosis is the top candidate by its unweighted share of "yes" answers. The payload carries no indicator weights and no disease-head scores, so it measures the VLM's answers alone, not the app's diagnosis.
+
 ## Indicators: fp8, 1,003,520 pixels, 1 at once
 
 | Indicator | Cases with the problem: yes / no / unsure | Other cases: yes / no / unsure |

@@ -27,6 +27,8 @@
 | qwen3vl-awq | 2,007,040 | 1 | 65/65 | 0 | 5.3 s | 6.1 s | 97% | 19% (n=26) | 3/11 / 2/15 | 1 | 100% (n=11) | 0% | 82% | other 32, chewed_margins 13, leaf_mines 3, ragged_holes 7 | 3 | 14,904 MiB |
 | qwen3vl-awq | 2,007,040 | 2 | 65/65 | 0 | 5.8 s | 7.0 s | 97% | 19% (n=26) | 3/11 / 2/15 | 0 | 100% (n=11) | 0% | 83% | other 32, chewed_margins 13, leaf_mines 3, ragged_holes 7 | 3 | 14,904 MiB |
 
+Diagnosis is the top candidate by its unweighted share of "yes" answers. The payload carries no indicator weights and no disease-head scores, so it measures the VLM's answers alone, not the app's diagnosis.
+
 ## Indicators: fp8, 1,003,520 pixels, 1 at once
 
 | Indicator | Cases with the problem: yes / no / unsure | Other cases: yes / no / unsure |

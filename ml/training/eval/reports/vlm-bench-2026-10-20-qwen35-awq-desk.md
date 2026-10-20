@@ -5,6 +5,8 @@
 | qwen35-awq-desk | 1,003,520 | 1 | 65/65 | 0 | 5.3 s | 6.2 s | 98% | 31% (n=26) | 4/11 / 4/15 | 5 | 91% (n=11) | 1% | 26% | other 66, chewed_margins 7, leaf_mines 6 | 0 | 12,500 MiB |
 | qwen35-awq-desk | 1,003,520 | 2 | 65/65 | 0 | 6.2 s | 7.6 s | 98% | 31% (n=26) | 4/11 / 4/15 | 4 | 91% (n=11) | 1% | 25% | other 67, leaf_mines 3, chewed_margins 7 | 0 | 12,500 MiB |
 
+Diagnosis is the top candidate by its unweighted share of "yes" answers. The payload carries no indicator weights and no disease-head scores, so it measures the VLM's answers alone, not the app's diagnosis.
+
 ## Indicators: qwen35-awq-desk, 1,003,520 pixels, 1 at once
 
 | Indicator | Cases with the problem: yes / no / unsure | Other cases: yes / no / unsure |
