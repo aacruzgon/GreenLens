@@ -69,7 +69,14 @@ export function ModeBar({ items, onSelect }: { items: ModeBarItem[]; onSelect: (
       onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
       style={{ alignSelf: "center", maxWidth: "100%", borderRadius: 999, backgroundColor: camera.pill, borderWidth: 1, borderColor: camera.hairline }}
     >
-      <ScrollView ref={scroll} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ padding: 4, gap: 2 }}>
+      {/* A ScrollView grows to fill its parent by default (flexGrow 1); the bar is one row. */}
+      <ScrollView
+        ref={scroll}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={{ flexGrow: 0 }}
+        contentContainerStyle={{ padding: 4, gap: 2 }}
+      >
         {items.map((m) => {
           const state = MARK_WORDS[m.mark];
           return (
