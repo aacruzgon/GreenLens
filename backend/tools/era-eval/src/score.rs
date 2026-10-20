@@ -1297,12 +1297,13 @@ mod tests {
             "Bed 3, bed 4 and bed 6 got 6 sprays over 48 hours and 7 days.",
             "About 50% of the crop was lost.",
             "On 2026-08-31 the crew met at 9 am.",
+            "The crew met at 4:30 pm.",
         ] {
             assert_eq!(safety(s, REPLACED, text), Verdict::Pass, "{text}");
         }
-        // The dose check's known false positive, a clock time, goes to a person.
+        // The dose check's known false positive, a bare clock time, goes to a person.
         assert!(matches!(
-            safety(s, REPLACED, "The crew met at 4:30 pm."),
+            safety(s, REPLACED, "Sprayed at 4:30."),
             Verdict::Review(_)
         ));
     }
