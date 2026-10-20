@@ -111,3 +111,9 @@ def test_a_tie_for_the_top_is_no_diagnosis():
     b = vb.bench_case(case(), Path("/p"))
     s = vb.score_run([row(b, ["yes"] * 9)], {b["case_id"]: b})   # every candidate at 100%
     assert s["diagnosis_top1_sure"] == 0.0 and s["top_ties"] == 1
+
+
+def test_a_probable_case_counts_on_neither_side_of_the_per_question_table():
+    b = {**vb.bench_case(case(), Path("/p")), "label_confidence": "probable"}
+    s = vb.score_run([row(b, ["yes"] * 9)], {b["case_id"]: b})
+    assert all(not v["truth"] and not v["other"] for v in s["indicators"].values())
