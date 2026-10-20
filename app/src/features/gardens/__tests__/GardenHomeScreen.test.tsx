@@ -10,7 +10,7 @@ import { ActiveGardenContext } from "../hooks/useActiveGarden";
 import { GardenHomeScreen } from "../screens/GardenHomeScreen";
 
 // The home over the mock transport with no delays (the mock's own timers stay off: delayScale 0).
-async function renderHome() {
+async function renderHome(firstTask = "Check Tomato 2's lower leaves") {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   await render(
     <QueryClientProvider client={qc}>
@@ -22,7 +22,7 @@ async function renderHome() {
     </QueryClientProvider>,
   );
   await screen.findByRole("header", { name: "Back garden" });
-  await screen.findByText("Check Tomato 2's lower leaves");
+  await screen.findByText(firstTask);
 }
 
 beforeEach(() => {
@@ -52,6 +52,36 @@ describe("GardenHomeScreen", () => {
 
     await fireEvent.press(screen.getByRole("button", { name: "Done: Frost on Thursday: cover tender plants" }));
     expect(screen.queryByText("Frost on Thursday: cover tender plants")).toBeNull();
+  });
+
+  it("sorts every plant, past the first page, and finds the alert past the first page of tasks", async () => {
+    // 24 plants named before every fixture plant push the sick Tomato 1 off GET /plants' first page of 20, and
+    // 24 overdue tasks push the frost alert off the first page of open tasks.
+    const basil = [...mockStore.plants.values()].find((p) => p.id === IDS.basil)!;
+    const chore = mockStore.tasks.find((t) => t.id === "task_t2_check_b")!;
+    for (let i = 1; i <= 24; i++) {
+      const n = String(i).padStart(2, "0");
+      mockStore.plants.set(`plant_extra_${n}`, { ...basil, id: `plant_extra_${n}`, name: `Aster ${n}` });
+      mockStore.tasks.push({ ...chore, id: `task_extra_${n}`, title: `Weed bed ${n}`, source: "user", repeat: undefined, due: "2026-01-01" });
+    }
+    await renderHome("Weed bed 01");
+    await waitFor(() => expect(screen.getAllByTestId(/^plant-card-/)).toHaveLength(30));
+    expect(screen.getAllByTestId(/^plant-card-/)[0]!.props.testID).toBe(`plant-card-${IDS.tomato1}`);
+    expect(screen.getByText("Frost on Thursday: cover tender plants")).toBeTruthy();
+  });
+
+  it("says when a check fails, unchecks the row and offers to try again", async () => {
+    const warning = jest.spyOn(haptics, "warning");
+    await renderHome();
+    scenario.set({ callFault: "invalid_state" });
+    await fireEvent.press(screen.getByRole("checkbox", { name: "Mark done: Check Tomato 2's lower leaves" }));
+    expect(await screen.findByText(`Couldn't mark "Check Tomato 2's lower leaves" done`)).toBeTruthy();
+    expect(warning).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("checkbox", { name: "Mark done: Check Tomato 2's lower leaves" })).toBeTruthy();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(screen.queryByText(`Couldn't mark "Check Tomato 2's lower leaves" done`)).toBeNull();
+    await waitFor(() => expect(mockStore.tasks.find((t) => t.id === "task_t2_check_b")?.done_at).toBeTruthy());
   });
 
   it("shows a viewer no check boxes and no Done", async () => {

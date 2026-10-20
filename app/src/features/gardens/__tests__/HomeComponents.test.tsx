@@ -87,7 +87,7 @@ describe("GardenHero", () => {
       <GardenHero
         name="Back garden"
         eyebrow="Toronto · Monday"
-        weatherLine="11 °C and light rain, 84% humidity. Frost possible Thursday night."
+        weatherLine="11 °C after light rain, 84% humidity. Frost possible Thursday night."
         photo={{ uri: "https://example.com/basil.jpg" }}
         photoLabel="Basil"
         ground="#EEF2E9"
@@ -97,7 +97,7 @@ describe("GardenHero", () => {
     );
     expect(screen.getByRole("header", { name: "Back garden" })).toBeTruthy();
     expect(screen.getByText("Toronto · Monday")).toBeTruthy();
-    expect(screen.getByText("11 °C and light rain, 84% humidity. Frost possible Thursday night.")).toBeTruthy();
+    expect(screen.getByText("11 °C after light rain, 84% humidity. Frost possible Thursday night.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Switch garden/ })).toBeNull();
   });
 

@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 
-import { flattenPages, imageSource, isApiError, useGarden, useGardens, useGardenWeather, useMemories, usePlants, useTasks } from "@/api";
+import { flattenPages, imageSource, isApiError, useAllPlants, useGarden, useGardens, useGardenWeather, useMemories, useTasks } from "@/api";
 import { can } from "@/domain/permissions";
 import type { Task } from "@/domain/types";
 import { taskMeta, useCompleteTask } from "@/features/tasks";
@@ -23,10 +23,14 @@ export function useGardenHome(gardenId: string) {
   const garden = useGarden(gardenId);
   const gardens = useGardens();
   const weather = useGardenWeather(gardenId);
-  const plants = usePlants(gardenId);
+  // Every plant, not the first page: the sort by health and the hero must see them all.
+  const plants = useAllPlants(gardenId);
   const memories = useMemories(gardenId);
   const tasks = useTasks(gardenId, { state: "open" });
-  const { complete, done } = useCompleteTask();
+  // Alerts have their own query (screens 2): open tasks come sorted by due, so a frost alert could fall past
+  // the first page of them.
+  const alertTasks = useTasks(gardenId, { source: "forecast_alert", state: "open" });
+  const { complete, done, failed } = useCompleteTask();
 
   const g = garden.data;
   // Dates depend on the garden's time zone; until it loads they are unknown, and so are the sections built on them.
@@ -39,9 +43,10 @@ export function useGardenHome(gardenId: string) {
   const canScan = can(role, "scan.create");
   const canNote = can(role, "memory.note");
 
-  const plantList = flattenPages(plants.data);
+  const plantList = plants.data ?? [];
   const plantName = (id: string) => plantList.find((p) => p.id === id)?.name;
   const taskList = flattenPages(tasks.data);
+  const alertList = flattenPages(alertTasks.data);
   const checked = [...done.values()];
 
   const hero = pickHeroPhoto(plantList);
@@ -89,7 +94,7 @@ export function useGardenHome(gardenId: string) {
       : { status: "loading" };
 
   // An alert done here leaves at once (roadmap F1 exit checks: Done removes it).
-  const alerts: AlertView[] = openAlerts(taskList)
+  const alerts: AlertView[] = openAlerts(alertList)
     .filter((t) => !done.has(t.id))
     .map((t) => ({ id: t.id, title: t.title, detail: t.detail }));
 
@@ -99,7 +104,7 @@ export function useGardenHome(gardenId: string) {
       ? { status: "error", message: messageOf(memories.error), retry: () => void memories.refetch() }
       : { status: "loading" };
 
-  const byId = (id: string) => taskList.find((t) => t.id === id);
+  const byId = (id: string) => taskList.find((t) => t.id === id) ?? alertList.find((t) => t.id === id);
 
   return {
     garden: g
@@ -125,10 +130,28 @@ export function useGardenHome(gardenId: string) {
     notes: notesView,
     // The garden switcher lists the user's gardens when there are two or more (screens 3.1).
     gardens: { items: gardenChoices, activeId: gardenId },
-    can: { writeTasks: canWriteTasks, note: canNote, scan: canScan, addPlant: can(role, "plant.write") },
+    // A Done or check box that failed, said under the alerts or over Today, wherever the task is; cleared by the next try.
+    failedTask: failed
+      ? {
+          id: failed.task.id,
+          isAlert: failed.task.source === "forecast_alert",
+          title: `Couldn't mark "${failed.task.title}" done`,
+          message: failed.message,
+          retry: () => complete(failed.task),
+        }
+      : undefined,
+    // **+** opens the new-scan sheet, so it goes with scan.create, as the sheet does.
+    can: { writeTasks: canWriteTasks, note: canNote, scan: canScan },
     actions: {
       refresh: async () => {
-        await Promise.all([garden.refetch(), weather.refetch(), plants.refetch(), tasks.refetch(), memories.refetch()]);
+        await Promise.all([
+          garden.refetch(),
+          weather.refetch(),
+          plants.refetch(),
+          tasks.refetch(),
+          alertTasks.refetch(),
+          memories.refetch(),
+        ]);
       },
       completeTask: (id: string) => {
         const task = byId(id);

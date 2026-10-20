@@ -9,13 +9,14 @@ import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { TaskRow } from "@/features/tasks";
-import { Card, EmptyState, Enter, ErrorState, Section, Skeleton, Text, WASH_HEIGHT, Wash, gutter, space, useTheme } from "@/ui";
+import { Banner, Card, EmptyState, Enter, ErrorState, Section, Skeleton, Text, WASH_HEIGHT, Wash, gutter, space, useTheme } from "@/ui";
 
 import { AlertCard } from "../components/AlertCard";
 import { GardenHero } from "../components/GardenHero";
 import { GardenNotes } from "../components/GardenNotes";
 import { HeroControls, chooseGarden } from "../components/HeroControls";
 import { PlantCarousel, PlantCarouselSkeleton } from "../components/PlantCarousel";
+import { StatusBarScrim } from "../components/StatusBarScrim";
 import { WeatherCard } from "../components/WeatherCard";
 import { useActiveGardenId } from "../hooks/useActiveGarden";
 import { useGardenHome } from "../hooks/useGardenHome";
@@ -88,6 +89,15 @@ export function GardenHomeScreen() {
   const gardens = view.gardens.items;
   // The switcher is the ▾ on the title, only with two or more gardens (screens 3.1).
   const onSwitchGarden = gardens.length >= 2 ? () => chooseGarden(gardens, view.actions.switchGarden) : undefined;
+  const failed = view.failedTask;
+  const failedBanner = failed ? (
+    <Banner
+      tone="danger"
+      title={failed.title}
+      message={failed.message}
+      action={{ label: "Try again", onPress: failed.retry }}
+    />
+  ) : null;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }} testID="garden-home">
@@ -114,7 +124,7 @@ export function GardenHomeScreen() {
           topInset={insets.top}
         />
         <HeroControls
-          onAddPlant={view.can.addPlant ? view.actions.addPlant : undefined}
+          onAddPlant={view.can.scan ? view.actions.addPlant : undefined}
           overPhoto={hasPhoto}
           topInset={insets.top}
         />
@@ -125,7 +135,7 @@ export function GardenHomeScreen() {
             <WeatherCard state={view.weather} />
           </Enter>
 
-          {view.alerts.length > 0 ? (
+          {view.alerts.length > 0 || failed?.isAlert ? (
             <Enter delay={STAGGER * 2} style={{ gap: space[3] }}>
               {view.alerts.map((a) => (
                 <AlertCard
@@ -136,6 +146,7 @@ export function GardenHomeScreen() {
                   onDone={view.can.writeTasks ? () => view.actions.completeTask(a.id) : undefined}
                 />
               ))}
+              {failed?.isAlert ? failedBanner : null}
             </Enter>
           ) : null}
 
@@ -156,6 +167,7 @@ export function GardenHomeScreen() {
           {emptyGarden ? null : (
             <Enter delay={STAGGER * 4}>
               <Section title="Today">
+                {failed && !failed.isAlert ? failedBanner : null}
                 {today.status === "loading" ? (
                   <TodaySkeleton />
                 ) : today.status === "error" ? (
@@ -193,6 +205,7 @@ export function GardenHomeScreen() {
           </Enter>
         </View>
       </ScrollView>
+      <StatusBarScrim topInset={insets.top} visible={!(hasPhoto && overHero)} />
     </View>
   );
 }

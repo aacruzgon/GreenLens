@@ -24,7 +24,7 @@ export interface WeatherDayView {
 
 export interface WeatherView {
   days: WeatherDayView[];
-  /** "Frost possible Thursday", or undefined without a frost day ahead. */
+  /** "Frost possible tonight" or "Frost possible Thursday", or undefined without a frost day from today on. */
   frostNote?: string;
   /** "Updated 10:00", in the garden's time zone. */
   updated: string;
@@ -57,13 +57,14 @@ export function dayKind(day: Pick<ForecastDay, "frost_risk" | "precip_mm" | "mea
   return "sun";
 }
 
-/** The first frost day ahead, if any. */
+/** The first frost day in the forecast, if any. */
 export function firstFrostDay(forecast: readonly ForecastDay[]): ForecastDay | undefined {
   return forecast.find((d) => d.frost_risk);
 }
 
-/** "tomorrow" or the weekday's name, for a date after today. */
+/** "tonight", "tomorrow" or the weekday's name, for today or a date after it. */
 function whenWord(date: LocalDate, today: LocalDate): string {
+  if (date === today) return "tonight";
   const next = localDate(today);
   next.setDate(next.getDate() + 1);
   return format(next, "yyyy-MM-dd") === date ? "tomorrow" : weekday(date);
@@ -91,7 +92,7 @@ export function weatherView(w: WeatherSummary, timeZone: string, today: LocalDat
       accessibilityLabel: parts.join(", "),
     };
   });
-  const frost = firstFrostDay(w.forecast.filter((d) => d.date > today));
+  const frost = frostFromToday(w.forecast, today);
   return {
     days,
     frostNote: frost ? `Frost possible ${whenWord(frost.date, today)}` : undefined,
@@ -99,20 +100,28 @@ export function weatherView(w: WeatherSummary, timeZone: string, today: LocalDat
   };
 }
 
+/** Today's frost counts too: its night is still ahead when the home is open in the day. */
+function frostFromToday(forecast: readonly ForecastDay[], today: LocalDate): ForecastDay | undefined {
+  return firstFrostDay(forecast.filter((d) => d.date >= today));
+}
+
 /**
- * Now, in words: "light rain" after 1 to 10 mm in the past day, "rain" above that, else "cloudy" or "partly
- * cloudy" from the humidity (the contract has no sky condition; the same reading as the day pictograms).
+ * The sky, in words: "after light rain" after 1 to 10 mm in the past day, "after rain" above that, else "and
+ * cloudy" or "and partly cloudy" from the humidity. The rain is the past 24 hours', not the sky now, so it is
+ * worded as past (the contract has no sky condition; the same reading as the day pictograms).
  */
 export function skyWords(current: Pick<WeatherSummary["current"], "precip_mm_last_24h" | "rh_pct">): string {
   const rain = current.precip_mm_last_24h;
-  if (rain >= 10) return "rain";
-  if (rain >= 1) return "light rain";
-  return current.rh_pct >= 80 ? "cloudy" : "partly cloudy";
+  if (rain >= 10) return "after rain";
+  if (rain >= 1) return "after light rain";
+  return current.rh_pct >= 80 ? "and cloudy" : "and partly cloudy";
 }
 
-/** The hero's line, as the mockup sets it: "14 °C and light rain, 92% humidity. Frost possible Thursday night." */
+/** The hero's line: "14 °C after light rain, 92% humidity. Frost possible Thursday night." ("… tonight." for today). */
 export function heroWeatherLine(w: WeatherSummary, today: LocalDate): string {
-  const now = `${degrees(w.current.temp_c).replace("°", " °C")} and ${skyWords(w.current)}, ${Math.round(w.current.rh_pct)}% humidity.`;
-  const frost = firstFrostDay(w.forecast.filter((d) => d.date > today));
-  return frost ? `${now} Frost possible ${whenWord(frost.date, today)} night.` : now;
+  const now = `${degrees(w.current.temp_c).replace("°", " °C")} ${skyWords(w.current)}, ${Math.round(w.current.rh_pct)}% humidity.`;
+  const frost = frostFromToday(w.forecast, today);
+  if (!frost) return now;
+  const when = whenWord(frost.date, today);
+  return `${now} Frost possible ${when === "tonight" ? when : `${when} night`}.`;
 }

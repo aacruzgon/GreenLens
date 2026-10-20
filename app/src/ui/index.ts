@@ -23,5 +23,5 @@ export { Fade, type FadeProps } from "./primitives/Fade";
 export { StatusShape, STATUS_SHAPE, type StatusShapeProps } from "./composites/StatusShape";
 export { StatusChip, type StatusChipProps } from "./composites/StatusChip";
 export { MeltPhoto, type MeltPhotoProps, type MeltKind } from "./composites/MeltPhoto";
-export { hiddenSvg } from "./svgId";
+export { hiddenSvg, useSvgId } from "./svgId";
 export { ConfidenceBadge, type ConfidenceBadgeProps } from "./composites/ConfidenceBadge";

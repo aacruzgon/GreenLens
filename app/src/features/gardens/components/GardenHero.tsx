@@ -15,7 +15,7 @@ export interface GardenHeroProps {
   name?: string;
   /** "Toronto · Monday". */
   eyebrow?: string;
-  /** "14 °C and light rain, 92% humidity. Frost possible Thursday night." */
+  /** "14 °C after light rain, 92% humidity. Frost possible Thursday night." */
   weatherLine?: string;
   /** Opens the garden switcher; set only with two or more gardens, and draws a ▾ after the name. */
   onSwitchGarden?: () => void;
