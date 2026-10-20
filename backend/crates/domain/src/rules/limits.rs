@@ -13,6 +13,11 @@ pub const PENDING_ACTION_TTL: Duration = Duration::from_hours(24);
 pub const INVITE_TTL: Duration = Duration::from_hours(168);
 /// Idempotency keys are kept for 24 hours ([contracts 1]).
 pub const IDEMPOTENCY_TTL: Duration = Duration::from_hours(24);
+/// A `running` idempotency key older than this is taken over by the next retry: the process
+/// that began it died before it released or finished the key (a `complete` exchange outlives
+/// its request, so a restart mid-exchange leaves no `Drop` to release it). The longest request
+/// is a `complete` exchange, under 10 minutes (see [`CONNECT_CLAIM_HOLD`]).
+pub const IDEMPOTENCY_RUNNING_STALE: Duration = Duration::from_mins(10);
 /// Invite-code attempts per user per minute ([contracts 9]).
 pub const INVITE_ATTEMPTS_PER_MINUTE: u32 = 10;
 /// A chat message's text, in characters ([contracts 8]).
