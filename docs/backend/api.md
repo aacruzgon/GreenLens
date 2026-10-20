@@ -4733,10 +4733,6 @@ impl FarmSync {
             deadline: tokio::time::Instant::now() + self.config.run_budget,
         };
         let mut cursors = row.cursors.clone();
-        let mut count = match self.store.garden_record_count(run.garden).await {
-            Ok(n) => n,
-            Err(e) => return self.internal(&row, cursors, Box::new(e)).await,
-        };
         let sources = &row.connector.sources;
         let rounds: Vec<u32> = sources
             .iter()
@@ -4759,7 +4755,7 @@ impl FarmSync {
                 continue;
             }
             let read = self
-                .read_source(&run, src, &mut state, (&mut count, &mut probes), shutdown)
+                .read_source(&run, src, &mut state, &mut probes, shutdown)
                 .await;
             if matches!(read, Ok(Read::Done)) {
                 state.round = next_round;
@@ -4805,13 +4801,13 @@ impl FarmSync {
     }
 
     /// Reads one source's pages until its pass ends, the budget runs out or shutdown comes.
-    /// `count` follows the garden's records and `probes` the run's older-item checks left.
+    /// `probes` follows the run's older-item checks left.
     async fn read_source(
         &self,
         run: &Run<'_>,
         src: &ConnectorSource,
         state: &mut SourceState,
-        (count, probes): (&mut u32, &mut u32),
+        probes: &mut u32,
         shutdown: &CancellationToken,
     ) -> Result<Read, Stop> {
         let window = run.source.reread_window();
@@ -4857,7 +4853,7 @@ impl FarmSync {
                 page = run.source.read_page(&run.token, request) => page.map_err(Stop::Vendor)?,
             };
             *probes = probes.saturating_sub(page.probes);
-            self.store_page(run, src, &page, count).await?;
+            self.store_page(run, src, &page).await?;
             if let Some(reread) = state.reread.as_mut() {
                 reread
                     .seen
@@ -4869,7 +4865,7 @@ impl FarmSync {
             state.more = page.more;
             if !page.more {
                 if let Some(reread) = state.reread.take() {
-                    self.delete_unseen(run, src, &reread, count).await?;
+                    self.delete_unseen(run, src, &reread).await?;
                     state.reread_at = Some(run.now);
                 } else if state.reread_at.is_none() {
                     // The first pass read the whole 180 days, the re-read window included.
@@ -4888,7 +4884,6 @@ impl FarmSync {
         run: &Run<'_>,
         src: &ConnectorSource,
         reread: &Reread,
-        count: &mut u32,
     ) -> Result<(), Stop> {
         let stored = self
             .store
@@ -4904,20 +4899,18 @@ impl FarmSync {
             .collect();
         if !gone.is_empty() {
             let deleted = self.store.delete_records(run.id, gone).await?;
-            *count = count.saturating_sub(deleted);
             tracing::info!(source = %src.id, deleted, "records gone at the vendor deleted");
         }
         Ok(())
     }
 
     /// Chunks, hashes, embeds the changed chunks and stores one page; deletes what it reports
-    /// gone. `count` follows the garden's records.
+    /// gone.
     async fn store_page(
         &self,
         run: &Run<'_>,
         src: &ConnectorSource,
         page: &FarmPage,
-        count: &mut u32,
     ) -> Result<(), Stop> {
         // One item per vendor id; a later copy wins.
         let mut items: BTreeMap<&str, &domain::ports::FarmItem> = BTreeMap::new();
@@ -4981,31 +4974,28 @@ impl FarmSync {
                 records.extend(item_records);
             }
         }
-        if count.saturating_add(new) > self.config.max_records {
-            return Err(Stop::TooLarge);
+        // The garden's count is read for each page, not once a run: up to 4 connectors sync
+        // side by side, and another connector of the garden may have stored records since.
+        // Two pages stored at once can still pass the limit, by at most a page each.
+        if new > 0 {
+            let count = self.store.garden_record_count(run.garden).await?;
+            if count.saturating_add(new) > self.config.max_records {
+                return Err(Stop::TooLarge);
+            }
         }
         self.embed(&mut records, &changed).await?;
         if !records.is_empty() {
-            let written = self.store.upsert_records(run.id, records).await?;
-            // A page is one source's, so the store writes all of it or, when the owner dropped
-            // the source meanwhile, none: then none of it counts toward the garden's records.
-            if written > 0 {
-                *count += new;
-            }
+            self.store.upsert_records(run.id, records).await?;
         }
         for (vendor_id, from) in shrunk {
-            let deleted = self
-                .store
+            self.store
                 .delete_chunks_from(run.id, vendor_id, from)
                 .await?;
-            *count = count.saturating_sub(deleted);
         }
         if !page.removed.is_empty() {
-            let deleted = self
-                .store
+            self.store
                 .delete_records(run.id, page.removed.clone())
                 .await?;
-            *count = count.saturating_sub(deleted);
         }
         Ok(())
     }

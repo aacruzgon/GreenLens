@@ -680,6 +680,125 @@ async fn a_page_of_a_source_dropped_meanwhile_does_not_count_toward_the_limit() 
     assert_eq!(b.count(owner.1).await, 1);
 }
 
+/// A vendor whose second page of `C1` comes while another connector of the garden stores
+/// records, as one syncing side by side in `run_due` would.
+struct RacingSource {
+    store: Arc<SurrealStore>,
+    other: std::sync::OnceLock<ConnectorId>,
+    calls: AtomicUsize,
+}
+
+#[async_trait]
+impl FarmSource for RacingSource {
+    fn kind(&self) -> ConnectorKind {
+        ConnectorKind::Slack
+    }
+
+    fn reread_window(&self) -> Option<Duration> {
+        None
+    }
+
+    async fn available_sources(
+        &self,
+        _token: &VendorToken,
+    ) -> Result<Vec<ConnectorSource>, FarmSourceError> {
+        Ok(Vec::new())
+    }
+
+    async fn read_page(
+        &self,
+        _token: &VendorToken,
+        _request: FarmPageRequest,
+    ) -> Result<FarmPage, FarmSourceError> {
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            return Ok(page(
+                vec![
+                    item("C1", "1.0", "one", pinned()),
+                    item("C1", "2.0", "two", pinned()),
+                ],
+                true,
+                "p1",
+            ));
+        }
+        let other = *self.other.get().expect("the other connector is set");
+        let records = (0..3)
+            .map(|i| NewFarmRecord {
+                id: FarmRecordId::new(other, &format!("D1/{i}.0"), 0).expect("id"),
+                kind: FarmRecordKind::Message,
+                source: "D1".into(),
+                title: "#d1".into(),
+                author: None,
+                link: "l".into(),
+                text: "x".into(),
+                text_hash: chunk::text_hash("x"),
+                vector: Some(FarmVector {
+                    embedding: Embedding(vec![1.0, 0.0, 0.0, 0.0]),
+                    model: "counting".into(),
+                }),
+                at: pinned(),
+            })
+            .collect();
+        self.store
+            .upsert_records(other, records)
+            .await
+            .expect("the other connector's records");
+        Ok(page(
+            vec![item("C1", "3.0", "three", pinned())],
+            false,
+            "done",
+        ))
+    }
+
+    async fn revoke(&self, _token: &VendorToken) -> Result<(), FarmSourceError> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn the_limit_counts_what_another_connector_stored_during_the_run() {
+    let store = store().await;
+    let source = Arc::new(RacingSource {
+        store: store.clone(),
+        other: std::sync::OnceLock::new(),
+        calls: AtomicUsize::new(0),
+    });
+    let config = SyncConfig {
+        max_records: 5,
+        ..SyncConfig::default()
+    };
+    let b = bench(store, source.clone(), config);
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    let other = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Era,
+        &["D1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    source.other.set(other).expect("set once");
+    // Page 1 stores 2 (2 of 5); the other connector then stores 3 (5 of 5), so page 2's one
+    // record would pass the limit. Counted once at the run's start, the garden would hold 6.
+    let end = b
+        .sync
+        .sync_connector(b.row(id).await, &CancellationToken::new())
+        .await;
+    assert_eq!(end, RunEnd::Failed(SyncErrorCode::TooLarge));
+    assert_eq!(b.count(owner.1).await, 5);
+}
+
 #[tokio::test]
 async fn t_e4_9_cleanup_deletes_old_slack_messages_and_keeps_old_documents() {
     let b = bench(
