@@ -201,6 +201,8 @@ def main(only: list[str]) -> None:
             fetch_huggingface(src)
         elif kind == "file":
             fetch_file(src)
+        elif kind == "inaturalist":
+            print(f"[{src['name']}] fetched by {src['fetched_by']}, not here")
         else:
             print(f"[{src['name']}] skipped: kind {kind!r} needs a URL in sources.yaml")
 
