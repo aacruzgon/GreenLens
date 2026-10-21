@@ -1,0 +1,11 @@
+# The seed-upload image's context is ml/knowledge/ (docs/infra/README.md section 3). The build stage
+# makes the photos from seed/ itself, so the loader's local output and caches stay out.
+build/
+.cache/
+**/__pycache__/
+**/*.pyc
+**/.env
+**/.env.*
+# The build files: an edit to them must not change the context.
+Dockerfile
+.dockerignore

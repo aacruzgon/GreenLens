@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use surrealdb::{IndexedResults, Surreal, engine::any::Any, method::Query};
 
-use crate::error::{DbFailure, classify, first_failure};
+use crate::error::{DbFailure, classify, first_failure_at};
 
 /// Attempts per transaction, the first included.
 pub const MAX_ATTEMPTS: u32 = 5;
@@ -44,15 +44,35 @@ pub async fn run_tx<'c, F>(
 where
     F: Fn(Query<'c, Any>) -> Query<'c, Any> + Send,
 {
+    run_tx_at(db, sql, bind)
+        .await
+        .map_err(|(_, failure)| failure)
+}
+
+/// [`run_tx`], with the index of the statement that failed (`BEGIN` counting as 0), or `None`
+/// when the whole request failed (a parse error, a lost connection). The migration runner
+/// names the failed statement of a file with it.
+#[expect(
+    clippy::result_large_err,
+    reason = "the failure carries the SDK error by value and is mapped at once by the caller"
+)]
+pub async fn run_tx_at<'c, F>(
+    db: &'c Surreal<Any>,
+    sql: &'c str,
+    bind: F,
+) -> Result<IndexedResults, (Option<usize>, DbFailure)>
+where
+    F: Fn(Query<'c, Any>) -> Query<'c, Any> + Send,
+{
     let mut attempt = 0;
     loop {
-        let failure = match bind(db.query(sql)).await {
-            Ok(mut results) => match first_failure(results.take_errors()) {
+        let (index, failure) = match bind(db.query(sql)).await {
+            Ok(mut results) => match first_failure_at(results.take_errors()) {
                 None => return Ok(results),
-                Some(error) => classify(error),
+                Some((index, error)) => (Some(index), classify(error)),
             },
             // A parse error or a lost connection fails the whole request.
-            Err(error) => classify(error),
+            Err(error) => (None, classify(error)),
         };
         match failure {
             DbFailure::TxConflict(_) if attempt + 1 < MAX_ATTEMPTS => {
@@ -63,7 +83,7 @@ where
                 if matches!(failure, DbFailure::TxConflict(_)) {
                     tracing::warn!(attempts = MAX_ATTEMPTS, "transaction conflicts persisted");
                 }
-                return Err(failure);
+                return Err((index, failure));
             }
         }
     }

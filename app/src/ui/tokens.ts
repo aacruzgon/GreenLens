@@ -57,6 +57,37 @@ export const gutter = space[4];
 /** The minimum touch target (design 6, WCAG 2.2). */
 export const minTouch = 44;
 
+// --- Camera chrome (design 3.1, capture and the live analysis) ----------------------
+// The camera screens' controls sit on the photo, so they are neutral: white, and solid dark where they carry
+// text, never tinted (design 2). Apple's camera greys, from the mockup (styles.css .capture, .modes, .cap-sheet).
+export const camera = {
+  /** Behind the preview. */
+  black: "#000000",
+  /** Solid pills and cards: the mode bar, the hint, the drop card (at 92%: .cap-sheet). */
+  pill: "#1C1C1E",
+  card: "rgba(28, 28, 30, 0.92)",
+  /**
+   * The mode bar's dark tint over Liquid Glass, so its labels stay readable when a bright scene lightens the glass.
+   * Not yet measured over a sunny garden on a phone.
+   */
+  glassTint: "rgba(28, 28, 30, 0.45)",
+  /** The chosen mode's pill (.mode.on). */
+  selected: "#3A3A3C",
+  /** A hairline on the pills and cards. */
+  hairline: "rgba(255, 255, 255, 0.1)",
+  ink: "#FFFFFF",
+  /** Text on a white control, such as Analyse (the mockup's capture accentText). */
+  onInk: "#0B0E0D",
+  /** Unchosen modes (.mode). */
+  inkSoft: "rgba(255, 255, 255, 0.86)",
+  /** Secondary text on the cards (.cap-sheet p). */
+  inkMuted: "#BDBDBD",
+  /** The dial's empty segments (.dial .seg). */
+  track: "rgba(255, 255, 255, 0.24)",
+  /** The grabber (.cap-sheet::after). */
+  grabber: "rgba(255, 255, 255, 0.35)",
+} as const;
+
 // --- Radii (directions.js shape) ------------------------------------------------
 export const radii = {
   /** Cards (shape.card). */
