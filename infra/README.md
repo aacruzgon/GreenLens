@@ -1,6 +1,6 @@
 # infra
 
-Compose files for the GPU rig. [`rig.compose.yml`](rig.compose.yml) runs the vLLM server (`vllm`) for the VLM ([vision/vlm.md 4](../docs/vision/vlm.md#4-serving)). The workers are added to the same file later. Deployment is described in [architecture 12](../docs/architecture/README.md#12-deployment), and the full infrastructure design, which this file grows into, in [docs/infra](../docs/infra/README.md): there the service is `vllm-nv`, beside `model-fetch`, `perception-worker` and `vlm-worker-nv` ([infra 4](../docs/infra/README.md#infrarigcomposeyml)).
+The control plane (section 6) and the compose files for the GPU rig. [`rig.compose.yml`](rig.compose.yml) runs the vLLM server (`vllm`) for the VLM ([vision/vlm.md 4](../docs/vision/vlm.md#4-serving)). The workers are added to the same file later. Deployment is described in [architecture 12](../docs/architecture/README.md#12-deployment), and the full infrastructure design, which this file grows into, in [docs/infra](../docs/infra/README.md): there the service is `vllm-nv`, beside `model-fetch`, `perception-worker` and `vlm-worker-nv` ([infra 4](../docs/infra/README.md#infrarigcomposeyml)).
 
 ## 1. Prerequisites
 
@@ -50,7 +50,8 @@ Measured on 2026-10-16:
 
 | Mode | `VLM_GPU_MEM_UTIL` | Checkpoint | KV cache | Use for |
 |---|---|---|---|---|
-| Desktop | 0.78 | Qwen3-VL-8B **AWQ** only | 2.93 GiB, 21,344 tokens at 16,384 max length | Day-1 checks and prompt work, one job at a time |
+| Desktop | 0.78 | Qwen3-VL-8B **AWQ** | 2.93 GiB, 21,344 tokens at 16,384 max length | Day-1 checks and prompt work, one job at a time |
+| Desktop budget | 0.78 | **Qwen3.5-9B AWQ (chosen)**, `VLM_MAX_NUM_SEQS=2` ✓ ran 2026-10-20 | 2.45 GiB, 65,536 tokens (4 times the concurrency at 16,384); 8.41 GiB of weights; 12,500 MiB peak; healthy after 151 s | Everything, with 2 slots: the 65 benchmark cases ran as fast as at 0.90, with no preemption. Measured headless, so the desktop's 2.3–2.9 GB on top makes 14.8–15.4 of 16.3 GB |
 | Desktop | 0.78 | Qwen3-VL-8B FP8 | **Doesn't start:** 10.37 GiB of weights leave 0.99 GiB of KV (0.59 GiB with an FP8 cache) | — |
 | Headless | 0.90 | Qwen3-VL-8B FP8 (the primary) | 2.4 GiB, 17,440 tokens; 16,528 with `VLM_MAX_NUM_SEQS=2` | Full-size runs and benchmarks |
 | Headless | 0.90 | Qwen3.5-9B AWQ (the challenger), `VLM_MAX_NUM_SEQS=2` ✓ ran | 115,550 tokens (7.05 times the concurrency at 16,384); 8.41 GiB of weights; 13,686 of 16,303 MiB used; healthy after 150 s | Full-size runs and benchmarks |
@@ -64,26 +65,27 @@ Work from a laptop. Every desktop program closes, so save first.
 3. Plasma 6 runs KWin, plasmashell and every app as **user** units, which survive both the isolate and `loginctl terminate-session`. Stop them with `systemctl --user stop graphical-session.target app.slice`. tmux, sshd, Tailscale and Docker keep running.
 4. `nvidia-smi` should show no processes and about 34 MiB used. Then `VLM_GPU_MEM_UTIL=0.90 docker compose -f infra/rig.compose.yml up -d vllm`.
 
-To return: `down` the service, then `sudo systemctl isolate graphical.target`, log in at the screen, and use 0.78 with the AWQ build again.
+To return: `down` the service, then `sudo systemctl isolate graphical.target`, log in at the screen, and use 0.78 again. Qwen3.5-9B AWQ, the chosen model, runs at 0.78 with 2 slots; only Qwen3-VL FP8 needs headless.
 
 ## 4. Switching checkpoints
 
-Set both variables together in `infra/.env`, then `down` and `up -d vllm`. A revision belongs to one repository.
+**Qwen3.5-9B AWQ was chosen on 2026-10-20** (decision D1, from the day-2 benchmark: [evaluation 8](../docs/vision/evaluation.md#vlm-results-2026-10-20--ran), [vlm.md 2](../docs/vision/vlm.md#2-model-choice)). It is the default in `infra/.env.example` and in `rig.compose.yml`, with thinking off and 2 slots. The Qwen3-VL checkpoints stay as the fallback.
 
-| Checkpoint | `VLM_MODEL` | `VLM_REVISION` |
-|---|---|---|
-| Primary, FP8 | `Qwen/Qwen3-VL-8B-Instruct-FP8` | `9cdc6310a8cb770ce18efaf4e9935334512aee45` |
-| Qwen3-VL AWQ 4-bit | `cyankiwi/Qwen3-VL-8B-Instruct-AWQ-4bit` | `87196f7771efdd7022a8d8f094ac6e063bf87f5c` |
-| Challenger, Qwen3.5 | `cyankiwi/Qwen3.5-9B-AWQ-4bit` | `156edc4bbeb8d1910ee7be9196bafaf1bc052156` |
+To switch, set both variables together in `infra/.env`, then `down` and `up -d vllm`. A revision belongs to one repository.
 
-Qwen3.5 also needs `VLM_EXTRA_ARGS='--default-chat-template-kwargs "{\"enable_thinking\": false}"'`. Clear it again for the Qwen3-VL checkpoints.
+| Checkpoint | `VLM_MODEL` | `VLM_REVISION` | `VLM_EXTRA_ARGS` |
+|---|---|---|---|
+| **Chosen**, Qwen3.5-9B AWQ 4-bit | `cyankiwi/Qwen3.5-9B-AWQ-4bit` | `156edc4bbeb8d1910ee7be9196bafaf1bc052156` | `'--default-chat-template-kwargs "{\"enable_thinking\": false}"'`, or leave the line out |
+| Fallback, Qwen3-VL-8B FP8 (headless only) | `Qwen/Qwen3-VL-8B-Instruct-FP8` | `9cdc6310a8cb770ce18efaf4e9935334512aee45` | Empty: `VLM_EXTRA_ARGS=` |
+| Fallback, Qwen3-VL-8B AWQ 4-bit | `cyankiwi/Qwen3-VL-8B-Instruct-AWQ-4bit` | `87196f7771efdd7022a8d8f094ac6e063bf87f5c` | Empty: `VLM_EXTRA_ARGS=` |
 
-To try a checkpoint without editing `infra/.env`, pass the variables from the shell (they win over the file). The Qwen3.5 check of 2026-10-16 ran this way:
+Qwen3.5 thinks before it answers by default, and the worker expects the JSON answer alone, so thinking must be off. The compose file reads `VLM_EXTRA_ARGS` with `${VLM_EXTRA_ARGS-…}`, so a missing line gives thinking off and an empty one gives no extra flag.
+
+To try a checkpoint without editing `infra/.env`, pass the variables from the shell (they win over the file):
 
 ```bash
-VLM_MODEL=cyankiwi/Qwen3.5-9B-AWQ-4bit VLM_REVISION=156edc4bbeb8d1910ee7be9196bafaf1bc052156 \
-VLM_EXTRA_ARGS='--default-chat-template-kwargs "{\"enable_thinking\": false}"' \
-VLM_GPU_MEM_UTIL=0.90 VLM_MAX_NUM_SEQS=2 docker compose -f infra/rig.compose.yml up -d vllm
+VLM_MODEL=Qwen/Qwen3-VL-8B-Instruct-FP8 VLM_REVISION=9cdc6310a8cb770ce18efaf4e9935334512aee45 \
+VLM_EXTRA_ARGS= VLM_GPU_MEM_UTIL=0.90 VLM_MAX_NUM_SEQS=2 docker compose -f infra/rig.compose.yml up -d vllm
 ```
 
 Every VLM worker must serve the same checkpoint, because a scan's jobs can land on either card ([vision/vlm.md 4](../docs/vision/vlm.md#4-serving), [vision README 4](../docs/vision/README.md#4-placement-and-vram-budgets)).
@@ -91,3 +93,21 @@ Every VLM worker must serve the same checkpoint, because a scan's jobs can land 
 ## 5. Changing the image size
 
 `VLM_MAX_PIXELS` is the pixel budget per image. The `width` and `height` in `--limit-mm-per-prompt` in `rig.compose.yml` (1152 x 864 for 1003520) must change with it.
+
+## 6. The control plane
+
+[`control-plane.compose.yml`](control-plane.compose.yml) runs SurrealDB, RustFS, `api`, the fallback worker, Caddy and an ingress sidecar ([docs/infra 4](../docs/infra/README.md#infracontrol-planecomposeyml)). It reads secrets from `/srv/pdm/env/.env.<service>` (override with `PDM_ENV`); [`env/.env.example`](env/.env.example) lists every file, one `# --- .env.X ---` section each. Never load that example whole.
+
+First time on a host ([docs/infra 7](../docs/infra/README.md#first-time-bootstrap)):
+
+```bash
+export PDM_ENV=/srv/pdm/env
+docker compose -f infra/control-plane.compose.yml --env-file $PDM_ENV/.env.compose up -d surrealdb rustfs
+infra/bootstrap/surrealdb-users.sh      # namespace, database and the `api` user (EDITOR)
+infra/bootstrap/rustfs.sh               # pdm-images, the policies and PDMAPI01, PDMSEED01, PDMBACKUP01
+docker compose -f infra/control-plane.compose.yml --env-file $PDM_ENV/.env.compose up -d
+```
+
+Both scripts are idempotent and read their secrets from the env files, never from arguments. `COMPOSE_PROFILES` in `.env.compose` picks the ingress (`tailscale` or `cloudflare`; empty on a VM) and the optional services: `stub` (the S1 perception stub worker, turned off in S2) and `seed` (`seed-upload`, from S2).
+
+Deploy a new image by digest with `infra/deploy.sh API_IMAGE ghcr.io/aacruzgon/greenlens/api@sha256:...`; it logs to `/srv/pdm/deploy.log` and prints the rollback command. The Caddyfile is in [`caddy/`](caddy/Caddyfile) and the ingress configuration in [`ingress/`](ingress/).

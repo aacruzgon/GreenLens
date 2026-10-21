@@ -2639,7 +2639,7 @@
         "tags": [
           "plants"
         ],
-        "summary": "`POST /plants`. Editor.",
+        "summary": "`POST /plants`. Editor. A `species_id` the knowledge base doesn't hold is `400\ninvalid_request`, checked in the store's transaction.",
         "operationId": "create_plant",
         "parameters": [
           {
@@ -2671,6 +2671,15 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Plant"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }

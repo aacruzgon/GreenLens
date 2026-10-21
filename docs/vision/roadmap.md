@@ -1,6 +1,6 @@
 # PDM Vision Roadmap
 
-> **Status:** v0.11, 2026-10-20. v0.11: [#70](https://github.com/aacruzgon/GreenLens/pull/70) and [#76](https://github.com/aacruzgon/GreenLens/pull/76) are merged: the evaluation photos come from iNaturalist and, for tomato and corn, published field datasets, and wait on review; #4's names are applied, and the splits are train 4,742, val 1,039, test 763. v0.10: day 4: #33 is merged; the third detector candidate, trained on background photos with no vegetation and a licence that allows commercial use, ships with a new plant-check pair chosen per dataset and checked on hold-out photos; #45 is re-recorded (FP8 passes all four checks, Qwen3.5 regresses on two); #48 is merged and #3 closed; the evaluation shot list is posted as #52, and still no photos exist. v0.9: #30 (`findings@2`) and #31 are merged; Sara is on the rest of P5. v0.8: end of day 1: #26 merged, #30 drafted for Sara, #33 measured a detector trained with no-plant backgrounds, YuNet pinned, the rig's state. v0.7: the day-1 plant probe is built and the provisional `τ_leaf` 0.90 and `τ_plant` 0.67 replace 0.35; #25 is merged. v0.6: `τ_leaf` is provisionally 0.35; #7, #16 and Sara's #18 are merged, so sections 1, 2 and 5 are brought up to date. v0.5: the Qwen3.5-9B challenger passed its day-1 check and the fake VLM server is built, with the fixes from its review. v0.4: decisions now live only in dev-roadmap section 9; our model files moved from the interim GitHub release to `GreenLens/pdm-models`. v0.3: PR #6 merged; PR #7 has `main` merged in and targets `main`; our model files' GitHub release is an interim until `pdm-models` (dev-roadmap M21). v0.2: the PR #6 reviews are answered: Tomato-Pakistan reworked, disease head v1d, the detector retrained on a grouped split; the whole-ML plan with the integration track moves to [dev-roadmap.md](dev-roadmap.md). v0.1: First tracker of the vision and ML work against the build plan in [README 10](README.md#10-build-plan), with what is done, what is next and what waits on whom.
+> **Status:** v0.19, 2026-10-20. v0.19: the leakage check covers the 59,821 training images on the rig and runs again on the final manifest, as part of M18. v0.18: after review of #110, the disease head's top 3 is scored as the API keeps it (73% against 52–57% for guessing), it does no better than guessing on the garden tomato leaves, and its temperature is a trade M17 chooses, its claims right 5 times in 10 without grape; #86 is merged. v0.17: the disease head stays, judged by its top 3 on the dev cases, with its dev-fitted temperature; garden-like training photos are next. v0.16: #85 is merged; the offline calibration ran, and the disease head reaches only 36–40% on the dev leaf photos, so D8 may need reopening. v0.15: the evaluation cases pass the leakage check, and their photos are in `pdm-models` for the second review. v0.14: the RTX 3070 passes ONNX Runtime's check and fits the manifest's perception caps with 3.2 GB free (#114). v0.13: D1 is decided in #86 (Qwen3.5-9B AWQ, 2 slots at 1,003,520 pixels on the 5070 Ti). v0.12: end of day 5: the detector PR (#66) is merged; the day-2 VLM benchmark ran (#86) and Qwen3.5-9B AWQ leads, though no candidate's indicator answers carry much signal on one-photo cases; the heads on our detector's crops, the species head and the trained plant probe are in review (#85); 187 evaluation cases are reviewed; the ML roadmap aims to finish by Oct 22. v0.11: [#70](https://github.com/aacruzgon/GreenLens/pull/70) and [#76](https://github.com/aacruzgon/GreenLens/pull/76) are merged: the evaluation photos come from iNaturalist and, for tomato and corn, published field datasets, and wait on review; #4's names are applied, and the splits are train 4,742, val 1,039, test 763. v0.10: day 4: #33 is merged; the third detector candidate, trained on background photos with no vegetation and a licence that allows commercial use, ships with a new plant-check pair chosen per dataset and checked on hold-out photos; #45 is re-recorded (FP8 passes all four checks, Qwen3.5 regresses on two); #48 is merged and #3 closed; the evaluation shot list is posted as #52, and still no photos exist. v0.9: #30 (`findings@2`) and #31 are merged; Sara is on the rest of P5. v0.8: end of day 1: #26 merged, #30 drafted for Sara, #33 measured a detector trained with no-plant backgrounds, YuNet pinned, the rig's state. v0.7: the day-1 plant probe is built and the provisional `τ_leaf` 0.90 and `τ_plant` 0.67 replace 0.35; #25 is merged. v0.6: `τ_leaf` is provisionally 0.35; #7, #16 and Sara's #18 are merged, so sections 1, 2 and 5 are brought up to date. v0.5: the Qwen3.5-9B challenger passed its day-1 check and the fake VLM server is built, with the fixes from its review. v0.4: decisions now live only in dev-roadmap section 9; our model files moved from the interim GitHub release to `GreenLens/pdm-models`. v0.3: PR #6 merged; PR #7 has `main` merged in and targets `main`; our model files' GitHub release is an interim until `pdm-models` (dev-roadmap M21). v0.2: the PR #6 reviews are answered: Tomato-Pakistan reworked, disease head v1d, the detector retrained on a grouped split; the whole-ML plan with the integration track moves to [dev-roadmap.md](dev-roadmap.md). v0.1: First tracker of the vision and ML work against the build plan in [README 10](README.md#10-build-plan), with what is done, what is next and what waits on whom.
 > **How to use it:** read this first when picking up the ML work. Update it at the end of every work session: change the state of each item you touched, add the commit or report that proves it, and bump the status line. The plan itself stays in [README 10](README.md#10-build-plan); this file only tracks progress against it.
 
 Owner of the vision and ML work: Sam (models, training, export, evaluation, calibration; the RTX 5070 Ti). Running the models in the backend is Sara's track ([docs/backend/vision.md](../backend/vision.md), [worker.md](../backend/worker.md)); the plan both tracks share, with owners, hand-offs and the integration gaps, is [dev-roadmap.md](dev-roadmap.md). This file tracks the models.
@@ -20,13 +20,25 @@ States: **Done**, **Done, rework** (done but a review found a problem), **In pro
 
 ## 1. Where we are
 
-Day 5 of 10 (Oct 20). **Models and serving are ahead; the evaluation photos are fetched and wait on review**:
+Day 5 of 10 (Oct 20). **The models are trained and measured; the plan is to finish the ML roadmap by Thursday, Oct 22**, so Friday is free to help with the integration:
 
-- Evaluation (M10): no team photos exist, so the photos come from licensed sources: iNaturalist ([#70](https://github.com/aacruzgon/GreenLens/pull/70), 273 photos of 127 observations) and, for tomato and corn, four published field datasets no model of ours trained on ([#76](https://github.com/aacruzgon/GreenLens/pull/76), 118 photos, one leaf each). Nothing counts until Sam reviews them. The day-2 VLM benchmark (J2) and calibration (M16) can start on the reviewed cases; full shot sets, soil, the YuNet face check, look-alikes and LiDAR still need the team's phones ([#52](https://github.com/aacruzgon/GreenLens/issues/52)).
-- Detector: shipped in this PR: `rfdetr-s-leaf-2026-10-19-bglic`, trained with 400 COCO photos that have no plant pixel and a licence that allows commercial use. An earlier pick broke training.md §3's licence rule (308 of its 400 photos), so its candidate isn't shipped. The plant check moves to `τ_leaf` 0.40 and `τ_plant` 0.70: on 1,000 hold-out photos, 0.23% of plant photos fail (TOM2024 0.48%, was 2.14%) and 11.0% of no-plant photos pass (was 9.3%), 1 point over the 10% target. The leaf score alone passes 6.6% of no-plant photos, down from 52.5%.
-- Plant check: chosen per dataset, because the pooled rate hid the field photos, and reported once on the test split and 1,000 COCO train2017 photos no threshold or training run had seen ([models 2](models.md#2-plant-present-check)).
-- Prompts: Sara's rest of P5, [#45](https://github.com/aacruzgon/GreenLens/pull/45), is re-recorded on both candidates (18f417a). FP8 passes all four checks. Qwen3.5 fixes the tomato's `leaf_mines` and the species, but gives no soil readings on the tomato (8 before) and calls the corn's blight `leaf_mines` 10 times. It stays a draft for one more prompt pass.
-- Integration: Sara's knowledge loader is merged ([#48](https://github.com/aacruzgon/GreenLens/pull/48)), with the text embedder's golden vectors for 5 inputs. M21 is done: our files come from `GreenLens/pdm-models`.
+- **Evaluation (M10):** 187 reviewed cases, 115 dev and 72 test, in [#86](https://github.com/aacruzgon/GreenLens/pull/86):
+  - 103 one-photo cases from four tomato and corn field datasets;
+  - 84 iNaturalist observations of apple, grape, squash and tomato (two microscope shots of a mite were dropped).
+  - They still need a second reviewer before the test split is scored. Their 253 photos are in `pdm-models` under `eval/photos/` for that review.
+  - No case is a copy of a training image: the leakage check compared the 253 photos with all 59,821 training images on the rig by perceptual hash and BioCLIP cosine ([report](../../ml/training/eval/reports/leakage-2026-10-20.md)).
+  - No case has a full shot set or a ladybug. What only phones can give is listed on [#52](https://github.com/aacruzgon/GreenLens/issues/52), with a private upload folder, for Oct 21.
+- **VLM benchmark (J2), done in [#86](https://github.com/aacruzgon/GreenLens/pull/86):** the 65 tomato and corn dev cases ran through the worker's own calls on three candidates.
+  - Every call was valid, and two jobs at once fit.
+  - Qwen3.5-9B AWQ diagnoses 35% of the sure cases from its indicator answers, both Qwen3-VL-8B builds 12%.
+  - On a diseased leaf, every model says "yes" to that disease's questions barely more often than to the others', so the diagnosis rests on the disease head until the prompts and questions improve.
+  - D1 is decided: Qwen3.5-9B AWQ, with Qwen3-VL-8B as the fallback.
+- **Heads (M13), merged in [#85](https://github.com/aacruzgon/GreenLens/pull/85) (fc2ba3a),** on crops cut exactly as the worker cuts them:
+  - **Disease head:** 0.842 top-1 per crop on test with 21 classes, 0.881 with 19. The class list waits on Sara.
+  - **On the evaluation's dev leaf photos, judged by its top 3 (its job): the true problem is among them on 73% of the photos with a problem, against 52–57% for guessing; corn and tomato 66% against 38–45%.** Its top-1 is 36–40%. On the 12 iNaturalist garden tomato leaves it does no better than guessing. It stays. Its temperature is a trade M17 chooses: fitted on dev, it stops claiming on tomato and drops most of corn's right claims, and without grape, which is claimed at every value, its claims are right 5 times in 10 (v2: 10 in 16); a temperature per species keeps corn's but needs the head format changed ([evaluation 5](evaluation.md#results-on-the-dev-cases-2026-10-20--ran-offline-part)). Garden-like training photos are next.
+  - **Species head:** 0.896 against zero-shot's 0.642 on the dev cases' supported crops, but models 6's combination rule keeps little of it.
+  - **Trained plant probe:** passes 0.1% of no-plant photos against the shipped pair's 11.0%, with no plant photo failing.
+- **Detector:** `rfdetr-s-leaf-2026-10-19-bglic` and the plant-check pair 0.40 / 0.70 are merged ([#66](https://github.com/aacruzgon/GreenLens/pull/66)).
 
 ## 2. Branches and pull requests
 
@@ -44,7 +56,11 @@ Day 5 of 10 (Oct 20). **Models and serving are ahead; the evaluation photos are 
 | [#48](https://github.com/aacruzgon/GreenLens/pull/48) (Sara) | `feat/knowledge-loader` | `main` | Merged (b7963e2) | The knowledge loader, with the text embedder's golden vectors (M8) |
 | [#70](https://github.com/aacruzgon/GreenLens/pull/70) | `feat/eval-inat` | `main` | Merged (8288546) | iNaturalist photos for the evaluation set, licence and date filters, the review file |
 | [#76](https://github.com/aacruzgon/GreenLens/pull/76) | `feat/eval-field-sets` | `main` | Merged (d246e34) | Tomato and corn evaluation photos from four published field datasets, phone-condition variants, #4's names in the mappings and splits |
-| this PR | `feat/detector-second-run` | `main` | Open | The detector retrained on licence-clean background photos and shipped with a new plant-check pair; the second candidate's measurements (not shipped); this file and dev-roadmap.md on Oct 19 and 20 |
+| [#66](https://github.com/aacruzgon/GreenLens/pull/66) | `feat/detector-second-run` | `main` | Merged (d904e4c) | The detector retrained on licence-clean background photos and shipped with a new plant-check pair; the second candidate's measurements (not shipped); this file and dev-roadmap.md on Oct 19 and 20 |
+| [#85](https://github.com/aacruzgon/GreenLens/pull/85) | `feat/heads-on-crops` | `main` | Merged (fc2ba3a) | Disease heads v2–v2c on our detector's crops, the species head and its iNaturalist photos, the trained plant probe, their reports; this file on Oct 20 |
+| [#86](https://github.com/aacruzgon/GreenLens/pull/86) | `feat/vlm-bench` | `main` | Merged (ca65148) | The day-2 VLM benchmark (J2) and its report, the 187 evaluation cases (M10) |
+| [#109](https://github.com/aacruzgon/GreenLens/pull/109) | `feat/eval-leakage` | `main` | In review | The leakage check: no evaluation photo is a copy of a training image |
+| [#110](https://github.com/aacruzgon/GreenLens/pull/110) | `feat/calibration` | `feat/eval-leakage` (#109) | In review | The offline calibration on the dev cases (M16): `species_temperature`, the disease head's top 3 and its temperature's trade |
 | [#31](https://github.com/aacruzgon/GreenLens/pull/31) | `docs/roadmap-day1-wrap` | `main` | Merged (691bb40) | This file at the end of day 1 |
 
 ## 3. Tracker by build-plan period
@@ -56,7 +72,7 @@ Day 5 of 10 (Oct 20). **Models and serving are ahead; the evaluation photos are 
 | Training environment (`.venv`, `ml/requirements.lock`), shared pre-processing `ml/pdm_vision` | Done | e0612b8; Lanczos3 everywhere since ebd0217 (issue #2, closed) |
 | PyTorch training step on the 5070 Ti | Done | Detector training ran on it |
 | ONNX Runtime 1.31 CUDA on the 5070 Ti | Done | `features.cuda_session()` runs BioCLIP on CUDA and fails loudly otherwise |
-| ONNX Runtime 1.31 CUDA on the RTX 3070 | Not started | Needs the 3070's host; same check as the 5070 Ti |
+| ONNX Runtime 1.31 CUDA on the RTX 3070 | Done ([#114](https://github.com/aacruzgon/GreenLens/pull/114)) | ✓ ran 2026-10-20 on the 3070's host: CUDA against the CPU at most 1.8e-7, every perception model opens on CUDA |
 | Datasets fetched, pinned, mapped, deduplicated, split | Done | 3369353, 34d83d6, af4b0e2; reworked in efa6c4b: copies grouped by original photo, PlantDoc copies dropped, field visits grouped, field test splits. Train 5,102, val 1,152, test 854; #4's names in [#76](https://github.com/aacruzgon/GreenLens/pull/76): spider mites at genus level, TOM2024's alternaria and wilt classes dropped, the splits edited in place to train 4,742, val 1,039, test 763 |
 | BioCLIP 2 vision tower exported and checked (fp16) | Done | b37e8df; manifest `bioclip` |
 | SAM 2.1-T encoder and box decoder exported and checked | Done | b37e8df; manifest `sam_encoder`, `sam_decoder`; encoder budget 2.0 GB |
@@ -80,23 +96,23 @@ Day 5 of 10 (Oct 20). **Models and serving are ahead; the evaluation photos are 
 
 | Item | State | Evidence and notes |
 |---|---|---|
-| Day-2 VLM benchmark (Oct 18): both candidates, 20 dev cases, `VLM_SLOTS`, `VLM_MAX_PIXELS` | Waiting | Late: needs the 20 dev cases from the evaluation set; [evaluation 8](evaluation.md#8-day-2-benchmarks) |
-| Perception batch caps benchmark | Not started | On the 3070, with every session loaded |
+| Day-2 VLM benchmark (Oct 18): both candidates, 20 dev cases, `VLM_SLOTS`, `VLM_MAX_PIXELS` | Done, [#86](https://github.com/aacruzgon/GreenLens/pull/86) | Ran Oct 20 on 65 one-photo dev cases and three candidates ([evaluation 8](evaluation.md#8-day-2-benchmarks)). Qwen3.5-9B AWQ 35% of sure cases diagnosed, Qwen3-VL-8B FP8 and AWQ 12%; `VLM_SLOTS` 2 fits; size made no difference |
+| Perception batch caps benchmark | Measured ([#114](https://github.com/aacruzgon/GreenLens/pull/114)) | The manifest's caps (8, 2, 16, 16) peak at 4,598 MiB with 3.2 GB free; the worker's run (P2) confirms them |
 | Leaf relabelling pass (people, Oct 18) | Not started | Didn't happen; the second run trained without it |
 | Real BioCLIP label matrix from the species and organism seed files | Waiting | On the knowledge-base seed files and decision #4 |
 | VLM prompts and schemas on real photos | In progress | Soil: `findings@2`, merged in #30. The rest of P5 in Sara's [#45](https://github.com/aacruzgon/GreenLens/pull/45), re-recorded on Oct 19 (18f417a): FP8 passes all four checks (6 soil readings on the tomato, no `leaf_mines`, species and short English reasons); Qwen3.5 gives no soil readings on the tomato and 10 `leaf_mines` on the corn's blight, so #45 stays a draft for one more pass. Real photos still needed |
-| Second detector run (night of Oct 18, vLLM stopped) | Done, this PR | `rfdetr-s-leaf-2026-10-19-bglic` (pdm-models 3306025): PlantDoc test mAP50 0.935 in PyTorch and 0.935 in fp16 ONNX, mAP50-95 0.721 (`16b`: 0.937, 0.729). Pair 0.40 / 0.70 chosen on val with 1% on every dataset; on the test split and hold-out photos 0.23% false `no_plant_found`, TOM2024 0.48%, 11.0% of no-plant photos passing ([models 2](models.md#2-plant-present-check)). The second candidate (`bgveg`) trained on a pick that broke the licence rule and isn't shipped. Trained without the relabelling pass |
-| Disease and species heads on crops from our detector (Oct 19) | Next | The data rework is done and the detector is chosen; starts once this PR merges |
-| Python–Rust pre-processing parity test | Waiting | dev-roadmap J1, after Sara's loader fixes (P1); `crop_box` rounding is a guess until then |
+| Second detector run (night of Oct 18, vLLM stopped) | Done, [#66](https://github.com/aacruzgon/GreenLens/pull/66) | `rfdetr-s-leaf-2026-10-19-bglic` (pdm-models 3306025): PlantDoc test mAP50 0.935 in PyTorch and 0.935 in fp16 ONNX, mAP50-95 0.721 (`16b`: 0.937, 0.729). Pair 0.40 / 0.70 chosen on val with 1% on every dataset; on the test split and hold-out photos 0.23% false `no_plant_found`, TOM2024 0.48%, 11.0% of no-plant photos passing ([models 2](models.md#2-plant-present-check)). The second candidate (`bgveg`) trained on a pick that broke the licence rule and isn't shipped. Trained without the relabelling pass |
+| Disease and species heads on crops from our detector (Oct 19) | Done, [#85](https://github.com/aacruzgon/GreenLens/pull/85) | Disease head 0.842 per crop on test (0.881 with 19 classes), species head 0.896 against 0.642 on the dev cases, trained plant probe 0.1% of no-plant photos passing ([training 6](training.md#6-disease-and-species-heads), [models 2](models.md#2-plant-present-check)) |
+| Python–Rust pre-processing parity test | Waiting | dev-roadmap J1, after Sara's loader fixes (P1). `crop_box` now uses the worker's rounding, read from `imaging.rs`, and its test pins the Rust test vector; the tensors themselves still need comparing |
 
 ### Oct 20–25
 
 | Item | State |
 |---|---|
-| VLM chosen; `VLM_SLOTS` per card; `VLM_MAX_PIXELS` (Oct 20–21) | Not started |
+| VLM chosen; `VLM_SLOTS` per card; `VLM_MAX_PIXELS` (Oct 20–21) | Done ([#86](https://github.com/aacruzgon/GreenLens/pull/86)): Qwen3.5-9B AWQ, `VLM_SLOTS` 2 and `VLM_MAX_PIXELS` 1,003,520 on the 5070 Ti; the 9070 XT waits on its stack |
 | Heads retrained as profiles are reviewed; fallback worker's live box call; spot colour thresholds | Not started |
-| Calibration on the dev split, final manifests (Oct 22–23) | Not started |
-| Test split scored once (Oct 24) | Not started |
+| Calibration on the dev split, final manifests (Oct 22–23) | In progress ([#110](https://github.com/aacruzgon/GreenLens/pull/110)): the offline part ran ([evaluation 5](evaluation.md#results-on-the-dev-cases-2026-10-20--ran-offline-part)); the VLM words, margin and weights wait on J5; moved up to Oct 21–22 |
+| Test split scored once (Oct 24) | Not started; moved up to Oct 22, after the second review of the cases |
 | Model notices, Devpost write-up (Oct 25) | Not started |
 
 ## 4. Decisions and who they wait on
@@ -105,14 +121,21 @@ Decisions are tracked in one table, [dev-roadmap section 9](dev-roadmap.md#9-dec
 
 ## 5. Next steps, in order
 
-1. **Evaluation photos** (M10): review the 118 field-set photos and the iNaturalist candidates, then `add` them to the manifest. The team's phones for what no dataset has ([#52](https://github.com/aacruzgon/GreenLens/issues/52)). The benchmark and calibration wait on the reviewed cases.
-2. **This PR:** Alan's review, then merge, so the worker loads the new detector and pair.
-3. **Disease and species heads on the new detector's crops** (M13), once it merges.
-4. **#45:** Sara's prompt pass for Qwen3.5's soil readings and the corn's `leaf_mines`, then re-record (about 8 minutes headless).
-5. **#13 (D11), overdue:** how the VLM runs for the demo.
-6. **Day-2 VLM benchmark** (J2) on the 20 cases.
-7. **Leaf relabelling pass** (M11's first half, not done): a later detector run trains on the corrected boxes.
+1. **D1** is decided in [#86](https://github.com/aacruzgon/GreenLens/pull/86): Qwen3.5-9B AWQ, 2 slots at 1,003,520 pixels on the 5070 Ti. After [#45](https://github.com/aacruzgon/GreenLens/pull/45)'s next prompt pass, one bench run on its prompts re-checks it.
+2. **#85 is merged.** Left:
+   - Sara's answer on the two classes (by Oct 21 evening, else 19 classes);
+   - then `classifier_labels.yaml`, the manifest entries and publishing the heads;
+   - Alan's review.
+3. **The species head's combination rule** (models 6): choose one on the dev cases once the real label matrix exists (M12, which needs Sara's species and organism seed files).
+4. **The team's photos** (#52, Oct 21): full shot sets, a pepper plant, ladybugs, look-alikes, no-plant shots and faces. The trained probe and M7's face check need them.
+5. **Garden-like training photos for the disease head:** a licensed dataset (search started Oct 20), then retrain and judge the head by its top 3 on the dev cases ([evaluation 5](evaluation.md#results-on-the-dev-cases-2026-10-20--ran-offline-part)).
+6. **Calibration (M16)** on the dev cases, then the final manifests (M17) and the test split scored once (M18), by Oct 22. The test split needs a second reviewer first. The leakage check passes on today's cases and runs again on the final manifest, as part of M18.
+7. **The indicator questions:** J2's per-question tables show which never get a "yes" on leaves that have the problem. Raise them with Sara's prompt pass (P5, #45).
 
 ## 6. The rig right now
 
-As of 2026-10-19, evening: headless and reached over SSH, vLLM stopped. Going headless killed the first desktop training run (stopping `app.slice` ends every desktop terminal); long runs now start from SSH with `setsid nohup`. The queue that was meant to run overnight ran from 15:04: the #45 re-recording, then the second detector candidate (trained 15:12–15:43) and its checks. The third candidate trained from 18:34. `infra/.env` is unchanged; the models are chosen with shell overrides.
+As of 2026-10-20, afternoon: headless and reached over SSH, vLLM stopped.
+- **The night of Oct 19 ran in full:** the benchmark, the crop views and the four disease heads, the species head and the probe. Only its two plant-check reports crashed, in the markdown writer.
+- **Long runs now start in the tmux session `pdm`,** each GPU job holding a shared `flock`, with every step under a timeout.
+- **On Oct 20,** after the reviews, the benchmark reran (12:37–13:43) and every head retrained (13:43–14:06).
+- `infra/.env` is unchanged; the models are chosen with shell overrides.

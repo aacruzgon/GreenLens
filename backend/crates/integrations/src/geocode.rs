@@ -3,7 +3,7 @@
 //!
 //! | Input | Coordinates | Label | Time zone |
 //! |---|---|---|---|
-//! | GPS | the fix, rounded per precision | Nominatim reverse at 0.01° | `tzf-rs`, offline |
+//! | GPS | the fix, rounded per precision | Nominatim reverse at 0.01°; the time zone's city when it fails | `tzf-rs`, offline |
 //! | Canadian postal code | Nominatim search (`postalcode=`), then Zippopotam by FSA | Nominatim / Zippopotam | `tzf-rs` |
 //! | US ZIP | Open-Meteo geocoding | Open-Meteo | Open-Meteo |
 //! | City | Open-Meteo geocoding | Open-Meteo | Open-Meteo, else `tzf-rs` |
@@ -12,6 +12,10 @@
 //! 2026-10-15 returned nothing), hence Nominatim. Nominatim's policy: at most 1 request a
 //! second, an identifying user agent, results cached, attribution (`ODbL`). Every answer is
 //! cached here for 30 days, keyed by the normalised query.
+//!
+//! A GPS garden is never refused for its label: when the reverse lookup fails (an outage, a
+//! `429`, or no place at the point), the label is the time zone's city, "Toronto time zone",
+//! and that answer isn't cached, so the next lookup at the point asks Nominatim again.
 
 use std::{sync::Arc, time::Duration};
 
@@ -225,6 +229,8 @@ pub struct NominatimAddress {
     pub village: Option<String>,
     /// Municipality.
     pub municipality: Option<String>,
+    /// County: the only place name at some rural points ("Niagara County").
+    pub county: Option<String>,
     /// `CA-ON`.
     #[serde(rename = "ISO3166-2-lvl4")]
     pub iso_lvl4: Option<String>,
@@ -240,7 +246,8 @@ impl NominatimAddress {
             .as_ref()
             .or(self.town.as_ref())
             .or(self.village.as_ref())
-            .or(self.municipality.as_ref())?;
+            .or(self.municipality.as_ref())
+            .or(self.county.as_ref())?;
         let region = self
             .iso_lvl4
             .as_deref()
@@ -252,6 +259,33 @@ impl NominatimAddress {
             None => place.clone(),
         })
     }
+}
+
+/// Nominatim `reverse`: a place, or `{"error": "Unable to geocode"}` with `200` where none
+/// is near (open water, observed live 2026-10-20).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(untagged)]
+pub enum NominatimReverse {
+    /// The place at the point.
+    Place(NominatimPlace),
+    /// No place.
+    Error {
+        /// "Unable to geocode".
+        error: String,
+    },
+}
+
+/// The label of a garden whose reverse lookup failed: the city that names its time zone,
+/// "America/Toronto" → "Toronto time zone". It names the zone, not the town: an Ottawa garden
+/// gets "Toronto time zone" too, so it never claims a place it can't vouch for.
+pub fn zone_label(zone: &TimeZone) -> String {
+    let city = zone
+        .0
+        .rsplit('/')
+        .next()
+        .unwrap_or(&zone.0)
+        .replace('_', " ");
+    format!("{city} time zone")
 }
 
 /// Zippopotam `/ca/{fsa}`.
@@ -434,7 +468,7 @@ impl CompositeGeocoder {
             self.config.nominatim_url.trim_end_matches('/')
         );
         let (lat, lon) = (format!("{:.2}", at.lat), format!("{:.2}", at.lon));
-        let place: Option<NominatimPlace> = self
+        let place: Option<NominatimReverse> = self
             .get_json(
                 &url,
                 &[
@@ -446,9 +480,11 @@ impl CompositeGeocoder {
                 ],
             )
             .await?;
-        place
-            .and_then(|p| p.address.label())
-            .ok_or(ProviderError::NotFound { provider: PROVIDER })
+        match place {
+            Some(NominatimReverse::Place(p)) => p.address.label(),
+            Some(NominatimReverse::Error { .. }) | None => None,
+        }
+        .ok_or(ProviderError::NotFound { provider: PROVIDER })
     }
 
     async fn zippopotam(&self, fsa: &str) -> Result<Option<Geocoded>, ProviderError> {
@@ -515,14 +551,30 @@ impl Geocoder for CompositeGeocoder {
             });
         }
         let found = match query {
-            GeocodeQuery::Coordinates(c) => Geocoded {
-                coordinates: c,
+            GeocodeQuery::Coordinates(c) => {
+                let time_zone = self.zone(c)?;
                 // Only a 0.01° point leaves the server: the label is city-level anyway.
-                label: self
+                match self
                     .nominatim_reverse(round_for(c, LocationPrecision::About1Km))
-                    .await?,
-                time_zone: self.zone(c)?,
-            },
+                    .await
+                {
+                    Ok(label) => Geocoded {
+                        coordinates: c,
+                        label,
+                        time_zone,
+                    },
+                    Err(error) => {
+                        // No location in the log: the error names the provider and the status.
+                        tracing::warn!(provider = PROVIDER, error = %error, "reverse geocoding failed; labelled by the time zone");
+                        // Not cached, so the next lookup here asks Nominatim again.
+                        return Ok(Geocoded {
+                            coordinates: c,
+                            label: zone_label(&time_zone),
+                            time_zone,
+                        });
+                    }
+                }
+            }
             GeocodeQuery::PostalCode(p) => {
                 let code =
                     PostalCode::parse(p).ok_or(ProviderError::NotFound { provider: PROVIDER })?;

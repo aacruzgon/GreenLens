@@ -3,9 +3,11 @@
 //! One query returns eight properties at six depth bands as integers in "mapped units";
 //! dividing by each layer's `d_factor` gives the contract's units, which are `SoilGrids`'
 //! `target_units`. Urban pixels often have no data at all (`"mean": null` everywhere: central
-//! Toronto, Scarborough and Guelph were all null on 2026-10-15), which is a distinct outcome:
-//! the adapter probes nearby points with a cheap one-value query, fetches the full profile at
-//! the first point that has data, and otherwise answers [`ProviderError::NotFound`].
+//! Toronto, Scarborough and Guelph were all null on 2026-10-15 and 2026-10-20), which is a
+//! distinct outcome. The adapter then asks Soil Landscapes of Canada ([`SoilLandscapes`],
+//! offline) for the point when it is configured; otherwise, or outside SLC's coverage, it
+//! probes nearby points with a cheap one-value query, fetches the full profile at the first
+//! point that has data, and otherwise answers [`ProviderError::NotFound`].
 
 use std::{sync::Arc, time::Duration};
 
@@ -17,7 +19,10 @@ use domain::{
 };
 use serde::Deserialize;
 
-use crate::http::{self, Pacer, TransportError};
+use crate::{
+    http::{self, Pacer, TransportError},
+    slc::SoilLandscapes,
+};
 
 /// The `upstream` name.
 pub const PROVIDER: &str = "soilgrids";
@@ -71,6 +76,8 @@ pub struct SoilGrids {
     clock: Arc<dyn Clock>,
     /// Spaces calls by `min_interval`.
     pacer: Pacer,
+    /// Soil Landscapes of Canada, asked when the point itself has no data.
+    local: Option<Arc<SoilLandscapes>>,
 }
 
 impl std::fmt::Debug for SoilGrids {
@@ -217,7 +224,17 @@ impl SoilGrids {
             pacer: Pacer::new(config.min_interval),
             config,
             clock,
+            local: None,
         }
+    }
+
+    /// Asks Soil Landscapes of Canada for a point where `SoilGrids` has no data, before any
+    /// nearby probe: its own polygon's soil costs no call, where the probes cost up to 8 paced
+    /// calls and describe a place 2–5 km away.
+    #[must_use]
+    pub fn with_local_fallback(mut self, local: Arc<SoilLandscapes>) -> Self {
+        self.local = Some(local);
+        self
     }
 
     /// One rate-limited query. `full` asks for every property and depth; otherwise one value
@@ -290,6 +307,16 @@ impl SoilProvider for SoilGrids {
                 depths,
             });
         }
+        if let Some(depths) = self.local.as_ref().and_then(|l| l.depths(at)) {
+            tracing::info!(
+                provider = crate::slc::PROVIDER,
+                "soil profile taken from Soil Landscapes of Canada"
+            );
+            return Ok(SoilProfile {
+                fetched_at: self.clock.now(),
+                depths,
+            });
+        }
         for point in nearby_points(at, &self.config.rings_km, self.config.points_per_ring) {
             if to_depths(&self.query(point, false).await?).is_some()
                 && let Some(depths) = to_depths(&self.query(point, true).await?)
@@ -319,6 +346,8 @@ fn unavailable(e: TransportError) -> ProviderError {
 mod tests {
     use chrono::{TimeZone as _, Utc};
     use domain::{testing::FixedClock, wire::Timestamp};
+    use std::sync::LazyLock;
+
     use wiremock::{
         Mock, MockServer, ResponseTemplate,
         matchers::{method, query_param},
@@ -329,6 +358,12 @@ mod tests {
     const IOWA: &str = include_str!("../fixtures/soilgrids_iowa.json");
     const TORONTO: &str = include_str!("../fixtures/soilgrids_toronto.json");
     const GUELPH: &str = include_str!("../fixtures/soilgrids_guelph.json");
+    const NORTH_5KM: &str = include_str!("../fixtures/soilgrids_toronto_5km_north.json");
+    const PROBE_NULL: &str = include_str!("../fixtures/soilgrids_probe_toronto_2km_north.json");
+    const PROBE_DATA: &str = include_str!("../fixtures/soilgrids_probe_toronto_5km_north.json");
+
+    static SLC: LazyLock<Arc<SoilLandscapes>> =
+        LazyLock::new(|| Arc::new(SoilLandscapes::embedded().unwrap()));
 
     #[test]
     fn converts_with_d_factor() {
@@ -340,12 +375,12 @@ mod tests {
         assert!((top.clay_pct.unwrap() - 29.1).abs() < 1e-9);
         assert!((top.nitrogen_g_kg.unwrap() - 3.39).abs() < 1e-9);
         assert!((top.bulk_density_kg_dm3.unwrap() - 1.35).abs() < 1e-9);
-        assert!(d[5].ph_h2o.is_none(), "the fixture asked for three depths");
+        assert!((d[5].ph_h2o.unwrap() - 7.1).abs() < 1e-9, "100–200 cm");
     }
 
     #[test]
     fn null_pixels_are_no_data() {
-        for f in [TORONTO, GUELPH] {
+        for f in [TORONTO, GUELPH, PROBE_NULL] {
             let r: QueryResponse = serde_json::from_str(f).unwrap();
             assert!(to_depths(&r).is_none());
         }
@@ -416,6 +451,104 @@ mod tests {
                 provider: "soilgrids"
             }
         ));
+    }
+
+    /// Central Toronto as `SoilGrids` answered on 2026-10-20: the point and the four probes at
+    /// 2 km are null, the probe 5 km north has data. Without SLC, that is 7 calls.
+    #[tokio::test]
+    async fn central_toronto_without_slc_takes_the_point_5_km_north() {
+        let server = MockServer::start().await;
+        let full = |lat: &str, body: &str| {
+            Mock::given(method("GET"))
+                .and(query_param("lat", lat))
+                .and(query_param("property", "clay"))
+                .respond_with(ResponseTemplate::new(200).set_body_string(body.to_owned()))
+                .with_priority(1)
+        };
+        full("43.65000", TORONTO).expect(1).mount(&server).await;
+        full("43.69492", NORTH_5KM).expect(1).mount(&server).await;
+        Mock::given(method("GET"))
+            .and(query_param("lat", "43.69492"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(PROBE_DATA))
+            .with_priority(2)
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(PROBE_NULL))
+            .with_priority(3)
+            .expect(4)
+            .mount(&server)
+            .await;
+        let soil = SoilGrids::new(
+            reqwest::Client::new(),
+            SoilGridsConfig {
+                query_url: server.uri(),
+                min_interval: Duration::ZERO,
+                ..SoilGridsConfig::default()
+            },
+            Arc::new(FixedClock::at(Timestamp::from(
+                Utc.with_ymd_and_hms(2026, 10, 20, 23, 0, 0).unwrap(),
+            ))),
+        );
+        let p = soil
+            .soil_profile(Coordinates::new(43.65, -79.38).unwrap())
+            .await
+            .unwrap();
+        let top = p.depths[0];
+        assert!((top.ph_h2o.unwrap() - 6.4).abs() < 1e-9);
+        assert!((top.clay_pct.unwrap() - 29.3).abs() < 1e-9);
+        assert!((top.nitrogen_g_kg.unwrap() - 7.86).abs() < 1e-9);
+    }
+
+    #[tokio::test]
+    async fn slc_answers_a_null_canadian_point_with_no_probe() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(TORONTO))
+            .expect(1) // the point only
+            .mount(&server)
+            .await;
+        let p = adapter(&server)
+            .with_local_fallback(Arc::clone(&SLC))
+            .soil_profile(Coordinates::new(43.65, -79.38).unwrap())
+            .await
+            .unwrap();
+        let top = p.depths[0];
+        assert!((top.ph_h2o.unwrap() - 7.4).abs() < 1e-9, "Chinguacousy");
+        assert!(top.nitrogen_g_kg.is_none());
+    }
+
+    #[tokio::test]
+    async fn outside_slc_the_probes_still_run() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(TORONTO))
+            .expect(5) // the point, then 4 probes
+            .mount(&server)
+            .await;
+        let err = adapter(&server)
+            .with_local_fallback(Arc::clone(&SLC))
+            .soil_profile(Coordinates::new(42.0, -93.6).unwrap())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProviderError::NotFound { .. }));
+    }
+
+    #[tokio::test]
+    async fn an_outage_does_not_fall_back_to_slc() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(503))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let err = adapter(&server)
+            .with_local_fallback(Arc::clone(&SLC))
+            .soil_profile(Coordinates::new(43.65, -79.38).unwrap())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProviderError::Unavailable { .. }));
     }
 
     #[tokio::test]

@@ -7,6 +7,7 @@ mod connect;
 mod connector_deletion;
 mod connectors;
 mod fake_store;
+mod pipeline;
 
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
@@ -268,9 +269,41 @@ fn state_with_vendors(
     auth: MockAuthVerifier,
     config: Config,
     vendors: crate::connect::MockConnectVendors,
+    parts: (MockBlobStore, FixedImages, Arc<dyn BeliefStore>),
+) -> Arc<AppState> {
+    build_state(store, auth, config, vendors, parts, |_| {
+        Arc::new(NoPipeline)
+    })
+}
+
+/// [`state`] with the pipeline `make` builds over the state's store.
+fn state_with_pipeline(
+    store: FakeStore,
+    auth: MockAuthVerifier,
+    config: Config,
+    make: impl FnOnce(Arc<FakeStore>) -> Arc<dyn PipelineApi>,
+) -> Arc<AppState> {
+    build_state(
+        store,
+        auth,
+        config,
+        crate::connect::MockConnectVendors::new(),
+        (MockBlobStore::new(), no_images(), Arc::new(NoBeliefs)),
+        make,
+    )
+}
+
+/// The state every builder above shares.
+fn build_state(
+    store: FakeStore,
+    auth: MockAuthVerifier,
+    config: Config,
+    vendors: crate::connect::MockConnectVendors,
     (blob, images, beliefs): (MockBlobStore, FixedImages, Arc<dyn BeliefStore>),
+    make_pipeline: impl FnOnce(Arc<FakeStore>) -> Arc<dyn PipelineApi>,
 ) -> Arc<AppState> {
     let store: Arc<FakeStore> = Arc::new(store);
+    let pipeline = make_pipeline(Arc::clone(&store));
     let clock = Arc::new(FixedClock::at(NOW.parse().unwrap()));
     let tasks = TaskTracker::new();
     let shutdown = CancellationToken::new();
@@ -331,7 +364,7 @@ fn state_with_vendors(
             clock: clock.clone(),
             ids: Arc::new(SequentialIds::default()),
         },
-        pipeline: Arc::new(NoPipeline),
+        pipeline,
         chat: Arc::new(NoChat),
         images: Arc::new(images),
         hub,
@@ -937,6 +970,63 @@ async fn soil_failures_schedule_the_next_attempt_by_their_kind() {
             .await
             .unwrap();
     }
+}
+
+/// The S2 exit check's soil half, with the adapter `wiring.rs` builds: a central Toronto
+/// garden, where `SoilGrids` answers null (as live on 2026-10-20), is `ready` with Soil
+/// Landscapes of Canada's profile after one `SoilGrids` call.
+#[tokio::test]
+async fn a_toronto_garden_gets_its_soil_profile_from_slc() {
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(include_str!(
+            "../../../crates/integrations/fixtures/soilgrids_toronto.json"
+        )))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let garden: GardenId = GARDEN.parse().unwrap();
+    let mut store = FakeStore::default();
+    store
+        .garden_repo
+        .expect_set_soil_profile()
+        .times(1)
+        .returning(move |g, status, profile| {
+            assert_eq!(g, garden);
+            assert_eq!(status, domain::garden::gardens::SoilProfileStatus::Ready);
+            let top = profile.expect("a profile").depths[0];
+            assert!((top.ph_h2o.unwrap() - 7.4).abs() < 1e-9);
+            assert!((top.clay_pct.unwrap() - 29.0).abs() < 1e-9);
+            Ok(())
+        });
+    store.garden_repo.expect_soil_profile_failed().never();
+    let shared = state(
+        store,
+        MockAuthVerifier::new(),
+        MockBlobStore::new(),
+        no_images(),
+    );
+    let mut owned = Arc::try_unwrap(shared).ok().expect("one owner");
+    owned.ports.soil = Arc::new(
+        integrations::soilgrids::SoilGrids::new(
+            integrations::http::client(&integrations::http::HttpConfig::default()).unwrap(),
+            integrations::soilgrids::SoilGridsConfig {
+                query_url: server.uri(),
+                min_interval: Duration::ZERO,
+                ..integrations::soilgrids::SoilGridsConfig::default()
+            },
+            Arc::clone(&owned.ports.clock),
+        )
+        .with_local_fallback(Arc::new(
+            integrations::slc::SoilLandscapes::embedded().unwrap(),
+        )),
+    );
+    let at = domain::records::weather::Coordinates::new(43.65, -79.38).unwrap();
+    crate::scheduler::fetch_soil_profile(&owned, garden, at)
+        .await
+        .unwrap();
 }
 
 /// `backend/openapi.json` is committed for the app's `openapi-typescript`, and the `domain` types

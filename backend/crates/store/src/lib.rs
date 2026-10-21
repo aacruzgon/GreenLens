@@ -3,6 +3,7 @@
 //! ([database](https://github.com/aacruzgon/GreenLens/blob/main/docs/database/README.md)).
 //!
 //! - [`client`]: connecting, signing in as `api`, the embedded schema.
+//! - [`migrate`]: the migration runner, the schema then the embedded `backend/migrations` files.
 //! - [`tx`]: `run_tx`, one query per transaction with the conflict retry.
 //! - [`error`]: SDK errors to `StoreError`.
 //! - [`ids`]: `Id<T>` and `Slug<K>` ↔ `RecordId`, array keys included.
@@ -13,12 +14,14 @@ pub mod client;
 pub mod error;
 mod fragments;
 pub mod ids;
+pub mod migrate;
 pub mod read;
 pub mod repo;
 pub mod rows;
 pub mod tx;
 
 pub use client::{SCHEMA, StoreConfig, SurrealStore, apply_schema_with};
+pub use migrate::{Applied, MIGRATIONS, Migration, MigrationError, migrate_with};
 
 /// `SurrealStore` implements every repository (so `Store`, by its blanket impl) and
 /// `MemoryStore`, and can live in `Arc<dyn Store>` across tokio's threads.

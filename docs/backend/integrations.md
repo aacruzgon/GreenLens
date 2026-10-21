@@ -1,8 +1,8 @@
 # PDM Backend: `integrations` crate
 
-> **Status:** Draft v0.7.4, 2026-10-20. v0.7.4: Jev's route task sends `FARM_ROUTE_LABELS`, the route labels with `farm_records`, for a garden with farm records (gap G10); the label lists come from `domain::ports`, and Jev keeps only the scores of the labels it sent. v0.7.3: `google_drive::DriveSource` implements the `FarmSource` port (E4.3): the start token taken before a recursive first listing, then `changes.list` read to its last page with only the files under the folder kept, through a cursor that holds the folder tree and the files held, so a folder moved out takes its files and one moved in is listed; 25 files a page; `FolderListing::tree` records each folder's parent, `DriveConfig::era` points the client at a simulator, and `era_sim::fidelity` reads a simulator's fidelity. After its audit: `changes_page` reads one page of `changes.list` and the sync's backlog goes a page at a time; a change with no file id (a shared drive's own) is skipped; a refused change token or an unreadable cursor resyncs with a listing that reports every file in `FarmPage::listed`; `files.get` (`DriveClient::file`) checks the chosen folder first; past 500 files or folders is `too_large`; a file whose read keeps failing is tried once a run, then once a day after 5; a binary `text/plain` file is kept by name. v0.7.2: `tests/era_hosted.rs` runs the two clients against the team's hosted Era company in the nightly `era-hosted` workflow, five metered calls a run, and the simulator command leaves out the strict and hosted tests (section 18). v0.7.1: a Slack thread's cursor keeps `reply_count`, so a deleted reply reads the thread again, and the end of a pass checks older threads for new replies (`conversations.replies`, `limit=1`, round-robin) up to the sync's `probe_limit`, two per connector run; a failed check other than a refused token keeps the page, a deleted parent is forgotten and its record removed, an answer for another message is skipped, and threads past 180 days are forgotten before any check; transport errors drop the request URL. v0.7: `slack::SlackSource` implements the `FarmSource` port for the sync (E4.2): one history page a call, the replies of changed threads, a name per user and team for a day, and its own cursor; `FarmClientError::into_source_error` maps a client failure to the port's error (section 15). v0.6: adds `farm`, `slack` and `google_drive`, the standalone clients for the farm connectors, and `era_sim`, the test support for Era's simulators (section 15, which moves the sections after it down one); the Era tests run in one serial nextest group (section 18). v0.5: adds `agent_memory`, the `BeliefStore` over `SurrealDB` Agent Memory's REST API (section 14; the sections after it moved down one), 13 tests; 77 in all. v0.4: checked against Anthropic's documentation and the first live calls: the sanitiser turns `oneOf` into `enum` or `anyOf` (refused live), turns a nullable enum into one `enum` holding `null` so it isn't a union-typed parameter, and drops `format`s the API doesn't list; token counts that are `null` read as 0 and a missing `usage` defaults; `StopReason::ModelContextWindowExceeded`; 64 tests. v0.3.3: the Clerk tests generate their RSA key pair at run time, so no key file is committed, and the Svix tests use a made-up secret. v0.3.2: section 4 says the worker builds its client with a 600 s read timeout, not the 60 s default, because its VLM and hosted LLM calls aren't streamed, and their 240 s and 300 s deadlines end a slow call; the skills table became a plain list of the extra dependencies. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
+> **Status:** Draft v0.8, 2026-10-20. v0.8: live site data (backend roadmap S2): the fixtures were recorded again on 2026-10-20 and Nominatim's and Zippopotam's answers added; where SoilGrids has no data at the point, `slc::SoilLandscapes` answers from Soil Landscapes of Canada v3.2, read offline from a 0.9 MB file, before any nearby probe (architecture open decision 10, proposed); a GPS garden whose reverse lookup fails is labelled by its time zone ("Toronto time zone") instead of failing with `503`, the label falls back to the county, and Nominatim's `{"error": …}` answer is no place (section 19, items 2 and 4). v0.7.5: Slack's re-read starts at `newest` when that is older than its 7 days, so a sync after a week or more without one skips no message, and the gap doesn't count toward a thread's 30 quiet days (found by EON T-E4.5's Slack half). v0.7.4: Jev's route task sends `FARM_ROUTE_LABELS`, the route labels with `farm_records`, for a garden with farm records (gap G10); the label lists come from `domain::ports`, and Jev keeps only the scores of the labels it sent. v0.7.3: `google_drive::DriveSource` implements the `FarmSource` port (E4.3): the start token taken before a recursive first listing, then `changes.list` read to its last page with only the files under the folder kept, through a cursor that holds the folder tree and the files held, so a folder moved out takes its files and one moved in is listed; 25 files a page; `FolderListing::tree` records each folder's parent, `DriveConfig::era` points the client at a simulator, and `era_sim::fidelity` reads a simulator's fidelity. After its audit: `changes_page` reads one page of `changes.list` and the sync's backlog goes a page at a time; a change with no file id (a shared drive's own) is skipped; a refused change token or an unreadable cursor resyncs with a listing that reports every file in `FarmPage::listed`; `files.get` (`DriveClient::file`) checks the chosen folder first; past 500 files or folders is `too_large`; a file whose read keeps failing is tried once a run, then once a day after 5; a binary `text/plain` file is kept by name. v0.7.2: `tests/era_hosted.rs` runs the two clients against the team's hosted Era company in the nightly `era-hosted` workflow, five metered calls a run, and the simulator command leaves out the strict and hosted tests (section 18). v0.7.1: a Slack thread's cursor keeps `reply_count`, so a deleted reply reads the thread again, and the end of a pass checks older threads for new replies (`conversations.replies`, `limit=1`, round-robin) up to the sync's `probe_limit`, two per connector run; a failed check other than a refused token keeps the page, a deleted parent is forgotten and its record removed, an answer for another message is skipped, and threads past 180 days are forgotten before any check; transport errors drop the request URL. v0.7: `slack::SlackSource` implements the `FarmSource` port for the sync (E4.2): one history page a call, the replies of changed threads, a name per user and team for a day, and its own cursor; `FarmClientError::into_source_error` maps a client failure to the port's error (section 15). v0.6: adds `farm`, `slack` and `google_drive`, the standalone clients for the farm connectors, and `era_sim`, the test support for Era's simulators (section 15, which moves the sections after it down one); the Era tests run in one serial nextest group (section 18). v0.5: adds `agent_memory`, the `BeliefStore` over `SurrealDB` Agent Memory's REST API (section 14; the sections after it moved down one), 13 tests; 77 in all. v0.4: checked against Anthropic's documentation and the first live calls: the sanitiser turns `oneOf` into `enum` or `anyOf` (refused live), turns a nullable enum into one `enum` holding `null` so it isn't a union-typed parameter, and drops `format`s the API doesn't list; token counts that are `null` read as 0 and a missing `usage` defaults; `StopReason::ModelContextWindowExceeded`; 64 tests. v0.3.3: the Clerk tests generate their RSA key pair at run time, so no key file is committed, and the Svix tests use a made-up secret. v0.3.2: section 4 says the worker builds its client with a 600 s read timeout, not the 60 s default, because its VLM and hosted LLM calls aren't streamed, and their 240 s and 300 s deadlines end a slow call; the skills table became a plain list of the extra dependencies. v0.3.1: a JWKS outage is `upstream: "auth"`, as `api` answers it. v0.3: the summary adds `past_7_days.longest_humid_run_days` (the longest run of humid days among the 7 before today, from the hourly history), and the failure tables follow the contracts: a weather failure fails a scan's run with `upstream_unavailable`, `user.created` changes nothing, and `SoilGrids` is retried 15 minutes after an outage and 7 days after no data. v0.2: `frost_risk` and `hours_rh_over_90` come from the shared `domain::rules::weather::WeatherThresholds` (`OpenMeteoConfig::thresholds`): frost is now a 2 m minimum ≤ 0.5 °C, the value `api`'s frost trigger used. v0.1: every outbound HTTP adapter (the Anthropic Messages client, the OpenAI-compatible VLM client, Open-Meteo, SoilGrids, the geocoders, Clerk, Svix, Expo Push and Jev), compiled on Rust 1.99.1 and tested against live fixtures and mock servers.
 
-Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate implements. Every listing below is copied from the compiled source of `crates/integrations`. `cargo check`, `cargo clippy -p integrations --all-targets` and `cargo test -p integrations` all pass: 77 tests, against `wiremock` servers and the live responses recorded on 2026-10-15.
+Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate implements. Every listing below is copied from the compiled source of `crates/integrations`. `cargo check`, `cargo clippy -p integrations --all-targets` and `cargo nextest run -p integrations` all pass: 197 tests, against `wiremock` servers and the live responses recorded on 2026-10-15 and again on 2026-10-20.
 
 ## Contents
 
@@ -41,6 +41,7 @@ Companion to the [backend architecture](README.md) and the [`domain` crate](doma
 | vLLM 0.31 and llama.cpp | `openai_compat` | a typed client (the worker builds `VisionModel` on it) | the `vlm` workers |
 | Open-Meteo forecast | `open_meteo` | `WeatherProvider` | `api` (scans, `GET /gardens/{id}/weather`, the scheduler) |
 | ISRIC SoilGrids | `soilgrids` | `SoilProvider` | `api` (garden setup) |
+| Soil Landscapes of Canada (an embedded file, no HTTP) | `slc` | inside `SoilGrids`, where it has no data | `api` (garden setup) |
 | Open-Meteo geocoding, Nominatim, Zippopotam, `tzf-rs` | `geocode` | `Geocoder` | `api` (`POST /gardens`, `PATCH /gardens/{id}`) |
 | Clerk JWKS and Backend API | `clerk` | `AuthVerifier`, `AuthAdmin` | `api` (every request, `DELETE /me`) |
 | Svix | `svix` | `WebhookVerifier` | `api` (`POST /webhooks/auth`) |
@@ -128,10 +129,16 @@ The root `Cargo.toml` pins these versions (all checked on crates.io on 2026-10-1
 ```
 crates/integrations/
 ├─ Cargo.toml
-├─ fixtures/                   live responses recorded on 2026-10-15
-│  ├─ openmeteo_forecast_multi.json   Toronto and Ottawa, past_days=7, forecast_days=16
-│  ├─ geocoding_toronto.json
-│  └─ soilgrids_{iowa,guelph,toronto}.json   one with data, two all-null urban pixels
+├─ data/
+│  └─ slc_v3r2.bin             Soil Landscapes of Canada v3.2, built by tools/slc/build_slc.py
+├─ fixtures/                   live responses, recorded again on 2026-10-20
+│  ├─ openmeteo_forecast_multi.json   Toronto and Ottawa, past_days=7, forecast_days=16, 23:05 UTC
+│  ├─ geocoding_toronto.json          Open-Meteo's geocoder, "Toronto", count=3
+│  ├─ nominatim_search_m5v3l9.json, nominatim_reverse_{toronto,niagara_county,ocean}.json
+│  ├─ zippopotam_m5v.json
+│  ├─ soilgrids_{iowa,guelph,toronto}.json   six depths: one with data, two all-null urban pixels
+│  ├─ soilgrids_toronto_5km_north.json       the first point near central Toronto with data
+│  └─ soilgrids_probe_toronto_{2km,5km}_north.json   one-value probes: null, then data
 └─ src/
    ├─ lib.rs
    ├─ http.rs                  the shared client, RetryPolicy, retry(), Pacer, TransportError
@@ -152,6 +159,7 @@ crates/integrations/
    │  ├─ summary.rs            cell_weather(), moisture_0_9cm()
    │  └─ tests.rs
    ├─ soilgrids.rs             SoilGrids: SoilProvider; to_depths, nearby_points
+   ├─ slc.rs                   SoilLandscapes: the offline Soil Landscapes of Canada lookup
    ├─ geocode.rs               CompositeGeocoder: Geocoder; TimeZoneFinder, PostalCode, round_for
    ├─ geocode/tests.rs
    ├─ clerk.rs                 ClerkVerifier: AuthVerifier; ClerkAdmin: AuthAdmin
@@ -1969,7 +1977,7 @@ pub enum SummaryError {
 }
 ```
 
-The fixture gives Toronto at 19:00 on 2026-10-15: 10.3 °C, RH 73 %, wind 12.1 km/h, 12.4 mm and 24 hours above 90 % over 7 days, 0.297 m³/m³ at 0–9 cm, ET₀ 1.14 mm over 24 hours. Ottawa's forecast shows frost on 2026-10-17 (minimum −0.0 °C). Hours over 90 % on 8–14 October were 0, 0, 0, 6, 12, 6, 0 in Toronto (a longest humid run of 1 day) and 4, 1, 3, 2, 6, 22, 11 in Ottawa (2 days: a humid stretch in the past week).
+The fixture, recorded at 23:05 UTC on 2026-10-20, gives Toronto at 19:00: 11.3 °C, RH 69 %, wind 5.6 km/h, 1.6 mm and 5 hours above 90 % over 7 days, 0.406 m³/m³ at 0–9 cm, 15.6 °C at 6 cm, ET₀ 2.38 mm over 24 hours. Toronto's 14 days have no frost (lowest minimum 1.0 °C); Ottawa's forecast shows frost on 2026-10-28 (−1.5 °C), 30 and 31. Hours over 90 % on 13–19 October were 6, 0, 0, 5, 0, 0, 0 in Toronto (no humid day) and 22, 11, 0, 10, 0, 0, 0 in Ottawa (2 days in a row: a humid stretch in the past week). The response's shape matches the 2026-10-15 recording key for key and unit for unit: nothing changed but the values.
 
 **`frost_risk`** is not an Open-Meteo field. A day is at risk when its 2 m minimum is frost under `OpenMeteoConfig::thresholds` (`WeatherThresholds::is_frost`: at or below 0.5 °C by default), because air at 2 m runs warmer than the ground and ground frost forms with the air at 1–2 °C. `api` passes the same `WeatherThresholds` to its triggers and the pipeline ([domain 7, weather thresholds](domain.md#weather-thresholds)), so the cached `frost_risk` agrees with both. `hours_rh_over_90` counts hours strictly over 90% (`WeatherThresholds::humid_hours`).
 
@@ -2050,6 +2058,8 @@ pub struct SoilGrids {
     clock: Arc<dyn Clock>,
     /// Spaces calls by `min_interval`.
     pacer: Pacer,
+    /// Soil Landscapes of Canada, asked when the point itself has no data.
+    local: Option<Arc<SoilLandscapes>>,
 }
 
 /// Converts a response; `None` when every value is null (no data at this pixel).
@@ -2117,21 +2127,66 @@ pub fn nearby_points(at: Coordinates, rings_km: &[f64], points_per_ring: u32) ->
 }
 ```
 
-**Null pixels.** Central Toronto, Scarborough, (43.75, −79.55) and Guelph all answered `"mean": null` for every property and depth on 2026-10-15. The target users are Toronto gardeners, so "no data here" is a distinct outcome, not a success:
+**Null pixels.** Central Toronto, Scarborough, (43.75, −79.55) and Guelph all answered `"mean": null` for every property and depth on 2026-10-15, and again on 2026-10-20, with Ottawa (45.42, −75.70) too; High Park (43.646, −79.463), rural Wellington County (43.60, −80.40) and Iowa had data. SoilGrids masks built-up land, so its null pixels are the cities. Around central Toronto the four probes at 2 km were null, and the 5 km ring had data only to the north (43.695, −79.38). The response shapes matched the 2026-10-15 recordings, and the Iowa values were the same. The target users are Toronto gardeners, so "no data here" is a distinct outcome, not a success:
 
 1. Fetch the full profile at the garden's point. If any value is present, done.
-2. Otherwise probe the nearby points, nearest ring first (4 points at 2 km, then 4 at 5 km). Each probe is a one-value query (pH at 0–5 cm), which answered in about 0.3 s live against 9–15 s for a full query.
-3. At the first point with data, fetch the full profile.
-4. Otherwise answer `ProviderError::NotFound { provider: "soilgrids" }`.
+2. Otherwise, with `with_local_fallback`, ask Soil Landscapes of Canada for the point (below). If it has a soil there, done: no further call.
+3. Otherwise probe the nearby points, nearest ring first (4 points at 2 km, then 4 at 5 km). Each probe is a one-value query (pH at 0–5 cm), which answered in 0.6–10 s live against 13–19 s for a full query.
+4. At the first point with data, fetch the full profile.
+5. Otherwise answer `ProviderError::NotFound { provider: "soilgrids" }`.
+
+SLC comes before the probes because it describes the garden's own landscape polygon and costs no call, where the probes cost up to 8 paced calls (2 minutes) and describe a place 2–5 km away. An outage (`Unavailable`, `RateLimited`, `BadResponse`) never falls back: the point may have SoilGrids data, which is finer (250 m), so the retry after 15 minutes asks SoilGrids again.
+
+**Soil Landscapes of Canada** ([architecture 6.4](../architecture/README.md#64-soil), open decision 10, *proposed*). Agriculture and Agri-Food Canada's SLC v3.2 maps the soil landscapes of Canada's agricultural regions at 1:1,000,000 under the Open Government Licence – Canada 2.0, cities included. Every null point above lies in a polygon with a described soil: central Toronto, Scarborough and High Park in polygon 563001 (100 % Chinguacousy clay loam: 0–27 cm pH 7.4, 29 % clay, 1.9 % organic carbon), North York in 562001 (60 % Peel), Guelph in 560004 (37 % Burford), Ottawa in 545001 (41 % Ste. Rosalie clay). Iowa, Lake Ontario and central Montréal have none. `backend/tools/slc/build_slc.py` (standard library only) builds `data/slc_v3r2.bin` from the published GeoPackage and the component and soil-layer tables:
+
+- each polygon's **dominant component** (largest share), whose soil's layers are averaged onto the six depth bands by overlap; a band less than half covered stays empty, so most profiles end at 100 cm;
+- pH from `PH2` ("pH as per project report", read as pH in water: 0.3–0.5 above `PHCA`, the calcium chloride pH; the method is *unverified*), `TSAND`, `TSILT`, `TCLAY` in %, `ORGCARB` % × 10 = g/kg, `CEC` meq/100 g = cmol(c)/kg, `BD` g/cm³ = kg/dm³; no nitrogen, which SLC doesn't map; `-9` is empty;
+- the 3,923 polygons with a soil, rasterised on a **0.01° grid** (about 1.1 km by 0.8 km in southern Ontario, within the map's accuracy) as 126,760 runs over 1,265 distinct soils: 0.9 MB, 0.46 MB gzipped. A lookup scans the runs of one grid row.
+
+The file is embedded with `include_bytes!` and parsed once at start (`SoilLandscapes::embedded`); `api` passes it to `SoilGrids::with_local_fallback`. The profile goes into the same `SoilProfile`, so the wire doesn't change. Attribution: "Contains information licensed under the Open Government Licence – Canada", with AAFC named as the source: in the module's docs here, and due on an app screen with Nominatim's ODbL notice, which the app doesn't show yet either (a frontend item).
+
+```rust
+/// The parsed lookup. Built once at start and shared, like the time-zone finder.
+pub struct SoilLandscapes {
+    lat0_e4: i64,
+    lon0_e4: i64,
+    step_e4: i64,
+    cols: usize,
+    /// Per soil, the six bands' values × 100, `EMPTY` where none.
+    soils: Vec<[[u16; VALUES]; 6]>,
+    /// Index of each row's first run; one more entry than rows.
+    row_starts: Vec<u32>,
+    runs: Vec<Run>,
+}
+
+/// Why the embedded file didn't load: only a bad build of `data/slc_v3r2.bin` causes it.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum SlcError {
+    /// Not an `SLC1` file of version 1.
+    #[error("not a version {VERSION} SLC lookup")]
+    Header,
+    /// The file is shorter or longer than its header says.
+    #[error("the SLC lookup is {got} bytes, its header says {expected}")]
+    Length {
+        /// Bytes read.
+        got: usize,
+        /// Bytes the header implies.
+        expected: usize,
+    },
+    /// A run points past the grid or the soils.
+    #[error("run {0} is out of range")]
+    Run(usize),
+}
+```
 
 **Retries** ([contracts 9, the soil profile](../architecture/contracts.md#gardens)). Every failure sets `soil_profile_status: unavailable`; `api` stores the next attempt in `garden.soil_retry_at` by `domain::rules::limits::soil_retry_after`: 7 days after `NotFound`, because a null pixel doesn't change on a quick retry, and 15 minutes after anything else. The adapter stops at the first failing call, so an outage costs one call per garden and attempt; only a null pixel costs the 9 paced calls, now once a week ([api 16](api.md#16-the-scheduler)).
 
-**Limits.** SoilGrids is in beta and allows 5 calls a minute (from a third-party plugin page; ISRIC's own pages don't say, *unverified*). The `Pacer` spaces calls 15 s apart for the whole process. The timeout is 60 s. The worst case, a null pixel with every probe null, makes 9 calls, about 2 minutes. Garden setup runs in the background, so the user doesn't wait.
+**Limits.** SoilGrids is in beta and allows 5 calls a minute (from a third-party plugin page; ISRIC's own pages don't say, *unverified*). The `Pacer` spaces calls 15 s apart for the whole process. The timeout is 60 s. The worst case, a null pixel outside SLC with every probe null, makes 9 calls, about 2 minutes; a null Canadian point inside SLC makes 1. Garden setup runs in the background, so the user doesn't wait.
 
 | Outcome | Result | `soil_profile_status` ([contracts 9, gardens](../architecture/contracts.md#gardens)) |
 |---|---|---|
-| Data at the point or nearby | `Ok(SoilProfile)` | `ready` |
-| No data anywhere probed | `NotFound` | `unavailable`, retried after 7 days |
+| Data at the point, in SLC, or nearby | `Ok(SoilProfile)` | `ready` |
+| No data at the point, in SLC or anywhere probed | `NotFound` | `unavailable`, retried after 7 days |
 | Timeout, connect, 5xx | `Unavailable` | `unavailable`, retried after 15 minutes ([architecture 8.5](../architecture/README.md#85-garden-setup)) |
 | 429 | `RateLimited` | `unavailable`, retried after 15 minutes |
 | 4xx, unparsable body | `BadResponse` | `unavailable`, retried after 15 minutes; logged as a bug |
@@ -2144,7 +2199,7 @@ pub fn nearby_points(at: Coordinates, rings_km: &[f64], points_per_ring: u32) ->
 
 | Input | Coordinates | Label | Zone |
 |---|---|---|---|
-| GPS (`exact`, `about_1_km`) | the fix, rounded by `round_for` | Nominatim `reverse` at 0.01° | `tzf-rs`, offline |
+| GPS (`exact`, `about_1_km`) | the fix, rounded by `round_for` | Nominatim `reverse` at 0.01°; the time zone's city when it fails | `tzf-rs`, offline |
 | Canadian postal code `A1A 1A1` | Nominatim `search?postalcode=…&country=CA`, then Zippopotam by its first 3 characters | Nominatim (`ISO3166-2-lvl4` → "ON"), Zippopotam (`state abbreviation`) | `tzf-rs` |
 | Forward sortation area `A1A` | Zippopotam `/ca/{fsa}` | Zippopotam | `tzf-rs` |
 | US ZIP | Open-Meteo geocoding, `countryCode=US` | Open-Meteo | Open-Meteo |
@@ -2153,6 +2208,10 @@ pub fn nearby_points(at: Coordinates, rings_km: &[f64], points_per_ring: u32) ->
 **Why three services.** Open-Meteo's geocoder does not resolve Canadian postal codes: "M5V 3L9", "M5V", "K1A 0B1" and "N1G" all returned nothing live. Nominatim resolves a full code but not a bare forward sortation area. Zippopotam resolves the area only, and its terms are unchecked (*unverified*), so `zippopotam_url: None` turns it off.
 
 **Nominatim's policy:** at most 1 request a second, an identifying user agent (`USER_AGENT` names the project and its repository), results cached, ODbL attribution, and no autocomplete. Geocoding once per garden, with a 30-day cache keyed by the normalised query, fits the policy.
+
+**When the reverse lookup fails** (an outage, a `429`, a body that doesn't parse, or no place at the point), a GPS garden is still created: its label is the time zone's city, `zone_label` ("America/Toronto" → "Toronto time zone"). It names the zone, not the town, because an Ottawa garden shares Toronto's zone, so the label never claims a place it can't vouch for. That answer isn't cached, so the next lookup at the point asks Nominatim again, and a location change (`PATCH`) relabels the garden. The zone is found first, offline, so a point with no zone (open ocean) is still `NotFound` and costs no call. The failure is logged once at `warn` with the provider and the error's kind, never the point. A place whose only name is its county gets the county ("Niagara County, NY", which Nominatim gave for a point in Lake Ontario), and Nominatim's `200 {"error": "Unable to geocode"}` (open water, 2026-10-20) is no place.
+
+**Live answers on 2026-10-20.** Nominatim: `M5V3L9` → Toronto, ON; `N1G2W1` → Guelph, ON (`state_district` "Southwestern Ontario" is new to the address, and unused); a bare `M5V` → `[]`; the reverse lookups of Toronto, Guelph and Scarborough → their city (Scarborough is a `suburb` of Toronto), rural (43.60, −80.40) → Centre Wellington. Zippopotam: `M5V` → "Downtown Toronto (CN Tower / King and Spadina / Railway Lands / …)", `N1G` → "Guelph Central". Open-Meteo's geocoder: "Toronto" → the same three places as on 2026-10-15, "M5V 3L9" → nothing, "90210" in the US → Beverly Hills. Each answered in 0.2–0.8 s.
 
 **Privacy.** A reverse lookup sends only the point rounded to 0.01°, whatever the precision. The label is city-level anyway, so an exact fix never leaves the server ([architecture 11](../architecture/README.md#11-security-privacy-and-safety)). The caller's own point is returned and stored at the precision the user chose.
 
@@ -2227,6 +2286,33 @@ pub fn province_code(admin1: &str) -> Option<&'static str> {
     })
 }
 
+/// Nominatim `reverse`: a place, or `{"error": "Unable to geocode"}` with `200` where none
+/// is near (open water, observed live 2026-10-20).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(untagged)]
+pub enum NominatimReverse {
+    /// The place at the point.
+    Place(NominatimPlace),
+    /// No place.
+    Error {
+        /// "Unable to geocode".
+        error: String,
+    },
+}
+
+/// The label of a garden whose reverse lookup failed: the city that names its time zone,
+/// "America/Toronto" → "Toronto time zone". It names the zone, not the town: an Ottawa garden
+/// gets "Toronto time zone" too, so it never claims a place it can't vouch for.
+pub fn zone_label(zone: &TimeZone) -> String {
+    let city = zone
+        .0
+        .rsplit('/')
+        .next()
+        .unwrap_or(&zone.0)
+        .replace('_', " ");
+    format!("{city} time zone")
+}
+
 /// The composite geocoder.
 #[derive(Clone)]
 pub struct CompositeGeocoder {
@@ -2244,8 +2330,9 @@ pub struct CompositeGeocoder {
 
 | Failure | `ProviderError` | Contract behaviour |
 |---|---|---|
-| Unknown postal code or city; unparsable postal code; no zone at the point | `NotFound { provider: "geocoder" }` | `400 invalid_request` with `details.field` = `location.postal_code` or `location.city` (decided in `api`; contracts 2 has no dedicated code, section 17) |
-| Timeout, connect, 5xx | `Unavailable` | `503 upstream_unavailable` with `upstream: "geocoder"` |
+| Unknown postal code or city; unparsable postal code; no zone at the point | `NotFound { provider: "geocoder" }` | `400 invalid_request` with `details.field` = `location.postal_code`, `location.city` or `location.lat` (decided in `api`; contracts 2 has no dedicated code, section 17) |
+| GPS: any failure of the reverse lookup | none: `Ok`, labelled by `zone_label` | `201`; the label is "<zone city> time zone" |
+| Timeout, connect, 5xx (postal code, city) | `Unavailable` | `503 upstream_unavailable` with `upstream: "geocoder"` |
 | 429 | `RateLimited` | the same |
 | Unparsable body | `BadResponse` | the same; logged |
 
@@ -3278,8 +3365,8 @@ pub struct SlackSource {
 
 - **A page** is one `conversations.history` page of one channel (newest first), with the replies of the threads on it whose parent changed, and each author's name. A message's record joins its replies, each on its own paragraph after its author's name; joins, topic changes and pins are left out, and a reply sent to the channel too arrives with its thread.
 - **The cursor** is the adapter's own JSON in `SyncCursor`: `newest`, the newest `ts` of the finished passes; `pass`, a pass with pages left (its `oldest`, Slack's page cursor and the newest `ts` it has seen); `threads`, each thread parent's `latest_reply`, `reply_count` and a short hash of its text when its replies were read; and `probed`, the round-robin position of the older-thread checks. A new pass reads only what is after `newest` (`oldest` is exclusive), so a quiet channel costs one call. A pass interrupted by a `429` resumes from its page cursor on the next run, reading no page twice. A parent seen again with an unchanged `latest_reply`, `reply_count` and text costs no `conversations.replies` call and isn't sent again: its id comes back in `FarmPage::kept`.
-- **Older threads.** At the end of a pass, up to `FarmPageRequest::probe_limit` threads whose parent is older than 7 days and whose last reply is within 30 days are checked, round-robin from `probed`, with `conversations.replies` and `limit=1` (`SlackClient::conversations_thread_parent`); `FarmPage::probes` counts them. A thread whose `latest_reply` or `reply_count` moved is read in full and sent. Slack no longer having it forgets it; a deleted parent (a `tombstone`) forgets it and reports its id in `FarmPage::removed`; an answer for another message is skipped. Each check gathers what it found before touching the cursor: a refused token fails the page, and any other failure ends the checks with `probed` moved past the thread that failed, so a thread whose check keeps failing doesn't hold up the others, and returns the page. Threads whose parent left the 180 days are forgotten before the checks.
-- **The daily re-read.** `reread_window()` is 7 days. When the sync sets `reread_from`, a new pass starts there instead of at `newest`, so an edited message is sent again; Slack reports no deletion, so the sync deletes what the pass didn't see. A new reply to a thread shows in its parent's `latest_reply`, which a pass reads when the parent is in its window: the next pass when the parent is new, the daily re-read for the last 7 days.
+- **Older threads.** At the end of a pass, up to `FarmPageRequest::probe_limit` threads whose parent is older than 7 days and whose last reply is within 30 days are checked, round-robin from `probed`, with `conversations.replies` and `limit=1` (`SlackClient::conversations_thread_parent`). The 30 days count only time the channel was read: each page sets `watched`, and a page read over `AWAY_AFTER` (7 days) after the last one, a pass starting or one with pages left, records the gap in `gaps` as `[start, seconds]` (those that started in the last 180 days are kept); a thread's quiet time leaves out the gaps after its last reply, so a thread active when the sync stopped is still checked when it resumes, and one whose last reply came after a gap is aged without it. `FarmPage::probes` counts them. A thread whose `latest_reply` or `reply_count` moved is read in full and sent. Slack no longer having it forgets it; a deleted parent (a `tombstone`) forgets it and reports its id in `FarmPage::removed`; an answer for another message is skipped. Each check gathers what it found before touching the cursor: a refused token fails the page, and any other failure ends the checks with `probed` moved past the thread that failed, so a thread whose check keeps failing doesn't hold up the others, and returns the page. Threads whose parent left the 180 days are forgotten before the checks.
+- **The daily re-read.** `reread_window()` is 7 days. When the sync sets `reread_from`, a new pass starts there instead of at `newest`, so an edited message is sent again, or at `newest` when that is older (a sync after a week or more without one), so nothing between them is skipped; Slack reports no deletion, so the sync deletes what the pass didn't see. A new reply to a thread shows in its parent's `latest_reply`, which a pass reads when the parent is in its window: the next pass when the parent is new, the daily re-read for the last 7 days.
 - **Authors.** `users.info` once per (team, user) a day in a `moka` cache, keeping `SlackUser::label()` only, never the email; a user Slack doesn't know has no name.
 - **Links** come from the workspace URL in the connector's account (`auth.test`'s `url` at connect), through `permalink`.
 - **Duplicates.** Era's simulator lists a parent injected a second time (to add a reply) twice in one page; the copy with the newest `latest_reply` wins.
@@ -3927,9 +4014,10 @@ The two LLM clients keep their own enums (`AnthropicError`, `OpenAiCompatError`)
 | Anthropic retries | `wiremock`: a 529 then a 200 (retried), a spend-cap 429 (exactly one request), a 429 with `retry-after` |
 | Schema sanitiser | bounds stripped at every depth, a property named `maximum` kept, objects closed, `Cow::Borrowed` when clean |
 | OpenAI-compatible | body per flavour; `finish_reason: "length"` surfaced; a 503 classified retryable |
-| Open-Meteo | the **live fixture** of 2026-10-15 (Toronto values above, Ottawa frost); query lists via `wiremock`; object versus array; 429 and 400 mapping; `fetch_cells` with `MockWeatherProvider` |
-| SoilGrids | `d_factor` conversion on the live Iowa fixture; the live Toronto and Guelph null fixtures; the nearby-point fallback and `NotFound` with `wiremock` |
-| Geocoder | the live Open-Meteo fixture; Nominatim and Zippopotam shapes; the 0.01° reverse lookup; the cache (one request for two queries); `tzf-rs` on Toronto and Vancouver |
+| Open-Meteo | the **live fixture** of 2026-10-20 (Toronto values above, Ottawa frost on 28 October); query lists via `wiremock`; object versus array; 429 and 400 mapping; `fetch_cells` with `MockWeatherProvider` |
+| SoilGrids | `d_factor` conversion on the live Iowa fixture (six depths); the live Toronto and Guelph null fixtures and the null probe; central Toronto as answered live, without SLC (the point, four null probes at 2 km, the probe and profile 5 km north: 7 calls); with SLC, a null Toronto point answered by Chinguacousy after one call; outside SLC (Iowa) the probes still run to `NotFound`; an outage doesn't fall back; the nearby-point fallback and `NotFound` with `wiremock` |
+| SLC | the embedded file loads (1,265 soils, 126,760 runs); central Toronto and Scarborough are Chinguacousy, with a band straddling a layer boundary averaged by overlap (15–30 cm pH 7.44) and 100–200 cm empty; North York, Guelph and Ottawa have a soil; Iowa, Lake Ontario and points off the grid don't; a short or foreign file is refused. In `api`: `fetch_soil_profile` with the wired adapter stores a Toronto garden as `ready` |
+| Geocoder | the live Open-Meteo, Nominatim and Zippopotam fixtures of 2026-10-20; the 0.01° reverse lookup; the reverse shapes (a city, a county only, `{"error"}`); the cache (one request for two queries, also for GPS); a failed reverse lookup (503, 429, `{"error"}`, an unparsable body) labelled "Toronto time zone" for an Ottawa point and not cached; `zone_label`; `tzf-rs` on Toronto and Vancouver |
 | Clerk | tokens signed with a throwaway RSA key, generated once per test run with `aws-lc-rs` so no private key is committed, and served as a JWKS by `wiremock`: issuer, expiry, `nbf`, `azp`, leeway, missing `nbf`, refetch limit; `DELETE` 200, 404 and 429 |
 | Svix | the `svix` crate's `Webhook::sign` as the oracle; rotation (several entries), tampering, ±301 s |
 | Agent Memory | `wiremock`, exact request bodies (the service ignores unknown fields silently): `record` and the scope cache (one registration for two writes, none after the first), the `400 unknown scope node` re-register and single retry, a 5xx write retried twice, `current` (plant and garden merged, superseded dropped, label and both timestamp forms, 404 as empty), `history` (cursor followed through a short page, newest first), `search` (exact lens, hit filter, prefix stripped), `forget` (trailing slash, cache dropped), the 500, 429, 401, 403 and 422 mapping, `Debug` without the key |
@@ -3952,16 +4040,16 @@ ERA_SLACK_BASE=http://127.0.0.1:8091 ERA_GOOGLE_BASE=http://127.0.0.1:8092 \
 - **One at a time.** Faults are global to a simulator, so a fault set by one test reaches every other test. [`backend/.config/nextest.toml`](../../backend/.config/nextest.toml) puts every test named `era_*` in the nextest group `era` (`max-threads = 1`). The fault tests also hold a file lock and clear the faults when they end, also when they fail. The `era` CI job comes with [EON E6](../EON/README.md#e6-ci).
 - **The hosted company** (`tests/era_hosted.rs`, EON T-E7.1). Two `era_hosted_` tests run the clients against Holling Holdings, the team's hosted Era company, with `SLACK_BASE_URL`, `GOOGLE_DRIVE_BASE_URL` and `ERA_TENANT_TOKEN`: Slack lists the channels and reads one history page, Drive lists the folders, one folder and exports a Doc. Every request is metered, so they make five in all and print the count, read from an HTTP client that keeps no idle connection and counts DNS lookups. Only the nightly `era-hosted` workflow runs them ([infra 2](../infra/README.md#the-era-hosted-job)).
 
-Paused time (`start_paused`) is used only where no real I/O runs: the retry and pacer tests. With a mock server in the loop, tokio's auto-advance would jump to the request's timeout while the server answers, which the Clerk refetch test showed. Not run: live calls to Anthropic, Clerk, Expo and Nominatim (no keys or accounts on 2026-10-15), and the VLM servers (no GPU here).
+Paused time (`start_paused`) is used only where no real I/O runs: the retry and pacer tests. With a mock server in the loop, tokio's auto-advance would jump to the request's timeout while the server answers, which the Clerk refetch test showed. Not run: live calls to Anthropic, Clerk and Expo (no keys or accounts on 2026-10-15), and the VLM servers (no GPU here). Nominatim was called live on 2026-10-20, 9 requests 2 s apart with the project's user agent, to record its fixtures; SoilGrids 17 times, 15 s apart.
 
 ---
 
 ## 19. Open questions
 
 1. **Frost threshold.** Settled in [domain 7](domain.md#weather-thresholds): one `WeatherThresholds` for `frost_risk`, the frost alert rule of [architecture 8.3](../architecture/README.md#83-forecast-alerts) and fusion, with frost at a 2 m minimum ≤ 0.5 °C. The number itself is still a proposal ([domain 12](domain.md#12-open-questions), item 17).
-2. **SoilGrids `NotFound` versus `Unavailable`.** Settled in contracts v0.10 ([contracts 9, the soil profile](../architecture/contracts.md#gardens)): one `unavailable` value on the wire, retried after 7 days for no data and after 15 minutes for an outage (section 8; `api`'s `soil` task). Still open: architecture 6.4's Soil Landscapes of Canada fallback for null pixels.
+2. **SoilGrids `NotFound` versus `Unavailable`.** Settled in contracts v0.10 ([contracts 9, the soil profile](../architecture/contracts.md#gardens)): one `unavailable` value on the wire, retried after 7 days for no data and after 15 minutes for an outage (section 8; `api`'s `soil` task). The Soil Landscapes of Canada fallback for null pixels is built (section 8) and *proposed* in architecture open decision 10, for the team to confirm. Still open: whether a profile should say which source it came from (a `source` field would be a contract change; the plan writer names its sources, architecture 6.4).
 3. **Postal-code geocoding** relies on Nominatim (policy-bound, 1 request a second) and Zippopotam (terms unchecked). [Contracts 9](../architecture/contracts.md#gardens) says "geocoded once" and names no service, and [contracts 2](../architecture/contracts.md#2-errors) has no code for a location that can't be geocoded (`400 invalid_request` with the field is used). Confirm Zippopotam's terms, or drop it and refuse a bare forward sortation area.
-4. **Reverse-geocoding failure for GPS.** A garden created from GPS needs a label. Today a Nominatim failure fails the geocode (`503`). A fallback label (the zone's city) would let creation proceed.
+4. **Reverse-geocoding failure for GPS.** Settled: a failed reverse lookup labels the garden "<zone city> time zone" and creation goes ahead (section 9; contracts 9, open question 37). Still open: relabelling such a garden when Nominatim answers again, which needs a stored flag and a scheduler task; until then a location change relabels it.
 5. **Open-Meteo licence.** The free API is non-commercial. Settle it before any public launch ([architecture 15](../architecture/README.md#15-open-decisions)).
 6. **The hosted LLM's box format and the stripped keywords** are from Anthropic's documentation, not a live call ([contracts 12](../architecture/contracts.md#12-open-questions), item 26). One live call on day 2 confirms both.
 7. **Late `user.created` after `user.deleted`.** Settled in `api`: `user.created` changes nothing, and the account tombstone refuses a deleted account's tokens (section 11).
@@ -3987,6 +4075,7 @@ Paused time (`start_paused`) is used only where no real I/O runs: the retry and 
 - vLLM: [structured outputs](https://docs.vllm.ai/en/stable/features/structured_outputs.html) · [docs](https://docs.vllm.ai/en/stable/) · llama.cpp [server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)
 - Open-Meteo: [forecast](https://open-meteo.com/en/docs) · [geocoding](https://open-meteo.com/en/docs/geocoding-api) · [terms](https://open-meteo.com/en/terms) · [pricing](https://open-meteo.com/en/pricing)
 - ISRIC SoilGrids: [REST docs](https://rest.isric.org/soilgrids/v2.0/docs) · [data policy](https://isric.org/about/data-policy)
+- Soil Landscapes of Canada v3.2: [dataset and downloads](https://open.canada.ca/data/en/dataset/5ad5e20c-f2bb-497d-a2a2-440eec6e10cd) · [AAFC's page](https://sis.agr.gc.ca/cansis/nsdb/slc/v3.2/index.html) · [soil layer table](https://sis.agr.gc.ca/cansis/nsdb/soil/v2/slt/index.html) ([`ORGCARB`](https://sis.agr.gc.ca/cansis/nsdb/soil/v2/slt/orgcarb.html), [`CEC`](https://sis.agr.gc.ca/cansis/nsdb/soil/v2/slt/cec.html), [`BD`](https://sis.agr.gc.ca/cansis/nsdb/soil/v2/slt/bd.html), [`PH2`](https://sis.agr.gc.ca/cansis/nsdb/soil/v2/slt/ph2.html)) · [Open Government Licence – Canada 2.0](https://open.canada.ca/en/open-government-licence-canada), all read 2026-10-20
 - Nominatim [usage policy](https://operations.osmfoundation.org/policies/nominatim/) · Zippopotam [API](https://api.zippopotam.us)
 - Clerk: [session tokens](https://clerk.com/docs/guides/sessions/session-tokens) · [manual JWT verification](https://clerk.com/docs/guides/sessions/manual-jwt-verification) · [webhooks](https://clerk.com/docs/guides/development/webhooks/overview) · [Backend API](https://clerk.com/docs/reference/backend-api) · [system limits](https://clerk.com/docs/guides/how-clerk-works/system-limits)
 - Svix: [manual verification](https://docs.svix.com/receiving/verifying-payloads/how-manual)

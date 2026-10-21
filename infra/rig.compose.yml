@@ -8,6 +8,10 @@
 #
 # --limit-mm-per-prompt width and height (1152x864 = 995328 px) must be changed
 # together with VLM_MAX_PIXELS (1003520). Keep width x height at or below it.
+#
+# The defaults serve Qwen3.5-9B AWQ with thinking off and 2 slots (decision D1, 2026-10-20).
+# VLM_EXTRA_ARGS uses ${VAR-default}: unset gives thinking off, empty gives no extra flag,
+# which is what the Qwen3-VL checkpoints need (infra/README.md section 4).
 
 services:
   vllm:
@@ -36,14 +40,15 @@ services:
     env_file:
       - .env   # required: VLM_API_KEY has no default
     environment:
-      VLM_MODEL: ${VLM_MODEL:-Qwen/Qwen3-VL-8B-Instruct-FP8}
-      VLM_REVISION: ${VLM_REVISION:-9cdc6310a8cb770ce18efaf4e9935334512aee45}
-      VLM_MAX_NUM_SEQS: ${VLM_MAX_NUM_SEQS:-1}
+      VLM_MODEL: ${VLM_MODEL:-cyankiwi/Qwen3.5-9B-AWQ-4bit}
+      VLM_REVISION: ${VLM_REVISION:-156edc4bbeb8d1910ee7be9196bafaf1bc052156}
+      VLM_MAX_NUM_SEQS: ${VLM_MAX_NUM_SEQS:-2}
       VLM_GPU_MEM_UTIL: ${VLM_GPU_MEM_UTIL:-0.78}
       VLM_MAX_MODEL_LEN: ${VLM_MAX_MODEL_LEN:-16384}
       VLM_KV_CACHE_DTYPE: ${VLM_KV_CACHE_DTYPE:-auto}
       VLM_MAX_PIXELS: ${VLM_MAX_PIXELS:-1003520}
-      VLM_EXTRA_ARGS: ${VLM_EXTRA_ARGS:-}
+      VLM_EXTRA_ARGS: >-
+        ${VLM_EXTRA_ARGS---default-chat-template-kwargs '{"enable_thinking": false}'}
       VLM_API_KEY: ${VLM_API_KEY:?set VLM_API_KEY in infra/.env}
       HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-1}
     deploy:

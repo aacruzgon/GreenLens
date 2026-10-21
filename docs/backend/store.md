@@ -1,6 +1,6 @@
 # PDM Backend: `store` crate
 
-> **Status:** Draft v0.4.13, 2026-10-20. v0.4.13: the farm search filters by `until` (before the instant) and `author` (part of the display name, lowercased, never a record without one) beside `kind` and `since` (EON gap G12). v0.4.12: `begin` takes over a `running` idempotency key older than 10 minutes with a compare-and-set, and `deleting_connectors_of_user` lists a user's `deleting` connectors with no garden filter; `delete_expired_pending` takes a second cutoff and leaves a pending connector claimed since then. v0.4.11: `UPSERT_RECORDS` skips a record whose source is no longer among the connector's sources, in the same transaction; `SEED_CONNECTOR` repairs an existing connector of the garden (token, `status`, `last_error`). v0.4.10: the audit's fixes to the farm repository: creates bump `garden.connector_rev` so the limit holds under a race, Sync now refuses a connector stopped until new sources, a record stores its `source`, the 180-day cleanup takes Slack messages only (`farm_record_kind_at`), and `finish_sync` keeps a `next_sync_at` that moved during the run (`SyncOutcome::due_at`). v0.4.9: `FarmRecordStore` is implemented (roadmap E1.6): connectors with the 2-per-garden limit, the connect compare-and-set, the due query, **Sync now** as a compare-and-set on `sync_requested_at`, upserts that keep a vector only while its `text_hash` holds, deletes by item, chunk range and source, the exact search within one garden, record counts and the cleanup; plans and messages write and read `farm_records` and `farm_citations`, and rows from before them read as empty; 8 tests in `tests/farm.rs`. v0.4.8: the farm connectors' `connector` and `farm_record` tables are in the schema (with `sync_requested_at`, and `farm_records` and `farm_citations` on `action_plan` and `message`), the garden cascade deletes them before the garden, `garden_of` resolves a connector, `farm_record:[connector, vendor_id, n]` keys map to `FarmRecordId`, and `FarmRecordStore` is stubbed until roadmap E1.6. v0.4.7: `knowledge_meta` is in the schema, and an embedded-engine test loads the knowledge loader's output (work items M1, M6). v0.4.6: memories carry a `topic` and `belief_synced_at`, the `belief_forget` queue holds subjects to erase in Agent Memory (written by a shared memory's delete and by the plant and garden cascade starts), and `MemoryStore` gains the belief sweep's methods. v0.4.5: `label_set_version` follows `ml/models/FORMATS.md` (a SHA-256 over the BioCLIP revision, the 80 templates and the sorted labels) instead of an FNV-1a hash, and passes its test vector; open question 7 says so. v0.4.4: open question 4 is resolved: the vector search's bound `k` failed to parse on 3.3.4, so `search_chunks` writes it as a clamped literal, with a test on the embedded engine. v0.4.3: section 4 proposes the migration runner that applies the numbered migrations and the generated `knowledge.surql` after the schema, with its work items, tests and open questions. v0.4.2: the schema now lives at `backend/migrations/schema.surql` only, no longer a copy of a file in `docs/database`. v0.4.1: section 1 keeps only the `$now` difference from database 4, since the skills now follow this design; section 17 lists `TargetBinds`, which section 18 cites; research notes are no longer named by a path outside the repository. v0.4: the multi-line query listings are complete (a generator bug cut eight of them after their first line); the step-claim pair is described as conditional, as in database 4; the protected parameters are `auth`, `token`, `access` and `session`; a bound `$before` is overridden only in `RETURN`, and `Option` fails only from 2 ids; the closure-lifetime error has no code. v0.3: the account tombstone (`deleted_user`), SoilGrids retries, `live_lease`, and the store's `Notify` as the only claim wake-up (a requeue notifies too). v0.2: every repository method is real code (no `todo!()` left), reads decode straight into domain types through contract-shaped projections, and 12 more tests run on the embedded engine. v0.1: `SurrealStore`, which implements every repository of `domain::ports::store` and `MemoryStore` over SurrealDB 3.3.4, with every statement a named constant, one query per transaction with a conflict retry, one error classifier, and real code for each pattern that carries a guarantee, tested against the embedded 3.3.4 engine.
+> **Status:** Draft v0.4.18, 2026-10-20. v0.4.18: the runner refuses a top-level `RETURN` and reads each record back (`MigrationError::Unrecorded`), and a numbered file deletes the knowledge record in its transaction (section 4). v0.4.17: open question 3 (stale photos) is settled: `seed-upload` never deletes a photo. v0.4.16: the migration runner is built (section 4): `build.rs` embeds `backend/migrations/*.surql` as `MIGRATIONS`, `migrate_with` applies the schema, the numbered files and `knowledge.surql` in their own transactions with a `migration` record and a hash compare-and-set, `SurrealStore::migrate` replaces `apply_schema`, and `tests/migrations.rs` covers it on the embedded engine. v0.4.15: the user writes that set a species (`create_plant`, `confirm_species`, a new plant of `create_scan` and of `put_map`) `THROW 'unknown_species'` in their transaction for a species the knowledge base doesn't hold, answered as `Rejected(InvalidRequest)` at the request's field (`unknown_species`), with a test on the embedded engine; the plant projection reads a dangling species link as no species (open question 1). v0.4.14: `run_stage_events` reads a run's `run_started` and stage events in `seq` order (`RUN_STAGE_EVENTS`, a key-range read filtered by run and type), for the stage events a job's `complete` stands in for (backend roadmap gap 9), with a test on the embedded engine. v0.4.13: the farm search filters by `until` (before the instant) and `author` (part of the display name, lowercased, never a record without one) beside `kind` and `since` (EON gap G12). v0.4.12: `begin` takes over a `running` idempotency key older than 10 minutes with a compare-and-set, and `deleting_connectors_of_user` lists a user's `deleting` connectors with no garden filter; `delete_expired_pending` takes a second cutoff and leaves a pending connector claimed since then. v0.4.11: `UPSERT_RECORDS` skips a record whose source is no longer among the connector's sources, in the same transaction; `SEED_CONNECTOR` repairs an existing connector of the garden (token, `status`, `last_error`). v0.4.10: the audit's fixes to the farm repository: creates bump `garden.connector_rev` so the limit holds under a race, Sync now refuses a connector stopped until new sources, a record stores its `source`, the 180-day cleanup takes Slack messages only (`farm_record_kind_at`), and `finish_sync` keeps a `next_sync_at` that moved during the run (`SyncOutcome::due_at`). v0.4.9: `FarmRecordStore` is implemented (roadmap E1.6): connectors with the 2-per-garden limit, the connect compare-and-set, the due query, **Sync now** as a compare-and-set on `sync_requested_at`, upserts that keep a vector only while its `text_hash` holds, deletes by item, chunk range and source, the exact search within one garden, record counts and the cleanup; plans and messages write and read `farm_records` and `farm_citations`, and rows from before them read as empty; 8 tests in `tests/farm.rs`. v0.4.8: the farm connectors' `connector` and `farm_record` tables are in the schema (with `sync_requested_at`, and `farm_records` and `farm_citations` on `action_plan` and `message`), the garden cascade deletes them before the garden, `garden_of` resolves a connector, `farm_record:[connector, vendor_id, n]` keys map to `FarmRecordId`, and `FarmRecordStore` is stubbed until roadmap E1.6. v0.4.7: `knowledge_meta` is in the schema, and an embedded-engine test loads the knowledge loader's output (work items M1, M6). v0.4.6: memories carry a `topic` and `belief_synced_at`, the `belief_forget` queue holds subjects to erase in Agent Memory (written by a shared memory's delete and by the plant and garden cascade starts), and `MemoryStore` gains the belief sweep's methods. v0.4.5: `label_set_version` follows `ml/models/FORMATS.md` (a SHA-256 over the BioCLIP revision, the 80 templates and the sorted labels) instead of an FNV-1a hash, and passes its test vector; open question 7 says so. v0.4.4: open question 4 is resolved: the vector search's bound `k` failed to parse on 3.3.4, so `search_chunks` writes it as a clamped literal, with a test on the embedded engine. v0.4.3: section 4 proposes the migration runner that applies the numbered migrations and the generated `knowledge.surql` after the schema, with its work items, tests and open questions. v0.4.2: the schema now lives at `backend/migrations/schema.surql` only, no longer a copy of a file in `docs/database`. v0.4.1: section 1 keeps only the `$now` difference from database 4, since the skills now follow this design; section 17 lists `TargetBinds`, which section 18 cites; research notes are no longer named by a path outside the repository. v0.4: the multi-line query listings are complete (a generator bug cut eight of them after their first line); the step-claim pair is described as conditional, as in database 4; the protected parameters are `auth`, `token`, `access` and `session`; a bound `$before` is overridden only in `RETURN`, and `Option` fails only from 2 ids; the closure-lifetime error has no code. v0.3: the account tombstone (`deleted_user`), SoilGrids retries, `live_lease`, and the store's `Notify` as the only claim wake-up (a requeue notifies too). v0.2: every repository method is real code (no `todo!()` left), reads decode straight into domain types through contract-shaped projections, and 12 more tests run on the embedded engine. v0.1: `SurrealStore`, which implements every repository of `domain::ports::store` and `MemoryStore` over SurrealDB 3.3.4, with every statement a named constant, one query per transaction with a conflict retry, one error classifier, and real code for each pattern that carries a guarantee, tested against the embedded 3.3.4 engine.
 
 Companion to the [backend architecture](README.md), the [database notes](../database/README.md) (v1.4) and [`schema.surql`](../../backend/migrations/schema.surql). The ports it implements are in [domain 9](domain.md#9-boundary-traits). Every listing is copied from the compiled source of `crates/store` with the docgen tool: `cargo check -p store`, `cargo clippy -p store --all-targets` (clean) and `cargo test -p store` (7 unit tests and 25 tests against the embedded engine) pass on Rust 1.99.1 with `surrealdb = "=3.3.4"`.
 
@@ -110,9 +110,12 @@ tokio = { workspace = true, features = ["test-util"] }
 ```
 crates/store/
 ├─ Cargo.toml
+├─ build.rs          embeds backend/migrations/*.surql (but the schema) as MIGRATIONS; refuses a bad name or a duplicate number
 ├─ src/
 │  ├─ lib.rs          crate docs, re-exports, the compile-time `Store + MemoryStore + Send + Sync + 'static` check
-│  ├─ client.rs       StoreConfig, SurrealStore, connect / from_client / apply_schema, SCHEMA (include_str!)
+│  ├─ client.rs       StoreConfig, SurrealStore, connect / from_client / migrate, SCHEMA (include_str!)
+│  ├─ migrate.rs      the migration runner: migrate_with, apply_migrations, MigrationError, check_contents, knowledge_meta
+│  ├─ migrate/naming.rs   the file names a migration may have; build.rs includes it too
 │  ├─ tx.rs           run_tx: one query per transaction, conflict retry with jittered back-off
 │  ├─ error.rs        first_failure, classify → DbFailure → StoreError, THROW codes, RowError
 │  ├─ ids.rs          ToRecordId / FromRecordId for Id<T> and Slug<K>, array keys
@@ -129,8 +132,9 @@ crates/store/
 │  ├─ embedded/support.rs   fixtures built through the store's own methods
 │  ├─ flows.rs        uploads, completion, guided checks, answers, reads, chat, memory, deletions, knowledge
 │  ├─ farm.rs         the farm connectors' repository (EON T-E1.6)
-│  └─ server.rs       ignored: the schema applied twice on the pinned image
-└─ ../../migrations/schema.surql   the schema the crate embeds
+│  ├─ migrations.rs   the migration runner, with the knowledge loader's fixture
+│  └─ server.rs       ignored: the migrations applied twice on the pinned image
+└─ ../../migrations/   schema.surql, the numbered files and knowledge.surql, all embedded
 ```
 
 ---
@@ -175,7 +179,7 @@ pub struct SurrealStore {
 ```rust
 impl SurrealStore {
     /// Connects, signs in as the database user and selects `pdm`/`main`. Run
-    /// [`SurrealStore::apply_schema`] first, as root.
+    /// [`SurrealStore::migrate`] first, as root.
     pub async fn connect(config: &StoreConfig) -> Result<Self, StoreError> {
         let db = any::connect(config.url.as_str())
             .await
@@ -205,23 +209,37 @@ impl SurrealStore {
         })
     }
 
-    /// Applies [`SCHEMA`] over a short-lived root connection, before the API serves traffic.
-    /// `api` can't run the file's first statements (`DEFINE NAMESPACE`, `DEFINE DATABASE`).
-    pub async fn apply_schema(
+    /// The schema, then the migrations ([`crate::migrate::MIGRATIONS`]), over a short-lived
+    /// root connection, before the API serves traffic: `api` can't run the schema's first
+    /// statements (`DEFINE NAMESPACE`, `DEFINE DATABASE`). The connection closes when this
+    /// returns; then connect as `api` with [`SurrealStore::connect`].
+    pub async fn migrate(
         url: &str,
         root_user: &str,
         root_pass: &str,
-    ) -> Result<(), StoreError> {
+    ) -> Result<Applied, MigrationError> {
+        let store_error = |what: &'static str| {
+            move |e| MigrationError::Store {
+                what,
+                source: Box::new(classify(e).into_store(what)),
+            }
+        };
         let root = any::connect(url)
             .await
-            .map_err(|e| classify(e).into_store("connect as root"))?;
+            .map_err(store_error("connect as root"))?;
         root.signin(Root {
             username: root_user.to_owned(),
             password: root_pass.to_owned(),
         })
         .await
-        .map_err(|e| classify(e).into_store("sign in as root"))?;
-        apply_schema_with(&root).await
+        .map_err(store_error("sign in as root"))?;
+        migrate_with(&root, MIGRATIONS).await
+    }
+
+    /// `knowledge_meta:current`, or `None` before a knowledge file was applied. `api` compares
+    /// it with its text embedder at start.
+    pub async fn knowledge_meta(&self) -> Result<Option<KnowledgeMeta>, StoreError> {
+        knowledge_meta(&self.db).await
     }
 
     /// Uses `ids` for the records the store creates on its own (tests pass `SequentialIds`).
@@ -253,7 +271,8 @@ impl SurrealStore {
 
 ```rust
 /// Applies [`SCHEMA`] on a client signed in as root (or the embedded engine). Every statement is
-/// checked; one failure fails start-up.
+/// checked; one failure fails start-up. [`crate::migrate::migrate_with`] runs it first; tests
+/// that need only the schema call it alone.
 pub async fn apply_schema_with(root: &Surreal<Any>) -> Result<(), StoreError> {
     run_tx(root, SCHEMA, |q| q)
         .await
@@ -265,6 +284,8 @@ pub async fn apply_schema_with(root: &Surreal<Any>) -> Result<(), StoreError> {
 - `SurrealStore` is **not `Clone`**: a clone of `Surreal<Any>` opens a new server session and replays the sign-in ([database 6](../database/README.md#6-rust-sdk)), so the store is shared through `Arc`. `lib.rs` asserts at compile time that it is `Store + MemoryStore + Send + Sync + 'static`, which is what `Arc<dyn Store>` across tokio's threads needs:
 
 ```rust
+pub use client::{SCHEMA, StoreConfig, SurrealStore, apply_schema_with};
+pub use migrate::{Applied, MIGRATIONS, Migration, MigrationError, migrate_with};
 
 /// `SurrealStore` implements every repository (so `Store`, by its blanket impl) and
 /// `MemoryStore`, and can live in `Arc<dyn Store>` across tokio's threads.
@@ -279,63 +300,253 @@ const _: () = {
 
 - The schema file is [`backend/migrations/schema.surql`](../../backend/migrations/schema.surql); `include_str!` embeds it, so the binary and its schema can't drift. ✓ The v1.4 file applies twice in a row on the embedded engine and, as root, on the pinned image by digest.
 
-### Migrations after the schema (proposed)
+### The migrations
 
-Nothing applies the knowledge migration the loader generates yet ([roadmap 13](roadmap.md#13-gaps-found-while-writing-this-roadmap), gap 1). The design, its SurrealQL and the checks run on the pinned image are in [database 1](../database/README.md#1-version-and-setup) ("Applying the migrations"). In short: `schema.surql` on every start; then the hand-written `NNNN_<slug>.surql` files once each, in number order, hash-locked; then the generated `knowledge.surql`, which replaces the whole knowledge set and is applied again only when its hash changes. Each file runs in its own transaction with its row in the `migration` table.
+Built for slice S2 ([roadmap 13](roadmap.md#13-gaps-found-while-writing-this-roadmap), gap 1). The design, its SurrealQL and the checks run on the pinned image are in [database 1](../database/README.md#1-version-and-setup) ("Applying the migrations"). In short: `schema.surql` on every start; then the hand-written `NNNN_<slug>.surql` files once each, in number order, hash-locked; then the generated `knowledge.surql`, which replaces the whole knowledge set and is applied again only when its hash changes or a numbered file ran in the same start. Each file runs in its own transaction with its row in the `migration` table.
 
-The crate's side, proposed (it doesn't compile yet):
+`build.rs` lists `backend/migrations/*.surql`, refuses a bad name or a duplicate number (the build fails naming the file), and writes `MIGRATIONS` to `OUT_DIR`, sorted: the numbered files, then `knowledge.surql`. The naming rules live in `migrate/naming.rs`, which `build.rs` includes with `#[path]`, so the build and the runner read names the same way.
 
-```text
-// Proposed. store/build.rs lists backend/migrations/*.surql, refuses a bad name or a duplicate
-// number, and writes MIGRATIONS (sorted: numbered files, then knowledge.surql) to OUT_DIR.
-pub struct Migration { pub name: &'static str, pub sql: &'static str }
-pub const MIGRATIONS: &[Migration];            // include!(concat!(env!("OUT_DIR"), "/migrations.rs"))
+```rust
+/// One embedded migration file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Migration {
+    /// The file name, which is also the key of its `migration` record.
+    pub name: &'static str,
+    /// The file's text.
+    pub sql: &'static str,
+}
 
+/// What one run applied, logged at `info` by `api`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Applied {
+    /// The numbered files this run applied, in order.
+    pub numbered: Vec<&'static str>,
+    /// Whether this run applied `knowledge.surql`.
+    pub knowledge: bool,
+}
+
+/// Why the migrations stopped the start ([database 7], migrations). Each names the file.
+///
+/// [database 7]: https://github.com/aacruzgon/GreenLens/blob/main/docs/database/README.md#7-operations
+#[derive(Debug, thiserror::Error)]
 pub enum MigrationError {
-    Changed { name: String, recorded: String, current: String },   // a recorded numbered file was edited
-    Missing { name: String },                                      // recorded, but not in this build
-    OutOfOrder { name: String, highest: String },                  // new, but sorts before an applied file
-    Failed { name: String, source: StoreError },                   // a statement failed; nothing committed
+    /// Connecting, signing in, or reading the `migration` records failed.
+    #[error("migrations: {what}")]
+    Store {
+        /// The step.
+        what: &'static str,
+        /// The store's error.
+        #[source]
+        source: Box<StoreError>,
+    },
+    /// A file name the runner doesn't know (only in a test's own list: `build.rs` refuses
+    /// one in `backend/migrations/`).
+    #[error("{0}")]
+    BadName(String),
+    /// A recorded numbered file was edited.
+    #[error(
+        "{name} was applied with hash {recorded}, and this build's file has {current}: revert \
+         the edit and put the change in a new numbered file"
+    )]
+    Changed {
+        /// The file.
+        name: String,
+        /// The hash in its record.
+        recorded: String,
+        /// This build's hash.
+        current: String,
+    },
+    /// A recorded file isn't in this build: a renamed file, or a database ahead of this build.
+    #[error("{name} is recorded as applied but isn't in this build")]
+    Missing {
+        /// The file.
+        name: String,
+    },
+    /// A new numbered file sorts before one already applied: it was merged out of order.
+    #[error("{name} is new but sorts before {highest}, which is applied: give it the next number")]
+    OutOfOrder {
+        /// The new file.
+        name: String,
+        /// The highest applied numbered file.
+        highest: String,
+    },
+    /// A statement failed; the file's transaction committed nothing.
+    #[error("{name} failed{}", statement.map(|n| format!(" at statement {n}")).unwrap_or_default())]
+    Failed {
+        /// The file.
+        name: String,
+        /// The failed statement, counting the file's statements from 1; one past the file's
+        /// last is the runner's own record. `None` when the whole query failed (a parse error,
+        /// whose message gives the line, or a lost connection).
+        statement: Option<usize>,
+        /// The store's error, with the SDK's message in its source chain.
+        #[source]
+        source: Box<StoreError>,
+    },
+    /// The file's transaction committed without writing its record: a top-level `RETURN` (or
+    /// another statement that ends the transaction early) skipped the runner's tail. The
+    /// file's own writes may have committed; fix the file before the next start runs it again.
+    #[error(
+        "{name} committed without its migration record: a top-level RETURN or transaction \
+         statement in the file ended the runner's wrapper early"
+    )]
+    Unrecorded {
+        /// The file.
+        name: String,
+    },
+    /// Another process kept changing the file's record while this one applied it.
+    #[error("{name}: its record changed under every attempt")]
+    Raced {
+        /// The file.
+        name: String,
+    },
 }
-
-pub struct Applied { pub numbered: Vec<&'static str>, pub knowledge: bool }
-
-impl SurrealStore {
-    // Replaces apply_schema: the schema, then the migrations, over one short-lived root connection.
-    pub async fn migrate(url: &str, root_user: &str, root_pass: &str) -> Result<Applied, MigrationError>;
-}
-// The testable core: tests pass fixture files and the embedded engine.
-pub async fn migrate_with(root: &Surreal<Any>, files: &[Migration]) -> Result<Applied, MigrationError>;
 ```
 
-- `migrate_with` sends each wrapped file through `run_tx`. A transaction conflict means the file committed nothing, so `run_tx` re-sends it; if another process applied it meanwhile, the second try throws "migration raced", and the runner re-reads the record and moves on.
-- `Failed` carries the file name and the statement index of the first real failure (`first_failure` skips `NotExecuted`), so the log names the line to fix.
-- `Applied` is logged at `info`: `migrations applied numbered=[…] knowledge=true`.
+```rust
+/// The schema, then `files`, on a client signed in as root (or the embedded engine): steps 1
+/// to 5 of [database 1]'s "How `api` applies them". `api` passes [`MIGRATIONS`]; tests pass
+/// their own files.
+///
+/// [database 1]: https://github.com/aacruzgon/GreenLens/blob/main/docs/database/README.md#1-version-and-setup
+pub async fn migrate_with(
+    root: &Surreal<Any>,
+    files: &[Migration],
+) -> Result<Applied, MigrationError> {
+    apply_schema_with(root)
+        .await
+        .map_err(|source| MigrationError::Failed {
+            name: SCHEMA_FILE.to_owned(),
+            statement: None,
+            source: Box::new(source),
+        })?;
+    root.use_ns(NAMESPACE)
+        .use_db(DATABASE)
+        .await
+        .map_err(|e| store_error("select pdm/main", classify(e)))?;
+    let records = Records::read(root).await?;
+    apply_migrations(root, files, &records).await
+}
+
+/// Steps 3 to 5 against `records`, the table as read before: the checks, the new numbered
+/// files in order, then `knowledge.surql` when its hash changed or a numbered file was
+/// applied. `migrate_with` reads `records` just before; a test passes a stale read to play a
+/// second process.
+pub async fn apply_migrations(
+    root: &Surreal<Any>,
+    files: &[Migration],
+    records: &Records,
+) -> Result<Applied, MigrationError> {
+    let mut numbered = Vec::new();
+    let mut knowledge = None;
+    for file in files {
+        match file_kind(file.name).map_err(MigrationError::BadName)? {
+            FileKind::Versioned(number) => numbered.push((number, *file)),
+            FileKind::Knowledge => knowledge = Some(*file),
+            FileKind::Schema => {
+                return Err(MigrationError::BadName(format!(
+                    "{SCHEMA_FILE} is applied first, not as a migration"
+                )));
+            }
+        }
+    }
+    numbered.sort_unstable_by_key(|(number, _)| *number);
+    let numbered: Vec<Migration> = numbered.into_iter().map(|(_, f)| f).collect();
+
+    check(&numbered, knowledge.as_ref(), records)?;
+
+    let mut applied = Applied::default();
+    for file in &numbered {
+        if records.0.contains_key(file.name) {
+            continue;
+        }
+        if apply_file(root, file, RecordKind::Versioned, None).await? {
+            applied.numbered.push(file.name);
+        }
+    }
+    if let Some(file) = knowledge {
+        // A numbered file applied in this run deleted the knowledge record in its transaction.
+        let recorded = if applied.numbered.is_empty() {
+            records.0.get(file.name).map(|r| r.hash.clone())
+        } else {
+            None
+        };
+        if recorded.as_deref() != Some(file.hash().as_str()) {
+            applied.knowledge = apply_file(root, &file, RecordKind::Knowledge, recorded).await?;
+        }
+    }
+    Ok(applied)
+}
+```
+
+The wrapper each file runs in. The file goes on the wrapper's first line, so a parse error's line number is the file's own; the binds carry a `migration_` prefix, so a file's own `LET $name` can't clash with them:
+
+```rust
+/// The wrapper's first line: statements 0–2 (`BEGIN`, `LET`, `IF`). The file follows on the
+/// same line, so a parse error's line number is the file's own.
+const WRAP_HEAD: &str = "BEGIN; LET $migration_prev = (SELECT VALUE hash FROM ONLY \
+     type::record('migration', $migration_name)); IF $migration_prev != $migration_expected { \
+     THROW 'migration raced: ' + $migration_name }; ";
+
+/// After the file: its record, then `COMMIT`. The `;` on its own line ends a last statement
+/// without one, after a last line that may be a comment.
+const WRAP_TAIL: &str = "\n;\nUPSERT type::record('migration', $migration_name) CONTENT { kind: \
+     $migration_kind, hash: $migration_hash, applied_at: time::now() } RETURN NONE;\nCOMMIT;\n";
+```
+
+- `apply_migrations` sends each wrapped file through `run_tx_at`, `run_tx` with the failed statement's index. A transaction conflict means the file committed nothing, so it is re-sent. If another process applied the file meanwhile, the `THROW` rolls this attempt back; the runner re-reads the record and skips the file when the hash matches, or stops with `Changed` when a numbered file's doesn't. A knowledge file is re-applied over the newer record, up to 3 attempts.
+- `Failed` names the file and the statement, counting the file's statements from 1 (`first_failure_at` skips `NotExecuted` and `Cancelled`), so the log names the line to fix. A parse error has no index; its message gives the line.
+- `api` logs the result at `info`: `migrations applied numbered=[…] knowledge=true`.
+- `apply_schema_with` stays for tests that need the schema alone; `migrate_with` runs it first.
+- `check_contents` is the rule on what a file may hold, checked line by line: no `USE`, `BEGIN`, `COMMIT`, `CANCEL`, `OPTION`, or `DEFINE NAMESPACE`, `DATABASE`, `USER` or `ACCESS`; in `knowledge.surql`, every statement writes a knowledge table or `knowledge_meta` and ends with `RETURN NONE;`. The unit test `migration_files_follow_the_rules` runs it on every embedded file, and `the_knowledge_meta_and_the_fixture_follow_the_rules` on the loader's fixture.
+- `knowledge_meta` reads `knowledge_meta:current` (`SurrealStore::knowledge_meta` as `api`). `api` compares it with its text embedder at start ([api 4](api.md#4-start-up-and-shutdown)):
+
+```rust
+/// `knowledge_meta:current`, the generated values of the loaded knowledge set.
+#[derive(Debug, Clone, PartialEq, Eq, SurrealValue)]
+pub struct KnowledgeMeta {
+    /// The `bioclip` labels' version ([`ml/models/FORMATS.md`]).
+    ///
+    /// [`ml/models/FORMATS.md`]: https://github.com/aacruzgon/GreenLens/blob/main/ml/models/FORMATS.md
+    pub label_set_version: String,
+    /// The disease classifier's label version.
+    pub classifier_labels_version: String,
+    /// `<name>@<version>` of the model that embedded the chunks.
+    pub embedding_model: String,
+    /// Their vector length.
+    pub embedding_dimension: i64,
+}
+```
 
 **Work items**, for slice S2 of the [roadmap](roadmap.md#6-s2-perception-site-data-and-knowledge) (item 6, knowledge loading) and S0 for the live check:
 
-| # | Slice | Work | Exit check |
+| # | Slice | Work | State |
 |---|---|---|---|
-| M1 | S2 | Add the `migration` table to `schema.surql`, and list it in database 3 (`knowledge_meta` is in, with the loader) | The schema applies twice in a row on the embedded engine and on the pinned image |
-| M2 | S2 | `store/build.rs` and `MIGRATIONS`: names, numbering, and the forbidden statements (`USE`, `BEGIN`, `COMMIT`, `CANCEL`, `OPTION`, `DEFINE NAMESPACE`, `DATABASE`, `USER`, `ACCESS`) | A duplicate number or a bad name fails `cargo build`; `migration_files_follow_the_rules` passes on the committed files |
-| M3 | S2 | `migrate_with` and `migrate`, replacing `apply_schema` and `apply_schema_with` | The embedded-engine tests below pass |
-| M4 | S2 | `api` start-up: step 3 calls `migrate`; after step 6, the embedder check against `knowledge_meta` ([api 4](api.md#4-start-up-and-shutdown)) | `api` starts twice against the dev compose; the second start logs `numbered=[] knowledge=false` |
-| M5 | S2 | `load_knowledge` reads `label_set_version` and `classifier_labels_version` from `knowledge_meta:current` instead of hashing the labels (section 22, item 7) | `knowledge_loads` asserts the stored version |
-| M6 | S2 | The loader (`ml/knowledge/`, with the knowledge track) writes `knowledge.surql` as [contracts 10](../architecture/contracts.md#checks-and-generated-files) says | The same seed twice gives identical bytes; S2's exit check passes: a knowledge search returns ranked chunks from the loaded seed |
-| M7 | S0 | The live CI job applies the committed migrations twice, as root, on the pinned image, and a generated 21 MB knowledge fixture over WebSocket | The live job is green |
+| M1 | S2 | The `migration` table in `schema.surql`, listed in database 3 | Done: the schema applies twice on the embedded engine and, as root, on the pinned image |
+| M2 | S2 | `store/build.rs` and `MIGRATIONS`: names, numbering, and the forbidden statements | Done: a duplicate number or a bad name fails `cargo build`; `migration_files_follow_the_rules` passes on the committed files |
+| M3 | S2 | `migrate_with` and `migrate`, replacing `apply_schema` | Done: the tests below |
+| M4 | S2 | `api` start-up: step 3 calls `migrate`; after step 6, the embedder check against `knowledge_meta` | Done in code (`the_embedder_must_match_the_knowledge_set`); not yet run against the dev compose |
+| M5 | S2 | `load_knowledge` reads `label_set_version` and `classifier_labels_version` from `knowledge_meta:current` instead of hashing the labels (section 22, item 7) | Open |
+| M6 | S2 | The loader (`ml/knowledge/`) writes `knowledge.surql` as [contracts 10](../architecture/contracts.md#checks-and-generated-files) says | Done in PR #48; the first real seed is open |
+| M7 | S0 | The live CI job applies the committed migrations twice, as root, on the pinned image, and a generated 21 MB knowledge fixture over WebSocket | Open. `tests/server.rs` already applies the committed files twice and the loader's fixture once, then skips it, on the pinned image |
 
-**Tests on the embedded engine** (`kv-mem`, one datastore each):
+**Tests on the embedded engine** (`tests/migrations.rs`, `kv-mem`, one datastore each):
 - `committed_migrations_apply_twice`: `MIGRATIONS` apply, and a second run applies nothing.
-- `a_changed_recorded_file_stops_the_start`, `a_missing_recorded_file_stops_the_start`, `an_out_of_order_file_stops_the_start`.
-- `a_failing_file_commits_nothing`: no row and no record; the file before it stays applied.
-- `knowledge_replaces_the_set`: a fixture v1, then a v2 without one species and two chunks. The species, its edges and the chunks are gone, the rest are upserted, and a search finds no removed chunk.
-- `a_raced_file_is_skipped`: the record is written between the read and the apply; the runner re-reads and goes on.
+- `numbered_files_apply_once_in_order_with_their_records`: files given out of order apply in number order with their records; a new file, ending in a comment with no `;`, applies alone on the next start.
+- `a_changed_recorded_file_stops_the_start` (and a `\r\n` copy of the same file is no change), `a_missing_recorded_file_stops_the_start`, `an_out_of_order_file_stops_the_start`.
+- `a_failing_file_commits_nothing`: no row and no record, `Failed` at statement 2; the file before it stays applied. A parse error has no statement index.
+- `knowledge_replaces_the_set`: the loader's fixture, then a v2 without one species, two chunks and an edge. The species, the edge and the chunks are gone, the rest are kept, and the removed chunks' vectors find only the chunk that stays.
+- `a_numbered_file_reapplies_the_knowledge`: a numbered file that deletes the chunks, and the unchanged knowledge file runs again in the same start.
+- `a_start_that_dies_after_a_numbered_file_still_reapplies_the_knowledge`: the numbered file commits, the knowledge file fails; the next start, with the knowledge file whose hash was recorded before, applies it again, since the numbered file deleted its record in its own transaction.
+- `a_return_that_skips_the_record_stops_the_start`: a top-level `RETURN` commits the file's write without its record; the runner reads the record back and stops with `Unrecorded`, and `check_contents` refuses the file.
+- `a_raced_file_is_skipped`: another process applies both files between this one's read and its transactions; this one throws "migration raced", re-reads and applies nothing. `a_raced_numbered_file_with_another_hash_is_a_change`.
+- `the_knowledge_meta_and_the_fixture_follow_the_rules`: no `knowledge_meta` before a knowledge file, the fixture's after.
 - The embedded engine has no WebSocket, so only M7 checks the 64 MiB message cap.
 
 **Open questions.**
-1. **Removed knowledge records.** User records keep a plain link to a deleted species or problem. What should the app show for a plant whose species was removed: unknown, with a prompt to confirm it again? No reader handles a missing record yet.
+1. **Removed knowledge records.** User records keep a plain link to a deleted species or problem. The plant projection (`plant_fields!`) reads a species link to a missing record as no species, and the user writes that set a species (`create_plant`, `confirm_species`, a new plant of `create_scan` and of `put_map`) refuse one the knowledge base doesn't hold with `invalid_request` (`thrown::UNKNOWN_SPECIES`), so only the pipeline's suggestion or a later knowledge load can leave a dangling link. What should the app show for a plant whose species was removed: unknown, with a prompt to confirm it again? Links to a missing problem are still read as they are.
 2. **Memories after a text-model change.** The loader re-embeds chunks, but `memory.embedding` uses the same model and only `api` can re-embed it. A background job, or no model change once memories exist?
-3. **Stale photos.** `seed-upload` deletes photos no longer in the seed before the new `api` starts, so the old `api` can sign URLs to deleted photos for a short time. Delete only photos in neither the old nor the new seed, or delete after `api` is healthy?
+3. **Stale photos.** *Settled on 2026-10-20:* `seed-upload` only adds photos and never deletes one, so the old `api` keeps signing URLs to photos that exist, during a deploy and after a rollback ([contracts 10](../architecture/contracts.md#10-knowledge-seed-format)). Photos that left the seed stay in `knowledge/`, a few hundred KB each.
 4. **Growth past 48 MiB.** Split the knowledge file by table (losing one transaction for the whole set), apply it over HTTP `/import` (limits *unverified*), or keep chunks out of Git?
 5. **Rollback.** An older build refuses a database that recorded a file it doesn't know. Is restoring the pre-deploy backup an acceptable rollback during build week?
 
@@ -385,29 +596,9 @@ pub async fn run_tx<'c, F>(
 where
     F: Fn(Query<'c, Any>) -> Query<'c, Any> + Send,
 {
-    let mut attempt = 0;
-    loop {
-        let failure = match bind(db.query(sql)).await {
-            Ok(mut results) => match first_failure(results.take_errors()) {
-                None => return Ok(results),
-                Some(error) => classify(error),
-            },
-            // A parse error or a lost connection fails the whole request.
-            Err(error) => classify(error),
-        };
-        match failure {
-            DbFailure::TxConflict(_) if attempt + 1 < MAX_ATTEMPTS => {
-                tokio::time::sleep(backoff(attempt)).await;
-                attempt += 1;
-            }
-            failure => {
-                if matches!(failure, DbFailure::TxConflict(_)) {
-                    tracing::warn!(attempts = MAX_ATTEMPTS, "transaction conflicts persisted");
-                }
-                return Err(failure);
-            }
-        }
-    }
+    run_tx_at(db, sql, bind)
+        .await
+        .map_err(|(_, failure)| failure)
 }
 ```
 
@@ -453,6 +644,21 @@ pub mod thrown {
     pub const INVALID_STATE: &str = "invalid_state";
     /// A map upload pins plants that aren't the garden's.
     pub const UNKNOWN_PLANTS: &str = "unknown_plants";
+    /// A user's write names a species the knowledge base doesn't hold.
+    pub const UNKNOWN_SPECIES: &str = "unknown_species";
+    /// A migration's record changed between the runner's read and its transaction; the code
+    /// is followed by `": <file name>"` ([database 1], applying the migrations).
+    pub const MIGRATION_RACED: &str = "migration raced";
+}
+
+/// What [`thrown::UNKNOWN_SPECIES`] answers: `400 invalid_request` at the request's `field`
+/// ([contracts 2]). `option<record<species>>` doesn't check that the record exists, so the
+/// user writes that set a species check it in their transaction.
+pub fn unknown_species(field: &'static str) -> StoreError {
+    StoreError::Rejected(DomainError::invalid(
+        field,
+        "not a species of the knowledge base",
+    ))
 }
 
 /// What one failed statement means, before the caller adds context.
@@ -491,22 +697,7 @@ pub enum DbFailure {
 pub fn first_failure(
     errors: impl IntoIterator<Item = (usize, surrealdb::Error)>,
 ) -> Option<surrealdb::Error> {
-    let mut errors: Vec<_> = errors.into_iter().collect();
-    errors.sort_unstable_by_key(|(index, _)| *index);
-    let mut first = None;
-    for (_, error) in errors {
-        let skipped = matches!(
-            error.query_details(),
-            Some(QueryError::NotExecuted | QueryError::Cancelled)
-        );
-        if !skipped {
-            return Some(error);
-        }
-        if first.is_none() {
-            first = Some(error);
-        }
-    }
-    first
+    first_failure_at(errors).map(|(_, error)| error)
 }
 
 /// The one place SDK errors are classified.
@@ -591,7 +782,7 @@ impl DbFailure {
 }
 ```
 
-A caller that knows more maps first: the plan write turns `stale_plan` and the `action_plan_version` unique index into `StalePlan { current }` by reading the plan that won (section 13); the map upload turns `stale_map` into `StaleMap { current_version }` and `unknown_plants` into `Rejected(UnknownPlants { plant_ids })` (section 9); `create_scan` turns `budget_exceeded` into `Rejected(BudgetExceeded)` with the next UTC midnight (section 10); alert dedupe and `upsert_user` treat their unique index as success (sections 13, 8).
+A caller that knows more maps first: the plan write turns `stale_plan` and the `action_plan_version` unique index into `StalePlan { current }` by reading the plan that won (section 13); the map upload turns `stale_map` into `StaleMap { current_version }` and `unknown_plants` into `Rejected(UnknownPlants { plant_ids })` (section 9); `create_scan` turns `budget_exceeded` into `Rejected(BudgetExceeded)` with the next UTC midnight (section 10); `create_plant`, `confirm_species`, `create_scan` and `put_map` turn `unknown_species` into `Rejected(InvalidRequest)` at the request's field (`species_id`, `new_plant.species_id` or `pins`) through `unknown_species`; alert dedupe and `upsert_user` treat their unique index as success (sections 13, 8).
 
 A row that doesn't convert into its domain type is a `RowError`, reported as `StoreError::Query`: a bug or a schema drift, never a user error.
 
@@ -1281,7 +1472,8 @@ The centroid is `type::point([$lon, $lat])`: ✓ a `($lon, $lat)` literal doesn'
 
 ```rust
 /// `PUT /gardens/{id}/map` in one transaction ([database 4] ✓): the `base_version`
-/// check (`THROW` and nothing changes), unknown plants refused, pins of plants being
+/// check (`THROW` and nothing changes), unknown plants refused, new plants' species the
+/// knowledge base doesn't hold refused (`unknown_species`), pins of plants being
 /// deleted dropped, new plants created, the version incremented, the map written, older
 /// maps deleted, and every plant's `position` set or unset. Two concurrent uploads conflict
 /// on the garden row; the retry then fails the version check.
@@ -1290,6 +1482,7 @@ LET $g = (SELECT map_version FROM ONLY $garden WHERE deleting_at = NONE);
 IF $g = NONE { THROW 'not_found' };
 IF $g.map_version != $base { THROW 'stale_map' };
 IF array::len(array::filter($existing, |$p| array::len(SELECT VALUE id FROM $p WHERE garden = $garden) = 0)) > 0 { THROW 'unknown_plants' };
+IF array::len(array::filter(array::filter($new_plants, |$n| $n.species != NONE), |$n| array::len(SELECT VALUE id FROM $n.species) = 0)) > 0 { THROW 'unknown_species' };
 LET $dropped = (SELECT VALUE id FROM plant WHERE id IN $existing AND deleting_at != NONE);
 FOR $n IN $new_plants {
   CREATE $n.id SET garden = $garden, name = $n.name, species = $n.species,
@@ -1363,6 +1556,9 @@ impl MapRepo for SurrealStore {
                         .map_err(|e: RowError| e.into_store(WHAT))?,
                 }));
             }
+            Err(failure) if failure.thrown() == Some(thrown::UNKNOWN_SPECIES) => {
+                return Err(unknown_species("pins"));
+            }
             Err(failure) => return Err(failure.into_store(WHAT)),
         }
         self.current_map(editor.garden())
@@ -1396,6 +1592,7 @@ impl MapRepo for SurrealStore {
 | `create_scan` | `CREATE_SCAN`: the scan (and a new plant) with `UPSERT usage_daily … scans += 1` and the limit `THROW` in one transaction | [4, limits](../database/README.md#limits-and-counters-) ✓ |
 | `append_event` | `APPEND_EVENT`: the counter on the scan, the event at `scan_event:[scan, seq]` | [4, scan events](../database/README.md#scan-events-a-gap-free-seq-) ✓ |
 | `events_after` | `EVENTS_AFTER`: a key-range read, scoped to the proof's garden | [4, scan events](../database/README.md#scan-events-a-gap-free-seq-) ✓ |
+| `run_stage_events` | `RUN_STAGE_EVENTS`: the scan's key range filtered by run and type, no garden scope (`api`'s own read for a job it holds the lease of) | [pipeline 10](pipeline.md#10-events) |
 | `stream_state` | `STREAM_STATE`, with `step_claimed` from `pipeline_step != NONE` | [contracts 4](../architecture/contracts.md#when-the-stream-closes) |
 | `add_image` | `ADD_IMAGE`: the status, `deleting_at`, kind limit and question re-checked; a guided check and its `guided` job created; a question photo's first step and job | [contracts 3](../architecture/contracts.md#post-scansidimages) |
 | `remove_image`, `start_run`, `fail_scan`, `record_feedback` | `REMOVE_IMAGE`, `START_RUN`, `FAIL_SCAN`, `RECORD_FEEDBACK` | [contracts 3](../architecture/contracts.md#3-scan-rest-api) |
@@ -1423,6 +1620,12 @@ COMMIT;";
         "IF array::len(SELECT VALUE id FROM $scan WHERE garden = $garden AND deleting_at = NONE
       AND plant.deleting_at = NONE AND garden.deleting_at = NONE) = 0 { THROW 'not_found' };
 SELECT * FROM scan_event:[$scan, $after + 1]..=[$scan, ..];";
+
+    /// A run's `run_started` and stage events, for a job's `complete` ([contracts 5], partial
+    /// results): the scan's key range, filtered by run and type, in `seq` order. No garden
+    /// scope: `api` reads it for a job it holds the lease of. Statements: 0 `SELECT`.
+    pub const RUN_STAGE_EVENTS: &str = "SELECT * FROM scan_event:[$scan, 1]..=[$scan, ..]
+WHERE run = $run AND type IN ['run_started', 'stage_started', 'stage_completed'];";
 
     /// What the closing rule needs ([contracts 4], when the stream closes).
     pub const STREAM_STATE: &str = "SELECT status, open_question.status AS question_status, pipeline_step != NONE AS step_claimed,
@@ -1500,6 +1703,27 @@ impl EventRepo for SurrealStore {
             .collect()
     }
 
+    async fn run_stage_events(
+        &self,
+        scan: ScanId,
+        run: Run,
+    ) -> Result<Vec<ScanEventBody<Stored>>, StoreError> {
+        const WHAT: &str = "read a run's stage events";
+        let mut results = run_tx(&self.db, sql::RUN_STAGE_EVENTS, |q| {
+            q.bind(("scan", rid(&scan))).bind(("run", i64::from(run.0)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        let rows: Vec<EventRow> = results.take(0).map_err(|e| take_failed(WHAT, e))?;
+        rows.into_iter()
+            .map(|row| {
+                ScanEvent::try_from(row)
+                    .map(|e| e.body)
+                    .map_err(|e| e.into_store(WHAT))
+            })
+            .collect()
+    }
+
     async fn stream_state(&self, scan: ScanId) -> Result<StreamState, StoreError> {
         const WHAT: &str = "stream state";
         let mut results = run_tx(&self.db, sql::STREAM_STATE, |q| {
@@ -1525,10 +1749,12 @@ impl EventRepo for SurrealStore {
 ```rust
 /// `POST /scans`: the scan (and the new plant), counted in `usage_daily` in the same
 /// transaction ([database 4], limits ✓: `+=` on a missing record starts from the default,
-/// and the `THROW` over 30 rolls the scan back). Statements: 0 `BEGIN`, 1 the plant `IF`,
-/// 2 `CREATE` scan, 3 `LET $count`, 4 the limit `IF`, 5 the scan read, 6 `COMMIT`.
+/// and the `THROW` over 30 rolls the scan back). A new plant's species must be one the
+/// knowledge base holds (`unknown_species`). Statements: 0 `BEGIN`, 1 the plant `IF`, 2
+/// `CREATE` scan, 3 `LET $count`, 4 the limit `IF`, 5 the scan read, 6 `COMMIT`.
 pub const CREATE_SCAN: &str = "BEGIN;
 IF $new_plant != NONE {
+  IF $new_plant.species != NONE { IF array::len(SELECT VALUE id FROM $new_plant.species) = 0 { THROW 'unknown_species' } };
   CREATE $plant SET garden = $garden, name = $new_plant.name, species = $new_plant.species,
     species_status = IF $new_plant.species != NONE { 'confirmed' } ELSE { 'unknown' }, created_at = $now;
 } ELSE IF array::len(SELECT VALUE id FROM $plant WHERE garden = $garden AND deleting_at = NONE) = 0 {
@@ -2859,6 +3085,7 @@ The store returns the domain's `StoreError` ([domain 6](domain.md#6-errors)); `a
 |---|---|
 | `schema_applies_twice` | The v1.4 schema is idempotent |
 | `concurrent_appends_are_gap_free_and_replay_by_range` | 40 appends on a **multi-thread** runtime (conflicts don't happen on a current-thread one, research `surrealdb.md` §3) commit exactly `seq` 1…40; the replay after 35 returns 36…40 with the body decoded |
+| `run_stage_events_reads_one_runs_stage_events_in_order` | A run's `run_started` and stage events come back in `seq` order across `seq` 10, without a `status_changed` or another run's events; a run without events reads empty |
 | `plan_compare_and_set` | A first plan; a second "first plan" gets `StalePlan { current: v1 }` and nothing of it is stored; v2 over v1 dismisses v1's open task with `plan_superseded` |
 | `job_claim_slots_requeue_and_fallback_hold` | The claim, `started_analysing`, a full slot, the heartbeat, the requeue of an expired lease (a free requeue), the fallback held back from a photo answer's segmentation job while the perception worker is alive and taking it 31 s after its last heartbeat, with `max_runtime` doubled |
 | `step_claim_commit_and_sweep` | The claim and `Busy`; `retrieve` queues its job and hands over to `score` because of `rescore_pending`; the same claim can't commit twice; the sweep re-claims once; the slow original's commit loses; a claim of an older run never commits |
@@ -2890,7 +3117,8 @@ The store returns the domain's `StoreError` ([domain 6](domain.md#6-errors)); `a
 | `the_search_stays_in_its_garden_and_ranks_by_similarity` | Hits ranked by cosine, `k`, `kind` and `since`; another garden's record with the exact query vector never comes back; a deleting connector's records leave at once |
 | `counts_cleanup_and_deletion` | `garden_record_count` and `record_count` (501); the 180-day cleanup in batches; the pending cleanup; a connector's deletion in batches of 500, records before the connector, only once it is `deleting` |
 | `plans_and_messages_carry_farm_citations` | A plan's `farm_records` and a step's `farm_citations`, a message's `farm_citations`, through the store; a plan and messages whose fields were removed and defined again (no backfill) read as empty |
-| `server.rs` (ignored) | The schema applied twice, as root, on the pinned image by digest |
+| `migrations.rs` | The migration runner: order, records, the hash lock, a changed, missing or out-of-order file, a failing file, a raced file, the knowledge set replaced and re-applied after a numbered file (section 4 lists each test) |
+| `server.rs` (ignored) | The schema and the committed migrations applied twice, as root, on the pinned image by digest; the loader's fixture as `knowledge.surql` applied once, then skipped |
 
 Run against the pinned image as well with `PDM_TEST_SURREALDB_URL=ws://127.0.0.1:18000 cargo test -p store --test server -- --ignored` (the container command is in the file).
 
@@ -2933,7 +3161,7 @@ Answers this crate settles, for [contracts 12](../architecture/contracts.md#12-o
 4. **Resolved: a bound `k` in `<|k, 40|>`** is a parse error on 3.3.4 ("expected an unsigned integer", ✓ [database 1](../database/README.md#1-version-and-setup)). `search_chunks` now writes `k` into the statement as a literal, clamped to 1–40 (`MAX_CHUNK_HITS`, the search's `ef`), and `knowledge_search_returns_the_nearest_chunks_first` runs the search on the embedded engine with 384-dimension vectors.
 5. **Three port methods pass no time.** `store_partial`, `create_plant` and `register_push_token` have no `now`. The store checks a partial result's lease by token, worker and status only (a requeue clears the token; `complete` checks expiry), and the other two take the `created_at` default. Adding `now: Timestamp` to those three methods ([domain 9](domain.md#9-boundary-traits)) would put them back under the `Clock` port. `finish_guided_check` took this step on 2026-10-19: it read the database clock, so a test whose fixed clock fell behind real time lost its lease.
 6. **Resolved questions have no wire status.** `Question.status` is `open | answering`, so `ScanSnapshot.questions`, which holds every question of the run, reads an answered, superseded or dropped question as `open`; the live state is `scan.open_question`. A server-side status on the snapshot's questions would remove the ambiguity.
-7. **`label_set_version` isn't stored.** The schema keeps no generated files (contracts 10), so `load_knowledge` computes it from every species' and organism's `bioclip_label` with the recipe of [`ml/models/FORMATS.md`](../../ml/models/FORMATS.md): the first 16 hex digits of a SHA-256 over `BIOCLIP_MODEL`, the 80 templates (`bioclip_templates.json`, a copy of `ml/`'s, kept equal by a test) and the sorted `"{table}:{id}\t{label}"` lines. It passes `FORMATS.md`'s test vector (`129f0395e8d89bd5`), so the knowledge loader, `ml/training` and the API agree. Database 1 proposes storing the loader's value in `knowledge_meta` once the migration runner exists.
+7. **`label_set_version` isn't stored.** The schema keeps no generated files (contracts 10), so `load_knowledge` computes it from every species' and organism's `bioclip_label` with the recipe of [`ml/models/FORMATS.md`](../../ml/models/FORMATS.md): the first 16 hex digits of a SHA-256 over `BIOCLIP_MODEL`, the 80 templates (`bioclip_templates.json`, a copy of `ml/`'s, kept equal by a test) and the sorted `"{table}:{id}\t{label}"` lines. It passes `FORMATS.md`'s test vector (`129f0395e8d89bd5`), so the knowledge loader, `ml/training` and the API agree. The loader now writes its value to `knowledge_meta`, and the runner applies it; reading it from there is work item M5 (section 4).
 8. **The snapshot is several reads.** `snapshot` runs `SNAPSHOT_PARTS` and the loaders as separate queries. Under the step claim nothing else writes the run's outputs, and new input only sets `rescore_pending`, so the reads agree in practice; one read-only `BEGIN … COMMIT` would make it a single snapshot.
 
 ---

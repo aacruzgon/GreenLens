@@ -23,11 +23,13 @@ mod config;
 mod fallback;
 mod job;
 mod lifecycle;
+mod stub;
 mod vlm;
 
 use api::HttpWorkerApi;
-use config::{Caps, Cli, Timings};
+use config::{Caps, Cli, Timings, check_stub_allowed};
 use lifecycle::{Identity, Worker, run_until_sigterm};
+use stub::{StubConfig, StubModel};
 use vlm::{
     VlmAdapter,
     backend::{AnthropicBackend, OpenAiBackend},
@@ -36,11 +38,19 @@ use vlm::{
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // `RUST_LOG` filtering, default `info` as in `api`: without it only errors would show.
+    // ONNX Runtime logs each session's graph optimisation at `info` through `ort` (about 7,600
+    // lines when the 3070's worker starts), so `ort` defaults to `warn`.
     tracing_subscriber::fmt()
         .json()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,ort=warn")),
+        )
         .init();
     let cli = Cli::parse();
+    // Every line of the process carries `stub_vision`, so canned results show in any log.
+    let _process = tracing::info_span!("worker", stub_vision = cli.stub.stub_vision).entered();
     let worker_id: WorkerId = cli.worker_id.parse().context("WORKER_ID")?;
     let timings = Timings::new(Duration::from_secs(cli.drain_seconds));
     // One reqwest client per process. Its read gap is long: a non-streamed VLM call can wait
@@ -76,6 +86,12 @@ async fn build_model(
     http: reqwest::Client,
     cpu: Arc<Semaphore>,
 ) -> anyhow::Result<Arc<dyn VisionModel>> {
+    // Stub vision first: no manifest, no ONNX Runtime, no GPU ([worker 15.1.1]).
+    check_stub_allowed(cli, !cfg!(debug_assertions))?;
+    if cli.stub.stub_vision {
+        tracing::warn!("stub vision is on: results are canned");
+        return Ok(Arc::new(StubModel::new(StubConfig::new(&cli.stub)?)));
+    }
     Ok(match cli.caps {
         Caps::Perception => {
             let p = &cli.perception;

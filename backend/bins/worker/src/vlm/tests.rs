@@ -104,6 +104,7 @@ fn adapter_with(replies: Vec<VlmReply>, max_questions: Option<usize>) -> VlmAdap
     )
 }
 
+mod bench;
 mod live;
 mod record;
 

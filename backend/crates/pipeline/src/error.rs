@@ -61,3 +61,19 @@ impl PipelineError {
         )
     }
 }
+
+/// The log form of an error: its message, then each source's, joined by ": "
+/// (`error = %Chain(&e)`), so a store failure logs its cause and not only "store failed".
+pub(crate) struct Chain<'a>(pub &'a (dyn std::error::Error + 'static));
+
+impl std::fmt::Display for Chain<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)?;
+        let mut source = self.0.source();
+        while let Some(error) = source {
+            write!(f, ": {error}")?;
+            source = error.source();
+        }
+        Ok(())
+    }
+}

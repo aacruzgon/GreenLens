@@ -41,10 +41,12 @@ pub async fn list_plants(
     Ok(Wire::ok(plants.sign((), &state.signer())))
 }
 
-/// `POST /plants`. Editor.
+/// `POST /plants`. Editor. A `species_id` the knowledge base doesn't hold is `400
+/// invalid_request`, checked in the store's transaction.
 #[utoipa::path(post, path = "/plants", tag = "plants", request_body = CreatePlantRequest,
     params(("Idempotency-Key" = Option<String>, Header, description = "UUID per user action")),
-    responses((status = 201, body = Plant), (status = 403, body = ErrorBody), (status = 404, body = ErrorBody)))]
+    responses((status = 201, body = Plant), (status = 400, body = ErrorBody), (status = 403, body = ErrorBody),
+        (status = 404, body = ErrorBody)))]
 pub async fn create_plant(
     State(state): State<SharedState>,
     request: IdemJson<CreatePlantRequest>,

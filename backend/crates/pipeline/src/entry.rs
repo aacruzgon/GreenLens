@@ -30,7 +30,11 @@ use domain::{
 };
 use knowledge::scoring::AnswerSet;
 
-use crate::{FollowUp, Handled, Pipeline, PipelineError, payloads, results};
+use crate::{
+    FollowUp, Handled, Pipeline, PipelineError,
+    catch_up::{self, ResultStages},
+    payloads, results,
+};
 
 pub use crate::runs::SubmitOutcome;
 
@@ -385,6 +389,7 @@ impl Pipeline {
         job: LeasedJob,
         complete: CompleteJob,
     ) -> Result<Handled<CompletionOutcome>, PipelineError> {
+        let mut stages = None;
         let completion = match complete.outcome {
             JobOutcome::Failed { error } => JobCompletion::Failed { error },
             JobOutcome::Done { result } => match JobResult::decode(job.kind, result.clone()) {
@@ -399,6 +404,7 @@ impl Pipeline {
                     },
                 },
                 Ok(decoded) => {
+                    stages = Some(ResultStages::of(&decoded));
                     self.done(&job, &complete.model_versions, result, decoded)
                         .await?
                 }
@@ -420,17 +426,11 @@ impl Pipeline {
         let follow_up = match &outcome {
             CompletionOutcome::Stored { claim, diff } => {
                 let run = job.run.unwrap_or_default();
-                let mut events: Vec<ScanEventBody<Stored>> = diff
-                    .added
-                    .iter()
-                    .cloned()
-                    .map(|observation| ScanEventBody::Finding { observation })
-                    .collect();
-                events.extend(
-                    diff.retracted
-                        .iter()
-                        .map(|&observation_id| ScanEventBody::FindingRetracted { observation_id }),
-                );
+                let run_events = match &stages {
+                    Some(_) => self.run_stage_events(job.scan, run).await,
+                    None => Vec::new(),
+                };
+                let events = catch_up::completion_events(stages.as_ref(), &run_events, diff);
                 self.emit(job.scan, run, events).await?;
                 if is_vlm {
                     self.suggest_species(job.scan).await?;
@@ -455,6 +455,25 @@ impl Pipeline {
             value: outcome,
             follow_up,
         })
+    }
+
+    /// The run's stored `run_started` and stage events, for the stage events a completed job
+    /// stands in for ([`ResultStages`]). Best effort: the result is already stored, so a failed
+    /// read is logged and sends no stage events rather than failing `complete`, whose retry
+    /// would find the job completed and send nothing at all.
+    async fn run_stage_events(
+        &self,
+        scan: ScanId,
+        run: domain::wire::Run,
+    ) -> Vec<ScanEventBody<Stored>> {
+        self.deps
+            .store
+            .run_stage_events(scan, run)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(%scan, error = %crate::error::Chain(&e), "run's stage events not read; no missing stage events sent");
+                Vec::new()
+            })
     }
 
     /// The organism profiles a `vlm` result's findings name.
@@ -503,11 +522,7 @@ impl Pipeline {
         let snap = self.deps.store.snapshot(job.scan).await?;
         let run = job.run.unwrap_or(snap.scan.run);
         let fallback = versions.get("vlm_server").is_some_and(|s| s == "anthropic");
-        let model_version = versions
-            .get("vlm_model")
-            .or_else(|| versions.get("perception_config"))
-            .cloned()
-            .unwrap_or_default();
+        let model_version = observation_model_version(versions);
         let ctx = results::ObsContext {
             scan: job.scan,
             run,
@@ -601,7 +616,8 @@ impl Pipeline {
     /// A `guided` job's result ([contracts 7], guided checks and the diagnosis): the check is
     /// updated and its texture stored under the lease, claiming `score` when the scan is
     /// `diagnosed` or `planned`; `guided_check_done` goes out at once, since the claim keeps
-    /// the stream open until the new diagnosis.
+    /// the stream open until the new diagnosis. It sends no catch-up stage events: the
+    /// `guided` stage is shared by the run's checks ([`catch_up`]).
     async fn guided_done(
         &self,
         lease: &Lease,
@@ -929,6 +945,16 @@ fn empty_perception(plant_present: Option<bool>) -> domain::jobs::PerceptionResu
     }
 }
 
+/// The `model_version` stored on a result's observations: the VLM's model, else the
+/// perception configuration (`stub` for a stub worker).
+fn observation_model_version(versions: &std::collections::BTreeMap<String, String>) -> String {
+    versions
+        .get("vlm_model")
+        .or_else(|| versions.get("perception_config"))
+        .cloned()
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -972,5 +998,66 @@ mod tests {
             &[&ind],
             &AnswerSet::new(&measured)
         ));
+    }
+
+    /// The stub worker's full result for a five-photo scan (`worker`'s test
+    /// `stub_result_matches_the_pipeline_fixture` keeps the file equal to what the stub makes).
+    const STUB_RESULT: &str = include_str!("fixtures/stub_perception_result.json");
+
+    #[test]
+    fn a_stub_perception_result_stores_its_observations() {
+        use domain::{
+            records::observation::ObservationSource,
+            wire::{Run, Timestamp},
+        };
+        let decoded = JobResult::decode(
+            JobKind::Perception,
+            serde_json::from_str(STUB_RESULT).unwrap(),
+        )
+        .unwrap();
+        let JobResult::Perception(result) = decoded else {
+            panic!("a perception result")
+        };
+        // What `done` reads from `complete.model_versions` for a stub worker.
+        let versions = std::collections::BTreeMap::from([
+            ("stub".to_owned(), "1".to_owned()),
+            ("perception_config".to_owned(), "stub".to_owned()),
+        ]);
+        let model_version = observation_model_version(&versions);
+        assert_eq!(model_version, "stub");
+        let ctx = results::ObsContext {
+            scan: "01JAX3K9T6R2B8V0QZ4M7D1E50".parse().unwrap(),
+            run: Run(1),
+            vlm_source: ObservationSource::Vlm,
+            model_version: &model_version,
+            now: "2026-10-18T14:00:00Z".parse::<Timestamp>().unwrap(),
+        };
+        let names = std::collections::BTreeMap::new();
+        let lookups = results::Lookups {
+            problem_names: &names,
+            organisms: &[],
+        };
+        let mut n = 0_u32;
+        let writes = results::perception_writes(&ctx, &result, &[], &lookups, || {
+            n += 1;
+            format!("01JAX3K9T6R2B8V0QZ4M7D1E{n:02}").parse().unwrap()
+        });
+        let stages: Vec<_> = writes.iter().map(|w| w.stage).collect();
+        assert_eq!(
+            stages,
+            [
+                domain::events::Stage::PlantCheck,
+                domain::events::Stage::Segmentation,
+                domain::events::Stage::Species,
+                domain::events::Stage::Disease,
+            ],
+            "no embeddings, so no image_embedding write"
+        );
+        let stored: Vec<_> = writes.iter().flat_map(|w| &w.observations).collect();
+        assert!(stored.len() > 4, "observations of four stages");
+        assert!(stored.iter().all(|o| o.model_version == "stub"));
+        assert!(stored.iter().any(|o| o.label == "tomato (stub)"));
+        // `done` then hands a scan-level job to `retrieve` (`claim: Some(Retrieve)` when the
+        // job has no question): that line is not reachable without a full store.
     }
 }

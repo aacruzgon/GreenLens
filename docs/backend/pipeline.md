@@ -1,6 +1,6 @@
 # PDM Backend: `pipeline` crate
 
-> **Status:** Draft v0.4, 2026-10-17. v0.4: `PipelineDeps` gains `beliefs` (Agent Memory) and `PipelineConfig` its `beliefs_read_timeout`; the plan step reads the plant's current beliefs beside its shared memories and passes them to the plan writer, and the scan summary memory has topic `health`, so each new summary supersedes the last in Agent Memory. v0.3.1: open question 3 is resolved: the run's evidence fields are in the schema. v0.3: the cross-crate fixes: `ScanWriter` lost `job_queued` (the store's `Notify` is the only wake-up), `plan` releases its claim after 3 lost compare-and-sets, `worker_events` forwards a `guided` job's stage events on the scan's current run, `labels_loaded` splits the heartbeat's comma-separated lists, organism findings get `detail.length_mm` from the depth map before their `finding` events, and fusion counts a humid stretch in the past week (`past_7_days.longest_humid_run_days`). v0.2: fusion reads the shared `WeatherThresholds` (`PipelineConfig::weather`): a humid stretch is two days in a row with ≥ 10 hours over 90% each (the mean-humidity and past-week variants are gone), frost is a 2 m minimum ≤ 0.5 °C or the day's `frost_risk`, hard frost ≤ −2 °C; the memory summary is embedded with `EmbedMode::Document`; `PhotoAnswerStart::Segment` boxes its job. v0.1: `api`'s own work between a scan's jobs: the `retrieve`, `score` and `plan` steps under the scan's step claim, every entry point that claims them, measurable indicators, fusion, re-planning, runs and recovery, compiled on Rust 1.99.1 against the `domain`, `knowledge`, `agent` and `vision` crates.
+> **Status:** Draft v0.5.1, 2026-10-20. v0.5.1: a `guided` job's completion sends no catch-up stage events, since the `guided` stage is shared by the run's checks and the fold can't tell them apart; the catch-up wiring is tested through `api`'s fake store (`tests/pipeline.rs`); a failed read of the run's stage events is logged with its error chain; open questions 4 to 6 record the limits and the bug the audit found. v0.5: `job_completed` sends the stage events the stream missed before a job's findings (`catch_up::ResultStages`, read through `EventRepo::run_stage_events`): a stage left started gets its `stage_completed`, a stage of the result with no event in the run gets both, with `duration_ms: 0`, so a stage whose worker events were lost while `api` was down doesn't stay open (backend roadmap gap 9). v0.4: `PipelineDeps` gains `beliefs` (Agent Memory) and `PipelineConfig` its `beliefs_read_timeout`; the plan step reads the plant's current beliefs beside its shared memories and passes them to the plan writer, and the scan summary memory has topic `health`, so each new summary supersedes the last in Agent Memory. v0.3.1: open question 3 is resolved: the run's evidence fields are in the schema. v0.3: the cross-crate fixes: `ScanWriter` lost `job_queued` (the store's `Notify` is the only wake-up), `plan` releases its claim after 3 lost compare-and-sets, `worker_events` forwards a `guided` job's stage events on the scan's current run, `labels_loaded` splits the heartbeat's comma-separated lists, organism findings get `detail.length_mm` from the depth map before their `finding` events, and fusion counts a humid stretch in the past week (`past_7_days.longest_humid_run_days`). v0.2: fusion reads the shared `WeatherThresholds` (`PipelineConfig::weather`): a humid stretch is two days in a row with ≥ 10 hours over 90% each (the mean-humidity and past-week variants are gone), frost is a 2 m minimum ≤ 0.5 °C or the day's `frost_risk`, hard frost ≤ −2 °C; the memory summary is embedded with `EmbedMode::Document`; `PhotoAnswerStart::Segment` boxes its job. v0.1: `api`'s own work between a scan's jobs: the `retrieve`, `score` and `plan` steps under the scan's step claim, every entry point that claims them, measurable indicators, fusion, re-planning, runs and recovery, compiled on Rust 1.99.1 against the `domain`, `knowledge`, `agent` and `vision` crates.
 
 Companion to the [backend architecture](README.md). It implements [contracts 3, steps between jobs](../architecture/contracts.md#scan-lifecycle), [contracts 4](../architecture/contracts.md#4-scan-events-sse) (event order), [contracts 7](../architecture/contracts.md#7-pipeline-records), [architecture 6](../architecture/README.md#6-analysis-pipeline), [8.1](../architecture/README.md#81-scan--diagnosis--plan) and [8.3](../architecture/README.md#83-forecast-alerts), and [database 4, steps between jobs](../database/README.md#steps-between-jobs-) and [plan writes](../database/README.md#plan-writes-compare-and-set-). The rules of retrieve-then-verify are in [knowledge](knowledge.md). Every listing is copied from `crates/pipeline` by the docgen tool. `cargo check --workspace`, `cargo clippy -p pipeline --all-targets` and `cargo test -p pipeline` pass.
 
@@ -127,6 +127,7 @@ crates/pipeline/src/
 ├─ results.rs        worker results to observations and evidence; the species suggestion
 ├─ runs.rs           submit, species change, the label-version rule
 ├─ entry.rs          the other entry points: answers, photo answers, broker, sweep, revisions
+├─ catch_up.rs       ResultStages: the stage events a job's complete stands in for
 ├─ steps.rs          the step loop, commit, fail_run, event helpers
 │  ├─ retrieve.rs    retrieve, measurement, the weather cache
 │  ├─ score.rs       score, verify_outside, diagnose
@@ -1351,17 +1352,17 @@ Every entry point stores its input and claims (or flags `rescore_pending`) in on
 
 | Entry point | Store call (claim in the same transaction) | Step | Hand-over after | Events it sends |
 |---|---|---|---|---|
-| Perception result (run) | `complete_job` with `claim: retrieve` | `retrieve` | release, `vlm` job queued | `finding` / `finding_retracted` (diff), then retrieve's |
-| `vlm` result | `complete_job` with `claim: score` | `score` | question, diagnosis + plan, or verify | `finding` (diff), `species_suggested` |
-| Run `verify` result (outside the set, or a photo answer) | `complete_job` with `claim: score` (clears `question.step`) | `score` | as above; resolves the photo answer | |
+| Perception result (run) | `complete_job` with `claim: retrieve` | `retrieve` | release, `vlm` job queued | missed perception stage events, `finding` / `finding_retracted` (diff), then retrieve's |
+| `vlm` result | `complete_job` with `claim: score` | `score` | question, diagnosis + plan, or verify | missed `vlm_*` stage events, `finding` (diff), `species_suggested` |
+| Run `verify` result (outside the set, or a photo answer) | `complete_job` with `claim: score` (clears `question.step`) | `score` | as above; resolves the photo answer | a missed `verify` stage event |
 | Indicator answer, in a run | `answer_question` | `score` | question or diagnosis | `question_resolved` (user) |
 | Late answer | `answer_question` (`late: true`) | `score` | diagnosis, `plan` (`late_answer`) | `question_resolved` (user) |
 | Photo answer, `segmenting` | `add_image` with `PhotoAnswerStart::Segment(job)` | | job in flight | |
 | Question photo's segmentation result | `complete_job` moves the question to `measuring` | `measuring` | `verify` job, or `score` | worker stage events |
 | Photo answer, `measuring` | `add_image` with `PhotoAnswerStart::Measure`, or the result above | `measuring` | `advance_question_step`: `Verify` (job), or `Score` (claims `score`) | `measurement` stage, `finding` |
 | 10-minute continuation | `continue_without_answer` | `score` | diagnosis `uncertain`, `plan` | `diagnosis`, `status_changed` |
-| Guided check, `diagnosed` or `planned` | `finish_guided_check` | `score` | new diagnosis; `plan` if the texture changed | `guided_check_done` |
-| Guided check, other statuses | `finish_guided_check` (`NotNeeded`) | | | `guided_check_done` |
+| Guided check, `diagnosed` or `planned` | `finish_guided_check` | `score` | new diagnosis; `plan` if the texture changed | `guided_check_done`; no missed stage events ([section 10](#10-events)) |
+| Guided check, other statuses | `finish_guided_check` (`NotNeeded`) | | | `guided_check_done`; no missed stage events |
 | The sweep | `reclaim_step` / `reclaim_question_step` / `continue_without_answer` | the stale step | as the step | the step's |
 | Submit, resubmit | `start_run` | | `perception` job queued | `run_started`, `status_changed` |
 | Species change | `confirm_species`, then `start_run` | | `perception` job queued | `species_confirmed`, `run_started`, `question_resolved` (superseded), `status_changed → analysing` |
@@ -1459,6 +1460,151 @@ fn stage_event(event: WorkerEvent) -> Option<ScanEventBody<Stored>> {
             skipped,
         }),
         WorkerEvent::PartialResult { .. } | WorkerEvent::Unknown => None,
+    }
+}
+```
+
+**Stage events `complete` stands in for** ([contracts 5](../architecture/contracts.md#post-internaljobsidevents), backend roadmap gap 9). A worker's `events` calls are best effort: while `api` is down the worker drops them and goes on, because `complete` repeats every stage's output. The findings then come from `complete`, but a lost `stage_completed` would leave its stage open on the stream for good. So `job_completed` reads the run's stored `run_started` and stage events (`EventRepo::run_stage_events`), folds them per stage as the app's reducer does, and sends what the stream is missing for each stage of the job's kind, in one `emit` with the findings and before them:
+
+| The run's last event for the stage | Sent |
+|---|---|
+| `stage_started` (the worker started it; a requeue's second start counts) | `stage_completed`, with no second `stage_started` |
+| none, and the result has output for the stage (for a perception stage, also listed in `run_started.rerun_stages`) | `stage_started`, then `stage_completed` |
+| `stage_completed` | nothing, so a job whose events all arrived adds none |
+
+- **`duration_ms: 0`.** `api` never timed the stage, and the worker's `timings_ms` is per job, not per stage. A start-to-complete difference would measure the outage, not the stage.
+- **`skipped`** only where the result shows it: `disease_skipped`'s reason, and `all_measured` for a `vlm` result with no indicator answers (contracts 5: the answers are empty only when the indicators call was skipped). A stage isn't marked skipped to say that its events were recovered.
+- **The `rerun_stages` check** covers a species-change run that keeps the earlier segmentation: its regions pass through the result, which is no segmentation stage of this run.
+- **Best effort.** The result is stored before the read, so a failed read is logged with its error chain and sends no stage events; failing `complete` would make its retry answer `AlreadyCompleted` and send no findings either.
+- **Not for `guided` jobs.** The `guided` stage is one stage shared by every guided check of the run, and two checks can run at once. The fold keys on the stage alone, so it can't tell which check's `stage_started` is still open: one check's completion would close another's stage, and two completions could each send a start and a completion. `ResultStages::of` gives a guided result no stages, and `guided_done` sends only `guided_check_done`, which tells the app the check finished.
+- **`Done` only.** A job that fails for good sends no catch-up, so a `guided` job or a late `verify` that fails for good on a `planned` scan leaves its started stage open (open question 4).
+
+```rust
+/// What a job's result says about its stages.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ResultStages {
+    /// The stages a job of this kind reports, in pipeline order.
+    kind: &'static [Stage],
+    /// The stages the result has output for, with the `skipped` their `stage_completed` carries.
+    shown: BTreeMap<Stage, Option<Skipped>>,
+}
+
+/// Everything a stored completion sends, in order: the stage events the stream is missing
+/// (none without a decoded result), then the `finding` and `finding_retracted` events of the
+/// result's diff.
+pub(crate) fn completion_events(
+    stages: Option<&ResultStages>,
+    run_events: &[ScanEventBody<Stored>],
+    diff: &ObservationDiff,
+) -> Vec<ScanEventBody<Stored>> {
+    let mut events = stages.map_or_else(Vec::new, |s| s.missing(run_events));
+    events.extend(
+        diff.added
+            .iter()
+            .cloned()
+            .map(|observation| ScanEventBody::Finding { observation }),
+    );
+    events.extend(
+        diff.retracted
+            .iter()
+            .map(|&observation_id| ScanEventBody::FindingRetracted { observation_id }),
+    );
+    events
+}
+```
+
+```rust
+impl ResultStages {
+    /// The stages of a decoded result.
+    pub(crate) fn of(result: &JobResult) -> Self {
+        let mut shown = BTreeMap::new();
+        let kind: &'static [Stage] = match result {
+            JobResult::Perception(r) => {
+                if r.plant_present.is_some() {
+                    shown.insert(Stage::PlantCheck, None);
+                }
+                if !r.regions.is_empty() {
+                    shown.insert(Stage::Segmentation, None);
+                }
+                if r.species.is_some() {
+                    shown.insert(Stage::Species, None);
+                }
+                if r.disease.is_some() {
+                    shown.insert(Stage::Disease, None);
+                } else if let Some(s) = r.disease_skipped {
+                    let why = match s.reason {
+                        DiseaseSkipReason::SpeciesNotSupported => "species_not_supported",
+                        DiseaseSkipReason::NoLeavesFound => "no_leaves_found",
+                    };
+                    shown.insert(Stage::Disease, Some(skipped(why)));
+                }
+                if r.image_embeddings.is_some() {
+                    shown.insert(Stage::ImageEmbedding, None);
+                }
+                &PERCEPTION
+            }
+            JobResult::Vlm(r) => {
+                shown.insert(Stage::VlmFindings, None);
+                // contracts 5: the answers are empty only when the indicators call was skipped.
+                let indicators = if r.indicators.answers.is_empty() {
+                    Some(skipped(Skipped::ALL_MEASURED))
+                } else {
+                    None
+                };
+                shown.insert(Stage::VlmIndicators, indicators);
+                &[Stage::VlmFindings, Stage::VlmIndicators]
+            }
+            JobResult::Verify(_) => {
+                shown.insert(Stage::Verify, None);
+                &[Stage::Verify]
+            }
+            // The `guided` stage is shared by every check of the run (module docs).
+            JobResult::Guided(_) => &[],
+        };
+        Self { kind, shown }
+    }
+
+    /// The stage events the stream is missing for this job, given the run's stored
+    /// `run_started` and stage events in `seq` order (other events are ignored).
+    pub(crate) fn missing(
+        &self,
+        run_events: &[ScanEventBody<Stored>],
+    ) -> Vec<ScanEventBody<Stored>> {
+        let mut listed: &[Stage] = &[];
+        // Per stage: `true` while its last stage event is a `stage_started`.
+        let mut open = BTreeMap::new();
+        for event in run_events {
+            match event {
+                ScanEventBody::RunStarted { rerun_stages, .. } => listed = rerun_stages,
+                ScanEventBody::StageStarted { stage } => {
+                    open.insert(*stage, true);
+                }
+                ScanEventBody::StageCompleted { stage, .. } => {
+                    open.insert(*stage, false);
+                }
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        for &stage in self.kind {
+            let completed = |skipped| ScanEventBody::StageCompleted {
+                stage,
+                duration_ms: 0,
+                skipped,
+            };
+            match open.get(&stage) {
+                Some(true) => out.push(completed(self.shown.get(&stage).cloned().flatten())),
+                Some(false) => {}
+                None => {
+                    let in_run = !PERCEPTION.contains(&stage) || listed.contains(&stage);
+                    if let Some(skip) = self.shown.get(&stage).filter(|_| in_run) {
+                        out.push(ScanEventBody::StageStarted { stage });
+                        out.push(completed(skip.clone()));
+                    }
+                }
+            }
+        }
+        out
     }
 }
 ```
@@ -1561,6 +1707,7 @@ fn reports(worker: &LiveWorker, key: &str, version: &str) -> bool {
 | A late result of an old run | The broker answers `409 lease_lost` before the pipeline sees it |
 | Late work fails | Never fails the scan: `question_resolved` (`dropped`) or a failed `guided_check_done` |
 | The per-scan writer retires and comes back | `seq` comes from `append_event`'s transaction, so the sequence continues ([section 17](#17-open-questions-and-decisions)) |
+| `api` is down while a job runs | The worker's `events` calls fail and are dropped; `complete` sends the missing stage events before the findings ([section 10](#10-events)) |
 
 ---
 
@@ -1667,9 +1814,10 @@ impl PipelineError {
 | Organism length | `organism_boxes` picks organisms on photos with depth only; `set_organism_length` rounds to 0.1 mm; the vision adapter sizes a box on an encoded 16-bit depth PNG (30 mm at 0.3 m) and answers `None` for bytes that aren't a PNG |
 | Entry points | Segmentation first only for measurable, unsettled indicators the kind can show |
 | Results | VLM answers kept only for asked indicators; the species suggestion prefers agreement |
+| Missing stage events | Lost after `plant_check` started: one `stage_completed` per stage, before the findings, no second start; every event arrived: none added; a requeue's second start completed; passed-through regions are no segmentation stage; a `vlm` result without answers completes `vlm_indicators` as `all_measured`; a `guided` result sends none, even with its stage open |
 | Others | Score modes, local dates in the garden's zone |
 
-The steps' I/O paths are exercised through `api`'s fake store in its integration tests ([api](api.md)).
+The steps' I/O paths are exercised through `api`'s fake store in its integration tests ([api](api.md)). `api`'s `tests/pipeline.rs` drives `Pipeline::job_completed` over that fake store with a recording `ScanWriter`: a perception job whose stage events were lost sends one `emit`, the missing stage events then the findings; a repeated `complete` (`AlreadyCompleted`) sends nothing; a failed `run_stage_events` still sends the findings, without stage events; a `verify` job closes its `verify` stage; a guided completion sends `guided_check_done` alone and never reads the stage events.
 
 ---
 
@@ -1690,6 +1838,7 @@ These changes were made to `domain` while writing this crate. Each was agreed wi
 | `ScanWriter::job_queued` removed (pipeline's own port) | The store's `Notify` is the claim long poll's only wake-up; every queueing write signals it |
 | `PastWeather.longest_humid_run_days`, `WeatherThresholds::{longest_humid_run, had_humid_stretch, humid_stretch_now_or_past}` | A humid stretch in the past week, for crowding |
 | `QuestionState::after_failed_photo(false)` is `Superseded` | It reopened the question, against contracts 5 and `final_failure` |
+| `EventRepo::run_stage_events` | `complete` needs the run's stage events to send the ones the stream missed ([section 10](#10-events)); `events_after` needs a member's proof, which a worker's call doesn't have |
 
 The store author changed in turn: `advance_question_step` returns `QuestionAdvance`, `CompletionOutcome::Stored` carries the `ObservationDiff`, and `GuidedOutcome` lost its `check` field.
 
@@ -1710,6 +1859,9 @@ The store author changed in turn: `advance_question_step` returns `QuestionAdvan
 1. **Weather fit, humid stretch and the fusion levels** are fixed here and in [knowledge 6](knowledge.md#6-weather-fit): 1, 2–3 or 4+ favourable forecast days; the 0.45 m³/m³ root-rot threshold; the weather thresholds of [domain 7](domain.md#weather-thresholds) (two humid days in a row, forecast or in the past week; frost at 0.5 °C, hard frost at −2 °C). The contracts give the example "2+ days" only. Set them from the evaluation set with the other thresholds of open question 10.
 2. **A plan writer outage on a run's first plan** fails the scan with `upstream_unavailable` (contracts 3 lists "LLM API down"). The alternative is to keep the scan `diagnosed` and let the sweep retry the `plan` step every 5 minutes.
 3. **Resolved: where the run's evidence lives.** `scan.candidates`, `question.indicator` and the `indicator_answer` table, added by the store author ([domain gap 7](domain.md#12-open-questions)), are in [`schema.surql`](../../backend/migrations/schema.surql) since database v1.4.
+4. **A stage left open by a job that fails for good.** The catch-up of [section 10](#10-events) runs on `Done` only. A `guided` job, or a late `verify`, that fails for good after its worker sent `stage_started` leaves that stage open on a `planned` scan, and no later event closes it. A known limit, not fixed (backend roadmap gap 9).
+5. **Late worker events can repeat a catch-up.** `job_events` (`api`'s `routes/internal.rs`) checks the lease and forwards the events in calls apart from `complete`'s transaction, so a worker's `events` call that passed its check before `complete` can store its `stage_completed` after the catch-up sent one, and the stream carries that stage's completion twice.
+6. **Found bug: `guided_done` finishes the wrong check.** It picks the first `analysing` check in the snapshot, not the job's own. With a squeeze test and a jar test both `analysing` and the jar test's job finishing first, the store finishes the jar test (`finish_guided_check` finds the check from the job's payload image), but the texture observation is built on the squeeze test's photo and `guided_check_done` announces the squeeze test as done, with the jar test's texture. `guided_done` should find the check from the job's payload image, as the store does. Not fixed in this change.
 
 ---
 

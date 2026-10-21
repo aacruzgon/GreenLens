@@ -50,7 +50,7 @@ impl fmt::Debug for ApiError {
         f.debug_struct("ApiError")
             .field("code", &self.0.kind.code())
             .field("message", &self.0.message)
-            .field("cause", &self.0.cause.as_ref().map(ToString::to_string))
+            .field("cause", &self.0.cause.as_deref().map(|e| chain(e)))
             .finish_non_exhaustive()
     }
 }
@@ -191,6 +191,16 @@ impl ApiError {
     /// `401 unauthenticated`.
     pub fn unauthenticated() -> Self {
         Self::new(ErrorKind::Unauthenticated)
+    }
+
+    /// The log form of an error handled outside a request (a scheduled task): the code and
+    /// message, then the cause's `source()` chain, which [`fmt::Display`] leaves out because the
+    /// message is the user's.
+    pub fn chain(&self) -> String {
+        match self.0.cause.as_deref() {
+            Some(cause) => format!("{self}: {}", chain(cause)),
+            None => self.to_string(),
+        }
     }
 
     /// The code.
@@ -596,6 +606,30 @@ mod tests {
             ApiError::from(StoreError::Rejected(DomainError::NotFound)).code(),
             ErrorCode::NotFound
         );
+    }
+
+    /// A follow-up's or a scheduled task's failure logs the whole chain, not "store failed"
+    /// (the rig's Score failure on 2026-10-20, docs/backend/roadmap.md 13).
+    #[test]
+    fn background_failures_log_their_whole_chain() {
+        let store = || StoreError::Query {
+            what: "load plant",
+            source: Box::new(serde_json::from_str::<domain::scan::SpeciesRef>("{}").unwrap_err()),
+        };
+        let pipeline = PipelineError::Store(store());
+        assert_eq!(pipeline.to_string(), "store failed");
+        assert_eq!(
+            chain(&pipeline),
+            "store failed: query failed: load plant: missing field `id` at line 1 column 2"
+        );
+        let api = ApiError::from(PipelineError::Store(store()));
+        assert_eq!(
+            api.chain(),
+            "internal: Something went wrong on our side.: query failed: load plant: \
+             missing field `id` at line 1 column 2"
+        );
+        let bare = ApiError::not_found();
+        assert_eq!(bare.chain(), bare.to_string());
     }
 
     #[test]
