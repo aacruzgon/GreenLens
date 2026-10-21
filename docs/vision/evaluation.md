@@ -1,6 +1,6 @@
 # PDM Vision Evaluation
 
-> **Status:** Draft v0.4, 2026-10-19. v0.4: tomato and corn diseases come from published field datasets no model trained on (`ml.training.eval.fieldsets`), checked against every training photo and sent one photo per case, and phone-condition variants of the cases (`ml.training.eval.variants`) are scored as their own slices. v0.3: section 2 adds `ml.training.eval.inat` for licensed iNaturalist photos, only from 2026 and reviewed before they become cases, and records that iNaturalist can't supply tomato or corn diseases. v0.2: the fallback run also measures whether 8,000-token calls finish within its `max_runtime`. v0.1, 2026-10-15: First evaluation plan: the evaluation set of real field photos, its labels, metrics and acceptance targets per stage, calibration of the certainty words, the classifier and the diagnosis margin, the thresholds the set decides, and the day-1 checks and day-2 benchmarks.
+> **Status:** Draft v0.8, 2026-10-20. v0.8: section 7's ONNX Runtime check passes on the RTX 3070, and section 8 records the perception batch caps measured there: the manifest's caps peak at 4,598 MiB with 3.2 GB free. v0.7: section 8's VLM results name the prompts they ran on, say the diagnosis column is the VLM's answers alone, and note that the bench now routes images by the pipeline's rules. v0.6: Sam chose Qwen3.5-9B AWQ (D1), and a rerun at the desktop's memory budget matched the full-card run (section 8). v0.5: section 8 records the day-2 VLM benchmark on the 65 one-photo tomato and corn dev cases: every call valid and two jobs at once fit, but the indicator questions carry little signal on these photos for any candidate (Qwen3.5-9B AWQ diagnoses 35% of the sure cases, both Qwen3-VL-8B builds 12%). v0.4: tomato and corn diseases come from published field datasets no model trained on (`ml.training.eval.fieldsets`), checked against every training photo and sent one photo per case, and phone-condition variants of the cases (`ml.training.eval.variants`) are scored as their own slices. v0.3: section 2 adds `ml.training.eval.inat` for licensed iNaturalist photos, only from 2026 and reviewed before they become cases, and records that iNaturalist can't supply tomato or corn diseases. v0.2: the fallback run also measures whether 8,000-token calls finish within its `max_runtime`. v0.1, 2026-10-15: First evaluation plan: the evaluation set of real field photos, its labels, metrics and acceptance targets per stage, calibration of the certainty words, the classifier and the diagnosis margin, the thresholds the set decides, and the day-1 checks and day-2 benchmarks.
 > **Checked:** nothing in this document has run yet. Every target is a proposal to confirm or move on Oct 24, when the test split is scored.
 
 This is how PDM measures its models and sets the numbers the [contracts](../architecture/contracts.md) leave open. The models themselves are in [README.md](README.md) and [models.md](models.md), the VLM in [vlm.md](vlm.md), and the datasets and training in [training.md](training.md).
@@ -328,7 +328,7 @@ Oct 16–17, before anything is built on the models. Each check has a pass condi
 
 | Check | Pass condition | If it fails |
 |---|---|---|
-| ONNX Runtime 1.31 with the CUDA 13 execution provider on both cards: a small dynamic-batch model opens with `error_on_failure` and runs batches of 1, 4 and 16 ([README 5](README.md#5-runtimes-and-versions)) | Runs on the RTX 3070 (sm_86) and the RTX 5070 Ti (sm_120), outputs equal to CPU within 1e-4 | Check the driver (580 or later); try the 1.24.1 CUDA 12.8 build on the 3070 only |
+| ONNX Runtime 1.31 with the CUDA 13 execution provider on both cards: a small dynamic-batch model opens with `error_on_failure` and runs batches of 1, 4 and 16 ([README 5](README.md#5-runtimes-and-versions)) | Runs on the RTX 3070 (sm_86) and the RTX 5070 Ti (sm_120), outputs equal to CPU within 1e-4. ✓ ran on both on 2026-10-20 ([#114](https://github.com/aacruzgon/GreenLens/pull/114)): at most 1.8e-7 on a small fp32 model at batches 1, 4 and 16, and every perception model opens and runs on CUDA | Check the driver (580 or later); try the 1.24.1 CUDA 12.8 build on the 3070 only |
 | PyTorch training step on the 5070 Ti | A forward and backward pass of the classifier backbone in mixed precision | Train on the 3070 at a smaller batch |
 | vLLM serves the primary VLM candidate on the 5070 Ti | Starts with the flags in [vlm.md](vlm.md#4-serving), answers one image request with a schema | Try the llama.cpp path ([vlm.md](vlm.md#4-serving)) |
 | The RX 9070 XT as a second VLM worker ([README 4](README.md#4-placement-and-vram-budgets)) | The host shows `gfx1201` in `rocminfo` and the NVIDIA cards still work; vLLM's ROCm image starts with only `/dev/kfd` and the card's render node; the same checkpoint and flags as the 5070 Ti answer a findings and an indicators call with our schema, and vLLM's log shows a native FP8 or W4A16 kernel, not a dequantising fallback | Use the W4A16 checkpoint on both cards; if vLLM still fails by the end of day 2, llama.cpp's Vulkan server with the same model's GGUF |
@@ -359,9 +359,59 @@ On 20 dev cases with the full shot set, for each of the two candidates in [vlm.m
 
 **Per card.** The run is repeated on each VLM card, with the same checkpoint. Each card gets its own `VLM_SLOTS` from its own timing. On 10 of the cases the two cards' outputs are compared: boxes drawn on the same prepared image should overlap, and indicator answers should agree on most questions. A large disagreement is a configuration problem (checkpoint, preparation or server flags) to fix before both serve.
 
+### VLM results, 2026-10-20 (✓ ran)
+
+`python -m ml.training.eval.vlm_bench` sent the 65 tomato and corn dev cases through the worker's own `VlmAdapter::analyse` (its prompts, schemas, image preparation and validation, in a release build; `main`'s prompts, `system@1,findings@2,indicators@1`) to each candidate, served by vLLM on the 5070 Ti at 0.90 of the card with 2 slots. It ran at `VLM_MAX_PIXELS` 602,112 and 1,003,520, with one and two jobs at once ([report](../../ml/training/eval/reports/vlm-bench-2026-10-20.md); per candidate: [FP8](../../ml/training/eval/reports/vlm-bench-2026-10-20-fp8.md), [Qwen3.5](../../ml/training/eval/reports/vlm-bench-2026-10-20-qwen35-awq.md), [Qwen3-VL AWQ](../../ml/training/eval/reports/vlm-bench-2026-10-20-qwen3vl-awq.md)).
+
+How it differs from the plan above:
+- **One photo per case, not 20 full shot sets.** The cases come from the field datasets (section 2), since the team's phones haven't supplied full cases yet ([#52](https://github.com/aacruzgon/GreenLens/issues/52)). So organism recall, small organisms, soil, beneficial-as-pest and the box check aren't measured, and neither is the 9070 XT.
+- **The candidates are the worker's test fixtures:** three per crop, with three questions each, since the knowledge base isn't loaded. 26 `sure` cases have their problem among them, and 11 are healthy.
+- **The photo goes to the indicator call twice.** A question gets only the images its indicator names, and most name `leaf_closeup`. So a one-photo case also sends its photo as the `leaf_closeup` it is. The first run, the night of Oct 19, sent only `whole_plant`, and 82–87% of every model's answers were `unsure` ([report](../../ml/training/eval/reports/vlm-bench-2026-10-20-whole-plant-only.md)).
+- **Two sizes, not four.** That night's four sizes, 0.6 to 2.0 MP, moved a model's diagnosis by at most 2 of the 26 cases.
+
+At 1,003,520 pixels, the worker's default:
+
+| Candidate | Valid on the first try | Job p50 / p95 | 65 jobs: 1 / 2 at once | Diagnosis, `sure` (n = 26) | `unsure` | "Yes" to the true problem's questions / to the others | Healthy kept clean (n = 11) | Damage reported | Organisms reported |
+|---|---|---|---|---|---|---|---|---|---|
+| Qwen3.5-9B AWQ | 65 of 65 | 5.3 / 6.4 s | 360 / 213 s | 35% | 25% | 15% / 11% | 91% | 79, 66 of them `other` | 0 |
+| Qwen3-VL-8B FP8 | 65 of 65 | 6.2 / 8.4 s | 423 / 234 s | 12% | 32% | 6% / 6% | 100% | 79: 31 `chewed_margins`, 13 `leaf_mines` | 19 |
+| Qwen3-VL-8B AWQ | 65 of 65 | 4.4 / 5.1 s | 302 / 176 s | 12% | 33% | 6% / 5% | 100% | 55 | 4 |
+
+Diagnosis is the top candidate by its unweighted share of "yes" answers. The payload carries no indicator weights and no disease-head scores, so it measures the VLM's answers alone, not the app's diagnosis.
+
+- **Valid and fast.** No call needed its retry, and species agreed on 97–100% of cases.
+  - Two jobs at once finish the 65 in 0.55–0.6 of the time, with p95 at most 9.6 s, far under the 2.5-minute limit, so `VLM_SLOTS` 2 fits on the 5070 Ti at 1.0 MP (contracts question 9).
+  - vLLM holds about 14 GB at 0.90 whatever the model, and the KV cache peaked at 4–33%.
+- **The questions carry little signal on these photos.** On a leaf with a problem, every model answers "yes" to that problem's questions barely more often than to the other candidates' questions. Qwen3.5 is the only one with a gap, and it is small.
+  - **About a third of those answers are `unsure` by design:** the question needs the whole plant or an underside (`lower_leaves_first`, `dark_stem_lesions`, `white_mould_underside`), which one leaf can't show.
+  - **Most of the rest are "no".** Qwen3.5's examples:
+    - `concentric_rings`: 0 of 6 early-blight leaves;
+    - `water_soaked_patches`: 0 of 8 late-blight leaves;
+    - the common-rust pustules: 0 of 3.
+  - **`small_spots` and `yellow_halo` say "yes" to about 4 in 10 leaves with another problem.** So late blight is often scored as Septoria or early blight.
+  - No candidate meets section 4's indicator targets.
+- **Not the photo size.** Half the tomato cases are 0.16 or 0.41 MP, but Qwen3.5 gets 5 of those 11 right, against 4 of the 15 larger ones.
+- **False findings.** Every model reports damage these leaves don't show: Qwen3.5 under `other`, and FP8 as chewed margins and leaf mines (the known `leaf_mines` error, #45). Only FP8 reports organisms on them. None is labelled, so Qwen3.5's 0 could also be a miss.
+- **For D1.** By the choosing rule above, on what was measured, Qwen3.5-9B AWQ leads on indicator answers and is as fast; beneficial-as-pest and organism recall wait on the team's cases. Whichever is chosen, the diagnosis rests on the disease head's candidates until the questions get answered (the prompt pass, P5, and the questions' wording). The per-question tables in the report show which questions fail.
+- **Chosen: Qwen3.5-9B AWQ** (Sam, D1, Oct 20; [vlm.md 13](vlm.md#results-and-the-choice-2026-10-20--ran)). After [#45](https://github.com/aacruzgon/GreenLens/pull/45)'s next prompt pass, one bench run of the 65 cases on its prompts re-checks the choice.
+- **The bench now picks each call's images with the pipeline's routing rules** (`domain::rules::routing`), as a scan would. On these 65 cases they pick the same images the run sent; two later cases with a flower or fruit shot no longer send it to the indicators call, since no question names it.
+- **At the desktop's budget.** The same 65 cases on Qwen3.5 at 0.78 of the card, the share the 5070 Ti's desktop leaves ([report](../../ml/training/eval/reports/vlm-bench-2026-10-20-qwen35-awq-desk.md)): 359 and 214 s for one and two at once, as at 0.90; 12,500 MiB peak and no preemption. It diagnosed 8 of the 26 against 9 at 0.90: one case changed between two runs at temperature 0, a reminder of how thin a 26-case comparison is.
+
 ### Perception batch size
 
 Each model's own cap, with every session loaded, on a scan with 6 shots and 40 leaf crops: the SAM encoder at 1, 2 and 4 images, the detector at 4, 8 and 16, BioCLIP 2 at 8, 16 and 32, and the SAM decoder at 8, 16 and 32 boxes, in fp16 and fp32 where the export allows both. Record the peak VRAM of the whole perception worker and the time per job. Choose the largest caps that leave at least 1 GB of the 3070's 8 GB free at peak ([README 4](README.md#4-placement-and-vram-budgets)). `PERCEPTION_MAX_BATCH` stays the job-wide ceiling above them. If SAM 2.1-T can't run at an encoder batch of 2 in fp16, MobileSAM is benchmarked the same way.
+
+**On the RTX 3070, 2026-10-20 (✓ ran, `python -m ml.training.eval.perception_gpu`, [#114](https://github.com/aacruzgon/GreenLens/pull/114)).** The 3070's host, driver 615.71.09, ONNX Runtime 1.31.0 with the training environment's CUDA 13 wheels, the four perception sessions loaded with the worker's settings (`kSameAsRequested` arena, heuristic cuDNN search, the manifest's `gpu_mem_limit_mb`), each warmed at its cap, then a scan of 6 shots and 40 crops with all 40 boxes on one image. The desktop held about 360 MiB.
+
+| Caps: detector, SAM encoder, SAM decoder, BioCLIP 2 | Peak with the manifest's limits, and free | Without the limits | Scan |
+|---|---|---|---|
+| 4, 1, 8, 8 | 3,134 MiB, 4,695 free | 3,132 MiB | 1.2 s |
+| **8, 2, 16, 16 (the manifest's)** | **4,598 MiB, 3,234 free** | 5,054 MiB, 2,778 free | 1.2 s |
+| 16, 4, 32, 32 | fails: the detector at 16 exceeds its 1 GB limit | fails: out of memory in the SAM decoder | — |
+
+- **The manifest's caps stay.** They leave 3.2 GB free at peak against the 1 GB rule, so neither MobileSAM nor BioCLIP v1 is needed.
+- **The limits matter:** without them the arenas grow about 450 MiB more.
+- **The worker's own run (P2) confirms the caps** in Rust, which writes them to the worker's environment.
 
 ### Fallback worker
 
