@@ -5,8 +5,8 @@
 
 Each source is one document. Its page goes to ml/knowledge/raw/<id>.html as served, with
 raw/<id>.json beside it (the final URL, the status, the time and the SHA-256), so chunking can
-run again without the network. raw/ is not committed: the seed keeps only short excerpts
-(architecture 5, licensing).
+run again without the network. raw/ is not committed: the seed keeps excerpts only as far as
+each source's terms allow, and none from a source with no reuse grant (architecture 5, licensing).
 
 The fetch is polite and never works around a refusal: it names itself in User-Agent, obeys the
 host's robots.txt, waits between requests to the same host, and treats any status but 200 as a

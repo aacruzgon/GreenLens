@@ -18,7 +18,7 @@ indicators:
   image_kinds:
   - whole_plant
 - id: tomato_leaf_mold.pale_spots_upper_surface
-  text: Pale green or yellowish spots on the upper leaf surface.
+  text: 'Light green to yellowish spots on the top of the leaf.'
   question: Are there pale green or yellowish spots on the top side of the leaf?
   weight: 2
   discriminating: true
@@ -67,8 +67,8 @@ indicators:
   image_kinds:
   - flower_fruit
 conditions:
-  notes: Favoured by high relative humidity and high temperature. It starts where air movement is poor
-    and humidity is high. Spores spread by rain, wind or tools.
+  notes: 'Favoured by high relative humidity and high temperature. It starts where the air is still and
+    humid. Spores spread by rain, wind or tools.'
 looks_like:
 - problem: tomato_late_blight
   how_to_tell: Both can show mould on the underside of the leaf. In leaf mold it is a gray, velvety growth

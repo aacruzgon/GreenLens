@@ -60,7 +60,7 @@ indicators:
   image_kinds:
   - flower_fruit
 - id: tomato_late_blight.rough_sunken_edge_fruit_lesions
-  text: Fruit patches become rough and are slightly sunken at the edges.
+  text: 'Later the fruit patches turn rough, with their edges sunk in a little.'
   question: Are the patches on the fruit rough, with edges that are slightly sunken?
   weight: 2
   discriminating: false

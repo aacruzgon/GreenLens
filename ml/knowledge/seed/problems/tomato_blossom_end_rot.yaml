@@ -10,7 +10,7 @@ damage_patterns: []
 prevalence: common
 indicators:
 - id: tomato_blossom_end_rot.water_soaked_blossom_end_spot
-  text: Water-soaked spots on the blossom end of the fruit.
+  text: 'Spots that look wet or soaked with water, at the flower end of the fruit, opposite the stem.'
   question: Is there a wet-looking, soaked spot on the bottom tip of the fruit, the end away from the
     stem?
   weight: 2
@@ -35,10 +35,9 @@ indicators:
   image_kinds:
   - flower_fruit
 conditions:
-  notes: Favoured by big swings in soil moisture, rainy or cloudy weather with high humidity, and cool
-    temperatures, especially early in the season. Low soil calcium, root damage from hoeing or digging
-    near the plants, and too much ammonium nitrogen, potassium or magnesium fertiliser also raise the
-    risk.
+  notes: 'Favoured by big swings in soil moisture, wet, overcast and humid spells, and cool temperatures,
+    especially early in the season. Low soil calcium, root damage from hoeing or digging near the plants,
+    and too much ammonium nitrogen, potassium or magnesium fertiliser also raise the risk.'
 looks_like: []
 treatments:
 - avoid_excess_potassium_magnesium

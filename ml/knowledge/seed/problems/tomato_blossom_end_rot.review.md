@@ -9,7 +9,7 @@ Excerpts describe fruit symptoms only; no leaf, stem or whole-plant signs, and n
 ## Indicators
 
 - **tomato_blossom_end_rot.water_soaked_blossom_end_spot** (weight 2, discriminating, fruit, flower_fruit)
-  - Text: Water-soaked spots on the blossom end of the fruit.
+  - Text: Spots that look wet or soaked with water, at the flower end of the fruit, opposite the stem.
   - Question: Is there a wet-looking, soaked spot on the bottom tip of the fruit, the end away from the stem?
   - `clemson_hgic_tomato_diseases.39` (https://hgic.clemson.edu/factsheet/tomato-diseases-disorders/, wording not committed: run fetch and chunk, then read build/chunks/clemson_hgic_tomato_diseases.jsonl)
 
@@ -25,7 +25,7 @@ Excerpts describe fruit symptoms only; no leaf, stem or whole-plant signs, and n
 
 ## Conditions
 
-`{"notes": "Favoured by big swings in soil moisture, rainy or cloudy weather with high humidity, and cool temperatures, especially early in the season. Low soil calcium, root damage from hoeing or digging near the plants, and too much ammonium nitrogen, potassium or magnesium fertiliser also raise the risk."}`
+`{"notes": "Favoured by big swings in soil moisture, wet, overcast and humid spells, and cool temperatures, especially early in the season. Low soil calcium, root damage from hoeing or digging near the plants, and too much ammonium nitrogen, potassium or magnesium fertiliser also raise the risk."}`
 
   - `clemson_hgic_tomato_diseases.39` (https://hgic.clemson.edu/factsheet/tomato-diseases-disorders/, wording not committed: run fetch and chunk, then read build/chunks/clemson_hgic_tomato_diseases.jsonl)
 
@@ -65,10 +65,14 @@ Excerpts describe fruit symptoms only; no leaf, stem or whole-plant signs, and n
 ## Changes after review (2026-10-20)
 
 - Point 26: checked the new draft against `clemson_hgic_tomato_diseases.39` (symptoms and conditions) and `.40` and `.41` (prevention; withheld because they give rates, so ids only). No amount, rate or monthly interval was copied into any step.
-- Point 26: `water_soaked_blossom_end_spot` went from weight 3 to 2. `clemson_hgic_tomato_diseases.39` gives it as the symptom but does not call it characteristic, and `clemson_hgic_tomato_diseases.17` says that a greasy, water-soaked area on the blossom end is also a fruit sign of pith necrosis, late blight and buckeye rot, so it does not set blossom-end rot apart. No `looks_like` pair with late blight was written, because no excerpt compares the two or says how to tell them apart.
+- Point 26: `water_soaked_blossom_end_spot` went from weight 3 to 2. `clemson_hgic_tomato_diseases.39` gives it as the symptom but does not call it characteristic, and `clemson_hgic_tomato_diseases.17` says that a greasy, wet-looking patch at the flower end is also a fruit sign of pith necrosis, late blight and buckeye rot, so it does not set blossom-end rot apart. No `looks_like` pair with late blight was written, because no excerpt compares the two or says how to tell them apart.
 - Point 26: gypsum and lime steps (`gypsum_preplant_ber`, `gypsum_sidedress_rescue`, `soil_test_lime_ber`) give no amounts and say to follow the soil report or label (`clemson_hgic_tomato_diseases.40`, `.41`). `soil_test_lime_ber` keeps the target pH of 6.5 and liming 3 to 6 months before planting: a target and a timing, not an amount.
 - `calcium_nitrate_sidedress_no_ammonium` dropped "like 10-10-10": a fertiliser grade is a set of nutrient percentages, so it now says "most complete (all-purpose) fertilisers" (`clemson_hgic_tomato_diseases.41`).
 - Still open: `prevalence: common` is not stated in any excerpt.
+
+## Changes after signing review (2026-10-20)
+
+- **Second signing review, facts-only wording:** `water_soaked_blossom_end_spot` and the conditions note are reworded; they repeated runs of `clemson_hgic_tomato_diseases.39`. No run of 8 or more words from Clemson or ISU's growing page is left in this file, apart from quotes of licensed sources.
 
 ## Discriminating indicators
 

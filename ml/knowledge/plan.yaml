@@ -2,9 +2,9 @@
 # enums from here and from the seed, so a tag can't name an unknown id; extract.py drafts one
 # record per entry that has no file in seed/ yet. Slugs follow #4 (decided 2026-10-17).
 #
-# The tomato slice: the eight problems the disease head predicts (the mapping files'
-# tomato_* classes), the bacterial speck its sources pair with bacterial spot, blossom-end rot,
-# the pests the sources cover, and the natural enemies the sources say attack them.
+# The tomato slice: the seven problems disease head v2c predicts for tomato (its eighth tomato
+# class is healthy; #85), the bacterial speck its sources pair with bacterial spot, blossom-end
+# rot, the pests the sources cover, and the natural enemies the sources say attack them.
 
 # Sources with no reuse grant (sources.yaml): their facts go into the drafts, rewritten and
 # cited, but their wording isn't committed. tag.py leaves them out of seed/chunks, extract.py
@@ -21,6 +21,9 @@ withheld_chunks:
   isu_parasitic_wasps.3: about wasps indoors, not in the garden
   isu_parasitic_wasps.4: about wasps indoors; reads as how to get rid of a beneficial
   edis_in307_twospotted_spider_mite.10: gives a rate (2%) the dose check doesn't catch
+  ontario_tomato_bacterial_diseases.38: recommends tank-mixing mancozeb with copper (S1, S2)
+  isu_two_spotted_spider_mite.4: lists malathion and permethrin as home sprays (S6)
+  isu_tomato_hornworm.3: suggests a synthetic home garden insecticide for hornworms (S6)
 
 species:
   - id: tomato
@@ -35,7 +38,7 @@ problems:
   - { id: tomato_bacterial_spot, name: Bacterial spot, affects: [tomato] }
   - { id: tomato_bacterial_speck, name: Bacterial speck, affects: [tomato] }
   - { id: tomato_yellow_leaf_curl_virus, name: Tomato yellow leaf curl virus, affects: [tomato] }
-  # tomato_mosaic_virus: no source covers it on its own yet (#46); the tags of 2026-10-20 list it.
+  # tomato_mosaic_virus: no source covers it on its own yet (#46), so head v2c drops the class (#85).
   - { id: tomato_spider_mites, name: Spider mites, affects: [tomato], caused_by: [two_spotted_spider_mite] }
   - { id: tomato_hornworms, name: Hornworms, affects: [tomato], caused_by: [hornworm] }
   - { id: tomato_whiteflies, name: Whiteflies, affects: [tomato], caused_by: [whitefly] }
@@ -46,4 +49,4 @@ organisms:
   - { id: hornworm, name: Hornworm, scientific_name: Manduca }
   - { id: whitefly, name: Whitefly, scientific_name: Aleyrodidae }
   - { id: parasitic_wasp, name: Parasitic wasp, scientific_name: Braconidae }
-  - { id: predatory_mite, name: Predatory mite, scientific_name: Phytoseiulus persimilis }
+  - { id: predatory_mite, name: Predatory mite, scientific_name: Phytoseiidae }
