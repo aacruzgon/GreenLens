@@ -78,12 +78,16 @@ impl<'c> CallImages<'c> {
 /// Cuts a string to `max` characters (not bytes, so a multi-byte character is never split).
 /// A string that reaches `max` was most likely stopped there by the schema's `maxLength`, mid-word
 /// and sometimes in another language (vision vlm.md 4), so it goes back to its last full sentence,
-/// or failing that its last full word.
+/// or failing that its last full word (the whole cut when it ends at the end of a word).
 pub fn truncate(s: &str, max: usize) -> String {
     let cut: String = s.chars().take(max).collect();
     if s.chars().count() < max {
         return cut;
     }
+    // The cut's last word is whole when a space ends the cut or follows it; a text of exactly
+    // `max` was stopped there, so its last word may be cut.
+    let word_ends =
+        cut.ends_with(char::is_whitespace) || s.chars().nth(max).is_some_and(char::is_whitespace);
     let cut = cut.trim_end();
     if cut.ends_with(['.', '!', '?']) {
         return cut.to_owned();
@@ -97,10 +101,11 @@ pub fn truncate(s: &str, max: usize) -> String {
     }
     let kept = match (sentence_end, cut.rfind(char::is_whitespace)) {
         (Some(end), _) => &cut[..end],
-        (None, Some(space)) => cut[..space].trim_end_matches([',', ';', ':', ' ']),
+        (None, _) if word_ends => cut,
+        (None, Some(space)) => &cut[..space],
         (None, None) => cut,
     };
-    kept.to_owned()
+    kept.trim_end_matches([',', ';', ':', ' ']).to_owned()
 }
 
 /// Converts a raw `bbox_2d` to the stored image's `[x, y, w, h]` by the adapter's format,
@@ -574,11 +579,21 @@ mod tests {
             truncate(notes, 200),
             "The provided images appear to be a composite of different plants."
         );
-        // Over the cap with no full sentence: back to the last full word.
+        // Over the cap with no full sentence: back to the last full word, or the whole cut
+        // when it ends at the end of a word (Sam's review of #45).
         assert_eq!(
             truncate("yellow halo around brown spots", 22),
             "yellow halo around"
         );
+        assert_eq!(
+            truncate("yellow halo around brown spots", 18),
+            "yellow halo around"
+        );
+        assert_eq!(
+            truncate("yellow halo around brown spots", 19),
+            "yellow halo around"
+        );
+        assert_eq!(truncate("lower leaves, yellowing", 13), "lower leaves");
         assert_eq!(truncate("lower leaves, yellowing", 16), "lower leaves");
         // A sentence that ends at the cap is kept whole; one word longer than the cap is cut.
         assert_eq!(truncate("Soil is dry.", 12), "Soil is dry.");
