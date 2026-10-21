@@ -62,6 +62,7 @@ jobs:
       live: ${{ steps.diff.outputs.live }}
       era: ${{ steps.diff.outputs.era }}
       images: ${{ steps.diff.outputs.images }}
+      seed: ${{ steps.diff.outputs.seed }}
       app: ${{ steps.diff.outputs.app }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -106,6 +107,9 @@ jobs:
           # What the image build context holds (backend/.dockerignore leaves out tools/, except
           # era-eval, a workspace member).
           out images '^backend/(crates|bins|migrations|tools/era-eval)/|^backend/(Cargo\.toml|Cargo\.lock|rust-toolchain\.toml|openapi\.json|Dockerfile|docker-bake\.hcl|\.dockerignore)$'
+          # The seed-upload image: its context ml/knowledge/, and knowledge.surql, whose photo keys
+          # its build checks.
+          out seed   '^ml/knowledge/|^backend/migrations/knowledge\.surql$|^backend/docker-bake\.hcl$'
           cat "$GITHUB_OUTPUT"
 
   lint:
@@ -253,18 +257,20 @@ jobs:
           # The control plane reads its env files from $PDM_ENV: split infra/env/.env.example into them.
           export PDM_ENV="$RUNNER_TEMP/pdm-env"
           mkdir -p "$PDM_ENV"
-          awk -v dir="$PDM_ENV" '/^# --- / { out = ""; if (match($3, /^\.env\.[a-z]+/)) out = dir "/" substr($3, 1, RLENGTH); next } out { print > out }' infra/env/.env.example
-          touch "$PDM_ENV/tunnel.json"
+          awk -v dir="$PDM_ENV" '/^# --- / { out = ""; if (match($3, /^\.env\.[a-z-]+/)) out = dir "/" substr($3, 1, RLENGTH); next } out { print > out }' infra/env/.env.example
+          touch "$PDM_ENV/tunnel.json" "$PDM_ENV/.env.rig-3070-perception-1"
           for f in infra/*.compose.yml; do
             echo "$f"
             if [ "$f" = infra/control-plane.compose.yml ]; then
-              for profiles in "" tailscale,stub,seed cloudflare; do
+              for profiles in "" tailscale,stub,seed tailscale,perception,seed cloudflare demo; do
                 COMPOSE_PROFILES="$profiles" docker compose -f "$f" --env-file "$PDM_ENV/.env.compose" config -q
               done
             else
               docker compose -f "$f" config -q
             fi
           done
+      - name: The demo profile's seed script compiles
+        run: python3 -m py_compile infra/era-seed/seed.py
       - name: Shell scripts parse and pass shellcheck
         run: |
           shopt -s nullglob globstar
@@ -275,6 +281,27 @@ jobs:
       # Mention parsing, routing and delivery for discord-mentions.yml, against a mocked Discord.
       - name: The Discord mention script's tests pass
         run: python3 -m unittest discover -s .github/scripts -b
+
+  seed:
+    needs: changes
+    if: needs.changes.outputs.seed == 'true'
+    runs-on: ${{ fromJSON(vars.LIGHT_RUNNER_LABELS || vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The seed's photos match knowledge.surql, and the upload's tests pass
+        # In the seed-upload image's own Python and hashed wheels (ml/knowledge/Dockerfile), so a pull
+        # request fails here, not in images on main, when its photos and knowledge.surql disagree.
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -w /src -e PYTHONDONTWRITEBYTECODE=1 \
+            -e PIP_DISABLE_PIP_VERSION_CHECK=1 -e PIP_ROOT_USER_ACTION=ignore \
+            python:3.12-slim-trixie@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1 \
+            sh -ec 'pip install -q --require-hashes --only-binary=:all: -r ml/knowledge/requirements-seed-upload.txt
+                    pip install -q pytest==9.1.1
+                    python -m ml.knowledge.upload build --out /tmp/photos
+                    python -m pytest -q -p no:cacheprovider ml/tests/test_upload.py'
 
   app:
     needs: changes
@@ -574,7 +601,7 @@ jobs:
 
   ci:
     # live joined after four consecutive green pushes to main, era after five (infra §2).
-    needs: [changes, lint, test, examples, docs, infra, app, security, live, era]
+    needs: [changes, lint, test, examples, docs, infra, seed, app, security, live, era]
     if: always()
     runs-on: ${{ fromJSON(vars.LIGHT_RUNNER_LABELS || vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 5
@@ -589,11 +616,12 @@ jobs:
   # --- stage 4: images on main and tags; the release on tags -------------------------------------
 
   images:
-    needs: [changes, lint, test, examples, docs, infra, app, security, live, era]
+    needs: [changes, lint, test, examples, docs, infra, seed, app, security, live, era]
     if: >-
       ${{ !cancelled() && !failure() && github.event_name == 'push' &&
           (startsWith(github.ref, 'refs/tags/v') ||
-           (github.ref == 'refs/heads/main' && needs.changes.outputs.images == 'true')) }}
+           (github.ref == 'refs/heads/main' &&
+            (needs.changes.outputs.images == 'true' || needs.changes.outputs.seed == 'true'))) }}
     runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
     timeout-minutes: 90
     permissions:
@@ -631,8 +659,9 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # On a tag, reuse the images main built for this commit, so the release lists the digests that
+      # On a tag, reuse each image main built for this commit, so the release lists the digests that
       # main's run summary already showed. A rebuild would change them (the created label at least).
+      # main builds only the images whose inputs changed, so any image it didn't build is built here.
       - id: reuse
         name: Reuse main's images for a tag
         if: startsWith(github.ref, 'refs/tags/v')
@@ -640,38 +669,60 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
         run: |
           sha_tag="sha-${GITHUB_SHA::12}"
-          for t in api worker worker-cuda; do
-            docker buildx imagetools inspect "$REGISTRY/$t:$sha_tag" >/dev/null 2>&1 \
-              || { echo "No $t:$sha_tag from main; building instead"; echo "done=false" >> "$GITHUB_OUTPUT"; exit 0; }
-          done
           echo '{}' > meta.json
-          for t in api worker worker-cuda; do
+          build=()
+          for t in api worker worker-cuda seed-upload; do
+            if ! docker buildx imagetools inspect "$REGISTRY/$t:$sha_tag" >/dev/null 2>&1; then
+              echo "No $t:$sha_tag from main; building it"; build+=("$t"); continue
+            fi
             docker buildx imagetools create -t "$REGISTRY/$t:$REF_NAME" "$REGISTRY/$t:$sha_tag"
             digest=$(docker buildx imagetools inspect "$REGISTRY/$t:$sha_tag" --format '{{json .Manifest.Digest}}' | tr -d '"')
             jq --arg t "$t" --arg d "$digest" '.[$t] = {"containerimage.digest": $d}' meta.json > meta.tmp && mv meta.tmp meta.json
           done
-          echo "done=true" >> "$GITHUB_OUTPUT"
-      - name: Build and push api, worker and worker-cuda
-        if: steps.reuse.outputs.done != 'true'
+          echo "build=${build[*]}" >> "$GITHUB_OUTPUT"
+      - id: targets
+        name: Choose the images to build
+        env:
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          TAG_BUILD: ${{ steps.reuse.outputs.build }}
+          BACKEND: ${{ needs.changes.outputs.images }}
+          SEED: ${{ needs.changes.outputs.seed }}
+        run: |
+          if [ "$IS_TAG" = true ]; then
+            targets=$TAG_BUILD
+          else
+            targets=
+            if [ "$BACKEND" = true ]; then targets="api worker worker-cuda"; fi
+            if [ "$SEED" = true ]; then targets="$targets seed-upload"; fi
+          fi
+          echo "list=${targets# }" >> "$GITHUB_OUTPUT"
+      - name: Build and push the images
+        if: steps.targets.outputs.list != ''
         env:
           REF_NAME: ${{ github.ref_name }}
           IS_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          TARGETS: ${{ steps.targets.outputs.list }}
         run: |
+          read -ra targets <<< "$TARGETS"
           tags="sha-${GITHUB_SHA::12}"
           if [ "$IS_TAG" = true ]; then tags="$tags,$REF_NAME"; else tags="$tags,main"; fi
           # On GitHub's runners the layer cache lives in GHCR, not the Actions cache, whose 10 GB the
           # Rust caches already use. The rig's builder keeps its own, so it only reads GHCR's and
           # doesn't upload every layer over a home connection.
           cache=()
-          for t in api worker worker-cuda; do
+          for t in "${targets[@]}"; do
             cache+=(--set "$t.cache-from=type=registry,ref=$REGISTRY/buildcache:$t")
             if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
               cache+=(--set "$t.cache-to=type=registry,ref=$REGISTRY/buildcache:$t,mode=max")
             fi
           done
           # The commit's time, not the build's, so the label is the same whenever this commit is built.
+          # seed-upload's build fails when its photos don't match knowledge.surql (ml/knowledge/Dockerfile).
           TAGS="$tags" REVISION="$GITHUB_SHA" CREATED="$(git log -1 --format=%cI)" \
-            docker buildx bake -f backend/docker-bake.hcl --push --metadata-file meta.json "${cache[@]}"
+            docker buildx bake -f backend/docker-bake.hcl --push --metadata-file built.json "${cache[@]}" "${targets[@]}"
+          # A tag's reused digests are already in meta.json; add the ones built here.
+          [ -f meta.json ] || echo '{}' > meta.json
+          jq -s '.[0] * .[1]' meta.json built.json > meta.tmp && mv meta.tmp meta.json
       - id: digests
         name: Record the digests
         run: |
