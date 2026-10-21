@@ -207,6 +207,10 @@ def zip_member_targets(src: dict) -> list[tuple[str, object, str]]:
             elif any(p.search(m.name) for p in include):
                 out.append((z["url"], m, m.name))
     paths = [p for *_, p in out]
+    # A member's name comes from the archive, so one like ../x or /x must not leave the folder.
+    unsafe = [p for p in paths if p.startswith("/") or "\\" in p or ".." in p.split("/") or re.match(r"[A-Za-z]:", p)]
+    if unsafe:
+        raise SystemExit(f"[{src['name']}] member {unsafe[0]!r} would be written outside data/raw/{src['name']}/")
     if len(set(paths)) != len(paths):
         raise SystemExit(f"[{src['name']}] two members would land on the same path")
     if lab and len(out) != len(chosen_label):

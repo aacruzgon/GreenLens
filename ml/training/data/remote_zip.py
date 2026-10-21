@@ -53,6 +53,8 @@ def members(url: str) -> list[Member]:
     total, cd_size, cd_off = struct.unpack("<HII", tail[i + 10 : i + 20])
     if 0xFFFFFFFF in (cd_size, cd_off) or total == 0xFFFF:
         loc = tail.rfind(b"PK\x06\x07", 0, i)
+        if loc < 0:
+            raise ValueError(f"{url}: zip64 sizes but no zip64 end of central directory locator")
         (z64_off,) = struct.unpack("<Q", tail[loc + 8 : loc + 16])
         rec = tail[z64_off - tail_start :] if z64_off >= tail_start else read_range(url, z64_off, z64_off + 55)[0]
         if rec[:4] != b"PK\x06\x06":

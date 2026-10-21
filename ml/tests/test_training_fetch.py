@@ -99,6 +99,21 @@ def test_zip_members_fetches_only_the_included_and_checks_the_pin(server, tmp_pa
         fetch.fetch_zip_members(src)    # index.py would read it
 
 
+
+def test_a_member_name_cannot_leave_the_folder(server, tmp_path, monkeypatch):
+    srv, base = server
+    for i, bad in enumerate(("train/../../evil.jpg", "/abs/evil.jpg", "C:/evil.jpg", "train\\evil.jpg")):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr(zipfile.ZipInfo("train/a/1.jpg"), b"fine")
+            info = zipfile.ZipInfo("x.jpg")
+            info.filename = bad    # zipfile would clean the name given to ZipInfo()
+            z.writestr(info, b"evil")
+        srv.files[f"/e{i}.zip"] = buf.getvalue()
+        src = {"name": "pc", "zips": [{"url": f"{base}/e{i}.zip"}], "include": [r"\.jpg$"], "sha256": "0" * 64}
+        with pytest.raises(SystemExit, match="outside"):
+            fetch.zip_member_targets(src)
+
 def test_archives_are_pinned_one_by_one_and_unpacked_under_their_stem(tmp_path, monkeypatch):
     monkeypatch.setattr(fetch, "RAW", tmp_path)
     blob = a_zip()
