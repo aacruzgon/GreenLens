@@ -1,6 +1,6 @@
 # PDM Frontend Screens
 
-> **Status:** Draft v0.4.5, 2026-10-20. v0.4.5: capture's mode bar is Liquid Glass, solid with Reduce Transparency. v0.4.4: capture's pill asks for a missing needed shot before the optional ones, and a failed removal keeps the shot with **Try again**. v0.4.3: capture as built in F2, after the Camera app: the mode bar and the coverage dial replace the shot strip, the instruction drops from the top, and a full mode's shutter retakes its shot. v0.4.2: sign-up takes a phone number, and sign-in asks for a code by text. v0.4.1: no authenticator-app second factor.
+> **Status:** Draft v0.4.6, 2026-10-20. v0.4.6: a password reset by email code, from sign-in and from a sign-up whose email is taken (1, 3.10). v0.4.5: capture's mode bar is Liquid Glass, solid with Reduce Transparency. v0.4.4: capture's pill asks for a missing needed shot before the optional ones, and a failed removal keeps the shot with **Try again**. v0.4.3: capture as built in F2, after the Camera app: the mode bar and the coverage dial replace the shot strip, the instruction drops from the top, and a full mode's shutter retakes its shot. v0.4.2: sign-up takes a phone number, and sign-in asks for a code by text. v0.4.1: no authenticator-app second factor.
 > v0.4 applies the third audit: Google and Apple sign-in are hidden only in embedded web views, and the note delete rule names who deletes which note.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **New-plant sheet:** added, with `POST /plants`.
@@ -64,7 +64,8 @@ Wireframes show layout and content, not visual design. They are drawn at phone w
    ┌─────────────────────┐                               ┌────────────────────┐   no garden   ┌────────────┐
    │ (auth)              │                               │ SessionGate        │ ────────────▶ │ onboarding │
    │ sign-in · sign-up · │                               │ /me · /gardens     │               └────────────┘
-   │ verify (email code) │                               └─────────┬──────────┘
+   │ reset-password ·    │                               └─────────┬──────────┘
+   │ verify (codes)      │                                         │
    └─────────────────────┘                                         ▼
                                  ┌─────────────────────────── TABS ───────────────────────────┐
                                  │  Garden            Tasks             Chat          Settings │
@@ -99,6 +100,7 @@ Wireframes show layout and content, not visual design. They are drawn at phone w
 |---|---|---|---|---|---|
 | `(auth)/sign-in` | auth | Email and password; Google and Apple except in embedded web views (`in_app`, [README 13](README.md#13-platform-adapters-and-the-lidar-module)) | Clerk | Clerk | Signed out |
 | `(auth)/sign-up` | auth | New account: email, phone number and password | Clerk | Clerk | Signed out |
+| `(auth)/reset-password` | auth | Forgot password: email, then the emailed code and a new password; the code by text follows | Clerk | Clerk | Signed out |
 | `(auth)/verify` | auth | A 6-digit code: the sign-up email and phone codes, the code by text at sign-in, or the email code that confirms a new device | Clerk | Clerk | Signed out |
 | `(app)/onboarding` | auth, gardens | Display name, first garden, location consent | `GET /me` | `PATCH /me`, `POST /gardens` | Signed in, no garden |
 | `(tabs)/index` | gardens | Garden home (3.1) | `GET /gardens/{id}`, `GET /gardens/{id}/weather`, `GET /plants`, `GET /tasks`, `GET /tasks?source=forecast_alert`, `GET /memories?garden_id=`, `GET /gardens/{id}/map` | `PATCH /tasks/{id}`, `POST /memories`, starts a scan | All roles; task changes, notes and "Scan" for editors and owners |
@@ -446,6 +448,7 @@ Capture is always dark and follows the Camera app ([design 3.1](../design/design
 │ Email     [                    ]    │      │   [ M5V 2T6 or Guelph, ON      ]    │
 │ Password  [                    ]    │      │ We use it for weather and soil.     │
 │           [ Sign in ]               │      │ Only the garden has a location.     │
+│         Forgot password?            │      │                                     │
 │ ─────────── or ───────────          │      │            [ Create garden ]        │
 │ [ Continue with Google ]            │      └─────────────────────────────────────┘
 │ [ Continue with Apple ]             │        (hidden in embedded web views)
@@ -453,6 +456,8 @@ Capture is always dark and follows the Camera app ([design 3.1](../design/design
 └─────────────────────────────────────┘
 ```
 
+- **Forgot password?** opens "Reset your password" with the typed email: "Send code", then the 6-digit code and a new password, with "Send a new code" until the code is accepted. Once the password has changed, the subtitle says "Your password is changed" and the button reads **Continue**; a reset that timed out goes back to the email. Resetting signs out the account's other sessions, and the code by text still follows ([flows 1](flows.md#1-app-start-and-sign-in)).
+- **Sign-up with a taken email** shows "You already have an account" with **Reset password**, instead of the code steps. A taken phone number shows Clerk's message, since its account's email is unknown. Sign-up links back with "Already have an account? Sign in".
 - **Verify** shows a 6-digit code field with "Send a new code": the sign-up email code, then the phone's; the code by text at every sign-in; or the email code that confirms a new device. In development builds, the phone steps show Clerk's test numbers (+1 555 555 0100 to 0199, code 424242).
 - The postal-code-or-city field sends `postal_code` when it looks like a Canadian postal code, otherwise `city`.
 

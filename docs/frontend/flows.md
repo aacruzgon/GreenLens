@@ -1,6 +1,6 @@
 # PDM Frontend Flows
 
-> **Status:** Draft v0.4.3, 2026-10-20. v0.4.3: a capture slot's delete can fail: after two retries the shot goes back to `stored` (section 14). v0.4.2: the second factor is a code by text, not TOTP (section 1).
+> **Status:** Draft v0.4.4, 2026-10-20. v0.4.4: "Forgot password?" resets the password with an email code, then continues like a sign-in (section 1). v0.4.3: a capture slot's delete can fail: after two retries the shot goes back to `stored` (section 14). v0.4.2: the second factor is a code by text, not TOTP (section 1).
 > v0.4 applies the third audit and contracts v0.8.2: a failed scan supersedes its question first, and a guided check that finishes after a failure is kept for a Retry.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Species and capture:** the species card shows each photo's credit, and discarding a capture also deletes its jar-test task.
@@ -88,6 +88,7 @@ Companion to the [frontend architecture](README.md) and the [screens](screens.md
 
 - **Google and Apple** use `useSSO` in a browser session on native builds and a redirect in browsers, and return to the app; the rest is the same.
 - **In an embedded web view** (`platform/browser` reports `in_app`: Instagram, Facebook, LinkedIn), the sign-in screen offers email and password only, with "For Google or Apple sign-in, open this page in Safari or Chrome" and **Copy link**. Google refuses OAuth in embedded web views. Links opened from Slack or Gmail usually land in the system's in-app view, where every method works ([README 13](README.md#phone-browsers-and-in-app-browsers)).
+- **Forgot password?** on sign-in, or **Reset password** when sign-up finds the email taken, opens `(auth)/reset-password`: `signIn.create({ identifier })`, `resetPasswordEmailCode.sendCode()`, then the code and a new password (`verifyCode`, then `submitPassword` with `signOutOfOtherSessions`). The new password moves the sign-in on like a password sign-in would: the code by text, the new-device email code, or straight in. Each step runs only at its own status, so a retry starts where the last try stopped: a refused new password keeps the checked code, so only the password is sent again; once the password has changed, **Continue** only moves the sign-in on; and a sign-in dropped while the screen is open (`needs_identifier`) starts again at the email ([Clerk's forgot-password flow](https://clerk.com/docs/guides/development/custom-flows/authentication/forgot-password)).
 - The active garden is checked against `GET /gardens`. A persisted ID that is no longer in the list (the user was removed, or the garden was deleted) falls back to the first garden, with a notice when a `garden_deleted` push was received.
 
 ---
