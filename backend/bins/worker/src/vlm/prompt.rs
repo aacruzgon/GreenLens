@@ -67,7 +67,7 @@ const BENEFICIALS: &str = "Many helpful insects look like pests. Check these bef
 - A swollen, bronze or papery aphid is a mummy: a parasitic wasp has used it. Report it as other, with the name aphid mummy.
 Only choose a pest label when you can see the features of that pest.";
 
-const SOIL: &str = "2. soil: for each aspect, the value you see in the image that shows the soil best, or null if no image shows it clearly. A photo of the soil shows this plant's soil even when other plants, leaves or debris are in it; judge the soil from it. Soil glimpsed between leaves or blurred in the background doesn't count. Soil under mulch can't be judged for moisture, surface or structure. Write each aspect you can judge as an object, for example \"moisture\": {\"value\": \"moist\", \"image\": \"img1\", \"certainty\": \"medium\"}, and each one you can't as null, for example \"erosion\": null.
+const SOIL: &str = "2. soil: for each aspect, the value you see in the image that shows the soil best, or null if no image shows it clearly. Soil glimpsed between leaves or blurred in the background doesn't count. Soil under mulch can't be judged for moisture, surface or structure. Write each aspect you can judge as an object, for example \"moisture\": {\"value\": \"moist\", \"image\": \"img1\", \"certainty\": \"medium\"}, and each one you can't as null, for example \"erosion\": null.
 - moisture: dry (light-coloured, dusty), moist (darker, holds together), wet (shiny, sticky), waterlogged (standing water)
 - surface: normal, crusted (a hard skin), cracked
 - structure: crumbly, cloddy (hard lumps), compacted (dense, smooth, no crumbs), unclear
@@ -81,7 +81,7 @@ const DAMAGE: &str = "4. damage: patterns of damage done by animals (insects, mi
 - shot_holes: many small round holes, a few millimetres across
 - ragged_holes: large irregular holes, often with slime nearby
 - chewed_margins: leaf edges eaten away
-- leaf_mines: winding tunnels, or irregular see-through blotches, eaten inside the leaf by a larva, often with a thin dark line of droppings inside. Spots of any colour are not mines, and neither are long straight streaks or stripes running along the leaf or its veins: those are disease lesions.
+- leaf_mines: narrow winding tunnels, like a scribble, or irregular see-through blotches, eaten inside the leaf by a larva, often with a thin dark line of droppings inside. Spots of any colour are not mines. Neither is a long straight or elongated streak, stripe or band along the leaf or its veins, even a pale one that looks like a tunnel: that is a disease lesion.
 - sticky_residue: shiny sticky coating on leaves
 - sooty_mould: black powdery coating
 - webbing: fine silk between leaves or stems
