@@ -6,13 +6,15 @@ fixed test user (smoke+clerk_test@example.com). Then POST /gardens, POST /scans,
 POST /submit, and GET /scans/{id}/events, parsed by hand. It asserts seq 1.. with no gaps and
 data.seq == id, started stages completed, a resting point, and a resume with Last-Event-ID
 (always, after --drop-after events). Optional modes: --kill-cmd / --restart-cmd (worker dies
-mid-stage), --api-restart-cmd (api restarts during the stream), --face-photo (face blurring).
+mid-stage), --api-restart-cmd (api restarts during the stream), --face-photo (face blurring),
+--depth-check (a synthetic LiDAR depth map with the photo, and the stored sizes), --site-check
+(the garden's live weather, and its soil profile leaving pending).
 
 usage (from backend/):
     python3 tools/smoke/smoke.py --photo ../ml/some_leaf.jpg [--base-url http://localhost:8080]
         [--env-file ../infra/dev/.env] [--timeout 300] [--drop-after 3] [--verbose]
         [--kill-cmd CMD] [--restart-cmd CMD] [--api-restart-cmd CMD]
-        [--face-photo PATH] [--out-dir DIR] [--allow-failed]
+        [--face-photo PATH] [--out-dir DIR] [--depth-check] [--site-check] [--allow-failed]
 
 CLERK_SECRET_KEY comes from the environment or --env-file; it must start with sk_test_.
 Neither the key nor a token is ever printed. Exit code 0 on pass, 1 on the first failed assert.
@@ -32,6 +34,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+import zlib
 from pathlib import Path
 
 CLERK_API = "https://api.clerk.com/v1"
@@ -183,7 +186,7 @@ class Api:
         except (urllib.error.URLError, socket.timeout, ConnectionError, OSError):
             return False
 
-    def upload(self, scan_id, kind, path):
+    def upload(self, scan_id, kind, path, extra_parts=()):
         p = Path(path)
         if not p.is_file():
             die(f"photo not found: {path}")
@@ -197,8 +200,13 @@ class Api:
             f'--{boundary}\r\nContent-Disposition: form-data; name="kind"\r\n\r\n{kind}\r\n'.encode(),
             (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{p.name}"\r\n'
              f"Content-Type: {ctype}\r\n\r\n").encode() + p.read_bytes() + b"\r\n",
-            f"--{boundary}--\r\n".encode(),
         ]
+        # (name, filename or None, content type, bytes): the depth parts of contracts 3.
+        for name, fname, ptype, data in extra_parts:
+            disp = f'form-data; name="{name}"' + (f'; filename="{fname}"' if fname else "")
+            parts.append((f"--{boundary}\r\nContent-Disposition: {disp}\r\n"
+                          f"Content-Type: {ptype}\r\n\r\n").encode() + data + b"\r\n")
+        parts.append(f"--{boundary}--\r\n".encode())
         return self.call("POST", f"/scans/{scan_id}/images", expect=(201,), idem=True,
                          raw=b"".join(parts), ctype=f"multipart/form-data; boundary={boundary}")
 
@@ -426,6 +434,91 @@ def face_step(api, args, garden_id, out_dir):
     info(f"stored (blurred) image saved to {out}: check the face by eye")
 
 
+def depth_png(width, height):
+    """A 16-bit grayscale PNG of depth in millimetres: a 400 to 800 mm ramp, no holes."""
+    rows = bytearray()
+    for y in range(height):
+        rows.append(0)  # filter: none
+        mm = 400 + 400 * y // max(height - 1, 1)
+        rows += mm.to_bytes(2, "big") * width
+    def chunk(kind, data):
+        body = kind + data
+        return len(data).to_bytes(4, "big") + body + zlib.crc32(body).to_bytes(4, "big")
+    ihdr = width.to_bytes(4, "big") + height.to_bytes(4, "big") + bytes([16, 0, 0, 0, 0])
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(bytes(rows)))
+            + chunk(b"IEND", b""))
+
+
+def depth_step(api, args, garden_id):
+    """Uploads the photo without depth, then twice with a synthetic LiDAR depth map: once at the
+    upright image's aspect and once swapped. The depth must be in the sensor frame (before EXIF
+    orientation), so exactly one of the two is stored and the other is `aspect_mismatch` (contracts
+    3). Checks the stored sizes: a long side of at most 1600 px without depth, at least 2048 px
+    with it when the photo is that large. Each scan is deleted afterwards (still pending)."""
+    def scan():
+        return api.call("POST", "/scans", {"garden_id": garden_id, "new_plant": {"name": "smoke depth"}},
+                        expect=(201,), idem=True)["id"]
+    plain_scan = scan()
+    plain = api.upload(plain_scan, "whole_plant", args.photo)
+    w, h = plain["image"]["width"], plain["image"]["height"]
+    info(f"depth check: without depth stored {w}x{h}")
+    if max(w, h) > 1600:
+        die(f"a photo without depth was stored at {w}x{h}, over 1600 px on the long side")
+    if "depth" in plain:
+        die(f"an upload without depth parts answered depth {plain['depth']}")
+    results = {}
+    for label, (rw, rh) in (("upright", (w, h)), ("swapped", (h, w))):
+        dw = 256 if rw >= rh else 192
+        dh = round(dw * rh / rw)
+        meta = {"source": "lidar", "device_model": "iPhone16,1", "filtered": True,
+                "intrinsics": {"fx": 0.8 * dw, "fy": 0.8 * dw, "cx": dw / 2, "cy": dh / 2,
+                               "ref_width": dw, "ref_height": dh}}
+        sid = scan()
+        res = api.upload(sid, "whole_plant", args.photo, extra_parts=(
+            ("depth", "depth.png", "image/png", depth_png(dw, dh)),
+            ("depth_meta", None, "application/json", json.dumps(meta).encode())))
+        img = res["image"]
+        results[label] = (res.get("depth"), img["width"], img["height"], sid)
+        info(f"depth check: {label} {dw}x{dh} depth -> {res.get('depth')}, image {img['width']}x{img['height']}")
+    stored = [k for k, v in results.items() if v[0] == {"stored": True}]
+    refused = [k for k, v in results.items() if v[0] == {"stored": False, "problem": "aspect_mismatch"}]
+    if w != h and (len(stored) != 1 or len(refused) != 1):
+        die(f"expected one depth map stored and one aspect_mismatch, got {results}")
+    if stored:
+        _, sw, sh, _ = results[stored[0]]
+        info(f"depth check: the {stored[0]} aspect matched the sensor frame; stored image {sw}x{sh}")
+        if max(sw, sh) < max(w, h):
+            die(f"the photo with depth was stored at {sw}x{sh}, smaller than without ({w}x{h})")
+    for sid in [plain_scan] + [v[3] for v in results.values()]:
+        api.call("DELETE", f"/scans/{sid}", expect=(200, 202, 204))
+
+
+def site_step(api, garden, timeout_s=120):
+    """S2's site data: the garden's label and time zone, `GET /gardens/{id}/weather` from live
+    Open-Meteo, and `soil_profile_status` leaving `pending` (SoilGrids in the background, or Soil
+    Landscapes of Canada where SoilGrids has no data; contracts 9)."""
+    info(f"site check: garden {garden['id']} labelled {garden.get('location_label')!r}, "
+         f"time zone {garden.get('time_zone')}, soil {garden.get('soil_profile_status')}")
+    w = api.call("GET", f"/gardens/{garden['id']}/weather")["weather"]
+    if w.get("provider") != "open_meteo":
+        die(f"weather provider {w.get('provider')!r}, expected open_meteo")
+    cur, fc = w.get("current", {}), w.get("forecast", {})
+    info(f"site check: weather fetched {w.get('fetched_at')}: {cur.get('temp_c')} °C, "
+         f"RH {cur.get('rh_pct')} %, wind {cur.get('wind_kmh')} km/h, "
+         f"{cur.get('precip_mm_last_24h')} mm in 24 h; forecast of {len(fc)} entries")
+    deadline = time.monotonic() + timeout_s
+    while True:
+        status = api.call("GET", f"/gardens/{garden['id']}")["soil_profile_status"]
+        if status != "pending":
+            break
+        if time.monotonic() > deadline:
+            die(f"soil_profile_status still pending after {timeout_s} s")
+        time.sleep(3)
+    if status not in ("ready", "unavailable"):
+        die(f"soil_profile_status {status!r}")
+    info(f"site check: soil_profile_status {status}")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Smoke test: one scan through the PDM API.")
     ap.add_argument("--base-url", default="http://localhost:8080")
@@ -442,6 +535,10 @@ def main():
     ap.add_argument("--api-restart-cmd", help="shell command that restarts api, run while the stream is dropped")
     ap.add_argument("--face-photo", help="extra step: upload a photo with a face to a second scan")
     ap.add_argument("--out-dir", help="where the stored face image is saved (default a temp dir)")
+    ap.add_argument("--depth-check", action="store_true",
+                    help="extra step: upload the photo with a synthetic LiDAR depth map (stored sizes, sensor frame)")
+    ap.add_argument("--site-check", action="store_true",
+                    help="extra step: the garden's live weather and its soil profile status")
     ap.add_argument("--allow-failed", action="store_true", help="exit 0 when the scan ends failed")
     ap.add_argument("--perception-only", action="store_true",
                     help="pass once every perception stage completed, without waiting for a resting "
@@ -466,6 +563,8 @@ def main():
     garden = api.call("POST", "/gardens", {"name": f"smoke {stamp}",
                       "location": {"lat": args.lat, "lon": args.lon}}, expect=(201,), idem=True)
     info(f"garden {garden['id']}")
+    if args.site_check:
+        site_step(api, garden)
     scan = api.call("POST", "/scans", {"garden_id": garden["id"], "new_plant": {"name": "smoke plant"}},
                     expect=(201,), idem=True)
     sid = scan["id"]
@@ -515,6 +614,8 @@ def main():
         out_dir = args.out_dir or tempfile.mkdtemp(prefix="pdm-smoke-")
         Path(out_dir).mkdir(parents=True, exist_ok=True)
         face_step(api, args, garden["id"], out_dir)
+    if args.depth_check:
+        depth_step(api, args, garden["id"])
 
     info("")
     info("PASS")
