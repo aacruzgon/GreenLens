@@ -24,6 +24,7 @@ use domain::{
     wire::{LocalDate, Run, Timestamp},
 };
 
+mod catch_up;
 mod entry;
 mod error;
 pub mod findings;

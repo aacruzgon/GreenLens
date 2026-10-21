@@ -1,6 +1,6 @@
 # PDM Backend: `worker` binary
 
-> **Status:** Draft v0.5.5, 2026-10-17. v0.5.5: the prompts are `system@2`, `findings@3`, `indicators@2` and `verify@2` (vision vlm.md 7), and a damage finding keeps `other_description` only with `other` (section 9). v0.5.4: the adapter sends an indicators call as parallel parts when its backend limits the questions per call (`VlmBackend::max_questions`; 12 on the hosted model, because the API refuses a schema of 20 question objects as too large and a call can ask 27), each part with its own schema and prompt and retried on its own; two ignored live tests of the hosted schemas; 35 tests. v0.5.3: the perception worker reads its thresholds from the manifest with `PerceptionConfig::from_manifest`, the environment sets only the batch caps and never above the manifest's, and start-up refuses an fp16 model on `ORT_EP=cpu` or a file whose tensor names differ from the manifest (gaps G4, G6 and G11); `VLM_BASE_URL` defaults to `http://vllm-nv:8000`, the compose service's name (G7), all from [issue #12](https://github.com/aacruzgon/GreenLens/issues/12). v0.5.2: open question 3 is settled: xgrammar enforces `anyOf` with `null`. v0.5.1: section 12's image path is the registry's, `ghcr.io/aacruzgon/greenlens/worker` ([infra 3](../infra/README.md#3-images)). v0.5: section 15.1 designs stub vision (`--stub-vision`, refused in a release build without `PDM_ALLOW_STUB_VISION`), the canned `perception` result the API accepts, its marks in `model_versions` and logs, the tests, and seven work items for the roadmap's slice S1; section 17 has six new questions; no section number changes. v0.4.2: the rig's compose listing gives each worker an `env_file` with its own `WORKER_TOKEN` (the worker reads no `WORKER_TOKEN_FILE`). v0.4.1: section 17 keeps only the four questions still open, since docs/vision v0.2 and contracts 5–6 now agree on the rest; section 1 drops the image-fetch difference (the skill uses 30 s too); section 12 lists the fallback service with its `stop_grace_period`. v0.4: the SIGTERM shutdown ends within `DRAIN_SECONDS`, dropping a `complete` or heartbeat call in flight (it could take 20 + 10 + 5 = 35 s, past the 30 s grace); the worker API client retries by the error body's `retryable` and `retry_after_s` (contracts 2), not by status, and waits `retry_after_s`; section 1 states the HTTP timeouts and only the two skill differences that remain. v0.3.1: why the immediate re-claim after a `204` can't spin while the API shuts down (probed). v0.3: the hosted fallback gives the guided check the same 8,000-token budget as the other calls (docs/vision README 12 #27), and the fallback row points to the full list of stripped schema keywords. v0.2: the fallback worker reads its hosted-LLM key from `LLM_API_KEY`, the name `api` and the backend README §9 use (it was `ANTHROPIC_API_KEY`). v0.1: the worker process (`--caps perception|vlm|fallback`): configuration, the heartbeat and claim loops with slots, leases and the SIGTERM drain, cancellation by drop, the VLM adapter with its per-call schema builder and decoding, the hosted fallback, per-card settings for the RX 9070 XT, and the rig's compose services; compiled on Rust 1.99.1.
+> **Status:** Draft v0.5.7, 2026-10-21. v0.5.7: the prompts are `system@2`, `findings@3`, `indicators@2` and `verify@2` (vision vlm.md 7), and a damage finding keeps `other_description` only with `other` (section 9). v0.5.6: the 3070's perception worker ran on the rig (S2): `worker-cuda` loads every perception model on CUDA and heartbeats `ort_ep: cuda`; it runs in `control-plane.compose.yml` (the 3070 is in the control-plane host), and the default log filter is `info,ort=warn` (section 12). v0.5.5: ST1 to ST5 are built and ran on a laptop (S1): with the empty knowledge base's label versions (`STUB_LABEL_SET_VERSION=d4f0f0534fb74a8d`, `STUB_CLASSIFIER_LABELS_VERSION` empty) a scan streams all five perception stages and goes on to `context`; the worker flags `--vlm-*` and `--fallback-*` have distinct ids, and the worker logs at `info` without `RUST_LOG`. v0.5.4: the adapter sends an indicators call as parallel parts when its backend limits the questions per call (`VlmBackend::max_questions`; 12 on the hosted model, because the API refuses a schema of 20 question objects as too large and a call can ask 27), each part with its own schema and prompt and retried on its own; two ignored live tests of the hosted schemas; 35 tests. v0.5.3: the perception worker reads its thresholds from the manifest with `PerceptionConfig::from_manifest`, the environment sets only the batch caps and never above the manifest's, and start-up refuses an fp16 model on `ORT_EP=cpu` or a file whose tensor names differ from the manifest (gaps G4, G6 and G11); `VLM_BASE_URL` defaults to `http://vllm-nv:8000`, the compose service's name (G7), all from [issue #12](https://github.com/aacruzgon/GreenLens/issues/12). v0.5.2: open question 3 is settled: xgrammar enforces `anyOf` with `null`. v0.5.1: section 12's image path is the registry's, `ghcr.io/aacruzgon/greenlens/worker` ([infra 3](../infra/README.md#3-images)). v0.5: section 15.1 designs stub vision (`--stub-vision`, refused in a release build without `PDM_ALLOW_STUB_VISION`), the canned `perception` result the API accepts, its marks in `model_versions` and logs, the tests, and seven work items for the roadmap's slice S1; section 17 has six new questions; no section number changes. v0.4.2: the rig's compose listing gives each worker an `env_file` with its own `WORKER_TOKEN` (the worker reads no `WORKER_TOKEN_FILE`). v0.4.1: section 17 keeps only the four questions still open, since docs/vision v0.2 and contracts 5–6 now agree on the rest; section 1 drops the image-fetch difference (the skill uses 30 s too); section 12 lists the fallback service with its `stop_grace_period`. v0.4: the SIGTERM shutdown ends within `DRAIN_SECONDS`, dropping a `complete` or heartbeat call in flight (it could take 20 + 10 + 5 = 35 s, past the 30 s grace); the worker API client retries by the error body's `retryable` and `retry_after_s` (contracts 2), not by status, and waits `retry_after_s`; section 1 states the HTTP timeouts and only the two skill differences that remain. v0.3.1: why the immediate re-claim after a `204` can't spin while the API shuts down (probed). v0.3: the hosted fallback gives the guided check the same 8,000-token budget as the other calls (docs/vision README 12 #27), and the fallback row points to the full list of stripped schema keywords. v0.2: the fallback worker reads its hosted-LLM key from `LLM_API_KEY`, the name `api` and the backend README §9 use (it was `ANTHROPIC_API_KEY`). v0.1: the worker process (`--caps perception|vlm|fallback`): configuration, the heartbeat and claim loops with slots, leases and the SIGTERM drain, cancellation by drop, the VLM adapter with its per-call schema builder and decoding, the hosted fallback, per-card settings for the RX 9070 XT, and the rig's compose services; compiled on Rust 1.99.1.
 
 Companion to the [backend architecture](README.md), the [`vision` crate](vision.md) (the perception models and image code it uses), the [`integrations` crate](integrations.md) (its HTTP clients for the VLM server and the LLM API) and the [`domain` crate](domain.md) (the job types and the `VisionModel` port). Every listing is copied from the compiled source of `bins/worker` by the docgen tool. `cargo check -p worker` (also `--features cuda`), `cargo clippy -p worker --all-targets` and `cargo test -p worker` pass: 35 tests, among them the loop on paused time against a fake broker and the VLM adapter against a scripted backend.
 
@@ -183,6 +183,9 @@ pub struct Cli {
     /// Fallback settings.
     #[command(flatten)]
     pub fallback: FallbackArgs,
+    /// Stub vision (canned perception results for the walking skeleton).
+    #[command(flatten)]
+    pub stub: StubArgs,
 }
 
 /// `--caps perception` settings ([vision 5], ONNX Runtime on the 3070).
@@ -232,7 +235,12 @@ pub struct VlmArgs {
     #[arg(long, env = "VLM_BASE_URL", default_value = "http://vllm-nv:8000")]
     pub base_url: String,
     /// The sidecar's `--api-key`.
-    #[arg(long, env = "VLM_API_KEY", hide_env_values = true)]
+    #[arg(
+        id = "vlm_api_key",
+        long = "vlm-api-key",
+        env = "VLM_API_KEY",
+        hide_env_values = true
+    )]
     pub api_key: Option<SecretString>,
     /// `vllm` or `llamacpp`.
     #[arg(long, env = "VLM_ADAPTER", value_enum, default_value = "vllm")]
@@ -242,7 +250,8 @@ pub struct VlmArgs {
     pub served_name: String,
     /// `vlm_model`: repository@revision of the checkpoint the sidecar serves.
     #[arg(
-        long,
+        id = "vlm_model",
+        long = "vlm-model",
         env = "VLM_MODEL",
         default_value = "Qwen/Qwen3-VL-8B-Instruct-FP8"
     )]
@@ -260,10 +269,20 @@ pub struct VlmArgs {
     #[arg(long, env = "VLM_CELL_PX", default_value_t = 32)]
     pub cell_px: u32,
     /// The largest prepared image, pixels; the same value the server was started with.
-    #[arg(long, env = "VLM_MAX_PIXELS", default_value_t = 1_003_520)]
+    #[arg(
+        id = "vlm_max_pixels",
+        long = "vlm-max-pixels",
+        env = "VLM_MAX_PIXELS",
+        default_value_t = 1_003_520
+    )]
     pub max_pixels: u32,
     /// Jobs held at once; the sidecar's `--max-num-seqs` (or `-np`) has the same value.
-    #[arg(long, env = "VLM_SLOTS", default_value_t = 1)]
+    #[arg(
+        id = "vlm_slots",
+        long = "vlm-slots",
+        env = "VLM_SLOTS",
+        default_value_t = 1
+    )]
     pub slots: u32,
 }
 
@@ -273,19 +292,39 @@ pub struct VlmArgs {
 #[derive(Debug, Args)]
 pub struct FallbackArgs {
     /// The LLM API key.
-    #[arg(long, env = "LLM_API_KEY", hide_env_values = true)]
+    #[arg(
+        id = "llm_api_key",
+        long = "llm-api-key",
+        env = "LLM_API_KEY",
+        hide_env_values = true
+    )]
     pub api_key: Option<SecretString>,
     /// The hosted model.
-    #[arg(long, env = "FALLBACK_VISION_MODEL", default_value = "claude-opus-5-5")]
+    #[arg(
+        id = "fallback_model",
+        long = "fallback-model",
+        env = "FALLBACK_VISION_MODEL",
+        default_value = "claude-opus-5-5"
+    )]
     pub model: String,
     /// Jobs held at once, bounded by the LLM API's rate limit.
-    #[arg(long, env = "FALLBACK_SLOTS", default_value_t = 4)]
+    #[arg(
+        id = "fallback_slots",
+        long = "fallback-slots",
+        env = "FALLBACK_SLOTS",
+        default_value_t = 4
+    )]
     pub slots: u32,
     /// Long side of a prepared image: the size the API doesn't resize.
     #[arg(long, env = "FALLBACK_MAX_LONG_SIDE", default_value_t = 1568)]
     pub max_long_side: u32,
     /// Pixels of a prepared image (about 1.15 megapixels, the standard tier).
-    #[arg(long, env = "FALLBACK_MAX_PIXELS", default_value_t = 1_150_000)]
+    #[arg(
+        id = "fallback_max_pixels",
+        long = "fallback-max-pixels",
+        env = "FALLBACK_MAX_PIXELS",
+        default_value_t = 1_150_000
+    )]
     pub max_pixels: u32,
 }
 
@@ -321,7 +360,7 @@ pub struct Timings {
 | `VLM_SLOTS` | 1 | vlm | Jobs held at once; the sidecar's `--max-num-seqs` (or `-np`) is the same |
 | `LLM_API_KEY`, `FALLBACK_VISION_MODEL` | —, `claude-opus-5-5` | fallback | The hosted model |
 | `FALLBACK_SLOTS`, `FALLBACK_MAX_LONG_SIDE`, `FALLBACK_MAX_PIXELS` | 4, 1568, 1,150,000 | fallback | Slots, and the size the API won't resize |
-| `WORKER_STUB_VISION`, `PDM_ALLOW_STUB_VISION`, `STUB_*` | off, unset | perception | Canned results for the walking skeleton; refused in a release build without the allow variable ([section 15.1](#151-stub-vision), proposed) |
+| `WORKER_STUB_VISION`, `PDM_ALLOW_STUB_VISION`, `STUB_*` | off, unset | perception | Canned results for the walking skeleton; refused in a release build without the allow variable ([section 15.1](#151-stub-vision)) |
 
 Start-up fails before the first claim on a missing key, a missing `[model.config]` threshold, a batch cap above the manifest's, an ONNX file whose tensor names differ from its entry, an fp16 model with `ORT_EP=cpu`, a file whose hash differs from the manifest, a provider that isn't compiled in or doesn't register, or a VLM server that doesn't serve `VLM_SERVED_NAME` (`GET /v1/models`).
 
@@ -333,6 +372,12 @@ async fn build_model(
     http: reqwest::Client,
     cpu: Arc<Semaphore>,
 ) -> anyhow::Result<Arc<dyn VisionModel>> {
+    // Stub vision first: no manifest, no ONNX Runtime, no GPU ([worker 15.1.1]).
+    check_stub_allowed(cli, !cfg!(debug_assertions))?;
+    if cli.stub.stub_vision {
+        tracing::warn!("stub vision is on: results are canned");
+        return Ok(Arc::new(StubModel::new(StubConfig::new(&cli.stub)?)));
+    }
     Ok(match cli.caps {
         Caps::Perception => {
             let p = &cli.perception;
@@ -587,10 +632,14 @@ impl<A: WorkerApi> Worker<A> {
             Arc::clone(&self.runner),
             self.timings,
         );
-        self.tracker.spawn(async move {
-            run_job(&api, &runner, claimed, &cancel, timings).await;
-            drop((registered, slot)); // leaves the heartbeat list, then frees the slot
-        });
+        // `in_current_span`: the process span (`stub_vision`) follows the job into its task.
+        self.tracker.spawn(
+            async move {
+                run_job(&api, &runner, claimed, &cancel, timings).await;
+                drop((registered, slot)); // leaves the heartbeat list, then frees the slot
+            }
+            .in_current_span(),
+        );
     }
 
     /// After `shutdown`: wait up to the drain bound for running jobs, then abandon the rest
@@ -642,11 +691,11 @@ where
     let (shutdown, stop_heartbeat) = (CancellationToken::new(), CancellationToken::new());
     let heartbeat = tokio::spawn({
         let (worker, stop) = (Arc::clone(&worker), stop_heartbeat.clone());
-        async move { worker.heartbeat_loop(stop).await }
+        async move { worker.heartbeat_loop(stop).await }.in_current_span()
     });
     let claims = tokio::spawn({
         let (worker, shutdown) = (Arc::clone(&worker), shutdown.clone());
-        async move { worker.claim_loop(shutdown).await }
+        async move { worker.claim_loop(shutdown).await }.in_current_span()
     });
     stopped.await?;
     tracing::info!("shutting down: no new claims");
@@ -1316,7 +1365,7 @@ pub const MAX_QUESTIONS_PER_CALL: usize = 12;
 /// The prompt versions ([vision vlm 7]), in the contract's `name@n` form.
 ///
 /// [vision vlm 7]: ../../../docs/vision/vlm.md#7-prompts
-pub const PROMPTS: &str = "system@2,findings@3,indicators@2,verify@2,guided@1";
+pub const PROMPTS: &str = "system@2,findings@4,indicators@2,verify@2,guided@1";
 
 /// Certainty words to confidences ([contracts 6], after decoding): 0.4 / 0.65 / 0.85 until
 /// calibration moves each value within its band, never above 0.85.
@@ -2035,8 +2084,31 @@ pub struct CallImages<'c> {
 }
 
 /// Cuts a string to `max` characters (not bytes, so a multi-byte character is never split).
+/// A string that reaches `max` was most likely stopped there by the schema's `maxLength`, mid-word
+/// and sometimes in another language (vision vlm.md 4), so it goes back to its last full sentence,
+/// or failing that its last full word.
 pub fn truncate(s: &str, max: usize) -> String {
-    s.chars().take(max).collect()
+    let cut: String = s.chars().take(max).collect();
+    if s.chars().count() < max {
+        return cut;
+    }
+    let cut = cut.trim_end();
+    if cut.ends_with(['.', '!', '?']) {
+        return cut.to_owned();
+    }
+    let mut chars = cut.char_indices().peekable();
+    let mut sentence_end = None;
+    while let Some((i, c)) = chars.next() {
+        if matches!(c, '.' | '!' | '?') && chars.peek().is_some_and(|&(_, n)| n.is_whitespace()) {
+            sentence_end = Some(i + c.len_utf8());
+        }
+    }
+    let kept = match (sentence_end, cut.rfind(char::is_whitespace)) {
+        (Some(end), _) => &cut[..end],
+        (None, Some(space)) => cut[..space].trim_end_matches([',', ';', ':', ' ']),
+        (None, None) => cut,
+    };
+    kept.to_owned()
 }
 
 /// Converts a raw `bbox_2d` to the stored image's `[x, y, w, h]` by the adapter's format,
@@ -2233,6 +2305,8 @@ Which server runs on the 9070 XT is open ([contracts 12](../architecture/contrac
 ---
 
 ## 12. Deployment
+
+**On the rig today** (S2, 2026-10-20): the RTX 3070 is in the control-plane host, so `perception-worker` runs in `infra/control-plane.compose.yml` behind the `perception` profile, with `API_BASE_URL=http://api:8080` ([infra 4](../infra/README.md#infracontrol-planecomposeyml)). The listing below is the single-host layout; the second rig host runs only the VLM services. Without `RUST_LOG` the worker logs at `info,ort=warn`: ONNX Runtime logs each session's graph optimisation at `info` through `ort`, about 7,600 lines when this worker starts. Its first start loaded all five perception models on CUDA in 2.5 s and used 902 MiB on the card before any job.
 
 `infra/rig.compose.yml` ([architecture 12](../architecture/README.md#12-deployment)). NVIDIA services are pinned by **GPU UUID**, never by index, through the NVIDIA Container Toolkit; the AMD sidecar gets only `/dev/kfd` and **its own render node by PCI path**, never all of `/dev/dri` (which also holds the NVIDIA nodes), plus the host's numeric `render` and `video` group ids. Images are pinned by digest; the ROCm digest is from the AMD research, the CUDA image's tag and digest are confirmed on day 1.
 
@@ -2441,13 +2515,13 @@ The message is the error and its `source()` chain, `": "`-joined ([rust-errors](
 | `live_indicators_worst_case`, `live_findings` (ignored) | Against the real API, no images: 27 questions with full-length keys and 4 images in parts of 12, every one answered (`LIVE_QUESTIONS` and `LIVE_PER_CALL` probe the limit); the findings schema accepted |
 | schema, decode, prepare unit tests | `reason` before `answer` in the serialised schema; `unsure`-only questions; payload enums and box bounds; one guided branch; aliases, boxes, truncation and certainty mapped; a zero-area organism box drops the organism; unknown species and missing keys fail; Qwen3 cells and the pixel budget; the hosted 1568-pixel cap |
 
-The stub's tests are in [section 15.1.5](#1515-tests) (proposed). All loop tests run on paused time (`start_paused = true`) against a fake `WorkerApi`; the fake answers an empty claim like a 25 s long poll, so the clock can advance. Contract tests of `HttpWorkerApi` against a live `api` belong to the end-to-end tests ([api](api.md)). The day-2 benchmark ([vision evaluation](../vision/evaluation.md)) checks the adapters against the real servers: valid output, xgrammar's enforcement of `maxLength` and `maxItems`, boxes drawn back on the prepared images, and the 9070 XT against the 5070 Ti.
+The stub's tests are in [section 15.1.5](#1515-tests). All loop tests run on paused time (`start_paused = true`) against a fake `WorkerApi`; the fake answers an empty claim like a 25 s long poll, so the clock can advance. Contract tests of `HttpWorkerApi` against a live `api` belong to the end-to-end tests ([api](api.md)). The day-2 benchmark ([vision evaluation](../vision/evaluation.md)) checks the adapters against the real servers: valid output, xgrammar's enforcement of `maxLength` and `maxItems`, boxes drawn back on the prepared images, and the 9070 XT against the 5070 Ti.
 
 ### 15.1 Stub vision
 
 The roadmap's first slice (S1, [roadmap 5](roadmap.md#5-s1-walking-skeleton)) runs a scan from the app through the API and the broker to a worker and back over SSE, before any GPU or model file exists. The worker has only the real perception path and the hosted fallback, so S1 has nothing to claim a `perception` job ([roadmap gap 2](roadmap.md#13-gaps-found-while-writing-this-roadmap)). **Stub vision** is a `VisionModel` that answers `perception` jobs with canned, valid results. It is a development tool. It is off by default, it is refused in a release build unless the operator says so twice, and it marks everything it produces.
 
-Nothing in this section is compiled yet. The listings are labelled "Proposed (not compiled)", and the numbers in section 15.1.7 are the work items.
+ST1 to ST5 of section 15.1.7 are compiled and tested (`bins/worker/src/stub.rs`, `StubArgs` and `check_stub_allowed` in `config.rs`); ST6 and ST7 are not. The listings labelled "Proposed (not compiled)" are the design as first written.
 
 #### 15.1.1 Turning it on
 
@@ -2465,7 +2539,7 @@ Nothing in this section is compiled yet. The listings are labelled "Proposed (no
 
 1. `--stub-vision` is valid only with `--caps perception`. With `vlm` or `fallback` it is refused: a VLM job is the real VLM's or the hosted model's, and a canned `VlmResult` would put invented findings into a diagnosis.
 2. In a release build it is refused unless `PDM_ALLOW_STUB_VISION=1`. The flag alone isn't enough, so a flag left in a compose file by mistake can't start it, and the rig's `infra/rig.compose.yml` never sets the variable.
-3. Both `STUB_*_VERSION` variables must be set. The API queues a `perception` job only when a live perception or fallback worker reports the job's label versions in its heartbeat; with live workers of which none has both, submit fails with `503 upstream_unavailable` ([contracts 5](../architecture/contracts.md#post-internaljobsidcomplete)). The stub can't read a manifest (section 15.1.4), so the operator names the versions.
+3. Both `STUB_*_VERSION` variables must be set; an empty `STUB_CLASSIFIER_LABELS_VERSION` is a value, and is the one an empty knowledge base gives (✓ ran on a laptop, 2026-10-17). The API queues a `perception` job only when a live perception or fallback worker reports the job's label versions in its heartbeat; with live workers of which none has both, submit fails with `503 upstream_unavailable` ([contracts 5](../architecture/contracts.md#post-internaljobsidcomplete)). The stub can't read a manifest (section 15.1.4), so the operator names the versions.
 4. `MODEL_MANIFEST`, `ORT_*` and the `*_MAX_BATCH` variables are ignored. The manifest isn't loaded, no ONNX Runtime is initialised, and no GPU or model file is needed.
 
 ```text
@@ -2566,11 +2640,11 @@ All are part of S1's work item 1 ([roadmap 5](roadmap.md#5-s1-walking-skeleton))
 
 | # | Work | Exit check |
 |---|---|---|
-| ST1 | `StubArgs`, `check_stub_allowed`, the `build_model` branch, the start-up `warn!` and span field | The three refusal tests pass; `worker --caps perception --stub-vision` with the allow variable starts in a release build on a machine with no GPU and no `/models` |
-| ST2 | `StubModel` and its result builder | `stub_regions_follow_the_image_kinds`, `stub_result_decodes_as_the_jobs_kind`, `stub_follows_the_payloads_species_choice`, `stub_disease_is_sorted_and_skips_without_leaves` and `stub_never_sends_embeddings` pass; `cargo clippy -p worker --all-targets` is clean |
-| ST3 | The marks of section 15.1.3 and `stub_module_has_no_io` | `stub_marks_every_version` and `stub_module_has_no_io` pass; the heartbeat of a started stub lists both label versions |
-| ST4 | The stage events and the delay | `a_stub_job_completes_through_the_loop` and `a_cancelled_stub_job_stops_at_its_delay` pass on paused time |
-| ST5 | `pipeline`'s fixture test, and a check that the stub's output decodes against `contracts.md` | `a_stub_perception_result_stores_its_observations` passes |
+| ST1 ✓ done | `StubArgs`, `check_stub_allowed`, the `build_model` branch, the start-up `warn!` and span field | The three refusal tests pass; `worker --caps perception --stub-vision` with the allow variable starts in a release build on a machine with no GPU and no `/models` |
+| ST2 ✓ done | `StubModel` and its result builder | `stub_regions_follow_the_image_kinds`, `stub_result_decodes_as_the_jobs_kind`, `stub_follows_the_payloads_species_choice`, `stub_disease_is_sorted_and_skips_without_leaves` and `stub_never_sends_embeddings` pass; `cargo clippy -p worker --all-targets` is clean |
+| ST3 ✓ done | The marks of section 15.1.3 and `stub_module_has_no_io` | `stub_marks_every_version` and `stub_module_has_no_io` pass; the heartbeat of a started stub lists both label versions |
+| ST4 ✓ done | The stage events and the delay | `a_stub_job_completes_through_the_loop` and `a_cancelled_stub_job_stops_at_its_delay` pass on paused time |
+| ST5 ✓ done | `pipeline`'s fixture test, and a check that the stub's output decodes against `contracts.md` | `a_stub_perception_result_stores_its_observations` passes |
 | ST6 | A `perception-stub-worker` service in S1's `control-plane.compose.yml` (`--caps perception --stub-vision`, `PDM_ALLOW_STUB_VISION=1`, the `STUB_*` variables, its own `env_file` with `WORKER_TOKEN`) | The worker's first heartbeat shows on the API; a submitted scan's perception job is claimed within a second and the stage events reach the stream |
 | ST7 | The kill, restart and resume checks of section 15.1.5 in the S1 smoke script | S1's first three exit checks pass against the deployed control plane |
 

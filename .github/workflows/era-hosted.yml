@@ -1,0 +1,108 @@
+# The nightly check of the Slack and Google Drive clients against our hosted Era company, Holling
+# Holdings (docs/EON E6.5, E7; docs/infra/README.md section 2, The era-hosted job). It runs the
+# era_hosted_ tests in backend/crates/integrations/tests/era_hosted.rs, and nothing else.
+#
+# A separate workflow, not a job in ci.yml: ci is the one required check, and a hosted outage or an
+# expired credential must never block a merge; a schedule on ci.yml would also run every job
+# there, since its changes job runs everything when it has no base to compare with.
+#
+# Every request to the hosted systems costs one of the account's 2,000 calls a month. A run makes
+# five (Slack two, Drive three; Oct 20) and the tests print the count, so a nightly run costs
+# about 150 a month. Minting the token is not metered.
+#
+# The credentials live in the GitHub environment era-hosted, which only main can use, so a run
+# from another branch can't read them:
+#   secrets   ERA_CLIENT_ID, ERA_CLIENT_SECRET  `era client <tenant> --reveal --json`; the job mints
+#                                               a one-hour token with them (client_credentials)
+#             ERA_TENANT_TOKEN                  only when the client credentials are not set: the
+#                                               company's 7-day token, rotated weekly (infra §6)
+#   variables SLACK_BASE_URL, GOOGLE_DRIVE_BASE_URL  the hosted systems, from infra/env/.env.era
+# It builds, so it runs on RUNNER_LABELS like ci.yml's build jobs. Pull-request jobs have run as
+# the same user on the rig, so the credential reaches a runner such code could have tampered with
+# (as in discord-mentions.yml). It reads a synthetic, read-only company; a leak can spend calls.
+name: Era hosted
+
+on:
+  schedule:
+    - cron: "17 6 * * *" # 06:17 UTC, after the Americas' working day
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: era-hosted
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  RUSTUP_TOOLCHAIN: "1.99.1"
+  ERA_TOKEN_URL: https://console.era.eon.io/token
+
+jobs:
+  era-hosted:
+    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}
+    environment: era-hosted
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rust 1.99.1
+        run: rustup toolchain install 1.99.1 --profile minimal
+      - uses: ./.github/actions/self-hosted-env
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        if: runner.environment == 'github-hosted'
+        with:
+          workspaces: "backend -> target"
+          shared-key: era-hosted
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # Its own HOME, as in ci.yml's test job: the rig's runners share one home.
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        env:
+          HOME: ${{ runner.temp }}
+        with:
+          tool: cargo-nextest@0.9.148
+      # Build first, so a failed build never mints a token or spends a call.
+      - name: Build the hosted tests
+        working-directory: backend
+        run: cargo nextest list -p integrations --run-ignored only --locked -E 'test(/(^|::)era_hosted_/)'
+      - name: The company's token
+        env:
+          ERA_CLIENT_ID: ${{ secrets.ERA_CLIENT_ID }}
+          ERA_CLIENT_SECRET: ${{ secrets.ERA_CLIENT_SECRET }}
+          ERA_TENANT_TOKEN: ${{ secrets.ERA_TENANT_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "$ERA_CLIENT_ID" ] && [ -n "$ERA_CLIENT_SECRET" ]; then
+            # The secret goes on stdin, never on curl's command line, where other processes on
+            # the host could read it.
+            answer=$(printf %s "$ERA_CLIENT_SECRET" | curl -sS -m 30 -X POST "$ERA_TOKEN_URL" \
+              --data-urlencode grant_type=client_credentials \
+              --data-urlencode "client_id=$ERA_CLIENT_ID" \
+              --data-urlencode client_secret@-)
+            token=$(jq -r '.access_token // empty' <<<"$answer" 2>/dev/null || true)
+            if [ -z "$token" ]; then
+              # Only the error fields: any other field could be a credential under another name.
+              echo "::error::the client_credentials grant gave no token: $(jq -c '{error, error_description}' <<<"$answer" 2>/dev/null || echo 'not JSON')"
+              exit 1
+            fi
+            echo "::add-mask::$token"
+            echo "ERA_TENANT_TOKEN=$token" >> "$GITHUB_ENV"
+            echo "a one-hour token from the client credentials"
+          elif [ -n "$ERA_TENANT_TOKEN" ]; then
+            echo "ERA_TENANT_TOKEN=$ERA_TENANT_TOKEN" >> "$GITHUB_ENV"
+            echo "the tenant token (expires 7 days after it was issued; infra section 6)"
+          else
+            echo "::error::set ERA_CLIENT_ID and ERA_CLIENT_SECRET, or ERA_TENANT_TOKEN, in the era-hosted environment"
+            exit 1
+          fi
+      - name: Era hosted tests
+        working-directory: backend
+        env:
+          SLACK_BASE_URL: ${{ vars.SLACK_BASE_URL }}
+          GOOGLE_DRIVE_BASE_URL: ${{ vars.GOOGLE_DRIVE_BASE_URL }}
+        run: >-
+          cargo nextest run -p integrations --run-ignored only --locked --no-capture --retries 0
+          -E 'test(/(^|::)era_hosted_/)'

@@ -183,12 +183,11 @@ ORDER BY similarity DESC LIMIT $k;";
 
     /// A `guided` job's result, under its lease: the texture observation, the check found from
     /// the job's payload image, the job `done`, and the `score` claim only on a `diagnosed` or
-    /// `planned` scan ([contracts 7], guided checks and the diagnosis). The port passes no time,
-    /// so this one transaction reads the database clock (`time::now()`), and the claim's stamp
-    /// is returned with it.
+    /// `planned` scan ([contracts 7], guided checks and the diagnosis). The lease and the claim
+    /// use the bound `$now`, as every other job transaction does, so the `Clock` port (and a
+    /// test's fixed clock) controls them.
     pub const FINISH_GUIDED_CHECK: &str = concat!(
         "BEGIN;\n",
-        "LET $now = time::now();\n",
         "LET $j = (SELECT status, lease_token, worker, lease_until, scan, payload FROM ONLY $job);\n",
         "IF $j = NONE OR $j.status != 'leased' OR $j.lease_token != $lease_token OR $j.worker != $worker OR $j.lease_until < $now { THROW 'lease_lost' };\n",
         "IF $observation != NONE { CREATE $observation.id CONTENT $observation.row; };\n",
@@ -938,6 +937,7 @@ impl AnalysisRepo for SurrealStore {
         &self,
         lease: &Lease,
         outcome: GuidedOutcome,
+        now: Timestamp,
     ) -> Result<GuidedFinish, StoreError> {
         const WHAT: &str = "finish guided check";
         let observation = outcome
@@ -968,6 +968,7 @@ impl AnalysisRepo for SurrealStore {
                 .bind(("worker", lease.worker.as_str()))
                 .bind(("observation", observation.clone()))
                 .bind(("status", status.clone()))
+                .bind(("now", dt(now)))
         })
         .await
         .map_err(|f| lease_failure(f, lease, WHAT))?;
@@ -976,14 +977,8 @@ impl AnalysisRepo for SurrealStore {
         let row = row.ok_or(StoreError::NotFound)?;
         Ok(GuidedFinish {
             scan_status: row.status.map(Into::into).ok_or(StoreError::NotFound)?,
-            // A claim's stamp comes back with the row (the database clock); the fallback is unused.
-            claim: claim_attempt(
-                &row,
-                scan,
-                PipelineStep::Score,
-                Timestamp::from(chrono::DateTime::<chrono::Utc>::UNIX_EPOCH),
-            )
-            .map_err(|e| e.into_store(WHAT))?,
+            claim: claim_attempt(&row, scan, PipelineStep::Score, now)
+                .map_err(|e| e.into_store(WHAT))?,
         })
     }
 }

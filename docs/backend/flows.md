@@ -1,6 +1,6 @@
 # PDM Backend Flows
 
-> **Status:** Draft v0.2.2, 2026-10-16. v0.2.2: the scan stream closes on a 15-second re-check (rest without an event, a deleted scan), a stream can close before a step's last events (the app refetches on close), image bodies end on shutdown, and the worker's shutdown drops a `complete` or heartbeat in flight, so it ends within `DRAIN_SECONDS`. v0.2.1: the scan stream ends on a duplicate flagged `rests`, the global body cap is 20 MiB + 128 KiB, and the `api` container's grace period is 190 s. v0.2: the diagrams follow the cross-crate fixes (one wake-up path for the claim long poll, one `fail_scan` per final failure, the sweep as the only question continuation, late events dropped, deletes through one `DeleteQueue`, the account tombstone, SoilGrids retry times, guided stage events, the plan step's release after 3 lost compare-and-sets), and section 20 marks each gap fixed and where. v0.1: sequence diagrams and state machines for every server-side flow, from a request's layers to a scan's steps, a job's lease, a chat turn, deletion, the scheduler and start-up. Every name is a type, trait or function from the crate documents and the compiled scratch workspace.
+> **Status:** Draft v0.2.11, 2026-10-20. v0.2.11: start-up applies the migrations after the schema and checks the text embedder against `knowledge_meta`. v0.2.10: a guided job's `complete` sends no catch-up stage events, since its `guided` stage is shared by the run's checks. v0.2.9: `job_completed` reads the run's stage events (`EventRepo::run_stage_events`) and sends the stage events the stream missed before the job's findings, so a stage whose worker events were lost while `api` was down doesn't stay open (backend roadmap gap 9). v0.2.8: a chat turn reads whether the garden has farm records before it classifies the message, and the classifier is asked `Route { farm_records }`, so a question about the garden's own records is on topic when it has some (EON gap G10). v0.2.7: `complete` is in a route group of its own with a 60 s timeout, and without `CONNECTOR_KEY` an account cascade deletes the user's connectors, unrevoked, before the user. v0.2.6: the farm connector deletion has one path, `DeletionRunner::finish_connector`, which the owner's disconnect uses too; it revokes through `ConnectVendors` in a task of its own, keeps a token another live connector of the same Slack team or Google account holds, finishes a removed member's connectors before their objects, and leaves a former owner's connectors `deleting` while `CONNECTOR_KEY` is missing. v0.2.5: farm connectors go with their garden and with the owner who created them (demoted, removed, leaving, or deleting the account): the store marks them `deleting` in the transaction that changes the garden or the membership, and the deletion runner revokes each token after that commit and then deletes the records and the row, resumed at start while the mark remains (section 10, EON E3.6). v0.2.4: the farm sync's rounds decide turns and `synced_at`, never who is read: a round gives every chosen source a turn (a page asked, whatever follows), then the budget left goes to the passes in progress, and the round ends with the next sync 15 minutes later, `synced_at` set only when every source is caught up. The farm sync rotates the sources per run, each run starting after the last source the previous one read, with `synced_at` set only when every chosen source has finished its pass in the round, offers two older-item checks a run (`probe_limit`), as many on a page as its budget covers, and reads the garden's record count before each page; section 11 adds the farm connectors' `connectors` loop with the sync's sequence (pages from a saved cursor, only changed chunks embedded, the daily 7-day re-read, the stopping codes), the `beliefs` loop it lacked, and the cleanup of old Slack messages; section 13 seeds the demo garden's `era` connectors after resuming deletions. v0.2.3: the chat turn offers `search_farm_records` only to a garden with farm records (EON E5.2, gap G6). v0.2.2: the scan stream closes on a 15-second re-check (rest without an event, a deleted scan), a stream can close before a step's last events (the app refetches on close), image bodies end on shutdown, and the worker's shutdown drops a `complete` or heartbeat in flight, so it ends within `DRAIN_SECONDS`. v0.2.1: the scan stream ends on a duplicate flagged `rests`, the global body cap is 20 MiB + 128 KiB, and the `api` container's grace period is 190 s. v0.2: the diagrams follow the cross-crate fixes (one wake-up path for the claim long poll, one `fail_scan` per final failure, the sweep as the only question continuation, late events dropped, deletes through one `DeleteQueue`, the account tombstone, SoilGrids retry times, guided stage events, the plan step's release after 3 lost compare-and-sets), and section 20 marks each gap fixed and where. v0.1: sequence diagrams and state machines for every server-side flow, from a request's layers to a scan's steps, a job's lease, a chat turn, deletion, the scheduler and start-up. Every name is a type, trait or function from the crate documents and the compiled scratch workspace.
 
 Companion to the [backend architecture](README.md) and the server-side half of the [frontend flows](../frontend/flows.md). Every request, event and job here is defined in the [data contracts](../architecture/contracts.md). The system-level flows are in [architecture 8](../architecture/README.md#8-main-flows). This document shows how the crates work together at run time: which handler, entry point, repository method and adapter each arrow is.
 
@@ -77,7 +77,7 @@ sequenceDiagram
     Layers->>Layers: TraceLayer span (request_id, method, matched route)
     Layers->>Layers: CorsLayer (answers preflights here)
     Layers->>Layers: CompressionLayer, render_errors, CatchPanicLayer, RequestBodyLimitLayer 20 MiB + 128 KiB
-    Layers->>Group: TimeoutLayer (10 s app, 60 s uploads and worker, 35 s claim), DefaultBodyLimit
+    Layers->>Group: TimeoutLayer (10 s app, 60 s uploads, connect and worker, 35 s claim), DefaultBodyLimit
     Group->>Ext: AuthUser
     Ext->>Ints: authz::authenticate, AuthVerifier::verify (JWKS, exp, nbf, iss, azp)
     Ints-->>Ext: VerifiedToken (sub)
@@ -291,7 +291,7 @@ sequenceDiagram
     Pipeline->>Pipeline: JobResult::decode by the recorded kind, perception_writes
     Pipeline->>Store: JobRepo::complete_job, JobCompletion::Done with claim retrieve
     Store-->>Pipeline: CompletionOutcome::Stored (Claimed, ObservationDiff)
-    Pipeline->>Writer: emit finding and finding_retracted for the diff
+    Pipeline->>Writer: emit the stage events the stream missed (EventRepo::run_stage_events), then finding and finding_retracted for the diff
     Handler-->>Worker: 204
     Handler--)Pipeline: spawn_follow_up(FollowUp::Step retrieve)
     Pipeline->>Store: snapshot (run must match the claim)
@@ -380,7 +380,7 @@ sequenceDiagram
 | Submit 2–14 | `Pipeline::submit`, `decide_submit`, `run_stages`, `perception_job`, `labels_loaded`, `ScanRepo::start_run`, `RunStart`, `StartedRun` | [pipeline 11](pipeline.md#11-runs), [domain 7, scan state machine](domain.md#scan-state-machine) |
 | Submit 15–19 | `internal::claim`, `JobBroker::claim`, `JobRepo::claim_job`, `ClaimedJob::started_analysing` | [api 15](api.md#15-the-job-broker-and-the-worker-api), [store 14](store.md#14-jobs-and-workers), [database 4](../database/README.md#job-claim-with-slots-) |
 | Perception 3–7 | `internal::job_events`, `JobRepo::live_lease` (late events after `complete` answer `204` and are dropped), `Pipeline::worker_events`, partial results stored once | [contracts 5, events](../architecture/contracts.md#post-internaljobsidevents) |
-| Perception 8–16 | `internal::complete`, `Pipeline::job_completed`, `JobResult::decode`, `JobRepo::complete_job`, `JobCompletion::Done { claim }` | [pipeline 9](pipeline.md#9-entry-points), [contracts 5, complete](../architecture/contracts.md#post-internaljobsidcomplete) |
+| Perception 8–16 | `internal::complete`, `Pipeline::job_completed`, `JobResult::decode`, `JobRepo::complete_job`, `JobCompletion::Done { claim }`; `ResultStages` and `EventRepo::run_stage_events` for the stage events the stream missed ([pipeline 10](pipeline.md#10-events)) | [pipeline 9](pipeline.md#9-entry-points), [contracts 5, complete](../architecture/contracts.md#post-internaljobsidcomplete) |
 | Perception 17–32 | `Pipeline::retrieve`, `images_to_measure`, `ImageMeasurer`, `weather_for`, `rank_candidates`, `answer_indicator`, `vlm_payload`, `StepOutput::Retrieve` | [pipeline 6](pipeline.md#6-retrieve), [knowledge 5](knowledge.md#5-candidate-ranking) |
 | Perception 33–41 | the VLM adapter's two calls, organism lengths (`organism_boxes`, `ImageMeasurer::organism_length_mm`), `suggest_species` | [worker 8](worker.md#8-the-vlm-adapters), [worker 9](worker.md#9-the-per-call-schema-and-decoding), [integrations 6](integrations.md#6-openai-compatible-vlm-servers), [pipeline 4](pipeline.md#4-ports-and-construction), [pipeline 9](pipeline.md#9-entry-points) |
 | Score 1–12 | `Pipeline::score`, `ScoreMode`, `readable`, `verify_outside`, `StepOutput::{Release, Verify, Ask, Score}` | [pipeline 7](pipeline.md#7-score), [knowledge 7](knowledge.md#7-scoring), [knowledge 8](knowledge.md#8-diagnosis-status-and-the-question) |
@@ -624,6 +624,7 @@ sequenceDiagram
 | A job of an older kind or `v` | `decode_claim` keeps it as `ClaimedJob::Unsupported`, completed at once as `unsupported_version` (questions 19, 21) |
 | A repeated `complete` | `check_lease` accepts a job already completed with the same token; `complete_job` answers `AlreadyCompleted`, `204` |
 | `events` after `complete` | `live_lease` answers `None` for a job completed with the same token: `204`, the events are dropped, never forwarded ([api 15](api.md#15-the-job-broker-and-the-worker-api)) |
+| `events` lost before `complete` | The worker drops an `events` call it can't deliver (`api` down) and goes on. `job_completed` folds the run's stored stage events: a stage left started gets its `stage_completed`, a stage of the result with no event in the run gets both, `duration_ms: 0`, before the findings; nothing when every event arrived ([pipeline 10](pipeline.md#10-events), [contracts 5](../architecture/contracts.md#post-internaljobsidevents)) |
 | Heartbeat label versions | Every loaded `label_set_version` and `classifier_labels_version`, comma-separated; `labels_loaded` splits each list before comparing ([pipeline 11](pipeline.md#11-runs)) |
 | Any call on a requeued, expired, cancelled or older-run job | `409 lease_lost`; the worker drops the job |
 | The fallback | Claims every kind 15 s after `queued_at`; a photo answer's segmentation job only when no perception worker has heartbeated for 30 s (`ClaimPolicy::hold_question_segmentation`) |
@@ -817,7 +818,7 @@ sequenceDiagram
     end
 ```
 
-A guided job belongs to the scan, not a run: a new run never cancels it, and its final failure only sends `guided_check_done` with a failed check. Its stage events (contracts 4's `guided` stage) go out on the scan's current run, the run `guided_check_done` carries ([pipeline 10](pipeline.md#10-events)).
+A guided job belongs to the scan, not a run: a new run never cancels it, and its final failure only sends `guided_check_done` with a failed check. Its stage events (contracts 4's `guided` stage) go out on the scan's current run, the run `guided_check_done` carries ([pipeline 10](pipeline.md#10-events)). Its `complete` sends no catch-up stage events for ones that were lost: the `guided` stage is shared by every check of the run, so the stored events can't tell which check left it open.
 
 ---
 
@@ -842,8 +843,9 @@ sequenceDiagram
     Agent->>Agent: validate (2,000 characters, 3 images)
     Agent->>Store: UsageRepo::usage for today (429 budget_exceeded)
     Agent->>Store: conversation anchor, chat_image_object for each image
-    Agent->>Cls: classify Route, 3 s timeout
-    Agent->>Agent: decide_route (calibration, poison keywords, off_topic margin 0.2)
+    Agent->>Store: FarmRecordStore::connectors (has_farm_records)
+    Agent->>Cls: classify Route { farm_records }, 3 s timeout
+    Agent->>Agent: decide_route (calibration, farm_records, poison keywords, off_topic margin 0.2)
     Agent->>Store: store the user message with its route
     Agent--)Task: spawn on the TaskTracker
     Agent-->>Handler: TurnParts (events stream, outcome oneshot)
@@ -877,13 +879,13 @@ sequenceDiagram
 | Arrows | Item | Where |
 |---|---|---|
 | 2 | `ConvAccess<Viewer, table::Conversation>`, `check_conversation` | [api 9](api.md#9-authentication-and-access) |
-| 3–11 | `ChatAgent::start_turn`, `validate`, `UsageRepo::usage`, `TextClassifier::classify`, `decide_route`, `ChatRepo::store_message` | [agent 13](agent.md#13-the-chat-turn), [agent 7](agent.md#7-router-and-safety-gate) |
-| 12, 30–31 | the handler's finisher task, `TurnOutcome`, `Begun::complete` or `release` | [api 14](api.md#14-chat-streaming-and-confirmation-cards) |
-| 15 | `context::load`, `TurnContext` | [agent 11](agent.md#11-context-per-anchor) |
-| 16–24 | the loop, `dose_check`, `ToolRegistry::find` (role-filtered), `DynTool::call` | [agent 13, the loop](agent.md#the-loop), [agent 12](agent.md#the-registry-and-roles), [agent 4](agent.md#4-the-dose-check) |
-| 26–29, 32 | `memory::after_turn`, `summarise_if_due` | [agent 14](agent.md#14-memory) |
+| 3–12 | `ChatAgent::start_turn`, `validate`, `UsageRepo::usage`, `context::has_farm_records`, `TextClassifier::classify`, `decide_route`, `ChatRepo::store_message` | [agent 13](agent.md#13-the-chat-turn), [agent 7](agent.md#7-router-and-safety-gate) |
+| 13, 31–32 | the handler's finisher task, `TurnOutcome`, `Begun::complete` or `release` | [api 14](api.md#14-chat-streaming-and-confirmation-cards) |
+| 16 | `context::load`, `TurnContext` | [agent 11](agent.md#11-context-per-anchor) |
+| 17–25 | the loop, `dose_check`, `ToolRegistry::find` (role-filtered), `DynTool::call` | [agent 13, the loop](agent.md#the-loop), [agent 12](agent.md#the-registry-and-roles), [agent 4](agent.md#4-the-dose-check) |
+| 27–30, 33 | `memory::after_turn`, `summarise_if_due` | [agent 14](agent.md#14-memory) |
 
-- **Role-filtered tools.** Viewers and reviewers are offered the read tools, `request_rescan` and `remember`; editors and owners all nineteen. A call to a tool the role isn't offered is answered like an unknown tool ([agent 12](agent.md#the-registry-and-roles)).
+- **Role-filtered tools.** Viewers and reviewers are offered the read tools, `request_rescan` and `remember`; editors and owners all twenty. `search_farm_records` is offered only when the garden has farm records or a connector past `pending`, a fact the turn reads once, before routing (arrow 7), so the router and the offer agree: only then is the classifier also asked for `farm_records`, a question about the records, which counts as a care question (EON gap G10; [agent 7](agent.md#7-router-and-safety-gate)). A call to a tool that wasn't offered is answered like an unknown tool ([agent 12](agent.md#the-registry-and-roles)).
 - **Routes without a model:** `PoisonControl` streams the configured text sentence by sentence, with no model call and no tools; `OffTopic` gets a short redirect from the cheapest model with no tools.
 - **Budget.** The day's total is read before the stream; during the turn each call's usage is added, and a turn that has spent what was left ends with `BUDGET_TEXT` before its next call. A turn can overrun by at most one call ([agent 13, token budget](agent.md#token-budget)).
 - **Cancellation by a closed channel.** When the client leaves, hyper drops the body, which drops the channel's receiver. The task sees its next `send` fail, or `Sender::closed()` resolve inside its `select!` with the model stream and the shutdown token; it drops the model stream (which stops the HTTP call) and stores the partial reply with `interrupted: true`. The outcome is `Interrupted`, and the handler's task releases the idempotency key ([agent 13, cancellation](agent.md#cancellation)).
@@ -969,7 +971,7 @@ sequenceDiagram
     participant Push as Pusher
     App->>Handler: DELETE /gardens/{id} (Owner)
     Handler->>Store: DeletionRepo::start_garden_deletion(owner, now)
-    Note over Store: one transaction: deleting_at, jobs cancelled, step claims and question steps cleared
+    Note over Store: one transaction: deleting_at, jobs cancelled, step claims and question steps cleared, farm connectors marked deleting
     Store-->>Handler: DeletionStarted (target, prefixes, notify, garden_name)
     Handler->>Runner: spawn(started) on the TaskTracker
     Handler-->>App: 202 (204 for a pending scan)
@@ -977,6 +979,9 @@ sequenceDiagram
     Runner->>Blob: DeleteQueue::submit each prefix and the keys, await the DeleteHandles
     Note over Runner,Blob: the queue owns each delete: 5 attempts, 1-8 s back-off, 120 s client operation timeout per attempt, drained at shutdown, and objects left after the attempts stop the cascade (records kept, resumed on start)
     loop CascadeStep::steps_for(target)
+        opt step FarmRecordsAndConnectors (a garden)
+            Runner->>Runner: finish each connector marked deleting (below)
+        end
         Runner->>Store: delete_batch(target, step) until it deletes 0
     end
     opt garden with other members
@@ -989,7 +994,8 @@ sequenceDiagram
 | Garden (`DELETE /gardens/{id}`, owner) | `start_garden_deletion`; `202` | Its prefix `gardens/{garden_id}/`; every cascade step; `garden_deleted` pushes |
 | Plant (`DELETE /plants/{id}`, owner) | `start_plant_deletion` (also removes its pin from the current map in place); `202` | Its scans' prefixes; the plant steps |
 | Pending scan (`DELETE /scans/{id}`, editor) | `start_scan_deletion` (`pending` only, else `409`); `204` | Its prefix; its own short list; the jar-test task goes through `task.scan`'s `CASCADE` |
-| Member (`DELETE /gardens/{id}/members/{user_id}`) | `remove_member` (the last owner can't); `204` | Their conversations' image prefixes; their conversations and unshared chat memories in that garden (`DeletionTarget::Member`) |
+| Member (`DELETE /gardens/{id}/members/{user_id}`) | `remove_member` (the last owner can't), which marks the farm connectors the member created there `deleting`; `204` | Their conversations' image prefixes; their connectors (revoked, then deleted); their conversations and unshared chat memories in that garden (`DeletionTarget::Member`) |
+| Demotion (`PATCH /gardens/{id}/members/{user_id}` from `owner`) | `change_role`, which marks the connectors the demoted owner created there `deleting`; `200` | Those connectors, revoked and then deleted (`spawn_connectors_of`) |
 | Account | [flow 12](#12-the-auth-webhook-and-account-deletion) | |
 
 - **Why objects first and never cancelled.** On RustFS 1.0.1 an interrupted `DeleteObjects` can leave objects that can never be listed or deleted. Every delete in `api` (cascades, a removed shot, an upload's depth maps, the orphan sweep) goes through one `blob::DeleteQueue` in `AppState`, which runs each job in a task it owns: dropping the cascade or the handle never stops it. The only time limit is the client's 120-second per-attempt operation timeout. At shutdown the queue is drained for `max(SHUTDOWN_DRAIN_S, 120 s)`, so a pending delete always gets one full attempt ([storage 4](../storage/README.md#4-writes-and-deletes), [api 17](api.md#17-deletion), [blob 6](blob.md#6-deletes-that-are-never-cancelled)).
@@ -997,20 +1003,57 @@ sequenceDiagram
 - **Resumable.** At start, `DeletionRunner::resume` runs every target still marked `deleting_at` from its first step; a garden's prefix is deleted again, and a plant's or scan's objects are left to the orphan sweep ([api 23](api.md#23-open-questions), question 5).
 - **A missed step fails loudly** on `REFERENCE ON DELETE REJECT` instead of orphaning records.
 
+### Farm connectors
+
+A connector goes with its garden, and with the owner who created it when that owner stops being one, because the consent was theirs ([connectors 8](../connectors/README.md#8-privacy-and-security), EON E3.6). The store marks it `deleting` inside the transaction that changes the garden or the membership (`start_garden_deletion`, `change_role` from `owner`, `remove_member`, and `transfer_ownership` at account deletion), so the sync and the list skip it at once and its row keeps the sealed token; the owner's `DELETE /connectors/{id}` marks it the same way (`start_connector_deletion`). The vendor's revoke is an HTTP call, so the runner makes it after that commit, outside every transaction, in `finish_connector`, the one revoke-then-delete path:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Runner as DeletionRunner
+    participant Store
+    participant Key as ConnectorKey
+    participant Vendor as ConnectVendors (Slack auth.revoke, Google revoke)
+    Runner->>Store: FarmRecordStore::deleting_connectors(Some(garden))
+    Store-->>Runner: ConnectorRow (sealed token), for a member only those they created
+    loop each connector: finish_connector
+        alt endpoint era, or no token
+            Note over Runner: nothing to revoke (era's demo token is a fixed string)
+        else
+            Runner->>Key: StoredTokens::unseal(key, connector, secret)
+            Runner->>Store: shared_account_connectors(kind, team id or email, except)
+            alt another live vendor connector holds the account
+                Note over Runner: not revoked: the token is theirs too
+            else
+                Runner->>Vendor: revoke(kind, tokens), in a task of its own
+                Note over Runner,Vendor: logged by connector id and kind, never the token or the body; a failure or a panic doesn't stop the deletion
+            end
+        end
+        Runner->>Store: delete_connector_batch until it deletes 0 (records 500 at a time, then the row)
+    end
+```
+
+- **Revoke before the delete, after the mark.** Revoking after the rows were gone would hold the only copy of the token in memory, and a crash would lose the revoke for good. With the mark committed first, a restart anywhere before the last batch leaves the row `deleting` with its token, and `DeletionRunner::resume` finishes it (`deleting_connectors(None)`: every such connector outside a garden being deleted; a garden being deleted finishes its own in its resumed cascade). The worst case is a second revoke of a token already revoked, which the vendor refuses and the log records.
+- **A removed member** (`Member` cascade, also the account cascade's leave step) has their connectors finished before their chat objects; a store error listing them is logged and the chat steps go on, since `resume` finishes the connectors. The account cascade marks the leaver's connectors in `transfer_ownership` (the leaver drops to editor) and `remove_member`, and finishes them before `delete_user`: `connector.created_by` rejects the user's deletion while one remains.
+- **A demotion** starts `spawn_connectors_of` only when `change_role` says an owner was demoted (`RoleChange::demoted_owner`).
+- **Connectors off** (no `CONNECTOR_KEY`): nothing can be unsealed. A garden's cascade still deletes its connectors, unrevoked, and so does an account's, before `DELETE $user`; a demoted, removed or leaving owner's stay `deleting`, with a warning at each start, so their tokens are revoked once the key is configured.
+
 ---
 
 ## 11. Scheduler loops
 
-Eight loops run on the process `TaskTracker` through `scheduler::every`: `interval_at` with a first delay, `MissedTickBehavior::Delay`, and a `select!` on the shutdown token. A failed run is logged and the next tick tries again ([api 16](api.md#16-the-scheduler)).
+Ten loops run on the process `TaskTracker` through `scheduler::every` (`connectors` only when connectors are on): `interval_at` with a first delay, `MissedTickBehavior::Delay`, and a `select!` on the shutdown token. A failed run is logged and the next tick tries again ([api 16](api.md#16-the-scheduler)).
 
 | Task | Every | What | Flow |
 |---|---|---|---|
 | `requeue` | 5 s | `JobRepo::requeue_stale` (the store wakes the claims); `job_failed_for_good` for exhausted jobs | [6](#6-a-jobs-lease) |
 | `sweep` | 30 s | `Pipeline::sweep`: stale steps, stalled `measuring`, and the 10-minute continuation of due questions (its only owner) | [4](#4-step-claims-the-sweep-and-plan-writes), [7](#continuing-without-an-answer) |
 | `idle` | 60 s | `RateLimits::retain_recent`, `EventHub::sweep_idle`, `ScanWriters::sweep_idle` | [19](#19-writer-actor-broadcast-channel-and-plan-lock) |
-| `cleanup` | 10 min | Expired idempotency keys, weather older than 2 h, expired pending actions, finished jobs older than 7 days, account tombstones 24 h after Clerk confirmed the deletion | [database 4](../database/README.md#cleanup-no-ttl) |
+| `beliefs` | 10 s | `agent::beliefs::sync_pending`: queued erases, then unsynced shared memories, the only writer to Agent Memory | [api 16](api.md#16-the-scheduler) |
+| `cleanup` | 10 min | Expired idempotency keys, weather older than 2 h, expired pending actions, finished jobs older than 7 days, account tombstones 24 h after Clerk confirmed the deletion, synced Slack messages older than 180 days (Drive documents stay) | [database 4](../database/README.md#cleanup-no-ttl) |
 | `weather` | 1 h | Weather by cell, forecast alerts, plan triggers | below |
 | `soil` | 15 min | SoilGrids for due gardens (`pending`, or past `soil_retry_at`), 4 a run | below |
+| `connectors` | 1 min | `FarmSync::run_due`: at most 4 due farm connectors, side by side | below |
 | `receipts` | 15 min | `Notifier::check_receipts`, `IdentityRepo::forget_push_tokens` | below |
 | `orphans` | 24 h | Objects older than an hour that no record points to | below |
 
@@ -1077,6 +1120,58 @@ sequenceDiagram
 ```
 
 The first fetch runs right after `POST /gardens` (`spawn_soil_fetch`, through `scheduler::fetch_soil_profile`); the `soil` task retries due gardens. A failure stores `unavailable` and `garden.soil_retry_at`: 15 minutes after an outage, 7 days after no data, so a null-pixel garden (Toronto, Guelph) costs its 9 paced calls once a week, not every 15 minutes ([contracts 9, the soil profile](../architecture/contracts.md#gardens), [integrations 8](integrations.md#8-soilgrids), [api 16](api.md#16-the-scheduler)).
+
+### Farm connectors' sync
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Sched as connectors (1 min)
+    participant Sync as FarmSync
+    participant Store
+    participant Src as FarmSource (SlackSource; Drive in E4.3)
+    participant Emb as TextEmbedder
+    Sched->>Store: due_connectors(now, 4): active, next_sync_at passed, not stopped by too_large or source_missing
+    par each connector, side by side
+        Sync->>Sync: FarmSources by kind and endpoint; ConnectorKey::unseal the token
+        alt no source chosen
+            Sync->>Store: finish_sync(cursors, next +15 min)
+        end
+        Note over Sync: Rotation, in the cursors under SYNC_STATE_KEY: the round in progress, the sources that had their turn in it, and the source to start from
+        loop each source without its turn in the round, in order from there; then, once all had theirs, each source with pages left. Page by page from its SourceState, until a pass ends, 3 min pass, shutdown or a stop; the first page asked is the source's turn
+            Note over Sync: a day after the last finished pass, and with a reread_window, the pass starts 7 days back (reread_from)
+            Sync->>Src: read_page(token, cursor, oldest = now - 180 days, reread_from, probe_limit: of 2 a run, 0 on a first pass, else what the budget left covers at 70 s each after 70 s for the page)
+            Src-->>Sync: FarmPage: items, removed, kept, cursor, more, probes
+            Sync->>Store: record_hashes(page's vendor ids)
+            Sync->>Sync: chunk (2,000 chars), text_hash
+            Sync->>Store: garden_record_count for a page with new records: too_large past 10,000 stops the run
+            Sync->>Emb: embed(Document, new or changed chunks only), 32 a call
+            Sync->>Store: upsert_records (no vector: the stored one stays), delete_chunks_from, delete_records(removed)
+            opt the re-read pass ended
+                Sync->>Store: source_vendor_ids_since(source, from + 1 s)
+                Sync->>Store: delete_records(not seen and not kept)
+            end
+        end
+        Note over Sync: the next run starts after the last source asked for a page (one further on at the round's end)
+        alt the round ended, every source caught up: no pages left, no failed last turn
+            Sync->>Store: finish_sync(cursors and rotation, synced_at now, next +15 min)
+        else the round ended, a source with pages left or a failed last turn
+            Sync->>Store: finish_sync(cursors and rotation, next +15 min, last_error kept while a turn failed)
+        else sources without their turn in the round (budget or shutdown)
+            Sync->>Store: finish_sync(cursors, next now)
+        else the vendor or the limit stopped it
+            Sync->>Store: finish_sync(cursors, last_error, next: Retry-After for rate_limited, else +15 min)
+            opt auth_refused
+                Sync->>Store: set_status(reauth_needed, auth_refused)
+            end
+        end
+    end
+```
+
+- **No duplicates.** Records are keyed by `(connector, vendor_id, n)` and a pass continues from its saved cursor, so a throttled first sync finishes on a later run without storing a message twice ([api 16](api.md#the-farm-sync)).
+- **Rounds and turns.** A round gives every chosen source a turn: the run asks it for at least one page, whether it then finishes its pass, runs out of budget or fails with a vendor error. A run gives their turns first, in order from after the last source the previous run asked, then the budget left to the sources with pages left. The round ends when every source has had its turn, never later, so a source with a long first pass or a re-read, or one that always fails, holds up the others for one turn at most and every chosen source is read in every round; a source left mid-pass resumes from its cursor, and a source just added joins the round in progress. `synced_at` is set at a round's end only when every source is caught up ([api 16](api.md#the-farm-sync)).
+- **Slack's cursor** holds the newest `ts` of finished passes, a pass with pages left and each thread's read state, so a quiet channel costs one `conversations.history` call (up to a minute of the team's Tier 1 pacer) and an unchanged thread no `conversations.replies` call ([integrations 15](integrations.md#slacksource-the-port-for-the-sync)).
+- **A Sync now during a run.** A **Sync now** or new sources during the run move `next_sync_at` past the value the run started from; `finish_sync` then keeps that time, doesn't store a stopping failure over the owner's change and doesn't set `synced_at` ([store](store.md)).
 
 ### Push receipts and orphans
 
@@ -1160,14 +1255,15 @@ sequenceDiagram
     Handler-->>App: 202 deleted_gardens, transferred_gardens
     Runner->>Store: plan_account_deletion again
     loop each transfer
-        Runner->>Store: transfer_ownership (longest-standing editor)
+        Runner->>Store: transfer_ownership (longest-standing editor; the leaver's connectors there marked deleting)
     end
     loop each garden the user alone used
         Runner->>Store: check_membership_of Owner, start_garden_deletion
         Runner->>Blob: garden prefix, then records (flow 10)
     end
     loop each shared garden
-        Runner->>Store: check_membership_of Viewer, remove_member
+        Runner->>Store: check_membership_of Viewer, remove_member (marks the user's connectors there deleting)
+        Runner->>Store: the user's connectors there, revoked and deleted (finish_connector, flow 10)
         Runner->>Blob: chat prefixes
         Runner->>Store: delete_records DeletionTarget::Member
     end
@@ -1201,14 +1297,16 @@ sequenceDiagram
     participant Serve as axum::serve
     Main->>Main: Config::from_env, init_tracing (JSON, RUST_LOG)
     Main->>Main: CancellationToken, TaskTracker
-    Main->>Store: apply_schema over a root connection (SURREAL_ROOT_USER), then connect as api
+    Main->>Store: migrate over a root connection (SURREAL_ROOT_USER): schema.surql, new NNNN_ files, knowledge.surql if changed; then connect as api, read knowledge_meta
     Main->>Blob: storage_client (path-style, 120 s operation timeout)
     Main->>Ints: one reqwest client: ClerkVerifier, SvixVerifier, ClerkAdmin, OpenMeteo, SoilGrids, CompositeGeocoder (TimeZoneFinder on spawn_blocking), ExpoPush
     Main->>Vision: load_models on spawn_blocking: text embedder, UploadProcessor (face detector)
+    Main->>Main: check_embedder: the embedder matches knowledge_meta, or no knowledge set yet
     Main->>Store: KnowledgeRepo::load_knowledge, PhotoIndex, HmacSigner
     Main->>State: EventHub, JobBroker, Pusher, ScanWriters, Pipeline, ChatAgent, DeletionRunner
     Main->>State: DeletionRunner::resume (deleting_at targets, unfinished account tombstones)
-    Main->>Sched: scheduler::start (eight loops on the tracker)
+    Main->>Store: farm_sync::seed::at_start: with CONNECTOR_KEY, both ERA_* bases and ERA_DEMO_GARDEN_ID, seed_connector the two era connectors by fixed id (skipped while the garden has no owner)
+    Main->>Sched: scheduler::start (ten loops on the tracker; connectors only when connectors are on)
     Main->>Main: spawn signal (Ctrl-C or SIGTERM cancels the token)
     Main->>Serve: bind, serve with_graceful_shutdown(token.cancelled_owned)
     Note over Serve: SSE streams and image bodies end through take_until, the claim long poll answers 204
@@ -1223,7 +1321,8 @@ sequenceDiagram
 | 4–5 | Exits on a bad secret | [api 6](api.md#6-application-state-wiring-and-the-seams), [integrations 4](integrations.md#4-shared-http-client-retries-pacing-sse) |
 | 6 | Exits: face blurring fails closed, so uploads can't run without it | [vision 7](vision.md#7-the-upload-pipeline), [vision 10](vision.md#10-the-text-embedder) |
 | 7–9 | Exits on a store error | [api 4](api.md#4-start-up-and-shutdown), [api 17](api.md#17-deletion) |
-| 12–14 | `with_graceful_shutdown` waits for every open connection, which is why every long response ends on the token | [api 4](api.md#4-start-up-and-shutdown) |
+| 10 | Logged, not fatal: the demo connectors come on the next start | [api 16](api.md#the-farm-sync) |
+| 13–15 | `with_graceful_shutdown` waits for every open connection, which is why every long response ends on the token | [api 4](api.md#4-start-up-and-shutdown) |
 
 The `api` service's `stop_grace_period` is 190 s, so Compose's SIGKILL doesn't land inside that drain: 60 s for the slowest request, 120 s for a delete attempt and 10 s of margin ([api 4](api.md#4-start-up-and-shutdown)).
 

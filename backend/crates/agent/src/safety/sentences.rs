@@ -10,8 +10,8 @@
 use std::ops::Range;
 
 /// Words whose full stop doesn't end a sentence (compared lower-case, without the dot).
-const ABBREVIATIONS: [&str; 12] = [
-    "e.g", "i.e", "etc", "approx", "vs", "dr", "st", "no", "cf", "ca", "fig", "mr",
+const ABBREVIATIONS: [&str; 13] = [
+    "e.g", "i.e", "etc", "approx", "vs", "dr", "st", "no", "cf", "ca", "fig", "mr", "sq",
 ];
 
 /// After this many bytes without a sentence end, the stream releases the buffer as one piece
@@ -186,6 +186,9 @@ mod tests {
                 "Then wait."
             ]
         );
+        // `sq.` keeps an area together (EON gap G19).
+        let got: Vec<_> = sentences("Cover 100 sq. m of bed. Then wait.").collect();
+        assert_eq!(got, ["Cover 100 sq. m of bed.", "Then wait."]);
     }
 
     #[test]

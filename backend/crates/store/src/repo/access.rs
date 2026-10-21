@@ -31,6 +31,9 @@ pub mod sql {
     /// An invite's garden.
     pub const GARDEN_OF_INVITE: &str =
         "SELECT VALUE garden FROM $id WHERE garden.deleting_at = NONE;";
+    /// A farm connector's garden; a connector being deleted reads as missing.
+    pub const GARDEN_OF_CONNECTOR: &str =
+        "SELECT VALUE garden FROM $id WHERE status != 'deleting' AND garden.deleting_at = NONE;";
     /// A conversation's owner and garden.
     pub const CONVERSATION_OWNER: &str =
         "SELECT user, garden FROM $id WHERE garden.deleting_at = NONE;";
@@ -69,6 +72,7 @@ impl AccessRepo for SurrealStore {
             GardenResource::Task(id) => (sql::GARDEN_OF_PLANT_CHILD, rid(&id)),
             GardenResource::Memory(id) => (sql::GARDEN_OF_PLANT_CHILD, rid(&id)),
             GardenResource::Invite(id) => (sql::GARDEN_OF_INVITE, rid(&id)),
+            GardenResource::Connector(id) => (sql::GARDEN_OF_CONNECTOR, rid(&id)),
         };
         let mut results = run_tx(&self.db, statement, |q| q.bind(("id", id.clone())))
             .await

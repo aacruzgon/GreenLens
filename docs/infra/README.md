@@ -1,10 +1,10 @@
 # PDM Infrastructure and CI
 
-> **Status:** Draft v0.10.4, 2026-10-17. v0.10.4: the link to the roadmap's gaps follows its renumbering to section 13. v0.10.3: `.env.api` lists the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (a secret) (section 6). v0.10.2: `discord-mentions.yml` also alerts the people an issue's or pull request's description mentions (section 1's tree). v0.10.1: `discord-mentions.yml` also alerts the author of the issue or pull request a new comment is on (section 1's tree). v0.10: `discord-mentions.yml` posts a Discord alert to a team member's channel when a comment mentions them, with its setup in [discord-mentions.md](discord-mentions.md); the `infra` job runs its script's tests, and section 6 lists its secrets and variables. v0.9: the control plane runs on the rig behind Tailscale Funnel, and the ingress provider is a compose profile (`tailscale`, `cloudflare`, or none on a VM), so switching providers changes two env values and no code (sections 1 and 4–7); a Funnel test on the 3070 host checked the certificate, an unbuffered SSE stream and upload speed (section 5). v0.8: `live` is in `ci`'s `needs` after four green pushes to `main` (item 9); the first `images` run on `main` pushed all three images in 32 minutes, cold (item 6). v0.7: S0's work items 2–5 are checked off; the `main` ruleset requires `ci`; open question 8 records that the hackathon needs no tag ruleset. v0.6: `backend.yml` becomes `ci.yml`, in stages after the team's Helios CI: `security` (cargo-deny) waits for `lint`, `live` waits for `lint` and `test`, one required check `ci` gates the merge, and on `main` and `v*` tags `images` builds and pushes the images, with `release` on tags. Section 2 records the disk measured on #23. Its audit added: a tag must be on `main` and a plain version, a tag reuses `main`'s images and digests, and the concurrency group includes the ref. v0.5: CI builds with line tables only (`CARGO_PROFILE_DEV_DEBUG`), `live` frees disk before it starts, and `live` and `examples` print the disk left at the end, after `live`'s first cache save on `main` ran the runner's disk out. Section 2 records the cache sizes measured on `main`. v0.4: `infra/dev.compose.yml` and `infra/env/.env.example` exist, and section 4 records the first run. Its changes from v0.1: `surrealdb-volume` gives the named volume to SurrealDB's user (database 1 had missed it), `surrealdb-init` creates the `api` user, and `rustfs-init` uses `rc bucket create`. Section 6 says how `infra/env/.env.example` differs from the rig's `infra/.env.example`. Its audit added: the local values moved to `infra/dev/.env.example`, with the worker's variables, because keys repeat across the catalogue's sections; `surrealdb-volume` hardened to `CHOWN` only, with no network. v0.3: `backend/Dockerfile`, `docker-bake.hcl` and `.dockerignore` exist and section 3 records the first build. `api` gains its own `heic` feature, which answers open question 7, and the full SHA-256 of both ONNX Runtime archives is recorded. Its audit added: the label arguments after the cached steps, the rustup components installed once, the build files out of the context, and GID 10100. v0.2: `backend.yml` and `dependabot.yml` exist; the `test` job adds the doc tests nextest skips, the `examples` job runs only when the Rust skills change and on pushes to `main`, every Rust job installs 1.99.1 and sets `RUSTUP_TOOLCHAIN`, `checklinks.py` and `check_fences.py` now exit non-zero, and open question 1 is answered. Its audit added: no `--health-cmd` for distroless SurrealDB; `ml/`'s manifest and templates trigger `test`; the examples cache keyed on `versions.md`; `changes` as a required check; one concurrency group per commit on `main`; grouped Dependabot updates. v0.1.2: section 4's vLLM health check is verified on the rig, and the running `vllm` service is mapped to `vllm-nv`. v0.1.1: `api`'s bucket default is now `pdm-images`, so section 4's note no longer flags it. v0.1: first design of the CI workflows, the container images, the three compose files, ingress, secrets, deploys by digest, operations hooks and the infrastructure work items of the [backend roadmap](../backend/roadmap.md). Design only: nothing here exists yet.
+> **Status:** Draft v0.11.9, 2026-10-21. v0.11.9: bootstrap step 7 runs `backend/tools/demo/demo_garden.py`, sets `ERA_DEMO_GARDEN_ID` and `CONNECTOR_KEY`, and recreates `api` with `up -d --no-deps api` for the demo connectors (EON E9.0, E9.2); CI's `infra` job compiles the smoke and demo scripts, and the `docs` job checks `backend/tools/**/README.md` links (section 2). v0.11.8: `seed-upload` ran on the control plane with the `seed` profile, and a wrong key exits 1 (item 11). v0.11.7: a failed `seed-upload` doesn't keep `api` down under compose, since its dependency is optional; `deploy.sh` is the check (section 4, item 11, open question 10); the `infra` job also renders the `perception` profile, and a `seed` job checks the seed's photos against `knowledge.surql` on pull requests (section 2). v0.11.6: the 3070's perception worker runs in `control-plane.compose.yml` behind a `perception` profile, since the 3070 is in the control-plane host, with `MODEL_GROUPS` for `model-fetch` and `deploy.sh WORKER_CUDA_IMAGE`; item 10 ran on the rig (sections 4, 7, 9). v0.11.5: the `seed-upload` image exists: `ml/knowledge/Dockerfile` makes the species photos at build time and refuses to build unless their keys are those `knowledge.surql` names, and its upload only adds photos and reads each back (section 3); `images` builds only the images whose inputs changed, with a `seed` filter for this one, and a tag reuses each image `main` built (sections 2 and 3); work item 11 is checked against a throwaway RustFS (section 9). v0.11.4: the `demo` profile is in the control-plane compose file (EON E9.1): Era's two simulators on the internal network `era` with no published port, the admin token from `.env.era-seed`, hardened and run as UID 65532, and a one-shot `era-seed` that resets the default tenant, injects the Maple Row Farm fixture from the host's checkout and reads it back before `api` starts; the `infra` CI job renders the profile, compiles `seed.py` and now writes `.env.era-seed` under its own name (section 4, section 6). A failed `seed-upload` or `era-seed` doesn't keep `api` down (Compose starts it after a failed optional dependency), so section 4 says how to check, and how to bring the farm back after a reboot (`up -d era-seed`, then `restart api`). v0.11.3: the control plane's first deploy and bootstrap ran on the rig, so work items 7 and 8 are done (section 9), and `deploy.sh` takes a registry with a port (section 7). v0.11.2: the `x-logging` anchor gzips rotated log files (`compress`), so a container keeps about 12 MB of logs instead of 50 MB (section 4). v0.11.1: Caddy's access log redacts the `sig` of signed image URLs (section 5), and `deploy.sh` waits for a worker heartbeat newer than the recreated container (section 7). v0.11: S1's laptop run checked the control-plane compose file and both bootstrap scripts: the `stub` and `seed` profiles, `required: false` on `api`'s `seed-upload` dependency, host ports from `SURREAL_HOST_PORT` and `RUSTFS_HOST_PORT`, `.env.stub`, `COMPOSE_PROFILES` read from `--env-file` and `surreal sql` reading statements from stdin (under `docker run -i`) are now ✓ (sections 4–7, 9), and the `infra` CI job splits `infra/env/.env.example` into a temporary `PDM_ENV`. v0.10.23: the `security` job also runs cargo-deny's `bans` check, which bans `webpki-roots` below 1.0.10, so the ignore of RUSTSEC-2026-0381 for the 0.26.11 shim can't hide an older 1.x. v0.10.22: every `taiki-e/install-action` step runs with `HOME` set to the job's temp directory, because the rig's runners share one home and concurrent installs broke each other's downloads (section 2). v0.10.21: the `app` job runs on Node 24 (npm 11), as [setup](../setup/README.md) asks, instead of Node 22 (section 2). v0.10.20: the `security` job leaves the evaluation tool `era-eval` out of the advisories check, since it never ships (section 2). v0.10.19: `backend/.dockerignore` keeps `tools/era-eval` in the image context, since it is a workspace member and cargo needs its manifest and sources to load the workspace, and the `changes` filters send it to the Rust jobs and `images` (sections 1–3). v0.10.18: `era-hosted.yml` runs the `era_hosted_` tests nightly and by hand against the team's hosted Era company, outside `ci`, from the GitHub environment `era-hosted` limited to `main`, minting a one-hour token from `era client` credentials or falling back to the weekly-rotated tenant token; five metered calls a run (section 2); `ci.yml`'s `era` job leaves those tests out; section 6 lists the environment's secrets and variables, the commands that create it and the weekly rotation, and no longer says CI needs only `GITHUB_TOKEN`. v0.10.17: `era` is in `ci`'s and `images`' `needs` after it passed on five consecutive pushes to `main` (#69, #79, #78, #71, #76), taking 3.5 to 6.3 minutes, and its warm-up step stops after 5 minutes (section 2). v0.10.16: `.env.api` gains the optional `ERA_DEMO_GARDEN_ID`, the demo garden that start-up seeding gives the two `era` connectors, set once E9.0 has created the garden (section 6). v0.10.15: the Discord mention alerts run on the light runner label too, so their webhook URLs join what pull-request code can reach (section 2). v0.10.14: a third runner, `rig-3`, takes the light jobs (`changes`, `docs`, `infra`, `security`, `ci`, `release`) through `LIGHT_RUNNER_LABELS` and the label `pdm-light`, which `rig-1` and `rig-2` carry too, so those jobs no longer queue behind Rust builds (section 2). v0.10.13: the `era` job runs on the rig's runners like every other job, and its six simulators take ephemeral loopback ports read back from `job.services`, so two `era` runs on `rig-1` and `rig-2` can't collide (section 2). v0.10.12: the `era` job exists in `ci.yml` (E6.1, E6.2, E6.4), with three pairs of Era's simulators as service containers (open mode, faults only, `AUTH_MODE=strict`); it is not yet in `ci`'s `needs` (section 2). v0.10.11: the first run on the rig (pull request #77) confirmed that self-hosted jobs run with the budget exhausted, that `ci` still reports as app 15368, and that the live job's ephemeral ports work under rootless Docker. v0.10.10: CI runs on two self-hosted runners, `rig-1` and `rig-2`, on the 3070 host, because the account's Actions budget ran out; `RUNNER_LABELS` picks the runners, steps that need `sudo` or the Actions cache run only on GitHub's runners, and the rig keeps its build trees and its image-layer cache between jobs (sections 1–3, 6, 8–10; host setup in [setup 6](../setup/README.md#ci-runner)). v0.10.9: `CONNECTOR_RETURN_URL` must be `https` or a custom app scheme, with no query, and the dev example leaves the Era bases commented out until `CONNECTOR_KEY` is set (section 6). v0.10.8: `.env.api` lists the farm connectors' optional settings: `CONNECTOR_KEY` (a secret, 64 hex characters), the Slack and Google OAuth clients (each pair together or not at all), `CONNECTOR_RETURN_URL`, and `ERA_SLACK_BASE` and `ERA_GOOGLE_BASE` for the demo garden's seeding; the `era-seed` service's `SIMCORE_ADMIN_TOKEN` comes with E9 in `.env.era-seed`, and rotating `CONNECTOR_KEY` means every owner reconnects (section 6). v0.10.7: section 2 says `backend/.config/nextest.toml` runs every `era_` test in one serial group (`era`, max-threads 1), and that the `era` CI job comes with E6. v0.10.6: `infra/dev.compose.yml` has an `era` profile with Era by Eon's Slack and Google Drive simulators for the farm connectors (section 4), and `backend/.dockerignore` leaves out `tests/`, where their fixtures live (section 1's tree). v0.10.5: `changes` also sends `ml/knowledge/schema/` to the Rust jobs, since `domain`'s tests compare it with the seed types (section 2). v0.10.4: the link to the roadmap's gaps follows its renumbering to section 13. v0.10.3: `.env.api` lists the optional `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (a secret) (section 6). v0.10.2: `discord-mentions.yml` also alerts the people an issue's or pull request's description mentions (section 1's tree). v0.10.1: `discord-mentions.yml` also alerts the author of the issue or pull request a new comment is on (section 1's tree). v0.10: `discord-mentions.yml` posts a Discord alert to a team member's channel when a comment mentions them, with its setup in [discord-mentions.md](discord-mentions.md); the `infra` job runs its script's tests, and section 6 lists its secrets and variables. v0.9: the control plane runs on the rig behind Tailscale Funnel, and the ingress provider is a compose profile (`tailscale`, `cloudflare`, or none on a VM), so switching providers changes two env values and no code (sections 1 and 4–7); a Funnel test on the 3070 host checked the certificate, an unbuffered SSE stream and upload speed (section 5). v0.8: `live` is in `ci`'s `needs` after four green pushes to `main` (item 9); the first `images` run on `main` pushed all three images in 32 minutes, cold (item 6). v0.7: S0's work items 2–5 are checked off; the `main` ruleset requires `ci`; open question 8 records that the hackathon needs no tag ruleset. v0.6: `backend.yml` becomes `ci.yml`, in stages after the team's Helios CI: `security` (cargo-deny) waits for `lint`, `live` waits for `lint` and `test`, one required check `ci` gates the merge, and on `main` and `v*` tags `images` builds and pushes the images, with `release` on tags. Section 2 records the disk measured on #23. Its audit added: a tag must be on `main` and a plain version, a tag reuses `main`'s images and digests, and the concurrency group includes the ref. v0.5: CI builds with line tables only (`CARGO_PROFILE_DEV_DEBUG`), `live` frees disk before it starts, and `live` and `examples` print the disk left at the end, after `live`'s first cache save on `main` ran the runner's disk out. Section 2 records the cache sizes measured on `main`. v0.4: `infra/dev.compose.yml` and `infra/env/.env.example` exist, and section 4 records the first run. Its changes from v0.1: `surrealdb-volume` gives the named volume to SurrealDB's user (database 1 had missed it), `surrealdb-init` creates the `api` user, and `rustfs-init` uses `rc bucket create`. Section 6 says how `infra/env/.env.example` differs from the rig's `infra/.env.example`. Its audit added: the local values moved to `infra/dev/.env.example`, with the worker's variables, because keys repeat across the catalogue's sections; `surrealdb-volume` hardened to `CHOWN` only, with no network. v0.3: `backend/Dockerfile`, `docker-bake.hcl` and `.dockerignore` exist and section 3 records the first build. `api` gains its own `heic` feature, which answers open question 7, and the full SHA-256 of both ONNX Runtime archives is recorded. Its audit added: the label arguments after the cached steps, the rustup components installed once, the build files out of the context, and GID 10100. v0.2: `backend.yml` and `dependabot.yml` exist; the `test` job adds the doc tests nextest skips, the `examples` job runs only when the Rust skills change and on pushes to `main`, every Rust job installs 1.99.1 and sets `RUSTUP_TOOLCHAIN`, `checklinks.py` and `check_fences.py` now exit non-zero, and open question 1 is answered. Its audit added: no `--health-cmd` for distroless SurrealDB; `ml/`'s manifest and templates trigger `test`; the examples cache keyed on `versions.md`; `changes` as a required check; one concurrency group per commit on `main`; grouped Dependabot updates. v0.1.2: section 4's vLLM health check is verified on the rig, and the running `vllm` service is mapped to `vllm-nv`. v0.1.1: `api`'s bucket default is now `pdm-images`, so section 4's note no longer flags it. v0.1: first design of the CI workflows, the container images, the three compose files, ingress, secrets, deploys by digest, operations hooks and the infrastructure work items of the [backend roadmap](../backend/roadmap.md). Design only: nothing here exists yet.
 
 This document turns [architecture 12](../architecture/README.md#12-deployment) and [backend 12](../backend/README.md#12-builds-and-deployment) into files: what goes in `.github/` and `infra/`, how each image is built and pinned, and how the control plane and the rig are started, deployed and rolled back. It closes [roadmap gap 3](../backend/roadmap.md#13-gaps-found-while-writing-this-roadmap).
 
-**Marks.** ✓ marks a fact read in its primary source on 2026-10-16: a GitHub release or the GitHub API for actions and ONNX Runtime, Docker Hub for images, the vendor's documentation otherwise. Nothing in this document has been run. *Unverified* marks anything else.
+**Marks.** ✓ marks a fact read in its primary source on 2026-10-16: a GitHub release or the GitHub API for actions and ONNX Runtime, Docker Hub for images, the vendor's documentation otherwise. Nothing in this document has been run, except where a line says ✓ run: the runner host's setup on 2026-10-19. *Unverified* marks anything else.
 
 ## Contents
 
@@ -39,20 +39,24 @@ PDM/
 ├─ .github/
 │  ├─ workflows/
 │  │  ├─ ci.yml                checks in stages, one required check `ci`, images on main and tags, releases on tags (sections 2–3)
-│  │  └─ discord-mentions.yml  a Discord alert per person a comment or description mentions, and to the author a comment is on (discord-mentions.md)
+│  │  ├─ discord-mentions.yml  a Discord alert per person a comment or description mentions, and to the author a comment is on (discord-mentions.md)
+│  │  └─ era-hosted.yml        nightly: the farm connectors' clients against the hosted Era company, never required (section 2)
 │  ├─ scripts/discord_mentions.py  its matching and delivery, with test_discord_mentions.py
-│  ├─ actions/free-disk/       a composite action that removes unused preinstalled toolchains
+│  ├─ actions/free-disk/       a composite action that removes unused preinstalled toolchains (GitHub's runners only)
+│  ├─ actions/self-hosted-env/ a composite action that points Cargo at a build tree that outlives the job (the rig's runners only)
 │  └─ dependabot.yml           daily updates of the pinned action SHAs, nothing else
 ├─ backend/
 │  ├─ Dockerfile               multi-stage: api, worker, worker-cuda (section 3)
 │  ├─ docker-bake.hcl          the three targets, built in one BuildKit run
-│  └─ .dockerignore            target/, tools/, .git
+│  └─ .dockerignore            target/, tools/ but era-eval (a workspace member), tests/, .git
 ├─ infra/
+│  ├─ ci-runner/               the CI runners' systemd unit, job-started hook, weekly prune and installer (sections 2 and 8, setup 6)
 │  ├─ dev.compose.yml          SurrealDB and RustFS for a laptop and for the ignored tests
 │  ├─ dev/surrealdb-users.surql the `api` user dev.compose.yml imports (throwaway password)
 │  ├─ dev/.env.example         the local environment for api and the fallback worker against dev.compose.yml
 │  ├─ .env.example             the rig's vLLM template today, copied to infra/.env (infra/README.md)
-│  ├─ control-plane.compose.yml caddy · api · surrealdb · rustfs · fallback-worker · seed-upload · tailscale or cloudflared (profiles)
+│  ├─ control-plane.compose.yml caddy · api · surrealdb · rustfs · fallback-worker · seed-upload · tailscale or cloudflared · era-slack, era-drive, era-seed (profiles)
+│  ├─ era-seed/seed.py         injects the Maple Row Farm fixture into the `demo` profile's simulators (section 4)
 │  ├─ rig.compose.yml          perception-worker · vllm-nv · vlm-worker-nv · vllm-amd · vlm-worker-amd
 │  ├─ rig-amd.compose.yml      only if the RX 9070 XT sits in a second host
 │  ├─ caddy/Caddyfile
@@ -67,7 +71,7 @@ PDM/
 │  └─ ops/
 │     ├─ backup.sh             nightly SurrealDB export and RustFS copy (section 8)
 │     └─ pdm-backup.service  pdm-backup.timer
-└─ ml/knowledge/Dockerfile     the seed-upload image; written by the knowledge track
+└─ ml/knowledge/Dockerfile     the seed-upload image (section 3), with upload.py and the bake target in backend/docker-bake.hcl
 ```
 
 Hosts keep their state in `/srv/pdm/`: `env/` (secrets, mode 0700), `models/` (vision 6), `backups/` and `deploy.log`. The repository is checked out at `/srv/pdm/repo` for the compose files and scripts only.
@@ -78,16 +82,28 @@ Hosts keep their state in `/srv/pdm/`: `env/` (secrets, mode 0700), `models/` (v
 
 ### Runners and budget
 
-`aacruzgon/GreenLens` is a private repository. GitHub's standard runner for a private repository has **2 vCPUs, 8 GB of RAM and 14 GB of SSD** (✓ runner reference), half a public repository's CPUs. A private repository's Actions time counts against the owner's plan: 2,000 minutes a month on Free, 3,000 on Pro, and 10 GB of cache per repository (✓ Actions billing).
+**Since 2026-10-19, CI runs on two self-hosted runners on the rig's 3070 host.** The account's Actions budget ran out that day, and a hosted job doesn't start without budget, so `ci` would never report. The host is Debian 13 with 16 AMD threads, 15 GB of RAM plus 16 GB of swap, and 251 GB of free disk. The runners are `rig-1` and `rig-2`, both labelled `self-hosted`, `linux`, `x64`, `pdm` and `pdm-light`, and `rig-3`, labelled `pdm-light` but not `pdm`; the host's setup is in [setup 6](../setup/README.md#ci-runner) (✓ run on 2026-10-19; both showed `online` in `gh api repos/aacruzgon/GreenLens/actions/runners`).
 
-At about 25 runner-minutes for a backend push that runs every job, 120 such pushes use the Pro allowance. Build week will exceed that unless the workflow skips what a change doesn't touch. The design therefore:
+- **Choosing the runners.** The jobs that build (`lint`, `test`, `examples`, `app`, `live`, `era`, `images`) have `runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}`. The repository variable `RUNNER_LABELS` is `["self-hosted","linux","x64","pdm"]` (set 2026-10-19), so they run on `rig-1` or `rig-2`. Deleting the variable sends them back to GitHub's `ubuntu-26.04`, the hosted fallback below.
+- **Light jobs.** `changes`, `docs`, `infra`, `security`, `ci` and `release` each take seconds (`docs` 12–20 s, `infra` 6–7 s, `ci` 3–4 s), but on 2026-10-19 they waited up to 8 minutes for a runner behind other pull requests' Rust builds. They have `runs-on: ${{ fromJSON(vars.LIGHT_RUNNER_LABELS || vars.RUNNER_LABELS || '["ubuntu-26.04"]') }}`, and `LIGHT_RUNNER_LABELS` is `["self-hosted","linux","x64","pdm-light"]`. `rig-3` carries only `pdm-light`, so it never takes a build; `rig-1` and `rig-2` carry it too, so a light job also runs on whichever of them is idle. GitHub can't fall back from one label set to another, and this way a stopped `rig-3` holds nothing up. A docs-only pull request finishes in about a minute; a Rust pull request's `ci` still waits for its builds. To return to GitHub's runners, delete both variables: all jobs must move together, because a hosted `ci` can't start while the budget is out.
+- **Guards.** A step that needs `sudo` or the Actions cache runs only when `runner.environment == 'github-hosted'`: the `libheif-dev` install in `lint` (the rig has libheif-dev 1.23.4), `free-disk` (guarded inside the action), every `Swatinem/rust-cache`, `setup-python` 3.12 in `examples` (the rig uses Debian's `python3` 3.13) and `setup-buildx-action` in `images`.
+- **Tool installs.** `taiki-e/install-action` downloads into `~/.install-action/tmp` and deletes the directory when it is done. The three runners share `ci-runner`'s home, so on 2026-10-20 jobs that installed tools in the same seconds broke each other's downloads: curl's `(23) client returned ERROR on write` when the other job had deleted the directory, or `sha256sum: WARNING: 1 computed checksum did NOT match` when both wrote the same file. The disk had over 120 GB free. Every `install-action` step therefore sets `HOME: ${{ runner.temp }}`, the job's own directory, which the runner empties after the job; the action puts the tool in `.install-action/bin` there and adds it to `PATH`.
+- **Persistent build trees.** [`.github/actions/self-hosted-env`](../../.github/actions/self-hosted-env/action.yml) runs in `lint`, `test`, `examples`, `live` and `era`. On a self-hosted runner it sets `CARGO_TARGET_DIR=~/ci/target/<runner>/<job>/backend`, `PDM_RUST_SKILLS_TARGET_DIR=…/skills` and `CARGO_INCREMENTAL=0`, and touches the directory, so its modification time is its last use. A run starts warm without the Actions cache. The weekly prune ([section 8](#8-operations-hooks)) removes a tree unused for 14 days.
+- **Two builds at a time.** Each runner takes one job. `rig-1` and `rig-2` have `CARGO_BUILD_JOBS=6` and `NEXTEST_TEST_THREADS=8`. Two builds fit in 15 GB of RAM; three don't, since linking a test binary takes 1–2 GB. `rig-3`'s light jobs need a few hundred MB, and its `.env` sets `CARGO_BUILD_JOBS=2` and `NEXTEST_TEST_THREADS=2` in case one ever compiles.
+- **Isolation.** The runners run as the user `ci-runner`, which is not in `sudo` or `docker` (the `docker` group is root on the host, and pull-request code runs here). They use their own rootless Docker daemon, so CI has its own images and containers. A systemd slice limits the user to 9 GB (`MemoryHigh`) and 11 GB (`MemoryMax`) of RAM, so the developer's desktop and builds survive. `/home/acruzgon` is mode 700, so CI can't read the developer's files or the rig's env files. Only collaborators can open a pull request on the private repository, and the rig runs their code. Keep secrets and SSH keys out of `ci-runner`'s home. Runner groups don't exist for a personal repository.
+- **What pull-request code can still reach** (from the review of 2026-10-19). Every job, a pull request's and `main`'s, runs as the same `ci-runner`, and rootless Docker's container root is that user. So a pull request's code can change what later jobs run: the buildx builder's cache that `images` builds from, the tools in `~/.cargo/bin` and `~/.docker/cli-plugins`, the runners' own files and their registration credentials in `~/runner-N/.credentials*`. While `images` runs on the other runner, it can also read the job's `packages: write` login in `~/.docker/config.json`. Every checkout sets `persist-credentials: false`, so no token is left in `.git/config`. Cargo's build scripts and tests run on the host's network, so they can reach the developer's loopback services (the dev SurrealDB on 18000, RustFS on 19000) and the tailnet. The [Discord mention alerts](discord-mentions.md#4-security) run on the same runners, so the four webhook URLs are exposed the same way; each can only post to its channel. The repository is private with four collaborators, and the actions are pinned by commit, so the team accepts this for build week. Two hardening steps are proposed in [open question 9](#10-open-questions).
+- **Unchanged.** The `changes` skips, `cancel-in-progress` and the stage order. "Save caches only from `main`" now matters only on GitHub's runners.
+
+**Billing.** GitHub's Actions billing page says that using self-hosted runners is free (✓ read 2026-10-19). A fee of $0.002 a minute for self-hosted runners in private repositories was announced in December 2025 for 1 March 2026. It was postponed, and no 2026 announcement revives it (✓ read 2026-10-19: GitHub's 2026 pricing changes page). ✓ Self-hosted jobs run while the account's budget is exhausted: pull request #77's run (2026-10-19) ran every job on `rig-1` and `rig-2` and passed, while a job on GitHub's runners in the same minute failed without starting. Cold, with empty build trees, the run took 15 minutes from `changes` to `ci`: `lint` 4, `test` 4, `examples` 4, `live` 5, `app` 2.
+
+**The hosted fallback.** `aacruzgon/GreenLens` is a private repository. GitHub's standard runner for a private repository has **2 vCPUs, 8 GB of RAM and 14 GB of SSD** (✓ runner reference), half a public repository's CPUs. A private repository's Actions time counts against the owner's plan: 2,000 minutes a month on Free, 3,000 on Pro, and 10 GB of cache per repository (✓ Actions billing).
+
+At about 25 runner-minutes for a backend push that runs every job, 120 such pushes use the Pro allowance. Build week exceeded it, which is why the runners exist. The workflow still keeps the habits that made hosted runs affordable, and they now save the rig's time:
 - runs a cheap `changes` job first and skips each job whose inputs didn't change. A job skipped by its `if:` reports success, so it can be a required check; a workflow skipped by a `paths:` filter stays pending and blocks the merge (✓ workflow syntax);
 - cancels a pull request's running workflow when a new commit arrives;
 - runs the `live` job only when `store`, `blob`, `backend/migrations/` or the Rust skills change, and on every push to `main`;
-- saves caches only from `main`, so pull requests read them and the 10 GB stays shared;
+- saves caches only from `main` on GitHub's runners, so pull requests read them and the 10 GB stays shared;
 - builds images only after a merge, never on pull requests.
-
-Whether the account allows spending past the included minutes, or whether a self-hosted runner on the rig takes the heavy jobs, is [open question 1](#10-open-questions).
 
 ### Actions, pinned by commit
 
@@ -95,14 +111,15 @@ Whether the account allows spending past the included minutes, or whether a self
 |---|---|---|
 | `actions/checkout` | v7.0.1 (2026-07-20) | `3d3c42e5aac5ba805825da76410c181273ba90b1` ✓ |
 | `actions/setup-python` | v7.0.0 (2026-07-20) | `5fda3b95a4ea91299a34e894583c3862153e4b97` ✓ |
+| `actions/setup-node` | v7.1.0 (2026-10-08) | `949feb2413d6458794dcd2491c4babbbce0c15c1` ✓ |
 | `Swatinem/rust-cache` | v2.9.2 (2026-08-06) | `6323deb102c322ba6fcbdcafc7e3dddab59af2b6` ✓ |
 | `taiki-e/install-action` | v2.87.29 (2026-10-16) | `8cca0918f8471c33515202b73f56ab27f2bed283` ✓ |
 | `docker/setup-buildx-action` | v4.4.1 (2026-09-16) | `f87e5991a6d7451dcb8d9637bfbc97413f497069` ✓ |
 | `docker/login-action` | v4.6.0 (2026-07-29) | `dbcb813823bdd20940b903addbd779551569679f` ✓ |
 
-Each is the latest release on 2026-10-16, and each commit is the one its tag points to (`gh api repos/<owner>/<repo>/commits/<tag>`). Workflows reference the full SHA with the version in a comment, so a moved tag changes nothing. Dependabot checks daily and groups whatever it finds into one pull request, because a change to `ci.yml` runs every job; a day with no new release opens none. No other actions are used: images are built with `docker buildx bake` directly ([section 3](#3-images)).
+`setup-python`, `rust-cache` and `setup-buildx-action` run only on GitHub's runners; the rig's jobs skip them. Each is the latest release on 2026-10-16, and each commit is the one its tag points to (`gh api repos/<owner>/<repo>/commits/<tag>`). Workflows reference the full SHA with the version in a comment, so a moved tag changes nothing. Dependabot checks daily and groups whatever it finds into one pull request, because a change to `ci.yml` runs every job; a day with no new release opens none. No other actions are used: images are built with `docker buildx bake` directly ([section 3](#3-images)).
 
-Rust needs no setup action: the runner image has rustup, and each Rust job installs 1.99.1 itself (see the toolchain paragraph below). The runner is `ubuntu-26.04` (✓ a listed label), because its `libheif-dev` is 1.21.2 ([setup 4](../setup/README.md#4-backend-rust)) and the `heic` feature needs 1.19 or newer; Ubuntu 24.04 ships 1.17.6.
+Rust needs no setup action: the runner image has rustup, and each Rust job installs 1.99.1 itself (see the toolchain paragraph below). The rig has rustup too, installed for `ci-runner` ([setup 6](../setup/README.md#ci-runner)). The hosted fallback is `ubuntu-26.04` (✓ a listed label), because its `libheif-dev` is 1.21.2 ([setup 4](../setup/README.md#4-backend-rust)) and the `heic` feature needs 1.19 or newer; Ubuntu 24.04 ships 1.17.6. The rig's Debian 13 ships 1.23.4.
 
 ### `ci.yml`
 
@@ -112,45 +129,82 @@ Rust needs no setup action: the runner image has rustup, and each Rust job insta
 
 | Stage | Jobs | Waits for |
 |---|---|---|
-| 1 | `changes`, then `lint`, `test`, `examples`, `docs`, `infra` | `changes` |
+| 1 | `changes`, then `lint`, `test`, `examples`, `docs`, `infra`, `app` | `changes` |
 | 2 | `security` | `lint` |
 | 2 | `live` | `lint` and `test` |
+| 2 | `era` | `lint` and `test` |
 | 3 | `ci`, the one required check | every job of stages 1 and 2 |
-| 4 | `images` (pushes to `main` that change the image's inputs, and `v*` tags) | every check, `live` included |
+| 4 | `images` (pushes to `main` that change the image's inputs, and `v*` tags) | every check, `live` and `era` included |
 | 4 | `release` (`v*` tags only) | `images` |
 
 A job in stage 2 or 4 has `if: !cancelled() && !failure() && …`: it runs when a job it waits for was skipped for having no changes, and doesn't run when one failed. `examples` doesn't wait for `lint`, because it compiles against `versions.md`, not the workspace. A green pull request that changes the workspace takes about `test` plus `live` instead of the longest single job.
 
 | Job | Runs when | Steps | Warm (estimate) / cold (✓ measured) |
 |---|---|---|---|
-| `changes` | always | `git diff --name-only` against the base; outputs `rust`, `docs`, `skills`, `infra`, `live` as booleans | under 1 min ✓ |
-| `lint` | `rust` | `cargo fmt --all --check`; `cargo clippy --workspace --all-targets --locked -- -D warnings`; `cargo check -p worker --features cuda`; `cargo check -p vision --features cuda,migraphx,webgpu`; `cargo check -p vision --features heic` (installs `libheif-dev`) | 5 / 7 min |
+| `changes` | always | `git diff --name-only` against the base; outputs `rust`, `docs`, `skills`, `infra`, `live`, `era` as booleans | under 1 min ✓ |
+| `lint` | `rust` | `cargo fmt --all --check`; `cargo clippy --workspace --all-targets --locked -- -D warnings`; `cargo check -p worker --features cuda`; `cargo check -p vision --features cuda,migraphx,webgpu`; `cargo check -p vision --features heic` (installs `libheif-dev` on GitHub's runners; the rig has it) | 5 / 7 min |
 | `test` | `rust` | install cargo-nextest 0.9.148 with `taiki-e/install-action` (`tool: cargo-nextest@0.9.148`); `cargo nextest run --workspace --locked`. This includes the `api` test that fails when `backend/openapi.json` is stale. Then `cargo test --doc --workspace --locked`, because nextest doesn't run doc tests and the compile-fail tests of the proofs and URL states are doc tests ([backend 11](../backend/README.md#11-testing-and-tooling)) | 7 / 12 min |
-| `examples` | the Rust skills changed, or a push to `main` | `setup-python` 3.12; `python3 .claude/skills/rust/scripts/check_examples.py`. The examples compile against `versions.md` and a copy of `backend/migrations/schema.surql` in a crate of their own, not against the workspace crates, so only the skills and the schema can break them | 3 / 13 min |
-| `docs` | `rust` or `docs` (any `.md` file, or the generator) | `backend/tools/docgen/regen_all.sh` then `git diff --exit-code docs/backend`; `check_fences.py docs/backend`; `checklinks.py` over `AGENTS.md`, `CLAUDE.md` and `docs/**/*.md`. Both checkers exit 1 on a broken link or an unbalanced listing; a listing rustfmt can't parse is reported, not failed | under 1 min ✓ |
-| `live` | `live`, or a push to `main` | service containers below; `cargo nextest run -p store -p blob --run-ignored only --locked`; `check_examples.py --live --no-test`, since `examples` already runs the examples' own tests | 5 / 15 min |
-| `infra` | `infra` | copy `infra/.env.example` to `infra/.env`, as [infra/README.md](../../infra/README.md) tells a host to, then `docker compose -f <file> config -q` for each compose file; `bash -n` and `shellcheck` on `infra/**/*.sh`; the tests of `.github/scripts/` ([discord-mentions 5](discord-mentions.md#5-testing)). `caddy validate` in the pinned Caddy image joins it with the Caddyfile in S1 | under 1 min ✓ |
-| `security` | `rust`, or a push to `main`; after `lint` | `cargo deny --locked check advisories` with cargo-deny 0.20.2, against [`backend/deny.toml`](../../backend/deny.toml). It checks what ships (`exclude-dev`): SurrealDB's embedded engine, a dev-dependency, brings `bincode`, `quick-xml` (RUSTSEC-2026-0194, -0195) and `rsa` (RUSTSEC-2023-0071), and none reaches a binary. One advisory is accepted: `paste` (RUSTSEC-2024-0436) is unmaintained, not vulnerable, and comes through `tokenizers`. ✓ Passes on the workspace, 2026-10-16 | about 1 min |
+| `examples` | the Rust skills changed, or a push to `main` | `setup-python` 3.12 on GitHub's runners, Debian's `python3` 3.13 on the rig; `python3 .claude/skills/rust/scripts/check_examples.py`. The examples compile against `versions.md` and a copy of `backend/migrations/schema.surql` in a crate of their own, not against the workspace crates, so only the skills and the schema can break them | 3 / 13 min |
+| `docs` | `rust` or `docs` (any `.md` file, or the generator) | `backend/tools/docgen/regen_all.sh` then `git diff --exit-code docs/backend`; `check_fences.py docs/backend`; `checklinks.py` over `AGENTS.md`, `CLAUDE.md`, `docs/**/*.md` and `backend/tools/**/README.md`. Both checkers exit 1 on a broken link or an unbalanced listing; a listing rustfmt can't parse is reported, not failed | under 1 min ✓ |
+| `app` | `app` (`app/` or `backend/openapi.json`) | Node 24 (npm 11, as [setup](../setup/README.md) asks) with `setup-node` and the npm cache; in `app/`: `npm ci`; `npm run gen:api` then `git diff --exit-code src/api/generated/schema.ts`; `npm run typecheck`; `npm run lint`; `npm test -- --ci`; `npm run check:contrast`; `npx expo install --check` | not yet measured |
+| `live` | `live`, or a push to `main` | service containers below, on ephemeral loopback ports; `cargo nextest run -p store -p blob --run-ignored only --locked`; `check_examples.py --live --no-test`, since `examples` already runs the examples' own tests | 5 / 15 min |
+| `era` | `era`, or a push to `main`; after `lint` and `test` | six service containers, three pairs of Era's Slack and Drive simulators ([below](#the-era-job)); then three `cargo nextest run -p integrations -p api --run-ignored only --locked` steps, one per pair | 3.5–6.3 min on the rig ✓ |
+| `infra` | `infra` | copy `infra/.env.example` to `infra/.env`, as [infra/README.md](../../infra/README.md) tells a host to; split `infra/env/.env.example` at its `# --- .env.<name> ---` headings into a temporary `PDM_ENV` (the control plane's required image variables and env files live there, not under `/srv/pdm/env`); then `docker compose -f <file> config -q` for each compose file, the control plane's once for each profile set (none, `tailscale,stub,seed`, `tailscale,perception,seed`, `cloudflare`, `demo`); `python3 -m py_compile` on `infra/era-seed/seed.py`, `backend/tools/smoke/smoke.py` and `backend/tools/demo/demo_garden.py` (a change under those two tool folders runs the job too); `bash -n` and `shellcheck` on `infra/**/*.sh`; the tests of `.github/scripts/` ([discord-mentions 5](discord-mentions.md#5-testing)). `caddy validate` in the pinned Caddy image joins it with the Caddyfile in S1 | under 1 min ✓ |
+| `seed` | `seed` (`ml/knowledge/`, `backend/migrations/knowledge.surql`, `backend/docker-bake.hcl`) | in the pinned `python:3.12-slim-trixie` with `requirements-seed-upload.txt`'s hashed wheels, as the image builds: `python -m ml.knowledge.upload build`, which fails when the seed's photo keys differ from `knowledge.surql`'s, then `pytest ml/tests/test_upload.py`. So a pull request fails here instead of `images` on `main`. In `ci`'s `needs` from the start: it has no service containers to flake | under 1 min ✓ (rig, 2026-10-20: 0 photos on `main`'s empty seed, 8 tests) |
+| `security` | `rust`, or a push to `main`; after `lint` | `cargo deny --locked check advisories bans` with cargo-deny 0.20.2, against [`backend/deny.toml`](../../backend/deny.toml). It checks what ships (`exclude-dev`, and `exclude = ["era-eval"]` for the evaluation tool, which no image builds): SurrealDB's embedded engine, a dev-dependency of `store` and a dependency of `era-eval`, brings `bincode` (RUSTSEC-2025-0141), `quick-xml` (RUSTSEC-2026-0194, -0195), `rsa` (RUSTSEC-2023-0071) and `ammonia` (RUSTSEC-2026-0373), and none reaches a shipped binary. One advisory is accepted: `paste` (RUSTSEC-2024-0436) is unmaintained, not vulnerable, and comes through `tokenizers`. ✓ Passes on the workspace, 2026-10-16 | about 1 min |
 | `ci` | always, after stages 1 and 2 | fails if any job it waits for failed or was cancelled; passes if each succeeded or was skipped | seconds |
-| `images` | see stage 4 | builds and pushes the three images ([section 3](#registry-tags-and-who-pushes)), and writes their digests to the run summary | 32 min cold ✓ |
+| `images` | see stage 4 | builds and pushes the three images ([section 3](#registry-tags-and-who-pushes)), and writes their digests to the run summary. On the rig it uses the persistent builder `pdm-ci` | 32 min cold ✓ (a hosted runner) |
 | `release` | `v*` tags | `gh release create` with the image digests above GitHub's generated notes. Nothing deploys from CI ([section 7](#7-deploying-and-rolling-back)) | seconds |
+
+**The `era` test group.** [`backend/.config/nextest.toml`](../../backend/.config/nextest.toml) defines the nextest group `era` with `max-threads = 1` and puts every test whose name starts with `era_` in it. Faults are global to an Era simulator, so those tests run one at a time. They are `#[ignore]`d, so `test` skips them. The `era` CI job that runs them against the simulators is described next.
+
+### The era job
+
+**The `era` job** (roadmap [E6.1, E6.2 and E6.4](../EON/README.md#e6-ci)) starts Era's Slack and Google Drive simulators as GitHub service containers, the same images as the `era` profile of `infra/dev.compose.yml`, pinned by tag and digest, with `SIMCORE_SEED=42`, `SIMCORE_TODAY=2026-10-15` and `SIMCORE_FIDELITY=high`. There are three pairs, because a fault is global to a simulator and strict mode changes how it signs in:
+
+| Pair | Services (Slack / Drive) | `AUTH_MODE` | Step and filter | Variables |
+|---|---|---|---|---|
+| Main | `era-slack` / `era-drive` | `open` | `era_` tests except the two kinds below and the hosted `era_hosted_` tests ([the era-hosted job](#the-era-hosted-job)) | `ERA_SLACK_BASE`, `ERA_GOOGLE_BASE` |
+| Faults | `era-slack-fault` / `era-drive-fault` | `open` | `era_fault_` tests | the same two variables, pointed at this pair |
+| Strict | `era-slack-strict` / `era-drive-strict` | `strict` | `era_strict_` tests, the clients' OAuth exchanges | `ERA_STRICT_SLACK_BASE`, `ERA_STRICT_GOOGLE_BASE` |
+
+- **One job, three steps.** The steps share one build and one runner's minutes, and the pairs are separate containers, so a fault set in the second step can't reach a test in the first. The second and third steps run even when an earlier one failed. Separate jobs would each rebuild the tests for no isolation the containers don't already give.
+- **Ports** are ephemeral on loopback (`127.0.0.1::8080` for each of the six), as in `live` (below): two jobs run at once on the rig, and two `era` runs on fixed ports would collide. The warm-up step and each nextest step read the ports from `job.services.<name>.ports['8080']` into the variables above.
+- **Health** is checked on `GET /_admin/tenants`, which faults never touch, with `python3` (the images have no `curl`). Actions waits for every service to be healthy before the first step. The warm-up step that follows normally takes about 20 s and stops after 5 minutes, so a hung simulator fails there rather than at the job's 30.
+- **Same toolchain, build tree, caching (`shared-key: era`, GitHub's runners only) and stage as `live`.** It joined `ci`'s `needs` on 2026-10-20 (roadmap E6.3; [required checks](#required-checks)).
+- Run locally with the compose `era` profile for the first pair. Faults need their own pair, and so does strict mode: `docker run` the two images (each setting its own `-e`, with `AUTH_MODE=strict` for the strict pair) on other ports. From `backend/`, with `--run-ignored only -p integrations -p api` on each:
+  - open: `ERA_SLACK_BASE=… ERA_GOOGLE_BASE=… cargo nextest run … -E 'test(/(^|::)era_/) and not test(/(^|::)era_fault_/) and not test(/(^|::)era_strict_/) and not test(/(^|::)era_hosted_/)'`
+  - fault (own pair, same variables): `-E 'test(/(^|::)era_fault_/)'`
+  - strict: `ERA_STRICT_SLACK_BASE=… ERA_STRICT_GOOGLE_BASE=… cargo nextest run … -E 'test(/(^|::)era_strict_/)'`
+
+### The era-hosted job
+
+**[`.github/workflows/era-hosted.yml`](../../.github/workflows/era-hosted.yml)** (roadmap [E6.5 and E7](../EON/README.md#e7-a-hosted-era-company)) runs the `era_hosted_` tests in `backend/crates/integrations/tests/era_hosted.rs` (T-E7.1) against the team's hosted Era company, Holling Holdings. The Slack client lists the bot's channels and reads one page of a channel's history; the Drive client lists the folders as the source picker does, lists one folder and exports a Google Doc as text. The company is Era's generated data, not our farm, and has no admin API: no inject, faults or journal.
+
+- **Nightly at 06:17 UTC, and on `workflow_dispatch`.** Never on a pull request or a push, and never in `ci`'s `needs`, so a hosted outage or an expired credential can't block a merge. It is its own workflow because a `schedule` in `ci.yml` would run every job there: `changes` runs everything when it has no base to compare with.
+- **Five metered calls a run:** Slack 2, Drive 3, about 150 of the account's 2,000 calls a month. ✓ Run on 2026-10-20: `era usage` rose by exactly the count the tests printed. Each test gives the clients an HTTP client that keeps no idle connection and counts DNS lookups, so each request opens one connection and one lookup, and the test prints the count at the end, failed or not. Minting the token is not metered.
+- **Environment `era-hosted`,** limited to `main` by a deployment branch policy, so a run from any other branch can't read it. Its secrets are `ERA_CLIENT_ID` and `ERA_CLIENT_SECRET`, from `era client <tenant> --reveal --json`. With them, the token step mints a one-hour token through the `client_credentials` grant at `https://console.era.eon.io/token` and masks it. When they are unset, it uses the secret `ERA_TENANT_TOKEN`, the company's 7-day token, rotated weekly (section 6). Its variables are `SLACK_BASE_URL` and `GOOGLE_DRIVE_BASE_URL`, the values in `infra/env/.env.era`. When neither credential is set, the step fails and names what to set. Creating the environment: [section 6](#6-secrets-and-configuration).
+- **It builds before it mints.** `cargo nextest list` builds the tests first, so a broken build spends no call.
+- **Runner:** `RUNNER_LABELS`, like the other jobs that build, with its own build tree (the job is `era-hosted`). Pull-request jobs have run on the rig as the same user, so the credential reaches a runner that such code could have tampered with, as the Discord webhooks do. It opens only a synthetic, read-only company; a leak can spend calls.
+- **By hand,** from `backend/`, with the env file loaded: `set -a; . ../infra/env/.env.era; set +a`, then `cargo nextest run -p integrations --run-ignored only --no-capture -E 'test(/(^|::)era_hosted_/)'`. Check `era usage <tenant>` before and after.
+
 
 **The toolchain.** Every Rust job runs `rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy`, and the workflow sets `RUSTUP_TOOLCHAIN=1.99.1`. `check_examples.py` builds its crate in a temporary directory outside `backend/`, where `rust-toolchain.toml` doesn't apply, and refuses any `rustc` but the one `versions.md` pins.
 
-**How `changes` decides.** It diffs against the pull request's base, or the push's `before`; a manual run, a tag, a new branch, a base missing from history, or a change to `ci.yml` or `.github/actions/` sets every output. `rust` is `backend/crates`, `backend/bins`, `backend/migrations`, the workspace's root files, and `ml/models/manifest.toml` and `ml/models/templates/`, which `store`'s tests compare with their copies inside `backend/`; `docs` is any `.md` file and `backend/tools/docgen/`; `skills` is `.claude/skills/rust*` and `backend/migrations/`; `infra` is `infra/` and `.github/`; `live` is `store`, `blob`, `migrations`, `Cargo.toml`, `Cargo.lock` and the Rust skills; `images` is what the image build context holds (`backend/` without `tools/`).
+**How `changes` decides.** It diffs against the pull request's base, or the push's `before`; a manual run, a tag, a new branch, a base missing from history, or a change to `ci.yml` or `.github/actions/` sets every output. `rust` is `backend/crates`, `backend/bins`, `backend/migrations`, the workspace's root files, `ml/models/manifest.toml` and `ml/models/templates/`, which `store`'s tests compare with their copies inside `backend/`, and `ml/knowledge/schema/`, which `domain`'s tests compare with the seed types; `docs` is any `.md` file and `backend/tools/docgen/`; `skills` is `.claude/skills/rust*` and `backend/migrations/`; `infra` is `infra/` and `.github/`; `live` is `store`, `blob`, `migrations`, `Cargo.toml`, `Cargo.lock` and the Rust skills; `era` is anything under `backend/`, the Maple Row fixture included; `images` is what the image build context holds (`backend/` without `tools/`, except `tools/era-eval`); `seed` is the `seed-upload` image's inputs: `ml/knowledge/`, `backend/migrations/knowledge.surql` and `docker-bake.hcl`. `rust` and `images` also include `backend/tools/era-eval/`, the agent evaluation, a workspace member that `lint` and `test` build; nothing in CI runs it against a hosted model.
 
 The GPU feature checks need no GPU and no CUDA: `ort` uses `load-dynamic`, so nothing links against ONNX Runtime at build time ([versions.md](../../.claude/skills/rust/versions.md#notes-and-things-not-confirmed)). They catch code behind `#[cfg(feature = "cuda")]` that the default build never compiles.
 
-**Caching.** `Swatinem/rust-cache` with `workspaces: backend -> target`, one `shared-key` per job (`lint`, `test`, `examples`, `live`) because each compiles a different profile or feature set, and `save-if: ${{ github.ref == 'refs/heads/main' }}`. `examples` and `live` also cache `~/.cache/pdm-rust-skills-check/target`, where `check_examples.py` builds; `examples` caches nothing else. Both key those caches on `versions.md` as well. ✓ The first saves on `main` (2026-10-16) were `lint` 0.63 GB, `test` 1.06 GB, `live` 1.25 GB and `examples` 2.08 GB: 5.0 GB in all, within the 10 GB. The cold times were measured on 2026-10-16, on pull request #17's first full run (2 vCPUs, empty caches; the jobs run in parallel, so the run took 15 minutes). The warm times stay estimates until runs on `main` have used the saved caches.
+**Caching.** On GitHub's runners only (the rig skips every `rust-cache` step and keeps its trees under `~ci-runner/ci/target`, see Runners and budget), `Swatinem/rust-cache` with `workspaces: backend -> target`, one `shared-key` per job (`lint`, `test`, `examples`, `live`, `era`) because each compiles a different profile or feature set, and `save-if: ${{ github.ref == 'refs/heads/main' }}`. `examples` and `live` also cache `~/.cache/pdm-rust-skills-check/target`, where `check_examples.py` builds; `examples` caches nothing else. Both key those caches on `versions.md` as well. ✓ The first saves on `main` (2026-10-16) were `lint` 0.63 GB, `test` 1.06 GB, `live` 1.25 GB and `examples` 2.08 GB: 5.0 GB in all, within the 10 GB. The cold times were measured on 2026-10-16, on pull request #17's first full run (2 vCPUs, empty caches; the jobs run in parallel, so the run took 15 minutes). The warm times stay estimates until runs on `main` have used the saved caches. These paragraphs describe GitHub's runners; on the rig the build trees persist instead (see Runners and budget), and times there are *unverified* until the first runs.
 
-**Disk.** The runner has about 14 GB free (GitHub's figure; `df` in the jobs records the real one). On `main`, after every test of `live` had passed, rust-cache's post step ran it out ("No space left on device", 32 MB free). It runs `cargo metadata --all-features`, which unpacks every platform's crates (`winapi`, `windows-*`) into the registry, and then writes the cache archive, all while the job still holds the workspace's and the examples' build trees. So the workflow sets `CARGO_PROFILE_DEV_DEBUG=line-tables-only`, which keeps file and line in backtraces but shrinks every build tree and cache. `examples`, `live` and `images` first run [`.github/actions/free-disk`](../../.github/actions/free-disk/action.yml), which deletes the preinstalled .NET, Android, GHC and CodeQL toolchains. `live` and `examples` end with a step that prints `df -h /` and the build trees' sizes, even after a failure. ✓ Measured on pull request #23 (2026-10-16): the root filesystem is 72 GB with 15 GB free at the start; `live` had 36 GB free after the cleanup and 28 GB at the end, with build trees of 3.7 GB (workspace) and 3.8 GB (examples); `examples`, before it freed disk, ended with 8.8 GB free and a 5.1 GB tree.
+**Disk.** A hosted runner has about 14 GB free (GitHub's figure; `df` in the jobs records the real one). On `main`, after every test of `live` had passed, rust-cache's post step ran it out ("No space left on device", 32 MB free). It runs `cargo metadata --all-features`, which unpacks every platform's crates (`winapi`, `windows-*`) into the registry, and then writes the cache archive, all while the job still holds the workspace's and the examples' build trees. (The rig has 251 GB free; `free-disk` does nothing there, and the weekly prune keeps its use under 100 GB, *unverified*.) So the workflow sets `CARGO_PROFILE_DEV_DEBUG=line-tables-only`, which keeps file and line in backtraces but shrinks every build tree and cache. `examples`, `live` and `images` first run [`.github/actions/free-disk`](../../.github/actions/free-disk/action.yml), which deletes the preinstalled .NET, Android, GHC and CodeQL toolchains. `live` and `examples` end with a step that prints `df -h /` and the build trees' sizes, even after a failure. ✓ Measured on pull request #23 (2026-10-16): the root filesystem is 72 GB with 15 GB free at the start; `live` had 36 GB free after the cleanup and 28 GB at the end, with build trees of 3.7 GB (workspace) and 3.8 GB (examples); `examples`, before it freed disk, ended with 8.8 GB free and a 5.1 GB tree.
 
-**The live job's services.** GitHub Actions service containers accept `command` and `entrypoint` (✓ workflow syntax), so SurrealDB can start with the in-memory engine the store test expects. Ports match the defaults in `crates/store/tests/server.rs` and `crates/blob/tests/rustfs.rs`; the credentials are the throwaway ones those tests hard-code.
+**The live job's services.** GitHub Actions service containers accept `command` and `entrypoint` (✓ workflow syntax), so SurrealDB can start with the in-memory engine the store test expects. The tests take their URLs from `PDM_TEST_SURREALDB_URL` and `PDM_TEST_RUSTFS_URL` (defaults in `crates/store/tests/server.rs` and `crates/blob/tests/rustfs.rs`); the credentials are the throwaway ones those tests hard-code.
 
 The job is in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml). What it decides:
 - **SurrealDB** starts with `start --user root --pass root memory` through the service's `command`, and no `--health-cmd`. The image is distroless, so a `--health-cmd` (always run through `/bin/sh`) fails every probe. Its own exec-form check, `/surreal isready`, runs at the job's `--health-interval 5s --health-retries 12` (✓ healthy in about 12 s, 2026-10-16).
 - **RustFS** uses `curl -fsS http://127.0.0.1:9000/health/ready`; the image has `sh` and `curl`.
-- **Ports** `127.0.0.1:18000` and `127.0.0.1:19000`, with `PDM_TEST_SURREALDB_URL` and `PDM_TEST_RUSTFS_URL` set to match.
+- **Ports** are ephemeral on loopback (`127.0.0.1::8000` and `127.0.0.1::9000`). The nextest step reads them from `job.services.<name>.ports['8000']` and `['9000']` into `PDM_TEST_SURREALDB_URL` and `PDM_TEST_RUSTFS_URL`. Two jobs run at once on the rig, and the developer's own [`dev.compose.yml`](#infradevcomposeyml) holds 18000 and 19000 on the same host. The runner parses `docker port` output (`8000/tcp -> 127.0.0.1:NNNNN`; ✓ read in actions/runner v2.338.0, `DockerUtil.ParseDockerPort`). ✓ On pull request #77 (2026-10-19), under the rig's rootless Docker, the services got ports 32768 and 32769 and both ignored tests passed.
 - **The examples' build cache** is keyed on `versions.md` as well as the lock file. Otherwise rust-cache finds its key unchanged after a pin moves, and never saves the new build.
 
 `check_examples.py --live` starts its own SurrealDB container with `docker run` and an ephemeral port, so it doesn't clash with the service. The images and digests are those of [database 1](../database/README.md#1-version-and-setup) and [storage 1](../storage/README.md#1-version-and-setup) (✓ both digests match Docker Hub on 2026-10-16).
@@ -161,8 +215,11 @@ The `main` ruleset ("Require PRs for main and master") requires one check, `ci`,
 
 - **One check, not one per job.** A renamed or added job changes only `ci`'s `needs` list, never the ruleset. And `ci` fails when a job it waits for failed or was cancelled, so a failed `changes` or `lint`, whose dependent jobs then show "skipped", still blocks the merge.
 - **`live` joined `ci`'s `needs`** on 2026-10-16, after it passed on four consecutive pushes to `main` (#23, #18, #25, #24). Service containers are the likeliest source of flakes, so they were proved first.
+- **`era` joined `ci`'s `needs`** on 2026-10-20, after it passed on five consecutive pushes to `main` (#69, #79, #78, #71, #76), taking 3.5 to 6.3 minutes on the rig (roadmap [E6.3](../EON/README.md#e6-ci)). A failing `era` test now blocks a merge like any other.
 - **`images` and `release`** are never required: they run after the merge.
-- **`strict_required_status_checks_policy` stays `false`:** requiring a branch to be up to date with `main` would rerun every job after each merge to `main`, which the minutes can't afford.
+- **`era-hosted`** is never required: it is its own nightly workflow, and a hosted outage or an expired credential must not block a merge ([the era-hosted job](#the-era-hosted-job)).
+- **`strict_required_status_checks_policy` stays `false`:** requiring a branch to be up to date with `main` would rerun every job after each merge to `main`, which the two runners' time can't afford.
+- **Self-hosted runners.** The required check is unchanged: a job on a self-hosted runner still reports through the GitHub Actions app. ✓ On pull request #77 (2026-10-19), `app.id` of the `ci` check run was 15368 (`gh api repos/aacruzgon/GreenLens/commits/<sha>/check-runs`).
 
 ---
 
@@ -190,7 +247,7 @@ One file, four stages per binary: `cargo-chef` plans the dependency graph, a cac
 - **`REVISION` and `CREATED`** are declared after each runtime stage's `RUN` and `COPY` steps. They change on every commit, and an `ARG` in scope of a `RUN` invalidates its cache. Declared before, every build would rerun `apt-get` and the ONNX Runtime downloads, and every deploy would pull new base layers.
 - **`.dockerignore`** also leaves out `Dockerfile`, `docker-bake.hcl`, `.dockerignore` itself, and `.env` files at any depth. An edit to the build files then doesn't change the context and force a full recompile.
 
-The file is [`backend/Dockerfile`](../../backend/Dockerfile), built by [`backend/docker-bake.hcl`](../../backend/docker-bake.hcl) with the context `backend/`; [`backend/.dockerignore`](../../backend/.dockerignore) leaves out `target/`, `tools/` and `.git`. Its stages:
+The file is [`backend/Dockerfile`](../../backend/Dockerfile), built by [`backend/docker-bake.hcl`](../../backend/docker-bake.hcl) with the context `backend/`; [`backend/.dockerignore`](../../backend/.dockerignore) leaves out `target/`, `tools/` (except `tools/era-eval`, a workspace member cargo needs to load the workspace) and `.git`. Its stages:
 
 | Stage | Base | What it does |
 |---|---|---|
@@ -209,6 +266,20 @@ The file is [`backend/Dockerfile`](../../backend/Dockerfile), built by [`backend
 - **ONNX Runtime archives** are fetched from Microsoft's v1.31.0 release (published 2026-10-09) and checked against the SHA-256 the release lists for each asset (✓ GitHub API): CPU `cc5c72baf5ae5c8238a6841f0897227be2d02826b9cf98eaf02fdefaeeb03a57`, 11.4 MB; CUDA 13 `2867dec99c6a4926e8142361b9d4d1518c16c85b854b4d41d28d65d3b2c81135`, 244.6 MB. A changed archive fails the build.
 - **Labels.** `org.opencontainers.image.source=https://github.com/aacruzgon/GreenLens` links each package to the repository (✓ GHCR docs), plus `revision` (the commit) and `created`.
 
+### `ml/knowledge/Dockerfile`
+
+The `seed-upload` image holds the species reference photos and the step that puts them in RustFS ([contracts 10](../architecture/contracts.md#10-knowledge-seed-format), [storage 2](../storage/README.md#2-bucket-keys-and-access)). Its bake target has the context `ml/knowledge/` and a second, named context `migrations` for `backend/migrations/`, so the build can read `knowledge.surql`. Two stages on the pinned `python:3.12-slim-trixie`:
+
+| Stage | What it does |
+|---|---|
+| `photos` | Installs Pillow 12.3.0 and PyYAML 6.0.3 (`requirements-seed-upload.txt`: `ml/requirements.lock`'s versions, `--require-hashes`, wheels only), then runs `python -m ml.knowledge.upload build`. That makes every photo from the seed with `photos.py`, the code `build_migration.py` uses, and fails the build unless the keys are exactly the `storage_key`s in `knowledge.surql`. With no seed and no `knowledge.surql`, as on `main` until the first seed lands, it makes zero photos |
+| `seed-upload` | The photos and their manifest in `/photos`, and `upload.py` alone: standard library only, no Pillow, no embedder, no token. UID 10100, `ENTRYPOINT python /app/ml/knowledge/upload.py push /photos` |
+
+- **Why build the photos into the image.** `ml/knowledge/build/` isn't committed, and making it needs the embedder. Making the photos from the seed needs only Pillow, and the check against `knowledge.surql` turns any difference in encoding into a failed build, not a deploy whose photos the API can't find. ✓ The same Pillow gives the same bytes on two machines: the image's key for the fixture seed's photo equals the one in `backend/crates/store/tests/embedded/knowledge_fixture.surql`, written on another machine (`ml/tests/test_upload.py`).
+- **What `push` does.** It lists `knowledge/species/` first, so wrong keys or a missing bucket fail even with no photos. For each photo it checks the copy against its key, then `HEAD`; when missing, `PUT` with `If-None-Match: *`; then a `GET` whose SHA-256 must match, also for a photo that was already there. It never overwrites or deletes. Any failure exits non-zero (1; 2 without keys), which keeps `api` down. It signs with SigV4 itself (✓ against AWS's published example) and reads `RUSTFS_ACCESS_KEY` and `RUSTFS_SECRET_KEY` from `.env.seed`, with `RUSTFS_ENDPOINT` (`http://rustfs:9000`) and `RUSTFS_BUCKET` (`pdm-images`) defaulted as for `api`.
+- **No secrets** in the image: `.dockerignore` leaves out `build/`, `.cache/` and `.env` files at any depth.
+- ✓ Built on 2026-10-20 on the rig, `linux/amd64`: 119 MB with no seed, 120 MB with the tomato seed of pull request #51 and three test photos (202 KiB). A `knowledge.surql` naming one other key failed the build with both keys listed.
+
 ### The images
 
 | Image | Runtime base | Binary and features | ONNX Runtime | Runs |
@@ -216,7 +287,7 @@ The file is [`backend/Dockerfile`](../../backend/Dockerfile), built by [`backend
 | `api` | trixie-slim + `libheif1`, CA certificates, `curl` for the health check | `api`, `heic` | 1.31.0 CPU, `ORT_EP=cpu` | Control plane |
 | `worker` | trixie-slim + CA certificates | `worker`, `cuda,migraphx,webgpu` | none | The VLM workers on the rig and the fallback worker: they call HTTP servers and load no ONNX model ([worker 11](../backend/worker.md#11-multi-vendor-gpus)) |
 | `worker-cuda` | CUDA 13.0.3 + cuDNN 9 runtime, Ubuntu 24.04 | the same file | 1.31.0 `gpu_cuda13`, its provider libraries beside `libonnxruntime.so.1.31.0` in `/opt/onnxruntime/lib`; `ORT_EP=cuda` | The 3070's perception worker; host driver 580.65.06 or newer ([vision 5](../vision/README.md#5-runtimes-and-versions)) |
-| `seed-upload` | `python:3.12-slim-trixie` | the knowledge loader's upload step | none | Control plane, once per deploy ([contracts 10](../architecture/contracts.md#10-knowledge-seed-format)) |
+| `seed-upload` | `python:3.12-slim-trixie` | the knowledge loader's upload step and the photos, `ml/knowledge/upload.py` | none | Control plane, once per deploy ([contracts 10](../architecture/contracts.md#10-knowledge-seed-format)) |
 
 **Not built:**
 - **`worker-migraphx`.** Perception stays on the 3070. Should it move to the RX 9070 XT, the image is `rocm/onnxruntime:rocm10.1.0_ub24.04_ort1.29_torch2.12.0_py3.12` (✓ `sha256:ece66d2a116c3edeba180a495b9120b0dfbca426ccd649fda1fc2c3318aa8d9c`, 2026-10-05) with the same worker file, `ORT_EP=migraphx` and `ORT_DYLIB_PATH` at that image's 1.29 library. It carries PyTorch and is several gigabytes; a slimmer base is work for that day.
@@ -228,12 +299,13 @@ The VLM sidecars are upstream images, not built here: `vllm/vllm-openai:v0.31.0`
 ### Registry, tags and who pushes
 
 - **Registry:** GitHub Container Registry, `ghcr.io/aacruzgon/greenlens/<image>`. Docker repository names must be lowercase, so the repository's `GreenLens` becomes `greenlens`. Container storage and bandwidth on GHCR are currently free (✓ GitHub Packages billing). Packages pushed from a private repository are private.
-- **Who pushes:** only the `images` job of `ci.yml`, on a push to `main` that changes the image's inputs (the build context of `backend/`, or the workflow) and on a `v*` tag, after every check has passed. It has `packages: write` and logs in with `GITHUB_TOKEN`, which links each package to the repository (✓ GHCR docs). No person pushes images. `ml/knowledge/` joins its inputs with the `seed-upload` target.
-- **How:** `docker/setup-buildx-action`, `docker/login-action`, then `docker buildx bake -f backend/docker-bake.hcl --push --metadata-file meta.json`. One bake run builds `api`, `worker` and `worker-cuda`, so the worker's builder stages run once. Layers are cached in GHCR as `ghcr.io/aacruzgon/greenlens/buildcache:<target>` (`type=registry`, `mode=max`), not in the Actions cache, whose 10 GB the Rust caches already half fill (5.0 GB). `seed-upload` is a separate bake target with `ml/knowledge` as its context, added when its Dockerfile exists.
+- **Who pushes:** only the `images` job of `ci.yml`, on a push to `main` that changes an image's inputs (`changes`' `images` filter for the three backend images, its `seed` filter for `seed-upload`, or the workflow) and on a `v*` tag, after every check has passed. On `main` it builds only the images whose inputs changed. It has `packages: write` and logs in with `GITHUB_TOKEN`, which links each package to the repository (✓ GHCR docs). No person pushes images.
+- **How:** `docker/setup-buildx-action` (on GitHub's runners; the rig sets `BUILDX_BUILDER=pdm-ci` instead), `docker/login-action`, then `docker buildx bake -f backend/docker-bake.hcl --push --metadata-file built.json <targets>`. One bake run builds every target named, so the worker's builder stages run once. Layers are cached in GHCR as `ghcr.io/aacruzgon/greenlens/buildcache:<target>` (`type=registry`, `mode=max`), not in the Actions cache, whose 10 GB the Rust caches already half fill (5.0 GB). `seed-upload` is a separate bake target with `ml/knowledge` as its context and its own cache, `buildcache:seed-upload`.
+- **On the rig,** `pdm-ci` is a persistent `docker-container` builder, so its layer cache outlives the job. It reads GHCR's registry cache (`cache-from`) but writes it (`cache-to`) only on GitHub's runners, so the rig doesn't upload every layer over a home connection. `docker-bake.hcl` needs nothing newer than buildx 0.13.1; the rig has buildx v0.38.0, because the `docker` driver can't export a registry cache. The weekly prune trims the cache to 30 GB ([section 8](#8-operations-hooks)).
 - **Platform:** `linux/amd64`. If the control plane goes on an arm64 VM, `api` and `worker` gain `linux/arm64`, built natively on the `ubuntu-24.04-arm` runner (✓ listed for private repositories) with ONNX Runtime's `linux-aarch64` archive ([open question 3](#10-open-questions)).
 - **Tags:** `sha-<12 hex of the commit>`, plus `main` on `main` or the version on a `v*` tag (the bake file's `TAGS`, comma-separated). Never `latest`. Tags are for people; deploys use the digest.
 - **Digests:** the job writes each image's `containerimage.digest` from `meta.json` into the run summary as a ready line for `deploy.sh`, for example `api ghcr.io/aacruzgon/greenlens/api@sha256:…`. The `created` label is the commit's time, not the build's.
-- **Tags reuse `main`'s images.** On a `v*` tag, `images` first checks that the tagged commit is on `main` (so it was reviewed) and that the name is `vMAJOR.MINOR.PATCH[-pre]`. It then adds the version tag to the `sha-<12 hex>` images `main` built for that commit (`docker buildx imagetools create`), so the release lists the very digests `main`'s run summary showed. It builds only when `main` built no images for that commit. `release` puts the lines in the GitHub Release.
+- **Tags reuse `main`'s images.** On a `v*` tag, `images` first checks that the tagged commit is on `main` (so it was reviewed) and that the name is `vMAJOR.MINOR.PATCH[-pre]`. It then adds the version tag to each `sha-<12 hex>` image `main` built for that commit (`docker buildx imagetools create`), so the release lists the very digests `main`'s run summary showed. It builds, image by image, only those `main` didn't build for that commit, as when the commit's push changed only the seed. `release` puts the lines in the GitHub Release.
 - **Time:** a cold release build of both binaries with thin LTO and one codegen unit on 2 vCPUs: 25–35 minutes; warm, when only workspace crates changed: 10–15 minutes (estimates, *unverified*).
 - **Pulling on the hosts:** each host runs `docker login ghcr.io` once with a classic personal access token with only `read:packages`. GitHub Packages accepts only classic tokens (✓ GHCR docs). The token belongs to a team member and is stored only in that host's Docker credential store.
 
@@ -246,13 +318,16 @@ All files need Docker Engine with Compose v2 ([setup 6](../setup/README.md#6-the
 ```yaml
 x-logging: &logging
   driver: json-file
-  options: { max-size: "10m", max-file: "5" }     # 50 MB of logs per container at most
+  # The live file up to 10 MB, plus four rotated files gzipped (compress): from about 12 MB per container.
+  options: { max-size: "10m", max-file: "5", compress: "true" }
 x-hardened: &hardened
   read_only: true
   tmpfs: ["/tmp:size=512m"]
   cap_drop: [ALL]
   security_opt: ["no-new-privileges:true"]
 ```
+
+✓ `compress: "true"` gzips each rotated log file (Docker's `json-file` driver; tried on Docker 29.8 on 2026-10-17). On synthetic `api`-style JSON lines, a 1 MB rotation became 40 KB, about 25 times smaller; real logs repeat less and compress less, so 12 MB per container is a floor. `docker logs` still reads the rotated files: a test that rotated four times returned all 12,000 lines, the first from a gzipped file.
 
 ### `infra/dev.compose.yml`
 
@@ -265,8 +340,13 @@ For a laptop: SurrealDB and RustFS on the ports and with the throwaway credentia
 | `surrealdb-init` | `surreal import` of [`dev/surrealdb-users.surql`](../../infra/dev/surrealdb-users.surql): the `pdm` namespace, the `main` database and the `api` user with password `api`, so a local `api` can sign in. `surreal import` refuses a file that doesn't start with `OPTION IMPORT` |
 | `rustfs` | RustFS with `TESTROOT`/`testrootsecret` on `127.0.0.1:19000` |
 | `rustfs-init` | `rc bucket create --ignore-existing dev/pdm-images` (`rustfs/rc:v0.1.36`; `mb` is deprecated there) |
+| `era-slack`, `era-drive` | Only with `--profile era`: Era by Eon's Slack and Google Drive simulators, the farm connectors' test bench ([connectors 9.2](../connectors/README.md#92-development-and-ci), [EON 2](../EON/README.md#2-before-you-start)). Pinned by tag and digest, on `127.0.0.1:8091` and `:8092`, with `SIMCORE_SEED=42`, `SIMCORE_TODAY=2026-10-15`, `SIMCORE_FIDELITY=high` and `AUTH_MODE=open`. The health check calls `/_admin/tenants` with the image's `python3`, because the image has no `curl` and faults fail `/_meta` |
 
 ✓ Run on 2026-10-16. From an empty volume, `up -d` leaves SurrealDB healthy and running as `nonroot`. Then `cargo nextest run --workspace --run-ignored only` passes (2 of 2), the `api` user signs in, and a wrong password gets `401`. After `down` and `up`, the data is kept, and both init services exit 0 again.
+
+✓ Run on 2026-10-19: `docker compose -f infra/dev.compose.yml --profile era up -d --wait era-slack era-drive` leaves both simulators healthy, and `/_meta` reports `build.fidelity: high` on each. Without `--profile era`, `up` starts neither.
+
+CI no longer uses ports 18000 and 19000 (its `live` and `era` services take ephemeral ports), so the dev stack and the CI runners coexist on the rig.
 
 `docker compose -f infra/dev.compose.yml down -v` resets both; the `-v` is safe only in this file. A local `api` and fallback worker take their environment from [`infra/dev/.env.example`](../../infra/dev/.env.example): copy it to `infra/dev/.env`, which git ignores, fill in the Clerk, LLM and ONNX Runtime values, then `set -a; . infra/dev/.env; set +a` before `cargo run`.
 
@@ -277,18 +357,23 @@ name: pdm
 services:
   surrealdb-volume:                 # database 1: gives the volume to UID 65532, then exits, with only CHOWN and no network
   surrealdb:                        # database 1, with env_file: .env.surrealdb in place of interpolation, plus:
+    ports: ["127.0.0.1:${SURREAL_HOST_PORT:-8000}:8000"]   # host-only, for backups; the variable moves it when a laptop's 8000 is taken
     logging: *logging
     networks: [data]
     stop_grace_period: 60s          # stops after api (reverse dependency order)
   rustfs:                           # storage 1, with env_file: .env.rustfs in place of interpolation, plus:
+    ports: ["127.0.0.1:${RUSTFS_HOST_PORT:-9000}:9000"]    # host-only, for the admin CLI and backups
     logging: *logging
     networks: [data]
     stop_grace_period: 60s
-  seed-upload:
-    image: ${SEED_UPLOAD_IMAGE:?}   # ghcr.io/aacruzgon/greenlens/seed-upload@sha256:…
+  seed-upload:                      # S2: adds the species photos to RustFS, then exits; on with the `seed` profile
+    profiles: [seed]
+    image: ${SEED_UPLOAD_IMAGE:-seed-upload:unset}    # ghcr.io/aacruzgon/greenlens/seed-upload@sha256:…
     restart: "no"
     <<: *hardened
-    env_file: ${PDM_ENV:-/srv/pdm/env}/.env.seed      # PDMSEED01's keys
+    # PDMSEED01's keys. Without the file it exits 2. api's dependency on it is optional, so compose starts
+    # api even when it fails: deploy.sh SEED_UPLOAD_IMAGE checks its exit code (infra 7).
+    env_file: [{ path: "${PDM_ENV:-/srv/pdm/env}/.env.seed", required: false }]
     depends_on: { rustfs: { condition: service_healthy } }
     networks: [data]
     logging: *logging
@@ -297,7 +382,7 @@ services:
     restart: "no"
     <<: *hardened
     command: ["python", "/src/fetch.py", "--manifest", "/src/manifest.toml", "--sources", "/src/sources.toml",
-              "--for", "api,fallback", "--dest", "/models"]
+              "--for", "${MODEL_GROUPS:-api,fallback}", "--dest", "/models"]   # api,fallback,perception with the 3070
     env_file: ${PDM_ENV:-/srv/pdm/env}/.env.models  # HF_TOKEN, read-only, pdm-models only
     volumes: ["../ml/models:/src:ro", "models:/models"]
     networks: [edge]
@@ -307,13 +392,16 @@ services:
     restart: unless-stopped
     <<: *hardened
     env_file: ${PDM_ENV:-/srv/pdm/env}/.env.api
-    environment: { MODELS_DIR: /models, ORT_EP: cpu }
+    environment: { MODELS_DIR: /models }                 # api doesn't read ORT_EP (config.rs), so it isn't set here
     volumes: ["models:/models:ro"]
     depends_on:
       model-fetch: { condition: service_completed_successfully }
       surrealdb: { condition: service_healthy }
       rustfs: { condition: service_healthy }
-      seed-upload: { condition: service_completed_successfully }
+      # Waits for the knowledge photos once the `seed` profile is on (S2); without it, S1 starts without them.
+      seed-upload: { condition: service_completed_successfully, required: false }
+      # Waits for the farm in the simulators once the `demo` profile is on (EON E9.1).
+      era-seed: { condition: service_completed_successfully, required: false }
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
       interval: 10s
@@ -321,7 +409,7 @@ services:
       retries: 3
       start_period: 60s             # schema, migrations and the knowledge index load first
     stop_grace_period: 190s         # architecture 12
-    networks: [edge, data]
+    networks: [edge, data, era]     # era: the demo simulators, ERA_SLACK_BASE=http://era-slack:8080 in .env.api
     logging: *logging
   fallback-worker:
     image: ${WORKER_IMAGE:?}
@@ -333,6 +421,33 @@ services:
     volumes: ["models:/models:ro"]
     depends_on: { api: { condition: service_healthy } }   # api already waited for model-fetch
     stop_grace_period: 30s          # DRAIN_SECONDS (20) + 10 s, worker 12
+    networks: [edge]
+    logging: *logging
+  perception-stub-worker:           # S1 only (ST6): answers perception jobs with fixed output so the pipeline runs end to end
+    profiles: [stub]                # S2 turns it off by dropping `stub` from COMPOSE_PROFILES
+    image: ${WORKER_IMAGE:?}
+    restart: unless-stopped
+    <<: *hardened
+    command: ["--caps", "perception", "--stub-vision"]
+    env_file: ${PDM_ENV:-/srv/pdm/env}/.env.stub      # WORKER_TOKEN, STUB_LABEL_SET_VERSION, STUB_CLASSIFIER_LABELS_VERSION
+    environment: { WORKER_ID: dev-stub-perception-1, API_BASE_URL: "http://api:8080", PDM_ALLOW_STUB_VISION: "1" }
+    depends_on: { api: { condition: service_healthy } }
+    stop_grace_period: 30s
+    networks: [edge]
+    logging: *logging
+  perception-worker:                # S2: the RTX 3070 sits in this host
+    profiles: [perception]
+    image: ${WORKER_CUDA_IMAGE:-worker-cuda:unset}
+    restart: unless-stopped
+    <<: *hardened
+    command: ["--caps", "perception"]
+    env_file: ${PDM_ENV:-/srv/pdm/env}/.env.rig-3070-perception-1   # WORKER_TOKEN
+    environment: { WORKER_ID: rig-3070-perception-1, API_BASE_URL: "http://api:8080", MODEL_MANIFEST: /models/manifest.toml }
+    volumes: ["models:/models:ro"]
+    depends_on: { api: { condition: service_healthy } }
+    deploy: { resources: { reservations: { devices:
+      [{ driver: nvidia, device_ids: ["${GPU_3070_UUID:-unset}"], capabilities: [gpu] }] } } }
+    stop_grace_period: 30s
     networks: [edge]
     logging: *logging
   caddy:
@@ -369,20 +484,60 @@ services:
     depends_on: [caddy]
     networks: [edge]
     logging: *logging
-networks: { edge: {}, data: {} }
+  era-slack:                        # the `demo` profile (EON E9.1); era-drive is the same with the Drive image
+    profiles: [demo]
+    image: erabyeon/slack:189e10c16ec66ee1ca24ac5f7962cd7637174d0f@sha256:33382931f381da5dca51c45ad4ad7c7bfc07644d3240465bfd41e7b7ea2cb75f
+    restart: unless-stopped
+    <<: [*hardened, *era-sim]       # x-era-sim: UID 65532, HOME=/tmp, dev's SIMCORE_* and AUTH_MODE=open,
+                                    # mem_limit 1g, health on /_meta, networks [era]
+    entrypoint: ["/app/.venv/bin/slack-sim"]               # not `uv run`, which writes under /root
+    env_file: ${PDM_ENV:-/srv/pdm/env}/.env.era-seed     # SIMCORE_ADMIN_TOKEN
+  era-seed:                         # resets the default tenant, injects the farm, reads it back, then exits
+    profiles: [demo]
+    image: python:3.12-slim-trixie@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+    restart: "no"
+    <<: *hardened
+    user: "65532:65532"
+    command: ["python", "/src/seed.py", "--fixture", "/fixture",
+              "--slack", "http://era-slack:8080", "--drive", "http://era-drive:8080"]
+    env_file: ${PDM_ENV:-/srv/pdm/env}/.env.era-seed     # SIMCORE_ADMIN_TOKEN; api never reads this file
+    volumes: ["./era-seed:/src:ro", "../backend/tests/fixtures/era/maple-row:/fixture:ro"]
+    depends_on: { era-slack: { condition: service_healthy }, era-drive: { condition: service_healthy } }
+    networks: [era]
+    logging: *logging
+networks: { edge: {}, data: {}, era: { internal: true } }
 volumes: { models: {}, surrealdb-data: {}, rustfs-data: {}, rustfs-logs: {}, caddy-data: {}, caddy-config: {}, tailscale-state: {} }
 ```
 
-- **Start order:** `model-fetch` exits 0, and `surrealdb` and `rustfs` are healthy → `seed-upload` exits 0 → `api` applies the schema and migrations ([database 1](../database/README.md#1-version-and-setup)) and turns healthy → `caddy` and `fallback-worker`. A failed `seed-upload` keeps `api` down, which is the point: the migration must not reference photos that aren't there.
+- **Start order:** `model-fetch` exits 0, and `surrealdb` and `rustfs` are healthy → with the `seed` profile, `seed-upload` finishes → with the `demo` profile, `era-slack` and `era-drive` are healthy and `era-seed` finishes → `api` applies the schema and migrations ([database 1](../database/README.md#1-version-and-setup)) and turns healthy → `caddy` and `fallback-worker`.
+- **A failed `seed-upload` or `era-seed` doesn't keep `api` down.** Both are optional dependencies (`required: false`), so the file also starts without their profiles; `required: true` would stop it starting in S1, when there is no seed image. Compose waits for an optional dependency to finish, but when it fails, Compose prints `Skipped: optional dependency "era-seed" didn't complete successfully: exit 1`, starts `api` anyway and `up -d` exits 0. `up -d --wait` exits 1 and names the service, but `api` is still started. ✓ Both ran with Compose v5.5.0 on a laptop (2026-10-20). So after an `up`, check that `docker compose -f infra/control-plane.compose.yml --env-file /srv/pdm/env/.env.compose ps -a seed-upload era-seed` shows `Exited (0)`, or use `up -d --wait` to fail loudly. Work item 11's aim that a failing `seed-upload` keeps `api` down (the migration must not reference photos that aren't there) isn't met by this file alone. The check that stops a deploy is `infra/deploy.sh SEED_UPLOAD_IMAGE`, which fails unless the upload exits 0 (✓ compose v5.2.0 on the rig, 2026-10-20, as above); deploy the seed image before `api` (section 7). Whether the dependency becomes required once the profile is always on is open question 10. ✓ The file renders for the profiles none, `tailscale,stub,seed` and `cloudflare` (laptop, 2026-10-17), and `demo` (laptop, 2026-10-20), and `tailscale,perception,seed` (rig, 2026-10-20). ✓ `seed-upload` as this file runs it (read-only, no capabilities, the `data` network, `.env.seed`), on the rig in a throwaway project on 2026-10-20: before the bucket and `PDMSEED01` existed it exited 1 (`InvalidAccessKeyId`); after storage 2's setup it put 3 photos and exited 0 in 0.3 s, and a second run put nothing and exited 0.
+- **The stub worker** (`stub` profile, S1 only) answers `perception` jobs with canned output marked `stub`. It reports the label versions of the empty knowledge base (`STUB_LABEL_SET_VERSION=d4f0f0534fb74a8d`, `STUB_CLASSIFIER_LABELS_VERSION` empty), or submit answers `503` ([worker 15.1](../backend/worker.md#151-stub-vision)). `api` doesn't read `ORT_EP`, so the compose file doesn't set it.
+- **The 3070's perception worker** (`perception` profile, S2) runs here because the RTX 3070 is in the control-plane host ([architecture 12](../architecture/README.md#hosting-the-control-plane)); `rig.compose.yml` is the second rig host's. It reaches `api` on `edge` like the stub, and its image downloads go to `API_PUBLIC_BASE` like any worker's. `MODEL_GROUPS=api,fallback,perception` in `.env.compose` makes `model-fetch` fetch its models too; `fetch.py` deletes only files neither manifest names, so the groups share the volume. The image variable and the GPU UUID default to `unset`, because compose interpolates a service even when its profile is off (✓ compose v5.2.0: a `${VAR:?}` in an inactive profile's service still fails the file). `infra/deploy.sh WORKER_CUDA_IMAGE <digest>` recreates it and waits for a heartbeat newer than the container. **Run it or the stub, never both:** a job isn't routed by label set, so a worker that hasn't loaded the job's `label_set_version` fails it with `unknown_label_version`, which isn't retryable ([contracts 5](../architecture/contracts.md#5-worker-api-and-jobs)). The real worker answers only once the loaded knowledge base matches its label matrix and classifier labels; until then `api` answers submit with `503` for it ([pipeline](../backend/pipeline.md), `LabelsNotLoaded`).
 - **Stop order** is the reverse, so `api` drains its deletes into a running RustFS. `docker compose down` waits up to each service's grace period.
-- **Networks.** `data` holds the stateful services; `edge` holds what talks to the internet. Only `api` is on both. `data` isn't `internal: true`, because the backups reach SurrealDB and RustFS through their host-only ports (`127.0.0.1:8000`, `127.0.0.1:9000`, as database 1 and storage 1 publish them).
+- **Networks.** `data` holds the stateful services; `edge` holds what talks to the internet. Only `api` is on both. `data` isn't `internal: true`, because the backups reach SurrealDB and RustFS through their host-only ports (`127.0.0.1:8000`, `127.0.0.1:9000`, as database 1 and storage 1 publish them). `era` holds the `demo` profile's simulators (below) and is `internal: true`. `api` joins it with or without the profile, so without it `era` is an empty network.
 - **Root credentials.** Database 1 and storage 1 interpolate the root credentials (`${SURREAL_ROOT_PASS:?}`, `${RUSTFS_ROOT_SECRET_KEY:?}`) into their services. Here they come from `env_file` instead, so they never sit in `.env.compose`, which every compose command reads.
 - **`api`'s bucket.** `RUSTFS_BUCKET` defaults to `pdm-images`, the bucket of [storage 2](../storage/README.md#2-bucket-keys-and-access); `.env.api` still sets it explicitly.
 - **`/models`** is the named volume `models`. Only `model-fetch` mounts it read-write; it runs `ml/models/fetch.py` from the host's checkout ([vision 6, how files reach `/models`](../vision/README.md#how-files-reach-models)), which downloads only what changed and checks every hash. A failed fetch keeps `api` down with its old files untouched, so a bad manifest is never deployed. Our own files come from the private Hugging Face repository `pdm-models` with the host's `HF_TOKEN`.
+- **The `demo` profile** ([EON E9.1](../EON/README.md#e9-the-demo-garden), [connectors 9.4](../connectors/README.md#94-the-demo)) runs Era's Slack and Google Drive simulators behind the demo garden's `era` connectors. They use the images and settings of `dev.compose.yml`'s `era` profile, plus the admin token.
+  - **Network.** The simulators are on `era` only. It is `internal: true`, so they publish no port and have no route out. Only `api` and `era-seed` reach them; Caddy, the ingress and the internet don't. In `.env.api`, set `ERA_SLACK_BASE=http://era-slack:8080` and `ERA_GOOGLE_BASE=http://era-drive:8080` only with the profile on. Without it, `api` would seed connectors whose syncs fail on a name that doesn't resolve.
+  - **The admin token.** `SIMCORE_ADMIN_TOKEN` (`openssl rand -hex 32`) is in `.env.era-seed`, which the two simulators and `era-seed` read and `api` never does. With it set, `/_admin` answers `401` without the token and `403` with a wrong one, and `X-Sim-Tenant` is ignored ([EON 3](../EON/README.md#read-only-and-sign-in)). So the farm goes into the tenant that every token without one reads, `default`, and `api`'s seeded tokens (`xoxb-era-demo`, `ya29.era-demo`) read it.
+  - **`era-seed`** runs [`infra/era-seed/seed.py`](../../infra/era-seed/seed.py), standard library only. For each simulator it checks that `/_admin` without the token answers `401`, resets `default` and injects the fixture. It resets first because a message injected twice is listed twice ([EON 3](../EON/README.md#tenants-faults-and-time)), so every run gives the same farm. Then it reads the farm back with `api`'s tokens and compares the counts with the fixture: 55 messages in `C_FIELD`, 39 in `C_CREW`, 5 files in `F_FARM`. It also counts each thread's replies (29 in 20 threads), from the fixture, not from constants. Any failure, an unreachable simulator included, exits 1. `api` waits for it to finish, but starts even when it fails, the same as with `seed-upload` (start order, above): check its exit code. It never prints the token, and refuses one shorter than 32 characters.
+  - **How the fixture gets there.** `era-seed` runs the pinned Python image `model-fetch` already uses. The script and `backend/tests/fixtures/era/maple-row/` are mounted read-only from the host's checkout, as `model-fetch` mounts `ml/models`. There is no image to build, push or deploy by digest: digests are for code we build, and the fixture is data that comes with the commit the checkout is on, like the compose file and the Caddyfile.
+  - **Hardening.** All three run with `*hardened` (read-only root, `/tmp` tmpfs, `cap_drop: ALL`, `no-new-privileges`) as UID 65532. The images start with `uv run`, which writes its cache under `/root/.cache/uv` and exits with "Read-only file system" on a read-only root. So the compose file starts the virtualenv's script (`/app/.venv/bin/slack-sim`, `google-drive-sim`) directly. The simulator keeps media leases under `$HOME/.cache/simcore` (a `500` on the first inject without it), so `HOME=/tmp`. Each holds about 500 MiB with the farm in, under `mem_limit: 1g`.
+  - **Health** is checked on `/_meta`, because `/_admin` answers `401` here. A fault, which would fail `/_meta`, needs the admin token, which only `era-seed` holds.
+  - **State lives in memory.** A restarted simulator, or a rebooted host, comes back as Era's generated company without the farm. After a reboot Docker restarts `api` and the simulators, but not `era-seed` (`restart: "no"`). While the farm is missing, a sync gets `channel_not_found` or `notFound`, which stores `last_error: source_missing` and parks the connector until its owner changes the sources ([connectors 6](../connectors/README.md#6-sync)); only `api`'s start-up seeding (EON E4.6) sets it `active` again and clears `last_error`. So the recovery is two commands:
+
+    ```sh
+    docker compose -f infra/control-plane.compose.yml --env-file /srv/pdm/env/.env.compose up -d era-seed
+    docker compose -f infra/control-plane.compose.yml --env-file /srv/pdm/env/.env.compose restart api
+    ```
+
+    A plain `up -d` with the profile on also runs `era-seed` again, which resets and re-injects under a running `api`; follow it with `restart api` too. `deploy.sh` uses `--no-deps`, so a deploy of `api` doesn't re-seed.
+  - ✓ On a laptop (2026-10-20), with a throwaway env directory and a random token: `era-seed` exits 0 and reports the three counts. From a container on `era`, `conversations.list` with `xoxb-era-demo` lists `C_FIELD` and `C_CREW` with `is_member: true`, Drive lists the 5 files under `F_FARM` with `ya29.era-demo`, and `/_admin/tenants` answers `401` without the token, `403` with a wrong one and `200` (`["default"]`) with it. From a container on another network, `era-slack` and `era-drive` don't resolve. `docker compose port` finds no binding, and from inside a simulator `pypi.org` doesn't resolve, while a container on `edge`, `data` and `era`, as `api` is, still reaches it. After a restart of `era-slack`, `up -d era-seed` exits 0 with the same counts. An empty token and a wrong one each exit 1. `api` itself wasn't started. Not yet run on the rig.
 
 ### `infra/rig.compose.yml`
 
-The services, commands and settings are those of [worker 12](../backend/worker.md#12-deployment); this file adds the image names, the shared anchors and the health checks. GPU identities come from an untracked `.env.compose` on the rig, never from the file:
+The second rig host's file: the RTX 5070 Ti's VLM sidecar and worker, and the RX 9070 XT's if it joins that host. The RTX 3070 is in the control-plane host, so its `perception-worker` and the perception group of `model-fetch` live in `control-plane.compose.yml` behind the `perception` profile (above); the listing below keeps them for a host that holds all three cards. The services, commands and settings are those of [worker 12](../backend/worker.md#12-deployment); this file adds the image names, the shared anchors and the health checks. GPU identities come from an untracked `.env.compose` on the rig, never from the file:
 
 ```yaml
 x-worker: &worker
@@ -447,10 +602,18 @@ Caddy fronts `api` in every case. What sits in front of Caddy is a compose profi
 	reverse_proxy api:8080
 	log {
 		output stdout
-		format json
+		# A signed image URL's sig is a 15-minute credential: never logged (rust-tracing's rule for api).
+		format filter {
+			request>uri query {
+				replace sig REDACTED
+			}
+			wrap json
+		}
 	}
 }
 ```
+
+✓ On `caddy:2.11.7-alpine` (2026-10-17), `caddy validate` accepts it, and a request for `…?exp=…&sig=…` is logged with `sig=REDACTED`. Caddy already leaves `Authorization` out of its logs unless `log_credentials` is on (*unverified*).
 
 | | `tailscale` (the rig) | `cloudflare` | none (a cloud VM) |
 |---|---|---|---|
@@ -464,7 +627,7 @@ Caddy fronts `api` in every case. What sits in front of Caddy is a compose profi
 
 `api` doesn't know which row it runs under. Its rate limits are keyed by the signed-in user, not by a client address ([api limits](../../backend/bins/api/src/limits.rs)), and the only URL it needs is its own, `API_PUBLIC_BASE`, for signed image links.
 
-**Switching providers:** set `COMPOSE_PROFILES` and `CADDY_SITE` in `.env.compose` and `API_PUBLIC_BASE` in `.env.api`, then `docker compose up -d` (Compose removes nothing on its own, so `docker compose --profile <old> stop <old sidecar>` first). Then point two things at the new URL: the Clerk webhook (`POST /webhooks/auth`) and each rig worker's `API_BASE_URL`. Run the S1 smoke script against it. That Compose reads `COMPOSE_PROFILES` from the file `--env-file` names is *unverified*; `--profile <name>` on each command does the same.
+**Switching providers:** set `COMPOSE_PROFILES` and `CADDY_SITE` in `.env.compose` and `API_PUBLIC_BASE` in `.env.api`, then `docker compose up -d` (Compose removes nothing on its own, so `docker compose --profile <old> stop <old sidecar>` first). Then point two things at the new URL: the Clerk webhook (`POST /webhooks/auth`) and each rig worker's `API_BASE_URL`. Run the S1 smoke script against it. ✓ Compose reads `COMPOSE_PROFILES` from the file `--env-file` names (laptop, 2026-10-17); `--profile <name>` on each command does the same.
 
 **`infra/ingress/tailscale/serve.json`** (committed, no secrets) forwards the Funnel address to Caddy:
 
@@ -507,24 +670,58 @@ The container replaces `${TS_CERT_DOMAIN}` with its own `ts.net` name at start (
 
 | File, in `/srv/pdm/env/` (mode 0600) | Read by | Holds |
 |---|---|---|
-| `.env.compose` | `docker compose --env-file` | Image digests (`API_IMAGE`, `WORKER_IMAGE`, `WORKER_CUDA_IMAGE`, `SEED_UPLOAD_IMAGE`), `CADDY_SITE`, `CADDY_HTTP`, `CADDY_HTTPS`, `COMPOSE_PROFILES` (the ingress, section 5); on the rig the GPU UUIDs, the render node and group ids. Not secret, but host-specific |
+| `.env.compose` | `docker compose --env-file` | Image digests (`API_IMAGE`, `WORKER_IMAGE`, `WORKER_CUDA_IMAGE`, `SEED_UPLOAD_IMAGE`), `CADDY_SITE`, `CADDY_HTTP`, `CADDY_HTTPS`, `COMPOSE_PROFILES` (the ingress, section 5, and `demo`, section 4); on the rig the GPU UUIDs, the render node and group ids. Not secret, but host-specific |
 | `.env.surrealdb` | `surrealdb` | `SURREAL_USER`, `SURREAL_PASS`: the root user, created on first start |
 | `.env.rustfs` | `rustfs` | `RUSTFS_ACCESS_KEY`, `RUSTFS_SECRET_KEY`: the root identity |
-| `.env.api` | `api` | `SURREAL_PASS`, `SURREAL_ROOT_PASS` (the schema's namespace statement needs root, database 1), `RUSTFS_ACCESS_KEY=PDMAPI01`, `RUSTFS_SECRET_KEY`, `RUSTFS_BUCKET=pdm-images`, `API_PUBLIC_BASE`, `API_WEB_ORIGINS`, `API_URL_SIGNING_KEY` (32 bytes or more), `WORKER_TOKENS` (`worker_id=token` pairs), `CLERK_ISSUER`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET`, `LLM_API_KEY`, optional `EXPO_ACCESS_TOKEN`, `OPEN_METEO_API_KEY`, `JEV_URL` and `JEV_API_KEY`, and optionally all three of `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (the key is a secret, limited to `gardens/*`: [database: Agent Memory](../database/agent-memory.md#2-setup)) |
-| `.env.seed` | `seed-upload` | `PDMSEED01`'s keys |
+| `.env.api` | `api` | `SURREAL_PASS`, `SURREAL_ROOT_PASS` (the schema's namespace statement needs root, database 1), `RUSTFS_ACCESS_KEY=PDMAPI01`, `RUSTFS_SECRET_KEY`, `RUSTFS_BUCKET=pdm-images`, `API_PUBLIC_BASE`, `API_WEB_ORIGINS`, `API_URL_SIGNING_KEY` (32 bytes or more), `WORKER_TOKENS` (`worker_id=token` pairs), `CLERK_ISSUER`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET`, `LLM_API_KEY`, optional `EXPO_ACCESS_TOKEN`, `OPEN_METEO_API_KEY`, `JEV_URL` and `JEV_API_KEY`, and optionally all three of `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID` and `AGENT_MEMORY_API_KEY` (the key is a secret, limited to `gardens/*`: [database: Agent Memory](../database/agent-memory.md#2-setup)). The farm connectors, all optional ([connectors 4–5](../connectors/README.md#4-data)): `CONNECTOR_KEY` (a secret: 32 bytes as 64 hex characters, which seals the vendors' tokens; unset turns connectors off), `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET`, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (the secrets are secrets; each pair is set together or not at all, and a partial pair stops `api` at start naming the missing variable), `CONNECTOR_RETURN_URL` (where the OAuth callback sends the app, `pdm://connectors` by default; `https` or a custom app scheme, never `http`, `javascript`, `data`, `file` or `vbscript`, and no query), `ERA_SLACK_BASE` and `ERA_GOOGLE_BASE` (Era's simulators behind the demo garden's seeded connectors, roadmap E4.6: `http://era-slack:8080` and `http://era-drive:8080` with the `demo` profile, and unset without it, section 4), and `ERA_DEMO_GARDEN_ID` (the demo garden's id, a ULID: E9.0 creates the garden through the API, so the deploy sets it afterwards; seeding needs it, both bases and `CONNECTOR_KEY`, and skips a garden that doesn't exist yet) |
+| `.env.seed` | `seed-upload` | `PDMSEED01`'s keys. Without them `seed-upload` exits 2, and `deploy.sh SEED_UPLOAD_IMAGE` fails (compose alone still starts `api`, section 4) |
 | `.env.models` | `model-fetch` | `HF_TOKEN`: a fine-grained Hugging Face token that can only read `pdm-models` ([vision 6](../vision/README.md#delivering-model-files-to-the-backend)), one per host |
 | `.env.fallback` | `fallback-worker` | `WORKER_TOKEN`, `LLM_API_KEY` |
+| `.env.stub` | `perception-stub-worker` (profile `stub`, S1) | `WORKER_TOKEN`, `STUB_LABEL_SET_VERSION`, `STUB_CLASSIFIER_LABELS_VERSION`. The token is also in `api`'s `WORKER_TOKENS` |
 | `.env.<worker id>` | each rig worker | `WORKER_TOKEN`; `VLM_API_KEY` for the VLM workers and their sidecar |
 | `.env.backup` | `ops/backup.sh` | `SURREAL_ROOT_PASS`, `PDMBACKUP01`'s keys, the off-host remote's credentials |
+| `.env.era-seed` | `era-slack`, `era-drive`, `era-seed` (profile `demo`) | `SIMCORE_ADMIN_TOKEN`, from `openssl rand -hex 32`: the demo simulators' admin token. The simulators require it on `/_admin`, and the one-shot `era-seed` uses it to inject the farm (section 4, [EON E9.1](../EON/README.md#e9-the-demo-garden)). `api` never reads this file |
 | `.env.tailscale` | `tailscale` | `TS_AUTHKEY`: a one-off, tagged auth key, used once to join the tailnet (section 5) |
 | `tunnel.json` | `cloudflared` | The tunnel's credentials, with the `cloudflare` profile only |
 
 - **[`infra/env/.env.example`](../../infra/env/.env.example)** lists every variable of every file above, grouped under a `# --- .env.api ---` style heading, with placeholders only (`change-me`, `GPU-00000000-…`, `sk-placeholder`), and says never to load it whole, because a key repeats across sections and the last one wins. The local values for running `api` and the fallback worker against `dev.compose.yml` are in [`infra/dev/.env.example`](../../infra/dev/.env.example).
 - **`infra/.env.example`** is a different file: the rig's vLLM template from PR #7, which [infra/README.md](../../infra/README.md) copies to `infra/.env`, and which compose loads into the vLLM container. So `api`'s secrets never go in it. It folds into the per-service files when `rig.compose.yml` grows into section 4. The `infra` CI job renders each compose file with `infra/.env.example` copied to `infra/.env`, the file the rig's compose file reads, so a variable a compose file needs and that example lacks fails CI.
-- **Generating secrets:** `openssl rand -hex 32` for passwords, signing keys and worker tokens. RustFS access keys use A–Z and 0–9 only ([storage 1](../storage/README.md#1-version-and-setup)). A worker's token goes in two places: its own `.env.<worker id>` and `api`'s `WORKER_TOKENS`.
+- **Generating secrets:** `openssl rand -hex 32` for passwords, signing keys, worker tokens and `CONNECTOR_KEY`, which must be exactly that: 64 hex characters, refused at start otherwise. RustFS access keys use A–Z and 0–9 only ([storage 1](../storage/README.md#1-version-and-setup)). A worker's token goes in two places: its own `.env.<worker id>` and `api`'s `WORKER_TOKENS`. ✓ A token must be at least 32 bytes, and two worker ids can't share one (`api` refuses to start otherwise; laptop, 2026-10-17).
 - **Clerk:** the development instance's issuer and keys until the team decides otherwise; never the production instance without asking ([roadmap S1](../backend/roadmap.md#5-s1-walking-skeleton)).
-- **CI has no deployment secrets.** It needs only `GITHUB_TOKEN`. The one other workflow, `discord-mentions.yml`, reads four Discord webhook secrets (`DISCORD_WEBHOOK_*`) and four username variables (`GH_USER_*`), set as in [discord-mentions 2](discord-mentions.md#add-the-secrets-and-variables). Nothing deploys from CI ([section 7](#7-deploying-and-rolling-back)), so no host credentials sit in GitHub.
-- **Rotation:** change the value in the env file and `docker compose up -d --no-deps <service>`. Rotating `SURREAL_PASS` also needs `ALTER USER` (or a new `DEFINE USER … OVERWRITE`) as root first; rotating a RustFS key needs `rc admin user add` with the new secret first.
+- **`RUNNER_LABELS`** is a repository variable, not a secret: the JSON array of labels every job of `ci.yml` runs on, `["self-hosted","linux","x64","pdm"]` since 2026-10-19. Set it with `gh variable set RUNNER_LABELS --body '["self-hosted","linux","x64","pdm"]'`; delete it to return to GitHub's runners ([section 2](#runners-and-budget)). **`LIGHT_RUNNER_LABELS`**, `["self-hosted","linux","x64","pdm-light"]` since 2026-10-19, is the same for the light jobs; delete it together with `RUNNER_LABELS`. The label `pdm-light` on `rig-1` and `rig-2` was added through the API (`gh api -X POST repos/aacruzgon/GreenLens/actions/runners/<id>/labels -f 'labels[]=pdm-light'`), so it lives on GitHub, not in the runners' local configuration; registering either runner again drops it. The runners' own settings (`DOCKER_HOST`, `CARGO_BUILD_JOBS`, `NEXTEST_TEST_THREADS`) sit in each runner's `.env` on the host ([setup 6](../setup/README.md#ci-runner)).
+- **CI has no deployment secrets.** `ci.yml` needs only `GITHUB_TOKEN`. `discord-mentions.yml` reads four Discord webhook secrets (`DISCORD_WEBHOOK_*`) and four username variables (`GH_USER_*`), set as in [discord-mentions 2](discord-mentions.md#add-the-secrets-and-variables). `era-hosted.yml` reads the environment `era-hosted` (below). Nothing deploys from CI ([section 7](#7-deploying-and-rolling-back)), so no host credentials sit in GitHub.
+- **The `era-hosted` environment** ([section 2](#the-era-hosted-job)) holds the hosted Era company's credentials:
+
+  | Name | Kind | Value |
+  |---|---|---|
+  | `ERA_CLIENT_ID`, `ERA_CLIENT_SECRET` | secrets | `era client <tenant> --reveal --json`: the job mints a one-hour token with them, so nothing in GitHub expires |
+  | `ERA_TENANT_TOKEN` | secret | Only when the two above are unset: the company's token, which lasts 7 days |
+  | `SLACK_BASE_URL`, `GOOGLE_DRIVE_BASE_URL` | variables | From `infra/env/.env.era` (`https://slack-mcp.era.eon.io`, `https://google-drive-mcp.era.eon.io`) |
+
+  An admin creates it once, limited to `main`, from the repository root with the env file:
+
+  ```sh
+  gh api -X PUT repos/aacruzgon/GreenLens/environments/era-hosted \
+    -F 'deployment_branch_policy[protected_branches]=false' \
+    -F 'deployment_branch_policy[custom_branch_policies]=true'
+  gh api -X POST repos/aacruzgon/GreenLens/environments/era-hosted/deployment-branch-policies \
+    -f name=main -f type=branch
+  set -a; . infra/env/.env.era; set +a
+  gh variable set SLACK_BASE_URL --env era-hosted --body "$SLACK_BASE_URL"
+  gh variable set GOOGLE_DRIVE_BASE_URL --env era-hosted --body "$GOOGLE_DRIVE_BASE_URL"
+  creds=$(era client "$ERA_TENANT" --reveal --json)
+  jq -j .client_id <<<"$creds" | gh secret set ERA_CLIENT_ID --env era-hosted
+  jq -j .client_secret <<<"$creds" | gh secret set ERA_CLIENT_SECRET --env era-hosted
+  unset creds
+  ```
+
+  Each `era client` call registers a new client, and the console can't show its secret again, so pipe it straight into the secrets as above, never to a file or the terminal. Whether a new client or `era token` retires an older client is *unverified*. Check the setup with `gh workflow run era-hosted.yml --ref main`, which costs five calls.
+- **Rotating Era's tenant token, weekly** (roadmap [E7.4](../EON/README.md#e7-a-hosted-era-company)). A tenant token lasts 7 days, and `ERA_TENANT_TOKEN_EXPIRES_AT` in `infra/env/.env.era` says when it ends (Unix time; the first ends 2026-10-26 at 20:51 UTC). Whoever owns the company re-issues it before then:
+  1. Tell the team first: the new token retires the old one at once, in every teammate's env file and in `era-hosted` if it uses the tenant token.
+  2. `era token <tenant> --env infra/env/.env.era` writes the new token and its expiry into the file.
+  3. If `era-hosted` has no client credentials, update its secret: `set -a; . infra/env/.env.era; set +a; printf %s "$ERA_TENANT_TOKEN" | gh secret set ERA_TENANT_TOKEN --env era-hosted`. With client credentials, the job needs nothing; that they keep working after `era token` is *unverified* until the first rotation.
+  4. Share the new value the way the team shares other secrets, never in a chat message or a commit.
+- **Rotation:** change the value in the env file and `docker compose up -d --no-deps <service>`. Rotating `SURREAL_PASS` also needs `ALTER USER` (or a new `DEFINE USER … OVERWRITE`) as root first; rotating a RustFS key needs `rc admin user add` with the new secret first. A new `CONNECTOR_KEY` can't open the tokens sealed under the old one, so every connector's owner reconnects.
 
 ---
 
@@ -533,14 +730,16 @@ The container replaces `${TS_CERT_DOMAIN}` with its own `ts.net` name at start (
 **Deploys are manual, by digest, from the host.** CI builds and pushes; a team member on the host decides when a digest goes live. This keeps host credentials out of GitHub and lets the rig, which sits behind home NAT, deploy the same way as a VM.
 
 `infra/deploy.sh <service-variable> <image@sha256:…>`:
-1. checks that the reference has a digest and that `docker pull` gets it;
+1. checks that the reference has a digest and that `docker pull` gets it. The registry may have a port (`127.0.0.1:5000/greenlens/api@sha256:…`), for images built on the host before they reach GHCR, as S1's rig checks did;
 2. copies `.env.compose` to `.env.compose.prev`, sets the variable, and appends `date, host, variable, old digest, new digest, operator` to `/srv/pdm/deploy.log`;
-3. runs `docker compose up -d --no-deps <services using it>`, then waits for the health check (`api`) or for the worker's heartbeat on `/status` (workers);
+3. runs `docker compose up -d --no-deps <services using it>`, then waits for the health check (`api`), or, for a worker, for a heartbeat on `/status` newer than its new container's start. The worker's id comes from the compose file. It fails at once if the container is restarting or has restarted, because the old container's heartbeat under the same id would otherwise pass;
 4. prints the rollback command.
+
+The variables and their services: `API_IMAGE` (`api`), `WORKER_IMAGE` (`fallback-worker` and, with its profile, the stub), `WORKER_CUDA_IMAGE` (`perception-worker`, with the `perception` profile) and `SEED_UPLOAD_IMAGE` (`seed-upload`, with the `seed` profile). A service whose profile is off is skipped, and the script fails if none is left.
 
 **Rolling back** is the same script with the previous digest from `deploy.log`. Two cases need more:
 - **A schema or migration change.** `api` applies `backend/migrations/` at start ([database 1](../database/README.md#1-version-and-setup)). An older image may not run against a database a newer one migrated. Take `surreal export` before any deploy that changes `backend/migrations/`; roll back only to an image whose migrations the database has already applied, otherwise restore the export into a fresh datastore ([database 7](../database/README.md#7-operations)).
-- **A seed change.** `seed-upload` only adds content-hashed keys ([storage 2](../storage/README.md#2-bucket-keys-and-access)), so an older `api` still finds its photos.
+- **A seed change.** `seed-upload` only adds content-hashed keys and never deletes one ([storage 2](../storage/README.md#2-bucket-keys-and-access)), so an older `api` still finds its photos. When a commit changes `knowledge.surql`, deploy that commit's `SEED_UPLOAD_IMAGE` before its `API_IMAGE`: `deploy.sh` recreates `api` with `--no-deps`, so it doesn't run `seed-upload` again, and the new migration would name photos that aren't there yet.
 
 **Deploy order** when both change: control plane first (`api` serves the job and worker API), then the rig. Workers only pull, so a rig deploy never needs downtime on the control plane.
 
@@ -553,10 +752,10 @@ Once per environment, on the control-plane host:
 3. `docker compose up -d surrealdb rustfs` and wait for both to be healthy.
 4. **Database users** ([database 1](../database/README.md#1-version-and-setup)): `infra/bootstrap/surrealdb-users.sh` pipes these statements into `surreal sql --endpoint http://127.0.0.1:8000 --user root` from the pinned SurrealDB image, with the password from `.env.api` escaped into the statement (`\` and `'` escaped), never as an argument:
    `DEFINE NAMESPACE IF NOT EXISTS pdm; USE NS pdm; DEFINE DATABASE IF NOT EXISTS main; USE DB main; DEFINE USER IF NOT EXISTS api ON DATABASE PASSWORD '…' ROLES EDITOR;`
-   That `surreal sql` reads statements from standard input non-interactively is *unverified*.
-5. **Bucket and identities** ([storage 2](../storage/README.md#2-bucket-keys-and-access)): `infra/bootstrap/rustfs.sh` runs storage 2's setup script with `pdm-api.json` and `pdm-seed.json`, and adds a third identity, `PDMBACKUP01` with `pdm-backup.json` (`s3:ListBucket` and `s3:GetObject` on `pdm-images` only), for the backup that [storage 6](../storage/README.md#6-operations) says needs a read-only key.
+   ✓ `surreal sql`, run with `docker run -i`, reads the statements from standard input (v3.3.4, 2026-10-17). ✓ `api` signs in to `pdm`/`main` and gets "IAM error: Not enough permissions" on `DEFINE NAMESPACE`. Run twice, the script changes nothing.
+5. **Bucket and identities** ([storage 2](../storage/README.md#2-bucket-keys-and-access)): `infra/bootstrap/rustfs.sh` runs storage 2's setup script with `pdm-api.json` and `pdm-seed.json`, and adds a third identity, `PDMBACKUP01` with `pdm-backup.json` (`s3:ListBucket` and `s3:GetObject` on `pdm-images` only), for the backup that [storage 6](../storage/README.md#6-operations) says needs a read-only key. ✓ `PDMAPI01`, `PDMSEED01` and `PDMBACKUP01` each reach only their own prefixes and actions, and a repeated `rc admin policy attach` exits 0, so a second run of the script changes nothing (laptop, 2026-10-17).
 6. Put the host's own read-only `HF_TOKEN` in `.env.models`. `model-fetch` fills the `models` volume on every `up` ([vision 6](../vision/README.md#delivering-model-files-to-the-backend)).
-7. Set the digests and the ingress (`COMPOSE_PROFILES`, `CADDY_SITE`, section 5) in `.env.compose`, and `docker compose up -d`. Then run `backend/tools/smoke/` against the public URL.
+7. Set the digests and the ingress (`COMPOSE_PROFILES`, `CADDY_SITE`, section 5) in `.env.compose`, and `docker compose up -d`. For the demo garden's simulators, add `demo` to `COMPOSE_PROFILES` and write `.env.era-seed` (section 4). Then run `backend/tools/smoke/` against the public URL. For the demo garden, run [`backend/tools/demo/demo_garden.py`](../../backend/tools/demo/README.md) against it too, put the `ERA_DEMO_GARDEN_ID` it prints and a `CONNECTOR_KEY` in `.env.api`, and `docker compose -f infra/control-plane.compose.yml --env-file /srv/pdm/env/.env.compose up -d --no-deps api`: a new container reads the env file again (`restart` keeps the old environment), `--no-deps` doesn't re-run `era-seed`, and `api`'s start-up seeding gives the garden its two `era` connectors.
 
 The rig's bootstrap is steps 1, 2 (only its own env files, `.env.models` included) and 6, then `docker compose -f infra/rig.compose.yml up -d`. Its worker tokens must already be in `api`'s `WORKER_TOKENS`.
 
@@ -584,6 +783,11 @@ Both scripts are idempotent: they use `IF NOT EXISTS` and tolerate an existing b
 | RustFS `/health/ready` | Storage and IAM ready | Compose |
 | vLLM `/health` | Model loaded | Compose, on the rig |
 
+**The CI runners.** Two hooks in [`infra/ci-runner/`](../../infra/ci-runner/), installed for `ci-runner` by `install.sh` ([setup 6](../setup/README.md#ci-runner)); both are *unverified* until they have run on the rig.
+- **`job-started.sh`** is the runners' job-started hook (`ACTIONS_RUNNER_HOOK_JOB_STARTED` in each runner's `.env`). It removes containers and networks older than 2 hours, left by cancelled jobs, and never fails a job. No job runs longer than 90 minutes, so nothing live is touched, and it keeps the buildx builder's container (`buildx_buildkit_pdm-ci0`).
+- **`ci-prune.timer`** runs `prune.sh` weekly: it trims the buildx cache to 30 GB, removes unused images built more than 7 days ago (Docker's `until` filter reads the build date, so the pinned SurrealDB and RustFS images are pulled again after each prune) and unused volumes, and deletes build trees unused for 14 days. Expected disk use is under 100 GB. A tree in daily use is never pruned and grows with each toolchain or dependency change; if the disk runs low, delete `~/ci/target` while no job runs.
+- Restart the runners when idle after installing: `systemctl --user restart gh-runner@1 gh-runner@2`. Check them with `systemctl --user status gh-runner@1 gh-runner@2 --no-pager`.
+
 **Disk.** Docker's images, logs and volumes on the control plane need about 20 GB plus the photos and backups ([storage 6](../storage/README.md#6-operations) sizes them). `docker image prune` after a deploy removes old layers; images stay pullable from GHCR by digest for rollback.
 
 ---
@@ -600,21 +804,22 @@ Each item belongs to a slice of the [backend roadmap](../backend/roadmap.md). It
 | 4 | `backend/Dockerfile` and `docker-bake.hcl` with `api`, `worker` and `worker-cuda` | S0 | ✓ `docker buildx bake` builds all three on a laptop; `docker run … api` exits with a configuration error naming a missing variable, as UID 10100 |
 | 5 | `infra/dev.compose.yml` and `infra/env/.env.example` | S0 | ✓ `docker compose -f infra/dev.compose.yml up -d`, then `cargo nextest run --workspace --run-ignored only`, passes on a laptop |
 | 6 | The `images` job of `ci.yml`, pushing to GHCR on merge (written in S0, first run on a merge to `main`) | [S1](../backend/roadmap.md#5-s1-walking-skeleton) | ✓ A merge to `main` publishes three images with `sha-` tags and prints their digests in the run summary (#24's merge, run 38987473159, 2026-10-16: `api` `sha256:3233f5a7db2eae06b90501ba403cb06987913fb97995a91efcc204311f173fb2`, `worker` `sha256:1d7324d1fdb70d1541054eb8915148bb29a79ad8286b55577cf47cf6e017f2c4`, `worker-cuda` `sha256:3d313397fe77a00cd48f945c66fe3de9dd61131e29bbd9217780b799bde1c5e1`). Not yet tested: a host pulls them with a `read:packages` token |
-| 7 | `infra/control-plane.compose.yml` with the `tailscale` and `cloudflare` profiles, the Caddyfile, `infra/ingress/` and `deploy.sh` | S1 | The roadmap's S1 smoke script passes against the public URL; `docker compose stop api` during an upload finishes within 190 s and the container exits with code 0, not 137 (SIGKILL) |
-| 8 | `infra/bootstrap/` scripts and the first bootstrap | S1 | Rerunning both scripts changes nothing; `api` signs in as `api`, not root, after start-up |
+| 7 | `infra/control-plane.compose.yml` with the `tailscale` and `cloudflare` profiles, the Caddyfile, `infra/ingress/` and `deploy.sh` | S1 | ✓ Written, and the compose file renders for each profile set on a laptop (2026-10-17). ✓ On the rig (2026-10-20): the roadmap's S1 smoke script passes against the public URL behind Funnel, and `docker compose stop api` during an upload finishes in 31 s with exit code 0, not 137 (SIGKILL) ([roadmap 5](../backend/roadmap.md#5-s1-walking-skeleton)) |
+| 8 | `infra/bootstrap/` scripts and the first bootstrap | S1 | ✓ Both scripts ran twice on a laptop and the second run changed nothing; `api` signs in as `api`, not root, and is refused `DEFINE NAMESPACE` (2026-10-17). ✓ The first bootstrap on the rig (2026-10-20): both scripts ran twice and the second run changed nothing |
 | 9 | Add `live` to `ci`'s `needs` in `ci.yml` | S1 | ✓ Three consecutive green `live` runs on `main` (four: #23, #18, #25, #24) |
-| 10 | `infra/rig.compose.yml` with the perception worker on the 3070 | [S2](../backend/roadmap.md#6-s2-perception-site-data-and-knowledge) | The worker's heartbeat on `/status` shows `ort_ep=cuda` and the 3070's UUID in `nvidia-smi` inside the container, and nothing else |
-| 11 | The `seed-upload` image target and its compose service before `api` | S2 | A deliberately failing `seed-upload` keeps `api` down; a passing one lets `api` start, and the species photos load through signed URLs |
+| 10 | The perception worker on the 3070, in `control-plane.compose.yml` behind the `perception` profile (the 3070 is in the control-plane host) | [S2](../backend/roadmap.md#6-s2-perception-site-data-and-knowledge) | The worker's heartbeat shows `ort_ep=cuda` and the 3070's UUID in `nvidia-smi` inside the container, and nothing else. ✓ On the rig (2026-10-20): `worker-cuda@sha256:eb0ec5e964a4f812867457054d5ea5e2cba069c8b21e850e14e5cc537ef9de82` (main at `6909aa7`) loaded every perception model on CUDA; its stored heartbeat's `versions` have `ort_ep: cuda` and label set `233482ce598f591b`, and `nvidia-smi -L` in the container lists only `GPU-db64bef8-9c70-2319-97a9-1f80a8dfaa83`. `/status` carries no `versions` ([contracts 9, ops](../architecture/contracts.md#ops)), so the check reads the `worker` record. It stays stopped until a matching knowledge base is loaded |
+| 11 | The `seed-upload` image target and its compose service before `api` | S2 | A deliberately failing `seed-upload` fails `deploy.sh SEED_UPLOAD_IMAGE` (compose's optional dependency doesn't keep `api` down, section 4); a passing one lets `api` start, and the species photos load through signed URLs. ✓ The image, against a throwaway RustFS 1.0.1 on the rig with the tomato seed of pull request #51 and three test photos (2026-10-20): the first run put 3 photos and exited 0, the second put none and exited 0; a wrong secret, no keys, a missing bucket and an unreachable RustFS each exited non-zero (1, 2, 1, 1), and so did a photo changed in RustFS behind its back (1, not overwritten). A `knowledge.surql` that names other photos fails the build. ✓ On the control plane (2026-10-21): `deploy.sh SEED_UPLOAD_IMAGE` with `main`'s empty seed exited 0 (0 photos, PDMSEED01's listing allowed), and a one-off run with a wrong secret exited 1 (`403 SignatureDoesNotMatch`). Not yet tested: the photos through signed URLs, at the first deploy with a seed |
 | 12 | The vLLM sidecars on the 5070 Ti and the 9070 XT, or llama.cpp on the 9070 XT, with health-gated workers | [S3](../backend/roadmap.md#7-s3-vlm-workers-and-the-fallback) | Each VLM worker claims only after its sidecar is healthy; `rocm-smi` and `nvidia-smi` show each sidecar on its own card only |
 | 13 | The fallback worker on the control plane | S3 | With every rig service stopped, the fallback completes a queued job (roadmap S3 exit check) |
 | 14 | `infra/ops/backup.sh`, its timer and the off-host remote | [S7](../backend/roadmap.md#11-s7-hardening-and-s8-ship) | A restore of last night's export and bucket copy on a scratch host answers the smoke script |
 | 15 | Final deploy by digest and a release tag | S8 | Every running container's image digest equals the one in `deploy.log`, and the tag's commit built those digests |
+| 16 | Self-hosted runners `rig-1` and `rig-2` on the 3070 host, `RUNNER_LABELS` and `infra/ci-runner/` | S0 | A pull request's every job runs on `rig-1` or `rig-2` and `ci` passes; `app.id` of the `ci` check run is 15368. ✓ Pull request #77 (2026-10-19): every job ran on `rig-1` or `rig-2`, `ci` passed, and its `app.id` was 15368 |
 
 ---
 
 ## 10. Open questions
 
-1. **Actions minutes.** *Answered on 2026-10-16:* the team runs the design as written on GitHub's runners, `live` included on every push to `main`. When the included minutes run out, a self-hosted runner on the rig takes `test`, `live` and `images`; it will need its own user, no access to the rig's env files, and a decision about running pull-request code on a home machine.
+1. **Actions minutes.** *Answered on 2026-10-16:* the team runs the design as written on GitHub's runners. *Answered on 2026-10-19:* the budget ran out, so every job runs on two self-hosted runners on the rig, as [section 2](#runners-and-budget) describes: their own unprivileged user, a rootless Docker daemon, no access to the rig's env files, and `RUNNER_LABELS` to switch back. Whether self-hosted jobs run with the budget exhausted is *unverified* until the first run. Plan B, if they don't: a local script that reproduces `ci.yml`, and our own GitHub App that posts the `ci` check.
 2. **Who deploys.** Manual deploys from the host (this design) or a pull-based updater that follows the `main` tag? Pull-based saves a step but deploys without a person choosing the moment.
 3. **Architecture of the control-plane VM**, if it's a VM: amd64 needs nothing more; arm64 adds an arm64 build of `api` and `worker`.
 4. **The off-host backup remote**: an S3-compatible bucket from a provider the team already has credits with, and who holds its key.
@@ -622,6 +827,8 @@ Each item belongs to a slice of the [backend roadmap](../backend/roadmap.md). It
 6. **Where the deployed digests are recorded.** `deploy.log` on each host (this design) or a committed file in `infra/`, which would put deploys through pull requests.
 7. **`api` and HEIC.** *Answered on 2026-10-16:* `api`'s manifest declares `heic = ["vision/heic"]`, like `worker`'s, and the image builds with `--features heic`.
 8. **Who may create `v*` tags.** *Answered on 2026-10-16:* no tag ruleset for the hackathon. Anyone with write access can push a `v*` tag, but `images` refuses one whose commit isn't on `main` or whose name isn't `vMAJOR.MINOR.PATCH[-pre]`, so only reviewed code is released. Revisit if more people get write access: a tag ruleset can limit creating, moving and deleting `v*` tags to admins.
+9. **Hardening the CI runners.** Two steps would close most of what [Runners and budget](#runners-and-budget) lists. (a) A third runner as its own user, `ci-release`, with its own rootless daemon and builder, taking only `images` and `release`; its job-started hook exits 1 unless `GITHUB_EVENT_NAME` is `push` and `GITHUB_REF` is `refs/heads/main` or a `v*` tag, because a pull request can rewrite `runs-on`. (b) nftables rules for `meta skuid <ci-runner's uid>` that drop traffic to the tailnet (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) and to loopback ports below 32768, which the live job's ephemeral ports never use. Both need `sudo` once on the rig.
+10. **Should `seed-upload` hold `api` back?** `api`'s dependency is `required: false` so that a host without the `seed` profile starts, and so compose starts `api` after a failed upload too (section 4). Once every control plane runs the `seed` profile, the dependency can be required; until then `deploy.sh` is the check.
 
 ---
 
@@ -629,6 +836,9 @@ Each item belongs to a slice of the [backend roadmap](../backend/roadmap.md). It
 
 - [GitHub Actions: workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax) (service `command` and `entrypoint`, path filters and required checks, concurrency) ✓
 - [GitHub-hosted runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) (private-repository runner sizes, labels) ✓
+- [Self-hosted runners](https://docs.github.com/en/actions/reference/runners/self-hosted-runners) · [running scripts before or after a job](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/running-scripts-before-or-after-a-job) · [the runner's releases](https://github.com/actions/runner/releases) (v2.338.0; `DockerUtil.ParseDockerPort` read in its source ✓)
+- [Rootless Docker](https://docs.docker.com/engine/security/rootless/) · [`docker buildx prune`](https://docs.docker.com/reference/cli/docker/buildx/prune/)
+- [GitHub's 2026 pricing changes for Actions](https://resources.github.com/actions/2026-pricing-changes-for-github-actions/) ✓ (read 2026-10-19)
 - [GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions) and [GitHub Packages billing](https://docs.github.com/en/billing/concepts/product-billing/github-packages) ✓
 - [Working with the Container registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry) (classic tokens, `read:packages`, the source label) ✓
 - Action releases: [checkout](https://github.com/actions/checkout/releases), [setup-python](https://github.com/actions/setup-python/releases), [rust-cache](https://github.com/Swatinem/rust-cache/releases), [install-action](https://github.com/taiki-e/install-action/releases), [setup-buildx-action](https://github.com/docker/setup-buildx-action/releases), [login-action](https://github.com/docker/login-action/releases) ✓

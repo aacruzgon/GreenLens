@@ -1,0 +1,2923 @@
+//! The sync on the embedded `SurrealDB` 3.3.4 engine with a scripted [`FarmSource`] and a
+//! counting embedder (docs/EON T-E4.1, T-E4.7, T-E4.9, T-E4.10). One datastore per test; time
+//! moves only through the [`FixedClock`].
+
+use std::{
+    collections::BTreeMap,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
+
+use async_trait::async_trait;
+use secrecy::{ExposeSecret as _, SecretString};
+use surrealdb::engine::any;
+use tokio_util::sync::CancellationToken;
+
+use domain::{
+    authz::check_membership_of,
+    connectors::{
+        ConnectorAccount, ConnectorEndpoint, ConnectorKind, ConnectorSource, ConnectorStatus,
+        FarmRecordKind, SyncErrorCode,
+    },
+    garden::gardens::TimeZone,
+    id::{AuthId, ConnectorId, FarmRecordId, GardenId, UserId},
+    ports::{
+        Clock, DeletionRepo, EmbedMode, Embedding, EmbeddingModel, FarmItem, FarmPage,
+        FarmPageRequest, FarmRecordStore, FarmSource, FarmSourceError, FarmVector, GardenRepo,
+        IdGenExt, IdentityRepo, ModelError, NewConnector, NewFarmRecord, NewGarden,
+        ResolvedLocation, SyncCursor, TextEmbedder, VendorToken,
+    },
+    records::weather::{Coordinates, LocationPrecision},
+    rules::limits::{FARM_RECORD_KEEP, MAX_FARM_RECORDS_PER_GARDEN},
+    testing::{FixedClock, SequentialIds},
+    wire::Timestamp,
+};
+use store::{SurrealStore, apply_schema_with};
+
+use super::{
+    FarmSources, FarmSync, RunEnd, SYNC_EVERY, SyncConfig, chunk, delete_old_messages,
+    seed::{self, EraSeed, Seeded},
+    state::SourceState,
+};
+use crate::{
+    connect::{ConnectVendors, MockConnectVendors},
+    sealing::{ConnectorKey, SealPurpose, StoredTokens},
+};
+
+const KEY_HEX: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+const DIM: usize = 4;
+
+pub fn key() -> ConnectorKey {
+    ConnectorKey::from_hex(KEY_HEX).expect("a valid test key")
+}
+
+/// The pinned clock of the Era tests (docs/EON section 2).
+pub fn pinned() -> Timestamp {
+    "2026-10-15T12:00:00Z".parse().expect("a timestamp")
+}
+
+/// A fresh embedded store with the schema.
+pub async fn store() -> Arc<SurrealStore> {
+    let db = any::connect("mem://").await.expect("embedded engine");
+    apply_schema_with(&db).await.expect("schema applies");
+    Arc::new(SurrealStore::from_client(db).await.expect("pdm/main"))
+}
+
+/// A user who owns a new garden.
+pub async fn garden(store: &SurrealStore, ids: &SequentialIds, name: &str) -> (UserId, GardenId) {
+    let auth: AuthId = format!("user_{name}").parse().expect("auth id");
+    let user = store
+        .upsert_user(&auth, Some(name.into()))
+        .await
+        .expect("user");
+    let garden: GardenId = ids.id();
+    store
+        .create_garden(
+            user,
+            NewGarden {
+                id: garden,
+                name: name.into(),
+                location: ResolvedLocation {
+                    coordinates: Coordinates {
+                        lat: 43.55,
+                        lon: -80.25,
+                    },
+                    precision: LocationPrecision::About1Km,
+                    label: "Guelph, ON".into(),
+                    time_zone: TimeZone("America/Toronto".into()),
+                },
+            },
+        )
+        .await
+        .expect("garden");
+    (user, garden)
+}
+
+/// An `active` connector with a sealed token and these sources, due at `now`.
+pub async fn connector(
+    store: &SurrealStore,
+    ids: &SequentialIds,
+    (user, garden): (UserId, GardenId),
+    endpoint: ConnectorEndpoint,
+    sources: &[&str],
+    token: &str,
+    now: Timestamp,
+) -> ConnectorId {
+    let id: ConnectorId = ids.id();
+    store
+        .seed_connector(
+            garden,
+            NewConnector {
+                id,
+                kind: ConnectorKind::Slack,
+                status: ConnectorStatus::Active,
+                endpoint,
+                created_by: user,
+                account: Some(ConnectorAccount::Slack {
+                    team_id: "T1".into(),
+                    team_name: "Farm".into(),
+                    url: "https://farm.slack.com/".into(),
+                }),
+                secret: Some(key().seal(SealPurpose::Token, id, token.as_bytes())),
+                oauth: None,
+                sources: sources
+                    .iter()
+                    .map(|s| ConnectorSource {
+                        id: (*s).to_owned(),
+                        name: (*s).to_lowercase(),
+                    })
+                    .collect(),
+                created_at: now,
+            },
+        )
+        .await
+        .expect("connector");
+    id
+}
+
+/// Vendors whose tokens never need renewing: `refresh` answers `None`.
+pub fn vendors() -> Arc<dyn ConnectVendors> {
+    let mut vendors = MockConnectVendors::new();
+    vendors.expect_refresh().returning(|_, _, _| Ok(None));
+    Arc::new(vendors)
+}
+
+/// Counts the texts it embeds; every vector is the same unit vector.
+#[derive(Default)]
+pub struct CountingEmbedder {
+    pub calls: AtomicUsize,
+    pub texts: AtomicUsize,
+}
+
+impl CountingEmbedder {
+    pub fn texts(&self) -> usize {
+        self.texts.load(Ordering::SeqCst)
+    }
+}
+
+#[async_trait]
+impl TextEmbedder for CountingEmbedder {
+    fn model(&self) -> EmbeddingModel {
+        EmbeddingModel {
+            name: "counting".into(),
+            version: "1".into(),
+            dimension: DIM,
+        }
+    }
+
+    async fn embed(&self, mode: EmbedMode, texts: &[String]) -> Result<Vec<Embedding>, ModelError> {
+        assert_eq!(mode, EmbedMode::Document, "farm records are documents");
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        self.texts.fetch_add(texts.len(), Ordering::SeqCst);
+        Ok(texts
+            .iter()
+            .map(|_| Embedding(vec![1.0, 0.0, 0.0, 0.0]))
+            .collect())
+    }
+}
+
+type Script = Box<dyn FnMut(&FarmPageRequest) -> Result<FarmPage, FarmSourceError> + Send>;
+
+/// A vendor whose pages a test writes, recording every request.
+struct FakeSource {
+    window: Option<Duration>,
+    script: Mutex<Script>,
+    requests: Mutex<Vec<FarmPageRequest>>,
+    tokens: Mutex<Vec<String>>,
+}
+
+impl FakeSource {
+    fn new(window: Option<Duration>, script: Script) -> Arc<Self> {
+        Arc::new(Self {
+            window,
+            script: Mutex::new(script),
+            requests: Mutex::new(Vec::new()),
+            tokens: Mutex::new(Vec::new()),
+        })
+    }
+
+    fn requests(&self) -> Vec<FarmPageRequest> {
+        self.requests.lock().expect("requests").clone()
+    }
+}
+
+#[async_trait]
+impl FarmSource for FakeSource {
+    fn kind(&self) -> ConnectorKind {
+        ConnectorKind::Slack
+    }
+
+    fn reread_window(&self) -> Option<Duration> {
+        self.window
+    }
+
+    async fn available_sources(
+        &self,
+        _token: &VendorToken,
+    ) -> Result<Vec<ConnectorSource>, FarmSourceError> {
+        Ok(Vec::new())
+    }
+
+    async fn read_page(
+        &self,
+        token: &VendorToken,
+        request: FarmPageRequest,
+    ) -> Result<FarmPage, FarmSourceError> {
+        self.tokens
+            .lock()
+            .expect("tokens")
+            .push(token.expose().to_owned());
+        self.requests
+            .lock()
+            .expect("requests")
+            .push(request.clone());
+        (self.script.lock().expect("script"))(&request)
+    }
+
+    async fn revoke(&self, _token: &VendorToken) -> Result<(), FarmSourceError> {
+        Ok(())
+    }
+}
+
+fn item(source: &str, ts: &str, text: &str, at: Timestamp) -> FarmItem {
+    FarmItem {
+        vendor_id: format!("{source}/{ts}"),
+        kind: FarmRecordKind::Message,
+        title: format!("#{source}"),
+        author: Some("Maria".into()),
+        link: format!("https://farm.slack.com/archives/{source}/p{ts}"),
+        text: text.into(),
+        at,
+    }
+}
+
+fn page(items: Vec<FarmItem>, more: bool, cursor: &str) -> FarmPage {
+    FarmPage {
+        items,
+        removed: Vec::new(),
+        kept: Vec::new(),
+        listed: None,
+        cursor: SyncCursor(cursor.into()),
+        more,
+        probes: 0,
+    }
+}
+
+struct Bench {
+    store: Arc<SurrealStore>,
+    clock: Arc<FixedClock>,
+    embedder: Arc<CountingEmbedder>,
+    sync: FarmSync,
+    ids: SequentialIds,
+}
+
+fn bench(store: Arc<SurrealStore>, source: Arc<dyn FarmSource>, config: SyncConfig) -> Bench {
+    let clock = Arc::new(FixedClock::at(pinned()));
+    let embedder = Arc::new(CountingEmbedder::default());
+    let sync = FarmSync::new(
+        store.clone(),
+        embedder.clone(),
+        clock.clone(),
+        key(),
+        vendors(),
+        FarmSources::default().with(ConnectorEndpoint::Vendor, source),
+        config,
+    );
+    Bench {
+        store,
+        clock,
+        embedder,
+        sync,
+        ids: SequentialIds::default(),
+    }
+}
+
+impl Bench {
+    async fn run(&self) -> Vec<(ConnectorId, RunEnd)> {
+        self.sync
+            .run_due(&CancellationToken::new())
+            .await
+            .expect("due connectors listed")
+    }
+
+    async fn row(&self, id: ConnectorId) -> domain::ports::ConnectorRow {
+        self.store
+            .connector_row(id)
+            .await
+            .expect("read")
+            .expect("exists")
+    }
+
+    async fn count(&self, garden: GardenId) -> u32 {
+        self.store.garden_record_count(garden).await.expect("count")
+    }
+}
+
+#[tokio::test]
+async fn t_e4_1_a_run_takes_at_most_four_due_connectors() {
+    let source = FakeSource::new(None, Box::new(|_| Ok(page(Vec::new(), false, "c"))));
+    let b = bench(store().await, source.clone(), SyncConfig::default());
+    let mut connectors = Vec::new();
+    for name in ["a", "b", "c"] {
+        let owner = garden(&b.store, &b.ids, name).await;
+        for _ in 0..2 {
+            let id = connector(
+                &b.store,
+                &b.ids,
+                owner,
+                ConnectorEndpoint::Vendor,
+                &["C1"],
+                "xoxb-1",
+                b.clock.now(),
+            )
+            .await;
+            connectors.push(id);
+        }
+    }
+    let first = b.run().await;
+    assert_eq!(first.len(), 4, "{first:?}");
+    assert!(first.iter().all(|(_, end)| *end == RunEnd::Synced));
+    for (id, _) in &first {
+        let row = b.row(*id).await;
+        assert_eq!(row.next_sync_at, pinned().plus(SYNC_EVERY));
+        assert_eq!(row.connector.synced_at, Some(pinned()));
+        assert_eq!(row.last_error, None);
+    }
+    // The other two are next; the four synced ones wait their 15 minutes.
+    let second = b.run().await;
+    assert_eq!(second.len(), 2);
+    assert!(
+        second
+            .iter()
+            .all(|(id, _)| !first.iter().any(|(f, _)| f == id))
+    );
+    assert_eq!(b.run().await.len(), 0);
+    b.clock.advance(SYNC_EVERY);
+    assert_eq!(b.run().await.len(), 4);
+    // Each read got the unsealed token and the 180-day floor of its run.
+    let requests = source.requests();
+    assert_eq!(requests.len(), 10);
+    assert!(
+        requests[..6]
+            .iter()
+            .all(|r| r.oldest == pinned().minus(FARM_RECORD_KEEP))
+    );
+    assert!(
+        source
+            .tokens
+            .lock()
+            .expect("tokens")
+            .iter()
+            .all(|t| t == "xoxb-1")
+    );
+}
+
+/// The connect routes seal Google's grant as JSON (`StoredTokens`); the sync sends only its
+/// access token.
+#[tokio::test]
+async fn a_grant_sealed_as_json_gives_the_sync_its_access_token() {
+    let source = FakeSource::new(None, Box::new(|_| Ok(page(Vec::new(), false, "c"))));
+    let b = bench(store().await, source.clone(), SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "xoxb-1",
+        b.clock.now(),
+    )
+    .await;
+    let grant = StoredTokens {
+        access_token: SecretString::from("ya29.access"),
+        refresh_token: Some(SecretString::from("1//refresh")),
+        expires_at: Some(pinned().plus(Duration::from_hours(1))),
+    };
+    let read = b.row(id).await.secret.expect("sealed");
+    assert!(
+        b.store
+            .replace_secret(id, read, grant.seal(&key(), id))
+            .await
+            .expect("stored")
+    );
+    assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+    assert_eq!(*source.tokens.lock().expect("tokens"), ["ya29.access"]);
+}
+
+#[tokio::test]
+async fn t_e4_7_unchanged_text_costs_no_embedding_and_a_changed_chunk_is_embedded() {
+    let text = Arc::new(Mutex::new("Rings on bed 3, lower leaves.".to_owned()));
+    let script_text = text.clone();
+    let at = pinned().minus(Duration::from_hours(5));
+    let source = FakeSource::new(
+        None,
+        Box::new(move |_| {
+            let t = script_text.lock().expect("text").clone();
+            Ok(page(
+                vec![
+                    item("C1", "1.000100", &t, at),
+                    item("C1", "2.000100", "Aphids on bed 1.", at),
+                ],
+                false,
+                "c",
+            ))
+        }),
+    );
+    let b = bench(store().await, source, SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "xoxb-1",
+        b.clock.now(),
+    )
+    .await;
+    b.run().await;
+    assert_eq!(b.embedder.texts(), 2);
+    assert_eq!(b.count(owner.1).await, 2);
+
+    b.clock.advance(SYNC_EVERY);
+    b.run().await;
+    assert_eq!(b.embedder.texts(), 2, "unchanged text keeps its vector");
+
+    *text.lock().expect("text") = "Rings on bed 3, now upper leaves too.".into();
+    b.clock.advance(SYNC_EVERY);
+    b.run().await;
+    assert_eq!(b.embedder.texts(), 3, "only the changed chunk");
+    assert_eq!(b.count(owner.1).await, 2);
+    let hashes: BTreeMap<String, String> = b
+        .store
+        .record_hashes(id, vec!["C1/1.000100".into()])
+        .await
+        .expect("hashes")
+        .into_iter()
+        .map(|(id, h)| (id.to_string(), h))
+        .collect();
+    // The hash is of what was embedded: the author and channel, then the text.
+    assert_eq!(
+        hashes.values().next(),
+        Some(&chunk::text_hash(
+            "Maria in #C1\n\nRings on bed 3, now upper leaves too."
+        ))
+    );
+}
+
+/// EON gap G12: the author and title are embedded with the text, so a new display name or
+/// channel name embeds the record again, though its text is the same.
+#[tokio::test]
+async fn a_renamed_author_or_channel_embeds_the_record_again() {
+    let author = Arc::new(Mutex::new("Riley".to_owned()));
+    let title = Arc::new(Mutex::new("#field-reports".to_owned()));
+    let (script_author, script_title) = (author.clone(), title.clone());
+    let at = pinned().minus(Duration::from_hours(5));
+    let source = FakeSource::new(
+        None,
+        Box::new(move |_| {
+            let mut posted = item("C1", "1.000100", "Rings on bed 3.", at);
+            posted.author = Some(script_author.lock().expect("author").clone());
+            posted.title = script_title.lock().expect("title").clone();
+            Ok(page(vec![posted], false, "c"))
+        }),
+    );
+    let b = bench(store().await, source, SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "xoxb-1",
+        b.clock.now(),
+    )
+    .await;
+    b.run().await;
+    assert_eq!(b.embedder.texts(), 1);
+    b.clock.advance(SYNC_EVERY);
+    b.run().await;
+    assert_eq!(
+        b.embedder.texts(),
+        1,
+        "the same author and channel keep the vector"
+    );
+    "Riley Shaw".clone_into(&mut author.lock().expect("author"));
+    b.clock.advance(SYNC_EVERY);
+    b.run().await;
+    assert_eq!(b.embedder.texts(), 2, "a new display name");
+    "#field".clone_into(&mut title.lock().expect("title"));
+    b.clock.advance(SYNC_EVERY);
+    b.run().await;
+    assert_eq!(b.embedder.texts(), 3, "a renamed channel");
+}
+
+/// EON gap G12, the upgrade: records stored with the text-only hash under a cursor written
+/// before `text_version` are read again in full and embedded again, keeping their ids, though
+/// the vendor doesn't send an unchanged item past its cursor.
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "a sync, the earlier version's state, and two more"
+)]
+async fn records_from_before_the_embedded_text_are_embedded_again_once() {
+    let at = pinned().minus(Duration::from_hours(5));
+    let posted = vec![
+        item("C1", "1.000100", "Rings on bed 3.", at),
+        item("C1", "2.000100", "Aphids on bed 1.", at),
+    ];
+    let kept: Vec<String> = posted.iter().map(|i| i.vendor_id.clone()).collect();
+    let source = FakeSource::new(
+        None,
+        Box::new(move |r| {
+            // Like Slack: a first pass sends every item; a later one, nothing unchanged.
+            Ok(if r.cursor.is_none() {
+                page(posted.clone(), false, "c1")
+            } else {
+                FarmPage {
+                    kept: kept.clone(),
+                    ..page(Vec::new(), false, "c1")
+                }
+            })
+        }),
+    );
+    let b = bench(store().await, source.clone(), SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "xoxb-1",
+        b.clock.now(),
+    )
+    .await;
+    b.run().await;
+    b.clock.advance(SYNC_EVERY);
+    b.run().await;
+    assert_eq!(
+        b.embedder.texts(),
+        2,
+        "the current cursor sends nothing again"
+    );
+
+    // Back to how an earlier version left them: text-only hashes, and a cursor without
+    // `text_version`.
+    let vendors = vec!["C1/1.000100".to_owned(), "C1/2.000100".to_owned()];
+    let old: Vec<NewFarmRecord> = [
+        ("C1/1.000100", "Rings on bed 3."),
+        ("C1/2.000100", "Aphids on bed 1."),
+    ]
+    .into_iter()
+    .map(|(vendor, text)| NewFarmRecord {
+        id: FarmRecordId::new(id, vendor, 0).expect("id"),
+        kind: FarmRecordKind::Message,
+        source: "C1".into(),
+        title: "#C1".into(),
+        author: Some("Maria".into()),
+        link: "l".into(),
+        text: text.into(),
+        text_hash: chunk::text_hash(text),
+        vector: Some(FarmVector {
+            embedding: Embedding(vec![0.0, 1.0, 0.0, 0.0]),
+            model: "counting".into(),
+        }),
+        at,
+    })
+    .collect();
+    b.store.upsert_records(id, old).await.expect("old records");
+    let row = b.row(id).await;
+    let mut cursors = row.cursors.clone();
+    cursors.insert(
+        "C1".into(),
+        SyncCursor(r#"{"vendor":"c1","reread_at":"2026-10-15T11:00:00Z"}"#.into()),
+    );
+    b.store
+        .finish_sync(
+            id,
+            domain::ports::SyncOutcome {
+                due_at: row.next_sync_at,
+                cursors,
+                synced_at: Some(b.clock.now()),
+                next_sync_at: b.clock.now(),
+                last_error: None,
+            },
+        )
+        .await
+        .expect("old cursor");
+    let before = source.requests().len();
+    let ids = |hashes: &[(FarmRecordId, String)]| {
+        hashes
+            .iter()
+            .map(|(r, _)| r.to_string())
+            .collect::<Vec<_>>()
+    };
+    let stored = b
+        .store
+        .record_hashes(id, vendors.clone())
+        .await
+        .expect("hashes");
+
+    b.run().await;
+    assert_eq!(
+        source.requests()[before].cursor,
+        None,
+        "read again from the start"
+    );
+    assert_eq!(b.embedder.texts(), 4, "both records embedded again");
+    let now = b.store.record_hashes(id, vendors).await.expect("hashes");
+    assert_eq!(ids(&now), ids(&stored), "the same records, not new ones");
+    assert_eq!(b.count(owner.1).await, 2);
+    let mut hashes: Vec<String> = now.into_iter().map(|(_, h)| h).collect();
+    hashes.sort();
+    let mut expected = vec![
+        chunk::text_hash("Maria in #C1\n\nRings on bed 3."),
+        chunk::text_hash("Maria in #C1\n\nAphids on bed 1."),
+    ];
+    expected.sort();
+    assert_eq!(hashes, expected);
+
+    // Once: the cursor now carries the version, and the next run embeds nothing.
+    b.clock.advance(SYNC_EVERY);
+    b.run().await;
+    assert_eq!(b.embedder.texts(), 4);
+}
+
+#[tokio::test]
+async fn a_shorter_document_drops_its_extra_chunks() {
+    let long = Arc::new(Mutex::new(
+        ["a".repeat(1_500), "b".repeat(1_500)].join("\n\n"),
+    ));
+    let script_text = long.clone();
+    let source = FakeSource::new(
+        None,
+        Box::new(move |_| {
+            let mut doc = item("F1", "doc", &script_text.lock().expect("text"), pinned());
+            doc.vendor_id = "D_SPRAY".into();
+            doc.kind = FarmRecordKind::Document;
+            Ok(page(vec![doc], false, "c"))
+        }),
+    );
+    let b = bench(store().await, source, SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["F1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    b.run().await;
+    assert_eq!(b.count(owner.1).await, 2);
+    *long.lock().expect("text") = "a".repeat(1_500);
+    b.clock.advance(SYNC_EVERY);
+    b.run().await;
+    assert_eq!(b.count(owner.1).await, 1);
+    assert_eq!(b.embedder.texts(), 2, "chunk 0 is unchanged");
+}
+
+#[tokio::test]
+async fn t_e4_9_a_refused_token_stops_the_sync_and_keeps_the_records() {
+    let refuse = Arc::new(Mutex::new(false));
+    let flag = refuse.clone();
+    let source = FakeSource::new(
+        None,
+        Box::new(move |_| {
+            if *flag.lock().expect("flag") {
+                Err(FarmSourceError::AuthRefused {
+                    vendor: ConnectorKind::Slack,
+                })
+            } else {
+                Ok(page(
+                    vec![item("C1", "1.0", "Spray log", pinned())],
+                    false,
+                    "c",
+                ))
+            }
+        }),
+    );
+    let b = bench(store().await, source, SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    b.run().await;
+    assert_eq!(b.count(owner.1).await, 1);
+
+    *refuse.lock().expect("flag") = true;
+    b.clock.advance(SYNC_EVERY);
+    let ends = b.run().await;
+    assert_eq!(ends, [(id, RunEnd::Failed(SyncErrorCode::AuthRefused))]);
+    let row = b.row(id).await;
+    assert_eq!(row.connector.status, ConnectorStatus::ReauthNeeded);
+    assert_eq!(row.last_error, Some(SyncErrorCode::AuthRefused));
+    assert_eq!(b.count(owner.1).await, 1, "records stay searchable");
+    b.clock.advance(SYNC_EVERY * 4);
+    assert!(b.run().await.is_empty(), "nothing runs until a reconnect");
+}
+
+#[tokio::test]
+async fn a_token_that_does_not_open_is_refused_too() {
+    let source = FakeSource::new(None, Box::new(|_| panic!("never read")));
+    let b = bench(store().await, source, SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    let other = ConnectorKey::from_hex(&"ab".repeat(32)).expect("key");
+    let sync = FarmSync::new(
+        b.store.clone(),
+        b.embedder.clone(),
+        b.clock.clone(),
+        other,
+        vendors(),
+        FarmSources::default().with(
+            ConnectorEndpoint::Vendor,
+            FakeSource::new(None, Box::new(|_| panic!("never read"))),
+        ),
+        SyncConfig::default(),
+    );
+    let ends = sync
+        .run_due(&CancellationToken::new())
+        .await
+        .expect("listed");
+    assert_eq!(ends, [(id, RunEnd::Failed(SyncErrorCode::AuthRefused))]);
+    assert_eq!(
+        b.row(id).await.connector.status,
+        ConnectorStatus::ReauthNeeded
+    );
+}
+
+#[tokio::test]
+async fn t_e4_9_the_10001st_record_stops_the_sync_with_too_large() {
+    let source = FakeSource::new(
+        None,
+        Box::new(|_| {
+            Ok(page(
+                vec![item("C1", "new.1", "One more", pinned())],
+                false,
+                "c",
+            ))
+        }),
+    );
+    let b = bench(store().await, source, SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    // 10,000 records already: written in one statement, not through the sync.
+    let mut r = b
+        .store
+        .db()
+        .query(
+            "FOR $i IN 0..10000 {
+  CREATE type::record('farm_record', [$c, string::concat('C1/', <string> $i), 0]) CONTENT {
+    garden: $g, connector: $c, kind: 'message', vendor_id: string::concat('C1/', <string> $i),
+    source: 'C1', title: '#c1', link: 'l', text: 't', text_hash: 'h', embedding: [1f, 0f, 0f, 0f],
+    embedding_model: 'counting', at: $at };
+};",
+        )
+        .bind(("c", store::ids::rid(&id)))
+        .bind(("g", store::ids::rid(&owner.1)))
+        .bind(("at", pinned().into_inner()))
+        .await
+        .expect("query sent");
+    assert!(r.take_errors().is_empty());
+    assert_eq!(b.count(owner.1).await, MAX_FARM_RECORDS_PER_GARDEN);
+
+    let ends = b.run().await;
+    assert_eq!(ends, [(id, RunEnd::Failed(SyncErrorCode::TooLarge))]);
+    assert_eq!(b.count(owner.1).await, MAX_FARM_RECORDS_PER_GARDEN);
+    assert_eq!(b.embedder.texts(), 0);
+    let row = b.row(id).await;
+    assert_eq!(row.connector.status, ConnectorStatus::Active);
+    assert_eq!(row.last_error, Some(SyncErrorCode::TooLarge));
+    b.clock.advance(SYNC_EVERY * 4);
+    assert!(
+        b.run().await.is_empty(),
+        "nothing runs until the sources change"
+    );
+}
+
+/// A vendor whose read of `C1` coincides with the owner dropping `C1` from the sources.
+struct DroppingSource {
+    store: Arc<SurrealStore>,
+    connector: std::sync::OnceLock<ConnectorId>,
+}
+
+#[async_trait]
+impl FarmSource for DroppingSource {
+    fn kind(&self) -> ConnectorKind {
+        ConnectorKind::Slack
+    }
+
+    fn reread_window(&self) -> Option<Duration> {
+        None
+    }
+
+    async fn available_sources(
+        &self,
+        _token: &VendorToken,
+    ) -> Result<Vec<ConnectorSource>, FarmSourceError> {
+        Ok(Vec::new())
+    }
+
+    async fn read_page(
+        &self,
+        _token: &VendorToken,
+        request: FarmPageRequest,
+    ) -> Result<FarmPage, FarmSourceError> {
+        let source = request.source.id;
+        if source == "C1" {
+            let id = self.connector.get().expect("the connector is set");
+            self.store
+                .db()
+                .query("UPDATE $c SET sources = [{ id: 'C2', name: 'c2' }];")
+                .bind(("c", store::ids::rid(id)))
+                .await
+                .expect("sources updated")
+                .check()
+                .expect("sources updated");
+        }
+        Ok(page(
+            vec![item(&source, "1.0", "a message", pinned())],
+            false,
+            "c",
+        ))
+    }
+
+    async fn revoke(&self, _token: &VendorToken) -> Result<(), FarmSourceError> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn a_page_of_a_source_dropped_meanwhile_does_not_count_toward_the_limit() {
+    let store = store().await;
+    let source = Arc::new(DroppingSource {
+        store: store.clone(),
+        connector: std::sync::OnceLock::new(),
+    });
+    let config = SyncConfig {
+        max_records: 1,
+        ..SyncConfig::default()
+    };
+    let b = bench(store, source.clone(), config);
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1", "C2"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    source.connector.set(id).expect("set once");
+    // C1's record is skipped by the store; counted anyway, C2's would pass the limit of 1.
+    assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+    assert_eq!(b.count(owner.1).await, 1);
+}
+
+/// A vendor whose second page of `C1` comes while another connector of the garden stores
+/// records, as one syncing side by side in `run_due` would.
+struct RacingSource {
+    store: Arc<SurrealStore>,
+    other: std::sync::OnceLock<ConnectorId>,
+    calls: AtomicUsize,
+}
+
+#[async_trait]
+impl FarmSource for RacingSource {
+    fn kind(&self) -> ConnectorKind {
+        ConnectorKind::Slack
+    }
+
+    fn reread_window(&self) -> Option<Duration> {
+        None
+    }
+
+    async fn available_sources(
+        &self,
+        _token: &VendorToken,
+    ) -> Result<Vec<ConnectorSource>, FarmSourceError> {
+        Ok(Vec::new())
+    }
+
+    async fn read_page(
+        &self,
+        _token: &VendorToken,
+        _request: FarmPageRequest,
+    ) -> Result<FarmPage, FarmSourceError> {
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            return Ok(page(
+                vec![
+                    item("C1", "1.0", "one", pinned()),
+                    item("C1", "2.0", "two", pinned()),
+                ],
+                true,
+                "p1",
+            ));
+        }
+        let other = *self.other.get().expect("the other connector is set");
+        let records = (0..3)
+            .map(|i| NewFarmRecord {
+                id: FarmRecordId::new(other, &format!("D1/{i}.0"), 0).expect("id"),
+                kind: FarmRecordKind::Message,
+                source: "D1".into(),
+                title: "#d1".into(),
+                author: None,
+                link: "l".into(),
+                text: "x".into(),
+                text_hash: chunk::text_hash("x"),
+                vector: Some(FarmVector {
+                    embedding: Embedding(vec![1.0, 0.0, 0.0, 0.0]),
+                    model: "counting".into(),
+                }),
+                at: pinned(),
+            })
+            .collect();
+        self.store
+            .upsert_records(other, records)
+            .await
+            .expect("the other connector's records");
+        Ok(page(
+            vec![item("C1", "3.0", "three", pinned())],
+            false,
+            "done",
+        ))
+    }
+
+    async fn revoke(&self, _token: &VendorToken) -> Result<(), FarmSourceError> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn the_limit_counts_what_another_connector_stored_during_the_run() {
+    let store = store().await;
+    let source = Arc::new(RacingSource {
+        store: store.clone(),
+        other: std::sync::OnceLock::new(),
+        calls: AtomicUsize::new(0),
+    });
+    let config = SyncConfig {
+        max_records: 5,
+        ..SyncConfig::default()
+    };
+    let b = bench(store, source.clone(), config);
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    let other = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Era,
+        &["D1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    source.other.set(other).expect("set once");
+    // Page 1 stores 2 (2 of 5); the other connector then stores 3 (5 of 5), so page 2's one
+    // record would pass the limit. Counted once at the run's start, the garden would hold 6.
+    let end = b
+        .sync
+        .sync_connector(b.row(id).await, &CancellationToken::new())
+        .await;
+    assert_eq!(end, RunEnd::Failed(SyncErrorCode::TooLarge));
+    assert_eq!(b.count(owner.1).await, 5);
+}
+
+#[tokio::test]
+async fn t_e4_9_cleanup_deletes_old_slack_messages_and_keeps_old_documents() {
+    let b = bench(
+        store().await,
+        FakeSource::new(None, Box::new(|_| Ok(page(Vec::new(), false, "c")))),
+        SyncConfig::default(),
+    );
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    let old = pinned().minus(FARM_RECORD_KEEP + Duration::from_hours(24));
+    let record = |vendor: &str, kind: FarmRecordKind, at: Timestamp| NewFarmRecord {
+        id: FarmRecordId::new(id, vendor, 0).expect("id"),
+        kind,
+        source: "C1".into(),
+        title: "t".into(),
+        author: None,
+        link: "l".into(),
+        text: "x".into(),
+        text_hash: chunk::text_hash("x"),
+        vector: Some(FarmVector {
+            embedding: Embedding(vec![1.0, 0.0, 0.0, 0.0]),
+            model: "counting".into(),
+        }),
+        at,
+    };
+    b.store
+        .upsert_records(
+            id,
+            vec![
+                record("C1/old", FarmRecordKind::Message, old),
+                record("C1/new", FarmRecordKind::Message, pinned()),
+                record("F_OLD_DOC", FarmRecordKind::Document, old),
+            ],
+        )
+        .await
+        .expect("records");
+    assert_eq!(
+        delete_old_messages(b.store.as_ref(), pinned())
+            .await
+            .expect("cleanup"),
+        1
+    );
+    let left: Vec<String> = b
+        .store
+        .record_hashes(
+            id,
+            vec!["C1/old".into(), "C1/new".into(), "F_OLD_DOC".into()],
+        )
+        .await
+        .expect("hashes")
+        .into_iter()
+        .map(|(r, _)| r.vendor_id.to_string())
+        .collect();
+    assert_eq!(left.len(), 2);
+    assert!(left.contains(&"C1/new".to_owned()) && left.contains(&"F_OLD_DOC".to_owned()));
+}
+
+#[tokio::test]
+async fn a_throttled_pass_saves_its_cursor_and_resumes_on_the_next_run() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let n = calls.clone();
+    let source = FakeSource::new(
+        Some(Duration::from_hours(7 * 24)),
+        Box::new(move |r| match n.fetch_add(1, Ordering::SeqCst) {
+            0 => {
+                assert_eq!(r.cursor, None);
+                Ok(page(vec![item("C1", "3.0", "three", pinned())], true, "p1"))
+            }
+            1 => Err(FarmSourceError::RateLimited {
+                vendor: ConnectorKind::Slack,
+                retry_after_s: Some(90),
+            }),
+            _ => {
+                assert_eq!(r.cursor, Some(SyncCursor("p1".into())), "resumes at page 2");
+                assert_eq!(r.reread_from, None, "a first pass is not a re-read");
+                Ok(page(
+                    vec![item("C1", "2.0", "two", pinned())],
+                    false,
+                    "done",
+                ))
+            }
+        }),
+    );
+    let b = bench(store().await, source, SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    let ends = b.run().await;
+    assert_eq!(ends, [(id, RunEnd::Failed(SyncErrorCode::RateLimited))]);
+    let row = b.row(id).await;
+    assert_eq!(row.next_sync_at, pinned().plus(Duration::from_secs(90)));
+    assert_eq!(row.connector.synced_at, None);
+    assert_eq!(b.count(owner.1).await, 1);
+
+    b.clock.advance(Duration::from_secs(90));
+    assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+    assert_eq!(b.count(owner.1).await, 2);
+    assert_eq!(b.row(id).await.last_error, None);
+}
+
+#[tokio::test]
+async fn the_daily_reread_deletes_what_the_vendor_no_longer_has() {
+    let gone = Arc::new(Mutex::new(false));
+    let flag = gone.clone();
+    let recent = pinned().minus(Duration::from_hours(48));
+    let source = FakeSource::new(
+        Some(Duration::from_hours(7 * 24)),
+        Box::new(move |r| {
+            let all = [
+                item("C1", "1.0", "kept", recent),
+                item("C1", "2.0", "deleted at the vendor", recent),
+                item("C1", "3.0", "a thread", recent),
+            ];
+            if r.reread_from.is_none() {
+                // A later pass with nothing new.
+                let items = if r.cursor.is_none() {
+                    all.to_vec()
+                } else {
+                    Vec::new()
+                };
+                return Ok(page(items, false, "c"));
+            }
+            let mut p = page(vec![all[0].clone()], false, "c");
+            if !*flag.lock().expect("flag") {
+                p.items.push(all[1].clone());
+            }
+            // The thread is unchanged: kept, not sent.
+            p.kept.push(all[2].vendor_id.clone());
+            Ok(p)
+        }),
+    );
+    let b = bench(store().await, source.clone(), SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    b.run().await;
+    assert_eq!(b.count(owner.1).await, 3);
+
+    // Within the day: a plain later pass.
+    b.clock.advance(SYNC_EVERY);
+    b.run().await;
+    assert!(source.requests().iter().all(|r| r.reread_from.is_none()));
+
+    *gone.lock().expect("flag") = true;
+    b.clock.advance(Duration::from_hours(24));
+    b.run().await;
+    let reread = source.requests().pop().expect("a request");
+    assert_eq!(
+        reread.reread_from,
+        Some(b.clock.now().minus(Duration::from_hours(7 * 24)))
+    );
+    assert_eq!(
+        b.count(owner.1).await,
+        2,
+        "the gone message only; the kept thread stays"
+    );
+
+    // The next re-read is a day later, not on the next run.
+    b.clock.advance(SYNC_EVERY);
+    b.run().await;
+    assert_eq!(
+        source.requests().pop().expect("a request").reread_from,
+        None
+    );
+}
+
+/// A re-read that catches up after a month without a sync (Slack's starts at the newest message
+/// seen) keeps only the ids in its window, sent or kept, so the cursor stays small, and deletes
+/// nothing older.
+#[tokio::test]
+async fn a_catching_up_reread_keeps_only_the_ids_in_its_window() {
+    let month = Duration::from_hours(30 * 24);
+    let throttled = Arc::new(AtomicUsize::new(0));
+    let once = throttled.clone();
+    let source = FakeSource::new(
+        Some(Duration::from_hours(7 * 24)),
+        Box::new(
+            move |r| match (r.reread_from, r.cursor.as_ref().map(|c| c.0.as_str())) {
+                (None, _) => Ok(page(
+                    vec![
+                        item("C1", "1.0", "before the gap", pinned()),
+                        item("C1", "4.0", "dated this week", pinned().plus(month)),
+                    ],
+                    false,
+                    "c",
+                )),
+                (Some(_), Some("c")) => Ok(FarmPage {
+                    // Both unchanged threads: one before the gap, one in the window.
+                    kept: vec!["C1/1.0".into(), "C1/4.0".into()],
+                    ..page(
+                        vec![
+                            item(
+                                "C1",
+                                "2.0",
+                                "in the gap",
+                                pinned().plus(Duration::from_hours(240)),
+                            ),
+                            item("C1", "3.0", "this week", pinned().plus(month)),
+                        ],
+                        true,
+                        "r1",
+                    )
+                }),
+                (Some(_), Some("r1")) if once.fetch_add(1, Ordering::SeqCst) == 0 => {
+                    Err(FarmSourceError::RateLimited {
+                        vendor: ConnectorKind::Slack,
+                        retry_after_s: Some(60),
+                    })
+                }
+                (Some(_), _) => Ok(page(Vec::new(), false, "c2")),
+            },
+        ),
+    );
+    let b = bench(store().await, source.clone(), SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+
+    // A month on, the re-read's first page is stored and its second throttled.
+    b.clock.advance(month);
+    assert_eq!(
+        b.run().await,
+        [(id, RunEnd::Failed(SyncErrorCode::RateLimited))]
+    );
+    let state = SourceState::parse(b.row(id).await.cursors.get("C1"));
+    let reread = state.reread.expect("a re-read in progress");
+    assert_eq!(
+        reread.from,
+        b.clock.now().minus(Duration::from_hours(7 * 24))
+    );
+    assert_eq!(
+        reread.seen.into_iter().collect::<Vec<_>>(),
+        ["C1/3.0", "C1/4.0"],
+        "the catch-up's older ids aren't kept, sent or kept"
+    );
+
+    b.clock.advance(Duration::from_secs(60));
+    assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+    assert_eq!(
+        b.count(owner.1).await,
+        4,
+        "nothing deleted: older records are outside the window, and the kept one was seen"
+    );
+}
+
+#[tokio::test]
+async fn a_vendor_without_a_reread_never_deletes_by_absence() {
+    let first = Arc::new(AtomicUsize::new(0));
+    let n = first.clone();
+    let source = FakeSource::new(
+        None,
+        Box::new(move |r| {
+            assert_eq!(r.reread_from, None);
+            let items = if n.fetch_add(1, Ordering::SeqCst) == 0 {
+                vec![item("F1", "doc", "Spray log", pinned())]
+            } else {
+                Vec::new()
+            };
+            Ok(page(items, false, "token"))
+        }),
+    );
+    let b = bench(store().await, source, SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["F1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    b.run().await;
+    b.clock.advance(Duration::from_hours(48));
+    b.run().await;
+    assert_eq!(b.count(owner.1).await, 1);
+}
+
+#[tokio::test]
+async fn a_spent_budget_leaves_the_connector_due() {
+    let source = FakeSource::new(None, Box::new(|_| panic!("never read")));
+    let config = SyncConfig {
+        run_budget: Duration::ZERO,
+        ..SyncConfig::default()
+    };
+    let b = bench(store().await, source, config);
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    assert_eq!(b.run().await, [(id, RunEnd::PagesLeft)]);
+    let row = b.row(id).await;
+    assert_eq!(row.next_sync_at, pinned(), "the next run continues");
+    assert_eq!(row.connector.synced_at, None);
+}
+
+#[tokio::test]
+async fn a_spent_budget_moves_on_to_the_next_sources_on_the_next_run() {
+    // Ten quiet channels, each page 100 ms (a paced vendor), and a budget for three a run.
+    let source = FakeSource::new(
+        None,
+        Box::new(|_| {
+            std::thread::sleep(Duration::from_millis(100));
+            Ok(page(Vec::new(), false, "c"))
+        }),
+    );
+    let config = SyncConfig {
+        run_budget: Duration::from_millis(280),
+        ..SyncConfig::default()
+    };
+    let b = bench(store().await, source.clone(), config);
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let channels: Vec<String> = (0..10).map(|i| format!("C{i}")).collect();
+    let names: Vec<&str> = channels.iter().map(String::as_str).collect();
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &names,
+        "t",
+        b.clock.now(),
+    )
+    .await;
+
+    // Every channel has its turn within four runs, each once and in order; the round then
+    // ends synced.
+    let runs = b.until_synced(id, 4).await;
+    assert!(runs >= 3, "a run read more than the budget: {runs} runs");
+    assert_eq!(
+        reads(&source, 0),
+        channels,
+        "each channel once, in order, none starved"
+    );
+    let row = b.row(id).await;
+    assert_eq!(row.connector.synced_at, Some(pinned()));
+    assert_eq!(row.next_sync_at, pinned().plus(SYNC_EVERY));
+
+    // The next round starts one channel further on than where this one stopped (after C9),
+    // and again reads each channel once.
+    let before = source.requests().len();
+    b.clock.advance(SYNC_EVERY);
+    b.until_synced(id, 4).await;
+    let next = reads(&source, before);
+    assert_eq!(next.first().map(String::as_str), Some("C1"));
+    let mut sorted = next.clone();
+    sorted.sort();
+    assert_eq!(sorted, channels, "each channel once: {next:?}");
+}
+
+/// A vendor that uses `uses` of each page's older-item checks, as far as the limit allows.
+fn probing(uses: Arc<Mutex<Vec<u32>>>) -> Arc<FakeSource> {
+    FakeSource::new(
+        None,
+        Box::new(move |r| {
+            let want = uses.lock().expect("uses").pop().unwrap_or(0);
+            let mut p = page(Vec::new(), false, "c");
+            p.probes = want.min(r.probe_limit);
+            Ok(p)
+        }),
+    )
+}
+
+#[tokio::test]
+async fn older_item_checks_are_two_a_run_over_every_source_and_none_on_a_first_pass() {
+    let uses = Arc::new(Mutex::new(Vec::new()));
+    let source = probing(uses.clone());
+    // A budget that covers a page and two checks on every page.
+    let config = SyncConfig {
+        run_budget: Duration::from_mins(10),
+        ..SyncConfig::default()
+    };
+    let b = bench(store().await, source.clone(), config);
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1", "C2", "C3"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    let limits = |from: usize| -> Vec<(String, u32)> {
+        source.requests()[from..]
+            .iter()
+            .map(|r| (r.source.id.clone(), r.probe_limit))
+            .collect()
+    };
+    let pair = |s: &str, n: u32| (s.to_owned(), n);
+
+    // The first pass reads every thread in full: no checks.
+    assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+    assert_eq!(limits(0), [pair("C1", 0), pair("C2", 0), pair("C3", 0)]);
+
+    // Round 2 starts at C2, which uses both checks: none left for the others.
+    *uses.lock().expect("uses") = vec![2, 2, 2];
+    b.clock.advance(SYNC_EVERY);
+    let before = source.requests().len();
+    b.run().await;
+    assert_eq!(
+        limits(before),
+        [pair("C2", 2), pair("C3", 0), pair("C1", 0)]
+    );
+
+    // Round 3 starts at C3, which uses one; C1 gets the other.
+    *uses.lock().expect("uses") = vec![2, 2, 1];
+    b.clock.advance(SYNC_EVERY);
+    let before = source.requests().len();
+    b.run().await;
+    assert_eq!(
+        limits(before),
+        [pair("C3", 2), pair("C1", 1), pair("C2", 0)]
+    );
+}
+
+#[tokio::test]
+async fn no_older_item_check_is_offered_at_the_end_of_the_budget() {
+    let source = probing(Arc::default());
+    let config = SyncConfig {
+        run_budget: Duration::from_secs(130),
+        ..SyncConfig::default()
+    };
+    let b = bench(store().await, source.clone(), config);
+    let owner = garden(&b.store, &b.ids, "a").await;
+    connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    b.run().await;
+    b.clock.advance(SYNC_EVERY);
+    b.run().await;
+    let requests = source.requests();
+    assert_eq!(requests.len(), 2);
+    assert!(requests.iter().all(|r| r.probe_limit == 0), "{requests:?}");
+}
+
+impl Bench {
+    /// The connector's sources become `sources`, due now, as `PUT sources` leaves them.
+    async fn choose(&self, id: ConnectorId, sources: &[&str]) {
+        let sources: Vec<ConnectorSource> = sources
+            .iter()
+            .map(|s| ConnectorSource {
+                id: (*s).to_owned(),
+                name: s.to_lowercase(),
+            })
+            .collect();
+        self.store
+            .db()
+            .query("UPDATE $c SET sources = $sources, next_sync_at = $now;")
+            .bind(("c", store::ids::rid(&id)))
+            .bind((
+                "sources",
+                serde_json::to_value(&sources).expect("sources serialise"),
+            ))
+            .bind(("now", self.clock.now().into_inner()))
+            .await
+            .expect("sources updated")
+            .check()
+            .expect("sources updated");
+    }
+
+    /// Runs until the round ends, at most `runs` times; every run before it has pages left.
+    async fn until_synced(&self, id: ConnectorId, runs: usize) -> usize {
+        for n in 1..=runs {
+            let end = self.run().await;
+            assert_eq!(end.len(), 1, "due again at once until the round ends");
+            if end[0].1 == RunEnd::Synced {
+                return n;
+            }
+            assert_eq!(end[0], (id, RunEnd::PagesLeft));
+        }
+        panic!("the round didn't end in {runs} runs");
+    }
+}
+
+/// The sources of the requests from `from` on.
+fn reads(source: &FakeSource, from: usize) -> Vec<String> {
+    source.requests()[from..]
+        .iter()
+        .map(|r| r.source.id.clone())
+        .collect()
+}
+
+/// A vendor whose every page takes 100 ms (a paced vendor; with a 250 ms budget a run reads at
+/// most three pages) and whose sources have the passes `pages` gives, by source id and pass
+/// number: the pages of that pass. Each page's cursor is `<source>:<pass>:<page>`, and each
+/// request must carry the cursor of the source's last page.
+fn paced(pages: impl Fn(&str, u32) -> u32 + Send + 'static) -> Arc<FakeSource> {
+    let mut at: BTreeMap<String, (u32, u32)> = BTreeMap::new();
+    FakeSource::new(
+        None,
+        Box::new(move |r| {
+            std::thread::sleep(Duration::from_millis(100));
+            let id = r.source.id.clone();
+            let (pass, page_no) = at.entry(id.clone()).or_insert((0, 0));
+            let expected = (*pass > 0 || *page_no > 0).then(|| {
+                let (p, n) = if *page_no == 0 {
+                    (*pass - 1, pages(&id, *pass - 1))
+                } else {
+                    (*pass, *page_no)
+                };
+                SyncCursor(format!("{id}:{p}:{n}"))
+            });
+            assert_eq!(r.cursor, expected, "{id} resumes from its last page");
+            *page_no += 1;
+            let cursor = format!("{id}:{pass}:{page_no}");
+            let more = *page_no < pages(&id, *pass);
+            if !more {
+                *pass += 1;
+                *page_no = 0;
+            }
+            Ok(page(Vec::new(), more, &cursor))
+        }),
+    )
+}
+
+fn paced_budget() -> SyncConfig {
+    SyncConfig {
+        run_budget: Duration::from_millis(250),
+        ..SyncConfig::default()
+    }
+}
+
+#[tokio::test]
+async fn a_source_added_later_joins_the_others_in_the_next_round() {
+    let source = FakeSource::new(None, Box::new(|_| Ok(page(Vec::new(), false, "c"))));
+    let b = bench(store().await, source.clone(), SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1", "C2"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    for _ in 0..3 {
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        b.clock.advance(SYNC_EVERY);
+    }
+    // A third channel joins: due now, with no cursor.
+    b.choose(id, &["C1", "C2", "C3"]).await;
+    let before = source.requests().len();
+    assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+    let mut read = reads(&source, before);
+    read.sort();
+    assert_eq!(read, ["C1", "C2", "C3"], "read with the others, not alone");
+}
+
+impl Bench {
+    /// The round in progress, as the sync stored it (the first before the first run).
+    async fn round(&self, id: ConnectorId) -> u64 {
+        self.row(id)
+            .await
+            .cursors
+            .get("#sync")
+            .and_then(|c| serde_json::from_str::<serde_json::Value>(&c.0).ok())
+            .and_then(|v| v["round"].as_u64())
+            .unwrap_or(1)
+    }
+
+    /// One run, 15 minutes after the last (due whatever the last run's end), and the sources
+    /// it read; `rounds` gets them, and a new entry when the run ended the round.
+    async fn run_into(
+        &self,
+        id: ConnectorId,
+        source: &FakeSource,
+        rounds: &mut Vec<Vec<String>>,
+    ) -> RunEnd {
+        self.clock.advance(SYNC_EVERY);
+        let round = self.round(id).await;
+        let before = source.requests().len();
+        let end = self.run().await;
+        assert_eq!(end.len(), 1, "due");
+        let read = reads(source, before);
+        rounds.last_mut().expect("a round").extend(read);
+        if self.round(id).await > round {
+            rounds.push(Vec::new());
+        }
+        end[0].1
+    }
+}
+
+/// A finished, then the budget ended with B mid-pass, then C was added: no run reports the
+/// connector synced while B has pages left.
+#[tokio::test]
+async fn a_round_never_ends_synced_with_a_source_mid_pass() {
+    // B's second pass is ten pages; every other pass is one.
+    let source = paced(|id, pass| if id == "B" && pass == 1 { 10 } else { 1 });
+    let b = bench(store().await, source.clone(), paced_budget());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["A", "B"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    b.until_synced(id, 3).await;
+    let first = b.row(id).await.connector.synced_at;
+    assert_eq!(first, Some(pinned()));
+    let b_reads = |source: &FakeSource| reads(source, 0).iter().filter(|s| *s == "B").count();
+
+    // Until A has been read in round 2 and B is mid-pass.
+    let before = source.requests().len();
+    let mut rounds = vec![Vec::new()];
+    let mut runs = 0;
+    while !reads(&source, before).contains(&"A".to_owned()) {
+        runs += 1;
+        assert!(runs < 5, "A isn't read: {rounds:?}");
+        let end = b.run_into(id, &source, &mut rounds).await;
+        assert_ne!(end, RunEnd::Synced, "B is mid-pass");
+    }
+    assert!(b_reads(&source) < 11, "B is mid-pass: {rounds:?}");
+
+    b.choose(id, &["A", "B", "C"]).await;
+    let before = source.requests().len();
+    loop {
+        runs += 1;
+        assert!(runs < 20, "never synced: {rounds:?}");
+        let end = b.run_into(id, &source, &mut rounds).await;
+        let synced_at = b.row(id).await.connector.synced_at;
+        if b_reads(&source) < 11 {
+            assert_ne!(end, RunEnd::Synced, "B is mid-pass: {rounds:?}");
+            assert_eq!(synced_at, first, "B is mid-pass: {rounds:?}");
+        } else if end == RunEnd::Synced {
+            assert_eq!(synced_at, Some(b.clock.now()));
+            break;
+        }
+    }
+    assert!(reads(&source, before).contains(&"C".to_owned()));
+}
+
+#[tokio::test]
+async fn a_new_source_with_a_long_first_pass_does_not_hold_up_the_others() {
+    // N's first pass is 1000 pages, far longer than the test, until the test shortens it.
+    let length = Arc::new(AtomicUsize::new(1000));
+    let n_length = length.clone();
+    let source = paced(move |id, pass| {
+        if id == "N" && pass == 0 {
+            u32::try_from(n_length.load(Ordering::SeqCst)).expect("a page count")
+        } else {
+            1
+        }
+    });
+    let b = bench(store().await, source.clone(), paced_budget());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let channels: Vec<String> = (0..9).map(|i| format!("C{i}")).collect();
+    let names: Vec<&str> = channels.iter().map(String::as_str).collect();
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &names,
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    b.until_synced(id, 9).await;
+    let first = b.row(id).await.connector.synced_at;
+
+    // N joins first in the order. Each round reads every other channel once, and some of N.
+    let mut chosen = vec!["N"];
+    chosen.extend(&names);
+    b.choose(id, &chosen).await;
+    let n_reads = |source: &FakeSource| reads(source, 0).iter().filter(|s| *s == "N").count();
+    let mut rounds = vec![Vec::new()];
+    let mut runs = 0;
+    while rounds.len() <= 3 {
+        runs += 1;
+        assert!(runs < 30, "the rounds stall: {rounds:?}");
+        let end = b.run_into(id, &source, &mut rounds).await;
+        assert_ne!(end, RunEnd::Synced, "N has pages left");
+        let row = b.row(id).await;
+        assert_eq!(row.connector.synced_at, first);
+        if end == RunEnd::RoundEnded {
+            assert_eq!(row.next_sync_at, b.clock.now(), "N's pass goes on at once");
+        }
+    }
+    rounds.pop();
+    for round in &rounds {
+        for c in &channels {
+            assert_eq!(
+                round.iter().filter(|s| *s == c).count(),
+                1,
+                "{c} once a round: {round:?}"
+            );
+        }
+        assert!(round.contains(&"N".to_owned()), "N advances: {round:?}");
+    }
+
+    // N's pass ends at its next page; the round it ends in is synced.
+    length.store(n_reads(&source) + 1, Ordering::SeqCst);
+    loop {
+        runs += 1;
+        assert!(runs < 45, "never synced: {rounds:?}");
+        if b.run_into(id, &source, &mut rounds).await == RunEnd::Synced {
+            break;
+        }
+    }
+    assert_eq!(b.row(id).await.connector.synced_at, Some(b.clock.now()));
+}
+
+#[tokio::test]
+async fn a_source_that_keeps_failing_does_not_stop_the_others() {
+    let broken = Arc::new(Mutex::new(true));
+    let fails = broken.clone();
+    let source = FakeSource::new(
+        None,
+        Box::new(move |r| {
+            if r.source.id == "C2" && *fails.lock().expect("flag") {
+                return Err(FarmSourceError::Unavailable {
+                    vendor: ConnectorKind::Slack,
+                    source: "a channel the vendor can't serve".into(),
+                });
+            }
+            Ok(page(Vec::new(), false, "c"))
+        }),
+    );
+    let b = bench(store().await, source.clone(), SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1", "C2", "C3"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+
+    // Three rounds: every one reads C1 and C3, and C2 fails in every one.
+    let mut rounds = vec![Vec::new()];
+    let mut runs = 0;
+    while rounds.len() <= 3 {
+        runs += 1;
+        assert!(runs < 12, "the rounds stall: {rounds:?}");
+        let end = b.run_into(id, &source, &mut rounds).await;
+        assert_ne!(end, RunEnd::Synced);
+        let row = b.row(id).await;
+        assert_eq!(
+            row.last_error,
+            Some(SyncErrorCode::VendorUnavailable),
+            "reported after run {runs}: {rounds:?}"
+        );
+        assert_eq!(row.connector.synced_at, None, "C2 never synced");
+        if end == RunEnd::RoundEnded {
+            assert_eq!(
+                row.next_sync_at,
+                b.clock.now().plus(SYNC_EVERY),
+                "only a failing source is behind"
+            );
+        }
+    }
+    rounds.pop();
+    for round in &rounds {
+        for c in ["C1", "C2", "C3"] {
+            assert!(round.contains(&c.to_owned()), "{c} read: {round:?}");
+        }
+    }
+
+    // Once C2 answers, a round ends synced and the error clears.
+    *broken.lock().expect("flag") = false;
+    for n in 0.. {
+        assert!(n < 4, "never synced: {rounds:?}");
+        if b.run_into(id, &source, &mut rounds).await == RunEnd::Synced {
+            break;
+        }
+    }
+    let row = b.row(id).await;
+    assert_eq!(row.last_error, None);
+    assert_eq!(row.connector.synced_at, Some(b.clock.now()));
+}
+
+#[tokio::test]
+async fn a_connector_without_sources_reads_nothing_and_waits_15_minutes() {
+    let source = FakeSource::new(None, Box::new(|_| panic!("never read")));
+    let b = bench(store().await, source.clone(), SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &[],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    assert_eq!(b.run().await, [(id, RunEnd::NoSources)]);
+    let row = b.row(id).await;
+    assert_eq!(row.connector.synced_at, None);
+    assert_eq!(row.next_sync_at, pinned().plus(SYNC_EVERY));
+    assert_eq!(source.requests(), Vec::<FarmPageRequest>::new());
+}
+
+#[tokio::test]
+async fn a_source_left_mid_pass_resumes_from_its_cursor() {
+    // A's first pass is five pages; `paced` checks each request carries the last cursor.
+    let source = paced(|id, pass| if id == "A" && pass == 0 { 5 } else { 1 });
+    let b = bench(store().await, source.clone(), paced_budget());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["A", "B"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    let runs = b.until_synced(id, 6).await;
+    assert!(runs >= 2, "five pages take more than one run");
+    let cursors: Vec<Option<String>> = source
+        .requests()
+        .iter()
+        .filter(|r| r.source.id == "A")
+        .map(|r| r.cursor.clone().map(|c| c.0))
+        .collect();
+    assert_eq!(
+        cursors,
+        [
+            None,
+            Some("A:0:1".into()),
+            Some("A:0:2".into()),
+            Some("A:0:3".into()),
+            Some("A:0:4".into()),
+        ]
+    );
+    assert_eq!(reads(&source, 0).iter().filter(|s| *s == "B").count(), 1);
+}
+
+#[tokio::test]
+async fn an_outage_retries_15_minutes_later() {
+    let source = FakeSource::new(
+        None,
+        Box::new(|_| {
+            Err(FarmSourceError::Unavailable {
+                vendor: ConnectorKind::Slack,
+                source: "down".into(),
+            })
+        }),
+    );
+    let b = bench(store().await, source, SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    let ends = b.run().await;
+    assert_eq!(
+        ends,
+        [(id, RunEnd::Failed(SyncErrorCode::VendorUnavailable))]
+    );
+    let row = b.row(id).await;
+    assert_eq!(row.next_sync_at, pinned().plus(SYNC_EVERY));
+    assert_eq!(row.last_error, Some(SyncErrorCode::VendorUnavailable));
+    assert_eq!(row.connector.status, ConnectorStatus::Active);
+    assert_eq!(b.run().await.len(), 0);
+    b.clock.advance(SYNC_EVERY);
+    assert_eq!(b.run().await.len(), 1);
+}
+
+#[tokio::test]
+async fn a_connector_without_an_adapter_waits_15_minutes() {
+    let b = bench(
+        store().await,
+        FakeSource::new(None, Box::new(|_| panic!("never read"))),
+        SyncConfig::default(),
+    );
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Era,
+        &["C1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    assert_eq!(b.run().await, [(id, RunEnd::NoAdapter)]);
+    assert_eq!(b.row(id).await.next_sync_at, pinned().plus(SYNC_EVERY));
+}
+
+#[tokio::test]
+async fn t_e4_10_seeding_twice_gives_one_pair_of_sealed_era_connectors() {
+    let store = store().await;
+    let ids = SequentialIds::default();
+    let (user, garden) = garden(&store, &ids, "maple").await;
+    let clock = FixedClock::at(pinned());
+    let seed = EraSeed {
+        slack_base: "http://era-slack:8080".into(),
+        garden,
+    };
+    for _ in 0..2 {
+        assert_eq!(
+            seed::seed_era_connectors(store.as_ref(), &key(), &clock, &seed)
+                .await
+                .expect("seeded"),
+            Seeded::Done
+        );
+    }
+    let viewer = check_membership_of(store.as_ref(), user, garden)
+        .await
+        .expect("owner");
+    let listed = store.connectors(viewer).await.expect("list");
+    assert_eq!(listed.len(), 2, "{listed:?}");
+    for (id, kind, token) in [
+        (
+            seed::ERA_SLACK_CONNECTOR,
+            ConnectorKind::Slack,
+            seed::ERA_SLACK_TOKEN,
+        ),
+        (
+            seed::ERA_DRIVE_CONNECTOR,
+            ConnectorKind::GoogleDrive,
+            seed::ERA_DRIVE_TOKEN,
+        ),
+    ] {
+        let id: ConnectorId = id.parse().expect("id");
+        let row = store
+            .connector_row(id)
+            .await
+            .expect("read")
+            .expect("seeded");
+        assert_eq!(row.connector.kind, kind);
+        assert_eq!(row.connector.endpoint, ConnectorEndpoint::Era);
+        assert_eq!(row.connector.status, ConnectorStatus::Active);
+        assert_eq!(row.created_by, user);
+        assert_eq!(row.next_sync_at, pinned(), "due at once");
+        let sealed = row.secret.expect("sealed");
+        assert!(!sealed.0.windows(token.len()).any(|w| w == token.as_bytes()));
+        let opened = key()
+            .unseal(SealPurpose::Token, id, &sealed)
+            .expect("opens under the key");
+        assert_eq!(opened.expose_secret(), token.as_bytes());
+    }
+    let slack = store
+        .connector_row(seed::ERA_SLACK_CONNECTOR.parse().expect("id"))
+        .await
+        .expect("read")
+        .expect("seeded");
+    assert_eq!(
+        slack.connector.account,
+        Some(ConnectorAccount::Slack {
+            team_id: "T_MAPLE".into(),
+            team_name: "Maple Row Farm".into(),
+            url: "http://era-slack:8080/".into(),
+        })
+    );
+    assert_eq!(
+        slack
+            .connector
+            .sources
+            .iter()
+            .map(|s| s.id.as_str())
+            .collect::<Vec<_>>(),
+        ["C_FIELD", "C_CREW"]
+    );
+}
+
+#[tokio::test]
+async fn seeding_skips_a_demo_garden_that_does_not_exist_yet() {
+    let store = store().await;
+    let ids = SequentialIds::default();
+    let seed = EraSeed {
+        slack_base: "http://era-slack:8080".into(),
+        garden: ids.id(),
+    };
+    let clock = FixedClock::at(pinned());
+    assert_eq!(
+        seed::seed_era_connectors(store.as_ref(), &key(), &clock, &seed)
+            .await
+            .expect("no error"),
+        Seeded::NoGarden
+    );
+    assert!(
+        store
+            .connector_row(seed::ERA_SLACK_CONNECTOR.parse().expect("id"))
+            .await
+            .expect("read")
+            .is_none()
+    );
+}
+
+#[test]
+fn retry_after_is_kept_between_a_minute_and_an_hour() {
+    use super::retry_wait;
+    let secs = |s| retry_wait(s).as_secs();
+    assert_eq!(secs(None), 60, "a missing value waits a minute");
+    assert_eq!(secs(Some(0)), 60);
+    assert_eq!(secs(Some(1)), 60);
+    assert_eq!(secs(Some(60)), 60);
+    assert_eq!(secs(Some(600)), 600);
+    assert_eq!(secs(Some(3600)), 3600);
+    assert_eq!(secs(Some(86_400)), 3600, "a day is cut to an hour");
+    assert_eq!(secs(Some(u32::MAX)), 3600);
+}
+
+#[test]
+fn a_page_is_offered_only_the_checks_its_budget_covers() {
+    use super::probes_offered;
+    let offered = |secs: u64, left: u32| probes_offered(Duration::from_secs(secs), left);
+    // 70 s for the page's own call, then 70 s for each check.
+    assert_eq!(offered(0, 2), 0);
+    assert_eq!(offered(139, 2), 0, "the page and one check would overrun");
+    assert_eq!(offered(140, 2), 1);
+    assert_eq!(offered(180, 2), 1, "a 3-minute run's first page");
+    assert_eq!(offered(209, 2), 1);
+    assert_eq!(offered(210, 2), 2);
+    assert_eq!(offered(600, 2), 2, "never more than the run has left");
+    assert_eq!(offered(600, 1), 1);
+    assert_eq!(offered(600, 0), 0);
+}
+
+/// A vendor whose page never comes, counting the calls.
+struct HangingSource(AtomicUsize);
+
+#[async_trait]
+impl FarmSource for HangingSource {
+    fn kind(&self) -> ConnectorKind {
+        ConnectorKind::Slack
+    }
+
+    fn reread_window(&self) -> Option<Duration> {
+        None
+    }
+
+    async fn available_sources(
+        &self,
+        _token: &VendorToken,
+    ) -> Result<Vec<ConnectorSource>, FarmSourceError> {
+        Ok(Vec::new())
+    }
+
+    async fn read_page(
+        &self,
+        _token: &VendorToken,
+        _request: FarmPageRequest,
+    ) -> Result<FarmPage, FarmSourceError> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        std::future::pending().await
+    }
+
+    async fn revoke(&self, _token: &VendorToken) -> Result<(), FarmSourceError> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn shutdown_interrupts_a_page_in_flight_and_leaves_the_connector_due() {
+    let source = Arc::new(HangingSource(AtomicUsize::new(0)));
+    let b = bench(store().await, source.clone(), SyncConfig::default());
+    let owner = garden(&b.store, &b.ids, "a").await;
+    let id = connector(
+        &b.store,
+        &b.ids,
+        owner,
+        ConnectorEndpoint::Vendor,
+        &["C1"],
+        "t",
+        b.clock.now(),
+    )
+    .await;
+    let shutdown = CancellationToken::new();
+    let stopper = shutdown.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        stopper.cancel();
+    });
+    let ends = tokio::time::timeout(Duration::from_secs(10), b.sync.run_due(&shutdown))
+        .await
+        .expect("the run ends with shutdown, not with the page")
+        .expect("due connectors listed");
+    assert_eq!(ends, [(id, RunEnd::PagesLeft)]);
+    assert_eq!(source.0.load(Ordering::SeqCst), 1);
+    let row = b.row(id).await;
+    assert_eq!(row.next_sync_at, pinned(), "still due on the next start");
+    assert_eq!(b.count(owner.1).await, 0);
+}
+
+#[tokio::test]
+async fn seeding_repairs_the_connectors_under_the_current_key() {
+    let store = store().await;
+    let ids = SequentialIds::default();
+    let (_, garden) = garden(&store, &ids, "maple").await;
+    let clock = FixedClock::at(pinned());
+    let seed = EraSeed {
+        slack_base: "http://era-slack:8080".into(),
+        garden,
+    };
+    let id: ConnectorId = seed::ERA_SLACK_CONNECTOR.parse().expect("id");
+    seed::seed_era_connectors(store.as_ref(), &key(), &clock, &seed)
+        .await
+        .expect("seeded");
+    store
+        .set_status(
+            id,
+            ConnectorStatus::ReauthNeeded,
+            Some(SyncErrorCode::AuthRefused),
+        )
+        .await
+        .expect("stopped");
+
+    // The next start has another key.
+    let rotated = ConnectorKey::from_bytes([7; 32]);
+    assert_eq!(
+        seed::seed_era_connectors(store.as_ref(), &rotated, &clock, &seed)
+            .await
+            .expect("seeded"),
+        Seeded::Done
+    );
+    let row = store
+        .connector_row(id)
+        .await
+        .expect("read")
+        .expect("exists");
+    assert_eq!(row.connector.status, ConnectorStatus::Active);
+    assert_eq!(row.last_error, None);
+    let opened = rotated
+        .unseal(SealPurpose::Token, id, &row.secret.expect("sealed"))
+        .expect("opens under the new key");
+    assert_eq!(opened.expose_secret(), seed::ERA_SLACK_TOKEN.as_bytes());
+}
+
+#[tokio::test]
+async fn seeding_reports_a_connector_in_another_garden_and_leaves_it() {
+    let store = store().await;
+    let ids = SequentialIds::default();
+    let (_, first) = garden(&store, &ids, "first").await;
+    let (_, second) = garden(&store, &ids, "second").await;
+    let clock = FixedClock::at(pinned());
+    let seed = |garden| EraSeed {
+        slack_base: "http://era-slack:8080".into(),
+        garden,
+    };
+    seed::seed_era_connectors(store.as_ref(), &key(), &clock, &seed(first))
+        .await
+        .expect("seeded");
+    assert_eq!(
+        seed::seed_era_connectors(store.as_ref(), &key(), &clock, &seed(second))
+            .await
+            .expect("no error"),
+        Seeded::Elsewhere(first)
+    );
+    let id: ConnectorId = seed::ERA_SLACK_CONNECTOR.parse().expect("id");
+    let row = store
+        .connector_row(id)
+        .await
+        .expect("read")
+        .expect("exists");
+    assert_eq!(row.connector.garden_id, first);
+}
+
+#[tokio::test]
+async fn seeding_skips_a_garden_whose_deletion_is_under_way() {
+    let store = store().await;
+    let ids = SequentialIds::default();
+    let (user, garden) = garden(&store, &ids, "maple").await;
+    let owner = check_membership_of(store.as_ref(), user, garden)
+        .await
+        .expect("owner");
+    store
+        .start_garden_deletion(owner, pinned())
+        .await
+        .expect("deletion started");
+    let clock = FixedClock::at(pinned());
+    let seed = EraSeed {
+        slack_base: "http://era-slack:8080".into(),
+        garden,
+    };
+    assert_eq!(
+        seed::seed_era_connectors(store.as_ref(), &key(), &clock, &seed)
+            .await
+            .expect("no error"),
+        Seeded::GardenDeleting
+    );
+    assert!(
+        store
+            .connector_row(seed::ERA_SLACK_CONNECTOR.parse().expect("id"))
+            .await
+            .expect("read")
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn seeding_leaves_a_connector_being_deleted_to_its_deletion() {
+    let store = store().await;
+    let ids = SequentialIds::default();
+    let (user, garden) = garden(&store, &ids, "maple").await;
+    let clock = FixedClock::at(pinned());
+    let seed = EraSeed {
+        slack_base: "http://era-slack:8080".into(),
+        garden,
+    };
+    seed::seed_era_connectors(store.as_ref(), &key(), &clock, &seed)
+        .await
+        .expect("seeded");
+    let id: ConnectorId = seed::ERA_SLACK_CONNECTOR.parse().expect("id");
+    let owner = check_membership_of(store.as_ref(), user, garden)
+        .await
+        .expect("owner");
+    store
+        .start_connector_deletion(owner, id)
+        .await
+        .expect("deletion started");
+    let before = store
+        .connector_row(id)
+        .await
+        .expect("read")
+        .expect("exists");
+
+    assert_eq!(
+        seed::seed_era_connectors(store.as_ref(), &key(), &clock, &seed)
+            .await
+            .expect("no error"),
+        Seeded::ConnectorDeleting
+    );
+    let after = store
+        .connector_row(id)
+        .await
+        .expect("read")
+        .expect("exists");
+    assert_eq!(
+        after.connector.status,
+        ConnectorStatus::Deleting,
+        "not revived"
+    );
+    assert_eq!(after.secret, before.secret, "its token isn't sealed again");
+}
+
+/// The Drive sync (E4.3) over [`DriveSource`] against a mocked Google API: the token renewed
+/// before a run and after a refusal, each stored over the sealed value it came from; an `era`
+/// connector that never renews; nested folders and a file moved out; the 1 MB cut; a `429`
+/// that keeps the cursor.
+mod drive {
+    use domain::ports::ConnectorRow;
+    use integrations::google_drive::{DriveClient, DriveConfig, DriveSource, MAX_TEXT_BYTES};
+    use serde_json::{Value, json};
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{header, method, path, path_regex, query_param},
+    };
+
+    use super::*;
+    use crate::connect::VendorError;
+
+    const ROOT: &str = "F_ROOT";
+    const DOC: &str = "application/vnd.google-apps.document";
+    const FOLDER: &str = "application/vnd.google-apps.folder";
+    const PDF: &str = "application/pdf";
+
+    fn grant(access: &str, refresh: Option<&str>, expires_in: Duration) -> StoredTokens {
+        StoredTokens {
+            access_token: SecretString::from(access),
+            refresh_token: refresh.map(SecretString::from),
+            expires_at: Some(pinned().plus(expires_in)),
+        }
+    }
+
+    fn file(id: &str, mime: &str, parent: &str) -> Value {
+        json!({"id": id, "name": format!("name of {id}"), "mimeType": mime, "parents": [parent],
+            "modifiedTime": "2026-10-14T08:00:00.000Z",
+            "webViewLink": format!("https://docs.google.com/document/d/{id}/edit")})
+    }
+
+    /// The start token `100`, `files` listed in each folder, and every Doc exporting as
+    /// `<id> text`.
+    async fn drive(server: &MockServer, folders: &[(&str, Vec<Value>)]) {
+        Mock::given(method("GET"))
+            .and(path(format!("/drive/v3/files/{ROOT}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(file(ROOT, FOLDER, "root")))
+            .mount(server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/drive/v3/changes/startPageToken"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({ "startPageToken": "100" })),
+            )
+            .mount(server)
+            .await;
+        for (folder, files) in folders {
+            Mock::given(method("GET"))
+                .and(path("/drive/v3/files"))
+                .and(query_param(
+                    "q",
+                    format!("'{folder}' in parents and trashed=false"),
+                ))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "files": files })))
+                .mount(server)
+                .await;
+        }
+        Mock::given(method("GET"))
+            .and(path_regex(r"^/drive/v3/files/[^/]+/export$"))
+            .respond_with(|r: &wiremock::Request| {
+                let id = r
+                    .url
+                    .path()
+                    .split('/')
+                    .nth(4)
+                    .unwrap_or_default()
+                    .to_owned();
+                ResponseTemplate::new(200).set_body_string(format!("{id} text"))
+            })
+            .mount(server)
+            .await;
+    }
+
+    /// Answers `401` to `token`, ahead of every other mock.
+    async fn refuse(server: &MockServer, token: &str) {
+        Mock::given(header("authorization", format!("Bearer {token}")))
+            .respond_with(
+                ResponseTemplate::new(401)
+                    .set_body_json(json!({"error": {"code": 401, "status": "UNAUTHENTICATED"}})),
+            )
+            .with_priority(1)
+            .mount(server)
+            .await;
+    }
+
+    /// A Drive connector on `ROOT`, its tokens sealed as the connect routes seal them.
+    async fn connector(
+        b: &Bench,
+        endpoint: ConnectorEndpoint,
+        tokens: &StoredTokens,
+    ) -> (GardenId, ConnectorId) {
+        let (user, garden) = garden(&b.store, &b.ids, "drive").await;
+        let id: ConnectorId = b.ids.id();
+        b.store
+            .seed_connector(
+                garden,
+                NewConnector {
+                    id,
+                    kind: ConnectorKind::GoogleDrive,
+                    status: ConnectorStatus::Active,
+                    endpoint,
+                    created_by: user,
+                    account: Some(ConnectorAccount::GoogleDrive {
+                        email: "farm@example.org".into(),
+                    }),
+                    secret: Some(tokens.seal(&key(), id)),
+                    oauth: None,
+                    sources: vec![ConnectorSource {
+                        id: ROOT.into(),
+                        name: "Farm records".into(),
+                    }],
+                    created_at: b.clock.now(),
+                },
+            )
+            .await
+            .expect("connector");
+        (garden, id)
+    }
+
+    fn bench(
+        store: Arc<SurrealStore>,
+        server: &MockServer,
+        endpoint: ConnectorEndpoint,
+        vendors: MockConnectVendors,
+    ) -> Bench {
+        bench_with(store, server, endpoint, Arc::new(vendors))
+    }
+
+    fn bench_with(
+        store: Arc<SurrealStore>,
+        server: &MockServer,
+        endpoint: ConnectorEndpoint,
+        vendors: Arc<dyn ConnectVendors>,
+    ) -> Bench {
+        let clock = Arc::new(FixedClock::at(pinned()));
+        let embedder = Arc::new(CountingEmbedder::default());
+        let source = Arc::new(DriveSource::new(DriveClient::new(
+            integrations::http::client(&integrations::http::HttpConfig::default())
+                .expect("the HTTP client builds"),
+            DriveConfig::era(server.uri()),
+        )));
+        let sync = FarmSync::new(
+            store.clone(),
+            embedder.clone(),
+            clock.clone(),
+            key(),
+            vendors,
+            FarmSources::default().with(endpoint, source),
+            SyncConfig::default(),
+        );
+        Bench {
+            store,
+            clock,
+            embedder,
+            sync,
+            ids: SequentialIds::default(),
+        }
+    }
+
+    fn stored_access(row: &ConnectorRow) -> String {
+        let sealed = row.secret.as_ref().expect("sealed");
+        StoredTokens::unseal(&key(), row.connector.id, sealed)
+            .expect("opens")
+            .access_token
+            .expose_secret()
+            .to_owned()
+    }
+
+    #[tokio::test]
+    async fn an_expiring_google_token_is_renewed_before_the_run_and_stored() {
+        let server = MockServer::start().await;
+        drive(&server, &[(ROOT, vec![file("D1", DOC, ROOT)])]).await;
+        refuse(&server, "ya29.old").await;
+        let mut vendors = MockConnectVendors::new();
+        vendors
+            .expect_refresh()
+            .withf(|kind, tokens, force| {
+                *kind == ConnectorKind::GoogleDrive
+                    && tokens.access_token.expose_secret() == "ya29.old"
+                    && !force
+            })
+            .times(1)
+            .returning(|_, _, _| {
+                Ok(Some(grant(
+                    "ya29.new",
+                    Some("1//refresh"),
+                    Duration::from_hours(1),
+                )))
+            });
+        let b = bench(store().await, &server, ConnectorEndpoint::Vendor, vendors);
+        let old = grant("ya29.old", Some("1//refresh"), Duration::from_mins(1));
+        let (garden, id) = connector(&b, ConnectorEndpoint::Vendor, &old).await;
+
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        assert_eq!(b.count(garden).await, 1);
+        let row = b.row(id).await;
+        assert_eq!(stored_access(&row), "ya29.new", "stored over the one read");
+    }
+
+    #[tokio::test]
+    async fn a_refused_google_token_is_renewed_once_and_the_page_asked_again() {
+        let server = MockServer::start().await;
+        drive(&server, &[(ROOT, vec![file("D1", DOC, ROOT)])]).await;
+        refuse(&server, "ya29.old").await;
+        let mut vendors = MockConnectVendors::new();
+        // Not expiring yet: the client leaves it, until Google refuses it.
+        vendors
+            .expect_refresh()
+            .withf(|_, _, force| !force)
+            .times(1)
+            .returning(|_, _, _| Ok(None));
+        vendors
+            .expect_refresh()
+            .withf(|_, tokens, force| *force && tokens.access_token.expose_secret() == "ya29.old")
+            .times(1)
+            .returning(|_, _, _| {
+                Ok(Some(grant(
+                    "ya29.new",
+                    Some("1//refresh"),
+                    Duration::from_hours(1),
+                )))
+            });
+        let b = bench(store().await, &server, ConnectorEndpoint::Vendor, vendors);
+        let old = grant("ya29.old", Some("1//refresh"), Duration::from_mins(40));
+        let (garden, id) = connector(&b, ConnectorEndpoint::Vendor, &old).await;
+
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        assert_eq!(b.count(garden).await, 1);
+        let row = b.row(id).await;
+        assert_eq!(row.connector.status, ConnectorStatus::Active);
+        assert_eq!(stored_access(&row), "ya29.new");
+    }
+
+    #[tokio::test]
+    async fn a_refused_refresh_makes_the_connector_reauth_needed() {
+        let server = MockServer::start().await;
+        drive(&server, &[(ROOT, vec![file("D1", DOC, ROOT)])]).await;
+        refuse(&server, "ya29.old").await;
+        let mut vendors = MockConnectVendors::new();
+        vendors
+            .expect_refresh()
+            .withf(|_, _, force| !force)
+            .returning(|_, _, _| Ok(None));
+        vendors
+            .expect_refresh()
+            .withf(|_, _, force| *force)
+            .times(1)
+            .returning(|kind, _, _| {
+                Err(VendorError::AuthRefused {
+                    vendor: kind,
+                    code: "invalid_grant".into(),
+                })
+            });
+        let b = bench(store().await, &server, ConnectorEndpoint::Vendor, vendors);
+        let old = grant("ya29.old", Some("1//refresh"), Duration::from_mins(40));
+        let (garden, id) = connector(&b, ConnectorEndpoint::Vendor, &old).await;
+
+        assert_eq!(
+            b.run().await,
+            [(id, RunEnd::Failed(SyncErrorCode::AuthRefused))]
+        );
+        let row = b.row(id).await;
+        assert_eq!(row.connector.status, ConnectorStatus::ReauthNeeded);
+        assert_eq!(row.last_error, Some(SyncErrorCode::AuthRefused));
+        assert_eq!(stored_access(&row), "ya29.old");
+        assert_eq!(b.count(garden).await, 0);
+    }
+
+    /// The seeded demo connector's `ya29.era-demo` has no refresh token, and an `era`
+    /// connector's token never goes to Google's token endpoint.
+    #[tokio::test]
+    async fn an_era_drive_connector_never_renews_its_token() {
+        let server = MockServer::start().await;
+        drive(&server, &[(ROOT, vec![file("D1", DOC, ROOT)])]).await;
+        let mut vendors = MockConnectVendors::new();
+        vendors.expect_refresh().never();
+        let b = bench(store().await, &server, ConnectorEndpoint::Era, vendors);
+        let demo = StoredTokens::bearer(SecretString::from("ya29.era-demo"));
+        let (garden, id) = connector(&b, ConnectorEndpoint::Era, &demo).await;
+
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        assert_eq!(b.count(garden).await, 1);
+        let requests = server.received_requests().await.expect("recorded");
+        assert!(requests.iter().all(|r| {
+            r.headers.get("authorization").and_then(|v| v.to_str().ok())
+                == Some("Bearer ya29.era-demo")
+        }));
+    }
+
+    #[tokio::test]
+    async fn nested_folders_are_read_and_a_file_moved_out_loses_its_records() {
+        let server = MockServer::start().await;
+        drive(
+            &server,
+            &[
+                (
+                    ROOT,
+                    vec![
+                        file("D1", DOC, ROOT),
+                        file("D2", DOC, ROOT),
+                        file("F_SUB", FOLDER, ROOT),
+                    ],
+                ),
+                ("F_SUB", vec![file("D_SUB", DOC, "F_SUB")]),
+            ],
+        )
+        .await;
+        let b = bench(store().await, &server, ConnectorEndpoint::Vendor, {
+            let mut v = MockConnectVendors::new();
+            v.expect_refresh().returning(|_, _, _| Ok(None));
+            v
+        });
+        let tokens = grant("ya29.a", Some("1//r"), Duration::from_hours(1));
+        let (garden, id) = connector(&b, ConnectorEndpoint::Vendor, &tokens).await;
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        assert_eq!(b.count(garden).await, 3, "D1, D2 and the nested D_SUB");
+
+        // D2 moves to another folder; the nested folder moves out with its file.
+        Mock::given(method("GET"))
+            .and(path("/drive/v3/changes"))
+            .and(query_param("pageToken", "100"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "changes": [
+                    {"fileId": "D2", "removed": false, "file": file("D2", DOC, "F_ELSE")},
+                    {"fileId": "F_SUB", "removed": false, "file": file("F_SUB", FOLDER, "F_ELSE")},
+                ],
+                "newStartPageToken": "200"
+            })))
+            .mount(&server)
+            .await;
+        b.clock.advance(SYNC_EVERY);
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        let held = b
+            .store
+            .record_hashes(id, vec!["D1".into(), "D2".into(), "D_SUB".into()])
+            .await
+            .expect("hashes");
+        let ids: Vec<&str> = held.iter().map(|(r, _)| &*r.vendor_id).collect();
+        assert_eq!(ids, ["D1"]);
+    }
+
+    #[tokio::test]
+    async fn a_document_is_cut_at_1_mb_before_chunking() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/drive/v3/files/D_BIG/export"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("spray ".repeat(200_000)))
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        drive(&server, &[(ROOT, vec![file("D_BIG", DOC, ROOT)])]).await;
+        let b = bench(store().await, &server, ConnectorEndpoint::Vendor, {
+            let mut v = MockConnectVendors::new();
+            v.expect_refresh().returning(|_, _, _| Ok(None));
+            v
+        });
+        let tokens = grant("ya29.a", Some("1//r"), Duration::from_hours(1));
+        let (garden, id) = connector(&b, ConnectorEndpoint::Vendor, &tokens).await;
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        // 1.2 MB sent, 1 MB kept: chunks of just under 2,000 characters.
+        let chunks = b.count(garden).await;
+        let full = u32::try_from(MAX_TEXT_BYTES / 1_990).expect("small");
+        assert!((full - 5..=full + 5).contains(&chunks), "{chunks} chunks");
+        assert_eq!(b.embedder.texts(), chunks as usize);
+    }
+
+    #[tokio::test]
+    async fn a_drive_429_keeps_the_cursor_and_the_next_run_continues() {
+        let server = MockServer::start().await;
+        // 25 files fill the first page; the 26th, a Doc, is throttled once.
+        let mut files: Vec<Value> = (0..25)
+            .map(|n| file(&format!("P{n:02}"), PDF, ROOT))
+            .collect();
+        files.push(file("D_LAST", DOC, ROOT));
+        Mock::given(method("GET"))
+            .and(path("/drive/v3/files/D_LAST/export"))
+            .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "120"))
+            .up_to_n_times(1)
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        drive(&server, &[(ROOT, files)]).await;
+        let b = bench(store().await, &server, ConnectorEndpoint::Vendor, {
+            let mut v = MockConnectVendors::new();
+            v.expect_refresh().returning(|_, _, _| Ok(None));
+            v
+        });
+        let tokens = grant("ya29.a", Some("1//r"), Duration::from_hours(1));
+        let (garden, id) = connector(&b, ConnectorEndpoint::Vendor, &tokens).await;
+
+        assert_eq!(
+            b.run().await,
+            [(id, RunEnd::Failed(SyncErrorCode::RateLimited))]
+        );
+        assert_eq!(b.count(garden).await, 25, "the first page is kept");
+        let row = b.row(id).await;
+        assert_eq!(row.next_sync_at, pinned().plus(Duration::from_mins(2)));
+        assert_eq!(row.last_error, Some(SyncErrorCode::RateLimited));
+
+        b.clock.advance(Duration::from_mins(2));
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        assert_eq!(b.count(garden).await, 26);
+        let requests = server.received_requests().await.expect("recorded");
+        let calls = |p: &str| requests.iter().filter(|r| r.url.path() == p).count();
+        assert_eq!(
+            calls("/drive/v3/changes/startPageToken"),
+            1,
+            "not started again"
+        );
+        assert_eq!(calls("/drive/v3/files"), 1, "not listed again");
+    }
+
+    /// Another refresh stores its grant while this run's renews: this run's compare-and-set
+    /// loses, the other grant stays stored, and the run reads with its own token.
+    struct Racing {
+        store: Arc<SurrealStore>,
+        connector: Mutex<Option<ConnectorId>>,
+    }
+
+    #[async_trait]
+    impl ConnectVendors for Racing {
+        async fn exchange(
+            &self,
+            kind: ConnectorKind,
+            _: &str,
+            _: Option<SecretString>,
+            _: &str,
+        ) -> Result<crate::connect::Exchanged, VendorError> {
+            Err(VendorError::NotConfigured(kind))
+        }
+
+        async fn refresh(
+            &self,
+            _: ConnectorKind,
+            _: &StoredTokens,
+            _: bool,
+        ) -> Result<Option<StoredTokens>, VendorError> {
+            let id = self
+                .connector
+                .lock()
+                .expect("connector")
+                .expect("set before the run");
+            let read = self
+                .store
+                .connector_row(id)
+                .await
+                .expect("read")
+                .expect("exists")
+                .secret
+                .expect("sealed");
+            let other = grant("ya29.other", Some("1//refresh"), Duration::from_hours(1));
+            assert!(
+                self.store
+                    .replace_secret(id, read, other.seal(&key(), id))
+                    .await
+                    .expect("stored")
+            );
+            Ok(Some(grant(
+                "ya29.mine",
+                Some("1//refresh"),
+                Duration::from_hours(1),
+            )))
+        }
+
+        async fn available_sources(
+            &self,
+            _: ConnectorKind,
+            _: &StoredTokens,
+        ) -> Result<Vec<ConnectorSource>, VendorError> {
+            Ok(Vec::new())
+        }
+
+        async fn revoke(&self, _: ConnectorKind, _: &StoredTokens) -> Result<(), VendorError> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn a_renewal_that_loses_the_compare_and_set_keeps_its_own_token_for_the_run() {
+        let server = MockServer::start().await;
+        drive(&server, &[(ROOT, vec![file("D1", DOC, ROOT)])]).await;
+        refuse(&server, "ya29.old").await;
+        let store = store().await;
+        let racing = Arc::new(Racing {
+            store: store.clone(),
+            connector: Mutex::new(None),
+        });
+        let b = bench_with(store, &server, ConnectorEndpoint::Vendor, racing.clone());
+        let old = grant("ya29.old", Some("1//refresh"), Duration::from_mins(1));
+        let (garden, id) = connector(&b, ConnectorEndpoint::Vendor, &old).await;
+        *racing.connector.lock().expect("connector") = Some(id);
+
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        assert_eq!(b.count(garden).await, 1);
+        assert_eq!(
+            stored_access(&b.row(id).await),
+            "ya29.other",
+            "the grant stored first stays"
+        );
+        let requests = server.received_requests().await.expect("recorded");
+        assert!(requests.iter().all(|r| {
+            r.headers.get("authorization").and_then(|v| v.to_str().ok()) == Some("Bearer ya29.mine")
+        }));
+    }
+
+    #[tokio::test]
+    async fn a_token_refused_again_after_its_renewal_makes_the_connector_reauth_needed() {
+        let server = MockServer::start().await;
+        drive(&server, &[(ROOT, vec![file("D1", DOC, ROOT)])]).await;
+        refuse(&server, "ya29.old").await;
+        refuse(&server, "ya29.new").await;
+        let mut vendors = MockConnectVendors::new();
+        vendors
+            .expect_refresh()
+            .withf(|_, _, force| !force)
+            .returning(|_, _, _| Ok(None));
+        vendors
+            .expect_refresh()
+            .withf(|_, _, force| *force)
+            .times(1)
+            .returning(|_, _, _| {
+                Ok(Some(grant(
+                    "ya29.new",
+                    Some("1//refresh"),
+                    Duration::from_hours(1),
+                )))
+            });
+        let b = bench(store().await, &server, ConnectorEndpoint::Vendor, vendors);
+        let old = grant("ya29.old", Some("1//refresh"), Duration::from_mins(40));
+        let (_, id) = connector(&b, ConnectorEndpoint::Vendor, &old).await;
+
+        assert_eq!(
+            b.run().await,
+            [(id, RunEnd::Failed(SyncErrorCode::AuthRefused))]
+        );
+        let row = b.row(id).await;
+        assert_eq!(row.connector.status, ConnectorStatus::ReauthNeeded);
+        assert_eq!(stored_access(&row), "ya29.new", "the renewal was stored");
+    }
+
+    /// A change token Drive no longer accepts: the folder is listed again, and the records of
+    /// files the listing doesn't hold are deleted after the page is stored.
+    #[tokio::test]
+    async fn a_resync_deletes_the_records_of_files_no_longer_listed() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/drive/v3/files"))
+            .and(query_param(
+                "q",
+                format!("'{ROOT}' in parents and trashed=false"),
+            ))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(
+                    json!({ "files": [file("D1", DOC, ROOT), file("D2", DOC, ROOT)] }),
+                ),
+            )
+            .up_to_n_times(1)
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        drive(&server, &[(ROOT, vec![file("D1", DOC, ROOT)])]).await;
+        Mock::given(method("GET"))
+            .and(path("/drive/v3/changes"))
+            .respond_with(
+                ResponseTemplate::new(400).set_body_json(
+                    json!({"error": {"code": 400, "errors": [{"reason": "invalid"}]}}),
+                ),
+            )
+            .mount(&server)
+            .await;
+        let b = bench(store().await, &server, ConnectorEndpoint::Vendor, {
+            let mut v = MockConnectVendors::new();
+            v.expect_refresh().returning(|_, _, _| Ok(None));
+            v
+        });
+        let tokens = grant("ya29.a", Some("1//r"), Duration::from_hours(1));
+        let (garden, id) = connector(&b, ConnectorEndpoint::Vendor, &tokens).await;
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        assert_eq!(b.count(garden).await, 2);
+
+        b.clock.advance(SYNC_EVERY);
+        assert_eq!(b.run().await, [(id, RunEnd::Synced)]);
+        let held = b
+            .store
+            .record_hashes(id, vec!["D1".into(), "D2".into()])
+            .await
+            .expect("hashes");
+        let ids: Vec<&str> = held.iter().map(|(r, _)| &*r.vendor_id).collect();
+        assert_eq!(ids, ["D1"]);
+    }
+}

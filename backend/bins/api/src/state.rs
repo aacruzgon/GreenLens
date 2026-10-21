@@ -25,10 +25,13 @@ use domain::{
 use crate::{
     broker::JobBroker,
     config::Config,
+    connect::ConnectVendors,
     deletion::DeletionRunner,
     error::ApiError,
     events::{hub::EventHub, writer::ScanWriters},
+    farm_sync::FarmSync,
     limits::RateLimits,
+    sealing::ConnectorKey,
     seams::{ChatTurns, ImageProcessing, PipelineApi},
     workers::WorkerTokens,
 };
@@ -96,9 +99,15 @@ pub struct AppState {
     pub workers: WorkerTokens,
     /// Garden, plant, scan and account cascades.
     pub deletions: DeletionRunner,
+    /// The farm connectors' sync and their adapters; `None` when connectors are off (no
+    /// `CONNECTOR_KEY`), so the `connectors` task and start-up seeding don't run.
+    pub farm_sync: Option<Arc<FarmSync>>,
     /// The one path to `RustFS` deletes ([storage 4]): detached, never cancelled, retried, and
     /// drained at shutdown for at least one full attempt. Shared with `deletions`.
     pub deletes: blob::DeleteQueue,
+    /// The farm connectors' vendor calls (the code exchange, the source picker, the revoke), on
+    /// the vendors' fixed hosts; a seam like `pipeline`, so route tests mock it.
+    pub connect: Arc<dyn ConnectVendors>,
     /// Cancelled once on SIGTERM / Ctrl-C.
     pub shutdown: CancellationToken,
     /// Every background task and spawned follow-up; waited on at shutdown.
@@ -128,13 +137,21 @@ impl AppState {
         Ok(authz::check_membership::<R>(&*self.ports.store, user, garden).await?)
     }
 
+    /// Whether farm connectors are on, and the key that seals their tokens: the one switch
+    /// (decision 9 of docs/EON). `None` without `CONNECTOR_KEY`: the list answers
+    /// `available: false`, every owner write `409 invalid_state`, and the `connectors` scheduler
+    /// task (E4.1) and start-up seeding (E4.6) do nothing ([`Self::farm_sync`] is `None`).
+    pub fn connector_key(&self) -> Option<&ConnectorKey> {
+        self.config.connectors.key.as_ref()
+    }
+
     /// Spawns a follow-up on the tracker; failures are logged, the sweep recovers them.
     pub fn spawn_follow_up(self: &Arc<Self>, follow_up: Option<crate::seams::FollowUp>) {
         if let Some(follow_up) = follow_up {
             let state = Arc::clone(self);
             self.tasks.spawn(async move {
                 if let Err(error) = state.pipeline.follow_up(follow_up).await {
-                    tracing::warn!(?follow_up, error = %error, "follow-up failed; the sweep retries it");
+                    tracing::warn!(?follow_up, error = %crate::error::chain(&error), "follow-up failed; the sweep retries it");
                 }
             });
         }

@@ -81,6 +81,21 @@ datasets:
     ship: true
     use: bean, only if beans become supported
 
+  - name: inat_species
+    description: >-
+      iNaturalist research photos of the five supported crops (whole plants, flowers, fruit) and
+      five plant families, observed 2019-2025 with an agreeing identification, one photo per
+      observation, re-encoded without metadata. The evaluation cases are all from 2026, and their
+      observations are skipped too. The wild chiltepin (Capsicum annuum glabriusculum) is left
+      out of pepper. Each photo's licence and credit are in splits/inat_species.tsv
+    kind: inaturalist
+    fetched_by: ml.training.data.inat_species
+    index: splits/inat_species.tsv
+    licence: CC0 1.0 or CC BY 4.0, per photo (credits in the index)
+    citation: "iNaturalist, https://www.inaturalist.org; each photo's observer, as credited in the index"
+    ship: true
+    use: species head and the trained plant probe
+
   - name: coco_val2017
     description: COCO val2017, 5,000 images (about 778 MB); the source of photos with no plant for scoring the plant check
     kind: direct

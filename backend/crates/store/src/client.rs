@@ -1,4 +1,5 @@
-//! Connecting, signing in and applying the schema ([database 1], [database 6]).
+//! Connecting, signing in, and applying the schema and the migrations ([database 1],
+//! [database 6]).
 
 use std::{sync::Arc, time::Duration};
 
@@ -10,7 +11,11 @@ use surrealdb::{
 };
 use tokio::sync::Notify;
 
-use crate::{error::classify, tx::run_tx};
+use crate::{
+    error::classify,
+    migrate::{Applied, KnowledgeMeta, MIGRATIONS, MigrationError, knowledge_meta, migrate_with},
+    tx::run_tx,
+};
 
 /// The schema, embedded at build time. The file is `backend/migrations/schema.surql` ([database 1],
 /// applying the schema). Idempotent: `OVERWRITE`
@@ -66,7 +71,7 @@ impl std::fmt::Debug for SurrealStore {
 
 impl SurrealStore {
     /// Connects, signs in as the database user and selects `pdm`/`main`. Run
-    /// [`SurrealStore::apply_schema`] first, as root.
+    /// [`SurrealStore::migrate`] first, as root.
     pub async fn connect(config: &StoreConfig) -> Result<Self, StoreError> {
         let db = any::connect(config.url.as_str())
             .await
@@ -96,23 +101,37 @@ impl SurrealStore {
         })
     }
 
-    /// Applies [`SCHEMA`] over a short-lived root connection, before the API serves traffic.
-    /// `api` can't run the file's first statements (`DEFINE NAMESPACE`, `DEFINE DATABASE`).
-    pub async fn apply_schema(
+    /// The schema, then the migrations ([`crate::migrate::MIGRATIONS`]), over a short-lived
+    /// root connection, before the API serves traffic: `api` can't run the schema's first
+    /// statements (`DEFINE NAMESPACE`, `DEFINE DATABASE`). The connection closes when this
+    /// returns; then connect as `api` with [`SurrealStore::connect`].
+    pub async fn migrate(
         url: &str,
         root_user: &str,
         root_pass: &str,
-    ) -> Result<(), StoreError> {
+    ) -> Result<Applied, MigrationError> {
+        let store_error = |what: &'static str| {
+            move |e| MigrationError::Store {
+                what,
+                source: Box::new(classify(e).into_store(what)),
+            }
+        };
         let root = any::connect(url)
             .await
-            .map_err(|e| classify(e).into_store("connect as root"))?;
+            .map_err(store_error("connect as root"))?;
         root.signin(Root {
             username: root_user.to_owned(),
             password: root_pass.to_owned(),
         })
         .await
-        .map_err(|e| classify(e).into_store("sign in as root"))?;
-        apply_schema_with(&root).await
+        .map_err(store_error("sign in as root"))?;
+        migrate_with(&root, MIGRATIONS).await
+    }
+
+    /// `knowledge_meta:current`, or `None` before a knowledge file was applied. `api` compares
+    /// it with its text embedder at start.
+    pub async fn knowledge_meta(&self) -> Result<Option<KnowledgeMeta>, StoreError> {
+        knowledge_meta(&self.db).await
     }
 
     /// Uses `ids` for the records the store creates on its own (tests pass `SequentialIds`).
@@ -142,7 +161,8 @@ impl SurrealStore {
 }
 
 /// Applies [`SCHEMA`] on a client signed in as root (or the embedded engine). Every statement is
-/// checked; one failure fails start-up.
+/// checked; one failure fails start-up. [`crate::migrate::migrate_with`] runs it first; tests
+/// that need only the schema call it alone.
 pub async fn apply_schema_with(root: &Surreal<Any>) -> Result<(), StoreError> {
     run_tx(root, SCHEMA, |q| q)
         .await

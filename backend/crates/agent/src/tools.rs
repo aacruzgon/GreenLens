@@ -14,6 +14,11 @@
 //! reads pass `owner.membership()` to the store, so a record outside the garden is `NotFound`.
 //! Arguments never name the garden. Write tools upgrade the proof with `require::<Editor>()`.
 //!
+//! **Offered by role and by what the garden holds** (gap G6). [`Offer`] carries the member's role
+//! and whether the garden has farm records to search, computed once per turn by the context
+//! builder; a tool with [`Tool::NEEDS_FARM_RECORDS`] is left out when it doesn't. A call to a tool
+//! that wasn't offered is answered like an unknown tool.
+//!
 //! **Dose check before running.** [`Tool::model_strings`] lends every string the model wrote
 //! into the call; [`Erased::call`] checks them all before `run`, so a failing call creates no
 //! card, task, memory or event, and the model gets the reason as an `is_error` result.
@@ -28,6 +33,7 @@ use std::future::Future;
 use domain::{
     authz::{ConversationOwner, Viewer},
     chat::{Anchor, Memory, PendingAction, RescanRequest, ToolName},
+    connectors::FarmCitation,
     id::{MessageId, PlantId},
     ports::{ContentPart, ToolSpec},
     records::diagnosis::Citation,
@@ -38,7 +44,7 @@ use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::{deps::AgentDeps, error::ToolError, safety::dose_check_all};
+use crate::{deps::AgentDeps, error::ToolError, prompt::DataKind, safety::dose_check_all};
 
 /// What a tool does, which decides who is offered it ([contracts 1], roles and access).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -61,6 +67,33 @@ impl ToolKind {
             Self::Read | Self::Ui | Self::Memory => true,
             Self::Write => role >= Role::Editor,
         }
+    }
+}
+
+/// What decides which tools a turn is offered: the member's role, and whether the garden has
+/// farm records to search ([connectors 7]; gap G6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Offer {
+    /// The member's real role in the garden.
+    pub role: Role,
+    /// The garden has synced farm records or a connector that isn't `pending`
+    /// ([`crate::context::farm_records_searchable`]). Records stay searchable while a connector
+    /// is `reauth_needed`.
+    pub farm_records: bool,
+}
+
+impl Offer {
+    /// Every tool the role may have: the garden holds everything a tool needs.
+    pub const fn everything(role: Role) -> Self {
+        Self {
+            role,
+            farm_records: true,
+        }
+    }
+
+    /// Whether a tool of this kind, which needs farm records or not, is offered.
+    pub fn allows(self, kind: ToolKind, needs_farm_records: bool) -> bool {
+        kind.offered_to(self.role) && (self.farm_records || !needs_farm_records)
     }
 }
 
@@ -91,6 +124,9 @@ pub struct ToolCtx<'t> {
 pub enum ToolEffect {
     /// A source the answer may cite: `citation`.
     Citation(Citation),
+    /// A farm record the answer may cite: stored in `Message.farm_citations`. Contracts 8 has
+    /// no event for it, so the app reads it from the stored message.
+    FarmCitation(FarmCitation),
     /// A confirmation card: `pending_action`.
     PendingAction(Box<PendingAction>),
     /// A private chat memory: `memory_saved`.
@@ -133,6 +169,11 @@ pub trait Tool: Send + Sync + 'static {
     const LABEL: &'static str;
     /// Who may be offered it.
     const KIND: ToolKind;
+    /// The `data` block its successful results reach the model in ([`crate::prompt::tool_result`]).
+    /// `search_farm_records` sets `FarmRecords`.
+    const DATA_KIND: DataKind = DataKind::ToolResult;
+    /// Offered only when the garden has farm records to search ([`Offer::farm_records`]).
+    const NEEDS_FARM_RECORDS: bool = false;
 
     /// Every string the model wrote into the call, borrowed from the arguments, for the dose
     /// check. The returned references live as long as the borrow of `args` (elided `'_`), which
@@ -160,6 +201,10 @@ pub trait DynTool: Send + Sync {
     fn kind(&self) -> ToolKind;
     /// The UI label.
     fn label(&self) -> &'static str;
+    /// The `data` block its results are framed in.
+    fn data_kind(&self) -> DataKind;
+    /// Whether it is offered only to a garden with farm records.
+    fn needs_farm_records(&self) -> bool;
     /// The spec sent to the model.
     fn spec(&self) -> &ToolSpec;
     /// Parses, dose-checks and runs a call.
@@ -213,6 +258,14 @@ impl<T: Tool> DynTool for Erased<T> {
         T::LABEL
     }
 
+    fn data_kind(&self) -> DataKind {
+        T::DATA_KIND
+    }
+
+    fn needs_farm_records(&self) -> bool {
+        T::NEEDS_FARM_RECORDS
+    }
+
     fn spec(&self) -> &ToolSpec {
         &self.spec
     }
@@ -250,6 +303,7 @@ pub const fn tool_name(name: ToolName) -> &'static str {
         ToolName::GetPlantMeasurements => "get_plant_measurements",
         ToolName::GetGardenMap => "get_garden_map",
         ToolName::ListTasks => "list_tasks",
+        ToolName::SearchFarmRecords => "search_farm_records",
         ToolName::Remember => "remember",
         ToolName::RequestRescan => "request_rescan",
         ToolName::CreateTask => "create_task",
@@ -278,7 +332,7 @@ impl Default for ToolRegistry {
 }
 
 impl ToolRegistry {
-    /// The nineteen tools of architecture 7.
+    /// The twenty tools of architecture 7 and connectors 7.
     pub fn standard() -> Self {
         let mut tools: Vec<Box<dyn DynTool>> = vec![
             Box::new(Erased::new(read::GetScan)),
@@ -295,6 +349,7 @@ impl ToolRegistry {
             Box::new(Erased::new(read::GetPlantMeasurements)),
             Box::new(Erased::new(read::GetGardenMap)),
             Box::new(Erased::new(read::ListTasks)),
+            Box::new(Erased::new(read::SearchFarmRecords)),
             Box::new(Erased::new(ui::Remember)),
             Box::new(Erased::new(ui::RequestRescan)),
             Box::new(Erased::new(write::CreateTask)),
@@ -305,24 +360,24 @@ impl ToolRegistry {
         Self { tools }
     }
 
-    /// The specs offered to a member with this role, sorted by name (a stable tool list keeps
-    /// the provider's prompt cache).
-    pub fn specs_for(&self, role: Role) -> Vec<ToolSpec> {
-        self.offered(role).map(|t| t.spec().clone()).collect()
+    /// The specs offered, sorted by name (a stable tool list keeps the provider's prompt cache;
+    /// a garden's first synced record changes it once).
+    pub fn specs_for(&self, offer: Offer) -> Vec<ToolSpec> {
+        self.offered(offer).map(|t| t.spec().clone()).collect()
     }
 
-    /// The tools offered to this role.
-    pub fn offered(&self, role: Role) -> impl Iterator<Item = &dyn DynTool> + '_ {
+    /// The tools offered: by the role, and by whether the garden has farm records (gap G6).
+    pub fn offered(&self, offer: Offer) -> impl Iterator<Item = &dyn DynTool> + '_ {
         self.tools
             .iter()
             .map(AsRef::as_ref)
-            .filter(move |t| t.kind().offered_to(role))
+            .filter(move |t| offer.allows(t.kind(), t.needs_farm_records()))
     }
 
-    /// A tool by its wire name, if offered to this role. A call to a tool the role isn't
-    /// offered is answered like an unknown tool.
-    pub fn find(&self, name: &str, role: Role) -> Option<&dyn DynTool> {
-        self.offered(role).find(|t| tool_name(t.name()) == name)
+    /// A tool by its wire name, if offered. A call to a tool that wasn't offered is answered
+    /// like an unknown tool.
+    pub fn find(&self, name: &str, offer: Offer) -> Option<&dyn DynTool> {
+        self.offered(offer).find(|t| tool_name(t.name()) == name)
     }
 }
 

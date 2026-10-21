@@ -1,6 +1,6 @@
 # PDM Backend Architecture
 
-> **Status:** Draft v0.2.9, 2026-10-17. v0.2.9: the roadmap now has ten slices, with S9 for the farm connectors (section 3). v0.2.8: Agent Memory adds the `beliefs` scheduler task, the only writer to it (section 8), and the three optional `AGENT_MEMORY_*` variables (section 9). v0.2.7: section 11 says CI's `docs` job regenerates the documents and gates on `checklinks.py` and `check_fences.py`. v0.2.6: section 12 links [docs/infra](../infra/README.md), keeps model files out of every image (they come from the `/models` volume) and takes the base images from infra 3. v0.2.5: adds [roadmap.md](roadmap.md), the work as slices with exit checks, to section 3 and section 13. v0.2.4: the schema now lives at `backend/migrations/schema.surql` and nowhere else, so section 6 no longer keeps two copies. v0.2.3: the workspace and the generator tools are now in `backend/`; section 6 lists `tools/`, and `migrations/schema.surql` is a copy of `docs/database/schema.surql` until the move. v0.2.2: section 7 says the Rust skills follow this design instead of listing departures; the generator tools move to `backend/tools/`; moving the scratch workspace into `backend/` is decided. v0.2.1: the release profile keeps symbols and adds line tables (stripping symbols empties panic backtraces, probed); the `api` container's `stop_grace_period` is 190 s; the scheduler tree lists the eight real tasks, with question continuation inside `sweep`; the database row names all four protected parameters. v0.2: the module trees, crate graph and configuration now match the compiled crates; adds the decisions on contracts open questions 12–24 and the changes to contracts v0.10, architecture v0.7 and database v1.4.
+> **Status:** Draft v0.2.14, 2026-10-20. v0.2.14: the workspace layout lists `integrations`' `slc` module with its embedded `data/slc_v3r2.bin`, and `tools/slc/build_slc.py`, which builds it (section 6). v0.2.13: the crate graph lists `era-eval`, the evaluation tool, which uses `api`'s library, and the rule reads "nothing in the deployed graph depends on a binary" (section 5). v0.2.12: the workspace layout lists `tools/era-eval`, the farm connectors' agent evaluation (a workspace member that runs `api`'s farm sync through `api`'s new library target), and `api`'s `lib.rs` (section 6). v0.2.11: `aes-gcm` 0.11.1 is pinned for sealing the farm connectors' tokens (section 4), and section 9 lists the connector variables: `CONNECTOR_KEY`, the Slack and Google OAuth clients, `CONNECTOR_RETURN_URL` and the Era bases. v0.2.10: the workspace layout shows `tests/fixtures/era/`, the Era simulators' farm fixture (section 6). v0.2.9: the roadmap now has ten slices, with S9 for the farm connectors (section 3). v0.2.8: Agent Memory adds the `beliefs` scheduler task, the only writer to it (section 8), and the three optional `AGENT_MEMORY_*` variables (section 9). v0.2.7: section 11 says CI's `docs` job regenerates the documents and gates on `checklinks.py` and `check_fences.py`. v0.2.6: section 12 links [docs/infra](../infra/README.md), keeps model files out of every image (they come from the `/models` volume) and takes the base images from infra 3. v0.2.5: adds [roadmap.md](roadmap.md), the work as slices with exit checks, to section 3 and section 13. v0.2.4: the schema now lives at `backend/migrations/schema.surql` and nowhere else, so section 6 no longer keeps two copies. v0.2.3: the workspace and the generator tools are now in `backend/`; section 6 lists `tools/`, and `migrations/schema.surql` is a copy of `docs/database/schema.surql` until the move. v0.2.2: section 7 says the Rust skills follow this design instead of listing departures; the generator tools move to `backend/tools/`; moving the scratch workspace into `backend/` is decided. v0.2.1: the release profile keeps symbols and adds line tables (stripping symbols empties panic backtraces, probed); the `api` container's `stop_grace_period` is 190 s; the scheduler tree lists the eight real tasks, with question continuation inside `sweep`; the database row names all four protected parameters. v0.2: the module trees, crate graph and configuration now match the compiled crates; adds the decisions on contracts open questions 12–24 and the changes to contracts v0.10, architecture v0.7 and database v1.4.
 > v0.1: the Rust backend designed crate by crate, down to every struct, enum, trait, generic parameter and lifetime, with each definition compiled on Rust 1.99.1 against the pinned crates; it follows [contracts](../architecture/contracts.md) v0.9 and [architecture](../architecture/README.md) v0.6.
 
 Companion to the [system architecture](../architecture/README.md), the [data contracts](../architecture/contracts.md), the [database](../database/README.md) and [storage](../storage/README.md) notes, the [frontend](../frontend/README.md) and the [computer-vision design](../vision/README.md). Those documents decide **what** the system does; this directory decides **how the Rust code is built**: crates, modules, types, traits, tasks and errors.
@@ -109,6 +109,7 @@ The workers never touch the database or object storage: they only call the worke
 | Database | `surrealdb` =3.3.4 | Moves with the server ([database 1](../database/README.md#1-version-and-setup)) |
 | Object storage | `aws-sdk-s3` 1.152.0, default features off, `default-https-client`, `rt-tokio`, `http-1x` | Builds the client of [storage 5](../storage/README.md#5-rust-client) |
 | Outbound HTTP | `reqwest` 0.13.5 (`json`, `stream`, `query`), `jsonwebtoken` 11.1.0 (`aws_lc_rs`), `moka` 0.12.16, `secrecy` 0.10.3, `tzf-rs` 2.1.3 | rustls by default in reqwest 0.13 |
+| Sealing | `aes-gcm` 0.11.1 (`zeroize`) | AES-256-GCM over the farm connectors' vendor tokens, in `api` ([api 5](api.md#5-configuration)) |
 | Models and images | `ort` =2.0.0-rc.14 (`load-dynamic`, API level 29; ONNX Runtime 1.31 on CUDA 13), `ndarray` 0.17.2, `tokenizers` 0.23.2, `image` 0.25.10, `imageproc` 0.27.0, `fast_image_resize` 6.1.0, `webp` 0.3.1, `png` 0.18.1, `libheif-rs` 3.0.0, `nalgebra` 0.35.0, `chacha20` 0.10 | `ort` is a release candidate: pinned exactly |
 | Tests | `mockall` 0.15.0, `insta` 1.49.0, `proptest` 1.12.0, `wiremock` 0.6.5, cargo-nextest 0.9.148 | SurrealDB's embedded `kv-mem` engine in dev-dependencies only |
 
@@ -124,11 +125,12 @@ The pins match the project's Rust skills (`.claude/skills/rust/versions.md`), wh
 
 ## 5. Crate graph and dependency rules
 
-Each line lists what a crate depends on. Nothing depends on a binary, and there are no cycles.
+Each line lists what a crate depends on. Nothing in the deployed graph depends on a binary, and there are no cycles. The evaluation tool `era-eval` is a dev-only binary that never ships; it uses `api`'s library target, which exists for it, and nothing depends on `era-eval`.
 
 ```
 api (bin)      ──▶ pipeline, agent, knowledge, vision, integrations, store, blob, domain
 worker (bin)   ──▶ vision, integrations, domain
+era-eval (tool bin) ──▶ api (lib), agent, store, blob, knowledge, vision, integrations, domain
 pipeline       ──▶ agent, knowledge, vision, domain
 agent          ──▶ integrations, domain
 knowledge      ──▶ domain            (reads through the KnowledgeRepo port, which store implements)
@@ -171,7 +173,8 @@ backend/
 │  │                       + garden/, records/, rules/, ports/
 │  ├─ store/               src/{client, tx, error, ids, rows, fragments, read}.rs + repo/ (one module per area)
 │  ├─ blob/                src/{client, s3, delete, memory, sweep, error}.rs
-│  ├─ integrations/        src/{http, sse, openai_compat, soilgrids, clerk, svix, expo_push, jev}.rs + anthropic/, open_meteo/, geocode/
+│  ├─ integrations/        src/{http, sse, openai_compat, soilgrids, slc, clerk, svix, expo_push, jev}.rs + anthropic/, open_meteo/, geocode/
+│  │                       + data/slc_v3r2.bin (Soil Landscapes of Canada, embedded)
 │  ├─ vision/              src/{depth, embed, imaging, manifest, mask, rle, error}.rs + runtime/, perception/, upload/, measure/
 │  ├─ knowledge/           src/{store, index, candidates, weather_fit, scoring, status, error}.rs
 │  ├─ agent/               src/{config, deps, error, prompt, context, memory}.rs + safety/, model/, plan_writer/, tools/, turn/
@@ -179,13 +182,19 @@ backend/
 │                          + steps/, measure/
 ├─ tools/
 │  ├─ docgen/              docgen.py, regen_all.sh, check_fences.py, checklinks.py and one <doc>.md.tpl per crate document
-│  └─ apigen/              gen_fake_store.py: api's test FakeStore, from the store traits
+│  ├─ apigen/              gen_fake_store.py: api's test FakeStore, from the store traits
+│  ├─ slc/                 build_slc.py: integrations' data/slc_v3r2.bin, from AAFC's published SLC v3.2 files
+│  └─ era-eval/            a workspace binary: the farm connectors' agent evaluation on Era's simulators (connectors 9.3,
+│                          docs/EON E8); src/{main, bench, garden, answers, score, journal, meter, report}.rs
 ├─ bins/
-│  ├─ api/                 src/{main, config, wiring, state, seams, router, openapi, error, reply, limits, signing, uploads,
+│  ├─ api/                 src/{lib, main, config, wiring, state, seams, router, openapi, error, reply, limits, signing, uploads,
 │  │                       broker, workers, push, deletion, media}.rs + extract/, events/, routes/, scheduler/, tests/
 │  └─ worker/              src/{main, config, api, job, fallback}.rs + lifecycle/, vlm/
-└─ migrations/
-   └─ schema.surql         the database schema, embedded by store and applied by api on start (database 1)
+├─ migrations/
+│  └─ schema.surql         the database schema, embedded by store and applied by api on start (database 1)
+└─ tests/
+   └─ fixtures/era/        the Era simulators' farm fixtures (Maple Row Farm), read by the era tests at run time;
+                           left out of the image build context (docs/EON E0.4)
 ```
 
 Each crate document has its own module tree. Modules follow the `foo.rs` + `foo/` layout, without `mod.rs`.
@@ -259,6 +268,7 @@ Each binary reads typed configuration from the environment at start and refuses 
 | `SURREAL_ROOT_USER`, `SURREAL_ROOT_PASS` | api | Root credentials used only at start to apply `schema.surql` ([store](store.md)) |
 | `RUSTFS_ENDPOINT`, `RUSTFS_ACCESS_KEY`, `RUSTFS_SECRET_KEY` | api | `http://rustfs:9000`, the `PDMAPI01` identity ([storage 2](../storage/README.md#2-bucket-keys-and-access)) |
 | `AGENT_MEMORY_URL`, `AGENT_MEMORY_CONTEXT_ID`, `AGENT_MEMORY_API_KEY` | api | Optional, all three or none. SurrealDB Agent Memory's REST base URL, the context (`pdm-dev`, `pdm-prod`) and a key limited to `gardens/*` ([database: Agent Memory](../database/agent-memory.md#2-setup)). Unset: shared memories aren't mirrored |
+| `CONNECTOR_KEY`, `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `CONNECTOR_RETURN_URL`, `ERA_SLACK_BASE`, `ERA_GOOGLE_BASE` | api | Optional. The farm connectors: the 32-byte sealing key as 64 hex characters (unset: connectors off), each vendor's OAuth client (both of a pair or neither), where the OAuth callback sends the app, and Era's simulators for the demo garden's seeding ([api 5](api.md#5-configuration)) |
 | `API_URL_SIGNING_KEY` | api | HMAC key of signed image URLs, at least 32 bytes |
 | `CLERK_ISSUER`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET` | api | Session-token verification, account deletion, Svix verification |
 | `LLM_API_KEY`, `LLM_CHAT_MODEL`, `LLM_CHEAP_MODEL` | api | `claude-opus-5-5` and `claude-haiku-5-5` by default |

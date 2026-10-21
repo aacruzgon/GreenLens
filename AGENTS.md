@@ -10,7 +10,7 @@ A user photographs a plant. Computer vision on a home GPU rig assesses the plant
 
 **Stack:** Expo SDK 57 / React Native app with Clerk authentication (and a Swift LiDAR module), Rust backend (axum, tokio) in a Cargo workspace, SurrealDB 3.3.4, RustFS 1.0.1 for images, pull-based GPU workers (`ort`/CUDA and a vLLM or llama.cpp VLM sidecar), Python for model training and knowledge ingestion.
 
-**Current state:** the repository holds the design documents and the Rust backend workspace in `backend/` ([docs/backend §6](docs/backend/README.md#6-workspace-layout)), from which the crate documents in `docs/backend` are generated, the training, export and evaluation code in `ml/` ([ml/README.md](ml/README.md)), and in `infra/` the rig's VLM server ([infra/README.md](infra/README.md)) and the dev services for a laptop (`infra/dev.compose.yml`, [docs/infra §4](docs/infra/README.md#infradevcomposeyml)). CI runs from `.github/workflows/ci.yml` ([docs/infra §2](docs/infra/README.md#2-ci)). The app doesn't exist yet. When it lands, follow the layout below and update this file.
+**Current state:** the repository holds the design documents and the Rust backend workspace in `backend/` ([docs/backend §6](docs/backend/README.md#6-workspace-layout)), from which the crate documents in `docs/backend` are generated, the training, export and evaluation code in `ml/` ([ml/README.md](ml/README.md)), and in `infra/` the rig's VLM server ([infra/README.md](infra/README.md)) and the dev services for a laptop (`infra/dev.compose.yml`, [docs/infra §4](docs/infra/README.md#infradevcomposeyml)). CI runs from `.github/workflows/ci.yml` on two self-hosted runners on the rig ([docs/infra §2](docs/infra/README.md#runners-and-budget)). The Expo app is in `app/` ([app/AGENTS.md](app/AGENTS.md)): slice F0 of the [app roadmap](docs/frontend/roadmap.md), with its layers, the api layer, mock mode, Conservatory's design layer and Clerk sign-in. The LiDAR module (`app/modules/lidar`) doesn't exist yet.
 
 ## Where to find things
 
@@ -26,9 +26,11 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | [`docs/frontend/README.md`](docs/frontend/README.md) | The frontend architecture: stack and pins, libraries, layers and import rules, directory layout, Clerk, the API and streaming layers, state, platform adapters (phone and in-app browsers, the LiDAR module's JS interface), UI system, mock mode, testing, builds, build plan, open decisions and sources | You are working on anything in `app/`, or need to know how the app consumes an endpoint or event |
 | [`docs/frontend/flows.md`](docs/frontend/flows.md) | Sequence diagrams for every user flow and the app's state machines | You are implementing a flow end to end, or a reducer or state machine in a feature's `model/` |
 | [`docs/frontend/screens.md`](docs/frontend/screens.md) | Navigation map, screen inventory with data, actions and roles, wireframes, screen rules, shared components and wording rules | You are building or changing a screen |
-| [`docs/design/design.md`](docs/design/design.md) | The app's design direction: principles, what Apple's chrome owns and what we own, four directions compared (the F0 baseline, Herbarium, Seed Packet, Instrument), the demo screen by screen, status and motion rules, the 3D garden and the insights. Companions in the same folder: clickable mockups ([`mockups/index.html`](docs/design/mockups/index.html)), design philosophies, the plant-app landscape, cross-domain inspiration, in-app analytics and 3D rendering notes | You are choosing how a screen looks, moves or is worded, or building the 3D garden or the insights |
+| [`docs/frontend/roadmap.md`](docs/frontend/roadmap.md) | The app's build-week work in the Conservatory direction as ten slices (F0–F9), each with its goal, work, owner, dependencies on other tracks, exit checks and the decisions it closes; when each slice goes live against the backend, and what the app needs from other tracks | You plan, pick up or review app work |
+| [`docs/design/design.md`](docs/design/design.md) | The app's design direction: principles, what Apple's chrome owns and what we own, five directions compared (the F0 baseline, Herbarium, Seed Packet, Instrument, Conservatory) and the team's choice, Conservatory, the demo screen by screen, status and motion rules, the 3D garden and the insights. Companions in the same folder: clickable mockups ([`mockups/index.html`](docs/design/mockups/index.html)), design philosophies, the plant-app landscape, cross-domain inspiration, in-app analytics and 3D rendering notes | You are choosing how a screen looks, moves or is worded, or building the 3D garden or the insights |
 | [`docs/storage/README.md`](docs/storage/README.md) | RustFS notes: version pin and setup, bucket and key layout, how images are served through signed API URLs, writes and deletes, the Rust client (`aws-sdk-s3`), operations, caveats and the fallback | You are touching image or depth-map storage, the `blob` crate, or upload handling |
 | [`docs/connectors/README.md`](docs/connectors/README.md) | Farm connectors and Era by Eon: a garden's Slack channels and Google Drive folder synced for the chat and the plan writer, the data, OAuth and sealed tokens, the sync, the `search_farm_records` tool, privacy, and Era's simulators as the test bench in dev, CI, the agent evaluation and the demo, with their measured behaviour | You touch a connector, `farm_record`, the `connectors` scheduler task, the Slack or Drive adapters, the Era compose profiles or CI job, or the agent evaluation |
+| [`docs/EON/README.md`](docs/EON/README.md) | The development roadmap for the farm connectors and Era by Eon: phases E0–E11 in build order, each task with what it needs, its tests and its state; the test catalogue; what Era's simulators and the vendors' documents showed on Oct 19; the design gaps found on `main` | You pick up, plan or review connector or Era work, or need the exact inject, fault, point-in-time or OAuth calls of Era's simulators |
 | [`docs/setup/README.md`](docs/setup/README.md) | Developer setup: what each team member installs on macOS, Windows and Linux, by role (everyone, app, backend, ML, rig and control plane), with the pinned versions and a check list | You are setting up a machine, or a build fails for a missing tool |
 | [`docs/infra/README.md`](docs/infra/README.md) | Infrastructure and CI: the GitHub Actions workflow and required checks, the container images and registry, the dev, control-plane and rig compose files, ingress, secrets, deploys by digest and backups | You touch CI, a Dockerfile, a compose file, an env file, a deploy or a backup |
 | [`docs/backend/README.md`](docs/backend/README.md) | The Rust backend design: goals, the crate graph and dependency rules, workspace layout, Rust conventions, runtime composition, configuration, testing, builds, build plan. Links a document per crate (`domain`, `domain-types`, `store`, `blob`, `integrations`, `vision`, `knowledge`, `agent`, `pipeline`, `api`, `worker`) with every struct, enum, trait, generic and lifetime, compiled on Rust 1.99.1 | You write or review any Rust, a `Cargo.toml`, a repository method, an endpoint, a worker or a background task |
@@ -55,7 +57,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | Gardens, members, invites, plants, tasks, account, deletion cascades | contracts §9; database §4 (Deletion) |
 | Forecast alerts | architecture §8.3 |
 | Agent Memory: shared memories mirrored as beliefs (supersession, scopes, privacy, deletion) | database [agent-memory.md](docs/database/agent-memory.md); contracts §8 (Beliefs), §9; architecture §7 |
-| Farm connectors (Slack, Google Drive), Era by Eon's simulators, the farm fixture and the agent evaluation | [connectors](docs/connectors/README.md); backend roadmap S9 |
+| Farm connectors (Slack, Google Drive), Era by Eon's simulators, the farm fixture and the agent evaluation | [connectors](docs/connectors/README.md); backend roadmap S9; the build order, tasks and tests in [docs/EON](docs/EON/README.md) |
 | Knowledge base and seed file format | architecture §5 (Knowledge base); contracts §10 |
 | Security, privacy and safety (EXIF, face blurring, dose checks) | architecture §11 |
 | Deployment, hosting, app delivery, operations | architecture §12; infra |
@@ -82,6 +84,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 | Weather and trigger thresholds | backend domain §7 (weather thresholds); contracts §7 |
 | Build plan by day | architecture §14; frontend §18; vision README §10 |
 | Backend work as slices, their order and exit checks | backend roadmap |
+| App work as slices, their order, owners and exit checks | frontend [roadmap.md](docs/frontend/roadmap.md) |
 | The ML dev plan: who builds what, hand-offs between `ml/` and the Rust crates, integration gaps, phases to Oct 25 | vision dev-roadmap.md (update a task's state in the PR that finishes it) |
 | Model progress: done, next, waiting, open PRs, the rig's state | vision roadmap.md (update it at the end of each ML work session) |
 | Open decisions and open questions | architecture §15; contracts §12; connectors §12; database §9; frontend §19; backend README §15 and each crate document's open questions; vision README §11; design §10 |
@@ -89,7 +92,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 ## Sources of truth
 
 - **Contracts:** the Rust types in the `domain` crate (`backend/crates/domain`) are the source of truth, and `contracts.md` explains them. Where the two disagree, the types win and the document is corrected. A contract change updates the Rust type, its exact-JSON test and `contracts.md` in the same pull request.
-- **Generated from the types:** `utoipa` generates the OpenAPI spec, committed as `backend/openapi.json` (an `api` test fails when it falls behind the types; regenerate it with `cargo run -p api -- openapi > openapi.json` in `backend/`). `openapi-typescript` generates the app's types from that file once `app/` exists. `schemars` generates JSON Schema for the fixed shapes.
+- **Generated from the types:** `utoipa` generates the OpenAPI spec, committed as `backend/openapi.json` (an `api` test fails when it falls behind the types; regenerate it with `cargo run -p api -- openapi > openapi.json` in `backend/`). `openapi-typescript` generates the app's types from that file (`npm run gen:api` in `app/`; CI fails when they differ). `schemars` generates JSON Schema for the fixed shapes.
 - **Stored shapes** are defined in `backend/migrations/schema.surql`. Change it in the same pull request as any contract change that affects what is stored.
 - **The architecture document follows the contracts.** When `contracts.md` changes, bring `docs/architecture/README.md` in line, bump both status lines, and add a row to contracts §11 listing the affected architecture sections.
 - **Model files:** [`ml/models/FORMATS.md`](ml/models/FORMATS.md) defines the head and label-matrix files and the `label_set_version` recipe. `ml/` writes them and `vision` and `store` read them, so a format change updates both sides and `FORMATS.md` in the same pull request.
@@ -99,7 +102,7 @@ All design lives in `docs/`. Each document has a status line at the top with its
 
 ## Repository layout
 
-From architecture §13. `backend/` exists, with `tools/` beside its crates for the `docs/backend` generator and `api`'s test-store generator; `ml/` holds the training and export code; `infra/` holds the rig's VLM server so far; `app/` doesn't exist yet.
+From architecture §13. `backend/` exists, with `tools/` beside its crates for the `docs/backend` generator and `api`'s test-store generator; `ml/` holds the training and export code; `infra/` holds the rig's VLM server so far; `app/` holds the Expo app, without its LiDAR module yet.
 
 ```
 PDM/
@@ -107,7 +110,8 @@ PDM/
 ├─ backend/
 │  ├─ crates/{domain, store, blob, integrations, agent, vision, knowledge, pipeline}
 │  ├─ bins/{api, worker}
-│  └─ migrations/*.surql
+│  ├─ migrations/*.surql
+│  └─ tests/fixtures/era/  the Era simulators' farm fixture (docs/EON)
 ├─ ml/
 │  ├─ pdm_vision/      shared pre-processing for training and evaluation
 │  ├─ models/          the model manifest (manifest.toml) and licence notices

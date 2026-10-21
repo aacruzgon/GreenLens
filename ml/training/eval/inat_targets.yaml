@@ -1,0 +1,95 @@
+# What `python -m ml.training.eval.inat fetch` searches iNaturalist for (evaluation.md §2, "Where
+# the photos come from"). Each target is one taxon, matched exactly: iNaturalist's own taxon filter
+# also returns related taxa (a search for Podosphaera xanthii returns a fleabane's mildew).
+#
+#   taxon        iNaturalist's scientific name
+#   group        the evaluation set's group (evaluation.md §2), for the contact sheet
+#   species_id   the plant the case is about, as a knowledge-base slug; null when the host varies
+#   problems     knowledge-base problem slugs (training/data/mappings); [] for a healthy plant
+#   outcome      the scan's expected outcome (evaluation.md §3)
+#   quality      research: identifications the community agrees on; any: also needs_id
+#   life_stage   optional: larva (iNaturalist's Life Stage annotation)
+#   match        exact (the default) or descendants, for a genus or family
+#   rank         optional: the taxon's rank when its name has several (default: the species)
+#   note         shown on the contact sheet
+#
+# Counts of 2026 CC0 / CC BY observations with photos on Oct 19, 2026 (research grade / any):
+# Septoria lycopersici 0 / 1, Alternaria solani 0 / 6, Phytophthora infestans 0 / 4,
+# Venturia inaequalis 5 / 67, Phyllosticta ampelicida 3 / 99, Puccinia sorghi 0 / 0,
+# Exserohilum turcicum 0 / 0. Tomato and corn diseases have to come from the team's photos.
+
+targets:
+  - taxon: Septoria lycopersici
+    group: diseased
+    species_id: tomato
+    problems: [tomato_septoria_leaf_spot]
+    outcome: diagnosed
+    quality: any
+  - taxon: Alternaria solani
+    group: diseased
+    species_id: tomato
+    problems: [tomato_early_blight]
+    outcome: diagnosed
+    quality: any
+    note: also on potato (potato_early_blight); check the host
+  - taxon: Phytophthora infestans
+    group: diseased
+    species_id: tomato
+    problems: [tomato_late_blight]
+    outcome: diagnosed
+    quality: any
+    note: also on potato (potato_late_blight); check the host
+  - taxon: Venturia inaequalis
+    group: diseased
+    species_id: apple
+    problems: [apple_scab]
+    outcome: diagnosed
+    quality: any
+  - taxon: Gymnosporangium juniperi-virginianae
+    group: diseased
+    species_id: apple
+    problems: [apple_cedar_apple_rust]
+    outcome: diagnosed
+    quality: research
+    note: keep only the spots on apple leaves or fruit, not the galls on juniper
+  - taxon: Phyllosticta ampelicida
+    group: diseased
+    species_id: grape
+    problems: [grape_black_rot]
+    outcome: diagnosed
+    quality: any
+  - taxon: Podosphaera xanthii
+    group: diseased
+    species_id: squash
+    problems: [squash_powdery_mildew]
+    outcome: diagnosed
+    quality: any
+    note: keep squash, pumpkin and zucchini; cucumber and melon are other species
+  - taxon: Puccinia sorghi
+    group: diseased
+    species_id: corn
+    problems: [corn_common_rust]
+    outcome: diagnosed
+    quality: any
+  - taxon: Exserohilum turcicum
+    group: diseased
+    species_id: corn
+    problems: [corn_northern_leaf_blight]
+    outcome: diagnosed
+    quality: any
+  - taxon: Tetranychus urticae
+    group: pests
+    species_id: tomato
+    problems: [tomato_spider_mites]
+    outcome: diagnosed
+    quality: any
+    note: keep tomato hosts only, or change species_id and problems
+  - taxon: Coccinellidae
+    match: descendants
+    group: pests
+    species_id: null
+    problems: []
+    outcome: healthy
+    quality: research
+    life_stage: larva
+    note: the classic killed-by-mistake case; set the host plant, and the outcome if the plant is sick

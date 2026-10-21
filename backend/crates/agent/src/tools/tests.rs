@@ -16,35 +16,98 @@ use crate::{
 fn the_registry_has_every_tool_sorted_and_filters_by_role() {
     let r = ToolRegistry::standard();
     let all: Vec<_> = r
-        .specs_for(Role::Owner)
+        .specs_for(Offer::everything(Role::Owner))
         .into_iter()
         .map(|s| s.name)
         .collect();
-    assert_eq!(all.len(), 19);
+    assert_eq!(all.len(), 20);
     let mut sorted = all.clone();
     sorted.sort();
     assert_eq!(all, sorted, "a stable order keeps the prompt cache");
 
     for role in [Role::Viewer, Role::Reviewer] {
-        let names: Vec<_> = r.specs_for(role).into_iter().map(|s| s.name).collect();
-        assert_eq!(names.len(), 16);
+        let names: Vec<_> = r
+            .specs_for(Offer::everything(role))
+            .into_iter()
+            .map(|s| s.name)
+            .collect();
+        assert_eq!(names.len(), 17);
         for write in ["create_task", "complete_task", "revise_plan"] {
             assert!(
                 !names.iter().any(|n| n == write),
                 "{role:?} is offered {write}"
             );
-            assert!(r.find(write, role).is_none());
+            assert!(r.find(write, Offer::everything(role)).is_none());
         }
         assert!(names.iter().any(|n| n == "remember"));
         assert!(names.iter().any(|n| n == "request_rescan"));
+        assert!(names.iter().any(|n| n == "search_farm_records"));
     }
-    assert!(r.find("revise_plan", Role::Editor).is_some());
+    assert!(
+        r.find("revise_plan", Offer::everything(Role::Editor))
+            .is_some()
+    );
+}
+
+#[test]
+fn search_farm_records_is_left_out_of_a_garden_without_farm_records() {
+    let r = ToolRegistry::standard();
+    for role in [Role::Viewer, Role::Reviewer, Role::Editor, Role::Owner] {
+        let without = Offer {
+            role,
+            farm_records: false,
+        };
+        let names: Vec<_> = r.specs_for(without).into_iter().map(|s| s.name).collect();
+        assert!(
+            !names.iter().any(|n| n == "search_farm_records"),
+            "{role:?}"
+        );
+        assert!(r.find("search_farm_records", without).is_none());
+        assert_eq!(
+            names.len() + 1,
+            r.specs_for(Offer::everything(role)).len(),
+            "only the farm tool goes"
+        );
+        assert!(
+            r.find("search_farm_records", Offer::everything(role))
+                .is_some()
+        );
+    }
+}
+
+#[test]
+fn search_farm_records_frames_its_results_as_farm_records() {
+    let r = ToolRegistry::standard();
+    let offer = Offer::everything(Role::Viewer);
+    let farm = r.find("search_farm_records", offer).unwrap();
+    assert_eq!(farm.data_kind(), DataKind::FarmRecords);
+    assert!(farm.needs_farm_records());
+    assert_eq!(farm.kind(), ToolKind::Read);
+    assert!(!farm.spec().strict);
+    // Every other tool keeps the default.
+    for t in r
+        .offered(offer)
+        .filter(|t| t.name() != ToolName::SearchFarmRecords)
+    {
+        assert_eq!(
+            t.data_kind(),
+            DataKind::ToolResult,
+            "{}",
+            tool_name(t.name())
+        );
+        assert!(!t.needs_farm_records());
+    }
+    let params = &farm.spec().parameters;
+    assert_eq!(params["required"], json!(["query"]));
+    for arg in ["query", "kind", "since"] {
+        assert!(params["properties"][arg].is_object(), "{arg}: {params}");
+    }
 }
 
 #[test]
 fn specs_carry_a_json_schema_of_the_typed_arguments() {
     let r = ToolRegistry::standard();
-    let specs = r.specs_for(Role::Owner);
+    let specs = r.specs_for(Offer::everything(Role::Owner));
     let remember = specs.iter().find(|s| s.name == "remember").unwrap();
     assert_eq!(remember.parameters["type"], "object");
     assert!(remember.parameters["properties"]["fact"].is_object());
@@ -199,7 +262,7 @@ fn write_tools_offer_only_to_editors() {
 #[test]
 fn only_the_tools_that_propose_changes_are_strict() {
     let strict: Vec<String> = ToolRegistry::standard()
-        .specs_for(Role::Owner)
+        .specs_for(Offer::everything(Role::Owner))
         .into_iter()
         .filter(|s| s.strict)
         .map(|s| s.name)
@@ -285,9 +348,373 @@ mod search_memory {
     }
 }
 
+mod search_farm_records {
+    use std::sync::Arc;
+
+    use domain::{
+        authz::{ConversationOwner, Viewer},
+        chat::Anchor,
+        connectors::{FarmRecordHit, FarmRecordKind},
+        garden::gardens::TimeZone,
+        ports::{
+            FarmRecordFilter, FarmRecordMatch, GardenContext, MockFarmRecordStore, MockGardenRepo,
+            MockMemoryStore, NoBeliefs,
+        },
+        records::weather::{Coordinates, LocationPrecision, WeatherCell},
+        wire::{LocalDate, Timestamp},
+    };
+
+    use super::*;
+    use crate::{
+        error::ToolError,
+        testing::{GARDEN, garden_deps, now, owner, spray_log_hit},
+        tools::read::{FARM_KIND_RESERVED, FARM_RECORD_HITS, local_midnight, merge_kinds},
+    };
+
+    fn toronto() -> MockGardenRepo {
+        let mut gardens = MockGardenRepo::new();
+        gardens.expect_garden_context().returning(|garden| {
+            let at = Coordinates {
+                lat: 43.65,
+                lon: -79.38,
+            };
+            Ok(GardenContext {
+                id: garden,
+                name: "Maple Row Farm".to_owned(),
+                coordinates: at,
+                precision: LocationPrecision::About1Km,
+                weather_cell: WeatherCell::of(at),
+                time_zone: TimeZone("America/Toronto".to_owned()),
+                soil_profile: None,
+                map_version: 0,
+            })
+        });
+        gardens
+    }
+
+    /// `n` copies of the spray log hit, numbered as distinct chunks.
+    fn hits(n: u32) -> Vec<FarmRecordMatch> {
+        (0..n)
+            .map(|i| {
+                let mut hit = spray_log_hit();
+                hit.citation.record_id = format!("01JAX3K9T6R2B8V0QZ4M7D1E5C.{i}.D_SPRAY")
+                    .parse()
+                    .unwrap();
+                FarmRecordMatch {
+                    hit,
+                    similarity: 0.9,
+                }
+            })
+            .collect()
+    }
+
+    async fn call(
+        farm: MockFarmRecordStore,
+        args: serde_json::Value,
+    ) -> Result<ToolOutput, ToolError> {
+        let mut deps = garden_deps(MockMemoryStore::new(), Arc::new(NoBeliefs));
+        deps.stores.farm = Arc::new(farm);
+        deps.stores.gardens = Arc::new(toronto());
+        let owner: ConversationOwner<Viewer> = owner(Role::Viewer).await;
+        let ctx = ToolCtx {
+            deps: &deps,
+            owner,
+            anchor: Anchor::Garden(GARDEN.parse().unwrap()),
+            plant: None,
+            message_id: "01JAX3K9T6R2B8V0QZ4M7D1E72".parse().unwrap(),
+            now: now(),
+        };
+        Erased::new(read::SearchFarmRecords).call(&ctx, args).await
+    }
+
+    #[tokio::test]
+    async fn at_most_8_hits_from_its_own_garden_filtered_by_kind_with_a_window_ignored() {
+        let mut farm = MockFarmRecordStore::new();
+        farm.expect_search_records()
+            .withf(|member, query, filter, k| {
+                // The window is ignored for documents (EON gap G18).
+                member.garden().to_string() == GARDEN
+                    && query.0.len() == 4
+                    && *filter
+                        == FarmRecordFilter {
+                            kind: Some(FarmRecordKind::Document),
+                            ..FarmRecordFilter::default()
+                        }
+                    && *k == FARM_RECORD_HITS
+            })
+            .times(1)
+            // A store that returned too many is cut to 8.
+            .returning(|_, _, _, _| Ok(hits(10)));
+        let out = call(
+            farm,
+            json!({"query": "copper on bed 3", "kind": "document", "since": "2026-07-01"}),
+        )
+        .await
+        .unwrap();
+        let returned: Vec<FarmRecordHit> = serde_json::from_value(out.content).unwrap();
+        assert_eq!(returned.len(), 8);
+        assert_eq!(returned[0], spray_log_hit());
+        assert_eq!(out.effects.len(), 8);
+        assert!(
+            out.effects
+                .iter()
+                .zip(&returned)
+                .all(|(e, h)| *e == ToolEffect::FarmCitation(h.citation.clone()))
+        );
+    }
+
+    /// A hit whose text names it, at a similarity.
+    fn named(name: &str, n: u32, similarity: f32) -> FarmRecordMatch {
+        let mut hit = spray_log_hit();
+        hit.text = name.to_owned();
+        hit.citation.record_id = format!("01JAX3K9T6R2B8V0QZ4M7D1E5C.{n}.D_SPRAY")
+            .parse()
+            .unwrap();
+        FarmRecordMatch { hit, similarity }
+    }
+
+    fn texts(found: &[FarmRecordMatch]) -> Vec<&str> {
+        found.iter().map(|m| m.hit.text.as_str()).collect()
+    }
+
+    #[test]
+    fn each_kind_keeps_its_reserve_and_the_rest_goes_by_similarity() {
+        // Ten close messages and three far documents: the documents keep 3 of the 8.
+        let messages: Vec<_> = (0..10_u8)
+            .map(|i| named(&format!("m{i}"), i.into(), 0.9 - f32::from(i) * 0.02))
+            .collect();
+        let documents = vec![
+            named("d0", 20, 0.4),
+            named("d1", 21, 0.3),
+            named("d2", 22, 0.2),
+        ];
+        let out = merge_kinds(messages.clone(), documents.clone(), 8, 3);
+        assert_eq!(
+            texts(&out),
+            ["m0", "m1", "m2", "m3", "m4", "d0", "d1", "d2"]
+        );
+        // The two free slots go by similarity: the fourth document (0.85) and the fourth
+        // message (0.84), not the fifth message (0.82).
+        let close = vec![
+            named("d3", 23, 0.95),
+            named("d4", 24, 0.93),
+            named("d5", 25, 0.91),
+            named("d6", 26, 0.85),
+        ];
+        let out = merge_kinds(messages.clone(), close, 8, 3);
+        assert_eq!(
+            texts(&out),
+            ["d3", "d4", "d5", "m0", "m1", "m2", "d6", "m3"]
+        );
+        // One document: the messages fill the other 7 slots.
+        let out = merge_kinds(messages.clone(), documents[..1].to_vec(), 8, 3);
+        assert_eq!(out.len(), 8);
+        assert_eq!(texts(&out).iter().filter(|t| t.starts_with('d')).count(), 1);
+        // No documents, or no messages: the other kind takes every slot, closest first.
+        let out = merge_kinds(messages.clone(), Vec::new(), 8, 3);
+        assert_eq!(texts(&out), texts(&messages[..8]));
+        let out = merge_kinds(Vec::new(), documents.clone(), 8, 3);
+        assert_eq!(texts(&out), ["d0", "d1", "d2"]);
+        // Out-of-order input comes back closest first.
+        let out = merge_kinds(
+            vec![named("m-low", 1, 0.1), named("m-high", 2, 0.8)],
+            vec![named("d-mid", 3, 0.5)],
+            8,
+            3,
+        );
+        assert_eq!(texts(&out), ["m-high", "d-mid", "m-low"]);
+        // A NaN similarity (a zero vector) is left out, not ranked first.
+        let out = merge_kinds(
+            vec![named("m-nan", 1, f32::NAN), named("m", 2, 0.5)],
+            vec![named("d-inf", 3, f32::INFINITY), named("d", 4, 0.4)],
+            8,
+            3,
+        );
+        assert_eq!(texts(&out), ["m", "d"]);
+        assert_eq!(FARM_KIND_RESERVED, 3);
+    }
+
+    #[tokio::test]
+    async fn without_kind_each_kind_is_searched_and_keeps_its_reserve() {
+        let mut farm = MockFarmRecordStore::new();
+        farm.expect_search_records()
+            .withf(|_, _, filter, k| {
+                *filter
+                    == FarmRecordFilter {
+                        kind: Some(FarmRecordKind::Message),
+                        ..FarmRecordFilter::default()
+                    }
+                    && *k == FARM_RECORD_HITS
+            })
+            .times(1)
+            .returning(|_, _, _, _| Ok((0..8).map(|i| named(&format!("m{i}"), i, 0.9)).collect()));
+        farm.expect_search_records()
+            .withf(|_, _, filter, k| {
+                *filter
+                    == FarmRecordFilter {
+                        kind: Some(FarmRecordKind::Document),
+                        ..FarmRecordFilter::default()
+                    }
+                    && *k == FARM_RECORD_HITS
+            })
+            .times(1)
+            .returning(|_, _, _, _| Ok(vec![named("spray log", 20, 0.2)]));
+        let out = call(farm, json!({"query": "was bed 3 sprayed"}))
+            .await
+            .unwrap();
+        let returned: Vec<FarmRecordHit> = serde_json::from_value(out.content).unwrap();
+        assert_eq!(returned.len(), 8);
+        assert_eq!(returned[7].text, "spray log");
+        assert_eq!(out.effects.len(), 8);
+    }
+
+    #[tokio::test]
+    async fn a_window_applies_to_messages_and_never_to_documents() {
+        // EON gap G18: a document's time is its last edit, so a question about July with
+        // `until` set must still find the spray log, edited later. Midnight in Toronto is
+        // 04:00Z (EDT).
+        let mut farm = MockFarmRecordStore::new();
+        farm.expect_search_records()
+            .withf(|_, _, filter, _| {
+                let since: Timestamp = "2026-07-09T04:00:00Z".parse().unwrap();
+                let until: Timestamp = "2026-07-29T04:00:00Z".parse().unwrap();
+                filter.kind == Some(FarmRecordKind::Message)
+                    && filter.since == Some(since)
+                    && filter.until == Some(until)
+            })
+            .times(1)
+            .returning(|_, _, _, _| Ok(vec![named("a slack message", 50, 0.5)]));
+        farm.expect_search_records()
+            .withf(|_, _, filter, _| {
+                filter.kind == Some(FarmRecordKind::Document)
+                    && filter.since.is_none()
+                    && filter.until.is_none()
+            })
+            .times(1)
+            .returning(|_, _, _, _| Ok(hits(2)));
+        let out = call(
+            farm,
+            json!({"query": "spray log", "since": "2026-07-09", "until": "2026-07-28"}),
+        )
+        .await
+        .unwrap();
+        let returned: Vec<FarmRecordHit> = serde_json::from_value(out.content).unwrap();
+        // The spray log is returned though the window ended before it was edited.
+        assert!(returned.contains(&spray_log_hit()));
+        assert_eq!(returned.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn until_includes_its_day_and_author_is_trimmed() {
+        // Q19: "What did Riley post in #field-reports on August 31?". Riley's message is at
+        // 1788216000 (2026-08-31T22:40:00Z), within Toronto's August 31 (04:00Z to 04:00Z).
+        let riley: Timestamp = "2026-08-31T22:40:00Z".parse().unwrap();
+        assert_eq!(riley.unix_seconds(), 1_788_216_000);
+        let mut farm = MockFarmRecordStore::new();
+        farm.expect_search_records()
+            .withf(move |_, _, filter, _| {
+                let since: Timestamp = "2026-08-31T04:00:00Z".parse().unwrap();
+                let until: Timestamp = "2026-09-01T04:00:00Z".parse().unwrap();
+                // Documents have no author: one search, of the messages.
+                filter.kind == Some(FarmRecordKind::Message)
+                    && filter.since == Some(since)
+                    && filter.until == Some(until)
+                    && filter.author.as_deref() == Some("Riley")
+                    && since <= riley
+                    && riley < until
+            })
+            .times(1)
+            .returning(|_, _, _, _| Ok(Vec::new()));
+        let out = call(
+            farm,
+            json!({"query": "Riley's post", "author": "  Riley ", "since": "2026-08-31",
+                "until": "2026-08-31"}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(out.content, json!([]));
+
+        // A blank author is no filter.
+        let mut farm = MockFarmRecordStore::new();
+        farm.expect_search_records()
+            .withf(|_, _, filter, _| filter.author.is_none() && filter.until.is_none())
+            .times(1)
+            .returning(|_, _, _, _| Ok(Vec::new()));
+        call(
+            farm,
+            json!({"query": "x", "author": "   ", "kind": "message"}),
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn unknown_arguments_and_kinds_are_refused_before_the_search() {
+        for args in [
+            json!({"query": "x", "garden_id": GARDEN}),
+            json!({"query": "x", "kind": "email"}),
+            json!({"query": "x", "since": "1 July"}),
+            json!({"query": "x", "until": "31 August"}),
+            json!({"query": "x", "author": 7}),
+            // `until` before `since`, and an author for documents, which have none.
+            json!({"query": "x", "since": "2026-09-01", "until": "2026-08-31"}),
+            json!({"query": "x", "author": "Maria", "kind": "document"}),
+        ] {
+            // No expectation: a search would panic the test.
+            let err = call(MockFarmRecordStore::new(), args.clone())
+                .await
+                .unwrap_err();
+            assert!(matches!(err, ToolError::Rejected(_)), "{args}");
+        }
+    }
+
+    #[test]
+    fn since_is_the_gardens_midnight() {
+        let day: LocalDate = "2026-01-15".parse().unwrap();
+        assert_eq!(
+            local_midnight(day, "America/Toronto"),
+            "2026-01-15T05:00:00Z".parse().unwrap()
+        );
+        assert_eq!(
+            local_midnight(day, "not a zone"),
+            "2026-01-15T00:00:00Z".parse().unwrap()
+        );
+        // Midnight doesn't exist in Santiago on the day DST starts (2026-09-06): 01:00 local.
+        let gap: LocalDate = "2026-09-06".parse().unwrap();
+        assert_eq!(
+            local_midnight(gap, "America/Santiago"),
+            "2026-09-06T04:00:00Z".parse().unwrap()
+        );
+    }
+}
+
+/// `remember`'s fact is dose-checked before the tool runs; a date before a colon is no ratio
+/// (EON gap G22: E8.3's third run had Opus's `remember` refused twice for this fact).
+#[test]
+fn remember_keeps_a_dated_fact_and_refuses_a_ratio() {
+    let args = |fact: &str| -> ui::RememberArgs {
+        serde_json::from_value(json!({ "fact": fact })).unwrap()
+    };
+    let products = ProductCatalogue::builtin();
+    for fact in [
+        "2026-07-15: 420 bulbs",
+        "2026-07-15: 420 bulbs went into bed 4.",
+        "Bed 3 was sprayed with copper on 2 July at 18:40.",
+        "Bed 1 had no sprays in 2026.",
+    ] {
+        let a = args(fact);
+        assert!(
+            dose_check_all(ui::Remember::model_strings(&a), products).is_none(),
+            "{fact:?} should pass"
+        );
+    }
+    let a = args("Maria mixes the copper 1:10.");
+    assert!(dose_check_all(ui::Remember::model_strings(&a), products).is_some());
+}
+
 #[test]
 fn remember_takes_an_optional_topic() {
-    let specs = ToolRegistry::standard().specs_for(Role::Viewer);
+    let specs = ToolRegistry::standard().specs_for(Offer::everything(Role::Viewer));
     let remember = specs.iter().find(|s| s.name == "remember").unwrap();
     assert!(remember.parameters["properties"]["topic"].is_object());
     let args: ui::RememberArgs = serde_json::from_value(json!({"fact": "x"})).unwrap();

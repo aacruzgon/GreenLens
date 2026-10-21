@@ -40,11 +40,12 @@ Full licence texts are in [`licences/`](licences/). The Apache-2.0 and CC-BY-4.0
 
 ## leaf_detector
 
-- **Model:** RF-DETR-S (rfdetr 1.11.2) COCO weights, fine-tuned by us on PlantDoc's detection boxes collapsed to one class, `leaf`, and exported to ONNX (fp16).
+- **Model:** RF-DETR-S (rfdetr 1.11.2) COCO weights, fine-tuned by us on PlantDoc's detection boxes collapsed to one class, `leaf`, plus 400 photos without a plant shown with no box, and exported to ONNX (fp16).
 - **Licence:** Apache-2.0 for the RF-DETR-S weights and code (Roboflow); our fine-tune is a derivative of them. Text: `licences/Apache-2.0.txt`. Only the N, S, M and L sizes are Apache-2.0; the larger sizes are not used.
 - **Authors:** Roboflow (Isaac Robinson, Peter Robicheaux, Matvei Popov, Deva Ramanan, Neehar Peri).
 - **Citation:** Robinson et al., "RF-DETR: Neural Architecture Search for Real-Time Detection Transformers", arXiv:2511.09554.
-- **Training data:** PlantDoc detection split. See [Datasets](#datasets) for its licence and the caveat on the scraped photos. The base weights were trained on COCO, whose terms are *unverified* here.
+- **Training data:** PlantDoc detection split, and 400 COCO train2017 photos with no plant pixel (`ml/training/data/splits/background_coco_train.tsv`), so the detector learns that a room or a person has no leaf. See [Datasets](#datasets) for both. The base weights were trained on COCO, whose terms are *unverified* here.
+- **Caveat:** each COCO photo keeps its Flickr licence, and only photos whose licence allows commercial use and adaptation were picked (✓ ran on the `license` field of COCO's annotations): 258 CC BY, 135 CC BY-SA and 7 with no known copyright restrictions. Each one's licence is in `background_coco_train.tsv`, and its author's Flickr page is in COCO's annotations. Whether CC BY-SA's ShareAlike reaches weights trained on a photo is the same open question as PlantVillage's (§9 item 2). The photos are never redistributed.
 
 ## sam_encoder
 
@@ -78,7 +79,7 @@ Full licence texts are in [`licences/`](licences/). The Apache-2.0 and CC-BY-4.0
 - **Model:** our zero-shot plant probe: the difference of two BioCLIP 2 text-prototype embeddings (prompts such as "plant" and "wall", in the openai-imagenet-80 templates), scaled by BioCLIP 2's logit scale. It is made from prompts only; no images were used to make it. The weights are ours.
 - **Licence:** the project's licence isn't chosen yet (§9 item 1). It is made with the BioCLIP 2 text tower: MIT, `licences/MIT-bioclip-2.txt`.
 - **Authors and citation:** as `bioclip`.
-- **Caveats:** as `bioclip` (TreeOfLife-200M). Its threshold was chosen on our validation split and on COCO val2017 photos without a plant (CC BY 4.0 annotations; images keep their Flickr licences), which are used for evaluation only and never redistributed.
+- **Caveats:** as `bioclip` (TreeOfLife-200M). Its threshold was chosen on our validation split and on COCO val2017 photos without a plant, and checked on our test split and 1,000 COCO train2017 photos without a plant (CC BY 4.0 annotations; images keep their Flickr licences). Those photos are used for evaluation only and never redistributed.
 
 ## Datasets
 
@@ -90,11 +91,15 @@ CC BY 4.0 requires attribution, a link to the licence, and a note of changes. Ou
 | TOM2024 | CC BY 4.0 | Appiah O. et al. (2024), Mendeley Data V1, doi:10.17632/3d4yg89rtr.1; Data in Brief 59, 111357, doi:10.1016/j.dib.2025.111357 | <https://data.mendeley.com/datasets/3d4yg89rtr/1> |
 | Tomato-Pakistan 2026 | CC BY 4.0 as published; it can't cover photos the authors didn't take | Malik M.N., Ali S.H., Ali H. (2026), Mendeley Data V1, doi:10.17632/3mbnb82mxd.1 | <https://data.mendeley.com/datasets/3mbnb82mxd/1> |
 | iBean | MIT, "Copyright (c) 2020 AIR Lab Makerere University" | Makerere AI Lab (2020), Bean disease dataset | <https://github.com/AI-Lab-Makerere/ibean/> |
+| iNaturalist (the species head's and the trained plant probe's photos, `ml/training/data/splits/inat_species.tsv`) | CC0 1.0 or CC BY 4.0, per photo | each photo's observer, credited in the index with the change made (re-encoded, metadata removed) | <https://www.inaturalist.org> |
 | WIDER FACE (YuNet's training data) | CC BY-NC-ND 4.0, see `yunet` | Yang et al., "WIDER FACE: A Face Detection Benchmark", CVPR 2016 (*unverified*) | <http://shuoyang1213.me/WIDERFACE/> |
+| COCO 2017 (`leaf_detector`'s background photos; evaluation negatives) | CC BY 4.0 for the annotations; each image keeps its Flickr licence, most of them non-commercial. The background photos are only CC BY, CC BY-SA or no known copyright | Lin et al., "Microsoft COCO: Common Objects in Context", ECCV 2014 | <https://cocodataset.org> |
 | TreeOfLife-200M (BioCLIP 2's training data) | CC0 as a compilation; images may keep their own terms, see `bioclip` | see the BioCLIP 2 paper | <https://huggingface.co/datasets/imageomics/TreeOfLife-200M> |
 
 **PlantDoc.** The photos were scraped from the web, so their owners keep their copyright (§9 item 3). This is fine for training; we never redistribute the images.
 
 **Tomato-Pakistan 2026.** Every file is an augmented copy, about 934 originals. 302 of the originals are PlantDoc's scraped photos, and our mapping drops them. Any other scraped photos keep their owners' copyright (*unverified*). Shipping weights trained on this set is a team decision (§9). No Data in Brief paper was found.
+
+**iNaturalist.** Research-grade observations with an agreeing identification, observed 2019 to 2025, one photo each; only CC0 and CC BY photos are used. CC BY needs each observer's credit: the index lists every photo's licence and credit, and that list ships with any head trained on it. Not in `manifest.toml` yet: the species head and the trained plant probe get their own sections when they ship.
 
 **iBean.** Smartphone field photos of bean leaves from Uganda, annotated by NaCRRI. The head uses it only if beans become supported.

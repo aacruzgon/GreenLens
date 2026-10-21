@@ -7,7 +7,10 @@
 //! [`DbFailure::into_store`] maps it to the domain's [`StoreError`]. A caller that knows more
 //! (which plan won, which job lost its lease) matches the failure first.
 
-use domain::ports::{BoxError, Conflict, StoreError};
+use domain::{
+    error::DomainError,
+    ports::{BoxError, Conflict, StoreError},
+};
 use surrealdb::types::{AlreadyExistsError, QueryError};
 
 /// How the server prefixes the message of a `THROW` ✓.
@@ -34,6 +37,21 @@ pub mod thrown {
     pub const INVALID_STATE: &str = "invalid_state";
     /// A map upload pins plants that aren't the garden's.
     pub const UNKNOWN_PLANTS: &str = "unknown_plants";
+    /// A user's write names a species the knowledge base doesn't hold.
+    pub const UNKNOWN_SPECIES: &str = "unknown_species";
+    /// A migration's record changed between the runner's read and its transaction; the code
+    /// is followed by `": <file name>"` ([database 1], applying the migrations).
+    pub const MIGRATION_RACED: &str = "migration raced";
+}
+
+/// What [`thrown::UNKNOWN_SPECIES`] answers: `400 invalid_request` at the request's `field`
+/// ([contracts 2]). `option<record<species>>` doesn't check that the record exists, so the
+/// user writes that set a species check it in their transaction.
+pub fn unknown_species(field: &'static str) -> StoreError {
+    StoreError::Rejected(DomainError::invalid(
+        field,
+        "not a species of the knowledge base",
+    ))
 }
 
 /// What one failed statement means, before the caller adds context.
@@ -72,19 +90,26 @@ pub enum DbFailure {
 pub fn first_failure(
     errors: impl IntoIterator<Item = (usize, surrealdb::Error)>,
 ) -> Option<surrealdb::Error> {
+    first_failure_at(errors).map(|(_, error)| error)
+}
+
+/// [`first_failure`] with the statement's index in the query, `BEGIN` counting as 0.
+pub fn first_failure_at(
+    errors: impl IntoIterator<Item = (usize, surrealdb::Error)>,
+) -> Option<(usize, surrealdb::Error)> {
     let mut errors: Vec<_> = errors.into_iter().collect();
     errors.sort_unstable_by_key(|(index, _)| *index);
     let mut first = None;
-    for (_, error) in errors {
+    for (index, error) in errors {
         let skipped = matches!(
             error.query_details(),
             Some(QueryError::NotExecuted | QueryError::Cancelled)
         );
         if !skipped {
-            return Some(error);
+            return Some((index, error));
         }
         if first.is_none() {
-            first = Some(error);
+            first = Some((index, error));
         }
     }
     first

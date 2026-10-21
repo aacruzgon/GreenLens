@@ -2,6 +2,8 @@
 //! configuration and assembles `AppState`, in the start-up order of api.md section 4, and it
 //! implements `api`'s seam traits for the library crates' types.
 
+mod connect;
+
 use std::{path::Path, sync::Arc, time::Duration};
 
 use anyhow::Context as _;
@@ -14,6 +16,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use domain::{
     authz::{Editor, Membership},
     chat::Preview,
+    connectors::ConnectorEndpoint,
     id::{PendingActionId, PlantId, QuestionId, ScanId},
     jobs::{CompleteJob, WorkerEvent},
     ports::{
@@ -33,9 +36,12 @@ use integrations::{
     clerk::{ClerkAdmin, ClerkAdminConfig, ClerkVerifier, ClerkVerifierConfig},
     expo_push::{ExpoPush, ExpoPushConfig},
     geocode::{CompositeGeocoder, GeocoderConfig, TimeZoneFinder},
+    google_drive::{DriveClient, DriveConfig, DriveSource},
     http::{HttpConfig, client},
     jev::{JevClassifier, JevConfig},
     open_meteo::{OpenMeteo, OpenMeteoConfig},
+    slack::{SlackClient, SlackConfig, SlackSource},
+    slc::SoilLandscapes,
     soilgrids::{SoilGrids, SoilGridsConfig},
     svix::SvixVerifier,
 };
@@ -43,8 +49,10 @@ use integrations::{
 use crate::{
     broker::JobBroker,
     config::Config,
+    connect::ConnectVendors,
     deletion::DeletionRunner,
     events::{hub::EventHub, writer::ScanWriters},
+    farm_sync::{FarmSources, FarmSync, SyncConfig},
     limits::RateLimits,
     push::Pusher,
     seams::{
@@ -225,21 +233,29 @@ async fn load_models(models_dir: &str) -> anyhow::Result<Models> {
     .await?
 }
 
-/// The database side: the schema applied as root, then the `api` user's connection, the
-/// repositories, memories and the knowledge index.
+/// The database side: the schema and the migrations applied as root, then the `api` user's
+/// connection, the repositories, memories, the knowledge index and `knowledge_meta`.
 struct Databases {
     store: Arc<dyn Store>,
     memory: Arc<dyn MemoryStore>,
     knowledge_repo: Arc<dyn KnowledgeRepo>,
     knowledge: Arc<dyn KnowledgeStore>,
     jobs_queued: Arc<tokio::sync::Notify>,
+    /// `knowledge_meta:current`, `None` before a knowledge file was applied.
+    knowledge_meta: Option<store::migrate::KnowledgeMeta>,
 }
 
 async fn connect_databases(config: &Config) -> anyhow::Result<Databases> {
     let db = &config.database;
-    store::SurrealStore::apply_schema(&db.url, &db.root_user, db.root_password.expose_secret())
-        .await
-        .context("apply schema.surql")?;
+    let applied =
+        store::SurrealStore::migrate(&db.url, &db.root_user, db.root_password.expose_secret())
+            .await
+            .context("apply the migrations")?;
+    tracing::info!(
+        numbered = ?applied.numbered,
+        knowledge = applied.knowledge,
+        "migrations applied"
+    );
     let surreal = Arc::new(
         store::SurrealStore::connect(&store::StoreConfig {
             url: db.url.clone(),
@@ -252,6 +268,10 @@ async fn connect_databases(config: &Config) -> anyhow::Result<Databases> {
     // The store signals this after every write that queues or requeues a job commits; the
     // broker's claim long poll waits on it, and nothing else wakes it.
     let jobs_queued = surreal.jobs_queued();
+    let knowledge_meta = surreal
+        .knowledge_meta()
+        .await
+        .context("read knowledge_meta")?;
     let knowledge_repo: Arc<dyn KnowledgeRepo> = surreal.clone();
     let knowledge: Arc<dyn KnowledgeStore> = Arc::new(
         knowledge::SurrealKnowledgeStore::load(Arc::clone(&knowledge_repo))
@@ -264,7 +284,32 @@ async fn connect_databases(config: &Config) -> anyhow::Result<Databases> {
         knowledge_repo,
         knowledge,
         jobs_queued,
+        knowledge_meta,
     })
+}
+
+/// Stops the start when the loaded knowledge set's chunks were embedded by another model than
+/// `embedder`, since its query vectors would not match them (docs/database section 1,
+/// changing the text-embedding model). Before any knowledge set is loaded, it passes.
+fn check_embedder(
+    meta: Option<&store::migrate::KnowledgeMeta>,
+    embedder: &dyn TextEmbedder,
+) -> anyhow::Result<()> {
+    let Some(meta) = meta else {
+        return Ok(());
+    };
+    let model = embedder.model();
+    anyhow::ensure!(
+        meta.matches_embedder(&model.name, &model.version, model.dimension),
+        "the knowledge set was embedded with {} ({} dimensions), but this api loaded {}@{} ({} \
+         dimensions): regenerate knowledge.surql with this model, or pin the knowledge set's",
+        meta.embedding_model,
+        meta.embedding_dimension,
+        model.name,
+        model.version,
+        model.dimension,
+    );
+    Ok(())
 }
 
 /// The outbound adapters, over one shared HTTP client.
@@ -279,14 +324,72 @@ struct Outbound {
     chat_model: Arc<dyn ChatModel>,
     classifier: Arc<dyn TextClassifier>,
     beliefs: Arc<dyn BeliefStore>,
+    connect: Arc<dyn ConnectVendors>,
+    farm: FarmSources,
 }
 
+/// The sync when connectors are on (decision 9 of docs/EON): the `connectors` task and
+/// start-up seeding run only with it. It renews Google's tokens through `vendors`, the same
+/// instance as the routes, on Google's own token endpoint.
+fn farm_sync(
+    config: &Config,
+    ports: &Ports,
+    vendors: Arc<dyn ConnectVendors>,
+    sources: FarmSources,
+) -> Option<Arc<FarmSync>> {
+    config.connectors.key.clone().map(|key| {
+        Arc::new(FarmSync::new(
+            Arc::clone(&ports.store),
+            Arc::clone(&ports.embedder),
+            Arc::clone(&ports.clock),
+            key,
+            vendors,
+            sources,
+            SyncConfig::default(),
+        ))
+    })
+}
+
+/// The farm connectors' adapters: the real Slack, with Tier 1 pacing, and Google Drive for
+/// owners' connectors; Era's simulators, without pacing or back-off, for the seeded `era` ones
+/// when `ERA_SLACK_BASE` and `ERA_GOOGLE_BASE` are set.
+fn farm_sources(
+    config: &Config,
+    slack_client: impl Fn(SlackConfig) -> SlackClient,
+    drive_client: impl Fn(DriveConfig) -> DriveClient,
+) -> FarmSources {
+    let slack = |c: SlackConfig| Arc::new(SlackSource::new(slack_client(c)));
+    let drive = |c: DriveConfig| Arc::new(DriveSource::new(drive_client(c)));
+    let mut sources = FarmSources::default()
+        .with(ConnectorEndpoint::Vendor, slack(SlackConfig::default()))
+        .with(ConnectorEndpoint::Vendor, drive(DriveConfig::default()));
+    if let Some(base) = &config.connectors.era_slack_base {
+        sources = sources.with(
+            ConnectorEndpoint::Era,
+            slack(SlackConfig::era(base.clone())),
+        );
+    }
+    if let Some(base) = &config.connectors.era_google_base {
+        sources = sources.with(
+            ConnectorEndpoint::Era,
+            drive(DriveConfig::era(base.clone())),
+        );
+    }
+    sources
+}
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "every outbound adapter is built here, one after another, over one HTTP client"
+)]
 async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Outbound> {
     let http = client(&HttpConfig::default()).context("HTTP client")?;
     let mut verifier = ClerkVerifierConfig::new(config.clerk.issuer.clone());
     verifier.allowed_azp.clone_from(&config.web_origins);
     // The time-zone boundaries are a few megabytes to parse: off the async threads.
     let zones = Arc::new(tokio::task::spawn_blocking(TimeZoneFinder::default).await?);
+    // Soil Landscapes of Canada, for the Canadian points where SoilGrids has no data.
+    let landscapes = Arc::new(SoilLandscapes::embedded().context("Soil Landscapes of Canada")?);
     let defaults = ModelIds::default();
     let strong = config
         .providers
@@ -328,6 +431,17 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
             256,
         )),
     };
+    let connect: Arc<dyn ConnectVendors> = Arc::new(connect::VendorClients::new(
+        |c| SlackClient::new(http.clone(), c),
+        |c| DriveClient::new(http.clone(), c),
+        &config.connectors,
+        Arc::clone(clock),
+    ));
+    let farm = farm_sources(
+        config,
+        |c| SlackClient::new(http.clone(), c),
+        |c| DriveClient::new(http.clone(), c),
+    );
     let beliefs: Arc<dyn BeliefStore> = match agent_memory(config) {
         Some(c) => Arc::new(AgentMemory::new(http.clone(), c)),
         None => Arc::new(NoBeliefs),
@@ -354,11 +468,10 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
             },
             Arc::clone(clock),
         )),
-        soil: Arc::new(SoilGrids::new(
-            http.clone(),
-            SoilGridsConfig::default(),
-            Arc::clone(clock),
-        )),
+        soil: Arc::new(
+            SoilGrids::new(http.clone(), SoilGridsConfig::default(), Arc::clone(clock))
+                .with_local_fallback(landscapes),
+        ),
         geocoder: Arc::new(CompositeGeocoder::new(
             http.clone(),
             GeocoderConfig::default(),
@@ -374,6 +487,8 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         chat_model,
         classifier,
         beliefs,
+        connect,
+        farm,
     })
 }
 
@@ -390,6 +505,36 @@ fn agent_memory(config: &Config) -> Option<AgentMemoryConfig> {
         m.context_id.clone(),
         m.api_key.clone(),
     ))
+}
+
+/// Logs whether farm connectors are on, which vendors and simulators are configured, and a
+/// warning when vendor or Era settings are set without `CONNECTOR_KEY`, which turns them off.
+/// Neither the key nor a client secret is logged.
+fn log_connectors(config: &Config) {
+    let c = &config.connectors;
+    let (slack, google) = (c.slack.is_some(), c.google.is_some());
+    let era = c.era_slack_base.is_some() || c.era_google_base.is_some();
+    if c.key.is_none() {
+        if slack || google || era {
+            tracing::warn!(
+                slack,
+                google,
+                era,
+                "farm connectors off: CONNECTOR_KEY is not set, so the other connector settings are unused"
+            );
+        } else {
+            tracing::info!("farm connectors off: CONNECTOR_KEY is not set");
+        }
+        return;
+    }
+    tracing::info!(
+        slack = c.slack.as_ref().map(|s| s.client_id.as_str()),
+        google = c.google.as_ref().map(|g| g.client_id.as_str()),
+        return_url = %c.return_url,
+        era_slack = c.era_slack_base.is_some(),
+        era_google = c.era_google_base.is_some(),
+        "farm connectors on"
+    );
 }
 
 /// The object store the config points at.
@@ -465,9 +610,13 @@ fn chat_turns(
     ))
 }
 
-/// Builds every port and the state, in order: the databases (schema as root, then connect as
-/// `api`; the knowledge index), the object store, the outbound adapters, the CPU models, the
-/// species photo index, then `api`'s own pieces and the pipeline and agent that need the writer.
+/// Builds every port and the state, in order: the databases (schema and migrations as root,
+/// then connect as `api`; the knowledge index), the object store, the outbound adapters, the
+/// CPU models and their check against `knowledge_meta`, the species photo index, then `api`'s own pieces and the pipeline and agent that need the writer.
+#[expect(
+    clippy::too_many_lines,
+    reason = "every port and in-process piece is built here, in start-up order"
+)]
 pub async fn build(
     config: Config,
     shutdown: CancellationToken,
@@ -479,7 +628,9 @@ pub async fn build(
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
     let ids: Arc<dyn IdGen> = Arc::new(UlidGen);
     let out = outbound(&config, &clock).await?;
+    log_connectors(&config);
     let models = load_models(&config.models_dir).await.context("models")?;
+    check_embedder(dbs.knowledge_meta.as_ref(), models.embedder.as_ref())?;
     let snapshot = dbs
         .knowledge_repo
         .load_knowledge()
@@ -510,6 +661,7 @@ pub async fn build(
         clock: Arc::clone(&clock),
         ids,
     };
+    let farm_sync = farm_sync(&config, &ports, Arc::clone(&out.connect), out.farm);
     let hub = Arc::new(EventHub::default());
     let broker = Arc::new(JobBroker::new(
         store.clone(),
@@ -542,7 +694,7 @@ pub async fn build(
     );
     // The one delete queue: every RustFS delete in `api` goes through it, and `main` drains it.
     let deletes = blob::DeleteQueue::new(Arc::clone(&blob));
-    let deletions = DeletionRunner::new(
+    let mut deletions = DeletionRunner::new(
         store,
         deletes.clone(),
         out.auth_admin,
@@ -551,6 +703,10 @@ pub async fn build(
         tasks.clone(),
         shutdown.clone(),
     );
+    // Connectors on: the deletion runner revokes through the routes' own vendor seam.
+    if let Some(key) = &config.connectors.key {
+        deletions = deletions.with_revoke(key.clone(), Arc::clone(&out.connect));
+    }
     Ok(Arc::new(AppState {
         limits: RateLimits::new(config.rate_per_minute),
         upload_permits: Arc::new(Semaphore::new(config.upload_permits.max(1))),
@@ -565,7 +721,58 @@ pub async fn build(
         broker,
         deletions,
         deletes,
+        connect: out.connect,
+        farm_sync,
         shutdown,
         tasks,
     }))
+}
+
+#[cfg(test)]
+mod embedder_check_tests {
+    use domain::ports::{EmbedMode, Embedding, EmbeddingModel, ModelError};
+
+    use super::*;
+
+    struct Named(&'static str, usize);
+
+    #[async_trait]
+    impl TextEmbedder for Named {
+        fn model(&self) -> EmbeddingModel {
+            EmbeddingModel {
+                name: "snowflake-arctic-embed-xs".into(),
+                version: self.0.into(),
+                dimension: self.1,
+            }
+        }
+
+        async fn embed(
+            &self,
+            _mode: EmbedMode,
+            _texts: &[String],
+        ) -> Result<Vec<Embedding>, ModelError> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[test]
+    fn the_embedder_must_match_the_knowledge_set() {
+        let meta = store::migrate::KnowledgeMeta {
+            label_set_version: "f4fd4e3401ecb0f0".into(),
+            classifier_labels_version: "v1".into(),
+            embedding_model: "snowflake-arctic-embed-xs@d8c86521".into(),
+            embedding_dimension: 384,
+        };
+        assert!(
+            check_embedder(None, &Named("other", 768)).is_ok(),
+            "no knowledge set yet"
+        );
+        assert!(check_embedder(Some(&meta), &Named("d8c86521", 384)).is_ok());
+        let err = check_embedder(Some(&meta), &Named("other", 384)).unwrap_err();
+        assert!(
+            err.to_string().contains("snowflake-arctic-embed-xs@other"),
+            "{err}"
+        );
+        assert!(check_embedder(Some(&meta), &Named("d8c86521", 768)).is_err());
+    }
 }

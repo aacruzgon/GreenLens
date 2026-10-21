@@ -1,22 +1,83 @@
 # PDM 3D Garden: Rendering Notes
 
-> **Status:** Draft v0.2, 2026-10-17. v0.2: folds in the PR #43 audit: fiber's optional peers, and status shapes and words as in design §6. v0.1: how to render the stylised 3D garden on iOS, Android and web in Expo SDK 57 (react-three-fiber on expo-gl), the on-device ARKit mesh view, labels, interaction and accessibility, with one open expo-gl bug to patch.
+> **Status:** Draft v0.3, 2026-10-18. v0.3: the app is iPhone only, so the 3D garden moves to RealityKit on Metal, as a native view in the LiDAR module, and react-three-fiber on expo-gl (OpenGL ES, deprecated since iOS 12) becomes the fallback; adds the RealityKit APIs with their iOS versions and a new recommendation. v0.2: folds in the PR #43 audit: fiber's optional peers, and status shapes and words as in design §6. v0.1: how to render the stylised 3D garden on iOS, Android and web in Expo SDK 57 (react-three-fiber on expo-gl), the on-device ARKit mesh view, labels, interaction and accessibility, with one open expo-gl bug to patch.
 
-This note covers how the app can draw the 3D garden view and the optional on-device LiDAR mesh view. It is a companion to [`design.md`](design.md) (same folder), [frontend README](../frontend/README.md) §13 and [architecture 6.8](../architecture/README.md#68-garden-map-lidar). The server holds only bed outlines, pin positions and canopy radii, so the stylised scene is built from that data on every platform. The ARKit mesh never leaves the phone.
+This note covers how the app can draw the 3D garden view and the optional on-device LiDAR mesh view. It is a companion to [`design.md`](design.md) (same folder), [frontend README](../frontend/README.md) §13 and [architecture 6.8](../architecture/README.md#68-garden-map-lidar). The server holds only bed outlines, pin positions and canopy radii, so the stylised scene is built from that data on the phone. The ARKit mesh never leaves the phone.
+
+The app targets the iPhone only (decided 2026-10-18; Android is out of scope). So the garden no longer needs one scene for iOS, Android and web: it renders on Metal through RealityKit, in the same Swift module as the LiDAR mapping (section 1). Sections 2 to 6 keep the cross-platform plan as the fallback, and add the native details where they differ.
 
 Marks: ✓ means read in a primary source (named in the line). *unverified* means from memory, a secondary source, or not run.
 
 ## Contents
 
-1. [Cross-platform 3D in Expo SDK 57](#1-cross-platform-3d-in-expo-sdk-57)
-2. [Performance budget](#2-performance-budget)
-3. [On-device mesh view (LiDAR iPhone)](#3-on-device-mesh-view-lidar-iphone)
-4. [Labels and interaction](#4-labels-and-interaction)
-5. [Reduced motion and accessibility](#5-reduced-motion-and-accessibility)
-6. [Recommendation](#6-recommendation)
-7. [Sources](#7-sources)
+1. [The garden on Metal: RealityKit in the LiDAR module](#1-the-garden-on-metal-realitykit-in-the-lidar-module)
+2. [The fallback: react-three-fiber on expo-gl](#2-the-fallback-react-three-fiber-on-expo-gl)
+3. [Performance budget](#3-performance-budget)
+4. [On-device mesh view (LiDAR iPhone)](#4-on-device-mesh-view-lidar-iphone)
+5. [Labels and interaction](#5-labels-and-interaction)
+6. [Reduced motion and accessibility](#6-reduced-motion-and-accessibility)
+7. [Recommendation](#7-recommendation)
+8. [Sources](#8-sources)
 
-## 1. Cross-platform 3D in Expo SDK 57
+## 1. The garden on Metal: RealityKit in the LiDAR module
+
+### Why Metal
+
+- **expo-gl is OpenGL ES on iOS.** ✓ `EXGLContext.mm` creates an `EAGLContext` with `kEAGLRenderingAPIOpenGLES3`, and `GLView.swift` draws into a `CAEAGLLayer` (expo, branch `sdk-57`). ✓ Apple marks `EAGLContext` deprecated since iOS 12 (Apple documentation). RealityKit renders with Metal, Apple's current GPU API.
+- **One engine for the garden, the mapping and the mesh.** The mapping session ([architecture 6.8](../architecture/README.md#68-garden-map-lidar)) and the mesh view (section 4) already use RealityKit's `ARView`. The garden uses the same class with the camera off. The Swift module then owns one renderer, and the app adds no `expo-gl`, `three` or `@react-three/fiber`.
+- **Apple's lighting and shadows.** ✓ `GroundingShadowComponent` (iOS 18) gives each plant a contact shadow. In three, that takes a shadow map or a fake disc (section 3).
+- **The expo-gl bug goes away.** Issue #51543 (section 2) concerns expo-gl and three. Neither is used.
+- **SceneKit is not the alternative.** ✓ Apple marks SceneKit deprecated in iOS 26 (Apple documentation), so RealityKit is the one to build on.
+
+The costs:
+- The garden needs a development build. The LiDAR module needs one anyway (section 4).
+- The scene, labels and gestures are written in Swift.
+- Expo Go and the web build show the 2D map and the plant list instead of the 3D view. The 2D map needs no GPU; it is the same map as in the mockups' Map view (design §3.1).
+- The mockups stay on three.js in the browser.
+
+### The RealityKit APIs it needs
+
+✓ Read from Apple's documentation JSON (`developer.apple.com/tutorials/data/documentation/…`) on 2026-10-18. The app targets iOS 26 for Liquid Glass, so every API here is available.
+
+| API | iOS | Use |
+|---|---|---|
+| `ARView` `init(frame:cameraMode:automaticallyConfigureSession:)` with `ARView.CameraMode.nonAR` | 13.0 | The garden view, with no camera feed and no AR session |
+| `PerspectiveCamera` | 13.0 | The orbit camera, moved by the gestures |
+| `MeshResource.generateBox(size:cornerRadius:)`, `generateSphere(radius:)` | 13.0 | Beds with soft corners, canopy blobs |
+| `MeshResource.generateCylinder(height:radius:)`, `generateCone(height:radius:)` | 18.0 | Stems, pots, status rings, frost covers |
+| `LowLevelMesh` | 18.0 | Bed outlines and canopy rings built from the map, updated in place |
+| `MeshInstancesComponent` | 26.0 | One draw for many plants of the same shape |
+| `SimpleMaterial`, `UnlitMaterial` | 13.0 | Flat status colours; unlit for rings and covers |
+| `DirectionalLightComponent` | 13.0 | One key light |
+| `GroundingShadowComponent` | 18.0 | A contact shadow per plant |
+| `CollisionComponent` | 13.0 | Hit shapes for tap-to-select, larger than the plant |
+| `ARView.entity(at:)` | 13.0 | The entity under a tap |
+| `ARView.project(_:)` | 13.0 | A plant's label position on screen |
+| `SceneEvents.Update` | 13.0 | A per-frame callback to move the labels and run the scrubber's tween |
+| `AccessibilityComponent` | 17.0 | A VoiceOver label per plant entity |
+| `RealityView`, `realityViewCameraControls(_:)` | 18.0 | The SwiftUI alternative, with a built-in orbit control |
+| `ViewAttachmentComponent` | visionOS only | Not available on iPhone, so labels are UIKit views (below) |
+
+### Hosting it in React Native
+
+1. **`ARView` in an `ExpoView` (recommended).** `ARView` is a UIKit view, so it fits the Expo Modules API directly: ✓ a native view subclasses `ExpoView` and is registered with `View(...)` in the module's `definition()` (docs.expo.dev module API). Proposed `GardenView`:
+   - props: `map` (beds, pins and measurements, as the API returns them), `dateIndex`, `mode` (`health`, `growth` or `frost`), `selectedPlantId`, `scheme` and `reduceMotion`;
+   - one event, `onSelectPlant`;
+   - the app's store keeps the date, the mode and the selection, as with the 2D map. The scrubber sends an index, never geometry, and Swift tweens scale and colour.
+   - Orbit: a `UIPanGestureRecognizer` changes azimuth and elevation, and a `UIPinchGestureRecognizer` changes distance, both applied to the `PerspectiveCamera`. Clamp elevation to about 10 to 85 degrees. *design proposal.*
+2. **SwiftUI `RealityView` in a `UIHostingController`.** ✓ iOS 18 gives `RealityView` an orbit control, `realityViewCameraControls(.orbit)`. ✓ Expo's module API does not render SwiftUI views yet; its docs say to add a `UIHostingController`'s view to the UIKit view (docs.expo.dev module API). ✓ `RealityViewCameraContent` lists no projection method on iOS (its topics: `camera`, `cameraTarget`, `entities`, `environment`, `renderingEffects`), so placing UIKit labels is harder. Use it only if the built-in orbit saves real work.
+
+### Labels, selection and accessibility on Metal
+
+- **Labels are UIKit views** over the `ARView`: a capsule with the status shape, the plant name and, in Growth, the height. On each `SceneEvents.Update`, place each one at `project(_:)` of a point above its plant, and hide it when that returns `nil` or the plant is behind the camera. They get SF Pro, Dynamic Type and VoiceOver as ordinary views. The selected label is outlined, not filled: nothing tinted sits on the 3D view (design §2).
+- **Tap-to-select** uses `entity(at:)`. Give each plant an invisible `CollisionComponent` shape with a radius of at least 0.25 m, so the target is about 44 pt at the default zoom.
+- **Accessibility:** each plant entity gets an `AccessibilityComponent` label in words ("Tomato 1, sick, 62 cm tall"). The plant list in section 6 stays the screen reader's main view of the garden.
+- **Reduce motion:** ✓ `UIAccessibility.isReduceMotionEnabled` (iOS 8). When it is on, skip the grow-in and the turntable, and jump the scrubber with no tween.
+- **One AR session:** the garden's `ARView` is created with `.nonAR` and `automaticallyConfigureSession: false`, so it should run no `ARSession`. The mapping view stays the only camera owner. *unverified: confirm on the device that a non-AR `ARView` starts no session.*
+
+## 2. The fallback: react-three-fiber on expo-gl
+
+This is the cross-platform plan from v0.2. It stays as the fallback if the native view slips, because it runs in Expo Go with no Swift.
 
 ### Versions
 
@@ -58,9 +119,11 @@ React 19.2.3 sits inside fiber's `>=19 <19.4`. ✓ (bundledNativeModules, npm).
 - **`react-native-wgpu` 0.5.17** (Dawn-based WebGPU; iOS, Android, macOS, visionOS and web per its site) ✓ README. Whether it runs in Expo Go and how well three's `WebGPURenderer` works under fiber are *unverified*; it is a native module, so it needs a development build (it is not in Expo Go's fixed set, *unverified*). A user report on its tracker ([#214](https://github.com/wcandillon/react-native-webgpu/issues/214)) says fiber on iOS never got past `await state.gl.init()` ✓ (seen via search summary only). Too risky for a 10-day build; revisit later.
 - **`react-native-filament`** is a glTF/PBR engine for pre-authored assets, needs a development build, and has no web target. It fits models, not procedural scenes. Skip.
 
-## 2. Performance budget
+## 3. Performance budget
 
-All figures are guidance. *unverified:* none was measured on a device for this app; measure on the iPhone 17 Pro Max and one mid-range Android phone in the first build day.
+On Metal, the same scene limits apply: about 10 beds and 40 plants, under 50,000 triangles, flat materials, one light, and no frames drawn while idle. With `MeshInstancesComponent`, each plant shape is one draw. Measure on the device with Xcode's GPU tools. The bullets below are written for three on expo-gl.
+
+All figures are guidance. *unverified:* none was measured on a device for this app; measure on the iPhone 17 Pro Max in the first build day.
 
 Scene: about 10 beds and 40 plants.
 
@@ -73,10 +136,10 @@ Scene: about 10 beds and 40 plants.
 - **Render loop.** Use `frameloop="demand"` and call `invalidate()` on interaction and during animations. An idle garden should draw no frames. The grow-in animation and the scrubber then cost power only while moving.
 - **Antialiasing.** Leave MSAA off on Android; on iOS expo-gl has an `msaaSamples` prop ✓ (GLView page). Try 4 on iOS.
 - **Updates.** Update instance matrices in place and set `instanceMatrix.needsUpdate`. Never rebuild geometry on a scrubber move; change scale and colour only.
-- **Avoid:** image textures and GLB loading (see §1 issue 4), post-processing, transparent overlapping meshes in bulk, `Html` or per-frame React state, dozens of separate `<mesh>` elements with unique geometries, and `console.log` in `useFrame`.
+- **Avoid:** image textures and GLB loading (see §2 issue 4), post-processing, transparent overlapping meshes in bulk, `Html` or per-frame React state, dozens of separate `<mesh>` elements with unique geometries, and `console.log` in `useFrame`.
 - **Web.** Same code runs on plain WebGL at higher cost headroom, so the native budget covers it. Test on a judge's laptop browser with hardware acceleration on.
 
-## 3. On-device mesh view (LiDAR iPhone)
+## 4. On-device mesh view (LiDAR iPhone)
 
 Facts below come from memory of Apple's API; Apple's documentation pages render with JavaScript and could not be read by the fetch tool used for this note. Every claim in this section is *unverified* against the live page unless marked.
 
@@ -91,7 +154,7 @@ Recommendation: ship option 1 first, since it reuses the same `ARView` that the 
 
 - ✓ The Expo Modules API defines a native view by subclassing `ExpoView` and registering it with `View(MyView.self) { Events(...); Prop(...) }` in the module's `definition()`; the JS side calls `requireNativeViewManager('Name')` (docs.expo.dev native-view tutorial).
 - Plan: `LidarMapView` (an `ExpoView` that owns the `ARView`), props `mode` (`mapping` or `meshPreview`) and `showMesh`, events `onBedCorner`, `onPlantPin`, `onTrackingState`. The same view serves the mapping flow of architecture §6.8 and the optional mesh preview, so no second AR session runs. *design proposal.*
-- Keep `ARView` as the single camera owner. Only one `ARSession` may run at a time, so the 3D garden (GL) view and the AR view must not be on screen together.
+- Keep the mapping `ARView` as the single camera owner. Only one `ARSession` may run at a time. The garden's own `ARView` runs without a camera (section 1), so the two never share a session.
 
 ### iOS 26
 
@@ -99,11 +162,13 @@ Recommendation: ship option 1 first, since it reuses the same `ARView` that the 
 
 ### Development build and Apple account
 
-- ✓ Custom native code needs a development build; Expo Go is a fixed app that cannot include `app/modules/lidar` (docs.expo.dev development builds). So the mesh view, the mapping session and the depth capture all require one. The 3D garden (§1) does not.
+- ✓ Custom native code needs a development build; Expo Go is a fixed app that cannot include `app/modules/lidar` (docs.expo.dev development builds). So the mesh view, the mapping session, the depth capture and the 3D garden (section 1) all require one. Only the fallback (section 2) runs in Expo Go.
 - ✓ "Local builds are the only way to install a development build on an iPhone without a paid Apple Developer account"; EAS iPhone builds need a paid account. Local flow: `npx expo prebuild`, then `npx expo run:ios --device`, with a unique `ios.bundleIdentifier` and Developer Mode on (same page).
-- Free Apple ID personal team: *unverified* for this app, but ARKit needs only the camera permission string (`NSCameraUsageDescription`) and no entitlement, so a free team should be enough. Known free-team limits (apps expire after 7 days, a small cap on App IDs per week, no push, no TestFlight) are from memory, *unverified*. The web build and Android do not need any Apple account.
+- Free Apple ID personal team: *unverified* for this app, but ARKit needs only the camera permission string (`NSCameraUsageDescription`) and no entitlement, so a free team should be enough. Known free-team limits (apps expire after 7 days, a small cap on App IDs per week, no push, no TestFlight) are from memory, *unverified*. The web build does not need any Apple account.
 
-## 4. Labels and interaction
+## 5. Labels and interaction
+
+This section is written for the fallback (section 2). On Metal, see section 1.
 
 ### Labels
 
@@ -112,14 +177,14 @@ Recommendation: ship option 1 first, since it reuses the same `ARView` that the 
   - Each frame (in `useFrame`), project every plant's world position with `vector.project(camera)`, convert to pixels using the canvas size, and write the position to the label. Do this without React state: keep a ref per label and update `transform` through Reanimated shared values or `setNativeProps`. *unverified performance; 40 labels should be fine.*
   - Hide labels whose projected `z` is outside the clip range or that are behind the camera; fade labels by distance; show only the selected plant's label plus a status dot for the others when zoomed out.
   - Native `<Text>` gives crisp type, Dynamic Type, VoiceOver and the app's font for free. The alternative, GL text (troika or SDF text in three), is blurry at some scales, heavier, and *unverified* on expo-gl.
-- A fallback is a canvas-drawn `CanvasTexture` sprite per label, but ✓ expo-gl restricts `texImage2D` inputs (see §1), so this is risky. Not recommended.
+- A fallback is a canvas-drawn `CanvasTexture` sprite per label, but ✓ expo-gl restricts `texImage2D` inputs (see §2), so this is risky. Not recommended.
 
 ### Tap-to-select
 
 - ✓ Fiber's native build supports pointer events on meshes (`onClick`, `onPointerDown`) with built-in raycasting, as the R3F install page and issues #3399 and #3583 show events firing on native. Put `onClick` on the instanced meshes; fiber reports `instanceId` on the event for `InstancedMesh`. *unverified on native for instances; test first.*
 - Make hit areas generous: add an invisible, larger cylinder per plant (radius at least 0.25 m, or about 44 pt on screen at the default zoom).
 - Selection state lives in the app's store, not in three. The selected plant gets a ring mesh and a bottom sheet (`design.md`).
-- Also support selecting from the accessible list (§5), which sets the same state.
+- Also support selecting from the accessible list (§6), which sets the same state.
 
 ### Orbit controls
 
@@ -127,7 +192,9 @@ Recommendation: ship option 1 first, since it reuses the same `ARView` that the 
 - Recommended: write a small `useOrbit` hook using `react-native-gesture-handler` (SDK 57 pins `~2.32.0` ✓ bundledNativeModules): a `Pan` gesture changes azimuth and elevation, a `Pinch` changes distance, a two-finger pan moves the target. Store the state in refs, apply it to the camera in `useFrame`, clamp elevation (about 10 to 85 degrees) and distance, and call `invalidate()`. The gestures wrap the `Canvas` view and work the same on web through gesture-handler's web support (*unverified for the web build; fall back to `OrbitControls` on web only if needed*).
 - A "reset view" button and a top-down toggle help phone users and are also the accessible way to change the view.
 
-## 5. Reduced motion and accessibility
+## 6. Reduced motion and accessibility
+
+The rules apply on both paths. On Metal the reduce-motion check is `UIAccessibility.isReduceMotionEnabled` and the per-plant labels are `AccessibilityComponent`s (section 1); the plant list is a React Native view either way.
 
 ### Reduce motion
 
@@ -146,19 +213,23 @@ Recommendation: ship option 1 first, since it reuses the same `ARView` that the 
 - The scrubber (growth over time) is a standard `Slider` with an `accessibilityValue` text such as "12 March, 3 plants measured", and a stepper (previous and next scan date) as an alternative.
 - Provide a text summary line above the canvas ("Garden map version 4, 10 beds, 40 plants, 3 need attention").
 
-## 6. Recommendation
+## 7. Recommendation
 
-Use **`@react-three/fiber` 9.8.2 on `expo-gl ~57.0.2` with `three`, `drei` only for helpers, procedural instanced geometry, native `<Text>` labels, and gesture-handler orbit**.
+Draw the 3D garden with **RealityKit on Metal, as a native `GardenView` in `app/modules/lidar`**, with procedural meshes, UIKit labels and the app's store driving it through props.
 
-1. **Stack.** `expo-gl ~57.0.2`, `@react-three/fiber 9.8.2`, `three` r181 (the version the SDK 57 bug report ran) to start, `react-native-gesture-handler ~2.32.0`, `react-native-reanimated 4.5.1`. Skip `expo-three`, `react-native-wgpu` and `react-native-filament`. No GLB files, no image textures.
-2. **Where it runs.** iOS, Android and web from one scene component. It runs in Expo Go (expo-gl is in Expo Go ✓), so the 3D garden does not wait for a development build or a paid Apple account.
-3. **First task.** Build a spike: 10 beds, 40 plants, instanced, with tap and orbit, on a physical iPhone in Expo Go and on a mid-range Android phone. The spike must apply the issue #51543 workaround first, and record whether it works. If it fails, try `three` below r163.
-4. **LiDAR mesh view.** A `LidarMapView` in `app/modules/lidar` that owns one `ARView`, started with the `.showSceneUnderstanding` debug option; own-geometry rendering from `ARMeshAnchor` later if wanted. It needs a development build (local `npx expo run:ios --device`); a free personal team should be enough, *unverified*.
-5. **Labels and list.** RN `<Text>` overlays projected from 3D each frame; an accessible plant list shown first for screen-reader users; reduce motion removes the grow-in.
+1. **Stack.** RealityKit is part of iOS; nothing is installed. The view is an `ARView` in `.nonAR` mode inside an `ExpoView` (section 1). Skip `expo-gl`, `three`, `@react-three/fiber`, `expo-three`, `react-native-wgpu` and `react-native-filament`. No USDZ or GLB files, no image textures.
+2. **Where it runs.** The iPhone development build, the same build as the LiDAR features. Expo Go and the web build show the 2D map and the plant list instead.
+3. **First task.** A day-one spike in a local development build on the iPhone 17 Pro Max:
+   - the mock garden: 2 beds and 6 plants, tap to select, orbit, labels, the three modes and the date scrubber;
+   - then 10 beds and 40 plants, with the frame time measured in Xcode;
+   - confirm that the non-AR view starts no AR session while the mapping view is closed.
+4. **LiDAR mesh view.** A `LidarMapView` in the same module that owns the mapping `ARView`, started with the `.showSceneUnderstanding` debug option; own-geometry rendering from `ARMeshAnchor` later if wanted (section 4). A free personal team should be enough to install it, *unverified*.
+5. **Labels and list.** UIKit labels placed from `project(_:)` each frame; an `AccessibilityComponent` per plant; the plant list shown first for screen-reader users; reduce motion removes the grow-in and the turntable.
+6. **Fallback.** If the native view slips, use fiber on expo-gl (section 2) with the #51543 workaround applied. It runs in Expo Go and needs no Swift.
 
-Biggest risk: expo-gl 57.0.2 breaks three r163+ (issue #51543), and the iOS GL view has had crashes in recent SDKs. Mitigate with the patch, a pin, and the spike on day one. A second risk is that none of the gesture, instancing and Expo Go claims here was run on SDK 57 yet.
+Biggest risk: the Swift work lands on whoever builds the LiDAR module, so the garden and the mapping compete for the same person. Start the garden spike on day one, beside the LiDAR day-1 check (architecture §10), and agree the `GardenView` props first so the screen can be built against the 2D map meanwhile. A second risk is that nothing here has run on the device yet.
 
-## 7. Sources
+## 8. Sources
 
 All read on 2026-10-17 unless noted.
 
@@ -175,4 +246,7 @@ All read on 2026-10-17 unless noted.
 - Expo native view tutorial: <https://docs.expo.dev/modules/native-view-tutorial/>
 - Expo development builds: <https://docs.expo.dev/develop/development-builds/introduction/>
 - React Native AccessibilityInfo: <https://reactnative.dev/docs/accessibilityinfo>
+- Apple documentation JSON, read on 2026-10-18 for section 1 (iOS availability and deprecation): `ARView.CameraMode.nonAR`, `ARView.init(frame:cameraMode:automaticallyConfigureSession:)`, `ARView.project(_:)`, `ARView.entity(at:)`, `PerspectiveCamera`, `MeshResource` generators, `LowLevelMesh`, `MeshInstancesComponent`, `SimpleMaterial`, `UnlitMaterial`, `DirectionalLightComponent`, `GroundingShadowComponent`, `CollisionComponent`, `SceneEvents.Update`, `AccessibilityComponent`, `RealityView`, `RealityViewCameraContent`, `realityViewCameraControls(_:)`, `ViewAttachmentComponent`, SceneKit, `EAGLContext` and `UIAccessibility.isReduceMotionEnabled`, at `https://developer.apple.com/tutorials/data/documentation/<framework>/<symbol>.json`
+- expo-gl's iOS sources on branch `sdk-57`: <https://github.com/expo/expo/tree/sdk-57/packages/expo-gl/ios> (`EXGLContext.mm`, `GLView.swift`)
+- Expo Modules API (native views, SwiftUI note): <https://docs.expo.dev/modules/module-api/>
 - Apple, not readable by the fetch tool, so *unverified*: [`ARMeshAnchor`](https://developer.apple.com/documentation/arkit/armeshanchor), [`ARView.DebugOptions`](https://developer.apple.com/documentation/realitykit/arview/debugoptions-swift.struct), [`ARConfiguration.SceneReconstruction`](https://developer.apple.com/documentation/arkit/arconfiguration/scenereconstruction-swift.enum)

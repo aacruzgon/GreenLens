@@ -1,0 +1,3 @@
+{"id": "example_extension_tomato_diseases.1", "source_id": "example_extension_tomato_diseases", "crop": "tomato", "problem": "tomato_early_blight", "topic": "symptoms", "text": "Early blight starts as small brown spots on the lower leaves. The spots grow and form rings like a target."}
+{"id": "example_extension_tomato_diseases.2", "source_id": "example_extension_tomato_diseases", "crop": "tomato", "problem": "tomato_septoria_leaf_spot", "topic": "symptoms", "text": "Septoria leaf spot makes many small round spots with dark edges and pale centres."}
+{"id": "example_extension_tomato_diseases.3", "source_id": "example_extension_tomato_diseases", "crop": "tomato", "topic": "management", "text": "Water at the base of the plant and mulch the soil.\nRemove infected leaves."}

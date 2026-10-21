@@ -62,11 +62,14 @@ pub mod sql {
     }
 
     /// The projection of a `plant` into `Plant`, with its latest live scan and that scan's
-    /// `whole_plant` shot (computed when read, database 3).
+    /// `whole_plant` shot (computed when read, database 3). A `species` link to a record the
+    /// knowledge base doesn't hold (a stub worker's pick before any seed is loaded, or a species
+    /// a later seed dropped) reads as no species: `option<record<species>>` doesn't check that
+    /// the record exists, and `species.scientific_name` is then `NONE`.
     macro_rules! plant_fields {
         () => {
             "id, garden AS garden_id, name,
-  IF species != NONE { { id: species, scientific_name: species.scientific_name, common_name: species.common_names[0] ?? species.scientific_name } } ELSE { NONE } AS species,
+  IF species.scientific_name != NONE { { id: species, scientific_name: species.scientific_name, common_name: species.common_names[0] ?? species.scientific_name } } ELSE { NONE } AS species,
   custom_species_name, species_status, species_candidates, status, position, created_at,
   (SELECT id AS scan_id, created_at, status,
           (SELECT VALUE id FROM scan_image WHERE scan = $parent.id AND kind = 'whole_plant' LIMIT 1)[0] AS thumbnail_image_id
@@ -122,7 +125,7 @@ FROM ONLY $diagnosis;";
     pub const PLAN: &str =
         "SELECT id, scan AS scan_id, plant AS plant_id, version, supersedes, provisional,
        diagnosis AS diagnosis_id, open_question AS open_question_id, constraints, summary, steps,
-       watch_for, citations, llm_model, prompt_version, created_at,
+       watch_for, citations, farm_records, llm_model, prompt_version, created_at,
        (SELECT VALUE id FROM task WHERE plan = $parent.id) AS task_ids
 FROM ONLY $plan;";
 

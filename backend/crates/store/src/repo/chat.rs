@@ -43,7 +43,7 @@ pub mod sql {
     /// The projection of a `message` into `Message`, with its cards.
     macro_rules! message_fields {
         () => {
-            "id, role, text, attachments, citations, interrupted, created_at, tool_calls,
+            "id, role, text, attachments, citations, farm_citations, interrupted, created_at, tool_calls,
   (SELECT id, conversation AS conversation_id, tool, status, card, preview, expires_at FROM pending_action
      WHERE message = $parent.id ORDER BY id) AS pending_actions"
         };
@@ -177,6 +177,12 @@ pub struct MessageRow {
     pub attachments: Vec<RecordId>,
     /// `Citation[]`.
     pub citations: Vec<Json>,
+    /// `FarmCitation[]` ([connectors 7]). `DEFAULT []` applies only on write, so a message
+    /// stored before connectors has none: it reads as empty here and in `Message`.
+    ///
+    /// [connectors 7]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#7-the-agent
+    #[surreal(default)]
+    pub farm_citations: Vec<Json>,
     /// Text, tool-call and tool-result parts, in order; never sent to the app.
     pub tool_calls: Vec<Json>,
     /// The classifier's route.
@@ -517,6 +523,11 @@ impl ChatRepo for SurrealStore {
                     .citations
                     .iter()
                     .map(|c| to_json("citations", c))
+                    .collect::<Result<_, _>>()?,
+                farm_citations: message
+                    .farm_citations
+                    .iter()
+                    .map(|c| to_json("farm_citations", c))
                     .collect::<Result<_, _>>()?,
                 tool_calls: message
                     .tool_calls

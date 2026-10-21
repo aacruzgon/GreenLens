@@ -2,13 +2,26 @@
 # `cargo deny --locked check advisories` in backend/.
 
 [graph]
-# Only what ships. SurrealDB's embedded kv-mem engine, a dev-dependency for store's tests, brings in
-# bincode (unmaintained), quick-xml (RUSTSEC-2026-0194, -0195) and rsa (RUSTSEC-2023-0071), none of
-# which reaches a binary. To see them, run cargo-deny with exclude-dev removed.
+# Only what ships. SurrealDB's embedded kv-mem engine, a dev-dependency for store's tests and a
+# normal dependency of the evaluation tool, brings in bincode (RUSTSEC-2025-0141), quick-xml
+# (RUSTSEC-2026-0194, -0195), rsa (RUSTSEC-2023-0071) and ammonia (RUSTSEC-2026-0373), none of
+# which reaches a shipped binary. To see them, run cargo-deny with exclude-dev and exclude removed.
 exclude-dev = true
+# era-eval is a dev-only tool for the agent evaluation: the images build `-p api` and `-p worker`
+# alone, so it never ships.
+exclude = ["era-eval"]
 
 [advisories]
 ignore = [
   # Unmaintained, with no vulnerability; it reaches vision and api through tokenizers 0.23.
   { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained, not vulnerable; it comes through tokenizers" },
+  # webpki-roots 0.26.11 (through surrealdb's tokio-tungstenite) is a semver shim that re-exports
+  # webpki-roots 1.x's TLS_SERVER_ROOTS, which the lock file pins at 1.0.10, the fixed version.
+  { id = "RUSTSEC-2026-0381", reason = "webpki-roots 0.26.11 re-exports the roots of webpki-roots 1.0.10" },
+]
+
+[bans]
+# The RUSTSEC-2026-0381 ignore above relies on webpki-roots 1.x being at the fixed 1.0.10 or later.
+deny = [
+  { crate = "webpki-roots:>=1.0.0, <1.0.10", reason = "RUSTSEC-2026-0381; the 0.26.11 shim ignore relies on 1.0.10 or later" },
 ]

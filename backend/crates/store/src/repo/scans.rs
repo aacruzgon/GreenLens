@@ -25,7 +25,7 @@ use surrealdb::types::{RecordId, SurrealValue};
 
 use crate::{
     SurrealStore,
-    error::{DbFailure, RowError, take_failed, thrown},
+    error::{DbFailure, RowError, take_failed, thrown, unknown_species},
     ids::{from_opt_rid, from_rid, opt_rid, rid, usage_rid},
     read::take_all,
     repo::{analysis::enum_str, jobs::JobWriteRow},
@@ -37,10 +37,12 @@ use crate::{
 pub mod sql {
     /// `POST /scans`: the scan (and the new plant), counted in `usage_daily` in the same
     /// transaction ([database 4], limits ✓: `+=` on a missing record starts from the default,
-    /// and the `THROW` over 30 rolls the scan back). Statements: 0 `BEGIN`, 1 the plant `IF`,
-    /// 2 `CREATE` scan, 3 `LET $count`, 4 the limit `IF`, 5 the scan read, 6 `COMMIT`.
+    /// and the `THROW` over 30 rolls the scan back). A new plant's species must be one the
+    /// knowledge base holds (`unknown_species`). Statements: 0 `BEGIN`, 1 the plant `IF`, 2
+    /// `CREATE` scan, 3 `LET $count`, 4 the limit `IF`, 5 the scan read, 6 `COMMIT`.
     pub const CREATE_SCAN: &str = "BEGIN;
 IF $new_plant != NONE {
+  IF $new_plant.species != NONE { IF array::len(SELECT VALUE id FROM $new_plant.species) = 0 { THROW 'unknown_species' } };
   CREATE $plant SET garden = $garden, name = $new_plant.name, species = $new_plant.species,
     species_status = IF $new_plant.species != NONE { 'confirmed' } ELSE { 'unknown' }, created_at = $now;
 } ELSE IF array::len(SELECT VALUE id FROM $plant WHERE garden = $garden AND deleting_at = NONE) = 0 {
@@ -524,6 +526,9 @@ impl ScanRepo for SurrealStore {
                     .err()
                     .map_or(StoreError::NotFound, StoreError::from);
                 return Err(error);
+            }
+            Err(failure) if failure.thrown() == Some(thrown::UNKNOWN_SPECIES) => {
+                return Err(unknown_species("new_plant.species_id"));
             }
             Err(failure) => return Err(failure.into_store(WHAT)),
         };

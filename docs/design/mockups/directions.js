@@ -7,15 +7,38 @@
 // fonts       display (content heroes only), body and number stacks; `google` lists families to load
 // sections    "title" or "label" (small capitals); sectionFont "display" or "body"
 // shape       radii in px; cardStyle border, rule, block or shadow; check circle or square
-// layout      home large or hero; plants grid, rows or carousel; scan bar, edge or hero;
-//             region box, ink, lasso or reticle; unsure plates or table; weather days or line;
-//             buttons soft, block or outline; times shows stage durations; illus adds spot illustrations
+// layout      home large or hero; plants grid, rows or carousel; scan bar, edge, hero or profile;
+//             region box, ink, lasso, reticle or hotspot; unsure plates or table; weather days or line;
+//             buttons soft, block, outline or pill; times shows stage durations; illus adds spot
+//             illustrations; melt dissolves hero photos into the background instead of shading them
+//             live overrides scan for the live analysis (camera: the photo full screen with cards
+//             dropping from the top); capture strip (shot chips) or modes (a camera mode bar); garden sheet (a header,
+//             legend and plant sheet) or camera (a top card, chips, a shutter row and a mode bar)
 // motion      enter, tick, box, check, push as { dur, ease } or { spring }; enterY, enterScale, tickFrom
-// garden3d    form organic, turned or survey; color species or status; camera ortho or perspective;
+// garden3d    form organic, turned or survey; color species or status; camera ortho or perspective
+//             (fov and dist set a perspective camera's lens and distance);
 //             lights, beds, grid and labels, per scheme where colours differ
 
 const SYSTEM = '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif';
 const SYSTEM_DISPLAY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, "Segoe UI", Roboto, sans-serif';
+
+// F0's baseline palette. Conservatory uses it too.
+const F0_COLORS = {
+  light: {
+    background: "#F6F7F2", surface: "#FFFFFF", surfaceMuted: "#EEF1E8", border: "#D9DFD2",
+    text: "#18211C", textMuted: "#56625A", accent: "#2F6B47", accentText: "#FFFFFF", accentSoft: "#E1EEE4",
+    danger: "#B3261E", dangerSoft: "#F9E2DF", info: "#285D86", infoSoft: "#E1ECF5",
+    healthy: "#26704A", healthySoft: "#E0F0E6", watch: "#8A5300", watchSoft: "#FBEBD0",
+    sick: "#B3261E", sickSoft: "#F9E2DF", dead: "#5C6360", deadSoft: "#E7E9E8",
+  },
+  dark: {
+    background: "#0F1412", surface: "#18201C", surfaceMuted: "#212A25", border: "#2F3A34",
+    text: "#E7EDE9", textMuted: "#A2AEA6", accent: "#7CC59A", accentText: "#0D1A12", accentSoft: "#1F3328",
+    danger: "#F2948B", dangerSoft: "#3A1F1C", info: "#8EC1EA", infoSoft: "#1B2B38",
+    healthy: "#79D19D", healthySoft: "#1C3326", watch: "#F2BE5C", watchSoft: "#3A2E17",
+    sick: "#F2948B", sickSoft: "#3A1F1C", dead: "#A7AEAA", deadSoft: "#2A2F2D",
+  },
+};
 
 window.PDM_DIRECTIONS = [
   {
@@ -23,28 +46,13 @@ window.PDM_DIRECTIONS = [
     name: "Current F0",
     words: "Baseline · as built",
     summary:
-      "The palette, type and shapes in Mark's F0 scaffold (app/src/ui/tokens.ts on feat/app-scaffold), unchanged, so every direction can be compared with what exists.",
+      "F0's baseline palette, type and shapes, unchanged, so every direction can be compared with what exists.",
     philosophy: "Apple-native defaults: iOS text styles in the system font, inset cards, leaf green on warm off-white. Its accent and healthy are nearly the same green, and watch and sick look alike to colour-blind users (philosophies.md 7).",
-    references: [{ label: "PR #42", url: "https://github.com/aacruzgon/GreenLens/pull/42" }],
+    references: [],
     type: "System font throughout, iOS text styles 34 to 12 pt",
     motionNote: "Fades of about 250 ms, the spinner and the check; no springs.",
     garden3dNote: "Organic plant shapes in species greens, with a status ring under each plant; slow auto-orbit.",
-    colors: {
-      light: {
-        background: "#F6F7F2", surface: "#FFFFFF", surfaceMuted: "#EEF1E8", border: "#D9DFD2",
-        text: "#18211C", textMuted: "#56625A", accent: "#2F6B47", accentText: "#FFFFFF", accentSoft: "#E1EEE4",
-        danger: "#B3261E", dangerSoft: "#F9E2DF", info: "#285D86", infoSoft: "#E1ECF5",
-        healthy: "#26704A", healthySoft: "#E0F0E6", watch: "#8A5300", watchSoft: "#FBEBD0",
-        sick: "#B3261E", sickSoft: "#F9E2DF", dead: "#5C6360", deadSoft: "#E7E9E8",
-      },
-      dark: {
-        background: "#0F1412", surface: "#18201C", surfaceMuted: "#212A25", border: "#2F3A34",
-        text: "#E7EDE9", textMuted: "#A2AEA6", accent: "#7CC59A", accentText: "#0D1A12", accentSoft: "#1F3328",
-        danger: "#F2948B", dangerSoft: "#3A1F1C", info: "#8EC1EA", infoSoft: "#1B2B38",
-        healthy: "#79D19D", healthySoft: "#1C3326", watch: "#F2BE5C", watchSoft: "#3A2E17",
-        sick: "#F2948B", sickSoft: "#3A1F1C", dead: "#A7AEAA", deadSoft: "#2A2F2D",
-      },
-    },
+    colors: F0_COLORS,
     fonts: { display: SYSTEM_DISPLAY, body: SYSTEM, num: "inherit", displayWeight: 700, displayTracking: "0", google: [] },
     sections: "title", sectionFont: "display",
     shape: { card: 16, button: 12, chip: 999, photo: 16, check: "circle", cardStyle: "border", iconStroke: 1.8 },
@@ -232,6 +240,53 @@ window.PDM_DIRECTIONS = [
       lights: { hemi: 1.0, hemiDark: 0.9, sun: "#FFFFFF", sunI: 0, sunPos: [0, 6, 0] },
       light: { bg: "#FFFFFF", ground: "#FFFFFF", base: "#F1F3F2", wood: "#0A0F0C", soil: "#F1F3F2", pot: "#0A0F0C" },
       dark: { bg: "#0B0E0D", ground: "#0B0E0D", base: "#141917", wood: "#F2F5F3", soil: "#1C2220", pot: "#F2F5F3" },
+      foliage: { tomato: "#4E8A3C", pepper: "#3F7D3A", basil: "#6DB24C", lettuce: "#9BCB6A", kale: "#3F6B5C" },
+      fruit: { tomato: "#D2452F", pepper: "#E07B22" },
+    },
+  },
+
+  {
+    id: "conservatory",
+    name: "Conservatory",
+    words: "Soft · sculptural · quietly premium",
+    summary:
+      "A glasshouse showroom: each plant is presented like a piece of design furniture, one object on a calm ground with nothing competing for it. After a premium furniture concept on Dribbble, in F0's own palette: leaf green on warm off-white, with a pale sage wash behind the heroes.",
+    philosophy: "Quiet luxury that still talks plainly. Photos dissolve into the ground instead of sitting in frames, the garden name is set huge, the one action is a green pill with an icon disc, capture and the live analysis work like the Camera app's visual intelligence mode (a mode bar of shots, then cards dropping over the photo just taken, findings as chips on it), and the diagnosis reads like an Apple Music artist page: the leaf photo runs into a tint taken from it, the name centred over its edge, and the plan waiting in a mini player. The closing shot is the garden on a plinth, turning slowly under studio light like a product on a turntable.",
+    references: [
+      { label: "Dribbble 27161604", url: "https://dribbble.com/shots/27161604-Premium-Furniture-E-commerce-App-Concept" },
+      { label: "design.md 3.1", url: "../design.md#31-conservatory" },
+      { label: "Urbanist", url: "https://github.com/google/fonts/tree/main/ofl/urbanist" },
+    ],
+    type: "Urbanist 600 for content heroes, set large and tight (garden name 54 pt, diagnosis 40 pt); the system font for body, numbers and all chrome",
+    motionNote: "Slow and damped, never bouncy: enter spring 170/26 (critically damped) rising 24 pt; stage tick 300 ms; the hotspot settles in 520 ms then breathes; pushes on the iOS sheet curve (0.32, 0.72, 0, 1).",
+    garden3dNote: "The showroom: the garden on a pale sage plinth, plaster beds, terracotta pots, plants in their own greens with a status ring, a long-lens camera and soft studio light, turning slowly like a turntable. It takes the camera's pieces: a mode bar (Health, Growth, Frost), a card from the top, chips for labels, the plant's card resting as a pill, and a shutter row that scans the selected plant.",
+    // F0's palette unchanged; wash is the only addition, a pale sage behind hero photos.
+    colors: {
+      light: { ...F0_COLORS.light, wash: "#E3EBDC" },
+      dark: { ...F0_COLORS.dark, wash: "#18231D" },
+    },
+    fonts: {
+      display: '"Urbanist", "SF Pro Display", system-ui, sans-serif', body: SYSTEM, num: "inherit",
+      displayWeight: 600, displayTracking: "-0.03em",
+      google: ["Urbanist:wght@500;600"],
+    },
+    sections: "title", sectionFont: "display", sectionSize: 22,
+    shape: { card: 28, button: 999, chip: 999, photo: 28, check: "circle", cardStyle: "shadow", iconStroke: 1.6,
+      shadow: "0 1px 1px rgba(20,33,28,.04), 0 18px 40px -18px rgba(20,33,28,.22)" },
+    layout: { home: "hero", plants: "carousel", scan: "profile", live: "camera", capture: "modes", garden: "camera", region: "hotspot", unsure: "plates", weather: "days", buttons: "pill", times: false, illus: false, melt: true },
+    motion: {
+      enter: { spring: { stiffness: 170, damping: 26, mass: 1 } }, enterY: 24, enterScale: 0.985, tickFrom: 0.85,
+      tick: { dur: 300, ease: "cubic-bezier(0.32, 0.72, 0, 1)" },
+      box: { dur: 520, ease: "cubic-bezier(0.32, 0.72, 0, 1)" },
+      check: { spring: { stiffness: 300, damping: 30, mass: 1 } },
+      push: { dur: 420, ease: "cubic-bezier(0.32, 0.72, 0, 1)" },
+    },
+    garden3d: {
+      form: "organic", color: "species", ortho: false, fov: 24, dist: 16.8, edges: false, shadows: true, grid: false, autoRotate: true, scaleBar: false,
+      roughness: 0.92, beds: "wood",
+      lights: { hemi: 0.62, hemiDark: 0.42, hemiGround: "#DCE3D2", sun: "#FFF8EE", sunI: 1.05, sunPos: [-2.5, 6.5, 4.5], fill: "#E6EEDF", fillI: 0.35 },
+      light: { bg: "#F6F7F2", ground: "#EEF1E8", base: "#D9DFD2", wood: "#FBFCF8", soil: "#5B4636", pot: "#B8643C" },
+      dark: { bg: "#0F1412", ground: "#18201C", base: "#212A25", wood: "#2F3A34", soil: "#3A2E24", pot: "#8A4A2C" },
       foliage: { tomato: "#4E8A3C", pepper: "#3F7D3A", basil: "#6DB24C", lettuce: "#9BCB6A", kale: "#3F6B5C" },
       fruit: { tomato: "#D2452F", pepper: "#E07B22" },
     },

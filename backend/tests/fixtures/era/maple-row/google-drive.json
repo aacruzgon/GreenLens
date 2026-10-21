@@ -1,0 +1,155 @@
+{
+  "files": [
+    {
+      "id": "F_FARM",
+      "name": "Farm records",
+      "mimeType": "application/vnd.google-apps.folder"
+    },
+    {
+      "id": "D_SPRAY",
+      "name": "Spray log 2026",
+      "parents": [
+        "F_FARM"
+      ],
+      "text": "Spray log 2026, Maple Row Farm\n\nEvery application goes here the same day: date, bed and crop, product, rate, volume, target, applicator. Re-entry and harvest intervals are in SOP: copper sprays and on each product's label. Rates come from the label and the SOP only.\n\n2026-05-14. Bed 2 (kale). DiPel DF (Bacillus thuringiensis subsp. kurstaki). Rate 1 g/L. 20 L. Target: imported cabbageworm. Applicator: Dev Patel.\n\n2026-06-05. Bed 2 (kale). DiPel DF (Bacillus thuringiensis subsp. kurstaki). Rate 1 g/L. 20 L. Target: imported cabbageworm, second pass. Applicator: Dev Patel.\n\n2026-07-02. Bed 3 (tomato). Kocide 3000 (copper hydroxide). Rate 1.75 g/L. 60 L. Target: early blight, preventive before a wet week; no symptoms yet. Applicator: Maria Lopez.\n\n2026-07-10. Bed 3 (tomato). Kocide 3000 (copper hydroxide). Rate 1.75 g/L. 60 L. Target: early blight, rings on the lower leaves at the west end. Applicator: Dev Patel.\n\n2026-07-17. Bed 3 (tomato). Kocide 3000 (copper hydroxide). Rate 1.75 g/L. 60 L. Target: early blight. Applicator: Dev Patel.\n\n2026-07-24. Bed 3 (tomato). Kocide 3000 (copper hydroxide). Rate 1.75 g/L. 60 L. Target: early blight. Applicator: Sam Okafor.\n\n2026-08-06. Bed 4 (zucchini). Microthiol Disperss (sulfur). Rate 3 g/L. 30 L. Target: powdery mildew. Sprayed before 9am, 21 C. Applicator: Sam Okafor.\n\n2026-08-20. Bed 4 (zucchini). Microthiol Disperss (sulfur). Rate 3 g/L. 30 L. Target: powdery mildew. Applicator: Sam Okafor.\n\n2026-08-28. Bed 3 (tomato). Kocide 3000 (copper hydroxide). Rate 1.75 g/L. 60 L. Target: early blight, rings back on the upper leaves at the east end. Applicator: Maria Lopez.\n\n2026-09-04. Bed 3 (tomato). Kocide 3000 (copper hydroxide). Rate 1.75 g/L. 60 L. Target: early blight. Sixth copper application on bed 3 this season, the SOP limit. Applicator: Dev Patel.\n\nNo applications on beds 1, 5 or 6 in 2026."
+    },
+    {
+      "id": "D_BEDMAP",
+      "name": "Bed map",
+      "parents": [
+        "F_FARM"
+      ],
+      "text": "Bed map, Maple Row Farm\n\nSix beds run east to west, each 1.2 m wide and 15 m long, with 60 cm paths. Bed 1 is nearest the barn and bed 6 is nearest the fence and the river.\n\nBed 1: sweet peppers, King of the North. Drip zone 1.\nBed 2: kale, Winterbor. Drip zone 1.\nBed 3: tomatoes, Celebrity, staked on two wires. Drip zone 2. The drip line runs along the north edge. The west end sits low and is slow to dry after rain.\nBed 4: zucchini, Dunja. Drip zone 2. Garlic goes in here in October 2026 for 2027.\nBed 5: bush beans, Provider. Drip zone 3.\nBed 6: garlic, Music, planted October 2025. Buckwheat cover after the harvest. Drip zone 3.\n\nDrip zone valves are at the east header by the well. Zone 2 shares a header with the greenhouse line."
+    },
+    {
+      "id": "D_SOP",
+      "name": "SOP: copper sprays",
+      "parents": [
+        "F_FARM"
+      ],
+      "text": "SOP: copper sprays\n\nProduct: Kocide 3000 (copper hydroxide). The label is Kocide 3000 label.pdf in this folder. Only Maria changes a rate, and only from the label.\n\n1. Check the forecast. Spray early in the morning, never when rain is expected within 6 hours.\n2. Wear gloves, goggles and the long-sleeve rain jacket. Mix in the wash bay, never in the field.\n3. Mix at the label rate for tomatoes, in the backpack sprayer. Never above the label rate.\n4. Leave at least 7 days between applications on the same bed.\n5. At most 6 copper applications on any bed in a season.\n6. Re-entry: nobody in the bed for 48 hours. Harvest interval: 1 day.\n7. Log the application in Spray log 2026 the same day: date, bed, product, rate, volume, target, your name.\n8. Rinse the sprayer three times and spray the rinse on the same bed."
+    },
+    {
+      "id": "F_LABEL",
+      "name": "Kocide 3000 label.pdf",
+      "parents": [
+        "F_FARM"
+      ],
+      "mimeType": "application/pdf"
+    }
+  ],
+  "sheets": [
+    {
+      "id": "S_PLAN",
+      "name": "Planting plan 2026",
+      "parents": [
+        "F_FARM"
+      ],
+      "tabs": [
+        {
+          "title": "Beds",
+          "values": [
+            [
+              "bed",
+              "crop",
+              "variety",
+              "sown",
+              "transplanted",
+              "spacing_cm",
+              "first_harvest_expected"
+            ],
+            [
+              "1",
+              "sweet pepper",
+              "King of the North",
+              "2026-03-20",
+              "2026-05-29",
+              "45",
+              "2026-08-01"
+            ],
+            [
+              "2",
+              "kale",
+              "Winterbor",
+              "2026-03-25",
+              "2026-05-01",
+              "45",
+              "2026-06-01"
+            ],
+            [
+              "3",
+              "tomato",
+              "Celebrity",
+              "2026-03-28",
+              "2026-05-22",
+              "60",
+              "2026-07-25"
+            ],
+            [
+              "4",
+              "zucchini",
+              "Dunja",
+              "2026-05-25",
+              "",
+              "90",
+              "2026-07-01"
+            ],
+            [
+              "5",
+              "bush bean",
+              "Provider",
+              "2026-05-27",
+              "",
+              "10",
+              "2026-07-18"
+            ],
+            [
+              "6",
+              "garlic",
+              "Music",
+              "2025-10-20",
+              "",
+              "15",
+              "2026-07-15"
+            ]
+          ]
+        },
+        {
+          "title": "Cover crops",
+          "values": [
+            [
+              "bed",
+              "after",
+              "cover_crop",
+              "sow_by"
+            ],
+            [
+              "6",
+              "garlic",
+              "buckwheat",
+              "2026-07-25"
+            ],
+            [
+              "5",
+              "beans",
+              "oats and peas",
+              "2026-09-30"
+            ],
+            [
+              "3",
+              "tomato",
+              "winter rye",
+              "2026-10-10"
+            ],
+            [
+              "4",
+              "zucchini",
+              "garlic for 2027",
+              "2026-10-15"
+            ]
+          ]
+        }
+      ]
+    }
+  ]
+}

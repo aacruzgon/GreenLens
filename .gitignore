@@ -143,6 +143,8 @@ ml/training/data/raw/
 ml/training/data/cache/
 ml/training/runs/
 ml/models/files/
+ml/knowledge/.cache/
+ml/knowledge/build/
 ml/training/eval/photos/
 *.onnx
 *.onnx.data

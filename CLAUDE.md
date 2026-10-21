@@ -43,6 +43,8 @@ Use them sparingly. A new agent can't see your context, so it re-reads everythin
 
 - The skills follow the project's documents and link a source for every rule. Every Rust example in them compiles and passes Clippy: run `python3 .claude/skills/rust/scripts/check_examples.py` after changing one, and add `--live` (Docker and cargo-nextest at the pinned version) to also run the SurrealDB tests against the pinned container. A definition shared between skills has one canonical copy; the checker fails when a marked copy drifts from it.
 
+- **Era by Eon:** `/eon` before running Era's simulators, writing or debugging an `era_` test, or using the `era` CLI and the hosted company. It holds the admin API, the simulators' surprises, the fixture, how the Era tests run and the CLI's commands; [docs/EON](docs/EON/README.md) is its record. `era skill` prints Era's own generic skill.
+
 ## Plugins (Claude Code only)
 
 - **Expo's official plugin** (`expo@claude-plugins-official`) is enabled for the project in `.claude/settings.json`. It adds [Expo Skills](https://docs.expo.dev/skills/) (`/expo:expo-router`, `/expo:expo-native-ui`, `/expo:expo-module`, `/expo:eas-app-stores` and others) and the [Expo MCP server](https://docs.expo.dev/mcp.md), which signs in with an Expo account through `/mcp`.
