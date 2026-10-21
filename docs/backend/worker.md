@@ -2038,7 +2038,7 @@ pub const fn guided(kind: GuidedKind) -> &'static str {
 }
 ```
 
-**After decoding.** Strings are truncated to their limits by characters and boxes clamped for every backend, because the hosted API's schema loses the limits and a server may not enforce them. A box with no area after clamping drops an organism (which needs one) and leaves a damage finding without a region ([vision vlm 9](../vision/vlm.md#9-box-formats)). `other_name` and `other_description` are kept only with `other`, so a known species, organism or damage pattern carries no free text. Certainty words map through the profile's `CertaintyMap`.
+**After decoding.** Strings are truncated to their limits by characters and boxes clamped for every backend, because the hosted API's schema loses the limits and a server may not enforce them. A string that reaches its limit was most likely stopped there by `maxLength` mid-word, sometimes in another language ([vision vlm 4](../vision/vlm.md#4-serving)), so `truncate` takes it back to its last full sentence, or failing that its last full word; a shorter string is kept as it is. A box with no area after clamping drops an organism (which needs one) and leaves a damage finding without a region ([vision vlm 9](../vision/vlm.md#9-box-formats)). A damage finding with the same pattern, image, region and `other_description` as an earlier one is dropped, because a model in a loop can fill the list with one finding. `other_name` and `other_description` are kept only with `other`, so a known species, organism or damage pattern carries no free text. Certainty words map through the profile's `CertaintyMap`.
 
 ```rust
 /// Why an answer failed validation. Each is retried once, then fails the job with
@@ -2086,12 +2086,16 @@ pub struct CallImages<'c> {
 /// Cuts a string to `max` characters (not bytes, so a multi-byte character is never split).
 /// A string that reaches `max` was most likely stopped there by the schema's `maxLength`, mid-word
 /// and sometimes in another language (vision vlm.md 4), so it goes back to its last full sentence,
-/// or failing that its last full word.
+/// or failing that its last full word (the whole cut when it ends at the end of a word).
 pub fn truncate(s: &str, max: usize) -> String {
     let cut: String = s.chars().take(max).collect();
     if s.chars().count() < max {
         return cut;
     }
+    // The cut's last word is whole when a space ends the cut or follows it; a text of exactly
+    // `max` was stopped there, so its last word may be cut.
+    let word_ends =
+        cut.ends_with(char::is_whitespace) || s.chars().nth(max).is_some_and(char::is_whitespace);
     let cut = cut.trim_end();
     if cut.ends_with(['.', '!', '?']) {
         return cut.to_owned();
@@ -2105,10 +2109,11 @@ pub fn truncate(s: &str, max: usize) -> String {
     }
     let kept = match (sentence_end, cut.rfind(char::is_whitespace)) {
         (Some(end), _) => &cut[..end],
-        (None, Some(space)) => cut[..space].trim_end_matches([',', ';', ':', ' ']),
+        (None, _) if word_ends => cut,
+        (None, Some(space)) => &cut[..space],
         (None, None) => cut,
     };
-    kept.to_owned()
+    kept.trim_end_matches([',', ';', ':', ' ']).to_owned()
 }
 
 /// Converts a raw `bbox_2d` to the stored image's `[x, y, w, h]` by the adapter's format,
