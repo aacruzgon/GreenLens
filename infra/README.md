@@ -1,6 +1,6 @@
 # infra
 
-Compose files for the GPU rig. [`rig.compose.yml`](rig.compose.yml) runs the vLLM server (`vllm`) for the VLM ([vision/vlm.md 4](../docs/vision/vlm.md#4-serving)). The workers are added to the same file later. Deployment is described in [architecture 12](../docs/architecture/README.md#12-deployment), and the full infrastructure design, which this file grows into, in [docs/infra](../docs/infra/README.md): there the service is `vllm-nv`, beside `model-fetch`, `perception-worker` and `vlm-worker-nv` ([infra 4](../docs/infra/README.md#infrarigcomposeyml)).
+The control plane (section 6) and the compose files for the GPU rig. [`rig.compose.yml`](rig.compose.yml) runs the vLLM server (`vllm`) for the VLM ([vision/vlm.md 4](../docs/vision/vlm.md#4-serving)). The workers are added to the same file later. Deployment is described in [architecture 12](../docs/architecture/README.md#12-deployment), and the full infrastructure design, which this file grows into, in [docs/infra](../docs/infra/README.md): there the service is `vllm-nv`, beside `model-fetch`, `perception-worker` and `vlm-worker-nv` ([infra 4](../docs/infra/README.md#infrarigcomposeyml)).
 
 ## 1. Prerequisites
 
@@ -93,3 +93,21 @@ Every VLM worker must serve the same checkpoint, because a scan's jobs can land 
 ## 5. Changing the image size
 
 `VLM_MAX_PIXELS` is the pixel budget per image. The `width` and `height` in `--limit-mm-per-prompt` in `rig.compose.yml` (1152 x 864 for 1003520) must change with it.
+
+## 6. The control plane
+
+[`control-plane.compose.yml`](control-plane.compose.yml) runs SurrealDB, RustFS, `api`, the fallback worker, Caddy and an ingress sidecar ([docs/infra 4](../docs/infra/README.md#infracontrol-planecomposeyml)). It reads secrets from `/srv/pdm/env/.env.<service>` (override with `PDM_ENV`); [`env/.env.example`](env/.env.example) lists every file, one `# --- .env.X ---` section each. Never load that example whole.
+
+First time on a host ([docs/infra 7](../docs/infra/README.md#first-time-bootstrap)):
+
+```bash
+export PDM_ENV=/srv/pdm/env
+docker compose -f infra/control-plane.compose.yml --env-file $PDM_ENV/.env.compose up -d surrealdb rustfs
+infra/bootstrap/surrealdb-users.sh      # namespace, database and the `api` user (EDITOR)
+infra/bootstrap/rustfs.sh               # pdm-images, the policies and PDMAPI01, PDMSEED01, PDMBACKUP01
+docker compose -f infra/control-plane.compose.yml --env-file $PDM_ENV/.env.compose up -d
+```
+
+Both scripts are idempotent and read their secrets from the env files, never from arguments. `COMPOSE_PROFILES` in `.env.compose` picks the ingress (`tailscale` or `cloudflare`; empty on a VM) and the optional services: `stub` (the S1 perception stub worker, turned off in S2) and `seed` (`seed-upload`, from S2).
+
+Deploy a new image by digest with `infra/deploy.sh API_IMAGE ghcr.io/aacruzgon/greenlens/api@sha256:...`; it logs to `/srv/pdm/deploy.log` and prints the rollback command. The Caddyfile is in [`caddy/`](caddy/Caddyfile) and the ingress configuration in [`ingress/`](ingress/).

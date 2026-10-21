@@ -3,7 +3,7 @@
 
 use std::{path::PathBuf, time::Duration};
 
-use clap::{Args, Parser, ValueEnum};
+use clap::{ArgAction, Args, Parser, ValueEnum, builder::BoolishValueParser};
 use domain::{jobs::Capability, vlm::BoxFormat};
 use integrations::openai_compat::ServerFlavour;
 use secrecy::SecretString;
@@ -103,6 +103,9 @@ pub struct Cli {
     /// Fallback settings.
     #[command(flatten)]
     pub fallback: FallbackArgs,
+    /// Stub vision (canned perception results for the walking skeleton).
+    #[command(flatten)]
+    pub stub: StubArgs,
 }
 
 /// `--caps perception` settings ([vision 5], ONNX Runtime on the 3070).
@@ -152,7 +155,12 @@ pub struct VlmArgs {
     #[arg(long, env = "VLM_BASE_URL", default_value = "http://vllm-nv:8000")]
     pub base_url: String,
     /// The sidecar's `--api-key`.
-    #[arg(long, env = "VLM_API_KEY", hide_env_values = true)]
+    #[arg(
+        id = "vlm_api_key",
+        long = "vlm-api-key",
+        env = "VLM_API_KEY",
+        hide_env_values = true
+    )]
     pub api_key: Option<SecretString>,
     /// `vllm` or `llamacpp`.
     #[arg(long, env = "VLM_ADAPTER", value_enum, default_value = "vllm")]
@@ -162,7 +170,8 @@ pub struct VlmArgs {
     pub served_name: String,
     /// `vlm_model`: repository@revision of the checkpoint the sidecar serves.
     #[arg(
-        long,
+        id = "vlm_model",
+        long = "vlm-model",
         env = "VLM_MODEL",
         default_value = "Qwen/Qwen3-VL-8B-Instruct-FP8"
     )]
@@ -180,10 +189,20 @@ pub struct VlmArgs {
     #[arg(long, env = "VLM_CELL_PX", default_value_t = 32)]
     pub cell_px: u32,
     /// The largest prepared image, pixels; the same value the server was started with.
-    #[arg(long, env = "VLM_MAX_PIXELS", default_value_t = 1_003_520)]
+    #[arg(
+        id = "vlm_max_pixels",
+        long = "vlm-max-pixels",
+        env = "VLM_MAX_PIXELS",
+        default_value_t = 1_003_520
+    )]
     pub max_pixels: u32,
     /// Jobs held at once; the sidecar's `--max-num-seqs` (or `-np`) has the same value.
-    #[arg(long, env = "VLM_SLOTS", default_value_t = 1)]
+    #[arg(
+        id = "vlm_slots",
+        long = "vlm-slots",
+        env = "VLM_SLOTS",
+        default_value_t = 1
+    )]
     pub slots: u32,
 }
 
@@ -193,20 +212,133 @@ pub struct VlmArgs {
 #[derive(Debug, Args)]
 pub struct FallbackArgs {
     /// The LLM API key.
-    #[arg(long, env = "LLM_API_KEY", hide_env_values = true)]
+    #[arg(
+        id = "llm_api_key",
+        long = "llm-api-key",
+        env = "LLM_API_KEY",
+        hide_env_values = true
+    )]
     pub api_key: Option<SecretString>,
     /// The hosted model.
-    #[arg(long, env = "FALLBACK_VISION_MODEL", default_value = "claude-opus-5-5")]
+    #[arg(
+        id = "fallback_model",
+        long = "fallback-model",
+        env = "FALLBACK_VISION_MODEL",
+        default_value = "claude-opus-5-5"
+    )]
     pub model: String,
     /// Jobs held at once, bounded by the LLM API's rate limit.
-    #[arg(long, env = "FALLBACK_SLOTS", default_value_t = 4)]
+    #[arg(
+        id = "fallback_slots",
+        long = "fallback-slots",
+        env = "FALLBACK_SLOTS",
+        default_value_t = 4
+    )]
     pub slots: u32,
     /// Long side of a prepared image: the size the API doesn't resize.
     #[arg(long, env = "FALLBACK_MAX_LONG_SIDE", default_value_t = 1568)]
     pub max_long_side: u32,
     /// Pixels of a prepared image (about 1.15 megapixels, the standard tier).
-    #[arg(long, env = "FALLBACK_MAX_PIXELS", default_value_t = 1_150_000)]
+    #[arg(
+        id = "fallback_max_pixels",
+        long = "fallback-max-pixels",
+        env = "FALLBACK_MAX_PIXELS",
+        default_value_t = 1_150_000
+    )]
     pub max_pixels: u32,
+}
+
+/// `--stub-vision` settings ([worker 15.1]): canned `perception` results, refused in a release
+/// build without `PDM_ALLOW_STUB_VISION=1`.
+///
+/// [worker 15.1]: ../../../docs/backend/worker.md#151-stub-vision
+#[derive(Debug, Args)]
+pub struct StubArgs {
+    /// Answer `perception` jobs with canned results instead of loading the models.
+    #[arg(long, env = "WORKER_STUB_VISION", value_parser = BoolishValueParser::new())]
+    pub stub_vision: bool,
+    /// Lets `--stub-vision` start in a release build.
+    #[arg(long, env = "PDM_ALLOW_STUB_VISION", value_parser = BoolishValueParser::new())]
+    pub allow_stub_vision: bool,
+    /// The `label_set_version` the heartbeat reports (comma-separated when several).
+    #[arg(long, env = "STUB_LABEL_SET_VERSION")]
+    pub label_set_version: Option<String>,
+    /// The `classifier_labels_version` the heartbeat reports (comma-separated when several).
+    #[arg(long, env = "STUB_CLASSIFIER_LABELS_VERSION")]
+    pub classifier_labels_version: Option<String>,
+    /// Species slugs offered as candidates, best first.
+    #[arg(
+        long,
+        env = "STUB_SPECIES",
+        value_delimiter = ',',
+        default_value = "tomato"
+    )]
+    pub species: Vec<String>,
+    /// Problem slugs the disease stage may add below `healthy`.
+    #[arg(long, env = "STUB_PROBLEMS", value_delimiter = ',')]
+    pub problems: Vec<String>,
+    /// `false` makes the plant check fail, to exercise `no_plant_found`.
+    #[arg(
+        long,
+        env = "STUB_PLANT_PRESENT",
+        action = ArgAction::Set,
+        value_parser = BoolishValueParser::new(),
+        default_value_t = true
+    )]
+    pub plant_present: bool,
+    /// Pause inside each stage, in milliseconds.
+    #[arg(long, env = "STUB_STAGE_DELAY_MS", default_value_t = 150)]
+    pub stage_delay_ms: u64,
+}
+
+/// Why `--stub-vision` was refused ([worker 15.1.1]); the message names the rule.
+///
+/// [worker 15.1.1]: ../../../docs/backend/worker.md#1511-turning-it-on
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum StubRefused {
+    /// Rule 1: a canned `VlmResult` would put invented findings into a diagnosis.
+    #[error("--stub-vision is valid only with --caps perception, not {0:?}")]
+    WrongCaps(Caps),
+    /// Rule 2.
+    #[error("--stub-vision in a release build needs PDM_ALLOW_STUB_VISION=1")]
+    ReleaseWithoutAllow,
+    /// Rule 3: the API queues no `perception` job without them.
+    #[error(
+        "--stub-vision needs {0}: the API queues a job only for the label versions a worker reports"
+    )]
+    MissingVersion(&'static str),
+    /// A `STUB_SPECIES` or `STUB_PROBLEMS` entry that is not a slug.
+    #[error("{variable} holds {value:?}, which is not a slug")]
+    BadSlug {
+        /// The variable.
+        variable: &'static str,
+        /// The entry.
+        value: String,
+    },
+}
+
+/// Rules 1 to 3 of `--stub-vision`, a pure function so a test can pass `release` instead of
+/// changing its own build. Returns `Ok` when the flag is off.
+pub fn check_stub_allowed(cli: &Cli, release: bool) -> Result<(), StubRefused> {
+    let stub = &cli.stub;
+    if !stub.stub_vision {
+        return Ok(());
+    }
+    if cli.caps != Caps::Perception {
+        return Err(StubRefused::WrongCaps(cli.caps));
+    }
+    if release && !stub.allow_stub_vision {
+        return Err(StubRefused::ReleaseWithoutAllow);
+    }
+    if stub.label_set_version.is_none() {
+        return Err(StubRefused::MissingVersion("STUB_LABEL_SET_VERSION"));
+    }
+    if stub.classifier_labels_version.is_none() {
+        return Err(StubRefused::MissingVersion(
+            "STUB_CLASSIFIER_LABELS_VERSION",
+        ));
+    }
+    Ok(())
 }
 
 /// Fixed timings of the worker loop ([contracts 5]; the `rust-workers` skill).

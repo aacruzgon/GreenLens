@@ -761,7 +761,10 @@ export interface paths {
         /** `GET /plants?garden_id=`: by name. Any member. */
         get: operations["list_plants"];
         put?: never;
-        /** `POST /plants`. Editor. */
+        /**
+         * `POST /plants`. Editor. A `species_id` the knowledge base doesn't hold is `400
+         *     invalid_request`, checked in the store's transaction.
+         */
         post: operations["create_plant"];
         delete?: never;
         options?: never;
@@ -6359,6 +6362,14 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Plant"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             403: {

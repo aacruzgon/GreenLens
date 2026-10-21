@@ -6,10 +6,9 @@
     "labels": 20,
     "fitted_temperature": 1.8795,
     "t_1": {
-      "temperature": 1.0,
       "top1": 0.5652173913043478,
-      "nll": 1.6829167604446411,
-      "ece": 0.19256398211354794,
+      "nll": 1.6829166752404126,
+      "ece": 0.19256398661872173,
       "at_agreement": {
         "n": 59,
         "accuracy": 0.9152542372881356
@@ -72,63 +71,63 @@
           "lo": 0.1,
           "hi": 0.2,
           "n": 1,
-          "confidence": 0.1691609025001526,
+          "confidence": 0.16916076732880228,
           "accuracy": 0.0
         },
         {
           "lo": 0.2,
           "hi": 0.3,
           "n": 2,
-          "confidence": 0.2785513401031494,
+          "confidence": 0.2785511769508028,
           "accuracy": 0.0
         },
         {
           "lo": 0.3,
           "hi": 0.4,
           "n": 13,
-          "confidence": 0.35790979862213135,
+          "confidence": 0.3579096803205886,
           "accuracy": 0.3076923076923077
         },
         {
           "lo": 0.4,
           "hi": 0.5,
           "n": 12,
-          "confidence": 0.4529306888580322,
+          "confidence": 0.452930821651279,
           "accuracy": 0.0
         },
         {
           "lo": 0.5,
           "hi": 0.6,
           "n": 10,
-          "confidence": 0.5641366839408875,
+          "confidence": 0.5641366635959641,
           "accuracy": 0.0
         },
         {
           "lo": 0.6,
           "hi": 0.7,
           "n": 11,
-          "confidence": 0.6347215175628662,
+          "confidence": 0.6347215609347733,
           "accuracy": 0.18181818181818182
         },
         {
           "lo": 0.7,
           "hi": 0.8,
           "n": 7,
-          "confidence": 0.748991072177887,
+          "confidence": 0.7489913121503481,
           "accuracy": 0.7142857142857143
         },
         {
           "lo": 0.8,
           "hi": 0.9,
           "n": 11,
-          "confidence": 0.8592280745506287,
+          "confidence": 0.8592281354700262,
           "accuracy": 0.5454545454545454
         },
         {
           "lo": 0.9,
           "hi": 1.0,
           "n": 48,
-          "confidence": 0.9789447784423828,
+          "confidence": 0.9789448249665144,
           "accuracy": 1.0
         }
       ],
@@ -455,13 +454,13 @@
           "top": "onion",
           "score": 0.169
         }
-      ]
+      ],
+      "temperature": 1.0
     },
     "fitted": {
-      "temperature": 1.8795,
       "top1": 0.5652173913043478,
-      "nll": 1.3983334302902222,
-      "ece": 0.18753079162991565,
+      "nll": 1.3983334670412708,
+      "ece": 0.18753081350116227,
       "at_agreement": {
         "n": 32,
         "accuracy": 1.0
@@ -524,63 +523,63 @@
           "lo": 0.1,
           "hi": 0.2,
           "n": 7,
-          "confidence": 0.17775262892246246,
+          "confidence": 0.17775254601078078,
           "accuracy": 0.14285714285714285
         },
         {
           "lo": 0.2,
           "hi": 0.3,
           "n": 15,
-          "confidence": 0.2590179443359375,
+          "confidence": 0.2590178530942196,
           "accuracy": 0.2
         },
         {
           "lo": 0.3,
           "hi": 0.4,
           "n": 20,
-          "confidence": 0.33172833919525146,
+          "confidence": 0.3317284438939252,
           "accuracy": 0.0
         },
         {
           "lo": 0.4,
           "hi": 0.5,
           "n": 13,
-          "confidence": 0.44380444288253784,
+          "confidence": 0.443804457538264,
           "accuracy": 0.3076923076923077
         },
         {
           "lo": 0.5,
           "hi": 0.6,
           "n": 6,
-          "confidence": 0.5387544631958008,
+          "confidence": 0.5387543094917752,
           "accuracy": 0.6666666666666666
         },
         {
           "lo": 0.6,
           "hi": 0.7,
           "n": 10,
-          "confidence": 0.634446382522583,
+          "confidence": 0.6344463546925925,
           "accuracy": 0.9
         },
         {
           "lo": 0.7,
           "hi": 0.8,
           "n": 12,
-          "confidence": 0.7752230167388916,
+          "confidence": 0.7752229628498025,
           "accuracy": 1.0
         },
         {
           "lo": 0.8,
           "hi": 0.9,
           "n": 19,
-          "confidence": 0.8478584289550781,
+          "confidence": 0.8478583447200791,
           "accuracy": 1.0
         },
         {
           "lo": 0.9,
           "hi": 1.0,
           "n": 13,
-          "confidence": 0.959904134273529,
+          "confidence": 0.9599041712018844,
           "accuracy": 1.0
         }
       ],
@@ -907,6 +906,465 @@
           "top": "onion",
           "score": 0.126
         }
+      ],
+      "temperature": 1.8795
+    },
+    "fitted_out_of_fold": {
+      "top1": 0.5652173913043478,
+      "nll": 1.4106860948671474,
+      "ece": 0.17827730641861445,
+      "at_agreement": {
+        "n": 33,
+        "accuracy": 1.0
+      },
+      "lowest_threshold_at_95": 0.5,
+      "sweep": [
+        {
+          "threshold": 0.5,
+          "n": 60,
+          "accuracy": 0.95
+        },
+        {
+          "threshold": 0.55,
+          "n": 57,
+          "accuracy": 0.9649122807017544
+        },
+        {
+          "threshold": 0.6,
+          "n": 52,
+          "accuracy": 0.9807692307692307
+        },
+        {
+          "threshold": 0.65,
+          "n": 46,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.7,
+          "n": 44,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.75,
+          "n": 41,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.8,
+          "n": 33,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.85,
+          "n": 22,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.9,
+          "n": 13,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.95,
+          "n": 8,
+          "accuracy": 1.0
+        }
+      ],
+      "reliability": [
+        {
+          "lo": 0.1,
+          "hi": 0.2,
+          "n": 7,
+          "confidence": 0.17658942142620054,
+          "accuracy": 0.14285714285714285
+        },
+        {
+          "lo": 0.2,
+          "hi": 0.3,
+          "n": 17,
+          "confidence": 0.2622884940378369,
+          "accuracy": 0.17647058823529413
+        },
+        {
+          "lo": 0.3,
+          "hi": 0.4,
+          "n": 19,
+          "confidence": 0.3438430117135728,
+          "accuracy": 0.05263157894736842
+        },
+        {
+          "lo": 0.4,
+          "hi": 0.5,
+          "n": 12,
+          "confidence": 0.4573903334269707,
+          "accuracy": 0.25
+        },
+        {
+          "lo": 0.5,
+          "hi": 0.6,
+          "n": 8,
+          "confidence": 0.5591476628979275,
+          "accuracy": 0.75
+        },
+        {
+          "lo": 0.6,
+          "hi": 0.7,
+          "n": 8,
+          "confidence": 0.6379411762273894,
+          "accuracy": 0.875
+        },
+        {
+          "lo": 0.7,
+          "hi": 0.8,
+          "n": 11,
+          "confidence": 0.7606284747343924,
+          "accuracy": 1.0
+        },
+        {
+          "lo": 0.8,
+          "hi": 0.9,
+          "n": 20,
+          "confidence": 0.8486481626739237,
+          "accuracy": 1.0
+        },
+        {
+          "lo": 0.9,
+          "hi": 1.0,
+          "n": 13,
+          "confidence": 0.9588296411505051,
+          "accuracy": 1.0
+        }
+      ],
+      "per_species": {
+        "apple": {
+          "n": 15,
+          "top1": 0.8
+        },
+        "corn": {
+          "n": 16,
+          "top1": 0.9375
+        },
+        "grape": {
+          "n": 11,
+          "top1": 0.9090909090909091
+        },
+        "squash": {
+          "n": 10,
+          "top1": 0.0
+        },
+        "tomato": {
+          "n": 63,
+          "top1": 0.4444444444444444
+        }
+      },
+      "wrong": [
+        {
+          "case": "corn-maize-bd-2026-corn-leaf-blight-img-649",
+          "truth": "corn",
+          "top": "hosta",
+          "score": 0.591
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-73",
+          "truth": "tomato",
+          "top": "blueberry",
+          "score": 0.472
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-410",
+          "truth": "tomato",
+          "top": "apple",
+          "score": 0.197
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-487",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.366
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-173",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.285
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-474",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.391
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-111",
+          "truth": "tomato",
+          "top": "peach",
+          "score": 0.335
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-30",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.245
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-7",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.316
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-98",
+          "truth": "tomato",
+          "top": "blueberry",
+          "score": 0.277
+        },
+        {
+          "case": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-118",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.292
+        },
+        {
+          "case": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-7",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.491
+        },
+        {
+          "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-60",
+          "truth": "tomato",
+          "top": "bean",
+          "score": 0.315
+        },
+        {
+          "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-187",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.288
+        },
+        {
+          "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-171",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.252
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2705",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.282
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2662",
+          "truth": "tomato",
+          "top": "bean",
+          "score": 0.205
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2647",
+          "truth": "tomato",
+          "top": "hosta",
+          "score": 0.546
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5576-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.341
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5536-02d",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.348
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5629-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.229
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5561-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.427
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-4135-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.422
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3717-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.237
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3652-02d",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.322
+        },
+        {
+          "case": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1143",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.42
+        },
+        {
+          "case": "apple-inat-408169430",
+          "truth": "apple",
+          "top": "peach",
+          "score": 0.438
+        },
+        {
+          "case": "apple-inat-386321336",
+          "truth": "apple",
+          "top": "blueberry",
+          "score": 0.19
+        },
+        {
+          "case": "apple-inat-371778242",
+          "truth": "apple",
+          "top": "blueberry",
+          "score": 0.326
+        },
+        {
+          "case": "grape-inat-401311005",
+          "truth": "grape",
+          "top": "apple",
+          "score": 0.339
+        },
+        {
+          "case": "squash-inat-407881529",
+          "truth": "squash",
+          "top": "bean",
+          "score": 0.372
+        },
+        {
+          "case": "squash-inat-407471919",
+          "truth": "squash",
+          "top": "soybean",
+          "score": 0.366
+        },
+        {
+          "case": "squash-inat-405307409",
+          "truth": "squash",
+          "top": "cucumber",
+          "score": 0.285
+        },
+        {
+          "case": "squash-inat-405307085",
+          "truth": "squash",
+          "top": "cucumber",
+          "score": 0.286
+        },
+        {
+          "case": "squash-inat-402785468",
+          "truth": "squash",
+          "top": "tomato",
+          "score": 0.334
+        },
+        {
+          "case": "squash-inat-401345730",
+          "truth": "squash",
+          "top": "cucumber",
+          "score": 0.453
+        },
+        {
+          "case": "squash-inat-400031065",
+          "truth": "squash",
+          "top": "grape",
+          "score": 0.305
+        },
+        {
+          "case": "squash-inat-362922124",
+          "truth": "squash",
+          "top": "grape",
+          "score": 0.457
+        },
+        {
+          "case": "squash-inat-360057285",
+          "truth": "squash",
+          "top": "grape",
+          "score": 0.362
+        },
+        {
+          "case": "squash-inat-359769884",
+          "truth": "squash",
+          "top": "soybean",
+          "score": 0.191
+        },
+        {
+          "case": "tomato-inat-404337653",
+          "truth": "tomato",
+          "top": "grape",
+          "score": 0.16
+        },
+        {
+          "case": "tomato-inat-402407638",
+          "truth": "tomato",
+          "top": "hosta",
+          "score": 0.339
+        },
+        {
+          "case": "tomato-inat-400434286",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.195
+        },
+        {
+          "case": "tomato-inat-394771244",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.363
+        },
+        {
+          "case": "tomato-inat-394770049",
+          "truth": "tomato",
+          "top": "cucumber",
+          "score": 0.243
+        },
+        {
+          "case": "tomato-inat-394769945",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.264
+        },
+        {
+          "case": "tomato-inat-388547158",
+          "truth": "tomato",
+          "top": "cucumber",
+          "score": 0.31
+        },
+        {
+          "case": "tomato-inat-387638491",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.456
+        },
+        {
+          "case": "tomato-inat-382214503",
+          "truth": "tomato",
+          "top": "cucumber",
+          "score": 0.608
+        },
+        {
+          "case": "tomato-inat-379206522",
+          "truth": "tomato",
+          "top": "onion",
+          "score": 0.126
+        }
+      ],
+      "temperature": [
+        1.738,
+        1.9811,
+        1.9504,
+        1.8639,
+        1.8584
       ]
     }
   },
@@ -916,255 +1374,428 @@
       "classes": 21,
       "dev_photos": 94,
       "val_photos": 318,
+      "dev_one_photo": 82,
+      "dev_one_photo_healthy": 11,
+      "classes_per_species": {
+        "apple": 3,
+        "corn": 5,
+        "grape": 2,
+        "tomato": 9
+      },
       "left_out": {
         "leaf photos with several crops": 18,
         "no leaf shot": 2,
         "species without head classes": 10
       },
-      "t_file": 0.8098,
-      "t_dev": 2.016,
-      "t_val_and_dev": 1.0485,
-      "proposed": 2.016,
+      "bounds": [
+        0.05,
+        10.0
+      ],
+      "temperatures": {
+        "t_file": 0.8098,
+        "t_val_and_dev": 1.0485,
+        "t_dev": 2.016,
+        "t_per_species_dev": {
+          "*": 2.016,
+          "apple": 1.7539,
+          "corn": 1.0001,
+          "grape": 0.0627,
+          "tomato": 2.4992
+        }
+      },
       "dev": {
         "t_file": {
           "n": 94,
-          "top3": 0.723404255319149,
-          "chance_top3": 0.5106382978723406,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.5244979919678715,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.38333333333333336
+          },
+          "top3_problems": 0.7469879518072289,
+          "chance_top3_problems": 0.572289156626506,
+          "top3_problems_can_miss": {
+            "n": 64,
+            "top3": 0.671875,
+            "chance": 0.4453125
+          },
           "top1": 0.3617021276595745,
-          "ece": 0.28828606580166105,
-          "nll": 1.8590503931045532,
+          "ece": 0.28828607320089955,
+          "nll": 1.859050527901748,
           "medium": {
             "n": 60,
             "right": 25
           },
-          "healthy_blocked": {
+          "healthy": {
             "n": 11,
+            "evidence": 2,
             "blocked": 4
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
           },
           "reliability": [
             {
               "lo": 0.1,
               "hi": 0.2,
               "n": 1,
-              "confidence": 0.19375713169574738,
+              "confidence": 0.19375711144761826,
               "accuracy": 0.0
             },
             {
               "lo": 0.2,
               "hi": 0.3,
               "n": 4,
-              "confidence": 0.25140780210494995,
+              "confidence": 0.25140781796541184,
               "accuracy": 0.5
             },
             {
               "lo": 0.3,
               "hi": 0.4,
               "n": 9,
-              "confidence": 0.34072813391685486,
+              "confidence": 0.3407281275180518,
               "accuracy": 0.1111111111111111
             },
             {
               "lo": 0.4,
               "hi": 0.5,
               "n": 18,
-              "confidence": 0.45977625250816345,
+              "confidence": 0.45977625706451103,
               "accuracy": 0.2222222222222222
             },
             {
               "lo": 0.5,
               "hi": 0.6,
               "n": 14,
-              "confidence": 0.5529121160507202,
+              "confidence": 0.5529121608011609,
               "accuracy": 0.21428571428571427
             },
             {
               "lo": 0.6,
               "hi": 0.7,
               "n": 16,
-              "confidence": 0.6357014179229736,
+              "confidence": 0.6357014042240866,
               "accuracy": 0.25
             },
             {
               "lo": 0.7,
               "hi": 0.8,
               "n": 9,
-              "confidence": 0.7468131184577942,
+              "confidence": 0.746813128857341,
               "accuracy": 0.4444444444444444
             },
             {
               "lo": 0.8,
               "hi": 0.9,
               "n": 8,
-              "confidence": 0.8442994952201843,
+              "confidence": 0.8442994850806256,
               "accuracy": 0.625
             },
             {
               "lo": 0.9,
               "hi": 1.0,
               "n": 15,
-              "confidence": 0.9732235074043274,
+              "confidence": 0.9732235793357646,
               "accuracy": 0.7333333333333333
             }
           ]
         },
         "t_val_and_dev": {
           "n": 94,
-          "top3": 0.723404255319149,
-          "chance_top3": 0.5106382978723406,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.5244979919678715,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.38333333333333336
+          },
+          "top3_problems": 0.7469879518072289,
+          "chance_top3_problems": 0.572289156626506,
+          "top3_problems_can_miss": {
+            "n": 64,
+            "top3": 0.671875,
+            "chance": 0.4453125
+          },
           "top1": 0.3617021276595745,
-          "ece": 0.24293833162556303,
-          "nll": 1.685835838317871,
+          "ece": 0.2429383126058468,
+          "nll": 1.6858356291092276,
           "medium": {
             "n": 48,
             "right": 24
           },
-          "healthy_blocked": {
+          "healthy": {
             "n": 11,
+            "evidence": 1,
             "blocked": 3
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
           },
           "reliability": [
             {
               "lo": 0.1,
               "hi": 0.2,
               "n": 1,
-              "confidence": 0.17981092631816864,
+              "confidence": 0.17981093795646277,
               "accuracy": 0.0
             },
             {
               "lo": 0.2,
               "hi": 0.3,
               "n": 9,
-              "confidence": 0.25649505853652954,
+              "confidence": 0.25649501312157896,
               "accuracy": 0.3333333333333333
             },
             {
               "lo": 0.3,
               "hi": 0.4,
               "n": 15,
-              "confidence": 0.36247286200523376,
+              "confidence": 0.3624728609833715,
               "accuracy": 0.2
             },
             {
               "lo": 0.4,
               "hi": 0.5,
               "n": 20,
-              "confidence": 0.44670286774635315,
+              "confidence": 0.4467028652076371,
               "accuracy": 0.15
             },
             {
               "lo": 0.5,
               "hi": 0.6,
               "n": 17,
-              "confidence": 0.544964611530304,
+              "confidence": 0.544964622628219,
               "accuracy": 0.23529411764705882
             },
             {
               "lo": 0.6,
               "hi": 0.7,
               "n": 8,
-              "confidence": 0.6404125690460205,
+              "confidence": 0.6404125810051965,
               "accuracy": 0.5
             },
             {
               "lo": 0.7,
               "hi": 0.8,
               "n": 8,
-              "confidence": 0.7497377395629883,
+              "confidence": 0.7497377227947477,
               "accuracy": 0.625
             },
             {
               "lo": 0.8,
               "hi": 0.9,
               "n": 5,
-              "confidence": 0.8552328944206238,
+              "confidence": 0.8552329012556121,
               "accuracy": 0.4
             },
             {
               "lo": 0.9,
               "hi": 1.0,
               "n": 11,
-              "confidence": 0.9684116244316101,
+              "confidence": 0.968411598722925,
               "accuracy": 0.9090909090909091
             }
           ]
         },
         "t_dev": {
           "n": 94,
-          "top3": 0.723404255319149,
-          "chance_top3": 0.5106382978723406,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.5244979919678715,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.38333333333333336
+          },
+          "top3_problems": 0.7469879518072289,
+          "chance_top3_problems": 0.572289156626506,
+          "top3_problems_can_miss": {
+            "n": 64,
+            "top3": 0.671875,
+            "chance": 0.4453125
+          },
           "top1": 0.3617021276595745,
-          "ece": 0.12157304917878292,
-          "nll": 1.5468157529830933,
+          "ece": 0.12157304353346302,
+          "nll": 1.5468158277890076,
           "medium": {
             "n": 24,
             "right": 18
           },
-          "healthy_blocked": {
+          "healthy": {
             "n": 11,
+            "evidence": 1,
             "blocked": 0
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
           },
           "reliability": [
             {
               "lo": 0.1,
               "hi": 0.2,
               "n": 6,
-              "confidence": 0.1738707423210144,
+              "confidence": 0.17387073711307932,
               "accuracy": 0.3333333333333333
             },
             {
               "lo": 0.2,
               "hi": 0.3,
               "n": 31,
-              "confidence": 0.2518806457519531,
+              "confidence": 0.2518806450902939,
               "accuracy": 0.16129032258064516
             },
             {
               "lo": 0.3,
               "hi": 0.4,
               "n": 24,
-              "confidence": 0.3412388563156128,
+              "confidence": 0.3412388805333802,
               "accuracy": 0.16666666666666666
             },
             {
               "lo": 0.4,
               "hi": 0.5,
               "n": 8,
-              "confidence": 0.4376152753829956,
+              "confidence": 0.4376152622776004,
               "accuracy": 0.5
             },
             {
               "lo": 0.5,
               "hi": 0.6,
               "n": 10,
-              "confidence": 0.5369935631752014,
+              "confidence": 0.5369935552594105,
               "accuracy": 0.6
             },
             {
               "lo": 0.6,
               "hi": 0.7,
               "n": 4,
-              "confidence": 0.6377201080322266,
+              "confidence": 0.6377200231107022,
               "accuracy": 0.75
             },
             {
               "lo": 0.7,
               "hi": 0.8,
               "n": 4,
-              "confidence": 0.7449701428413391,
+              "confidence": 0.7449701129616425,
               "accuracy": 0.75
             },
             {
               "lo": 0.8,
               "hi": 0.9,
               "n": 1,
-              "confidence": 0.8507878184318542,
+              "confidence": 0.8507877790360816,
               "accuracy": 1.0
             },
             {
               "lo": 0.9,
               "hi": 1.0,
               "n": 6,
-              "confidence": 0.936744213104248,
+              "confidence": 0.936744157482653,
+              "accuracy": 1.0
+            }
+          ]
+        },
+        "t_per_species_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.5244979919678715,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.38333333333333336
+          },
+          "top3_problems": 0.7469879518072289,
+          "chance_top3_problems": 0.572289156626506,
+          "top3_problems_can_miss": {
+            "n": 64,
+            "top3": 0.671875,
+            "chance": 0.4453125
+          },
+          "top1": 0.3617021276595745,
+          "ece": 0.1299772094031621,
+          "nll": 1.5137894436929284,
+          "medium": {
+            "n": 28,
+            "right": 21
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 1,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 9,
+              "confidence": 0.17423603341431407,
+              "accuracy": 0.3333333333333333
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 40,
+              "confidence": 0.24150823106656477,
+              "accuracy": 0.1
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 8,
+              "confidence": 0.3407213082013239,
+              "accuracy": 0.25
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 8,
+              "confidence": 0.4596512611588077,
+              "accuracy": 0.375
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 9,
+              "confidence": 0.5613605952290837,
+              "accuracy": 0.6666666666666666
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 4,
+              "confidence": 0.6444266897249941,
+              "accuracy": 0.75
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 6,
+              "confidence": 0.7457158041123423,
+              "accuracy": 0.6666666666666666
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 2,
+              "confidence": 0.8123986831152057,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 8,
+              "confidence": 1.0,
               "accuracy": 1.0
             }
           ]
@@ -1173,664 +1804,2021 @@
       "val": {
         "t_file": {
           "n": 318,
-          "top3": 0.9654088050314465,
-          "chance_top3": 0.5228511530398322,
+          "with_problem": 218,
+          "top3_sent": 0.9587155963302753,
+          "chance_top3_sent": 0.4905198776758409,
+          "top3_sent_can_miss": {
+            "n": 201,
+            "top3": 0.9552238805970149,
+            "chance": 0.44742951907131
+          },
+          "top3_problems": 0.963302752293578,
+          "chance_top3_problems": 0.5716743119266054,
+          "top3_problems_can_miss": {
+            "n": 201,
+            "top3": 0.9601990049751243,
+            "chance": 0.5354477611940298
+          },
           "top1": 0.8176100628930818,
-          "ece": 0.043132949362760825,
-          "nll": 0.5269262194633484,
+          "ece": 0.04313293167485873,
+          "nll": 0.526926267867054,
           "medium": {
             "n": 190,
             "right": 159
           },
-          "healthy_blocked": {
+          "healthy": {
             "n": 100,
+            "evidence": 91,
             "blocked": 2
+          },
+          "called_healthy": {
+            "n": 218,
+            "called": 1
           },
           "reliability": [
             {
               "lo": 0.2,
               "hi": 0.3,
               "n": 4,
-              "confidence": 0.27028071880340576,
+              "confidence": 0.2702807321855989,
               "accuracy": 0.0
             },
             {
               "lo": 0.3,
               "hi": 0.4,
               "n": 11,
-              "confidence": 0.35021284222602844,
+              "confidence": 0.35021285049968953,
               "accuracy": 0.36363636363636365
             },
             {
               "lo": 0.4,
               "hi": 0.5,
               "n": 21,
-              "confidence": 0.45342859625816345,
+              "confidence": 0.4534286035191086,
               "accuracy": 0.2857142857142857
             },
             {
               "lo": 0.5,
               "hi": 0.6,
               "n": 30,
-              "confidence": 0.5481778979301453,
+              "confidence": 0.5481779603756355,
               "accuracy": 0.5666666666666667
             },
             {
               "lo": 0.6,
               "hi": 0.7,
               "n": 22,
-              "confidence": 0.6481133103370667,
+              "confidence": 0.6481134057323832,
               "accuracy": 0.7727272727272727
             },
             {
               "lo": 0.7,
               "hi": 0.8,
               "n": 18,
-              "confidence": 0.7543541193008423,
+              "confidence": 0.7543541048326708,
               "accuracy": 0.8333333333333334
             },
             {
               "lo": 0.8,
               "hi": 0.9,
               "n": 43,
-              "confidence": 0.8545148372650146,
+              "confidence": 0.8545147978515697,
               "accuracy": 0.9069767441860465
             },
             {
               "lo": 0.9,
               "hi": 1.0,
               "n": 169,
-              "confidence": 0.9727762341499329,
+              "confidence": 0.9727762319886163,
               "accuracy": 0.9585798816568047
             }
           ]
         },
         "t_val_and_dev": {
           "n": 318,
-          "top3": 0.9654088050314465,
-          "chance_top3": 0.5228511530398322,
+          "with_problem": 218,
+          "top3_sent": 0.9587155963302753,
+          "chance_top3_sent": 0.4905198776758409,
+          "top3_sent_can_miss": {
+            "n": 201,
+            "top3": 0.9552238805970149,
+            "chance": 0.44742951907131
+          },
+          "top3_problems": 0.963302752293578,
+          "chance_top3_problems": 0.5716743119266054,
+          "top3_problems_can_miss": {
+            "n": 201,
+            "top3": 0.9601990049751243,
+            "chance": 0.5354477611940298
+          },
           "top1": 0.8176100628930818,
-          "ece": 0.06801264334774618,
-          "nll": 0.5451744794845581,
+          "ece": 0.06801262021653426,
+          "nll": 0.5451745077780944,
           "medium": {
             "n": 170,
             "right": 148
           },
-          "healthy_blocked": {
+          "healthy": {
             "n": 100,
+            "evidence": 89,
             "blocked": 1
+          },
+          "called_healthy": {
+            "n": 218,
+            "called": 1
           },
           "reliability": [
             {
               "lo": 0.2,
               "hi": 0.3,
               "n": 8,
-              "confidence": 0.258422315120697,
+              "confidence": 0.2584223260008529,
               "accuracy": 0.125
             },
             {
               "lo": 0.3,
               "hi": 0.4,
               "n": 19,
-              "confidence": 0.35663625597953796,
+              "confidence": 0.3566362169869236,
               "accuracy": 0.42105263157894735
             },
             {
               "lo": 0.4,
               "hi": 0.5,
               "n": 31,
-              "confidence": 0.45409122109413147,
+              "confidence": 0.4540912002228399,
               "accuracy": 0.45161290322580644
             },
             {
               "lo": 0.5,
               "hi": 0.6,
               "n": 26,
-              "confidence": 0.5421612858772278,
+              "confidence": 0.542161277194867,
               "accuracy": 0.6923076923076923
             },
             {
               "lo": 0.6,
               "hi": 0.7,
               "n": 24,
-              "confidence": 0.6539539098739624,
+              "confidence": 0.6539539172673479,
               "accuracy": 0.8333333333333334
             },
             {
               "lo": 0.7,
               "hi": 0.8,
               "n": 36,
-              "confidence": 0.7548972368240356,
+              "confidence": 0.7548972003324852,
               "accuracy": 0.8888888888888888
             },
             {
               "lo": 0.8,
               "hi": 0.9,
               "n": 46,
-              "confidence": 0.8574123382568359,
+              "confidence": 0.85741236484801,
               "accuracy": 0.8913043478260869
             },
             {
               "lo": 0.9,
               "hi": 1.0,
               "n": 128,
-              "confidence": 0.9583256244659424,
+              "confidence": 0.9583256027917042,
               "accuracy": 0.984375
             }
           ]
         },
         "t_dev": {
           "n": 318,
-          "top3": 0.9654088050314465,
-          "chance_top3": 0.5228511530398322,
+          "with_problem": 218,
+          "top3_sent": 0.9587155963302753,
+          "chance_top3_sent": 0.4905198776758409,
+          "top3_sent_can_miss": {
+            "n": 201,
+            "top3": 0.9552238805970149,
+            "chance": 0.44742951907131
+          },
+          "top3_problems": 0.963302752293578,
+          "chance_top3_problems": 0.5716743119266054,
+          "top3_problems_can_miss": {
+            "n": 201,
+            "top3": 0.9601990049751243,
+            "chance": 0.5354477611940298
+          },
           "top1": 0.8176100628930818,
-          "ece": 0.25630892044718157,
-          "nll": 0.7602914571762085,
+          "ece": 0.25630893449464687,
+          "nll": 0.7602914811755058,
           "medium": {
             "n": 109,
             "right": 99
           },
-          "healthy_blocked": {
+          "healthy": {
             "n": 100,
+            "evidence": 78,
             "blocked": 0
+          },
+          "called_healthy": {
+            "n": 218,
+            "called": 1
           },
           "reliability": [
             {
               "lo": 0.1,
               "hi": 0.2,
               "n": 4,
-              "confidence": 0.17986184358596802,
+              "confidence": 0.17986183572579892,
               "accuracy": 0.0
             },
             {
               "lo": 0.2,
               "hi": 0.3,
               "n": 38,
-              "confidence": 0.2558497190475464,
+              "confidence": 0.2558496882361221,
               "accuracy": 0.4473684210526316
             },
             {
               "lo": 0.3,
               "hi": 0.4,
               "n": 39,
-              "confidence": 0.3542722761631012,
+              "confidence": 0.35427226192504196,
               "accuracy": 0.6153846153846154
             },
             {
               "lo": 0.4,
               "hi": 0.5,
               "n": 49,
-              "confidence": 0.4479873478412628,
+              "confidence": 0.4479873498537939,
               "accuracy": 0.8571428571428571
             },
             {
               "lo": 0.5,
               "hi": 0.6,
               "n": 44,
-              "confidence": 0.5572829246520996,
+              "confidence": 0.5572829248733646,
               "accuracy": 0.8636363636363636
             },
             {
               "lo": 0.6,
               "hi": 0.7,
               "n": 46,
-              "confidence": 0.6548494100570679,
+              "confidence": 0.6548493441182159,
               "accuracy": 0.9130434782608695
             },
             {
               "lo": 0.7,
               "hi": 0.8,
               "n": 56,
-              "confidence": 0.7525866627693176,
+              "confidence": 0.7525865488374394,
               "accuracy": 0.9821428571428571
             },
             {
               "lo": 0.8,
               "hi": 0.9,
               "n": 30,
-              "confidence": 0.8584434986114502,
+              "confidence": 0.8584434843720271,
               "accuracy": 1.0
             },
             {
               "lo": 0.9,
               "hi": 1.0,
               "n": 12,
-              "confidence": 0.9317708015441895,
+              "confidence": 0.9317708227330784,
               "accuracy": 1.0
+            }
+          ]
+        },
+        "t_per_species_dev": {
+          "n": 318,
+          "with_problem": 218,
+          "top3_sent": 0.9587155963302753,
+          "chance_top3_sent": 0.4905198776758409,
+          "top3_sent_can_miss": {
+            "n": 201,
+            "top3": 0.9552238805970149,
+            "chance": 0.44742951907131
+          },
+          "top3_problems": 0.963302752293578,
+          "chance_top3_problems": 0.5716743119266054,
+          "top3_problems_can_miss": {
+            "n": 201,
+            "top3": 0.9601990049751243,
+            "chance": 0.5354477611940298
+          },
+          "top1": 0.8176100628930818,
+          "ece": 0.17820586585633788,
+          "nll": 0.7209492398905792,
+          "medium": {
+            "n": 116,
+            "right": 100
+          },
+          "healthy": {
+            "n": 100,
+            "evidence": 79,
+            "blocked": 1
+          },
+          "called_healthy": {
+            "n": 218,
+            "called": 1
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 10,
+              "confidence": 0.18176151403541563,
+              "accuracy": 0.2
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 43,
+              "confidence": 0.2450117330410512,
+              "accuracy": 0.5116279069767442
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 38,
+              "confidence": 0.34862053940866233,
+              "accuracy": 0.8947368421052632
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 31,
+              "confidence": 0.4474206171305738,
+              "accuracy": 0.7419354838709677
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 26,
+              "confidence": 0.5478072340829951,
+              "accuracy": 0.6923076923076923
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 20,
+              "confidence": 0.6468162511231619,
+              "accuracy": 0.95
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 18,
+              "confidence": 0.7604492204395559,
+              "accuracy": 0.8888888888888888
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 34,
+              "confidence": 0.8576173452305511,
+              "accuracy": 0.8529411764705882
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 98,
+              "confidence": 0.9600399604209419,
+              "accuracy": 0.9897959183673469
             }
           ]
         }
       },
+      "dev_out_of_fold": {
+        "t_val_and_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.5244979919678715,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.38333333333333336
+          },
+          "top3_problems": 0.7469879518072289,
+          "chance_top3_problems": 0.572289156626506,
+          "top3_problems_can_miss": {
+            "n": 64,
+            "top3": 0.671875,
+            "chance": 0.4453125
+          },
+          "top1": 0.3617021276595745,
+          "ece": 0.2501193470119566,
+          "nll": 1.7084438875359715,
+          "medium": {
+            "n": 50,
+            "right": 24
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 1,
+            "blocked": 3
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 1,
+              "confidence": 0.1808690164708146,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 9,
+              "confidence": 0.2613586050572355,
+              "accuracy": 0.3333333333333333
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 14,
+              "confidence": 0.367334837313859,
+              "accuracy": 0.21428571428571427
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 19,
+              "confidence": 0.44789470616661436,
+              "accuracy": 0.15789473684210525
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 16,
+              "confidence": 0.5418832721502755,
+              "accuracy": 0.25
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 11,
+              "confidence": 0.6418271391605886,
+              "accuracy": 0.36363636363636365
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 7,
+              "confidence": 0.7571906605618899,
+              "accuracy": 0.7142857142857143
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 6,
+              "confidence": 0.8565319455219017,
+              "accuracy": 0.3333333333333333
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 11,
+              "confidence": 0.9707536018121701,
+              "accuracy": 0.9090909090909091
+            }
+          ],
+          "fold_temperatures": [
+            1.0265,
+            1.03,
+            1.0183,
+            1.0131,
+            0.9805
+          ],
+          "per_species": {
+            "apple": {
+              "n": 11,
+              "with_problem": 11,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.7272727272727273,
+              "ece": 0.2897824548244034,
+              "nll": 0.8568580322620143,
+              "medium": {
+                "n": 11,
+                "right": 8
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 11,
+                "called": 0
+              }
+            },
+            "corn": {
+              "n": 15,
+              "with_problem": 12,
+              "top3_sent": 0.9166666666666666,
+              "chance_top3_sent": 0.5999999999999999,
+              "top3_sent_can_miss": {
+                "n": 12,
+                "top3": 0.9166666666666666,
+                "chance": 0.5999999999999999
+              },
+              "top3_problems": 0.9166666666666666,
+              "chance_top3_problems": 0.75,
+              "top3_problems_can_miss": {
+                "n": 12,
+                "top3": 0.9166666666666666,
+                "chance": 0.75
+              },
+              "top1": 0.5333333333333333,
+              "ece": 0.1923793591305411,
+              "nll": 1.0147423770995487,
+              "medium": {
+                "n": 9,
+                "right": 5
+              },
+              "healthy": {
+                "n": 3,
+                "evidence": 1,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 12,
+                "called": 0
+              }
+            },
+            "grape": {
+              "n": 8,
+              "with_problem": 8,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 1.0,
+              "ece": 0.020348737447835163,
+              "nll": 0.02109979737898365,
+              "medium": {
+                "n": 8,
+                "right": 8
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 8,
+                "called": 0
+              }
+            },
+            "tomato": {
+              "n": 60,
+              "with_problem": 52,
+              "top3_sent": 0.5961538461538461,
+              "chance_top3_sent": 0.33333333333333326,
+              "top3_sent_can_miss": {
+                "n": 52,
+                "top3": 0.5961538461538461,
+                "chance": 0.33333333333333326
+              },
+              "top3_problems": 0.6153846153846154,
+              "chance_top3_problems": 0.375,
+              "top3_problems_can_miss": {
+                "n": 52,
+                "top3": 0.6153846153846154,
+                "chance": 0.375
+              },
+              "top1": 0.16666666666666666,
+              "ece": 0.3438494331135363,
+              "nll": 2.2629725506329015,
+              "medium": {
+                "n": 22,
+                "right": 3
+              },
+              "healthy": {
+                "n": 8,
+                "evidence": 0,
+                "blocked": 3
+              },
+              "called_healthy": {
+                "n": 52,
+                "called": 0
+              }
+            }
+          }
+        },
+        "t_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.5244979919678715,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.38333333333333336
+          },
+          "top3_problems": 0.7469879518072289,
+          "chance_top3_problems": 0.572289156626506,
+          "top3_problems_can_miss": {
+            "n": 64,
+            "top3": 0.671875,
+            "chance": 0.4453125
+          },
+          "top1": 0.3617021276595745,
+          "ece": 0.12132848474389665,
+          "nll": 1.5586847097835173,
+          "medium": {
+            "n": 23,
+            "right": 17
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 1,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 6,
+              "confidence": 0.17617208793459327,
+              "accuracy": 0.3333333333333333
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 33,
+              "confidence": 0.25357426423485735,
+              "accuracy": 0.15151515151515152
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 23,
+              "confidence": 0.35328350926220653,
+              "accuracy": 0.21739130434782608
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 8,
+              "confidence": 0.43904446303495615,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 10,
+              "confidence": 0.5521404217828966,
+              "accuracy": 0.6
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 4,
+              "confidence": 0.6684205770627765,
+              "accuracy": 0.75
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 3,
+              "confidence": 0.7452688661280501,
+              "accuracy": 0.6666666666666666
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 1,
+              "confidence": 0.8360908614746055,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 6,
+              "confidence": 0.9321169219704516,
+              "accuracy": 1.0
+            }
+          ],
+          "fold_temperatures": [
+            2.1538,
+            2.1702,
+            2.0434,
+            1.9956,
+            1.7545
+          ],
+          "per_species": {
+            "apple": {
+              "n": 11,
+              "with_problem": 11,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.7272727272727273,
+              "ece": 0.25777599677507607,
+              "nll": 0.7703753575586344,
+              "medium": {
+                "n": 10,
+                "right": 7
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 11,
+                "called": 0
+              }
+            },
+            "corn": {
+              "n": 15,
+              "with_problem": 12,
+              "top3_sent": 0.9166666666666666,
+              "chance_top3_sent": 0.5999999999999999,
+              "top3_sent_can_miss": {
+                "n": 12,
+                "top3": 0.9166666666666666,
+                "chance": 0.5999999999999999
+              },
+              "top3_problems": 0.9166666666666666,
+              "chance_top3_problems": 0.75,
+              "top3_problems_can_miss": {
+                "n": 12,
+                "top3": 0.9166666666666666,
+                "chance": 0.75
+              },
+              "top1": 0.5333333333333333,
+              "ece": 0.17444880612606045,
+              "nll": 1.1283329910855007,
+              "medium": {
+                "n": 2,
+                "right": 1
+              },
+              "healthy": {
+                "n": 3,
+                "evidence": 1,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 12,
+                "called": 0
+              }
+            },
+            "grape": {
+              "n": 8,
+              "with_problem": 8,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 1.0,
+              "ece": 0.102310450355985,
+              "nll": 0.1108016183894112,
+              "medium": {
+                "n": 8,
+                "right": 8
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 8,
+                "called": 0
+              }
+            },
+            "tomato": {
+              "n": 60,
+              "with_problem": 52,
+              "top3_sent": 0.5961538461538461,
+              "chance_top3_sent": 0.33333333333333326,
+              "top3_sent_can_miss": {
+                "n": 52,
+                "top3": 0.5961538461538461,
+                "chance": 0.33333333333333326
+              },
+              "top3_problems": 0.6153846153846154,
+              "chance_top3_problems": 0.375,
+              "top3_problems_can_miss": {
+                "n": 52,
+                "top3": 0.6153846153846154,
+                "chance": 0.375
+              },
+              "top1": 0.16666666666666666,
+              "ece": 0.17179806252311916,
+              "nll": 2.0038470995517974,
+              "medium": {
+                "n": 3,
+                "right": 1
+              },
+              "healthy": {
+                "n": 8,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 52,
+                "called": 0
+              }
+            }
+          }
+        },
+        "t_per_species_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.5244979919678715,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.38333333333333336
+          },
+          "top3_problems": 0.7469879518072289,
+          "chance_top3_problems": 0.572289156626506,
+          "top3_problems_can_miss": {
+            "n": 64,
+            "top3": 0.671875,
+            "chance": 0.4453125
+          },
+          "top1": 0.3617021276595745,
+          "ece": 0.11690901268302625,
+          "nll": 1.570246084586036,
+          "medium": {
+            "n": 29,
+            "right": 21
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 1,
+            "blocked": 1
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 10,
+              "confidence": 0.17668970014425417,
+              "accuracy": 0.2
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 36,
+              "confidence": 0.23811452749171702,
+              "accuracy": 0.16666666666666666
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 11,
+              "confidence": 0.3370638976486806,
+              "accuracy": 0.09090909090909091
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 7,
+              "confidence": 0.4586355297471729,
+              "accuracy": 0.42857142857142855
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 12,
+              "confidence": 0.5440533413506304,
+              "accuracy": 0.6666666666666666
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 3,
+              "confidence": 0.6607324207717219,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 5,
+              "confidence": 0.7667047356657916,
+              "accuracy": 0.6
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 1,
+              "confidence": 0.8257144085243976,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 9,
+              "confidence": 0.9957324277919023,
+              "accuracy": 0.8888888888888888
+            }
+          ],
+          "fold_temperatures": [
+            {
+              "*": 2.1538,
+              "apple": 0.9609,
+              "corn": 1.1498,
+              "grape": 0.0554,
+              "tomato": 2.9071
+            },
+            {
+              "*": 2.1702,
+              "apple": 2.0145,
+              "corn": 1.0622,
+              "grape": 0.0564,
+              "tomato": 2.7109
+            },
+            {
+              "*": 2.0434,
+              "apple": 2.3632,
+              "corn": 0.7601,
+              "grape": 0.0603,
+              "tomato": 2.5546
+            },
+            {
+              "*": 1.9956,
+              "apple": 1.4775,
+              "corn": 1.2069,
+              "grape": 0.0875,
+              "tomato": 2.4329
+            },
+            {
+              "*": 1.7545,
+              "apple": 2.1731,
+              "corn": 0.8538,
+              "grape": 0.0578,
+              "tomato": 2.0253
+            }
+          ],
+          "per_species": {
+            "apple": {
+              "n": 11,
+              "with_problem": 11,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.7272727272727273,
+              "ece": 0.47614288308142405,
+              "nll": 1.002746854529267,
+              "medium": {
+                "n": 11,
+                "right": 8
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 11,
+                "called": 0
+              }
+            },
+            "corn": {
+              "n": 15,
+              "with_problem": 12,
+              "top3_sent": 0.9166666666666666,
+              "chance_top3_sent": 0.5999999999999999,
+              "top3_sent_can_miss": {
+                "n": 12,
+                "top3": 0.9166666666666666,
+                "chance": 0.5999999999999999
+              },
+              "top3_problems": 0.9166666666666666,
+              "chance_top3_problems": 0.75,
+              "top3_problems_can_miss": {
+                "n": 12,
+                "top3": 0.9166666666666666,
+                "chance": 0.75
+              },
+              "top1": 0.5333333333333333,
+              "ece": 0.1619126766893241,
+              "nll": 1.1008149165552845,
+              "medium": {
+                "n": 10,
+                "right": 5
+              },
+              "healthy": {
+                "n": 3,
+                "evidence": 1,
+                "blocked": 1
+              },
+              "called_healthy": {
+                "n": 12,
+                "called": 0
+              }
+            },
+            "grape": {
+              "n": 8,
+              "with_problem": 8,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 1.0,
+              "ece": 1.1666223542761145e-12,
+              "nll": 1.6651957591074276e-13,
+              "medium": {
+                "n": 8,
+                "right": 8
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 8,
+                "called": 0
+              }
+            },
+            "tomato": {
+              "n": 60,
+              "with_problem": 52,
+              "top3_sent": 0.5961538461538461,
+              "chance_top3_sent": 0.33333333333333326,
+              "top3_sent_can_miss": {
+                "n": 52,
+                "top3": 0.5961538461538461,
+                "chance": 0.33333333333333326
+              },
+              "top3_problems": 0.6153846153846154,
+              "chance_top3_problems": 0.375,
+              "top3_problems_can_miss": {
+                "n": 52,
+                "top3": 0.6153846153846154,
+                "chance": 0.375
+              },
+              "top1": 0.16666666666666666,
+              "ece": 0.09669026820309744,
+              "nll": 2.0010115467155805,
+              "medium": {
+                "n": 0,
+                "right": 0
+              },
+              "healthy": {
+                "n": 8,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 52,
+                "called": 0
+              }
+            }
+          }
+        }
+      },
       "dev_per_species": {
-        "apple": {
+        "t_file": {
+          "apple": {
+            "n": 11,
+            "with_problem": 11,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.7272727272727273,
+            "ece": 0.3038091694427889,
+            "nll": 0.9612069388504271,
+            "medium": {
+              "n": 11,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 11,
+              "called": 0
+            }
+          },
+          "corn": {
+            "n": 15,
+            "with_problem": 12,
+            "top3_sent": 0.9166666666666666,
+            "chance_top3_sent": 0.5999999999999999,
+            "top3_sent_can_miss": {
+              "n": 12,
+              "top3": 0.9166666666666666,
+              "chance": 0.5999999999999999
+            },
+            "top3_problems": 0.9166666666666666,
+            "chance_top3_problems": 0.75,
+            "top3_problems_can_miss": {
+              "n": 12,
+              "top3": 0.9166666666666666,
+              "chance": 0.75
+            },
+            "top1": 0.5333333333333333,
+            "ece": 0.2337209447412552,
+            "nll": 1.0264666516855507,
+            "medium": {
+              "n": 11,
+              "right": 5
+            },
+            "healthy": {
+              "n": 3,
+              "evidence": 2,
+              "blocked": 1
+            },
+            "called_healthy": {
+              "n": 12,
+              "called": 0
+            }
+          },
+          "grape": {
+            "n": 8,
+            "with_problem": 8,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 1.0,
+            "ece": 0.010164941485323653,
+            "nll": 0.010414396396506763,
+            "medium": {
+              "n": 8,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 8,
+              "called": 0
+            }
+          },
+          "tomato": {
+            "n": 60,
+            "with_problem": 52,
+            "top3_sent": 0.5961538461538461,
+            "chance_top3_sent": 0.33333333333333326,
+            "top3_sent_can_miss": {
+              "n": 52,
+              "top3": 0.5961538461538461,
+              "chance": 0.33333333333333326
+            },
+            "top3_problems": 0.6153846153846154,
+            "chance_top3_problems": 0.375,
+            "top3_problems_can_miss": {
+              "n": 52,
+              "top3": 0.6153846153846154,
+              "chance": 0.375
+            },
+            "top1": 0.16666666666666666,
+            "ece": 0.41216059846168773,
+            "nll": 2.4782859724825723,
+            "medium": {
+              "n": 30,
+              "right": 4
+            },
+            "healthy": {
+              "n": 8,
+              "evidence": 0,
+              "blocked": 3
+            },
+            "called_healthy": {
+              "n": 52,
+              "called": 0
+            }
+          }
+        },
+        "t_val_and_dev": {
+          "apple": {
+            "n": 11,
+            "with_problem": 11,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.7272727272727273,
+            "ece": 0.33906500857897953,
+            "nll": 0.8518984590908356,
+            "medium": {
+              "n": 11,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 11,
+              "called": 0
+            }
+          },
+          "corn": {
+            "n": 15,
+            "with_problem": 12,
+            "top3_sent": 0.9166666666666666,
+            "chance_top3_sent": 0.5999999999999999,
+            "top3_sent_can_miss": {
+              "n": 12,
+              "top3": 0.9166666666666666,
+              "chance": 0.5999999999999999
+            },
+            "top3_problems": 0.9166666666666666,
+            "chance_top3_problems": 0.75,
+            "top3_problems_can_miss": {
+              "n": 12,
+              "top3": 0.9166666666666666,
+              "chance": 0.75
+            },
+            "top1": 0.5333333333333333,
+            "ece": 0.21047071328588304,
+            "nll": 1.012151981094357,
+            "medium": {
+              "n": 9,
+              "right": 5
+            },
+            "healthy": {
+              "n": 3,
+              "evidence": 1,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 12,
+              "called": 0
+            }
+          },
+          "grape": {
+            "n": 8,
+            "with_problem": 8,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 1.0,
+            "ece": 0.02202711581156526,
+            "nll": 0.022890664636852163,
+            "medium": {
+              "n": 8,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 8,
+              "called": 0
+            }
+          },
+          "tomato": {
+            "n": 60,
+            "with_problem": 52,
+            "top3_sent": 0.5961538461538461,
+            "chance_top3_sent": 0.33333333333333326,
+            "top3_sent_can_miss": {
+              "n": 52,
+              "top3": 0.5961538461538461,
+              "chance": 0.33333333333333326
+            },
+            "top3_problems": 0.6153846153846154,
+            "chance_top3_problems": 0.375,
+            "top3_problems_can_miss": {
+              "n": 52,
+              "top3": 0.6153846153846154,
+              "chance": 0.375
+            },
+            "top1": 0.16666666666666666,
+            "ece": 0.3261478692090365,
+            "nll": 2.2288710175459667,
+            "medium": {
+              "n": 20,
+              "right": 3
+            },
+            "healthy": {
+              "n": 8,
+              "evidence": 0,
+              "blocked": 3
+            },
+            "called_healthy": {
+              "n": 52,
+              "called": 0
+            }
+          }
+        },
+        "t_dev": {
+          "apple": {
+            "n": 11,
+            "with_problem": 11,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.7272727272727273,
+            "ece": 0.2662252590747176,
+            "nll": 0.7839634522997511,
+            "medium": {
+              "n": 11,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 11,
+              "called": 0
+            }
+          },
+          "corn": {
+            "n": 15,
+            "with_problem": 12,
+            "top3_sent": 0.9166666666666666,
+            "chance_top3_sent": 0.5999999999999999,
+            "top3_sent_can_miss": {
+              "n": 12,
+              "top3": 0.9166666666666666,
+              "chance": 0.5999999999999999
+            },
+            "top3_problems": 0.9166666666666666,
+            "chance_top3_problems": 0.75,
+            "top3_problems_can_miss": {
+              "n": 12,
+              "top3": 0.9166666666666666,
+              "chance": 0.75
+            },
+            "top1": 0.5333333333333333,
+            "ece": 0.21343960170277898,
+            "nll": 1.1206149050750933,
+            "medium": {
+              "n": 2,
+              "right": 1
+            },
+            "healthy": {
+              "n": 3,
+              "evidence": 1,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 12,
+              "called": 0
+            }
+          },
+          "grape": {
+            "n": 8,
+            "with_problem": 8,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 1.0,
+            "ece": 0.09726537433093232,
+            "nll": 0.10512998377056422,
+            "medium": {
+              "n": 8,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 8,
+              "called": 0
+            }
+          },
+          "tomato": {
+            "n": 60,
+            "with_problem": 52,
+            "top3_sent": 0.5961538461538461,
+            "chance_top3_sent": 0.33333333333333326,
+            "top3_sent_can_miss": {
+              "n": 52,
+              "top3": 0.5961538461538461,
+              "chance": 0.33333333333333326
+            },
+            "top3_problems": 0.6153846153846154,
+            "chance_top3_problems": 0.375,
+            "top3_problems_can_miss": {
+              "n": 52,
+              "top3": 0.6153846153846154,
+              "chance": 0.375
+            },
+            "top1": 0.16666666666666666,
+            "ece": 0.17058551883314205,
+            "nll": 1.9854471065096426,
+            "medium": {
+              "n": 3,
+              "right": 1
+            },
+            "healthy": {
+              "n": 8,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 52,
+              "called": 0
+            }
+          }
+        },
+        "t_per_species_dev": {
+          "apple": {
+            "n": 11,
+            "with_problem": 11,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.7272727272727273,
+            "ece": 0.26501506889326387,
+            "nll": 0.7802579125178423,
+            "medium": {
+              "n": 11,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 11,
+              "called": 0
+            }
+          },
+          "corn": {
+            "n": 15,
+            "with_problem": 12,
+            "top3_sent": 0.9166666666666666,
+            "chance_top3_sent": 0.5999999999999999,
+            "top3_sent_can_miss": {
+              "n": 12,
+              "top3": 0.9166666666666666,
+              "chance": 0.5999999999999999
+            },
+            "top3_problems": 0.9166666666666666,
+            "chance_top3_problems": 0.75,
+            "top3_problems_can_miss": {
+              "n": 12,
+              "top3": 0.9166666666666666,
+              "chance": 0.75
+            },
+            "top1": 0.5333333333333333,
+            "ece": 0.2191131383023265,
+            "nll": 1.011472460138878,
+            "medium": {
+              "n": 9,
+              "right": 5
+            },
+            "healthy": {
+              "n": 3,
+              "evidence": 1,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 12,
+              "called": 0
+            }
+          },
+          "grape": {
+            "n": 8,
+            "with_problem": 8,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 1.0,
+            "ece": 0.0,
+            "nll": -1.0000333894306097e-12,
+            "medium": {
+              "n": 8,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 8,
+              "called": 0
+            }
+          },
+          "tomato": {
+            "n": 60,
+            "with_problem": 52,
+            "top3_sent": 0.5961538461538461,
+            "chance_top3_sent": 0.33333333333333326,
+            "top3_sent_can_miss": {
+              "n": 52,
+              "top3": 0.5961538461538461,
+              "chance": 0.33333333333333326
+            },
+            "top3_problems": 0.6153846153846154,
+            "chance_top3_problems": 0.375,
+            "top3_problems_can_miss": {
+              "n": 52,
+              "top3": 0.6153846153846154,
+              "chance": 0.375
+            },
+            "top1": 0.16666666666666666,
+            "ece": 0.15295150806906696,
+            "nll": 1.9756880627893973,
+            "medium": {
+              "n": 0,
+              "right": 0
+            },
+            "healthy": {
+              "n": 8,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 52,
+              "called": 0
+            }
+          }
+        }
+      },
+      "dev_per_source_species": {
+        "fieldsets/ccmt-2023 tomato": {
+          "n": 5,
+          "with_problem": 5,
+          "top3_sent": 0.8,
+          "chance_top3_sent": 0.3333333333333333,
+          "top3_sent_can_miss": {
+            "n": 5,
+            "top3": 0.8,
+            "chance": 0.3333333333333333
+          },
+          "top3_problems": 0.8,
+          "chance_top3_problems": 0.375,
+          "top3_problems_can_miss": {
+            "n": 5,
+            "top3": 0.8,
+            "chance": 0.375
+          },
+          "top1": 0.2,
+          "ece": 0.46746955785771266,
+          "nll": 1.4075604845564038,
+          "medium": {
+            "n": 1,
+            "right": 0
+          },
+          "healthy": {
+            "n": 0,
+            "evidence": 0,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 5,
+            "called": 0
+          }
+        },
+        "fieldsets/maize-bd-2026 corn": {
+          "n": 15,
+          "with_problem": 12,
+          "top3_sent": 0.9166666666666666,
+          "chance_top3_sent": 0.5999999999999999,
+          "top3_sent_can_miss": {
+            "n": 12,
+            "top3": 0.9166666666666666,
+            "chance": 0.5999999999999999
+          },
+          "top3_problems": 0.9166666666666666,
+          "chance_top3_problems": 0.75,
+          "top3_problems_can_miss": {
+            "n": 12,
+            "top3": 0.9166666666666666,
+            "chance": 0.75
+          },
+          "top1": 0.5333333333333333,
+          "ece": 0.2337209447412552,
+          "nll": 1.0264666516855507,
+          "medium": {
+            "n": 11,
+            "right": 5
+          },
+          "healthy": {
+            "n": 3,
+            "evidence": 2,
+            "blocked": 1
+          },
+          "called_healthy": {
+            "n": 12,
+            "called": 0
+          }
+        },
+        "fieldsets/tomato-bd-2025 tomato": {
+          "n": 23,
+          "with_problem": 20,
+          "top3_sent": 0.7,
+          "chance_top3_sent": 0.33333333333333326,
+          "top3_sent_can_miss": {
+            "n": 20,
+            "top3": 0.7,
+            "chance": 0.33333333333333326
+          },
+          "top3_problems": 0.75,
+          "chance_top3_problems": 0.375,
+          "top3_problems_can_miss": {
+            "n": 20,
+            "top3": 0.75,
+            "chance": 0.375
+          },
+          "top1": 0.2608695652173913,
+          "ece": 0.3575797920928936,
+          "nll": 1.9177108850950655,
+          "medium": {
+            "n": 10,
+            "right": 3
+          },
+          "healthy": {
+            "n": 3,
+            "evidence": 0,
+            "blocked": 1
+          },
+          "called_healthy": {
+            "n": 20,
+            "called": 0
+          }
+        },
+        "fieldsets/tomato-bd-iphone-2025 tomato": {
+          "n": 20,
+          "with_problem": 15,
+          "top3_sent": 0.6,
+          "chance_top3_sent": 0.33333333333333326,
+          "top3_sent_can_miss": {
+            "n": 15,
+            "top3": 0.6,
+            "chance": 0.33333333333333326
+          },
+          "top3_problems": 0.6,
+          "chance_top3_problems": 0.375,
+          "top3_problems_can_miss": {
+            "n": 15,
+            "top3": 0.6,
+            "chance": 0.375
+          },
+          "top1": 0.15,
+          "ece": 0.507936038581051,
+          "nll": 2.6472842323653927,
+          "medium": {
+            "n": 12,
+            "right": 1
+          },
+          "healthy": {
+            "n": 5,
+            "evidence": 0,
+            "blocked": 2
+          },
+          "called_healthy": {
+            "n": 15,
+            "called": 0
+          }
+        },
+        "inat apple": {
           "n": 11,
-          "top3": 1.0,
-          "chance_top3": 1.0,
+          "with_problem": 11,
+          "top3_sent": 1.0,
+          "chance_top3_sent": 1.0,
+          "top3_sent_can_miss": {
+            "n": 0,
+            "top3": null,
+            "chance": null
+          },
+          "top3_problems": 1.0,
+          "chance_top3_problems": 1.0,
+          "top3_problems_can_miss": {
+            "n": 0,
+            "top3": null,
+            "chance": null
+          },
           "top1": 0.7272727272727273,
-          "ece": 0.2662252729589289,
-          "nll": 0.7839634418487549,
+          "ece": 0.3038091694427889,
+          "nll": 0.9612069388504271,
           "medium": {
             "n": 11,
             "right": 8
           },
-          "healthy_blocked": {
+          "healthy": {
             "n": 0,
+            "evidence": 0,
             "blocked": 0
           },
-          "reliability": [
-            {
-              "lo": 0.5,
-              "hi": 0.6,
-              "n": 5,
-              "confidence": 0.5512816905975342,
-              "accuracy": 0.8
-            },
-            {
-              "lo": 0.6,
-              "hi": 0.7,
-              "n": 3,
-              "confidence": 0.643512487411499,
-              "accuracy": 0.6666666666666666
-            },
-            {
-              "lo": 0.7,
-              "hi": 0.8,
-              "n": 3,
-              "confidence": 0.7430854439735413,
-              "accuracy": 0.6666666666666666
-            }
-          ]
+          "called_healthy": {
+            "n": 11,
+            "called": 0
+          }
         },
-        "corn": {
-          "n": 15,
-          "top3": 0.9333333333333333,
-          "chance_top3": 0.5999999999999999,
-          "top1": 0.5333333333333333,
-          "ece": 0.2134395976861318,
-          "nll": 1.120614767074585,
-          "medium": {
-            "n": 2,
-            "right": 1
-          },
-          "healthy_blocked": {
-            "n": 3,
-            "blocked": 0
-          },
-          "reliability": [
-            {
-              "lo": 0.3,
-              "hi": 0.4,
-              "n": 8,
-              "confidence": 0.35999107360839844,
-              "accuracy": 0.375
-            },
-            {
-              "lo": 0.4,
-              "hi": 0.5,
-              "n": 4,
-              "confidence": 0.4406634271144867,
-              "accuracy": 0.75
-            },
-            {
-              "lo": 0.5,
-              "hi": 0.6,
-              "n": 3,
-              "confidence": 0.523733913898468,
-              "accuracy": 0.6666666666666666
-            }
-          ]
-        },
-        "grape": {
+        "inat grape": {
           "n": 8,
-          "top3": 1.0,
-          "chance_top3": 1.0,
+          "with_problem": 8,
+          "top3_sent": 1.0,
+          "chance_top3_sent": 1.0,
+          "top3_sent_can_miss": {
+            "n": 0,
+            "top3": null,
+            "chance": null
+          },
+          "top3_problems": 1.0,
+          "chance_top3_problems": 1.0,
+          "top3_problems_can_miss": {
+            "n": 0,
+            "top3": null,
+            "chance": null
+          },
           "top1": 1.0,
-          "ece": 0.09726535528898239,
-          "nll": 0.10512995719909668,
+          "ece": 0.010164941485323653,
+          "nll": 0.010414396396506763,
           "medium": {
             "n": 8,
             "right": 8
           },
-          "healthy_blocked": {
+          "healthy": {
             "n": 0,
+            "evidence": 0,
             "blocked": 0
           },
-          "reliability": [
-            {
-              "lo": 0.7,
-              "hi": 0.8,
-              "n": 1,
-              "confidence": 0.7506242394447327,
-              "accuracy": 1.0
-            },
-            {
-              "lo": 0.8,
-              "hi": 0.9,
-              "n": 1,
-              "confidence": 0.8507878184318542,
-              "accuracy": 1.0
-            },
-            {
-              "lo": 0.9,
-              "hi": 1.0,
-              "n": 6,
-              "confidence": 0.936744213104248,
-              "accuracy": 1.0
-            }
-          ]
-        },
-        "tomato": {
-          "n": 60,
-          "top3": 0.5833333333333334,
-          "chance_top3": 0.3333333333333332,
-          "top1": 0.16666666666666666,
-          "ece": 0.17058552478750547,
-          "nll": 1.9854471683502197,
-          "medium": {
-            "n": 3,
-            "right": 1
-          },
-          "healthy_blocked": {
+          "called_healthy": {
             "n": 8,
+            "called": 0
+          }
+        },
+        "inat tomato": {
+          "n": 12,
+          "with_problem": 12,
+          "top3_sent": 0.3333333333333333,
+          "chance_top3_sent": 0.3333333333333333,
+          "top3_sent_can_miss": {
+            "n": 12,
+            "top3": 0.3333333333333333,
+            "chance": 0.3333333333333333
+          },
+          "top3_problems": 0.3333333333333333,
+          "chance_top3_problems": 0.375,
+          "top3_problems_can_miss": {
+            "n": 12,
+            "top3": 0.3333333333333333,
+            "chance": 0.375
+          },
+          "top1": 0.0,
+          "ece": 0.5440192420329347,
+          "nll": 3.7171934101398247,
+          "medium": {
+            "n": 7,
+            "right": 0
+          },
+          "healthy": {
+            "n": 0,
+            "evidence": 0,
             "blocked": 0
           },
-          "reliability": [
-            {
-              "lo": 0.1,
-              "hi": 0.2,
-              "n": 6,
-              "confidence": 0.1738707423210144,
-              "accuracy": 0.3333333333333333
-            },
-            {
-              "lo": 0.2,
-              "hi": 0.3,
-              "n": 31,
-              "confidence": 0.2518806457519531,
-              "accuracy": 0.16129032258064516
-            },
-            {
-              "lo": 0.3,
-              "hi": 0.4,
-              "n": 16,
-              "confidence": 0.33186280727386475,
-              "accuracy": 0.0625
-            },
-            {
-              "lo": 0.4,
-              "hi": 0.5,
-              "n": 4,
-              "confidence": 0.43456709384918213,
-              "accuracy": 0.25
-            },
-            {
-              "lo": 0.5,
-              "hi": 0.6,
-              "n": 2,
-              "confidence": 0.5211626887321472,
-              "accuracy": 0.0
-            },
-            {
-              "lo": 0.6,
-              "hi": 0.7,
-              "n": 1,
-              "confidence": 0.6203427910804749,
-              "accuracy": 1.0
-            }
-          ]
+          "called_healthy": {
+            "n": 12,
+            "called": 0
+          }
         }
       },
-      "dev_per_source": {
-        "fieldsets/ccmt-2023": {
-          "n": 5,
-          "top3": 0.8,
-          "chance_top3": 0.3333333333333333,
-          "top1": 0.2,
-          "ece": 0.15041419267654418,
-          "nll": 1.627349853515625,
-          "medium": {
-            "n": 0,
-            "right": 0
+      "dev_confusion": {
+        "apple": {
+          "apple_cedar_apple_rust": {
+            "apple_cedar_apple_rust": 2
           },
-          "healthy_blocked": {
-            "n": 0,
-            "blocked": 0
-          },
-          "reliability": [
-            {
-              "lo": 0.1,
-              "hi": 0.2,
-              "n": 1,
-              "confidence": 0.1836545169353485,
-              "accuracy": 0.0
-            },
-            {
-              "lo": 0.2,
-              "hi": 0.3,
-              "n": 3,
-              "confidence": 0.24900966882705688,
-              "accuracy": 0.3333333333333333
-            },
-            {
-              "lo": 0.3,
-              "hi": 0.4,
-              "n": 1,
-              "confidence": 0.3154454529285431,
-              "accuracy": 0.0
-            }
-          ]
+          "apple_scab": {
+            "apple_scab": 6,
+            "apple_cedar_apple_rust": 3
+          }
         },
-        "fieldsets/maize-bd-2026": {
-          "n": 15,
-          "top3": 0.9333333333333333,
-          "chance_top3": 0.5999999999999999,
-          "top1": 0.5333333333333333,
-          "ece": 0.2134395976861318,
-          "nll": 1.120614767074585,
-          "medium": {
-            "n": 2,
-            "right": 1
+        "corn": {
+          "corn_common_rust": {
+            "corn_common_rust": 3,
+            "corn_northern_leaf_blight": 1,
+            "corn_gray_leaf_spot": 1
           },
-          "healthy_blocked": {
-            "n": 3,
-            "blocked": 0
+          "corn_gray_leaf_spot": {
+            "corn_gray_leaf_spot": 1,
+            "corn_common_rust": 1
           },
-          "reliability": [
-            {
-              "lo": 0.3,
-              "hi": 0.4,
-              "n": 8,
-              "confidence": 0.35999107360839844,
-              "accuracy": 0.375
-            },
-            {
-              "lo": 0.4,
-              "hi": 0.5,
-              "n": 4,
-              "confidence": 0.4406634271144867,
-              "accuracy": 0.75
-            },
-            {
-              "lo": 0.5,
-              "hi": 0.6,
-              "n": 3,
-              "confidence": 0.523733913898468,
-              "accuracy": 0.6666666666666666
-            }
-          ]
+          "corn_northern_leaf_blight": {
+            "corn_common_rust": 2,
+            "corn_northern_leaf_blight": 2,
+            "healthy": 1
+          },
+          "healthy": {
+            "healthy": 2,
+            "corn_northern_leaf_blight": 1
+          }
         },
-        "fieldsets/tomato-bd-2025": {
-          "n": 23,
-          "top3": 0.6521739130434783,
-          "chance_top3": 0.3333333333333332,
-          "top1": 0.2608695652173913,
-          "ece": 0.21019285398980847,
-          "nll": 1.805319905281067,
-          "medium": {
-            "n": 1,
-            "right": 1
-          },
-          "healthy_blocked": {
-            "n": 3,
-            "blocked": 0
-          },
-          "reliability": [
-            {
-              "lo": 0.1,
-              "hi": 0.2,
-              "n": 4,
-              "confidence": 0.16805562376976013,
-              "accuracy": 0.5
-            },
-            {
-              "lo": 0.2,
-              "hi": 0.3,
-              "n": 13,
-              "confidence": 0.2500644028186798,
-              "accuracy": 0.15384615384615385
-            },
-            {
-              "lo": 0.3,
-              "hi": 0.4,
-              "n": 4,
-              "confidence": 0.3209662437438965,
-              "accuracy": 0.0
-            },
-            {
-              "lo": 0.4,
-              "hi": 0.5,
-              "n": 1,
-              "confidence": 0.40770113468170166,
-              "accuracy": 1.0
-            },
-            {
-              "lo": 0.6,
-              "hi": 0.7,
-              "n": 1,
-              "confidence": 0.6203427910804749,
-              "accuracy": 1.0
-            }
-          ]
+        "grape": {
+          "grape_black_rot": {
+            "grape_black_rot": 8
+          }
         },
-        "fieldsets/tomato-bd-iphone-2025": {
-          "n": 20,
-          "top3": 0.6,
-          "chance_top3": 0.33333333333333326,
-          "top1": 0.15,
-          "ece": 0.18281031250953672,
-          "nll": 1.96469247341156,
-          "medium": {
-            "n": 1,
-            "right": 0
+        "tomato": {
+          "healthy": {
+            "tomato_bacterial_spot": 4,
+            "tomato_leaf_mold": 3,
+            "tomato_late_blight": 1
           },
-          "healthy_blocked": {
-            "n": 5,
-            "blocked": 0
+          "tomato_bacterial_spot": {
+            "tomato_septoria_leaf_spot": 5,
+            "tomato_leaf_mold": 3,
+            "tomato_bacterial_spot": 2
           },
-          "reliability": [
-            {
-              "lo": 0.2,
-              "hi": 0.3,
-              "n": 7,
-              "confidence": 0.2486448436975479,
-              "accuracy": 0.2857142857142857
-            },
-            {
-              "lo": 0.3,
-              "hi": 0.4,
-              "n": 9,
-              "confidence": 0.3404507339000702,
-              "accuracy": 0.1111111111111111
-            },
-            {
-              "lo": 0.4,
-              "hi": 0.5,
-              "n": 3,
-              "confidence": 0.4435224235057831,
-              "accuracy": 0.0
-            },
-            {
-              "lo": 0.5,
-              "hi": 0.6,
-              "n": 1,
-              "confidence": 0.5210684537887573,
-              "accuracy": 0.0
-            }
-          ]
-        },
-        "inat": {
-          "n": 31,
-          "top3": 0.7419354838709677,
-          "chance_top3": 0.7419354838709674,
-          "top1": 0.5161290322580645,
-          "ece": 0.18188501750269243,
-          "nll": 1.2786616086959839,
-          "medium": {
-            "n": 20,
-            "right": 16
+          "tomato_early_blight": {
+            "tomato_late_blight": 4,
+            "tomato_bacterial_spot": 3,
+            "tomato_septoria_leaf_spot": 2,
+            "tomato_early_blight": 1,
+            "tomato_leaf_mold": 1
           },
-          "healthy_blocked": {
-            "n": 0,
-            "blocked": 0
+          "tomato_late_blight": {
+            "tomato_late_blight": 3,
+            "tomato_early_blight": 2,
+            "tomato_septoria_leaf_spot": 2,
+            "tomato_leaf_mold": 1,
+            "tomato_bacterial_spot": 1
           },
-          "reliability": [
-            {
-              "lo": 0.1,
-              "hi": 0.2,
-              "n": 1,
-              "confidence": 0.1873473823070526,
-              "accuracy": 0.0
-            },
-            {
-              "lo": 0.2,
-              "hi": 0.3,
-              "n": 8,
-              "confidence": 0.25874003767967224,
-              "accuracy": 0.0
-            },
-            {
-              "lo": 0.3,
-              "hi": 0.4,
-              "n": 2,
-              "confidence": 0.3232187032699585,
-              "accuracy": 0.0
-            },
-            {
-              "lo": 0.5,
-              "hi": 0.6,
-              "n": 6,
-              "confidence": 0.5462775826454163,
-              "accuracy": 0.6666666666666666
-            },
-            {
-              "lo": 0.6,
-              "hi": 0.7,
-              "n": 3,
-              "confidence": 0.643512487411499,
-              "accuracy": 0.6666666666666666
-            },
-            {
-              "lo": 0.7,
-              "hi": 0.8,
-              "n": 4,
-              "confidence": 0.7449701428413391,
-              "accuracy": 0.75
-            },
-            {
-              "lo": 0.8,
-              "hi": 0.9,
-              "n": 1,
-              "confidence": 0.8507878184318542,
-              "accuracy": 1.0
-            },
-            {
-              "lo": 0.9,
-              "hi": 1.0,
-              "n": 6,
-              "confidence": 0.936744213104248,
-              "accuracy": 1.0
-            }
-          ]
+          "tomato_septoria_leaf_spot": {
+            "tomato_bacterial_spot": 3,
+            "tomato_early_blight": 1,
+            "tomato_septoria_leaf_spot": 1
+          },
+          "tomato_spider_mites": {
+            "tomato_late_blight": 5,
+            "tomato_mosaic_virus": 4,
+            "tomato_leaf_mold": 2,
+            "tomato_bacterial_spot": 1
+          },
+          "tomato_yellow_leaf_curl_virus": {
+            "tomato_yellow_leaf_curl_virus": 3,
+            "tomato_late_blight": 1,
+            "tomato_leaf_mold": 1
+          }
         }
       }
     },
@@ -1839,241 +3827,414 @@
       "classes": 19,
       "dev_photos": 94,
       "val_photos": 286,
+      "dev_one_photo": 82,
+      "dev_one_photo_healthy": 11,
+      "classes_per_species": {
+        "apple": 3,
+        "corn": 4,
+        "grape": 2,
+        "tomato": 8
+      },
       "left_out": {
         "leaf photos with several crops": 18,
         "no leaf shot": 2,
         "species without head classes": 10
       },
-      "t_file": 1.1474,
-      "t_dev": 3.6646,
-      "t_val_and_dev": 1.6553,
-      "proposed": 3.6646,
+      "bounds": [
+        0.05,
+        10.0
+      ],
+      "temperatures": {
+        "t_file": 1.1474,
+        "t_val_and_dev": 1.6553,
+        "t_dev": 3.6646,
+        "t_per_species_dev": {
+          "*": 3.6646,
+          "apple": 4.8695,
+          "corn": 1.5662,
+          "grape": 0.0675,
+          "tomato": 4.6103
+        }
+      },
       "dev": {
         "t_file": {
           "n": 94,
-          "top3": 0.7446808510638298,
-          "chance_top3": 0.5611702127659575,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.4453125
+          },
+          "top3_problems": 0.7590361445783133,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.6153846153846154,
+            "chance": 0.42857142857142844
+          },
           "top1": 0.40425531914893614,
-          "ece": 0.26620386081173064,
-          "nll": 2.0039827823638916,
+          "ece": 0.26620387699745784,
+          "nll": 2.00398302632456,
           "medium": {
             "n": 61,
             "right": 27
           },
-          "healthy_blocked": {
+          "healthy": {
             "n": 11,
+            "evidence": 2,
             "blocked": 5
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
           },
           "reliability": [
             {
               "lo": 0.2,
               "hi": 0.3,
               "n": 5,
-              "confidence": 0.2768634259700775,
+              "confidence": 0.2768634422582689,
               "accuracy": 0.2
             },
             {
               "lo": 0.3,
               "hi": 0.4,
               "n": 6,
-              "confidence": 0.36674606800079346,
+              "confidence": 0.36674606014217837,
               "accuracy": 0.5
             },
             {
               "lo": 0.4,
               "hi": 0.5,
               "n": 20,
-              "confidence": 0.45546621084213257,
+              "confidence": 0.4554662598200353,
               "accuracy": 0.25
             },
             {
               "lo": 0.5,
               "hi": 0.6,
               "n": 11,
-              "confidence": 0.541942834854126,
+              "confidence": 0.5419428369649922,
               "accuracy": 0.36363636363636365
             },
             {
               "lo": 0.6,
               "hi": 0.7,
               "n": 9,
-              "confidence": 0.6390236020088196,
+              "confidence": 0.6390235978434565,
               "accuracy": 0.3333333333333333
             },
             {
               "lo": 0.7,
               "hi": 0.8,
               "n": 15,
-              "confidence": 0.7484676241874695,
+              "confidence": 0.74846761625243,
               "accuracy": 0.4
             },
             {
               "lo": 0.8,
               "hi": 0.9,
               "n": 11,
-              "confidence": 0.8543358445167542,
+              "confidence": 0.8543359154523613,
               "accuracy": 0.2727272727272727
             },
             {
               "lo": 0.9,
               "hi": 1.0,
               "n": 17,
-              "confidence": 0.9642767906188965,
+              "confidence": 0.9642767935266832,
               "accuracy": 0.7647058823529411
             }
           ]
         },
         "t_val_and_dev": {
           "n": 94,
-          "top3": 0.7446808510638298,
-          "chance_top3": 0.5611702127659575,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.4453125
+          },
+          "top3_problems": 0.7590361445783133,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.6153846153846154,
+            "chance": 0.42857142857142844
+          },
           "top1": 0.40425531914893614,
-          "ece": 0.2225438492729309,
-          "nll": 1.7029740810394287,
+          "ece": 0.2225438397958435,
+          "nll": 1.7029739087399376,
           "medium": {
             "n": 47,
             "right": 23
           },
-          "healthy_blocked": {
+          "healthy": {
             "n": 11,
+            "evidence": 2,
             "blocked": 3
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
           },
           "reliability": [
             {
               "lo": 0.2,
               "hi": 0.3,
               "n": 6,
-              "confidence": 0.2424956113100052,
+              "confidence": 0.24249565004686055,
               "accuracy": 0.16666666666666666
             },
             {
               "lo": 0.3,
               "hi": 0.4,
               "n": 22,
-              "confidence": 0.3506907820701599,
+              "confidence": 0.3506907570377519,
               "accuracy": 0.3181818181818182
             },
             {
               "lo": 0.4,
               "hi": 0.5,
               "n": 17,
-              "confidence": 0.4445820450782776,
+              "confidence": 0.44458201058414676,
               "accuracy": 0.29411764705882354
             },
             {
               "lo": 0.5,
               "hi": 0.6,
               "n": 6,
-              "confidence": 0.5545371174812317,
+              "confidence": 0.5545371514442753,
               "accuracy": 0.6666666666666666
             },
             {
               "lo": 0.6,
               "hi": 0.7,
               "n": 20,
-              "confidence": 0.6481080055236816,
+              "confidence": 0.6481079680663393,
               "accuracy": 0.3
             },
             {
               "lo": 0.7,
               "hi": 0.8,
               "n": 9,
-              "confidence": 0.7611322402954102,
+              "confidence": 0.7611322553288118,
               "accuracy": 0.3333333333333333
             },
             {
               "lo": 0.8,
               "hi": 0.9,
               "n": 5,
-              "confidence": 0.8513113260269165,
+              "confidence": 0.8513113868972975,
               "accuracy": 1.0
             },
             {
               "lo": 0.9,
               "hi": 1.0,
               "n": 9,
-              "confidence": 0.9734594821929932,
+              "confidence": 0.9734594633352128,
               "accuracy": 0.7777777777777778
             }
           ]
         },
         "t_dev": {
           "n": 94,
-          "top3": 0.7446808510638298,
-          "chance_top3": 0.5611702127659575,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.4453125
+          },
+          "top3_problems": 0.7590361445783133,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.6153846153846154,
+            "chance": 0.42857142857142844
+          },
           "top1": 0.40425531914893614,
-          "ece": 0.11196451348827241,
-          "nll": 1.5206388235092163,
+          "ece": 0.11196452050256518,
+          "nll": 1.520638829522505,
           "medium": {
             "n": 18,
             "right": 13
           },
-          "healthy_blocked": {
+          "healthy": {
             "n": 11,
+            "evidence": 2,
             "blocked": 0
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
           },
           "reliability": [
             {
               "lo": 0.1,
               "hi": 0.2,
               "n": 6,
-              "confidence": 0.1800534576177597,
+              "confidence": 0.18005345166225686,
               "accuracy": 0.16666666666666666
             },
             {
               "lo": 0.2,
               "hi": 0.3,
               "n": 37,
-              "confidence": 0.24654211103916168,
+              "confidence": 0.2465420818705948,
               "accuracy": 0.2972972972972973
             },
             {
               "lo": 0.3,
               "hi": 0.4,
               "n": 14,
-              "confidence": 0.3583659529685974,
+              "confidence": 0.3583659612128387,
               "accuracy": 0.14285714285714285
             },
             {
               "lo": 0.4,
               "hi": 0.5,
               "n": 17,
-              "confidence": 0.44895049929618835,
+              "confidence": 0.44895047178891073,
               "accuracy": 0.5294117647058824
             },
             {
               "lo": 0.5,
               "hi": 0.6,
               "n": 8,
-              "confidence": 0.5247761607170105,
+              "confidence": 0.5247761558221686,
               "accuracy": 0.625
             },
             {
               "lo": 0.6,
               "hi": 0.7,
               "n": 3,
-              "confidence": 0.6563847064971924,
+              "confidence": 0.6563846583500764,
               "accuracy": 1.0
             },
             {
               "lo": 0.7,
               "hi": 0.8,
               "n": 2,
-              "confidence": 0.736892580986023,
+              "confidence": 0.7368926097487102,
               "accuracy": 0.5
             },
             {
               "lo": 0.8,
               "hi": 0.9,
               "n": 6,
-              "confidence": 0.8644921779632568,
+              "confidence": 0.8644922200481412,
               "accuracy": 0.8333333333333334
             },
             {
               "lo": 0.9,
               "hi": 1.0,
               "n": 1,
-              "confidence": 0.9447312355041504,
+              "confidence": 0.944731247227403,
+              "accuracy": 1.0
+            }
+          ]
+        },
+        "t_per_species_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.4453125
+          },
+          "top3_problems": 0.7590361445783133,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.6153846153846154,
+            "chance": 0.42857142857142844
+          },
+          "top1": 0.40425531914893614,
+          "ece": 0.12577848470317476,
+          "nll": 1.4769265671489706,
+          "medium": {
+            "n": 24,
+            "right": 19
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 2,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 9,
+              "confidence": 0.17703473511209586,
+              "accuracy": 0.2222222222222222
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 41,
+              "confidence": 0.23491737388502093,
+              "accuracy": 0.24390243902439024
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 11,
+              "confidence": 0.34611886072433407,
+              "accuracy": 0.2727272727272727
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 7,
+              "confidence": 0.4673280259419524,
+              "accuracy": 0.2857142857142857
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 5,
+              "confidence": 0.5648199787384144,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 6,
+              "confidence": 0.6651513474197849,
+              "accuracy": 0.6666666666666666
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 5,
+              "confidence": 0.7457974319751095,
+              "accuracy": 0.4
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 2,
+              "confidence": 0.8408361901112051,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 8,
+              "confidence": 1.0,
               "accuracy": 1.0
             }
           ]
@@ -2082,664 +4243,2013 @@
       "val": {
         "t_file": {
           "n": 286,
-          "top3": 0.972027972027972,
-          "chance_top3": 0.6013986013986014,
+          "with_problem": 186,
+          "top3_sent": 0.956989247311828,
+          "chance_top3_sent": 0.5450268817204301,
+          "top3_sent_can_miss": {
+            "n": 169,
+            "top3": 0.9526627218934911,
+            "chance": 0.4992603550295858
+          },
+          "top3_problems": 0.956989247311828,
+          "chance_top3_problems": 0.6528417818740401,
+          "top3_problems_can_miss": {
+            "n": 113,
+            "top3": 0.9292035398230089,
+            "chance": 0.4285714285714286
+          },
           "top1": 0.8426573426573427,
-          "ece": 0.03611545322033078,
-          "nll": 0.46951955556869507,
+          "ece": 0.03611546521466155,
+          "nll": 0.46951955169408965,
           "medium": {
             "n": 166,
             "right": 137
           },
-          "healthy_blocked": {
+          "healthy": {
             "n": 100,
+            "evidence": 93,
             "blocked": 3
+          },
+          "called_healthy": {
+            "n": 186,
+            "called": 1
           },
           "reliability": [
             {
               "lo": 0.2,
               "hi": 0.3,
               "n": 1,
-              "confidence": 0.23734860122203827,
+              "confidence": 0.23734864784622053,
               "accuracy": 0.0
             },
             {
               "lo": 0.3,
               "hi": 0.4,
               "n": 11,
-              "confidence": 0.3603147268295288,
+              "confidence": 0.36031470545486627,
               "accuracy": 0.2727272727272727
             },
             {
               "lo": 0.4,
               "hi": 0.5,
               "n": 14,
-              "confidence": 0.45434194803237915,
+              "confidence": 0.4543419541558175,
               "accuracy": 0.5714285714285714
             },
             {
               "lo": 0.5,
               "hi": 0.6,
               "n": 20,
-              "confidence": 0.5469056367874146,
+              "confidence": 0.5469056657031643,
               "accuracy": 0.5
             },
             {
               "lo": 0.6,
               "hi": 0.7,
               "n": 22,
-              "confidence": 0.6507429480552673,
+              "confidence": 0.6507429915769731,
               "accuracy": 0.6363636363636364
             },
             {
               "lo": 0.7,
               "hi": 0.8,
               "n": 22,
-              "confidence": 0.7569870352745056,
+              "confidence": 0.7569871034126024,
               "accuracy": 0.8636363636363636
             },
             {
               "lo": 0.8,
               "hi": 0.9,
               "n": 36,
-              "confidence": 0.8587908148765564,
+              "confidence": 0.8587908058692575,
               "accuracy": 0.8333333333333334
             },
             {
               "lo": 0.9,
               "hi": 1.0,
               "n": 160,
-              "confidence": 0.9774681329727173,
+              "confidence": 0.9774681553939917,
               "accuracy": 0.98125
             }
           ]
         },
         "t_val_and_dev": {
           "n": 286,
-          "top3": 0.972027972027972,
-          "chance_top3": 0.6013986013986014,
+          "with_problem": 186,
+          "top3_sent": 0.956989247311828,
+          "chance_top3_sent": 0.5450268817204301,
+          "top3_sent_can_miss": {
+            "n": 169,
+            "top3": 0.9526627218934911,
+            "chance": 0.4992603550295858
+          },
+          "top3_problems": 0.956989247311828,
+          "chance_top3_problems": 0.6528417818740401,
+          "top3_problems_can_miss": {
+            "n": 113,
+            "top3": 0.9292035398230089,
+            "chance": 0.4285714285714286
+          },
           "top1": 0.8426573426573427,
-          "ece": 0.08762548051097176,
-          "nll": 0.503038763999939,
+          "ece": 0.08762542553348344,
+          "nll": 0.5030388119820742,
           "medium": {
             "n": 144,
             "right": 128
           },
-          "healthy_blocked": {
+          "healthy": {
             "n": 100,
+            "evidence": 91,
             "blocked": 2
+          },
+          "called_healthy": {
+            "n": 186,
+            "called": 1
           },
           "reliability": [
             {
               "lo": 0.2,
               "hi": 0.3,
               "n": 6,
-              "confidence": 0.2645813822746277,
+              "confidence": 0.2645813870382486,
               "accuracy": 0.16666666666666666
             },
             {
               "lo": 0.3,
               "hi": 0.4,
               "n": 17,
-              "confidence": 0.35635748505592346,
+              "confidence": 0.35635750246175524,
               "accuracy": 0.4117647058823529
             },
             {
               "lo": 0.4,
               "hi": 0.5,
               "n": 27,
-              "confidence": 0.4430921971797943,
+              "confidence": 0.4430921878833676,
               "accuracy": 0.5185185185185185
             },
             {
               "lo": 0.5,
               "hi": 0.6,
               "n": 22,
-              "confidence": 0.5473293662071228,
+              "confidence": 0.5473294464455107,
               "accuracy": 0.7272727272727273
             },
             {
               "lo": 0.6,
               "hi": 0.7,
               "n": 29,
-              "confidence": 0.6514758467674255,
+              "confidence": 0.6514758383713752,
               "accuracy": 0.896551724137931
             },
             {
               "lo": 0.7,
               "hi": 0.8,
               "n": 28,
-              "confidence": 0.7504343390464783,
+              "confidence": 0.7504343421994413,
               "accuracy": 0.8571428571428571
             },
             {
               "lo": 0.8,
               "hi": 0.9,
               "n": 46,
-              "confidence": 0.8585559129714966,
+              "confidence": 0.8585558030253698,
               "accuracy": 0.9130434782608695
             },
             {
               "lo": 0.9,
               "hi": 1.0,
               "n": 111,
-              "confidence": 0.961821436882019,
+              "confidence": 0.9618215612046601,
               "accuracy": 1.0
             }
           ]
         },
         "t_dev": {
           "n": 286,
-          "top3": 0.972027972027972,
-          "chance_top3": 0.6013986013986014,
+          "with_problem": 186,
+          "top3_sent": 0.956989247311828,
+          "chance_top3_sent": 0.5450268817204301,
+          "top3_sent_can_miss": {
+            "n": 169,
+            "top3": 0.9526627218934911,
+            "chance": 0.4992603550295858
+          },
+          "top3_problems": 0.956989247311828,
+          "chance_top3_problems": 0.6528417818740401,
+          "top3_problems_can_miss": {
+            "n": 113,
+            "top3": 0.9292035398230089,
+            "chance": 0.4285714285714286
+          },
           "top1": 0.8426573426573427,
-          "ece": 0.30462157174007043,
-          "nll": 0.7858747243881226,
+          "ece": 0.3046215737987076,
+          "nll": 0.7858747785645341,
           "medium": {
             "n": 79,
             "right": 73
           },
-          "healthy_blocked": {
+          "healthy": {
             "n": 100,
+            "evidence": 78,
             "blocked": 0
+          },
+          "called_healthy": {
+            "n": 186,
+            "called": 0
           },
           "reliability": [
             {
               "lo": 0.1,
               "hi": 0.2,
               "n": 4,
-              "confidence": 0.18756729364395142,
+              "confidence": 0.18756728268436285,
               "accuracy": 0.25
             },
             {
               "lo": 0.2,
               "hi": 0.3,
               "n": 47,
-              "confidence": 0.25548917055130005,
+              "confidence": 0.25548915183765825,
               "accuracy": 0.5319148936170213
             },
             {
               "lo": 0.3,
               "hi": 0.4,
               "n": 38,
-              "confidence": 0.34774506092071533,
+              "confidence": 0.34774508281274347,
               "accuracy": 0.8157894736842105
             },
             {
               "lo": 0.4,
               "hi": 0.5,
               "n": 40,
-              "confidence": 0.45205479860305786,
+              "confidence": 0.45205480991907765,
               "accuracy": 0.825
             },
             {
               "lo": 0.5,
               "hi": 0.6,
               "n": 40,
-              "confidence": 0.5521944165229797,
+              "confidence": 0.5521944482601648,
               "accuracy": 0.925
             },
             {
               "lo": 0.6,
               "hi": 0.7,
               "n": 39,
-              "confidence": 0.6392384767532349,
+              "confidence": 0.6392384085124053,
               "accuracy": 0.9230769230769231
             },
             {
               "lo": 0.7,
               "hi": 0.8,
               "n": 36,
-              "confidence": 0.7434470653533936,
+              "confidence": 0.7434470320315756,
               "accuracy": 1.0
             },
             {
               "lo": 0.8,
               "hi": 0.9,
               "n": 35,
-              "confidence": 0.8469677567481995,
+              "confidence": 0.8469676978498647,
               "accuracy": 1.0
             },
             {
               "lo": 0.9,
               "hi": 1.0,
               "n": 7,
-              "confidence": 0.9139180779457092,
+              "confidence": 0.9139180917917875,
+              "accuracy": 1.0
+            }
+          ]
+        },
+        "t_per_species_dev": {
+          "n": 286,
+          "with_problem": 186,
+          "top3_sent": 0.956989247311828,
+          "chance_top3_sent": 0.5450268817204301,
+          "top3_sent_can_miss": {
+            "n": 169,
+            "top3": 0.9526627218934911,
+            "chance": 0.4992603550295858
+          },
+          "top3_problems": 0.956989247311828,
+          "chance_top3_problems": 0.6528417818740401,
+          "top3_problems_can_miss": {
+            "n": 113,
+            "top3": 0.9292035398230089,
+            "chance": 0.4285714285714286
+          },
+          "top1": 0.8426573426573427,
+          "ece": 0.241909243379189,
+          "nll": 0.7625587015469824,
+          "medium": {
+            "n": 75,
+            "right": 65
+          },
+          "healthy": {
+            "n": 100,
+            "evidence": 78,
+            "blocked": 2
+          },
+          "called_healthy": {
+            "n": 186,
+            "called": 1
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 9,
+              "confidence": 0.18426111862688097,
+              "accuracy": 0.3333333333333333
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 62,
+              "confidence": 0.24608798878841318,
+              "accuracy": 0.6290322580645161
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 34,
+              "confidence": 0.3453575666618838,
+              "accuracy": 0.8529411764705882
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 27,
+              "confidence": 0.4427235694260656,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 14,
+              "confidence": 0.5567044392693014,
+              "accuracy": 0.7857142857142857
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 11,
+              "confidence": 0.6552568744120176,
+              "accuracy": 0.8181818181818182
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 17,
+              "confidence": 0.7561655240021387,
+              "accuracy": 0.9411764705882353
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 31,
+              "confidence": 0.8493172873448417,
+              "accuracy": 0.8387096774193549
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 81,
+              "confidence": 0.966299318274142,
               "accuracy": 1.0
             }
           ]
         }
       },
-      "dev_per_species": {
-        "apple": {
-          "n": 11,
-          "top3": 1.0,
-          "chance_top3": 1.0,
-          "top1": 0.45454545454545453,
-          "ece": 0.4563517543402585,
-          "nll": 0.9678820967674255,
-          "medium": {
-            "n": 8,
-            "right": 3
+      "dev_out_of_fold": {
+        "t_val_and_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.4453125
           },
-          "healthy_blocked": {
-            "n": 0,
-            "blocked": 0
+          "top3_problems": 0.7590361445783133,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.6153846153846154,
+            "chance": 0.42857142857142844
+          },
+          "top1": 0.40425531914893614,
+          "ece": 0.23628248485458517,
+          "nll": 1.7353962799115747,
+          "medium": {
+            "n": 49,
+            "right": 23
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 2,
+            "blocked": 3
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
           },
           "reliability": [
             {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 6,
+              "confidence": 0.2463825609663796,
+              "accuracy": 0.16666666666666666
+            },
+            {
               "lo": 0.3,
               "hi": 0.4,
-              "n": 1,
-              "confidence": 0.39474761486053467,
-              "accuracy": 1.0
+              "n": 20,
+              "confidence": 0.3560096181388589,
+              "accuracy": 0.35
             },
             {
               "lo": 0.4,
               "hi": 0.5,
-              "n": 2,
-              "confidence": 0.4760976731777191,
-              "accuracy": 0.5
+              "n": 17,
+              "confidence": 0.44423665449115246,
+              "accuracy": 0.29411764705882354
             },
             {
               "lo": 0.5,
               "hi": 0.6,
-              "n": 4,
-              "confidence": 0.5297914743423462,
+              "n": 7,
+              "confidence": 0.5456611595915113,
+              "accuracy": 0.42857142857142855
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 17,
+              "confidence": 0.6485903256267355,
+              "accuracy": 0.35294117647058826
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 12,
+              "confidence": 0.7534511220210459,
               "accuracy": 0.25
             },
             {
-              "lo": 0.6,
-              "hi": 0.7,
-              "n": 2,
-              "confidence": 0.645950436592102,
-              "accuracy": 1.0
-            },
-            {
-              "lo": 0.7,
-              "hi": 0.8,
-              "n": 1,
-              "confidence": 0.740695059299469,
-              "accuracy": 0.0
-            },
-            {
               "lo": 0.8,
               "hi": 0.9,
-              "n": 1,
-              "confidence": 0.8099172115325928,
-              "accuracy": 0.0
-            }
-          ]
-        },
-        "corn": {
-          "n": 15,
-          "top3": 1.0,
-          "chance_top3": 0.75,
-          "top1": 0.7333333333333333,
-          "ece": 0.2723655303319295,
-          "nll": 0.9565402269363403,
-          "medium": {
-            "n": 2,
-            "right": 2
-          },
-          "healthy_blocked": {
-            "n": 3,
-            "blocked": 0
-          },
-          "reliability": [
-            {
-              "lo": 0.3,
-              "hi": 0.4,
-              "n": 2,
-              "confidence": 0.3512403964996338,
-              "accuracy": 0.5
-            },
-            {
-              "lo": 0.4,
-              "hi": 0.5,
-              "n": 9,
-              "confidence": 0.4592214822769165,
-              "accuracy": 0.6666666666666666
-            },
-            {
-              "lo": 0.5,
-              "hi": 0.6,
-              "n": 4,
-              "confidence": 0.5197608470916748,
-              "accuracy": 1.0
-            }
-          ]
-        },
-        "grape": {
-          "n": 8,
-          "top3": 1.0,
-          "chance_top3": 1.0,
-          "top1": 1.0,
-          "ece": 0.15848616510629654,
-          "nll": 0.17795956134796143,
-          "medium": {
-            "n": 8,
-            "right": 8
-          },
-          "healthy_blocked": {
-            "n": 0,
-            "blocked": 0
-          },
-          "reliability": [
-            {
-              "lo": 0.6,
-              "hi": 0.7,
-              "n": 1,
-              "confidence": 0.6772531867027283,
-              "accuracy": 1.0
-            },
-            {
-              "lo": 0.7,
-              "hi": 0.8,
-              "n": 1,
-              "confidence": 0.7330901026725769,
-              "accuracy": 1.0
-            },
-            {
-              "lo": 0.8,
-              "hi": 0.9,
-              "n": 5,
-              "confidence": 0.8754072189331055,
+              "n": 6,
+              "confidence": 0.8540342007003011,
               "accuracy": 1.0
             },
             {
               "lo": 0.9,
               "hi": 1.0,
-              "n": 1,
-              "confidence": 0.9447312355041504,
-              "accuracy": 1.0
+              "n": 9,
+              "confidence": 0.9763883555773183,
+              "accuracy": 0.7777777777777778
             }
-          ]
+          ],
+          "fold_temperatures": [
+            1.5895,
+            1.6045,
+            1.5927,
+            1.6041,
+            1.5216
+          ],
+          "per_species": {
+            "apple": {
+              "n": 11,
+              "with_problem": 11,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.45454545454545453,
+              "ece": 0.41451790374360376,
+              "nll": 1.2377033427346031,
+              "medium": {
+                "n": 10,
+                "right": 4
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 11,
+                "called": 0
+              }
+            },
+            "corn": {
+              "n": 15,
+              "with_problem": 12,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 0.75,
+              "top3_sent_can_miss": {
+                "n": 12,
+                "top3": 1.0,
+                "chance": 0.75
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.7333333333333333,
+              "ece": 0.23638845483935628,
+              "nll": 0.8186014534241849,
+              "medium": {
+                "n": 11,
+                "right": 8
+              },
+              "healthy": {
+                "n": 3,
+                "evidence": 2,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 12,
+                "called": 0
+              }
+            },
+            "grape": {
+              "n": 8,
+              "with_problem": 8,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 1.0,
+              "ece": 0.0380645077548845,
+              "nll": 0.040323908718703366,
+              "medium": {
+                "n": 8,
+                "right": 8
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 8,
+                "called": 0
+              }
+            },
+            "tomato": {
+              "n": 60,
+              "with_problem": 52,
+              "top3_sent": 0.5769230769230769,
+              "chance_top3_sent": 0.375,
+              "top3_sent_can_miss": {
+                "n": 52,
+                "top3": 0.5769230769230769,
+                "chance": 0.375
+              },
+              "top3_problems": 0.6153846153846154,
+              "chance_top3_problems": 0.42857142857142844,
+              "top3_problems_can_miss": {
+                "n": 52,
+                "top3": 0.6153846153846154,
+                "chance": 0.42857142857142844
+              },
+              "top1": 0.23333333333333334,
+              "ece": 0.30413484899637167,
+              "nll": 2.281848341174916,
+              "medium": {
+                "n": 20,
+                "right": 3
+              },
+              "healthy": {
+                "n": 8,
+                "evidence": 0,
+                "blocked": 3
+              },
+              "called_healthy": {
+                "n": 52,
+                "called": 0
+              }
+            }
+          }
         },
-        "tomato": {
-          "n": 60,
-          "top3": 0.6,
-          "chance_top3": 0.375,
-          "top1": 0.23333333333333334,
-          "ece": 0.09956292485197385,
-          "nll": 1.9420262575149536,
-          "medium": {
-            "n": 0,
-            "right": 0
+        "t_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.4453125
           },
-          "healthy_blocked": {
-            "n": 8,
+          "top3_problems": 0.7590361445783133,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.6153846153846154,
+            "chance": 0.42857142857142844
+          },
+          "top1": 0.40425531914893614,
+          "ece": 0.0898825806511246,
+          "nll": 1.5311911262853013,
+          "medium": {
+            "n": 18,
+            "right": 13
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 1,
             "blocked": 0
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
           },
           "reliability": [
             {
               "lo": 0.1,
               "hi": 0.2,
               "n": 6,
-              "confidence": 0.1800534576177597,
+              "confidence": 0.177834926070251,
               "accuracy": 0.16666666666666666
             },
             {
               "lo": 0.2,
               "hi": 0.3,
-              "n": 37,
-              "confidence": 0.24654211103916168,
-              "accuracy": 0.2972972972972973
+              "n": 35,
+              "confidence": 0.2441821616631766,
+              "accuracy": 0.2857142857142857
             },
             {
               "lo": 0.3,
               "hi": 0.4,
-              "n": 11,
-              "confidence": 0.35635411739349365,
-              "accuracy": 0.0
+              "n": 16,
+              "confidence": 0.3554899788026753,
+              "accuracy": 0.1875
             },
             {
               "lo": 0.4,
               "hi": 0.5,
-              "n": 6,
-              "confidence": 0.4244948923587799,
-              "accuracy": 0.3333333333333333
-            }
-          ]
-        }
-      },
-      "dev_per_source": {
-        "fieldsets/ccmt-2023": {
-          "n": 5,
-          "top3": 1.0,
-          "chance_top3": 0.375,
-          "top1": 0.6,
-          "ece": 0.34335877001285553,
-          "nll": 1.4246255159378052,
-          "medium": {
-            "n": 0,
-            "right": 0
-          },
-          "healthy_blocked": {
-            "n": 0,
-            "blocked": 0
-          },
-          "reliability": [
-            {
-              "lo": 0.2,
-              "hi": 0.3,
-              "n": 5,
-              "confidence": 0.2566412091255188,
-              "accuracy": 0.6
-            }
-          ]
-        },
-        "fieldsets/maize-bd-2026": {
-          "n": 15,
-          "top3": 1.0,
-          "chance_top3": 0.75,
-          "top1": 0.7333333333333333,
-          "ece": 0.2723655303319295,
-          "nll": 0.9565402269363403,
-          "medium": {
-            "n": 2,
-            "right": 2
-          },
-          "healthy_blocked": {
-            "n": 3,
-            "blocked": 0
-          },
-          "reliability": [
-            {
-              "lo": 0.3,
-              "hi": 0.4,
-              "n": 2,
-              "confidence": 0.3512403964996338,
-              "accuracy": 0.5
-            },
-            {
-              "lo": 0.4,
-              "hi": 0.5,
-              "n": 9,
-              "confidence": 0.4592214822769165,
-              "accuracy": 0.6666666666666666
+              "n": 18,
+              "confidence": 0.45215639668796226,
+              "accuracy": 0.5555555555555556
             },
             {
               "lo": 0.5,
               "hi": 0.6,
-              "n": 4,
-              "confidence": 0.5197608470916748,
-              "accuracy": 1.0
-            }
-          ]
-        },
-        "fieldsets/tomato-bd-2025": {
-          "n": 23,
-          "top3": 0.6521739130434783,
-          "chance_top3": 0.375,
-          "top1": 0.21739130434782608,
-          "ece": 0.11332610573457634,
-          "nll": 1.892228364944458,
-          "medium": {
-            "n": 0,
-            "right": 0
-          },
-          "healthy_blocked": {
-            "n": 3,
-            "blocked": 0
-          },
-          "reliability": [
-            {
-              "lo": 0.1,
-              "hi": 0.2,
-              "n": 4,
-              "confidence": 0.17731058597564697,
-              "accuracy": 0.25
-            },
-            {
-              "lo": 0.2,
-              "hi": 0.3,
-              "n": 14,
-              "confidence": 0.23860396444797516,
-              "accuracy": 0.21428571428571427
-            },
-            {
-              "lo": 0.3,
-              "hi": 0.4,
-              "n": 4,
-              "confidence": 0.34990328550338745,
-              "accuracy": 0.0
-            },
-            {
-              "lo": 0.4,
-              "hi": 0.5,
-              "n": 1,
-              "confidence": 0.42432618141174316,
-              "accuracy": 1.0
-            }
-          ]
-        },
-        "fieldsets/tomato-bd-iphone-2025": {
-          "n": 20,
-          "top3": 0.65,
-          "chance_top3": 0.375,
-          "top1": 0.25,
-          "ece": 0.21857531592249868,
-          "nll": 1.79931640625,
-          "medium": {
-            "n": 0,
-            "right": 0
-          },
-          "healthy_blocked": {
-            "n": 5,
-            "blocked": 0
-          },
-          "reliability": [
-            {
-              "lo": 0.1,
-              "hi": 0.2,
-              "n": 1,
-              "confidence": 0.19420363008975983,
-              "accuracy": 0.0
-            },
-            {
-              "lo": 0.2,
-              "hi": 0.3,
-              "n": 10,
-              "confidence": 0.25192004442214966,
-              "accuracy": 0.4
-            },
-            {
-              "lo": 0.3,
-              "hi": 0.4,
-              "n": 5,
-              "confidence": 0.3606293797492981,
-              "accuracy": 0.0
-            },
-            {
-              "lo": 0.4,
-              "hi": 0.5,
-              "n": 4,
-              "confidence": 0.4213075637817383,
-              "accuracy": 0.25
-            }
-          ]
-        },
-        "inat": {
-          "n": 31,
-          "top3": 0.7096774193548387,
-          "chance_top3": 0.7580645161290323,
-          "top1": 0.45161290322580644,
-          "ece": 0.19141748787895327,
-          "nll": 1.353588342666626,
-          "medium": {
-            "n": 16,
-            "right": 11
-          },
-          "healthy_blocked": {
-            "n": 0,
-            "blocked": 0
-          },
-          "reliability": [
-            {
-              "lo": 0.1,
-              "hi": 0.2,
-              "n": 1,
-              "confidence": 0.17687472701072693,
-              "accuracy": 0.0
-            },
-            {
-              "lo": 0.2,
-              "hi": 0.3,
-              "n": 8,
-              "confidence": 0.24739934504032135,
-              "accuracy": 0.125
-            },
-            {
-              "lo": 0.3,
-              "hi": 0.4,
-              "n": 3,
-              "confidence": 0.3706275224685669,
-              "accuracy": 0.3333333333333333
-            },
-            {
-              "lo": 0.4,
-              "hi": 0.5,
-              "n": 3,
-              "confidence": 0.4632028043270111,
-              "accuracy": 0.3333333333333333
-            },
-            {
-              "lo": 0.5,
-              "hi": 0.6,
-              "n": 4,
-              "confidence": 0.5297914743423462,
-              "accuracy": 0.25
+              "n": 7,
+              "confidence": 0.5233991982971926,
+              "accuracy": 0.5714285714285714
             },
             {
               "lo": 0.6,
               "hi": 0.7,
               "n": 3,
-              "confidence": 0.6563847064971924,
+              "confidence": 0.6454242800716183,
               "accuracy": 1.0
             },
             {
               "lo": 0.7,
               "hi": 0.8,
               "n": 2,
-              "confidence": 0.736892580986023,
+              "confidence": 0.7285968567447167,
               "accuracy": 0.5
             },
             {
               "lo": 0.8,
               "hi": 0.9,
               "n": 6,
-              "confidence": 0.8644921779632568,
+              "confidence": 0.8554279199364392,
               "accuracy": 0.8333333333333334
             },
             {
               "lo": 0.9,
               "hi": 1.0,
               "n": 1,
-              "confidence": 0.9447312355041504,
+              "confidence": 0.9652632671386697,
               "accuracy": 1.0
             }
-          ]
+          ],
+          "fold_temperatures": [
+            3.7443,
+            3.917,
+            3.7932,
+            3.8141,
+            3.129
+          ],
+          "per_species": {
+            "apple": {
+              "n": 11,
+              "with_problem": 11,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.45454545454545453,
+              "ece": 0.35720964969100905,
+              "nll": 0.9599975868523188,
+              "medium": {
+                "n": 8,
+                "right": 3
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 11,
+                "called": 0
+              }
+            },
+            "corn": {
+              "n": 15,
+              "with_problem": 12,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 0.75,
+              "top3_sent_can_miss": {
+                "n": 12,
+                "top3": 1.0,
+                "chance": 0.75
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.7333333333333333,
+              "ece": 0.27381438868437263,
+              "nll": 0.9598575927690256,
+              "medium": {
+                "n": 2,
+                "right": 2
+              },
+              "healthy": {
+                "n": 3,
+                "evidence": 1,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 12,
+                "called": 0
+              }
+            },
+            "grape": {
+              "n": 8,
+              "with_problem": 8,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 1.0,
+              "ece": 0.1631630483131944,
+              "nll": 0.18396145031085934,
+              "medium": {
+                "n": 8,
+                "right": 8
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 8,
+                "called": 0
+              }
+            },
+            "tomato": {
+              "n": 60,
+              "with_problem": 52,
+              "top3_sent": 0.5769230769230769,
+              "chance_top3_sent": 0.375,
+              "top3_sent_can_miss": {
+                "n": 52,
+                "top3": 0.5769230769230769,
+                "chance": 0.375
+              },
+              "top3_problems": 0.6153846153846154,
+              "chance_top3_problems": 0.42857142857142844,
+              "top3_problems_can_miss": {
+                "n": 52,
+                "top3": 0.6153846153846154,
+                "chance": 0.42857142857142844
+              },
+              "top1": 0.23333333333333334,
+              "ece": 0.09199071876946463,
+              "nll": 1.9583739486903426,
+              "medium": {
+                "n": 0,
+                "right": 0
+              },
+              "healthy": {
+                "n": 8,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 52,
+                "called": 0
+              }
+            }
+          }
+        },
+        "t_per_species_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.4453125
+          },
+          "top3_problems": 0.7590361445783133,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.6153846153846154,
+            "chance": 0.42857142857142844
+          },
+          "top1": 0.40425531914893614,
+          "ece": 0.12790140905314842,
+          "nll": 1.5158785707104616,
+          "medium": {
+            "n": 25,
+            "right": 19
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 2,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 11,
+              "confidence": 0.17768654891748306,
+              "accuracy": 0.09090909090909091
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 36,
+              "confidence": 0.23360992186960067,
+              "accuracy": 0.2777777777777778
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 13,
+              "confidence": 0.3362461641633266,
+              "accuracy": 0.3076923076923077
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 7,
+              "confidence": 0.45101708014671255,
+              "accuracy": 0.2857142857142857
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 6,
+              "confidence": 0.5471973984092147,
+              "accuracy": 0.8333333333333334
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 5,
+              "confidence": 0.6577488690126735,
+              "accuracy": 0.8
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 4,
+              "confidence": 0.7263347688987078,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 4,
+              "confidence": 0.8739042991875232,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 8,
+              "confidence": 0.9999999999996849,
+              "accuracy": 1.0
+            }
+          ],
+          "fold_temperatures": [
+            {
+              "*": 3.7443,
+              "apple": 2.7152,
+              "corn": 1.6133,
+              "grape": 0.0718,
+              "tomato": 5.1462
+            },
+            {
+              "*": 3.917,
+              "apple": 6.1641,
+              "corn": 1.7941,
+              "grape": 0.0636,
+              "tomato": 4.7877
+            },
+            {
+              "*": 3.7932,
+              "apple": 6.5018,
+              "corn": 1.1752,
+              "grape": 0.0712,
+              "tomato": 4.8372
+            },
+            {
+              "*": 3.8141,
+              "apple": 4.1669,
+              "corn": 1.6609,
+              "grape": 0.1017,
+              "tomato": 5.0045
+            },
+            {
+              "*": 3.129,
+              "apple": 5.6284,
+              "corn": 1.5814,
+              "grape": 0.0674,
+              "tomato": 3.5311
+            }
+          ],
+          "per_species": {
+            "apple": {
+              "n": 11,
+              "with_problem": 11,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.45454545454545453,
+              "ece": 0.3715331702319972,
+              "nll": 1.0801821563686893,
+              "medium": {
+                "n": 6,
+                "right": 3
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 11,
+                "called": 0
+              }
+            },
+            "corn": {
+              "n": 15,
+              "with_problem": 12,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 0.75,
+              "top3_sent_can_miss": {
+                "n": 12,
+                "top3": 1.0,
+                "chance": 0.75
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.7333333333333333,
+              "ece": 0.14942444936965665,
+              "nll": 0.8745614002683136,
+              "medium": {
+                "n": 11,
+                "right": 8
+              },
+              "healthy": {
+                "n": 3,
+                "evidence": 2,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 12,
+                "called": 0
+              }
+            },
+            "grape": {
+              "n": 8,
+              "with_problem": 8,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 1.0,
+              "ece": 3.1508129438861943e-13,
+              "nll": -6.85049239556563e-13,
+              "medium": {
+                "n": 8,
+                "right": 8
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 8,
+                "called": 0
+              }
+            },
+            "tomato": {
+              "n": 60,
+              "with_problem": 52,
+              "top3_sent": 0.5769230769230769,
+              "chance_top3_sent": 0.375,
+              "top3_sent_can_miss": {
+                "n": 52,
+                "top3": 0.5769230769230769,
+                "chance": 0.375
+              },
+              "top3_problems": 0.6153846153846154,
+              "chance_top3_problems": 0.42857142857142844,
+              "top3_problems_can_miss": {
+                "n": 52,
+                "top3": 0.6153846153846154,
+                "chance": 0.42857142857142844
+              },
+              "top1": 0.23333333333333334,
+              "ece": 0.13166938832358302,
+              "nll": 1.9582026820451428,
+              "medium": {
+                "n": 0,
+                "right": 0
+              },
+              "healthy": {
+                "n": 8,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 52,
+                "called": 0
+              }
+            }
+          }
+        }
+      },
+      "dev_per_species": {
+        "t_file": {
+          "apple": {
+            "n": 11,
+            "with_problem": 11,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.45454545454545453,
+            "ece": 0.4182207732837031,
+            "nll": 1.5146240727252456,
+            "medium": {
+              "n": 11,
+              "right": 5
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 11,
+              "called": 0
+            }
+          },
+          "corn": {
+            "n": 15,
+            "with_problem": 12,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 0.75,
+            "top3_sent_can_miss": {
+              "n": 12,
+              "top3": 1.0,
+              "chance": 0.75
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.7333333333333333,
+            "ece": 0.1916731009346866,
+            "nll": 0.8501886000263013,
+            "medium": {
+              "n": 13,
+              "right": 9
+            },
+            "healthy": {
+              "n": 3,
+              "evidence": 2,
+              "blocked": 1
+            },
+            "called_healthy": {
+              "n": 12,
+              "called": 0
+            }
+          },
+          "grape": {
+            "n": 8,
+            "with_problem": 8,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 1.0,
+            "ece": 0.016886408642255893,
+            "nll": 0.017468852553198785,
+            "medium": {
+              "n": 8,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 8,
+              "called": 0
+            }
+          },
+          "tomato": {
+            "n": 60,
+            "with_problem": 52,
+            "top3_sent": 0.5769230769230769,
+            "chance_top3_sent": 0.375,
+            "top3_sent_can_miss": {
+              "n": 52,
+              "top3": 0.5769230769230769,
+              "chance": 0.375
+            },
+            "top3_problems": 0.6153846153846154,
+            "chance_top3_problems": 0.42857142857142844,
+            "top3_problems_can_miss": {
+              "n": 52,
+              "top3": 0.6153846153846154,
+              "chance": 0.42857142857142844
+            },
+            "top1": 0.23333333333333334,
+            "ece": 0.3543479374541111,
+            "nll": 2.6470159975618466,
+            "medium": {
+              "n": 29,
+              "right": 5
+            },
+            "healthy": {
+              "n": 8,
+              "evidence": 0,
+              "blocked": 4
+            },
+            "called_healthy": {
+              "n": 52,
+              "called": 0
+            }
+          }
+        },
+        "t_val_and_dev": {
+          "apple": {
+            "n": 11,
+            "with_problem": 11,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.45454545454545453,
+            "ece": 0.4115306276386103,
+            "nll": 1.216903698487033,
+            "medium": {
+              "n": 10,
+              "right": 4
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 11,
+              "called": 0
+            }
+          },
+          "corn": {
+            "n": 15,
+            "with_problem": 12,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 0.75,
+            "top3_sent_can_miss": {
+              "n": 12,
+              "top3": 1.0,
+              "chance": 0.75
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.7333333333333333,
+            "ece": 0.15931153143968668,
+            "nll": 0.8189042709044819,
+            "medium": {
+              "n": 11,
+              "right": 8
+            },
+            "healthy": {
+              "n": 3,
+              "evidence": 2,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 12,
+              "called": 0
+            }
+          },
+          "grape": {
+            "n": 8,
+            "with_problem": 8,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 1.0,
+            "ece": 0.04124330678601168,
+            "nll": 0.04378563059923136,
+            "medium": {
+              "n": 8,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 8,
+              "called": 0
+            }
+          },
+          "tomato": {
+            "n": 60,
+            "with_problem": 52,
+            "top3_sent": 0.5769230769230769,
+            "chance_top3_sent": 0.375,
+            "top3_sent_can_miss": {
+              "n": 52,
+              "top3": 0.5769230769230769,
+              "chance": 0.375
+            },
+            "top3_problems": 0.6153846153846154,
+            "chance_top3_problems": 0.42857142857142844,
+            "top3_problems_can_miss": {
+              "n": 52,
+              "top3": 0.6153846153846154,
+              "chance": 0.42857142857142844
+            },
+            "top1": 0.23333333333333334,
+            "ece": 0.278344756347023,
+            "nll": 2.234329293830595,
+            "medium": {
+              "n": 18,
+              "right": 3
+            },
+            "healthy": {
+              "n": 8,
+              "evidence": 0,
+              "blocked": 3
+            },
+            "called_healthy": {
+              "n": 52,
+              "called": 0
+            }
+          }
+        },
+        "t_dev": {
+          "apple": {
+            "n": 11,
+            "with_problem": 11,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.45454545454545453,
+            "ece": 0.45635177041809893,
+            "nll": 0.9678820190492055,
+            "medium": {
+              "n": 8,
+              "right": 3
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 11,
+              "called": 0
+            }
+          },
+          "corn": {
+            "n": 15,
+            "with_problem": 12,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 0.75,
+            "top3_sent_can_miss": {
+              "n": 12,
+              "top3": 1.0,
+              "chance": 0.75
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.7333333333333333,
+            "ece": 0.27236552423312677,
+            "nll": 0.9565401373497278,
+            "medium": {
+              "n": 2,
+              "right": 2
+            },
+            "healthy": {
+              "n": 3,
+              "evidence": 2,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 12,
+              "called": 0
+            }
+          },
+          "grape": {
+            "n": 8,
+            "with_problem": 8,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 1.0,
+            "ece": 0.15848616977986008,
+            "nll": 0.17795957486050545,
+            "medium": {
+              "n": 8,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 8,
+              "called": 0
+            }
+          },
+          "tomato": {
+            "n": 60,
+            "with_problem": 52,
+            "top3_sent": 0.5769230769230769,
+            "chance_top3_sent": 0.375,
+            "top3_sent_can_miss": {
+              "n": 52,
+              "top3": 0.5769230769230769,
+              "chance": 0.375
+            },
+            "top3_problems": 0.6153846153846154,
+            "chance_top3_problems": 0.42857142857142844,
+            "top3_problems_can_miss": {
+              "n": 52,
+              "top3": 0.6153846153846154,
+              "chance": 0.42857142857142844
+            },
+            "top1": 0.23333333333333334,
+            "ece": 0.09956292954239454,
+            "nll": 1.94202615177407,
+            "medium": {
+              "n": 0,
+              "right": 0
+            },
+            "healthy": {
+              "n": 8,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 52,
+              "called": 0
+            }
+          }
+        },
+        "t_per_species_dev": {
+          "apple": {
+            "n": 11,
+            "with_problem": 11,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.45454545454545453,
+            "ece": 0.35741739287741275,
+            "nll": 0.9566821898854315,
+            "medium": {
+              "n": 5,
+              "right": 3
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 11,
+              "called": 0
+            }
+          },
+          "corn": {
+            "n": 15,
+            "with_problem": 12,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 0.75,
+            "top3_sent_can_miss": {
+              "n": 12,
+              "top3": 1.0,
+              "chance": 0.75
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.7333333333333333,
+            "ece": 0.22066093413987312,
+            "nll": 0.8180241224716657,
+            "medium": {
+              "n": 11,
+              "right": 8
+            },
+            "healthy": {
+              "n": 3,
+              "evidence": 2,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 12,
+              "called": 0
+            }
+          },
+          "grape": {
+            "n": 8,
+            "with_problem": 8,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 1.0,
+            "ece": 0.0,
+            "nll": -1.000088900581841e-12,
+            "medium": {
+              "n": 8,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 8,
+              "called": 0
+            }
+          },
+          "tomato": {
+            "n": 60,
+            "with_problem": 52,
+            "top3_sent": 0.5769230769230769,
+            "chance_top3_sent": 0.375,
+            "top3_sent_can_miss": {
+              "n": 52,
+              "top3": 0.5769230769230769,
+              "chance": 0.375
+            },
+            "top3_problems": 0.6153846153846154,
+            "chance_top3_problems": 0.42857142857142844,
+            "top3_problems_can_miss": {
+              "n": 52,
+              "top3": 0.6153846153846154,
+              "chance": 0.42857142857142844
+            },
+            "top1": 0.23333333333333334,
+            "ece": 0.10484441579283077,
+            "nll": 1.9339538564366083,
+            "medium": {
+              "n": 0,
+              "right": 0
+            },
+            "healthy": {
+              "n": 8,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 52,
+              "called": 0
+            }
+          }
+        }
+      },
+      "dev_per_source_species": {
+        "fieldsets/ccmt-2023 tomato": {
+          "n": 5,
+          "with_problem": 5,
+          "top3_sent": 1.0,
+          "chance_top3_sent": 0.375,
+          "top3_sent_can_miss": {
+            "n": 5,
+            "top3": 1.0,
+            "chance": 0.375
+          },
+          "top3_problems": 1.0,
+          "chance_top3_problems": 0.42857142857142855,
+          "top3_problems_can_miss": {
+            "n": 5,
+            "top3": 1.0,
+            "chance": 0.42857142857142855
+          },
+          "top1": 0.6,
+          "ece": 0.2861580156324404,
+          "nll": 0.9179356759890485,
+          "medium": {
+            "n": 1,
+            "right": 1
+          },
+          "healthy": {
+            "n": 0,
+            "evidence": 0,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 5,
+            "called": 0
+          }
+        },
+        "fieldsets/maize-bd-2026 corn": {
+          "n": 15,
+          "with_problem": 12,
+          "top3_sent": 1.0,
+          "chance_top3_sent": 0.75,
+          "top3_sent_can_miss": {
+            "n": 12,
+            "top3": 1.0,
+            "chance": 0.75
+          },
+          "top3_problems": 1.0,
+          "chance_top3_problems": 1.0,
+          "top3_problems_can_miss": {
+            "n": 0,
+            "top3": null,
+            "chance": null
+          },
+          "top1": 0.7333333333333333,
+          "ece": 0.1916731009346866,
+          "nll": 0.8501886000263013,
+          "medium": {
+            "n": 13,
+            "right": 9
+          },
+          "healthy": {
+            "n": 3,
+            "evidence": 2,
+            "blocked": 1
+          },
+          "called_healthy": {
+            "n": 12,
+            "called": 0
+          }
+        },
+        "fieldsets/tomato-bd-2025 tomato": {
+          "n": 23,
+          "with_problem": 20,
+          "top3_sent": 0.65,
+          "chance_top3_sent": 0.375,
+          "top3_sent_can_miss": {
+            "n": 20,
+            "top3": 0.65,
+            "chance": 0.375
+          },
+          "top3_problems": 0.7,
+          "chance_top3_problems": 0.42857142857142855,
+          "top3_problems_can_miss": {
+            "n": 20,
+            "top3": 0.7,
+            "chance": 0.42857142857142855
+          },
+          "top1": 0.21739130434782608,
+          "ece": 0.3458685851951621,
+          "nll": 2.299267528357823,
+          "medium": {
+            "n": 8,
+            "right": 2
+          },
+          "healthy": {
+            "n": 3,
+            "evidence": 0,
+            "blocked": 2
+          },
+          "called_healthy": {
+            "n": 20,
+            "called": 0
+          }
+        },
+        "fieldsets/tomato-bd-iphone-2025 tomato": {
+          "n": 20,
+          "with_problem": 15,
+          "top3_sent": 0.6,
+          "chance_top3_sent": 0.375,
+          "top3_sent_can_miss": {
+            "n": 15,
+            "top3": 0.6,
+            "chance": 0.375
+          },
+          "top3_problems": 0.6,
+          "chance_top3_problems": 0.42857142857142866,
+          "top3_problems_can_miss": {
+            "n": 15,
+            "top3": 0.6,
+            "chance": 0.42857142857142866
+          },
+          "top1": 0.25,
+          "ece": 0.4633830041236476,
+          "nll": 2.4543370348688986,
+          "medium": {
+            "n": 13,
+            "right": 2
+          },
+          "healthy": {
+            "n": 5,
+            "evidence": 0,
+            "blocked": 2
+          },
+          "called_healthy": {
+            "n": 15,
+            "called": 0
+          }
+        },
+        "inat apple": {
+          "n": 11,
+          "with_problem": 11,
+          "top3_sent": 1.0,
+          "chance_top3_sent": 1.0,
+          "top3_sent_can_miss": {
+            "n": 0,
+            "top3": null,
+            "chance": null
+          },
+          "top3_problems": 1.0,
+          "chance_top3_problems": 1.0,
+          "top3_problems_can_miss": {
+            "n": 0,
+            "top3": null,
+            "chance": null
+          },
+          "top1": 0.45454545454545453,
+          "ece": 0.4182207732837031,
+          "nll": 1.5146240727252456,
+          "medium": {
+            "n": 11,
+            "right": 5
+          },
+          "healthy": {
+            "n": 0,
+            "evidence": 0,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 11,
+            "called": 0
+          }
+        },
+        "inat grape": {
+          "n": 8,
+          "with_problem": 8,
+          "top3_sent": 1.0,
+          "chance_top3_sent": 1.0,
+          "top3_sent_can_miss": {
+            "n": 0,
+            "top3": null,
+            "chance": null
+          },
+          "top3_problems": 1.0,
+          "chance_top3_problems": 1.0,
+          "top3_problems_can_miss": {
+            "n": 0,
+            "top3": null,
+            "chance": null
+          },
+          "top1": 1.0,
+          "ece": 0.016886408642255893,
+          "nll": 0.017468852553198785,
+          "medium": {
+            "n": 8,
+            "right": 8
+          },
+          "healthy": {
+            "n": 0,
+            "evidence": 0,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 8,
+            "called": 0
+          }
+        },
+        "inat tomato": {
+          "n": 12,
+          "with_problem": 12,
+          "top3_sent": 0.25,
+          "chance_top3_sent": 0.375,
+          "top3_sent_can_miss": {
+            "n": 12,
+            "top3": 0.25,
+            "chance": 0.375
+          },
+          "top3_problems": 0.3333333333333333,
+          "chance_top3_problems": 0.4285714285714286,
+          "top3_problems_can_miss": {
+            "n": 12,
+            "top3": 0.3333333333333333,
+            "chance": 0.4285714285714286
+          },
+          "top1": 0.08333333333333333,
+          "ece": 0.5987748659269659,
+          "nll": 4.355115635346471,
+          "medium": {
+            "n": 7,
+            "right": 0
+          },
+          "healthy": {
+            "n": 0,
+            "evidence": 0,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 12,
+            "called": 0
+          }
+        }
+      },
+      "dev_confusion": {
+        "apple": {
+          "apple_cedar_apple_rust": {
+            "apple_cedar_apple_rust": 1,
+            "apple_scab": 1
+          },
+          "apple_scab": {
+            "apple_cedar_apple_rust": 5,
+            "apple_scab": 4
+          }
+        },
+        "corn": {
+          "corn_common_rust": {
+            "corn_common_rust": 3,
+            "corn_northern_leaf_blight": 2
+          },
+          "corn_gray_leaf_spot": {
+            "corn_gray_leaf_spot": 1,
+            "corn_northern_leaf_blight": 1
+          },
+          "corn_northern_leaf_blight": {
+            "corn_northern_leaf_blight": 5
+          },
+          "healthy": {
+            "healthy": 2,
+            "corn_common_rust": 1
+          }
+        },
+        "grape": {
+          "grape_black_rot": {
+            "grape_black_rot": 8
+          }
+        },
+        "tomato": {
+          "healthy": {
+            "tomato_leaf_mold": 3,
+            "tomato_bacterial_spot": 3,
+            "tomato_late_blight": 1,
+            "healthy": 1
+          },
+          "tomato_bacterial_spot": {
+            "tomato_bacterial_spot": 4,
+            "tomato_septoria_leaf_spot": 3,
+            "tomato_leaf_mold": 2,
+            "healthy": 1
+          },
+          "tomato_early_blight": {
+            "tomato_early_blight": 3,
+            "tomato_bacterial_spot": 3,
+            "tomato_late_blight": 2,
+            "tomato_leaf_mold": 2,
+            "tomato_septoria_leaf_spot": 1
+          },
+          "tomato_late_blight": {
+            "tomato_bacterial_spot": 3,
+            "tomato_late_blight": 2,
+            "tomato_septoria_leaf_spot": 2,
+            "tomato_leaf_mold": 1,
+            "tomato_early_blight": 1
+          },
+          "tomato_septoria_leaf_spot": {
+            "tomato_septoria_leaf_spot": 3,
+            "tomato_bacterial_spot": 2
+          },
+          "tomato_spider_mites": {
+            "tomato_bacterial_spot": 5,
+            "tomato_leaf_mold": 4,
+            "tomato_late_blight": 3
+          },
+          "tomato_yellow_leaf_curl_virus": {
+            "tomato_leaf_mold": 2,
+            "tomato_yellow_leaf_curl_virus": 1,
+            "tomato_late_blight": 1,
+            "tomato_bacterial_spot": 1
+          }
         }
       }
     }
