@@ -456,7 +456,7 @@ Capture is always dark and follows the Camera app ([design 3.1](../design/design
 └─────────────────────────────────────┘
 ```
 
-- **Forgot password?** opens "Reset your password" with the typed email: "Send code", then the 6-digit code and a new password, with "Send a new code". Resetting signs out the account's other sessions, and the code by text still follows ([flows 1](flows.md#1-app-start-and-sign-in)).
+- **Forgot password?** opens "Reset your password" with the typed email: "Send code", then the 6-digit code and a new password, with "Send a new code" until the code is accepted. Once the password has changed, the subtitle says "Your password is changed" and the button reads **Continue**; a reset that timed out goes back to the email. Resetting signs out the account's other sessions, and the code by text still follows ([flows 1](flows.md#1-app-start-and-sign-in)).
 - **Sign-up with a taken email** shows "You already have an account" with **Reset password**, instead of the code steps. A taken phone number shows Clerk's message, since its account's email is unknown. Sign-up links back with "Already have an account? Sign in".
 - **Verify** shows a 6-digit code field with "Send a new code": the sign-up email code, then the phone's; the code by text at every sign-in; or the email code that confirms a new device. In development builds, the phone steps show Clerk's test numbers (+1 555 555 0100 to 0199, code 424242).
 - The postal-code-or-city field sends `postal_code` when it looks like a Canadian postal code, otherwise `city`.

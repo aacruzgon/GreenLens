@@ -94,6 +94,8 @@ it("keeps the checked code when the new password is refused", async () => {
   await fireEvent.changeText(screen.getByLabelText("New password"), "password1");
   await fireEvent.press(screen.getByRole("button", { name: "Reset password" }));
   expect(await screen.findByText("Password has been found in an online data breach.")).toBeTruthy();
+  // The code is accepted, so a new one is no use.
+  expect(screen.queryByRole("button", { name: "Send a new code" })).toBeNull();
 
   mockSignIn.resetPasswordEmailCode.submitPassword.mockImplementationOnce(async () => {
     mockSignIn.status = "complete";
@@ -123,6 +125,7 @@ it("after the reset, a retry only sends the text code again", async () => {
   await fireEvent.changeText(screen.getByLabelText("New password"), "a new long password");
   await fireEvent.press(screen.getByRole("button", { name: "Reset password" }));
   expect(await screen.findByText("Too many requests.")).toBeTruthy();
+  expect(screen.getByText("Your password is changed. Continue to finish signing in.")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Send a new code" })).toBeNull();
 
   await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
@@ -130,6 +133,25 @@ it("after the reset, a retry only sends the text code again", async () => {
   expect(mockSignIn.resetPasswordEmailCode.submitPassword).toHaveBeenCalledTimes(1);
   expect(mockSignIn.mfa.sendPhoneCode).toHaveBeenCalledTimes(2);
   expect(mockRouter.replace).toHaveBeenCalledWith({ pathname: "/verify", params: { mode: "sms" } });
+});
+
+// Review of #113: a sign-in dropped while the screen is open goes back to the email, not to "Continue".
+it("starts again at the email when the sign-in is dropped", async () => {
+  await sendCodeTo("sam@example.com");
+  await fireEvent.changeText(screen.getByLabelText("Code"), "123456");
+  mockSignIn.status = "needs_identifier";
+  await screen.rerender(
+    <ThemeProvider>
+      <ResetPasswordScreen />
+    </ThemeProvider>,
+  );
+
+  expect(screen.getByText("This reset timed out. We'll send a new code to the email on your account.")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
+  await fireEvent.press(screen.getByRole("button", { name: "Send code" }));
+  expect(mockSignIn.create).toHaveBeenCalledTimes(2);
+  expect(await screen.findByText("Enter the 6-digit code we sent to sam@example.com, and a new password.")).toBeTruthy();
+  expect(screen.getByLabelText("Code").props.value).toBe("");
 });
 
 it("says so when the account has no password to reset", async () => {

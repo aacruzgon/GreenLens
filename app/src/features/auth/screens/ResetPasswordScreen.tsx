@@ -30,7 +30,10 @@ export function ResetPasswordScreen() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const busy = fetchStatus === "fetching";
   // Past the new password, the reset is done: a retry only moves the sign-in on (review of #113).
-  const passwordChanged = sent && signIn.status !== "needs_first_factor" && signIn.status !== "needs_new_password";
+  const passwordChanged =
+    sent && (signIn.status === "needs_second_factor" || signIn.status === "needs_client_trust" || signIn.status === "complete");
+  // A sign-in dropped while the screen is open (it expired in the background) starts again at the email.
+  const dropped = sent && signIn.status === "needs_identifier";
 
   async function sendCode() {
     setEmailError(null);
@@ -38,6 +41,7 @@ export function ResetPasswordScreen() {
     if (createError) return setEmailError(clerkErrorMessage(createError));
     const { error: sendError } = await signIn.resetPasswordEmailCode.sendCode();
     if (sendError) return setEmailError(sendCodeMessage(sendError));
+    setCode("");
     setSent(true);
   }
 
@@ -60,9 +64,12 @@ export function ResetPasswordScreen() {
     setPasswordError(await continueSignIn(signIn, router, true));
   }
 
-  if (!sent) {
+  if (!sent || dropped) {
+    const subtitle = dropped
+      ? "This reset timed out. We'll send a new code to the email on your account."
+      : "We'll send a code to the email on your account.";
     return (
-      <AuthShell title="Reset your password" subtitle="We'll send a code to the email on your account.">
+      <AuthShell title="Reset your password" subtitle={subtitle}>
         <TextField
           label="Email"
           value={email}
@@ -79,7 +86,14 @@ export function ResetPasswordScreen() {
   }
 
   return (
-    <AuthShell title="Reset your password" subtitle={`Enter the 6-digit code we sent to ${email.trim()}, and a new password.`}>
+    <AuthShell
+      title="Reset your password"
+      subtitle={
+        passwordChanged
+          ? "Your password is changed. Continue to finish signing in."
+          : `Enter the 6-digit code we sent to ${email.trim()}, and a new password.`
+      }
+    >
       <TextField
         label="Code"
         value={code}
@@ -105,7 +119,7 @@ export function ResetPasswordScreen() {
         disabled={code.trim().length < 6 || !password}
         size="large"
       />
-      {passwordChanged ? null : (
+      {signIn.status !== "needs_first_factor" ? null : (
         <Button
           label="Send a new code"
           variant="plain"
