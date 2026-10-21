@@ -3,22 +3,26 @@
 Threshold: cosine ≥ 0.98 (float32) on BioCLIP 2 embeddings (b9016a6865e188c0).
 Splits by "same plant" group: near-copies at cosine ≥ 0.97 across datasets, and one field visit (`sessions`), share a split; val 0.15, and test 0.15 for datasets without a published test split.
 
-- Images: 11305; duplicate pairs: 4927 (19 across published splits, 71 with different labels)
-- Groups dropped for conflicting labels: 44 (233 images)
-- Duplicates removed from kept groups: 3959 (including 3888 augmented copies of the same original photo)
+- Images: 26862; duplicate pairs: 24437 (19 across published splits, 83 with different labels)
+- Groups dropped for conflicting labels: 57 (362 images)
+- Duplicates removed from kept groups: 16548 (including 16428 augmented copies of the same original photo)
 - tomato_pakistan_2026: 2690 files dropped as copies of another source's photos (`originals.drop_if_name_in`)
 - Dropped as near-copies (≥ 0.97) of a test image: 5
-- Near-copies (≥ 0.97) still in different splits: {'tom2024': 73} (within datasets grouped by field visit instead)
-- Kept: train 5102, val 1152, test 854
-- Same-plant groups: 4353; the largest holds 264 images
+- Near-copies (≥ 0.97) still in different splits: {'maize_makerere': 154, 'maize_pretoria': 26, 'tom2024': 88, 'tomato_pakistan_2026': 39} (within datasets grouped by field visit instead)
+- `--keep-splits`: 6544 of the 6544 committed images kept their split; 0 are no longer kept
+- Kept: train 7107, val 1564, test 1276
+- Same-plant groups: 5992; the largest holds 257 images
 
 ## Per dataset and split (kept)
 
 | Dataset | train | val | test |
 |---|---|---|---|
 | ibean | 874 | 289 | 128 |
+| maize_makerere | 828 | 184 | 182 |
+| maize_pretoria | 812 | 175 | 178 |
+| plantcity | 724 | 166 | 153 |
 | plantdoc | 1914 | 338 | 226 |
-| tom2024 | 1939 | 444 | 420 |
+| tom2024 | 1580 | 331 | 329 |
 | tomato_pakistan_2026 | 375 | 81 | 80 |
 
 ## Sample pairs to check by eye
@@ -27,33 +31,33 @@ Splits by "same plant" group: near-copies at cosine ≥ 0.97 across datasets, an
 
 | cosine | a | b | labels |
 |---|---|---|---|
-| 0.9800 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h47_mirror_aug_375.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h48_mirror_aug_335.jpg` (train) | tomato/healthy / tomato/healthy |
-| 0.9802 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/HL_(62)_aug_911.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h99_change_180_aug_948.jpg` (train) | tomato/healthy / tomato/healthy |
-| 0.9803 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/HL_(92)_aug_793.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h72_aug_715.jpg` (train) | tomato/healthy / tomato/healthy |
-| 0.9803 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_late_blight/Lb10_mirror_aug_1173.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_late_blight/Lb10_mirror_aug_545_aug_345.jpg` (train) | tomato/tomato_late_blight / tomato/tomato_late_blight |
-| 0.9805 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h39_lower_aug_541.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h71_aug_776.jpg` (train) | tomato/healthy / tomato/healthy |
-| 0.9807 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h69_hight_aug_624.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h71_hight_aug_702.jpg` (train) | tomato/healthy / tomato/healthy |
-| 0.9807 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h39_change_180_aug_527.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h39_change_270_aug_481.jpg` (train) | tomato/healthy / tomato/healthy |
-| 0.9809 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/HL_(119)_aug_884.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h71_lower_aug_641.jpg` (train) | tomato/healthy / tomato/healthy |
-| 0.9812 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/Gls71_change_180_aug_684.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/Gls71_change_270_aug_692.jpg` (train) | tomato/tomato_septoria_leaf_spot / tomato/tomato_septoria_leaf_spot |
-| 0.9812 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h77_aug_550.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h77_mirror_aug_561.jpg` (train) | tomato/healthy / tomato/healthy |
-| 0.9815 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h5_change_270_aug_277.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h5_change_90_aug_246.jpg` (train) | tomato/healthy / tomato/healthy |
-| 0.9824 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/Gls41_aug_418.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_septora_leaf_spot/Gls41_hight_aug_513.jpg` (train) | tomato/tomato_septoria_leaf_spot / tomato/tomato_septoria_leaf_spot |
-| 0.9825 | `plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Raspberry leaf/171322132-56a6d3693df78cf7729070d3.jpg` (train) | `plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Raspberry leaf/c-204-raspberry.jpg` (train) | raspberry/healthy / raspberry/healthy |
-| 0.9839 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240728-WA0068_aug_788.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240728-WA0068_aug_791.jpg` (train) | tomato/tomato_leaf_mold / tomato/tomato_leaf_mold |
-| 0.9840 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/HL_(86)_aug_799.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h77_mirror_aug_562.jpg` (train) | tomato/healthy / tomato/healthy |
-| 0.9854 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_yellow_curl_virus/IMG_20251102_155012_aug_1056.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_yellow_curl_virus/IMG_20251102_155012_aug_1060.jpg` (train) | tomato/tomato_yellow_leaf_curl_virus / tomato/tomato_yellow_leaf_curl_virus |
-| 0.9855 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/HL_(66)_aug_818.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h95_mirror_aug_1017.jpg` (train) | tomato/healthy / tomato/healthy |
-| 0.9860 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_yellow_curl_virus/IMG_20251102_155119_aug_1088.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_yellow_curl_virus/IMG_20251102_155119_aug_1089.jpg` (train) | tomato/tomato_yellow_leaf_curl_virus / tomato/tomato_yellow_leaf_curl_virus |
-| 0.9867 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/IMG_20251102_160035_aug_1062.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/IMG_20251102_160035_aug_1070.jpg` (train) | tomato/tomato_early_blight / tomato/tomato_early_blight |
-| 0.9881 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h72_change_270_aug_606.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h72_change_90_aug_587.jpg` (train) | tomato/healthy / tomato/healthy |
-| 0.9901 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h69_hight_aug_626.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h69_mirror_aug_669.jpg` (train) | tomato/healthy / tomato/healthy |
-| 0.9902 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240812-WA0411_aug_910.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240812-WA0411_aug_911.jpg` (train) | tomato/tomato_leaf_mold / tomato/tomato_leaf_mold |
-| 0.9909 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h39_hight_aug_532.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h39_hight_aug_533.jpg` (train) | tomato/healthy / tomato/healthy |
-| 0.9965 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/IMG_20251102_160055_aug_1019.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/IMG_20251102_160055_aug_1022.jpg` (train) | tomato/tomato_early_blight / tomato/tomato_early_blight |
-| 0.9990 | `plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Raspberry leaf/579a1aa0c6b3fd0354d1a6b57a40ac42--red-raspberry-medicinal-plants.jpg` (train) | `plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Raspberry leaf/Raspberry-Suckers1.jpg` (train) | raspberry/healthy / raspberry/healthy |
-| 0.9992 | `plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Potato leaf early blight/Blght.jpg` (train) | `plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Tomato leaf late blight/LBleaf2INIA_0.jpg` (train) | potato/potato_early_blight / tomato/tomato_late_blight |
-| 0.9993 | `plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Corn Gray leaf spot/2015070295153021.jpg` (train) | `plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn leaf blight/2015070295153021.jpg` (test) | corn/corn_gray_leaf_spot / corn/corn_northern_leaf_blight |
-| 0.9995 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_yellow_curl_virus/IMG_20251102_154710_aug_1017.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_leaf_yellow_curl_virus/IMG_20251102_154710_aug_1022.jpg` (train) | tomato/tomato_yellow_leaf_curl_virus / tomato/tomato_yellow_leaf_curl_virus |
-| 0.9998 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240728-WA0021_aug_633.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_mold_leaf/IMG-20240728-WA0021_aug_634.jpg` (train) | tomato/tomato_leaf_mold / tomato/tomato_leaf_mold |
-| 1.0008 | `plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/train/Potato leaf early blight/irish-blight-symptoms-on-potato-leaves-atmf8b.jpg` (train) | `plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Potato leaf late blight/irish-blight-symptoms-on-potato-leaves-atmf8b.jpg` (test) | potato/potato_early_blight / potato/potato_late_blight |
+| 0.9803 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h61_hight_aug_299.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h69_hight_aug_624.jpg` (train) | tomato/healthy / tomato/healthy |
+| 0.9806 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/HL_(128)_aug_844.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h71_hight_aug_702.jpg` (train) | tomato/healthy / tomato/healthy |
+| 0.9807 | `plantcity/test/tomato_healthy_leaf/217.JPG` (train) | `plantcity/train/tomato_healthy_leaf/tomato_1335.jpg` (train) | tomato/healthy / tomato/healthy |
+| 0.9814 | `plantcity/train/tomato_bacterial_spot/tomato_946.jpg` (train) | `plantcity/train/tomato_bacterial_spot/tomato_953.jpg` (train) | tomato/tomato_bacterial_spot / tomato/tomato_bacterial_spot |
+| 0.9814 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h39_mirror_vertical_aug_475.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h71_change_180_aug_772.jpg` (train) | tomato/healthy / tomato/healthy |
+| 0.9825 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/HL_(166)_aug_853.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h10_aug_158.jpg` (train) | tomato/healthy / tomato/healthy |
+| 0.9826 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/IMG_20251102_155152_1_aug_887.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Early_blight/IMG_20251102_155152_aug_897.jpg` (train) | tomato/tomato_early_blight / tomato/tomato_early_blight |
+| 0.9827 | `plantcity/test/tomato_late_blight/126.JPG` (train) | `plantcity/train/tomato_late_blight/tomato_509.jpg` (train) | tomato/tomato_late_blight / tomato/tomato_late_blight |
+| 0.9834 | `plantcity/test/tomato spider mites/33.jpg` (train) | `plantcity/train/tomato spider mites/tomato_129.jpg` (train) | tomato/tomato_spider_mites / tomato/tomato_spider_mites |
+| 0.9835 | `plantcity/test/tomato_late_blight/53.JPG` (train) | `plantcity/train/tomato_late_blight/tomato_230.jpg` (train) | tomato/tomato_late_blight / tomato/tomato_late_blight |
+| 0.9844 | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h25_aug_59.jpg` (train) | `tomato_pakistan_2026/Tomato_Leaf_Dataset/Tomato_Healthy/h25_change_90_aug_512.jpg` (train) | tomato/healthy / tomato/healthy |
+| 0.9847 | `plantcity/train/tomato_leaf_mold/tomato_220.jpg` (train) | `plantcity/train/tomato_leaf_mold/tomato_225.jpg` (train) | tomato/tomato_leaf_mold / tomato/tomato_leaf_mold |
+| 0.9849 | `plantcity/train/Corn Normal leaf/321.jpg` (train) | `plantcity/train/Corn Normal leaf/325.jpg` (train) | corn/healthy / corn/healthy |
+| 0.9850 | `plantcity/test/tomato_early_blight/198.JPG` (train) | `plantcity/train/tomato_early_blight/tomato_710.jpg` (train) | tomato/tomato_early_blight / tomato/tomato_early_blight |
+| 0.9850 | `plantcity/train/tomato_healthy_leaf/tomato_574.jpg` (train) | `plantcity/train/tomato_healthy_leaf/tomato_575.jpg` (train) | tomato/healthy / tomato/healthy |
+| 0.9870 | `plantcity/train/tomato_leaf_mold/tomato_1163.jpg` (train) | `plantcity/train/tomato_leaf_mold/tomato_1174.jpg` (train) | tomato/tomato_leaf_mold / tomato/tomato_leaf_mold |
+| 0.9871 | `plantcity/train/tomato_bacterial_spot/tomato_167.jpg` (train) | `plantcity/train/tomato_bacterial_spot/tomato_173.jpg` (train) | tomato/tomato_bacterial_spot / tomato/tomato_bacterial_spot |
+| 0.9871 | `plantcity/test/tomato_healthy_leaf/93.JPG` (train) | `plantcity/train/tomato_healthy_leaf/tomato_874.jpg` (train) | tomato/healthy / tomato/healthy |
+| 0.9887 | `maize_pretoria/NCLB/IMG_3792.JPG` (train) | `maize_pretoria/NCLB/IMG_3799.JPG` (train) | corn/corn_northern_leaf_blight / corn/corn_northern_leaf_blight |
+| 0.9896 | `plantcity/test/tomato_septoria_leaf/tomato_229.jpg` (train) | `plantcity/train/tomato_septoria_leaf/tomato_1206.jpg` (train) | tomato/tomato_septoria_leaf_spot / tomato/tomato_septoria_leaf_spot |
+| 0.9910 | `plantcity/test/Corn Normal leaf/39.jpg` (train) | `plantcity/test/Corn Normal leaf/41.jpg` (train) | corn/healthy / corn/healthy |
+| 0.9919 | `plantcity/test/Corn Normal leaf/2.jpg` (train) | `plantcity/train/Corn Normal leaf/5.jpg` (train) | corn/healthy / corn/healthy |
+| 0.9931 | `plantcity/test/Corn Normal leaf/59.jpg` (train) | `plantcity/train/Corn Normal leaf/234.jpg` (train) | corn/healthy / corn/healthy |
+| 0.9933 | `plantcity/train/tomato_healthy_leaf/tomato_1320.jpg` (train) | `plantcity/train/tomato_healthy_leaf/tomato_1323.jpg` (train) | tomato/healthy / tomato/healthy |
+| 0.9939 | `maize_pretoria/NoFoliarSymptoms/IMG_3752.JPG` (train) | `maize_pretoria/NoFoliarSymptoms/IMG_3753.JPG` (train) | corn/healthy / corn/healthy |
+| 0.9941 | `plantcity/test/tomato_leaf_mold/250.JPG` (train) | `plantcity/train/tomato_leaf_mold/tomato_1010.jpg` (train) | tomato/tomato_leaf_mold / tomato/tomato_leaf_mold |
+| 0.9950 | `plantcity/test/tomato_septoria_leaf/tomato_021.jpg` (train) | `plantcity/train/tomato_septoria_leaf/tomato_521.jpg` (train) | tomato/tomato_septoria_leaf_spot / tomato/tomato_septoria_leaf_spot |
+| 0.9965 | `plantcity/test/tomato_healthy_leaf/tomato_071.jpg` (train) | `plantcity/train/tomato_healthy_leaf/tomato_139.jpg` (train) | tomato/healthy / tomato/healthy |
+| 0.9977 | `plantcity/train/tomato_septoria_leaf/tomato_1121.jpg` (train) | `plantcity/train/tomato_septoria_leaf/tomato_1128.jpg` (train) | tomato/tomato_septoria_leaf_spot / tomato/tomato_septoria_leaf_spot |
+| 0.9997 | `tom2024/tomato_diseases/healthy_leaf/314902902_1681377901570_640x480.jpg` (train) | `tom2024/tomato_diseases/healthy_leaf/706031433_1681377901570_640x480.jpg` (train) | tomato/healthy / tomato/healthy |
