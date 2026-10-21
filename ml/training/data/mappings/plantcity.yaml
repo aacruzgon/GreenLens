@@ -1,0 +1,51 @@
+# PlantCity class folder → (species_id, problem_id | healthy)  (training.md §4, step 3)
+#
+# Slugs as in plantdoc.yaml and tom2024.yaml (issue #4). Only these ten class folders are fetched
+# (sources.yaml, by range read); the other 42 are other crops or problems we have no profile for.
+#
+# test.zip is not a held-out split: 3,030 of its 3,049 files hash the same as a file of the same
+# class in train.zip (2026-10-20), so it holds the photos and train.zip holds them again with
+# their copies (flipped, turned a quarter, mirrored into tiles, or turned by any angle with black
+# corners). Both folders are read as one pool, copies are grouped by perceptual hash
+# (`originals.phash`, copies.py) so a photo and its copies keep one place, and dedupe.py holds
+# out val and test shares by group.
+#
+# Three photos are shipped as both spider mites and leaf mold; dedupe.py drops them as groups
+# whose labels disagree.
+#
+# "tomato_leaf_curl" maps to tomato_yellow_leaf_curl_virus: the source says "leaf curl" (a
+# begomovirus leaf curl by its symptoms), not lab-confirmed TYLCV.
+
+dataset: plantcity
+source: plantcity
+root: .
+splits: { train: . }
+reviewed_by: null
+
+originals:
+  phash: 4
+
+classes:
+  "train/tomato_bacterial_spot": { species_id: tomato, problem_id: tomato_bacterial_spot }
+  "test/tomato_bacterial_spot":  { species_id: tomato, problem_id: tomato_bacterial_spot }
+  "train/tomato_early_blight":   { species_id: tomato, problem_id: tomato_early_blight }
+  "test/tomato_early_blight":    { species_id: tomato, problem_id: tomato_early_blight }
+  "train/tomato_late_blight":    { species_id: tomato, problem_id: tomato_late_blight }
+  "test/tomato_late_blight":     { species_id: tomato, problem_id: tomato_late_blight }
+  "train/tomato_leaf_mold":      { species_id: tomato, problem_id: tomato_leaf_mold }
+  "test/tomato_leaf_mold":       { species_id: tomato, problem_id: tomato_leaf_mold }
+  "train/tomato_septoria_leaf":  { species_id: tomato, problem_id: tomato_septoria_leaf_spot }
+  "test/tomato_septoria_leaf":   { species_id: tomato, problem_id: tomato_septoria_leaf_spot }
+  "train/tomato spider mites":   { species_id: tomato, problem_id: tomato_spider_mites }   # genus level, as tom2024.yaml
+  "test/tomato spider mites":    { species_id: tomato, problem_id: tomato_spider_mites }
+  "train/tomato_leaf_curl":      { species_id: tomato, problem_id: tomato_yellow_leaf_curl_virus }   # "leaf curl", not lab-confirmed TYLCV
+  "test/tomato_leaf_curl":       { species_id: tomato, problem_id: tomato_yellow_leaf_curl_virus }
+  "train/tomato_healthy_leaf":   { species_id: tomato, problem_id: healthy }
+  "test/tomato_healthy_leaf":    { species_id: tomato, problem_id: healthy }
+  # Corn gray leaf spot is dropped: in a random 8 (sheet of 2026-10-20) the leaves carry small
+  # scattered pale flecks, as the healthy class's leaves do, and none of the rectangular grey-tan
+  # lesions between the veins that gray leaf spot makes (Pretoria's set shows them).
+  "train/Corn gray leaf spot":   { species_id: corn, problem_id: null }
+  "test/Corn gray leaf spot":    { species_id: corn, problem_id: null }
+  "train/Corn Normal leaf":      { species_id: corn, problem_id: healthy }
+  "test/Corn Normal leaf":       { species_id: corn, problem_id: healthy }

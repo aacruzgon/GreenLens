@@ -1,0 +1,1467 @@
+{
+  "version": "disease-head-v3c-2026-10-20",
+  "features": "crops",
+  "detector": "rfdetr-s-leaf-2026-10-19-bglic",
+  "supported": [
+    "tomato",
+    "apple",
+    "grape",
+    "pepper",
+    "corn"
+  ],
+  "classes": 19,
+  "left_out_below_min": {},
+  "C": 5,
+  "C_grid": [
+    0.01,
+    0.03,
+    0.1,
+    0.3,
+    1,
+    5,
+    20,
+    50,
+    100,
+    200,
+    500,
+    1000,
+    2000,
+    5000
+  ],
+  "C_at_grid_edge": false,
+  "C_selected_on": "best val top-1 per crop within one standard error of the best dev top 3 as sent, on the photos with a problem",
+  "C_grid_scores": [
+    {
+      "C": 0.01,
+      "val_top1_per_photo": 0.7421100090171325,
+      "val_top1_per_crop": 0.7479452054794521,
+      "val_by_dataset": {
+        "maize_makerere": {
+          "top1": 0.9662921348314607,
+          "n": 178
+        },
+        "maize_pretoria": {
+          "top1": 0.6832298136645962,
+          "n": 161
+        },
+        "plantcity": {
+          "top1": 0.5102040816326531,
+          "n": 98
+        },
+        "plantdoc": {
+          "top1": 0.6952380952380952,
+          "n": 105
+        },
+        "tom2024": {
+          "top1": 0.8285714285714286,
+          "n": 140
+        },
+        "tomato_pakistan_2026": {
+          "top1": 0.5208333333333334,
+          "n": 48
+        }
+      },
+      "dev_top3_sent": 0.8674698795180723,
+      "dev_with_problem": 83,
+      "dev_top1": 0.5106382978723404,
+      "dev_n": 94
+    },
+    {
+      "C": 0.03,
+      "val_top1_per_photo": 0.7565374211000901,
+      "val_top1_per_crop": 0.7561643835616438,
+      "val_by_dataset": {
+        "maize_makerere": {
+          "top1": 0.9662921348314607,
+          "n": 178
+        },
+        "maize_pretoria": {
+          "top1": 0.6770186335403726,
+          "n": 161
+        },
+        "plantcity": {
+          "top1": 0.5612244897959183,
+          "n": 98
+        },
+        "plantdoc": {
+          "top1": 0.7047619047619048,
+          "n": 105
+        },
+        "tom2024": {
+          "top1": 0.8285714285714286,
+          "n": 140
+        },
+        "tomato_pakistan_2026": {
+          "top1": 0.5416666666666666,
+          "n": 48
+        }
+      },
+      "dev_top3_sent": 0.8674698795180723,
+      "dev_with_problem": 83,
+      "dev_top1": 0.4787234042553192,
+      "dev_n": 94
+    },
+    {
+      "C": 0.1,
+      "val_top1_per_photo": 0.7889990982867449,
+      "val_top1_per_crop": 0.7835616438356164,
+      "val_by_dataset": {
+        "maize_makerere": {
+          "top1": 0.9775280898876404,
+          "n": 178
+        },
+        "maize_pretoria": {
+          "top1": 0.6894409937888198,
+          "n": 161
+        },
+        "plantcity": {
+          "top1": 0.6428571428571429,
+          "n": 98
+        },
+        "plantdoc": {
+          "top1": 0.7142857142857143,
+          "n": 105
+        },
+        "tom2024": {
+          "top1": 0.8571428571428571,
+          "n": 140
+        },
+        "tomato_pakistan_2026": {
+          "top1": 0.6041666666666666,
+          "n": 48
+        }
+      },
+      "dev_top3_sent": 0.8433734939759037,
+      "dev_with_problem": 83,
+      "dev_top1": 0.425531914893617,
+      "dev_n": 94
+    },
+    {
+      "C": 0.3,
+      "val_top1_per_photo": 0.8340847610459874,
+      "val_top1_per_crop": 0.8301369863013699,
+      "val_by_dataset": {
+        "maize_makerere": {
+          "top1": 0.9775280898876404,
+          "n": 178
+        },
+        "maize_pretoria": {
+          "top1": 0.7453416149068323,
+          "n": 161
+        },
+        "plantcity": {
+          "top1": 0.7959183673469388,
+          "n": 98
+        },
+        "plantdoc": {
+          "top1": 0.7428571428571429,
+          "n": 105
+        },
+        "tom2024": {
+          "top1": 0.8857142857142857,
+          "n": 140
+        },
+        "tomato_pakistan_2026": {
+          "top1": 0.6666666666666666,
+          "n": 48
+        }
+      },
+      "dev_top3_sent": 0.8554216867469879,
+      "dev_with_problem": 83,
+      "dev_top1": 0.425531914893617,
+      "dev_n": 94
+    },
+    {
+      "C": 1,
+      "val_top1_per_photo": 0.8512173128944995,
+      "val_top1_per_crop": 0.8465753424657534,
+      "val_by_dataset": {
+        "maize_makerere": {
+          "top1": 0.9831460674157303,
+          "n": 178
+        },
+        "maize_pretoria": {
+          "top1": 0.782608695652174,
+          "n": 161
+        },
+        "plantcity": {
+          "top1": 0.826530612244898,
+          "n": 98
+        },
+        "plantdoc": {
+          "top1": 0.7333333333333333,
+          "n": 105
+        },
+        "tom2024": {
+          "top1": 0.9071428571428571,
+          "n": 140
+        },
+        "tomato_pakistan_2026": {
+          "top1": 0.6666666666666666,
+          "n": 48
+        }
+      },
+      "dev_top3_sent": 0.8554216867469879,
+      "dev_with_problem": 83,
+      "dev_top1": 0.40425531914893614,
+      "dev_n": 94
+    },
+    {
+      "C": 5,
+      "val_top1_per_photo": 0.8692515779981965,
+      "val_top1_per_crop": 0.8602739726027397,
+      "val_by_dataset": {
+        "maize_makerere": {
+          "top1": 0.9831460674157303,
+          "n": 178
+        },
+        "maize_pretoria": {
+          "top1": 0.7701863354037267,
+          "n": 161
+        },
+        "plantcity": {
+          "top1": 0.8571428571428571,
+          "n": 98
+        },
+        "plantdoc": {
+          "top1": 0.780952380952381,
+          "n": 105
+        },
+        "tom2024": {
+          "top1": 0.9285714285714286,
+          "n": 140
+        },
+        "tomato_pakistan_2026": {
+          "top1": 0.6875,
+          "n": 48
+        }
+      },
+      "dev_top3_sent": 0.8433734939759037,
+      "dev_with_problem": 83,
+      "dev_top1": 0.4148936170212766,
+      "dev_n": 94
+    },
+    {
+      "C": 20,
+      "val_top1_per_photo": 0.8692515779981965,
+      "val_top1_per_crop": 0.8643835616438356,
+      "val_by_dataset": {
+        "maize_makerere": {
+          "top1": 0.9775280898876404,
+          "n": 178
+        },
+        "maize_pretoria": {
+          "top1": 0.7701863354037267,
+          "n": 161
+        },
+        "plantcity": {
+          "top1": 0.8673469387755102,
+          "n": 98
+        },
+        "plantdoc": {
+          "top1": 0.8,
+          "n": 105
+        },
+        "tom2024": {
+          "top1": 0.9285714285714286,
+          "n": 140
+        },
+        "tomato_pakistan_2026": {
+          "top1": 0.7083333333333334,
+          "n": 48
+        }
+      },
+      "dev_top3_sent": 0.7951807228915663,
+      "dev_with_problem": 83,
+      "dev_top1": 0.3829787234042553,
+      "dev_n": 94
+    },
+    {
+      "C": 50,
+      "val_top1_per_photo": 0.8692515779981965,
+      "val_top1_per_crop": 0.8657534246575342,
+      "val_by_dataset": {
+        "maize_makerere": {
+          "top1": 0.9775280898876404,
+          "n": 178
+        },
+        "maize_pretoria": {
+          "top1": 0.7577639751552795,
+          "n": 161
+        },
+        "plantcity": {
+          "top1": 0.8775510204081632,
+          "n": 98
+        },
+        "plantdoc": {
+          "top1": 0.819047619047619,
+          "n": 105
+        },
+        "tom2024": {
+          "top1": 0.9357142857142857,
+          "n": 140
+        },
+        "tomato_pakistan_2026": {
+          "top1": 0.6875,
+          "n": 48
+        }
+      },
+      "dev_top3_sent": 0.7469879518072289,
+      "dev_with_problem": 83,
+      "dev_top1": 0.3829787234042553,
+      "dev_n": 94
+    },
+    {
+      "C": 100,
+      "val_top1_per_photo": 0.8656447249774571,
+      "val_top1_per_crop": 0.863013698630137,
+      "val_by_dataset": {
+        "maize_makerere": {
+          "top1": 0.9775280898876404,
+          "n": 178
+        },
+        "maize_pretoria": {
+          "top1": 0.7453416149068323,
+          "n": 161
+        },
+        "plantcity": {
+          "top1": 0.8775510204081632,
+          "n": 98
+        },
+        "plantdoc": {
+          "top1": 0.8,
+          "n": 105
+        },
+        "tom2024": {
+          "top1": 0.9428571428571428,
+          "n": 140
+        },
+        "tomato_pakistan_2026": {
+          "top1": 0.7083333333333334,
+          "n": 48
+        }
+      },
+      "dev_top3_sent": 0.7349397590361446,
+      "dev_with_problem": 83,
+      "dev_top1": 0.3723404255319149,
+      "dev_n": 94
+    },
+    {
+      "C": 200,
+      "val_top1_per_photo": 0.8674481514878268,
+      "val_top1_per_crop": 0.8657534246575342,
+      "val_by_dataset": {
+        "maize_makerere": {
+          "top1": 0.9775280898876404,
+          "n": 178
+        },
+        "maize_pretoria": {
+          "top1": 0.7577639751552795,
+          "n": 161
+        },
+        "plantcity": {
+          "top1": 0.8775510204081632,
+          "n": 98
+        },
+        "plantdoc": {
+          "top1": 0.8,
+          "n": 105
+        },
+        "tom2024": {
+          "top1": 0.9357142857142857,
+          "n": 140
+        },
+        "tomato_pakistan_2026": {
+          "top1": 0.7291666666666666,
+          "n": 48
+        }
+      },
+      "dev_top3_sent": 0.7228915662650602,
+      "dev_with_problem": 83,
+      "dev_top1": 0.3723404255319149,
+      "dev_n": 94
+    },
+    {
+      "C": 500,
+      "val_top1_per_photo": 0.8620378719567178,
+      "val_top1_per_crop": 0.8589041095890411,
+      "val_by_dataset": {
+        "maize_makerere": {
+          "top1": 0.9775280898876404,
+          "n": 178
+        },
+        "maize_pretoria": {
+          "top1": 0.7515527950310559,
+          "n": 161
+        },
+        "plantcity": {
+          "top1": 0.8775510204081632,
+          "n": 98
+        },
+        "plantdoc": {
+          "top1": 0.780952380952381,
+          "n": 105
+        },
+        "tom2024": {
+          "top1": 0.9214285714285714,
+          "n": 140
+        },
+        "tomato_pakistan_2026": {
+          "top1": 0.7291666666666666,
+          "n": 48
+        }
+      },
+      "dev_top3_sent": 0.7228915662650602,
+      "dev_with_problem": 83,
+      "dev_top1": 0.35106382978723405,
+      "dev_n": 94
+    },
+    {
+      "C": 1000,
+      "val_top1_per_photo": 0.8548241659152389,
+      "val_top1_per_crop": 0.8465753424657534,
+      "val_by_dataset": {
+        "maize_makerere": {
+          "top1": 0.9550561797752809,
+          "n": 178
+        },
+        "maize_pretoria": {
+          "top1": 0.7515527950310559,
+          "n": 161
+        },
+        "plantcity": {
+          "top1": 0.8571428571428571,
+          "n": 98
+        },
+        "plantdoc": {
+          "top1": 0.7714285714285715,
+          "n": 105
+        },
+        "tom2024": {
+          "top1": 0.9142857142857143,
+          "n": 140
+        },
+        "tomato_pakistan_2026": {
+          "top1": 0.7083333333333334,
+          "n": 48
+        }
+      },
+      "dev_top3_sent": 0.7108433734939759,
+      "dev_with_problem": 83,
+      "dev_top1": 0.3617021276595745,
+      "dev_n": 94
+    },
+    {
+      "C": 2000,
+      "val_top1_per_photo": 0.8476104598737602,
+      "val_top1_per_crop": 0.8397260273972603,
+      "val_by_dataset": {
+        "maize_makerere": {
+          "top1": 0.9550561797752809,
+          "n": 178
+        },
+        "maize_pretoria": {
+          "top1": 0.7453416149068323,
+          "n": 161
+        },
+        "plantcity": {
+          "top1": 0.8571428571428571,
+          "n": 98
+        },
+        "plantdoc": {
+          "top1": 0.7619047619047619,
+          "n": 105
+        },
+        "tom2024": {
+          "top1": 0.9,
+          "n": 140
+        },
+        "tomato_pakistan_2026": {
+          "top1": 0.6875,
+          "n": 48
+        }
+      },
+      "dev_top3_sent": 0.7349397590361446,
+      "dev_with_problem": 83,
+      "dev_top1": 0.32978723404255317,
+      "dev_n": 94
+    },
+    {
+      "C": 5000,
+      "val_top1_per_photo": 0.848512173128945,
+      "val_top1_per_crop": 0.836986301369863,
+      "val_by_dataset": {
+        "maize_makerere": {
+          "top1": 0.949438202247191,
+          "n": 178
+        },
+        "maize_pretoria": {
+          "top1": 0.7515527950310559,
+          "n": 161
+        },
+        "plantcity": {
+          "top1": 0.826530612244898,
+          "n": 98
+        },
+        "plantdoc": {
+          "top1": 0.7333333333333333,
+          "n": 105
+        },
+        "tom2024": {
+          "top1": 0.9071428571428571,
+          "n": 140
+        },
+        "tomato_pakistan_2026": {
+          "top1": 0.75,
+          "n": 48
+        }
+      },
+      "dev_top3_sent": 0.7228915662650602,
+      "dev_with_problem": 83,
+      "dev_top1": 0.35106382978723405,
+      "dev_n": 94
+    }
+  ],
+  "C_with_dataset_left_out_of_val": {
+    "maize_makerere": 5,
+    "maize_pretoria": 5,
+    "plantcity": 5,
+    "plantdoc": 5,
+    "tom2024": 5,
+    "tomato_pakistan_2026": 5
+  },
+  "temperature": 1.8205856928246815,
+  "temperature_fitted_on": "dev cases' single-crop leaf photos",
+  "temperature_val": 0.7081565802972932,
+  "temperature_dev": 1.8205856928246815,
+  "views": 4,
+  "dropped_classes": [
+    "tomato/tomato_mosaic_virus",
+    "corn/corn_curvularia_leaf_spot"
+  ],
+  "balance_sources": false,
+  "train_rows": 54945,
+  "train_photos": 5331,
+  "val": {
+    "n": 1109,
+    "left_out_class_images": 44,
+    "left_out_species_images": {
+      "bean": 289,
+      "blueberry": 16,
+      "cherry": 7,
+      "peach": 15,
+      "potato": 27,
+      "raspberry": 17,
+      "soybean": 9,
+      "squash": 18,
+      "strawberry": 13
+    },
+    "headline": {
+      "excludes": [
+        "bean"
+      ],
+      "restricted_top1_multiclass": {
+        "value": 0.8692515779981965,
+        "n": 1109
+      },
+      "restricted_top3_over_3_classes": {
+        "value": 0.9759846301633045,
+        "n": 1041
+      },
+      "ece_after_T_multiclass": {
+        "value": 0.29494216194169387,
+        "n": 1109
+      }
+    },
+    "per_dataset": {
+      "maize_makerere": {
+        "restricted_top1_multiclass": {
+          "value": 0.9836956521739131,
+          "n": 184
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.27225837350377574,
+          "n": 184
+        }
+      },
+      "maize_pretoria": {
+        "restricted_top1_multiclass": {
+          "value": 0.7657142857142857,
+          "n": 175
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.21026644374053272,
+          "n": 175
+        }
+      },
+      "plantcity": {
+        "restricted_top1_multiclass": {
+          "value": 0.9096385542168675,
+          "n": 166
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.42323427415264286,
+          "n": 166
+        }
+      },
+      "plantdoc": {
+        "restricted_top1_multiclass": {
+          "value": 0.780952380952381,
+          "n": 210
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.19842268936889465,
+          "n": 210
+        }
+      },
+      "tom2024": {
+        "restricted_top1_multiclass": {
+          "value": 0.9488054607508533,
+          "n": 293
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.3810843151144609,
+          "n": 293
+        }
+      },
+      "tomato_pakistan_2026": {
+        "restricted_top1_multiclass": {
+          "value": 0.691358024691358,
+          "n": 81
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.25871057275021286,
+          "n": 81
+        }
+      }
+    },
+    "full_top1": 0.8647430117222723,
+    "full_top3": 0.9774571686203787,
+    "restricted_top1_multiclass": {
+      "value": 0.8692515779981965,
+      "n": 1109
+    },
+    "restricted_top3_over_3_classes": {
+      "value": 0.9759846301633045,
+      "n": 1041
+    },
+    "ece_before_T_multiclass": {
+      "value": 0.1178826379555846,
+      "n": 1109
+    },
+    "ece_after_T_multiclass": {
+      "value": 0.29494216194169387,
+      "n": 1109
+    },
+    "trivial_share": 0.0,
+    "per_crop": {
+      "apple": {
+        "n": 36,
+        "classes": 3,
+        "top1": 0.9166666666666666,
+        "top3": 1.0
+      },
+      "corn": {
+        "n": 503,
+        "classes": 4,
+        "top1": 0.878727634194831,
+        "top3": 0.9920477137176938
+      },
+      "grape": {
+        "n": 16,
+        "classes": 2,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "pepper": {
+        "n": 16,
+        "classes": 2,
+        "top1": 0.75,
+        "top3": 1.0
+      },
+      "tomato": {
+        "n": 538,
+        "classes": 8,
+        "top1": 0.8568773234200744,
+        "top3": 0.9609665427509294
+      }
+    },
+    "per_class": {
+      "apple/apple_cedar_apple_rust": {
+        "n": 12,
+        "recall": 1.0,
+        "precision": 0.8
+      },
+      "apple/apple_scab": {
+        "n": 12,
+        "recall": 0.9166666666666666,
+        "precision": 1.0
+      },
+      "apple/healthy": {
+        "n": 12,
+        "recall": 0.8333333333333334,
+        "precision": 1.0
+      },
+      "corn/corn_common_rust": {
+        "n": 36,
+        "recall": 0.8888888888888888,
+        "precision": 0.64
+      },
+      "corn/corn_gray_leaf_spot": {
+        "n": 107,
+        "recall": 0.8130841121495327,
+        "precision": 0.7699115044247787
+      },
+      "corn/corn_northern_leaf_blight": {
+        "n": 138,
+        "recall": 0.9057971014492754,
+        "precision": 0.9057971014492754
+      },
+      "corn/healthy": {
+        "n": 222,
+        "recall": 0.8918918918918919,
+        "precision": 0.9801980198019802
+      },
+      "grape/grape_black_rot": {
+        "n": 8,
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "grape/healthy": {
+        "n": 8,
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "pepper/healthy": {
+        "n": 8,
+        "recall": 0.75,
+        "precision": 0.75
+      },
+      "pepper/pepper_bacterial_leaf_spot": {
+        "n": 8,
+        "recall": 0.75,
+        "precision": 0.75
+      },
+      "tomato/healthy": {
+        "n": 206,
+        "recall": 0.970873786407767,
+        "precision": 0.9478672985781991
+      },
+      "tomato/tomato_bacterial_spot": {
+        "n": 39,
+        "recall": 0.6923076923076923,
+        "precision": 0.7941176470588235
+      },
+      "tomato/tomato_early_blight": {
+        "n": 37,
+        "recall": 0.7567567567567568,
+        "precision": 0.7
+      },
+      "tomato/tomato_late_blight": {
+        "n": 38,
+        "recall": 0.7105263157894737,
+        "precision": 0.7105263157894737
+      },
+      "tomato/tomato_leaf_mold": {
+        "n": 67,
+        "recall": 0.7313432835820896,
+        "precision": 0.8166666666666667
+      },
+      "tomato/tomato_septoria_leaf_spot": {
+        "n": 47,
+        "recall": 0.851063829787234,
+        "precision": 0.7692307692307693
+      },
+      "tomato/tomato_spider_mites": {
+        "n": 70,
+        "recall": 0.8714285714285714,
+        "precision": 0.8970588235294118
+      },
+      "tomato/tomato_yellow_leaf_curl_virus": {
+        "n": 34,
+        "recall": 0.8529411764705882,
+        "precision": 0.8285714285714286
+      }
+    },
+    "per_leaf_crop": {
+      "crops": 2507,
+      "photos_with_no_leaf_kept": 8,
+      "crops_per_photo_median": 1.0,
+      "top1_multiclass": {
+        "value": 0.8101316314319904,
+        "n": 2507
+      },
+      "top3_over_3_classes": {
+        "value": 0.9544650751547303,
+        "n": 2262
+      },
+      "single_crop_photos_top1_multiclass": {
+        "value": 0.8602739726027397,
+        "n": 730
+      },
+      "single_crop_photos_ece_before_T": {
+        "value": 0.07937008709940191,
+        "n": 730
+      },
+      "single_crop_photos_ece_after_T": {
+        "value": 0.24986712632522193,
+        "n": 730
+      }
+    },
+    "note": "Headline numbers are per photo: the mean of its crops' restricted, tempered probabilities; the worker doesn't average, it returns each crop's top 3. per_leaf_crop scores each crop against its photo's label, which is wrong for a healthy leaf in a diseased photo; photos with one crop are the cleanest and the closest to what the worker returns. Restricted metrics assume the species is right."
+  },
+  "test": {
+    "n": 1034,
+    "left_out_class_images": 44,
+    "left_out_species_images": {
+      "bean": 128,
+      "blueberry": 11,
+      "cherry": 10,
+      "peach": 9,
+      "potato": 11,
+      "raspberry": 7,
+      "soybean": 8,
+      "squash": 6,
+      "strawberry": 8
+    },
+    "headline": {
+      "excludes": [
+        "bean"
+      ],
+      "restricted_top1_multiclass": {
+        "value": 0.8471953578336557,
+        "n": 1034
+      },
+      "restricted_top3_over_3_classes": {
+        "value": 0.981404958677686,
+        "n": 968
+      },
+      "ece_after_T_multiclass": {
+        "value": 0.26508921729137574,
+        "n": 1034
+      }
+    },
+    "per_dataset": {
+      "maize_makerere": {
+        "restricted_top1_multiclass": {
+          "value": 0.9340659340659341,
+          "n": 182
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.2473717115162509,
+          "n": 182
+        }
+      },
+      "maize_pretoria": {
+        "restricted_top1_multiclass": {
+          "value": 0.7134831460674157,
+          "n": 178
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.17143089699156783,
+          "n": 178
+        }
+      },
+      "plantcity": {
+        "restricted_top1_multiclass": {
+          "value": 0.7973856209150327,
+          "n": 153
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.33730278185169027,
+          "n": 153
+        }
+      },
+      "plantdoc": {
+        "restricted_top1_multiclass": {
+          "value": 0.8082191780821918,
+          "n": 146
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.17286342521561568,
+          "n": 146
+        }
+      },
+      "tom2024": {
+        "restricted_top1_multiclass": {
+          "value": 0.9627118644067797,
+          "n": 295
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.3521486054611224,
+          "n": 295
+        }
+      },
+      "tomato_pakistan_2026": {
+        "restricted_top1_multiclass": {
+          "value": 0.6875,
+          "n": 80
+        },
+        "ece_after_T_multiclass": {
+          "value": 0.25573369812419905,
+          "n": 80
+        }
+      }
+    },
+    "full_top1": 0.8413926499032882,
+    "full_top3": 0.9825918762088974,
+    "restricted_top1_multiclass": {
+      "value": 0.8471953578336557,
+      "n": 1034
+    },
+    "restricted_top3_over_3_classes": {
+      "value": 0.981404958677686,
+      "n": 968
+    },
+    "ece_before_T_multiclass": {
+      "value": 0.08753125421346156,
+      "n": 1034
+    },
+    "ece_after_T_multiclass": {
+      "value": 0.26508921729137574,
+      "n": 1034
+    },
+    "trivial_share": 0.0,
+    "per_crop": {
+      "apple": {
+        "n": 29,
+        "classes": 3,
+        "top1": 0.896551724137931,
+        "top3": 1.0
+      },
+      "corn": {
+        "n": 485,
+        "classes": 4,
+        "top1": 0.8474226804123711,
+        "top3": 0.9855670103092784
+      },
+      "grape": {
+        "n": 20,
+        "classes": 2,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "pepper": {
+        "n": 17,
+        "classes": 2,
+        "top1": 1.0,
+        "top3": 1.0
+      },
+      "tomato": {
+        "n": 483,
+        "classes": 8,
+        "top1": 0.8322981366459627,
+        "top3": 0.9772256728778468
+      }
+    },
+    "per_class": {
+      "apple/apple_cedar_apple_rust": {
+        "n": 10,
+        "recall": 1.0,
+        "precision": 0.9090909090909091
+      },
+      "apple/apple_scab": {
+        "n": 10,
+        "recall": 0.9,
+        "precision": 0.8181818181818182
+      },
+      "apple/healthy": {
+        "n": 9,
+        "recall": 0.7777777777777778,
+        "precision": 1.0
+      },
+      "corn/corn_common_rust": {
+        "n": 30,
+        "recall": 0.6,
+        "precision": 0.72
+      },
+      "corn/corn_gray_leaf_spot": {
+        "n": 92,
+        "recall": 0.8478260869565217,
+        "precision": 0.6341463414634146
+      },
+      "corn/corn_northern_leaf_blight": {
+        "n": 137,
+        "recall": 0.8540145985401459,
+        "precision": 0.9140625
+      },
+      "corn/healthy": {
+        "n": 226,
+        "recall": 0.8761061946902655,
+        "precision": 0.9473684210526315
+      },
+      "grape/grape_black_rot": {
+        "n": 8,
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "grape/healthy": {
+        "n": 12,
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "pepper/healthy": {
+        "n": 8,
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "pepper/pepper_bacterial_leaf_spot": {
+        "n": 9,
+        "recall": 1.0,
+        "precision": 1.0
+      },
+      "tomato/healthy": {
+        "n": 167,
+        "recall": 0.9341317365269461,
+        "precision": 0.9397590361445783
+      },
+      "tomato/tomato_bacterial_spot": {
+        "n": 32,
+        "recall": 0.8125,
+        "precision": 0.7878787878787878
+      },
+      "tomato/tomato_early_blight": {
+        "n": 35,
+        "recall": 0.6571428571428571,
+        "precision": 0.5609756097560976
+      },
+      "tomato/tomato_late_blight": {
+        "n": 48,
+        "recall": 0.7083333333333334,
+        "precision": 0.8292682926829268
+      },
+      "tomato/tomato_leaf_mold": {
+        "n": 60,
+        "recall": 0.7833333333333333,
+        "precision": 0.8245614035087719
+      },
+      "tomato/tomato_septoria_leaf_spot": {
+        "n": 38,
+        "recall": 0.7105263157894737,
+        "precision": 0.75
+      },
+      "tomato/tomato_spider_mites": {
+        "n": 73,
+        "recall": 0.8904109589041096,
+        "precision": 0.8904109589041096
+      },
+      "tomato/tomato_yellow_leaf_curl_virus": {
+        "n": 30,
+        "recall": 0.8,
+        "precision": 0.6666666666666666
+      }
+    },
+    "per_leaf_crop": {
+      "crops": 1784,
+      "photos_with_no_leaf_kept": 18,
+      "crops_per_photo_median": 1.0,
+      "top1_multiclass": {
+        "value": 0.8139013452914798,
+        "n": 1784
+      },
+      "top3_over_3_classes": {
+        "value": 0.9671939074399531,
+        "n": 1707
+      },
+      "single_crop_photos_top1_multiclass": {
+        "value": 0.8496042216358839,
+        "n": 758
+      },
+      "single_crop_photos_ece_before_T": {
+        "value": 0.07870894230135513,
+        "n": 758
+      },
+      "single_crop_photos_ece_after_T": {
+        "value": 0.23484265356076425,
+        "n": 758
+      }
+    },
+    "note": "Headline numbers are per photo: the mean of its crops' restricted, tempered probabilities; the worker doesn't average, it returns each crop's top 3. per_leaf_crop scores each crop against its photo's label, which is wrong for a healthy leaf in a diseased photo; photos with one crop are the cleanest and the closest to what the worker returns. Restricted metrics assume the species is right."
+  },
+  "dev": {
+    "photos": 94,
+    "left_out": {
+      "leaf photos with several crops": 18,
+      "no leaf shot": 2,
+      "species without head classes": 10
+    },
+    "at_T_val": {
+      "n": 94,
+      "with_problem": 83,
+      "top3_sent": 0.8433734939759037,
+      "chance_top3_sent": 0.572289156626506,
+      "top3_sent_can_miss": {
+        "n": 64,
+        "top3": 0.796875,
+        "chance": 0.4453125
+      },
+      "top3_problems": 0.8554216867469879,
+      "chance_top3_problems": 0.6419965576592084,
+      "top3_problems_can_miss": {
+        "n": 52,
+        "top3": 0.7692307692307693,
+        "chance": 0.42857142857142844
+      },
+      "top1": 0.4148936170212766,
+      "ece": 0.28886651276500025,
+      "nll": 1.7408904992415926,
+      "medium": {
+        "n": 65,
+        "right": 26
+      },
+      "healthy": {
+        "n": 11,
+        "evidence": 3,
+        "blocked": 4
+      },
+      "called_healthy": {
+        "n": 83,
+        "called": 1
+      }
+    },
+    "at_T_dev": {
+      "n": 94,
+      "with_problem": 83,
+      "top3_sent": 0.8433734939759037,
+      "chance_top3_sent": 0.572289156626506,
+      "top3_sent_can_miss": {
+        "n": 64,
+        "top3": 0.796875,
+        "chance": 0.4453125
+      },
+      "top3_problems": 0.8554216867469879,
+      "chance_top3_problems": 0.6419965576592084,
+      "top3_problems_can_miss": {
+        "n": 52,
+        "top3": 0.7692307692307693,
+        "chance": 0.42857142857142844
+      },
+      "top1": 0.4148936170212766,
+      "ece": 0.09883314982948505,
+      "nll": 1.4055219334964315,
+      "medium": {
+        "n": 24,
+        "right": 17
+      },
+      "healthy": {
+        "n": 11,
+        "evidence": 2,
+        "blocked": 0
+      },
+      "called_healthy": {
+        "n": 83,
+        "called": 1
+      }
+    },
+    "per_species": {
+      "apple": {
+        "n": 11,
+        "with_problem": 11,
+        "top3_sent": 1.0,
+        "chance_top3_sent": 1.0,
+        "top3_sent_can_miss": {
+          "n": 0,
+          "top3": null,
+          "chance": null
+        },
+        "top3_problems": 1.0,
+        "chance_top3_problems": 1.0,
+        "top3_problems_can_miss": {
+          "n": 0,
+          "top3": null,
+          "chance": null
+        },
+        "top1": 0.7272727272727273,
+        "ece": 0.2642897753012979,
+        "nll": 0.7840139385180304,
+        "medium": {
+          "n": 11,
+          "right": 8
+        },
+        "healthy": {
+          "n": 0,
+          "evidence": 0,
+          "blocked": 0
+        },
+        "called_healthy": {
+          "n": 11,
+          "called": 0
+        }
+      },
+      "corn": {
+        "n": 15,
+        "with_problem": 12,
+        "top3_sent": 0.9166666666666666,
+        "chance_top3_sent": 0.75,
+        "top3_sent_can_miss": {
+          "n": 12,
+          "top3": 0.9166666666666666,
+          "chance": 0.75
+        },
+        "top3_problems": 1.0,
+        "chance_top3_problems": 1.0,
+        "top3_problems_can_miss": {
+          "n": 0,
+          "top3": null,
+          "chance": null
+        },
+        "top1": 0.4666666666666667,
+        "ece": 0.31091099568910824,
+        "nll": 1.2230664467342323,
+        "medium": {
+          "n": 1,
+          "right": 0
+        },
+        "healthy": {
+          "n": 3,
+          "evidence": 2,
+          "blocked": 0
+        },
+        "called_healthy": {
+          "n": 12,
+          "called": 1
+        }
+      },
+      "grape": {
+        "n": 8,
+        "with_problem": 8,
+        "top3_sent": 1.0,
+        "chance_top3_sent": 1.0,
+        "top3_sent_can_miss": {
+          "n": 0,
+          "top3": null,
+          "chance": null
+        },
+        "top3_problems": 1.0,
+        "chance_top3_problems": 1.0,
+        "top3_problems_can_miss": {
+          "n": 0,
+          "top3": null,
+          "chance": null
+        },
+        "top1": 1.0,
+        "ece": 0.09400535733284532,
+        "nll": 0.1028902123486869,
+        "medium": {
+          "n": 8,
+          "right": 8
+        },
+        "healthy": {
+          "n": 0,
+          "evidence": 0,
+          "blocked": 0
+        },
+        "called_healthy": {
+          "n": 8,
+          "called": 0
+        }
+      },
+      "tomato": {
+        "n": 60,
+        "with_problem": 52,
+        "top3_sent": 0.7692307692307693,
+        "chance_top3_sent": 0.375,
+        "top3_sent_can_miss": {
+          "n": 52,
+          "top3": 0.7692307692307693,
+          "chance": 0.375
+        },
+        "top3_problems": 0.7692307692307693,
+        "chance_top3_problems": 0.42857142857142844,
+        "top3_problems_can_miss": {
+          "n": 52,
+          "top3": 0.7692307692307693,
+          "chance": 0.42857142857142844
+        },
+        "top1": 0.26666666666666666,
+        "ece": 0.10190484593557443,
+        "nll": 1.7387631670860537,
+        "medium": {
+          "n": 4,
+          "right": 1
+        },
+        "healthy": {
+          "n": 8,
+          "evidence": 0,
+          "blocked": 0
+        },
+        "called_healthy": {
+          "n": 52,
+          "called": 0
+        }
+      }
+    },
+    "per_source": {
+      "fieldsets/ccmt-2023": {
+        "n": 5,
+        "with_problem": 5,
+        "top3_sent": 1.0,
+        "chance_top3_sent": 0.375,
+        "top3_sent_can_miss": {
+          "n": 5,
+          "top3": 1.0,
+          "chance": 0.375
+        },
+        "top3_problems": 1.0,
+        "chance_top3_problems": 0.42857142857142855,
+        "top3_problems_can_miss": {
+          "n": 5,
+          "top3": 1.0,
+          "chance": 0.42857142857142855
+        },
+        "top1": 0.8,
+        "ece": 0.44059706798216003,
+        "nll": 1.1684429106266432,
+        "medium": {
+          "n": 0,
+          "right": 0
+        },
+        "healthy": {
+          "n": 0,
+          "evidence": 0,
+          "blocked": 0
+        },
+        "called_healthy": {
+          "n": 5,
+          "called": 0
+        }
+      },
+      "fieldsets/maize-bd-2026": {
+        "n": 15,
+        "with_problem": 12,
+        "top3_sent": 0.9166666666666666,
+        "chance_top3_sent": 0.75,
+        "top3_sent_can_miss": {
+          "n": 12,
+          "top3": 0.9166666666666666,
+          "chance": 0.75
+        },
+        "top3_problems": 1.0,
+        "chance_top3_problems": 1.0,
+        "top3_problems_can_miss": {
+          "n": 0,
+          "top3": null,
+          "chance": null
+        },
+        "top1": 0.4666666666666667,
+        "ece": 0.31091099568910824,
+        "nll": 1.2230664467342323,
+        "medium": {
+          "n": 1,
+          "right": 0
+        },
+        "healthy": {
+          "n": 3,
+          "evidence": 2,
+          "blocked": 0
+        },
+        "called_healthy": {
+          "n": 12,
+          "called": 1
+        }
+      },
+      "fieldsets/tomato-bd-2025": {
+        "n": 23,
+        "with_problem": 20,
+        "top3_sent": 0.85,
+        "chance_top3_sent": 0.375,
+        "top3_sent_can_miss": {
+          "n": 20,
+          "top3": 0.85,
+          "chance": 0.375
+        },
+        "top3_problems": 0.85,
+        "chance_top3_problems": 0.42857142857142855,
+        "top3_problems_can_miss": {
+          "n": 20,
+          "top3": 0.85,
+          "chance": 0.42857142857142855
+        },
+        "top1": 0.34782608695652173,
+        "ece": 0.1357992389421407,
+        "nll": 1.6523549906702741,
+        "medium": {
+          "n": 1,
+          "right": 1
+        },
+        "healthy": {
+          "n": 3,
+          "evidence": 0,
+          "blocked": 0
+        },
+        "called_healthy": {
+          "n": 20,
+          "called": 0
+        }
+      },
+      "fieldsets/tomato-bd-iphone-2025": {
+        "n": 20,
+        "with_problem": 15,
+        "top3_sent": 0.6666666666666666,
+        "chance_top3_sent": 0.375,
+        "top3_sent_can_miss": {
+          "n": 15,
+          "top3": 0.6666666666666666,
+          "chance": 0.375
+        },
+        "top3_problems": 0.6666666666666666,
+        "chance_top3_problems": 0.42857142857142866,
+        "top3_problems_can_miss": {
+          "n": 15,
+          "top3": 0.6666666666666666,
+          "chance": 0.42857142857142866
+        },
+        "top1": 0.1,
+        "ece": 0.2574868499654777,
+        "nll": 1.8121703688011188,
+        "medium": {
+          "n": 2,
+          "right": 0
+        },
+        "healthy": {
+          "n": 5,
+          "evidence": 0,
+          "blocked": 0
+        },
+        "called_healthy": {
+          "n": 15,
+          "called": 0
+        }
+      },
+      "inat": {
+        "n": 31,
+        "with_problem": 31,
+        "top3_sent": 0.8709677419354839,
+        "chance_top3_sent": 0.7580645161290323,
+        "top3_sent_can_miss": {
+          "n": 12,
+          "top3": 0.6666666666666666,
+          "chance": 0.375
+        },
+        "top3_problems": 0.8709677419354839,
+        "chance_top3_problems": 0.778801843317972,
+        "top3_problems_can_miss": {
+          "n": 12,
+          "top3": 0.6666666666666666,
+          "chance": 0.4285714285714286
+        },
+        "top1": 0.5806451612903226,
+        "ece": 0.20121086551706535,
+        "nll": 1.0865573655831995,
+        "medium": {
+          "n": 20,
+          "right": 16
+        },
+        "healthy": {
+          "n": 0,
+          "evidence": 0,
+          "blocked": 0
+        },
+        "called_healthy": {
+          "n": 31,
+          "called": 0
+        }
+      }
+    }
+  }
+}
