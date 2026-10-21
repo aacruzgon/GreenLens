@@ -1,6 +1,6 @@
 import { ClerkLoaded, ClerkProvider, useAuth, useUser } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { clearTokenProvider, setOnSignedOut, setTokenProvider } from "@/api";
 
@@ -67,15 +67,22 @@ function ClerkSession({ onSignedOut, children }: { onSignedOut: () => void; chil
   useSignOutCleanup(Boolean(isSignedIn), onSignedOut);
 
   // AuthBridge: the api layer never imports Clerk, so the session hands it a token function.
-  useEffect(() => {
+  // @clerk/expo's useAuth returns a new getToken on every render, so the latest one is kept in a ref and the
+  // provider is registered once per sign-in: re-registering bumps the api layer's session and drops a refresh
+  // in flight (#97). A layout effect, so it is in place before SessionGate's queries send GET /me.
+  const clerk = useRef({ getToken, signOut });
+  useLayoutEffect(() => {
+    clerk.current = { getToken, signOut };
+  });
+  useLayoutEffect(() => {
     if (!isSignedIn) {
       clearTokenProvider();
       return;
     }
-    setTokenProvider((opts) => getToken(opts?.skipCache ? { skipCache: true } : undefined));
-    setOnSignedOut(() => void signOut());
+    setTokenProvider((opts) => clerk.current.getToken(opts?.skipCache ? { skipCache: true } : undefined));
+    setOnSignedOut(() => void clerk.current.signOut());
     return () => clearTokenProvider();
-  }, [isSignedIn, getToken, signOut]);
+  }, [isSignedIn]);
 
   // Two-step sign-in by text: the phone verified at sign-up becomes the account's second factor,
   // so every later sign-in asks for a code by SMS (Clerk's phone_code second factor). A failure is
@@ -123,7 +130,8 @@ function DemoSession({ onSignedOut, children }: { onSignedOut: () => void; child
   const [isSignedIn, setSignedIn] = useState(DEMO_AUTO_SIGNIN);
   useSignOutCleanup(isSignedIn, onSignedOut);
 
-  useEffect(() => {
+  // A layout effect like ClerkSession's, so the provider is in place before the first request.
+  useLayoutEffect(() => {
     if (!isSignedIn) {
       clearTokenProvider();
       return;
