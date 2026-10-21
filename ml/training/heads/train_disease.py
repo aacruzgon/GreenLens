@@ -137,6 +137,21 @@ def select_c(scores: list[dict], select_on: str) -> int:
     return max(near, key=lambda i: scores[i]["val_top1_per_crop"])
 
 
+def val_without(score: dict, dataset: str) -> float:
+    """A grid point's val top-1 per crop with one dataset's crops left out."""
+    rest = [v for d, v in score["val_by_dataset"].items() if d != dataset]
+    return sum(v["top1"] * v["n"] for v in rest) / sum(v["n"] for v in rest)
+
+
+def c_without_each_dataset(scores: list[dict], select_on: str) -> dict:
+    """The C that `select_c` picks with each dataset's val crops left out in turn, so a dataset
+    whose val looks like its train (Makerere's close-ups of one field) can be seen not to decide C."""
+    if select_on == "photo":
+        return {}
+    return {d: scores[select_c([{**s, "val_top1_per_crop": val_without(s, d)} for s in scores], select_on)]["C"]
+            for d in scores[0]["val_by_dataset"]}
+
+
 def dev_set(manifest: Path, photos: Path, emb: Embedder, crop_source) -> dict:
     """The dev cases, and their leaf photos' embeddings from the caches, as calibrate reads them."""
     from ml.training.eval import calibrate as cb
@@ -308,6 +323,7 @@ def main(argv=None) -> None:
     crop_sel = dv["single"] & crop_multi
     if crop_sel.sum() < 200:
         crop_sel = crop_multi
+    crop_ds = dv["ds_img"][dv["group"]][crop_sel]
     grid_scores = []
     for C in grid:
         clf = LogisticRegression(C=C, max_iter=3000)
@@ -315,7 +331,11 @@ def main(argv=None) -> None:
         per_photo = topk_acc(photo_probs("val", clf)[val_multi], dv["y_img"][val_multi], 1)
         lv_c = restricted_logits(clf.decision_function(dv["X"][crop_sel]), species_of_class, dv["sp"][crop_sel])
         per_crop = topk_acc(softmax(lv_c), dv["y"][crop_sel], 1)
-        grid_scores.append({"C": C, "val_top1_per_photo": per_photo, "val_top1_per_crop": per_crop})
+        right = softmax(lv_c).argmax(1) == dv["y"][crop_sel]
+        by_ds = {d: {"top1": float(right[crop_ds == d].mean()), "n": int((crop_ds == d).sum())}
+                 for d in sorted(set(crop_ds))}
+        grid_scores.append({"C": C, "val_top1_per_photo": per_photo, "val_top1_per_crop": per_crop,
+                            "val_by_dataset": by_ds})
         print(f"C={C}: restricted val top-1 per photo {per_photo:.3f}, per crop {per_crop:.3f}", end="")
         if dev:
             from ml.training.eval import calibrate as cb
@@ -476,6 +496,7 @@ def main(argv=None) -> None:
                           else "val top-1 per crop, photos with one crop" if args.select_on == "crop" and crop_sel is not crop_multi
                           else "val top-1 per crop, every crop" if args.select_on == "crop" else "val top-1 per photo"),
         "C_grid_scores": grid_scores,
+        "C_with_dataset_left_out_of_val": c_without_each_dataset(grid_scores, args.select_on),
         "temperature": T,
         "temperature_fitted_on": ("dev cases' single-crop leaf photos" if args.temperature_on == "dev"
                                   else "val crops of photos with one crop" if fit_on is dv["single"] else "all val crops"),
