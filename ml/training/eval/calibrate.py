@@ -482,7 +482,7 @@ def write_report(out: str, species: dict, disease: list[dict], args) -> None:
     s1, sf, so = species["t_1"], species["fitted"], species["fitted_out_of_fold"]
     lines = [f"# Calibration on the dev cases: {out}", "",
              "The offline part of evaluation 5 ([calibrate.py](../calibrate.py)). The values are proposals: the "
-             "label matrix is the 20-species stand-in until M12, and the disease head isn't chosen yet (#85). "
+             "label matrix is the 20-species stand-in until M12, and the manifest's disease head is the one training 6 chose. "
              f"Every fit on the dev cases is also scored **out of fold**: each case at a temperature fitted on the other "
              f"{FOLDS - 1} of {FOLDS} folds, the cases dealt into folds within each species (seed 0).", "",
              "## Species: BioCLIP 2 zero-shot (`species_temperature`)", "",

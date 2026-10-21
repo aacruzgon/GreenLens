@@ -8,10 +8,10 @@
 # mismatch. After changing this file, run `python -m ml.models.cpu_manifest` and
 # `python -m ml.models.check`.
 #
-# Status 2026-10-16: development entries. The leaf detector is its clean fine-tune; the label
+# Status 2026-10-20: development entries. The leaf detector is its clean fine-tune; the label
 # matrix is a STAND-IN (ml/training/labels/standin_labels.yaml) until the knowledge seed has
-# species and organism files; the disease head is v1d on whole images of the four datasets,
-# with proposed slugs (issue #4). Thresholds are the docs' starting values, set from the
+# species and organism files; the disease head is v3c on our detector's leaf crops, with
+# proposed slugs (issue #4). Thresholds are the docs' starting values, set from the
 # evaluation set on Oct 22–23.
 
 # --- api (control plane): the S1 entries of docs/vision/README.md §6, upstream files ---
@@ -186,34 +186,40 @@ runs_on           = "perception"
 label_set_version = "233482ce598f591b"
 
 [[model]]
-name                      = "disease_head_disease-head-v1d-2026-10-16"
-version                   = "disease-head-v1d-2026-10-16"
-file                      = "disease_head/disease-head-v1d-2026-10-16.json"
-sha256                    = "b6f92cc73982c6d07c148800c0c0b71380cba6e9e8de5818cf4c47a3537bd44f"
-licence                   = "Data CC BY 4.0 (PlantDoc, TOM2024, Tomato-Pakistan 2026, see its caveat in sources.yaml) and MIT (iBean); weights ours"
-source                    = "logistic regression (C=50, each dataset weighted equally within a class) on BioCLIP 2 fp16 features of whole images from PlantDoc, TOM2024, Tomato-Pakistan 2026 (one image per original photo, PlantDoc copies dropped) and iBean; ml/training/heads/train_disease.py --balance-sources; report in ml/training/heads/reports/"
+name                      = "disease_head_disease-head-v3c-2026-10-20"
+version                   = "disease-head-v3c-2026-10-20"
+file                      = "disease_head/disease-head-v3c-2026-10-20.json"
+sha256                    = "0b035a88f44c69889c879e3415d087c22f94b669c68fcea231c302139187c33e"
+licence                   = "Data CC BY 4.0 (PlantDoc, TOM2024, Tomato-Pakistan 2026, see its caveat in sources.yaml, PlantCity, Pretoria's maize) and CC0 1.0 (Makerere's maize); weights ours"
+source                    = "logistic regression (C=5: the best val top-1 per crop within one standard error of the best dev top-3) on BioCLIP 2 fp16 features of our leaf detector's crops, 4 augmented views each, from PlantDoc, TOM2024, Tomato-Pakistan 2026, PlantCity, Pretoria's and Makerere's maize; 19 classes (tomato mosaic virus and corn curvularia leaf spot dropped: no knowledge profile); ml/training/heads/train_disease.py --features crops --views 4 --select-on dev-top3; report in ml/training/heads/reports/"
 runs_on                   = "perception"
-classifier_labels_version = "disease-head-v1d-2026-10-16"
+classifier_labels_version = "disease-head-v3c-2026-10-20"
 
-  # T_disease (0.8208, fitted on validation with the restricted softmax) lives in the head
-  # file's `temperature` only (ml/models/FORMATS.md), so it can't drift from the weights.
+  # T_disease (1.8206, fitted on the evaluation set's dev cases, their single-crop leaf photos;
+  # evaluation.md §5) lives in the head file's `temperature` only (ml/models/FORMATS.md), so it
+  # can't drift from the weights. Fitted on validation it would be 0.708.
   [model.config]
   crop_grow = 0.10
 
   # Restricted to the true species, a crop with k or fewer classes is right at top-k by
   # construction, so each top-k counts only crops with more than k classes, and calibration
-  # only crops with 2 or more. The headline leaves out bean until issue #4 decides on it.
-  # Trained and scored on WHOLE images; the worker feeds it leaf crops, so these numbers won't
-  # carry over until heads train on detector crops.
+  # only crops with 2 or more. Bean is outside the head. Per crop is what the worker returns:
+  # each crop of a photo with exactly one crop. The dev numbers are the head's job: the right
+  # problem in the top 3 the API adds to the candidates (architecture 6.3).
   [model.check]
-  test_top1_multiclass_crops = 0.814     # 667 images: PlantDoc test and the field sets' held-out test (TOM2024 by field visit)
-  test_top3_over_3_classes   = 0.964     # 590 images: tomato and corn
-  test_ece_multiclass        = 0.032     # target 0.05 (evaluation.md §4): met
-  val_top1_multiclass_crops  = 0.819     # 768 images
-  test_top1_plantdoc         = 0.743     # 167 images, web photos
-  test_top1_tom2024          = 0.845     # 420 images from field visits never trained on
-  test_top1_tomato_pakistan  = 0.800     # 80 images
-  test_top1_ibean            = 0.961     # 128 images; bean is outside the headline
+  dev_top3                   = 0.830     # 94 dev leaf photos (guessing 0.561); v2c 0.74
+  dev_medium_claims          = 24        # a problem at 0.5 or more at T_disease; 17 right
+  test_top1_per_crop         = 0.850     # 758 one-crop test photos
+  test_top1_per_photo        = 0.847     # 1,034 test photos, the mean of each photo's crops
+  test_top3_over_3_classes   = 0.981     # 968 photos: tomato and corn
+  test_ece_per_crop          = 0.079     # before T; 0.235 at T_disease, underconfident on photos like the training data's
+  val_top1_per_crop          = 0.860     # 730 one-crop val photos
+  test_top1_plantdoc         = 0.808     # 146 photos, web photos
+  test_top1_tom2024          = 0.963     # 295 photos from field visits never trained on
+  test_top1_tomato_pakistan  = 0.688     # 80 photos; v2c 0.762, the one set that loses
+  test_top1_plantcity        = 0.797     # 153 photos; shots of one leaf below cosine 0.97 can straddle splits
+  test_top1_maize_pretoria   = 0.713     # 178 photos
+  test_top1_maize_makerere   = 0.934     # 182 photos from the same fields and week as training
 
 [[model]]
 name      = "plant_probe"

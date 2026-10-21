@@ -100,3 +100,13 @@ auth   = "hf"
 sha256 = "76eb8b41f2f9826f5e417adbb2ef0130ba1ffd7608422aee7e8fec2dcf2020cd"
 url    = "https://huggingface.co/GreenLens/pdm-models/resolve/3306025cee0e4faeeb5cc0d8dd160ca98e3dafcc/leaf_detector/rfdetr-s-leaf-2026-10-19-bglic-fp32.onnx"
 auth   = "hf"
+
+[[file]]                                  # disease_head_disease-head-v3c-2026-10-20
+sha256 = "0b035a88f44c69889c879e3415d087c22f94b669c68fcea231c302139187c33e"
+url    = "https://huggingface.co/GreenLens/pdm-models/resolve/8473aadd0ba732cb761cb0a0b97ddd38e259b851/disease_head/disease-head-v3c-2026-10-20.json"
+auth   = "hf"
+
+[[file]]                                  # disease_head_disease-head-v3c-2026-10-20
+sha256 = "b4e78618d78d6091a617ae3d47e54d88c53b30865b533b0ebf666e7cdc173ded"
+url    = "https://huggingface.co/GreenLens/pdm-models/resolve/8473aadd0ba732cb761cb0a0b97ddd38e259b851/disease_head/disease-head-v3c-2026-10-20.cpu.json"
+auth   = "hf"
