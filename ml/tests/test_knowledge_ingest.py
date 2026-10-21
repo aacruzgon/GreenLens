@@ -209,14 +209,16 @@ def test_tag_keeps_relevant_chunks_and_drops_the_rest(seed_dir, tmp_path):
     chunks_dir.mkdir()
     recs = [{"id": "src.1", "source_id": "src", "heading": "Early Blight", "text": "Target-like rings on old leaves."},
             {"id": "src.2", "source_id": "src", "heading": "", "text": "ISSN 1198-712X. Published 2005."},
-            {"id": "src.3", "source_id": "src", "heading": "Control", "text": "Mix 2 tbsp per gallon of water."}]
+            {"id": "src.3", "source_id": "src", "heading": "Control", "text": "Mix 2 tbsp per gallon of water."},
+            {"id": "src.4", "source_id": "src", "heading": "Indoors", "text": "Vacuum up the wasps."}]
     (chunks_dir / "src.jsonl").write_text("".join(json.dumps(r) + "\n" for r in recs))
     no_grant = {"id": "nogrant.1", "source_id": "nogrant", "heading": "Leaf spots",
                 "text": "Tell early blight from Septoria by the rings."}
     (chunks_dir / "nogrant.jsonl").write_text(json.dumps(no_grant) + "\n")
     plan = tmp_path / "plan.yaml"
     plan.write_text(yaml.safe_dump({"problems": [{"id": "tomato_late_blight", "name": "Late blight"}],
-                                    "facts_only_sources": ["nogrant"]}))
+                                    "facts_only_sources": ["nogrant"],
+                                    "withheld_chunks": {"src.4": "about wasps indoors"}}))
 
     def reply(kw):
         text = kw["messages"][0]["content"]
@@ -235,14 +237,15 @@ def test_tag_keeps_relevant_chunks_and_drops_the_rest(seed_dir, tmp_path):
     dose = lambda products, texts: [{"id": t["id"], "reason": "a rate"} for t in texts if "tbsp" in t["text"]]
     summary = tag.run(seed_dir, plan, chunks_dir, tmp_path / "tags", llm.Llm(FakeClient(reply), tmp_path / "c.jsonl"),
                       dose=dose, sanitize=identity)
-    assert summary["src"]["kept"] == 1 and summary["src"]["dropped"] == 1 and summary["src"]["withheld"] == 1
+    assert summary["src"]["kept"] == 1 and summary["src"]["dropped"] == 1 and summary["src"]["withheld"] == 2
     assert len(summary["src"]["sample"]) == 1
     kept = [json.loads(l) for l in (seed_dir / "chunks/src.jsonl").read_text().splitlines()]
     assert kept == [{"id": "src.1", "source_id": "src", "crop": "tomato", "problem": "tomato_early_blight",
                      "organism": None, "topic": "symptoms", "text": "Target-like rings on old leaves."}]
     decided = {json.loads(l)["id"]: json.loads(l) for l in (tmp_path / "tags/src.jsonl").read_text().splitlines()}
     assert {i: (d["dropped"], d["withheld"]) for i, d in decided.items()} == {
-        "src.1": (None, None), "src.2": ("not relevant", None), "src.3": (None, "dose check: a rate")}
+        "src.1": (None, None), "src.2": ("not relevant", None), "src.3": (None, "dose check: a rate"),
+        "src.4": (None, "withheld at review: about wasps indoors")}
     assert decided["src.1"]["problems"] == ["tomato_early_blight"], "the single tag is in the list"
     # A source with no reuse grant is tagged, with every problem it compares, but its wording
     # stays out of the seed.
@@ -253,6 +256,18 @@ def test_tag_keeps_relevant_chunks_and_drops_the_rest(seed_dir, tmp_path):
 
 
 # --- extract ---------------------------------------------------------------------------------
+
+def test_quote_links_what_the_seed_does_not_carry():
+    chunks = {"a.1": {"source_id": "a", "text": "Rings on\nold leaves."},
+              "a.2": {"source_id": "a", "text": "Spray at 2%.", "withheld": "dose check: a rate"},
+              "a.3": {"source_id": "a", "text": "Vacuum them.", "withheld": "withheld at review: indoors"},
+              "b.1": {"source_id": "b", "text": "Not ours."}}
+    lines = extract._quote(chunks, ["b.1", "a.3", "a.2", "a.1", "zz.9"], {"b"}, {"a": "https://a"}).splitlines()
+    assert lines[0] == "  - `a.1`: Rings on old leaves."
+    assert "(https://a, it gives a rate: run fetch and chunk" in lines[1]
+    assert "(https://a, withheld at review: indoors: run fetch and chunk" in lines[2]
+    assert "(b, wording not committed: run fetch and chunk" in lines[3] and len(lines) == 4
+
 
 PROBLEM_REPLY = {
     "kind": "fungal", "prevalence": "common", "damage_patterns": [],

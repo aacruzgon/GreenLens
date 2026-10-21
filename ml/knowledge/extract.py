@@ -238,14 +238,15 @@ def _sources(chunks_by_id: dict, ids) -> list[str]:
 
 def _quote(chunks_by_id: dict, ids, facts_only: set[str] = frozenset(), urls: dict | None = None) -> str:
     """Each cited excerpt in full (at most about 200 words), or its id and link for a facts-only
-    source (plan.yaml), whose wording isn't committed, and for a chunk withheld for a rate."""
+    source (plan.yaml), whose wording isn't committed, and for a withheld chunk."""
     out = []
     for i in sorted(set(ids)):
         c = chunks_by_id.get(i)
         if not c:
             continue
         if c["source_id"] in facts_only or c.get("withheld"):
-            why = "it gives a rate" if c.get("withheld") else "wording not committed"
+            w = c.get("withheld")
+            why = "wording not committed" if not w else "it gives a rate" if w.startswith("dose check") else w
             out.append(f"  - `{i}` ({(urls or {}).get(c['source_id'], c['source_id'])}, {why}: run "
                        f"fetch and chunk, then read build/chunks/{c['source_id']}.jsonl)")
         else:

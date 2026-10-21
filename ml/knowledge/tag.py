@@ -13,7 +13,8 @@ on each run of the tomato slice (training.md §10, running it), so Sonnet 5.5 is
 A chunk is dropped when it isn't relevant (navigation, legal text, other crops, the publisher's
 own business). One the dose check fails on stays out of the seed, which never carries a rate, a
 dose or a mixing ratio, wherever the page put one (`withheld`); extraction still reads it, for
-the advice around the rate, and the drafts it writes are dose-checked themselves. Kept chunks go
+the advice around the rate, and the drafts it writes are dose-checked themselves. plan.yaml's
+`withheld_chunks` withholds the chunks a reviewer named the same way. Kept chunks go
 to seed/chunks/<source_id>.jsonl in the ChunkSeed shape; every decision goes to
 build/tags/<source_id>.jsonl, which extract.py reads, and the script prints a 10% sample per
 source for the teammate's spot check.
@@ -123,6 +124,7 @@ def run(seed_root: Path = SEED, plan_path: Path = PLAN, chunks: Path = CHUNKS, t
     plan = read_yaml(plan_path) if plan_path.exists() else {}
     crops, problems, organisms = ids(seed, plan)
     facts_only = set(plan.get("facts_only_sources", []))
+    by_hand = plan.get("withheld_chunks") or {}
     system, sch = system_prompt(crops, problems, organisms), sanitize(schema(crops, problems, organisms))
     model = model or llm.Llm()
     tags.mkdir(parents=True, exist_ok=True)
@@ -140,7 +142,8 @@ def run(seed_root: Path = SEED, plan_path: Path = PLAN, chunks: Path = CHUNKS, t
         failing = {f["id"]: f for f in dose(seed.products, [{"id": d["id"], "text": d["text"]}
                                                             for d in decided if not d["dropped"]])}
         for d in decided:
-            d["withheld"] = f"dose check: {failing[d['id']]['reason']}" if d["id"] in failing else None
+            d["withheld"] = (f"dose check: {failing[d['id']]['reason']}" if d["id"] in failing
+                             else f"withheld at review: {by_hand[d['id']]}" if d["id"] in by_hand else None)
         kept = [{"id": d["id"], "source_id": source_id, "crop": d["crop"], "problem": d["problem"],
                  "organism": d["organism"], "topic": d["topic"], "text": d["text"]}
                 for d in decided if not d["dropped"] and not d["withheld"]]

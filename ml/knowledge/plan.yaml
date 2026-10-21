@@ -14,6 +14,14 @@ facts_only_sources:
   - clemson_hgic_tomato_insect_pests
   - isu_growing_tomatoes_home_garden   # no chunks: the care profile cites it by hand
 
+# Chunks withheld by hand at the signing review (2026-10-20, S5): they pass the dose check but
+# mustn't reach the chat. tag.py withholds them as it does a chunk that gives a rate, so they
+# stay out of seed/chunks; steps can still cite them, and the review files link them.
+withheld_chunks:
+  isu_parasitic_wasps.3: about wasps indoors, not in the garden
+  isu_parasitic_wasps.4: about wasps indoors; reads as how to get rid of a beneficial
+  edis_in307_twospotted_spider_mite.10: gives a rate (2%) the dose check doesn't catch
+
 species:
   - id: tomato
     name: Tomato
