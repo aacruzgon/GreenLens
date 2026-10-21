@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 import yaml
 
-from ml.knowledge import chunk, discriminate, extract, fetch, llm, tag, validate
+from ml.knowledge import chunk, discriminate, extract, fetch, llm, review, tag, validate
 from ml.knowledge.seed import load
 
 FIXTURE = Path(__file__).parent / "fixtures/knowledge_seed"
@@ -437,3 +437,71 @@ def test_discriminate_writes_the_flags_and_the_pair_table(seed_dir):
     # Running again replaces the section instead of adding a second one.
     discriminate.run(seed_dir, WordEmbedder())
     assert p.with_suffix(".review.md").read_text().count(discriminate.SECTION) == 1
+
+
+def test_discriminate_can_refresh_the_table_and_keep_a_reviewers_flags(seed_dir):
+    p = seed_dir / "problems/tomato_septoria_leaf_spot.yaml"
+    d = yaml.safe_load(p.read_text())
+    d["looks_like"] = [{"problem": "tomato_early_blight", "how_to_tell": "Smaller spots, no rings."}]
+    d["reviewed_by"] = ""
+    p.write_text(yaml.safe_dump(d, sort_keys=False))
+    discriminate.run(seed_dir, WordEmbedder())
+    review = p.with_suffix(".review.md")
+    review.write_text(review.read_text() + "\n**Override:** the reviewer's own set.\n")
+    flags = [i["discriminating"] for i in yaml.safe_load(p.read_text())["indicators"]]
+    chosen = [not f for f in flags[:3]] + flags[3:]   # a different set than the proposal
+    d = yaml.safe_load(p.read_text())
+    for i, f in zip(d["indicators"], chosen):
+        i["discriminating"] = f
+    p.write_text(yaml.safe_dump(d, sort_keys=False))
+    before = p.read_text()
+    discriminate.run(seed_dir, WordEmbedder(), keep_flags=True)
+    assert p.read_text() == before, "the YAML is left alone"
+    body = review.read_text()
+    assert "| Proposed | In the YAML |" in body and body.count(discriminate.SECTION) == 1
+    assert body.rstrip().endswith("**Override:** the reviewer's own set."), "the notes under the table stay"
+
+
+# --- review ----------------------------------------------------------------------------------
+
+def test_review_rebuilds_the_record_sections_from_the_yaml(seed_dir):
+    p = seed_dir / "problems/tomato_early_blight.yaml"
+    old = "\n".join([
+        "# Review: Early blight (`tomato_early_blight`)", "", "Draft of 2026-10-20 by `m`.", "",
+        "## Model notes", "", "The model's note.", "",
+        "## Indicators", "",
+        "- **tomato_early_blight.concentric_rings** (weight 3, lower_leaves, leaf_closeup)",
+        "  - Text: drafted text", "  - Question: drafted question",
+        "  - `example_extension_tomato_diseases.1`: Early blight starts as ...", "",
+        "## Treatments", "", "- **dropped_step** (cultural, new): gone", "  - `x.9`: gone", "",
+        "## Changes after review (2026-10-20)", "", "- Point 1: kept as written.", "",
+        discriminate.SECTION, "", "| table |", "", "**Override:** kept.", ""])
+    p.with_suffix(".review.md").write_text(old)
+    d = yaml.safe_load(p.read_text())
+    d["indicators"][0]["text"] = "Rings like a target, edited by hand"
+    d["indicators"].append({**d["indicators"][1], "id": "tomato_early_blight.added_by_hand",
+                            "discriminating": False})
+    p.write_text(yaml.safe_dump(d, sort_keys=False))
+    assert review.run(seed_dir, all_records=True) == ["problems/tomato_early_blight.review.md"]
+    body = p.with_suffix(".review.md").read_text()
+    assert body.startswith("# Review: Early blight (`tomato_early_blight`)\n\nDraft of 2026-10-20 by `m`.")
+    assert "## Model notes (as first drafted)\n\nThe model's note." in body
+    ring = body.split("- **tomato_early_blight.concentric_rings**")[1].split("\n\n")[0]
+    assert "(weight 3, discriminating," in ring and "Text: Rings like a target, edited by hand" in ring
+    assert "`example_extension_tomato_diseases.1`: Early blight starts as small brown spots" in ring, \
+        "the old citation is kept and quoted from the seed"
+    added = body.split("- **tomato_early_blight.added_by_hand**")[1].split("\n\n")[0]
+    assert "(no excerpt cited)" in added
+    assert "dropped_step" not in body and "- **mulch_soil_surface** (" in body
+    assert "- **tomato_septoria_leaf_spot**: Septoria spots are smaller" in body
+    assert body.index("## Changes after review") < body.index(discriminate.SECTION)
+    assert body.rstrip().endswith("**Override:** kept.")
+    # A citation written by hand under a line is quoted on the next run, which changes nothing else.
+    head, tail = body.split("- **tomato_early_blight.added_by_hand**")
+    p.with_suffix(".review.md").write_text(head + "- **tomato_early_blight.added_by_hand**" + tail.replace(
+        "  - (no excerpt cited)", "  - `example_extension_tomato_diseases.1`", 1))
+    review.run(seed_dir, all_records=True)
+    again = p.with_suffix(".review.md").read_text()
+    added = again.split("- **tomato_early_blight.added_by_hand**")[1].split("\n\n")[0]
+    assert "`example_extension_tomato_diseases.1`: Early blight starts" in added
+    assert review.run(seed_dir, all_records=True) == []
