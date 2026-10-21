@@ -177,10 +177,12 @@ def main() -> None:
     raw = index.RAW.resolve()
     relpath = lambda r: str(r.path.resolve().relative_to(raw))
     committed: dict[str, str] = {}
+    committed_ds: set[str] = set()
     if args.keep_splits:
         for split in ("train", "val", "test"):
             for line in (SPLITS / f"{split}.tsv").read_text().splitlines()[1:]:
                 committed[line.split("\t")[1]] = split
+                committed_ds.add(line.split("\t")[0])
 
     def rank(i: int):
         r = recs[i]
@@ -231,6 +233,10 @@ def main() -> None:
     out, dropped_near_test, kept_where = assign_splits(plant, committed, relpath, has_test,
                                                        args.val_share, args.test_share)
     split_of = {id(r): name for name, rs in out.items() for r in rs}
+    # A committed dataset's image that wasn't in the splits before: a group whose label conflict
+    # went away when a class was dropped in place (training.md section 4, step 3) comes back here.
+    new_in_committed = collections.Counter(r.dataset for rs in out.values() for r in rs
+                                           if r.dataset in committed_ds and relpath(r) not in committed)
     straddle = collections.Counter(
         recs[kept[a]].dataset for a, b, _ in near_all
         if id(recs[kept[a]]) in split_of and id(recs[kept[b]]) in split_of
@@ -261,7 +267,8 @@ def main() -> None:
         f"- Dropped as near-copies (≥ {args.split_threshold}) of a test image: {len(dropped_near_test)}",
         f"- Near-copies (≥ {args.split_threshold}) still in different splits: {dict(straddle) or 0} (within datasets grouped by field visit instead)",
         *([f"- `--keep-splits`: {kept_where} of the {len(committed)} committed images kept their split; "
-           f"{len(committed) - kept_where} are no longer kept"] if args.keep_splits else []),
+           f"{len(committed) - kept_where} are no longer kept; new from datasets already in the splits: "
+           f"{dict(new_in_committed) or 0}"] if args.keep_splits else []),
         f"- Kept: train {len(out['train'])}, val {len(out['val'])}, test {len(out['test'])}",
         f"- Same-plant groups: {len(plant_groups)}; the largest holds {max(plant_groups)} images",
         "",

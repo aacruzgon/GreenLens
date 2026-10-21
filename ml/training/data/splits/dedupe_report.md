@@ -9,7 +9,7 @@ Splits by "same plant" group: near-copies at cosine ≥ 0.97 across datasets, an
 - tomato_pakistan_2026: 2690 files dropped as copies of another source's photos (`originals.drop_if_name_in`)
 - Dropped as near-copies (≥ 0.97) of a test image: 5
 - Near-copies (≥ 0.97) still in different splits: {'maize_makerere': 154, 'maize_pretoria': 26, 'tom2024': 88, 'tomato_pakistan_2026': 39} (within datasets grouped by field visit instead)
-- `--keep-splits`: 6544 of the 6544 committed images kept their split; 0 are no longer kept
+- `--keep-splits`: 6544 of the 6544 committed images kept their split; 0 are no longer kept; new from datasets already in the splits: {'tom2024': 1}
 - Kept: train 7107, val 1564, test 1276
 - Same-plant groups: 5992; the largest holds 257 images
 
