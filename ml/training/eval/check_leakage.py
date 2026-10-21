@@ -13,8 +13,9 @@ has no images there: the check would quietly cover less.
   The hash sets the 32 coefficients above the median, so distances are even: 4 is the largest
   below 6, where the closest different photos sit (evaluation 2).
 - **BioCLIP 2 cosine:** the embeddings the training code caches (`ml.pdm_vision.features`, on the
-  GPU for files not cached yet). A pair at `--cosine` or more is a match, which also catches crops
-  the hash misses. The default is training 4's duplicate threshold. The field-set picks drop a
+  GPU for files not cached yet). A pair at `--cosine` or more is a match. It backs the hash up but
+  catches few crops: 24% of copies with 5% cut off each edge, 8% with 10% (`--calibrate`, evaluation
+  2). The default is training 4's duplicate threshold. The field-set picks drop a
   candidate at 0.95 (`fieldsets.COPY`), which costs nothing there; here a match fails the run, and
   at 0.95 one tomato photo had 155 tomato training images above the bar (evaluation 2).
 

@@ -39,11 +39,13 @@ use vlm::{
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // `RUST_LOG` filtering, default `info` as in `api`: without it only errors would show.
+    // ONNX Runtime logs each session's graph optimisation at `info` through `ort` (about 7,600
+    // lines when the 3070's worker starts), so `ort` defaults to `warn`.
     tracing_subscriber::fmt()
         .json()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,ort=warn")),
         )
         .init();
     let cli = Cli::parse();

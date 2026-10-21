@@ -8,6 +8,7 @@ import { Banner, Button, Text, TextField } from "@/ui";
 import { AuthShell } from "../components/AuthShell";
 import { clerkErrorMessage } from "../model/clerkErrors";
 import { useSession } from "../session";
+import { continueSignIn } from "../signInSteps";
 
 export function SignInScreen() {
   const session = useSession();
@@ -35,24 +36,7 @@ function ClerkSignIn() {
     setError(null);
     const { error: passwordError } = await signIn.password({ identifier: email.trim(), password });
     if (passwordError) return setError(clerkErrorMessage(passwordError));
-    // Two-step sign-in: a code by text to the phone reserved for it.
-    if (signIn.status === "needs_second_factor") {
-      const { error: sendError } = await signIn.mfa.sendPhoneCode();
-      if (sendError) return setError(clerkErrorMessage(sendError));
-      return router.push({ pathname: "/verify", params: { mode: "sms" } });
-    }
-    // Device Trust: a password sign-in on a new device, without a second factor, confirms it with an email code.
-    if (signIn.status === "needs_client_trust") {
-      const { error: sendError } = await signIn.mfa.sendEmailCode();
-      if (sendError) return setError(clerkErrorMessage(sendError));
-      return router.push({ pathname: "/verify", params: { mode: "trust" } });
-    }
-    if (signIn.status === "complete") {
-      const { error: finalizeError } = await signIn.finalize();
-      if (finalizeError) setError(clerkErrorMessage(finalizeError));
-      return;
-    }
-    setError("This sign-in needs a step the app doesn't support yet.");
+    setError(await continueSignIn(signIn, router));
   }
 
   return (
@@ -82,6 +66,11 @@ function ClerkSignIn() {
         busy={fetchStatus === "fetching"}
         disabled={!email.trim() || !password}
         size="large"
+      />
+      <Button
+        label="Forgot password?"
+        variant="plain"
+        onPress={() => router.push({ pathname: "/reset-password", params: { email: email.trim() } })}
       />
       <Link href="/sign-up" asChild>
         <Text variant="body" color="textMuted" accessibilityRole="link">

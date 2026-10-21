@@ -1,5 +1,5 @@
-//! Geocoder tests: the live Open-Meteo fixture, Nominatim's documented shape, the offline zone
-//! finder and the cache.
+//! Geocoder tests: the live Open-Meteo, Nominatim and Zippopotam answers of 2026-10-20, the
+//! offline zone finder, the cache, and the GPS label when the reverse lookup fails.
 
 use std::sync::{Arc, LazyLock};
 
@@ -12,6 +12,11 @@ use wiremock::{
 use super::*;
 
 const TORONTO: &str = include_str!("../../fixtures/geocoding_toronto.json");
+const NOMINATIM_M5V3L9: &str = include_str!("../../fixtures/nominatim_search_m5v3l9.json");
+const REVERSE_TORONTO: &str = include_str!("../../fixtures/nominatim_reverse_toronto.json");
+const REVERSE_NIAGARA: &str = include_str!("../../fixtures/nominatim_reverse_niagara_county.json");
+const REVERSE_OCEAN: &str = include_str!("../../fixtures/nominatim_reverse_ocean.json");
+const ZIPPOPOTAM_M5V: &str = include_str!("../../fixtures/zippopotam_m5v.json");
 
 /// Loading the boundaries takes a moment; share one finder across tests.
 static ZONES: LazyLock<Arc<TimeZoneFinder>> = LazyLock::new(|| Arc::new(TimeZoneFinder::default()));
@@ -98,12 +103,7 @@ async fn canadian_postal_code_through_nominatim() {
     Mock::given(method("GET"))
         .and(path("/search"))
         .and(query_param("postalcode", "M5V3L9"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([{
-            "lat": "43.6420847", "lon": "-79.3853098",
-            "display_name": "M5V 3L9, Toronto, Ontario, Canada",
-            "address": {"city": "Toronto", "state": "Ontario", "ISO3166-2-lvl4": "CA-ON",
-                        "postcode": "M5V 3L9", "country_code": "ca"}
-        }])))
+        .respond_with(ResponseTemplate::new(200).set_body_string(NOMINATIM_M5V3L9))
         .mount(&server)
         .await;
     let g = geocoder(&server)
@@ -124,12 +124,7 @@ async fn fsa_falls_back_to_zippopotam() {
         .await;
     Mock::given(method("GET"))
         .and(path("/ca/M5V"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "post code": "M5V", "country": "Canada", "country abbreviation": "CA",
-            "places": [{"place name": "Downtown Toronto (CN Tower / King and Spadina)",
-                        "longitude": "-79.3686", "latitude": "43.6525",
-                        "state": "Ontario", "state abbreviation": "ON"}]
-        })))
+        .respond_with(ResponseTemplate::new(200).set_body_string(ZIPPOPOTAM_M5V))
         .mount(&server)
         .await;
     let g = geocoder(&server)
@@ -160,10 +155,7 @@ async fn gps_reverse_sends_a_rounded_point() {
         .and(path("/reverse"))
         .and(query_param("lat", "43.65"))
         .and(query_param("lon", "-79.38"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "lat": "43.65", "lon": "-79.38",
-            "address": {"city": "Toronto", "ISO3166-2-lvl4": "CA-ON"}
-        })))
+        .respond_with(ResponseTemplate::new(200).set_body_string(REVERSE_TORONTO))
         .mount(&server)
         .await;
     let at = Coordinates::new(43.653_21, -79.383_21).unwrap();
@@ -176,4 +168,81 @@ async fn gps_reverse_sends_a_rounded_point() {
         g.coordinates, at,
         "the caller's point is kept, only the lookup is rounded"
     );
+}
+
+#[test]
+fn live_reverse_shapes() {
+    let NominatimReverse::Place(p) = serde_json::from_str(REVERSE_TORONTO).unwrap() else {
+        panic!("a place")
+    };
+    assert_eq!(p.address.label().as_deref(), Some("Toronto, ON"));
+    // A point in Lake Ontario: only a county, across the border.
+    let NominatimReverse::Place(p) = serde_json::from_str(REVERSE_NIAGARA).unwrap() else {
+        panic!("a place")
+    };
+    assert_eq!(p.address.label().as_deref(), Some("Niagara County, NY"));
+    assert_eq!(
+        serde_json::from_str::<NominatimReverse>(REVERSE_OCEAN).unwrap(),
+        NominatimReverse::Error {
+            error: "Unable to geocode".into()
+        }
+    );
+}
+
+#[test]
+fn zone_labels() {
+    let l = |z: &str| zone_label(&TimeZone(z.to_owned()));
+    assert_eq!(l("America/Toronto"), "Toronto time zone");
+    assert_eq!(
+        l("America/Argentina/Buenos_Aires"),
+        "Buenos Aires time zone"
+    );
+    assert_eq!(l("UTC"), "UTC time zone");
+}
+
+/// The reverse lookup fails four ways; each time the garden is labelled by its zone, and the
+/// fallback isn't cached.
+#[tokio::test]
+async fn gps_reverse_failure_falls_back_to_the_zone() {
+    for failure in [
+        ResponseTemplate::new(503),
+        ResponseTemplate::new(429).insert_header("retry-after", "60"),
+        ResponseTemplate::new(200).set_body_string(REVERSE_OCEAN),
+        ResponseTemplate::new(200).set_body_string("<html>"),
+    ] {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/reverse"))
+            .respond_with(failure)
+            .expect(2)
+            .mount(&server)
+            .await;
+        let g = geocoder(&server);
+        let at = Coordinates::new(45.42, -75.70).unwrap(); // Ottawa
+        for _ in 0..2 {
+            let found = g.geocode(GeocodeQuery::Coordinates(at)).await.unwrap();
+            assert_eq!(found.label, "Toronto time zone");
+            assert_eq!(found.time_zone.0, "America/Toronto");
+            assert_eq!(found.coordinates, at);
+        }
+    }
+}
+
+#[tokio::test]
+async fn gps_reverse_success_is_cached() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/reverse"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(REVERSE_TORONTO))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let g = geocoder(&server);
+    let a = Coordinates::new(43.651, -79.381).unwrap();
+    let b = Coordinates::new(43.652, -79.382).unwrap();
+    let first = g.geocode(GeocodeQuery::Coordinates(a)).await.unwrap();
+    assert_eq!(first.label, "Toronto, ON");
+    let again = g.geocode(GeocodeQuery::Coordinates(b)).await.unwrap();
+    assert_eq!(again.label, "Toronto, ON");
+    assert_eq!(again.coordinates, b, "the cache keeps the caller's point");
 }

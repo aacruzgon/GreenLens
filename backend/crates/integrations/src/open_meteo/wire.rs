@@ -1,4 +1,4 @@
-//! Open-Meteo's response, as observed live on 2026-10-15 (`fixtures/openmeteo_forecast_multi.json`).
+//! Open-Meteo's response, as observed live on 2026-10-15 and 2026-10-20 (`fixtures/openmeteo_forecast_multi.json`).
 
 use std::collections::BTreeMap;
 
