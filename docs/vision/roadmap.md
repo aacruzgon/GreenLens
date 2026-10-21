@@ -26,7 +26,7 @@ Day 5 of 10 (Oct 20). **The models are trained and measured; the plan is to fini
   - 103 one-photo cases from four tomato and corn field datasets;
   - 84 iNaturalist observations of apple, grape, squash and tomato (two microscope shots of a mite were dropped).
   - They still need a second reviewer before the test split is scored. Their 253 photos are in `pdm-models` under `eval/photos/` for that review.
-  - No case is a copy of a training image: the leakage check compared the 253 photos with all 33,625 training images by perceptual hash and BioCLIP cosine ([report](../../ml/training/eval/reports/leakage-2026-10-20.md)).
+  - No case is a copy of a training image: the leakage check compared the 253 photos with all 59,821 training images on the rig by perceptual hash and BioCLIP cosine ([report](../../ml/training/eval/reports/leakage-2026-10-20.md)).
   - No case has a full shot set or a ladybug. What only phones can give is listed on [#52](https://github.com/aacruzgon/GreenLens/issues/52), with a private upload folder, for Oct 21.
 - **VLM benchmark (J2), done in [#86](https://github.com/aacruzgon/GreenLens/pull/86):** the 65 tomato and corn dev cases ran through the worker's own calls on three candidates.
   - Every call was valid, and two jobs at once fit.
@@ -125,7 +125,7 @@ Decisions are tracked in one table, [dev-roadmap section 9](dev-roadmap.md#9-dec
    - Alan's review.
 3. **The species head's combination rule** (models 6): choose one on the dev cases once the real label matrix exists (M12, which needs Sara's species and organism seed files).
 4. **The team's photos** (#52, Oct 21): full shot sets, a pepper plant, ladybugs, look-alikes, no-plant shots and faces. The trained probe and M7's face check need them.
-5. **Calibration (M16)** on the dev cases, then the final manifests (M17) and the test split scored once (M18), by Oct 22. The test split needs a second reviewer first; the leakage check already passes.
+5. **Calibration (M16)** on the dev cases, then the final manifests (M17) and the test split scored once (M18), by Oct 22. The test split needs a second reviewer first. The leakage check passes on today's cases and runs again on the final manifest, as part of M18.
 6. **The indicator questions:** J2's per-question tables show which never get a "yes" on leaves that have the problem. Raise them with Sara's prompt pass (P5, #45).
 
 ## 6. The rig right now
