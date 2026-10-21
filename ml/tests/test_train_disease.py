@@ -4,7 +4,8 @@ from ml.training.heads.train_disease import select_c
 
 
 def grid(*rows):
-    return [{"C": c, "val_top1_per_photo": v, "val_top1_per_crop": v, "dev_top3": d, "dev_n": 94} for c, v, d in rows]
+    return [{"C": c, "val_top1_per_photo": v, "val_top1_per_crop": v, "dev_top3_sent": d, "dev_with_problem": 94}
+            for c, v, d in rows]
 
 
 def test_dev_top3_keeps_the_best_val_score_among_cs_tied_on_dev():

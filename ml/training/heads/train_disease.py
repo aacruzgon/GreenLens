@@ -5,7 +5,7 @@
 - Classes: every (species, problem | healthy) with at least --min-train training images.
 - Multinomial logistic regression; C chosen on validation by restricted top-1, from a grid
   wide enough that the choice isn't at its edge (the report says if it is), or with
-  --select-on dev-top3 by top-3 on the dev cases (below). With --features
+  --select-on dev-top3 by the top 3 the API keeps on the dev cases (below). With --features
   crops, --select-on crop (the default) scores what the worker returns: each leaf crop of the
   val photos with exactly one crop (a crop carries its photo's label, which is wrong for a
   healthy leaf in a diseased photo with several). --select-on photo scores each photo by the
@@ -124,14 +124,16 @@ def fit_temperature(logits: np.ndarray, y: np.ndarray) -> float:
 
 
 def select_c(scores: list[dict], select_on: str) -> int:
-    """The grid point to keep. With `dev-top3`, every C whose dev top-3 is within one standard
-    error of the best is as good on 94 photos; of those, the best val top-1 per crop wins."""
+    """The grid point to keep. With `dev-top3`, every C whose dev top 3 (`calibrate`'s
+    `top3_sent`: the true problem among the 3 classes the worker sends, on the dev photos with a
+    problem) is within one standard error of the best is as good on so few photos; of those, the
+    best val top-1 per crop wins."""
     if select_on != "dev-top3":
         key = "val_top1_per_photo" if select_on == "photo" else "val_top1_per_crop"
         return max(range(len(scores)), key=lambda i: scores[i][key])
-    best = max(s["dev_top3"] for s in scores)
-    se = (best * (1 - best) / scores[0]["dev_n"]) ** 0.5
-    near = [i for i, s in enumerate(scores) if s["dev_top3"] >= best - se - 1e-12]
+    best = max(s["dev_top3_sent"] for s in scores)
+    se = (best * (1 - best) / scores[0]["dev_with_problem"]) ** 0.5
+    near = [i for i, s in enumerate(scores) if s["dev_top3_sent"] >= best - se - 1e-12]
     return max(near, key=lambda i: scores[i]["val_top1_per_crop"])
 
 
@@ -140,7 +142,7 @@ def dev_set(manifest: Path, photos: Path, emb: Embedder, crop_source) -> dict:
     from ml.training.eval import calibrate as cb
 
     cases = cb.dev_cases(manifest)
-    files = sorted({photos / f for c in cases for f in cb.leaf_photos(c)})
+    files = sorted({photos / f for c in cases for f, _ in cb.leaf_photos(c)})
     whole = dict(zip(files, emb.images([cb.stored(f) for f in files])))
     if crop_source is None:
         return {"cases": cases, "crops_of": lambda f: [], "whole_of": whole.__getitem__}
@@ -171,8 +173,8 @@ def main(argv=None) -> None:
     ap.add_argument("--select-on", choices=("crop", "photo", "dev-top3"), default="crop",
                     help="with --features crops, choose C by per-crop top-1 on val photos with one crop (as the "
                          "worker returns each crop), or by per-photo top-1 (the mean of a photo's crops); "
-                         "dev-top3 chooses it by top-3 on the dev cases, the head's job, ties broken by per-crop "
-                         "val top-1")
+                         "dev-top3 by the top 3 the API keeps on the dev photos with a problem, the head's job: "
+                         "of the C within one standard error of the best, the best per-crop val top-1")
     ap.add_argument("--dev-manifest", type=Path, default=ROOT / "ml/training/eval/manifest.jsonl",
                     help="the evaluation set, whose dev cases score each C by top-3 and fit the temperature")
     ap.add_argument("--dev-photos", type=Path, default=ROOT / "ml/training/eval/photos")
@@ -318,9 +320,11 @@ def main(argv=None) -> None:
         if dev:
             from ml.training.eval import calibrate as cb
 
-            sd = cb.disease_scores(dev_items(clf)[0], 1.0)
-            grid_scores[-1].update({"dev_top3": sd["top3"], "dev_top1": sd["top1"], "dev_n": sd["n"]})
-            print(f"; dev top-3 {sd['top3']:.3f}, top-1 {sd['top1']:.3f} (n={sd['n']})", end="")
+            sd = cb.disease_scores(dev_items(clf)[0], 1.0, healthy)
+            grid_scores[-1].update({"dev_top3_sent": sd["top3_sent"], "dev_with_problem": sd["with_problem"],
+                                    "dev_top1": sd["top1"], "dev_n": sd["n"]})
+            print(f"; dev top-3 {sd['top3_sent']:.3f} of {sd['with_problem']} with a problem, "
+                  f"top-1 {sd['top1']:.3f} of {sd['n']}", end="")
         print()
         fits.append((C, clf))
     i = select_c(grid_scores, args.select_on)
@@ -468,7 +472,7 @@ def main(argv=None) -> None:
         "C": C,
         "C_grid": list(grid),
         "C_at_grid_edge": c_at_edge,
-        "C_selected_on": ("best val top-1 per crop within one standard error of the best dev top-3" if args.select_on == "dev-top3"
+        "C_selected_on": ("best val top-1 per crop within one standard error of the best dev top 3 as sent, on the photos with a problem" if args.select_on == "dev-top3"
                           else "val top-1 per crop, photos with one crop" if args.select_on == "crop" and crop_sel is not crop_multi
                           else "val top-1 per crop, every crop" if args.select_on == "crop" else "val top-1 per photo"),
         "C_grid_scores": grid_scores,
@@ -493,15 +497,16 @@ def main(argv=None) -> None:
     if dev_report:
         def line(r):
             m = r["medium"]
-            return (f"top-3 {r['top3']:.2f} (guessing {r['chance_top3']:.2f}), top-1 {r['top1']:.2f}, "
-                    f"medium claims {m['n']} ({m['right']} right), healthy blocked "
-                    f"{r['healthy_blocked']['blocked']} of {r['healthy_blocked']['n']}, ECE {r['ece']:.3f}")
+            return (f"top-3 {r['top3_sent']:.2f} of {r['with_problem']} with a problem (guessing "
+                    f"{r['chance_top3_sent']:.2f}), top-1 {r['top1']:.2f}, medium claims {m['n']} ({m['right']} right), "
+                    f"healthy blocked {r['healthy']['blocked']} of {r['healthy']['n']}, ECE {r['ece']:.3f}")
         print(f"dev: {dev_report['photos']} single-crop leaf photos | at T_val {T_val:.3f}: {line(dev_report['at_T_val'])}")
         if "at_T_dev" in dev_report:
             print(f"     at T_dev {T_dev:.3f}: {line(dev_report['at_T_dev'])}")
         for key in ("per_species", "per_source"):
             for k, v in dev_report[key].items():
-                print(f"   {k:32s} n={v['n']:3d} top-3 {v['top3']:.2f} (guessing {v['chance_top3']:.2f}) top-1 {v['top1']:.2f}")
+                t3 = "n/a" if v.get("top3_sent") is None else f"{v['top3_sent']:.2f} (guessing {v['chance_top3_sent']:.2f})"
+                print(f"   {k:32s} n={v['n']:3d} top-3 {t3} top-1 {v['top1']:.2f}")
     for n in ("val", "test"):
         r = summary[n]
         h = r["headline"]
