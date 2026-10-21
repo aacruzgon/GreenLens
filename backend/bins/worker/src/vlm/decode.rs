@@ -76,8 +76,31 @@ impl<'c> CallImages<'c> {
 }
 
 /// Cuts a string to `max` characters (not bytes, so a multi-byte character is never split).
+/// A string that reaches `max` was most likely stopped there by the schema's `maxLength`, mid-word
+/// and sometimes in another language (vision vlm.md 4), so it goes back to its last full sentence,
+/// or failing that its last full word.
 pub fn truncate(s: &str, max: usize) -> String {
-    s.chars().take(max).collect()
+    let cut: String = s.chars().take(max).collect();
+    if s.chars().count() < max {
+        return cut;
+    }
+    let cut = cut.trim_end();
+    if cut.ends_with(['.', '!', '?']) {
+        return cut.to_owned();
+    }
+    let mut chars = cut.char_indices().peekable();
+    let mut sentence_end = None;
+    while let Some((i, c)) = chars.next() {
+        if matches!(c, '.' | '!' | '?') && chars.peek().is_some_and(|&(_, n)| n.is_whitespace()) {
+            sentence_end = Some(i + c.len_utf8());
+        }
+    }
+    let kept = match (sentence_end, cut.rfind(char::is_whitespace)) {
+        (Some(end), _) => &cut[..end],
+        (None, Some(space)) => cut[..space].trim_end_matches([',', ';', ':', ' ']),
+        (None, None) => cut,
+    };
+    kept.to_owned()
 }
 
 /// Converts a raw `bbox_2d` to the stored image's `[x, y, w, h]` by the adapter's format,
@@ -538,6 +561,28 @@ mod tests {
             f.damage[1].other_description.as_deref(),
             Some("bark stripped")
         );
+    }
+
+    #[test]
+    fn text_at_its_cap_goes_back_to_a_full_sentence_or_word() {
+        // Under the cap: unchanged, even mid-word.
+        assert_eq!(truncate("dry soil, few weeds", 60), "dry soil, few weeds");
+        // At the cap: Qwen3.5's tomato notes with findings@4, stopped at 200 mid-word.
+        let notes = "The provided images appear to be a composite of different plants. The first image shows a leaf with small spots, the second shows a tomato plant with severe blight and rot, and the third shows a corn/";
+        assert_eq!(notes.chars().count(), 200);
+        assert_eq!(
+            truncate(notes, 200),
+            "The provided images appear to be a composite of different plants."
+        );
+        // Over the cap with no full sentence: back to the last full word.
+        assert_eq!(
+            truncate("yellow halo around brown spots", 22),
+            "yellow halo around"
+        );
+        assert_eq!(truncate("lower leaves, yellowing", 16), "lower leaves");
+        // A sentence that ends at the cap is kept whole; one word longer than the cap is cut.
+        assert_eq!(truncate("Soil is dry.", 12), "Soil is dry.");
+        assert_eq!(truncate("Growing西红柿", 9), "Growing西红");
     }
 
     #[test]
