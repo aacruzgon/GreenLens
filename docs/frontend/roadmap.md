@@ -1,6 +1,6 @@
 # PDM App Roadmap
 
-> **Status:** Draft v0.3.4, 2026-10-20. v0.3.4: section 16 says how to run F0's and F1's live checks against a local backend before S1 is deployed, and what doesn't work locally yet ([#98](https://github.com/aacruzgon/GreenLens/issues/98)); section 17's S1 row says #40 has merged. v0.3.3: section 17's `openapi.json` and S1 rows brought up to Oct 20 ([#99](https://github.com/aacruzgon/GreenLens/issues/99)), and section 1 says where `app/` stands. v0.3.2: F0's second factor is a code by text to the phone given at sign-up; no authenticator app. v0.3: applies the review of #61: owners for both lanes and the photo spike; no mention of the closed scaffold PRs; section 18 linked to #63 and #64; the evaluation captures linked to #52; M17 in vision's Phase 4; the check spring and the entrance scale as tokens; the hotspot inside the finding's region; E1.6 still open. v0.2: aligns the plan with the backend, vision and EON roadmaps after three audits: S4's need for the results UI and its real depth maps, weather from S2, push blocked on the Apple account, the web origin settled before S7's CORS review; the LiDAR day-1 check as the app's own, the evaluation captures vision needs by Oct 21, live checks dated to the first full scan (J4) and the demo passed three times (J7); E3.4, the E10 tests and farm citations in plans; decisions numbered as in design 10; README 18 rewritten to these dates. v0.1: the app's build-week work in the Conservatory direction ([design 3.1](../design/design.md#31-conservatory)), as ten slices (F0–F9) from an empty `app/` on Oct 20 to the demo on Oct 24 and the web build on Oct 25. Each slice has its goal, its screens and composites, what it needs from the other tracks, its exit checks and the decisions it closes.
+> **Status:** Draft v0.3.4, 2026-10-20. v0.3.4: section 16 runs F0's and F1's live checks against the deployed S1, says what to expect there (sign-up, the `Gardener` display name of [#117](https://github.com/aacruzgon/GreenLens/issues/117), stub scans, weather after S2), and keeps a local backend as the fallback ([#98](https://github.com/aacruzgon/GreenLens/issues/98)); section 14 adds the username at sign-up ([#97](https://github.com/aacruzgon/GreenLens/issues/97)); section 17's S1 row says S1 is deployed. v0.3.3: section 17's `openapi.json` and S1 rows brought up to Oct 20 ([#99](https://github.com/aacruzgon/GreenLens/issues/99)), and section 1 says where `app/` stands. v0.3.2: F0's second factor is a code by text to the phone given at sign-up; no authenticator app. v0.3: applies the review of #61: owners for both lanes and the photo spike; no mention of the closed scaffold PRs; section 18 linked to #63 and #64; the evaluation captures linked to #52; M17 in vision's Phase 4; the check spring and the entrance scale as tokens; the hotspot inside the finding's region; E1.6 still open. v0.2: aligns the plan with the backend, vision and EON roadmaps after three audits: S4's need for the results UI and its real depth maps, weather from S2, push blocked on the Apple account, the web origin settled before S7's CORS review; the LiDAR day-1 check as the app's own, the evaluation captures vision needs by Oct 21, live checks dated to the first full scan (J4) and the demo passed three times (J7); E3.4, the E10 tests and farm citations in plans; decisions numbered as in design 10; README 18 rewritten to these dates. v0.1: the app's build-week work in the Conservatory direction ([design 3.1](../design/design.md#31-conservatory)), as ten slices (F0–F9) from an empty `app/` on Oct 20 to the demo on Oct 24 and the web build on Oct 25. Each slice has its goal, its screens and composites, what it needs from the other tracks, its exit checks and the decisions it closes.
 
 Companion to the [frontend architecture](README.md), its [flows](flows.md) and [screens](screens.md), and to the [design](../design/design.md). The architecture says how the app is structured, screens.md says what each screen contains, and the design says how it looks, moves and speaks. This document says in what order the app is built, what each step waits on, and how we know a step is finished. It mirrors the [backend roadmap](../backend/roadmap.md).
 
@@ -314,6 +314,7 @@ The demo path is F1 → F2 → F3 → F4, then the chat (F6), the 3D garden and 
 - A `/hig` review of every screen ([hig skill](../../.claude/skills/hig/SKILL.md), its review steps); no **must** findings left.
 - VoiceOver on the demo path; Dynamic Type at the largest size; reduced motion; light and dark; 44 pt targets; contrast in sun on the iPhone.
 - The app icon and splash in the palette.
+- Sign-up asks for a username, with Clerk's "taken" and format errors shown on the field, and the development and production instances require a username again ([#97](https://github.com/aacruzgon/GreenLens/issues/97), option 1). Production follows whichever setting the team ends on.
 - The web origin settled (README open decision 5), with the app's request and body sizes handed to backend S7, whose CORS review and limits run on Oct 24.
 - The demo flow rehearsed on the 17 Pro Max: home → capture → live analysis → diagnosis and plan → a checked step → chat with a block and a confirmed task → the 3D garden scrubbed into the forecast → insights. Recorded for the two-minute video.
 
@@ -345,9 +346,26 @@ Every slice is built on mock data. It switches to the live API when the backend 
 
 Going live also needs: a Clerk dev key in `.env`; signed image URLs refetched on `invalid_signature`; the offline banner; and timing uploads on the phone (README open decision 6).
 
-### Before S1 is deployed: a local backend
+### The deployed API
 
-Until S1 runs on the control plane, F0's and F1's live checks run against an API on the Mac ([#98](https://github.com/aacruzgon/GreenLens/issues/98)). Every route the app calls is on `main`, and the app has a live mode.
+S1 has run on the control plane since Oct 20: `https://pdm-cp.tailb3ce07.ts.net` serves `main`'s images from [#40](https://github.com/aacruzgon/GreenLens/pull/40)'s merge (`6909aa7`) behind Tailscale Funnel, and the S1 exit checks passed on it ([backend roadmap 5](../backend/roadmap.md#5-s1-walking-skeleton)), the Clerk `user.deleted` webhook included. F0's and F1's live checks run against it. In `app/.env`:
+
+- `EXPO_PUBLIC_API_MODE=live`
+- `EXPO_PUBLIC_API_URL=https://pdm-cp.tailb3ce07.ts.net`
+- `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` set to the development instance's publishable key ([#97](https://github.com/aacruzgon/GreenLens/issues/97), "Testing it live", has the value).
+
+Then run `npx expo start --ios --clear`. The URL is public, so a phone needs no LAN address.
+
+What to expect on Oct 20:
+
+- **Sign-up.** "Require username" is off in the development instance (option 2 on [#97](https://github.com/aacruzgon/GreenLens/issues/97)), so the app's email, phone and password should be enough. A test sign-up through Clerk's Frontend API on Oct 20 still didn't complete: both codes verified, but it stayed `missing_requirements`, with or without a username ([#118](https://github.com/aacruzgon/GreenLens/pull/118)). The app asking for a username again is F8 work (section 14).
+- **The display name, live only.** `api` gives a new user the display name `Gardener` (`backend/crates/store/src/repo/identity.rs:31`). The app sends the Clerk name, and onboarding shows its name step, only when `display_name` is empty (`useSessionGate.ts:27`, `OnboardingScreen.tsx:19`), so on the live API a new user stays "Gardener" and never sees the name step. Mock mode returns `""`, so it doesn't show there ([#117](https://github.com/aacruzgon/GreenLens/issues/117)).
+- **Scans** run end to end on the stub perception worker and the fallback worker, and return stub results. The real perception worker on the RTX 3070 passes its GPU checks but waits for a knowledge seed that matches its models ([#51](https://github.com/aacruzgon/GreenLens/pull/51)); F2/F3's real photo of a sick tomato comes after that.
+- **Weather** on the home waits for S2's live Open-Meteo and SoilGrids, with Soil Landscapes of Canada where SoilGrids has no data, as in Toronto. It isn't merged or deployed yet.
+
+### A local backend
+
+For offline work, or to try a backend branch, run the API on the Mac instead ([#98](https://github.com/aacruzgon/GreenLens/issues/98)). Every route the app calls is on `main`, and the app has a live mode.
 
 1. **Start SurrealDB and RustFS** from the repository root: `docker compose -f infra/dev.compose.yml up -d` ([infra 4](../infra/README.md#infradevcomposeyml)).
 2. **Install what the API loads at start-up.** It loads ONNX Runtime and the CPU models before it listens, and panics in the `models` step without them ("Failed to load ONNX Runtime dylib"):
@@ -361,16 +379,14 @@ The simulator shares the Mac's `127.0.0.1`; a phone doesn't. On a phone, put the
 
 Scans need workers too. S1 ([#40](https://github.com/aacruzgon/GreenLens/pull/40), merged Oct 20) brought the fallback worker and a stub perception worker that answers with canned results, so a scan can run without GPUs or model files. Run each with `cargo run -p worker` in its own shell, using the worker sections of the same env file; the stub's token must also be in the API's `WORKER_TOKENS`. Without them, a scan stays `queued`.
 
-**What ran on Oct 20:** steps 1–4 up to start-up, which is where the webhook secret and ONNX Runtime failures were found. Sign-in, creating a garden, the home, the weather and a scan on stub vision haven't been tried on a local API yet.
-
-**What won't work locally yet:** sign-up. The Clerk development instance requires a username, and the app's sign-up doesn't send one ([#97](https://github.com/aacruzgon/GreenLens/issues/97)). Until that is fixed, sign in with an existing development-instance user.
+**What ran on Oct 20:** steps 1–4 up to start-up, which is where the webhook secret and ONNX Runtime failures were found. Sign-in, creating a garden, the home and a scan on stub vision haven't been tried on a local API yet.
 
 ## 17. What the app needs from other tracks
 
 | Need | From | For | State on Oct 19, unless dated |
 |---|---|---|---|
 | Register `AnchorType` and `TaskState` in `bins/api/src/openapi.rs`; no description-only `allOf` members | Backend | F0's `gen:api` without workarounds | Half done on Oct 20: both schemas are defined in `openapi.json`. One description-only member is left, `components/schemas/Observation`'s ``{"type": "object", "description": "`confidence` and its computed `confidence_band`."}``, and `app/scripts/gen-api.mjs` still drops it with a warning. The fix: drop that member (or give it a shape) in the `domain` type's utoipa attributes, regenerate `openapi.json`, then remove the workaround from `gen-api.mjs` |
-| S1 deployed on the control plane | Backend | Going live (section 16) | Not deployed on Oct 20: [PR #40](https://github.com/aacruzgon/GreenLens/pull/40) merged that day; it was due Oct 16–17. Until it is deployed, live checks run against a local backend ([section 16](#before-s1-is-deployed-a-local-backend)) |
+| S1 deployed on the control plane | Backend | Going live (section 16) | Deployed on Oct 20 at `https://pdm-cp.tailb3ce07.ts.net`, from [PR #40](https://github.com/aacruzgon/GreenLens/pull/40)'s merge; it was due Oct 16–17. Live checks run against it ([section 16](#the-deployed-api)); a local backend is the fallback |
 | S4 (Oct 20–21) expects the results UI, which F3–F4 build on Oct 21–22 | Both | S4's exit check | S4's exit check runs through the API's smoke script; the app's results screens join it on Oct 22. The backend roadmap's S4 row should say so |
 | A real depth capture reaching the API by Oct 21 | App (F5) | Backend S4 work 4, measuring from a real depth map | Not started: no module yet |
 | `answer_block` SSE event, `Message.blocks`, `AnswerBlock` as a tagged union, the `show_block` tool ([design 5](../design/design.md#chat-answers-you-can-interact-with)) | Backend (`domain`, `agent`, `api`), with contracts §8 | F6 | Proposed, not in the contracts, and in no backend slice: it belongs in S5 (or backend roadmap §13 until it is) |
