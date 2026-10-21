@@ -6,16 +6,19 @@ Signs in as a fixed Clerk test user, demo+clerk_test@example.com, the way the sm
 garden.json, with one plant per bed: its name, its species resolved through GET /species, and its
 status. Safe to run again: it reuses the user's garden of that name and the plants it already
 holds, creates what is missing, corrects a bed's status, and gives a bed created without a
-species its species once the knowledge base holds it. It prints the garden's id as
+species its species once the knowledge base holds it. It never changes a species a bed already
+has: a change would re-run the bed's latest scan. It prints the garden's id as
 ERA_DEMO_GARDEN_ID=<id>, the value api's start-up seeding needs for the demo connectors (E9.2).
 
-usage (from backend/):
-    python3 tools/demo/demo_garden.py [--base-url http://localhost:8080]
-        [--env-file ../infra/dev/.env] [--garden tests/fixtures/era/maple-row/garden.json]
+usage:
+    python3 backend/tools/demo/demo_garden.py [--base-url http://localhost:8080]
+        [--env-file infra/dev/.env] [--garden backend/tests/fixtures/era/maple-row/garden.json]
         [--lat 43.55 --lon -80.25]
 
 CLERK_SECRET_KEY comes from the environment or --env-file; it must start with sk_test_.
-Neither the key nor a token is ever printed. Exit code 0 when the garden matches the fixture.
+Neither the key nor a token is ever printed. Exit code 0 once the garden and every bed exist with
+their statuses; a bed whose species is missing or differs from the fixture is listed as a warning
+(bed 3's matters for the demo scan, E9.3). Exit code 1 on any error.
 """
 import argparse
 import json
@@ -23,7 +26,9 @@ import sys
 import urllib.parse
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "smoke"))
+HERE = Path(__file__).resolve().parent
+BACKEND = HERE.parent.parent
+sys.path.insert(0, str(HERE.parent / "smoke"))
 from smoke import Api, Clerk, die, info, load_env  # noqa: E402
 
 DEMO_EMAIL = "demo+clerk_test@example.com"
@@ -43,20 +48,29 @@ def pages(api, path, params=None):
         params["cursor"] = out["next_cursor"]
 
 
-def species_id(api, scientific_name):
-    """The knowledge base's id for a scientific name, or None when it doesn't hold the species."""
-    q = urllib.parse.urlencode({"q": scientific_name, "limit": 100})
-    for s in api.call("GET", f"/species?{q}")["items"]:
-        if s["scientific_name"].lower() == scientific_name.lower():
-            return s["id"]
-    return None
+def species_id(api, species):
+    """The knowledge base's id for a fixture species, or None when it doesn't hold it.
+
+    A scientific name can cover several species (Brassica oleracea is kale, cabbage and
+    broccoli), so the common name decides between them.
+    """
+    sci = species["scientific_name"].lower()
+    matches = [s for s in pages(api, "/species", {"q": species["scientific_name"]})
+               if s["scientific_name"].lower() == sci]
+    if len(matches) > 1:
+        common = species["common_name"].lower()
+        matches = [s for s in matches if (s.get("common_name") or "").lower() == common] or matches
+    if len(matches) > 1:
+        die(f"{species['scientific_name']} matches {', '.join(s['id'] for s in matches)}; "
+            f"none or several are named {species['common_name']!r}")
+    return matches[0]["id"] if matches else None
 
 
 def main():
     ap = argparse.ArgumentParser(description="Create the Maple Row Farm demo garden (EON E9.0).")
     ap.add_argument("--base-url", default="http://localhost:8080")
-    ap.add_argument("--env-file", default="../infra/dev/.env")
-    ap.add_argument("--garden", default="tests/fixtures/era/maple-row/garden.json",
+    ap.add_argument("--env-file", default=str(BACKEND.parent / "infra/dev/.env"))
+    ap.add_argument("--garden", default=str(BACKEND / "tests/fixtures/era/maple-row/garden.json"),
                     help="the fixture's garden.json")
     ap.add_argument("--lat", type=float, help="with --lon, instead of the fixture's city")
     ap.add_argument("--lon", type=float)
@@ -64,6 +78,8 @@ def main():
     if (args.lat is None) != (args.lon is None):
         die("--lat and --lon go together")
 
+    if not Path(args.garden).is_file():
+        die(f"{args.garden}: no such file")
     fixture = json.loads(Path(args.garden).read_text())
     if fixture.get("format") != 1:
         die(f"{args.garden}: expected format 1")
@@ -81,6 +97,8 @@ def main():
     if owned:
         garden = owned[0]
         info(f"garden {name!r} exists")
+        if args.lat is not None:
+            info("note: --lat and --lon are ignored for an existing garden")
     else:
         location = ({"lat": args.lat, "lon": args.lon} if args.lat is not None
                     else fixture["garden"]["location"])
@@ -91,13 +109,15 @@ def main():
     if want_tz and garden["time_zone"] != want_tz:
         info(f"note: the garden's time zone is {garden['time_zone']}, the fixture's {want_tz}")
 
-    plants = {p["name"]: p for p in pages(api, "/plants", {"garden_id": garden["id"]})}
+    plants = {}
+    for p in pages(api, "/plants", {"garden_id": garden["id"]}):
+        if p["name"] in plants:
+            die(f"the garden has two plants named {p['name']!r}; delete one")
+        plants[p["name"]] = p
+    warnings = []
     for bed in fixture["plants"]:
         plant = plants.get(bed["name"])
-        sid = species_id(api, bed["species"]["scientific_name"])
-        if sid is None:
-            info(f"{bed['name']}: {bed['species']['scientific_name']} isn't in the knowledge base; "
-                 "left without a species")
+        sid = species_id(api, bed["species"])
         if plant is None:
             body = {"garden_id": garden["id"], "name": bed["name"]}
             if sid:
@@ -111,9 +131,18 @@ def main():
         if plant["status"] != bed["status"]:
             plant = api.call("PATCH", f"/plants/{plant['id']}", {"status": bed["status"]})
             info(f"{bed['name']}: status {bed['status']}")
-        species = (plant.get("species") or {}).get("scientific_name", "no species")
-        info(f"  {bed['name']}: {species}, {plant['species_status']}, {plant['status']}")
+        species = plant.get("species")
+        shown = f"{species['id']} ({species['common_name']})" if species else "no species"
+        info(f"  {bed['name']}: {shown}, {plant['species_status']}, {plant['status']}")
+        want = f"{bed['species']['common_name']} ({bed['species']['scientific_name']})"
+        if sid is None:
+            warnings.append(f"{bed['name']}: the knowledge base doesn't hold {want}")
+        elif species is None or species["id"] != sid or plant["species_status"] != "confirmed":
+            warnings.append(f"{bed['name']}: {shown}, {plant['species_status']}, not {sid}; change "
+                            "it in the app (a species change re-runs the bed's latest scan)")
 
+    for w in warnings:
+        info(f"warning: {w}")
     print(f"ERA_DEMO_GARDEN_ID={garden['id']}")
 
 
