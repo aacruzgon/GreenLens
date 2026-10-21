@@ -7,13 +7,14 @@ POST /submit, and GET /scans/{id}/events, parsed by hand. It asserts seq 1.. wit
 data.seq == id, started stages completed, a resting point, and a resume with Last-Event-ID
 (always, after --drop-after events). Optional modes: --kill-cmd / --restart-cmd (worker dies
 mid-stage), --api-restart-cmd (api restarts during the stream), --face-photo (face blurring),
---depth-check (a synthetic LiDAR depth map with the photo, and the stored sizes).
+--depth-check (a synthetic LiDAR depth map with the photo, and the stored sizes), --site-check
+(the garden's live weather, and its soil profile leaving pending).
 
 usage (from backend/):
     python3 tools/smoke/smoke.py --photo ../ml/some_leaf.jpg [--base-url http://localhost:8080]
         [--env-file ../infra/dev/.env] [--timeout 300] [--drop-after 3] [--verbose]
         [--kill-cmd CMD] [--restart-cmd CMD] [--api-restart-cmd CMD]
-        [--face-photo PATH] [--out-dir DIR] [--depth-check] [--allow-failed]
+        [--face-photo PATH] [--out-dir DIR] [--depth-check] [--site-check] [--allow-failed]
 
 CLERK_SECRET_KEY comes from the environment or --env-file; it must start with sk_test_.
 Neither the key nor a token is ever printed. Exit code 0 on pass, 1 on the first failed assert.
@@ -492,6 +493,32 @@ def depth_step(api, args, garden_id):
         api.call("DELETE", f"/scans/{sid}", expect=(200, 202, 204))
 
 
+def site_step(api, garden, timeout_s=120):
+    """S2's site data: the garden's label and time zone, `GET /gardens/{id}/weather` from live
+    Open-Meteo, and `soil_profile_status` leaving `pending` (SoilGrids in the background, or Soil
+    Landscapes of Canada where SoilGrids has no data; contracts 9)."""
+    info(f"site check: garden {garden['id']} labelled {garden.get('location_label')!r}, "
+         f"time zone {garden.get('time_zone')}, soil {garden.get('soil_profile_status')}")
+    w = api.call("GET", f"/gardens/{garden['id']}/weather")["weather"]
+    if w.get("provider") != "open_meteo":
+        die(f"weather provider {w.get('provider')!r}, expected open_meteo")
+    cur, fc = w.get("current", {}), w.get("forecast", {})
+    info(f"site check: weather fetched {w.get('fetched_at')}: {cur.get('temp_c')} °C, "
+         f"RH {cur.get('rh_pct')} %, wind {cur.get('wind_kmh')} km/h, "
+         f"{cur.get('precip_mm_last_24h')} mm in 24 h; forecast of {len(fc)} entries")
+    deadline = time.monotonic() + timeout_s
+    while True:
+        status = api.call("GET", f"/gardens/{garden['id']}")["soil_profile_status"]
+        if status != "pending":
+            break
+        if time.monotonic() > deadline:
+            die(f"soil_profile_status still pending after {timeout_s} s")
+        time.sleep(3)
+    if status not in ("ready", "unavailable"):
+        die(f"soil_profile_status {status!r}")
+    info(f"site check: soil_profile_status {status}")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Smoke test: one scan through the PDM API.")
     ap.add_argument("--base-url", default="http://localhost:8080")
@@ -510,6 +537,8 @@ def main():
     ap.add_argument("--out-dir", help="where the stored face image is saved (default a temp dir)")
     ap.add_argument("--depth-check", action="store_true",
                     help="extra step: upload the photo with a synthetic LiDAR depth map (stored sizes, sensor frame)")
+    ap.add_argument("--site-check", action="store_true",
+                    help="extra step: the garden's live weather and its soil profile status")
     ap.add_argument("--allow-failed", action="store_true", help="exit 0 when the scan ends failed")
     ap.add_argument("--perception-only", action="store_true",
                     help="pass once every perception stage completed, without waiting for a resting "
@@ -534,6 +563,8 @@ def main():
     garden = api.call("POST", "/gardens", {"name": f"smoke {stamp}",
                       "location": {"lat": args.lat, "lon": args.lon}}, expect=(201,), idem=True)
     info(f"garden {garden['id']}")
+    if args.site_check:
+        site_step(api, garden)
     scan = api.call("POST", "/scans", {"garden_id": garden["id"], "new_plant": {"name": "smoke plant"}},
                     expect=(201,), idem=True)
     sid = scan["id"]
