@@ -4,7 +4,8 @@
 
 - Classes: every (species, problem | healthy) with at least --min-train training images.
 - Multinomial logistic regression; C chosen on validation by restricted top-1, from a grid
-  wide enough that the choice isn't at its edge (the report says if it is). With --features
+  wide enough that the choice isn't at its edge (the report says if it is), or with
+  --select-on dev-top3 by top-3 on the dev cases (below). With --features
   crops, --select-on crop (the default) scores what the worker returns: each leaf crop of the
   val photos with exactly one crop (a crop carries its photo's label, which is wrong for a
   healthy leaf in a diseased photo with several). --select-on photo scores each photo by the
@@ -20,6 +21,14 @@
   `ml.training.heads.crops --splits train --views N`. Each view of a photo weighs 1 in total.
 - --drop-classes leaves the named classes out (their photos too), for a problem with no profile
   in the knowledge base.
+- The evaluation set's dev cases judge the head by its job (evaluation 5): the API adds its top 3
+  to the candidates the VLM's questions decide between (architecture 6.3), so every C in the grid
+  is also scored by top-3 on the dev cases' single-crop leaf photos, scored as
+  `ml.training.eval.calibrate` scores them. The temperature is fitted on those photos, the ones most
+  like the app's (--temperature-on val keeps the val fit), and the report gives the dev top-3
+  against guessing, the medium-confidence claims at both temperatures, and both per crop and per
+  source. --no-dev skips it (the temperature is then fitted on val). The dev photos' crops must be
+  cached first: `python -m ml.training.eval.calibrate` caches them.
 
 Writes the head JSON (ml/models/FORMATS.md), classifier_labels.yaml and a report under
 ml/training/runs/heads/<version>/.
@@ -114,6 +123,35 @@ def fit_temperature(logits: np.ndarray, y: np.ndarray) -> float:
     return float(minimize_scalar(nll, bounds=(0.05, 10.0), method="bounded").x)
 
 
+def select_c(scores: list[dict], select_on: str) -> int:
+    """The grid point to keep. With `dev-top3`, every C whose dev top-3 is within one standard
+    error of the best is as good on 94 photos; of those, the best val top-1 per crop wins."""
+    if select_on != "dev-top3":
+        key = "val_top1_per_photo" if select_on == "photo" else "val_top1_per_crop"
+        return max(range(len(scores)), key=lambda i: scores[i][key])
+    best = max(s["dev_top3"] for s in scores)
+    se = (best * (1 - best) / scores[0]["dev_n"]) ** 0.5
+    near = [i for i, s in enumerate(scores) if s["dev_top3"] >= best - se - 1e-12]
+    return max(near, key=lambda i: scores[i]["val_top1_per_crop"])
+
+
+def dev_set(manifest: Path, photos: Path, emb: Embedder, crop_source) -> dict:
+    """The dev cases, and their leaf photos' embeddings from the caches, as calibrate reads them."""
+    from ml.training.eval import calibrate as cb
+
+    cases = cb.dev_cases(manifest)
+    files = sorted({photos / f for c in cases for f in cb.leaf_photos(c)})
+    whole = dict(zip(files, emb.images([cb.stored(f) for f in files])))
+    if crop_source is None:
+        return {"cases": cases, "crops_of": lambda f: [], "whole_of": whole.__getitem__}
+    try:
+        loaded = dict(zip(files, crop_source.load(files)))
+    except FileNotFoundError as e:
+        raise SystemExit(f"a dev photo's crops aren't cached ({e.filename}): run `python -m ml.training.eval.calibrate` "
+                         "first, or pass --no-dev") from None
+    return {"cases": cases, "crops_of": lambda f: loaded[f]["emb"], "whole_of": whole.__getitem__}
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--version", required=True)
@@ -130,11 +168,24 @@ def main(argv=None) -> None:
                     help="species left out of the headline numbers (still trained and reported)")
     ap.add_argument("--balance-sources", action="store_true",
                     help="within each class, give every dataset the same total weight")
-    ap.add_argument("--select-on", choices=("crop", "photo"), default="crop",
+    ap.add_argument("--select-on", choices=("crop", "photo", "dev-top3"), default="crop",
                     help="with --features crops, choose C by per-crop top-1 on val photos with one crop (as the "
-                         "worker returns each crop), or by per-photo top-1 (the mean of a photo's crops)")
+                         "worker returns each crop), or by per-photo top-1 (the mean of a photo's crops); "
+                         "dev-top3 chooses it by top-3 on the dev cases, the head's job, ties broken by per-crop "
+                         "val top-1")
+    ap.add_argument("--dev-manifest", type=Path, default=ROOT / "ml/training/eval/manifest.jsonl",
+                    help="the evaluation set, whose dev cases score each C by top-3 and fit the temperature")
+    ap.add_argument("--dev-photos", type=Path, default=ROOT / "ml/training/eval/photos")
+    ap.add_argument("--no-dev", action="store_true", help="skip the dev cases; the temperature is fitted on val")
+    ap.add_argument("--temperature-on", choices=("dev", "val"), default="dev",
+                    help="fit the temperature on the dev cases' single-crop leaf photos (evaluation 5), or on "
+                         "val's one-crop photos")
     args = ap.parse_args(argv)
-    if args.features != "crops":
+    if args.no_dev:
+        args.temperature_on = "val"
+    if args.select_on == "dev-top3" and args.no_dev:
+        ap.error("--select-on dev-top3 needs the dev cases")
+    if args.features != "crops" and args.select_on == "crop":
         args.select_on = "photo"   # one row per photo: the two are the same
 
     splits = {n: read_split(n) for n in ("train", "val", "test")}
@@ -187,6 +238,19 @@ def main(argv=None) -> None:
             "crops_per_photo": np.bincount(group, minlength=len(rs)), "no_leaf": np.asarray(no_leaf),
         }
 
+    labels = [
+        {"index": i, "label": c, "species_id": c.split("/")[0], "problem_id": c.split("/")[1]}
+        for i, c in enumerate(classes)
+    ]
+    healthy = {i for i, c in enumerate(classes) if c.endswith("/healthy")}
+    dev = None if args.no_dev else dev_set(args.dev_manifest, args.dev_photos, emb, crop_source)
+
+    def dev_items(clf) -> tuple[list, dict]:
+        from ml.training.eval import calibrate as cb
+
+        head = {"weight": clf.coef_, "bias": clf.intercept_, "labels": labels}
+        return cb.disease_items(dev["cases"], args.dev_photos, head, dev["crops_of"], dev["whole_of"])
+
     tr = data["train"]
     Xtr, ytr, photo_w = tr["X"], tr["y"], tr["weight"]
     src_rows = tr["ds_img"][tr["group"]]
@@ -233,8 +297,8 @@ def main(argv=None) -> None:
         np.add.at(out, d["group"], p)
         return out / d["crops_per_photo"][:, None]
 
-    best = None
-    grid = (1, 5, 20, 50, 100, 200, 500, 1000, 2000, 5000)
+    fits = []
+    grid = (0.01, 0.03, 0.1, 0.3, 1, 5, 20, 50, 100, 200, 500, 1000, 2000, 5000)
     dv = data["val"]
     val_multi = np.asarray([(species_of_class == s).sum() > 1 for s in dv["sp_img"]])
     # The crops the worker returns one by one, from photos where the photo's label is the crop's.
@@ -250,11 +314,17 @@ def main(argv=None) -> None:
         lv_c = restricted_logits(clf.decision_function(dv["X"][crop_sel]), species_of_class, dv["sp"][crop_sel])
         per_crop = topk_acc(softmax(lv_c), dv["y"][crop_sel], 1)
         grid_scores.append({"C": C, "val_top1_per_photo": per_photo, "val_top1_per_crop": per_crop})
-        print(f"C={C}: restricted val top-1 per photo {per_photo:.3f}, per crop {per_crop:.3f}")
-        acc = per_crop if args.select_on == "crop" else per_photo
-        if best is None or acc > best[0]:
-            best = (acc, C, clf)
-    _, C, clf = best
+        print(f"C={C}: restricted val top-1 per photo {per_photo:.3f}, per crop {per_crop:.3f}", end="")
+        if dev:
+            from ml.training.eval import calibrate as cb
+
+            sd = cb.disease_scores(dev_items(clf)[0], 1.0)
+            grid_scores[-1].update({"dev_top3": sd["top3"], "dev_top1": sd["top1"], "dev_n": sd["n"]})
+            print(f"; dev top-3 {sd['top3']:.3f}, top-1 {sd['top1']:.3f} (n={sd['n']})", end="")
+        print()
+        fits.append((C, clf))
+    i = select_c(grid_scores, args.select_on)
+    C, clf = fits[i]
     c_at_edge = C in (grid[0], grid[-1])
     if c_at_edge:
         print(f"WARNING: C={C} is at the edge of the grid {grid}")
@@ -263,7 +333,28 @@ def main(argv=None) -> None:
     # leaf in a diseased photo, so T is fitted on the crops of photos with exactly one crop.
     lv = restricted_logits(clf.decision_function(dv["X"]), species_of_class, dv["sp"])
     fit_on = dv["single"] if dv["single"].sum() >= 200 else np.ones(len(dv["y"]), bool)
-    T = fit_temperature(lv[fit_on], dv["y"][fit_on])
+    T_val = fit_temperature(lv[fit_on], dv["y"][fit_on])
+    # On the dev cases instead (evaluation 5): the val fit lets the head claim a problem at medium
+    # confidence on photos unlike its training data far more often than it is right.
+    dev_report, T_dev = None, None
+    if dev:
+        from ml.training.eval import calibrate as cb
+
+        items, dev_left_out = dev_items(clf)
+        T_dev = cb.fit_items(items) if len(items) >= 10 else None
+
+        def brief(it, t):
+            return {k: v for k, v in cb.disease_scores(it, t, healthy).items() if k != "reliability"}
+
+        dev_report = {
+            "photos": len(items), "left_out": dict(dev_left_out),
+            "at_T_val": brief(items, T_val), **({"at_T_dev": brief(items, T_dev)} if T_dev else {}),
+            "per_species": {sp: brief([i for i in items if i[3] == sp], T_dev or T_val) for sp in sorted({i[3] for i in items})},
+            "per_source": {src: brief([i for i in items if i[4] == src], T_dev or T_val) for src in sorted({i[4] for i in items})},
+        }
+    if args.temperature_on == "dev" and T_dev is None:
+        raise SystemExit("--temperature-on dev: fewer than 10 dev leaf photos the head can label")
+    T = T_dev if args.temperature_on == "dev" else T_val
 
     def report(name: str) -> dict:
         d = data[name]
@@ -351,10 +442,6 @@ def main(argv=None) -> None:
 
     out = RUNS / args.version
     out.mkdir(parents=True, exist_ok=True)
-    labels = [
-        {"index": i, "label": c, "species_id": c.split("/")[0], "problem_id": c.split("/")[1]}
-        for i, c in enumerate(classes)
-    ]
     headfile.write_linear_head(
         out / f"{args.version}.json",
         kind="disease_head",
@@ -381,11 +468,15 @@ def main(argv=None) -> None:
         "C": C,
         "C_grid": list(grid),
         "C_at_grid_edge": c_at_edge,
-        "C_selected_on": ("val top-1 per crop, photos with one crop" if args.select_on == "crop" and crop_sel is not crop_multi
+        "C_selected_on": ("best val top-1 per crop within one standard error of the best dev top-3" if args.select_on == "dev-top3"
+                          else "val top-1 per crop, photos with one crop" if args.select_on == "crop" and crop_sel is not crop_multi
                           else "val top-1 per crop, every crop" if args.select_on == "crop" else "val top-1 per photo"),
         "C_grid_scores": grid_scores,
         "temperature": T,
-        "temperature_fitted_on": "val crops of photos with one crop" if fit_on is dv["single"] else "all val crops",
+        "temperature_fitted_on": ("dev cases' single-crop leaf photos" if args.temperature_on == "dev"
+                                  else "val crops of photos with one crop" if fit_on is dv["single"] else "all val crops"),
+        "temperature_val": T_val,
+        "temperature_dev": T_dev,
         "views": args.views,
         "dropped_classes": list(args.drop_classes),
         "balance_sources": args.balance_sources,
@@ -393,11 +484,24 @@ def main(argv=None) -> None:
         "train_photos": int(len(tr["y_img"])),
         "val": report("val"),
         "test": report("test"),
+        "dev": dev_report,
     }
     (out / "report.json").write_text(json.dumps(summary, indent=2) + "\n")
     REPORTS.mkdir(parents=True, exist_ok=True)
     (REPORTS / f"{args.version}.json").write_text(json.dumps(summary, indent=2) + "\n")
-    print(json.dumps({k: v for k, v in summary.items() if k not in ("val", "test")}, indent=2))
+    print(json.dumps({k: v for k, v in summary.items() if k not in ("val", "test", "dev")}, indent=2))
+    if dev_report:
+        def line(r):
+            m = r["medium"]
+            return (f"top-3 {r['top3']:.2f} (guessing {r['chance_top3']:.2f}), top-1 {r['top1']:.2f}, "
+                    f"medium claims {m['n']} ({m['right']} right), healthy blocked "
+                    f"{r['healthy_blocked']['blocked']} of {r['healthy_blocked']['n']}, ECE {r['ece']:.3f}")
+        print(f"dev: {dev_report['photos']} single-crop leaf photos | at T_val {T_val:.3f}: {line(dev_report['at_T_val'])}")
+        if "at_T_dev" in dev_report:
+            print(f"     at T_dev {T_dev:.3f}: {line(dev_report['at_T_dev'])}")
+        for key in ("per_species", "per_source"):
+            for k, v in dev_report[key].items():
+                print(f"   {k:32s} n={v['n']:3d} top-3 {v['top3']:.2f} (guessing {v['chance_top3']:.2f}) top-1 {v['top1']:.2f}")
     for n in ("val", "test"):
         r = summary[n]
         h = r["headline"]
