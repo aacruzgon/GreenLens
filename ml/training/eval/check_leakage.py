@@ -16,7 +16,7 @@ has no images there: the check would quietly cover less.
   GPU for files not cached yet). A pair at `--cosine` or more is a match, which also catches crops
   the hash misses. The default is training 4's duplicate threshold. The field-set picks drop a
   candidate at 0.95 (`fieldsets.COPY`), which costs nothing there; here a match fails the run, and
-  at 0.95 a whole-plant photo has many different photos of its species above the bar (evaluation 2).
+  at 0.95 one tomato photo had 155 tomato training images above the bar (evaluation 2).
 
 Either signal is a match. A match is looked at by eye: a copy drops the case, and a different photo
 goes into `leakage_allowed.tsv` (evaluation file, training path, why) so it no longer fails.
