@@ -123,7 +123,7 @@ pub fn findings(
     }
     s.push('\n');
     s.push_str(SOIL);
-    s.push_str("\n\n3. organisms: every insect, mite, spider, slug, snail, worm, bird or other animal you can see, up to 10. Choose the label from this list, or \"other\" with a short name in other_name. Box each one, or the group when there are many of the same kind close together. count is one, few (2 to 10) or many.\n");
+    s.push_str("\n\n3. organisms: every insect, mite, spider, slug, snail, worm, bird or other animal you can see, up to 10. Choose its id from this list, even when you know the animal by another name, or \"other\" with a name of two or three words in other_name (null otherwise). Box each one, or the group when there are many of the same kind close together. count is one, few (2 to 10) or many.\n");
     for o in organisms {
         let _ = writeln!(s, "- {}: {}", o.id, o.name);
     }
