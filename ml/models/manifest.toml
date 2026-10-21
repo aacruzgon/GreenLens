@@ -207,7 +207,7 @@ classifier_labels_version = "disease-head-v3c-2026-10-20"
   # each crop of a photo with exactly one crop. The dev numbers are the head's job: the right
   # problem in the top 3 the API adds to the candidates (architecture 6.3).
   [model.check]
-  dev_top3                   = 0.830     # 94 dev leaf photos (guessing 0.561); v2c 0.74
+  dev_top3_sent              = 0.843     # 83 dev leaf photos with a problem: the true one among the 3 classes the API keeps (guessing 0.572); v2c 0.735
   dev_medium_claims          = 24        # a problem at 0.5 or more at T_disease; 17 right
   test_top1_per_crop         = 0.850     # 758 one-crop test photos
   test_top1_per_photo        = 0.847     # 1,034 test photos, the mean of each photo's crops
@@ -219,7 +219,7 @@ classifier_labels_version = "disease-head-v3c-2026-10-20"
   test_top1_tomato_pakistan  = 0.688     # 80 photos; v2c 0.762, the one set that loses
   test_top1_plantcity        = 0.797     # 153 photos; shots of one leaf below cosine 0.97 can straddle splits
   test_top1_maize_pretoria   = 0.713     # 178 photos
-  test_top1_maize_makerere   = 0.934     # 182 photos from the same fields and week as training
+  test_top1_maize_makerere   = 0.934     # 182 photos from the same fields and week as training; 154 look-alike pairs at cosine 0.97+ span its splits, so not held out
 
 [[model]]
 name      = "plant_probe"
