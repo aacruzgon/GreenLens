@@ -107,10 +107,12 @@ def http_json(method, url, headers=None, body=None, timeout=30):
 class Clerk:
     """Mints session tokens for the test user through Clerk's Backend API."""
 
-    def __init__(self, secret):
+    def __init__(self, secret, email=TEST_EMAIL, user_fields=TEST_USER_FIELDS):
         if not secret.startswith("sk_test_"):
             die("CLERK_SECRET_KEY must start with sk_test_ (never run against production)")
         self.auth = {"Authorization": f"Bearer {secret}"}
+        self.email = email
+        self.user_fields = user_fields
         self.session_id = None
         self._jwt = None
         self._at = 0.0
@@ -124,20 +126,20 @@ class Clerk:
     def _ensure_session(self):
         if self.session_id:
             return
-        users = self._call("GET", "/users?" + urllib.parse.urlencode({"email_address": TEST_EMAIL}))
+        users = self._call("GET", "/users?" + urllib.parse.urlencode({"email_address": self.email}))
         if users:
             user_id = users[0]["id"]
         else:
             alphabet = string.ascii_letters + string.digits
             pw = "".join(secrets.choice(alphabet) for _ in range(24))
-            body = {"email_address": [TEST_EMAIL], "password": pw, "skip_password_checks": True}
+            body = {"email_address": [self.email], "password": pw, "skip_password_checks": True}
             status, _, out = http_json("POST", CLERK_API + "/users", self.auth, body)
             if status == 422:
                 # The instance may require more sign-up fields; Clerk names them in the error.
                 missing = {p for e in out.get("errors", []) if e.get("code") == "form_data_missing"
                            for p in e.get("meta", {}).get("param_names", [])}
-                for name in missing & TEST_USER_FIELDS.keys():
-                    body[name] = TEST_USER_FIELDS[name]
+                for name in missing & self.user_fields.keys():
+                    body[name] = self.user_fields[name]
                 if missing:
                     info(f"instance requires {sorted(missing)}; retrying with test values")
                     status, _, out = http_json("POST", CLERK_API + "/users", self.auth, body)
