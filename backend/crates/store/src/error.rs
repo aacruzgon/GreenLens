@@ -39,6 +39,9 @@ pub mod thrown {
     pub const UNKNOWN_PLANTS: &str = "unknown_plants";
     /// A user's write names a species the knowledge base doesn't hold.
     pub const UNKNOWN_SPECIES: &str = "unknown_species";
+    /// A migration's record changed between the runner's read and its transaction; the code
+    /// is followed by `": <file name>"` ([database 1], applying the migrations).
+    pub const MIGRATION_RACED: &str = "migration raced";
 }
 
 /// What [`thrown::UNKNOWN_SPECIES`] answers: `400 invalid_request` at the request's `field`
@@ -87,19 +90,26 @@ pub enum DbFailure {
 pub fn first_failure(
     errors: impl IntoIterator<Item = (usize, surrealdb::Error)>,
 ) -> Option<surrealdb::Error> {
+    first_failure_at(errors).map(|(_, error)| error)
+}
+
+/// [`first_failure`] with the statement's index in the query, `BEGIN` counting as 0.
+pub fn first_failure_at(
+    errors: impl IntoIterator<Item = (usize, surrealdb::Error)>,
+) -> Option<(usize, surrealdb::Error)> {
     let mut errors: Vec<_> = errors.into_iter().collect();
     errors.sort_unstable_by_key(|(index, _)| *index);
     let mut first = None;
-    for (_, error) in errors {
+    for (index, error) in errors {
         let skipped = matches!(
             error.query_details(),
             Some(QueryError::NotExecuted | QueryError::Cancelled)
         );
         if !skipped {
-            return Some(error);
+            return Some((index, error));
         }
         if first.is_none() {
-            first = Some(error);
+            first = Some((index, error));
         }
     }
     first
