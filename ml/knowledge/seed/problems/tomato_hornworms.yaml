@@ -8,7 +8,7 @@ affects:
 caused_by:
 - hornworm
 damage_patterns:
-- other
+- chewed_margins
 prevalence: common
 indicators:
 - id: tomato_hornworms.leaves_stripped
@@ -77,19 +77,16 @@ indicators:
   - whole_plant
   - leaf_closeup
 conditions:
-  notes: No weather is given. Damage usually starts in midsummer and goes on until the end of the season.
-    Heavy egg laying is common in August and early September (South Carolina). Eggs hatch in about four
-    days, depending on temperature.
+  notes: 'Damage usually starts in midsummer and goes on until the end of the season. Heavy egg laying is
+    common in August and early September (South Carolina). Eggs hatch in about four days, depending on
+    temperature.'
 looks_like: []
 treatments:
 - bt_hornworms
-- contact_insecticide_hornworms
 - handpick_hornworms
 - keep_plants_vigorous
 - leave_parasitized_hornworms
 - protect_natural_enemies
-- pyrethrin_hornworms
-- spinosad_hornworms
 sources:
 - clemson_hgic_tomato_insect_pests
 - isu_tomato_hornworm

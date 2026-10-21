@@ -11,8 +11,8 @@ prevalence: common
 indicators:
 - id: tomato_bacterial_speck.tiny_leaf_specks_size
   text: Leaf specks are tiny, usually no more than 2 mm across, smaller than bacterial spot's leaf spots.
-  question: Are the spots on the leaf tiny specks, about 2 mm across or smaller?
-  weight: 3
+  question: 'Are the spots tiny specks, no bigger than a pinhead?'
+  weight: 2
   discriminating: true
   where: lower_leaves
   image_kinds:
@@ -92,7 +92,6 @@ treatments:
 - avoid_wounding_plants
 - clean_seed_and_transplants
 - control_weeds_and_volunteers
-- copper_preventive_bacterial
 - disinfect_tools_equipment
 - keep_foliage_dry
 - keep_plants_vigorous

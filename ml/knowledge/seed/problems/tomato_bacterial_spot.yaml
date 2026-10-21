@@ -20,9 +20,9 @@ indicators:
 - id: tomato_bacterial_spot.leaf_spot_size
   text: The largest leaf spots grow to about 3 to 5 mm across, bigger than the tiny specks of bacterial
     speck.
-  question: Are the largest spots on the leaf about 3 to 5 mm across?
+  question: 'Are the biggest spots clearly larger than a pinhead, but still small?'
   weight: 2
-  discriminating: false
+  discriminating: true
   where: lower_leaves
   image_kinds:
   - leaf_closeup
@@ -42,7 +42,7 @@ indicators:
 - id: tomato_bacterial_spot.spot_centres_tear_holes
   text: Spot centres turn brown, dry out and tear, leaving holes. The leaves look tattered.
   question: Have the spots dried out and torn, leaving holes so the leaf looks ragged?
-  weight: 3
+  weight: 2
   discriminating: true
   where: lower_leaves
   image_kinds:
@@ -85,11 +85,15 @@ indicators:
   text: Young fruit spots may have a white halo, which fades as the fruit ages.
   question: Do the dark spots on the green fruit have a white ring around them?
   weight: 1
-  discriminating: true
+  discriminating: false
   where: fruit
   image_kinds:
   - flower_fruit
-conditions: {}
+conditions:
+  notes: 'Favoured by warm, humid, wet weather; most outbreaks follow heavy rainstorms. Splashing rain,
+    overhead watering and touching or handling wet plants spread the bacteria. They survive the winter on
+    volunteer tomatoes and infected plant debris, and enter fruit through insect punctures and other
+    wounds.'
 looks_like:
 - problem: tomato_bacterial_speck
   how_to_tell: Hard to tell apart by eye, especially early, so a lab test is recommended to confirm. On
@@ -100,9 +104,11 @@ looks_like:
     to 6 mm) that are raised and scabby and can turn brown and greasy-looking.
 treatments:
 - avoid_handling_wet_plants
+- avoid_wounding_plants
 - clean_seed_and_transplants
 - control_weeds_and_volunteers
 - copper_preventive_bacterial
+- disinfect_tools_equipment
 - keep_foliage_dry
 - keep_plants_vigorous
 - prune_and_stake_for_airflow

@@ -2,11 +2,10 @@
 # every problem that links it; loaded once those problems are signed.
 id: keep_plants_vigorous
 kind: cultural
-text: Keep plants growing strongly. Stressed plants attract more insect pests, suffer more from spider
+text: 'Keep plants growing strongly. Stressed plants attract more insect pests, suffer more from spider
   mite feeding and catch diseases more easily. Plant in well-prepared, fertile beds that drain well, and
-  after heavy rain get standing water away quickly. Mulch the plants, and water and feed them well; follow
-  the fertiliser label. For early blight, test the soil every year, keep potassium at a good level, lime
-  as the soil test advises and side-dress with calcium nitrate; this makes the disease less severe.
+  after heavy rain get standing water away quickly. Mulch the plants, and water and feed them well;
+  follow the fertiliser label.'
 sources:
 - clemson_hgic_tomato_diseases
 - clemson_hgic_tomato_insect_pests

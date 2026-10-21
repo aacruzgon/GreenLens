@@ -2,13 +2,13 @@
 
 Draft of 2026-10-20 by `claude-opus-5-5`. Check it against the excerpts, then set `reviewed_by` in the YAML. An invasive organism also needs `reporting_url`.
 
-## Model notes
+## Model notes (as first drafted)
 
 Excerpts describe mainly the silverleaf or sweetpotato whitefly (Bemisia), and partly the greenhouse whitefly (Trialeurodes vaporariorum). Bemisia holds its wings steeply, like a roof. The greenhouse whitefly holds its wings more loosely and flatter, so it looks broader. Telling the two apart by their eyes needs a microscope, so a photo cannot do it. Whitefly is a pest, not a predator. No excerpt says it eats or parasitises hornworm, parasitic wasp, predatory mite or two-spotted spider mite, so preys_on is empty. The excerpts describe the reverse: parasitic wasps (Encarsia, Eretmocerus) and the predatory mite Amblyseius swirskii attack whiteflies. An empty nymph skin with a round hole, not a T-shaped slit, means a parasitic wasp came out of it. Feeding causes yellow spots, sticky honeydew with black sooty mould, wilting, uneven tomato ripening and silvery squash leaves. Whiteflies also spread viruses such as tomato yellow leaf curl virus. One excerpt gives an oil-spray strength and timing and lists brand-name products. These were left out on purpose. For home gardens, use an insecticidal soap or oil labelled for the crop, cover the leaf undersides, and follow the label.
 
 ## Recognition (insect, pest)
 
-Adults are tiny, about 1 mm long, with a light yellow body and powdery white wings held like a tent or roof over the body. They sit and lay eggs on the undersides of leaves, often new leaves. The young (nymphs) are flat, oval, scale-like specks about 0.3–0.7 mm long, greenish-yellow to glassy yellow, stuck flat to the leaf underside.
+Adults are tiny, about 1 mm long, with a light yellow body and powdery white wings. The sweetpotato (silverleaf) whitefly holds its wings close to the body like a tent or roof; the greenhouse whitefly and most others hold them more loosely, nearly flat. They sit and lay eggs on the undersides of leaves, often new leaves. The young (nymphs) are flat, oval, scale-like specks about 0.3–0.7 mm long, greenish-yellow to glassy yellow, stuck flat to the leaf underside.
 
   - `clemson_hgic_tomato_insect_pests.11` (https://hgic.clemson.edu/factsheet/tomato-insect-pests/, wording not committed: run fetch and chunk, then read build/chunks/clemson_hgic_tomato_insect_pests.jsonl)
   - `edis_in286_sweetpotato_whitefly.18`: Bemisia is difficult to control with insecticides for two reasons; adults and immatures infest the lower surfaces of leaves, which are difficult to reach with insecticide sprays; and they have developed resistance to many insecticide chemistries. Commercial growers of horticultural and ornamental crops rely on systemic insecticides such as the neonicotinoids (imidacloprid, thiamethoxam, dinotefuran) and diamides (cyazypyr) to manage whiteflies. See ENY-478 and ENY-735 for more information on management of whiteflies in commercial production. Homeowners would be best advised to treat populations before they reach outbreak levels and to spray immature whiteflies with a mixture of insecticidal soap or insecticidal oil in water (see label for directions). Care should be taken to cover the lower surface of the leaves. Other chemical control recommendations can be found at the following sites: Florida Insect Management Guide for Vegetables Florida Insect Management Guide for Field Crops Florida Insect Management Guide for Ornamentals
@@ -20,4 +20,6 @@ Adults are tiny, about 1 mm long, with a light yellow body and powdery white win
 
 (none)
 
-  - (no excerpt cited)
+## Changes after signing review (2026-10-20)
+
+- **U9:** the tent-like wings are the sweetpotato (silverleaf) whitefly's; the greenhouse whitefly and most others hold them more loosely, nearly flat (`clemson_hgic_tomato_insect_pests.11`, `edis_in286_sweetpotato_whitefly.3`).

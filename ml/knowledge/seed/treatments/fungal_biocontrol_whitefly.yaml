@@ -1,9 +1,0 @@
-# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
-# every problem that links it; loaded once those problems are signed.
-id: fungal_biocontrol_whitefly
-kind: biological
-text: Products containing insect-killing fungi, Beauveria bassiana or Verticillium lecanii, are sold for
-  use against whiteflies in gardens and greenhouses. Use a product labelled for tomatoes and follow its
-  label.
-sources:
-- edis_in286_sweetpotato_whitefly

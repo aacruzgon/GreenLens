@@ -3,6 +3,9 @@
 id: hose_off_mites
 kind: mechanical
 text: For light infestations, spray the plant with a strong stream of water from the garden hose to knock
-  mites off. Repeat on several days in a row.
+  mites off. Repeat on several days in a row. This wets and splashes the leaves, which spreads leaf spots
+  and blights; skip it on plants that have them.
 sources:
+- isu_septoria_leaf_spot
 - isu_two_spotted_spider_mite
+- ontario_tomato_bacterial_diseases

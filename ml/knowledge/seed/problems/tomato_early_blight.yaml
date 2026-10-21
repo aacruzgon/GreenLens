@@ -13,7 +13,7 @@ indicators:
   text: Small brown spots appear first, mostly on the older, lower leaves.
   question: Are there small brown spots on the lower, older leaves?
   weight: 2
-  discriminating: true
+  discriminating: false
   where: lower_leaves
   image_kinds:
   - leaf_closeup
@@ -63,7 +63,7 @@ indicators:
   text: Fruit spots grow large, often covering nearly the whole fruit, and show rings like the leaf spots.
   question: Does the fruit have a large dark spot with rings inside it?
   weight: 2
-  discriminating: false
+  discriminating: true
   where: fruit
   image_kinds:
   - flower_fruit
@@ -93,6 +93,7 @@ treatments:
 - remove_infected_leaves
 - resistant_cultivars_early_blight
 - rotate_crops_3_years
+- soil_test_potassium_early_blight
 - space_plants_apart
 sources:
 - clemson_hgic_tomato_diseases

@@ -8,25 +8,27 @@ profile: full
 care:
   hardiness_zones: annual
   light: full_sun
-  notes: Tomatoes grow in most soils that drain moderately well and do best in deep, loamy, well-drained
+  notes: 'Tomatoes grow in most soils that drain moderately well and do best in deep, loamy, well-drained
     soil. Plenty of organic matter can raise yield and cut down on problems. They like slightly acidic
     soil, pH 6.0 to 6.8, but can grow in slightly alkaline soil. Spacing depends on how you grow them -
-    staked plants and compact (determinate) types about 45 to 60 cm apart, caged plants 60 to 90 cm, plants
-    left to sprawl 90 to 120 cm, with rows 120 to 150 cm apart. Plants about 90 cm apart get more air,
-    so their leaves dry faster after dew or rain. Give plants at least six hours of direct sun a day, or
-    they make few blossoms. Water in the morning, at the soil around the plants rather than over the leaves.
-    Sandy soil needs water more often, but less each time. Keep the soil from drying out, or blossoms dry
-    and fall. Blossoms drop without setting fruit when it stays below about 13 °C or above about 32 °C for
-    long periods. For heat tolerance, Clemson Extension in South Carolina suggests Arkansas Traveler, Talladega
-    Hybrid, Homestead 24, Bella Rosa Hybrid, Top Gun Hybrid, Solar Fire Hybrid, Florida 91 Hybrid, Sioux
-    and Costoluto Genovese. Too much nitrogen gives lots of leaves but few flowers and fruit. If this happens,
-    use a fertilizer without nitrogen that supplies phosphorus, and follow its label. Do not plant tomatoes,
-    potatoes, peppers or eggplants in the same spot more than once every three years. A grass-family crop
-    such as corn is a good crop to grow before tomatoes. Use certified seeds and plants when you can.
+    staked plants and compact (determinate) types about 45 to 60 cm apart, caged plants 60 to 90 cm,
+    plants left to sprawl 90 to 120 cm, with rows 120 to 150 cm apart. Where pith necrosis has struck,
+    Clemson suggests about 90 cm, so the plants get more air and their leaves dry faster after dew or
+    rain. Give plants at least six hours of direct sun a day, or they make few blossoms. Water in the
+    morning, at the soil around the plants rather than over the leaves. Sandy soil needs water more
+    often, but less each time. Keep the soil from drying out, or blossoms dry and fall. Blossoms drop
+    without setting fruit when it stays below about 13 °C or above about 32 °C for long periods. For heat
+    tolerance, Clemson Extension in South Carolina suggests Arkansas Traveler, Talladega Hybrid,
+    Homestead 24, Bella Rosa Hybrid, Top Gun Hybrid, Solar Fire Hybrid, Florida 91 Hybrid, Sioux and
+    Costoluto Genovese. Too much nitrogen gives lots of leaves but few flowers and fruit. If this
+    happens, use a fertilizer without nitrogen that supplies phosphorus, and follow its label. Do not
+    plant tomatoes, potatoes, peppers or eggplants in the same spot more than once every three years. A
+    grass-family crop such as corn is a good crop to grow before tomatoes. Use certified seeds and plants
+    when you can.'
   soil_ph:
     max: 6.8
     min: 6.0
-  spacing_cm: 90
+  spacing_cm: 60
   water: medium
 classifier_supported: false
 bioclip_label: Solanum lycopersicum with common name tomato

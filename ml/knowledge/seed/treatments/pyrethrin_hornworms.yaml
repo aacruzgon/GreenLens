@@ -1,8 +1,0 @@
-# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
-# every problem that links it; loaded once those problems are signed.
-id: pyrethrin_hornworms
-kind: chemical
-text: Pyrethrin is a natural product that controls caterpillars. Insecticides can kill helpful insects
-  too, so use it only when needed. Use a product labelled for tomatoes and follow its label.
-sources:
-- clemson_hgic_tomato_insect_pests

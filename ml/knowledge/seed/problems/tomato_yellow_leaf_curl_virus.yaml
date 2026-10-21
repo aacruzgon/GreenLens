@@ -7,7 +7,7 @@ affects:
 - tomato
 caused_by: []
 damage_patterns: []
-prevalence: occasional
+prevalence: rare
 indicators:
 - id: tomato_yellow_leaf_curl_virus.upward_leaf_curl
   text: Leaves curl upward.
@@ -59,7 +59,10 @@ indicators:
   image_kinds:
   - flower_fruit
   - whole_plant
-conditions: {}
+conditions:
+  notes: 'Its carrier, the sweetpotato whitefly (Bemisia), survives the winter outdoors only as far north
+    as South Carolina; further north, Canada included, it lives in greenhouses. Upward leaf curl from
+    heat, drought or wet soil (leaf roll) looks similar, mostly on older leaves.'
 looks_like: []
 treatments:
 - control_weeds_and_volunteers

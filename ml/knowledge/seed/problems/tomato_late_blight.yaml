@@ -19,7 +19,7 @@ indicators:
   - leaf_closeup
 - id: tomato_late_blight.spots_enlarge_quickly
   text: The leaf spots quickly grow into large dark patches.
-  question: Are there large dark patches on the leaf, spreading over much of it?
+  question: 'Have some of the dark spots grown into larger patches?'
   weight: 2
   discriminating: true
   where: lower_leaves

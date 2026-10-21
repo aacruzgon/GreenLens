@@ -75,6 +75,7 @@ looks_like:
     covering the spots, and the top of the leaf has pale green to bright yellow spots. In late blight it
     is white mould at the edges of dark patches that look soaked with water.
 treatments:
+- clean_seed_and_transplants
 - fungicide_preventive
 - keep_foliage_dry
 - prune_and_stake_for_airflow

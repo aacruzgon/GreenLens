@@ -23,8 +23,8 @@ indicators:
 - id: tomato_spider_mites.mites_on_underside
   text: Tiny oval mites, about the size of a full stop, on the leaf underside. Most are green, greenish-yellow
     or almost see-through, often with two dark spots; some are brown or orange-red.
-  question: Are there tiny oval specks, greenish, yellowish, see-through or orange-red, on the underside
-    of the leaf?
+  question: 'Are there tiny oval mites on the underside of the leaf, pale green or yellowish, some with
+    two dark spots?'
   weight: 3
   discriminating: true
   where: leaf_underside
@@ -85,7 +85,14 @@ conditions:
     hot, dry spell. Mites develop fastest at about 27 °C and like the hot, dry weather of summer and autumn,
     but can appear at any time of year. In Iowa they become active in April and May and stay active all
     summer.
-looks_like: []
+looks_like:
+- problem: tomato_whiteflies
+  how_to_tell: 'Both live on the underside of the leaf and leave tiny pale or yellow feeding spots.
+    Spider mites spin fine silk webbing; whiteflies do not. Whitefly adults are tiny insects with powdery
+    white wings. Whitefly young are flat, oval, greenish-yellow scales, about 0.4 to 0.7 mm long, that
+    stay stuck flat to the leaf; spider mites are tiny oval mites, often with two dark spots. Whiteflies
+    leave sticky honeydew, on which black sooty mould grows; spider mites leave the leaves bronzed or
+    bleached.'
 treatments:
 - buy_predatory_mites
 - check_mites_white_paper
@@ -93,11 +100,11 @@ treatments:
 - hose_off_mites
 - inspect_transplants_mites
 - keep_plants_vigorous
-- miticide_mites
 - protect_natural_enemies
 - soap_or_oil_spray
 sources:
 - clemson_hgic_tomato_insect_pests
+- edis_in286_sweetpotato_whitefly
 - edis_in307_twospotted_spider_mite
 - isu_two_spotted_spider_mite
 reviewed_by: ''

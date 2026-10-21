@@ -2,7 +2,7 @@
 
 Draft of 2026-10-20 by `claude-opus-5-5`. Check it against the excerpts, then set `reviewed_by` in the YAML. An invasive organism also needs `reporting_url`.
 
-## Model notes
+## Model notes (as first drafted)
 
 Plant pest, not a predator. No excerpt says it eats or parasitises any listed organism, so preys_on is empty. The excerpts say it is itself eaten by predatory mites, lady beetles, minute pirate bugs, predatory thrips and lacewing larvae. Body colour varies between sources: one says green, greenish-yellow or almost translucent is most common, another says white with two dark greenish spots in summer. Overwintering females are orange to orange-red. Predatory mites can look similar: they are often red or orange, but have longer legs and move fast. A hand lens is needed to see the mites. Shaking leaves over white paper shows them as tiny, slow-moving specks.
 
@@ -18,5 +18,3 @@ A tiny oval mite, about 0.4–0.5 mm long, barely visible without a hand lens. I
 ## Preys on
 
 (none)
-
-  - (no excerpt cited)

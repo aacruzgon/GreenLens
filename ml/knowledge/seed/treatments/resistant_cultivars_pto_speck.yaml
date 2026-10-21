@@ -2,7 +2,7 @@
 # every problem that links it; loaded once those problems are signed.
 id: resistant_cultivars_pto_speck
 kind: cultural
-text: Grow tomato varieties that carry the Pto gene. It gives resistance to bacterial speck race 0. Race
-  1 can still infect these plants, but it has not been a major problem.
+text: 'Grow tomato varieties that carry the Pto gene. It gives resistance to bacterial speck race 0. Race
+  1 can still infect these plants, but it has not been an important problem on commercial farms.'
 sources:
 - ontario_tomato_bacterial_diseases

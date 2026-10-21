@@ -2,13 +2,14 @@
 # every problem that links it; loaded once those problems are signed.
 id: control_weeds_and_volunteers
 kind: cultural
-text: Pull weeds in and around the garden, and pull up volunteer tomato plants (ones that come up on their
-  own); for late blight, pull volunteer potato plants too. Volunteer tomatoes and weeds can carry bacterial
-  speck and bacterial spot, and tomato-family weeds such as black nightshade, Carolina horsenettle and
-  ground cherry can carry early blight, late blight and bacterial spot. Weeds also host whiteflies, which
-  can bring tomato yellow leaf curl virus into the garden from nightshades and jimsonweed. Destroying
-  weeds such as pokeweed, jimsonweed, wild blackberry and wild geranium cuts the number of spider mites
-  that survive the winter.
+text: 'Pull weeds in and around the garden, and pull up volunteer tomato plants (ones that come up on
+  their own); for late blight, pull volunteer potato plants too. Volunteer tomatoes and weeds can carry
+  bacterial speck and bacterial spot. Tomato-family weeds carry these diseases: black nightshade (early
+  blight, late blight, bacterial spot), Carolina horsenettle (late blight) and ground cherry (bacterial
+  spot). Septoria leaf spot also survives the winter on some weeds related to tomato. Weeds also host
+  whiteflies, which can bring tomato yellow leaf curl virus into the garden from nightshades and
+  jimsonweed. Destroying weeds such as pokeweed, jimsonweed, wild blackberry and wild geranium cuts the
+  number of spider mites that survive the winter.'
 sources:
 - clemson_hgic_tomato_diseases
 - edis_in307_twospotted_spider_mite

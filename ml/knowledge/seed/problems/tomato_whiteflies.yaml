@@ -10,7 +10,7 @@ caused_by:
 damage_patterns:
 - sticky_residue
 - sooty_mould
-prevalence: common
+prevalence: occasional
 indicators:
 - id: tomato_whiteflies.adult_whiteflies_under_leaves
   text: Tiny whitish-yellow insects with powdery white wings sit on the undersides of the leaves.
@@ -25,7 +25,7 @@ indicators:
     leaves and do not move.
   question: Are there tiny flat, oval, pale yellow-green scales stuck under the leaves?
   weight: 2
-  discriminating: false
+  discriminating: true
   where: leaf_underside
   image_kinds:
   - leaf_underside
@@ -41,13 +41,13 @@ indicators:
   text: Leaves are coated with sticky, sugary honeydew that the whiteflies excrete.
   question: Do the leaves look shiny or sticky, as if coated with syrup?
   weight: 2
-  discriminating: true
+  discriminating: false
   where: upper_leaves
   image_kinds:
   - leaf_closeup
 - id: tomato_whiteflies.sooty_mould_patches
   text: Dark, black sooty mould grows in patches on the honeydew and covers the leaves.
-  question: Are there black, sooty patches on the leaves?
+  question: 'Is there a black, powdery coating lying on the leaf surface, like soot?'
   weight: 2
   discriminating: true
   where: upper_leaves
@@ -70,16 +70,16 @@ indicators:
   image_kinds:
   - flower_fruit
 conditions:
-  notes: Whiteflies are mainly a pest in warm tropical and warm temperate regions. Outdoors they survive
-    the winter only in warm areas; further north they live in greenhouses. Eggs hatch in about a week
-    at 25 °C. Large swarms can fly in from old, dying crops nearby and badly infest newly planted ones.
-    Outbreaks are rare where no insecticides are used, because natural enemies keep whiteflies down.
+  notes: 'The sweetpotato whitefly (Bemisia) is mainly a pest in warm tropical and warm temperate
+    regions. Outdoors it survives the winter only as far north as South Carolina; further north, Canada
+    included, it lives in greenhouses. Its eggs hatch in about a week at 25 °C. Large swarms can fly in
+    from old, dying crops nearby and badly infest newly planted ones. In Florida, Bemisia rarely reaches
+    outbreak numbers where no insecticides are used, because natural enemies keep it down.'
 looks_like: []
 treatments:
 - buy_whitefly_biocontrols_greenhouse
 - control_weeds_and_volunteers
 - fine_mesh_screen_greenhouse
-- fungal_biocontrol_whitefly
 - oil_spray_whitefly_repellent
 - protect_natural_enemies
 - reflective_mulch_whiteflies

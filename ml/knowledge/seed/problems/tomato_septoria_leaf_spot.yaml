@@ -76,6 +76,8 @@ indicators:
   image_kinds:
   - whole_plant
 conditions:
+  notes: 'Most active when humidity is high and rain or overhead watering wets the plants. It survives
+    the winter on infected debris and on some weeds related to tomato.'
   temp_c:
     max: 25
     min: 20
@@ -87,6 +89,7 @@ looks_like:
   how_to_tell: Bacterial spot makes small black spots on the fruit. Septoria does not infect fruit. Septoria
     leaf spots have light tan centres with tiny black dots.
 treatments:
+- control_weeds_and_volunteers
 - fungicide_preventive
 - keep_foliage_dry
 - mulch_around_plants

@@ -1,7 +1,9 @@
 # The knowledge sources (contracts §10, SourceSeed): one document each. `licence` records the
 # terms checked before ingesting it (architecture 5, licensing; open decision 7) and the credit
-# line the publisher asks for, which the app shows next to an excerpt. The seed keeps only short
-# verbatim excerpts, each linked back to `url`; the profiles state facts in our own words.
+# line the publisher asks for, which the app shows next to an excerpt. The seed keeps verbatim
+# excerpts, each linked back to `url`, as far as each source's terms allow: the EDIS, ISU Yard and
+# Garden and Ontario pages are kept nearly whole, and the facts-only sources not at all. The
+# profiles state facts in our own words.
 #
 # Terms, as each publisher states them (checked 2026-10-20):
 # - Ontario (ontario.ca/page/copyright-information): "If credit is given and Crown copyright is
@@ -12,10 +14,10 @@
 #   to the author, Yard and Garden, and Iowa State University Extension and Outreach".
 #   The how-to page "Growing Tomatoes in the Home Garden" carries no such note, only
 #   "© Iowa State University of Science and Technology": facts only, no wording committed.
-# - UF/IFAS EDIS (journals.flvc.org/edis/about): CC BY-NC-ND 4.0 "beginning with Volume 2024,
-#   Issue 1". Older articles: "Permission is granted to others to use these materials in part or
-#   in full for educational purposes, provided that full credit is given to the UF/IFAS, citing
-#   the publication, its source, and date of publication." Both used articles are older.
+# - UF/IFAS EDIS (ask.ifas.ufl.edu/copyright, which both article pages link): the documents "are
+#   made available under a Creative Commons Attribution-NonCommercial-NoDerivatives International
+#   4.0 license, and are available to share and distribute for any noncommercial purpose with
+#   attribution". The licence excludes individual images, and none is used.
 # - Clemson HGIC: © Clemson University, no reuse grant found. Facts only (plan.yaml,
 #   facts_only_sources): the profiles cite it, but none of its wording is committed.
 #
@@ -73,13 +75,13 @@
   title: "Twospotted Spider Mite, Tetranychus urticae Koch (IN307)"
   publisher: UF/IFAS Extension, EDIS
   url: https://edis.ifas.ufl.edu/publication/IN307
-  licence: "EDIS terms for articles before Volume 2024: use in part or in full for educational purposes with full credit. Credit: Thomas R. Fasulo and H. A. Denmark, Twospotted Spider Mite, Tetranychus urticae Koch (EENY150/IN307), UF/IFAS Extension, EDIS, 2000, revised 2025, https://doi.org/10.32473/edis-in307-2000."
+  licence: "CC BY-NC-ND 4.0: non-commercial sharing with attribution, without changes. Credit: Thomas R. Fasulo and H. A. Denmark, Twospotted Spider Mite, Tetranychus urticae Koch (EENY150/IN307), UF/IFAS Extension, EDIS, 2000, revised 2025, https://doi.org/10.32473/edis-in307-2000."
   retrieved_at: 2026-10-19
 - id: edis_in286_sweetpotato_whitefly
   title: "Sweetpotato Whitefly B Biotype, Bemisia tabaci (Gennadius) (EENY-129/IN286)"
   publisher: UF/IFAS Extension, EDIS
   url: https://edis.ifas.ufl.edu/publication/IN286
-  licence: "EDIS terms for articles before Volume 2024: use in part or in full for educational purposes with full credit. Credit: Heather J. McAuslane and Hugh A. Smith, Sweetpotato Whitefly B Biotype, Bemisia tabaci (Gennadius) (EENY-129/IN286), UF/IFAS Extension, EDIS, 2000, revised 2015, https://doi.org/10.32473/edis-in286-2002."
+  licence: "CC BY-NC-ND 4.0: non-commercial sharing with attribution, without changes. Credit: Heather J. McAuslane and Hugh A. Smith, Sweetpotato Whitefly B Biotype, Bemisia tabaci (Gennadius) (EENY-129/IN286), UF/IFAS Extension, EDIS, 2000, revised 2015, https://doi.org/10.32473/edis-in286-2002."
   retrieved_at: 2026-10-20
 
 # --- Clemson HGIC (facts only: no wording committed) -----------------------------------------
@@ -90,7 +92,7 @@
   licence: "© Clemson University. No reuse grant found: facts only, cited; no wording is committed."
   retrieved_at: 2026-10-19
 - id: clemson_hgic_tomato_insect_pests
-  title: Tomato Insect Pests
+  title: Tomato Insect Pests (HGIC 2218)
   publisher: Clemson Cooperative Extension, Home & Garden Information Center
   url: https://hgic.clemson.edu/factsheet/tomato-insect-pests/
   licence: "© Clemson University. No reuse grant found: facts only, cited; no wording is committed."
