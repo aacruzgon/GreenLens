@@ -47,7 +47,9 @@ def main() -> None:
     rows = [l.split("\t") for l in (ROOT / "ml/training/data/splits/test.tsv").read_text().splitlines()[1:]]
     picked, left = [], dict(PER_SPECIES)
     for dataset, path, species, _problem in rows:
-        if dataset == "plantdoc" and left.get(species, 0) > 0 and species in species_ids:
+        # Only species the head has classes for: v3c has none for potato.
+        if dataset == "plantdoc" and left.get(species, 0) > 0 and species in species_ids \
+                and any(l["species_id"] == species for l in head["labels"]):
             picked.append((path, species))
             left[species] -= 1
     emb = Embedder(FILES / entries["bioclip"]["file"]).files([RAW / p for p, _ in picked])

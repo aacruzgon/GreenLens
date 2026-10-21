@@ -839,7 +839,7 @@ async fn a_cited_farm_record_is_stored_and_its_rate_never_reaches_the_app() {
     assert_eq!(stored[1].farm_citations, [hit.citation]);
     assert_eq!(
         stored[1].prompt_version.as_deref(),
-        Some("chat/2026-10-20.4")
+        Some("chat/2026-10-20.6")
     );
 
     // The records reach the model as farm_records data.

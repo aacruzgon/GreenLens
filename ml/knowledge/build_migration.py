@@ -13,8 +13,9 @@ reads back as the same f32.
 
 It also writes ml/knowledge/build/ (not committed): summary.json with label_set_version, the
 BioCLIP label list and the species and organism options, and the reference photos as WebP under
-their RustFS keys, for the seed-upload container (contracts §10; not written yet). build/images/ is
-cleared on every run, so it holds exactly the photos in the seed. Removed species, problem and
+their RustFS keys (photos.py makes them). build/images/ is cleared on every run, so it holds exactly
+the photos in the seed. The seed-upload image doesn't use build/: it makes the same photos from the
+seed and checks their keys against this file (upload.py). Removed species, problem and
 organism ids are printed, so the reviewer sees them.
 """
 
@@ -22,7 +23,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import io
 import json
 import math
 import re
@@ -34,6 +34,7 @@ from pathlib import Path
 import numpy as np
 
 from ml.knowledge import embed, validate
+from ml.knowledge.photos import reference_image
 from ml.knowledge.seed import ROOT, SEED, Seed, load
 
 OUT = ROOT / "backend/migrations/knowledge.surql"
@@ -130,22 +131,6 @@ def label_set_version(labels: list[dict], revision: str, templates: list[str]) -
            "labels": sorted(f"{l['table']}:{l['id']}\t{l['label']}" for l in labels)}
     blob = json.dumps(doc, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     return hashlib.sha256(blob).hexdigest()[:16]
-
-
-def reference_image(seed: Seed, species_id: str, img: dict) -> tuple[str, bytes]:
-    """The photo as WebP (upright, long side 1024, no metadata) and its key,
-    knowledge/species/{species_id}/{first 16 hex of the WebP's SHA-256}.webp. The EXIF orientation
-    is applied before the metadata goes, as for uploads (contracts §1)."""
-    from PIL import Image, ImageOps
-
-    with Image.open(seed.root / "images" / img["file"]) as im:
-        im = ImageOps.exif_transpose(im).convert("RGB")
-        if max(im.size) > 1024:
-            im.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
-        buf = io.BytesIO()
-        im.save(buf, "WEBP", quality=85, method=6)
-    data = buf.getvalue()
-    return f"knowledge/species/{species_id}/{hashlib.sha256(data).hexdigest()[:16]}.webp", data
 
 
 def header(seed: Seed) -> str:

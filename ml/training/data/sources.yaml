@@ -81,6 +81,76 @@ datasets:
     ship: true
     use: bean, only if beans become supported
 
+  - name: plantcity
+    description: >-
+      PlantCity: in-field phone and DSLR leaf close-ups from Charsadda (tomato) and Chitral (the
+      other crops), Pakistan; 52 classes in 52,219 files, flipped, turned and mirrored copies
+      included, in train.zip and test.zip, with no names linking a copy to its photo (the ten
+      classes read here hold 14,321 files and 1,236 photos once copies.py groups them). Only the
+      members of seven tomato classes, tomato spider mites, and maize gray leaf spot and healthy
+      are read, by HTTP range (1.8 GB of the 7.3 GB); the mapping drops maize gray leaf spot,
+      whose photos don't show it
+    kind: zip_members
+    zips:
+      - url: https://data.mendeley.com/public-files/datasets/w8kh2xkspx/files/09b2fa7e-ffc1-412f-a717-f0078c4861b5/file_downloaded   # Images/train.zip, 6,127,208,194 bytes
+      - url: https://data.mendeley.com/public-files/datasets/w8kh2xkspx/files/cc5d2e50-03cd-450c-a444-4c6f48683d45/file_downloaded   # Images/test.zip, 1,128,347,591 bytes
+    include:
+      - '^(train|test)/(tomato_(bacterial_spot|early_blight|healthy_leaf|late_blight|leaf_curl|leaf_mold|septoria_leaf)|tomato spider mites|Corn gray leaf spot|Corn Normal leaf)/[^/]+\.(?i:jpe?g)$'
+    url: https://data.mendeley.com/datasets/w8kh2xkspx/4
+    sha256: 1179c60c718a8bc179e6e98c56ac7cfcc7db65fdf10c1bb1ca15e01d53a16b31   # SHA-256 of the sorted "path sha256" listing of its 14,321 members, per fetch.py
+    licence: CC BY 4.0 (Mendeley Data record, read 2026-10-20; the Data in Brief article is CC BY-NC, the data is not)
+    citation: >-
+      Khan M.S., Nisa K., Ahmad I. (2026) PlantCity, Mendeley Data V4, doi:10.17632/w8kh2xkspx.4;
+      Khan et al., Data in Brief 2025, 112130, doi:10.1016/j.dib.2025.112130
+    ship: true
+    use: tomato and corn field data (disease head)
+
+  - name: maize_pretoria
+    description: >-
+      Diseases of maize in the field: 2,355 handheld field photos (phones, compacts and DSLRs),
+      South Africa, 2009-2020, labelled per image in Database.csv with eight columns (several may be set). Only
+      the images with one label among gray leaf spot, northern corn leaf blight, common rust and
+      no foliar symptoms are read, by HTTP range, from the 10.8 GB zip: an image also flagged
+      "Other" (tearing or insects) is kept, one flagged "UnidentifiedDisease" or with a second
+      disease is not
+    kind: zip_members
+    zips:
+      - url: https://ndownloader.figshare.com/files/36203652   # leaf_images.zip, 10,755,639,029 bytes
+    labels:
+      url: https://ndownloader.figshare.com/files/36203595   # Database.csv
+      sha256: 9379d3df7fe528c2ab4e302ab76bb49cb94948405042b94224c97f90796aeb5d
+      file_column: filePath
+      exclusive: [GLS, NCLB, PLS, CR, SR, NoFoliarSymptoms, UnidentifiedDisease]
+      keep: [GLS, NCLB, CR, NoFoliarSymptoms]
+    url: https://doi.org/10.25403/UPresearchdata.20237613.v1
+    sha256: c79952a00ef42f64d71a27980efda242028f71f7b343d6a527b57ebdf3a0e744   # SHA-256 of the sorted "path sha256" listing of its 1,270 members, per fetch.py
+    licence: CC BY 4.0 (Figshare record, read 2026-10-20)
+    citation: >-
+      Craze H. (2022) Diseases of maize in the field, University of Pretoria, dataset,
+      doi:10.25403/UPresearchdata.20237613.v1
+    ship: true
+    use: corn field data (disease head)
+
+  - name: maize_makerere
+    description: >-
+      Makerere University Maize Image Dataset: phone photos in Ugandan fields (Lacuna Fund, 2021),
+      named by their Unix time in milliseconds. Only the "Maize Leaf Blight" (northern corn leaf
+      blight, per its datasheet) and healthy archives are fetched (MSV isn't one of our classes);
+      the mapping samples about 600 photos per class so it doesn't swamp the other corn sources
+    kind: archives
+    files:
+      - {name: MLB_1.rar, url: https://dataverse.harvard.edu/api/access/datafile/6284851, sha256: 91e491ae4c0d1f187b2d6372e23c22634abbc50d0f46eacc12f3eba52baaf9f0}
+      - {name: MLB_2.rar, url: https://dataverse.harvard.edu/api/access/datafile/6284853, sha256: 2e3a3593f643a85f302620b58c402a2d081a0ac13faf7697cd9b4a59ac8e0847}
+      - {name: Healthy_1.rar, url: https://dataverse.harvard.edu/api/access/datafile/6045938, sha256: 641dabcdc0f06ae5e65e38afde402691f712835fa8fade5fe3e4e090d1746cef}
+      - {name: Healthy_2.rar, url: https://dataverse.harvard.edu/api/access/datafile/6045939, sha256: f319faa3e819b4dc90fe84786d6ec217e0c75397c68360d9e3a32f6a49544da7}
+    url: https://doi.org/10.7910/DVN/LPGHKK
+    licence: CC0 1.0 (Harvard Dataverse record, version 2.1, read 2026-10-20; its datasheet says CC BY)
+    citation: >-
+      Babirye C., Nakatumba-Nabende J. et al. (2022) Makerere University Maize Image Dataset,
+      Harvard Dataverse V2.1, doi:10.7910/DVN/LPGHKK
+    ship: true
+    use: corn field data (disease head)
+
   - name: inat_species
     description: >-
       iNaturalist research photos of the five supported crops (whole plants, flowers, fruit) and

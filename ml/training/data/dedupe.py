@@ -13,7 +13,11 @@
 4. Splits, by "same plant" group: near-copies at cosine ≥ --split-threshold (default 0.97,
    below the duplicate threshold) across all datasets, and the photos of one field visit
    (`sessions` in a mapping). At 0.95 the chained groups span every class of a dataset, so
-   0.97 is the default.
+   0.97 is the default. Within a dataset the near-copies are searched among every image, each
+   standing for the image its duplicate group keeps: a set like PlantCity ships each photo
+   flipped and turned, so two shots of one leaf can be near-copies only in orientations the
+   groups didn't keep. Across datasets only kept images link, since a photo's many copies would
+   chain other sets' look-alike leaves (healthy ones above all) into its group.
    - A group holding a published test image: that image stays test, and the group's other
      images are dropped, since they are near-copies of a test image.
    - Otherwise a group holding a published validation image goes to val.
@@ -24,6 +28,11 @@
      every class in val and test even though groups (whole field visits) vary in size.
    The field sets carry no site or plant ids, so these groups stand in for training.md §4's
    "held out by source".
+5. --keep-splits, for adding datasets: every image already in the committed splits keeps its
+   split (and wins its duplicate group), since refilling the quotas moves whole field visits and
+   would put photos a shipped head trained on into test. A new image joins a group's committed
+   images in the strictest split among them (test, then val, then train), or is dropped as a
+   near-copy of a published test image; groups of new images only fill the quotas as above.
 
 Writes data/splits/{train,val,test}.tsv (dataset, path relative to data/raw, species, problem)
 and data/splits/dedupe_report.md with a sample of pairs to check by eye.
@@ -79,6 +88,66 @@ def components(n: int, pairs: list[tuple[int, int, float]]) -> list[list[int]]:
     return list(groups.values())
 
 
+def assign_splits(plant_groups: list[list], committed: dict[str, str], relpath, has_test: set[str],
+                  val_share: float, test_share: float) -> tuple[dict[str, list], list, int]:
+    """Step 4 and --keep-splits (the module's docstring) for the "same plant" groups, each a list
+    of records: the records per split, those dropped as near-copies of a published test image,
+    and how many committed images kept their split. `committed` maps a path relative to data/raw
+    (`relpath(record)`) to its committed split."""
+    out = {"train": [], "val": [], "test": []}
+    dropped_near_test, free = [], []
+    kept_where = 0
+    for members in plant_groups:
+        fixed = [r for r in members if relpath(r) in committed]
+        if fixed:
+            for r in fixed:
+                out[committed[relpath(r)]].append(r)
+            new = [r for r in members if relpath(r) not in committed]
+            if any(r.split == "test" for r in members):
+                out["test"] += [r for r in new if r.split == "test"]
+                dropped_near_test += [r for r in new if r.split != "test"]
+            else:
+                out[next(s for s in ("test", "val", "train") if any(committed[relpath(r)] == s for r in fixed))] += new
+            kept_where += len(fixed)
+        elif any(r.split == "test" for r in members):
+            out["test"] += [r for r in members if r.split == "test"]
+            dropped_near_test += [r for r in members if r.split != "test"]
+        elif any(r.split in ("validation", "val") for r in members):
+            out["val"] += members
+        else:
+            free.append(members)
+
+    # The free groups, in the order of a hash of each, fill each (dataset, class)'s val and
+    # test quotas: a group goes to test while that class's test share is short by at least
+    # half the group, then to val the same way, else to train. Groups are whole field visits
+    # or same-plant sets of very different sizes, so plain hash thresholds leave some classes
+    # with no val or test at all.
+    def label(members) -> tuple[str, str]:
+        return members[0].dataset, collections.Counter(r.target for r in members).most_common(1)[0][0]
+
+    def order(members) -> bytes:
+        key = min(relpath(r) for r in members)
+        return hashlib.sha256(f"{members[0].dataset}|{key}".encode()).digest()
+
+    total = collections.Counter()
+    for members in free:
+        total[label(members)] += len(members)
+    filled = {"val": collections.Counter(), "test": collections.Counter()}
+    for members in sorted(free, key=order):
+        lab, n = label(members), len(members)
+        dest = "train"
+        for split, frac in (("test", test_share if lab[0] not in has_test else 0.0), ("val", val_share)):
+            if filled[split][lab] + n / 2 <= frac * total[lab]:
+                dest = split
+                break
+        if dest != "train":
+            filled[dest][lab] += n
+        out[dest] += members
+    for rs in out.values():
+        rs.sort(key=lambda r: str(r.path))
+    return out, dropped_near_test, kept_where
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--threshold", type=float, default=0.98)
@@ -86,6 +155,8 @@ def main() -> None:
     ap.add_argument("--val-share", type=float, default=0.15)
     ap.add_argument("--test-share", type=float, default=0.15,
                     help="test share for datasets with no published test split")
+    ap.add_argument("--keep-splits", action="store_true",
+                    help="keep every image of the committed splits where it is; place only new images")
     ap.add_argument("--split-threshold", type=float, default=0.97,
                     help="near-copies at or above this cosine share a split")
     args = ap.parse_args()
@@ -103,28 +174,51 @@ def main() -> None:
     same_photo = [(g[0], j, 1.0) for g in by_original.values() for j in g[1:]]
     groups = components(len(recs), pairs + same_photo)
 
+    raw = index.RAW.resolve()
+    relpath = lambda r: str(r.path.resolve().relative_to(raw))
+    committed: dict[str, str] = {}
+    committed_ds: set[str] = set()
+    if args.keep_splits:
+        for split in ("train", "val", "test"):
+            for line in (SPLITS / f"{split}.tsv").read_text().splitlines()[1:]:
+                committed[line.split("\t")[1]] = split
+                committed_ds.add(line.split("\t")[0])
+
     def rank(i: int):
         r = recs[i]
-        return (r.split == "test", r.split in ("validation", "val"),
+        return (relpath(r) in committed, r.split == "test", r.split in ("validation", "val"),
                 -len(r.path.name) if r.original else 0, r.path.stat().st_size)
 
     keep, dropped_conflict, removed_dup = [], [], 0
+    kept_of: dict[int, int] = {}   # every image of a kept group -> the image the group keeps
     for g in groups:
         targets = {recs[i].target for i in g}
         if len(targets) > 1:
             dropped_conflict.append(g)
             continue
-        keep.append(max(g, key=rank))
+        k = max(g, key=rank)
+        keep.append(k)
+        kept_of.update((i, k) for i in g)
         removed_dup += len(g) - 1
 
-    # "Same plant" groups among the kept images, across datasets, for the splits.
-    raw = index.RAW.resolve()
+    # "Same plant" groups for the splits. Within a dataset, near-copies among every image, each
+    # mapped to the image its group keeps. Across datasets, only between kept images: each kept
+    # PlantCity photo has about 13 copies, and letting all of them link chains other sets'
+    # healthy leaves into PlantCity's groups (187 healthy tomato photos from four sets in one).
     kept = sorted(keep, key=lambda i: str(recs[i].path))
+    pos = {k: a for a, k in enumerate(kept)}
+    best: dict[tuple[int, int], float] = {}
+    for i, j, c in duplicate_pairs(emb, args.split_threshold):
+        if recs[i].dataset != recs[j].dataset and (kept_of.get(i) != i or kept_of.get(j) != j):
+            continue
+        if i in kept_of and j in kept_of and kept_of[i] != kept_of[j]:
+            a, b = sorted((pos[kept_of[i]], pos[kept_of[j]]))
+            best[(a, b)] = max(c, best.get((a, b), 0.0))
     # In a dataset with `sessions`, the field visit is the unit: cosine links between its own
     # images would chain its visits into one group (TOM2024's 640 x 480 photos sit at 0.97
     # across days), so only its links to other datasets count.
     by_visit = {r.dataset for r in recs if r.session}
-    near_all = duplicate_pairs(emb[kept], args.split_threshold)
+    near_all = [(a, b, c) for (a, b), c in best.items()]
     near = [(a, b, c) for a, b, c in near_all
             if not (recs[kept[a]].dataset == recs[kept[b]].dataset and recs[kept[a]].dataset in by_visit)]
     by_session = collections.defaultdict(list)
@@ -134,48 +228,15 @@ def main() -> None:
     near += [(g[0], b, 1.0) for g in by_session.values() for b in g[1:]]
     has_test = {r.dataset for r in recs if r.split == "test"}
 
-    out = {"train": [], "val": [], "test": []}
-    dropped_near_test, plant_groups, free = [], [], []
-    for g in components(len(kept), near):
-        members = [recs[kept[a]] for a in g]
-        plant_groups.append(len(g))
-        if any(r.split == "test" for r in members):
-            out["test"] += [r for r in members if r.split == "test"]
-            dropped_near_test += [r for r in members if r.split != "test"]
-        elif any(r.split in ("validation", "val") for r in members):
-            out["val"] += members
-        else:
-            free.append(members)
-
-    # The free groups, in the order of a hash of each, fill each (dataset, class)'s val and
-    # test quotas: a group goes to test while that class's test share is short by at least
-    # half the group, then to val the same way, else to train. Groups are whole field visits
-    # or same-plant sets of very different sizes, so plain hash thresholds leave some classes
-    # with no val or test at all.
-    def label(members) -> tuple[str, str]:
-        return members[0].dataset, collections.Counter(r.target for r in members).most_common(1)[0][0]
-
-    def order(members) -> bytes:
-        key = min(str(r.path.resolve().relative_to(raw)) for r in members)
-        return hashlib.sha256(f"{members[0].dataset}|{key}".encode()).digest()
-
-    total = collections.Counter()
-    for members in free:
-        total[label(members)] += len(members)
-    filled = {"val": collections.Counter(), "test": collections.Counter()}
-    for members in sorted(free, key=order):
-        lab, n = label(members), len(members)
-        dest = "train"
-        for split, frac in (("test", args.test_share if lab[0] not in has_test else 0.0), ("val", args.val_share)):
-            if filled[split][lab] + n / 2 <= frac * total[lab]:
-                dest = split
-                break
-        if dest != "train":
-            filled[dest][lab] += n
-        out[dest] += members
-    for rs in out.values():
-        rs.sort(key=lambda r: str(r.path))
+    plant = [[recs[kept[a]] for a in g] for g in components(len(kept), near)]
+    plant_groups = [len(g) for g in plant]
+    out, dropped_near_test, kept_where = assign_splits(plant, committed, relpath, has_test,
+                                                       args.val_share, args.test_share)
     split_of = {id(r): name for name, rs in out.items() for r in rs}
+    # A committed dataset's image that wasn't in the splits before: a group whose label conflict
+    # went away when a class was dropped in place (training.md section 4, step 3) comes back here.
+    new_in_committed = collections.Counter(r.dataset for rs in out.values() for r in rs
+                                           if r.dataset in committed_ds and relpath(r) not in committed)
     straddle = collections.Counter(
         recs[kept[a]].dataset for a, b, _ in near_all
         if id(recs[kept[a]]) in split_of and id(recs[kept[b]]) in split_of
@@ -205,6 +266,9 @@ def main() -> None:
         *[f"- {d}: {n} files dropped as copies of another source's photos (`originals.drop_if_name_in`)" for d, n in copies.items() if n],
         f"- Dropped as near-copies (≥ {args.split_threshold}) of a test image: {len(dropped_near_test)}",
         f"- Near-copies (≥ {args.split_threshold}) still in different splits: {dict(straddle) or 0} (within datasets grouped by field visit instead)",
+        *([f"- `--keep-splits`: {kept_where} of the {len(committed)} committed images kept their split; "
+           f"{len(committed) - kept_where} are no longer kept; new from datasets already in the splits: "
+           f"{dict(new_in_committed) or 0}"] if args.keep_splits else []),
         f"- Kept: train {len(out['train'])}, val {len(out['val'])}, test {len(out['test'])}",
         f"- Same-plant groups: {len(plant_groups)}; the largest holds {max(plant_groups)} images",
         "",

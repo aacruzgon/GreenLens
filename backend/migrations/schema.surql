@@ -682,6 +682,13 @@ DEFINE FIELD OVERWRITE embedding_dimension       ON knowledge_meta TYPE int;
 -- Operations
 -- ---------------------------------------------------------------------------------------
 
+-- One row per applied migration file; id = the file name, e.g. migration:`0002_x.surql`.
+-- Written by store's migration runner in the file's own transaction (docs/database, section 1).
+DEFINE TABLE OVERWRITE migration SCHEMAFULL;
+DEFINE FIELD OVERWRITE kind       ON migration TYPE "versioned" | "knowledge";
+DEFINE FIELD OVERWRITE hash       ON migration TYPE string ASSERT $value = /^[0-9a-f]{64}$/;
+DEFINE FIELD OVERWRITE applied_at ON migration TYPE datetime;
+
 DEFINE TABLE OVERWRITE job SCHEMAFULL;
 DEFINE FIELD OVERWRITE kind        ON job TYPE "perception" | "vlm" | "verify" | "guided";
 DEFINE FIELD OVERWRITE scan        ON job TYPE record<scan> REFERENCE ON DELETE REJECT;

@@ -7,16 +7,29 @@
 Archives land in data/raw/<name>.zip and are unpacked to data/raw/<name>/; a single model file
 (`kind: file`) lands in models/files/<dest>. A source whose sha256 is null is refused, unless
 --pin is given: then it is downloaded and its hash printed, to be pinned in sources.yaml.
+
+Two kinds take part of a big upload:
+- `zip_members` reads only the chosen members of remote zips over HTTP Range requests
+  (remote_zip.py): those matching an `include` regex, or, with `labels`, the images a CSV of
+  per-image label columns gives exactly one label to. The pin is the SHA-256 of the sorted
+  "path sha256" lines of the files written, as for `mendeley_folder`.
+- `archives` downloads several archives (zip or RAR), each pinned by its own SHA-256, into
+  data/raw/<name>.archives/ and unpacks each to data/raw/<name>/<archive name without suffix>/.
 """
 
 from __future__ import annotations
 
+import csv
 import hashlib
+import io
 import json
+import re
 import shutil
+import subprocess
 import sys
 import urllib.request
 import zipfile
+import zlib
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -162,6 +175,155 @@ def fetch_mendeley_folder(src: dict) -> None:
     print(f"[{name}] ok: {target} ({len(rows)} files)")
 
 
+def zip_member_targets(src: dict) -> list[tuple[str, object, str]]:
+    """(zip URL, member, path under data/raw/<name>/) for every member the source takes.
+
+    Without `labels`, a member is taken when an `include` regex matches its path, and keeps
+    that path. With `labels` (a pinned CSV, one row per image), a member is taken when its row
+    has exactly one of the `exclusive` columns set to 1 and that column is in `keep`; it is
+    written to <column>/<file name>. Columns outside `exclusive` (a "tearing or insects" flag)
+    don't count."""
+    from ml.training.data import remote_zip
+
+    lab = src.get("labels")
+    chosen_label: dict[str, str] = {}
+    if lab:
+        body = remote_zip_get(lab["url"])
+        digest = hashlib.sha256(body).hexdigest()
+        if digest != lab["sha256"]:
+            raise SystemExit(f"[{src['name']}] labels sha256 mismatch: expected {lab['sha256']}, got {digest}")
+        for row in csv.DictReader(io.StringIO(body.decode("utf-8-sig"))):
+            on = [c for c in lab["exclusive"] if row[c].strip() == "1"]
+            if len(on) == 1 and on[0] in lab["keep"]:
+                chosen_label[row[lab["file_column"]].strip().rsplit("/", 1)[-1]] = on[0]
+    include = [re.compile(p) for p in src.get("include", [])]
+    out = []
+    for z in src["zips"]:
+        for m in remote_zip.members(z["url"]):
+            base = m.name.rsplit("/", 1)[-1]
+            if lab:
+                if base in chosen_label:
+                    out.append((z["url"], m, f"{chosen_label[base]}/{base}"))
+            elif any(p.search(m.name) for p in include):
+                out.append((z["url"], m, m.name))
+    paths = [p for *_, p in out]
+    # A member's name comes from the archive, so one like ../x or /x must not leave the folder.
+    unsafe = [p for p in paths if p.startswith("/") or "\\" in p or ".." in p.split("/") or re.match(r"[A-Za-z]:", p)]
+    if unsafe:
+        raise SystemExit(f"[{src['name']}] member {unsafe[0]!r} would be written outside data/raw/{src['name']}/")
+    if len(set(paths)) != len(paths):
+        raise SystemExit(f"[{src['name']}] two members would land on the same path")
+    if lab and len(out) != len(chosen_label):
+        raise SystemExit(f"[{src['name']}] {len(chosen_label) - len(out)} labelled images are missing from the zips")
+    return out
+
+
+def remote_zip_get(url: str) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        return r.read()
+
+
+def listing_sha256(target: Path, paths: list[str]) -> str:
+    lines = "".join(f"{p} {sha256_file(target / p)}\n" for p in sorted(paths))
+    return hashlib.sha256(lines.encode()).hexdigest()
+
+
+def fetch_zip_members(src: dict) -> None:
+    """The chosen members of remote zips, read over HTTP Range requests. Members go to
+    data/raw/<name>.partial/ and the folder is renamed to data/raw/<name>/ once the listing hash
+    matches the pin; a rerun skips members already on disk with the right CRC-32."""
+    from ml.training.data import remote_zip
+
+    name = src["name"]
+    target = RAW / name
+    if src.get("sha256") is None and not PIN:
+        raise SystemExit(f"[{name}] refusing an unpinned source; rerun with --pin to fetch it anyway")
+    todo = zip_member_targets(src)
+    print(f"[{name}] {len(todo)} members chosen, {sum(m.csize for _, m, _ in todo) / 1e9:.2f} GB")
+    if target.exists():
+        # index.py reads every image under the folder, so a file the pin doesn't cover fails too.
+        chosen = {p for *_, p in todo}
+        extra = sorted(q for q in (f.relative_to(target).as_posix() for f in target.rglob("*") if f.is_file())
+                       if q not in chosen)
+        if extra:
+            raise SystemExit(f"[{name}] {len(extra)} files under {target} aren't in the pin, such as {extra[0]}; "
+                             "remove them or the folder and rerun")
+        check_pin(src, listing_sha256(target, sorted(chosen)), "listing sha256")
+        print(f"[{name}] ok: {target} ({len(todo)} files)")
+        return
+    part = target.with_name(name + ".partial")
+    dest_of = {(u, m.offset): part / p for u, m, p in todo}
+
+    def done(u: str, m) -> bool:
+        d = dest_of[(u, m.offset)]
+        return d.exists() and d.stat().st_size == m.usize and zlib.crc32(d.read_bytes()) == m.crc
+
+    runs = []
+    for url in dict.fromkeys(u for u, _, _ in todo):
+        missing = [m for u, m, _ in todo if u == url and not done(u, m)]
+        runs += [(url, r) for r in remote_zip.chunks(missing)]
+    print(f"[{name}] {len(runs)} range requests")
+
+    def one(job) -> int:
+        url, run = job
+        for m, data in remote_zip.read_run(url, run):
+            d = dest_of[(url, m.offset)]
+            d.parent.mkdir(parents=True, exist_ok=True)
+            tmp = d.with_name(d.name + ".tmp")
+            tmp.write_bytes(data)
+            tmp.rename(d)
+        return len(run)
+
+    n = 0
+    with ThreadPoolExecutor(6) as pool:
+        for k, got in enumerate(pool.map(one, runs)):
+            n += got
+            if k % 20 == 0:
+                print(f"[{name}]   {n} members written", flush=True)
+    check_pin(src, listing_sha256(part, [p for *_, p in todo]), "listing sha256")
+    part.rename(target)
+    print(f"[{name}] ok: {target} ({len(todo)} files)")
+
+
+def unpack_any(archive: Path, target: Path) -> None:
+    """`unpack` for zip archives; RAR archives through `unar`, into a temporary folder renamed
+    when complete. An archive whose content is one folder named like the target (Makerere's
+    MLB_1.rar holds MLB_1/) is unpacked without that extra level."""
+    if archive.suffix.lower() == ".zip":
+        return unpack(archive, target)
+    if target.exists():
+        return
+    tmp = target.with_name(target.name + ".unpacking")
+    if tmp.exists():
+        shutil.rmtree(tmp)
+    print(f"[{target.name}] unpacking {archive.name}")
+    subprocess.run(["unar", "-quiet", "-no-directory", "-output-directory", str(tmp), str(archive)], check=True)
+    inner = list(tmp.iterdir())
+    if len(inner) == 1 and inner[0].is_dir() and inner[0].name == target.name:
+        inner[0].rename(target)
+        tmp.rmdir()
+    else:
+        tmp.rename(target)
+
+
+def fetch_archives(src: dict) -> None:
+    """Several archives, each checked against its own pinned SHA-256 and unpacked to
+    data/raw/<name>/<archive name without its suffix>/."""
+    name = src["name"]
+    store = RAW / f"{name}.archives"
+    for f in src["files"]:
+        archive = store / f["name"]
+        if f.get("sha256") is None and not PIN:
+            raise SystemExit(f"[{name}] {f['name']}: refusing an unpinned archive; rerun with --pin")
+        if not archive.exists():
+            print(f"[{name}] downloading {f['name']} from {f['url']}")
+            download(f["url"], archive)
+        check_pin({"name": f"{name}/{f['name']}", "sha256": f.get("sha256")}, sha256_file(archive))
+        unpack_any(archive, RAW / name / Path(f["name"]).stem)
+    print(f"[{name}] ok: {RAW / name}")
+
+
 def fetch_huggingface(src: dict) -> None:
     from huggingface_hub import snapshot_download
 
@@ -197,6 +359,10 @@ def main(only: list[str]) -> None:
             fetch_direct(src)
         elif kind == "mendeley_folder":
             fetch_mendeley_folder(src)
+        elif kind == "zip_members":
+            fetch_zip_members(src)
+        elif kind == "archives":
+            fetch_archives(src)
         elif kind == "huggingface":
             fetch_huggingface(src)
         elif kind == "file":

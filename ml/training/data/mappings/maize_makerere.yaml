@@ -1,0 +1,31 @@
+# Makerere University Maize Image Dataset → slugs  (training.md §4, step 3)
+#
+# "Maize Leaf Blight" is northern corn leaf blight (its datasheet: "Maize Leaf Blight disease,
+# also known as Northern Corn Leaf Blight"). 5,279 blight and 5,326 healthy phone photos from
+# 10 days in May 2021, named by their Unix time in milliseconds. `cap` keeps 600 per class, a
+# fixed sample by hash, so the set doesn't outweigh the other corn sources (PlantDoc, TOM2024,
+# Pretoria and PlantCity hold 45 to 657 photos per corn class each). A session is the
+# photos at most 60 s apart; a whole day would put a tenth of the set in one group. The set
+# was shot about every 7 s without a break, so on the 11% sample the 60 s gaps are arbitrary
+# cuts, not plants or rows. No published split: dedupe.py holds out val and test shares by
+# session, from the same fields in the same week, so Makerere's test measures accuracy on
+# those fields, not on a new one.
+
+dataset: maize_makerere
+source: maize_makerere
+root: .
+splits: { train: . }
+reviewed_by: null
+
+sessions:
+  pattern: '^(\d{13})'
+  gap_s: 60
+
+cap:
+  per_class: 600
+
+classes:
+  "MLB_1":     { species_id: corn, problem_id: corn_northern_leaf_blight }
+  "MLB_2":     { species_id: corn, problem_id: corn_northern_leaf_blight }
+  "Healthy_1": { species_id: corn, problem_id: healthy }
+  "Healthy_2": { species_id: corn, problem_id: healthy }

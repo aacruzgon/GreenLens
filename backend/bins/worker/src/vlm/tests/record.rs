@@ -53,19 +53,19 @@ const SLOTS: [&str; 7] = [
 const JOB: &str = "01JAX5AAAAAAAAAAAAAAAAAAAA";
 
 /// One backend call as the adapter made it.
-struct Attempt {
-    schema: String,
-    images: usize,
-    budget: u32,
-    ms: u128,
-    outcome: Result<(Stop, usize), String>,
+pub(super) struct Attempt {
+    pub(super) schema: String,
+    pub(super) images: usize,
+    pub(super) budget: u32,
+    pub(super) ms: u128,
+    pub(super) outcome: Result<(Stop, usize), String>,
 }
 
 /// The real backend, unchanged, with a log of each call: the adapter retries inside, so this
 /// is the only place a cut-off first answer shows.
-struct Recording<B> {
+pub(super) struct Recording<B> {
     inner: B,
-    log: Mutex<Vec<Attempt>>,
+    pub(super) log: Mutex<Vec<Attempt>>,
 }
 
 impl<B: VlmBackend> VlmBackend for Recording<B> {
@@ -90,7 +90,7 @@ impl<B: VlmBackend> VlmBackend for Recording<B> {
     }
 }
 
-struct Discard;
+pub(super) struct Discard;
 
 #[async_trait]
 impl ProgressSink for Discard {
@@ -103,6 +103,15 @@ impl ProgressSink for Discard {
 /// `VLM_SERVED_NAME=vlm`, `norm1000`, 32 px cells, 1,003,520 pixels, the local budgets), with
 /// the backend wrapped in [`Recording`].
 async fn adapter(base_url: &str) -> VlmAdapter<Recording<OpenAiBackend>> {
+    adapter_with(base_url, 1_003_520, Arc::new(Semaphore::new(1))).await
+}
+
+/// [`adapter`] with another `VLM_MAX_PIXELS` and a shared CPU semaphore, for the benchmark.
+pub(super) async fn adapter_with(
+    base_url: &str,
+    max_pixels: u32,
+    cpu: Arc<Semaphore>,
+) -> VlmAdapter<Recording<OpenAiBackend>> {
     let http = integrations::http::client(&HttpConfig {
         read_timeout: Duration::from_secs(600),
         ..HttpConfig::default()
@@ -126,7 +135,7 @@ async fn adapter(base_url: &str) -> VlmAdapter<Recording<OpenAiBackend>> {
     let profile = AdapterProfile {
         box_format: BoxFormat::Norm1000,
         cell_px: 32,
-        max_pixels: 1_003_520,
+        max_pixels,
         max_long_side: None,
         jpeg_quality: 90,
         budget: CallBudget::LOCAL,
@@ -146,14 +155,14 @@ async fn adapter(base_url: &str) -> VlmAdapter<Recording<OpenAiBackend>> {
             log: Mutex::new(Vec::new()),
         },
         profile,
-        Arc::new(Semaphore::new(1)),
+        cpu,
     )
 }
 
 /// A photo as the bucket would hold it: decoded with its EXIF orientation applied, resized to
 /// the default stored long side and re-encoded as `WebP` (`vision::upload`, without the face
 /// blur, which needs ONNX Runtime).
-fn stored(path: &str, image: &JobImage) -> LoadedImage {
+pub(super) fn stored(path: &str, image: &JobImage) -> LoadedImage {
     let file = std::fs::read(path).unwrap_or_else(|e| panic!("reading {path}: {e}"));
     let config = UploadConfig::default();
     let decoded = imaging::decode_upload(&file, DecodeLimits::default())
@@ -212,7 +221,7 @@ impl Photos {
     }
 }
 
-fn ctx() -> JobContext {
+pub(super) fn ctx() -> JobContext {
     JobContext {
         job_id: JOB.parse().unwrap(),
         scan_id: JOB.parse().unwrap(),

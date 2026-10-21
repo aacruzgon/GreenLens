@@ -1,6 +1,6 @@
 # PDM Vision-Language Model
 
-> **Status:** Draft v0.2.6, 2026-10-16. v0.2.6: the findings prompt is `findings@2`, which shows a soil reading's shape and rules out glimpsed soil; soil readings come back on both candidates (section 4, section 7), and section 4's results table is the re-recorded run. v0.2.5: section 4 runs the worker's own prompts and schemas on both candidates (every call validates; neither gives soil readings with the production findings prompt). v0.2.4: section 4 records the Qwen3.5-9B AWQ challenger's day-1 check (all checks pass, 116.7 tokens/s, 115,550 KV tokens) and settles its box scale at 0–1000; section 6 gets the measured weights and KV. v0.2.3: section 4 settles `anyOf` with `null` (contracts open question 31) with two more checks on FP8, a soil photo's non-null readings and a prompt the grammar overrides, and notes that the day-1 images were web photos and how to keep strings under `maxLength`. v0.2.2: section 4 records the day-1 results on the RTX 5070 Ti (image, kernels, memory, schemas, boxes, speed, two slots). v0.2.1: the fallback's 8,000-token budget covers the guided check, as contracts 6 now says. v0.2: aligned with the backend design: sides rounded down to the cell, prompt versions as `findings@1`, the contracts 5 value formats for `model_versions`, box bounds for pixel formats, and the fallback's 1.15-megapixel cap, 8,000-token budget, full list of rejected schema keywords and cost. v0.1, 2026-10-15: First VLM design: Qwen3-VL-8B-Instruct (FP8) as the primary candidate and Qwen3.5-9B as the challenger, the vLLM v0.31 and llama.cpp configurations, image preparation and token counts, the KV-cache budget and `VLM_SLOTS`, the prompts for every call, the schemas from the model's side, box formats, sampling, and the fallback worker's hosted model.
+> **Status:** Draft v0.2.9, 2026-10-20. v0.2.9: section 13's per-question rates count `sure` cases only (15% / 10% for Qwen3.5), and the re-checks on #45's prompts and the full cases are recorded here (review of #86). v0.2.8: section 13 says its numbers are for `main`'s prompts and that a bench run on #45's prompts re-checks the choice. v0.2.7: Qwen3.5-9B AWQ is chosen (decision D1, architecture open decision 4) from the day-2 benchmark, with Qwen3-VL-8B as the fallback; `VLM_SLOTS` is 2 on the 5070 Ti and `VLM_MAX_PIXELS` stays 1,003,520 (sections 2, 4, 6, 13 and 14). v0.2.6: the findings prompt is `findings@2`, which shows a soil reading's shape and rules out glimpsed soil; soil readings come back on both candidates (section 4, section 7), and section 4's results table is the re-recorded run. v0.2.5: section 4 runs the worker's own prompts and schemas on both candidates (every call validates; neither gives soil readings with the production findings prompt). v0.2.4: section 4 records the Qwen3.5-9B AWQ challenger's day-1 check (all checks pass, 116.7 tokens/s, 115,550 KV tokens) and settles its box scale at 0–1000; section 6 gets the measured weights and KV. v0.2.3: section 4 settles `anyOf` with `null` (contracts open question 31) with two more checks on FP8, a soil photo's non-null readings and a prompt the grammar overrides, and notes that the day-1 images were web photos and how to keep strings under `maxLength`. v0.2.2: section 4 records the day-1 results on the RTX 5070 Ti (image, kernels, memory, schemas, boxes, speed, two slots). v0.2.1: the fallback's 8,000-token budget covers the guided check, as contracts 6 now says. v0.2: aligned with the backend design: sides rounded down to the cell, prompt versions as `findings@1`, the contracts 5 value formats for `model_versions`, box bounds for pixel formats, and the fallback's 1.15-megapixel cap, 8,000-token budget, full list of rejected schema keywords and cost. v0.1, 2026-10-15: First VLM design: Qwen3-VL-8B-Instruct (FP8) as the primary candidate and Qwen3.5-9B as the challenger, the vLLM v0.31 and llama.cpp configurations, image preparation and token counts, the KV-cache budget and `VLM_SLOTS`, the prompts for every call, the schemas from the model's side, box formats, sampling, and the fallback worker's hosted model.
 > **Checked:** model cards, `config.json` files, checkpoint sizes, vLLM v0.31.0 source and xgrammar v0.2.7 source were read on 2026-10-15 (marked ✓). No GPU was available, so nothing here has run on one: every memory and speed figure is arithmetic from the published configs and is marked *estimate*. Points from community sources are *unverified*.
 
 The VLM is the part of the pipeline that sees what the small models can't: soil, organisms with their boxes, damage patterns, a second opinion on the species, and the answers to each candidate's indicator questions ([architecture 6.1](../architecture/README.md#61-stages), [contracts 6](../architecture/contracts.md#6-vlm-structured-output)). This document covers the model side: which model, how it is served, what it is asked and how. How the worker builds the request, calls the server and converts the result is in [docs/backend](../backend/vision.md) and the job flow in [the worker design](../backend/worker.md).
@@ -49,8 +49,8 @@ What this asks of the model:
 
 | Model | Licence | Params | Boxes | Tokens per 1 MP image | vLLM 0.31 | llama.cpp | Vendor quants | Verdict |
 |---|---|---|---|---|---|---|---|---|
-| **Qwen3-VL-8B-Instruct** (Oct 2025) | Apache-2.0 ✓ | 8.77 B ✓ | `bbox_2d`, 0–1000 ✓ | 972 (32 px per token) ✓ | ✓ | ✓ vendor GGUF + mmproj | FP8 (block 128×128) ✓ | **Primary** |
-| **Qwen3.5-9B** (Mar 2026), thinking off | Apache-2.0 ✓ | 9.65 B ✓ | `bbox_2d`, 0–1000 ✓ (ran 2026-10-16; the card doesn't say) | 972 ✓ (same processor) | ✓ (0.17 and later) | ✓ | None for 9B ✓; community AWQ and NVFP4 | **Challenger** |
+| **Qwen3-VL-8B-Instruct** (Oct 2025) | Apache-2.0 ✓ | 8.77 B ✓ | `bbox_2d`, 0–1000 ✓ | 972 (32 px per token) ✓ | ✓ | ✓ vendor GGUF + mmproj | FP8 (block 128×128) ✓ | Fallback (the primary until the day-2 benchmark) |
+| **Qwen3.5-9B** (Mar 2026), thinking off | Apache-2.0 ✓ | 9.65 B ✓ | `bbox_2d`, 0–1000 ✓ (ran 2026-10-16; the card doesn't say) | 972 ✓ (same processor) | ✓ (0.17 and later) | ✓ | None for 9B ✓; community AWQ and NVFP4 | **Chosen** (2026-10-20, AWQ) |
 | Qwen2.5-VL-7B-Instruct | Apache-2.0 ✓ | 8.29 B ✓ | `bbox_2d`, pixels of the resized image | 1,271 (28 px) ✓ | ✓ | ✓ | AWQ ✓ | Baseline only: superseded, 31% more tokens per image |
 | InternVL3.5-8B | Apache-2.0 ✓ | 8.5 B | `<box>` tags, 0–1000 *unverified* | about 3,300 (448 px tiles) *estimate* | ✓ | not listed | none | Too many image tokens for 4 images and 2 slots |
 | MiniCPM-V 4.5 | Apache-2.0 with optional registration ✓ | 8.7 B | not documented | fewer | ✓ | ✓ | int4, AWQ, GGUF | No documented grounding |
@@ -68,7 +68,7 @@ Sources: each model's Hugging Face card, `config.json` and `preprocessor_config.
 - **Qwen3-VL-8B-Instruct** is the conservative successor to the "Qwen2.5-VL-class" model the architecture names. It is a pure instruct model (no thinking to switch off), has a vendor FP8 checkpoint and vendor GGUF files, and its grounding prompts are documented by Qwen.
 - **Qwen3.5-9B** is newer, with better published counting and fine-detail scores on its card (CountBench 97.2, V\* 90.1, RefCOCO average 89.7 ✓, likely in thinking mode). Only 8 of its 32 layers use full attention, so it needs about 4.5 times less KV cache per token (section 6). Its risks: thinking is on by default, the box scale isn't documented, and Qwen publishes no FP8 or 4-bit checkpoint at 9 B, so it would run on a community quantization.
 
-The architecture's open decision 4 is settled by the day-2 benchmark (section 13), between these two.
+**Chosen on 2026-10-20: Qwen3.5-9B, as `cyankiwi/Qwen3.5-9B-AWQ-4bit`** (architecture open decision 4, dev-roadmap D1), from the day-2 benchmark (section 13). Its indicator answers were the only ones that carried a signal, and it was as fast. Qwen3-VL-8B stays the fallback: switching back is configuration, not code.
 
 ---
 
@@ -96,13 +96,14 @@ Community checkpoints are pinned by Hugging Face revision and SHA-256 like every
 
 ## 4. Serving
 
-### vLLM v0.31.0 (primary)
+### vLLM v0.31.0 (the 5070 Ti)
 
 vLLM v0.31.0's image is built on CUDA 13.0.3 and Ubuntu 24.04, with torch 2.13.0 and xgrammar 0.2.7 ✓ (Dockerfile and requirements at the tag; the published tag name `vllm/vllm-openai:v0.31.0` is *unverified* and checked on day 1), and needs an NVIDIA driver 580 or later on the host. The same driver serves the perception worker's ONNX Runtime container ([README 5](README.md#5-runtimes-and-versions)). A `-cu129` image exists for a driver from 575.57 ✓.
 
 ```bash
-vllm serve Qwen/Qwen3-VL-8B-Instruct-FP8 \
+vllm serve cyankiwi/Qwen3.5-9B-AWQ-4bit \
   --revision <pinned sha> \
+  --default-chat-template-kwargs '{"enable_thinking": false}' \
   --served-model-name vlm \
   --max-model-len 16384 \
   --max-num-seqs 2 \
@@ -121,6 +122,7 @@ vllm serve Qwen/Qwen3-VL-8B-Instruct-FP8 \
 
 | Flag | Why |
 |---|---|
+| `--default-chat-template-kwargs` | Thinking off: the worker expects the JSON answer alone. No `--reasoning-parser` ✓ ([vLLM recipe](https://recipes.vllm.ai/Qwen/Qwen3.5-9B)) |
 | `--served-model-name vlm` | A stable name, so the worker's configuration doesn't change with the model. The real name and revision travel in `model_versions` (section 11) |
 | `--max-model-len 16384` | About twice the worst case of one call (section 6). Bounds each sequence's KV and the profiling peak |
 | `--max-num-seqs 2` | Equal to `VLM_SLOTS` at its largest, as [contracts 5](../architecture/contracts.md#leases-runs-and-attempts) requires. Set to 1 when `VLM_SLOTS` is 1 |
@@ -136,7 +138,7 @@ vllm serve Qwen/Qwen3-VL-8B-Instruct-FP8 \
 | `--max-cudagraph-capture-size 8` | Captures CUDA graphs only for small batches; saves memory and start-up time on 16 GB |
 | `--api-key` | The sidecar is reachable only from the vlm-worker on the rig's private network, but it still needs a key |
 
-**Qwen3.5-9B** uses the same command with `cyankiwi/Qwen3.5-9B-AWQ-4bit` at its pinned revision and `--default-chat-template-kwargs '{"enable_thinking": false}'` ✓ ([vLLM recipe](https://recipes.vllm.ai/Qwen/Qwen3.5-9B)). No `--reasoning-parser`. Its multi-token-prediction head (`--speculative-config '{"method":"mtp","num_speculative_tokens":1}'`) is benchmarked with and without, since its interaction with xgrammar is *unverified*.
+**Qwen3-VL-8B**, the fallback, uses the same command with `Qwen/Qwen3-VL-8B-Instruct-FP8` (or `cyankiwi/Qwen3-VL-8B-Instruct-AWQ-4bit`) at its pinned revision and without `--default-chat-template-kwargs`; FP8 starts only with the whole card ([`infra/README.md` 3](../../infra/README.md#3-desktop-mode-and-headless-mode)). Qwen3.5's multi-token-prediction head (`--speculative-config '{"method":"mtp","num_speculative_tokens":1}'`) is benchmarked with and without, since its interaction with xgrammar is *unverified*.
 
 ### vLLM on the RX 9070 XT (ROCm)
 
@@ -147,7 +149,7 @@ The second VLM worker's sidecar runs the same vLLM version from its ROCm image, 
 | Devices | `/dev/kfd` and the card's render node by PCI path, plus the host's `render` group | Passes only this GPU into the container; never all of `/dev/dri`, which also holds the NVIDIA nodes |
 | `FLASH_ATTENTION_TRITON_AMD_ENABLE=TRUE` | Environment | The faster attention backend for the vision encoder on RDNA 3 and 4 (vLLM #32944) *unverified* |
 | `--max-num-seqs` | This card's own `VLM_SLOTS` | Set from its own benchmark ([section 6](#6-memory-and-vlm_slots)) |
-| Checkpoint | FP8 if vLLM's RDNA 4 FP8 path (vLLM #43615) handles Qwen3-VL's 128 × 128 block scales on gfx1201, otherwise W4A16 on **both** cards | *unverified*; the day-1 check reads the kernel vLLM picks from its log |
+| Checkpoint | The chosen `cyankiwi/Qwen3.5-9B-AWQ-4bit`, W4A16, as on the 5070 Ti. Whether vLLM ROCm runs Qwen3.5's Gated DeltaNet layers and selects a W4A16 kernel on gfx1201 is *unverified* | The day-1 check reads the kernels vLLM picks from its log. If it fails, the llama.cpp fallback below applies |
 
 Its fallback is llama.cpp's Vulkan build (`server-vulkan`) with the same GGUF files as below. **If either card falls back to llama.cpp, both serve the same GGUF**, or only one VLM worker runs, so the weights stay the same on every worker.
 
@@ -156,7 +158,7 @@ Its fallback is llama.cpp's Vulkan build (`server-vulkan`) with the same GGUF fi
 The compose file and the two modes (the card also draws a desktop) are in [`infra/README.md`](../../infra/README.md). The check client is `ml/training/eval/vlm_check.py`; its reports are in `ml/training/eval/reports/`.
 
 - **Image:** `vllm/vllm-openai:v0.31.0` exists, digest `sha256:c1c9f6fd…67c3`, entrypoint `vllm serve`, built on CUDA **13.0.2** (not 13.0.3), 32.2 GB. It runs on driver 615.78.08 with the NVIDIA Container Toolkit 1.20.1 on Fedora 44.
-- **Checkpoints, pinned:** `Qwen/Qwen3-VL-8B-Instruct-FP8@9cdc6310`, `cyankiwi/Qwen3-VL-8B-Instruct-AWQ-4bit@87196f77`, `cyankiwi/Qwen3.5-9B-AWQ-4bit@156edc4b` (the challenger; its day-1 check is below).
+- **Checkpoints, pinned:** `Qwen/Qwen3-VL-8B-Instruct-FP8@9cdc6310`, `cyankiwi/Qwen3-VL-8B-Instruct-AWQ-4bit@87196f77`, `cyankiwi/Qwen3.5-9B-AWQ-4bit@156edc4b` (the challenger then, chosen on 2026-10-20; its day-1 check is below).
 - **Kernels:** FP8 selects `DeepGemmFp8BlockScaledMMKernel`, a native block-FP8 kernel on sm_120, not a dequantising fallback; AWQ selects Marlin; attention is FlashAttention (FlashInfer with an FP8 KV cache).
 - **Memory, FP8 at 0.90, headless:** weights 10.37 GiB (the estimate above was 9.86); KV 2.4 GiB = **17,440 tokens** at `--max-num-seqs 1` and 16,528 at 2 (estimate: 2.97 GiB, 21,600). Start-up 205 s, mostly CUDA graph capture. At 0.78 next to a desktop, FP8 doesn't start; AWQ does (KV 21,344 tokens).
 - **Structured output:** xgrammar enforces the per-call schema and `maxLength` (10 characters held). Checks a–e pass on both FP8 and AWQ. On FP8, three checks settle `anyOf` with `null` (contracts open question 31), report `vlm-day1-2026-10-16-qwen3vl8b-fp8-soil`:
@@ -308,6 +310,8 @@ Decoding reads about the whole quantized model per token, so the ceiling is memo
 ### Choosing `VLM_SLOTS` (contracts open question 9)
 
 2 when the benchmark shows that two jobs fit at the chosen `VLM_MAX_PIXELS` without vLLM pre-empting a sequence (its `/metrics` shows preemptions), and that a job's p95 with two running stays under 2.5 minutes, half the `vlm` job's `max_runtime`. Otherwise 1. vLLM's `--max-num-seqs` is set to the same value.
+
+**Result on the 5070 Ti (2026-10-20, ✓ ran): 2.** Two jobs at once finished the 65 benchmark cases in 0.55–0.6 of the time, with a job's p95 at most 9.6 s and no preemption ([evaluation 8](evaluation.md#vlm-results-2026-10-20--ran)). The 9070 XT gets its own value from its own run.
 
 ---
 
@@ -583,11 +587,29 @@ The protocol is in [evaluation 8](evaluation.md#8-day-2-benchmarks): 20 dev case
 
 The order of choice: no beneficial reported as a pest and valid output first, then indicator accuracy, then organism recall, then speed. Qwen3.5's boxes are on the 0–1000 scale (day 1, section 4), so it is not disqualified on that ground.
 
+### Results and the choice (2026-10-20, ✓ ran)
+
+The benchmark ran on the 65 one-photo tomato and corn dev cases, since the team's full shot sets haven't arrived ([evaluation 8](evaluation.md#vlm-results-2026-10-20--ran)). At 1,003,520 pixels:
+
+| | Qwen3.5-9B AWQ | Qwen3-VL-8B FP8 | Qwen3-VL-8B AWQ |
+|---|---|---|---|
+| Valid on the first try | 65 of 65 | 65 of 65 | 65 of 65 |
+| Diagnosis from the indicator answers, 26 `sure` cases | **35%** | 12% | 12% |
+| "Yes" to the true problem's questions / to the others' (`sure` cases) | **15% / 10%** | 6% / 7% | 6% / 6% |
+| Job p50 / p95, one at a time | 5.3 / 6.4 s | 6.2 / 8.4 s | 4.4 / 5.1 s |
+| Organisms reported on leaves with none labelled | 0 | 19 | 4 |
+
+- **Qwen3.5-9B AWQ is chosen** (Sam, D1). Valid output held on every candidate, and beneficial-as-pest couldn't be measured, so the choice falls to indicator accuracy, where only Qwen3.5 shows a gap between the true problem's questions and the others'.
+- **The evidence is thin.** Case by case, Qwen3.5 diagnosed 8 that FP8 missed and FP8 2 that Qwen3.5 missed; with 26 cases that is suggestive, not proven.
+- **Still to check on the team's full cases ([#52](https://github.com/aacruzgon/GreenLens/issues/52)):** beneficial-as-pest, organism recall (Qwen3.5 reported no organism on these leaves, which may be a miss) and soil. If Qwen3.5 fails the beneficial-as-pest rule there, the fallback is Qwen3-VL-8B, by configuration.
+- **The prompts:** P5's done condition holds on FP8 but not yet on Qwen3.5, which loses the tomato's soil readings and calls the corn's blight lesions `leaf_mines` ([#45](https://github.com/aacruzgon/GreenLens/pull/45)). The next prompt pass targets Qwen3.5. The numbers above are for `main`'s prompts (`findings@2`, `indicators@1`); after that pass, one bench run of the 65 cases on #45's prompts (about 8 minutes) re-checks the choice. Its result and the full cases' are recorded here.
+- **`VLM_SLOTS` 2 and `VLM_MAX_PIXELS` 1,003,520** on the 5070 Ti (section 6; contracts open questions 1 and 9). Size made no difference to the diagnosis from 0.6 to 2.0 MP, and the larger default keeps small organisms visible.
+
 ---
 
 ## 14. Open questions
 
-1. **Which model:** Qwen3-VL-8B FP8 or Qwen3.5-9B AWQ, from the day-2 benchmark (architecture open decision 4).
+1. **Which model.** Settled on 2026-10-20: Qwen3.5-9B AWQ, with Qwen3-VL-8B as the fallback (section 13; architecture open decision 4). Reopened only if it fails the beneficial-as-pest rule on the team's full cases.
 2. **Image order in the indicators call.** The contract chooses the indicator images by score, with ties broken by the findings order, but doesn't fix the order they are sent in. Sending them in the findings order whenever they are a subset of the findings images makes the prefix cache reuse more of the first call. Propose it to the contracts after the benchmark shows how much it saves.
 3. **A detail crop of the leaf underside** for small pests (section 5): a change to the photo routing, if organism recall on small boxes misses its target.
 4. **Organism recognition text in the payload** (section 7): `organism_options` with each organism's `recognition` line would let the prompt describe every option, not only the beneficials it lists itself.

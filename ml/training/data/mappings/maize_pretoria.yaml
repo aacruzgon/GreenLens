@@ -1,0 +1,23 @@
+# Diseases of maize in the field (University of Pretoria) → slugs  (training.md §4, step 3)
+#
+# fetch.py writes each image with exactly one label in Database.csv to a folder named after its
+# column (sources.yaml): GLS, NCLB, CR or NoFoliarSymptoms. Photos of 2009-2020 from several
+# cameras on 14 days, one of which holds 478 of the 1,270, so a day is too coarse a unit to hold
+# out: a session is one camera's photos at most 60 s apart (EXIF), one plant or row, which
+# dedupe.py keeps in one split. No published split: dedupe.py holds out val and test shares.
+
+dataset: maize_pretoria
+source: maize_pretoria
+root: .
+splits: { train: . }
+reviewed_by: null
+
+sessions:
+  exif: true
+  gap_s: 60
+
+classes:
+  "GLS":              { species_id: corn, problem_id: corn_gray_leaf_spot }
+  "NCLB":             { species_id: corn, problem_id: corn_northern_leaf_blight }   # Exserohilum turcicum
+  "CR":               { species_id: corn, problem_id: corn_common_rust }
+  "NoFoliarSymptoms": { species_id: corn, problem_id: healthy }
