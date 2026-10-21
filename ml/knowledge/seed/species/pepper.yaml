@@ -1,0 +1,14 @@
+# DRAFT, written by hand at the signing review of #51: a label_only species, so BioCLIP can name
+# this crop and the disease head's pepper classes have a species (#85). Its problems and care come in
+# a follow-up. The label is ml/training/labels/standin_labels.yaml's. Not loaded until a teammate
+# signs reviewed_by.
+id: pepper
+scientific_name: Capsicum annuum
+common_names:
+- Pepper
+- Bell pepper
+profile: label_only
+classifier_supported: false
+bioclip_label: Capsicum annuum with common name bell pepper
+sources: []
+reviewed_by: ''

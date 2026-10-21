@@ -1,0 +1,13 @@
+# DRAFT, written by hand at the signing review of #51: a label_only species, so BioCLIP can name
+# this crop and the disease head's grape classes have a species (#85). Its problems and care come in
+# a follow-up. The label is ml/training/labels/standin_labels.yaml's. Not loaded until a teammate
+# signs reviewed_by.
+id: grape
+scientific_name: Vitis vinifera
+common_names:
+- Grape
+profile: label_only
+classifier_supported: false
+bioclip_label: Vitis vinifera with common name grape
+sources: []
+reviewed_by: ''
