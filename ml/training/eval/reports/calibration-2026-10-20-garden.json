@@ -1,0 +1,6246 @@
+{
+  "date": "2026-10-20",
+  "species": {
+    "cases": 115,
+    "left_out": {},
+    "labels": 20,
+    "fitted_temperature": 1.8795,
+    "t_1": {
+      "top1": 0.5652173913043478,
+      "nll": 1.6829166752404126,
+      "ece": 0.19256398661872173,
+      "at_agreement": {
+        "n": 59,
+        "accuracy": 0.9152542372881356
+      },
+      "lowest_threshold_at_95": 0.85,
+      "sweep": [
+        {
+          "threshold": 0.5,
+          "n": 87,
+          "accuracy": 0.7011494252873564
+        },
+        {
+          "threshold": 0.55,
+          "n": 84,
+          "accuracy": 0.7261904761904762
+        },
+        {
+          "threshold": 0.6,
+          "n": 77,
+          "accuracy": 0.7922077922077922
+        },
+        {
+          "threshold": 0.65,
+          "n": 69,
+          "accuracy": 0.855072463768116
+        },
+        {
+          "threshold": 0.7,
+          "n": 66,
+          "accuracy": 0.8939393939393939
+        },
+        {
+          "threshold": 0.75,
+          "n": 63,
+          "accuracy": 0.9047619047619048
+        },
+        {
+          "threshold": 0.8,
+          "n": 59,
+          "accuracy": 0.9152542372881356
+        },
+        {
+          "threshold": 0.85,
+          "n": 54,
+          "accuracy": 0.9629629629629629
+        },
+        {
+          "threshold": 0.9,
+          "n": 48,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.95,
+          "n": 41,
+          "accuracy": 1.0
+        }
+      ],
+      "reliability": [
+        {
+          "lo": 0.1,
+          "hi": 0.2,
+          "n": 1,
+          "confidence": 0.16916076732880228,
+          "accuracy": 0.0
+        },
+        {
+          "lo": 0.2,
+          "hi": 0.3,
+          "n": 2,
+          "confidence": 0.2785511769508028,
+          "accuracy": 0.0
+        },
+        {
+          "lo": 0.3,
+          "hi": 0.4,
+          "n": 13,
+          "confidence": 0.3579096803205886,
+          "accuracy": 0.3076923076923077
+        },
+        {
+          "lo": 0.4,
+          "hi": 0.5,
+          "n": 12,
+          "confidence": 0.452930821651279,
+          "accuracy": 0.0
+        },
+        {
+          "lo": 0.5,
+          "hi": 0.6,
+          "n": 10,
+          "confidence": 0.5641366635959641,
+          "accuracy": 0.0
+        },
+        {
+          "lo": 0.6,
+          "hi": 0.7,
+          "n": 11,
+          "confidence": 0.6347215609347733,
+          "accuracy": 0.18181818181818182
+        },
+        {
+          "lo": 0.7,
+          "hi": 0.8,
+          "n": 7,
+          "confidence": 0.7489913121503481,
+          "accuracy": 0.7142857142857143
+        },
+        {
+          "lo": 0.8,
+          "hi": 0.9,
+          "n": 11,
+          "confidence": 0.8592281354700262,
+          "accuracy": 0.5454545454545454
+        },
+        {
+          "lo": 0.9,
+          "hi": 1.0,
+          "n": 48,
+          "confidence": 0.9789448249665144,
+          "accuracy": 1.0
+        }
+      ],
+      "per_species": {
+        "apple": {
+          "n": 15,
+          "top1": 0.8
+        },
+        "corn": {
+          "n": 16,
+          "top1": 0.9375
+        },
+        "grape": {
+          "n": 11,
+          "top1": 0.9090909090909091
+        },
+        "squash": {
+          "n": 10,
+          "top1": 0.0
+        },
+        "tomato": {
+          "n": 63,
+          "top1": 0.4444444444444444
+        }
+      },
+      "wrong": [
+        {
+          "case": "corn-maize-bd-2026-corn-leaf-blight-img-649",
+          "truth": "corn",
+          "top": "hosta",
+          "score": 0.812
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-73",
+          "truth": "tomato",
+          "top": "blueberry",
+          "score": 0.611
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-410",
+          "truth": "tomato",
+          "top": "apple",
+          "score": 0.273
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-487",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.576
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-173",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.506
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-474",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.62
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-111",
+          "truth": "tomato",
+          "top": "peach",
+          "score": 0.649
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-30",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.393
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-7",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.467
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-98",
+          "truth": "tomato",
+          "top": "blueberry",
+          "score": 0.483
+        },
+        {
+          "case": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-118",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.405
+        },
+        {
+          "case": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-7",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.708
+        },
+        {
+          "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-60",
+          "truth": "tomato",
+          "top": "bean",
+          "score": 0.579
+        },
+        {
+          "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-187",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.597
+        },
+        {
+          "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-171",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.387
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2705",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.473
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2662",
+          "truth": "tomato",
+          "top": "bean",
+          "score": 0.323
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2647",
+          "truth": "tomato",
+          "top": "hosta",
+          "score": 0.897
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5576-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.672
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5536-02d",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.581
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5629-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.371
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5561-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.773
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-4135-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.68
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3717-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.338
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3652-02d",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.476
+        },
+        {
+          "case": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1143",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.586
+        },
+        {
+          "case": "apple-inat-408169430",
+          "truth": "apple",
+          "top": "peach",
+          "score": 0.553
+        },
+        {
+          "case": "apple-inat-386321336",
+          "truth": "apple",
+          "top": "blueberry",
+          "score": 0.357
+        },
+        {
+          "case": "apple-inat-371778242",
+          "truth": "apple",
+          "top": "blueberry",
+          "score": 0.656
+        },
+        {
+          "case": "grape-inat-401311005",
+          "truth": "grape",
+          "top": "apple",
+          "score": 0.483
+        },
+        {
+          "case": "squash-inat-407881529",
+          "truth": "squash",
+          "top": "bean",
+          "score": 0.546
+        },
+        {
+          "case": "squash-inat-407471919",
+          "truth": "squash",
+          "top": "soybean",
+          "score": 0.477
+        },
+        {
+          "case": "squash-inat-405307409",
+          "truth": "squash",
+          "top": "cucumber",
+          "score": 0.422
+        },
+        {
+          "case": "squash-inat-405307085",
+          "truth": "squash",
+          "top": "cucumber",
+          "score": 0.433
+        },
+        {
+          "case": "squash-inat-402785468",
+          "truth": "squash",
+          "top": "basil",
+          "score": 0.441
+        },
+        {
+          "case": "squash-inat-401345730",
+          "truth": "squash",
+          "top": "cucumber",
+          "score": 0.619
+        },
+        {
+          "case": "squash-inat-400031065",
+          "truth": "squash",
+          "top": "grape",
+          "score": 0.537
+        },
+        {
+          "case": "squash-inat-362922124",
+          "truth": "squash",
+          "top": "grape",
+          "score": 0.844
+        },
+        {
+          "case": "squash-inat-360057285",
+          "truth": "squash",
+          "top": "grape",
+          "score": 0.622
+        },
+        {
+          "case": "squash-inat-359769884",
+          "truth": "squash",
+          "top": "soybean",
+          "score": 0.325
+        },
+        {
+          "case": "tomato-inat-404337653",
+          "truth": "tomato",
+          "top": "hosta",
+          "score": 0.284
+        },
+        {
+          "case": "tomato-inat-402407638",
+          "truth": "tomato",
+          "top": "hosta",
+          "score": 0.581
+        },
+        {
+          "case": "tomato-inat-400434286",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.329
+        },
+        {
+          "case": "tomato-inat-394771244",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.643
+        },
+        {
+          "case": "tomato-inat-394770049",
+          "truth": "tomato",
+          "top": "cucumber",
+          "score": 0.374
+        },
+        {
+          "case": "tomato-inat-394769945",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.446
+        },
+        {
+          "case": "tomato-inat-388547158",
+          "truth": "tomato",
+          "top": "cucumber",
+          "score": 0.429
+        },
+        {
+          "case": "tomato-inat-387638491",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.826
+        },
+        {
+          "case": "tomato-inat-382214503",
+          "truth": "tomato",
+          "top": "cucumber",
+          "score": 0.862
+        },
+        {
+          "case": "tomato-inat-379206522",
+          "truth": "tomato",
+          "top": "onion",
+          "score": 0.169
+        }
+      ],
+      "temperature": 1.0
+    },
+    "fitted": {
+      "top1": 0.5652173913043478,
+      "nll": 1.3983334670412708,
+      "ece": 0.18753081350116227,
+      "at_agreement": {
+        "n": 32,
+        "accuracy": 1.0
+      },
+      "lowest_threshold_at_95": 0.5,
+      "sweep": [
+        {
+          "threshold": 0.5,
+          "n": 60,
+          "accuracy": 0.95
+        },
+        {
+          "threshold": 0.55,
+          "n": 56,
+          "accuracy": 0.9642857142857143
+        },
+        {
+          "threshold": 0.6,
+          "n": 54,
+          "accuracy": 0.9814814814814815
+        },
+        {
+          "threshold": 0.65,
+          "n": 48,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.7,
+          "n": 44,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.75,
+          "n": 42,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.8,
+          "n": 32,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.85,
+          "n": 22,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.9,
+          "n": 13,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.95,
+          "n": 9,
+          "accuracy": 1.0
+        }
+      ],
+      "reliability": [
+        {
+          "lo": 0.1,
+          "hi": 0.2,
+          "n": 7,
+          "confidence": 0.17775254601078078,
+          "accuracy": 0.14285714285714285
+        },
+        {
+          "lo": 0.2,
+          "hi": 0.3,
+          "n": 15,
+          "confidence": 0.2590178530942196,
+          "accuracy": 0.2
+        },
+        {
+          "lo": 0.3,
+          "hi": 0.4,
+          "n": 20,
+          "confidence": 0.3317284438939252,
+          "accuracy": 0.0
+        },
+        {
+          "lo": 0.4,
+          "hi": 0.5,
+          "n": 13,
+          "confidence": 0.443804457538264,
+          "accuracy": 0.3076923076923077
+        },
+        {
+          "lo": 0.5,
+          "hi": 0.6,
+          "n": 6,
+          "confidence": 0.5387543094917752,
+          "accuracy": 0.6666666666666666
+        },
+        {
+          "lo": 0.6,
+          "hi": 0.7,
+          "n": 10,
+          "confidence": 0.6344463546925925,
+          "accuracy": 0.9
+        },
+        {
+          "lo": 0.7,
+          "hi": 0.8,
+          "n": 12,
+          "confidence": 0.7752229628498025,
+          "accuracy": 1.0
+        },
+        {
+          "lo": 0.8,
+          "hi": 0.9,
+          "n": 19,
+          "confidence": 0.8478583447200791,
+          "accuracy": 1.0
+        },
+        {
+          "lo": 0.9,
+          "hi": 1.0,
+          "n": 13,
+          "confidence": 0.9599041712018844,
+          "accuracy": 1.0
+        }
+      ],
+      "per_species": {
+        "apple": {
+          "n": 15,
+          "top1": 0.8
+        },
+        "corn": {
+          "n": 16,
+          "top1": 0.9375
+        },
+        "grape": {
+          "n": 11,
+          "top1": 0.9090909090909091
+        },
+        "squash": {
+          "n": 10,
+          "top1": 0.0
+        },
+        "tomato": {
+          "n": 63,
+          "top1": 0.4444444444444444
+        }
+      },
+      "wrong": [
+        {
+          "case": "corn-maize-bd-2026-corn-leaf-blight-img-649",
+          "truth": "corn",
+          "top": "hosta",
+          "score": 0.588
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-73",
+          "truth": "tomato",
+          "top": "blueberry",
+          "score": 0.445
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-410",
+          "truth": "tomato",
+          "top": "apple",
+          "score": 0.196
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-487",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.339
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-173",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.299
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-474",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.408
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-111",
+          "truth": "tomato",
+          "top": "peach",
+          "score": 0.349
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-30",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.243
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-7",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.314
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-98",
+          "truth": "tomato",
+          "top": "blueberry",
+          "score": 0.256
+        },
+        {
+          "case": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-118",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.3
+        },
+        {
+          "case": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-7",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.46
+        },
+        {
+          "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-60",
+          "truth": "tomato",
+          "top": "bean",
+          "score": 0.327
+        },
+        {
+          "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-187",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.305
+        },
+        {
+          "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-171",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.249
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2705",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.28
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2662",
+          "truth": "tomato",
+          "top": "bean",
+          "score": 0.204
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2647",
+          "truth": "tomato",
+          "top": "hosta",
+          "score": 0.541
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5576-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.338
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5536-02d",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.32
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5629-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.239
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5561-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.422
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-4135-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.39
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3717-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.243
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3652-02d",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.303
+        },
+        {
+          "case": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1143",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.416
+        },
+        {
+          "case": "apple-inat-408169430",
+          "truth": "apple",
+          "top": "peach",
+          "score": 0.445
+        },
+        {
+          "case": "apple-inat-386321336",
+          "truth": "apple",
+          "top": "blueberry",
+          "score": 0.188
+        },
+        {
+          "case": "apple-inat-371778242",
+          "truth": "apple",
+          "top": "blueberry",
+          "score": 0.321
+        },
+        {
+          "case": "grape-inat-401311005",
+          "truth": "grape",
+          "top": "apple",
+          "score": 0.336
+        },
+        {
+          "case": "squash-inat-407881529",
+          "truth": "squash",
+          "top": "bean",
+          "score": 0.386
+        },
+        {
+          "case": "squash-inat-407471919",
+          "truth": "squash",
+          "top": "soybean",
+          "score": 0.346
+        },
+        {
+          "case": "squash-inat-405307409",
+          "truth": "squash",
+          "top": "cucumber",
+          "score": 0.293
+        },
+        {
+          "case": "squash-inat-405307085",
+          "truth": "squash",
+          "top": "cucumber",
+          "score": 0.284
+        },
+        {
+          "case": "squash-inat-402785468",
+          "truth": "squash",
+          "top": "tomato",
+          "score": 0.316
+        },
+        {
+          "case": "squash-inat-401345730",
+          "truth": "squash",
+          "top": "cucumber",
+          "score": 0.449
+        },
+        {
+          "case": "squash-inat-400031065",
+          "truth": "squash",
+          "top": "grape",
+          "score": 0.303
+        },
+        {
+          "case": "squash-inat-362922124",
+          "truth": "squash",
+          "top": "grape",
+          "score": 0.478
+        },
+        {
+          "case": "squash-inat-360057285",
+          "truth": "squash",
+          "top": "grape",
+          "score": 0.358
+        },
+        {
+          "case": "squash-inat-359769884",
+          "truth": "squash",
+          "top": "soybean",
+          "score": 0.199
+        },
+        {
+          "case": "tomato-inat-404337653",
+          "truth": "tomato",
+          "top": "grape",
+          "score": 0.159
+        },
+        {
+          "case": "tomato-inat-402407638",
+          "truth": "tomato",
+          "top": "hosta",
+          "score": 0.307
+        },
+        {
+          "case": "tomato-inat-400434286",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.194
+        },
+        {
+          "case": "tomato-inat-394771244",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.359
+        },
+        {
+          "case": "tomato-inat-394770049",
+          "truth": "tomato",
+          "top": "cucumber",
+          "score": 0.25
+        },
+        {
+          "case": "tomato-inat-394769945",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.261
+        },
+        {
+          "case": "tomato-inat-388547158",
+          "truth": "tomato",
+          "top": "cucumber",
+          "score": 0.317
+        },
+        {
+          "case": "tomato-inat-387638491",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.409
+        },
+        {
+          "case": "tomato-inat-382214503",
+          "truth": "tomato",
+          "top": "cucumber",
+          "score": 0.602
+        },
+        {
+          "case": "tomato-inat-379206522",
+          "truth": "tomato",
+          "top": "onion",
+          "score": 0.126
+        }
+      ],
+      "temperature": 1.8795
+    },
+    "fitted_out_of_fold": {
+      "top1": 0.5652173913043478,
+      "nll": 1.4106860948671474,
+      "ece": 0.17827730641861445,
+      "at_agreement": {
+        "n": 33,
+        "accuracy": 1.0
+      },
+      "lowest_threshold_at_95": 0.5,
+      "sweep": [
+        {
+          "threshold": 0.5,
+          "n": 60,
+          "accuracy": 0.95
+        },
+        {
+          "threshold": 0.55,
+          "n": 57,
+          "accuracy": 0.9649122807017544
+        },
+        {
+          "threshold": 0.6,
+          "n": 52,
+          "accuracy": 0.9807692307692307
+        },
+        {
+          "threshold": 0.65,
+          "n": 46,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.7,
+          "n": 44,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.75,
+          "n": 41,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.8,
+          "n": 33,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.85,
+          "n": 22,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.9,
+          "n": 13,
+          "accuracy": 1.0
+        },
+        {
+          "threshold": 0.95,
+          "n": 8,
+          "accuracy": 1.0
+        }
+      ],
+      "reliability": [
+        {
+          "lo": 0.1,
+          "hi": 0.2,
+          "n": 7,
+          "confidence": 0.17658942142620054,
+          "accuracy": 0.14285714285714285
+        },
+        {
+          "lo": 0.2,
+          "hi": 0.3,
+          "n": 17,
+          "confidence": 0.2622884940378369,
+          "accuracy": 0.17647058823529413
+        },
+        {
+          "lo": 0.3,
+          "hi": 0.4,
+          "n": 19,
+          "confidence": 0.3438430117135728,
+          "accuracy": 0.05263157894736842
+        },
+        {
+          "lo": 0.4,
+          "hi": 0.5,
+          "n": 12,
+          "confidence": 0.4573903334269707,
+          "accuracy": 0.25
+        },
+        {
+          "lo": 0.5,
+          "hi": 0.6,
+          "n": 8,
+          "confidence": 0.5591476628979275,
+          "accuracy": 0.75
+        },
+        {
+          "lo": 0.6,
+          "hi": 0.7,
+          "n": 8,
+          "confidence": 0.6379411762273894,
+          "accuracy": 0.875
+        },
+        {
+          "lo": 0.7,
+          "hi": 0.8,
+          "n": 11,
+          "confidence": 0.7606284747343924,
+          "accuracy": 1.0
+        },
+        {
+          "lo": 0.8,
+          "hi": 0.9,
+          "n": 20,
+          "confidence": 0.8486481626739237,
+          "accuracy": 1.0
+        },
+        {
+          "lo": 0.9,
+          "hi": 1.0,
+          "n": 13,
+          "confidence": 0.9588296411505051,
+          "accuracy": 1.0
+        }
+      ],
+      "per_species": {
+        "apple": {
+          "n": 15,
+          "top1": 0.8
+        },
+        "corn": {
+          "n": 16,
+          "top1": 0.9375
+        },
+        "grape": {
+          "n": 11,
+          "top1": 0.9090909090909091
+        },
+        "squash": {
+          "n": 10,
+          "top1": 0.0
+        },
+        "tomato": {
+          "n": 63,
+          "top1": 0.4444444444444444
+        }
+      },
+      "wrong": [
+        {
+          "case": "corn-maize-bd-2026-corn-leaf-blight-img-649",
+          "truth": "corn",
+          "top": "hosta",
+          "score": 0.591
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-73",
+          "truth": "tomato",
+          "top": "blueberry",
+          "score": 0.472
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-410",
+          "truth": "tomato",
+          "top": "apple",
+          "score": 0.197
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-487",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.366
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-173",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.285
+        },
+        {
+          "case": "tomato-tomato-bd-2025-early-blight-early-blight-474",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.391
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-111",
+          "truth": "tomato",
+          "top": "peach",
+          "score": 0.335
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-30",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.245
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-7",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.316
+        },
+        {
+          "case": "tomato-tomato-bd-2025-late-blight-late-blight-98",
+          "truth": "tomato",
+          "top": "blueberry",
+          "score": 0.277
+        },
+        {
+          "case": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-118",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.292
+        },
+        {
+          "case": "tomato-tomato-bd-2025-bacteiral-spot-bacteiral-spot-7",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.491
+        },
+        {
+          "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-60",
+          "truth": "tomato",
+          "top": "bean",
+          "score": 0.315
+        },
+        {
+          "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-187",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.288
+        },
+        {
+          "case": "tomato-tomato-bd-2025-yellow-leaf-curl-virus-curl-171",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.252
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2705",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.282
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2662",
+          "truth": "tomato",
+          "top": "bean",
+          "score": 0.205
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-early-blight-img-2647",
+          "truth": "tomato",
+          "top": "hosta",
+          "score": 0.546
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5576-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.341
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5536-02d",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.348
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5629-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.229
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-5561-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.427
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-late-blight-img-4135-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.422
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3717-02d",
+          "truth": "tomato",
+          "top": "pepper",
+          "score": 0.237
+        },
+        {
+          "case": "tomato-tomato-bd-iphone-2025-bacterial-spot-img-3652-02d",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.322
+        },
+        {
+          "case": "tomato-ccmt-2023-septoria-leaf-spot-septoria-leaf-spot1143",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.42
+        },
+        {
+          "case": "apple-inat-408169430",
+          "truth": "apple",
+          "top": "peach",
+          "score": 0.438
+        },
+        {
+          "case": "apple-inat-386321336",
+          "truth": "apple",
+          "top": "blueberry",
+          "score": 0.19
+        },
+        {
+          "case": "apple-inat-371778242",
+          "truth": "apple",
+          "top": "blueberry",
+          "score": 0.326
+        },
+        {
+          "case": "grape-inat-401311005",
+          "truth": "grape",
+          "top": "apple",
+          "score": 0.339
+        },
+        {
+          "case": "squash-inat-407881529",
+          "truth": "squash",
+          "top": "bean",
+          "score": 0.372
+        },
+        {
+          "case": "squash-inat-407471919",
+          "truth": "squash",
+          "top": "soybean",
+          "score": 0.366
+        },
+        {
+          "case": "squash-inat-405307409",
+          "truth": "squash",
+          "top": "cucumber",
+          "score": 0.285
+        },
+        {
+          "case": "squash-inat-405307085",
+          "truth": "squash",
+          "top": "cucumber",
+          "score": 0.286
+        },
+        {
+          "case": "squash-inat-402785468",
+          "truth": "squash",
+          "top": "tomato",
+          "score": 0.334
+        },
+        {
+          "case": "squash-inat-401345730",
+          "truth": "squash",
+          "top": "cucumber",
+          "score": 0.453
+        },
+        {
+          "case": "squash-inat-400031065",
+          "truth": "squash",
+          "top": "grape",
+          "score": 0.305
+        },
+        {
+          "case": "squash-inat-362922124",
+          "truth": "squash",
+          "top": "grape",
+          "score": 0.457
+        },
+        {
+          "case": "squash-inat-360057285",
+          "truth": "squash",
+          "top": "grape",
+          "score": 0.362
+        },
+        {
+          "case": "squash-inat-359769884",
+          "truth": "squash",
+          "top": "soybean",
+          "score": 0.191
+        },
+        {
+          "case": "tomato-inat-404337653",
+          "truth": "tomato",
+          "top": "grape",
+          "score": 0.16
+        },
+        {
+          "case": "tomato-inat-402407638",
+          "truth": "tomato",
+          "top": "hosta",
+          "score": 0.339
+        },
+        {
+          "case": "tomato-inat-400434286",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.195
+        },
+        {
+          "case": "tomato-inat-394771244",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.363
+        },
+        {
+          "case": "tomato-inat-394770049",
+          "truth": "tomato",
+          "top": "cucumber",
+          "score": 0.243
+        },
+        {
+          "case": "tomato-inat-394769945",
+          "truth": "tomato",
+          "top": "potato",
+          "score": 0.264
+        },
+        {
+          "case": "tomato-inat-388547158",
+          "truth": "tomato",
+          "top": "cucumber",
+          "score": 0.31
+        },
+        {
+          "case": "tomato-inat-387638491",
+          "truth": "tomato",
+          "top": "soybean",
+          "score": 0.456
+        },
+        {
+          "case": "tomato-inat-382214503",
+          "truth": "tomato",
+          "top": "cucumber",
+          "score": 0.608
+        },
+        {
+          "case": "tomato-inat-379206522",
+          "truth": "tomato",
+          "top": "onion",
+          "score": 0.126
+        }
+      ],
+      "temperature": [
+        1.738,
+        1.9811,
+        1.9504,
+        1.8639,
+        1.8584
+      ]
+    }
+  },
+  "disease": [
+    {
+      "head": "disease-head-v2c-2026-10-20",
+      "classes": 19,
+      "dev_photos": 94,
+      "val_photos": 722,
+      "dev_one_photo": 82,
+      "dev_one_photo_healthy": 11,
+      "classes_per_species": {
+        "apple": 3,
+        "corn": 4,
+        "grape": 2,
+        "tomato": 8
+      },
+      "left_out": {
+        "leaf photos with several crops": 18,
+        "no leaf shot": 2,
+        "species without head classes": 10
+      },
+      "bounds": [
+        0.05,
+        10.0
+      ],
+      "temperatures": {
+        "t_file": 1.1474,
+        "t_val_and_dev": 2.0446,
+        "t_dev": 3.6646,
+        "t_per_species_dev": {
+          "*": 3.6646,
+          "apple": 4.8695,
+          "corn": 1.5662,
+          "grape": 0.0675,
+          "tomato": 4.6103
+        }
+      },
+      "dev": {
+        "t_file": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.4453125
+          },
+          "top3_problems": 0.7590361445783133,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.6153846153846154,
+            "chance": 0.42857142857142844
+          },
+          "top1": 0.40425531914893614,
+          "ece": 0.26620387699745784,
+          "nll": 2.00398302632456,
+          "medium": {
+            "n": 61,
+            "right": 27
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 2,
+            "blocked": 5
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
+          },
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 5,
+              "confidence": 0.2768634422582689,
+              "accuracy": 0.2
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 6,
+              "confidence": 0.36674606014217837,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 20,
+              "confidence": 0.4554662598200353,
+              "accuracy": 0.25
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 11,
+              "confidence": 0.5419428369649922,
+              "accuracy": 0.36363636363636365
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 9,
+              "confidence": 0.6390235978434565,
+              "accuracy": 0.3333333333333333
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 15,
+              "confidence": 0.74846761625243,
+              "accuracy": 0.4
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 11,
+              "confidence": 0.8543359154523613,
+              "accuracy": 0.2727272727272727
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 17,
+              "confidence": 0.9642767935266832,
+              "accuracy": 0.7647058823529411
+            }
+          ]
+        },
+        "t_val_and_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.4453125
+          },
+          "top3_problems": 0.7590361445783133,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.6153846153846154,
+            "chance": 0.42857142857142844
+          },
+          "top1": 0.40425531914893614,
+          "ece": 0.15631069929813482,
+          "nll": 1.606533488678089,
+          "medium": {
+            "n": 45,
+            "right": 22
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 2,
+            "blocked": 3
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 1,
+              "confidence": 0.1917986045383766,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 10,
+              "confidence": 0.2548555818970953,
+              "accuracy": 0.4
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 27,
+              "confidence": 0.34049051395475444,
+              "accuracy": 0.2222222222222222
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 9,
+              "confidence": 0.42299604291564463,
+              "accuracy": 0.4444444444444444
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 18,
+              "confidence": 0.5564577346492248,
+              "accuracy": 0.3333333333333333
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 14,
+              "confidence": 0.6506677422803103,
+              "accuracy": 0.35714285714285715
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 4,
+              "confidence": 0.7471186911715858,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 3,
+              "confidence": 0.8302820200984758,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 8,
+              "confidence": 0.9632880179485512,
+              "accuracy": 0.75
+            }
+          ]
+        },
+        "t_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.4453125
+          },
+          "top3_problems": 0.7590361445783133,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.6153846153846154,
+            "chance": 0.42857142857142844
+          },
+          "top1": 0.40425531914893614,
+          "ece": 0.11196452050256518,
+          "nll": 1.520638829522505,
+          "medium": {
+            "n": 18,
+            "right": 13
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 2,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 6,
+              "confidence": 0.18005345166225686,
+              "accuracy": 0.16666666666666666
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 37,
+              "confidence": 0.2465420818705948,
+              "accuracy": 0.2972972972972973
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 14,
+              "confidence": 0.3583659612128387,
+              "accuracy": 0.14285714285714285
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 17,
+              "confidence": 0.44895047178891073,
+              "accuracy": 0.5294117647058824
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 8,
+              "confidence": 0.5247761558221686,
+              "accuracy": 0.625
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 3,
+              "confidence": 0.6563846583500764,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 2,
+              "confidence": 0.7368926097487102,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 6,
+              "confidence": 0.8644922200481412,
+              "accuracy": 0.8333333333333334
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 1,
+              "confidence": 0.944731247227403,
+              "accuracy": 1.0
+            }
+          ]
+        },
+        "t_per_species_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.4453125
+          },
+          "top3_problems": 0.7590361445783133,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.6153846153846154,
+            "chance": 0.42857142857142844
+          },
+          "top1": 0.40425531914893614,
+          "ece": 0.12577848470317476,
+          "nll": 1.4769265671489706,
+          "medium": {
+            "n": 24,
+            "right": 19
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 2,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 9,
+              "confidence": 0.17703473511209586,
+              "accuracy": 0.2222222222222222
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 41,
+              "confidence": 0.23491737388502093,
+              "accuracy": 0.24390243902439024
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 11,
+              "confidence": 0.34611886072433407,
+              "accuracy": 0.2727272727272727
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 7,
+              "confidence": 0.4673280259419524,
+              "accuracy": 0.2857142857142857
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 5,
+              "confidence": 0.5648199787384144,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 6,
+              "confidence": 0.6651513474197849,
+              "accuracy": 0.6666666666666666
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 5,
+              "confidence": 0.7457974319751095,
+              "accuracy": 0.4
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 2,
+              "confidence": 0.8408361901112051,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 8,
+              "confidence": 1.0,
+              "accuracy": 1.0
+            }
+          ]
+        }
+      },
+      "val": {
+        "t_file": {
+          "n": 722,
+          "with_problem": 462,
+          "top3_sent": 0.9004329004329005,
+          "chance_top3_sent": 0.6017316017316018,
+          "top3_sent_can_miss": {
+            "n": 445,
+            "top3": 0.8966292134831461,
+            "chance": 0.5865168539325842
+          },
+          "top3_problems": 0.935064935064935,
+          "chance_top3_problems": 0.7600494743351888,
+          "top3_problems_can_miss": {
+            "n": 194,
+            "top3": 0.845360824742268,
+            "chance": 0.42857142857142855
+          },
+          "top1": 0.6911357340720221,
+          "ece": 0.10480899494728135,
+          "nll": 0.9604844484114953,
+          "medium": {
+            "n": 424,
+            "right": 258
+          },
+          "healthy": {
+            "n": 260,
+            "evidence": 214,
+            "blocked": 32
+          },
+          "called_healthy": {
+            "n": 462,
+            "called": 6
+          },
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 2,
+              "confidence": 0.26268292243875724,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 30,
+              "confidence": 0.36202240243350897,
+              "accuracy": 0.26666666666666666
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 46,
+              "confidence": 0.4539826221574958,
+              "accuracy": 0.41304347826086957
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 84,
+              "confidence": 0.5486102261960779,
+              "accuracy": 0.5238095238095238
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 73,
+              "confidence": 0.6497837339629053,
+              "accuracy": 0.5205479452054794
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 72,
+              "confidence": 0.7541017487741828,
+              "accuracy": 0.6388888888888888
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 100,
+              "confidence": 0.8575650031567139,
+              "accuracy": 0.57
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 315,
+              "confidence": 0.9720979383460548,
+              "accuracy": 0.9111111111111111
+            }
+          ]
+        },
+        "t_val_and_dev": {
+          "n": 722,
+          "with_problem": 462,
+          "top3_sent": 0.9004329004329005,
+          "chance_top3_sent": 0.6017316017316018,
+          "top3_sent_can_miss": {
+            "n": 445,
+            "top3": 0.8966292134831461,
+            "chance": 0.5865168539325842
+          },
+          "top3_problems": 0.935064935064935,
+          "chance_top3_problems": 0.7600494743351888,
+          "top3_problems_can_miss": {
+            "n": 194,
+            "top3": 0.845360824742268,
+            "chance": 0.42857142857142855
+          },
+          "top1": 0.6911357340720221,
+          "ece": 0.05361392379537076,
+          "nll": 0.8646940760877156,
+          "medium": {
+            "n": 327,
+            "right": 215
+          },
+          "healthy": {
+            "n": 260,
+            "evidence": 191,
+            "blocked": 23
+          },
+          "called_healthy": {
+            "n": 462,
+            "called": 2
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 1,
+              "confidence": 0.19434613737603976,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 31,
+              "confidence": 0.26803979606839395,
+              "accuracy": 0.25806451612903225
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 67,
+              "confidence": 0.3576934901035111,
+              "accuracy": 0.417910447761194
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 103,
+              "confidence": 0.45272476468928063,
+              "accuracy": 0.5533980582524272
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 100,
+              "confidence": 0.5481210322094874,
+              "accuracy": 0.6
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 93,
+              "confidence": 0.6457638403167418,
+              "accuracy": 0.5698924731182796
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 90,
+              "confidence": 0.7494107238850174,
+              "accuracy": 0.7777777777777778
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 112,
+              "confidence": 0.8489633831344704,
+              "accuracy": 0.8839285714285714
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 125,
+              "confidence": 0.9491118262137033,
+              "accuracy": 0.992
+            }
+          ]
+        },
+        "t_dev": {
+          "n": 722,
+          "with_problem": 462,
+          "top3_sent": 0.9004329004329005,
+          "chance_top3_sent": 0.6017316017316018,
+          "top3_sent_can_miss": {
+            "n": 445,
+            "top3": 0.8966292134831461,
+            "chance": 0.5865168539325842
+          },
+          "top3_problems": 0.935064935064935,
+          "chance_top3_problems": 0.7600494743351888,
+          "top3_problems_can_miss": {
+            "n": 194,
+            "top3": 0.845360824742268,
+            "chance": 0.42857142857142855
+          },
+          "top1": 0.6911357340720221,
+          "ece": 0.18846525514187643,
+          "nll": 0.9736113478329613,
+          "medium": {
+            "n": 191,
+            "right": 151
+          },
+          "healthy": {
+            "n": 260,
+            "evidence": 139,
+            "blocked": 9
+          },
+          "called_healthy": {
+            "n": 462,
+            "called": 0
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 11,
+              "confidence": 0.19018222255803055,
+              "accuracy": 0.18181818181818182
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 94,
+              "confidence": 0.24894787492327658,
+              "accuracy": 0.44680851063829785
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 127,
+              "confidence": 0.35645007061043343,
+              "accuracy": 0.5984251968503937
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 160,
+              "confidence": 0.4478358840690125,
+              "accuracy": 0.55625
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 110,
+              "confidence": 0.5495787467320031,
+              "accuracy": 0.7636363636363637
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 96,
+              "confidence": 0.6418283671586188,
+              "accuracy": 0.8645833333333334
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 66,
+              "confidence": 0.743791560973634,
+              "accuracy": 0.9848484848484849
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 51,
+              "confidence": 0.8458673435254586,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 7,
+              "confidence": 0.9139180917917875,
+              "accuracy": 1.0
+            }
+          ]
+        },
+        "t_per_species_dev": {
+          "n": 722,
+          "with_problem": 462,
+          "top3_sent": 0.9004329004329005,
+          "chance_top3_sent": 0.6017316017316018,
+          "top3_sent_can_miss": {
+            "n": 445,
+            "top3": 0.8966292134831461,
+            "chance": 0.5865168539325842
+          },
+          "top3_problems": 0.935064935064935,
+          "chance_top3_problems": 0.7600494743351888,
+          "top3_problems_can_miss": {
+            "n": 194,
+            "top3": 0.845360824742268,
+            "chance": 0.42857142857142855
+          },
+          "top1": 0.6911357340720221,
+          "ece": 0.14853054673604538,
+          "nll": 0.9937178896294975,
+          "medium": {
+            "n": 269,
+            "right": 161
+          },
+          "healthy": {
+            "n": 260,
+            "evidence": 182,
+            "blocked": 25
+          },
+          "called_healthy": {
+            "n": 462,
+            "called": 3
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 29,
+              "confidence": 0.18605375528205548,
+              "accuracy": 0.2413793103448276
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 116,
+              "confidence": 0.24555853053966323,
+              "accuracy": 0.5431034482758621
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 56,
+              "confidence": 0.34258815539525894,
+              "accuracy": 0.6964285714285714
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 67,
+              "confidence": 0.45057043264154045,
+              "accuracy": 0.7014925373134329
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 70,
+              "confidence": 0.5513662642466923,
+              "accuracy": 0.6
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 55,
+              "confidence": 0.6525477496706168,
+              "accuracy": 0.5454545454545454
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 64,
+              "confidence": 0.7497253864909208,
+              "accuracy": 0.5625
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 90,
+              "confidence": 0.8493500610345481,
+              "accuracy": 0.7333333333333333
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 175,
+              "confidence": 0.9607372985525188,
+              "accuracy": 0.9657142857142857
+            }
+          ]
+        }
+      },
+      "dev_out_of_fold": {
+        "t_val_and_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.4453125
+          },
+          "top3_problems": 0.7590361445783133,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.6153846153846154,
+            "chance": 0.42857142857142844
+          },
+          "top1": 0.40425531914893614,
+          "ece": 0.1539950267355611,
+          "nll": 1.6124944366682596,
+          "medium": {
+            "n": 45,
+            "right": 22
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 2,
+            "blocked": 3
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 1,
+              "confidence": 0.19232815296392414,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 10,
+              "confidence": 0.2565183887177995,
+              "accuracy": 0.4
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 25,
+              "confidence": 0.33810923304206386,
+              "accuracy": 0.24
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 11,
+              "confidence": 0.4229668476086289,
+              "accuracy": 0.36363636363636365
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 17,
+              "confidence": 0.5579049294608348,
+              "accuracy": 0.35294117647058826
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 14,
+              "confidence": 0.6477146251691414,
+              "accuracy": 0.2857142857142857
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 5,
+              "confidence": 0.7414271151377303,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 3,
+              "confidence": 0.8328192117429974,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 8,
+              "confidence": 0.9644070743815458,
+              "accuracy": 0.75
+            }
+          ],
+          "fold_temperatures": [
+            2.0218,
+            2.029,
+            2.0242,
+            2.0282,
+            1.9908
+          ],
+          "per_species": {
+            "apple": {
+              "n": 11,
+              "with_problem": 11,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.45454545454545453,
+              "ece": 0.399205998453781,
+              "nll": 1.110580630137372,
+              "medium": {
+                "n": 10,
+                "right": 4
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 11,
+                "called": 0
+              }
+            },
+            "corn": {
+              "n": 15,
+              "with_problem": 12,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 0.75,
+              "top3_sent_can_miss": {
+                "n": 12,
+                "top3": 1.0,
+                "chance": 0.75
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.7333333333333333,
+              "ece": 0.1600435573143444,
+              "nll": 0.835166988920076,
+              "medium": {
+                "n": 11,
+                "right": 8
+              },
+              "healthy": {
+                "n": 3,
+                "evidence": 2,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 12,
+                "called": 0
+              }
+            },
+            "grape": {
+              "n": 8,
+              "with_problem": 8,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 1.0,
+              "ece": 0.06221936478477899,
+              "nll": 0.06697363210743436,
+              "medium": {
+                "n": 8,
+                "right": 8
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 8,
+                "called": 0
+              }
+            },
+            "tomato": {
+              "n": 60,
+              "with_problem": 52,
+              "top3_sent": 0.5769230769230769,
+              "chance_top3_sent": 0.375,
+              "top3_sent_can_miss": {
+                "n": 52,
+                "top3": 0.5769230769230769,
+                "chance": 0.375
+              },
+              "top3_problems": 0.6153846153846154,
+              "chance_top3_problems": 0.42857142857142844,
+              "top3_problems_can_miss": {
+                "n": 52,
+                "top3": 0.6153846153846154,
+                "chance": 0.42857142857142844
+              },
+              "top1": 0.23333333333333334,
+              "ece": 0.20821399368729374,
+              "nll": 2.1049132704107456,
+              "medium": {
+                "n": 16,
+                "right": 2
+              },
+              "healthy": {
+                "n": 8,
+                "evidence": 0,
+                "blocked": 3
+              },
+              "called_healthy": {
+                "n": 52,
+                "called": 0
+              }
+            }
+          }
+        },
+        "t_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.4453125
+          },
+          "top3_problems": 0.7590361445783133,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.6153846153846154,
+            "chance": 0.42857142857142844
+          },
+          "top1": 0.40425531914893614,
+          "ece": 0.0898825806511246,
+          "nll": 1.5311911262853013,
+          "medium": {
+            "n": 18,
+            "right": 13
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 1,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 6,
+              "confidence": 0.177834926070251,
+              "accuracy": 0.16666666666666666
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 35,
+              "confidence": 0.2441821616631766,
+              "accuracy": 0.2857142857142857
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 16,
+              "confidence": 0.3554899788026753,
+              "accuracy": 0.1875
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 18,
+              "confidence": 0.45215639668796226,
+              "accuracy": 0.5555555555555556
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 7,
+              "confidence": 0.5233991982971926,
+              "accuracy": 0.5714285714285714
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 3,
+              "confidence": 0.6454242800716183,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 2,
+              "confidence": 0.7285968567447167,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 6,
+              "confidence": 0.8554279199364392,
+              "accuracy": 0.8333333333333334
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 1,
+              "confidence": 0.9652632671386697,
+              "accuracy": 1.0
+            }
+          ],
+          "fold_temperatures": [
+            3.7443,
+            3.917,
+            3.7932,
+            3.8141,
+            3.129
+          ],
+          "per_species": {
+            "apple": {
+              "n": 11,
+              "with_problem": 11,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.45454545454545453,
+              "ece": 0.35720964969100905,
+              "nll": 0.9599975868523188,
+              "medium": {
+                "n": 8,
+                "right": 3
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 11,
+                "called": 0
+              }
+            },
+            "corn": {
+              "n": 15,
+              "with_problem": 12,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 0.75,
+              "top3_sent_can_miss": {
+                "n": 12,
+                "top3": 1.0,
+                "chance": 0.75
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.7333333333333333,
+              "ece": 0.27381438868437263,
+              "nll": 0.9598575927690256,
+              "medium": {
+                "n": 2,
+                "right": 2
+              },
+              "healthy": {
+                "n": 3,
+                "evidence": 1,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 12,
+                "called": 0
+              }
+            },
+            "grape": {
+              "n": 8,
+              "with_problem": 8,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 1.0,
+              "ece": 0.1631630483131944,
+              "nll": 0.18396145031085934,
+              "medium": {
+                "n": 8,
+                "right": 8
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 8,
+                "called": 0
+              }
+            },
+            "tomato": {
+              "n": 60,
+              "with_problem": 52,
+              "top3_sent": 0.5769230769230769,
+              "chance_top3_sent": 0.375,
+              "top3_sent_can_miss": {
+                "n": 52,
+                "top3": 0.5769230769230769,
+                "chance": 0.375
+              },
+              "top3_problems": 0.6153846153846154,
+              "chance_top3_problems": 0.42857142857142844,
+              "top3_problems_can_miss": {
+                "n": 52,
+                "top3": 0.6153846153846154,
+                "chance": 0.42857142857142844
+              },
+              "top1": 0.23333333333333334,
+              "ece": 0.09199071876946463,
+              "nll": 1.9583739486903426,
+              "medium": {
+                "n": 0,
+                "right": 0
+              },
+              "healthy": {
+                "n": 8,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 52,
+                "called": 0
+              }
+            }
+          }
+        },
+        "t_per_species_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.7349397590361446,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.65625,
+            "chance": 0.4453125
+          },
+          "top3_problems": 0.7590361445783133,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.6153846153846154,
+            "chance": 0.42857142857142844
+          },
+          "top1": 0.40425531914893614,
+          "ece": 0.12790140905314842,
+          "nll": 1.5158785707104616,
+          "medium": {
+            "n": 25,
+            "right": 19
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 2,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 0
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 11,
+              "confidence": 0.17768654891748306,
+              "accuracy": 0.09090909090909091
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 36,
+              "confidence": 0.23360992186960067,
+              "accuracy": 0.2777777777777778
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 13,
+              "confidence": 0.3362461641633266,
+              "accuracy": 0.3076923076923077
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 7,
+              "confidence": 0.45101708014671255,
+              "accuracy": 0.2857142857142857
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 6,
+              "confidence": 0.5471973984092147,
+              "accuracy": 0.8333333333333334
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 5,
+              "confidence": 0.6577488690126735,
+              "accuracy": 0.8
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 4,
+              "confidence": 0.7263347688987078,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 4,
+              "confidence": 0.8739042991875232,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 8,
+              "confidence": 0.9999999999996849,
+              "accuracy": 1.0
+            }
+          ],
+          "fold_temperatures": [
+            {
+              "*": 3.7443,
+              "apple": 2.7152,
+              "corn": 1.6133,
+              "grape": 0.0718,
+              "tomato": 5.1462
+            },
+            {
+              "*": 3.917,
+              "apple": 6.1641,
+              "corn": 1.7941,
+              "grape": 0.0636,
+              "tomato": 4.7877
+            },
+            {
+              "*": 3.7932,
+              "apple": 6.5018,
+              "corn": 1.1752,
+              "grape": 0.0712,
+              "tomato": 4.8372
+            },
+            {
+              "*": 3.8141,
+              "apple": 4.1669,
+              "corn": 1.6609,
+              "grape": 0.1017,
+              "tomato": 5.0045
+            },
+            {
+              "*": 3.129,
+              "apple": 5.6284,
+              "corn": 1.5814,
+              "grape": 0.0674,
+              "tomato": 3.5311
+            }
+          ],
+          "per_species": {
+            "apple": {
+              "n": 11,
+              "with_problem": 11,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.45454545454545453,
+              "ece": 0.3715331702319972,
+              "nll": 1.0801821563686893,
+              "medium": {
+                "n": 6,
+                "right": 3
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 11,
+                "called": 0
+              }
+            },
+            "corn": {
+              "n": 15,
+              "with_problem": 12,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 0.75,
+              "top3_sent_can_miss": {
+                "n": 12,
+                "top3": 1.0,
+                "chance": 0.75
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.7333333333333333,
+              "ece": 0.14942444936965665,
+              "nll": 0.8745614002683136,
+              "medium": {
+                "n": 11,
+                "right": 8
+              },
+              "healthy": {
+                "n": 3,
+                "evidence": 2,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 12,
+                "called": 0
+              }
+            },
+            "grape": {
+              "n": 8,
+              "with_problem": 8,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 1.0,
+              "ece": 3.1508129438861943e-13,
+              "nll": -6.85049239556563e-13,
+              "medium": {
+                "n": 8,
+                "right": 8
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 8,
+                "called": 0
+              }
+            },
+            "tomato": {
+              "n": 60,
+              "with_problem": 52,
+              "top3_sent": 0.5769230769230769,
+              "chance_top3_sent": 0.375,
+              "top3_sent_can_miss": {
+                "n": 52,
+                "top3": 0.5769230769230769,
+                "chance": 0.375
+              },
+              "top3_problems": 0.6153846153846154,
+              "chance_top3_problems": 0.42857142857142844,
+              "top3_problems_can_miss": {
+                "n": 52,
+                "top3": 0.6153846153846154,
+                "chance": 0.42857142857142844
+              },
+              "top1": 0.23333333333333334,
+              "ece": 0.13166938832358302,
+              "nll": 1.9582026820451428,
+              "medium": {
+                "n": 0,
+                "right": 0
+              },
+              "healthy": {
+                "n": 8,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 52,
+                "called": 0
+              }
+            }
+          }
+        }
+      },
+      "dev_per_species": {
+        "t_file": {
+          "apple": {
+            "n": 11,
+            "with_problem": 11,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.45454545454545453,
+            "ece": 0.4182207732837031,
+            "nll": 1.5146240727252456,
+            "medium": {
+              "n": 11,
+              "right": 5
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 11,
+              "called": 0
+            }
+          },
+          "corn": {
+            "n": 15,
+            "with_problem": 12,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 0.75,
+            "top3_sent_can_miss": {
+              "n": 12,
+              "top3": 1.0,
+              "chance": 0.75
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.7333333333333333,
+            "ece": 0.1916731009346866,
+            "nll": 0.8501886000263013,
+            "medium": {
+              "n": 13,
+              "right": 9
+            },
+            "healthy": {
+              "n": 3,
+              "evidence": 2,
+              "blocked": 1
+            },
+            "called_healthy": {
+              "n": 12,
+              "called": 0
+            }
+          },
+          "grape": {
+            "n": 8,
+            "with_problem": 8,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 1.0,
+            "ece": 0.016886408642255893,
+            "nll": 0.017468852553198785,
+            "medium": {
+              "n": 8,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 8,
+              "called": 0
+            }
+          },
+          "tomato": {
+            "n": 60,
+            "with_problem": 52,
+            "top3_sent": 0.5769230769230769,
+            "chance_top3_sent": 0.375,
+            "top3_sent_can_miss": {
+              "n": 52,
+              "top3": 0.5769230769230769,
+              "chance": 0.375
+            },
+            "top3_problems": 0.6153846153846154,
+            "chance_top3_problems": 0.42857142857142844,
+            "top3_problems_can_miss": {
+              "n": 52,
+              "top3": 0.6153846153846154,
+              "chance": 0.42857142857142844
+            },
+            "top1": 0.23333333333333334,
+            "ece": 0.3543479374541111,
+            "nll": 2.6470159975618466,
+            "medium": {
+              "n": 29,
+              "right": 5
+            },
+            "healthy": {
+              "n": 8,
+              "evidence": 0,
+              "blocked": 4
+            },
+            "called_healthy": {
+              "n": 52,
+              "called": 0
+            }
+          }
+        },
+        "t_val_and_dev": {
+          "apple": {
+            "n": 11,
+            "with_problem": 11,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.45454545454545453,
+            "ece": 0.39838665323519357,
+            "nll": 1.1070709770558138,
+            "medium": {
+              "n": 10,
+              "right": 4
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 11,
+              "called": 0
+            }
+          },
+          "corn": {
+            "n": 15,
+            "with_problem": 12,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 0.75,
+            "top3_sent_can_miss": {
+              "n": 12,
+              "top3": 1.0,
+              "chance": 0.75
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.7333333333333333,
+            "ece": 0.23811211717501582,
+            "nll": 0.8365695406876649,
+            "medium": {
+              "n": 11,
+              "right": 8
+            },
+            "healthy": {
+              "n": 3,
+              "evidence": 2,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 12,
+              "called": 0
+            }
+          },
+          "grape": {
+            "n": 8,
+            "with_problem": 8,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 1.0,
+            "ece": 0.06343109275527524,
+            "nll": 0.06831363221346982,
+            "medium": {
+              "n": 8,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 8,
+              "called": 0
+            }
+          },
+          "tomato": {
+            "n": 60,
+            "with_problem": 52,
+            "top3_sent": 0.5769230769230769,
+            "chance_top3_sent": 0.375,
+            "top3_sent_can_miss": {
+              "n": 52,
+              "top3": 0.5769230769230769,
+              "chance": 0.375
+            },
+            "top3_problems": 0.6153846153846154,
+            "chance_top3_problems": 0.42857142857142844,
+            "top3_problems_can_miss": {
+              "n": 52,
+              "top3": 0.6153846153846154,
+              "chance": 0.42857142857142844
+            },
+            "top1": 0.23333333333333334,
+            "ece": 0.20634607920846174,
+            "nll": 2.0956885836683936,
+            "medium": {
+              "n": 16,
+              "right": 2
+            },
+            "healthy": {
+              "n": 8,
+              "evidence": 0,
+              "blocked": 3
+            },
+            "called_healthy": {
+              "n": 52,
+              "called": 0
+            }
+          }
+        },
+        "t_dev": {
+          "apple": {
+            "n": 11,
+            "with_problem": 11,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.45454545454545453,
+            "ece": 0.45635177041809893,
+            "nll": 0.9678820190492055,
+            "medium": {
+              "n": 8,
+              "right": 3
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 11,
+              "called": 0
+            }
+          },
+          "corn": {
+            "n": 15,
+            "with_problem": 12,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 0.75,
+            "top3_sent_can_miss": {
+              "n": 12,
+              "top3": 1.0,
+              "chance": 0.75
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.7333333333333333,
+            "ece": 0.27236552423312677,
+            "nll": 0.9565401373497278,
+            "medium": {
+              "n": 2,
+              "right": 2
+            },
+            "healthy": {
+              "n": 3,
+              "evidence": 2,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 12,
+              "called": 0
+            }
+          },
+          "grape": {
+            "n": 8,
+            "with_problem": 8,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 1.0,
+            "ece": 0.15848616977986008,
+            "nll": 0.17795957486050545,
+            "medium": {
+              "n": 8,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 8,
+              "called": 0
+            }
+          },
+          "tomato": {
+            "n": 60,
+            "with_problem": 52,
+            "top3_sent": 0.5769230769230769,
+            "chance_top3_sent": 0.375,
+            "top3_sent_can_miss": {
+              "n": 52,
+              "top3": 0.5769230769230769,
+              "chance": 0.375
+            },
+            "top3_problems": 0.6153846153846154,
+            "chance_top3_problems": 0.42857142857142844,
+            "top3_problems_can_miss": {
+              "n": 52,
+              "top3": 0.6153846153846154,
+              "chance": 0.42857142857142844
+            },
+            "top1": 0.23333333333333334,
+            "ece": 0.09956292954239454,
+            "nll": 1.94202615177407,
+            "medium": {
+              "n": 0,
+              "right": 0
+            },
+            "healthy": {
+              "n": 8,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 52,
+              "called": 0
+            }
+          }
+        },
+        "t_per_species_dev": {
+          "apple": {
+            "n": 11,
+            "with_problem": 11,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.45454545454545453,
+            "ece": 0.35741739287741275,
+            "nll": 0.9566821898854315,
+            "medium": {
+              "n": 5,
+              "right": 3
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 11,
+              "called": 0
+            }
+          },
+          "corn": {
+            "n": 15,
+            "with_problem": 12,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 0.75,
+            "top3_sent_can_miss": {
+              "n": 12,
+              "top3": 1.0,
+              "chance": 0.75
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.7333333333333333,
+            "ece": 0.22066093413987312,
+            "nll": 0.8180241224716657,
+            "medium": {
+              "n": 11,
+              "right": 8
+            },
+            "healthy": {
+              "n": 3,
+              "evidence": 2,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 12,
+              "called": 0
+            }
+          },
+          "grape": {
+            "n": 8,
+            "with_problem": 8,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 1.0,
+            "ece": 0.0,
+            "nll": -1.000088900581841e-12,
+            "medium": {
+              "n": 8,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 8,
+              "called": 0
+            }
+          },
+          "tomato": {
+            "n": 60,
+            "with_problem": 52,
+            "top3_sent": 0.5769230769230769,
+            "chance_top3_sent": 0.375,
+            "top3_sent_can_miss": {
+              "n": 52,
+              "top3": 0.5769230769230769,
+              "chance": 0.375
+            },
+            "top3_problems": 0.6153846153846154,
+            "chance_top3_problems": 0.42857142857142844,
+            "top3_problems_can_miss": {
+              "n": 52,
+              "top3": 0.6153846153846154,
+              "chance": 0.42857142857142844
+            },
+            "top1": 0.23333333333333334,
+            "ece": 0.10484441579283077,
+            "nll": 1.9339538564366083,
+            "medium": {
+              "n": 0,
+              "right": 0
+            },
+            "healthy": {
+              "n": 8,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 52,
+              "called": 0
+            }
+          }
+        }
+      },
+      "dev_per_source_species": {
+        "fieldsets/ccmt-2023 tomato": {
+          "n": 5,
+          "with_problem": 5,
+          "top3_sent": 1.0,
+          "chance_top3_sent": 0.375,
+          "top3_sent_can_miss": {
+            "n": 5,
+            "top3": 1.0,
+            "chance": 0.375
+          },
+          "top3_problems": 1.0,
+          "chance_top3_problems": 0.42857142857142855,
+          "top3_problems_can_miss": {
+            "n": 5,
+            "top3": 1.0,
+            "chance": 0.42857142857142855
+          },
+          "top1": 0.6,
+          "ece": 0.2861580156324404,
+          "nll": 0.9179356759890485,
+          "medium": {
+            "n": 1,
+            "right": 1
+          },
+          "healthy": {
+            "n": 0,
+            "evidence": 0,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 5,
+            "called": 0
+          }
+        },
+        "fieldsets/maize-bd-2026 corn": {
+          "n": 15,
+          "with_problem": 12,
+          "top3_sent": 1.0,
+          "chance_top3_sent": 0.75,
+          "top3_sent_can_miss": {
+            "n": 12,
+            "top3": 1.0,
+            "chance": 0.75
+          },
+          "top3_problems": 1.0,
+          "chance_top3_problems": 1.0,
+          "top3_problems_can_miss": {
+            "n": 0,
+            "top3": null,
+            "chance": null
+          },
+          "top1": 0.7333333333333333,
+          "ece": 0.1916731009346866,
+          "nll": 0.8501886000263013,
+          "medium": {
+            "n": 13,
+            "right": 9
+          },
+          "healthy": {
+            "n": 3,
+            "evidence": 2,
+            "blocked": 1
+          },
+          "called_healthy": {
+            "n": 12,
+            "called": 0
+          }
+        },
+        "fieldsets/tomato-bd-2025 tomato": {
+          "n": 23,
+          "with_problem": 20,
+          "top3_sent": 0.65,
+          "chance_top3_sent": 0.375,
+          "top3_sent_can_miss": {
+            "n": 20,
+            "top3": 0.65,
+            "chance": 0.375
+          },
+          "top3_problems": 0.7,
+          "chance_top3_problems": 0.42857142857142855,
+          "top3_problems_can_miss": {
+            "n": 20,
+            "top3": 0.7,
+            "chance": 0.42857142857142855
+          },
+          "top1": 0.21739130434782608,
+          "ece": 0.3458685851951621,
+          "nll": 2.299267528357823,
+          "medium": {
+            "n": 8,
+            "right": 2
+          },
+          "healthy": {
+            "n": 3,
+            "evidence": 0,
+            "blocked": 2
+          },
+          "called_healthy": {
+            "n": 20,
+            "called": 0
+          }
+        },
+        "fieldsets/tomato-bd-iphone-2025 tomato": {
+          "n": 20,
+          "with_problem": 15,
+          "top3_sent": 0.6,
+          "chance_top3_sent": 0.375,
+          "top3_sent_can_miss": {
+            "n": 15,
+            "top3": 0.6,
+            "chance": 0.375
+          },
+          "top3_problems": 0.6,
+          "chance_top3_problems": 0.42857142857142866,
+          "top3_problems_can_miss": {
+            "n": 15,
+            "top3": 0.6,
+            "chance": 0.42857142857142866
+          },
+          "top1": 0.25,
+          "ece": 0.4633830041236476,
+          "nll": 2.4543370348688986,
+          "medium": {
+            "n": 13,
+            "right": 2
+          },
+          "healthy": {
+            "n": 5,
+            "evidence": 0,
+            "blocked": 2
+          },
+          "called_healthy": {
+            "n": 15,
+            "called": 0
+          }
+        },
+        "inat apple": {
+          "n": 11,
+          "with_problem": 11,
+          "top3_sent": 1.0,
+          "chance_top3_sent": 1.0,
+          "top3_sent_can_miss": {
+            "n": 0,
+            "top3": null,
+            "chance": null
+          },
+          "top3_problems": 1.0,
+          "chance_top3_problems": 1.0,
+          "top3_problems_can_miss": {
+            "n": 0,
+            "top3": null,
+            "chance": null
+          },
+          "top1": 0.45454545454545453,
+          "ece": 0.4182207732837031,
+          "nll": 1.5146240727252456,
+          "medium": {
+            "n": 11,
+            "right": 5
+          },
+          "healthy": {
+            "n": 0,
+            "evidence": 0,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 11,
+            "called": 0
+          }
+        },
+        "inat grape": {
+          "n": 8,
+          "with_problem": 8,
+          "top3_sent": 1.0,
+          "chance_top3_sent": 1.0,
+          "top3_sent_can_miss": {
+            "n": 0,
+            "top3": null,
+            "chance": null
+          },
+          "top3_problems": 1.0,
+          "chance_top3_problems": 1.0,
+          "top3_problems_can_miss": {
+            "n": 0,
+            "top3": null,
+            "chance": null
+          },
+          "top1": 1.0,
+          "ece": 0.016886408642255893,
+          "nll": 0.017468852553198785,
+          "medium": {
+            "n": 8,
+            "right": 8
+          },
+          "healthy": {
+            "n": 0,
+            "evidence": 0,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 8,
+            "called": 0
+          }
+        },
+        "inat tomato": {
+          "n": 12,
+          "with_problem": 12,
+          "top3_sent": 0.25,
+          "chance_top3_sent": 0.375,
+          "top3_sent_can_miss": {
+            "n": 12,
+            "top3": 0.25,
+            "chance": 0.375
+          },
+          "top3_problems": 0.3333333333333333,
+          "chance_top3_problems": 0.4285714285714286,
+          "top3_problems_can_miss": {
+            "n": 12,
+            "top3": 0.3333333333333333,
+            "chance": 0.4285714285714286
+          },
+          "top1": 0.08333333333333333,
+          "ece": 0.5987748659269659,
+          "nll": 4.355115635346471,
+          "medium": {
+            "n": 7,
+            "right": 0
+          },
+          "healthy": {
+            "n": 0,
+            "evidence": 0,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 12,
+            "called": 0
+          }
+        }
+      },
+      "dev_confusion": {
+        "apple": {
+          "apple_cedar_apple_rust": {
+            "apple_cedar_apple_rust": 1,
+            "apple_scab": 1
+          },
+          "apple_scab": {
+            "apple_cedar_apple_rust": 5,
+            "apple_scab": 4
+          }
+        },
+        "corn": {
+          "corn_common_rust": {
+            "corn_common_rust": 3,
+            "corn_northern_leaf_blight": 2
+          },
+          "corn_gray_leaf_spot": {
+            "corn_gray_leaf_spot": 1,
+            "corn_northern_leaf_blight": 1
+          },
+          "corn_northern_leaf_blight": {
+            "corn_northern_leaf_blight": 5
+          },
+          "healthy": {
+            "healthy": 2,
+            "corn_common_rust": 1
+          }
+        },
+        "grape": {
+          "grape_black_rot": {
+            "grape_black_rot": 8
+          }
+        },
+        "tomato": {
+          "healthy": {
+            "tomato_leaf_mold": 3,
+            "tomato_bacterial_spot": 3,
+            "tomato_late_blight": 1,
+            "healthy": 1
+          },
+          "tomato_bacterial_spot": {
+            "tomato_bacterial_spot": 4,
+            "tomato_septoria_leaf_spot": 3,
+            "tomato_leaf_mold": 2,
+            "healthy": 1
+          },
+          "tomato_early_blight": {
+            "tomato_early_blight": 3,
+            "tomato_bacterial_spot": 3,
+            "tomato_late_blight": 2,
+            "tomato_leaf_mold": 2,
+            "tomato_septoria_leaf_spot": 1
+          },
+          "tomato_late_blight": {
+            "tomato_bacterial_spot": 3,
+            "tomato_late_blight": 2,
+            "tomato_septoria_leaf_spot": 2,
+            "tomato_leaf_mold": 1,
+            "tomato_early_blight": 1
+          },
+          "tomato_septoria_leaf_spot": {
+            "tomato_septoria_leaf_spot": 3,
+            "tomato_bacterial_spot": 2
+          },
+          "tomato_spider_mites": {
+            "tomato_bacterial_spot": 5,
+            "tomato_leaf_mold": 4,
+            "tomato_late_blight": 3
+          },
+          "tomato_yellow_leaf_curl_virus": {
+            "tomato_leaf_mold": 2,
+            "tomato_yellow_leaf_curl_virus": 1,
+            "tomato_late_blight": 1,
+            "tomato_bacterial_spot": 1
+          }
+        }
+      }
+    },
+    {
+      "head": "disease-head-v3c-2026-10-20",
+      "classes": 19,
+      "dev_photos": 94,
+      "val_photos": 722,
+      "dev_one_photo": 82,
+      "dev_one_photo_healthy": 11,
+      "classes_per_species": {
+        "apple": 3,
+        "corn": 4,
+        "grape": 2,
+        "tomato": 8
+      },
+      "left_out": {
+        "leaf photos with several crops": 18,
+        "no leaf shot": 2,
+        "species without head classes": 10
+      },
+      "bounds": [
+        0.05,
+        10.0
+      ],
+      "temperatures": {
+        "t_file": 1.8206,
+        "t_val_and_dev": 0.8329,
+        "t_dev": 1.8206,
+        "t_per_species_dev": {
+          "*": 1.8206,
+          "apple": 1.8031,
+          "corn": 1.7893,
+          "grape": 0.0547,
+          "tomato": 1.9125
+        }
+      },
+      "dev": {
+        "t_file": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.8433734939759037,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.796875,
+            "chance": 0.4453125
+          },
+          "top3_problems": 0.8554216867469879,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.7692307692307693,
+            "chance": 0.42857142857142844
+          },
+          "top1": 0.4148936170212766,
+          "ece": 0.09883313188491424,
+          "nll": 1.4055218779943068,
+          "medium": {
+            "n": 24,
+            "right": 17
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 2,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 1
+          },
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 28,
+              "confidence": 0.26211116633034137,
+              "accuracy": 0.32142857142857145
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 26,
+              "confidence": 0.3427751325384862,
+              "accuracy": 0.23076923076923078
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 13,
+              "confidence": 0.43880113842064505,
+              "accuracy": 0.38461538461538464
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 6,
+              "confidence": 0.5367139387602599,
+              "accuracy": 0.6666666666666666
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 6,
+              "confidence": 0.6419600260880135,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 8,
+              "confidence": 0.747693743216189,
+              "accuracy": 0.625
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 1,
+              "confidence": 0.8493879046381108,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 6,
+              "confidence": 0.9464113053888115,
+              "accuracy": 1.0
+            }
+          ]
+        },
+        "t_val_and_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.8433734939759037,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.796875,
+            "chance": 0.4453125
+          },
+          "top3_problems": 0.8554216867469879,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.7692307692307693,
+            "chance": 0.42857142857142844
+          },
+          "top1": 0.4148936170212766,
+          "ece": 0.24219642813366035,
+          "nll": 1.6182813762110833,
+          "medium": {
+            "n": 53,
+            "right": 25
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 3,
+            "blocked": 3
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 1
+          },
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 1,
+              "confidence": 0.2947527909472721,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 14,
+              "confidence": 0.3587043216771161,
+              "accuracy": 0.42857142857142855
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 22,
+              "confidence": 0.45247799478411216,
+              "accuracy": 0.22727272727272727
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 17,
+              "confidence": 0.5695615721824975,
+              "accuracy": 0.35294117647058826
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 8,
+              "confidence": 0.6455277656190344,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 8,
+              "confidence": 0.7460178239285478,
+              "accuracy": 0.125
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 8,
+              "confidence": 0.8472511562760641,
+              "accuracy": 0.75
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 16,
+              "confidence": 0.9754600269037487,
+              "accuracy": 0.6875
+            }
+          ]
+        },
+        "t_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.8433734939759037,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.796875,
+            "chance": 0.4453125
+          },
+          "top3_problems": 0.8554216867469879,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.7692307692307693,
+            "chance": 0.42857142857142844
+          },
+          "top1": 0.4148936170212766,
+          "ece": 0.09883313637520018,
+          "nll": 1.405521877994306,
+          "medium": {
+            "n": 24,
+            "right": 17
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 2,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 1
+          },
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 28,
+              "confidence": 0.26211118562976177,
+              "accuracy": 0.32142857142857145
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 26,
+              "confidence": 0.3427751597645829,
+              "accuracy": 0.23076923076923078
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 13,
+              "confidence": 0.43880117936119434,
+              "accuracy": 0.38461538461538464
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 6,
+              "confidence": 0.5367139699512116,
+              "accuracy": 0.6666666666666666
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 6,
+              "confidence": 0.641960070976547,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 8,
+              "confidence": 0.7476937967275981,
+              "accuracy": 0.625
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 1,
+              "confidence": 0.8493879370445103,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 6,
+              "confidence": 0.9464113261322509,
+              "accuracy": 1.0
+            }
+          ]
+        },
+        "t_per_species_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.8433734939759037,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.796875,
+            "chance": 0.4453125
+          },
+          "top3_problems": 0.8554216867469879,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.7692307692307693,
+            "chance": 0.42857142857142844
+          },
+          "top1": 0.4148936170212766,
+          "ece": 0.10623623512116871,
+          "nll": 1.3963600148708453,
+          "medium": {
+            "n": 23,
+            "right": 17
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 2,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 1
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 1,
+              "confidence": 0.19649860717995604,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 32,
+              "confidence": 0.2636569752448578,
+              "accuracy": 0.3125
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 24,
+              "confidence": 0.35116593083638237,
+              "accuracy": 0.25
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 11,
+              "confidence": 0.44330611865901476,
+              "accuracy": 0.36363636363636365
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 4,
+              "confidence": 0.5323454162314045,
+              "accuracy": 0.75
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 8,
+              "confidence": 0.6432432221722244,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 6,
+              "confidence": 0.7548983374159776,
+              "accuracy": 0.6666666666666666
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 8,
+              "confidence": 0.9999999999999972,
+              "accuracy": 1.0
+            }
+          ]
+        }
+      },
+      "val": {
+        "t_file": {
+          "n": 722,
+          "with_problem": 462,
+          "top3_sent": 0.9783549783549783,
+          "chance_top3_sent": 0.6017316017316018,
+          "top3_sent_can_miss": {
+            "n": 445,
+            "top3": 0.9775280898876404,
+            "chance": 0.5865168539325842
+          },
+          "top3_problems": 0.9805194805194806,
+          "chance_top3_problems": 0.7600494743351888,
+          "top3_problems_can_miss": {
+            "n": 194,
+            "top3": 0.9536082474226805,
+            "chance": 0.42857142857142855
+          },
+          "top1": 0.8601108033240997,
+          "ece": 0.2494644596377408,
+          "nll": 0.6314384965715408,
+          "medium": {
+            "n": 290,
+            "right": 273
+          },
+          "healthy": {
+            "n": 260,
+            "evidence": 204,
+            "blocked": 8
+          },
+          "called_healthy": {
+            "n": 462,
+            "called": 1
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 2,
+              "confidence": 0.1870142383382153,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 30,
+              "confidence": 0.26502732823857184,
+              "accuracy": 0.4
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 80,
+              "confidence": 0.357171740644006,
+              "accuracy": 0.6125
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 115,
+              "confidence": 0.4489807805543334,
+              "accuracy": 0.7217391304347827
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 106,
+              "confidence": 0.5428165676804069,
+              "accuracy": 0.8962264150943396
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 111,
+              "confidence": 0.6505133748818737,
+              "accuracy": 0.9369369369369369
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 140,
+              "confidence": 0.7496847474776285,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 119,
+              "confidence": 0.8452132056130907,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 19,
+              "confidence": 0.9379769923665678,
+              "accuracy": 1.0
+            }
+          ]
+        },
+        "t_val_and_dev": {
+          "n": 722,
+          "with_problem": 462,
+          "top3_sent": 0.9783549783549783,
+          "chance_top3_sent": 0.6017316017316018,
+          "top3_sent_can_miss": {
+            "n": 445,
+            "top3": 0.9775280898876404,
+            "chance": 0.5865168539325842
+          },
+          "top3_problems": 0.9805194805194806,
+          "chance_top3_problems": 0.7600494743351888,
+          "top3_problems_can_miss": {
+            "n": 194,
+            "top3": 0.9536082474226805,
+            "chance": 0.42857142857142855
+          },
+          "top1": 0.8601108033240997,
+          "ece": 0.045254172415187935,
+          "nll": 0.41285512622071385,
+          "medium": {
+            "n": 433,
+            "right": 370
+          },
+          "healthy": {
+            "n": 260,
+            "evidence": 230,
+            "blocked": 18
+          },
+          "called_healthy": {
+            "n": 462,
+            "called": 5
+          },
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 3,
+              "confidence": 0.2566347366234733,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 16,
+              "confidence": 0.3586247794323812,
+              "accuracy": 0.375
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 35,
+              "confidence": 0.45511099849059305,
+              "accuracy": 0.42857142857142855
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 60,
+              "confidence": 0.5534199497962002,
+              "accuracy": 0.5666666666666667
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 57,
+              "confidence": 0.6443638613755152,
+              "accuracy": 0.6666666666666666
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 79,
+              "confidence": 0.746601123080276,
+              "accuracy": 0.9113924050632911
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 104,
+              "confidence": 0.854174125318822,
+              "accuracy": 0.8653846153846154
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 368,
+              "confidence": 0.9691886204002398,
+              "accuracy": 0.9945652173913043
+            }
+          ]
+        },
+        "t_dev": {
+          "n": 722,
+          "with_problem": 462,
+          "top3_sent": 0.9783549783549783,
+          "chance_top3_sent": 0.6017316017316018,
+          "top3_sent_can_miss": {
+            "n": 445,
+            "top3": 0.9775280898876404,
+            "chance": 0.5865168539325842
+          },
+          "top3_problems": 0.9805194805194806,
+          "chance_top3_problems": 0.7600494743351888,
+          "top3_problems_can_miss": {
+            "n": 194,
+            "top3": 0.9536082474226805,
+            "chance": 0.42857142857142855
+          },
+          "top1": 0.8601108033240997,
+          "ece": 0.24946441353088986,
+          "nll": 0.6314384318602856,
+          "medium": {
+            "n": 290,
+            "right": 273
+          },
+          "healthy": {
+            "n": 260,
+            "evidence": 204,
+            "blocked": 8
+          },
+          "called_healthy": {
+            "n": 462,
+            "called": 1
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 2,
+              "confidence": 0.18701424709108141,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 30,
+              "confidence": 0.26502734769124964,
+              "accuracy": 0.4
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 80,
+              "confidence": 0.35717177073367523,
+              "accuracy": 0.6125
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 115,
+              "confidence": 0.4489808171070893,
+              "accuracy": 0.7217391304347827
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 106,
+              "confidence": 0.5428166138212411,
+              "accuracy": 0.8962264150943396
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 111,
+              "confidence": 0.6505134329410557,
+              "accuracy": 0.9369369369369369
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 140,
+              "confidence": 0.7496848064817478,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 119,
+              "confidence": 0.8452132561561797,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 19,
+              "confidence": 0.9379770187681089,
+              "accuracy": 1.0
+            }
+          ]
+        },
+        "t_per_species_dev": {
+          "n": 722,
+          "with_problem": 462,
+          "top3_sent": 0.9783549783549783,
+          "chance_top3_sent": 0.6017316017316018,
+          "top3_sent_can_miss": {
+            "n": 445,
+            "top3": 0.9775280898876404,
+            "chance": 0.5865168539325842
+          },
+          "top3_problems": 0.9805194805194806,
+          "chance_top3_problems": 0.7600494743351888,
+          "top3_problems_can_miss": {
+            "n": 194,
+            "top3": 0.9536082474226805,
+            "chance": 0.42857142857142855
+          },
+          "top1": 0.8601108033240997,
+          "ece": 0.25123999271979064,
+          "nll": 0.6354286842121626,
+          "medium": {
+            "n": 282,
+            "right": 265
+          },
+          "healthy": {
+            "n": 260,
+            "evidence": 203,
+            "blocked": 8
+          },
+          "called_healthy": {
+            "n": 462,
+            "called": 1
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 3,
+              "confidence": 0.18935178785327747,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 33,
+              "confidence": 0.2650215125625982,
+              "accuracy": 0.45454545454545453
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 81,
+              "confidence": 0.35447079770782974,
+              "accuracy": 0.6296296296296297
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 119,
+              "confidence": 0.4481266009082558,
+              "accuracy": 0.7310924369747899
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 102,
+              "confidence": 0.5475613704421578,
+              "accuracy": 0.9117647058823529
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 108,
+              "confidence": 0.6510781060559941,
+              "accuracy": 0.9259259259259259
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 133,
+              "confidence": 0.7511397606744975,
+              "accuracy": 0.9924812030075187
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 123,
+              "confidence": 0.8470538466985325,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 20,
+              "confidence": 0.9565482015056723,
+              "accuracy": 1.0
+            }
+          ]
+        }
+      },
+      "dev_out_of_fold": {
+        "t_val_and_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.8433734939759037,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.796875,
+            "chance": 0.4453125
+          },
+          "top3_problems": 0.8554216867469879,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.7692307692307693,
+            "chance": 0.42857142857142844
+          },
+          "top1": 0.4148936170212766,
+          "ece": 0.24474991978669652,
+          "nll": 1.636386998036716,
+          "medium": {
+            "n": 55,
+            "right": 25
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 3,
+            "blocked": 4
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 1
+          },
+          "reliability": [
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 1,
+              "confidence": 0.2980499552442538,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 12,
+              "confidence": 0.3556565905298383,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 22,
+              "confidence": 0.4501266548675899,
+              "accuracy": 0.22727272727272727
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 16,
+              "confidence": 0.5631308561387993,
+              "accuracy": 0.3125
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 10,
+              "confidence": 0.634186401484601,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 9,
+              "confidence": 0.7520562045546159,
+              "accuracy": 0.1111111111111111
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 8,
+              "confidence": 0.855260898698077,
+              "accuracy": 0.75
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 16,
+              "confidence": 0.9775736482224106,
+              "accuracy": 0.6875
+            }
+          ],
+          "fold_temperatures": [
+            0.8179,
+            0.8175,
+            0.81,
+            0.8101,
+            0.804
+          ],
+          "per_species": {
+            "apple": {
+              "n": 11,
+              "with_problem": 11,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.7272727272727273,
+              "ece": 0.28290429920201576,
+              "nll": 0.9773499383282133,
+              "medium": {
+                "n": 11,
+                "right": 8
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 11,
+                "called": 0
+              }
+            },
+            "corn": {
+              "n": 15,
+              "with_problem": 12,
+              "top3_sent": 0.9166666666666666,
+              "chance_top3_sent": 0.75,
+              "top3_sent_can_miss": {
+                "n": 12,
+                "top3": 0.9166666666666666,
+                "chance": 0.75
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.4666666666666667,
+              "ece": 0.2811319598776174,
+              "nll": 1.3607005783984492,
+              "medium": {
+                "n": 4,
+                "right": 2
+              },
+              "healthy": {
+                "n": 3,
+                "evidence": 3,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 12,
+                "called": 1
+              }
+            },
+            "grape": {
+              "n": 8,
+              "with_problem": 8,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 1.0,
+              "ece": 0.01738938694330082,
+              "nll": 0.018187069270594224,
+              "medium": {
+                "n": 8,
+                "right": 8
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 8,
+                "called": 0
+              }
+            },
+            "tomato": {
+              "n": 60,
+              "with_problem": 52,
+              "top3_sent": 0.7692307692307693,
+              "chance_top3_sent": 0.375,
+              "top3_sent_can_miss": {
+                "n": 52,
+                "top3": 0.7692307692307693,
+                "chance": 0.375
+              },
+              "top3_problems": 0.7692307692307693,
+              "chance_top3_problems": 0.42857142857142844,
+              "top3_problems_can_miss": {
+                "n": 52,
+                "top3": 0.7692307692307693,
+                "chance": 0.42857142857142844
+              },
+              "top1": 0.26666666666666666,
+              "ece": 0.313607204566933,
+              "nll": 2.041892054394992,
+              "medium": {
+                "n": 32,
+                "right": 7
+              },
+              "healthy": {
+                "n": 8,
+                "evidence": 0,
+                "blocked": 4
+              },
+              "called_healthy": {
+                "n": 52,
+                "called": 0
+              }
+            }
+          }
+        },
+        "t_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.8433734939759037,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.796875,
+            "chance": 0.4453125
+          },
+          "top3_problems": 0.8554216867469879,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.7692307692307693,
+            "chance": 0.42857142857142844
+          },
+          "top1": 0.4148936170212766,
+          "ece": 0.09421443132638745,
+          "nll": 1.4080648373211866,
+          "medium": {
+            "n": 23,
+            "right": 17
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 2,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 1
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 1,
+              "confidence": 0.1975915058921538,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 29,
+              "confidence": 0.26640502006887046,
+              "accuracy": 0.3103448275862069
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 24,
+              "confidence": 0.3476495474600403,
+              "accuracy": 0.2916666666666667
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 14,
+              "confidence": 0.446704122726744,
+              "accuracy": 0.2857142857142857
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 5,
+              "confidence": 0.5403993565167184,
+              "accuracy": 0.8
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 6,
+              "confidence": 0.6461811658222832,
+              "accuracy": 0.5
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 8,
+              "confidence": 0.7422194455057936,
+              "accuracy": 0.625
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 1,
+              "confidence": 0.8417171050800138,
+              "accuracy": 1.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 6,
+              "confidence": 0.9440702109497546,
+              "accuracy": 1.0
+            }
+          ],
+          "fold_temperatures": [
+            1.8846,
+            1.901,
+            1.8204,
+            1.7741,
+            1.7322
+          ],
+          "per_species": {
+            "apple": {
+              "n": 11,
+              "with_problem": 11,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.7272727272727273,
+              "ece": 0.26089324212161646,
+              "nll": 0.7788780825333537,
+              "medium": {
+                "n": 11,
+                "right": 8
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 11,
+                "called": 0
+              }
+            },
+            "corn": {
+              "n": 15,
+              "with_problem": 12,
+              "top3_sent": 0.9166666666666666,
+              "chance_top3_sent": 0.75,
+              "top3_sent_can_miss": {
+                "n": 12,
+                "top3": 0.9166666666666666,
+                "chance": 0.75
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.4666666666666667,
+              "ece": 0.3115012791564692,
+              "nll": 1.2196285143202388,
+              "medium": {
+                "n": 1,
+                "right": 0
+              },
+              "healthy": {
+                "n": 3,
+                "evidence": 2,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 12,
+                "called": 1
+              }
+            },
+            "grape": {
+              "n": 8,
+              "with_problem": 8,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 1.0,
+              "ece": 0.09609959087366961,
+              "nll": 0.10506300578920896,
+              "medium": {
+                "n": 8,
+                "right": 8
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 8,
+                "called": 0
+              }
+            },
+            "tomato": {
+              "n": 60,
+              "with_problem": 52,
+              "top3_sent": 0.7692307692307693,
+              "chance_top3_sent": 0.375,
+              "top3_sent_can_miss": {
+                "n": 52,
+                "top3": 0.7692307692307693,
+                "chance": 0.375
+              },
+              "top3_problems": 0.7692307692307693,
+              "chance_top3_problems": 0.42857142857142844,
+              "top3_problems_can_miss": {
+                "n": 52,
+                "top3": 0.7692307692307693,
+                "chance": 0.42857142857142844
+              },
+              "top1": 0.26666666666666666,
+              "ece": 0.12681261360001303,
+              "nll": 1.7442584006534572,
+              "medium": {
+                "n": 3,
+                "right": 1
+              },
+              "healthy": {
+                "n": 8,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 52,
+                "called": 0
+              }
+            }
+          }
+        },
+        "t_per_species_dev": {
+          "n": 94,
+          "with_problem": 83,
+          "top3_sent": 0.8433734939759037,
+          "chance_top3_sent": 0.572289156626506,
+          "top3_sent_can_miss": {
+            "n": 64,
+            "top3": 0.796875,
+            "chance": 0.4453125
+          },
+          "top3_problems": 0.8554216867469879,
+          "chance_top3_problems": 0.6419965576592084,
+          "top3_problems_can_miss": {
+            "n": 52,
+            "top3": 0.7692307692307693,
+            "chance": 0.42857142857142844
+          },
+          "top1": 0.4148936170212766,
+          "ece": 0.10841131716683111,
+          "nll": 1.4349002624606269,
+          "medium": {
+            "n": 22,
+            "right": 16
+          },
+          "healthy": {
+            "n": 11,
+            "evidence": 2,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 83,
+            "called": 1
+          },
+          "reliability": [
+            {
+              "lo": 0.1,
+              "hi": 0.2,
+              "n": 1,
+              "confidence": 0.189370927707438,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.2,
+              "hi": 0.3,
+              "n": 32,
+              "confidence": 0.2631162712124379,
+              "accuracy": 0.3125
+            },
+            {
+              "lo": 0.3,
+              "hi": 0.4,
+              "n": 22,
+              "confidence": 0.35133197804990596,
+              "accuracy": 0.3181818181818182
+            },
+            {
+              "lo": 0.4,
+              "hi": 0.5,
+              "n": 14,
+              "confidence": 0.44230358260402286,
+              "accuracy": 0.2857142857142857
+            },
+            {
+              "lo": 0.5,
+              "hi": 0.6,
+              "n": 5,
+              "confidence": 0.5458401614534282,
+              "accuracy": 0.8
+            },
+            {
+              "lo": 0.6,
+              "hi": 0.7,
+              "n": 5,
+              "confidence": 0.6554252393068928,
+              "accuracy": 0.6
+            },
+            {
+              "lo": 0.7,
+              "hi": 0.8,
+              "n": 5,
+              "confidence": 0.7400746153047184,
+              "accuracy": 0.6
+            },
+            {
+              "lo": 0.8,
+              "hi": 0.9,
+              "n": 1,
+              "confidence": 0.8346571937683166,
+              "accuracy": 0.0
+            },
+            {
+              "lo": 0.9,
+              "hi": 1.0,
+              "n": 9,
+              "confidence": 0.9927168180837413,
+              "accuracy": 0.8888888888888888
+            }
+          ],
+          "fold_temperatures": [
+            {
+              "*": 1.8846,
+              "apple": 1.0607,
+              "corn": 1.8648,
+              "grape": 0.0502,
+              "tomato": 2.1175
+            },
+            {
+              "*": 1.901,
+              "apple": 2.0705,
+              "corn": 1.6648,
+              "grape": 0.0502,
+              "tomato": 2.0006
+            },
+            {
+              "*": 1.8204,
+              "apple": 2.4021,
+              "corn": 1.2735,
+              "grape": 0.0502,
+              "tomato": 1.9157
+            },
+            {
+              "*": 1.7741,
+              "apple": 1.4642,
+              "corn": 2.0003,
+              "grape": 0.0829,
+              "tomato": 1.8722
+            },
+            {
+              "*": 1.7322,
+              "apple": 2.2337,
+              "corn": 2.2627,
+              "grape": 0.0501,
+              "tomato": 1.6827
+            }
+          ],
+          "per_species": {
+            "apple": {
+              "n": 11,
+              "with_problem": 11,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.7272727272727273,
+              "ece": 0.4745905526739422,
+              "nll": 0.973648523280822,
+              "medium": {
+                "n": 10,
+                "right": 7
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 11,
+                "called": 0
+              }
+            },
+            "corn": {
+              "n": 15,
+              "with_problem": 12,
+              "top3_sent": 0.9166666666666666,
+              "chance_top3_sent": 0.75,
+              "top3_sent_can_miss": {
+                "n": 12,
+                "top3": 0.9166666666666666,
+                "chance": 0.75
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 0.4666666666666667,
+              "ece": 0.15956285332946915,
+              "nll": 1.2725130457908318,
+              "medium": {
+                "n": 1,
+                "right": 0
+              },
+              "healthy": {
+                "n": 3,
+                "evidence": 2,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 12,
+                "called": 1
+              }
+            },
+            "grape": {
+              "n": 8,
+              "with_problem": 8,
+              "top3_sent": 1.0,
+              "chance_top3_sent": 1.0,
+              "top3_sent_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top3_problems": 1.0,
+              "chance_top3_problems": 1.0,
+              "top3_problems_can_miss": {
+                "n": 0,
+                "top3": null,
+                "chance": null
+              },
+              "top1": 1.0,
+              "ece": 1.2065481946876844e-10,
+              "nll": 1.1965480001523537e-10,
+              "medium": {
+                "n": 8,
+                "right": 8
+              },
+              "healthy": {
+                "n": 0,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 8,
+                "called": 0
+              }
+            },
+            "tomato": {
+              "n": 60,
+              "with_problem": 52,
+              "top3_sent": 0.7692307692307693,
+              "chance_top3_sent": 0.375,
+              "top3_sent_can_miss": {
+                "n": 52,
+                "top3": 0.7692307692307693,
+                "chance": 0.375
+              },
+              "top3_problems": 0.7692307692307693,
+              "chance_top3_problems": 0.42857142857142844,
+              "top3_problems_can_miss": {
+                "n": 52,
+                "top3": 0.7692307692307693,
+                "chance": 0.42857142857142844
+              },
+              "top1": 0.26666666666666666,
+              "ece": 0.12770530209865721,
+              "nll": 1.751379920456503,
+              "medium": {
+                "n": 3,
+                "right": 1
+              },
+              "healthy": {
+                "n": 8,
+                "evidence": 0,
+                "blocked": 0
+              },
+              "called_healthy": {
+                "n": 52,
+                "called": 0
+              }
+            }
+          }
+        }
+      },
+      "dev_per_species": {
+        "t_file": {
+          "apple": {
+            "n": 11,
+            "with_problem": 11,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.7272727272727273,
+            "ece": 0.2642897730939813,
+            "nll": 0.7840140470879589,
+            "medium": {
+              "n": 11,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 11,
+              "called": 0
+            }
+          },
+          "corn": {
+            "n": 15,
+            "with_problem": 12,
+            "top3_sent": 0.9166666666666666,
+            "chance_top3_sent": 0.75,
+            "top3_sent_can_miss": {
+              "n": 12,
+              "top3": 0.9166666666666666,
+              "chance": 0.75
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.4666666666666667,
+            "ece": 0.3109109252606,
+            "nll": 1.2230662682802527,
+            "medium": {
+              "n": 1,
+              "right": 0
+            },
+            "healthy": {
+              "n": 3,
+              "evidence": 2,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 12,
+              "called": 1
+            }
+          },
+          "grape": {
+            "n": 8,
+            "with_problem": 8,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 1.0,
+            "ece": 0.09400539385861265,
+            "nll": 0.10289024845297809,
+            "medium": {
+              "n": 8,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 8,
+              "called": 0
+            }
+          },
+          "tomato": {
+            "n": 60,
+            "with_problem": 52,
+            "top3_sent": 0.7692307692307693,
+            "chance_top3_sent": 0.375,
+            "top3_sent_can_miss": {
+              "n": 52,
+              "top3": 0.7692307692307693,
+              "chance": 0.375
+            },
+            "top3_problems": 0.7692307692307693,
+            "chance_top3_problems": 0.42857142857142844,
+            "top3_problems_can_miss": {
+              "n": 52,
+              "top3": 0.7692307692307693,
+              "chance": 0.42857142857142844
+            },
+            "top1": 0.26666666666666666,
+            "ece": 0.10190483307872611,
+            "nll": 1.738763100027828,
+            "medium": {
+              "n": 4,
+              "right": 1
+            },
+            "healthy": {
+              "n": 8,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 52,
+              "called": 0
+            }
+          }
+        },
+        "t_val_and_dev": {
+          "apple": {
+            "n": 11,
+            "with_problem": 11,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.7272727272727273,
+            "ece": 0.280262302548112,
+            "nll": 0.9663181090350207,
+            "medium": {
+              "n": 11,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 11,
+              "called": 0
+            }
+          },
+          "corn": {
+            "n": 15,
+            "with_problem": 12,
+            "top3_sent": 0.9166666666666666,
+            "chance_top3_sent": 0.75,
+            "top3_sent_can_miss": {
+              "n": 12,
+              "top3": 0.9166666666666666,
+              "chance": 0.75
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.4666666666666667,
+            "ece": 0.2953680138406315,
+            "nll": 1.3515106356377764,
+            "medium": {
+              "n": 4,
+              "right": 2
+            },
+            "healthy": {
+              "n": 3,
+              "evidence": 3,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 12,
+              "called": 1
+            }
+          },
+          "grape": {
+            "n": 8,
+            "with_problem": 8,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 1.0,
+            "ece": 0.018493700389153572,
+            "nll": 0.019383588287765496,
+            "medium": {
+              "n": 8,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 8,
+              "called": 0
+            }
+          },
+          "tomato": {
+            "n": 60,
+            "with_problem": 52,
+            "top3_sent": 0.7692307692307693,
+            "chance_top3_sent": 0.375,
+            "top3_sent_can_miss": {
+              "n": 52,
+              "top3": 0.7692307692307693,
+              "chance": 0.375
+            },
+            "top3_problems": 0.7692307692307693,
+            "chance_top3_problems": 0.42857142857142844,
+            "top3_problems_can_miss": {
+              "n": 52,
+              "top3": 0.7692307692307693,
+              "chance": 0.42857142857142844
+            },
+            "top1": 0.26666666666666666,
+            "ece": 0.31024935686051514,
+            "nll": 2.017687032059797,
+            "medium": {
+              "n": 30,
+              "right": 7
+            },
+            "healthy": {
+              "n": 8,
+              "evidence": 0,
+              "blocked": 3
+            },
+            "called_healthy": {
+              "n": 52,
+              "called": 0
+            }
+          }
+        },
+        "t_dev": {
+          "apple": {
+            "n": 11,
+            "with_problem": 11,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.7272727272727273,
+            "ece": 0.2642897714217552,
+            "nll": 0.7840140465029016,
+            "medium": {
+              "n": 11,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 11,
+              "called": 0
+            }
+          },
+          "corn": {
+            "n": 15,
+            "with_problem": 12,
+            "top3_sent": 0.9166666666666666,
+            "chance_top3_sent": 0.75,
+            "top3_sent_can_miss": {
+              "n": 12,
+              "top3": 0.9166666666666666,
+              "chance": 0.75
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.4666666666666667,
+            "ece": 0.31091091628764367,
+            "nll": 1.2230662676196113,
+            "medium": {
+              "n": 1,
+              "right": 0
+            },
+            "healthy": {
+              "n": 3,
+              "evidence": 2,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 12,
+              "called": 1
+            }
+          },
+          "grape": {
+            "n": 8,
+            "with_problem": 8,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 1.0,
+            "ece": 0.09400537076375878,
+            "nll": 0.10289022233270535,
+            "medium": {
+              "n": 8,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 8,
+              "called": 0
+            }
+          },
+          "tomato": {
+            "n": 60,
+            "with_problem": 52,
+            "top3_sent": 0.7692307692307693,
+            "chance_top3_sent": 0.375,
+            "top3_sent_can_miss": {
+              "n": 52,
+              "top3": 0.7692307692307693,
+              "chance": 0.375
+            },
+            "top3_problems": 0.7692307692307693,
+            "chance_top3_problems": 0.42857142857142844,
+            "top3_problems_can_miss": {
+              "n": 52,
+              "top3": 0.7692307692307693,
+              "chance": 0.42857142857142844
+            },
+            "top1": 0.26666666666666666,
+            "ece": 0.10190484036715038,
+            "nll": 1.73876310378295,
+            "medium": {
+              "n": 4,
+              "right": 1
+            },
+            "healthy": {
+              "n": 8,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 52,
+              "called": 0
+            }
+          }
+        },
+        "t_per_species_dev": {
+          "apple": {
+            "n": 11,
+            "with_problem": 11,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.7272727272727273,
+            "ece": 0.26417673865028,
+            "nll": 0.7839946864163714,
+            "medium": {
+              "n": 11,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 11,
+              "called": 0
+            }
+          },
+          "corn": {
+            "n": 15,
+            "with_problem": 12,
+            "top3_sent": 0.9166666666666666,
+            "chance_top3_sent": 0.75,
+            "top3_sent_can_miss": {
+              "n": 12,
+              "top3": 0.9166666666666666,
+              "chance": 0.75
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 0.4666666666666667,
+            "ece": 0.2571712244950429,
+            "nll": 1.2230268717418338,
+            "medium": {
+              "n": 1,
+              "right": 0
+            },
+            "healthy": {
+              "n": 3,
+              "evidence": 2,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 12,
+              "called": 1
+            }
+          },
+          "grape": {
+            "n": 8,
+            "with_problem": 8,
+            "top3_sent": 1.0,
+            "chance_top3_sent": 1.0,
+            "top3_sent_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top3_problems": 1.0,
+            "chance_top3_problems": 1.0,
+            "top3_problems_can_miss": {
+              "n": 0,
+              "top3": null,
+              "chance": null
+            },
+            "top1": 1.0,
+            "ece": 2.7755575615628914e-15,
+            "nll": -9.973410985958966e-13,
+            "medium": {
+              "n": 8,
+              "right": 8
+            },
+            "healthy": {
+              "n": 0,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 8,
+              "called": 0
+            }
+          },
+          "tomato": {
+            "n": 60,
+            "with_problem": 52,
+            "top3_sent": 0.7692307692307693,
+            "chance_top3_sent": 0.375,
+            "top3_sent_can_miss": {
+              "n": 52,
+              "top3": 0.7692307692307693,
+              "chance": 0.375
+            },
+            "top3_problems": 0.7692307692307693,
+            "chance_top3_problems": 0.42857142857142844,
+            "top3_problems_can_miss": {
+              "n": 52,
+              "top3": 0.7692307692307693,
+              "chance": 0.42857142857142844
+            },
+            "top1": 0.26666666666666666,
+            "ece": 0.12851911527817356,
+            "nll": 1.7381416128526643,
+            "medium": {
+              "n": 3,
+              "right": 1
+            },
+            "healthy": {
+              "n": 8,
+              "evidence": 0,
+              "blocked": 0
+            },
+            "called_healthy": {
+              "n": 52,
+              "called": 0
+            }
+          }
+        }
+      },
+      "dev_per_source_species": {
+        "fieldsets/ccmt-2023 tomato": {
+          "n": 5,
+          "with_problem": 5,
+          "top3_sent": 1.0,
+          "chance_top3_sent": 0.375,
+          "top3_sent_can_miss": {
+            "n": 5,
+            "top3": 1.0,
+            "chance": 0.375
+          },
+          "top3_problems": 1.0,
+          "chance_top3_problems": 0.42857142857142855,
+          "top3_problems_can_miss": {
+            "n": 5,
+            "top3": 1.0,
+            "chance": 0.42857142857142855
+          },
+          "top1": 0.8,
+          "ece": 0.44059714849762,
+          "nll": 1.1684429846512647,
+          "medium": {
+            "n": 0,
+            "right": 0
+          },
+          "healthy": {
+            "n": 0,
+            "evidence": 0,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 5,
+            "called": 0
+          }
+        },
+        "fieldsets/maize-bd-2026 corn": {
+          "n": 15,
+          "with_problem": 12,
+          "top3_sent": 0.9166666666666666,
+          "chance_top3_sent": 0.75,
+          "top3_sent_can_miss": {
+            "n": 12,
+            "top3": 0.9166666666666666,
+            "chance": 0.75
+          },
+          "top3_problems": 1.0,
+          "chance_top3_problems": 1.0,
+          "top3_problems_can_miss": {
+            "n": 0,
+            "top3": null,
+            "chance": null
+          },
+          "top1": 0.4666666666666667,
+          "ece": 0.3109109252606,
+          "nll": 1.2230662682802527,
+          "medium": {
+            "n": 1,
+            "right": 0
+          },
+          "healthy": {
+            "n": 3,
+            "evidence": 2,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 12,
+            "called": 1
+          }
+        },
+        "fieldsets/tomato-bd-2025 tomato": {
+          "n": 23,
+          "with_problem": 20,
+          "top3_sent": 0.85,
+          "chance_top3_sent": 0.375,
+          "top3_sent_can_miss": {
+            "n": 20,
+            "top3": 0.85,
+            "chance": 0.375
+          },
+          "top3_problems": 0.85,
+          "chance_top3_problems": 0.42857142857142855,
+          "top3_problems_can_miss": {
+            "n": 20,
+            "top3": 0.85,
+            "chance": 0.42857142857142855
+          },
+          "top1": 0.34782608695652173,
+          "ece": 0.13579922919945972,
+          "nll": 1.6523548831662531,
+          "medium": {
+            "n": 1,
+            "right": 1
+          },
+          "healthy": {
+            "n": 3,
+            "evidence": 0,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 20,
+            "called": 0
+          }
+        },
+        "fieldsets/tomato-bd-iphone-2025 tomato": {
+          "n": 20,
+          "with_problem": 15,
+          "top3_sent": 0.6666666666666666,
+          "chance_top3_sent": 0.375,
+          "top3_sent_can_miss": {
+            "n": 15,
+            "top3": 0.6666666666666666,
+            "chance": 0.375
+          },
+          "top3_problems": 0.6666666666666666,
+          "chance_top3_problems": 0.42857142857142866,
+          "top3_problems_can_miss": {
+            "n": 15,
+            "top3": 0.6666666666666666,
+            "chance": 0.42857142857142866
+          },
+          "top1": 0.1,
+          "ece": 0.25748686190780073,
+          "nll": 1.812170391874948,
+          "medium": {
+            "n": 2,
+            "right": 0
+          },
+          "healthy": {
+            "n": 5,
+            "evidence": 0,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 15,
+            "called": 0
+          }
+        },
+        "inat apple": {
+          "n": 11,
+          "with_problem": 11,
+          "top3_sent": 1.0,
+          "chance_top3_sent": 1.0,
+          "top3_sent_can_miss": {
+            "n": 0,
+            "top3": null,
+            "chance": null
+          },
+          "top3_problems": 1.0,
+          "chance_top3_problems": 1.0,
+          "top3_problems_can_miss": {
+            "n": 0,
+            "top3": null,
+            "chance": null
+          },
+          "top1": 0.7272727272727273,
+          "ece": 0.2642897730939813,
+          "nll": 0.7840140470879589,
+          "medium": {
+            "n": 11,
+            "right": 8
+          },
+          "healthy": {
+            "n": 0,
+            "evidence": 0,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 11,
+            "called": 0
+          }
+        },
+        "inat grape": {
+          "n": 8,
+          "with_problem": 8,
+          "top3_sent": 1.0,
+          "chance_top3_sent": 1.0,
+          "top3_sent_can_miss": {
+            "n": 0,
+            "top3": null,
+            "chance": null
+          },
+          "top3_problems": 1.0,
+          "chance_top3_problems": 1.0,
+          "top3_problems_can_miss": {
+            "n": 0,
+            "top3": null,
+            "chance": null
+          },
+          "top1": 1.0,
+          "ece": 0.09400539385861265,
+          "nll": 0.10289024845297809,
+          "medium": {
+            "n": 8,
+            "right": 8
+          },
+          "healthy": {
+            "n": 0,
+            "evidence": 0,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 8,
+            "called": 0
+          }
+        },
+        "inat tomato": {
+          "n": 12,
+          "with_problem": 12,
+          "top3_sent": 0.6666666666666666,
+          "chance_top3_sent": 0.375,
+          "top3_sent_can_miss": {
+            "n": 12,
+            "top3": 0.6666666666666666,
+            "chance": 0.375
+          },
+          "top3_problems": 0.6666666666666666,
+          "chance_top3_problems": 0.4285714285714286,
+          "top3_problems_can_miss": {
+            "n": 12,
+            "top3": 0.6666666666666666,
+            "chance": 0.4285714285714286
+          },
+          "top1": 0.16666666666666666,
+          "ece": 0.2615087099427793,
+          "nll": 2.019666744007547,
+          "medium": {
+            "n": 1,
+            "right": 0
+          },
+          "healthy": {
+            "n": 0,
+            "evidence": 0,
+            "blocked": 0
+          },
+          "called_healthy": {
+            "n": 12,
+            "called": 0
+          }
+        }
+      },
+      "dev_confusion": {
+        "apple": {
+          "apple_cedar_apple_rust": {
+            "apple_cedar_apple_rust": 2
+          },
+          "apple_scab": {
+            "apple_scab": 6,
+            "apple_cedar_apple_rust": 3
+          }
+        },
+        "corn": {
+          "corn_common_rust": {
+            "corn_gray_leaf_spot": 3,
+            "corn_common_rust": 1,
+            "corn_northern_leaf_blight": 1
+          },
+          "corn_gray_leaf_spot": {
+            "corn_gray_leaf_spot": 2
+          },
+          "corn_northern_leaf_blight": {
+            "healthy": 3,
+            "corn_gray_leaf_spot": 1,
+            "corn_northern_leaf_blight": 1
+          },
+          "healthy": {
+            "healthy": 3
+          }
+        },
+        "grape": {
+          "grape_black_rot": {
+            "grape_black_rot": 8
+          }
+        },
+        "tomato": {
+          "healthy": {
+            "tomato_bacterial_spot": 5,
+            "tomato_leaf_mold": 2,
+            "healthy": 1
+          },
+          "tomato_bacterial_spot": {
+            "tomato_septoria_leaf_spot": 5,
+            "tomato_bacterial_spot": 4,
+            "tomato_leaf_mold": 1
+          },
+          "tomato_early_blight": {
+            "tomato_septoria_leaf_spot": 3,
+            "tomato_bacterial_spot": 2,
+            "tomato_early_blight": 2,
+            "tomato_late_blight": 2,
+            "tomato_leaf_mold": 2
+          },
+          "tomato_late_blight": {
+            "tomato_early_blight": 3,
+            "tomato_septoria_leaf_spot": 3,
+            "tomato_late_blight": 2,
+            "tomato_bacterial_spot": 1
+          },
+          "tomato_septoria_leaf_spot": {
+            "tomato_septoria_leaf_spot": 4,
+            "tomato_bacterial_spot": 1
+          },
+          "tomato_spider_mites": {
+            "tomato_leaf_mold": 5,
+            "tomato_late_blight": 4,
+            "tomato_bacterial_spot": 2,
+            "tomato_spider_mites": 1
+          },
+          "tomato_yellow_leaf_curl_virus": {
+            "tomato_yellow_leaf_curl_virus": 2,
+            "tomato_septoria_leaf_spot": 2,
+            "tomato_leaf_mold": 1
+          }
+        }
+      }
+    }
+  ]
+}

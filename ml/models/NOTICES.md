@@ -67,12 +67,12 @@ Full licence texts are in [`licences/`](licences/). The Apache-2.0 and CC-BY-4.0
 - **Authors and citation:** as `bioclip`.
 - **Caveats:** as `bioclip` (TreeOfLife-200M). The species names and templates are ours and carry no third-party terms.
 
-## disease_head_disease-head-v1d-2026-10-16
+## disease_head_disease-head-v3c-2026-10-20
 
-- **Model:** our logistic-regression disease head, trained on BioCLIP 2 image features (`bioclip`). The weights are ours.
+- **Model:** our logistic-regression disease head, trained on BioCLIP 2 image features (`bioclip`) of our leaf detector's crops (`leaf_detector`). The weights are ours.
 - **Licence:** the project's licence isn't chosen yet (§9 item 1). The head inherits the BioCLIP 2 MIT text (`licences/MIT-bioclip-2.txt`) for the features it was trained on.
-- **Training data:** PlantDoc (CC BY 4.0), TOM2024 (CC BY 4.0), Tomato-Pakistan 2026 (CC BY 4.0 as published) and iBean (MIT). Licence texts: `licences/CC-BY-4.0.txt`, `licences/MIT-ibean.txt`. Citations and caveats are in [Datasets](#datasets).
-- **Caveats:** the Tomato-Pakistan caveat below applies. The head was trained on BioCLIP 2 features, so the `bioclip` training-data caveat also applies.
+- **Training data:** PlantDoc, TOM2024, Tomato-Pakistan 2026, PlantCity and Pretoria's maize (CC BY 4.0), and Makerere's maize (CC0 1.0, which needs no licence text; credited anyway). Licence text: `licences/CC-BY-4.0.txt`. Citations and caveats are in [Datasets](#datasets).
+- **Caveats:** the Tomato-Pakistan caveat below applies. PlantCity's "leaf curl" photos are trained as yellow leaf curl virus, which the source didn't confirm in a lab. The head was trained on BioCLIP 2 features, so the `bioclip` training-data caveat also applies.
 
 ## plant_probe
 
@@ -90,6 +90,9 @@ CC BY 4.0 requires attribution, a link to the licence, and a note of changes. Ou
 | PlantDoc (classification and detection splits) | CC BY 4.0 for the annotations; the scraped photos keep their owners' copyright (*unverified*) | Singh et al., "PlantDoc: A Dataset for Visual Plant Disease Detection", CoDS-COMAD 2020 | [classification](https://github.com/pratikkayal/PlantDoc-Dataset), [detection](https://github.com/pratikkayal/PlantDoc-Object-Detection-Dataset) |
 | TOM2024 | CC BY 4.0 | Appiah O. et al. (2024), Mendeley Data V1, doi:10.17632/3d4yg89rtr.1; Data in Brief 59, 111357, doi:10.1016/j.dib.2025.111357 | <https://data.mendeley.com/datasets/3d4yg89rtr/1> |
 | Tomato-Pakistan 2026 | CC BY 4.0 as published; it can't cover photos the authors didn't take | Malik M.N., Ali S.H., Ali H. (2026), Mendeley Data V1, doi:10.17632/3mbnb82mxd.1 | <https://data.mendeley.com/datasets/3mbnb82mxd/1> |
+| PlantCity | CC BY 4.0 (the Mendeley Data record; the Data in Brief article is CC BY-NC, the data isn't) | Khan M.S., Nisa K., Ahmad I. (2026) PlantCity, Mendeley Data V4, doi:10.17632/w8kh2xkspx.4; Khan et al., Data in Brief 2025, 112130, doi:10.1016/j.dib.2025.112130 | <https://data.mendeley.com/datasets/w8kh2xkspx/4> |
+| Diseases of maize in the field (Pretoria) | CC BY 4.0 | Craze H. (2022), University of Pretoria, dataset, doi:10.25403/UPresearchdata.20237613.v1 | <https://doi.org/10.25403/UPresearchdata.20237613.v1> |
+| Makerere University Maize Image Dataset | CC0 1.0 (the Harvard Dataverse record, version 2.1; its datasheet says CC BY, so it is credited) | Babirye C., Nakatumba-Nabende J. et al. (2022), Harvard Dataverse V2.1, doi:10.7910/DVN/LPGHKK | <https://doi.org/10.7910/DVN/LPGHKK> |
 | iBean | MIT, "Copyright (c) 2020 AIR Lab Makerere University" | Makerere AI Lab (2020), Bean disease dataset | <https://github.com/AI-Lab-Makerere/ibean/> |
 | iNaturalist (the species head's and the trained plant probe's photos, `ml/training/data/splits/inat_species.tsv`) | CC0 1.0 or CC BY 4.0, per photo | each photo's observer, credited in the index with the change made (re-encoded, metadata removed) | <https://www.inaturalist.org> |
 | WIDER FACE (YuNet's training data) | CC BY-NC-ND 4.0, see `yunet` | Yang et al., "WIDER FACE: A Face Detection Benchmark", CVPR 2016 (*unverified*) | <http://shuoyang1213.me/WIDERFACE/> |
