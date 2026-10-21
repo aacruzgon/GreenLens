@@ -1,7 +1,9 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.25, 2026-10-20. Companion to the [architecture document](README.md).
-> **v0.10.25**: open questions 1 and 9 cite v0.10.24, the version that settled them, instead of v0.10.19 (review of #86); no wire shape changed.
+> **Status:** Draft v0.10.27, 2026-10-20. Companion to the [architecture document](README.md).
+> **v0.10.27**: open questions 1 and 9 cite v0.10.24, the version that settled them, instead of v0.10.19 (review of #86); no wire shape changed.
+> **v0.10.26**: a GPS garden whose reverse lookup fails is created with the label "<time zone's city> time zone" ("Toronto time zone") instead of `503`, so only a point with no time zone is refused (section 9, open question 37 settled); where SoilGrids has no data at a Canadian point, the soil profile comes from Soil Landscapes of Canada before any nearby probe, with no nitrogen (sections 9, 10; architecture open decision 10, proposed); no wire shape changed.
+> **v0.10.25**: the knowledge photo upload (`seed-upload`) only adds photos, never overwrites or deletes one, reads each back, and its image refuses to build unless its photo keys are those `knowledge.surql` names (section 10); no wire shape changed.
 > **v0.10.24**: open questions 1 and 9 are settled for the RTX 5070 Ti by the day-2 benchmark: `VLM_MAX_PIXELS` stays 1,003,520 and `VLM_SLOTS` is 2 (section 5's slots table, section 12); the VLM is Qwen3.5-9B AWQ ([vision vlm.md 13](../vision/vlm.md#results-and-the-choice-2026-10-20--ran)); no wire shape changed.
 > **v0.10.23**: the dose check's ratio rules no longer read dates, years, clock times and labels as ratios, and the search goes on after such a match, so "Bed 3: 1:10 copper" still fails: "<quantity> in <quantity>" passes with a year from 2016 to 2036 (not a multiple of 50) and no ratio word after it, or with a numbered bed before it and `days`, `weeks` or `months` ending the phrase; two numbers around a colon pass as a clock time after a time word (`at`, `by`, `until`, `from`, `before`, `after`, `since`, `between`), a date or a range's clock-time start, with an hour of 5 or more or `am` or `pm` after it, or as a label (a label word, month and day or numeric date at the start of the sentence or after `,`, `;` or `(`, an ISO date anywhere or a year at the start, with words after the count; or a label word anywhere with a date after the colon: "Bed 3: 2 July", "2026-07-15: 420 bulbs"); clock times such as "Water at 10:30 in the morning" leave the known false positives, a time without a time word, a time before 5:00 without `am` or `pm`, a time with seconds and several label forms stay in them, and a ratio written as a clock time from 5:00 after a time word or `in` a recent year is a known miss (EON gap G22, section 7); no wire shape changed.
 > **v0.10.22**: a user's write that sets a species (`POST /plants`, `POST /plants/{id}/species`, a `new_plant` of `POST /scans` or of a map pin) must name a species the knowledge base holds, or gets `400 invalid_request` and stores nothing (sections 2, 3, 9); a `guided` job's `complete` sends no catch-up stage events, because the `guided` stage is shared by the run's checks (section 5); no wire shape changed.
@@ -1866,14 +1868,14 @@ interface Garden {
 - a full Canadian postal code goes to Nominatim, then, if it finds nothing, to Zippopotam by its forward sortation area (the first 3 characters);
 - a bare forward sortation area (`A1A`) goes to Zippopotam only; Zippopotam can be switched off by configuration, and a bare area is then refused (open question 38);
 - a city goes to Open-Meteo's geocoder, limited to Canada;
-- GPS coordinates get their `location_label` from Nominatim's reverse lookup at 0.01° (open question 37);
+- GPS coordinates get their `location_label` from Nominatim's reverse lookup at 0.01°. When that fails (an outage, `429`, or no place at the point), the label is the city that names the time zone, "Toronto time zone", and the garden is created; that label isn't cached, and a location change relabels the garden (open question 37);
 - the time zone comes from the coordinates, offline, unless Open-Meteo's geocoder gave one.
 
-A location that can't be geocoded gets `400 invalid_request` with `details.field` naming the input (`location.postal_code`, `location.city` or `location.lat`).
+A location that can't be geocoded gets `400 invalid_request` with `details.field` naming the input (`location.postal_code`, `location.city` or `location.lat`). For GPS that is only a point with no time zone (open ocean).
 
-**The soil profile.** SoilGrids is fetched in the background. Any failure sets `soil_profile_status: unavailable`, and the scheduler retries:
+**The soil profile.** SoilGrids is fetched in the background. Where it answers null at the garden's point, which is typical in cities, a Canadian point takes its profile from Soil Landscapes of Canada (the dominant soil of its 1:1,000,000 polygon, read from a file the API ships), and otherwise SoilGrids is probed 2 km and 5 km away ([backend integrations 8](../backend/integrations.md#8-soilgrids)). Any failure sets `soil_profile_status: unavailable`, and the scheduler retries:
 - after a provider outage (timeout, connection error, `5xx`, `429`), every 15 minutes;
-- after **no data** at the location (SoilGrids answers null at the garden's point and at every nearby point it probes, 2 km and 5 km away, which is typical in cities), after 7 days, because a null pixel doesn't change on a quick retry.
+- after **no data** at the location (null at the point, no soil in Soil Landscapes of Canada, and null at every nearby point probed), after 7 days, because a null pixel doesn't change on a quick retry.
 
 The app shows both the same way: the garden has no soil profile yet, and the pipeline runs without baseline soil properties ([backend integrations 8](../backend/integrations.md#8-soilgrids)).
 
@@ -2389,7 +2391,7 @@ interface ChunkSeed {                // one line of chunks/<source_id>.jsonl
   text: string;                      // a short excerpt, at most about 200 words
 }
 
-interface SoilProfile {              // garden.soil_profile, from SoilGrids
+interface SoilProfile {              // garden.soil_profile, from SoilGrids, or Soil Landscapes of Canada where SoilGrids has no data (no nitrogen)
   fetched_at: Timestamp;
   depths: {
     depth_cm: "0-5" | "5-15" | "15-30" | "30-60" | "60-100" | "100-200";
@@ -2443,7 +2445,9 @@ It generates, alongside the migration:
 
 Changes that can't be written as a full replace, such as a new `chunk_vec` dimension, go in a hand-written numbered migration beside it.
 
-The loader also converts each reference image to WebP (long side 1024 pixels, metadata stripped), writes it to RustFS under `knowledge/species/{species_id}/{hash}.webp`, where `{hash}` is the first 16 hex digits of the WebP file's SHA-256, with its own storage identity ([storage 2](../storage/README.md#2-bucket-keys-and-access)), and deletes the objects of images no longer in the seed. RustFS is reachable only on the control plane's Docker network, so this upload runs there as a one-shot container, **before** the API starts with the migration that references the photos ([storage 2](../storage/README.md#2-bucket-keys-and-access)). A changed photo therefore gets a new key and a new URL, and an app never shows a cached old photo next to a new credit.
+The loader also converts each reference image to WebP (long side 1024 pixels, metadata stripped) and writes it to RustFS under `knowledge/species/{species_id}/{hash}.webp`, where `{hash}` is the first 16 hex digits of the WebP file's SHA-256, with its own storage identity ([storage 2](../storage/README.md#2-bucket-keys-and-access)). RustFS is reachable only on the control plane's Docker network, so this upload runs there as a one-shot container, `seed-upload`, **before** the API starts with the migration that references the photos ([storage 2](../storage/README.md#2-bucket-keys-and-access); `ml/knowledge/upload.py`). A changed photo therefore gets a new key and a new URL, and an app never shows a cached old photo next to a new credit.
+
+The upload only adds. It never overwrites a key and never deletes a photo, even one no longer in the seed, so an older API still finds its own photos during a deploy or after a rollback ([infra 7](../infra/README.md#7-deploying-and-rolling-back)). It reads every photo back and compares its SHA-256, and exits non-zero on any failure, which stops the deploy (`infra/deploy.sh` checks its exit code; compose alone doesn't hold `api` back, [infra 4](../infra/README.md#infracontrol-planecomposeyml)). Its image makes the photos when it is built and refuses to build unless their keys are exactly those `knowledge.surql` names ([infra 3](../infra/README.md#3-images)).
 
 ---
 
@@ -2486,7 +2490,9 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.22: a user's write that sets a species must name one the knowledge base holds (`400 invalid_request`); a `guided` job's `complete` sends no catch-up stage events | 6.2 (step 5); 8.1 (step 4) is unchanged, since it describes the perception job |
 | v0.10.23: the dose check's ratio rules let dates, years, clock times and labels through ("bed 1 in 2026", "Bed 3: 2 July", "at 18:40") | 11 (security, privacy and safety: the dose check) |
 | v0.10.24: `VLM_SLOTS` 2 and `VLM_MAX_PIXELS` 1,003,520 on the 5070 Ti; the VLM is Qwen3.5-9B AWQ | 10 (the VLM row), 15 (open decisions 4 and 15) |
-| v0.10.25: open questions 1 and 9 cite the version that settled them | none (a citation in section 12 only) |
+| v0.10.25: the knowledge photo upload only adds photos and never deletes one | 5 (knowledge base, ingestion step 8) |
+| v0.10.26: a GPS garden whose reverse lookup fails is labelled by its time zone and created; a Canadian garden where SoilGrids has no data takes its soil profile from Soil Landscapes of Canada | 6.4 (soil), 8.5 (garden setup), 15 (open decision 10) |
+| v0.10.27: open questions 1 and 9 cite the version that settled them | none (a citation in section 12 only) |
 
 ---
 
@@ -2528,7 +2534,7 @@ The contracts changed these parts of the architecture document, which has been u
 34. **Request limits.** The general rate limit (120 requests a minute per user) and the JSON body limit (1 MiB) are placeholders that no document gives. Confirm them, or set them from the build-week load ([backend api 23](../backend/api.md#23-open-questions)).
 35. **Jev's API.** The `TextClassifier` adapter for Jev is a placeholder until early access arrives; until then every call uses the LLM fallback ([backend integrations 19](../backend/integrations.md#19-open-questions)).
 36. **`organism_options` without recognition text.** The VLM payload's `organism_options` carry an id and a name only; adding each organism's `recognition` text to the prompt is a proposal of docs/vision, not yet in the contract ([backend worker 17](../backend/worker.md#17-open-questions)).
-37. **Reverse geocoding for a GPS garden.** A garden created from GPS needs a `location_label`, and a Nominatim failure today fails the request with `503 upstream_unavailable`. A fallback label (the time zone's city) would let creation go ahead ([backend integrations 19](../backend/integrations.md#19-open-questions)).
+37. **Reverse geocoding for a GPS garden.** **Settled (v0.10.26):** a failed reverse lookup labels the garden "<time zone's city> time zone" and creation goes ahead (section 9). It names the zone rather than a town, because an Ottawa garden shares Toronto's zone. Still open: relabelling such a garden once Nominatim answers again, which needs a stored flag and a scheduler task ([backend integrations 19](../backend/integrations.md#19-open-questions)).
 38. **Zippopotam's terms** are unchecked. Confirm them, or switch it off and refuse a bare forward sortation area (section 9, geocoding) ([backend integrations 19](../backend/integrations.md#19-open-questions)).
 39. **Open-Meteo's licence.** The free API is for non-commercial use. Settle it before any public launch ([backend integrations 19](../backend/integrations.md#19-open-questions)).
 40. **Clerk deletion after a restart.** **Settled (v0.10.1):** the account's deletion writes a durable tombstone (`deleted_user:[auth_id]`) before anything else. The API resumes unfinished account deletions at start, the Clerk retry included, and while the tombstone exists (until 24 hours after Clerk confirms) the account's still-valid session tokens get `401 unauthenticated` and never create a new user (section 9, account) ([backend api 17](../backend/api.md#17-deletion), [database 4](../database/README.md#deletion-)).

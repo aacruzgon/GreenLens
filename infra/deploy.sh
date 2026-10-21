@@ -19,13 +19,14 @@ die() { echo "error: $*" >&2; exit 1; }
 [ $# -eq 2 ] || die "usage: $0 <service-variable> <image@sha256:...>"
 var=$1 ref=$2
 
-# The services that use each image variable. WORKER_CUDA_IMAGE belongs to the rig.
+# The services that use each image variable. The 3070's perception worker runs on this host
+# (the `perception` profile); a second rig host's VLM workers deploy with infra/rig.compose.yml.
 case $var in
   API_IMAGE) services=(api) ;;
   WORKER_IMAGE) services=(fallback-worker perception-stub-worker) ;;
   SEED_UPLOAD_IMAGE) services=(seed-upload) ;;
-  WORKER_CUDA_IMAGE) die "WORKER_CUDA_IMAGE is the rig's: deploy it there with infra/rig.compose.yml" ;;
-  *) die "unknown variable $var (API_IMAGE, WORKER_IMAGE or SEED_UPLOAD_IMAGE)" ;;
+  WORKER_CUDA_IMAGE) services=(perception-worker) ;;
+  *) die "unknown variable $var (API_IMAGE, WORKER_IMAGE, WORKER_CUDA_IMAGE or SEED_UPLOAD_IMAGE)" ;;
 esac
 
 # 1. The reference has a digest, and the host can pull it.
@@ -68,7 +69,7 @@ if [ "$var" = API_IMAGE ]; then
     [ $SECONDS -lt $deadline ] || die "api is $state after ${DEPLOY_WAIT_S}s; roll back with: infra/deploy.sh $var ${old:-<previous digest in $PDM_DEPLOY_LOG>}"
     sleep 3
   done
-elif [ "$var" = WORKER_IMAGE ]; then
+elif [ "$var" = WORKER_IMAGE ] || [ "$var" = WORKER_CUDA_IMAGE ]; then
   # Each recreated worker must be running, must not have restarted, and must send a heartbeat
   # newer than its container's start: the old container's heartbeat under the same WORKER_ID
   # would otherwise pass at once (healthy = a heartbeat within 30 s).

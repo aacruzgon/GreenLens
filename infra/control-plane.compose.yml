@@ -1,5 +1,6 @@
 # The control plane (docs/infra/README.md section 4): SurrealDB, RustFS, api, the fallback worker,
-# Caddy and an ingress sidecar. Run it from the host's checkout with the env files of section 6:
+# Caddy, an ingress sidecar and, with the `demo` profile, Era's simulators. Run it from the host's
+# checkout with the env files of section 6:
 #   docker compose -f infra/control-plane.compose.yml --env-file /srv/pdm/env/.env.compose up -d
 # Secrets come from ${PDM_ENV}/.env.<service>; .env.compose holds only digests and host settings.
 # First time on a host: infra/bootstrap/ (infra section 7) after `up -d surrealdb rustfs`.
@@ -13,6 +14,26 @@ x-hardened: &hardened
   tmpfs: ["/tmp:size=512m"]
   cap_drop: [ALL]
   security_opt: ["no-new-privileges:true"]
+x-era-sim: &era-sim                 # the `demo` profile's simulators, merged with *hardened (no key in both)
+  # Started without `uv run`, which writes its cache under /root and fails on a read-only root;
+  # as UID 65532 with HOME on the tmpfs, where the simulator keeps its media leases.
+  command: ["--host", "0.0.0.0", "--port", "8080"]
+  user: "65532:65532"
+  environment:
+    HOME: /tmp
+    SIMCORE_SEED: "42"
+    SIMCORE_TODAY: "2026-10-15"
+    SIMCORE_FIDELITY: high
+    AUTH_MODE: open
+  mem_limit: 1g                     # about 500 MiB each once the farm is in
+  healthcheck:                      # /_meta: /_admin answers 401 here, and no one but era-seed can set a fault
+    test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/_meta', timeout=3)"]
+    interval: 5s
+    timeout: 3s
+    retries: 12
+    start_period: 10s
+  networks: [era]
+  logging: *logging
 services:
   surrealdb-volume:                 # database 1: gives the volume to UID 65532, then exits, with only CHOWN and no network
     image: busybox:1.38.0@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e
@@ -67,12 +88,14 @@ services:
     logging: *logging
     networks: [data]
     stop_grace_period: 60s
-  seed-upload:                      # S2 (infra roadmap 11): its image doesn't exist in S1, so the service sits behind the `seed` profile
+  seed-upload:                      # S2 (infra roadmap 11): adds the species photos to RustFS, then exits; on with the `seed` profile
     profiles: [seed]
     image: ${SEED_UPLOAD_IMAGE:-seed-upload:unset}       # ghcr.io/aacruzgon/greenlens/seed-upload@sha256:…
     restart: "no"
     <<: *hardened
-    env_file: [{ path: "${PDM_ENV:-/srv/pdm/env}/.env.seed", required: false }]   # PDMSEED01's keys
+    # PDMSEED01's keys. Without the file it exits 2. api's dependency on it is optional, so compose starts
+    # api even when it fails: deploy.sh SEED_UPLOAD_IMAGE checks its exit code (infra 7).
+    env_file: [{ path: "${PDM_ENV:-/srv/pdm/env}/.env.seed", required: false }]
     depends_on: { rustfs: { condition: service_healthy } }
     networks: [data]
     logging: *logging
@@ -81,8 +104,9 @@ services:
     restart: "no"
     <<: *hardened
     # fetch.py is standard-library only and runs as a script; it needs no `ml` package on the path.
+    # MODEL_GROUPS adds `perception` on the host with the 3070 (the `perception` profile below).
     command: ["python", "/src/fetch.py", "--manifest", "/src/manifest.toml", "--sources", "/src/sources.toml",
-              "--for", "api,fallback", "--dest", "/models"]
+              "--for", "${MODEL_GROUPS:-api,fallback}", "--dest", "/models"]
     env_file: ${PDM_ENV:-/srv/pdm/env}/.env.models      # HF_TOKEN, read-only, pdm-models only
     volumes: ["../ml/models:/src:ro", "models:/models"]
     networks: [edge]
@@ -99,7 +123,11 @@ services:
       surrealdb: { condition: service_healthy }
       rustfs: { condition: service_healthy }
       # Waits for the knowledge photos once the `seed` profile is on (S2); without it, S1 starts without them.
+      # A failed seed-upload doesn't keep api down: check `ps -a`, or `up --wait` (infra section 4).
       seed-upload: { condition: service_completed_successfully, required: false }
+      # Runs after the farm is in the simulators once the `demo` profile is on (EON E9.1). Optional,
+      # like seed-upload: compose skips a failed optional dependency and starts api anyway.
+      era-seed: { condition: service_completed_successfully, required: false }
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
       interval: 10s
@@ -107,7 +135,7 @@ services:
       retries: 3
       start_period: 60s             # schema, migrations and the knowledge index load first
     stop_grace_period: 190s         # architecture 12; backend 12
-    networks: [edge, data]
+    networks: [edge, data, era]     # era: the demo simulators, ERA_SLACK_BASE=http://era-slack:8080 in .env.api
     logging: *logging
   fallback-worker:
     image: ${WORKER_IMAGE:?}
@@ -138,6 +166,22 @@ services:
       STUB_STAGE_DELAY_MS: ${STUB_STAGE_DELAY_MS:-150}
     depends_on: { api: { condition: service_healthy } }
     stop_grace_period: 30s
+    networks: [edge]
+    logging: *logging
+  perception-worker:                # S2 (infra 10): the RTX 3070 sits in this host (architecture open decision 2)
+    profiles: [perception]          # with MODEL_GROUPS=api,fallback,perception, so model-fetch brings its models
+    image: ${WORKER_CUDA_IMAGE:-worker-cuda:unset}       # ghcr.io/aacruzgon/greenlens/worker-cuda@sha256:…
+    restart: unless-stopped
+    <<: *hardened
+    command: ["--caps", "perception"]
+    env_file: ${PDM_ENV:-/srv/pdm/env}/.env.rig-3070-perception-1   # WORKER_TOKEN; also in api's WORKER_TOKENS
+    # ORT_EP=cuda and ORT_DYLIB_PATH come from the image.
+    environment: { WORKER_ID: rig-3070-perception-1, API_BASE_URL: "http://api:8080", MODEL_MANIFEST: /models/manifest.toml }
+    volumes: ["models:/models:ro"]
+    depends_on: { api: { condition: service_healthy } }  # api already waited for model-fetch
+    deploy: { resources: { reservations: { devices:
+      [{ driver: nvidia, device_ids: ["${GPU_3070_UUID:-unset}"], capabilities: [gpu] }] } } }
+    stop_grace_period: 30s          # DRAIN_SECONDS (20) + 10 s, worker 12
     networks: [edge]
     logging: *logging
   caddy:
@@ -174,5 +218,44 @@ services:
     depends_on: [caddy]
     networks: [edge]
     logging: *logging
-networks: { edge: {}, data: {} }
+  # The `demo` profile (EON E9.1): Era's Slack and Google Drive simulators behind the demo garden's
+  # `era` connectors, on the internal network `era` with no published port; only api and era-seed
+  # reach them. Same images and settings as dev.compose.yml's `era` profile, plus the admin token,
+  # so /_admin answers 401 to anyone without it. State lives in memory, and era-seed doesn't come
+  # back after a reboot: run `up -d era-seed`, then `restart api`, whose start-up seeding sets the
+  # demo connectors active again. Every `up -d` with the profile re-seeds under a running api, so
+  # follow it with `restart api` too (infra section 4).
+  era-slack:
+    profiles: [demo]
+    image: erabyeon/slack:189e10c16ec66ee1ca24ac5f7962cd7637174d0f@sha256:33382931f381da5dca51c45ad4ad7c7bfc07644d3240465bfd41e7b7ea2cb75f
+    restart: unless-stopped
+    <<: [*hardened, *era-sim]
+    entrypoint: ["/app/.venv/bin/slack-sim"]
+    env_file: ${PDM_ENV:-/srv/pdm/env}/.env.era-seed     # SIMCORE_ADMIN_TOKEN
+  era-drive:
+    profiles: [demo]
+    image: erabyeon/google-drive:189e10c16ec66ee1ca24ac5f7962cd7637174d0f@sha256:2b9cd2a79def5cac0c325bf0a325a83842eb41edf766b2b9a362e0ee33fa9424
+    restart: unless-stopped
+    <<: [*hardened, *era-sim]
+    entrypoint: ["/app/.venv/bin/google-drive-sim"]
+    env_file: ${PDM_ENV:-/srv/pdm/env}/.env.era-seed
+  era-seed:                         # resets the default tenant, injects the farm, reads it back, then exits
+    profiles: [demo]
+    image: python:3.12-slim-trixie@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+    restart: "no"
+    <<: *hardened
+    user: "65532:65532"
+    command: ["python", "/src/seed.py", "--fixture", "/fixture",
+              "--slack", "http://era-slack:8080", "--drive", "http://era-drive:8080"]
+    env_file: ${PDM_ENV:-/srv/pdm/env}/.env.era-seed     # SIMCORE_ADMIN_TOKEN; api never reads this file
+    volumes: ["./era-seed:/src:ro", "../backend/tests/fixtures/era/maple-row:/fixture:ro"]
+    depends_on:
+      era-slack: { condition: service_healthy }
+      era-drive: { condition: service_healthy }
+    networks: [era]
+    logging: *logging
+networks:
+  edge: {}
+  data: {}
+  era: { internal: true }           # no route out, and Docker publishes no port on it
 volumes: { models: {}, surrealdb-data: {}, rustfs-data: {}, rustfs-logs: {}, caddy-data: {}, caddy-config: {}, tailscale-state: {} }

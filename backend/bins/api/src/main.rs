@@ -74,10 +74,12 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// JSON logs by default, `RUST_LOG` filtering (default `info`).
+/// JSON logs by default, `RUST_LOG` filtering (default `info`, with `ort` at `warn`).
 fn init_tracing(json: bool) {
+    // ONNX Runtime logs each session's graph optimisation at `info` through `ort`, so `ort`
+    // defaults to `warn`, as in the worker.
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,ort=warn"));
     let builder = tracing_subscriber::fmt().with_env_filter(filter);
     if json {
         builder.json().flatten_event(true).init();

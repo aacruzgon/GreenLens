@@ -1,6 +1,6 @@
 # PDM Frontend Flows
 
-> **Status:** Draft v0.4.2, 2026-10-19. v0.4.2: the second factor is a code by text, not TOTP (section 1).
+> **Status:** Draft v0.4.3, 2026-10-20. v0.4.3: a capture slot's delete can fail: after two retries the shot goes back to `stored` (section 14). v0.4.2: the second factor is a code by text, not TOTP (section 1).
 > v0.4 applies the third audit and contracts v0.8.2: a failed scan supersedes its question first, and a guided check that finishes after a failure is kept for a Retry.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Species and capture:** the species card shows each photo's credit, and discarding a capture also deletes its jar-test task.
@@ -509,6 +509,9 @@ One per slot of the shot plan ([README 11](README.md#capture)); `leaf_closeup` h
          │            └── other 4xx, or 413/415 on a LiDAR shot ───────┘  message shown
          └──────────── discard
 ```
+
+- **A failed delete** (network, 5xx) is retried twice with backoff. If it still fails, the slot goes from `deleting` back to `stored` with the message and **Try again**, and a retake that was waiting on the delete is dropped with its photo. A `404` means the image is already gone, which counts as the `204`.
+- **A saved draft is checked** against `GET /scans/{id}` once per visit. A stored shot whose image the server no longer has goes back to `empty`; a server image the draft lacks fills a free slot of its kind, unless a slot of that kind still holds an upload, since that upload may be the image.
 
 ---
 

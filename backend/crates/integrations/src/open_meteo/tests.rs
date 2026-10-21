@@ -1,4 +1,4 @@
-//! Tests against the live fixture of 2026-10-15 (Toronto and Ottawa, `past_days=7`,
+//! Tests against the live fixture of 2026-10-20, 23:05 UTC (Toronto and Ottawa, `past_days=7`,
 //! `forecast_days=16`) and a `wiremock` server.
 
 use std::sync::Arc;
@@ -22,7 +22,7 @@ const FIXTURE: &str = include_str!("../../fixtures/openmeteo_forecast_multi.json
 
 /// 23:00 UTC is 19:00 in Toronto (UTC−4 in October), the hour the fixture was fetched.
 fn now() -> Timestamp {
-    Timestamp::from(Utc.with_ymd_and_hms(2026, 10, 15, 23, 0, 0).unwrap())
+    Timestamp::from(Utc.with_ymd_and_hms(2026, 10, 20, 23, 0, 0).unwrap())
 }
 
 fn cell(lat: f64, lon: f64) -> CellRequest {
@@ -39,35 +39,40 @@ fn summarises_the_live_fixture() {
         .into_vec();
     assert_eq!(forecasts.len(), 2, "two locations come back as an array");
     let toronto = cell_weather(&forecasts[0], now(), 14, &WeatherThresholds::default()).unwrap();
-    assert!((toronto.current.temp_c - 10.3).abs() < 1e-9);
-    assert!((toronto.current.rh_pct - 73.0).abs() < 1e-9);
-    assert!((toronto.current.wind_kmh - 12.1).abs() < 1e-9);
-    assert!((toronto.past_7_days.precip_mm - 12.4).abs() < 1e-6);
-    assert_eq!(toronto.past_7_days.hours_rh_over_90, 24);
-    assert!((toronto.soil.moisture_0_9cm_m3m3 - 0.2971).abs() < 1e-4);
-    assert!((toronto.soil.moisture_9_27cm_m3m3 - 0.309).abs() < 1e-9);
-    assert!((toronto.soil.temp_6cm_c - 12.2).abs() < 1e-9);
-    assert!((toronto.soil.et0_mm_last_24h - 1.14).abs() < 1e-6);
+    assert!((toronto.current.temp_c - 11.3).abs() < 1e-9);
+    assert!((toronto.current.rh_pct - 69.0).abs() < 1e-9);
+    assert!((toronto.current.wind_kmh - 5.6).abs() < 1e-9);
+    assert!(toronto.current.precip_mm_last_24h.abs() < 1e-9);
+    assert!((toronto.past_7_days.precip_mm - 1.6).abs() < 1e-6);
+    assert_eq!(toronto.past_7_days.hours_rh_over_90, 5);
+    assert!((toronto.soil.moisture_0_9cm_m3m3 - 0.4058).abs() < 1e-4);
+    assert!((toronto.soil.moisture_9_27cm_m3m3 - 0.43).abs() < 1e-9);
+    assert!((toronto.soil.temp_6cm_c - 15.6).abs() < 1e-9);
+    assert!((toronto.soil.et0_mm_last_24h - 2.38).abs() < 1e-6);
     assert_eq!(toronto.forecast.len(), 14);
-    assert_eq!(toronto.forecast[0].date.to_string(), "2026-10-15");
-    assert!(toronto.forecast.iter().all(|d| !d.frost_risk));
+    assert_eq!(toronto.forecast[0].date.to_string(), "2026-10-20");
+    assert!(
+        toronto.forecast.iter().all(|d| !d.frost_risk),
+        "lowest 1.0 °C"
+    );
 
     let ottawa = cell_weather(&forecasts[1], now(), 14, &WeatherThresholds::default()).unwrap();
-    assert!(ottawa.forecast[2].frost_risk, "-0.0 °C on 2026-10-17");
-    assert_eq!(ottawa.past_7_days.hours_rh_over_90, 45);
+    assert!(!ottawa.forecast[7].frost_risk, "1.1 °C on 2026-10-27");
+    assert!(ottawa.forecast[8].frost_risk, "-1.5 °C on 2026-10-28");
+    assert_eq!(ottawa.past_7_days.hours_rh_over_90, 25);
 }
 
 #[test]
 fn the_past_week_keeps_its_longest_humid_run() {
-    // Hours over 90 % on 8–14 October: Toronto 0, 0, 0, 6, 12, 6, 0 (one humid day);
-    // Ottawa 4, 1, 3, 2, 6, 22, 11 (two in a row: a humid stretch in the past week).
+    // Hours over 90 % on 13–19 October: Toronto 6, 0, 0, 5, 0, 0, 0 (no humid day);
+    // Ottawa 22, 11, 0, 10, 0, 0, 0 (two in a row: a humid stretch in the past week).
     let forecasts = serde_json::from_str::<ForecastResponse>(FIXTURE)
         .unwrap()
         .into_vec();
     let t = WeatherThresholds::default();
     let toronto = cell_weather(&forecasts[0], now(), 14, &t).unwrap();
     let ottawa = cell_weather(&forecasts[1], now(), 14, &t).unwrap();
-    assert_eq!(toronto.past_7_days.longest_humid_run_days, 1);
+    assert_eq!(toronto.past_7_days.longest_humid_run_days, 0);
     assert_eq!(ottawa.past_7_days.longest_humid_run_days, 2);
     assert!(!t.had_humid_stretch(&toronto.past_7_days));
     assert!(t.had_humid_stretch(&ottawa.past_7_days));
@@ -139,7 +144,7 @@ async fn one_cell_reads_the_object() {
         .fetch_cell(&cell(43.65, -79.38))
         .await
         .unwrap();
-    assert!((w.current.temp_c - 10.3).abs() < 1e-9);
+    assert!((w.current.temp_c - 11.3).abs() < 1e-9);
 }
 
 #[tokio::test]

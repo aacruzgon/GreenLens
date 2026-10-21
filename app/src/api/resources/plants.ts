@@ -39,8 +39,9 @@ export function usePlants(gardenId: string) {
   });
 }
 
+/** An empty ID waits: a screen that learns the plant from another record (a scan) passes "" until then. */
 export function usePlant(id: string) {
-  return useQuery({ queryKey: qk.plant(id), queryFn: () => plants.get(id), staleTime: STALE.signedUrls });
+  return useQuery({ queryKey: qk.plant(id), queryFn: () => plants.get(id), staleTime: STALE.signedUrls, enabled: id !== "" });
 }
 
 export function useTimeline(plantId: string) {
