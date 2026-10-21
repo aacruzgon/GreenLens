@@ -98,7 +98,7 @@ const DAMAGE: &str = "4. damage: patterns of damage on the leaves, stems, fruit 
 - other: anything else, described in other_description
 Spots, yellowing and mould caused by disease are not damage patterns here.
 
-5. notes: at most two short sentences about anything else important you see, or an empty string.";
+5. notes: at most two short sentences about anything else important you see, under 120 characters in all, or an empty string.";
 
 /// The findings call's instructions (after the image labels).
 pub fn findings(
