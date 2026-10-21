@@ -35,7 +35,8 @@ its own `--label`.
   error, #45);
 - unsure: the share of answers that are `unsure`;
 - per indicator, for each model at the worker's default 1,003,520 pixels and one job at once: its
-  answers on the `sure` cases that have its problem and on every other case.
+  answers on the `sure` cases that have its problem and on the other `sure` cases. A `probable` case
+  counts on neither side, since its true "yes" would otherwise read as a false one.
 The cases and the raw runs stay in the git-ignored `ml/training/runs/vlm-bench/`; the report is
 `ml/training/eval/reports/vlm-bench-<out>.md` and `.json`.
 """
@@ -296,7 +297,7 @@ def score_run(rows: list[dict], cases_by_id: dict[str, dict]) -> dict:
     species = diag_hit = diag_n = healthy_clean = healthy_n = yes_on_healthy = answers_n = unsure = ties = 0
     by_size = {"under_1mp": [0, 0], "1mp_and_up": [0, 0]}   # diagnosis hits and cases, by the photo's size
     damage, organisms = Counter(), 0
-    # Each indicator's answers on the sure cases whose truth is its problem, and on every other case.
+    # Each indicator's answers on the sure cases whose truth is its problem, and on the other sure cases.
     per_indicator = defaultdict(lambda: {"truth": Counter(), "other": Counter()})
     for r in ok:
         case = cases_by_id[r["case_id"]]
@@ -311,7 +312,9 @@ def score_run(rows: list[dict], cases_by_id: dict[str, dict]) -> dict:
         share = defaultdict(list)
         for x in a:
             share[cand_of.get(x["indicator_id"])].append(x["answer"] == "yes")
-            on_truth = case["label_confidence"] == "sure" and cand_of.get(x["indicator_id"]) in truth.get("problems", [])
+            if case["label_confidence"] != "sure":
+                continue   # a probable case counts on neither side, or its true "yes" would read as a false one
+            on_truth = cand_of.get(x["indicator_id"]) in truth.get("problems", [])
             per_indicator[x["indicator_id"]]["truth" if on_truth else "other"][x["answer"]] += 1
         means = {k: sum(v) / len(v) for k, v in share.items() if k}
         best = max(means.values(), default=0.0)
@@ -370,13 +373,15 @@ def with_megapixels(case: dict) -> dict:
 
 
 def indicator_tables(report: list[dict], pixels: int = 1003520) -> list[str]:
-    """Per model, each indicator's answers on the cases that have its problem (sure labels) and on
-    the others, from the run at the worker's default `pixels` with one job at once (else its first)."""
+    """Per model, each indicator's answers on the `sure` cases that have its problem and on the other
+    `sure` cases (`probable` cases count on neither side), from the run at the worker's default
+    `pixels` with one job at once (else its first)."""
     out = []
     for label in dict.fromkeys(r["label"] for r in report):
         runs = [r for r in report if r["label"] == label]
         r = next((x for x in runs if x["max_pixels"] == pixels and x["concurrency"] == 1), runs[0])
         out += ["", f"## Indicators: {label}, {r['max_pixels']:,} pixels, {r['concurrency']} at once", "",
+                "`sure` cases only: a `probable` case counts on neither side.", "",
                 "| Indicator | Cases with the problem: yes / no / unsure | Other cases: yes / no / unsure |", "|---|---|---|"]
         for ind, v in r["indicators"].items():
             t, o = v["truth"], v["other"]

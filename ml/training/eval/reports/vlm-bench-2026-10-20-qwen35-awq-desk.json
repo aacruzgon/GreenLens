@@ -47,7 +47,7 @@
           "no": 3
         },
         "other": {
-          "no": 13
+          "no": 7
         }
       },
       "corn_common_rust.pustules_both_sides": {
@@ -56,8 +56,8 @@
           "unsure": 1
         },
         "other": {
-          "unsure": 4,
-          "no": 9
+          "no": 6,
+          "unsure": 1
         }
       },
       "corn_common_rust.raised_pustules": {
@@ -65,8 +65,7 @@
           "no": 3
         },
         "other": {
-          "no": 12,
-          "yes": 1
+          "no": 7
         }
       },
       "corn_gray_leaf_spot.bounded_by_veins": {
@@ -74,7 +73,7 @@
           "no": 2
         },
         "other": {
-          "no": 13,
+          "no": 7,
           "yes": 1
         }
       },
@@ -84,8 +83,7 @@
           "yes": 1
         },
         "other": {
-          "no": 13,
-          "yes": 1
+          "no": 8
         }
       },
       "corn_gray_leaf_spot.rectangular_lesions": {
@@ -93,7 +91,7 @@
           "no": 2
         },
         "other": {
-          "no": 14
+          "no": 8
         }
       },
       "corn_northern_leaf_blight.cigar_shaped_lesions": {
@@ -102,8 +100,8 @@
           "no": 1
         },
         "other": {
-          "no": 11,
-          "yes": 2
+          "no": 6,
+          "yes": 1
         }
       },
       "corn_northern_leaf_blight.lesions_cross_veins": {
@@ -112,8 +110,7 @@
           "no": 2
         },
         "other": {
-          "unsure": 3,
-          "no": 10
+          "no": 7
         }
       },
       "corn_northern_leaf_blight.lower_leaves_first": {
@@ -121,8 +118,7 @@
           "unsure": 3
         },
         "other": {
-          "unsure": 12,
-          "no": 1
+          "unsure": 7
         }
       },
       "tomato_early_blight.concentric_rings": {
@@ -130,7 +126,7 @@
           "no": 6
         },
         "other": {
-          "no": 43
+          "no": 25
         }
       },
       "tomato_early_blight.lower_leaves_first": {
@@ -138,7 +134,7 @@
           "unsure": 6
         },
         "other": {
-          "unsure": 43
+          "unsure": 25
         }
       },
       "tomato_early_blight.yellow_halo": {
@@ -147,8 +143,8 @@
           "no": 1
         },
         "other": {
-          "no": 24,
-          "yes": 18,
+          "no": 14,
+          "yes": 10,
           "unsure": 1
         }
       },
@@ -158,8 +154,8 @@
           "no": 1
         },
         "other": {
-          "unsure": 22,
-          "no": 19
+          "unsure": 12,
+          "no": 11
         }
       },
       "tomato_late_blight.water_soaked_patches": {
@@ -167,7 +163,7 @@
           "no": 8
         },
         "other": {
-          "no": 41
+          "no": 23
         }
       },
       "tomato_late_blight.white_mould_underside": {
@@ -175,7 +171,7 @@
           "unsure": 8
         },
         "other": {
-          "unsure": 41
+          "unsure": 23
         }
       },
       "tomato_septoria_leaf_spot.dark_specks_in_centre": {
@@ -183,8 +179,7 @@
           "no": 4
         },
         "other": {
-          "no": 43,
-          "yes": 2
+          "no": 27
         }
       },
       "tomato_septoria_leaf_spot.many_spots_per_leaf": {
@@ -193,8 +188,8 @@
           "yes": 1
         },
         "other": {
-          "no": 34,
-          "yes": 11
+          "no": 20,
+          "yes": 7
         }
       },
       "tomato_septoria_leaf_spot.small_spots": {
@@ -203,8 +198,8 @@
           "yes": 1
         },
         "other": {
-          "no": 25,
-          "yes": 20
+          "no": 16,
+          "yes": 11
         }
       }
     }
@@ -257,7 +252,7 @@
           "no": 3
         },
         "other": {
-          "no": 13
+          "no": 7
         }
       },
       "corn_common_rust.pustules_both_sides": {
@@ -266,8 +261,8 @@
           "unsure": 1
         },
         "other": {
-          "unsure": 4,
-          "no": 9
+          "unsure": 1,
+          "no": 6
         }
       },
       "corn_common_rust.raised_pustules": {
@@ -275,8 +270,7 @@
           "no": 3
         },
         "other": {
-          "yes": 1,
-          "no": 12
+          "no": 7
         }
       },
       "corn_gray_leaf_spot.bounded_by_veins": {
@@ -284,7 +278,7 @@
           "no": 2
         },
         "other": {
-          "no": 13,
+          "no": 7,
           "yes": 1
         }
       },
@@ -294,8 +288,7 @@
           "yes": 1
         },
         "other": {
-          "no": 12,
-          "yes": 2
+          "no": 8
         }
       },
       "corn_gray_leaf_spot.rectangular_lesions": {
@@ -303,7 +296,7 @@
           "no": 2
         },
         "other": {
-          "no": 14
+          "no": 8
         }
       },
       "corn_northern_leaf_blight.cigar_shaped_lesions": {
@@ -312,8 +305,8 @@
           "no": 1
         },
         "other": {
-          "no": 11,
-          "yes": 2
+          "no": 6,
+          "yes": 1
         }
       },
       "corn_northern_leaf_blight.lesions_cross_veins": {
@@ -322,8 +315,7 @@
           "yes": 1
         },
         "other": {
-          "no": 11,
-          "unsure": 2
+          "no": 7
         }
       },
       "corn_northern_leaf_blight.lower_leaves_first": {
@@ -331,7 +323,7 @@
           "unsure": 3
         },
         "other": {
-          "unsure": 13
+          "unsure": 7
         }
       },
       "tomato_early_blight.concentric_rings": {
@@ -339,7 +331,7 @@
           "no": 6
         },
         "other": {
-          "no": 43
+          "no": 25
         }
       },
       "tomato_early_blight.lower_leaves_first": {
@@ -347,7 +339,7 @@
           "unsure": 6
         },
         "other": {
-          "unsure": 43
+          "unsure": 25
         }
       },
       "tomato_early_blight.yellow_halo": {
@@ -356,8 +348,8 @@
           "no": 1
         },
         "other": {
-          "no": 28,
-          "yes": 15
+          "yes": 9,
+          "no": 16
         }
       },
       "tomato_late_blight.dark_stem_lesions": {
@@ -366,8 +358,8 @@
           "unsure": 7
         },
         "other": {
-          "unsure": 21,
-          "no": 20
+          "unsure": 11,
+          "no": 12
         }
       },
       "tomato_late_blight.water_soaked_patches": {
@@ -375,7 +367,7 @@
           "no": 8
         },
         "other": {
-          "no": 40,
+          "no": 22,
           "yes": 1
         }
       },
@@ -384,7 +376,7 @@
           "unsure": 8
         },
         "other": {
-          "unsure": 41
+          "unsure": 23
         }
       },
       "tomato_septoria_leaf_spot.dark_specks_in_centre": {
@@ -392,8 +384,8 @@
           "no": 4
         },
         "other": {
-          "no": 42,
-          "yes": 3
+          "no": 26,
+          "yes": 1
         }
       },
       "tomato_septoria_leaf_spot.many_spots_per_leaf": {
@@ -402,8 +394,8 @@
           "yes": 1
         },
         "other": {
-          "no": 33,
-          "yes": 12
+          "no": 19,
+          "yes": 8
         }
       },
       "tomato_septoria_leaf_spot.small_spots": {
@@ -412,8 +404,8 @@
           "yes": 1
         },
         "other": {
-          "no": 25,
-          "yes": 20
+          "no": 16,
+          "yes": 11
         }
       }
     }
