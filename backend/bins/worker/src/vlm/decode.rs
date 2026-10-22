@@ -1,17 +1,17 @@
 //! After decoding ([contracts 6]): parse the model's JSON into the raw shapes, validate it
 //! against the call (aliases, enums from the payload, every indicator key, the `unsure`-only
-//! rule), truncate strings and clamp boxes, map aliases back to image ids, convert boxes from
-//! the adapter's format, and turn certainty words into confidences.
+//! rule), truncate strings and clamp boxes, drop repeated damage findings, map aliases back to
+//! image ids, convert boxes from the adapter's format, and turn certainty words into confidences.
 
 use domain::{
     id::{ImageId, IndicatorId, OrganismId, SpeciesId},
     jobs::{OrganismOption, SpeciesOption},
     scan::{Answer, GuidedKind},
     vlm::{
-        BoxFormat, DamageFinding, DamageRaw, GuidedTexture, ImageAlias, IndicatorAnswer, OTHER,
-        OrganismFinding, OrganismRaw, SoilAspect, SoilFinding, SoilRaw, SoilReadingValue,
-        SpeciesGuess, VlmFindings, VlmFindingsRaw, VlmGuidedRaw, VlmIndicatorAnswers,
-        VlmIndicatorsRaw,
+        BoxFormat, DamageFinding, DamagePattern, DamageRaw, GuidedTexture, ImageAlias,
+        IndicatorAnswer, OTHER, OrganismFinding, OrganismRaw, SoilAspect, SoilFinding, SoilRaw,
+        SoilReadingValue, SpeciesGuess, VlmFindings, VlmFindingsRaw, VlmGuidedRaw,
+        VlmIndicatorAnswers, VlmIndicatorsRaw,
     },
     wire::{BBox, Region},
 };
@@ -76,8 +76,36 @@ impl<'c> CallImages<'c> {
 }
 
 /// Cuts a string to `max` characters (not bytes, so a multi-byte character is never split).
+/// A string that reaches `max` was most likely stopped there by the schema's `maxLength`, mid-word
+/// and sometimes in another language (vision vlm.md 4), so it goes back to its last full sentence,
+/// or failing that its last full word (the whole cut when it ends at the end of a word).
 pub fn truncate(s: &str, max: usize) -> String {
-    s.chars().take(max).collect()
+    let cut: String = s.chars().take(max).collect();
+    if s.chars().count() < max {
+        return cut;
+    }
+    // The cut's last word is whole when a space ends the cut or follows it; a text of exactly
+    // `max` was stopped there, so its last word may be cut.
+    let word_ends =
+        cut.ends_with(char::is_whitespace) || s.chars().nth(max).is_some_and(char::is_whitespace);
+    let cut = cut.trim_end();
+    if cut.ends_with(['.', '!', '?']) {
+        return cut.to_owned();
+    }
+    let mut chars = cut.char_indices().peekable();
+    let mut sentence_end = None;
+    while let Some((i, c)) = chars.next() {
+        if matches!(c, '.' | '!' | '?') && chars.peek().is_some_and(|&(_, n)| n.is_whitespace()) {
+            sentence_end = Some(i + c.len_utf8());
+        }
+    }
+    let kept = match (sentence_end, cut.rfind(char::is_whitespace)) {
+        (Some(end), _) => &cut[..end],
+        (None, _) if word_ends => cut,
+        (None, Some(space)) => &cut[..space],
+        (None, None) => cut,
+    };
+    kept.trim_end_matches([',', ';', ':', ' ']).to_owned()
 }
 
 /// Converts a raw `bbox_2d` to the stored image's `[x, y, w, h]` by the adapter's format,
@@ -110,6 +138,14 @@ fn soil<V: Serialize>(
         confidence: certainty.confidence(r.certainty),
     });
     Ok(())
+}
+
+/// Whether an `other_name` names a listed option by its id or its name. Case, surrounding spaces
+/// and `_` for a space don't matter.
+fn names(other_name: &str, id: &str, name: &str) -> bool {
+    let norm = |s: &str| s.trim().replace('_', " ").to_lowercase();
+    let other_name = norm(other_name);
+    other_name == norm(id) || other_name == norm(name)
 }
 
 fn known<'o, T, I: PartialEq + 'o>(
@@ -201,7 +237,13 @@ fn organism_findings(
     let mut organism_findings = Vec::new();
     for o in raw.into_iter().take(limits.max_items) {
         let organism_id: Option<OrganismId> = if o.label == OTHER {
-            None
+            // `other` naming a listed organism is that organism, as for species.
+            o.other_name.as_deref().and_then(|n| {
+                options
+                    .iter()
+                    .find(|x| names(n, x.id.as_str(), &x.name))
+                    .map(|x| x.id.clone())
+            })
         } else {
             Some(
                 known(
@@ -235,7 +277,8 @@ fn organism_findings(
     Ok(organism_findings)
 }
 
-/// The damage of a findings answer, at most `max_items`.
+/// The damage of a findings answer, at most `max_items`. A finding that repeats an earlier one
+/// (pattern, image, box and description) is dropped: a model in a loop can fill the list with one.
 fn damage_findings(
     raw: Vec<DamageRaw>,
     images: &CallImages<'_>,
@@ -250,16 +293,29 @@ fn damage_findings(
             .bbox_2d
             .and_then(|b| convert_box(b, format, (image.width, image.height)))
             .map(|bbox| Region::unmasked(image.image_id, bbox, None));
-        damage_findings.push(DamageFinding {
+        let finding = DamageFinding {
             pattern: d.pattern,
-            other_description: d
-                .other_description
-                .as_deref()
-                .map(|t| truncate(t, limits.other_description)),
+            // Only `other` keeps its description, as `other_name` with a known id.
+            other_description: (d.pattern == DamagePattern::Other)
+                .then(|| {
+                    d.other_description
+                        .as_deref()
+                        .map(|t| truncate(t, limits.other_description))
+                })
+                .flatten(),
             region,
             image_id: image.image_id,
             confidence: certainty.confidence(d.certainty),
+        };
+        let repeated = damage_findings.iter().any(|f: &DamageFinding| {
+            f.pattern == finding.pattern
+                && f.image_id == finding.image_id
+                && f.region == finding.region
+                && f.other_description == finding.other_description
         });
+        if !repeated {
+            damage_findings.push(finding);
+        }
     }
     Ok(damage_findings)
 }
@@ -276,7 +332,14 @@ pub fn findings(
 ) -> Result<VlmFindings, Invalid> {
     let raw: VlmFindingsRaw = serde_json::from_str(text)?;
     let species_id: Option<SpeciesId> = if raw.species_guess.species == OTHER {
-        None
+        // `other` naming a listed species is that species: the day-1 check got `other` with
+        // `other_name: "apple"` while `apple` was listed (vision vlm.md 4).
+        raw.species_guess.other_name.as_deref().and_then(|n| {
+            species
+                .iter()
+                .find(|x| names(n, x.id.as_str(), &x.name))
+                .map(|x| x.id.clone())
+        })
     } else {
         Some(
             known(
@@ -494,6 +557,161 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, Invalid::Species(_)));
+    }
+
+    #[test]
+    fn only_other_damage_keeps_its_description() {
+        let a = prepared(IMG1, 100, 100);
+        let json = findings_json("[0,0,10,10]").replace(
+            r#""damage":[{"pattern":"shot_holes","other_description":null,"#,
+            r#""damage":[{"pattern":"leaf_mines","other_description":"brown spots","image":"img1","bbox_2d":null,"certainty":"medium"},
+              {"pattern":"other","other_description":"bark stripped","#,
+        );
+        let b = prepared(IMG2, 100, 100);
+        let f = findings(
+            &json,
+            &CallImages::new(vec![&a, &b]),
+            &[SpeciesOption {
+                id: "tomato".parse().unwrap(),
+                name: "Tomato".to_owned(),
+            }],
+            &[],
+            BoxFormat::Norm1000,
+            &CertaintyMap::default(),
+            Limits::CONTRACT,
+        )
+        .unwrap();
+        assert_eq!(f.damage.len(), 2);
+        assert_eq!(f.damage[0].other_description, None);
+        assert_eq!(
+            f.damage[1].other_description.as_deref(),
+            Some("bark stripped")
+        );
+    }
+
+    #[test]
+    fn text_at_its_cap_goes_back_to_a_full_sentence_or_word() {
+        // Under the cap: unchanged, even mid-word.
+        assert_eq!(truncate("dry soil, few weeds", 60), "dry soil, few weeds");
+        // At the cap: Qwen3.5's tomato notes with findings@4, stopped at 200 mid-word.
+        let notes = "The provided images appear to be a composite of different plants. The first image shows a leaf with small spots, the second shows a tomato plant with severe blight and rot, and the third shows a corn/";
+        assert_eq!(notes.chars().count(), 200);
+        assert_eq!(
+            truncate(notes, 200),
+            "The provided images appear to be a composite of different plants."
+        );
+        // Over the cap with no full sentence: back to the last full word, or the whole cut
+        // when it ends at the end of a word (Sam's review of #45).
+        assert_eq!(
+            truncate("yellow halo around brown spots", 22),
+            "yellow halo around"
+        );
+        assert_eq!(
+            truncate("yellow halo around brown spots", 18),
+            "yellow halo around"
+        );
+        assert_eq!(
+            truncate("yellow halo around brown spots", 19),
+            "yellow halo around"
+        );
+        assert_eq!(truncate("lower leaves, yellowing", 13), "lower leaves");
+        assert_eq!(truncate("lower leaves, yellowing", 16), "lower leaves");
+        // A sentence that ends at the cap is kept whole; one word longer than the cap is cut.
+        assert_eq!(truncate("Soil is dry.", 12), "Soil is dry.");
+        assert_eq!(truncate("Growing西红柿", 9), "Growing西红");
+    }
+
+    #[test]
+    fn other_naming_a_listed_option_takes_its_id() {
+        let a = prepared(IMG1, 100, 100);
+        let b = prepared(IMG2, 100, 100);
+        let images = CallImages::new(vec![&a, &b]);
+        let species = [SpeciesOption {
+            id: "bell_pepper".parse().unwrap(),
+            name: "Bell pepper".to_owned(),
+        }];
+        let organisms = [OrganismOption {
+            id: "aphid".parse().unwrap(),
+            name: "Aphid".to_owned(),
+        }];
+        let decode = |species_other_name: &str, organism_other_name: &str| {
+            let json = findings_json("[0,0,10,10]")
+                .replace(
+                    r#""species":"tomato","other_name":null"#,
+                    &format!(r#""species":"other","other_name":"{species_other_name}""#),
+                )
+                .replace(&"x".repeat(80), organism_other_name);
+            findings(
+                &json,
+                &images,
+                &species,
+                &organisms,
+                BoxFormat::Norm1000,
+                &CertaintyMap::default(),
+                Limits::CONTRACT,
+            )
+            .unwrap()
+        };
+        // By name or by id, whatever the case and with a space for `_`.
+        for (species_name, organism_name) in [("Bell Pepper", " aphid "), ("bell pepper", "APHID")]
+        {
+            let f = decode(species_name, organism_name);
+            assert_eq!(f.species_guess.species_id.unwrap().as_str(), "bell_pepper");
+            assert_eq!(f.species_guess.other_name, None);
+            assert_eq!(
+                f.organisms[0].organism_id.as_ref().unwrap().as_str(),
+                "aphid"
+            );
+            assert_eq!(f.organisms[0].other_name, None);
+        }
+        // Anything else stays `other` with its name.
+        let f = decode("chilli pepper", "aphid mummy");
+        assert_eq!(f.species_guess.species_id, None);
+        assert_eq!(f.species_guess.other_name.as_deref(), Some("chilli pepper"));
+        assert_eq!(f.organisms[0].organism_id, None);
+        assert_eq!(f.organisms[0].other_name.as_deref(), Some("aphid mummy"));
+    }
+
+    #[test]
+    fn repeated_damage_is_dropped() {
+        let a = prepared(IMG1, 100, 100);
+        let b = prepared(IMG2, 100, 100);
+        // Like Qwen3.5's corn answer with `findings@3`, one finding repeated up to the cap of 10.
+        // The same pattern in another box, or in no box, is a finding of its own.
+        let mine = r#"{"pattern":"leaf_mines","other_description":"pale tunnels","image":"img2","bbox_2d":[138,333,422,422],"certainty":"high"}"#;
+        let other_box = mine.replace("[138,333,422,422]", "[500,500,600,600]");
+        let no_box = mine.replace("[138,333,422,422]", "null");
+        let damage = [mine; 7]
+            .into_iter()
+            .chain([other_box.as_str(), no_box.as_str(), no_box.as_str()])
+            .collect::<Vec<_>>()
+            .join(",");
+        let json = findings_json("[0,0,10,10]").replace(
+            r#""damage":[{"pattern":"shot_holes","other_description":null,"image":"img2","bbox_2d":[0,0,0,0],"certainty":"high"}]"#,
+            &format!(r#""damage":[{damage}]"#),
+        );
+        let f = findings(
+            &json,
+            &CallImages::new(vec![&a, &b]),
+            &[SpeciesOption {
+                id: "tomato".parse().unwrap(),
+                name: "Tomato".to_owned(),
+            }],
+            &[],
+            BoxFormat::Norm1000,
+            &CertaintyMap::default(),
+            Limits::CONTRACT,
+        )
+        .unwrap();
+        assert_eq!(f.damage.len(), 3);
+        assert!(
+            f.damage
+                .iter()
+                .all(|d| d.pattern == DamagePattern::LeafMines)
+        );
+        assert!(f.damage[0].region.is_some() && f.damage[1].region.is_some());
+        assert_ne!(f.damage[0].region, f.damage[1].region);
+        assert!(f.damage[2].region.is_none());
     }
 
     #[test]

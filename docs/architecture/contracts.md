@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.27, 2026-10-20. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.28, 2026-10-21. Companion to the [architecture document](README.md).
+> **v0.10.28**: the prompts are `system@2`, `findings@5`, `indicators@2` and `verify@2` (vision vlm.md 7, task P5), so `vlm_prompts` reads `system@2,findings@5,indicators@2,verify@2,guided@1`; section 6's "After decoding" adds three rules: an `other` species or organism whose `other_name` names a listed option takes its id, a string that reaches its `maxLength` goes back to its last full sentence or word, and a repeated damage finding is dropped; no wire shape changed.
 > **v0.10.27**: open questions 1 and 9 cite v0.10.24, the version that settled them, instead of v0.10.19 (review of #86); no wire shape changed.
 > **v0.10.26**: a GPS garden whose reverse lookup fails is created with the label "<time zone's city> time zone" ("Toronto time zone") instead of `503`, so only a point with no time zone is refused (section 9, open question 37 settled); where SoilGrids has no data at a Canadian point, the soil profile comes from Soil Landscapes of Canada before any nearby probe, with no nitrogen (sections 9, 10; architecture open decision 10, proposed); no wire shape changed.
 > **v0.10.25**: the knowledge photo upload (`seed-upload`) only adds photos, never overwrites or deletes one, reads each back, and its image refuses to build unless its photo keys are those `knowledge.surql` names (section 10); no wire shape changed.
@@ -966,7 +967,7 @@ type JobErrorCode =
 | `vlm_server` | `vllm@v0.31.0`, `vllm-rocm@v0.31.0`, `llama.cpp@b7123`, `anthropic` | VLM and fallback workers |
 | `vlm_box_format` | `norm_1000` (VLM workers), `abs_px_prepared` (fallback) | VLM and fallback workers (section 6) |
 | `vlm_max_pixels` | `1003520` | VLM and fallback workers |
-| `vlm_prompts` | `system@1,findings@2,indicators@1,verify@1,guided@1`: every prompt's name and version, comma-separated | VLM and fallback workers |
+| `vlm_prompts` | `system@2,findings@5,indicators@2,verify@2,guided@1`: every prompt's name and version, comma-separated | VLM and fallback workers |
 | `vlm_certainty` | `0.4/0.65/0.85`: the low, medium and high values, slash-separated | VLM and fallback workers |
 | `label_set_version` | the job's own in `complete`; every loaded one, comma-separated, in the heartbeat | Perception and fallback workers |
 | `classifier_labels_version` | as `label_set_version` | Perception and fallback workers |
@@ -1196,6 +1197,9 @@ type GuidedTexture =
 - Measurements (section 7) are never put into a VLM prompt, so the VLM's answers stay independent of them.
 - Constrained decoding guarantees the shape; the worker still validates it. On a validation failure, including a call cut off with `finish_reason: "length"`, it retries the call once, then fails the job with `model_error`, `retryable: true`.
 - **Boxes with no area.** A box that has no area after clamping drops an organism, which needs one, and leaves a damage finding without its `region` ([backend worker 9](../backend/worker.md#9-the-per-call-schema-and-decoding)).
+- **Text at its limit.** A string that reaches its `maxLength` was most likely stopped there mid-word, sometimes in another language ([vision vlm.md 4](../vision/vlm.md#4-serving)), so the worker takes it back to its last full sentence, or failing that its last full word. This applies to `notes`, `reason`, `other_name` and `other_description`; a shorter string is kept as it is ([backend worker 9](../backend/worker.md#9-the-per-call-schema-and-decoding)).
+- **`other` naming a listed option.** A species or organism answered `other` whose `other_name` is a listed option's id or name (case, surrounding spaces and `_` for a space don't matter) takes that option's id, and its `other_name` goes ([backend worker 9](../backend/worker.md#9-the-per-call-schema-and-decoding)).
+- **Repeated damage.** A damage finding with the same `pattern`, image, `region` and `other_description` as an earlier one is dropped, so a model that repeats one finding up to the 10-item cap stores it once.
 - A jar test with `settled: false` produces no texture observation; the app keeps the task to photograph the jar again later.
 - The fallback worker sends the same per-call schema to the LLM API's structured-output feature. That feature compiles the schema to a grammar and **rejects with a `400`** the keywords it can't enforce: `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `minLength`, `maxLength`, `maxItems`, `minItems` above 1, `minProperties` and `maxProperties`, and it needs `additionalProperties: false` on every object. So the fallback adapter (and the plan writer, which uses the same feature) strips those keywords and adds `additionalProperties: false` before sending, then truncates strings and arrays and clamps numbers and boxes after decoding ([backend integrations 5](../backend/integrations.md#5-anthropic-messages-api)). Its boxes are `abs_px_prepared` (above). A reply cut off at its token limit, or a refusal, is a validation failure.
 - **The fallback's token budget** is 8,000 output tokens per call, for findings, indicators and guided checks alike, because the hosted model always thinks before it answers and its thinking counts toward the limit ([backend worker 17](../backend/worker.md#17-open-questions); open question 26).
@@ -2493,6 +2497,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.25: the knowledge photo upload only adds photos and never deletes one | 5 (knowledge base, ingestion step 8) |
 | v0.10.26: a GPS garden whose reverse lookup fails is labelled by its time zone and created; a Canadian garden where SoilGrids has no data takes its soil profile from Soil Landscapes of Canada | 6.4 (soil), 8.5 (garden setup), 15 (open decision 10) |
 | v0.10.27: open questions 1 and 9 cite the version that settled them | none (a citation in section 12 only) |
+| v0.10.28: `vlm_prompts` names `system@2`, `findings@5`, `indicators@2` and `verify@2`; an `other` naming a listed species or organism takes its id, a string at its `maxLength` goes back to a full sentence or word, and a repeated damage finding is dropped | none (the architecture document lists neither prompt versions nor decode rules) |
 
 ---
 
