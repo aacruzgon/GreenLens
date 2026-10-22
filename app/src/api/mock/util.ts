@@ -125,6 +125,8 @@ export function paginate<T>(
   return next < items.length ? { items: page, next_cursor: String(next) } : { items: page };
 }
 
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
 /** Dates relative to the device's date, so the demo always looks current (analytics 6). */
 export class DateKit {
   private readonly y: number;
@@ -153,6 +155,11 @@ export class DateKit {
   /** 0 = Sunday ... 4 = Thursday. */
   weekday(daysAgo: number): number {
     return new Date(this.y, this.m, this.d - daysAgo).getDay();
+  }
+
+  /** "Thursday". */
+  weekdayName(daysAgo: number): string {
+    return WEEKDAYS[this.weekday(daysAgo)]!;
   }
 }
 
