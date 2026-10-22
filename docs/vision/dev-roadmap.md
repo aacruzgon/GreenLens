@@ -87,7 +87,7 @@ Every arrow in section 2 that crosses from `ml/` to `backend/` is a contract. Ea
 | VLM requests: image preparation, schemas, prompts, decoding | Sara (worker code) | [contracts 6](../architecture/contracts.md#6-vlm-structured-output), [vlm.md 5–11](vlm.md#5-image-preparation-and-tokens) | Worker code on `main`; a Python reference with passing day-1 results in [`ml/training/eval/vlm_check.py`](../../ml/training/eval/vlm_check.py) |
 | Thresholds, temperatures, certainty values | Sam (values) → workers and `api` (reading them) | [evaluation 5–6](evaluation.md#5-calibration) | Values are the docs' starting points until Oct 22–23 |
 | Text embedder file and reference vectors | Sam → `vision::embed` in `api` | [models 10](models.md#10-text-embedder) | In `manifest.toml` (M21, revision d8c86521); golden vectors for 20 strings in `ml/tests/fixtures/text_embedder_golden.json` (M8), for the Rust embedder to check (P4) |
-| YuNet face detector | Sam → `vision::upload::faces` in `api` | [models 9](models.md#9-face-detector) | Pinned with a checked hash in vision 6's S1 manifest; not in `manifest.toml` yet, face check not run (task M7) |
+| YuNet face detector | Sam → `vision::upload::faces` in `api` | [models 9](models.md#9-face-detector) | In `manifest.toml` (M21). The face check ran on Open Images photos (M7, 2026-10-22): it misses both targets, and its false boxes blur leaf lesions on 89 of 152 dev plant photos before any model sees them ([report](../../ml/training/eval/reports/faces-2026-10-22.md)) |
 | The evaluation harness's access to the API | Sara and backend → Sam | [evaluation 9](evaluation.md#9-harness-and-reports) | Not started (task J4) |
 
 ---

@@ -144,7 +144,7 @@ Decisions are tracked in one table, [dev-roadmap section 9](dev-roadmap.md#9-dec
    - v3c's `classifier_labels.yaml`: tomato's 8 classes now that #51 is on `main`, the other four crops' classes after #125, and the species head and plant probe entries;
    - the change-over from v1d on the 3070, in README 6's order, once the seed and the labels are in.
 3. **The species head's combination rule** (models 6): choose one on the dev cases once the real label matrix exists (M12, which needs Sara's species and organism seed files).
-4. **The team's photos** (#52, Oct 21; Sara proposed who shoots which folder, and none had a photo at 11:15): full shot sets, a pepper plant, ladybugs, look-alikes, no-plant shots and faces. The trained probe and M7's face check need them.
+4. **The team's photos** (#52, Oct 21; Sara proposed who shoots which folder, and none had a photo at 11:15): full shot sets, a pepper plant, ladybugs, look-alikes, no-plant shots and faces. The trained probe needs them; M7's face check ran on Open Images photos instead (Oct 22), and the team's photos are no longer coming.
 5. **Garden-like training photos for the disease head:** done as v3c ([training 6](training.md#6-disease-and-species-heads)).
 6. **Calibration (M16)** on the dev cases, then the final manifests (M17) and the test split scored once (M18), by Oct 22. The test split needs a second reviewer first. The leakage check passes on today's cases and runs again on the final manifest, as part of M18.
 7. **The indicator questions:** J2's per-question tables show which never get a "yes" on leaves that have the problem. Raise them with Sara's next prompt pass (P5 is merged; P11 is next).
