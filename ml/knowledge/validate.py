@@ -19,10 +19,13 @@ doesn't, 2 when the dose check can't run.
   every other check on the drafts. A problem's `reviewed_by` and `reviewed_at` are signed
   together: a draft has both empty, and one without the other fails even with `--drafts`.
 - For the real seed, plan.yaml's lists are checked against it: every facts-only source and
-  per-source tagging model names a source in sources.yaml, and every withheld chunk names a
-  source and stays out of seed/chunks, with no facts-only source's wording in there either. Once
-  fetch and chunk have run, a withheld id must also be in build/chunks: ids are positions on the
-  page, so a typo, or a page that lost a paragraph, would otherwise commit the excerpt unnoticed.
+  per-source tagging model names a source in sources.yaml, each tagging model is one llm.py
+  knows, and every withheld chunk names a source and stays out of seed/chunks, with no facts-only
+  source's wording in there either. Once fetch and chunk have run, a withheld id must also be in
+  build/chunks: ids are positions on the page, so a typo, or a page that lost a paragraph, would
+  otherwise commit the excerpt unnoticed.
+- A product marked broad_spectrum false can't name one marked true ("neem oil" beside "neem"):
+  the plan validator matches the longer name first, so the false would win.
 """
 
 from __future__ import annotations
@@ -38,6 +41,7 @@ from pathlib import Path
 
 import jsonschema
 
+from ml.knowledge.llm import PRICES
 from ml.knowledge.seed import ROOT, SEED, Seed, load, read_yaml
 
 SCHEMA = ROOT / "ml/knowledge/schema/seed.schema.json"
@@ -327,6 +331,10 @@ def plan_errors(seed: Seed, plan: dict, built: Path | None = None) -> list[str]:
         for s in ids:
             if s not in sources:
                 errors.append(f"plan.yaml: {key} names {s!r}, which isn't in sources.yaml")
+    for s, model in sorted((plan.get("tag_models") or {}).items()):
+        if model not in PRICES:
+            errors.append(f"plan.yaml: tag_models gives {s!r} the model {model!r}, which llm.py doesn't know "
+                          f"({', '.join(sorted(PRICES))})")
     for s in sorted({src for src in committed.values() if src in facts_only}):
         errors.append(f"chunks/{s}.jsonl: {s} is a facts-only source, so its wording can't be committed")
     for i in plan.get("withheld_chunks") or {}:

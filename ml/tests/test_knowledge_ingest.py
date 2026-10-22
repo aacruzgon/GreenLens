@@ -442,7 +442,8 @@ def test_validate_checks_the_plans_lists_against_the_seed_and_the_page(seed_dir,
     built.mkdir()
     (built / "example_extension_tomato_diseases.jsonl").write_text(
         "".join(json.dumps({"id": f"example_extension_tomato_diseases.{n}"}) + "\n" for n in range(1, 6)))
-    plan = {"facts_only_sources": ["gone"], "tag_models": {"typo_source": "claude-opus-5-5"},
+    plan = {"facts_only_sources": ["gone"], "tag_models": {"typo_source": "claude-opus-5-5",
+                                                           "example_photos": "claude-opus-5.5"},
             "withheld_chunks": {"example_extension_tomato_diseases.2": "committed by mistake",
                                 "example_extension_tomato_diseases.5": "fine: on the page, not committed",
                                 "example_extension_tomato_diseases.7": "a typo, or the page lost a paragraph",
@@ -451,6 +452,8 @@ def test_validate_checks_the_plans_lists_against_the_seed_and_the_page(seed_dir,
     assert validate.plan_errors(seed, plan, built) == [
         "plan.yaml: facts_only_sources names 'gone', which isn't in sources.yaml",
         "plan.yaml: tag_models names 'typo_source', which isn't in sources.yaml",
+        "plan.yaml: tag_models gives 'example_photos' the model 'claude-opus-5.5', which llm.py doesn't know "
+        "(claude-haiku-5-5, claude-opus-5-5, claude-sonnet-5-5)",
         "chunks/example_extension_tomato_diseases.jsonl: withheld chunk 'example_extension_tomato_diseases.2' "
         "is committed; run tag.py again",
         "plan.yaml: withheld chunk 'example_extension_tomato_diseases.7' isn't in "
@@ -463,7 +466,7 @@ def test_validate_checks_the_plans_lists_against_the_seed_and_the_page(seed_dir,
     assert not any("build/chunks" in e for e in errors)
     # check() reads plan.yaml only for the real seed, or when given one.
     assert validate.check(seed, no_dose) == []
-    assert len(validate.check(seed, no_dose, plan=plan, built=built)) == 5
+    assert len(validate.check(seed, no_dose, plan=plan, built=built)) == 6
 
 
 def test_validate_refuses_a_product_that_would_override_a_broad_spectrum_one(seed_dir):
@@ -601,17 +604,22 @@ def test_review_rebuilds_the_record_sections_from_the_yaml(seed_dir):
 
 def test_review_keeps_each_files_citations_and_sections_and_names_unknown_ids(seed_dir, tmp_path):
     eb, sep = (seed_dir / f"problems/{p}.review.md" for p in ("tomato_early_blight", "tomato_septoria_leaf_spot"))
+    mulch = seed_dir / "treatments/mulch_soil_surface.yaml"
+    mulch.write_text(mulch.read_text().replace("onto the leaves.", "onto the leaves, then spray neem oil."))
     eb.write_text("\n".join([
         "# Review: Early blight", "", "## Treatments", "",
         # The reviewer removed .2 here; Septoria's file still cites it.
         "- **remove_lower_infected_leaves** (cultural): x", "  - `example_extension_tomato_diseases.3`", "",
         "- **mulch_soil_surface** (cultural): x", "  - `example_extension_tomato_diseases.99`", "",
-        "## Open questions", "", "- Is the mulch step needed?", ""]))
+        "## Products", "", "- **neem oil**, broad-spectrum: False", "  - `example_extension_tomato_diseases.3`", "",
+        "## Open questions", "", "- Is the mulch step needed?", "",
+        "## Treatments to check", "", "- Ask about straw mulch.", ""]))
     sep.write_text("\n".join([
         "# Review: Septoria", "", "## Treatments", "",
         "- **remove_lower_infected_leaves** (cultural): x",
         "  - `example_extension_tomato_diseases.2`", "  - `example_extension_tomato_diseases.3`", "",
-        "- **avoid_overhead_watering** (cultural): x", "  - `example_extension_tomato_diseases.1`", ""]))
+        "- **avoid_overhead_watering** (cultural): x", "  - `example_extension_tomato_diseases.1`", "",
+        "## Products", "", "- **neem oil**, broad-spectrum: False", "  - `example_extension_tomato_diseases.2`", ""]))
     tags = tmp_path / "tags"
     tags.mkdir()
     (tags / "example_extension_tomato_diseases.jsonl").write_text("".join(
@@ -626,8 +634,10 @@ def test_review_keeps_each_files_citations_and_sections_and_names_unknown_ids(se
     assert "diseases.3`" in item("remove_lower_infected_leaves")
     assert "diseases.2`" not in item("remove_lower_infected_leaves"), "a removed citation stays removed"
     assert "diseases.1`" in item("avoid_overhead_watering"), "a step new to this file starts from the others'"
+    assert "diseases.3`" in item("neem oil") and "diseases.2`" not in item("neem oil"), "a product keeps its own too"
     assert "`example_extension_tomato_diseases.99`: **unknown chunk id**: tag.py never saw it" in item("mulch_soil_surface")
     assert "## Open questions\n\n- Is the mulch step needed?" in body, "a reviewer's own section stays"
+    assert "## Treatments to check\n\n- Ask about straw mulch." in body, "even one named like ours"
 
 
 

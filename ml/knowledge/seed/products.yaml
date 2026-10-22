@@ -11,7 +11,11 @@
 #   verticillium lecanii), the commercial whitefly insecticides in EDIS IN286 .18 (imidacloprid,
 #   thiamethoxam, dinotefuran, cyazypyr), carbaryl and acetamiprid from Clemson's insect-pest table,
 #   and the classes pyrethroid, neonicotinoid and organophosphate. Chlorothalonil and mancozeb stay
-#   for the same reason, though neither is registered for home use in Canada (S1).
+#   for the same reason, though neither is registered for home use in Canada (S1). Neem, sulfur and
+#   sulphur are here to override the plan validator's built-in false (#141).
+#
+# Every reason goes in this header: extract.py rewrites the list when it adds a product, and keeps
+# only the comments above it.
 #
 # broad_spectrum is true for anything that kills beneficial insects or mites on contact or through
 # its residue, and false only for what the pest must eat. A wrong true only means the plan offers

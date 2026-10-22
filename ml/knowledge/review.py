@@ -9,7 +9,8 @@ the record sections from the current YAML (a problem's indicators, conditions, l
 treatments and products; an organism's recognition and prey; a species' care), each line followed
 by the excerpts it cites, and keeps the rest of the file as it is: the header, the model notes
 (headed "as first drafted"), and every other section, such as the "Changes after" sections,
-discriminate.py's table or a reviewer's own.
+discriminate.py's table or a reviewer's own. A reviewer's section placed between the record
+sections moves after them, in its old order.
 
 The YAML doesn't carry chunk ids, so a line's ids are read from the old file, under the same
 indicator, look-alike, treatment or product. A treatment or product keeps the ids of its own file,
@@ -41,9 +42,14 @@ PLAN = validate.PLAN
 ITEM = re.compile(r"^- \*\*([^*]+)\*\*")
 CITE = re.compile(r"^\s+- `([^`]+)`")
 NOTES = "## Model notes (as first drafted)"
-# The sections this script writes; every other one is kept as it is.
+# The sections this script writes, by heading, alone or followed by " (…)"; every other one, such
+# as a reviewer's "## Treatments to check", is kept as it is.
 OURS = ("## Model notes", "## Indicators", "## Conditions", "## Looks like", "## Treatments",
         "## Products", "## Recognition", "## Preys on", "## Care")
+
+
+def ours(heading: str) -> bool:
+    return any(heading == h or heading.startswith(h + " (") for h in OURS)
 
 
 def split(body: str) -> tuple[str, list[tuple[str, str]]]:
@@ -191,7 +197,7 @@ def species_sections(s: dict, old: dict, quote) -> list[str]:
 def rebuild(body: str, sections: list[str], old_sections: list[tuple[str, str]]) -> str:
     head, _ = split(body)
     notes = next((t.split("\n", 1)[1] for h, t in old_sections if h.startswith("## Model notes")), "\n(none)\n")
-    kept = [t for h, t in old_sections if not h.startswith(OURS)]
+    kept = [t for h, t in old_sections if not ours(h)]
     out = head.rstrip() + "\n\n" + NOTES + "\n" + notes.rstrip() + "\n\n" + "\n".join(sections).rstrip() + "\n"
     for t in kept:
         out += "\n" + t.rstrip() + "\n"
