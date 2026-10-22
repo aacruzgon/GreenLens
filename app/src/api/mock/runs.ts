@@ -536,19 +536,17 @@ export function answerRun(store: MockStore, scanId: string, answer: S["Answer"])
 // ---- a species change (flows 7)
 
 /**
- * The stages a species change runs (domain rules/stages.rs, `run_stages`): when the run being replaced finished
- * plant check and segmentation, it keeps them, the image embeddings and its measurements, and runs species
- * identification on; otherwise every perception stage again. A typed name ("something else") skips species
- * identification.
+ * The stages a species change runs (domain rules/stages.rs, `run_stages`): when the scan's current observations
+ * have a plant check and segmentation (pipeline runs.rs, `earlier_run`), it keeps them, the image embeddings and
+ * its measurements, and runs species identification on; otherwise every perception stage again. A typed name
+ * ("something else") skips species identification.
  */
 export function speciesRerunStages(store: MockStore, scanId: string, custom: boolean): S["Stage"][] {
   const st = store.scan(scanId);
-  const done = new Set(
-    (st?.events ?? []).flatMap((e) => (e.run === st?.scan.run && e.type === "stage_completed" ? [e.stage] : [])),
-  );
+  const has = (stage: S["ObservationStage"]) => (st?.observations ?? []).some((o) => o.stage === stage);
   const depth = hasDepth(store, scanId);
-  const keepBase = done.has("plant_check") && done.has("segmentation");
-  const measure = depth && (!keepBase || !done.has("measurement"));
+  const keepBase = has("plant_check") && has("segmentation");
+  const measure = depth && (!keepBase || !has("measurement"));
   return ALL_STAGES.filter((stage) => {
     if (stage === "plant_check" || stage === "segmentation" || stage === "image_embedding") return !keepBase;
     if (stage === "species") return !custom;
@@ -559,11 +557,11 @@ export function speciesRerunStages(store: MockStore, scanId: string, custom: boo
 
 /**
  * Reruns a scan past `queued` after its plant's species changed, mid-run too, as the server does (pipeline
- * runs.rs, `species_confirmed`): the running script stops, `run_started` with `species_changed`, the open
- * question superseded, the stages `speciesRerunStages` lists, and the plan superseded. The mock's rerun reads
- * the new species as healthy, whatever it is.
+ * runs.rs, `species_confirmed`): the running script stops; `species_confirmed` and `run_started` with
+ * `species_changed` go out under the new run; the open question is superseded, the stages `speciesRerunStages`
+ * lists run, and the plan is superseded. The mock's rerun reads the new species as healthy, whatever it is.
  */
-export function speciesRerun(store: MockStore, scanId: string, speciesId: string | null): void {
+export function speciesRerun(store: MockStore, scanId: string, speciesId: string | null, customName?: string): void {
   const st = store.scan(scanId);
   if (!st) return;
   const stages = speciesRerunStages(store, scanId, speciesId === null);
@@ -573,6 +571,8 @@ export function speciesRerun(store: MockStore, scanId: string, speciesId: string
   st.scan.run += 1;
   st.running = true;
   st.workingSpeciesId = speciesId;
+  // Under the new run, as the server sends them.
+  store.emit(scanId, { type: "species_confirmed", species_id: speciesId, ...(customName ? { custom_name: customName } : {}), rerun: true });
   store.emit(scanId, { type: "run_started", reason: "species_changed", rerun_stages: stages });
   st.observations = st.observations.filter((o) => !stages.includes(o.pipeline_stage));
   const open = st.scan.open_question;
@@ -630,4 +630,54 @@ export function speciesRerun(store: MockStore, scanId: string, speciesId: string
     st.running = false;
     store.notify(scanId);
   });
+}
+
+// ---- a guided soil check (flows 8; contracts 7, guided checks and the diagnosis)
+
+/** What the mock's guided job reads in each check's photo: a texture, the jar settled. */
+const GUIDED_TEXTURE: Record<S["GuidedKind"], { label: string; value: string }> = {
+  squeeze_test: { label: "Soil holds a ball, then crumbles: loamy", value: "loamy" },
+  jar_test: { label: "Jar settled: loamy soil", value: "loamy" },
+};
+
+/**
+ * Runs the `guided` job of a check whose photo just arrived: its stage, then `guided_check_done` with a texture.
+ * It runs beside the scan's own script, never stopping it. On a scan that is `diagnosed` or `planned`, the check
+ * writes a new diagnosis with the soil updated, and a plan written from a diagnosis without that texture is
+ * replaced (`plan_superseded`, reason `guided_check`). During a run the run's diagnosis takes it; on a failed scan
+ * it only stays on the scan.
+ */
+export async function guidedCheck(store: MockStore, scanId: string, imageId: string, kind: S["GuidedKind"]): Promise<void> {
+  const gen = store.generation;
+  const live = () => store.generation === gen && store.scan(scanId) !== undefined;
+  store.emit(scanId, { type: "stage_started", stage: "guided" });
+  await store.sleep(1500 * scenario.get().delayScale);
+  if (!live()) return;
+  const ctx = store.runCtx(scanId);
+  const texture = GUIDED_TEXTURE[kind];
+  const result = makeObservation({
+    ...spec(ctx), confidence: 0.85, label: texture.label, stage: "soil", pipelineStage: "guided", source: "vlm",
+    detail: { aspect: "texture", value: texture.value, guided_kind: kind },
+  });
+  store.emit(scanId, { type: "guided_check_done", check: { image_id: imageId, kind, status: "done", result } });
+  store.emit(scanId, { type: "stage_completed", stage: "guided", duration_ms: 1500 });
+
+  const st = store.scan(scanId)!;
+  if ((st.scan.status !== "diagnosed" && st.scan.status !== "planned") || !st.diagnosis) return;
+  const before = st.diagnosis;
+  const hadTexture = before.soil.some((o) => o.detail?.aspect === "texture" && o.detail.value === texture.value);
+  const diagnosis: S["Diagnosis"] = {
+    ...before,
+    id: ctx.id("diag"),
+    created_at: ctx.ts(),
+    soil: [...before.soil.filter((o) => !(o.detail?.aspect === "texture" && o.detail.guided_kind === kind)), result],
+  };
+  store.emit(scanId, { type: "diagnosis", diagnosis });
+  const plan = st.plan;
+  if (!plan || hadTexture) return;
+  // The mock's re-plan keeps the steps and their tasks; the server writes it afresh.
+  const next: S["ActionPlan"] = { ...plan, id: ctx.id("plan"), diagnosis_id: diagnosis.id, created_at: ctx.ts() };
+  st.plan = next;
+  st.scan.plan_id = next.id;
+  store.emit(scanId, { type: "plan_superseded", old_plan_id: plan.id, new_plan_id: next.id, reason: "guided_check" });
 }

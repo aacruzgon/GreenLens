@@ -430,6 +430,53 @@ describe("review fixes", () => {
     expect((await upload(scanId, "jar_test")).status).toBe(201);
   });
 
+  it("a guided check's job finishes it with a texture, and re-plans a planned scan", async () => {
+    scenario.set({ nextScan: "healthy" });
+    const scanId = await newScan(IDS.kale);
+    await call("POST", `/scans/${scanId}/submit`);
+    await (await open(scanId)).rest();
+    const planBefore = mockStore.scan(scanId)!.scan.plan_id;
+
+    const image = (await upload(scanId, "jar_test")).json.image as S["ScanImage"];
+    expect(((await call("GET", `/scans/${scanId}`)).json as S["ScanDetail"]).guided_checks).toEqual([{ image_id: image.id, kind: "jar_test", status: "analysing" }]);
+    await (await open(scanId)).rest();
+
+    const detail = (await call("GET", `/scans/${scanId}`)).json as S["ScanDetail"];
+    const check = detail.guided_checks[0]!;
+    expect(check.status).toBe("done");
+    expect(check.result?.detail).toMatchObject({ aspect: "texture", value: "loamy", guided_kind: "jar_test" });
+    expect(detail.diagnosis?.soil.some((o) => o.detail?.aspect === "texture")).toBe(true);
+    const events = mockStore.scan(scanId)!.events;
+    expect(events.find((e) => e.type === "plan_superseded")).toMatchObject({ old_plan_id: planBefore, reason: "guided_check" });
+    expect(detail.plan?.id).not.toBe(planBefore);
+
+    // A second jar of the same texture writes a diagnosis but keeps the plan.
+    await upload(scanId, "jar_test");
+    await (await open(scanId)).rest();
+    expect(mockStore.scan(scanId)!.events.filter((e) => e.type === "plan_superseded")).toHaveLength(1);
+  });
+
+  it("a second species change keeps the first run's plant check, and confirms under the new run", async () => {
+    scenario.set({ nextScan: "healthy" });
+    const scanId = await newScan(IDS.kale);
+    await call("POST", `/scans/${scanId}/submit`);
+    await (await open(scanId)).rest();
+    const runsOf = () => mockStore.scan(scanId)!.events.filter((e) => e.type === "run_started");
+
+    for (const species_id of ["basil", "tomato"]) {
+      expect((await call("POST", `/plants/${IDS.kale}/species`, { species_id })).status).toBe(200);
+      await (await open(scanId)).rest();
+      const started = runsOf().at(-1)!;
+      expect(started.type === "run_started" && started.rerun_stages).not.toContain("plant_check");
+      const confirmed = mockStore.scan(scanId)!.events.filter((e) => e.type === "species_confirmed").at(-1)!;
+      expect(confirmed.run).toBe(started.run);
+    }
+    expect(runsOf().map((e) => e.run)).toEqual([1, 2, 3]);
+    // The same species again changes nothing.
+    await call("POST", `/plants/${IDS.kale}/species`, { species_id: "tomato" });
+    expect(runsOf()).toHaveLength(3);
+  });
+
   it("feedback needs reviewer, a submitted scan, and returns 201 { id }", async () => {
     const scanId = await newScan(IDS.kale);
     expect((await call("POST", `/scans/${scanId}/feedback`, { verdict: "correct" })).json.error.code).toBe("invalid_state");

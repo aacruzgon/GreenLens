@@ -3,7 +3,7 @@
 // streams scan events as a Server-Sent Events byte stream.
 
 import type { Transport } from "../transport";
-import { answerRun, scriptFor, speciesRerun, startRun, takeOutcome } from "./runs";
+import { answerRun, guidedCheck, scriptFor, speciesRerun, startRun, takeOutcome } from "./runs";
 import { scenario } from "./scenario";
 import { mockStore, type MockStore } from "./store";
 import { MOCK_IMAGE_SIZE, mockImageUrl, type MockImageName } from "./images";
@@ -349,10 +349,10 @@ route("POST", "/plants/:id/species", async (c) => {
     const early = latest.scan.status === "pending" || latest.scan.status === "queued";
     const working = latest.workingSpeciesId === undefined ? before : latest.workingSpeciesId;
     const rerun = !early && (known?.id ?? null) !== working;
-    if (latest.scan.run > 0) {
-      c.store.emit(latest.scan.id, { type: "species_confirmed", species_id: known?.id ?? null, ...(custom ? { custom_name: custom } : {}), rerun });
+    if (rerun) speciesRerun(c.store, latest.scan.id, known?.id ?? null, custom);
+    else if (latest.scan.run > 0) {
+      c.store.emit(latest.scan.id, { type: "species_confirmed", species_id: known?.id ?? null, ...(custom ? { custom_name: custom } : {}), rerun: false });
     }
-    if (rerun) speciesRerun(c.store, latest.scan.id, known?.id ?? null);
   }
   return jsonResponse(200, c.store.plantView(p));
 }, true);
@@ -621,6 +621,8 @@ route("POST", "/scans/:id/images", async (c) => {
   if (answering && st.scan.open_question) st.scan.open_question.status = "answering";
   if (!answering && (kind === "squeeze_test" || kind === "jar_test")) {
     st.scan.guided_checks.push({ image_id: image.id, kind, status: "analysing" });
+    // Its own job analyses it, whatever the scan's state (contracts 7, guided checks and the diagnosis).
+    void guidedCheck(c.store, st.scan.id, image.id, kind);
   }
   const body: S["UploadImageResponse"] = {
     image,
