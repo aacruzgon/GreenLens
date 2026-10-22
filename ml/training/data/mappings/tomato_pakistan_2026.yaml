@@ -1,5 +1,5 @@
 # Tomato Leaf Disease Classification Dataset in Pakistan (2026) → slugs  (training.md §4, step 3)
-# PROPOSED slugs, as in plantdoc.yaml (issue #4).
+# Slugs as in plantdoc.yaml, confirmed on issue #4 (2026-10-18).
 #
 # The 7,200 files are augmented copies of about 934 photos (review of PR #6): the names carry
 # `_aug_N`, rotations (`_change_90/180/270`), `_mirror`, `_vertical`, `_lower`, `_hight`,
@@ -14,7 +14,7 @@ dataset: tomato_pakistan_2026
 source: tomato_pakistan_2026
 root: Tomato_Leaf_Dataset
 splits: { train: . }
-reviewed_by: null
+reviewed_by: sara-lahourpour  # slugs as confirmed on issue #4 (2026-10-22)
 
 originals:
   strip: '(_aug_\d+|_change_\d+|_vertical|_lower|_hight|_mirror|_zoom|_original|_(jpe?g|png)\.rf\.[0-9a-f]{32}|[-._](jpe?g|png))$'

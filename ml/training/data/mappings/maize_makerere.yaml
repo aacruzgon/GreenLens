@@ -15,7 +15,7 @@ dataset: maize_makerere
 source: maize_makerere
 root: .
 splits: { train: . }
-reviewed_by: null
+reviewed_by: sara-lahourpour  # slugs as confirmed on issue #4 (2026-10-22)
 
 sessions:
   pattern: '^(\d{13})'

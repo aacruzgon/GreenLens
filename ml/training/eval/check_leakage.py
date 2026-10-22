@@ -135,10 +135,11 @@ def per_folder(files: list[Path], raw: Path) -> dict[str, int]:
     return dict(sorted(Counter(f.relative_to(raw).parts[0] for f in files).items()))
 
 
-def training_hashes(files: list[Path], cache: Path = CACHE, workers: int | None = None) -> tuple[np.ndarray, np.ndarray]:
+def training_hashes(files: list[Path], cache: Path | None = None, workers: int | None = None) -> tuple[np.ndarray, np.ndarray]:
     """Each file's hash as uint64, and whether it could be read (an unreadable file never matches
     and is reported apart). Cached by path, size and mtime, so a rerun only hashes new or changed
-    files."""
+    files. The cache defaults to CACHE as it is at call time, so a test's monkeypatch reaches it."""
+    cache = CACHE if cache is None else cache
     cache.mkdir(parents=True, exist_ok=True)
     table = cache / "hashes.tsv"
     known: dict[str, tuple[int, int, str]] = {}
