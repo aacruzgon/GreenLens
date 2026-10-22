@@ -15,7 +15,7 @@ import {
   makeScore,
   makeWeather,
   measureObs,
-  nextThursday,
+  frostDayIn,
   PROBLEMS,
   provisionalSteps,
   tasksFromPlan,
@@ -130,7 +130,7 @@ function afterPlantCheck(): Step[] {
 function weatherStep(ago: number, humidAhead: number, rh90: number, run: number): Step {
   return at(250, (ctx) => ({
     type: "weather_loaded",
-    weather: makeWeather(ctx.dates, { ago, rh90, run, humidAhead, frostInDays: nextThursday(ctx.dates) }),
+    weather: makeWeather(ctx.dates, { ago, rh90, run, humidAhead, frostInDays: frostDayIn(ctx.dates) }),
   }));
 }
 

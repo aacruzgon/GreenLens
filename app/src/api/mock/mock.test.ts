@@ -148,7 +148,11 @@ describe("fixtures over REST", () => {
     expect(weather.forecast).toHaveLength(7);
     const frost = weather.forecast.find((d) => d.frost_risk)!;
     expect(frost.t_min_c).toBe(-1);
-    expect(new Date(`${frost.date}T12:00:00`).getDay()).toBe(4);
+    // Thursday, or Friday on a Thursday, inside the six days the weather card shows (frostDayIn).
+    const frostDay = new Date(`${frost.date}T12:00:00`);
+    expect([4, 5]).toContain(frostDay.getDay());
+    expect(frost.date > ymd(today) && frost.date <= ymd(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 6))).toBe(true);
+    expect(upcoming.title).toBe(`Frost on ${frostDay.toLocaleDateString("en-US", { weekday: "long" })}: cover tender plants`);
     expect(upcoming.trigger?.date).toBe(frost.date);
 
     const memories = (await call("GET", `/memories?garden_id=${IDS.garden}`)).json.items as S["Memory"][];

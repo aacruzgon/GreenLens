@@ -35,6 +35,10 @@ function scrollTo(y: number) {
   return fireEvent.scroll(screen.getByTestId("garden-home-scroll"), { nativeEvent: { contentOffset: { x: 0, y } } });
 }
 
+// "Frost on Thursday: …", or Friday when the tests run on a Thursday (frostDayIn).
+function frostAlert(): string {
+  return mockStore.tasks.find((t) => t.id === "task_frost_open")!.title;
+}
 
 beforeEach(() => {
   resetMock();
@@ -48,7 +52,7 @@ describe("GardenHomeScreen", () => {
     const order = screen.getAllByTestId(/^plant-card-/).map((el) => el.props.testID);
     expect(order.slice(0, 2)).toEqual([`plant-card-${IDS.tomato1}`, `plant-card-${IDS.pepper}`]);
     expect(order).toHaveLength(6);
-    expect(screen.getByText("Frost on Thursday: cover tender plants")).toBeTruthy();
+    expect(screen.getByText(frostAlert())).toBeTruthy();
     expect(await screen.findByText(/^Updated \d\d:\d\d$/)).toBeTruthy();
     expect(screen.getAllByTestId("weather-day-frost")).toHaveLength(1);
   });
@@ -61,8 +65,8 @@ describe("GardenHomeScreen", () => {
     expect(screen.getByRole("checkbox", { name: "Check Tomato 2's lower leaves, done" })).toBeTruthy();
     await waitFor(() => expect(mockStore.tasks.find((t) => t.id === "task_t2_check_b")?.done_at).toBeTruthy());
 
-    await fireEvent.press(screen.getByRole("button", { name: "Done: Frost on Thursday: cover tender plants" }));
-    expect(screen.queryByText("Frost on Thursday: cover tender plants")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: `Done: ${frostAlert()}` }));
+    expect(screen.queryByText(frostAlert())).toBeNull();
   });
 
   it("sorts every plant, past the first page, and finds the alert past the first page of tasks", async () => {
@@ -78,7 +82,7 @@ describe("GardenHomeScreen", () => {
     await renderHome("Weed bed 01");
     await waitFor(() => expect(screen.getAllByTestId(/^plant-card-/)).toHaveLength(30));
     expect(screen.getAllByTestId(/^plant-card-/)[0]!.props.testID).toBe(`plant-card-${IDS.tomato1}`);
-    expect(screen.getByText("Frost on Thursday: cover tender plants")).toBeTruthy();
+    expect(screen.getByText(frostAlert())).toBeTruthy();
   });
 
   it("says when a check fails, unchecks the row and offers to try again", async () => {
