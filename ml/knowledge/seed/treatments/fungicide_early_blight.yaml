@@ -1,0 +1,8 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: fungicide_early_blight
+kind: chemical
+text: 'If the disease is severe, use a copper fungicide labelled for tomatoes. Follow the label. It also says how many days to wait between spraying and picking; wait at least that
+  long before you harvest.'
+sources:
+- clemson_hgic_tomato_diseases

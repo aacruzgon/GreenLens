@@ -1,0 +1,15 @@
+id: whitefly
+name: Whitefly
+scientific_name: Aleyrodidae
+taxon_group: insect
+role: pest
+recognition: 'Adults are tiny, about 1 mm long, with a light yellow body and powdery white wings. The
+  sweetpotato (silverleaf) whitefly holds its wings close to the body like a tent or roof; the greenhouse
+  whitefly and most others hold them more loosely, nearly flat. They sit and lay eggs on the undersides
+  of leaves, often new leaves. The young (nymphs) are flat, oval, scale-like specks about 0.3–0.7 mm
+  long, greenish-yellow to glassy yellow, stuck flat to the leaf underside.'
+bioclip_label: Aleyrodidae with common name whitefly
+sources:
+- clemson_hgic_tomato_insect_pests
+- edis_in286_sweetpotato_whitefly
+reviewed_by: sam-michaels

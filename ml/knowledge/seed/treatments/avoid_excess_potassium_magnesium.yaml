@@ -1,0 +1,9 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: avoid_excess_potassium_magnesium
+kind: cultural
+text: Do not overfeed with potassium or magnesium. They compete with calcium for uptake by the plant.
+  Epsom salt is a magnesium source, so do not use it on garden soil unless a recent soil report shows
+  a magnesium shortage.
+sources:
+- clemson_hgic_tomato_diseases

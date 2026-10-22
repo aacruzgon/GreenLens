@@ -145,6 +145,7 @@ ml/training/runs/
 ml/models/files/
 ml/knowledge/.cache/
 ml/knowledge/build/
+ml/knowledge/raw/
 ml/training/eval/photos/
 *.onnx
 *.onnx.data

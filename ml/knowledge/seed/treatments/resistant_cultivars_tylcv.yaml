@@ -1,0 +1,8 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: resistant_cultivars_tylcv
+kind: cultural
+text: Grow tomato varieties that are resistant or tolerant to tomato yellow leaf curl virus.
+sources:
+- clemson_hgic_tomato_diseases
+- edis_in286_sweetpotato_whitefly

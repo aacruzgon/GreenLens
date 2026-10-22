@@ -1,0 +1,10 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: mulch_around_plants
+kind: cultural
+text: Mulch around tomato plants. After transplanting, cover the soil with 5 to 10 cm of organic mulch,
+  such as chopped tree leaves, grass clippings or straw. It acts as a barrier that stops spores splashing
+  up from the soil, which matters most when you cannot rotate crops.
+sources:
+- clemson_hgic_tomato_diseases
+- isu_septoria_leaf_spot

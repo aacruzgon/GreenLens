@@ -1,0 +1,9 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: soil_test_lime_ber
+kind: cultural
+text: Have the soil tested. Lime it as the soil report advises, to bring the pH to 6.5 and give enough
+  calcium. Lime works best when put down 3 to 6 months before planting and dug into the soil. Follow the
+  soil report for other fertiliser before planting.
+sources:
+- clemson_hgic_tomato_diseases

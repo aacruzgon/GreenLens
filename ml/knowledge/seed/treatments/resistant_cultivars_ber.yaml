@@ -1,0 +1,7 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: resistant_cultivars_ber
+kind: cultural
+text: Grow tomato varieties with resistance to blossom-end rot.
+sources:
+- clemson_hgic_tomato_diseases

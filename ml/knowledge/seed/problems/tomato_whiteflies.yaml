@@ -1,0 +1,91 @@
+id: tomato_whiteflies
+name: Whiteflies
+kind: pest
+affects:
+- tomato
+caused_by:
+- whitefly
+damage_patterns:
+- sticky_residue
+- sooty_mould
+prevalence: occasional
+indicators:
+- id: tomato_whiteflies.adult_whiteflies_under_leaves
+  text: Tiny whitish-yellow insects with powdery white wings sit on the undersides of the leaves.
+  question: Are there tiny white flying insects with white wings under the leaves?
+  weight: 3
+  discriminating: true
+  where: leaf_underside
+  image_kinds:
+  - leaf_underside
+- id: tomato_whiteflies.scale_like_nymphs
+  text: Tiny flat, oval, greenish-yellow, scale-like young whiteflies sit stuck to the undersides of the
+    leaves and do not move.
+  question: Are there tiny flat, oval, pale yellow-green scales stuck under the leaves?
+  weight: 2
+  discriminating: true
+  where: leaf_underside
+  image_kinds:
+  - leaf_underside
+- id: tomato_whiteflies.yellow_feeding_spots
+  text: Yellow spots sometimes appear on leaves where whiteflies feed.
+  question: Are there small yellow spots on the leaves?
+  weight: 1
+  discriminating: false
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_whiteflies.sticky_honeydew
+  text: Leaves are coated with sticky, sugary honeydew that the whiteflies excrete.
+  question: Do the leaves look shiny or sticky, as if coated with syrup?
+  weight: 2
+  discriminating: false
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_whiteflies.sooty_mould_patches
+  text: Dark, black sooty mould grows in patches on the honeydew and covers the leaves.
+  question: 'Is there a black, powdery coating lying on the leaf surface, like soot?'
+  weight: 2
+  discriminating: true
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_whiteflies.wilting_heavy_infestation
+  text: Heavily infested plants wilt from the loss of sap.
+  question: Is the plant wilting?
+  weight: 2
+  discriminating: false
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+- id: tomato_whiteflies.irregular_ripening_streaks
+  text: Fruit on heavily infested plants may colour unevenly, with streaks, and stay white and hard inside.
+  question: Do the tomatoes have uneven colour, with streaks of unripe colour?
+  weight: 1
+  discriminating: false
+  where: fruit
+  image_kinds:
+  - flower_fruit
+conditions:
+  notes: 'The sweetpotato whitefly (Bemisia) is mainly a pest in warm tropical and warm temperate
+    regions. Outdoors it survives the winter only as far north as South Carolina; further north, Canada
+    included, it lives in greenhouses. Its eggs hatch in about a week at 25 °C. Large swarms can fly in
+    from old, dying crops nearby and badly infest newly planted ones. In Florida, Bemisia rarely reaches
+    outbreak numbers where no insecticides are used, because natural enemies keep it down.'
+looks_like: []
+treatments:
+- buy_whitefly_biocontrols_greenhouse
+- control_weeds_and_volunteers
+- fine_mesh_screen_greenhouse
+- oil_spray_whitefly_repellent
+- protect_natural_enemies
+- reflective_mulch_whiteflies
+- remove_crop_debris
+- soap_or_oil_spray
+- uv_absorbing_greenhouse_film
+sources:
+- clemson_hgic_tomato_insect_pests
+- edis_in286_sweetpotato_whitefly
+reviewed_by: sam-michaels
+reviewed_at: 2026-10-21
