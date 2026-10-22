@@ -128,6 +128,31 @@ def test_archives_are_pinned_one_by_one_and_unpacked_under_their_stem(tmp_path, 
     assert (tmp_path / "mk" / "MLB_1" / "train" / "a" / "2.JPG").read_bytes() == b"deflated " * 50
 
 
+def test_files_are_pinned_one_by_one_and_kept_as_they_are(tmp_path, monkeypatch):
+    monkeypatch.setattr(fetch, "RAW", tmp_path)
+    tables = {"a.csv": b"ImageID,LabelName\n1,/m/0dzct\n", "b.csv": b"ImageID\n2\n"}
+    got = []
+
+    def download(url, dest):
+        got.append(url)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(tables[url.rsplit("/", 1)[1]])
+
+    monkeypatch.setattr(fetch, "download", download)
+    src = {"name": "oi", "files": [{"name": n, "url": f"http://x/{n}", "sha256": hashlib.sha256(b).hexdigest()}
+                                   for n, b in tables.items()]}
+    fetch.fetch_files(src)
+    assert (tmp_path / "oi" / "a.csv").read_bytes() == tables["a.csv"]
+    fetch.fetch_files(src)                       # already there: nothing downloaded again
+    assert len(got) == 2
+    src["files"][1]["sha256"] = "0" * 64
+    with pytest.raises(SystemExit, match="mismatch"):
+        fetch.fetch_files(src)
+    src["files"][1]["sha256"] = None
+    with pytest.raises(SystemExit, match="unpinned"):
+        fetch.fetch_files(src)
+
+
 def test_a_labels_csv_chooses_single_label_images(server, tmp_path, monkeypatch):
     srv, base = server
     srv.files["/d.zip"] = a_zip()

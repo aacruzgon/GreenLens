@@ -147,6 +147,7 @@ ml/knowledge/.cache/
 ml/knowledge/build/
 ml/knowledge/raw/
 ml/training/eval/photos/
+ml/training/eval/faces/
 *.onnx
 *.onnx.data
 *.safetensors
