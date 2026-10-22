@@ -139,6 +139,16 @@ def test_a_run_stops_when_a_source_has_no_images(tree):
         cl.run(args_for(tree, "--no-bioclip"))
 
 
+def test_a_source_marked_leakage_false_is_neither_required_nor_compared(tree):
+    (tree / "sources.yaml").write_text("datasets:\n  - name: plantdoc\n  - name: tom2024\n"
+                                       "  - name: plantseg\n    leakage: false\n  - name: spots\n    leakage: false\n")
+    save(picture(1), tree / "raw" / "spots" / "same_as_the_copy.jpg")   # plantseg has no folder at all
+    (tree / "allowed.tsv").write_text("photo\ttraining\twhy\ninat/copy.jpg\tplantdoc/leaf.jpg\tchecked by eye\n")
+    assert cl.run(args_for(tree, "--no-bioclip")) == 0
+    report = json.loads((tree / "reports" / "t.json").read_text())
+    assert report["training_images_by_folder"] == {"plantdoc": 1, "tom2024": 1}
+
+
 def test_a_relative_manifest_path_is_reported(tree, monkeypatch):
     monkeypatch.chdir(tree)
     args = args_for(tree, "--no-bioclip")
