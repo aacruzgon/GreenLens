@@ -579,6 +579,12 @@ route("POST", "/scans/:id/images", async (c) => {
     ...(form.hasDepth ? { depth: { has_gravity: true, width: 256, height: 192 } } : {}),
   };
   st.scan.images.push(image);
+  // As the API does (contracts 3): a photo for a question makes it answering, and a guided photo is a new check
+  // that its own job analyses.
+  if (answering && st.scan.open_question) st.scan.open_question.status = "answering";
+  if (!answering && (kind === "squeeze_test" || kind === "jar_test")) {
+    st.scan.guided_checks.push({ image_id: image.id, kind, status: "analysing" });
+  }
   const body: S["UploadImageResponse"] = {
     image,
     quality: { passed: true, blur_score: 182.4, exposure: 0.47 },
