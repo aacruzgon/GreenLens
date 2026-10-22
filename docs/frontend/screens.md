@@ -1,6 +1,6 @@
 # PDM Frontend Screens
 
-> **Status:** Draft v0.4.6, 2026-10-20. v0.4.6: a password reset by email code, from sign-in and from a sign-up whose email is taken (1, 3.10). v0.4.5: capture's mode bar is Liquid Glass, solid with Reduce Transparency. v0.4.4: capture's pill asks for a missing needed shot before the optional ones, and a failed removal keeps the shot with **Try again**. v0.4.3: capture as built in F2, after the Camera app: the mode bar and the coverage dial replace the shot strip, the instruction drops from the top, and a full mode's shutter retakes its shot. v0.4.2: sign-up takes a phone number, and sign-in asks for a code by text. v0.4.1: no authenticator-app second factor.
+> **Status:** Draft v0.4.7, 2026-10-21. v0.4.7: capture's question and guided modes in full: the photo before Send, the jar test's task and its row opening the camera (3.2). v0.4.6: a password reset by email code, from sign-in and from a sign-up whose email is taken (1, 3.10). v0.4.5: capture's mode bar is Liquid Glass, solid with Reduce Transparency. v0.4.4: capture's pill asks for a missing needed shot before the optional ones, and a failed removal keeps the shot with **Try again**. v0.4.3: capture as built in F2, after the Camera app: the mode bar and the coverage dial replace the shot strip, the instruction drops from the top, and a full mode's shutter retakes its shot. v0.4.2: sign-up takes a phone number, and sign-in asks for a code by text. v0.4.1: no authenticator-app second factor.
 > v0.4 applies the third audit: Google and Apple sign-in are hidden only in embedded web views, and the note delete rule names who deletes which note.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **New-plant sheet:** added, with `POST /plants`.
@@ -200,8 +200,8 @@ Capture is always dark and follows the Camera app ([design 3.1](../design/design
 - **Library** sits left of the shutter, **Analyse** right of it, white on the black. **Analyse** is enabled when `whole_plant` is stored and nothing is uploading.
 - **✕** closes capture and keeps the draft for later. **Discard** asks "Discard this scan? Its photos will be deleted.", adding "and its jar-test task" when one was started, and deletes the pending scan.
 - **Camera access** is asked by the system's own alert when capture opens, with no screen of ours before it ([HIG Privacy](https://developer.apple.com/design/human-interface-guidelines/privacy#Pre-alert-screens-windows-or-views)). After a refusal, the preview says why the camera is needed and offers **Open Settings**; Library still works.
-- **Question mode** has one slot, the question's `photo_hint` as the instruction and **Send** instead of Analyse.
-- **Guided mode** shows the squeeze or jar instructions first, then one slot.
+- **Question mode** has one slot, the question's `photo_hint` as the instruction and **Send** instead of Analyse. The title bar says "Photo for a question", and the card leads with the question's text. The photo shows after the shutter; the shutter then retakes it, and **Send** uploads it. There is no **Discard**: nothing is stored before Send. A question answered meanwhile shows "This question has been answered." with **Close**.
+- **Guided mode** shows the squeeze or jar steps first, numbered, with **Start**, then one slot, sent with **Send** like question mode. For the jar test, Start adds the task "Photograph the jar test", and the camera's card then says it is on the user's tasks. The task's row opens this screen at the camera, past the steps. A failed scan takes no check and says so.
 
 ### 3.3 Scan results
 
