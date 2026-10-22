@@ -29,7 +29,14 @@ export default function AppLayout() {
         <Stack.Screen name="capture/[scanId]/question/[questionId]" options={{ presentation: "fullScreenModal" }} />
         <Stack.Screen name="capture/[scanId]/guided/[kind]" options={{ presentation: "fullScreenModal" }} />
         {/* Analyse replaces capture with the scan, which stays full screen and dark like the camera (design 3.1). */}
-        <Stack.Screen name="scans/[scanId]" options={{ presentation: "fullScreenModal" }} />
+        <Stack.Screen name="scans/[scanId]/index" options={{ presentation: "fullScreenModal" }} />
+        {/* "See the diagnosis and plan" pushes the result over the analysis (F4 builds it). */}
+        <Stack.Screen name="scans/[scanId]/result" />
+        {/* The species check's "Change": the top candidates and a search, as a sheet (flows 7, screens 3.11). */}
+        <Stack.Screen
+          name="plants/[plantId]/species"
+          options={{ presentation: "formSheet", sheetAllowedDetents: [0.6, 1], sheetGrabberVisible: true }}
+        />
       </Stack>
     </SessionGate>
   );

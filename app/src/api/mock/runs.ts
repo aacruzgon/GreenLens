@@ -242,6 +242,7 @@ function liveBlight(): Script {
         asked_at: ctx.ts(),
         continue_at: nowTs(10 * 60_000),
         candidates: [PROBLEMS.earlyBlight.id, PROBLEMS.septoria.id],
+        indicator_id: RINGS_INDICATOR,
         text: "Do the spots on the lower leaves have target-like rings, dark circles inside circles?",
         options: [
           { id: "yes", label: "Yes" },
@@ -515,4 +516,72 @@ export function answerRun(store: MockStore, scanId: string, answer: S["Answer"])
     store.notify(scanId);
   });
   return true;
+}
+
+// ---- a species change (flows 7)
+
+/** The stages a species change runs again (contracts 3, species: species identification on). */
+const SPECIES_RERUN: S["Stage"][] = ["species", "disease", "image_embedding", "vlm_findings", "vlm_indicators", "scoring", "plan"];
+
+/**
+ * Reruns a scan that already ran, after its plant's species changed: `run_started` with `species_changed`, the
+ * open question superseded, the stages from species identification on, and the plan superseded. The mock's
+ * rerun reads the new species as healthy, whatever it is.
+ */
+export function speciesRerun(store: MockStore, scanId: string): void {
+  const st = store.scan(scanId);
+  if (!st) return;
+  const oldPlanId = st.plan?.id;
+  const from = st.scan.status;
+  st.scan.run += 1;
+  st.running = true;
+  store.emit(scanId, { type: "run_started", reason: "species_changed", rerun_stages: SPECIES_RERUN });
+  st.observations = st.observations.filter((o) => !SPECIES_RERUN.includes(o.pipeline_stage));
+  const open = st.scan.open_question;
+  if (open) store.emit(scanId, { type: "question_resolved", question_id: open.id, by: "superseded" });
+  store.emit(scanId, { type: "status_changed", from, to: "analysing" });
+
+  const shared: { diagId?: string } = {};
+  const steps: Step[] = [
+    ...afterPlantCheck().slice(-3),
+    ...stage("disease", 900, [
+      finding(250, (ctx) =>
+        makeObservation({
+          ...spec(ctx), confidence: 0.9, label: "Healthy", stage: "disease", pipelineStage: "disease",
+          source: "classifier", region: { image_id: images(ctx).whole, bbox: [0.1, 0.05, 0.8, 0.9] },
+        })),
+    ]),
+    ...stage("image_embedding", 300),
+    ...stage("vlm_findings", 900),
+    ...stage("vlm_indicators", 200, [], "nothing_to_check"),
+    ...stage("scoring", 400),
+    at(200, (ctx) => {
+      const diagnosis = makeDiagnosis({
+        id: ctx.id("diag"), scanId: ctx.scanId, run: ctx.run, ts: ctx.ts(), status: "healthy",
+        photo: ["No spots, holes or pests on the leaves"],
+      });
+      shared.diagId = diagnosis.id;
+      return { type: "diagnosis", diagnosis };
+    }),
+    status("analysing", "diagnosed"),
+    ...stage("plan", 600),
+    status("diagnosed", "planned"),
+    at(150, (ctx) => {
+      const p = plantOf(ctx);
+      const plan = makePlan({
+        id: ctx.id("plan"), scanId: ctx.scanId, plantId: p.id, diagnosisId: shared.diagId ?? "", ts: ctx.ts(),
+        summary: `${p.name} looks healthy.`, steps: healthySteps(p), watchFor: ["Spots or yellowing on the lowest leaves"],
+        provisional: false, citations: [],
+      });
+      ctx.store.attachPlan(ctx.scanId, plan, tasksFromPlan(plan, ctx.dates, () => ctx.id("task")));
+      ctx.store.scan(ctx.scanId)!.scan.plan_id = plan.id;
+      return oldPlanId
+        ? { type: "plan_superseded", old_plan_id: oldPlanId, new_plan_id: plan.id, reason: "species_changed" }
+        : { type: "plan_ready", plan_id: plan.id, provisional: false };
+    }),
+  ];
+  void play(store, scanId, steps, () => {
+    st.running = false;
+    store.notify(scanId);
+  });
 }

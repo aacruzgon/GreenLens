@@ -3,7 +3,7 @@
 // streams scan events as a Server-Sent Events byte stream.
 
 import type { Transport } from "../transport";
-import { answerRun, scriptFor, startRun, takeOutcome } from "./runs";
+import { answerRun, scriptFor, speciesRerun, startRun, takeOutcome } from "./runs";
 import { scenario } from "./scenario";
 import { mockStore, type MockStore } from "./store";
 import { MOCK_IMAGE_SIZE, mockImageUrl, type MockImageName } from "./images";
@@ -316,6 +316,40 @@ route("PATCH", "/plants/:id", async (c) => {
   if (body.status !== undefined) {
     if (!["healthy", "watch", "sick", "dead"].includes(String(body.status))) return invalid("status", "unknown status");
     p.status = body.status as S["PlantStatus"];
+  }
+  return jsonResponse(200, c.store.plantView(p));
+}, true);
+
+// Flows 7: the plant's species, and the rerun of its latest scan when the species changed. Only a scan created
+// in the last 24 hours that isn't failed follows; a pending or queued one runs with the new species, no rerun.
+route("POST", "/plants/:id/species", async (c) => {
+  const p = c.store.plants.get(c.params.id);
+  if (!p) return notFound();
+  const body = await jsonObject(c);
+  const speciesId = str(body, "species_id");
+  const custom = str(body, "custom_name")?.trim();
+  if (!speciesId === !custom) return invalid("species_id", "species_id or custom_name, not both");
+  if (custom && custom.length > 80) return invalid("custom_name", "at most 80 characters");
+  const known = speciesId ? c.store.species.find((s) => s.id === speciesId) : undefined;
+  if (speciesId && !known) return invalid("species_id", "unknown species");
+  const changed = speciesId ? p.species?.id !== speciesId : p.custom_species_name !== custom;
+  if (known) {
+    p.species = { id: known.id, common_name: known.common_name, scientific_name: known.scientific_name };
+    delete p.custom_species_name;
+  } else {
+    delete p.species;
+    p.custom_species_name = custom;
+  }
+  p.species_status = "confirmed";
+  p.species_candidates = [];
+
+  const latest = c.store.scansOf(p.id).at(-1);
+  const recent = latest && Date.now() - Date.parse(latest.scan.created_at) < 24 * 3_600_000 && latest.scan.status !== "failed";
+  if (latest && recent) {
+    const early = latest.scan.status === "pending" || latest.scan.status === "queued";
+    const rerun = changed && !early && !latest.running;
+    c.store.emit(latest.scan.id, { type: "species_confirmed", species_id: known?.id ?? null, ...(custom ? { custom_name: custom } : {}), rerun });
+    if (rerun) speciesRerun(c.store, latest.scan.id);
   }
   return jsonResponse(200, c.store.plantView(p));
 }, true);
