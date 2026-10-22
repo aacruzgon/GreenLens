@@ -1,6 +1,6 @@
 # PDM Vision-Language Model
 
-> **Status:** Draft v0.2.10, 2026-10-21. v0.2.10: section 7's prompts are `system@2`, `findings@4`, `indicators@2` and `verify@2` for task P5 (species by id, disease kept out of damage, `leaf_mines` only for winding tunnels or blotches, no repeated findings, short English text, each well under its cap; [#45](https://github.com/aacruzgon/GreenLens/pull/45)); section 4 says the recordings are `findings@3`'s and drift until the re-record. v0.2.9: section 13's per-question rates count `sure` cases only (15% / 10% for Qwen3.5), and the re-checks on #45's prompts and the full cases are recorded here (review of #86). v0.2.8: section 13 says its numbers are for `main`'s prompts and that a bench run on #45's prompts re-checks the choice. v0.2.7: Qwen3.5-9B AWQ is chosen (decision D1, architecture open decision 4) from the day-2 benchmark, with Qwen3-VL-8B as the fallback; `VLM_SLOTS` is 2 on the 5070 Ti and `VLM_MAX_PIXELS` stays 1,003,520 (sections 2, 4, 6, 13 and 14). v0.2.6: the findings prompt is `findings@2`, which shows a soil reading's shape and rules out glimpsed soil; soil readings come back on both candidates (section 4, section 7), and section 4's results table is the re-recorded run. v0.2.5: section 4 runs the worker's own prompts and schemas on both candidates (every call validates; neither gives soil readings with the production findings prompt). v0.2.4: section 4 records the Qwen3.5-9B AWQ challenger's day-1 check (all checks pass, 116.7 tokens/s, 115,550 KV tokens) and settles its box scale at 0–1000; section 6 gets the measured weights and KV. v0.2.3: section 4 settles `anyOf` with `null` (contracts open question 31) with two more checks on FP8, a soil photo's non-null readings and a prompt the grammar overrides, and notes that the day-1 images were web photos and how to keep strings under `maxLength`. v0.2.2: section 4 records the day-1 results on the RTX 5070 Ti (image, kernels, memory, schemas, boxes, speed, two slots). v0.2.1: the fallback's 8,000-token budget covers the guided check, as contracts 6 now says. v0.2: aligned with the backend design: sides rounded down to the cell, prompt versions as `findings@1`, the contracts 5 value formats for `model_versions`, box bounds for pixel formats, and the fallback's 1.15-megapixel cap, 8,000-token budget, full list of rejected schema keywords and cost. v0.1, 2026-10-15: First VLM design: Qwen3-VL-8B-Instruct (FP8) as the primary candidate and Qwen3.5-9B as the challenger, the vLLM v0.31 and llama.cpp configurations, image preparation and token counts, the KV-cache budget and `VLM_SLOTS`, the prompts for every call, the schemas from the model's side, box formats, sampling, and the fallback worker's hosted model.
+> **Status:** Draft v0.2.10, 2026-10-21. v0.2.10: section 7's prompts are `system@2`, `findings@5`, `indicators@2` and `verify@2` for task P5: species and organisms by id, English, reasons and notes well under their caps, and `findings@2`'s damage section; section 4 records P5's changes run one at a time on Qwen3.5, the recording test's seven photos, and the tomato's early-blight spots as `leaf_mines` with every wording tried, which moves to task P11 ([#45](https://github.com/aacruzgon/GreenLens/pull/45)). v0.2.9: section 13's per-question rates count `sure` cases only (15% / 10% for Qwen3.5), and the re-checks on #45's prompts and the full cases are recorded here (review of #86). v0.2.8: section 13 says its numbers are for `main`'s prompts and that a bench run on #45's prompts re-checks the choice. v0.2.7: Qwen3.5-9B AWQ is chosen (decision D1, architecture open decision 4) from the day-2 benchmark, with Qwen3-VL-8B as the fallback; `VLM_SLOTS` is 2 on the 5070 Ti and `VLM_MAX_PIXELS` stays 1,003,520 (sections 2, 4, 6, 13 and 14). v0.2.6: the findings prompt is `findings@2`, which shows a soil reading's shape and rules out glimpsed soil; soil readings come back on both candidates (section 4, section 7), and section 4's results table is the re-recorded run. v0.2.5: section 4 runs the worker's own prompts and schemas on both candidates (every call validates; neither gives soil readings with the production findings prompt). v0.2.4: section 4 records the Qwen3.5-9B AWQ challenger's day-1 check (all checks pass, 116.7 tokens/s, 115,550 KV tokens) and settles its box scale at 0–1000; section 6 gets the measured weights and KV. v0.2.3: section 4 settles `anyOf` with `null` (contracts open question 31) with two more checks on FP8, a soil photo's non-null readings and a prompt the grammar overrides, and notes that the day-1 images were web photos and how to keep strings under `maxLength`. v0.2.2: section 4 records the day-1 results on the RTX 5070 Ti (image, kernels, memory, schemas, boxes, speed, two slots). v0.2.1: the fallback's 8,000-token budget covers the guided check, as contracts 6 now says. v0.2: aligned with the backend design: sides rounded down to the cell, prompt versions as `findings@1`, the contracts 5 value formats for `model_versions`, box bounds for pixel formats, and the fallback's 1.15-megapixel cap, 8,000-token budget, full list of rejected schema keywords and cost. v0.1, 2026-10-15: First VLM design: Qwen3-VL-8B-Instruct (FP8) as the primary candidate and Qwen3.5-9B as the challenger, the vLLM v0.31 and llama.cpp configurations, image preparation and token counts, the KV-cache budget and `VLM_SLOTS`, the prompts for every call, the schemas from the model's side, box formats, sampling, and the fallback worker's hosted model.
 > **Checked:** model cards, `config.json` files, checkpoint sizes, vLLM v0.31.0 source and xgrammar v0.2.7 source were read on 2026-10-15 (marked ✓). No GPU was available, so nothing here has run on one: every memory and speed figure is arithmetic from the published configs and is marked *estimate*. Points from community sources are *unverified*.
 
 The VLM is the part of the pipeline that sees what the small models can't: soil, organisms with their boxes, damage patterns, a second opinion on the species, and the answers to each candidate's indicator questions ([architecture 6.1](../architecture/README.md#61-stages), [contracts 6](../architecture/contracts.md#6-vlm-structured-output)). This document covers the model side: which model, how it is served, what it is asked and how. How the worker builds the request, calls the server and converts the result is in [docs/backend](../backend/vision.md) and the job flow in [the worker design](../backend/worker.md).
@@ -178,7 +178,7 @@ The compose file and the two modes (the card also draws a desktop) are in [`infr
   - **Box scale: 0–1000.** A probe asked for a box around the largest leaf and the most visible spot, with a loose 0–5000 schema, on three PlantDoc photos. On the cherry leaf (800 × 1216 prepared) the leaf and its brown spot both land exactly when drawn as 0–1000. On the tomato photo (544 × 608) the box reads `[288, 0, 618, 686]`, beyond the image's pixel size, so the values are not pixels. Asked directly, it finds the spot it left out of its findings answer, so recall in findings is weaker with the stand-in prompt; compare it on the worker's real prompts (recordings pending).
 - **Speed, FP8:** first token after 0.06 s, **84 tokens/s** decoding (AWQ: 115), a 4-image findings call in about 3.2 s with 160 output tokens.
 - **Two slots, FP8:** two 4-image findings calls ran at once with no preemptions and 34% peak KV usage, in 5.3 s together against 3.2 s alone. `VLM_SLOTS = 2` looks feasible; the day-2 benchmark confirms it with full-length outputs and p95 timings ([section 6](#6-memory-and-vlm_slots)).
-- **For the prompts (section 7):** with a stand-in prompt, the model answered `species: "other"` with `other_name: "apple"` while `apple` was in the enum, called a fungal spot `leaf_mines`, and a length-capped string switched to Chinese mid-word (`Growing西红柿`). The production prompts should map names to slugs explicitly and ask for short English reasons. The Chinese switch is what grammar truncation does mid-word, so besides asking for English, keep each string's expected length well under its `maxLength`, so the cap is a guard the model rarely hits. `system@2`, `findings@3` and `indicators@2` make these changes (section 7, 2026-10-17); they ran on both candidates on Oct 19 ([#45](https://github.com/aacruzgon/GreenLens/pull/45)), and `findings@4` (2026-10-21) follows from that run. It runs on both candidates when Sam re-records the worker's calls (task P5).
+- **For the prompts (section 7):** with a stand-in prompt, the model answered `species: "other"` with `other_name: "apple"` while `apple` was in the enum, called a fungal spot `leaf_mines`, and a length-capped string switched to Chinese mid-word (`Growing西红柿`). The production prompts should map names to slugs explicitly and ask for short English reasons. The Chinese switch is what grammar truncation does mid-word, so besides asking for English, keep each string's expected length well under its `maxLength`, so the cap is a guard the model rarely hits. `system@2`, `indicators@2` and `findings@5` make these changes (section 7). On the way, `findings@3` and `findings@4` cost Qwen3.5 its soil readings and moved the corn's blight into `leaf_mines` ([below](#p5s-prompt-changes-on-qwen35-2026-10-21--ran)).
 
 ### The worker's own prompts on both candidates (2026-10-16, ✓ ran)
 
@@ -206,10 +206,41 @@ The table is the committed recordings, re-recorded with `findings@2`. All seven 
   | plus "only soil in focus that fills a clear part of an image" | 4 / 0 | 0 / 0 |
   | **`findings@2`**: plus "glimpsed or blurred soil doesn't count" | **3 / 0** (dry, bare, few weeds) | **8 / 0** |
 
-  The example alone made FP8 read all eight aspects off the corn photo's blurred background at medium certainty; the strict wording silenced Qwen3.5. `findings@2` is the wording that reads the soil shot and leaves the corn case null on both. Two cases can't tune a prompt: the dev split checks it (evaluation 9). The committed recordings (`ml/training/eval/recordings/`) were re-recorded with `findings@2`, then with `findings@3` on Oct 19 ([#45](https://github.com/aacruzgon/GreenLens/pull/45)). With `findings@4` the fake server replays them with a `text drift` line on each findings call until they are re-recorded.
+  The example alone made FP8 read all eight aspects off the corn photo's blurred background at medium certainty; the strict wording silenced Qwen3.5. `findings@2` is the wording that reads the soil shot and leaves the corn case null on both. Two cases can't tune a prompt: the dev split checks it (evaluation 9). The committed recordings (`ml/training/eval/recordings/`) were re-recorded with `findings@2`, then with `findings@3` on Oct 19 and `findings@4` on Oct 21 (da5be61, with the new tomato soil photo; [#45](https://github.com/aacruzgon/GreenLens/pull/45)). With `findings@5` the fake server replays them with a `text drift` line on each findings call until they are re-recorded.
 - On the tomato, Qwen3.5 reported no damage with `findings@1`, as in the day-1 check, and with `findings@2` reports three spots but calls them all `leaf_mines`, one of them on the soil shot. That is the misnaming task P5 lists, seen again on the worker's own prompt. FP8 finds aphids and shot holes both times. Too few cases to choose; the day-2 benchmark on the evaluation set decides (decision D1).
 - Qwen3.5 answers `high` on all eight soil aspects. The certainty cap keeps that at 0.85; calibration watches it ([evaluation 5](evaluation.md#5-calibration)).
 - The photos are training-set stand-ins, so the answers test the wiring and the prompts' shape, not accuracy.
+
+### P5's prompt changes on Qwen3.5 (2026-10-21, ✓ ran)
+
+Task P5's changes ran through the same recording test ([#45](https://github.com/aacruzgon/GreenLens/pull/45)). On Oct 21 the tomato case's soil slot changed: the earlier runs had a TOM2024 *maize* photo there, which Qwen3.5 rightly named as another plant. The seven photos are now, under `ml/training/data/raw/`:
+
+| Slot | Photo |
+|---|---|
+| Tomato plant | `tom2024/tomato_diseases/alternaria_d/1001579731_1660205986357.jpg` |
+| Tomato leaf | `plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Tomato Early blight leaf/039b47d574bc4bb8a14259a1cd96a741.jpg` |
+| Tomato soil | `tom2024/tomato_diseases/Bacterial_floundering_d/335659947_1668156145380_640x480.jpg`: a young tomato plant on dry, cloddy bare soil |
+| Corn plant | `tom2024/maize_diseases/Helminthosporiosis-D/100286842_1660551837195.jpg` |
+| Corn leaf | `plantdoc_cls/PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8/test/Corn leaf blight/02c.jpg` |
+| Squeeze and jar tests | `tom2024/onion_diseases/Fusarium-D/1906382600_1662021022340.jpg` (one stand-in for both) |
+
+`findings@4` with `system@2` and `indicators@2` (da5be61) passed every check on FP8 and failed three on Qwen3.5: no soil readings on the tomato, and three `leaf_mines` on each plant, the corn's in the prompt's own words ("long pale streaks along the leaf surface"). Each change then ran alone on `main`'s prompts, on Qwen3.5 with the same photos at temperature 0 (Sam, Oct 21):
+
+| Qwen3.5 run | Tomato soil readings | Tomato `leaf_mines` | Corn `leaf_mines` | Corn disease as `other` | `notes`, tomato / corn (characters) |
+|---|---|---|---|---|---|
+| `main` (`findings@2`) | 8 | 3 | 0 | 3 | 105 / 161 |
+| plus the species line | **0** | 3 | 0 | 3 | 126 / 161 |
+| plus the organisms line | 8 | 3 | 0 | 3 | 100 / 160 |
+| plus "in English" | 8 | 3 | 0 | 3 | 100 / 116 |
+| plus `findings@4`'s damage section | 8 | 3 | **3** | **0** | 127 / 162 |
+| plus the 120-character `notes` budget | 8 | 3 | 0 | 3 | 92 / 106 |
+| `findings@4`, all of them | 0 | 3 | 3 | 0 | 77 / 99 |
+
+- **The species line silences the soil.** It ended with "other_name is null otherwise", just before item 2. `findings@5` drops that clause; decode keeps `other_name` only with `other` anyway. The line without it hasn't run alone yet (branch `exp/p5-v6-species`).
+- **The damage section moves disease from `other` into `leaf_mines`** rather than leaving it out: Qwen3.5 copies its wording, including the sentences on what is not a mine. `findings@5` keeps `findings@2`'s damage section.
+- **The tomato's early-blight spots stay `leaf_mines` on Qwen3.5** with every wording tried, `main`'s included ("small dark spots and blotches on the leaf surface"), and disease still comes back as `other` damage. Wording doesn't fix it, so it moves from P5 to task P11, a structural fix ([dev-roadmap](dev-roadmap.md)).
+- The organisms line, "in English" and the `notes` budget change nothing on soil or damage; the budget keeps both notes under 120 characters.
+- `findings@5` (section 7) is `main`'s findings prompt plus the changes that held. It runs on both candidates when Sam re-records the worker's calls.
 
 ### llama.cpp (fallback)
 
@@ -326,7 +357,7 @@ Decoding reads about the whole quantized model per token, so the ceiling is memo
 - **Photos are data.** Text in a photo is part of the scene, never an instruction ([architecture 11](../architecture/README.md#11-security-privacy-and-safety)).
 - **Plain characters in free text.** xgrammar compiles a length-limited string to `[^"\\\r\n]{0,n}` ✓ (`json_schema_converter.cc` at v0.2.7), so a `reason` or `notes` can't contain quotes, backslashes or line breaks. The prompts say so, so the model doesn't fight the grammar.
 - **Text well under its cap.** Each free-text field asks for less than its `maxLength`: a reason under 40 characters against 60, a name of two or three words against 60, a few words against 100, two short sentences under 120 characters against 200. A string the grammar cuts mid-word can switch language (section 4), so the worker takes a string that reaches its cap back to its last full sentence or word ([backend worker 9](../backend/worker.md#9-the-per-call-schema-and-decoding)).
-- Each prompt has a name and a version (`findings@4`, …) recorded in `model_versions` (section 11). A prompt change is a new version and reruns the dev split ([evaluation 9](evaluation.md#9-harness-and-reports)).
+- Each prompt has a name and a version (`findings@5`, …) recorded in `model_versions` (section 11). A prompt change is a new version and reruns the dev split ([evaluation 9](evaluation.md#9-harness-and-reports)).
 
 ### System prompt (every call) — `system@2`
 
@@ -347,9 +378,11 @@ Rules:
 
 The last line depends on the adapter's `box_format` (section 9); the worker writes the variant for the model in use.
 
-### Findings call — `findings@4`
+### Findings call — `findings@5`
 
-`findings@4` (2026-10-21, task P5) follows Sam's re-record of `findings@3` on Oct 19 ([#45](https://github.com/aacruzgon/GreenLens/pull/45)), where Qwen3.5 called the corn's leaf-blight lesions `leaf_mines` (one finding ten times, "pale elongated tunnels") and filled `notes` to its cap. `leaf_mines` are narrow winding tunnels, like a scribble, or irregular see-through blotches; spots of any colour and long straight or elongated streaks along the leaf or its veins are disease lesions. Each damage pattern is listed once per area, never repeated, and `notes` stays under 120 characters. The worker also drops a repeated damage finding and takes a string that reaches its cap back to its last full sentence or word ([backend worker 9](../backend/worker.md#9-the-per-call-schema-and-decoding)).
+`findings@5` (2026-10-22, task P5) is `findings@2` with three of `findings@4`'s changes, each run alone on Qwen3.5 first (section 4): a listed species or organism is answered by its id even under another name, with a name of two or three words for `other`, and `notes` stays under 120 characters. Two changes are left out: the species line's closing "other_name is null otherwise", after the full line took Qwen3.5's soil readings from 8 to 0, and `findings@3` and `findings@4`'s damage section, which moved the corn's leaf-blight lesions from `other` into `leaf_mines`. The damage section is `findings@2`'s again.
+
+`findings@4` (2026-10-21, task P5) follows Sam's re-record of `findings@3` on Oct 19 ([#45](https://github.com/aacruzgon/GreenLens/pull/45)), where Qwen3.5 called the corn's leaf-blight lesions `leaf_mines` (one finding ten times, "pale elongated tunnels") and filled `notes` to its cap. `leaf_mines` are narrow winding tunnels, like a scribble, or irregular see-through blotches; spots of any colour and long straight or elongated streaks along the leaf or its veins are disease lesions. Each damage pattern is listed once per area, never repeated, and `notes` stays under 120 characters. The worker also drops a repeated damage finding and takes a string that reaches its cap back to its last full sentence or word ([backend worker 9](../backend/worker.md#9-the-per-call-schema-and-decoding)). Its damage section isn't in `findings@5`.
 
 `findings@3` (2026-10-17, task P5) answers a listed species or organism by its id even under another name, with `other_name` in two or three words and `null` otherwise; it limits damage to damage done by animals, leaves out disease signs (they are not `leaf_mines` or `other`), describes `leaf_mines` as eaten by a larva and says brown, black or yellow spots are not mines; and `other_description` is a few words, `null` for every pattern but `other`. Before it, a stand-in prompt got `other` for a listed apple and a fungal spot as `leaf_mines`, and `findings@2` got three early-blight spots as `leaf_mines` from Qwen3.5 (section 4).
 
@@ -366,7 +399,7 @@ img4: soil around the base of the plant
 The plant is believed to be {working_species.name}. Give your own opinion below; don't just repeat this.
 (or, without a working species: The plant's species is not known.)
 
-1. species_guess: the species you see. If it is one of the species in this list, answer its id, the word before the colon, even when you know it by another or a more specific name, such as a variety. Answer "other" only when it is none of them, with its common name in other_name in two or three words; other_name is null otherwise.
+1. species_guess: the species you see. If it is one of the species in this list, answer its id, the word before the colon, even when you know it by another or a more specific name, such as a variety. Answer "other" only when it is none of them, with its common name in other_name in two or three words.
 {species_options: "- tomato: Tomato" one per line}
 
 2. soil: for each aspect, the value you see in the image that shows the soil best, or null if no image shows it clearly. Soil glimpsed between leaves or blurred in the background doesn't count. Soil under mulch can't be judged for moisture, surface or structure. Write each aspect you can judge as an object, for example "moisture": {"value": "moist", "image": "img1", "certainty": "medium"}, and each one you can't as null, for example "erosion": null.
@@ -390,11 +423,11 @@ Many helpful insects look like pests. Check these before you choose a label:
 - A swollen, bronze or papery aphid is a mummy: a parasitic wasp has used it. Report it as other, with the name aphid mummy.
 Only choose a pest label when you can see the features of that pest.
 
-4. damage: patterns of damage done by animals (insects, mites, slugs, birds, mammals) on the leaves, stems, fruit or soil, up to 10, each with the image and a box when it is in one area (null when it is spread over the whole plant). List each pattern once for each area it covers, and never repeat a finding. Disease is not damage: leave out spots, rings, halos, lesions, yellowing, wilting, rot and mould caused by disease, whatever their colour or shape. They are not leaf_mines and not other.
+4. damage: patterns of damage on the leaves, stems, fruit or soil, up to 10, each with the image and a box when it is in one area (null when it is spread over the whole plant):
 - shot_holes: many small round holes, a few millimetres across
 - ragged_holes: large irregular holes, often with slime nearby
 - chewed_margins: leaf edges eaten away
-- leaf_mines: narrow winding tunnels, like a scribble, or irregular see-through blotches, eaten inside the leaf by a larva, often with a thin dark line of droppings inside. Spots of any colour are not mines. Neither is a long straight or elongated streak, stripe or band along the leaf or its veins, even a pale one that looks like a tunnel: that is a disease lesion.
+- leaf_mines: pale winding tunnels or blotches inside the leaf
 - sticky_residue: shiny sticky coating on leaves
 - sooty_mould: black powdery coating
 - webbing: fine silk between leaves or stems
@@ -408,7 +441,8 @@ Only choose a pest label when you can see the features of that pest.
 - tracks: footprints
 - droppings: droppings of animals larger than insects
 - pecked_fruit: fruit with beak holes
-- other: other damage by an animal, described in other_description in a few words. other_description is null for every other pattern.
+- other: anything else, described in other_description
+Spots, yellowing and mould caused by disease are not damage patterns here.
 
 5. notes: at most two short sentences about anything else important you see, under 120 characters in all, or an empty string.
 ```
@@ -559,7 +593,7 @@ The worker sends, on every call:
   | `vlm_server` | `vllm@v0.31.0`, `vllm-rocm@v0.31.0`, `llama.cpp@b11669`, `anthropic` |
   | `vlm_box_format` | `norm_1000` (VLM workers), `abs_px_prepared` (fallback) |
   | `vlm_max_pixels` | `1003520` |
-  | `vlm_prompts` | `system@2,findings@4,indicators@2,verify@2,guided@1` |
+  | `vlm_prompts` | `system@2,findings@5,indicators@2,verify@2,guided@1` |
   | `vlm_certainty` | `0.4/0.65/0.85`, the mapping in use ([evaluation 5](evaluation.md#5-calibration)) |
   | `worker_id` | `rig-5070ti-vlm-1` |
 
@@ -610,7 +644,7 @@ The benchmark ran on the 65 one-photo tomato and corn dev cases, since the team'
 - **Qwen3.5-9B AWQ is chosen** (Sam, D1). Valid output held on every candidate, and beneficial-as-pest couldn't be measured, so the choice falls to indicator accuracy, where only Qwen3.5 shows a gap between the true problem's questions and the others'.
 - **The evidence is thin.** Case by case, Qwen3.5 diagnosed 8 that FP8 missed and FP8 2 that Qwen3.5 missed; with 26 cases that is suggestive, not proven.
 - **Still to check on the team's full cases ([#52](https://github.com/aacruzgon/GreenLens/issues/52)):** beneficial-as-pest, organism recall (Qwen3.5 reported no organism on these leaves, which may be a miss) and soil. If Qwen3.5 fails the beneficial-as-pest rule there, the fallback is Qwen3-VL-8B, by configuration.
-- **The prompts:** P5's done condition holds on FP8 but not yet on Qwen3.5, which loses the tomato's soil readings and calls the corn's blight lesions `leaf_mines` ([#45](https://github.com/aacruzgon/GreenLens/pull/45)). The next prompt pass targets Qwen3.5. The numbers above are for `main`'s prompts (`findings@2`, `indicators@1`); after that pass, one bench run of the 65 cases on #45's prompts (about 8 minutes) re-checks the choice. Its result and the full cases' are recorded here.
+- **The prompts:** P5's changes ran one at a time on Qwen3.5 (section 4): `findings@5` keeps those that held, and the tomato's early-blight spots stay `leaf_mines` with every wording tried (task P11; [#45](https://github.com/aacruzgon/GreenLens/pull/45)). The numbers above are for `main`'s prompts (`findings@2`, `indicators@1`); after #45, one bench run of the 65 cases on its prompts (about 8 minutes) re-checks the choice. Its result and the full cases' are recorded here.
 - **`VLM_SLOTS` 2 and `VLM_MAX_PIXELS` 1,003,520** on the 5070 Ti (section 6; contracts open questions 1 and 9). Size made no difference to the diagnosis from 0.6 to 2.0 MP, and the larger default keeps small organisms visible.
 
 ---
