@@ -1,7 +1,6 @@
-# DRAFT, written by hand at the signing review of #51: a label_only species, so BioCLIP can name
+# Written by hand at the signing review of #51: a label_only species, so BioCLIP can name
 # this crop and the disease head's corn classes have a species (#85). Its problems and care come in
-# a follow-up. The label is ml/training/labels/standin_labels.yaml's. Not loaded until a teammate
-# signs reviewed_by.
+# a follow-up. The label is ml/training/labels/standin_labels.yaml's.
 id: corn
 scientific_name: Zea mays
 common_names:
@@ -11,4 +10,4 @@ profile: label_only
 classifier_supported: false
 bioclip_label: Zea mays with common name corn
 sources: []
-reviewed_by: ''
+reviewed_by: sam-michaels

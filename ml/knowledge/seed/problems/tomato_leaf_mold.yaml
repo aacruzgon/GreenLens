@@ -1,5 +1,3 @@
-# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
-# tomato_leaf_mold.review.md and signs reviewed_by and reviewed_at.
 id: tomato_leaf_mold
 name: Leaf mold
 kind: fungal
@@ -84,5 +82,5 @@ treatments:
 - space_plants_apart
 sources:
 - clemson_hgic_tomato_diseases
-reviewed_by: ''
-reviewed_at: ''
+reviewed_by: sam-michaels
+reviewed_at: 2026-10-21

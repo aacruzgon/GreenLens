@@ -1,5 +1,3 @@
-# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
-# tomato_late_blight.review.md and signs reviewed_by and reviewed_at.
 id: tomato_late_blight
 name: Late blight
 kind: fungal
@@ -88,5 +86,5 @@ treatments:
 sources:
 - clemson_hgic_tomato_diseases
 - ontario_tomato_bacterial_diseases
-reviewed_by: ''
-reviewed_at: ''
+reviewed_by: sam-michaels
+reviewed_at: 2026-10-21

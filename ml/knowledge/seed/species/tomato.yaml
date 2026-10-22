@@ -1,5 +1,3 @@
-# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
-# tomato.review.md and signs reviewed_by.
 id: tomato
 scientific_name: Solanum lycopersicum
 common_names:
@@ -35,4 +33,4 @@ bioclip_label: Solanum lycopersicum with common name tomato
 sources:
 - clemson_hgic_tomato_diseases
 - isu_growing_tomatoes_home_garden
-reviewed_by: ''
+reviewed_by: sam-michaels

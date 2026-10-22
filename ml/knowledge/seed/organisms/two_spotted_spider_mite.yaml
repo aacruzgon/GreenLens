@@ -1,5 +1,3 @@
-# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
-# two_spotted_spider_mite.review.md and signs reviewed_by.
 id: two_spotted_spider_mite
 name: Two-spotted spider mite
 scientific_name: Tetranychus urticae
@@ -14,4 +12,4 @@ sources:
 - clemson_hgic_tomato_insect_pests
 - edis_in307_twospotted_spider_mite
 - isu_two_spotted_spider_mite
-reviewed_by: ''
+reviewed_by: sam-michaels

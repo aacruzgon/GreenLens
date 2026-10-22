@@ -1,5 +1,3 @@
-# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
-# tomato_yellow_leaf_curl_virus.review.md and signs reviewed_by and reviewed_at.
 id: tomato_yellow_leaf_curl_virus
 name: Tomato yellow leaf curl virus
 kind: viral
@@ -76,5 +74,5 @@ treatments:
 sources:
 - clemson_hgic_tomato_diseases
 - edis_in286_sweetpotato_whitefly
-reviewed_by: ''
-reviewed_at: ''
+reviewed_by: sam-michaels
+reviewed_at: 2026-10-21

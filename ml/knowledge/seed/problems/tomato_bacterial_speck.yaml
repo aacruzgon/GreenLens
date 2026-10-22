@@ -1,5 +1,3 @@
-# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
-# tomato_bacterial_speck.review.md and signs reviewed_by and reviewed_at.
 id: tomato_bacterial_speck
 name: Bacterial speck
 kind: bacterial
@@ -100,5 +98,5 @@ treatments:
 - rotate_crops_3_years
 sources:
 - ontario_tomato_bacterial_diseases
-reviewed_by: ''
-reviewed_at: ''
+reviewed_by: sam-michaels
+reviewed_at: 2026-10-21
