@@ -104,25 +104,34 @@ function opening(opts: { noPlant?: boolean } = {}): Step[] {
 }
 
 function afterPlantCheck(): Step[] {
-  return [
-    ...stage("segmentation", 700, [
-      finding(250, (ctx) =>
-        makeObservation({
-          ...spec(ctx), confidence: 0.92, label: "Leaf", stage: "segmentation", pipelineStage: "segmentation",
-          source: "segmentation", detail: { region_class: "leaf" },
-          region: { image_id: images(ctx).leaf, bbox: [0.25, 0.3, 0.4, 0.35] },
-        })),
-    ]),
-    ...stage("species", 900, [
-      finding(300, (ctx) => {
-        const p = plantOf(ctx);
-        return makeObservation({
-          ...spec(ctx), confidence: 0.94, label: p.speciesName, stage: "plant_check", pipelineStage: "species",
-          source: "bioclip", ref: { table: "species", id: p.speciesId },
-        });
-      }),
-    ]),
-  ];
+  return [...segmentationStage(), ...speciesStage()];
+}
+
+function plantCheckStage(): Step[] {
+  return opening().slice(1);
+}
+
+function segmentationStage(): Step[] {
+  return stage("segmentation", 700, [
+    finding(250, (ctx) =>
+      makeObservation({
+        ...spec(ctx), confidence: 0.92, label: "Leaf", stage: "segmentation", pipelineStage: "segmentation",
+        source: "segmentation", detail: { region_class: "leaf" },
+        region: { image_id: images(ctx).leaf, bbox: [0.25, 0.3, 0.4, 0.35] },
+      })),
+  ]);
+}
+
+function speciesStage(): Step[] {
+  return stage("species", 900, [
+    finding(300, (ctx) => {
+      const p = plantOf(ctx);
+      return makeObservation({
+        ...spec(ctx), confidence: 0.94, label: p.speciesName, stage: "plant_check", pipelineStage: "species",
+        source: "bioclip", ref: { table: "species", id: p.speciesId },
+      });
+    }),
+  ]);
 }
 
 // ---- plans and diagnoses
@@ -473,15 +482,20 @@ function hasDepth(store: MockStore, scanId: string): boolean {
   return (store.scan(scanId)?.scan.images ?? []).some((i) => i.depth);
 }
 
+/** Plays `steps` into the store. A later `play` on the same scan (a species change mid-run) stops this one. */
 async function play(store: MockStore, scanId: string, steps: Step[], onDone: () => void): Promise<void> {
   const gen = store.generation;
+  const st = store.scan(scanId);
+  if (!st) return;
+  const token = (st.playing = (st.playing ?? 0) + 1);
+  const current = () => store.generation === gen && st.playing === token && store.scan(scanId) === st;
   for (const step of steps) {
     if (step.needsDepth && !hasDepth(store, scanId)) continue;
     await store.sleep(step.delay * scenario.get().delayScale);
-    if (store.generation !== gen || !store.scan(scanId)) return;
+    if (!current()) return;
     store.emit(scanId, step.body(store.runCtx(scanId)));
   }
-  if (store.generation !== gen) return;
+  if (!current()) return;
   onDone();
 }
 
@@ -494,6 +508,7 @@ export function startRun(store: MockStore, scanId: string, script: Script): void
   const from = st.scan.status === "failed" ? "failed" : "pending";
   delete st.scan.failure;
   st.running = true;
+  st.workingSpeciesId = store.plants.get(st.scan.plant_id)?.species?.id ?? null;
   store.scripts.set(scanId, script);
   const stages = hasDepth(store, scanId) ? ALL_STAGES : ALL_STAGES.filter((x) => x !== "measurement");
   store.emit(scanId, { type: "run_started", reason: "submit", rerun_stages: stages });
@@ -520,30 +535,55 @@ export function answerRun(store: MockStore, scanId: string, answer: S["Answer"])
 
 // ---- a species change (flows 7)
 
-/** The stages a species change runs again (contracts 3, species: species identification on). */
-const SPECIES_RERUN: S["Stage"][] = ["species", "disease", "image_embedding", "vlm_findings", "vlm_indicators", "scoring", "plan"];
+/**
+ * The stages a species change runs (domain rules/stages.rs, `run_stages`): when the run being replaced finished
+ * plant check and segmentation, it keeps them, the image embeddings and its measurements, and runs species
+ * identification on; otherwise every perception stage again. A typed name ("something else") skips species
+ * identification.
+ */
+export function speciesRerunStages(store: MockStore, scanId: string, custom: boolean): S["Stage"][] {
+  const st = store.scan(scanId);
+  const done = new Set(
+    (st?.events ?? []).flatMap((e) => (e.run === st?.scan.run && e.type === "stage_completed" ? [e.stage] : [])),
+  );
+  const depth = hasDepth(store, scanId);
+  const keepBase = done.has("plant_check") && done.has("segmentation");
+  const measure = depth && (!keepBase || !done.has("measurement"));
+  return ALL_STAGES.filter((stage) => {
+    if (stage === "plant_check" || stage === "segmentation" || stage === "image_embedding") return !keepBase;
+    if (stage === "species") return !custom;
+    if (stage === "measurement") return measure;
+    return stage !== "guided" && stage !== "verify";
+  });
+}
 
 /**
- * Reruns a scan that already ran, after its plant's species changed: `run_started` with `species_changed`, the
- * open question superseded, the stages from species identification on, and the plan superseded. The mock's
- * rerun reads the new species as healthy, whatever it is.
+ * Reruns a scan past `queued` after its plant's species changed, mid-run too, as the server does (pipeline
+ * runs.rs, `species_confirmed`): the running script stops, `run_started` with `species_changed`, the open
+ * question superseded, the stages `speciesRerunStages` lists, and the plan superseded. The mock's rerun reads
+ * the new species as healthy, whatever it is.
  */
-export function speciesRerun(store: MockStore, scanId: string): void {
+export function speciesRerun(store: MockStore, scanId: string, speciesId: string | null): void {
   const st = store.scan(scanId);
   if (!st) return;
+  const stages = speciesRerunStages(store, scanId, speciesId === null);
+  const has = (x: S["Stage"]) => stages.includes(x);
   const oldPlanId = st.plan?.id;
   const from = st.scan.status;
   st.scan.run += 1;
   st.running = true;
-  store.emit(scanId, { type: "run_started", reason: "species_changed", rerun_stages: SPECIES_RERUN });
-  st.observations = st.observations.filter((o) => !SPECIES_RERUN.includes(o.pipeline_stage));
+  st.workingSpeciesId = speciesId;
+  store.emit(scanId, { type: "run_started", reason: "species_changed", rerun_stages: stages });
+  st.observations = st.observations.filter((o) => !stages.includes(o.pipeline_stage));
   const open = st.scan.open_question;
   if (open) store.emit(scanId, { type: "question_resolved", question_id: open.id, by: "superseded" });
-  store.emit(scanId, { type: "status_changed", from, to: "analysing" });
+  if (from !== "analysing") store.emit(scanId, { type: "status_changed", from, to: "analysing" });
 
   const shared: { diagId?: string } = {};
   const steps: Step[] = [
-    ...afterPlantCheck().slice(-3),
+    ...(has("plant_check") ? plantCheckStage() : []),
+    ...(has("segmentation") ? segmentationStage() : []),
+    ...(has("species") ? speciesStage() : []),
     ...stage("disease", 900, [
       finding(250, (ctx) =>
         makeObservation({
@@ -551,7 +591,13 @@ export function speciesRerun(store: MockStore, scanId: string): void {
           source: "classifier", region: { image_id: images(ctx).whole, bbox: [0.1, 0.05, 0.8, 0.9] },
         })),
     ]),
-    ...stage("image_embedding", 300),
+    ...(has("image_embedding") ? stage("image_embedding", 300) : []),
+    ...(has("measurement")
+      ? depthStage("measurement", 800, [
+          finding(250, (ctx) => measureObs({ ...spec(ctx), quantity: "plant_height_cm", value: lastValue(ctx, "plant_height_cm", 30), n: 3, confidence: 0.86, imageId: images(ctx).whole })),
+        ])
+      : []),
+    ...stage("context", 500, [weatherStep(0, 0, 8, 0)]),
     ...stage("vlm_findings", 900),
     ...stage("vlm_indicators", 200, [], "nothing_to_check"),
     ...stage("scoring", 400),

@@ -269,7 +269,9 @@ export class MockStore {
     } as S["ScanEvent"];
     st.scan.last_event_seq = event.seq;
     st.events.push(event);
-    this.reduce(st, event);
+    // The stored record gets its own copy: a later change to it (a question going to `answering`) must not
+    // rewrite the event the stream replays, as on the server.
+    this.reduce(st, JSON.parse(JSON.stringify(event)) as S["ScanEvent"]);
     this.notify(scanId);
     return event;
   }

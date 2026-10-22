@@ -320,19 +320,20 @@ route("PATCH", "/plants/:id", async (c) => {
   return jsonResponse(200, c.store.plantView(p));
 }, true);
 
-// Flows 7: the plant's species, and the rerun of its latest scan when the species changed. Only a scan created
-// in the last 24 hours that isn't failed follows; a pending or queued one runs with the new species, no rerun.
+// Flows 7: the plant's species, and its latest scan following it (domain rules/scan_state.rs, `species_follow`):
+// only a scan created in the last 24 hours that isn't failed follows. A pending or queued one runs with the new
+// species, no rerun; one past `queued`, mid-run too, reruns when the species differs from its run's working one.
 route("POST", "/plants/:id/species", async (c) => {
   const p = c.store.plants.get(c.params.id);
   if (!p) return notFound();
   const body = await jsonObject(c);
-  const speciesId = str(body, "species_id");
-  const custom = str(body, "custom_name")?.trim();
+  const speciesId = str(body, "species_id", false);
+  const custom = str(body, "custom_name", false)?.trim();
   if (!speciesId === !custom) return invalid("species_id", "species_id or custom_name, not both");
   if (custom && custom.length > 80) return invalid("custom_name", "at most 80 characters");
   const known = speciesId ? c.store.species.find((s) => s.id === speciesId) : undefined;
   if (speciesId && !known) return invalid("species_id", "unknown species");
-  const changed = speciesId ? p.species?.id !== speciesId : p.custom_species_name !== custom;
+  const before = p.species?.id ?? null;
   if (known) {
     p.species = { id: known.id, common_name: known.common_name, scientific_name: known.scientific_name };
     delete p.custom_species_name;
@@ -342,14 +343,16 @@ route("POST", "/plants/:id/species", async (c) => {
   }
   p.species_status = "confirmed";
   p.species_candidates = [];
-
   const latest = c.store.scansOf(p.id).at(-1);
   const recent = latest && Date.now() - Date.parse(latest.scan.created_at) < 24 * 3_600_000 && latest.scan.status !== "failed";
   if (latest && recent) {
     const early = latest.scan.status === "pending" || latest.scan.status === "queued";
-    const rerun = changed && !early && !latest.running;
-    c.store.emit(latest.scan.id, { type: "species_confirmed", species_id: known?.id ?? null, ...(custom ? { custom_name: custom } : {}), rerun });
-    if (rerun) speciesRerun(c.store, latest.scan.id);
+    const working = latest.workingSpeciesId === undefined ? before : latest.workingSpeciesId;
+    const rerun = !early && (known?.id ?? null) !== working;
+    if (latest.scan.run > 0) {
+      c.store.emit(latest.scan.id, { type: "species_confirmed", species_id: known?.id ?? null, ...(custom ? { custom_name: custom } : {}), rerun });
+    }
+    if (rerun) speciesRerun(c.store, latest.scan.id, known?.id ?? null);
   }
   return jsonResponse(200, c.store.plantView(p));
 }, true);
@@ -732,18 +735,15 @@ export function eventStream(store: MockStore, scanId: string, lastId: number): R
   });
 }
 
-/** A Response whose `body` is the stream, also where the runtime's Response can't take one. */
+/**
+ * A Response whose `body` is the stream itself. The stream never goes through the runtime's Response: under Jest,
+ * Node's fetch doesn't take this realm's ReadableStream as one and wraps it as an async iterable in a byte stream,
+ * which throws "ReadableStream is already closed" from a microtask, into whatever test runs next, when the reader
+ * cancels it mid-read.
+ */
 function streamResponse(stream: ReadableStream<Uint8Array>): Response {
-  const init = { status: 200, headers: { "content-type": "text/event-stream", "cache-control": "no-cache" } };
-  let res: Response;
-  try {
-    res = new Response(stream as unknown as BodyInit, init);
-  } catch {
-    res = new Response(null, init);
-  }
-  if ((res.body as unknown) !== stream && typeof (res.body as { getReader?: unknown } | null)?.getReader !== "function") {
-    Object.defineProperty(res, "body", { value: stream, configurable: true });
-  }
+  const res = new Response(null, { status: 200, headers: { "content-type": "text/event-stream", "cache-control": "no-cache" } });
+  Object.defineProperty(res, "body", { value: stream, configurable: true });
   return res;
 }
 
