@@ -165,7 +165,8 @@ describe("guided mode", () => {
     await fireEvent.press(shutter());
     await fireEvent.press(await screen.findByTestId("send"));
     await waitFor(() => expect(mockRouter.dismissTo).toHaveBeenCalled());
-    expect(mockStore.scan(scanId)!.scan.guided_checks).toEqual([expect.objectContaining({ kind: "squeeze_test", status: "analysing" })]);
+    // A new check, which the mock's guided job (no delays here) may already have finished.
+    expect(mockStore.scan(scanId)!.scan.guided_checks).toEqual([expect.objectContaining({ kind: "squeeze_test", status: expect.stringMatching(/^(analysing|done)$/) })]);
     // The squeeze test adds no task.
     expect(mockStore.tasks.filter((t) => t.scan_id === scanId)).toHaveLength(0);
   });
