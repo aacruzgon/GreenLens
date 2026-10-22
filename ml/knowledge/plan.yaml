@@ -3,7 +3,7 @@
 # record per entry that has no file in seed/ yet. Slugs follow #4 (decided 2026-10-17).
 #
 # The tomato slice: the seven problems disease head v3c predicts for tomato (its eighth tomato
-# class is healthy; #85), the bacterial speck its sources pair with bacterial spot, blossom-end
+# class is healthy; #120), the bacterial speck its sources pair with bacterial spot, blossom-end
 # rot, the pests the sources cover, and the natural enemies the sources say attack them.
 
 # Sources with no reuse grant (sources.yaml): their facts go into the drafts, rewritten and
@@ -38,7 +38,7 @@ problems:
   - { id: tomato_bacterial_spot, name: Bacterial spot, affects: [tomato] }
   - { id: tomato_bacterial_speck, name: Bacterial speck, affects: [tomato] }
   - { id: tomato_yellow_leaf_curl_virus, name: Tomato yellow leaf curl virus, affects: [tomato] }
-  # tomato_mosaic_virus: no source covers it on its own yet (#46), so heads v2c and v3c drop the class (#85).
+  # tomato_mosaic_virus: no source covers it on its own yet (#46), so heads v2c (#85) and v3c (#120) drop the class.
   - { id: tomato_spider_mites, name: Spider mites, affects: [tomato], caused_by: [two_spotted_spider_mite] }
   - { id: tomato_hornworms, name: Hornworms, affects: [tomato], caused_by: [hornworm] }
   - { id: tomato_whiteflies, name: Whiteflies, affects: [tomato], caused_by: [whitefly] }
