@@ -117,7 +117,7 @@ pub fn findings(
         }
         None => s.push_str("The plant's species is not known.\n\n"),
     }
-    s.push_str("1. species_guess: the species you see, from this list, or \"other\" with its common name in other_name.\n");
+    s.push_str("1. species_guess: the species you see. If it is one of the species in this list, answer its id, the word before the colon, even when you know it by another or a more specific name, such as a variety. Answer \"other\" only when it is none of them, with its common name in other_name in two or three words.\n");
     for o in species {
         let _ = writeln!(s, "- {}: {}", o.id, o.name);
     }
