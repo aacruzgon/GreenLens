@@ -23,12 +23,13 @@ export const plants = {
     ok(await client().POST("/plants/{id}/species", { params: { path: { id } }, body })),
 };
 
-/** Every plant of a garden, all pages loaded: for pickers, which must show everything (screens 4). */
+/** Every plant of a garden, all pages loaded: for pickers, which must show everything (screens 4). An empty ID waits. */
 export function useAllPlants(gardenId: string) {
   return useQuery({
     queryKey: [...qk.plants(gardenId), "all"] as const,
     queryFn: () => plants.listAll(gardenId),
     staleTime: STALE.signedUrls,
+    enabled: gardenId !== "",
   });
 }
 

@@ -31,3 +31,8 @@ export { Hotspot, type HotspotProps } from "./composites/Hotspot";
 export { PhaseLine, type PhaseLineProps } from "./composites/PhaseLine";
 export { CandidateCompare, type CandidateCompareProps, type CandidatePlate } from "./composites/CandidateCompare";
 export { PictureAnswer, type PictureAnswerProps } from "./composites/PictureAnswer";
+export { LineIcon, type LineIconName, type LineIconProps } from "./composites/LineIcon";
+export { CitationList, CiteNumber, type CitationListProps } from "./composites/CitationList";
+export { PhotoTint, type PhotoTintProps } from "./composites/PhotoTint";
+export { BarButton, BAR_INK, type BarButtonProps } from "./composites/BarButton";
+export { photoTint, dominantHue, contrast, type PhotoTint as PhotoTintColors } from "./tint";
