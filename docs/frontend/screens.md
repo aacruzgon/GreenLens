@@ -1,6 +1,6 @@
 # PDM Frontend Screens
 
-> **Status:** Draft v0.4.7, 2026-10-21. v0.4.7: capture's question and guided modes in full: the photo before Send, the jar test's task and its row opening the camera (3.2). v0.4.6: a password reset by email code, from sign-in and from a sign-up whose email is taken (1, 3.10). v0.4.5: capture's mode bar is Liquid Glass, solid with Reduce Transparency. v0.4.4: capture's pill asks for a missing needed shot before the optional ones, and a failed removal keeps the shot with **Try again**. v0.4.3: capture as built in F2, after the Camera app: the mode bar and the coverage dial replace the shot strip, the instruction drops from the top, and a full mode's shutter retakes its shot. v0.4.2: sign-up takes a phone number, and sign-in asks for a code by text. v0.4.1: no authenticator-app second factor.
+> **Status:** Draft v0.4.8, 2026-10-22. v0.4.8: the live analysis as built in F3: the stage card and its run log, hotspots, the species chip, "Not sure yet", picture answers by `Question.indicator_id`, the ring and the pill, and the result route (3.3). v0.4.7: capture's question and guided modes in full: the photo before Send, the jar test's task and its row opening the camera (3.2). v0.4.6: a password reset by email code, from sign-in and from a sign-up whose email is taken (1, 3.10). v0.4.5: capture's mode bar is Liquid Glass, solid with Reduce Transparency. v0.4.4: capture's pill asks for a missing needed shot before the optional ones, and a failed removal keeps the shot with **Try again**. v0.4.3: capture as built in F2, after the Camera app: the mode bar and the coverage dial replace the shot strip, the instruction drops from the top, and a full mode's shutter retakes its shot. v0.4.2: sign-up takes a phone number, and sign-in asks for a code by text. v0.4.1: no authenticator-app second factor.
 > v0.4 applies the third audit: Google and Apple sign-in are hidden only in embedded web views, and the note delete rule names who deletes which note.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **New-plant sheet:** added, with `POST /plants`.
@@ -81,6 +81,7 @@ Wireframes show layout and content, not visual design. They are drawn at phone w
    │  ▼                                                   │                │
    │ scans/[scanId] ──── "Ask about this result" ─────────┼────────────────┘
    │   │   │   │                                          │
+   │   │   │   ├─▶ scans/[scanId]/result (the diagnosis and plan, F4)
    │   │   │   └─▶ scans/[scanId]/feedback (sheet, reviewer and up)
    │   │   └─▶ capture/[scanId]/guided/[kind] ◀───────────┘ jar-test task (task.scan_id)
    │   └─▶ capture/[scanId]/question/[questionId]
@@ -258,6 +259,16 @@ Capture is always dark and follows the Camera app ([design 3.1](../design/design
 - **Invasive organisms** show "How to report" with the `reporting_url`. The app never reports anything itself.
 - **`failed`** replaces the results with the failure message and **Retry** or **New scan**, for editors and owners.
 - **Viewers** see everything except the answer buttons, the species buttons, Retry and New scan. Reviewers also get **Feedback**, which appears once the scan is submitted.
+
+**The live analysis, as built in F3** ([design 3.1](../design/design.md#31-conservatory)). Until the plan is ready, `scans/[scanId]` is the camera's layout, always dark, rather than the list above:
+
+- **The photo just taken** fills the screen, held still. The scan's photos sit in a solid dark strip at the bottom; it follows the photo with the newest finding, and a tap on a thumbnail shows that photo instead.
+- **The stage card** drops from the top: the running step with its seconds and the next ("Checking telltale signs · 6 s · Next: weighing the evidence"). The 15 pipeline stages read as nine steps, the mockup's: finding the plant, identifying the species, looking for disease, measuring spots (only with depth), checking weather and soil, gathering likely problems, checking telltale signs, weighing the evidence, writing your plan. A tap opens the run log under it, with a tick, a note and the time per step; each new tick has a haptic.
+- **Hotspots** mark findings on the photo: an oval inside the region's box with a white dot, and a chip below it. A disease finding reads as its symptom ("Leaf spots", "Affected area") with the measured spot size, never the problem's name; an organism keeps its name. Several findings in one box share one hotspot. The mask isn't drawn yet: the oval is the box's centre at 70% of its size.
+- **"Tomato · Change"** is a chip on the photo while the run has a species suggestion or the plant's species is `suggested`, hidden while the question shows. **Change** opens `plants/[plantId]/species`.
+- **"Not sure yet: A or B"** drops under the stage card with both candidates as two equal plates while an indicator question is open. **The question** sits low and compact above the controls; for an indicator with art (`Question.indicator_id`, so far `concentric_rings`), Yes and No are picture answers, otherwise text pills, with **Not sure** under them. After an answer the card goes and "You answered …" shows under the stage card.
+- **The controls:** back at the left, the glowing ring in the middle while the run goes on, and **Check your soil** (squeeze or jar test, editors and owners, not on a failed scan) at the right. When the plan is ready, the ring gives way to **See the diagnosis and plan**, which opens `scans/[scanId]/result` (F4 builds it).
+- **Endings:** a failure card with **Retry** or **New scan**; a `low_evidence` card with **Take a closer photo**; after **Not sure**, "Not sure yet: A or B" and the provisional-plan note stay above the pill. A jar test whose photo gave a texture marks its task done.
 
 ### 3.4 Plan
 
