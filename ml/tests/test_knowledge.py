@@ -260,9 +260,10 @@ def test_the_cache_embeds_each_text_once(tmp_path):
     assert again.embed_documents(["y"]) == [a[1]] and len(calls) == 1
 
 
-# The golden test of models.md §10: 5 fixed strings, the first 8 values within 1e-4 and a norm of
-# 1 within 1e-5, from the pinned files. The Rust embedder checks the same values.
-GOLDEN = json.loads((Path(__file__).parent / "fixtures/text_embedder_golden.json").read_text())
+# The golden test of models.md §10: 20 fixed strings (python -m ml.tests.make_text_golden), the
+# first 8 values within 1e-4 and a norm of 1 within 1e-5, from the pinned files. The Rust embedder
+# checks the same values.
+GOLDEN = json.loads((Path(__file__).parent / "fixtures/text_embedder_golden.json").read_text(encoding="utf-8"))
 
 
 @pytest.mark.skipif(not embed.default_manifest().is_file(),
@@ -271,6 +272,7 @@ def test_the_embedder_matches_the_golden_values():
     e = embed.Embedder()
     assert e.name == "snowflake-arctic-embed-xs@d8c86521"
     texts = [g["input"] for g in GOLDEN["cases"]]
+    assert len(texts) == 20
     batch = e.embed_documents(texts)
     for g, v in zip(GOLDEN["cases"], batch):
         assert abs(np.linalg.norm(v) - 1) < 1e-5
