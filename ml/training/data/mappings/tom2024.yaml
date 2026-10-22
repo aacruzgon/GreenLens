@@ -14,7 +14,7 @@ dataset: tom2024
 source: tom2024
 root: .
 splits: { train: . }
-reviewed_by: null
+reviewed_by: sara-lahourpour  # slugs as confirmed on issue #4 (2026-10-22)
 
 sessions:
   pattern: '^\d+_(\d{13})'
