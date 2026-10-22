@@ -140,6 +140,14 @@ fn soil<V: Serialize>(
     Ok(())
 }
 
+/// Whether an `other_name` names a listed option by its id or its name. Case, surrounding spaces
+/// and `_` for a space don't matter.
+fn names(other_name: &str, id: &str, name: &str) -> bool {
+    let norm = |s: &str| s.trim().replace('_', " ").to_lowercase();
+    let other_name = norm(other_name);
+    other_name == norm(id) || other_name == norm(name)
+}
+
 fn known<'o, T, I: PartialEq + 'o>(
     value: &str,
     options: impl IntoIterator<Item = (&'o I, T)>,
@@ -229,7 +237,13 @@ fn organism_findings(
     let mut organism_findings = Vec::new();
     for o in raw.into_iter().take(limits.max_items) {
         let organism_id: Option<OrganismId> = if o.label == OTHER {
-            None
+            // `other` naming a listed organism is that organism, as for species.
+            o.other_name.as_deref().and_then(|n| {
+                options
+                    .iter()
+                    .find(|x| names(n, x.id.as_str(), &x.name))
+                    .map(|x| x.id.clone())
+            })
         } else {
             Some(
                 known(
@@ -318,7 +332,14 @@ pub fn findings(
 ) -> Result<VlmFindings, Invalid> {
     let raw: VlmFindingsRaw = serde_json::from_str(text)?;
     let species_id: Option<SpeciesId> = if raw.species_guess.species == OTHER {
-        None
+        // `other` naming a listed species is that species: the day-1 check got `other` with
+        // `other_name: "apple"` while `apple` was listed (vision vlm.md 4).
+        raw.species_guess.other_name.as_deref().and_then(|n| {
+            species
+                .iter()
+                .find(|x| names(n, x.id.as_str(), &x.name))
+                .map(|x| x.id.clone())
+        })
     } else {
         Some(
             known(
@@ -598,6 +619,57 @@ mod tests {
         // A sentence that ends at the cap is kept whole; one word longer than the cap is cut.
         assert_eq!(truncate("Soil is dry.", 12), "Soil is dry.");
         assert_eq!(truncate("Growing西红柿", 9), "Growing西红");
+    }
+
+    #[test]
+    fn other_naming_a_listed_option_takes_its_id() {
+        let a = prepared(IMG1, 100, 100);
+        let b = prepared(IMG2, 100, 100);
+        let images = CallImages::new(vec![&a, &b]);
+        let species = [SpeciesOption {
+            id: "bell_pepper".parse().unwrap(),
+            name: "Bell pepper".to_owned(),
+        }];
+        let organisms = [OrganismOption {
+            id: "aphid".parse().unwrap(),
+            name: "Aphid".to_owned(),
+        }];
+        let decode = |species_other_name: &str, organism_other_name: &str| {
+            let json = findings_json("[0,0,10,10]")
+                .replace(
+                    r#""species":"tomato","other_name":null"#,
+                    &format!(r#""species":"other","other_name":"{species_other_name}""#),
+                )
+                .replace(&"x".repeat(80), organism_other_name);
+            findings(
+                &json,
+                &images,
+                &species,
+                &organisms,
+                BoxFormat::Norm1000,
+                &CertaintyMap::default(),
+                Limits::CONTRACT,
+            )
+            .unwrap()
+        };
+        // By name or by id, whatever the case and with a space for `_`.
+        for (species_name, organism_name) in [("Bell Pepper", " aphid "), ("bell pepper", "APHID")]
+        {
+            let f = decode(species_name, organism_name);
+            assert_eq!(f.species_guess.species_id.unwrap().as_str(), "bell_pepper");
+            assert_eq!(f.species_guess.other_name, None);
+            assert_eq!(
+                f.organisms[0].organism_id.as_ref().unwrap().as_str(),
+                "aphid"
+            );
+            assert_eq!(f.organisms[0].other_name, None);
+        }
+        // Anything else stays `other` with its name.
+        let f = decode("chilli pepper", "aphid mummy");
+        assert_eq!(f.species_guess.species_id, None);
+        assert_eq!(f.species_guess.other_name.as_deref(), Some("chilli pepper"));
+        assert_eq!(f.organisms[0].organism_id, None);
+        assert_eq!(f.organisms[0].other_name.as_deref(), Some("aphid mummy"));
     }
 
     #[test]
