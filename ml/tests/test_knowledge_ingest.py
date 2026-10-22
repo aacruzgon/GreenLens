@@ -115,9 +115,11 @@ def test_chunk_reads_the_main_content_and_never_crosses_a_heading():
         assert gone not in text
 
 
-def test_chunk_drops_an_authors_line():
-    page = ("<article><h2>Septoria</h2><p>Small round spots on the lower leaves.</p>"
-            "<p>Authors: Jane Doe, Extension Plant Pathologist. Published 2024.</p></article>")
+def test_chunk_drops_isus_byline():
+    # ISU's byline block, as on its Septoria page: the label, the name and the date are separate divs.
+    page = ('<article><h2>Septoria</h2><p>Small round spots on the lower leaves.</p>'
+            '<div class="hhpn-authors-reviewed"><div>Authors:</div><div><a href="/p">Lina M Rodriguez Salamanca</a>'
+            '</div><div>Last reviewed:</div><div>April 2022</div></div></article>')
     assert [r["text"] for r in chunk.chunks("s", chunk.blocks(page))] == ["Small round spots on the lower leaves."]
 
 

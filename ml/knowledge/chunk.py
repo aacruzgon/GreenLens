@@ -42,7 +42,7 @@ SKIP_TAGS = {"script", "style", "noscript", "template", "svg", "nav", "header", 
 # of a hyphenated name ("post-meta"), or a BEM element of it ("toc__wrapper"), never a prefix
 # ("toc-end" is Ontario's main content).
 SKIP_CLASS = re.compile(r"^(?:[a-z0-9]+[-_])*(share|social|breadcrumbs?|related|meta|sidebar|"
-                        r"toc|menu|comments?|feedback|newsletter|byline|skip|visually-hidden|"
+                        r"toc|menu|comments?|feedback|newsletter|byline|authors-reviewed|skip|visually-hidden|"
                         r"sr-only|caption|photo-credit)(?:__[a-z0-9_-]+)?$", re.I)
 HEADINGS = {f"h{n}": n for n in range(1, 7)}
 BLOCKS = {"p", "li", "dd", "dt", "blockquote", "div", "section", "article", "main", "ul",
@@ -57,7 +57,7 @@ STOP_HEADING = re.compile(r"^(references|literature cited|selected references|so
 # Legal and editorial lines that aren't about the plant, and a block that is only a link.
 DROP_PARAGRAPH = re.compile(r"^(links to this article are strongly encouraged|last reviewed|"
                             r"this article was originally published|this information is "
-                            r"supplied with the understanding|was this helpful|author\(s\)|authors?:|"
+                            r"supplied with the understanding|was this helpful|author\(s\)|"
                             r"revisions by|originally published)", re.I)
 
 
