@@ -13,9 +13,11 @@
 - Class weights by inverse frequency, capped at 10 times the median weight.
 - Restricted softmax: at serving time the worker keeps only the working species' classes, so
   every accuracy and the temperature are computed on that restricted softmax.
-- The headline numbers leave out --not-supported species (bean, until issue #4 decides), and
-  every number is also reported per dataset, so the field sets' own test splits show apart
-  from PlantDoc's.
+- --supported trains only the head's crops; D3 (issue #4) settled them as tomato, apple, grape,
+  pepper and corn, as v3c was trained. Without it every species is trained, bean included.
+- The headline numbers leave out --not-supported species (bean by default, a label_only species
+  since D3), and every number is also reported per dataset, so the field sets' own test splits
+  show apart from PlantDoc's.
 - --views N adds N augmented views per training image (random resized crop 0.7–1.0, flip,
   colour jitter 0.2, mild blur); with --features crops, N views of each crop, embedded first by
   `ml.training.heads.crops --splits train --views N`. Each view of a photo weighs 1 in total.
@@ -176,7 +178,8 @@ def main(argv=None) -> None:
                     help="image: one embedding per photo (v0-v1d); crops: one per leaf our detector keeps "
                          "(ml.training.heads.crops), or the whole photo when it keeps none, as the worker does")
     ap.add_argument("--supported", nargs="*",
-                    help="train only these species' classes (classifier_supported, issue #4); the others go to the VLM")
+                    help="train only these species' classes (classifier_supported; D3 on issue #4: tomato apple "
+                         "grape pepper corn); the others go to the VLM")
     ap.add_argument("--min-train", type=int, default=30, help="training photos a class needs")
     ap.add_argument("--views", type=int, default=0)
     ap.add_argument("--drop-classes", nargs="*", default=[], metavar="SPECIES/PROBLEM",
