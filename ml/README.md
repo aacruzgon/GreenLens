@@ -54,6 +54,6 @@ SAM2_BUILD_CUDA=0 uv pip sync ml/requirements.lock --index-strategy unsafe-best-
 | Phone-condition variants of the evaluation cases | `python -m ml.training.eval.variants [--transforms tilt,dim,...]` | `training/eval/manifest.variants.jsonl` and `training/eval/photos/variants/` ([evaluation 3](../docs/vision/evaluation.md#variants)) |
 | Fetch the COCO val2017 negatives (evaluation only) | `python -m ml.training.data.negatives` | `training/data/splits/negatives_coco.tsv` |
 | Reference outputs for the Rust heads | `python -m ml.tests.make_fixtures` | `tests/fixtures/perception_reference.json` |
-| Tests | `python -m pytest ml/tests` | the file formats, the `label_set_version` vector and original-photo names |
+| Tests | `python -m pytest ml/tests` | the file formats, the `label_set_version` vector and original-photo names. CI's `ml` job runs them, and `python -m ml.models.check`, without torch ([infra 2](../docs/infra/README.md#2-ci)), so a module imports torch inside the functions that use it |
 
 Dataset sources, licences and hashes are in [`training/data/sources.yaml`](training/data/sources.yaml); class-to-slug mappings in [`training/data/mappings/`](training/data/mappings/). The slugs there are **proposed** until the knowledge base's seed files exist.

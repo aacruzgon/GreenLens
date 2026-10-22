@@ -17,8 +17,6 @@ import json
 from pathlib import Path
 
 import numpy as np
-import open_clip
-import torch
 import yaml
 
 from ml.pdm_vision import headfile
@@ -60,6 +58,10 @@ def from_seed() -> list[dict]:
 
 
 def embed(labels: list[dict], device: str = "cuda") -> np.ndarray:
+    # Imported here, so label_set_version and templates import without torch (CI's ml job).
+    import open_clip
+    import torch
+
     model, _, _ = open_clip.create_model_and_transforms(f"local-dir:{WEIGHTS}")
     tokenizer = open_clip.get_tokenizer(f"local-dir:{WEIGHTS}")
     model = model.eval().to(device)
