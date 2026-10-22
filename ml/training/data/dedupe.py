@@ -47,7 +47,6 @@ import random
 from pathlib import Path
 
 import numpy as np
-import torch
 
 from ml.pdm_vision.features import Embedder
 from ml.training.data import index
@@ -59,6 +58,8 @@ SPLITS = HERE / "splits"
 def duplicate_pairs(emb: np.ndarray, threshold: float, chunk: int = 4096) -> list[tuple[int, int, float]]:
     """Every pair at cosine ≥ threshold, in float32 (half precision rounds by about 0.0005
     near 0.98 and can exceed 1, review of PR #6 item 6)."""
+    import torch   # here, so the rest of the module imports without it (CI's ml job)
+
     e = torch.from_numpy(emb).cuda().float()
     pairs = []
     for s in range(0, len(e), chunk):
