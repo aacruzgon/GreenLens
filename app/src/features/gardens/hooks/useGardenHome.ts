@@ -5,7 +5,7 @@ import { can } from "@/domain/permissions";
 import type { Task } from "@/domain/types";
 import { taskMeta, useCompleteTask } from "@/features/tasks";
 
-import { gardenNotes, localToday, openAlerts, pickHeroPhoto, placeName, plantCardNote, scanTargetOf, sortPlantsByHealth, todayTasks } from "../model/home";
+import { gardenNotes, jarScanOf, localToday, openAlerts, pickHeroPhoto, placeName, plantCardNote, scanTargetOf, sortPlantsByHealth, todayTasks } from "../model/home";
 import type { AlertView, GardenChoice, Loadable, PlantCardView, TaskRowView, WeatherCardState } from "../model/views";
 import { heroWeatherLine, weatherView, weekday } from "../model/weather";
 import { useActiveGardenStore } from "./activeGardenStore";
@@ -78,12 +78,13 @@ export function useGardenHome(gardenId: string) {
   const toRow = (t: Task, day: string): TaskRowView => {
     const target = canScan ? scanTargetOf(t) : undefined;
     const name = target ? plantName(target) : undefined;
+    const jar = canScan ? jarScanOf(t) : undefined;
     return {
       id: t.id,
       title: t.title,
       meta: taskMeta(t, plantName, day),
       done: done.has(t.id),
-      scanHint: target ? `Starts a scan of ${name ?? "this plant"}` : undefined,
+      scanHint: jar ? "Opens the camera for the jar test" : target ? `Starts a scan of ${name ?? "this plant"}` : undefined,
     };
   };
 
@@ -159,6 +160,11 @@ export function useGardenHome(gardenId: string) {
       },
       openTask: (id: string) => {
         const task = byId(id);
+        const jarScan = task && canScan ? jarScanOf(task) : undefined;
+        if (jarScan) {
+          router.push({ pathname: "/capture/[scanId]/guided/[kind]", params: { scanId: jarScan, kind: "jar_test" } });
+          return;
+        }
         const plantId = task && canScan ? scanTargetOf(task) : undefined;
         if (plantId) router.push({ pathname: "/scan/new", params: { plantId } });
       },

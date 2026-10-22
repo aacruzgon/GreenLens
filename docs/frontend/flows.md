@@ -1,6 +1,6 @@
 # PDM Frontend Flows
 
-> **Status:** Draft v0.4.4, 2026-10-20. v0.4.4: "Forgot password?" resets the password with an email code, then continues like a sign-in (section 1). v0.4.3: a capture slot's delete can fail: after two retries the shot goes back to `stored` (section 14). v0.4.2: the second factor is a code by text, not TOTP (section 1).
+> **Status:** Draft v0.4.5, 2026-10-21. v0.4.5: a question photo and a guided check are sent with Send, after the user sees the photo, and the jar test's task is due 6 hours after Start (sections 6 and 8). v0.4.4: "Forgot password?" resets the password with an email code, then continues like a sign-in (section 1). v0.4.3: a capture slot's delete can fail: after two retries the shot goes back to `stored` (section 14). v0.4.2: the second factor is a code by text, not TOTP (section 1).
 > v0.4 applies the third audit and contracts v0.8.2: a failed scan supersedes its question first, and a guided check that finishes after a failure is kept for a Retry.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Species and capture:** the species card shows each photo's credit, and discarding a capture also deletes its jar-test task.
@@ -245,8 +245,8 @@ Companion to the [frontend architecture](README.md) and the [screens](screens.md
  User              Scan screen      Capture (question mode)     api                  API
   │                    │◀── question { kind: photo_request, photo_kind: leaf_underside, photo_hint }
   │ "Take photo" ─────▶│ open capture/[scanId]/question/[questionId]                 │
-  │ shutter ──────────────────────────▶│ one slot, kind leaf_underside               │
-  │                    │               │ POST /scans/{id}/images key=G ────────────▶│
+  │ shutter ──────────────────────────▶│ one slot, kind leaf_underside: the photo shows, Retake or Send
+  │ Send ─────────────────────────────▶│ POST /scans/{id}/images key=G ────────────▶│
   │                    │               │   kind, file, question_id [, depth parts]   │
   │                    │               │◀────────────────────────── 201 ────────────│ [question → answering]
   │                    │◀── back to the scan screen; card shows "Checking your photo"│
@@ -256,6 +256,7 @@ Companion to the [frontend architecture](README.md) and the [screens](screens.md
   │                    │◀── question_resolved { by: photo }  or  { by: dropped }     │
 ```
 
+- **The photo goes on Send, not on the shutter.** Its upload makes the question `answering` at once, so the user sees the photo first and can retake it. A refused photo (`422 image_quality`) is taken again; a send that didn't arrive keeps the photo and its key for **Try again**.
 - **Segmentation and measurement** run first only for a photo with depth whose question has a measurable indicator that the photo's kind can show and that no user or measurement has answered (contracts 7, photos sent for a question). When the measurements settle every indicator, no `verify` job runs and the scan is rescored at once.
 - While a question is `answering`, the card accepts nothing else. A second answer or photo gets `409 invalid_state`, and the card refetches the scan.
 - `by: dropped` means the photo couldn't be analysed: the card says so, and the diagnosis and plan stay (contracts 3).
@@ -313,7 +314,7 @@ Late work is a late answer, a late photo for a question, or any guided soil chec
 ```
  User              Capture (guided)               api                       API
   │ "Jar test" ───────▶│ instructions; "Start"                                     │
-  │                    │ POST /tasks key=I { garden_id, plant_id, scan_id, title: "Photograph the jar", due }
+  │                    │ POST /tasks key=I { garden_id, plant_id, scan_id, title: "Photograph the jar test", due }
   │                    │◀───────────────────────────────────────── 201 Task ───────│
   │ hours later, from the task, on any device: open capture/[task.scan_id]/guided/jar_test
   │ shutter ──────────▶│ POST /scans/{id}/images key=J kind=jar_test ─────────────▶│
@@ -324,6 +325,8 @@ Late work is a late answer, a late photo for a question, or any guided soil chec
 ```
 
 - A guided check can be added in any status except `failed`, before or after submit, and as many times as needed after submit (contracts 3).
+- **Start** shows the steps first, then the camera. For the jar test it also adds the task, due on the garden's date 6 hours later, when the jar should have settled; the task's key is kept while Start is retried. The photo goes on **Send**, as for a question photo.
+- **Opened from the jar test's task** (a task with `scan_id`, from the garden home or the Tasks tab), the steps are skipped and the camera opens. Start never adds a second task for a scan that has an open one.
 - A jar that hadn't settled gets no texture result. The check shows "Not settled yet: photograph it again later", and the task stays open.
 - While a check is `analysing`, the scan isn't at rest, so the server keeps the stream open (contracts 4).
 - When the app is closed, a late result that produces a new plan is pushed (`plan_superseded`, flow 12). A check that doesn't change the plan, or a dropped photo answer, isn't pushed; it is on the scan and the timeline when the user opens them (contracts 9, push notifications).

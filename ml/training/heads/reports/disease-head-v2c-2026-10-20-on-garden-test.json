@@ -1,0 +1,31 @@
+{
+  "head": "disease-head-v2c-2026-10-20",
+  "date": "2026-10-21",
+  "scored": "top-1 per photo on each dataset's test split in ml/training/data/splits, the mean of each photo's crops' restricted probabilities at the head's temperature",
+  "test_top1_per_photo": {
+    "maize_makerere": {
+      "top1": 0.868,
+      "n": 182
+    },
+    "maize_pretoria": {
+      "top1": 0.382,
+      "n": 178
+    },
+    "plantcity": {
+      "top1": 0.386,
+      "n": 153
+    },
+    "plantdoc": {
+      "top1": 0.801,
+      "n": 146
+    },
+    "tom2024": {
+      "top1": 0.946,
+      "n": 295
+    },
+    "tomato_pakistan_2026": {
+      "top1": 0.762,
+      "n": 80
+    }
+  }
+}

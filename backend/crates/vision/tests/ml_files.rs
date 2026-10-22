@@ -217,7 +217,7 @@ fn without_key(text: &str, entry: &str, key: &str) -> String {
 #[test]
 fn every_missing_threshold_refuses_to_start() {
     let text = committed_manifest_text();
-    let head = "disease_head_disease-head-v1d-2026-10-16";
+    let head = "disease_head_disease-head-v3c-2026-10-20";
     for (entry, key) in [
         ("leaf_detector", "score_threshold"),
         ("leaf_detector", "min_side_px"),

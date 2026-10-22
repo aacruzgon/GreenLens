@@ -24,6 +24,8 @@ import {
 import { MODES, NEEDED, modeOf, type CaptureKind } from "../model/shotPlan";
 import type { ShotFile, Slot, SlotEvent } from "../model/slot";
 import { useDraftStore } from "./draftStore";
+import { leaveCapture } from "./leaveCapture";
+import { useScanJarTask } from "./useScanJarTask";
 
 /** Retries of one upload with the same key before the slot shows "failed" and a Retry (flows 14). */
 const AUTO_RETRIES = 2;
@@ -49,6 +51,8 @@ export function useCaptureSession(scanId: string) {
   const qc = useQueryClient();
   const scan = useScan(scanId);
   const plant = usePlant(scan.data?.plant_id ?? "");
+  // A jar test started before submit has a task on this scan; Discard says it goes too (screens 3.2).
+  const jar = useScanJarTask(scan.data?.garden_id ?? "", scanId);
   const draft = useDraftStore((s) => s.drafts[scanId]);
   const submit = useSubmitScan();
   const deleteScan = useDeleteScan();
@@ -268,7 +272,7 @@ export function useCaptureSession(scanId: string) {
     try {
       await deleteScan.mutateAsync(pending);
       useDraftStore.getState().drop(scanId);
-      router.back();
+      leaveCapture(router);
     } catch (error) {
       if (isApiError(error) && error.code === "invalid_state") {
         // Submitted meanwhile, from another device: open it instead (flows 4, discard).
@@ -284,6 +288,7 @@ export function useCaptureSession(scanId: string) {
     scan,
     view: draft ? sessionView(draft, plant.data?.name) : undefined,
     problem,
+    jarTask: jar.task,
     busy: { submitting: submit.isPending, discarding: deleteScan.isPending },
     actions: {
       selectMode,
@@ -294,7 +299,7 @@ export function useCaptureSession(scanId: string) {
       analyse: () => void analyse(),
       discard: () => void discard(),
       /** Leaves capture and keeps the draft for later (flows 15, suspended). */
-      close: () => router.back(),
+      close: () => leaveCapture(router),
       dismissProblem: () => setProblem(undefined),
     },
   };

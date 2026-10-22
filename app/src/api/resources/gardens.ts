@@ -29,7 +29,7 @@ export function useGardens() {
 }
 
 export function useGarden(id: string) {
-  return useQuery({ queryKey: qk.garden(id), queryFn: () => gardens.get(id) });
+  return useQuery({ queryKey: qk.garden(id), queryFn: () => gardens.get(id), enabled: id !== "" });
 }
 
 export function useGardenWeather(gardenId: string) {
