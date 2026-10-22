@@ -1,0 +1,11 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: clean_seed_and_transplants
+kind: cultural
+text: Use certified disease-free seed and plants, and do not plant diseased seedlings or transplants that
+  have not been checked. For bacterial speck and bacterial spot, use seed that has been disinfected; ask
+  your seed supplier how it was treated.
+sources:
+- clemson_hgic_tomato_diseases
+- isu_bacterial_spot_pepper_tomato
+- ontario_tomato_bacterial_diseases

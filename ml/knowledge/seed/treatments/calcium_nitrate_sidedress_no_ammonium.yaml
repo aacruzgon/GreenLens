@@ -1,0 +1,9 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: calcium_nitrate_sidedress_no_ammonium
+kind: cultural
+text: When feeding beside or around the plants, avoid fertilisers with ammonium nitrogen, such as ammonium
+  sulfate, ammonium nitrate and most complete (all-purpose) fertilisers. Ammonium competes with calcium.
+  Calcium nitrate is usually the best choice. Follow the fertiliser label.
+sources:
+- clemson_hgic_tomato_diseases

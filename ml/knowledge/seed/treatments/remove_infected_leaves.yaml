@@ -1,0 +1,8 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: remove_infected_leaves
+kind: mechanical
+text: Cut off infected lower leaves and branches as they appear, and throw them away.
+sources:
+- clemson_hgic_tomato_diseases
+- isu_septoria_leaf_spot

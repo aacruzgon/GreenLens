@@ -1,0 +1,81 @@
+# Pest-control products (contracts §10, ProductsSeed). The plan validator matches each name inside a
+# step's text, case-insensitively, plurals allowed, and treats a broad-spectrum one as harmful to
+# beneficial insects and mites.
+#
+# DRAFT, 2026-10-20, after the signing review (S1, S9, C5). The list holds two kinds of name:
+# - every product a treatment names;
+# - every harmful name the plan writer or the chat could produce, though no treatment names it. A name
+#   in neither list doesn't make a step chemical, so that step would get no safety note. These are
+#   the products the PMRA and Ontario Allowable List check took out of the steps (bifenthrin,
+#   cyhalothrin, cyfluthrin, permethrin, malathion, pyrethrin, spinosad, beauveria bassiana and
+#   verticillium lecanii), the commercial whitefly insecticides in EDIS IN286 .18 (imidacloprid,
+#   thiamethoxam, dinotefuran, cyazypyr), carbaryl and acetamiprid from Clemson's insect-pest table,
+#   and the classes pyrethroid, neonicotinoid and organophosphate. Chlorothalonil and mancozeb stay
+#   for the same reason, though neither is registered for home use in Canada (S1).
+#
+# broad_spectrum is true for anything that kills beneficial insects or mites on contact or through
+# its residue, and false only for what the pest must eat. A wrong true only means the plan offers
+# hand-picking or Bt instead; a wrong false lets a spray hit a parasitic wasp.
+# - true: the contact and systemic insecticides and their classes (Clemson's table calls them
+#   broad-spectrum); insecticidal soap and the oils (IN307 .10 calls them the least toxic sprays,
+#   but ISU spider mite .4 says they kill whatever they hit, predatory mites included); spinosad
+#   (Clemson .15 describes it as it does pyrethrin, and its table rates it "contact or ingested,
+#   easier on beneficials": it still kills on contact); beauveria bassiana and verticillium lecanii
+#   (IN286 .17: whiteflies "and other insects").
+# - false: bacillus thuringiensis (a caterpillar must eat it, and parasitised hornworms have stopped
+#   feeding, Clemson .10), and the fungicides chlorothalonil, copper and mancozeb (no excerpt says
+#   they harm beneficials).
+# The flags only guard a step that names its product, so a step's own wording matters more.
+products:
+- name: acetamiprid
+  broad_spectrum: true
+- name: bacillus thuringiensis
+  broad_spectrum: false
+- name: beauveria bassiana
+  broad_spectrum: true
+- name: bifenthrin
+  broad_spectrum: true
+- name: canola oil
+  broad_spectrum: true
+- name: carbaryl
+  broad_spectrum: true
+- name: chlorothalonil
+  broad_spectrum: false
+- name: copper
+  broad_spectrum: false
+- name: cyazypyr
+  broad_spectrum: true
+- name: cyfluthrin
+  broad_spectrum: true
+- name: cyhalothrin
+  broad_spectrum: true
+- name: dinotefuran
+  broad_spectrum: true
+- name: horticultural oil
+  broad_spectrum: true
+- name: imidacloprid
+  broad_spectrum: true
+- name: insecticidal oil
+  broad_spectrum: true
+- name: insecticidal soap
+  broad_spectrum: true
+- name: malathion
+  broad_spectrum: true
+- name: mancozeb
+  broad_spectrum: false
+- name: neonicotinoid
+  broad_spectrum: true
+- name: organophosphate
+  broad_spectrum: true
+- name: permethrin
+  broad_spectrum: true
+- name: pyrethrin
+  broad_spectrum: true
+- name: pyrethroid
+  broad_spectrum: true
+- name: spinosad
+  broad_spectrum: true
+- name: thiamethoxam
+  broad_spectrum: true
+- name: verticillium lecanii
+  broad_spectrum: true

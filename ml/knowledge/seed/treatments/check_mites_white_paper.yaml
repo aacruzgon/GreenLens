@@ -1,0 +1,10 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: check_mites_white_paper
+kind: cultural
+text: 'Look for mites, cast skins and webbing under the leaves with a magnifying glass. Or hold a sheet
+  of white paper under the leaves and tap them sharply: mites show up as tiny, slow-moving specks. Spray
+  only when the leaves show the typical speckling and you find a dozen or more mites on the sheet.'
+sources:
+- edis_in307_twospotted_spider_mite
+- isu_two_spotted_spider_mite

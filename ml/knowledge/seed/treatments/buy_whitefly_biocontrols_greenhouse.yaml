@@ -1,0 +1,9 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: buy_whitefly_biocontrols_greenhouse
+kind: biological
+text: In a greenhouse you cannot rely on natural enemies arriving on their own. You can buy whitefly enemies,
+  such as the parasitic wasp Eretmocerus eremicus, the predatory mite Amblyseius swirskii, or the lady
+  beetle Delphastus catalinae.
+sources:
+- edis_in286_sweetpotato_whitefly

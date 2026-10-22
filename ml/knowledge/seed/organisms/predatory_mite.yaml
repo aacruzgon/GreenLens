@@ -1,0 +1,16 @@
+id: predatory_mite
+name: Predatory mite
+scientific_name: Phytoseiidae
+taxon_group: mite
+role: beneficial
+recognition: A tiny mite with longer legs than a spider mite. The front pair of legs often points
+  forward. It moves about quickly and is more active than the spider mites it hunts. It is often red or
+  orange, but colour alone does not tell it from a spider mite, which can be orange-red too.
+preys_on:
+- two_spotted_spider_mite
+- whitefly
+bioclip_label: Phytoseiidae with common name predatory mite
+sources:
+- edis_in286_sweetpotato_whitefly
+- edis_in307_twospotted_spider_mite
+reviewed_by: sam-michaels

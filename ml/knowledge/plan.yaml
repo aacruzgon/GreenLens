@@ -1,0 +1,52 @@
+# The curation plan: the records the model steps draft (training.md §10). tag.py takes its id
+# enums from here and from the seed, so a tag can't name an unknown id; extract.py drafts one
+# record per entry that has no file in seed/ yet. Slugs follow #4 (decided 2026-10-17).
+#
+# The tomato slice: the seven problems disease head v3c predicts for tomato (its eighth tomato
+# class is healthy; #120), the bacterial speck its sources pair with bacterial spot, blossom-end
+# rot, the pests the sources cover, and the natural enemies the sources say attack them.
+
+# Sources with no reuse grant (sources.yaml): their facts go into the drafts, rewritten and
+# cited, but their wording isn't committed. tag.py leaves them out of seed/chunks, extract.py
+# reads them from build/tags, and the review files link them instead of quoting them.
+facts_only_sources:
+  - clemson_hgic_tomato_diseases
+  - clemson_hgic_tomato_insect_pests
+  - isu_growing_tomatoes_home_garden   # no chunks: the care profile cites it by hand
+
+# Chunks withheld by hand at the signing review (2026-10-20, S5): they pass the dose check but
+# mustn't reach the chat. tag.py withholds them as it does a chunk that gives a rate, so they
+# stay out of seed/chunks; steps can still cite them, and the review files link them.
+withheld_chunks:
+  isu_parasitic_wasps.3: about wasps indoors, not in the garden
+  isu_parasitic_wasps.4: about wasps indoors; reads as how to get rid of a beneficial
+  edis_in307_twospotted_spider_mite.10: gives a rate (2%) the dose check doesn't catch
+  ontario_tomato_bacterial_diseases.38: recommends tank-mixing mancozeb with copper (S1, S2)
+  isu_two_spotted_spider_mite.4: lists malathion and permethrin as home sprays (S6)
+  isu_tomato_hornworm.3: suggests a synthetic home garden insecticide for hornworms (S6)
+
+species:
+  - id: tomato
+    name: Tomato
+    scientific_name: Solanum lycopersicum
+
+problems:
+  - { id: tomato_early_blight, name: Early blight, affects: [tomato] }
+  - { id: tomato_late_blight, name: Late blight, affects: [tomato] }
+  - { id: tomato_septoria_leaf_spot, name: Septoria leaf spot, affects: [tomato] }
+  - { id: tomato_leaf_mold, name: Leaf mold, affects: [tomato] }
+  - { id: tomato_bacterial_spot, name: Bacterial spot, affects: [tomato] }
+  - { id: tomato_bacterial_speck, name: Bacterial speck, affects: [tomato] }
+  - { id: tomato_yellow_leaf_curl_virus, name: Tomato yellow leaf curl virus, affects: [tomato] }
+  # tomato_mosaic_virus: no source covers it on its own yet (#46), so heads v2c (#85) and v3c (#120) drop the class.
+  - { id: tomato_spider_mites, name: Spider mites, affects: [tomato], caused_by: [two_spotted_spider_mite] }
+  - { id: tomato_hornworms, name: Hornworms, affects: [tomato], caused_by: [hornworm] }
+  - { id: tomato_whiteflies, name: Whiteflies, affects: [tomato], caused_by: [whitefly] }
+  - { id: tomato_blossom_end_rot, name: Blossom-end rot, affects: [tomato] }
+
+organisms:
+  - { id: two_spotted_spider_mite, name: Two-spotted spider mite, scientific_name: Tetranychus urticae }
+  - { id: hornworm, name: Hornworm, scientific_name: Manduca }
+  - { id: whitefly, name: Whitefly, scientific_name: Aleyrodidae }
+  - { id: parasitic_wasp, name: Parasitic wasp, scientific_name: Braconidae }
+  - { id: predatory_mite, name: Predatory mite, scientific_name: Phytoseiidae }

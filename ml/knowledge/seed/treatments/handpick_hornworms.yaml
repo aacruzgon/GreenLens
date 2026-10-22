@@ -1,0 +1,10 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: handpick_hornworms
+kind: mechanical
+text: 'Pick off and destroy hornworms that are feeding. Leave any with white cocoons on their backs: they
+  have stopped feeding, and helpful wasps will hatch from them. Hornworms do not hurt you. They are green
+  like the leaves, so search carefully, especially when they are small.'
+sources:
+- clemson_hgic_tomato_insect_pests
+- isu_tomato_hornworm

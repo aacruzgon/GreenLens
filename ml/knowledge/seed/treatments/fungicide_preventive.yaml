@@ -1,0 +1,11 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: fungicide_preventive
+kind: chemical
+text: 'Fungicides work as prevention, not as a cure: use them as a preventive programme, before the disease
+  spreads. They seldom work alone, without the clean-up steps. Use a copper fungicide labelled for tomatoes.
+  Read and follow the label. It also says how many days to
+  wait between spraying and picking; wait at least that long before you harvest.'
+sources:
+- clemson_hgic_tomato_diseases
+- isu_septoria_leaf_spot

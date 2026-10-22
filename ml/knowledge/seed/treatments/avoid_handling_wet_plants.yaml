@@ -1,0 +1,10 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: avoid_handling_wet_plants
+kind: cultural
+text: Do not touch or work among plants while the leaves are wet. Water and handling spread the bacteria
+  from sick plants to healthy ones.
+sources:
+- clemson_hgic_tomato_diseases
+- isu_bacterial_spot_pepper_tomato
+- ontario_tomato_bacterial_diseases

@@ -1,0 +1,86 @@
+id: tomato_leaf_mold
+name: Leaf mold
+kind: fungal
+affects:
+- tomato
+caused_by: []
+damage_patterns: []
+prevalence: occasional
+indicators:
+- id: tomato_leaf_mold.starts_on_lower_leaves
+  text: The disease shows first on older leaves near the soil.
+  question: Are the spotted leaves mostly the older, lower leaves near the soil?
+  weight: 2
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - whole_plant
+- id: tomato_leaf_mold.pale_spots_upper_surface
+  text: 'Light green to yellowish spots on the top of the leaf.'
+  question: Are there pale green or yellowish spots on the top side of the leaf?
+  weight: 2
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_leaf_mold.spots_turn_yellow
+  text: The spots grow larger and turn a distinctive yellow.
+  question: Are the spots on the top of the leaf a clear, bright yellow?
+  weight: 3
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_leaf_mold.gray_velvety_underside
+  text: In humid weather, the spots on the leaf underside are covered with a gray, velvety growth of fungus
+    spores.
+  question: Is there a gray, velvety, fuzzy growth on the underside of the leaf?
+  weight: 2
+  discriminating: true
+  where: leaf_underside
+  image_kinds:
+  - leaf_underside
+- id: tomato_leaf_mold.spots_merge
+  text: In a severe infection, the spots join together.
+  question: Have the spots joined together into large patches on the leaf?
+  weight: 2
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_leaf_mold.foliage_killed
+  text: In a severe infection, the leaves are killed.
+  question: Are many leaves on the plant dead?
+  weight: 2
+  discriminating: false
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+- id: tomato_leaf_mold.black_leathery_stem_end_rot
+  text: Sometimes green and ripe fruit get a black, leathery rot at the stem end.
+  question: Does the fruit have a black, leathery rot at the stem end?
+  weight: 1
+  discriminating: false
+  where: fruit
+  image_kinds:
+  - flower_fruit
+conditions:
+  notes: 'Favoured by high relative humidity and high temperature. It starts where the air is still and
+    humid. Spores spread by rain, wind or tools.'
+looks_like:
+- problem: tomato_late_blight
+  how_to_tell: Both can show mould on the underside of the leaf. In leaf mold it is a gray, velvety growth
+    covering the spots, and the top of the leaf has pale green to bright yellow spots. In late blight it
+    is white mould at the edges of dark patches that look soaked with water.
+treatments:
+- clean_seed_and_transplants
+- fungicide_preventive
+- keep_foliage_dry
+- prune_and_stake_for_airflow
+- remove_crop_debris
+- rotate_crops_3_years
+- space_plants_apart
+sources:
+- clemson_hgic_tomato_diseases
+reviewed_by: sam-michaels
+reviewed_at: 2026-10-21

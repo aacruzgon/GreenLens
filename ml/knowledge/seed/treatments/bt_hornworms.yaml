@@ -1,0 +1,9 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: bt_hornworms
+kind: biological
+text: Spray a biological insecticide containing Bacillus thuringiensis (Bt), labelled for tomatoes. Follow
+  the label. Do not spray caterpillars that carry white cocoons.
+sources:
+- clemson_hgic_tomato_insect_pests
+- isu_tomato_hornworm
