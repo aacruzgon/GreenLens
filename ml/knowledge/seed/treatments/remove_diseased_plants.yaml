@@ -1,0 +1,11 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: remove_diseased_plants
+kind: mechanical
+text: Pull out diseased plants as soon as you see them, and destroy them or throw them away. For bacterial
+  spot, also remove and throw away any diseased plant parts. Sick plants are a source of disease for healthy
+  ones. For tomato yellow leaf curl virus, pull plants at the first symptoms and put them straight into
+  a bag, so the whiteflies feeding on them do not spread; this may slow the spread of the virus.
+sources:
+- clemson_hgic_tomato_diseases
+- edis_in286_sweetpotato_whitefly

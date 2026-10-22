@@ -1,0 +1,8 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: gypsum_preplant_ber
+kind: cultural
+text: If the soil pH is right but calcium is low, dig gypsum (calcium sulfate) into the soil before planting.
+  Follow the soil report and the product label.
+sources:
+- clemson_hgic_tomato_diseases

@@ -1,6 +1,6 @@
 # PDM Training, Export and Knowledge Ingestion
 
-> **Status:** Draft v0.2.11, 2026-10-21. v0.2.11: section 3 adds three field sets for the disease head (PlantCity's tomato and healthy corn, and Pretoria's and Makerere's maize); section 4 reads big archives in part, groups unnamed copies by perceptual hash and a turn search, links shots of one plant through every copy, adds datasets without moving committed photos, and says Makerere's look-alike close-ups span its splits; section 6 chooses `C` by the top 3 on the dev cases, checks that no one dataset's val decides it, and ships v3c, retrained on the new sets: the true problem in its top 3 on 84% of the dev photos with a problem against v2c's 74%, while Tomato-Pakistan's test falls from 0.762 to 0.688 and corn's dev top-1 from 11 to 7 of 15. v0.2.10: section 4's step 6 names the leakage check, which M18 runs on the final manifest. v0.2.9: section 6 records the heads trained on our detector's leaf crops as the worker cuts them, with C chosen per crop (disease head v2 at 0.84 top-1 per crop on test with 21 classes, 0.88 with 19), the species head on iNaturalist photos (0.90 against zero-shot's 0.64 on the dev cases' supported crops) and the trained plant probe; section 3 lists the iNaturalist training photos. v0.2.8: section 5 adds the leaf detector's background images, COCO train2017 photos with no plant whose licence allows commercial use, and section 3 lists COCO train2017. v0.2.7: section 4 applies the names settled on #4 (genus-level `tomato_spider_mites`; TOM2024's alternaria and wilt classes dropped) by editing the committed splits in place, since a rerun of `dedupe.py` moves whole field visits. v0.2.6: section 3 lists COCO val2017 as evaluation-only negatives for the plant check. v0.2.5: section 1's layout shows what `ml/models/` holds since PR #6 (`FORMATS.md`, `templates/`) and marks README 6's files as planned. v0.2.4: section 1's layout lists `ml/models/`'s files from README 6 (`sources.toml`, `fetch.py`, `check.py`, the notices). v0.2.3: the schema link points to `backend/migrations/schema.surql` (merged from `main`). v0.2.2: data preparation groups augmented copies by their original photo, drops re-published copies of another source, groups the field sets by visit, and holds out a field test split, with one near-copy rule (0.97) for every split (review of PR #6). v0.2.1: the feature pre-processing resizes with Lanczos3, as the worker does (issue #2). v0.2: the heads and label matrices are written in the backend's JSON format (base64 `f32`), and an MLP head would need that format and the worker extended. v0.1, 2026-10-15: First training design: the Python environment, the datasets and their licences, data preparation with deduplication, the leaf detector fine-tune, the disease and species heads on BioCLIP 2 features, ONNX export and its checks, the label lists generated from the knowledge base, feedback as training data, and the model steps of knowledge ingestion.
+> **Status:** Draft v0.2.13, 2026-10-21. v0.2.13: section 10 adds `plan.yaml`'s `withheld_chunks`, for chunks a reviewer keeps out of the seed, and two runs that bring the review files back in line with hand-edited YAML: `review.py`, which rebuilds the record sections with their citations, and `discriminate.py --keep-flags`, which refreshes the pair tables without touching the flags (signing review of #51). v0.2.12: section 10's scripts exist and drafted the tomato slice, and after its first review they tag with Sonnet 5.5 and let a chunk name several problems, keep sources without a reuse grant out of the committed text, cite chunks by plain id and quote whole excerpts in the review files, drop size indicators no shot can measure, refuse an unreviewed record and sign `reviewed_by` and `reviewed_at` together, review treatments in their problems' files; a new subsection says how to run them and what the two runs showed, and three model checks are planned. v0.2.11: section 3 adds three field sets for the disease head (PlantCity's tomato and healthy corn, and Pretoria's and Makerere's maize); section 4 reads big archives in part, groups unnamed copies by perceptual hash and a turn search, links shots of one plant through every copy, adds datasets without moving committed photos, and says Makerere's look-alike close-ups span its splits; section 6 chooses `C` by the top 3 on the dev cases, checks that no one dataset's val decides it, and ships v3c, retrained on the new sets: the true problem in its top 3 on 84% of the dev photos with a problem against v2c's 74%, while Tomato-Pakistan's test falls from 0.762 to 0.688 and corn's dev top-1 from 11 to 7 of 15. v0.2.10: section 4's step 6 names the leakage check, which M18 runs on the final manifest. v0.2.9: section 6 records the heads trained on our detector's leaf crops as the worker cuts them, with C chosen per crop (disease head v2 at 0.84 top-1 per crop on test with 21 classes, 0.88 with 19), the species head on iNaturalist photos (0.90 against zero-shot's 0.64 on the dev cases' supported crops) and the trained plant probe; section 3 lists the iNaturalist training photos. v0.2.8: section 5 adds the leaf detector's background images, COCO train2017 photos with no plant whose licence allows commercial use, and section 3 lists COCO train2017. v0.2.7: section 4 applies the names settled on #4 (genus-level `tomato_spider_mites`; TOM2024's alternaria and wilt classes dropped) by editing the committed splits in place, since a rerun of `dedupe.py` moves whole field visits. v0.2.6: section 3 lists COCO val2017 as evaluation-only negatives for the plant check. v0.2.5: section 1's layout shows what `ml/models/` holds since PR #6 (`FORMATS.md`, `templates/`) and marks README 6's files as planned. v0.2.4: section 1's layout lists `ml/models/`'s files from README 6 (`sources.toml`, `fetch.py`, `check.py`, the notices). v0.2.3: the schema link points to `backend/migrations/schema.surql` (merged from `main`). v0.2.2: data preparation groups augmented copies by their original photo, drops re-published copies of another source, groups the field sets by visit, and holds out a field test split, with one near-copy rule (0.97) for every split (review of PR #6). v0.2.1: the feature pre-processing resizes with Lanczos3, as the worker does (issue #2). v0.2: the heads and label matrices are written in the backend's JSON format (base64 `f32`), and an MLP head would need that format and the worker extended. v0.1, 2026-10-15: First training design: the Python environment, the datasets and their licences, data preparation with deduplication, the leaf detector fine-tune, the disease and species heads on BioCLIP 2 features, ONNX export and its checks, the label lists generated from the knowledge base, feedback as training data, and the model steps of knowledge ingestion.
 > **Checked:** ✓ means read in the primary source on that date; ✓ ran means executed. Dataset licences, package versions and wheel indexes were read on 2026-10-15 (✓). PlantDoc's duplicates and the BioCLIP probes were run on a Mac, on CPU and its Apple GPU (✓ ran). No training has run on the rig.
 
 Everything here lives in `ml/` ([architecture 13](../architecture/README.md#13-repository-layout)) and runs on dev machines or the rig, never in production. What it produces (ONNX files, label lists, temperatures, the knowledge seed) is consumed by the workers and `api` through the model manifest ([README 6](README.md#6-model-files-versions-and-pinning)).
@@ -329,15 +329,18 @@ The ingestion pipeline is in [architecture 5](../architecture/README.md#knowledg
 
 ```
 ml/knowledge/
+├─ plan.yaml           the records to draft, by slug; the tagger's id enums; facts-only sources
+├─ llm.py              the hosted model: structured output, reply cache, cost
 ├─ fetch.py            step 1: sources.yaml → raw documents (not committed)
-├─ chunk.py            step 1: raw → chunk text
-├─ tag.py              step 2: tags each chunk (text classifier)
+├─ chunk.py            step 1: raw → chunk text (build/, not committed)
+├─ tag.py              step 2: tags each chunk; build/tags/ holds every decision
 ├─ embed.py            step 3: embeds chunks with the pinned text model
 ├─ extract.py          step 4: drafts profiles (strongest LLM)
 ├─ discriminate.py     step 4: proposes the 3 discriminating indicators (text embedder)
+├─ review.py           step 5: rebuilds the review files from the YAML after hand edits (no model)
 ├─ validate.py         JSON Schema from the domain types, plus the loader's checks
 ├─ build_migration.py  the .surql migration, with vectors
-└─ seed/               the reviewed seed files (committed)
+└─ seed/               the seed files (committed): drafts and their review files until signed
 ```
 
 ### Chunking (step 1)
@@ -348,9 +351,11 @@ ml/knowledge/
 
 ### Tagging (step 2)
 
-- Model: the `TextClassifier` route ([architecture 7](../architecture/README.md#router-and-safety-gate)): Jev when available, otherwise `claude-haiku-5-5` with structured output.
-- Output per chunk: `crop`, `problem`, `organism` (each a seed slug or null), `topic` (the `ChunkSeed` enum) and `relevant`. The enums are generated from the seed, so a tag can't name an unknown ID.
-- Irrelevant chunks (navigation, legal text, other crops) are dropped. A teammate spot-checks 10% of each source's tags; a source with more than 1 wrong tag in 10 is re-tagged with the strongest model.
+- Model: `claude-sonnet-5-5` at medium effort, with structured output. Ingestion runs offline, so it picks its own model rather than the app's `TextClassifier` route ([architecture 7](../architecture/README.md#router-and-safety-gate)): Haiku 5.5 failed the spot check on the tomato slice (see Running it), and Opus is more than picking labels from fixed lists needs.
+- Output per chunk: `crop`, `problem`, `organism` (each a seed or plan slug, or null), `topic` (the `ChunkSeed` enum), `relevant`, and the lists `problems` and `organisms`: every one the chunk describes, compares or advises on. A chunk that sets early blight against Septoria reaches both drafts, which is how extraction finds the look-alikes. The enums are generated from the seed and `plan.yaml`, so a tag can't name an unknown ID. `seed/chunks/` keeps the single tags of the `ChunkSeed` shape; the lists stay in `build/tags/`, for extraction.
+- Irrelevant chunks (navigation, legal text, other crops, clinic notices) are dropped. A chunk the dose check fails on is **withheld**: kept out of the seed, but read by extraction for the advice around the rate, since the drafts are dose-checked themselves. `plan.yaml`'s `withheld_chunks` withholds the same way the chunks a reviewer names: one that gives a rate the dose check misses, or one the chat could return as wrong advice (the signing review of #51 withheld 3).
+- A source in `plan.yaml`'s `facts_only_sources` has no reuse grant (Clemson HGIC, [sources.yaml](../../ml/knowledge/seed/sources.yaml)). Its chunks are tagged and extracted from, so its facts reach the profiles in our own words with a citation, but none of its wording is committed.
+- A teammate spot-checks 10% of each source's tags; a source with more than 1 wrong tag in 10 is re-tagged with `claude-opus-5-5`.
 
 ### Embedding (step 3)
 
@@ -364,15 +369,16 @@ ml/knowledge/
 ### Profile extraction (step 4)
 
 - Model: the strongest LLM API model (`claude-opus-5-5`) with structured output. Extraction runs once per profile, so cost is small and quality matters most.
-- Input: the tagged chunks for one problem or organism from every source, each with its chunk id. Output: a draft `ProblemSeed` or `OrganismSeed`, plus, for every indicator, condition and look-alike, the chunk ids it came from. The ids go into a review file next to the draft, so the reviewer can check each line against its source.
+- Input: the tagged chunks for one problem or organism from every source (`build/tags/`, every chunk whose lists name it), each with its chunk id. Output: a draft `ProblemSeed` or `OrganismSeed`, plus, for every indicator, condition, look-alike, treatment and product, the chunk ids it came from. The review file next to the draft quotes each cited excerpt in full; a facts-only or withheld excerpt is named and linked instead, and the reviewer reads it in `build/chunks/` after running fetch and chunk (no model call). The review file names the model that answered, which Opus's server-side fallback can change.
 - The schema comes from the `domain` types through `schemars`, with the keywords the hosted API's structured output rejects (`maxLength`, `maxItems`, `minimum`, `maximum`) stripped ✓ ([vlm.md 12](vlm.md#12-the-fallback-worker)); `validate.py` then checks the full schema and the loader's checks.
 - The prompt's rules:
   - use only the given excerpts;
   - write each symptom as one checkable indicator, with a yes / no `question` a person could answer from a photo, in plain words a 7–8B VLM reads well ("Do the brown spots have rings inside them, like a target?");
-  - give a `measure` only when the source states a size, converted to the quantity's unit, and split a size that comes with other signs into a size indicator and a sign indicator ([contracts 10](../architecture/contracts.md#problem-profile));
+  - give a `measure` only when the source states a size, converted to the quantity's unit, and split a size that comes with other signs into a size indicator and a sign indicator ([contracts 10](../architecture/contracts.md#problem-profile)). The prompt lists the shots each quantity can be measured from; a size indicator whose measure no shot can take is dropped with a note, since a small VLM can't judge millimetres by eye, and the size goes into the sign in relative words ("pinpoint specks");
   - set `where` and `image_kinds` from where the symptom shows;
   - propose a `weight`: 3 for a symptom the source calls characteristic or diagnostic, 2 for common, 1 for "may" or "sometimes";
-  - never write a dose, a rate or a mixing ratio;
+  - never write a dose, a rate or a mixing ratio; name a chemical step's active ingredient or group ("a pyrethroid"), never only "an insecticide", so the plan validator can tell whether it harms beneficials, and keep the source's warnings in words;
+  - word a protectant fungicide or copper as prevention when the source says so;
   - leave `discriminating` false everywhere: the next step proposes it.
 
 ### Choosing the discriminating indicators (step 4, continued)
@@ -387,7 +393,46 @@ Each problem asks exactly 3 indicators: "the highest-weighted ones that differ f
 
 ### Review (step 5)
 
-The reviewer works from the draft, the source excerpts and the discrimination report, and signs the file with `reviewed_by` and `reviewed_at`. Model output is never loaded unreviewed: bad data here produces confident wrong advice ([architecture 5](../architecture/README.md#knowledge-base)).
+The reviewer works from the draft, the source excerpts and the discrimination report, and signs the file with `reviewed_by` and `reviewed_at`. Model output is never loaded unreviewed: bad data here produces confident wrong advice ([architecture 5](../architecture/README.md#knowledge-base)). `validate.py` enforces it: a species, problem or organism with an empty `reviewed_by` fails, so `build_migration.py` writes nothing until every draft is signed; `--drafts` runs the other checks on drafts. A draft problem has both `reviewed_by` and `reviewed_at` empty, and one signed without the other fails even with `--drafts`. Treatments carry no signature: each is reviewed, with its text and sources, in the review file of every problem that links it, and a new treatment whose id is taken is renamed and noted there rather than linked to the other text.
+
+Planned before the next crop (a follow-up to #51): three model checks that point the reviewer at what is likely wrong, each written into the review file. They don't replace the signature.
+
+| Check | Model | What it does |
+|---|---|---|
+| Look-alikes | `claude-opus-5-5` | Reads every excerpt for a crop and proposes the pairs that get confused, each with the sign that tells them apart and its citation |
+| Citations | `claude-sonnet-5-5` | For every claim and the excerpt it cites: supported, partly or not, with a reason. A different model from the drafter, so the check is independent |
+| Questions | `claude-haiku-5-5` | Whether each `question` asks about one visible sign in plain words; units, dose words and typos are checked in code |
+
+### Running it
+
+From the repository root, with the key loaded (`set -a; . infra/dev/.env; set +a`) and the ingest models fetched (`python3 -m ml.models.fetch --for ingest`):
+
+```
+python3 -m ml.knowledge.fetch          # raw/ ; obeys robots.txt (a server error on it blocks the host), names itself, never retries a refusal
+python3 -m ml.knowledge.chunk          # build/chunks/
+python3 -m ml.knowledge.tag            # seed/chunks/ ; build/tags/ holds every decision and the spot-check sample
+python3 -m ml.knowledge.extract        # reads build/tags/; drafts + <id>.review.md for every plan.yaml entry without a file
+python3 -m ml.knowledge.discriminate   # the 3 flags, and the pair table in each review file
+python3 -m ml.knowledge.validate --drafts
+```
+
+After the YAML is edited by hand at review, two runs bring the review files back in line with it, and neither calls a model nor changes the YAML:
+
+```
+python3 -m ml.knowledge.discriminate --keep-flags   # refreshes the pair tables, shows the YAML's set beside the proposal, keeps the notes under each table
+python3 -m ml.knowledge.review                      # rebuilds indicators, conditions, look-alikes, treatments, products, recognition and care
+```
+
+`review.py` keeps each line's chunk ids from the old file (a treatment's or a product's from every problem's file) and quotes them from `seed/chunks`, linking one the seed doesn't carry. A line added by hand shows "(no excerpt cited)" until the reviewer writes `` - `<chunk id>` `` under it. The header, the model notes (headed "as first drafted"), the "Changes after" sections and the pair table are kept as they are.
+
+Every model reply is cached under the hash of its whole request (`ml/knowledge/.cache/`, not committed), so a rerun on the same machine costs nothing. A reviewer on another machine runs fetch and chunk only, which call no model, to read the facts-only and withheld excerpts. What the tomato slice showed:
+
+- **First run (✓ ran, 2026-10-19), tagging:** 11 pages gave 155 chunks. Haiku at low effort dropped good chunks whose problem wasn't in the plan (potato aphid, spider-mite damage, Ontario's seed hygiene), and a second run dropped a different set; more than 1 wrong tag in 10 for several sources, so all of them were re-tagged with `claude-opus-5-5`, which kept 135 and dropped only furniture, research outlooks and the 3 chunks that fail the dose check. Cost: $0.39 for the Opus pass, $0.43 with the two Haiku runs.
+- **Extraction:** the first schema, with chunk ids as an enum at every citation, was refused once the treatment list grew ("The compiled grammar is too large"). Chunk and treatment ids are plain strings now, checked after the reply: an id the model wasn't given is dropped and named in the review file. One reply came back empty; an empty draft is asked for again past the cache. A size on a fruit photo is dropped, since the depth camera measures spots only on leaf shots. Product names are cut to the ingredient (`copper`), as the plan validator matches them inside step text. 16 records cost about $2 at high effort.
+- **The first review (PR #51)** found what the scripts couldn't: one tag per chunk hid the source's own look-alike guide from extraction, the review files cut each excerpt at 400 characters, size indicators survived their dropped measure, and Clemson's text, which has no reuse grant, was committed nearly in full. The second run below fixes those in the scripts; the content points were fixed by hand against the excerpts and are listed in each review file.
+- **Second run (✓ ran, 2026-10-20), tagging:** 10 pages (the houseplant whitefly article swapped for EDIS IN286, the lady beetle dropped) gave 161 chunks. `claude-sonnet-5-5` at medium effort dropped 15 (furniture, clinic notices, a pepper-only paragraph, stink bugs, which the slice doesn't cover) and withheld 3 for the dose check; the 10% spot check found 1 wrong tag (ISU spider mite .4, a management paragraph dropped as a pesticide list), so that source was re-tagged with Opus, which kept it. Ontario's look-alike paragraph now lists early blight, Septoria and both bacterial diseases. Cost: $0.29 for Sonnet, $0.03 for the Opus re-tag; 1 chunk needed more than 4,000 output tokens and was retried with more room.
+- **Second run, extraction:** 18 records cost $2.05. The drafts came back with look-alikes between early blight, Septoria and the two bacterial diseases, but with 75 treatments, many of them near-duplicates across problems, so the merge stays a review step.
+- **Coverage:** `tomato_mosaic_virus` has no source that covers it on its own; it is out of `plan.yaml` until one is found (#46).
 
 ---
 

@@ -1,7 +1,10 @@
+import { format } from "date-fns";
+
 import { SseParser } from "../sse";
 import type { S } from "./util";
 import { chooseAccount, IDS, mockStore, mockTransport, resetMock, scenario } from "./index";
-import { bandFor } from "./util";
+import { buildSeed } from "./fixtures";
+import { bandFor, DateKit } from "./util";
 
 const BASE = "https://mock.pdm.local";
 
@@ -134,6 +137,18 @@ describe("fixtures over REST", () => {
     expect(tl[2].primary?.name).toBe("Early blight");
   });
 
+  it("forecasts the frost on the coming Thursday within the home's 6 days, and on Friday on a Thursday", () => {
+    // Monday Oct 19, 2026 to Sunday Oct 25: the strip shows the 6 days after today.
+    for (let day = 19; day <= 25; day++) {
+      const seed = buildSeed(new DateKit(new Date(2026, 9, day, 9)));
+      const frost = seed.weather.forecast.findIndex((d) => d.frost_risk) + 1;
+      const weekday = new Date(2026, 9, day + frost).getDay();
+      expect(frost).toBeGreaterThanOrEqual(1);
+      expect(frost).toBeLessThanOrEqual(6);
+      expect(weekday).toBe(day === 22 ? 5 : 4);
+    }
+  });
+
   it("holds Tomato 1's plan, the tasks, the frost alert and the garden note", async () => {
     const open = (await call("GET", `/tasks?garden_id=${IDS.garden}&state=open`)).json.items as S["Task"][];
     const today = new Date();
@@ -148,12 +163,8 @@ describe("fixtures over REST", () => {
     expect(weather.forecast).toHaveLength(7);
     const frost = weather.forecast.find((d) => d.frost_risk)!;
     expect(frost.t_min_c).toBe(-1);
-    // Thursday, or Friday on a Thursday, inside the six days the weather card shows (frostDayIn).
-    const frostDay = new Date(`${frost.date}T12:00:00`);
-    expect([4, 5]).toContain(frostDay.getDay());
-    expect(frost.date > ymd(today) && frost.date <= ymd(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 6))).toBe(true);
-    expect(upcoming.title).toBe(`Frost on ${frostDay.toLocaleDateString("en-US", { weekday: "long" })}: cover tender plants`);
     expect(upcoming.trigger?.date).toBe(frost.date);
+    expect(upcoming.title).toBe(`Frost on ${format(new Date(`${frost.date}T12:00:00`), "EEEE")}: cover tender plants`);
 
     const memories = (await call("GET", `/memories?garden_id=${IDS.garden}`)).json.items as S["Memory"][];
     expect(memories.some((m) => m.text === "Everything is in containers")).toBe(true);

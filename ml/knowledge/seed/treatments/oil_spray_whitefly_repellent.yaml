@@ -1,0 +1,10 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: oil_spray_whitefly_repellent
+kind: chemical
+text: 'Spray a canola oil product labelled for tomatoes, as the label directs. It repels whiteflies, reduces
+  their feeding and may reduce the spread of tomato yellow leaf curl virus. Oil can burn leaves: some
+  varieties are more sensitive, and weather, fertilisers and additives can raise the risk.'
+sources:
+- clemson_hgic_tomato_diseases
+- edis_in307_twospotted_spider_mite

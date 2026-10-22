@@ -1,0 +1,16 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: protect_natural_enemies
+kind: biological
+text: 'Helpful insects and mites keep many tomato pests down, so protect them and spray only when needed.
+  Helpful insects, among them small wasps, control hornworms. Spider mites are eaten by predatory mites,
+  small lady beetles, minute pirate bugs, predatory thrips and lacewing larvae. Colour alone does not
+  tell predatory mites from spider mites, since both can be red or orange. Predatory mites have longer
+  legs, often hold the front pair forward and move fast, so do not mistake them for pests. Whiteflies are
+  killed by tiny parasitic wasps, lacewing larvae, minute pirate bugs, bigeyed bugs and small lady
+  beetles; in Florida, where nothing is sprayed, these usually keep the sweetpotato whitefly low. An
+  empty whitefly shell with a round hole means a helpful wasp hatched from it.'
+sources:
+- clemson_hgic_tomato_insect_pests
+- edis_in286_sweetpotato_whitefly
+- edis_in307_twospotted_spider_mite

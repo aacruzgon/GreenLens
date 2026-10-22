@@ -1,0 +1,8 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: fine_mesh_screen_greenhouse
+kind: mechanical
+text: In a greenhouse, cover openings with very fine mesh screen to keep whiteflies out. Increase ventilation
+  as well, to lower the risk of other plant diseases.
+sources:
+- edis_in286_sweetpotato_whitefly

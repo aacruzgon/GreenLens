@@ -25,6 +25,11 @@ async function renderHome(firstTask: string | null = "Check Tomato 2's lower lea
   if (firstTask) await screen.findByText(firstTask);
 }
 
+/** The open frost alert's title: "Frost on Thursday: …", or Friday's on a Thursday (the mock's frostInDays). */
+function frostAlert(): string {
+  return mockStore.tasks.find((t) => t.id === "task_frost_open")!.title;
+}
+
 /** Whether the status-bar strip is shown; it never takes a touch either way. */
 function scrimShown(): boolean {
   expect(screen.getByTestId("status-bar-scrim", { includeHiddenElements: true }).props.pointerEvents).toBe("none");
@@ -33,11 +38,6 @@ function scrimShown(): boolean {
 
 function scrollTo(y: number) {
   return fireEvent.scroll(screen.getByTestId("garden-home-scroll"), { nativeEvent: { contentOffset: { x: 0, y } } });
-}
-
-// "Frost on Thursday: …", or Friday when the tests run on a Thursday (frostDayIn).
-function frostAlert(): string {
-  return mockStore.tasks.find((t) => t.id === "task_frost_open")!.title;
 }
 
 beforeEach(() => {

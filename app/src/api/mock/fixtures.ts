@@ -526,16 +526,12 @@ export function makeWeather(
   };
 }
 
-/**
- * Days ahead of the demo story's frost day after `ago` (1..6): the next Thursday, or the next day when `ago` is a
- * Thursday, so the frost stays inside the six days the weather card shows.
- */
-export function frostDayIn(k: DateKit, ago = 0): number {
+/** Days ahead of the forecast's frost after `ago` (1..6): the coming Thursday, or tomorrow on a
+ * Thursday, since the home's strip shows only the next 6 days and next week's Thursday would fall off it. */
+export function frostInDays(k: DateKit, ago = 0): number {
   for (let i = 1; i <= 6; i++) if (k.weekday(ago - i) === 4) return i;
   return 1;
 }
-
-const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 // ----------------------------------------------------------------------------------------------
 // The garden
@@ -842,12 +838,11 @@ export function buildSeed(k: DateKit = new DateKit()): Seed {
   const p1 = scans.find((s) => s.scan.id === scan1)!;
   p1.plan!.task_ids = ["task_t1_remove", "task_t1_mulch", "task_t1_check_c", "task_t2_check_b"];
 
-  // Frost alerts: Oct 16's is done, the coming Thursday's is open.
-  const frostIn = frostDayIn(k);
-  const frostOn = WEEKDAYS[k.weekday(-frostIn)];
+  // Frost alerts: Oct 16's is done, the coming one's (Thursday, or Friday on a Thursday) is open.
+  const frostIn = frostInDays(k);
   tasks.push(
     { id: "task_frost_done", garden_id: IDS.garden, source: "forecast_alert", title: "Frost tonight: cover tender plants", detail: "The low is -1 °C. Move pots under cover or throw a sheet over them.", trigger: { kind: "frost", date: k.date(1) }, due: k.date(2), done_at: k.ts(2, 18, 0), created_at: k.ts(3, 7, 0) },
-    { id: "task_frost_open", garden_id: IDS.garden, source: "forecast_alert", title: `Frost on ${frostOn}: cover tender plants`, detail: "The low is -1 °C. Move pots under cover or throw a sheet over them.", trigger: { kind: "frost", date: k.date(-frostIn) }, due: k.date(-(frostIn - 1)), created_at: k.ts(0, 7, 0) },
+    { id: "task_frost_open", garden_id: IDS.garden, source: "forecast_alert", title: `Frost on ${k.weekdayName(-frostIn)}: cover tender plants`, detail: "The low is -1 °C. Move pots under cover or throw a sheet over them.", trigger: { kind: "frost", date: k.date(-frostIn) }, due: k.date(-(frostIn - 1)), created_at: k.ts(0, 7, 0) },
   );
 
   const memories: S["Memory"][] = [

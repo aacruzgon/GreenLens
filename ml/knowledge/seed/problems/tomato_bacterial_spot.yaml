@@ -1,0 +1,121 @@
+id: tomato_bacterial_spot
+name: Bacterial spot
+kind: bacterial
+affects:
+- tomato
+caused_by: []
+damage_patterns: []
+prevalence: common
+indicators:
+- id: tomato_bacterial_spot.water_soaked_angular_leaf_spots
+  text: Many small, angular to irregular, dark spots on the leaves that look water-soaked at first.
+  question: Does the leaf have many small dark spots with uneven or angular edges that look wet or water-soaked?
+  weight: 2
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_bacterial_spot.leaf_spot_size
+  text: The largest leaf spots grow to about 3 to 5 mm across, bigger than the tiny specks of bacterial
+    speck.
+  question: 'Are the biggest spots clearly larger than a pinhead, but still small?'
+  weight: 2
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+  measure:
+    max: 5
+    min: 3
+    quantity: lesion_diameter_mm
+    stat: max
+- id: tomato_bacterial_spot.yellow_halo
+  text: Leaf spots may have a yellow halo around them.
+  question: Is there a yellow ring around the small dark spots on the leaf?
+  weight: 1
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_bacterial_spot.spot_centres_tear_holes
+  text: Spot centres turn brown, dry out and tear, leaving holes. The leaves look tattered.
+  question: Have the spots dried out and torn, leaving holes so the leaf looks ragged?
+  weight: 2
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_bacterial_spot.spots_on_leaf_edges_tip
+  text: Spots tend to gather on the leaf edges and tip.
+  question: Are most of the spots near the edges and tip of the leaf?
+  weight: 2
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_bacterial_spot.spots_merge_scorched
+  text: Spots may join together, so the leaf looks blighted or scorched.
+  question: Have the spots joined together so parts of the leaf look burnt or scorched?
+  weight: 1
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: tomato_bacterial_spot.lower_leaf_yellowing_defoliation
+  text: When spots are many, leaves turn yellow and die, and the lower part of the plant loses its leaves.
+  question: Are the lower leaves of the plant yellow, dead or fallen off?
+  weight: 2
+  discriminating: false
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+- id: tomato_bacterial_spot.raised_scabby_fruit_spots
+  text: Raised, rough, scabby spots on the fruit, bigger than pinpoint specks. They start as small dark
+    brown to black raised spots on green fruit and can grow and turn brown and greasy-looking.
+  question: Does the tomato fruit have raised, rough or scabby dark spots that are bigger than tiny pinpoint
+    specks?
+  weight: 3
+  discriminating: true
+  where: fruit
+  image_kinds:
+  - flower_fruit
+- id: tomato_bacterial_spot.fruit_spot_white_halo
+  text: Young fruit spots may have a white halo, which fades as the fruit ages.
+  question: Do the dark spots on the green fruit have a white ring around them?
+  weight: 1
+  discriminating: false
+  where: fruit
+  image_kinds:
+  - flower_fruit
+conditions:
+  notes: 'Favoured by warm, humid, wet weather; most outbreaks follow heavy rainstorms. Splashing rain,
+    overhead watering and touching or handling wet plants spread the bacteria. They survive the winter on
+    volunteer tomatoes and infected plant debris, and enter fruit through insect punctures and other
+    wounds.'
+looks_like:
+- problem: tomato_bacterial_speck
+  how_to_tell: Hard to tell apart by eye, especially early, so a lab test is recommended to confirm. On
+    leaves, speck makes tiny black specks, usually 2 mm across or less; bacterial spot leaf spots can grow
+    to 3 to 5 mm, and their centres dry out and tear into holes, so the leaf looks tattered. On fruit,
+    speck makes pinpoint black specks (under about 1 to 3 mm) that are only slightly raised, sit on the
+    surface and can be scraped off with a fingernail; bacterial spot makes bigger spots (up to about 4
+    to 6 mm) that are raised and scabby and can turn brown and greasy-looking.
+treatments:
+- avoid_handling_wet_plants
+- avoid_wounding_plants
+- clean_seed_and_transplants
+- control_weeds_and_volunteers
+- copper_preventive_bacterial
+- disinfect_tools_equipment
+- keep_foliage_dry
+- keep_plants_vigorous
+- prune_and_stake_for_airflow
+- remove_crop_debris
+- remove_diseased_plants
+- rotate_crops_3_years
+sources:
+- clemson_hgic_tomato_diseases
+- isu_bacterial_spot_pepper_tomato
+- ontario_tomato_bacterial_diseases
+reviewed_by: sam-michaels
+reviewed_at: 2026-10-21

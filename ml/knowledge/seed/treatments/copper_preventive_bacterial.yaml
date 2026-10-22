@@ -1,0 +1,15 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: copper_preventive_bacterial
+kind: chemical
+text: 'Copper is for prevention, not a cure. Start spraying a copper product labelled for tomatoes before
+  any spots appear, while plants are young and before the main fruit set. If spots are already showing,
+  it is too late to start this season: copper may slow the spread but will not clear an infection, so use
+  the other steps now and plan copper for next season, starting before symptoms. Cover the leaves well
+  and follow the label exactly, because too much copper damages plants. The label also says how many days
+  to wait between spraying and picking; wait at least that long before you harvest. In some areas
+  bacterial spot has become resistant to copper, so do not rely on copper alone.'
+sources:
+- clemson_hgic_tomato_diseases
+- isu_bacterial_spot_pepper_tomato
+- ontario_tomato_bacterial_diseases
