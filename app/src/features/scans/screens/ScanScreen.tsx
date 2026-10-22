@@ -10,7 +10,7 @@ import { ActionSheetIOS, ActivityIndicator, Alert, Platform, View, findNodeHandl
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PROVISIONAL_PLAN_NOTE } from "@/domain/diagnosis";
-import { Button, CandidateCompare, IconButton, Text, ThemeProvider, camera, minTouch, radii, space } from "@/ui";
+import { Button, CandidateCompare, ErrorState, IconButton, Text, ThemeProvider, camera, minTouch, radii, space } from "@/ui";
 
 import { FailureCard, LowEvidenceCard } from "../components/OutcomeCards";
 import { AnalysisRing, PhotoStage, PhotoStrip } from "../components/PhotoStage";
@@ -73,7 +73,11 @@ function LiveAnalysis() {
       <StatusBar style="light" />
       <PhotoStage image={v.image} hotspots={v.hotspots} animated={v.liveKeys} species={showQuestion ? undefined : v.species} band={band} />
 
-      {v.loading ? (
+      {v.loadError ? (
+        <View style={{ position: "absolute", left: 0, right: 0, top: "30%" }} testID="scan-load-error">
+          <ErrorState title="Couldn't load this scan" message={v.loadError.message} onRetry={v.loadError.retry} busy={v.loadError.busy} />
+        </View>
+      ) : v.loading ? (
         <ActivityIndicator color={camera.ink} style={{ position: "absolute", top: "50%", alignSelf: "center" }} accessibilityLabel="Loading the scan" />
       ) : (
         <View style={{ position: "absolute", top: insets.top + 6, left: 12, right: 12, gap: 8 }} pointerEvents="box-none" onLayout={edge("cards", true)}>

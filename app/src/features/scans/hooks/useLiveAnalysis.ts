@@ -36,7 +36,7 @@ export function useLiveAnalysis(scanId: string) {
   const keyFor = useActionKey();
   const [sending, setSending] = useState<Answer>();
   const [answerProblem, setAnswerProblem] = useState<string>();
-  const [lastAnswer, setLastAnswer] = useState<{ questionId: string; label: string }>();
+  const [lastAnswer, setLastAnswer] = useState<{ questionId: string; run: number; label: string }>();
   const [chosenImage, setChosenImage] = useState<string>();
 
   const images: ScanImage[] = useMemo(() => detail?.images ?? [], [detail?.images]);
@@ -97,7 +97,7 @@ export function useLiveAnalysis(scanId: string) {
       answer
         .mutateAsync(body, keyFor(body))
         .then(() => {
-          setLastAnswer({ questionId: question.id, label });
+          setLastAnswer({ questionId: question.id, run: question.run, label });
           events.resume();
         })
         .catch((error: unknown) => {
@@ -135,8 +135,9 @@ export function useLiveAnalysis(scanId: string) {
 
   return {
     loading: !detail || !state,
-    gone: events.stream === "gone",
-    error: events.error,
+    gone: events.stream === "gone" || (!state && isApiError(events.error) && events.error.status === 404),
+    /** The record couldn't be loaded and none is cached: the screen shows the error with Try again. */
+    loadError: !state && events.error && !(isApiError(events.error) && events.error.status === 404) ? { message: isApiError(events.error) ? events.error.message : undefined, retry: events.reload, busy: events.reloading } : undefined,
     title: plant?.name ?? "Scan",
     state,
     phases,
@@ -149,7 +150,8 @@ export function useLiveAnalysis(scanId: string) {
     question,
     unsure,
     uncertainLine,
-    lastAnswer: lastAnswer && !question ? lastAnswer.label : undefined,
+    // Only for the run that asked: a species change's run supersedes the question it answered.
+    lastAnswer: lastAnswer && !question && lastAnswer.run === state?.run ? lastAnswer.label : undefined,
     sending,
     answerProblem,
     ending,

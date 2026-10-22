@@ -194,15 +194,6 @@ describe("applyScanEvent", () => {
     expect(isReplay(snap, { seq: 17 })).toBe(false);
   });
 
-  it("keeps a question answering when the replay folds its stored open event back over it", () => {
-    const question = { id: "q1", kind: "indicator", run: 1, status: "open", text: "Rings?", candidates: [], asked_at: TS, continue_at: TS } as const;
-    const events = run([...EXAMPLE.slice(0, 20), { type: "question", question: question as never }]);
-    const snap = seed(detail({ status: "awaiting_answer", last_event_seq: 21, open_question: { ...question, status: "answering" } as never }));
-    expect(fold(snap, events).question?.status).toBe("answering");
-    // A different question, or one that was open, takes the event as it is.
-    expect(fold(seed(detail()), events).question?.status).toBe("open");
-  });
-
   it("seeds every run's current observations, so a rerun keeps the first run's plant check", () => {
     const plantCheck = obs("o_plant", { run: 1, pipeline_stage: "plant_check", stage: "plant_check" });
     const s = seed(detail({ run: 2, observations: [plantCheck, { ...blight, run: 2 }] }));
@@ -227,6 +218,34 @@ describe("reconcile", () => {
     // The stream's own progress stays.
     expect(s.stages).toBe(asked.stages);
     expect(s.candidates).toBe(asked.candidates);
+  });
+
+  it("brings back answering after a replay whose earlier question was resolved (review of #130)", () => {
+    const q = (id: string, run: number) => ({ id, kind: "photo_request", run, status: "open", text: "Closer?", candidates: [], asked_at: TS, continue_at: TS }) as never;
+    const events = run([
+      ...EXAMPLE.slice(0, 20),
+      { type: "question", question: q("q0", 1) },
+      { type: "run_started", reason: "species_changed", rerun_stages: ["species", "disease", "plan"] },
+      { type: "question_resolved", question_id: "q0", by: "superseded" },
+      { type: "question", question: q("q1", 2) },
+    ]);
+    const record = detail({ run: 2, status: "awaiting_answer", last_event_seq: events.length, open_question: { ...(q("q1", 2) as object), status: "answering" } as never });
+    const replayed = fold(seed(record), events);
+    expect(replayed.question?.status).toBe("open");
+    expect(reconcile(replayed, record).question).toMatchObject({ id: "q1", status: "answering" });
+  });
+
+  it("never takes back answering or an analysing check for a record no newer (refetches out of order)", () => {
+    const answering = reconcile(asked, detail({ status: "awaiting_answer", last_event_seq: asked.lastSeq, open_question: { ...(question as object), status: "answering" } as never, guided_checks: [{ image_id: "img_jar", kind: "jar_test", status: "analysing" }] }));
+    const older = reconcile(answering, detail({ status: "awaiting_answer", last_event_seq: asked.lastSeq, open_question: question, guided_checks: [] }));
+    expect(older.question?.status).toBe("answering");
+    expect(older.guidedChecks.map((c) => c.image_id)).toEqual(["img_jar"]);
+  });
+
+  it("takes a record for the snapshot only when it is at least as new as the snapshot", () => {
+    const base = seed(detail({ last_event_seq: 30 }));
+    expect(reconcile(base, detail({ last_event_seq: 29, status: "planned" }), base.snapshotSeq)).toBe(base);
+    expect(reconcile(base, detail({ last_event_seq: 30, status: "planned" }), base.snapshotSeq).status).toBe("planned");
   });
 
   it("ignores an older record", () => {

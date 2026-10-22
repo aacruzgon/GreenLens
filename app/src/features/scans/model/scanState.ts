@@ -94,21 +94,28 @@ export function seed(detail: ScanDetail): ScanState {
 }
 
 /**
- * Brings the state up to a refetched `ScanDetail` that is at least as fresh (`last_event_seq >= lastSeq`). Some
- * changes come with no event: a question going to `answering` after its photo, a guided check `analysing`, and a
- * superseding plan's `provisional`. Stage progress and candidates stay the stream's.
+ * Brings the state up to a refetched `ScanDetail` with `last_event_seq` at least `since` (the state's `lastSeq`
+ * by default). Some changes come with no event: a question going to `answering` after its photo, a guided check
+ * `analysing`, and a superseding plan's `provisional`. Stage progress and candidates stay the stream's.
+ *
+ * Those changes only move forward, so a record no newer than another (two refetches resolving out of order)
+ * never takes them back: a question `answering` here stays so when the record says `open`, and a check the
+ * state has that the record lacks stays.
  */
-export function reconcile(state: ScanState, detail: ScanDetail): ScanState {
-  if (detail.id !== state.scanId || detail.last_event_seq < state.lastSeq) return state;
+export function reconcile(state: ScanState, detail: ScanDetail, since = state.lastSeq): ScanState {
+  if (detail.id !== state.scanId || detail.last_event_seq < since) return state;
   const plan = detail.plan
     ? { id: detail.plan.id, provisional: detail.plan.provisional, notice: state.plan?.id === detail.plan.id ? state.plan.notice : undefined }
     : undefined;
+  const q = detail.open_question;
+  const keepAnswering = q?.status === "open" && state.question?.id === q.id && state.question.status === "answering";
+  const recordChecks = new Set(detail.guided_checks.map((c) => c.image_id));
   return {
     ...state,
     run: Math.max(state.run, detail.run),
     status: detail.status,
-    question: detail.open_question,
-    guidedChecks: detail.guided_checks,
+    question: keepAnswering ? state.question : q,
+    guidedChecks: [...detail.guided_checks, ...state.guidedChecks.filter((c) => !recordChecks.has(c.image_id))],
     diagnosis: detail.diagnosis,
     plan,
     failure: detail.failure,
@@ -183,12 +190,10 @@ export function applyScanEvent(state: ScanState, event: ScanEvent): ScanState {
       };
     case "species_confirmed":
       return { ...s, species: undefined };
-    case "question": {
-      // The move to `answering` sends no event (a question photo only updates the row), and the stored event
-      // keeps `open`: a replay mustn't undo what a fresher record said.
-      const answering = s.question?.id === event.question.id && s.question.status === "answering";
-      return { ...s, question: answering ? { ...event.question, status: "answering" } : event.question };
-    }
+    case "question":
+      // The stored event keeps `open` after a question photo moves the question to `answering`, which sends no
+      // event: the controller reconciles with the record when the replay catches up (`reconcile`).
+      return { ...s, question: event.question };
     case "question_resolved":
       return {
         ...s,

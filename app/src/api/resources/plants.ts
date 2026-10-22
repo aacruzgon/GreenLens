@@ -64,7 +64,12 @@ export function useConfirmSpecies(plantId: string) {
     mutationFn: (body: ConfirmSpeciesRequest) => plants.confirmSpecies(plantId, body),
     onSuccess: (plant) => {
       qc.setQueryData(qk.plant(plant.id), plant);
-      return qc.invalidateQueries({ queryKey: qk.plants(plant.garden_id) });
+      // The latest scan follows the species, with a rerun when it changed (flows 7): its screen picks that up.
+      const scan = plant.latest_scan?.scan_id;
+      return Promise.all([
+        qc.invalidateQueries({ queryKey: qk.plants(plant.garden_id) }),
+        ...(scan ? [qc.invalidateQueries({ queryKey: qk.scan(scan) })] : []),
+      ]);
     },
   });
 }

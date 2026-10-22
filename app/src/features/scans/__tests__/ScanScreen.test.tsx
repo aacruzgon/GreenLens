@@ -142,6 +142,35 @@ describe("ScanScreen", () => {
     expect(screen.getByText("Plan ready")).toBeTruthy();
   });
 
+  it("drops \"You answered\" when a species change reruns the scan", async () => {
+    const scanId = await submitted(IDS.tomato2);
+    await renderScan(scanId, { plantId: IDS.tomato2 });
+    await fireEvent.press(await screen.findByRole("button", { name: "Not sure" }, RUN));
+    expect(await screen.findByTestId("last-answer", undefined, RUN)).toBeTruthy();
+    await screen.findByTestId("see-result", undefined, RUN);
+
+    await fireEvent.press(await screen.findByText("Basil", undefined, RUN));
+    await waitFor(() => expect(screen.getByText("Plan updated")).toBeTruthy(), RUN);
+    expect(screen.queryByTestId("last-answer")).toBeNull();
+  });
+
+  it("shows a scan that can't be loaded with Try again", async () => {
+    const scanId = await submitted(IDS.tomato2);
+    scenario.set({ callFault: "rate_limited" });
+    mockParams = { scanId };
+    await render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}>
+        <ThemeProvider scheme="dark" reducedMotion>
+          <ScanScreen />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByTestId("scan-load-error", undefined, RUN)).toBeTruthy();
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByTestId("analysis-ring", undefined, RUN)).toBeTruthy();
+    expect(screen.queryByTestId("scan-load-error")).toBeNull();
+  });
+
   it("shows a failed run with New scan", async () => {
     const scanId = await submitted(IDS.lettuce, "no_plant_found");
     await renderScan(scanId);

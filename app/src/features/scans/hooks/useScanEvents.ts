@@ -46,6 +46,12 @@ export class ScanEventsController {
   // snapshot itself, rather than the history folding by (README 10, step 4).
   private working: ScanState | undefined;
   private base: ScanState | undefined;
+  // The newest record synced. The replay folds stored events, which can't carry what changed without one (a
+  // question `answering`), so the state takes the record again as the replay catches up.
+  private record: ScanDetail | undefined;
+  // Seeded from a cached record because the fetch failed (offline): no event counts as live, since the cache is
+  // older than what the user may have seen, until a fresh record sets the snapshot.
+  private stale = false;
   private abort: AbortController | undefined;
   private timer: ReturnType<typeof setTimeout> | undefined;
   // Bumped by `stop`: a connection's continuations after an await check it, so one that was replaced (a resume
@@ -76,30 +82,58 @@ export class ScanEventsController {
     for (const fn of this.listeners) fn();
   }
 
+  /** Shows the working state once it has caught up with the snapshot, else the snapshot; only on a change. */
   private publish(patch: Partial<ScanEventsSnapshot> = {}): void {
     const w = this.working;
-    this.set({ state: w && w.lastSeq >= w.snapshotSeq ? w : this.base, ...patch });
+    const state = w && w.lastSeq >= w.snapshotSeq ? w : this.base;
+    if (state === this.snap.state && Object.keys(patch).length === 0) return;
+    this.set({ state, ...patch });
   }
 
   /**
    * Takes a `ScanDetail` fetched at `fetchedAt`. The first one fetched during this visit seeds the state and opens
    * the stream unless the scan is at rest: a cached one has an older `last_event_seq`, so events already seen
    * would count as live, with their haptics and animations. Later ones bring the state up to the record
-   * (`reconcile`).
+   * (`reconcile`); the snapshot on screen takes only a record at least as new as itself.
    */
   sync(detail: ScanDetail, fetchedAt: number): void {
     if (this.disposed || detail.id !== this.scanId) return;
     if (!this.working || !this.base) {
       if (fetchedAt < this.createdAt) return;
-      this.working = this.base = seed(detail);
-      const stream = needsStream(detail);
-      this.publish({ stream: stream ? "idle" : "resting" });
-      if (stream) void this.connect();
+      this.begin(detail);
       return;
     }
+    if (fetchedAt < this.createdAt) return;
+    if (!this.record || detail.last_event_seq >= this.record.last_event_seq) this.record = detail;
+    if (this.stale) {
+      // The first fresh record is the visit's snapshot: what it holds is a replay from here on.
+      this.stale = false;
+      this.working = { ...this.working, snapshotSeq: detail.last_event_seq };
+      this.base = { ...this.base, snapshotSeq: detail.last_event_seq };
+    }
     this.working = reconcile(this.working, detail);
-    this.base = reconcile(this.base, detail);
+    this.base = reconcile(this.base, detail, this.base.snapshotSeq);
     this.publish();
+    // Late work on a scan whose stream rested (a species change's rerun, a guided check): open it again.
+    if (this.snap.stream === "resting" && needsStream(detail)) this.resume();
+  }
+
+  /**
+   * Shows a cached record when no fresh one could be fetched (offline), rather than a spinner. Nothing replayed
+   * or streamed counts as live until a fresh record arrives (`sync`).
+   */
+  seedStale(detail: ScanDetail): void {
+    if (this.disposed || this.working || detail.id !== this.scanId) return;
+    this.stale = true;
+    this.begin(detail);
+  }
+
+  private begin(detail: ScanDetail): void {
+    this.record = detail;
+    this.working = this.base = seed(detail);
+    const stream = needsStream(detail);
+    this.publish({ stream: stream ? "idle" : "resting" });
+    if (stream) void this.connect();
   }
 
   /** Reopens a resting or waiting stream: late work, a species change, a retry, a push (flows 17). A scan that
@@ -145,11 +179,14 @@ export class ScanEventsController {
   private apply(event: ScanEvent): void {
     const prev = this.working;
     if (!prev) return;
-    const next = applyScanEvent(prev, event);
+    let next = applyScanEvent(prev, event);
     if (next === prev) return;
+    // The replay has caught up: the record says what the stored events can't.
+    if (prev.lastSeq < prev.snapshotSeq && next.lastSeq >= next.snapshotSeq && this.record) next = reconcile(next, this.record);
+    if (this.stale) next = { ...next, liveFindingIds: prev.liveFindingIds };
     this.working = next;
     this.publish();
-    if (isReplay(prev, event)) return;
+    if (isReplay(prev, event) || this.stale) return;
     const effects = effectsOf(event);
     // One haptic per tick on the stage card, not per pipeline stage (several stages make one tick).
     if (tickCount(phasesOf(next)) > tickCount(phasesOf(prev))) effects.push({ kind: "haptic", type: "selection" });
@@ -243,11 +280,12 @@ export class ScanEventsController {
 
 export interface ScanEventsResult extends ScanEventsSnapshot {
   detail: ScanDetail | undefined;
-  /** The snapshot failed to load (not a stream error). */
+  /** The record failed to load (not a stream error). */
   error: unknown;
   resume: () => void;
-  /** Whether the replay has caught up with the snapshot, so new events animate. */
-  live: boolean;
+  /** Fetches the record again, after `error`. */
+  reload: () => void;
+  reloading: boolean;
 }
 
 export function useScanEvents(scanId: string): ScanEventsResult {
@@ -295,6 +333,11 @@ export function useScanEvents(scanId: string): ScanEventsResult {
   useEffect(() => {
     if (detail) controller.sync(detail, fetchedAt);
   }, [controller, detail, fetchedAt]);
+  // Offline, the fetch fails: the cached record, if any, rather than a spinner for good.
+  const failed = scan.isError;
+  useEffect(() => {
+    if (failed && detail) controller.seedStale(detail);
+  }, [controller, detail, failed]);
 
   useEffect(() => () => controller.dispose(), [controller]);
 
@@ -321,6 +364,6 @@ export function useScanEvents(scanId: string): ScanEventsResult {
   );
 
   const resume = useCallback(() => controller.resume(), [controller]);
-  const live = snap.state !== undefined && snap.state.lastSeq >= snap.state.snapshotSeq;
-  return { ...snap, detail, error: scan.error, resume, live };
+  const reload = useCallback(() => void refetch(), [refetch]);
+  return { ...snap, detail, error: scan.error, resume, reload, reloading: scan.isFetching };
 }

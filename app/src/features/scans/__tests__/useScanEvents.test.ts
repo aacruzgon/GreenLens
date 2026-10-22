@@ -41,6 +41,11 @@ function until(c: ScanEventsController, ok: (s: ScanEventsSnapshot) => boolean, 
   });
 }
 
+/** Resolves when `signal` aborts, at once if it already has, as the real stream's reader does. */
+function aborted(signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve) => (signal?.aborted ? resolve() : signal?.addEventListener("abort", () => resolve())));
+}
+
 function controllerFor(scanId: string) {
   const opened: (number | undefined)[] = [];
   const applied: ScanEvent[] = [];
@@ -195,7 +200,7 @@ describe("ScanEventsController", () => {
         const n = opened.length;
         return (async function* () {
           if (n === 1) return;
-          await new Promise<void>((resolve) => opts.signal?.addEventListener("abort", () => resolve()));
+          await aborted(opts.signal);
           yield* [];
         })();
       },
@@ -228,6 +233,58 @@ describe("ScanEventsController", () => {
     c.resume();
     expect(c.getSnapshot().stream).toBe("gone");
     expect(opened).toHaveLength(n);
+    c.dispose();
+  });
+  it("takes the record again when the replay catches up, so an earlier resolved question can't reopen it", async () => {
+    const scanId = await submittedScan(IDS.tomato2);
+    const detail = await scans.get(scanId);
+    const ev = (seq: number, run: number, body: object) => ({ ...body, v: 1, seq, run, scan_id: scanId, ts: detail.created_at }) as ScanEvent;
+    const q = (id: string, run: number) => ({ id, kind: "photo_request", run, status: "open", text: "Closer?", candidates: [], asked_at: detail.created_at, continue_at: detail.created_at });
+    const history = [
+      ev(1, 1, { type: "run_started", reason: "submit", rerun_stages: ["plant_check"] }),
+      ev(2, 1, { type: "question", question: q("q0", 1) }),
+      ev(3, 2, { type: "run_started", reason: "species_changed", rerun_stages: ["species"] }),
+      ev(4, 2, { type: "question_resolved", question_id: "q0", by: "superseded" }),
+      ev(5, 2, { type: "question", question: q("q1", 2) }),
+    ];
+    const record = { ...detail, run: 2, status: "awaiting_answer", last_event_seq: 5, open_question: { ...q("q1", 2), status: "answering" } } as ScanDetail;
+    const c = new ScanEventsController(scanId, {
+      open: (_id, opts) =>
+        (async function* () {
+          yield* history;
+          await aborted(opts.signal);
+        })(),
+      refetch: async () => record,
+      onEffects: () => undefined,
+    });
+    c.sync(record, Date.now());
+    const caught = await until(c, (s) => s.state?.lastSeq === 5);
+    expect(caught.state?.question).toMatchObject({ id: "q1", status: "answering" });
+    c.dispose();
+  });
+
+  it("shows a cached record when the fetch fails, with nothing replayed counted as live", async () => {
+    const scanId = await submittedScan(IDS.tomato2);
+    const first = controllerFor(scanId);
+    first.c.sync(await scans.get(scanId), Date.now());
+    await until(first.c, (s) => s.state?.status === "awaiting_answer");
+    first.c.dispose();
+
+    const cached = { ...(await scans.get(scanId)), last_event_seq: 3 };
+    const { c, effects } = controllerFor(scanId);
+    c.sync(cached, c.createdAt - 1);
+    expect(c.getSnapshot().state).toBeUndefined();
+    c.seedStale(cached);
+    expect(c.getSnapshot().state?.scanId).toBe(scanId);
+    await until(c, (s) => s.state?.status === "awaiting_answer" && s.stream === "streaming");
+    expect(effects).toEqual([]);
+    expect(c.getSnapshot().state?.liveFindingIds).toEqual([]);
+
+    // A fresh record ends it: later events are live again.
+    c.sync(await scans.get(scanId), Date.now());
+    await scans.answer(scanId, { question_id: c.getSnapshot().state!.question!.id, option_id: "yes" }, newKey());
+    await until(c, (s) => s.stream === "resting");
+    expect(effects).toContainEqual({ kind: "haptic", type: "success" });
     c.dispose();
   });
 });
