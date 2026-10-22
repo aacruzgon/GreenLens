@@ -466,6 +466,22 @@ def test_validate_checks_the_plans_lists_against_the_seed_and_the_page(seed_dir,
     assert len(validate.check(seed, no_dose, plan=plan, built=built)) == 5
 
 
+def test_validate_refuses_a_product_that_would_override_a_broad_spectrum_one(seed_dir):
+    path = seed_dir / "products.yaml"
+    products = yaml.safe_load(path.read_text())
+    products["products"] += [{"name": "neem", "broad_spectrum": True},
+                             {"name": "wettable sulfur", "broad_spectrum": False},
+                             {"name": "sulfur", "broad_spectrum": True},
+                             {"name": "neemish", "broad_spectrum": False}]   # a whole word only
+    path.write_text(yaml.safe_dump(products))
+    errors = [e for e in validate.check(load(seed_dir), no_dose) if e.startswith("products.yaml")]
+    assert errors == [
+        "products.yaml: 'neem oil' is broad_spectrum false but names 'neem', which is true; the longer name "
+        "would win in a step, so mark it true",
+        "products.yaml: 'wettable sulfur' is broad_spectrum false but names 'sulfur', which is true; the longer "
+        "name would win in a step, so mark it true"]
+
+
 # --- discriminate ----------------------------------------------------------------------------
 
 def ind(i, weight, shots=("leaf_closeup",)):

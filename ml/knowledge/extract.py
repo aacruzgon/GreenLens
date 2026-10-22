@@ -93,10 +93,13 @@ on, or a days-to-harvest wait, in words, without numbers of a rate.
 prevention, started before symptoms or for next season, when an excerpt says so.
 - `products`: every pest-control product a treatment names, by its active ingredient or type \
 in one or two lowercase words, as it appears in the treatment text ("copper", "chlorothalonil", \
-"insecticidal soap", "pyrethroid"). `broad_spectrum` is true for an insecticide or miticide that \
-also kills beneficial insects or mites (organophosphates, carbamates, pyrethroids, pyrethrins, \
-or one an excerpt says kills the insects or mites it contacts); false for fungicides, \
-bactericides and Bacillus thuringiensis."""
+"insecticidal soap", "pyrethroid"). `broad_spectrum` is true for anything that kills beneficial \
+insects or mites on contact or through its residue: the contact and systemic insecticides and \
+miticides (organophosphates, carbamates, pyrethroids, pyrethrins, neonicotinoids, spinosad), \
+insecticidal soap and every oil (neem, horticultural, canola), sulfur, which is also sold as a \
+fungicide, and insect-killing fungi such as Beauveria bassiana. It is false only for what the \
+pest must eat (Bacillus thuringiensis) and for the other fungicides and bactericides (copper, \
+chlorothalonil, mancozeb). When unsure, true: a wrong true only offers a gentler step."""
 
 ORGANISM_RULES = RULES + """
 

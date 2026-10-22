@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from collections import Counter
@@ -155,6 +156,15 @@ def check(seed: Seed, dose: DoseChecker | None = cargo_dose_check, drafts: bool 
         if k > 1:
             errors.append(f"products.yaml: {n!r} is listed {k} times (names are matched "
                           "case-insensitively)")
+    # The plan validator matches the longest name first, so "neem oil": false would win over
+    # "neem": true in a step that says "neem oil".
+    harmful = [p["name"].lower() for p in seed.products["products"] if p["broad_spectrum"]]
+    for p in seed.products["products"]:
+        name = p["name"].lower()
+        inside = [h for h in harmful if h != name and re.search(rf"\b{re.escape(h)}\b", name)]
+        if not p["broad_spectrum"] and inside:
+            errors.append(f"products.yaml: {name!r} is broad_spectrum false but names {inside[0]!r}, which "
+                          "is true; the longer name would win in a step, so mark it true")
     soil_keys = Counter((s["aspect"], s["value"]) for s in seed.soil_conditions)
     for (a, v), k in sorted(soil_keys.items()):
         if k > 1:
