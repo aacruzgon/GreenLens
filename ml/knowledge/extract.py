@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import itertools
 import json
 import re
 import sys
@@ -338,7 +339,10 @@ class Extractor:
                 added.append(x["name"])
         if added:
             current["products"].sort(key=lambda x: x["name"].lower())
-            p.write_text(yaml.safe_dump(current, sort_keys=False, allow_unicode=True),
+            # safe_dump drops comments, so the header with the broad_spectrum rule is carried over.
+            old = p.read_text(encoding="utf-8").splitlines(keepends=True) if p.exists() else []
+            header = "".join(itertools.takewhile(lambda l: l.startswith("#") or not l.strip(), old))
+            p.write_text(header + yaml.safe_dump(current, sort_keys=False, allow_unicode=True),
                          encoding="utf-8", newline="\n")
         return added
 

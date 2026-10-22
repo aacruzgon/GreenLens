@@ -115,6 +115,12 @@ def test_chunk_reads_the_main_content_and_never_crosses_a_heading():
         assert gone not in text
 
 
+def test_chunk_drops_an_authors_line():
+    page = ("<article><h2>Septoria</h2><p>Small round spots on the lower leaves.</p>"
+            "<p>Authors: Jane Doe, Extension Plant Pathologist. Published 2024.</p></article>")
+    assert [r["text"] for r in chunk.chunks("s", chunk.blocks(page))] == ["Small round spots on the lower leaves."]
+
+
 def test_chunk_sizes_stay_within_the_format():
     words = lambda n, w="word": " ".join([w] * n) + "."
     page = ("<article><h2>A</h2>" + "".join(f"<p>{words(70)}</p>" for _ in range(5))
@@ -177,6 +183,15 @@ def test_llm_caches_replies_and_uses_the_fallback_on_opus(tmp_path):
     assert again.served == "claude-haiku-5-5"
     assert m.usage.calls == 3 and m.usage.cached == 1
     assert m.usage.cost() == pytest.approx((1000 * 2 + 200 * 10 + 1000 * 0.10 + 200 * 0.50) / 1e6)
+
+
+def test_llm_prices_a_model_it_has_no_price_for_as_the_dearest(tmp_path):
+    client = FakeClient(lambda kw: {"ok": True}, served=lambda model: "claude-opus-4-8")
+    m = llm.Llm(client, cache=tmp_path / "c.jsonl")
+    m.call(model=llm.EXTRACT_MODEL, system="s", user="u", schema={"type": "object"}, effort="low", max_tokens=10)
+    assert m.usage.cost() == pytest.approx((1000 * 4.00 + 200 * 20.00) / 1e6)
+    assert "claude-opus-4-8: 1000 in, 200 out, 0 cache read (not in PRICES: priced as the dearest model)" \
+        in m.usage.report()
 
 
 def test_llm_refuses_a_refusal_and_a_cut_off_reply(tmp_path):
@@ -256,6 +271,29 @@ def test_tag_keeps_relevant_chunks_and_drops_the_rest(seed_dir, tmp_path):
     assert tagged["problems"] == ["tomato_early_blight", "tomato_septoria_leaf_spot"] and not tagged["dropped"]
 
 
+def test_tag_uses_the_plans_model_for_a_source_unless_one_is_given(seed_dir, tmp_path):
+    chunks_dir = tmp_path / "chunks"
+    chunks_dir.mkdir()
+    for src in ("hard", "easy"):
+        (chunks_dir / f"{src}.jsonl").write_text(json.dumps(
+            {"id": f"{src}.1", "source_id": src, "heading": "", "text": f"Rings on old leaves ({src})."}) + "\n")
+    plan = tmp_path / "plan.yaml"
+    plan.write_text(yaml.safe_dump({"tag_models": {"hard": "claude-opus-5-5"}}))
+    reply = lambda kw: {"relevant": True, "crop": "tomato", "problem": "tomato_early_blight", "organism": None,
+                        "topic": "symptoms", "problems": [], "organisms": []}
+
+    def models(**kw):
+        client = FakeClient(reply)
+        summary = tag.run(seed_dir, plan, chunks_dir, tmp_path / "tags", llm.Llm(client, tmp_path / "c.jsonl"),
+                          dose=no_dose, sanitize=identity, **kw)
+        assert {s: v["model"] for s, v in summary.items()} == {"easy": kw.get("model_id", llm.TAG_MODEL),
+                                                               "hard": kw.get("model_id", "claude-opus-5-5")}
+        return sorted(c[1]["model"] for c in client.calls)
+
+    assert models() == ["claude-opus-5-5", "claude-sonnet-5-5"]
+    assert models(model_id="claude-haiku-5-5") == ["claude-haiku-5-5", "claude-haiku-5-5"]
+
+
 # --- extract ---------------------------------------------------------------------------------
 
 def test_quote_links_what_the_seed_does_not_carry():
@@ -330,6 +368,8 @@ def test_extract_drafts_a_problem_with_its_citations(seed_dir, tmp_path):
     plan.write_text(yaml.safe_dump({"problems": [{"id": "tomato_late_blight", "name": "Late blight", "affects": ["tomato"]}],
                                     "facts_only_sources": ["nogrant"]}))
     client = FakeClient(lambda kw: PROBLEM_REPLY, served=lambda model: "claude-opus-4-8")
+    products = seed_dir / "products.yaml"
+    products.write_text("# The broad_spectrum rule and its reasons.\n#\n" + products.read_text())
     ex = extract.Extractor(seed_dir, plan, llm.Llm(client, tmp_path / "c.jsonl"), sanitize=identity,
                            today=extract.date(2026, 10, 19), tags=tags)
     assert ex.run() == ["tomato_late_blight: 2 indicators, 3 treatments, 2 sources"]
@@ -367,8 +407,8 @@ def test_extract_drafts_a_problem_with_its_citations(seed_dir, tmp_path):
     header = (seed_dir / "treatments/destroy_infected_plants.yaml").read_text()
     assert "reviewed, with its text, in the review file of" in header
     assert yaml.safe_load(header)["sources"] == ["example_extension_tomato_diseases", "nogrant"]
-    assert {"name": "copper fungicide", "broad_spectrum": False} in \
-        yaml.safe_load((seed_dir / "products.yaml").read_text())["products"]
+    assert {"name": "copper fungicide", "broad_spectrum": False} in yaml.safe_load(products.read_text())["products"]
+    assert products.read_text().startswith("# The broad_spectrum rule and its reasons.\n#\n"), "the header stays"
     # A second run drafts nothing: the file exists.
     assert ex.run() == []
 
@@ -391,6 +431,37 @@ def test_extract_skips_what_no_source_covers(seed_dir, tmp_path):
     ex = extract.Extractor(seed_dir, plan, llm.Llm(FakeClient(lambda kw: pytest.fail("no call")), tmp_path / "c.jsonl"),
                            sanitize=identity)
     assert ex.run() == ["tomato_leaf_mold: no tagged excerpts; add a source or drop it from the plan"]
+
+
+# --- validate: plan.yaml ----------------------------------------------------------------------
+
+def test_validate_checks_the_plans_lists_against_the_seed_and_the_page(seed_dir, tmp_path):
+    built = tmp_path / "chunks"
+    built.mkdir()
+    (built / "example_extension_tomato_diseases.jsonl").write_text(
+        "".join(json.dumps({"id": f"example_extension_tomato_diseases.{n}"}) + "\n" for n in range(1, 6)))
+    plan = {"facts_only_sources": ["gone"], "tag_models": {"typo_source": "claude-opus-5-5"},
+            "withheld_chunks": {"example_extension_tomato_diseases.2": "committed by mistake",
+                                "example_extension_tomato_diseases.5": "fine: on the page, not committed",
+                                "example_extension_tomato_diseases.7": "a typo, or the page lost a paragraph",
+                                "nosuch.1": "no such source"}}
+    seed = load(seed_dir)
+    assert validate.plan_errors(seed, plan, built) == [
+        "plan.yaml: facts_only_sources names 'gone', which isn't in sources.yaml",
+        "plan.yaml: tag_models names 'typo_source', which isn't in sources.yaml",
+        "chunks/example_extension_tomato_diseases.jsonl: withheld chunk 'example_extension_tomato_diseases.2' "
+        "is committed; run tag.py again",
+        "plan.yaml: withheld chunk 'example_extension_tomato_diseases.7' isn't in "
+        "build/chunks/example_extension_tomato_diseases.jsonl; check the id against the page",
+        "plan.yaml: withheld chunk 'nosuch.1' names no source in sources.yaml"]
+    # Without build/chunks, only the page check is skipped; a facts-only source's wording can't be in the seed.
+    errors = validate.plan_errors(seed, {**plan, "facts_only_sources": ["example_extension_tomato_diseases"]})
+    assert ("chunks/example_extension_tomato_diseases.jsonl: example_extension_tomato_diseases is a facts-only "
+            "source, so its wording can't be committed") in errors
+    assert not any("build/chunks" in e for e in errors)
+    # check() reads plan.yaml only for the real seed, or when given one.
+    assert validate.check(seed, no_dose) == []
+    assert len(validate.check(seed, no_dose, plan=plan, built=built)) == 5
 
 
 # --- discriminate ----------------------------------------------------------------------------
@@ -448,7 +519,9 @@ def test_discriminate_can_refresh_the_table_and_keep_a_reviewers_flags(seed_dir)
     p.write_text(yaml.safe_dump(d, sort_keys=False))
     discriminate.run(seed_dir, WordEmbedder())
     review = p.with_suffix(".review.md")
-    review.write_text(review.read_text() + "\n**Override:** the reviewer's own set.\n")
+    notes = ("**Override:** the reviewer's own set.\n\n## Changes after review\n\n| Point | Change |\n|---|---|\n"
+             "| 3 | Swapped one indicator |\n\nThe last line.\n")
+    review.write_text(review.read_text() + "\n" + notes)
     flags = [i["discriminating"] for i in yaml.safe_load(p.read_text())["indicators"]]
     chosen = [not f for f in flags[:3]] + flags[3:]   # a different set than the proposal
     d = yaml.safe_load(p.read_text())
@@ -460,7 +533,7 @@ def test_discriminate_can_refresh_the_table_and_keep_a_reviewers_flags(seed_dir)
     assert p.read_text() == before, "the YAML is left alone"
     body = review.read_text()
     assert "| Proposed | In the YAML |" in body and body.count(discriminate.SECTION) == 1
-    assert body.rstrip().endswith("**Override:** the reviewer's own set."), "the notes under the table stay"
+    assert body.rstrip().endswith(notes.rstrip()), "the notes under the table stay, a table of their own included"
 
 
 # --- review ----------------------------------------------------------------------------------
@@ -483,7 +556,7 @@ def test_review_rebuilds_the_record_sections_from_the_yaml(seed_dir):
     d["indicators"].append({**d["indicators"][1], "id": "tomato_early_blight.added_by_hand",
                             "discriminating": False})
     p.write_text(yaml.safe_dump(d, sort_keys=False))
-    assert review.run(seed_dir, all_records=True) == ["problems/tomato_early_blight.review.md"]
+    assert review.run(seed_dir, all_records=True) == (["problems/tomato_early_blight.review.md"], [])
     body = p.with_suffix(".review.md").read_text()
     assert body.startswith("# Review: Early blight (`tomato_early_blight`)\n\nDraft of 2026-10-20 by `m`.")
     assert "## Model notes (as first drafted)\n\nThe model's note." in body
@@ -505,4 +578,40 @@ def test_review_rebuilds_the_record_sections_from_the_yaml(seed_dir):
     again = p.with_suffix(".review.md").read_text()
     added = again.split("- **tomato_early_blight.added_by_hand**")[1].split("\n\n")[0]
     assert "`example_extension_tomato_diseases.1`: Early blight starts" in added
-    assert review.run(seed_dir, all_records=True) == []
+    assert review.run(seed_dir, all_records=True) == ([], [])
+
+
+def test_review_keeps_each_files_citations_and_sections_and_names_unknown_ids(seed_dir, tmp_path):
+    eb, sep = (seed_dir / f"problems/{p}.review.md" for p in ("tomato_early_blight", "tomato_septoria_leaf_spot"))
+    eb.write_text("\n".join([
+        "# Review: Early blight", "", "## Treatments", "",
+        # The reviewer removed .2 here; Septoria's file still cites it.
+        "- **remove_lower_infected_leaves** (cultural): x", "  - `example_extension_tomato_diseases.3`", "",
+        "- **mulch_soil_surface** (cultural): x", "  - `example_extension_tomato_diseases.99`", "",
+        "## Open questions", "", "- Is the mulch step needed?", ""]))
+    sep.write_text("\n".join([
+        "# Review: Septoria", "", "## Treatments", "",
+        "- **remove_lower_infected_leaves** (cultural): x",
+        "  - `example_extension_tomato_diseases.2`", "  - `example_extension_tomato_diseases.3`", "",
+        "- **avoid_overhead_watering** (cultural): x", "  - `example_extension_tomato_diseases.1`", ""]))
+    tags = tmp_path / "tags"
+    tags.mkdir()
+    (tags / "example_extension_tomato_diseases.jsonl").write_text("".join(
+        json.dumps({"id": f"example_extension_tomato_diseases.{n}", "dropped": None, "withheld": None}) + "\n"
+        for n in (1, 2, 3)))
+    done, errors = review.run(seed_dir, tmp_path / "no_plan.yaml", all_records=True, tags=tags)
+    assert errors == ["problems/tomato_early_blight.review.md: cites `example_extension_tomato_diseases.99`, an "
+                      "unknown chunk id: tag.py never saw it (build/tags/example_extension_tomato_diseases.jsonl)"]
+    body = eb.read_text()
+    item = lambda name: body.split(f"- **{name}**")[1].split("\n\n")[0]
+    assert "diseases.3`" in item("remove_lower_infected_leaves")
+    assert "diseases.2`" not in item("remove_lower_infected_leaves"), "a removed citation stays removed"
+    assert "diseases.1`" in item("avoid_overhead_watering"), "a step new to this file starts from the others'"
+    assert "`example_extension_tomato_diseases.99`: **unknown chunk id**: tag.py never saw it" in item("mulch_soil_surface")
+    assert "## Open questions\n\n- Is the mulch step needed?" in body, "a reviewer's own section stays"
+    # Without build/tags, a chunk the seed doesn't carry may be one the dose check withheld; only an
+    # unknown source is certainly wrong.
+    quote, unknown = review.quoter(load(seed_dir), {}, None)
+    text = quote(["example_extension_tomato_diseases.99", "nosuch.1"])
+    assert "withheld by the dose check, unless the id is wrong" in text
+    assert unknown == [("nosuch.1", "its source isn't in sources.yaml")]

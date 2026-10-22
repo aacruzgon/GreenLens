@@ -57,7 +57,7 @@ STOP_HEADING = re.compile(r"^(references|literature cited|selected references|so
 # Legal and editorial lines that aren't about the plant, and a block that is only a link.
 DROP_PARAGRAPH = re.compile(r"^(links to this article are strongly encouraged|last reviewed|"
                             r"this article was originally published|this information is "
-                            r"supplied with the understanding|was this helpful|author\(s\)|"
+                            r"supplied with the understanding|was this helpful|author\(s\)|authors?:|"
                             r"revisions by|originally published)", re.I)
 
 
