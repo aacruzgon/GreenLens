@@ -6,9 +6,14 @@
 
 use domain::ports::{MaskView, RgbView, SpotClass, SpotMask, SpotSegmenter};
 
-/// Thresholds in HSV, relative to the leaf's median value. Starting values, set from the
-/// evaluation set's `LiDAR` leaves ([architecture 15], open decision 17).
+/// Thresholds in HSV, relative to the leaf's median value. The defaults were fitted on 2026-10-22
+/// (M15) on `PlantSeg`'s lesion masks inside the leaf masks our detector and SAM cut: on its
+/// hold-out spot diseases the mean of the lesion and healthy-leaf `IoU`s rose from 0.382 to 0.497
+/// ([report]). In short: brown to red hues (0–45°) and greys are necrotic, as is anything darker
+/// than a fifth of the leaf; yellow (45–66°) is halo; the rest is leaf ([architecture 15], open
+/// decision 17).
 ///
+/// [report]: ../../../ml/training/eval/reports/spots-2026-10-22.md
 /// [architecture 15]: ../../../docs/architecture/README.md#15-open-decisions
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SpotThresholds {
@@ -37,16 +42,16 @@ pub struct SpotThresholds {
 impl Default for SpotThresholds {
     fn default() -> Self {
         Self {
-            dark_value: 0.45,
-            brown_hue_min: 10.0,
+            dark_value: 0.2,
+            brown_hue_min: 0.0,
             brown_hue_max: 45.0,
-            brown_saturation: 0.25,
-            brown_value: 0.85,
-            pale_saturation: 0.15,
-            pale_value: 1.25,
+            brown_saturation: 0.0,
+            brown_value: 2.5,
+            pale_saturation: 0.08,
+            pale_value: 0.0,
             halo_hue_min: 45.0,
-            halo_hue_max: 70.0,
-            halo_saturation: 0.35,
+            halo_hue_max: 66.0,
+            halo_saturation: 0.0,
         }
     }
 }
@@ -103,7 +108,7 @@ impl ColourSpotSegmenter {
 
 impl SpotSegmenter for ColourSpotSegmenter {
     fn version(&self) -> String {
-        "colour-1".to_owned()
+        "colour-2".to_owned()
     }
 
     fn segment<'a>(&self, image: RgbView<'a>, leaf: MaskView<'a>) -> SpotMask {

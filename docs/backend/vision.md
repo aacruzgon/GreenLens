@@ -2955,9 +2955,14 @@ pub fn measure_leaf(
 }
 ```
 ```rust
-/// Thresholds in HSV, relative to the leaf's median value. Starting values, set from the
-/// evaluation set's `LiDAR` leaves ([architecture 15], open decision 17).
+/// Thresholds in HSV, relative to the leaf's median value. The defaults were fitted on 2026-10-22
+/// (M15) on `PlantSeg`'s lesion masks inside the leaf masks our detector and SAM cut: on its
+/// hold-out spot diseases the mean of the lesion and healthy-leaf `IoU`s rose from 0.382 to 0.497
+/// ([report]). In short: brown to red hues (0–45°) and greys are necrotic, as is anything darker
+/// than a fifth of the leaf; yellow (45–66°) is halo; the rest is leaf ([architecture 15], open
+/// decision 17).
 ///
+/// [report]: ../../../ml/training/eval/reports/spots-2026-10-22.md
 /// [architecture 15]: ../../../docs/architecture/README.md#15-open-decisions
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SpotThresholds {
