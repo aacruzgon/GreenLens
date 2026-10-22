@@ -1,6 +1,6 @@
 import type { Plant, Task } from "@/domain/types";
 
-import { emptyPlantsTitle, gardenNotes, isOpenTask, localToday, mixHex, openAlerts, pickHeroPhoto, placeName, plantCardNote, scanTargetOf, sortPlantsByHealth, todayTasks } from "./home";
+import { emptyPlantsTitle, gardenNotes, isOpenTask, jarScanOf, localToday, mixHex, openAlerts, pickHeroPhoto, placeName, plantCardNote, scanTargetOf, sortPlantsByHealth, todayTasks } from "./home";
 
 function plant(id: string, status: Plant["status"], scan?: { at: string; url?: string; pending?: boolean }): Plant {
   return {
@@ -111,6 +111,14 @@ describe("scanTargetOf", () => {
     expect(scanTargetOf(task("t2", { plant_id: "tomato2", repeat: { every_days: 7 } }))).toBe("tomato2");
     expect(scanTargetOf(task("mulch", { plant_id: "tomato1" }))).toBeUndefined();
     expect(scanTargetOf(task("user", { source: "user", plant_id: "tomato1", repeat: { every_days: 7 } }))).toBeUndefined();
+  });
+});
+
+describe("jarScanOf", () => {
+  it("leads a user's jar-test task to its scan's jar capture, and never a plan's task", () => {
+    expect(jarScanOf({ source: "user", scan_id: "s1" })).toBe("s1");
+    expect(jarScanOf({ source: "user" })).toBeUndefined();
+    expect(jarScanOf({ source: "plan", scan_id: "s1" })).toBeUndefined();
   });
 });
 

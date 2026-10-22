@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CameraPreview, pickFromLibrary, useCameraAccess, type CameraPreviewHandle } from "@/platform";
 import { Button, DropCard, Fade, IconButton, Text, ThemeProvider, camera, minTouch, space } from "@/ui";
 
+import { CameraAction, ProblemLine } from "../components/CameraControls";
 import { CaptureIcon } from "../components/CaptureIcons";
 import { CoverageDial } from "../components/CoverageDial";
 import { FramingGuide } from "../components/FramingGuide";
@@ -77,7 +78,8 @@ function Capture() {
   // Discard asks first (screens 3.2), with the platform's own alert and a destructive button.
   const confirmDiscard = () => {
     setCovered(true);
-    Alert.alert("Discard this scan?", "Its photos will be deleted.", [
+    // A jar test started on this scan goes with it: the server deletes its task with the scan (flows 4, discard).
+    Alert.alert("Discard this scan?", session.jarTask ? "Its photos and its jar-test task will be deleted." : "Its photos will be deleted.", [
       { text: "Cancel", style: "cancel", onPress: () => setCovered(false) },
       {
         text: "Discard",
@@ -191,7 +193,14 @@ function Capture() {
               coverageText={v.neededText}
             />
             <View style={{ flex: 1, alignItems: "flex-end" }}>
-              <AnalyseButton enabled={v.canAnalyse} busy={session.busy.submitting} onPress={actions.analyse} />
+              <CameraAction
+                testID="analyse"
+                label="Analyse"
+                enabled={v.canAnalyse}
+                busy={session.busy.submitting}
+                onPress={actions.analyse}
+                disabledHint="Take the whole plant first"
+              />
             </View>
           </View>
 
@@ -214,8 +223,6 @@ function Shell({ children }: { children: React.ReactNode }) {
     </View>
   );
 }
-
-const HINT_WORDS = { tap_to_focus: "Tap to focus", more_light: "More light", avoid_glare: "Avoid glare" } as const;
 
 function Instruction({
   view,
@@ -278,62 +285,6 @@ function Instruction({
         />
       ) : null}
     </View>
-  );
-}
-
-/** A refused or failed shot (screens 3.2): the server's message, with its hint's icon, and Try again for a failure. */
-function ProblemLine({ message, hint, action }: { message: string; hint?: keyof typeof HINT_WORDS; action?: { label: string; onPress: () => void } }) {
-  return (
-    <View accessibilityRole="alert" accessibilityLiveRegion="polite" testID="shot-problem" style={{ flexDirection: "row", gap: space[3], alignItems: "flex-start" }}>
-      {hint ? (
-        <View accessibilityLabel={HINT_WORDS[hint]} style={{ paddingTop: 1 }}>
-          <CaptureIcon name={hint} color={camera.ink} />
-        </View>
-      ) : null}
-      <View style={{ flex: 1, gap: space[1] }}>
-        <Text variant="subheadline" style={{ color: camera.ink }}>
-          {message}
-        </Text>
-        {action ? (
-          <Pressable accessibilityRole="button" onPress={action.onPress} hitSlop={8} style={{ minHeight: 32, justifyContent: "center", alignSelf: "flex-start" }}>
-            <Text variant="subheadline" style={{ color: camera.ink, fontWeight: "600", textDecorationLine: "underline" }}>
-              {action.label}
-            </Text>
-          </Pressable>
-        ) : null}
-      </View>
-    </View>
-  );
-}
-
-/** Analyse: white on the black control area, enabled when the whole plant is stored and nothing is uploading. */
-function AnalyseButton({ enabled, busy, onPress }: { enabled: boolean; busy: boolean; onPress: () => void }) {
-  const disabled = !enabled || busy;
-  return (
-    <Pressable
-      testID="analyse"
-      accessibilityRole="button"
-      accessibilityState={{ disabled, busy }}
-      accessibilityHint={enabled ? undefined : "Take the whole plant first"}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        minHeight: minTouch,
-        paddingHorizontal: 18,
-        borderRadius: 999,
-        justifyContent: "center",
-        backgroundColor: camera.ink,
-        opacity: disabled ? 0.4 : pressed ? 0.8 : 1,
-      })}
-    >
-      {busy ? (
-        <ActivityIndicator color={camera.onInk} />
-      ) : (
-        <Text variant="headline" style={{ color: camera.onInk }}>
-          Analyse
-        </Text>
-      )}
-    </Pressable>
   );
 }
 
