@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.27, 2026-10-20. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.28, 2026-10-22. Companion to the [architecture document](README.md).
+> **v0.10.28**: `Question.indicator_id?` is the slug of the indicator an `indicator` question asks about (`concentric_rings`), so the app can draw a picture answer; the server already stored it (section 3); no architecture section changed.
 > **v0.10.27**: open questions 1 and 9 cite v0.10.24, the version that settled them, instead of v0.10.19 (review of #86); no wire shape changed.
 > **v0.10.26**: a GPS garden whose reverse lookup fails is created with the label "<time zone's city> time zone" ("Toronto time zone") instead of `503`, so only a point with no time zone is refused (section 9, open question 37 settled); where SoilGrids has no data at a Canadian point, the soil profile comes from Soil Landscapes of Canada before any nearby probe, with no nitrogen (sections 9, 10; architecture open decision 10, proposed); no wire shape changed.
 > **v0.10.25**: the knowledge photo upload (`seed-upload`) only adds photos, never overwrites or deletes one, reads each back, and its image refuses to build unless its photo keys are those `knowledge.surql` names (section 10); no wire shape changed.
@@ -392,6 +393,7 @@ interface Question {
   kind: "indicator" | "photo_request";
   text: string;                       // "Do the spots have rings, like a target?"
   options?: { id: "yes" | "no" | "unsure"; label: string }[];  // indicator questions
+  indicator_id?: Slug;                // indicator questions: the indicator it asks about, its own slug without the problem ("concentric_rings")
   photo_kind?: ImageKind;             // photo_request: which shot to take
   photo_hint?: string;                // "Turn the leaf over and photograph the underside"
   candidates: Slug[];                 // the problems this question separates
@@ -2493,6 +2495,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.25: the knowledge photo upload only adds photos and never deletes one | 5 (knowledge base, ingestion step 8) |
 | v0.10.26: a GPS garden whose reverse lookup fails is labelled by its time zone and created; a Canadian garden where SoilGrids has no data takes its soil profile from Soil Landscapes of Canada | 6.4 (soil), 8.5 (garden setup), 15 (open decision 10) |
 | v0.10.27: open questions 1 and 9 cite the version that settled them | none (a citation in section 12 only) |
+| v0.10.28: `Question.indicator_id?`, the indicator an `indicator` question asks about | none (the architecture document doesn't list `Question` fields) |
 
 ---
 

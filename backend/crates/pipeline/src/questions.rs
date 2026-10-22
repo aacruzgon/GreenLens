@@ -42,7 +42,8 @@ pub fn build_question(
     run: Run,
     now: Timestamp,
 ) -> Question {
-    let (kind, text, options, photo_kind, photo_hint_text, candidates) = match choice {
+    let (kind, text, options, indicator_id, photo_kind, photo_hint_text, candidates) = match choice
+    {
         QuestionChoice::Indicator {
             indicator,
             candidates,
@@ -63,6 +64,7 @@ pub fn build_question(
                     label: "Not sure".to_owned(),
                 },
             ]),
+            indicator.id.slug().parse().ok(),
             None,
             None,
             candidates.clone(),
@@ -70,6 +72,7 @@ pub fn build_question(
         QuestionChoice::Photo { kind, candidates } => (
             QuestionKind::PhotoRequest,
             photo_text(*kind).to_owned(),
+            None,
             None,
             Some(*kind),
             Some(photo_hint(*kind).to_owned()),
@@ -82,6 +85,7 @@ pub fn build_question(
         kind,
         text,
         options,
+        indicator_id,
         photo_kind,
         photo_hint: photo_hint_text,
         candidates,
