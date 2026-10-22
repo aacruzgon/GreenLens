@@ -1,0 +1,536 @@
+{
+  "date": "2026-10-22",
+  "manifest_versions": {
+    "leaf_detector": "rfdetr-s-leaf-2026-10-19-bglic",
+    "sam_encoder": "sam2.1-hiera-tiny@de431c40",
+    "sam_decoder": "sam2.1-hiera-tiny@de431c40"
+  },
+  "defaults": {
+    "dark_value": 0.45,
+    "brown_hue_min": 10.0,
+    "brown_hue_max": 45.0,
+    "brown_saturation": 0.25,
+    "brown_value": 0.85,
+    "pale_saturation": 0.15,
+    "pale_value": 1.25,
+    "halo_hue_min": 45.0,
+    "halo_hue_max": 70.0,
+    "halo_saturation": 0.35
+  },
+  "fitted": {
+    "dark_value": 0.2,
+    "brown_hue_min": 0.0,
+    "brown_hue_max": 45.0,
+    "brown_saturation": 0.0,
+    "brown_value": 2.5,
+    "pale_saturation": 0.08,
+    "pale_value": 0.0,
+    "halo_hue_min": 45.0,
+    "halo_hue_max": 66.0,
+    "halo_saturation": 0.0
+  },
+  "descent": [
+    {
+      "round": 0,
+      "mean_iou": 0.3934
+    },
+    {
+      "round": 1,
+      "mean_iou": 0.4781,
+      "thresholds": {
+        "dark_value": 0.3,
+        "brown_hue_min": 0.0,
+        "brown_hue_max": 45.0,
+        "brown_saturation": 0.0,
+        "brown_value": 2.5,
+        "pale_saturation": 0.08,
+        "pale_value": 0.0,
+        "halo_hue_min": 45.0,
+        "halo_hue_max": 62.0,
+        "halo_saturation": 0.0
+      }
+    },
+    {
+      "round": 2,
+      "mean_iou": 0.4797,
+      "thresholds": {
+        "dark_value": 0.2,
+        "brown_hue_min": 0.0,
+        "brown_hue_max": 45.0,
+        "brown_saturation": 0.0,
+        "brown_value": 2.5,
+        "pale_saturation": 0.08,
+        "pale_value": 0.0,
+        "halo_hue_min": 45.0,
+        "halo_hue_max": 66.0,
+        "halo_saturation": 0.0
+      }
+    },
+    {
+      "round": 3,
+      "mean_iou": 0.4797,
+      "thresholds": {
+        "dark_value": 0.2,
+        "brown_hue_min": 0.0,
+        "brown_hue_max": 45.0,
+        "brown_saturation": 0.0,
+        "brown_value": 2.5,
+        "pale_saturation": 0.08,
+        "pale_value": 0.0,
+        "halo_hue_min": 45.0,
+        "halo_hue_max": 66.0,
+        "halo_saturation": 0.0
+      }
+    }
+  ],
+  "halves": {
+    "fit spots": {
+      "scored": 357,
+      "no_leaf_found": 33,
+      "defaults": {
+        "photos": 357,
+        "leaves": 736,
+        "mean_iou": 0.394,
+        "lesion_iou": 0.203,
+        "leaf_iou": 0.584,
+        "pooled_lesion_iou": 0.202,
+        "mean_necrotic_iou": 0.103,
+        "affected_pct_error": {
+          "median": 16.3,
+          "p90": 74.5
+        },
+        "lesion_share_pct": 31.0,
+        "affected_share_pct": 17.9,
+        "by_crop": {
+          "apple": 0.4,
+          "corn": 0.344,
+          "grape": 0.374,
+          "pepper": 0.47,
+          "tomato": 0.406
+        },
+        "by_disease": {
+          "apple black rot": 0.347,
+          "apple rust": 0.419,
+          "apple scab": 0.402,
+          "bell pepper bacterial spot": 0.491,
+          "bell pepper frogeye leaf spot": 0.438,
+          "corn gray leaf spot": 0.381,
+          "corn rust": 0.311,
+          "grape black rot": 0.358,
+          "grape leaf spot": 0.383,
+          "tomato bacterial leaf spot": 0.367,
+          "tomato early blight": 0.471,
+          "tomato septoria leaf spot": 0.377
+        },
+        "photos_by_crop": {
+          "apple": 77,
+          "corn": 76,
+          "grape": 53,
+          "pepper": 38,
+          "tomato": 113
+        },
+        "photos_by_disease": {
+          "apple black rot": 14,
+          "apple rust": 37,
+          "apple scab": 26,
+          "bell pepper bacterial spot": 23,
+          "bell pepper frogeye leaf spot": 15,
+          "corn gray leaf spot": 36,
+          "corn rust": 40,
+          "grape black rot": 18,
+          "grape leaf spot": 35,
+          "tomato bacterial leaf spot": 35,
+          "tomato early blight": 38,
+          "tomato septoria leaf spot": 40
+        }
+      },
+      "fitted": {
+        "photos": 357,
+        "leaves": 736,
+        "mean_iou": 0.481,
+        "lesion_iou": 0.346,
+        "leaf_iou": 0.615,
+        "pooled_lesion_iou": 0.308,
+        "mean_necrotic_iou": 0.241,
+        "affected_pct_error": {
+          "median": 13.6,
+          "p90": 73.6
+        },
+        "lesion_share_pct": 31.0,
+        "affected_share_pct": 21.3,
+        "by_crop": {
+          "apple": 0.478,
+          "corn": 0.448,
+          "grape": 0.454,
+          "pepper": 0.604,
+          "tomato": 0.475
+        },
+        "by_disease": {
+          "apple black rot": 0.446,
+          "apple rust": 0.5,
+          "apple scab": 0.465,
+          "bell pepper bacterial spot": 0.623,
+          "bell pepper frogeye leaf spot": 0.576,
+          "corn gray leaf spot": 0.491,
+          "corn rust": 0.41,
+          "grape black rot": 0.477,
+          "grape leaf spot": 0.442,
+          "tomato bacterial leaf spot": 0.387,
+          "tomato early blight": 0.614,
+          "tomato septoria leaf spot": 0.419
+        },
+        "photos_by_crop": {
+          "apple": 77,
+          "corn": 76,
+          "grape": 53,
+          "pepper": 38,
+          "tomato": 113
+        },
+        "photos_by_disease": {
+          "apple black rot": 14,
+          "apple rust": 37,
+          "apple scab": 26,
+          "bell pepper bacterial spot": 23,
+          "bell pepper frogeye leaf spot": 15,
+          "corn gray leaf spot": 36,
+          "corn rust": 40,
+          "grape black rot": 18,
+          "grape leaf spot": 35,
+          "tomato bacterial leaf spot": 35,
+          "tomato early blight": 38,
+          "tomato septoria leaf spot": 40
+        }
+      }
+    },
+    "fit areas": {
+      "scored": 250,
+      "no_leaf_found": 14,
+      "defaults": {
+        "photos": 250,
+        "leaves": 543,
+        "mean_iou": 0.339,
+        "lesion_iou": 0.163,
+        "leaf_iou": 0.515,
+        "pooled_lesion_iou": 0.12,
+        "mean_necrotic_iou": 0.068,
+        "affected_pct_error": {
+          "median": 30.8,
+          "p90": 95.8
+        },
+        "lesion_share_pct": 49.2,
+        "affected_share_pct": 9.9,
+        "by_crop": {
+          "corn": 0.479,
+          "grape": 0.404,
+          "pepper": 0.293,
+          "squash": 0.182,
+          "tomato": 0.467
+        },
+        "by_disease": {
+          "bell pepper powdery mildew": 0.293,
+          "corn northern leaf blight": 0.479,
+          "grape downy mildew": 0.404,
+          "squash powdery mildew": 0.075,
+          "tomato late blight": 0.446,
+          "tomato leaf mold": 0.48,
+          "zucchini downy mildew": 0.403,
+          "zucchini powdery mildew": 0.163
+        },
+        "photos_by_crop": {
+          "corn": 39,
+          "grape": 37,
+          "pepper": 9,
+          "squash": 100,
+          "tomato": 65
+        },
+        "photos_by_disease": {
+          "bell pepper powdery mildew": 9,
+          "corn northern leaf blight": 39,
+          "grape downy mildew": 37,
+          "squash powdery mildew": 39,
+          "tomato late blight": 25,
+          "tomato leaf mold": 40,
+          "zucchini downy mildew": 22,
+          "zucchini powdery mildew": 39
+        }
+      },
+      "fitted": {
+        "photos": 250,
+        "leaves": 543,
+        "mean_iou": 0.427,
+        "lesion_iou": 0.306,
+        "leaf_iou": 0.549,
+        "pooled_lesion_iou": 0.211,
+        "mean_necrotic_iou": 0.19,
+        "affected_pct_error": {
+          "median": 23.1,
+          "p90": 96.6
+        },
+        "lesion_share_pct": 49.2,
+        "affected_share_pct": 13.9,
+        "by_crop": {
+          "corn": 0.711,
+          "grape": 0.462,
+          "pepper": 0.314,
+          "squash": 0.234,
+          "tomato": 0.552
+        },
+        "by_disease": {
+          "bell pepper powdery mildew": 0.314,
+          "corn northern leaf blight": 0.711,
+          "grape downy mildew": 0.462,
+          "squash powdery mildew": 0.125,
+          "tomato late blight": 0.616,
+          "tomato leaf mold": 0.511,
+          "zucchini downy mildew": 0.429,
+          "zucchini powdery mildew": 0.232
+        },
+        "photos_by_crop": {
+          "corn": 39,
+          "grape": 37,
+          "pepper": 9,
+          "squash": 100,
+          "tomato": 65
+        },
+        "photos_by_disease": {
+          "bell pepper powdery mildew": 9,
+          "corn northern leaf blight": 39,
+          "grape downy mildew": 37,
+          "squash powdery mildew": 39,
+          "tomato late blight": 25,
+          "tomato leaf mold": 40,
+          "zucchini downy mildew": 22,
+          "zucchini powdery mildew": 39
+        }
+      }
+    },
+    "holdout spots": {
+      "scored": 219,
+      "no_leaf_found": 32,
+      "defaults": {
+        "photos": 219,
+        "leaves": 469,
+        "mean_iou": 0.382,
+        "lesion_iou": 0.195,
+        "leaf_iou": 0.569,
+        "pooled_lesion_iou": 0.214,
+        "mean_necrotic_iou": 0.093,
+        "affected_pct_error": {
+          "median": 16.0,
+          "p90": 79.7
+        },
+        "lesion_share_pct": 37.7,
+        "affected_share_pct": 18.2,
+        "by_crop": {
+          "apple": 0.42,
+          "corn": 0.292,
+          "grape": 0.329,
+          "pepper": 0.494,
+          "tomato": 0.398
+        },
+        "by_disease": {
+          "apple black rot": 0.477,
+          "apple rust": 0.418,
+          "apple scab": 0.412,
+          "bell pepper bacterial spot": 0.508,
+          "bell pepper frogeye leaf spot": 0.461,
+          "corn gray leaf spot": 0.343,
+          "corn rust": 0.26,
+          "grape black rot": 0.345,
+          "grape leaf spot": 0.316,
+          "tomato bacterial leaf spot": 0.403,
+          "tomato early blight": 0.434,
+          "tomato septoria leaf spot": 0.347
+        },
+        "photos_by_crop": {
+          "apple": 51,
+          "corn": 49,
+          "grape": 23,
+          "pepper": 23,
+          "tomato": 73
+        },
+        "photos_by_disease": {
+          "apple black rot": 4,
+          "apple rust": 25,
+          "apple scab": 22,
+          "bell pepper bacterial spot": 16,
+          "bell pepper frogeye leaf spot": 7,
+          "corn gray leaf spot": 19,
+          "corn rust": 30,
+          "grape black rot": 10,
+          "grape leaf spot": 13,
+          "tomato bacterial leaf spot": 17,
+          "tomato early blight": 32,
+          "tomato septoria leaf spot": 24
+        }
+      },
+      "fitted": {
+        "photos": 219,
+        "leaves": 469,
+        "mean_iou": 0.497,
+        "lesion_iou": 0.381,
+        "leaf_iou": 0.612,
+        "pooled_lesion_iou": 0.4,
+        "mean_necrotic_iou": 0.268,
+        "affected_pct_error": {
+          "median": 10.2,
+          "p90": 73.3
+        },
+        "lesion_share_pct": 37.7,
+        "affected_share_pct": 25.0,
+        "by_crop": {
+          "apple": 0.501,
+          "corn": 0.467,
+          "grape": 0.404,
+          "pepper": 0.616,
+          "tomato": 0.505
+        },
+        "by_disease": {
+          "apple black rot": 0.671,
+          "apple rust": 0.53,
+          "apple scab": 0.438,
+          "bell pepper bacterial spot": 0.626,
+          "bell pepper frogeye leaf spot": 0.595,
+          "corn gray leaf spot": 0.459,
+          "corn rust": 0.472,
+          "grape black rot": 0.463,
+          "grape leaf spot": 0.358,
+          "tomato bacterial leaf spot": 0.438,
+          "tomato early blight": 0.606,
+          "tomato septoria leaf spot": 0.419
+        },
+        "photos_by_crop": {
+          "apple": 51,
+          "corn": 49,
+          "grape": 23,
+          "pepper": 23,
+          "tomato": 73
+        },
+        "photos_by_disease": {
+          "apple black rot": 4,
+          "apple rust": 25,
+          "apple scab": 22,
+          "bell pepper bacterial spot": 16,
+          "bell pepper frogeye leaf spot": 7,
+          "corn gray leaf spot": 19,
+          "corn rust": 30,
+          "grape black rot": 10,
+          "grape leaf spot": 13,
+          "tomato bacterial leaf spot": 17,
+          "tomato early blight": 32,
+          "tomato septoria leaf spot": 24
+        }
+      }
+    },
+    "holdout areas": {
+      "scored": 175,
+      "no_leaf_found": 26,
+      "defaults": {
+        "photos": 175,
+        "leaves": 409,
+        "mean_iou": 0.311,
+        "lesion_iou": 0.16,
+        "leaf_iou": 0.461,
+        "pooled_lesion_iou": 0.145,
+        "mean_necrotic_iou": 0.081,
+        "affected_pct_error": {
+          "median": 47.9,
+          "p90": 96.1
+        },
+        "lesion_share_pct": 52.1,
+        "affected_share_pct": 12.9,
+        "by_crop": {
+          "corn": 0.488,
+          "grape": 0.34,
+          "pepper": 0.3,
+          "squash": 0.196,
+          "tomato": 0.45
+        },
+        "by_disease": {
+          "bell pepper powdery mildew": 0.3,
+          "corn northern leaf blight": 0.488,
+          "grape downy mildew": 0.34,
+          "squash powdery mildew": 0.127,
+          "tomato late blight": 0.425,
+          "tomato leaf mold": 0.462,
+          "zucchini downy mildew": 0.48,
+          "zucchini powdery mildew": 0.209
+        },
+        "photos_by_crop": {
+          "corn": 20,
+          "grape": 29,
+          "pepper": 4,
+          "squash": 84,
+          "tomato": 38
+        },
+        "photos_by_disease": {
+          "bell pepper powdery mildew": 4,
+          "corn northern leaf blight": 20,
+          "grape downy mildew": 29,
+          "squash powdery mildew": 37,
+          "tomato late blight": 12,
+          "tomato leaf mold": 26,
+          "zucchini downy mildew": 7,
+          "zucchini powdery mildew": 40
+        }
+      },
+      "fitted": {
+        "photos": 175,
+        "leaves": 409,
+        "mean_iou": 0.39,
+        "lesion_iou": 0.29,
+        "leaf_iou": 0.49,
+        "pooled_lesion_iou": 0.249,
+        "mean_necrotic_iou": 0.184,
+        "affected_pct_error": {
+          "median": 34.8,
+          "p90": 95.7
+        },
+        "lesion_share_pct": 52.1,
+        "affected_share_pct": 21.5,
+        "by_crop": {
+          "corn": 0.74,
+          "grape": 0.413,
+          "pepper": 0.323,
+          "squash": 0.238,
+          "tomato": 0.531
+        },
+        "by_disease": {
+          "bell pepper powdery mildew": 0.323,
+          "corn northern leaf blight": 0.74,
+          "grape downy mildew": 0.413,
+          "squash powdery mildew": 0.157,
+          "tomato late blight": 0.601,
+          "tomato leaf mold": 0.499,
+          "zucchini downy mildew": 0.487,
+          "zucchini powdery mildew": 0.268
+        },
+        "photos_by_crop": {
+          "corn": 20,
+          "grape": 29,
+          "pepper": 4,
+          "squash": 84,
+          "tomato": 38
+        },
+        "photos_by_disease": {
+          "bell pepper powdery mildew": 4,
+          "corn northern leaf blight": 20,
+          "grape downy mildew": 29,
+          "squash powdery mildew": 37,
+          "tomato late blight": 12,
+          "tomato leaf mold": 26,
+          "zucchini downy mildew": 7,
+          "zucchini powdery mildew": 40
+        }
+      }
+    }
+  },
+  "selected": {
+    "fit spots": 422,
+    "fit areas": 271,
+    "holdout spots": 273,
+    "holdout areas": 206
+  },
+  "with_results": 1172,
+  "errors": 0
+}
