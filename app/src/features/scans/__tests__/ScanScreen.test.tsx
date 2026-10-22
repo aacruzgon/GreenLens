@@ -79,6 +79,8 @@ describe("ScanScreen", () => {
     expect(photo.queryByLabelText(/blight|septoria/i)).toBeNull();
     expect(screen.getByTestId("analysis-ring")).toBeTruthy();
     expect(screen.getByText("Waiting for your answer")).toBeTruthy();
+    // The soil checks are a native menu on the More button (iOS).
+    expect(screen.getByTestId("soil-menu")).toBeTruthy();
 
     // The rings indicator has picture answers.
     await fireEvent.press(screen.getByRole("button", { name: "Yes, rings" }));

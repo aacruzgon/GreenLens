@@ -112,14 +112,19 @@ export function labelSides(items: readonly { key: string; oval: Rect; text: stri
 }
 
 /**
- * How far to move the photo down (or up, when negative) so its hotspots, labels included, sit in the band the
- * cards leave clear, `{ top, bottom }` in the view's points. Zero when they already fit or there are none; at most
- * `limit`, so the photo still fills most of the screen.
+ * How far to move the photo down (or up, when negative) so its hotspots, labels included on the side
+ * `labelSides` chose, sit in the band the cards leave clear, `{ top, bottom }` in the view's points. Zero when they
+ * already fit or there are none; at most `limit`, so the photo still fills most of the screen.
  */
-export function bandShift(ovals: readonly Rect[], band: { top: number; bottom: number } | undefined, limit: number): number {
-  if (!band || ovals.length === 0 || band.bottom <= band.top) return 0;
-  const top = Math.min(...ovals.map((o) => o.y));
-  const bottom = Math.max(...ovals.map((o) => o.y + o.height)) + TAG_GAP + TAG_HEIGHT;
+export function bandShift(
+  items: readonly { oval: Rect; text: string; side?: "below" | "above" }[],
+  band: { top: number; bottom: number } | undefined,
+  limit: number,
+): number {
+  if (!band || items.length === 0 || band.bottom <= band.top) return 0;
+  const rects = items.flatMap((i) => [i.oval, tagRect(i.oval, i.text, i.side ?? "below")]);
+  const top = Math.min(...rects.map((r) => r.y));
+  const bottom = Math.max(...rects.map((r) => r.y + r.height));
   if (top >= band.top && bottom <= band.bottom) return 0;
   const shift = (band.top + band.bottom) / 2 - (top + bottom) / 2;
   return Math.max(-limit, Math.min(limit, Math.round(shift)));

@@ -52,7 +52,7 @@ export function PhotoStage({ image, hotspots, animated, species, band }: PhotoSt
   // While the cards cover part of the photo (the question, "Not sure yet"), the photo slides so the spots
   // stay in view between them; the edge it uncovers is black like the screen, under the cards.
   const shift = bandShift(
-    shown.map((h) => h.oval),
+    shown.map((h) => ({ oval: h.oval, text: h.text, side: sides.get(h.key) })),
     band,
     view.height * 0.3,
   );

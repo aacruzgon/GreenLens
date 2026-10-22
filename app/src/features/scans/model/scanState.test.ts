@@ -348,14 +348,16 @@ describe("hotspots", () => {
     expect(labelSides([leaf, { ...larva, oval: { ...larva.oval, y: 700 } }]).get("larva")).toBe("below");
   });
 
-  it("slides the photo so its hotspots sit between the cards, within a limit", () => {
-    const ovals = [{ x: 100, y: 250, width: 160, height: 200 }];
+  it("slides the photo so its hotspots and their labels sit between the cards, within a limit", () => {
+    const ovals = [{ oval: { x: 100, y: 250, width: 160, height: 200 }, text: "Leaf spots" }];
     // Spots and label 250–494; clear band 320–560: down by 68.
     expect(bandShift(ovals, { top: 320, bottom: 560 }, 250)).toBe(68);
     expect(bandShift(ovals, { top: 200, bottom: 600 }, 250)).toBe(0);
     expect(bandShift(ovals, { top: 700, bottom: 800 }, 100)).toBe(100);
     expect(bandShift([], { top: 320, bottom: 560 }, 250)).toBe(0);
     expect(bandShift(ovals, undefined, 250)).toBe(0);
+    // A label above its oval counts too: 206–450, so down by 112, not 68.
+    expect(bandShift([{ ...ovals[0]!, side: "above" }], { top: 320, bottom: 560 }, 250)).toBe(112);
   });
 
   it("leaves out the classifier's Healthy finding and boxes without a problem", () => {

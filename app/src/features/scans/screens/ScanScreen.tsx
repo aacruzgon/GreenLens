@@ -5,8 +5,8 @@
 // Always dark, like the camera it continues.
 import { useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useRef, useState } from "react";
-import { ActionSheetIOS, ActivityIndicator, Alert, Platform, View, findNodeHandle, type LayoutChangeEvent } from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, View, type LayoutChangeEvent } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PROVISIONAL_PLAN_NOTE } from "@/domain/diagnosis";
@@ -15,6 +15,7 @@ import { Button, CandidateCompare, ErrorState, IconButton, Text, ThemeProvider, 
 import { FailureCard, LowEvidenceCard } from "../components/OutcomeCards";
 import { AnalysisRing, PhotoStage, PhotoStrip } from "../components/PhotoStage";
 import { QuestionCard } from "../components/QuestionCard";
+import { SoilMenu } from "../components/SoilMenu";
 import { ScanIcon } from "../components/ScanIcons";
 import { StageCard } from "../components/StageCard";
 import { useLiveAnalysis } from "../hooks/useLiveAnalysis";
@@ -33,9 +34,8 @@ function LiveAnalysis() {
   const { scanId } = useLocalSearchParams<{ scanId: string }>();
   const v = useLiveAnalysis(scanId);
   const insets = useSafeAreaInsets();
-  const more = useRef<View>(null);
   // Where the cards end and the question and controls begin, so the photo can keep its hotspots between them.
-  const [edges, setEdges] = useState<{ cards?: number; question?: number; controls?: number }>({});
+  const [edges, setEdges] = useState<{ cards?: number; question?: number }>({});
   const edge = (key: keyof typeof edges, bottomEdge: boolean) => (e: LayoutChangeEvent) => {
     const { y, height } = e.nativeEvent.layout;
     const value = Math.round(bottomEdge ? y + height : y);
@@ -44,29 +44,11 @@ function LiveAnalysis() {
 
   if (v.gone) return <Gone onClose={v.actions.close} />;
 
-  const soilMenu = () => {
-    const options = ["Squeeze test", "Jar test", "Cancel"];
-    const pick = (i: number) => {
-      if (i === 0) v.actions.checkSoil("squeeze_test");
-      if (i === 1) v.actions.checkSoil("jar_test");
-    };
-    if (Platform.OS === "ios") {
-      // Anchored to More, so it opens from the button rather than centred like an alert (iOS 26).
-      const anchor = more.current ? (findNodeHandle(more.current) ?? undefined) : undefined;
-      ActionSheetIOS.showActionSheetWithOptions({ title: "Check your soil", options, cancelButtonIndex: 2, anchor }, pick);
-    } else {
-      Alert.alert("Check your soil", undefined, [
-        { text: options[0]!, onPress: () => pick(0) },
-        { text: options[1]!, onPress: () => pick(1) },
-        { text: options[2]!, style: "cancel" },
-      ]);
-    }
-  };
-
   const ending = v.ending;
   const showQuestion = v.question && ending.kind !== "failed";
-  const bandBottom = showQuestion ? edges.question : edges.controls;
-  const band = edges.cards !== undefined && bandBottom !== undefined ? { top: edges.cards + 8, bottom: bandBottom - 8 } : undefined;
+  // Only while the question is up, when "Not sure yet" and the question cover most of the photo: the photo then
+  // stays put while the run goes on, a finding arrives or the run log opens.
+  const band = showQuestion && edges.cards !== undefined && edges.question !== undefined ? { top: edges.cards + 8, bottom: edges.question - 8 } : undefined;
 
   return (
     <View style={{ flex: 1, backgroundColor: camera.black }} testID="live-analysis">
@@ -138,10 +120,7 @@ function LiveAnalysis() {
       ) : null}
 
       {/* The controls: back, the ring or the pill, and the soil checks (index.html .cam). */}
-      <View
-        style={{ position: "absolute", left: 0, right: 0, bottom: insets.bottom + 68, flexDirection: "row", alignItems: "center", paddingHorizontal: 24, gap: space[3] }}
-        onLayout={edge("controls", false)}
-      >
+      <View style={{ position: "absolute", left: 0, right: 0, bottom: insets.bottom + 68, flexDirection: "row", alignItems: "center", paddingHorizontal: 24, gap: space[3] }}>
         <IconButton
           accessibilityLabel="Close"
           accessibilityHint="The analysis goes on; its result appears on the plant"
@@ -157,14 +136,7 @@ function LiveAnalysis() {
           ) : null}
         </View>
         {v.canCheckSoil ? (
-          <View ref={more} collapsable={false}>
-            <IconButton
-              accessibilityLabel="Check your soil"
-              onPress={soilMenu}
-              icon={() => <ScanIcon name="more" color={camera.ink} />}
-              style={{ width: minTouch + 4, height: minTouch + 4, borderRadius: (minTouch + 4) / 2, backgroundColor: camera.card }}
-            />
-          </View>
+          <SoilMenu onPick={v.actions.checkSoil} />
         ) : (
           <View style={{ width: minTouch + 4 }} />
         )}
