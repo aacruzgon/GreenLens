@@ -3,6 +3,8 @@
 import tomllib
 from pathlib import Path
 
+import yaml
+
 from ml.models import check
 
 MODELS = Path(__file__).resolve().parents[1] / "models"
@@ -44,3 +46,28 @@ def test_plant_probe_file_rules():
                         ({"classes": 2}, "one-class")):
         problems = check.features_problems("m: plant_probe", {**good, **bad}, bioclip, "p1")
         assert any(needle in p for p in problems), (bad, problems)
+
+
+def test_seed_rows_are_compared_by_index(tmp_path, monkeypatch):
+    """classifier_labels.yaml may map fewer classes than the head; each row must match its index."""
+    head = {"version": "h1", "labels": [
+        {"index": 0, "label": "apple/apple_scab", "species_id": "apple", "problem_id": "apple_scab"},
+        {"index": 1, "label": "tomato/healthy", "species_id": "tomato", "problem_id": "healthy"},
+        {"index": 2, "label": "tomato/tomato_leaf_mold", "species_id": "tomato", "problem_id": "tomato_leaf_mold"}]}
+    seed = tmp_path / "classifier_labels.yaml"
+    monkeypatch.setattr(check, "SEED_LABELS", seed)
+
+    def problems(version: str, rows: list[dict]) -> list[str]:
+        seed.write_text(yaml.safe_dump({"model_version": version, "labels": rows}))
+        return check.seed_problems("m: disease_head_h1", head, [])
+
+    tomato = [dict(l) for l in head["labels"][1:]]
+    assert problems("h1", tomato) == []
+    assert problems("h0", tomato) == [], "another head of a change-over isn't compared"
+    wrong = [tomato[0], {**tomato[1], "problem_id": "tomato_late_blight"}]
+    assert any("index 2" in p for p in problems("h1", wrong))
+    assert any("isn't one of the head's" in p for p in problems("h1", [{**tomato[0], "index": 5}]))
+
+    assert check.seed_head_problems("m", [{"name": "disease_head_h1", "version": "h1"}]) == []
+    assert "no disease head" in check.seed_head_problems("m", [{"name": "disease_head_h0", "version": "h0"}])[0]
+
