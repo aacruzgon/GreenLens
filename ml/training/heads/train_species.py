@@ -35,6 +35,7 @@ from sklearn.linear_model import LogisticRegression
 from ml.pdm_vision import headfile
 from ml.pdm_vision.features import Embedder
 from ml.training.heads.train_disease import BIOCLIP, REPORTS, RUNS, fit_temperature, read_split, softmax
+from ml.training.labels import current
 
 ROOT = Path(__file__).resolve().parents[3]
 RAW = ROOT / "ml/training/data/raw"
@@ -78,9 +79,8 @@ def dev_rows(manifest: Path) -> list[dict]:
 
 
 def label_matrix() -> tuple[np.ndarray, list[str], str]:
-    """The species rows of the manifest's label matrix, their ids and its version."""
-    entry = next(m for m in tomllib.loads((FILES / "manifest.toml").read_text())["model"]
-                 if m["name"].startswith("bioclip_labels"))
+    """The species rows of the label matrix the API asks for, their ids and its version."""
+    entry = current.matrix_entry(tomllib.loads((ROOT / "ml/models/manifest.toml").read_text())["model"])
     doc = headfile.read_label_matrix(FILES / entry["file"])
     idx = [i for i, label in enumerate(doc["labels"]) if label["table"] == "species"]
     return doc["rows"][idx], [doc["labels"][i]["id"] for i in idx], entry["version"]

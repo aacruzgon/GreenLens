@@ -71,3 +71,13 @@ def test_seed_rows_are_compared_by_index(tmp_path, monkeypatch):
     assert check.seed_head_problems("m", [{"name": "disease_head_h1", "version": "h1"}]) == []
     assert "no disease head" in check.seed_head_problems("m", [{"name": "disease_head_h0", "version": "h0"}])[0]
 
+
+def test_each_manifest_has_the_label_matrix_knowledge_names():
+    """api asks every perception job for knowledge.surql's label_set_version; a worker on these
+    manifests must have that matrix, or real scans are refused (#51, Oct 20)."""
+    from ml.training.labels import current
+
+    version = current.label_set_version()
+    for name in check.MANIFESTS:
+        entry = current.matrix_entry(list(entries(name).values()))
+        assert entry["version"] == version and entry["name"] == f"bioclip_labels_{version}"

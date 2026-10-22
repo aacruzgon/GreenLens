@@ -8,10 +8,11 @@
 # mismatch. After changing this file, run `python -m ml.models.cpu_manifest` and
 # `python -m ml.models.check`.
 #
-# Status 2026-10-20: development entries. The leaf detector is its clean fine-tune; the label
-# matrix is a STAND-IN (ml/training/labels/standin_labels.yaml) until the knowledge seed has
-# species and organism files; the disease head is v3c on our detector's leaf crops, with
-# proposed slugs (issue #4). Thresholds are the docs' starting values, set from the
+# Status 2026-10-22: development entries. The leaf detector is its clean fine-tune; the label
+# matrix is the knowledge seed's (5 species, 5 organisms), beside the 20-species STAND-IN
+# (ml/training/labels/standin_labels.yaml) during the change-over; the disease head is v3c on
+# our detector's leaf crops, with #4's slugs, and the seed's classifier_labels.yaml maps
+# tomato's 8 of its 19 classes. Thresholds are the docs' starting values, set from the
 # evaluation set on Oct 22–23.
 
 # --- api (control plane): the S1 entries of docs/vision/README.md §6, upstream files ---
@@ -184,6 +185,25 @@ licence           = "MIT"
 source            = "STAND-IN: 20 species from ml/training/labels/standin_labels.yaml, BioCLIP 2 text tower, 80 templates"
 runs_on           = "perception"
 label_set_version = "233482ce598f591b"
+
+# The knowledge seed's matrix, the label set knowledge.surql names (7c923c7c8b4d055b); the
+# stand-in above stays until no queued or leased job names it (README 6, the change-over).
+[[model]]
+name              = "bioclip_labels_7c923c7c8b4d055b"
+version           = "7c923c7c8b4d055b"
+file              = "bioclip_labels/bioclip_labels_7c923c7c8b4d055b.json"
+sha256            = "8ff16af530ae10d881637f1546e37da13643ad2d1b59de51d5142d89515f9851"
+licence           = "MIT"
+source            = "the knowledge seed (#51): 5 species (tomato full; apple, corn, grape, pepper label_only) and 5 organisms, BioCLIP 2 text tower, 80 templates; ml/training/labels/bioclip_text.py"
+runs_on           = "perception"
+label_set_version = "7c923c7c8b4d055b"
+
+  # The evaluation's dev cases, softmax over the 5 species rows (T 1); a case's shots combined
+  # with the worker's weights (ml/training/eval/reports/species-check-2026-10-22).
+  [model.check]
+  dev_top1_per_shot  = 0.789             # 133 shots of tomato, apple, grape and corn; the stand-in 0.647
+  dev_top1_per_case  = 0.771             # 105 cases; the stand-in 0.610; tomato 42 of 63 (11 called pepper)
+  dev_top3_all_cases = 0.878             # all 115 cases; squash's 10 can't be named (not in the seed)
 
 [[model]]
 name                      = "disease_head_disease-head-v3c-2026-10-20"
