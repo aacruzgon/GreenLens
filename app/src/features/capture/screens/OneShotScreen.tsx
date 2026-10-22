@@ -13,6 +13,7 @@ import { Button, DropCard, Fade, IconButton, Text, ThemeProvider, camera, minTou
 import { CameraAction, ProblemLine } from "../components/CameraControls";
 import { CaptureIcon } from "../components/CaptureIcons";
 import { CoverageDial } from "../components/CoverageDial";
+import { leaveCapture } from "../hooks/leaveCapture";
 import { useOneShotData, useOneShotSession, type OneShotData, type OneShotSession } from "../hooks/useOneShotSession";
 import { isGuidedKind, type OneShotPurpose } from "../model/oneShot";
 
@@ -35,7 +36,7 @@ export function GuidedCaptureScreen() {
       {isGuidedKind(kind) ? (
         <OneShot scanId={scanId} purpose={{ type: "guided", kind }} />
       ) : (
-        <Unavailable message="There's no such soil check." onClose={() => router.back()} />
+        <Unavailable message="There's no such soil check." onClose={() => leaveCapture(router)} />
       )}
     </ThemeProvider>
   );
@@ -45,7 +46,7 @@ function OneShot({ scanId, purpose }: { scanId: string; purpose: OneShotPurpose 
   const router = useRouter();
   const data = useOneShotData(scanId, purpose);
   if (data.loadError) {
-    return <Unavailable message="Couldn't open this scan" onClose={() => router.back()} onRetry={data.retryLoad} />;
+    return <Unavailable message="Couldn't open this scan" onClose={() => leaveCapture(router)} onRetry={data.retryLoad} />;
   }
   if (!data.ready || !data.target) {
     return (
@@ -54,7 +55,7 @@ function OneShot({ scanId, purpose }: { scanId: string; purpose: OneShotPurpose 
       </Shell>
     );
   }
-  if (!data.target.ok) return <Unavailable message={data.target.message} onClose={() => router.back()} />;
+  if (!data.target.ok) return <Unavailable message={data.target.message} onClose={() => leaveCapture(router)} />;
   // Mounted once the data is ready, so the first step is chosen once: the steps, or the camera from the jar task.
   return <OneShotCamera scanId={scanId} purpose={purpose} data={data} />;
 }
@@ -234,7 +235,10 @@ function Intro({ session }: { session: OneShotSession }) {
         ))}
       </View>
       {session.problem ? <ProblemLine message={session.problem} action={{ label: "Try again", onPress: session.actions.start }} /> : null}
-      <Button label="Start" onPress={session.actions.start} busy={session.busy.starting} />
+      {/* Neutral like every control on the camera, white on black, never tinted (screens 3.2; design 2). */}
+      <View style={{ alignSelf: "flex-start" }}>
+        <CameraAction testID="start" label="Start" enabled busy={session.busy.starting} onPress={session.actions.start} disabledHint="" />
+      </View>
     </View>
   );
 }

@@ -9,6 +9,7 @@ import { files, haptics, type CapturedShot } from "@/platform";
 import { uploadOutcome } from "../model/draft";
 import { initialOneShot, jarTaskRequest, oneShotReducer, oneShotTarget, type OneShotPurpose } from "../model/oneShot";
 import type { ShotFile } from "../model/slot";
+import { leaveCapture } from "./leaveCapture";
 import { useScanJarTask } from "./useScanJarTask";
 
 function messageOf(error: unknown): string {
@@ -159,7 +160,7 @@ export function useOneShotSession(scanId: string, purpose: OneShotPurpose, data:
         void send(state.file, state.key);
       },
       close: () => {
-        if (state.step !== "sending") router.back();
+        if (state.step !== "sending") leaveCapture(router);
       },
     },
   };

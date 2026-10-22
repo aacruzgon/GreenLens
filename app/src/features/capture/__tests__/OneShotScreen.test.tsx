@@ -33,7 +33,7 @@ jest.mock("@/platform/files", () => ({
 }));
 // jest-expo's expo-crypto stub returns no UUID; every action needs a real idempotency key.
 jest.mock("expo-crypto", () => ({ randomUUID: () => jest.requireActual<{ randomUUID: () => string }>("crypto").randomUUID() }));
-const mockRouter = { back: jest.fn(), replace: jest.fn(), push: jest.fn() };
+const mockRouter = { canGoBack: jest.fn(() => true), back: jest.fn(), replace: jest.fn(), push: jest.fn() };
 let mockParams: Record<string, string> = {};
 jest.mock("expo-router", () => ({
   useLocalSearchParams: () => mockParams,
@@ -138,6 +138,19 @@ describe("question mode", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Close" }));
     expect(mockRouter.back).toHaveBeenCalled();
   });
+});
+
+it("closes to the garden home when it was opened directly, with nothing to go back to", async () => {
+  const scanId = await newScan();
+  mockRouter.canGoBack.mockReturnValue(false);
+  try {
+    await renderScreen(GuidedCaptureScreen, { scanId, kind: "squeeze_test" });
+    await fireEvent.press(await screen.findByRole("button", { name: "Close" }));
+    expect(mockRouter.back).not.toHaveBeenCalled();
+    expect(mockRouter.replace).toHaveBeenCalledWith("/");
+  } finally {
+    mockRouter.canGoBack.mockReturnValue(true);
+  }
 });
 
 describe("guided mode", () => {

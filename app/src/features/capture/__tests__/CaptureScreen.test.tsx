@@ -41,7 +41,7 @@ jest.mock("@/platform/files", () => ({
 }));
 // jest-expo's expo-crypto stub returns no UUID; every shot needs a real idempotency key.
 jest.mock("expo-crypto", () => ({ randomUUID: () => jest.requireActual<{ randomUUID: () => string }>("crypto").randomUUID() }));
-const mockRouter = { back: jest.fn(), replace: jest.fn(), push: jest.fn(), dismissAll: jest.fn() };
+const mockRouter = { canGoBack: jest.fn(() => true), back: jest.fn(), replace: jest.fn(), push: jest.fn(), dismissAll: jest.fn() };
 let mockParams: { scanId: string } = { scanId: "" };
 jest.mock("expo-router", () => ({
   useLocalSearchParams: () => mockParams,
