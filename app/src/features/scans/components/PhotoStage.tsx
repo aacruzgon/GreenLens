@@ -2,7 +2,7 @@
 // screen, not a live feed, with the findings as hotspots on it; the scan's photos in a solid dark strip, the one
 // being read ringed in white; and the shutter's place taken by a glowing ring while the analysis runs.
 import { Image } from "expo-image";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, View, type LayoutChangeEvent } from "react-native";
 import Animated, { Easing, cancelAnimation, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated";
 import Svg, { Circle, Defs, LinearGradient, Rect, Stop } from "react-native-svg";
@@ -10,9 +10,9 @@ import Svg, { Circle, Defs, LinearGradient, Rect, Stop } from "react-native-svg"
 import { imageSource } from "@/api";
 import { regionToView } from "@/domain/regions";
 import type { ScanImage } from "@/domain/types";
-import { Hotspot, Text, camera, hiddenSvg, useReducedMotion, useSvgId } from "@/ui";
+import { Hotspot, Text, camera, hiddenSvg, motion, useReducedMotion, useSvgId } from "@/ui";
 
-import { ovalOf, type Hotspot as HotspotModel } from "../model/hotspots";
+import { bandShift, labelSides, ovalOf, type Hotspot as HotspotModel } from "../model/hotspots";
 import { ScanIcon } from "./ScanIcons";
 
 const KIND_WORDS: Record<ScanImage["kind"], string> = {
@@ -32,39 +32,62 @@ export interface PhotoStageProps {
   animated: ReadonlySet<string>;
   /** "Tomato · Change" for the species check, while the species waits for the user. */
   species?: { name: string; onChange?: () => void };
+  /** The band the cards leave clear, in the view's points: the photo moves so its hotspots sit in it. */
+  band?: { top: number; bottom: number };
 }
 
-export function PhotoStage({ image, hotspots, animated, species }: PhotoStageProps) {
+export function PhotoStage({ image, hotspots, animated, species, band }: PhotoStageProps) {
+  const reduced = useReducedMotion();
   const [view, setView] = useState({ width: 0, height: 0 });
   const onLayout = (e: LayoutChangeEvent) => setView({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height });
-  const size = image ? { width: image.width, height: image.height } : undefined;
-  const shown = image ? hotspots.filter((h) => h.imageId === image.id) : [];
+  const shown = useMemo(() => {
+    if (!image || view.width === 0) return [];
+    const size = { width: image.width, height: image.height };
+    return hotspots
+      .filter((h) => h.imageId === image.id)
+      .map((h) => ({ ...h, oval: ovalOf(regionToView(h.bbox, size, view, "cover")), text: h.size ? `${h.label} · ${h.size}` : h.label }));
+  }, [hotspots, image, view]);
+  const sides = useMemo(() => labelSides(shown), [shown]);
+
+  // While the cards cover part of the photo (the question, "Not sure yet"), the photo slides so the spots
+  // stay in view between them; the edge it uncovers is black like the screen, under the cards.
+  const shift = bandShift(
+    shown.map((h) => h.oval),
+    band,
+    view.height * 0.3,
+  );
+  const dy = useSharedValue(0);
+  useEffect(() => {
+    dy.value = reduced ? shift : withTiming(shift, { duration: motion.sheet.duration, easing: Easing.bezier(...motion.sheet.bezier) });
+  }, [dy, reduced, shift]);
+  const slide = useAnimatedStyle(() => ({ transform: [{ translateY: dy.value }] }));
 
   return (
     <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} onLayout={onLayout} testID="analysis-photo">
-      {image ? (
-        <Image
-          source={imageSource(image.url, image.id)}
-          contentFit="cover"
-          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
-          accessible
-          accessibilityLabel={`${KIND_WORDS[image.kind]} photo`}
-          transition={200}
-        />
-      ) : null}
-      <Shade />
-      {size && view.width > 0
-        ? shown.map((h) => (
-            <Hotspot
-              key={h.key}
-              testID={`hotspot-${h.kind}`}
-              oval={ovalOf(regionToView(h.bbox, size, view, "cover"))}
-              label={h.label}
-              size={h.size}
-              animate={animated.has(h.key)}
-            />
-          ))
-        : null}
+      <Animated.View style={[{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }, slide]}>
+        {image ? (
+          <Image
+            source={imageSource(image.url, image.id)}
+            contentFit="cover"
+            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+            accessible
+            accessibilityLabel={`${KIND_WORDS[image.kind]} photo`}
+            transition={200}
+          />
+        ) : null}
+        <Shade />
+        {shown.map((h) => (
+          <Hotspot
+            key={h.key}
+            testID={`hotspot-${h.kind}`}
+            oval={h.oval}
+            label={h.label}
+            size={h.size}
+            labelAt={sides.get(h.key)}
+            animate={animated.has(h.key)}
+          />
+        ))}
+      </Animated.View>
       {species ? <SpeciesChip name={species.name} onChange={species.onChange} /> : null}
     </View>
   );

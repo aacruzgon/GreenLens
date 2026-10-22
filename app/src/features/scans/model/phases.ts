@@ -151,7 +151,8 @@ export interface PhaseLine {
 export function phaseLine(state: ScanState, phases: readonly PhaseView[] = phasesOf(state)): PhaseLine {
   const totalMs = phases.reduce((sum, p) => sum + (p.durationMs ?? 0), 0);
   if (state.status === "failed") return { now: "Stopped" };
-  if (state.plan && state.status === "planned") return { now: "Plan ready", total: `in ${formatSeconds(totalMs)}` };
+  // A plan that replaced another (a late answer, a species change) says so (plan_superseded's `reason`).
+  if (state.plan && state.status === "planned") return { now: state.plan.notice ? "Plan updated" : "Plan ready", total: `in ${formatSeconds(totalMs)}` };
   const idx = phases.findIndex((p) => p.state === "running" || p.state === "waiting");
   const current = phases[idx];
   if (state.question && state.status === "awaiting_answer") {

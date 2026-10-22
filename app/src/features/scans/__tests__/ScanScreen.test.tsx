@@ -1,12 +1,14 @@
 // F3's exit check in Jest (roadmap 9), over the mock with no delays: Tomato 2's run from Analyse to the pill, with
 // the hotspot on the photographed leaf, the ladybug larva's chip, "Not sure yet", Yes to the rings question and
-// the pill; Not sure leaves a provisional plan; a failed run offers New scan.
+// the pill; Not sure leaves a provisional plan; a failed run offers New scan; a species change reruns the scan.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react-native";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 
 import { newKey, scans, setTransport } from "@/api";
-import { IDS, mockTransport, resetMock, scenario } from "@/api/mock";
+import { IDS, mockStore, mockTransport, resetMock, scenario } from "@/api/mock";
 import { ThemeProvider } from "@/ui";
+
+import { SpeciesSheet } from "@/features/plants";
 
 import { ScanScreen } from "../screens/ScanScreen";
 
@@ -37,11 +39,6 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
-// A test can end with the stream open (waiting for the answer). After Testing Library unmounts the screen, let the
-// mock's stream wind down before the next test resets the mock: resetting under it fails the next test with
-// "ReadableStream is already closed" (seen in Jest only; where it is thrown isn't found yet).
-afterEach(() => new Promise((r) => setTimeout(r, 150)));
-
 async function submitted(plantId: string, nextScan?: "no_plant_found"): Promise<string> {
   if (nextScan) scenario.set({ nextScan });
   const scan = await scans.create({ garden_id: IDS.garden, plant_id: plantId }, newKey());
@@ -51,13 +48,15 @@ async function submitted(plantId: string, nextScan?: "no_plant_found"): Promise<
   return scan.id;
 }
 
-async function renderScan(scanId: string) {
-  mockParams = { scanId };
+/** The scan screen; with `sheet`, the species sheet beside it, as when "Change" opens it over the screen. */
+async function renderScan(scanId: string, sheet?: { plantId: string }) {
+  mockParams = { scanId, ...sheet };
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } } });
   await render(
     <QueryClientProvider client={qc}>
       <ThemeProvider scheme="dark" reducedMotion>
         <ScanScreen />
+        {sheet ? <SpeciesSheet /> : null}
       </ThemeProvider>
     </QueryClientProvider>,
   );
@@ -118,6 +117,29 @@ describe("ScanScreen", () => {
     await renderScan(scanId);
     expect(await screen.findByText("An editor or the garden's owner can answer this.", undefined, RUN)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Yes, rings" })).toBeNull();
+  });
+
+  it("reruns the scan when the species changes while the question is open", async () => {
+    const scanId = await submitted(IDS.tomato2);
+    await renderScan(scanId, { plantId: IDS.tomato2 });
+    await screen.findByTestId("question-card", undefined, RUN);
+
+    // Tomato is already the plant's species: offered as Yes, not again in the list.
+    expect(await screen.findByTestId("species-yes", undefined, RUN)).toBeTruthy();
+    await screen.findByText("Ocimum basilicum", undefined, RUN);
+    expect(screen.queryByText("Solanum lycopersicum")).toBeNull();
+    await fireEvent.press(await screen.findByText("Basil", undefined, RUN));
+    await waitFor(() => expect(mockRouter.back).toHaveBeenCalled(), RUN);
+    expect(screen.queryByTestId("species-problem")).toBeNull();
+    expect(mockStore.plants.get(IDS.tomato2)?.species?.id).toBe("basil");
+
+    // The open question is superseded and the rerun ends in a plan for the new species.
+    const events = mockStore.scan(scanId)!.events;
+    expect(events.some((e) => e.type === "run_started" && e.reason === "species_changed")).toBe(true);
+    expect(events.some((e) => e.type === "question_resolved" && e.by === "superseded")).toBe(true);
+    expect(await screen.findByTestId("see-result", undefined, RUN)).toBeTruthy();
+    expect(screen.queryByTestId("question-card")).toBeNull();
+    expect(screen.getByText("Plan ready")).toBeTruthy();
   });
 
   it("shows a failed run with New scan", async () => {

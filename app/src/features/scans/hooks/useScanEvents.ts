@@ -16,7 +16,7 @@ import { backoffMs } from "@/lib/backoff";
 import { haptics } from "@/platform";
 
 import { phasesOf, tickCount } from "../model/phases";
-import { applyScanEvent, effectsOf, isReplay, seed, stateAtRest, type ScanEffect, type ScanState } from "../model/scanState";
+import { applyScanEvent, effectsOf, isReplay, reconcile, seed, stateAtRest, type ScanEffect, type ScanState } from "../model/scanState";
 
 /** No bytes for this long, three missed keepalives, is a broken stream (README 10). */
 export const IDLE_MS = 45_000;
@@ -42,13 +42,22 @@ export interface ControllerDeps {
 export class ScanEventsController {
   private snap: ScanEventsSnapshot = { state: undefined, stream: "idle" };
   private readonly listeners = new Set<() => void>();
+  // Events fold into `working`. Until the full replay reaches the snapshot's seq, the screen shows `base`, the
+  // snapshot itself, rather than the history folding by (README 10, step 4).
+  private working: ScanState | undefined;
+  private base: ScanState | undefined;
   private abort: AbortController | undefined;
   private timer: ReturnType<typeof setTimeout> | undefined;
+  // Bumped by `stop`: a connection's continuations after an await check it, so one that was replaced (a resume
+  // during its refetch, the background, unmount) can't touch the state or arm a timer.
+  private gen = 0;
   private attempt = 0;
   // The first `connecting` of a visit replays the whole history; later ones send the last applied seq.
   private first = true;
   private foreground = true;
   private disposed = false;
+  /** A record fetched before this, from the cache, can't be the visit's snapshot (`sync`). */
+  readonly createdAt = Date.now();
 
   constructor(
     private readonly scanId: string,
@@ -67,16 +76,36 @@ export class ScanEventsController {
     for (const fn of this.listeners) fn();
   }
 
-  /** Seeds from the first snapshot of the visit, then opens the stream unless the scan is at rest. */
-  start(detail: ScanDetail): void {
-    if (this.snap.state || this.disposed) return;
-    this.set({ state: seed(detail), stream: needsStream(detail) ? "idle" : "resting" });
-    if (needsStream(detail)) void this.connect();
+  private publish(patch: Partial<ScanEventsSnapshot> = {}): void {
+    const w = this.working;
+    this.set({ state: w && w.lastSeq >= w.snapshotSeq ? w : this.base, ...patch });
   }
 
-  /** Reopens a resting or waiting stream: late work, a species change, a retry, a push (flows 17). */
+  /**
+   * Takes a `ScanDetail` fetched at `fetchedAt`. The first one fetched during this visit seeds the state and opens
+   * the stream unless the scan is at rest: a cached one has an older `last_event_seq`, so events already seen
+   * would count as live, with their haptics and animations. Later ones bring the state up to the record
+   * (`reconcile`).
+   */
+  sync(detail: ScanDetail, fetchedAt: number): void {
+    if (this.disposed || detail.id !== this.scanId) return;
+    if (!this.working || !this.base) {
+      if (fetchedAt < this.createdAt) return;
+      this.working = this.base = seed(detail);
+      const stream = needsStream(detail);
+      this.publish({ stream: stream ? "idle" : "resting" });
+      if (stream) void this.connect();
+      return;
+    }
+    this.working = reconcile(this.working, detail);
+    this.base = reconcile(this.base, detail);
+    this.publish();
+  }
+
+  /** Reopens a resting or waiting stream: late work, a species change, a retry, a push (flows 17). A scan that
+   * is gone stays gone. */
   resume(): void {
-    if (!this.snap.state || this.abort || this.disposed) return;
+    if (!this.working || this.abort || this.disposed || this.snap.stream === "gone") return;
     this.attempt = 0;
     void this.connect();
   }
@@ -85,11 +114,11 @@ export class ScanEventsController {
     if (fg === this.foreground) return;
     this.foreground = fg;
     if (!fg) {
-      if (this.abort || this.timer) {
+      if (this.active || this.snap.stream === "refetching") {
         this.stop();
         this.set({ stream: "paused" });
       }
-    } else if (this.snap.stream === "paused" || (this.snap.state && !stateAtRest(this.snap.state) && !this.abort && !this.timer)) {
+    } else if (this.snap.stream === "paused" || (this.working && !stateAtRest(this.working) && !this.active)) {
       this.resume();
     }
   }
@@ -106,6 +135,7 @@ export class ScanEventsController {
   }
 
   private stop(): void {
+    this.gen += 1;
     this.abort?.abort();
     this.abort = undefined;
     if (this.timer) clearTimeout(this.timer);
@@ -113,11 +143,12 @@ export class ScanEventsController {
   }
 
   private apply(event: ScanEvent): void {
-    const prev = this.snap.state;
+    const prev = this.working;
     if (!prev) return;
     const next = applyScanEvent(prev, event);
     if (next === prev) return;
-    this.set({ state: next });
+    this.working = next;
+    this.publish();
     if (isReplay(prev, event)) return;
     const effects = effectsOf(event);
     // One haptic per tick on the stage card, not per pipeline stage (several stages make one tick).
@@ -127,7 +158,9 @@ export class ScanEventsController {
 
   private async connect(): Promise<void> {
     this.stop();
-    if (!this.snap.state || this.disposed || !this.foreground) return;
+    const gen = this.gen;
+    const working = this.working;
+    if (!working || this.disposed || !this.foreground) return;
     const ctrl = new AbortController();
     this.abort = ctrl;
     this.set({ stream: "connecting" });
@@ -137,6 +170,7 @@ export class ScanEventsController {
     let bytes = false;
     // Any byte, a keepalive too, means the stream is up (flows 17: 200 → streaming).
     const onActivity = () => {
+      if (gen !== this.gen) return;
       if (!bytes) {
         bytes = true;
         this.set({ stream: "streaming" });
@@ -155,9 +189,10 @@ export class ScanEventsController {
     let outcome: "closed" | "error" | "gone" = "closed";
     try {
       touch();
-      const lastEventId = this.first ? undefined : this.snap.state.lastSeq;
+      const lastEventId = this.first ? undefined : working.lastSeq;
       this.first = false;
       for await (const event of this.deps.open(this.scanId, { lastEventId, signal: ctrl.signal, onActivity })) {
+        if (gen !== this.gen) break;
         if (!bytes) onActivity();
         this.apply(event);
       }
@@ -167,9 +202,10 @@ export class ScanEventsController {
     } finally {
       if (idle) clearTimeout(idle);
     }
-    // Aborted by us (the background, unmount, a new connect): whoever aborted decides what comes next.
-    if ((ctrl.signal.aborted && !timedOut) || this.disposed) return;
-    if (this.abort === ctrl) this.abort = undefined;
+    // Replaced or stopped meanwhile (the background, unmount, a newer connect): whoever did that decides what
+    // comes next. The idle timeout aborts without `stop`, so it carries on as an error.
+    if (gen !== this.gen || this.disposed) return;
+    this.abort = undefined;
     if (outcome === "gone") {
       this.set({ stream: "gone" });
       return;
@@ -180,12 +216,14 @@ export class ScanEventsController {
       this.set({ stream: "refetching" });
       try {
         const fresh = await this.deps.refetch(this.scanId);
-        if (this.disposed) return;
+        if (gen !== this.gen || this.disposed) return;
+        this.sync(fresh, Date.now());
         if (!needsStream(fresh)) {
           this.set({ stream: "resting" });
           return;
         }
       } catch (error) {
+        if (gen !== this.gen || this.disposed) return;
         if (isApiError(error) && error.status === 404) {
           this.set({ stream: "gone" });
           return;
@@ -252,25 +290,32 @@ export function useScanEvents(scanId: string): ScanEventsResult {
   );
   const snap = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
 
+  // Every record the query holds, the first one fetched during this visit seeding the state.
+  const fetchedAt = scan.dataUpdatedAt;
   useEffect(() => {
-    if (detail) controller.start(detail);
-  }, [controller, detail]);
+    if (detail) controller.sync(detail, fetchedAt);
+  }, [controller, detail, fetchedAt]);
 
   useEffect(() => () => controller.dispose(), [controller]);
 
-  // Closed in the background, reopened on return from the last applied seq (README 10).
+  // Closed in the background, reopened on return from the last applied seq (README 10). `inactive` (Control
+  // Center, Notification Center, a call's banner) leaves the stream open.
   useEffect(() => {
-    const sub = AppState.addEventListener("change", (next) => controller.setForeground(next === "active"));
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "background") controller.setForeground(false);
+      else if (next === "active") controller.setForeground(true);
+    });
     return () => sub.remove();
   }, [controller]);
 
-  // Focused again: a refetched record that isn't at rest gets its stream back (flows 17).
+  // Focused, on open and on return (a question photo, a soil check): the record is fetched again, which seeds a
+  // visit whose cached record is older than it, brings an `answering` question or an `analysing` check in, and
+  // gives a scan that isn't at rest its stream back (flows 17).
   const { refetch } = scan;
   useFocusEffect(
     useCallback(() => {
-      if (!controller.getSnapshot().state || controller.active) return;
-      void refetch().then((r) => {
-        if (r.data && needsStream(r.data)) controller.resume();
+      void refetch({ cancelRefetch: false }).then((r) => {
+        if (r.data && needsStream(r.data) && !controller.active) controller.resume();
       });
     }, [controller, refetch]),
   );

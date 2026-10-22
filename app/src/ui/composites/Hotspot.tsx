@@ -1,5 +1,5 @@
 // The hotspot on a photo (design 3.1, after the furniture concept's white dot): a soft oval inside the finding's
-// region, a white dot at its centre and a label chip below ("Leaf spots · 8–12 mm"). The dot settles in 520 ms
+// region, a white dot at its centre and a label chip below, or above where another chip is ("Leaf spots · 8–12 mm"). The dot settles in 520 ms
 // and then breathes; under reduced motion it appears at once and holds still (design 6). On the camera screens
 // the chip is solid dark (styles.css .layer[data-scan="camera"] .live .region-tag).
 import { useEffect } from "react";
@@ -20,6 +20,9 @@ import { useReducedMotion } from "../theme";
 import { camera, motion } from "../tokens";
 
 const DOT = 14;
+// The chip's height and its gap from the oval; the scan screen places labels with the same numbers.
+const TAG_HEIGHT = 34;
+const TAG_GAP = 10;
 // Wide enough for "Ladybug larva · 6 mm" at 15 pt; the chip itself is as wide as its text.
 const TAG_BOX = 280;
 const sheetEase = Easing.bezier(...motion.sheet.bezier);
@@ -30,13 +33,15 @@ export interface HotspotProps {
   label: string;
   /** "8–12 mm", after the label in tabular figures. */
   size?: string;
+  /** Where the label chip goes; below by default. */
+  labelAt?: "below" | "above";
   /** Animates in when true; a replayed finding is drawn settled (README 10, step 4). */
   animate?: boolean;
   onPress?: () => void;
   testID?: string;
 }
 
-export function Hotspot({ oval, label, size, animate = true, onPress, testID }: HotspotProps) {
+export function Hotspot({ oval, label, size, labelAt = "below", animate = true, onPress, testID }: HotspotProps) {
   const reduced = useReducedMotion();
   const settle = useSharedValue(animate && !reduced ? 0 : 1);
   const breathe = useSharedValue(0);
@@ -95,10 +100,21 @@ export function Hotspot({ oval, label, size, animate = true, onPress, testID }: 
           ]}
         />
       </View>
-      {/* The chip centred under the oval: a wide box around the centre line, the chip at its middle. */}
+      {/* The chip centred under (or over) the oval: a wide box around the centre line, the chip at its middle. */}
       <Animated.View
         pointerEvents="box-none"
-        style={[{ position: "absolute", left: cx - TAG_BOX / 2, width: TAG_BOX, top: oval.y + oval.height + 10, alignItems: "center" }, tagStyle]}
+        style={[
+          {
+            position: "absolute",
+            left: cx - TAG_BOX / 2,
+            width: TAG_BOX,
+            top: labelAt === "below" ? oval.y + oval.height + TAG_GAP : oval.y - TAG_GAP - TAG_HEIGHT,
+            height: TAG_HEIGHT,
+            alignItems: "center",
+            justifyContent: "center",
+          },
+          tagStyle,
+        ]}
       >
         <Pressable
           testID={testID}

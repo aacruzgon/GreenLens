@@ -75,6 +75,56 @@ export function ovalOf(rect: { x: number; y: number; width: number; height: numb
   return { x: rect.x + (rect.width - width) / 2, y: rect.y + (rect.height - height) / 2, width, height };
 }
 
+type Rect = { x: number; y: number; width: number; height: number };
+
+/** A label chip's height and its gap from the oval (ui Hotspot); its width is estimated from the text at 15 pt
+ * semibold, on the generous side. */
+export const TAG_HEIGHT = 34;
+export const TAG_GAP = 10;
+
+function tagRect(oval: Rect, text: string, at: "below" | "above"): Rect {
+  const width = text.length * 9.5 + 24;
+  const y = at === "below" ? oval.y + oval.height + TAG_GAP : oval.y - TAG_GAP - TAG_HEIGHT;
+  return { x: oval.x + oval.width / 2 - width / 2, y, width, height: TAG_HEIGHT };
+}
+
+/** Whether two chips touch, with 6 pt to spare. */
+function overlaps(a: Rect, b: Rect): boolean {
+  const m = 6;
+  return a.x < b.x + b.width + m && b.x < a.x + a.width + m && a.y < b.y + b.height + m && b.y < a.y + a.height + m;
+}
+
+/**
+ * Where each hotspot's label goes: under its oval, or above it when that would cover a label already placed
+ * (the larva's chip over the leaf's). Placed top to bottom.
+ */
+export function labelSides(items: readonly { key: string; oval: Rect; text: string }[]): Map<string, "below" | "above"> {
+  const out = new Map<string, "below" | "above">();
+  const placed: Rect[] = [];
+  for (const item of [...items].sort((a, b) => a.oval.y - b.oval.y)) {
+    const below = tagRect(item.oval, item.text, "below");
+    const above = tagRect(item.oval, item.text, "above");
+    const side = placed.some((r) => overlaps(r, below)) && !placed.some((r) => overlaps(r, above)) ? "above" : "below";
+    out.set(item.key, side);
+    placed.push(side === "below" ? below : above);
+  }
+  return out;
+}
+
+/**
+ * How far to move the photo down (or up, when negative) so its hotspots, labels included, sit in the band the
+ * cards leave clear, `{ top, bottom }` in the view's points. Zero when they already fit or there are none; at most
+ * `limit`, so the photo still fills most of the screen.
+ */
+export function bandShift(ovals: readonly Rect[], band: { top: number; bottom: number } | undefined, limit: number): number {
+  if (!band || ovals.length === 0 || band.bottom <= band.top) return 0;
+  const top = Math.min(...ovals.map((o) => o.y));
+  const bottom = Math.max(...ovals.map((o) => o.y + o.height)) + TAG_GAP + TAG_HEIGHT;
+  if (top >= band.top && bottom <= band.bottom) return 0;
+  const shift = (band.top + band.bottom) / 2 - (top + bottom) / 2;
+  return Math.max(-limit, Math.min(limit, Math.round(shift)));
+}
+
 /**
  * The photo the analysis is reading: the one with the newest drawn finding, else the first close-up, else the
  * whole plant. The user's tap on the strip overrides it (the screen keeps that choice).

@@ -1,8 +1,8 @@
 import type { Observation, ScanDetail, ScanEvent, ScanEventBody } from "@/domain/types";
 
-import { hotspotsOf, readingImageId } from "./hotspots";
+import { bandShift, hotspotsOf, labelSides, readingImageId } from "./hotspots";
 import { phaseLine, phasesOf, tickCount } from "./phases";
-import { applyScanEvent, effectsOf, isReplay, seed, stateAtRest, type ScanState } from "./scanState";
+import { applyScanEvent, effectsOf, isReplay, reconcile, seed, stateAtRest, type ScanState } from "./scanState";
 
 const TS = "2026-10-22T14:00:00Z";
 
@@ -194,6 +194,57 @@ describe("applyScanEvent", () => {
     expect(isReplay(snap, { seq: 17 })).toBe(false);
   });
 
+  it("keeps a question answering when the replay folds its stored open event back over it", () => {
+    const question = { id: "q1", kind: "indicator", run: 1, status: "open", text: "Rings?", candidates: [], asked_at: TS, continue_at: TS } as const;
+    const events = run([...EXAMPLE.slice(0, 20), { type: "question", question: question as never }]);
+    const snap = seed(detail({ status: "awaiting_answer", last_event_seq: 21, open_question: { ...question, status: "answering" } as never }));
+    expect(fold(snap, events).question?.status).toBe("answering");
+    // A different question, or one that was open, takes the event as it is.
+    expect(fold(seed(detail()), events).question?.status).toBe("open");
+  });
+
+  it("seeds every run's current observations, so a rerun keeps the first run's plant check", () => {
+    const plantCheck = obs("o_plant", { run: 1, pipeline_stage: "plant_check", stage: "plant_check" });
+    const s = seed(detail({ run: 2, observations: [plantCheck, { ...blight, run: 2 }] }));
+    expect(s.findings.map((f) => f.id)).toEqual(["o_plant", "o_blight"]);
+  });
+});
+
+describe("reconcile", () => {
+  const question = { id: "q1", kind: "photo_request", run: 1, status: "open", text: "A closer photo?", candidates: [], asked_at: TS, continue_at: TS } as never;
+  const asked = fold(seed(detail()), run([...EXAMPLE.slice(0, 20), { type: "question", question }, { type: "status_changed", from: "analysing", to: "awaiting_answer" }]));
+
+  it("takes what changed with no event from a record as fresh as the state", () => {
+    const fresh = detail({
+      status: "awaiting_answer",
+      last_event_seq: asked.lastSeq,
+      open_question: { ...(question as object), status: "answering" } as never,
+      guided_checks: [{ image_id: "img_jar", kind: "jar_test", status: "analysing" }],
+    });
+    const s = reconcile(asked, fresh);
+    expect(s.question?.status).toBe("answering");
+    expect(s.guidedChecks).toEqual([{ image_id: "img_jar", kind: "jar_test", status: "analysing" }]);
+    // The stream's own progress stays.
+    expect(s.stages).toBe(asked.stages);
+    expect(s.candidates).toBe(asked.candidates);
+  });
+
+  it("ignores an older record", () => {
+    expect(reconcile(asked, detail({ last_event_seq: asked.lastSeq - 1 }))).toBe(asked);
+  });
+
+  it("gives a superseding plan its provisional flag and keeps the notice", () => {
+    const superseded = applyScanEvent(
+      { ...asked, plan: { id: "plan_1", provisional: true } },
+      run([{ type: "plan_superseded", old_plan_id: "plan_1", new_plan_id: "plan_2", reason: "late_answer" }], asked.lastSeq + 1)[0]!,
+    );
+    expect(superseded.plan).toEqual({ id: "plan_2", provisional: true, notice: "late_answer" });
+    const s = reconcile(superseded, detail({ status: "planned", last_event_seq: superseded.lastSeq, plan: { id: "plan_2", provisional: false } as never }));
+    expect(s.plan).toEqual({ id: "plan_2", provisional: false, notice: "late_answer" });
+  });
+});
+
+describe("applyScanEvent, failures", () => {
   it("shows a failure, and clears it on the retry's run", () => {
     const failed = fold(seed(detail()), run([...EXAMPLE.slice(0, 5), { type: "failed", failure: { code: "no_plant_found", retryable: false, message: "No plant" } }]));
     expect(failed.status).toBe("failed");
@@ -265,6 +316,27 @@ describe("hotspots", () => {
     expect(spots.map((s) => s.label).join()).not.toMatch(/blight|septoria/i);
     expect(readingImageId(spots, detail().images)).toBe("img_leaf");
     expect(readingImageId([], detail().images)).toBe("img_leaf");
+  });
+
+  it("puts a label above its oval when the one below would cover a label already placed", () => {
+    // Tomato 2's whole-plant photo on a 390 × 844 screen: the spots' oval, and the larva's low on its right.
+    const leaf = { key: "leaf", oval: { x: -19, y: 297, width: 315, height: 207 }, text: "Affected area · 8–12 mm" };
+    const larva = { key: "larva", oval: { x: 272, y: 435, width: 94, height: 59 }, text: "Ladybug larva" };
+    const sides = labelSides([larva, leaf]);
+    expect(sides.get("leaf")).toBe("below");
+    expect(sides.get("larva")).toBe("above");
+    // Far apart, both stay below.
+    expect(labelSides([leaf, { ...larva, oval: { ...larva.oval, y: 700 } }]).get("larva")).toBe("below");
+  });
+
+  it("slides the photo so its hotspots sit between the cards, within a limit", () => {
+    const ovals = [{ x: 100, y: 250, width: 160, height: 200 }];
+    // Spots and label 250–494; clear band 320–560: down by 68.
+    expect(bandShift(ovals, { top: 320, bottom: 560 }, 250)).toBe(68);
+    expect(bandShift(ovals, { top: 200, bottom: 600 }, 250)).toBe(0);
+    expect(bandShift(ovals, { top: 700, bottom: 800 }, 100)).toBe(100);
+    expect(bandShift([], { top: 320, bottom: 560 }, 250)).toBe(0);
+    expect(bandShift(ovals, undefined, 250)).toBe(0);
   });
 
   it("leaves out the classifier's Healthy finding and boxes without a problem", () => {

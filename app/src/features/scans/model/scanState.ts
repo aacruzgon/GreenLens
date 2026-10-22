@@ -80,13 +80,37 @@ export function seed(detail: ScanDetail): ScanState {
     snapshotSeq: detail.last_event_seq,
     runStages: [],
     stages: {},
-    findings: detail.observations.filter((o) => o.run === detail.run),
+    // Every run's current observations: a species change keeps run 1's plant check, segmentation and
+    // measurements, and the server returns only the ones still current (contracts 3, observations across runs).
+    findings: detail.observations,
     liveFindingIds: [],
     weather: detail.weather,
     question: detail.open_question,
     guidedChecks: detail.guided_checks,
     diagnosis: detail.diagnosis,
     plan: detail.plan ? { id: detail.plan.id, provisional: detail.plan.provisional } : undefined,
+    failure: detail.failure,
+  };
+}
+
+/**
+ * Brings the state up to a refetched `ScanDetail` that is at least as fresh (`last_event_seq >= lastSeq`). Some
+ * changes come with no event: a question going to `answering` after its photo, a guided check `analysing`, and a
+ * superseding plan's `provisional`. Stage progress and candidates stay the stream's.
+ */
+export function reconcile(state: ScanState, detail: ScanDetail): ScanState {
+  if (detail.id !== state.scanId || detail.last_event_seq < state.lastSeq) return state;
+  const plan = detail.plan
+    ? { id: detail.plan.id, provisional: detail.plan.provisional, notice: state.plan?.id === detail.plan.id ? state.plan.notice : undefined }
+    : undefined;
+  return {
+    ...state,
+    run: Math.max(state.run, detail.run),
+    status: detail.status,
+    question: detail.open_question,
+    guidedChecks: detail.guided_checks,
+    diagnosis: detail.diagnosis,
+    plan,
     failure: detail.failure,
   };
 }
@@ -159,8 +183,12 @@ export function applyScanEvent(state: ScanState, event: ScanEvent): ScanState {
       };
     case "species_confirmed":
       return { ...s, species: undefined };
-    case "question":
-      return { ...s, question: event.question };
+    case "question": {
+      // The move to `answering` sends no event (a question photo only updates the row), and the stored event
+      // keeps `open`: a replay mustn't undo what a fresher record said.
+      const answering = s.question?.id === event.question.id && s.question.status === "answering";
+      return { ...s, question: answering ? { ...event.question, status: "answering" } : event.question };
+    }
     case "question_resolved":
       return {
         ...s,
@@ -176,6 +204,8 @@ export function applyScanEvent(state: ScanState, event: ScanEvent): ScanState {
     case "plan_ready":
       return { ...s, plan: { id: event.plan_id, provisional: event.provisional } };
     case "plan_superseded":
+      // The event doesn't say whether the new plan is provisional: until the refetched record says (its "scan"
+      // invalidation, then `reconcile`), it keeps the old plan's.
       return { ...s, plan: { id: event.new_plan_id, provisional: s.plan?.provisional ?? false, notice: event.reason } };
     case "failed":
       return { ...s, status: "failed", failure: event.failure };

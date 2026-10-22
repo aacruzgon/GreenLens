@@ -56,7 +56,7 @@ export function useLiveAnalysis(scanId: string) {
   const diagnosis = state?.diagnosis;
   const ending: Ending =
     state?.status === "failed" && state.failure ? { kind: "failed" }
-    : diagnosis?.low_evidence && state?.plan ? { kind: "low_evidence" }
+    : diagnosis?.low_evidence && state?.plan && state.status === "planned" ? { kind: "low_evidence" }
     : state?.plan && state.status === "planned" ? { kind: "plan", provisional: state.plan.provisional }
     : { kind: "running" };
 

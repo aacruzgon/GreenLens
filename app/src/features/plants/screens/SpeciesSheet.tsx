@@ -4,7 +4,7 @@
 // analysis's "Tomato · Change" and, in F4, from the plant page. A changed species reruns the plant's latest scan.
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useDeferredValue, useState } from "react";
+import { useDeferredValue, useRef, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 
 import { flattenPages, imageSource, useConfirmSpecies, usePlant, useSpecies } from "@/api";
@@ -23,28 +23,44 @@ export function SpeciesSheet() {
   const q = useDeferredValue(query.trim());
   const results = useSpecies(q || undefined);
   const [problem, setProblem] = useState<string>();
+  // One change at a time: each one reruns the plant's latest scan, and isPending lags a quick second tap.
+  const sending = useRef(false);
 
   const choose = (body: ConfirmSpeciesRequest) => {
+    if (sending.current) return;
+    sending.current = true;
     setProblem(undefined);
     confirm.mutate(body, {
       onSuccess: () => router.back(),
       onError: () => setProblem("The species wasn't saved. Try again."),
+      onSettled: () => {
+        sending.current = false;
+      },
     });
   };
 
   const p = plant.data;
+  const busy = confirm.isPending;
   const candidates: SpeciesCandidate[] = p?.species_candidates.slice(0, TOP) ?? [];
   const current = p?.species;
-  const list = flattenPages(results.data).filter((s) => !candidates.some((c) => c.species_id === s.id));
+  const askYes = current !== undefined && candidates.length === 0;
+  // What the sheet already offers above the search isn't listed again.
+  const offered = new Set([...candidates.map((c) => c.species_id), askYes ? current.id : undefined]);
+  const list = flattenPages(results.data).filter((s) => !offered.has(s.id));
 
   return (
-    <Sheet title={current && candidates.length === 0 ? `Is this a ${current.common_name.toLowerCase()}?` : "Which plant is this?"}>
+    <Sheet title={askYes ? `Is this a ${current.common_name.toLowerCase()}?` : "Which plant is this?"}>
       {!p ? <ActivityIndicator /> : null}
-      {current && candidates.length === 0 ? (
-        <Button label={`Yes, ${current.common_name.toLowerCase()}`} busy={confirm.isPending} onPress={() => choose({ species_id: current.id })} testID="species-yes" />
+      {problem ? (
+        <Text variant="footnote" color="danger" accessibilityRole="alert" testID="species-problem">
+          {problem}
+        </Text>
+      ) : null}
+      {askYes ? (
+        <Button label={`Yes, ${current.common_name.toLowerCase()}`} busy={busy} onPress={() => choose({ species_id: current.id })} testID="species-yes" />
       ) : null}
       {candidates.map((c) => (
-        <Candidate key={c.species_id ?? c.name} candidate={c} disabled={confirm.isPending} onPress={() => choose(c.species_id ? { species_id: c.species_id } : { custom_name: c.name })} />
+        <Candidate key={c.species_id ?? c.name} candidate={c} disabled={busy} onPress={() => choose(c.species_id ? { species_id: c.species_id } : { custom_name: c.name })} />
       ))}
 
       <TextField
@@ -62,17 +78,12 @@ export function SpeciesSheet() {
           key={s.id}
           title={s.common_name}
           subtitle={s.scientific_name}
-          onPress={() => choose({ species_id: s.id })}
+          onPress={busy ? undefined : () => choose({ species_id: s.id })}
           leading={<Thumb url={s.reference_images[0]?.url} />}
         />
       ))}
       {q && !results.isFetching && list.length === 0 ? (
-        <Button label={`Use "${q}"`} variant="secondary" busy={confirm.isPending} onPress={() => choose({ custom_name: q })} testID="species-custom" />
-      ) : null}
-      {problem ? (
-        <Text variant="footnote" color="danger" accessibilityRole="alert">
-          {problem}
-        </Text>
+        <Button label={`Use "${q}"`} variant="secondary" busy={busy} onPress={() => choose({ custom_name: q })} testID="species-custom" />
       ) : null}
     </Sheet>
   );
