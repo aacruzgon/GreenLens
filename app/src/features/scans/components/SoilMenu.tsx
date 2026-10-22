@@ -1,7 +1,7 @@
 // "Check your soil" on the live analysis's More button (screens 3.3): the squeeze and jar tests as a menu. On iOS it
 // is SwiftUI's Menu (HIG Menus; hig/expo.md): it opens from the button. Elsewhere, an alert with the two choices.
 import { Button as MenuItem, Host, Image as SFSymbol, Menu } from "@expo/ui/swift-ui";
-import { accessibilityLabel, foregroundStyle, frame, tint } from "@expo/ui/swift-ui/modifiers";
+import { accessibilityLabel, buttonStyle, foregroundStyle, frame, menuIndicator, menuStyle, tint } from "@expo/ui/swift-ui/modifiers";
 import { Alert, Platform, View } from "react-native";
 
 import type { GuidedKind } from "@/domain/types";
@@ -16,11 +16,19 @@ export function SoilMenu({ onPick }: { onPick: (kind: GuidedKind) => void }) {
   if (Platform.OS === "ios") {
     return (
       <View style={[circle, { alignItems: "center", justifyContent: "center" }]} testID="soil-menu">
-        <Host matchContents colorScheme="dark">
-          {/* White like the other camera buttons, not SwiftUI's accent tint. */}
+        {/* White like the other camera buttons, not SwiftUI's accent tint: the Host's tint is white, and the menu
+            draws its label as it is (a plain button style, no chevron), the symbol styled white itself. */}
+        <Host matchContents colorScheme="dark" seedColor={camera.ink}>
           <Menu
-            label={<SFSymbol systemName="ellipsis" size={20} color={camera.ink} />}
-            modifiers={[frame({ width: SIZE, height: SIZE }), tint(camera.ink), foregroundStyle(camera.ink), accessibilityLabel("Check your soil")]}
+            label={<SFSymbol systemName="ellipsis" size={20} color={camera.ink} modifiers={[foregroundStyle(camera.ink)]} />}
+            modifiers={[
+              menuStyle("button"),
+              buttonStyle("plain"),
+              menuIndicator("hidden"),
+              tint(camera.ink),
+              frame({ width: SIZE, height: SIZE }),
+              accessibilityLabel("Check your soil"),
+            ]}
           >
             <MenuItem label="Squeeze test" systemImage="hand.raised" onPress={() => onPick("squeeze_test")} />
             <MenuItem label="Jar test" systemImage="flask" onPress={() => onPick("jar_test")} />

@@ -187,7 +187,9 @@ describe("ScanScreen", () => {
     await scans.uploadImage(scanId, { kind: "squeeze_test", file: new Blob(["x"], { type: "image/jpeg" }) }, newKey());
     await lastClient!.invalidateQueries({ queryKey: qk.scan(scanId) });
     expect(await screen.findByText("Your soil: loamy", undefined, RUN)).toBeTruthy();
-    expect(screen.getByText("From the squeeze test.")).toBeTruthy();
+    // The server's squeeze result (holds_ball), in words.
+    expect(screen.getByText("It holds a ball.")).toBeTruthy();
+    expect(screen.queryByText(/holds_ball/)).toBeNull();
     expect(screen.queryByTestId("checking-soil")).toBeNull();
     await waitFor(() => expect(screen.getByText("Plan updated")).toBeTruthy(), RUN);
   });

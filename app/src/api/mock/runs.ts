@@ -634,10 +634,13 @@ export function speciesRerun(store: MockStore, scanId: string, speciesId: string
 
 // ---- a guided soil check (flows 8; contracts 7, guided checks and the diagnosis)
 
-/** What the mock's guided job reads in each check's photo: a texture, the jar settled. */
+/**
+ * What the mock's guided job reads in each check's photo, in the server's words (pipeline results.rs,
+ * `guided_observation`): the squeeze test's result, the settled jar's texture.
+ */
 const GUIDED_TEXTURE: Record<S["GuidedKind"], { label: string; value: string }> = {
-  squeeze_test: { label: "Soil holds a ball, then crumbles: loamy", value: "loamy" },
-  jar_test: { label: "Jar settled: loamy soil", value: "loamy" },
+  squeeze_test: { label: "Soil texture: holds_ball", value: "holds_ball" },
+  jar_test: { label: "Soil texture: loamy", value: "loamy" },
 };
 
 /**

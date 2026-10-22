@@ -188,8 +188,24 @@ export interface SoilLine {
 }
 
 /**
+ * What each guided result reads as (contracts 6, the guided-check call): the jar test gives a texture, the
+ * squeeze test what the soil did in the hand, which says its texture too. `unclear`, or a value this list doesn't
+ * know, reads as an unclear photo.
+ */
+const SOIL_WORDS: Record<string, { texture: string; how: string }> = {
+  sandy: { texture: "sandy", how: "From the jar test." },
+  loamy: { texture: "loamy", how: "From the jar test." },
+  silty: { texture: "silty", how: "From the jar test." },
+  clayey: { texture: "clayey", how: "From the jar test." },
+  crumbles: { texture: "sandy", how: "It crumbles in your hand." },
+  holds_ball: { texture: "loamy", how: "It holds a ball." },
+  sticky_ribbon: { texture: "clayey", how: "It makes a sticky ribbon." },
+};
+
+/**
  * The soil check's card (flows 8): "Checking your soil photo" while a check is analysing, then the newest check's
- * outcome: its texture, a jar that hasn't settled (no texture, its task stays), or a photo that couldn't be read.
+ * outcome: its texture in words, a jar that hasn't settled (no texture, its task stays), an unclear photo, or a
+ * photo that couldn't be read.
  */
 export function soilLine(state: Pick<ScanState, "guidedChecks">): SoilLine | undefined {
   if (state.guidedChecks.some((c) => c.status === "analysing")) return { checking: true, title: "Checking your soil photo" };
@@ -197,11 +213,9 @@ export function soilLine(state: Pick<ScanState, "guidedChecks">): SoilLine | und
   if (!last) return undefined;
   const test = last.kind === "jar_test" ? "jar test" : "squeeze test";
   if (last.status === "failed") return { checking: false, title: "We couldn't read your soil photo", detail: `Try the ${test} again.` };
-  const texture = last.result?.detail?.value;
-  if (!last.result || !texture) {
-    return last.kind === "jar_test"
-      ? { checking: false, title: "The jar hasn't settled yet", detail: "Photograph it again in a few hours." }
-      : { checking: false, title: "Your soil photo was unclear", detail: "Try the squeeze test again." };
-  }
-  return { checking: false, title: `Your soil: ${texture}`, detail: `From the ${test}.` };
+  if (!last.result && last.kind === "jar_test") return { checking: false, title: "The jar hasn't settled yet", detail: "Photograph it again in a few hours." };
+  const value = last.result?.detail?.value;
+  const words = value ? SOIL_WORDS[value] : undefined;
+  if (!words) return { checking: false, title: "Your soil photo was unclear", detail: `Try the ${test} again.` };
+  return { checking: false, title: `Your soil: ${words.texture}`, detail: words.how };
 }

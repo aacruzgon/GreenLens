@@ -295,13 +295,28 @@ describe("phases", () => {
     expect(phasesOf(checked).find((p) => p.key === "signs")?.state).toBe("done");
   });
 
-  it("words the soil check: checking, its texture, an unsettled jar, a failure", () => {
-    const texture = obs("o_tex", { stage: "soil", pipeline_stage: "guided", source: "vlm", label: "Jar settled: loamy soil", detail: { aspect: "texture", value: "loamy", guided_kind: "jar_test" } });
+  it("words the soil check: checking, an unsettled jar, a failure", () => {
     expect(soilLine({ guidedChecks: [] })).toBeUndefined();
     expect(soilLine({ guidedChecks: [{ image_id: "a", kind: "jar_test", status: "analysing" }] })).toEqual({ checking: true, title: "Checking your soil photo" });
-    expect(soilLine({ guidedChecks: [{ image_id: "a", kind: "jar_test", status: "done", result: texture }] })).toEqual({ checking: false, title: "Your soil: loamy", detail: "From the jar test." });
-    expect(soilLine({ guidedChecks: [{ image_id: "a", kind: "jar_test", status: "done" }] })?.title).toBe("The jar hasn't settled yet");
+    expect(soilLine({ guidedChecks: [{ image_id: "a", kind: "jar_test", status: "done" }] })).toEqual({ checking: false, title: "The jar hasn't settled yet", detail: "Photograph it again in a few hours." });
     expect(soilLine({ guidedChecks: [{ image_id: "a", kind: "squeeze_test", status: "failed" }] })).toEqual({ checking: false, title: "We couldn't read your soil photo", detail: "Try the squeeze test again." });
+  });
+
+  // Each value the server sends (contracts 6: SqueezeResult, JarTexture), never shown raw.
+  it.each([
+    ["jar_test", "sandy", "Your soil: sandy", "From the jar test."],
+    ["jar_test", "loamy", "Your soil: loamy", "From the jar test."],
+    ["jar_test", "silty", "Your soil: silty", "From the jar test."],
+    ["jar_test", "clayey", "Your soil: clayey", "From the jar test."],
+    ["jar_test", "unclear", "Your soil photo was unclear", "Try the jar test again."],
+    ["squeeze_test", "crumbles", "Your soil: sandy", "It crumbles in your hand."],
+    ["squeeze_test", "holds_ball", "Your soil: loamy", "It holds a ball."],
+    ["squeeze_test", "sticky_ribbon", "Your soil: clayey", "It makes a sticky ribbon."],
+    ["squeeze_test", "unclear", "Your soil photo was unclear", "Try the squeeze test again."],
+    ["squeeze_test", "something_new", "Your soil photo was unclear", "Try the squeeze test again."],
+  ] as const)("words a %s's %s", (kind, value, title, detail) => {
+    const result = obs("o_tex", { stage: "soil", pipeline_stage: "guided", source: "vlm", label: `Soil texture: ${value}`, detail: { aspect: "texture", value, guided_kind: kind } });
+    expect(soilLine({ guidedChecks: [{ image_id: "a", kind, status: "done", result }] })).toEqual({ checking: false, title, detail });
   });
 
   it("ticks each phase as a later one starts and says what is next", () => {
