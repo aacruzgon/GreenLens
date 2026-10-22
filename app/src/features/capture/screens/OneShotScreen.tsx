@@ -13,7 +13,7 @@ import { Button, DropCard, Fade, IconButton, Text, ThemeProvider, camera, minTou
 import { CameraAction, ProblemLine } from "../components/CameraControls";
 import { CaptureIcon } from "../components/CaptureIcons";
 import { CoverageDial } from "../components/CoverageDial";
-import { useOneShotSession, type OneShotSession } from "../hooks/useOneShotSession";
+import { useOneShotData, useOneShotSession, type OneShotData, type OneShotSession } from "../hooks/useOneShotSession";
 import { isGuidedKind, type OneShotPurpose } from "../model/oneShot";
 
 /** `capture/[scanId]/question/[questionId]`: one photo for a scan's photo request. */
@@ -42,7 +42,25 @@ export function GuidedCaptureScreen() {
 }
 
 function OneShot({ scanId, purpose }: { scanId: string; purpose: OneShotPurpose }) {
-  const session = useOneShotSession(scanId, purpose);
+  const router = useRouter();
+  const data = useOneShotData(scanId, purpose);
+  if (data.loadError) {
+    return <Unavailable message="Couldn't open this scan" onClose={() => router.back()} onRetry={data.retryLoad} />;
+  }
+  if (!data.ready || !data.target) {
+    return (
+      <Shell>
+        <ActivityIndicator color={camera.ink} style={{ position: "absolute", top: "50%", alignSelf: "center" }} />
+      </Shell>
+    );
+  }
+  if (!data.target.ok) return <Unavailable message={data.target.message} onClose={() => router.back()} />;
+  // Mounted once the data is ready, so the first step is chosen once: the steps, or the camera from the jar task.
+  return <OneShotCamera scanId={scanId} purpose={purpose} data={data} />;
+}
+
+function OneShotCamera({ scanId, purpose, data }: { scanId: string; purpose: OneShotPurpose; data: OneShotData }) {
+  const session = useOneShotSession(scanId, purpose, data);
   const { state, target, actions } = session;
   const access = useCameraAccess();
   const insets = useSafeAreaInsets();
@@ -89,15 +107,8 @@ function OneShot({ scanId, purpose }: { scanId: string; purpose: OneShotPurpose 
     }
   };
 
-  if (session.scan.error) return <Unavailable message="Couldn't open this scan" onClose={actions.close} />;
-  if (!target) {
-    return (
-      <Shell>
-        <ActivityIndicator color={camera.ink} style={{ position: "absolute", top: "50%", alignSelf: "center" }} />
-      </Shell>
-    );
-  }
-  if (!target.ok) return <Unavailable message={target.message} onClose={actions.close} />;
+  // A question closed by the refetch after a 409 says so, as on opening.
+  if (!target?.ok) return <Unavailable message={target?.message ?? "Couldn't open this scan"} onClose={actions.close} />;
 
   const photo = state.step === "review" || state.step === "sending" ? state.file : undefined;
   const stepProblem = state.step === "aim" || state.step === "review" ? state.problem : undefined;
@@ -126,6 +137,8 @@ function OneShot({ scanId, purpose }: { scanId: string; purpose: OneShotPurpose 
       >
         <IconButton
           accessibilityLabel="Close"
+          accessibilityHint={session.busy.sending ? "Available once the photo is sent" : undefined}
+          disabled={session.busy.sending}
           onPress={actions.close}
           icon={() => <CaptureIcon name="close" color={camera.ink} />}
           style={{ backgroundColor: camera.card, borderRadius: minTouch / 2 }}
@@ -235,13 +248,14 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Unavailable({ message, onClose }: { message: string; onClose?: () => void }) {
+function Unavailable({ message, onClose, onRetry }: { message: string; onClose?: () => void; onRetry?: () => void }) {
   return (
     <Shell>
       <View style={{ flex: 1, justifyContent: "center", padding: space[6], gap: space[4] }}>
         <Text variant="title3" style={{ color: camera.ink }}>
           {message}
         </Text>
+        {onRetry ? <Button label="Try again" onPress={onRetry} /> : null}
         {onClose ? <Button label="Close" variant="secondary" onPress={onClose} /> : null}
       </View>
     </Shell>

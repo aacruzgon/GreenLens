@@ -1,6 +1,6 @@
 import type { Question } from "@/domain/types";
 
-import { GUIDED, initialOneShot, jarTaskDue, jarTaskOf, oneShotReducer, oneShotTarget, type OneShotState } from "./oneShot";
+import { GUIDED, initialOneShot, isGuidedKind, jarTaskDue, jarTaskOf, jarTaskRequest, oneShotReducer, oneShotTarget, type OneShotState } from "./oneShot";
 import type { ShotFile } from "./slot";
 
 const file: ShotFile = { uri: "file:///cache/a.jpg", name: "a.jpg", type: "image/jpeg", picked: false, width: 4032, height: 3024 };
@@ -33,9 +33,13 @@ describe("oneShotTarget", () => {
 
   it("refuses a question that is gone, another one, not a photo request, or already answering", () => {
     const purpose = { type: "question", questionId: "q1" } as const;
-    expect(oneShotTarget({ status: "planned" }, purpose)).toMatchObject({ ok: false, message: "This question has been answered." });
-    expect(oneShotTarget({ status: "planned", open_question: question({ id: "q2" }) }, purpose).ok).toBe(false);
-    expect(oneShotTarget({ status: "planned", open_question: question({ kind: "indicator", photo_kind: undefined }) }, purpose).ok).toBe(false);
+    const closed = { ok: false, message: "This question is no longer open." };
+    expect(oneShotTarget({ status: "planned" }, purpose)).toEqual(closed);
+    expect(oneShotTarget({ status: "planned", open_question: question({ id: "q2" }) }, purpose)).toEqual(closed);
+    expect(oneShotTarget({ status: "planned", open_question: question({ kind: "indicator", photo_kind: undefined }) }, purpose)).toEqual({
+      ok: false,
+      message: "This question doesn't need a photo.",
+    });
     expect(oneShotTarget({ status: "planned", open_question: question({ status: "answering" }) }, purpose)).toMatchObject({
       ok: false,
       message: "A photo for this question is already being checked.",
@@ -91,13 +95,30 @@ describe("the jar test's task", () => {
     expect(jarTaskDue("America/Toronto", new Date("2026-10-21T13:00:00Z"))).toBe("2026-10-21");
   });
 
-  it("is the scan's open task with its scan link", () => {
+  it("is the scan's open user task with its scan link, never a plan's task", () => {
     const tasks = [
-      { id: "t1", title: "Water", scan_id: undefined },
-      { id: "t2", title: "Photograph the jar test", scan_id: "s1", done_at: "2026-10-21T10:00:00Z" },
-      { id: "t3", title: "Photograph the jar test", scan_id: "s1" },
+      { id: "t1", source: "user" as const, scan_id: undefined },
+      { id: "t2", source: "user" as const, scan_id: "s1", done_at: "2026-10-21T10:00:00Z" },
+      { id: "t3", source: "plan" as const, scan_id: "s1" },
+      { id: "t4", source: "user" as const, scan_id: "s1" },
     ];
-    expect(jarTaskOf(tasks, "s1")?.id).toBe("t3");
+    expect(jarTaskOf(tasks, "s1")?.id).toBe("t4");
+    expect(jarTaskOf(tasks.slice(0, 3), "s1")).toBeUndefined();
     expect(jarTaskOf(tasks, "s2")).toBeUndefined();
+  });
+
+  it("is asked for with the scan, its plant and the due date", () => {
+    expect(jarTaskRequest({ id: "s1", garden_id: "g1", plant_id: "p1" }, "America/Toronto", new Date("2026-10-22T00:00:00Z"))).toEqual({
+      garden_id: "g1",
+      plant_id: "p1",
+      scan_id: "s1",
+      title: "Photograph the jar test",
+      due: "2026-10-22",
+    });
+  });
+
+  it("takes the guided kinds from the domain", () => {
+    expect(isGuidedKind("jar_test")).toBe(true);
+    expect(isGuidedKind("whole_plant")).toBe(false);
   });
 });

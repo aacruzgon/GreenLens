@@ -1,16 +1,19 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { client, ok } from "../client";
 import type { CreateTaskRequest, Page, Task, UpdateTaskRequest } from "@/domain/types";
 import { useIdempotentMutation, type IdempotencyKey } from "../idempotency";
-import { nextCursor } from "../pages";
+import { fetchAllPages, MAX_PAGE_SIZE, nextCursor } from "../pages";
 import { qk, type TaskFilter } from "../queryKeys";
 
 type TaskPage = Page<Task>;
 
 export const tasks = {
-  list: async (gardenId: string, filter: TaskFilter = {}, cursor?: string): Promise<TaskPage> =>
-    ok(await client().GET("/tasks", { params: { query: { garden_id: gardenId, ...filter, cursor } } })),
+  list: async (gardenId: string, filter: TaskFilter = {}, cursor?: string, limit?: number): Promise<TaskPage> =>
+    ok(await client().GET("/tasks", { params: { query: { garden_id: gardenId, ...filter, cursor, limit } } })),
+  /** Every matching task, all pages loaded: for a lookup whose "none" must be final. */
+  listAll: (gardenId: string, filter: TaskFilter = {}): Promise<Task[]> =>
+    fetchAllPages((cursor) => tasks.list(gardenId, filter, cursor, MAX_PAGE_SIZE)),
   create: async (body: CreateTaskRequest, key: IdempotencyKey): Promise<Task> =>
     ok(await client().POST("/tasks", { body, params: { header: { "Idempotency-Key": key } } })),
   update: async (id: string, body: UpdateTaskRequest): Promise<Task> =>
@@ -23,6 +26,15 @@ export function useTasks(gardenId: string, filter?: TaskFilter) {
     queryFn: ({ pageParam }) => tasks.list(gardenId, filter, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: nextCursor,
+    enabled: gardenId !== "",
+  });
+}
+
+/** Every matching task of a garden, all pages loaded. Under qk.tasks, so a task change refetches it. */
+export function useAllTasks(gardenId: string, filter?: TaskFilter) {
+  return useQuery({
+    queryKey: [...qk.tasks(gardenId, filter), "all"] as const,
+    queryFn: () => tasks.listAll(gardenId, filter),
     enabled: gardenId !== "",
   });
 }

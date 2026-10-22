@@ -115,9 +115,10 @@ describe("scanTargetOf", () => {
 });
 
 describe("jarScanOf", () => {
-  it("leads a jar-test task to its scan's jar capture", () => {
-    expect(jarScanOf({ scan_id: "s1" })).toBe("s1");
-    expect(jarScanOf({})).toBeUndefined();
+  it("leads a user's jar-test task to its scan's jar capture, and never a plan's task", () => {
+    expect(jarScanOf({ source: "user", scan_id: "s1" })).toBe("s1");
+    expect(jarScanOf({ source: "user" })).toBeUndefined();
+    expect(jarScanOf({ source: "plan", scan_id: "s1" })).toBeUndefined();
   });
 });
 

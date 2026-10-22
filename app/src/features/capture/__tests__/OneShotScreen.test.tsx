@@ -130,11 +130,11 @@ describe("question mode", () => {
     expect(mockRouter.replace).not.toHaveBeenCalled();
   });
 
-  it("says so when the question was answered meanwhile", async () => {
+  it("says so when the question is no longer open", async () => {
     const { scanId } = await scanAskingForPhoto();
     mockStore.scan(scanId)!.scan.open_question = undefined;
     await renderScreen(QuestionCaptureScreen, { scanId, questionId: "q-underside" });
-    expect(await screen.findByText("This question has been answered.")).toBeTruthy();
+    expect(await screen.findByText("This question is no longer open.")).toBeTruthy();
     await fireEvent.press(screen.getByRole("button", { name: "Close" }));
     expect(mockRouter.back).toHaveBeenCalled();
   });
@@ -179,6 +179,74 @@ describe("guided mode", () => {
     await waitFor(() => expect(mockStore.scan(scanId)!.scan.guided_checks).toHaveLength(1));
     // Only one task: Start wasn't run again.
     expect(mockStore.tasks.filter((t) => t.scan_id === scanId)).toHaveLength(1);
+  });
+
+  it("doesn't take a plan's task with a scan link for the jar test's", async () => {
+    const scanId = await newScan();
+    mockStore.tasks.push({ id: "task_plan", garden_id: IDS.garden, plant_id: IDS.tomato2, scan_id: scanId, source: "plan", title: "Check Tomato 2's lower leaves", created_at: "2026-10-21T10:00:00Z" });
+    await renderScreen(GuidedCaptureScreen, { scanId, kind: "jar_test" });
+    await fireEvent.press(await screen.findByRole("button", { name: "Start" }));
+    await waitFor(() => expect(mockStore.tasks.filter((t) => t.scan_id === scanId && t.source === "user")).toHaveLength(1));
+  });
+
+  it("finds the jar test's task beyond the first page of tasks", async () => {
+    const scanId = await newScan();
+    for (let i = 0; i < 45; i++) {
+      await tasks.create({ garden_id: IDS.garden, title: `Water bed ${i}`, due: "2026-10-01" }, newKey());
+    }
+    await tasks.create({ garden_id: IDS.garden, plant_id: IDS.tomato2, scan_id: scanId, title: "Photograph the jar test", due: "2026-12-31" }, newKey());
+    await renderScreen(GuidedCaptureScreen, { scanId, kind: "jar_test" });
+    expect(await screen.findByTestId("camera-preview", {}, { timeout: 5000 })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Start" })).toBeNull();
+  });
+
+  it("retries Start with the same body and key after a lost response", async () => {
+    const scanId = await newScan();
+    const posts: { key: string | null; body: string }[] = [];
+    let failNext = true;
+    setTransport({
+      fetch: async (input, init) => {
+        const req = new Request(input, init);
+        if (req.method === "POST" && new URL(req.url).pathname.endsWith("/tasks")) {
+          posts.push({ key: req.headers.get("Idempotency-Key"), body: await req.clone().text() });
+          if (failNext) {
+            failNext = false;
+            throw new TypeError("Network request failed");
+          }
+        }
+        return mockTransport.fetch(req);
+      },
+    });
+    await renderScreen(GuidedCaptureScreen, { scanId, kind: "jar_test" });
+    await fireEvent.press(await screen.findByRole("button", { name: "Start" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Try again" }));
+    expect(await screen.findByTestId("jar-task-note")).toBeTruthy();
+    expect(posts).toHaveLength(2);
+    expect(posts[1]).toEqual(posts[0]);
+    expect(JSON.parse(posts[0]!.body)).toMatchObject({ scan_id: scanId, due: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+    expect(mockStore.tasks.filter((t) => t.scan_id === scanId)).toHaveLength(1);
+  });
+
+  it("keeps ✕ off while the photo is sending", async () => {
+    const scanId = await newScan();
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    setTransport({
+      fetch: async (input, init) => {
+        const req = new Request(input, init);
+        if (req.method === "POST" && new URL(req.url).pathname.endsWith("/images")) await held;
+        return mockTransport.fetch(req);
+      },
+    });
+    await renderScreen(GuidedCaptureScreen, { scanId, kind: "squeeze_test" });
+    await fireEvent.press(await screen.findByRole("button", { name: "Start" }));
+    await fireEvent.press(shutter());
+    await fireEvent.press(await screen.findByTestId("send"));
+    const close = screen.getByRole("button", { name: "Close" });
+    expect(close.props.accessibilityState).toMatchObject({ disabled: true });
+    release();
+    await waitFor(() => expect(mockRouter.replace).toHaveBeenCalled());
+    expect(mockRouter.back).not.toHaveBeenCalled();
   });
 
   it("refuses a check on a failed scan", async () => {

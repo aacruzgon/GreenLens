@@ -5,7 +5,8 @@
 import { TZDate } from "@date-fns/tz";
 import { addHours, format } from "date-fns";
 
-import type { GuidedKind, ImageKind, LocalDate, QualityHint, ScanDetail } from "@/domain/types";
+import { GUIDED_KINDS } from "@/domain/scan";
+import type { CreateTaskRequest, GuidedKind, ImageKind, LocalDate, QualityHint, ScanDetail, Task } from "@/domain/types";
 
 import type { ShotFile } from "./slot";
 
@@ -49,6 +50,15 @@ export function jarTaskDue(timeZone: string, now: Date = new Date()): LocalDate 
   return format(new TZDate(addHours(now, JAR_SETTLE_HOURS).getTime(), timeZone), "yyyy-MM-dd");
 }
 
+/** The jar test's task (flows 8): built once per Start, so a retry sends the same body under the same key. */
+export function jarTaskRequest(
+  scan: Pick<ScanDetail, "id" | "garden_id" | "plant_id">,
+  timeZone: string,
+  now: Date = new Date(),
+): CreateTaskRequest {
+  return { garden_id: scan.garden_id, plant_id: scan.plant_id, scan_id: scan.id, title: JAR_TASK_TITLE, due: jarTaskDue(timeZone, now) };
+}
+
 export type OneShotPurpose =
   | { type: "question"; questionId: string }
   | { type: "guided"; kind: GuidedKind };
@@ -58,10 +68,8 @@ export type OneShotTarget =
   | { ok: true; kind: ImageKind; title: string; instruction: string; questionId?: string; guided?: GuidedSteps }
   | { ok: false; message: string };
 
-const GUIDED_KINDS: readonly string[] = ["squeeze_test", "jar_test"];
-
 export function isGuidedKind(kind: string): kind is GuidedKind {
-  return GUIDED_KINDS.includes(kind);
+  return (GUIDED_KINDS as readonly string[]).includes(kind);
 }
 
 export function oneShotTarget(scan: Pick<ScanDetail, "status" | "open_question">, purpose: OneShotPurpose): OneShotTarget {
@@ -72,10 +80,10 @@ export function oneShotTarget(scan: Pick<ScanDetail, "status" | "open_question">
     return { ok: true, kind: purpose.kind, title: guided.title, instruction: guided.instruction, guided };
   }
   const q = scan.open_question;
-  // Only an open photo request takes a photo; answered, superseded or answering ones get 409 (contracts 3).
-  if (!q || q.id !== purpose.questionId || q.kind !== "photo_request" || !q.photo_kind) {
-    return { ok: false, message: "This question has been answered." };
-  }
+  // Only an open photo request takes a photo; answered, superseded or answering ones get 409 (contracts 3). A scan
+  // keeps only its open question, so one that's gone may have been answered or superseded: it is no longer open.
+  if (!q || q.id !== purpose.questionId) return { ok: false, message: "This question is no longer open." };
+  if (q.kind !== "photo_request" || !q.photo_kind) return { ok: false, message: "This question doesn't need a photo." };
   if (q.status !== "open") return { ok: false, message: "A photo for this question is already being checked." };
   return {
     ok: true,
@@ -143,10 +151,10 @@ export function oneShotReducer(state: OneShotState, event: OneShotEvent): OneSho
   }
 }
 
-/** Whether a scan's open jar-test task exists: Start reuses it, and Discard names it (screens 3.2). */
-export function jarTaskOf<T extends { scan_id?: string; title: string; done_at?: string; dismissed_at?: string }>(
-  tasks: readonly T[],
-  scanId: string,
-): T | undefined {
-  return tasks.find((t) => t.scan_id === scanId && !t.done_at && !t.dismissed_at);
+/**
+ * A scan's open jar-test task: Start reuses it, and Discard names it (screens 3.2). Only a user's task carries a scan
+ * link on the server (contracts 9), and only the jar test makes one; a plan's task never does.
+ */
+export function jarTaskOf<T extends Pick<Task, "source" | "scan_id" | "done_at" | "dismissed_at">>(tasks: readonly T[], scanId: string): T | undefined {
+  return tasks.find((t) => t.source === "user" && t.scan_id === scanId && !t.done_at && !t.dismissed_at);
 }
