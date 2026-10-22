@@ -468,7 +468,7 @@ export function tasksFromPlan(
       id: idFor(step),
       garden_id: IDS.garden,
       plant_id: step.plant_id ?? plan.plant_id,
-      scan_id: plan.scan_id,
+      // No scan link: the server sets one only on a user's guided-check task (contracts 9; pipeline replan).
       plan_id: plan.id,
       plan_step_id: step.id,
       source: "plan",
@@ -825,13 +825,13 @@ export function buildSeed(k: DateKit = new DateKit()): Seed {
   const scan1 = "scan_tomato1_6";
   const base = { garden_id: IDS.garden, source: "plan" as const };
   tasks.push(
-    { ...base, id: "task_t1_remove", plant_id: IDS.tomato1, scan_id: scan1, plan_id: planId1, plan_step_id: "remove_infected_leaves", title: "Remove the infected leaves", due: k.date(6), done_at: k.ts(6, 11, 30), created_at: k.ts(6, 10, 45) },
-    { ...base, id: "task_t1_mulch", plant_id: IDS.tomato1, scan_id: scan1, plan_id: planId1, plan_step_id: "mulch_base", title: "Mulch around the base", due: k.date(4), done_at: k.ts(5, 16, 0), created_at: k.ts(6, 10, 45) },
-    { ...base, id: "task_t1_check_a", plant_id: IDS.tomato1, scan_id: scan1, plan_id: planId1, plan_step_id: "check_plant", title: "Check Tomato 1 for new spots", due: k.date(3), repeat: { every_days: 3 }, done_at: k.ts(3, 9, 40), created_at: k.ts(6, 10, 45) },
-    { ...base, id: "task_t1_check_b", plant_id: IDS.tomato1, scan_id: scan1, plan_id: planId1, plan_step_id: "check_plant", title: "Check Tomato 1 for new spots", due: k.date(0), repeat: { every_days: 3 }, done_at: k.ts(0, 8, 15), created_at: k.ts(3, 9, 40) },
-    { ...base, id: "task_t1_check_c", plant_id: IDS.tomato1, scan_id: scan1, plan_id: planId1, plan_step_id: "check_plant", title: "Check Tomato 1 for new spots", due: k.date(-3), repeat: { every_days: 3 }, created_at: k.ts(0, 8, 15) },
-    { ...base, id: "task_t2_check_a", plant_id: IDS.tomato2, scan_id: scan1, plan_id: planId1, plan_step_id: "check_neighbour", title: "Check Tomato 2's lower leaves", due: k.date(4), repeat: { every_days: 7 }, done_at: k.ts(4, 10, 0), created_at: k.ts(6, 10, 45) },
-    { ...base, id: "task_t2_check_b", plant_id: IDS.tomato2, scan_id: scan1, plan_id: planId1, plan_step_id: "check_neighbour", title: "Check Tomato 2's lower leaves", detail: "Tomato 2 is 40 cm from Tomato 1. Look at the lowest leaves for the first spots.", due: k.date(0), repeat: { every_days: 7 }, created_at: k.ts(4, 10, 0) },
+    { ...base, id: "task_t1_remove", plant_id: IDS.tomato1, plan_id: planId1, plan_step_id: "remove_infected_leaves", title: "Remove the infected leaves", due: k.date(6), done_at: k.ts(6, 11, 30), created_at: k.ts(6, 10, 45) },
+    { ...base, id: "task_t1_mulch", plant_id: IDS.tomato1, plan_id: planId1, plan_step_id: "mulch_base", title: "Mulch around the base", due: k.date(4), done_at: k.ts(5, 16, 0), created_at: k.ts(6, 10, 45) },
+    { ...base, id: "task_t1_check_a", plant_id: IDS.tomato1, plan_id: planId1, plan_step_id: "check_plant", title: "Check Tomato 1 for new spots", due: k.date(3), repeat: { every_days: 3 }, done_at: k.ts(3, 9, 40), created_at: k.ts(6, 10, 45) },
+    { ...base, id: "task_t1_check_b", plant_id: IDS.tomato1, plan_id: planId1, plan_step_id: "check_plant", title: "Check Tomato 1 for new spots", due: k.date(0), repeat: { every_days: 3 }, done_at: k.ts(0, 8, 15), created_at: k.ts(3, 9, 40) },
+    { ...base, id: "task_t1_check_c", plant_id: IDS.tomato1, plan_id: planId1, plan_step_id: "check_plant", title: "Check Tomato 1 for new spots", due: k.date(-3), repeat: { every_days: 3 }, created_at: k.ts(0, 8, 15) },
+    { ...base, id: "task_t2_check_a", plant_id: IDS.tomato2, plan_id: planId1, plan_step_id: "check_neighbour", title: "Check Tomato 2's lower leaves", due: k.date(4), repeat: { every_days: 7 }, done_at: k.ts(4, 10, 0), created_at: k.ts(6, 10, 45) },
+    { ...base, id: "task_t2_check_b", plant_id: IDS.tomato2, plan_id: planId1, plan_step_id: "check_neighbour", title: "Check Tomato 2's lower leaves", detail: "Tomato 2 is 40 cm from Tomato 1. Look at the lowest leaves for the first spots.", due: k.date(0), repeat: { every_days: 7 }, created_at: k.ts(4, 10, 0) },
   );
   // The plan's task ids.
   const p1 = scans.find((s) => s.scan.id === scan1)!;

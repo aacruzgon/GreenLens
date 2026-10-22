@@ -1,6 +1,6 @@
 # PDM Frontend Architecture
 
-> **Status:** Draft v0.4.7, 2026-10-20. v0.4.7: "Forgot password?" resets the password with an email code (sections 6 and 8). v0.4.6: two-step sign-in is a code by text to the phone given at sign-up, with Clerk's test numbers in development (section 8). v0.4.5: sign-in has no authenticator-app second factor; a new device is confirmed with an email code. v0.4.4: section 4 adds `expo-symbols` and Urbanist, which F0 uses.
+> **Status:** Draft v0.4.8, 2026-10-21. v0.4.8: `AuthBridge` registers the token provider once per sign-in, before the first authed request (section 8). v0.4.7: "Forgot password?" resets the password with an email code (sections 6 and 8). v0.4.6: two-step sign-in is a code by text to the phone given at sign-up, with Clerk's test numbers in development (section 8). v0.4.5: sign-in has no authenticator-app second factor; a new device is confirmed with an email code. v0.4.4: section 4 adds `expo-symbols` and Urbanist, which F0 uses.
 > v0.4.3: the build plan (section 18) follows the new [roadmap](roadmap.md): the iPhone first in the Conservatory direction, F0 on Oct 20 to the web build on Oct 25. v0.4.2: the backend's OpenAPI spec is committed, so the app uses generated contract types from day 1 instead of hand-written ones (section 9, generated types; build plan). v0.4.1: the schema links point to `backend/migrations/schema.surql`. v0.4 applies the third audit and contracts v0.8.2: species photo paths carry a content hash, a failed scan never holds a question, push coverage, invalidations for confirmed plan revisions, the closer-photo rule, the `SFSafariViewController` cookie note and the CORS preflight reason.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Images:** event URLs arrive fresh, and the cache key is the image ID or the URL path; species photos carry their credit.
@@ -392,6 +392,7 @@ The rule: **events change what the screen shows; the cache is refreshed by refet
 ```
 
 - The api layer never imports Clerk. `AuthBridge`, a component inside `ClerkProvider`, registers `getToken` with `setTokenProvider` and clears it on sign-out.
+- `AuthBridge` registers the provider once per sign-in, in a layout effect, so it is in place before the first authed request (`SessionGate`'s `GET /me` goes out in a child's effect). `@clerk/expo`'s `useAuth` returns a new `getToken` on every render, so the bridge keeps the latest in a ref: re-registering on every render would end the api layer's session and drop a refresh in flight (#97).
 - Clerk caches its session token and refreshes it close to expiry, so asking for it on every request is cheap ([session tokens](https://clerk.com/docs/guides/sessions/session-tokens)).
 - Code outside React (the push handler) reads the token with `getClerkInstance()` ✓.
 

@@ -1,6 +1,6 @@
 # PDM Backend: `worker` binary
 
-> **Status:** Draft v0.5.6, 2026-10-20. v0.5.6: the 3070's perception worker ran on the rig (S2): `worker-cuda` loads every perception model on CUDA and heartbeats `ort_ep: cuda`; it runs in `control-plane.compose.yml` (the 3070 is in the control-plane host), and the default log filter is `info,ort=warn` (section 12). v0.5.5: ST1 to ST5 are built and ran on a laptop (S1): with the empty knowledge base's label versions (`STUB_LABEL_SET_VERSION=d4f0f0534fb74a8d`, `STUB_CLASSIFIER_LABELS_VERSION` empty) a scan streams all five perception stages and goes on to `context`; the worker flags `--vlm-*` and `--fallback-*` have distinct ids, and the worker logs at `info` without `RUST_LOG`. v0.5.4: the adapter sends an indicators call as parallel parts when its backend limits the questions per call (`VlmBackend::max_questions`; 12 on the hosted model, because the API refuses a schema of 20 question objects as too large and a call can ask 27), each part with its own schema and prompt and retried on its own; two ignored live tests of the hosted schemas; 35 tests. v0.5.3: the perception worker reads its thresholds from the manifest with `PerceptionConfig::from_manifest`, the environment sets only the batch caps and never above the manifest's, and start-up refuses an fp16 model on `ORT_EP=cpu` or a file whose tensor names differ from the manifest (gaps G4, G6 and G11); `VLM_BASE_URL` defaults to `http://vllm-nv:8000`, the compose service's name (G7), all from [issue #12](https://github.com/aacruzgon/GreenLens/issues/12). v0.5.2: open question 3 is settled: xgrammar enforces `anyOf` with `null`. v0.5.1: section 12's image path is the registry's, `ghcr.io/aacruzgon/greenlens/worker` ([infra 3](../infra/README.md#3-images)). v0.5: section 15.1 designs stub vision (`--stub-vision`, refused in a release build without `PDM_ALLOW_STUB_VISION`), the canned `perception` result the API accepts, its marks in `model_versions` and logs, the tests, and seven work items for the roadmap's slice S1; section 17 has six new questions; no section number changes. v0.4.2: the rig's compose listing gives each worker an `env_file` with its own `WORKER_TOKEN` (the worker reads no `WORKER_TOKEN_FILE`). v0.4.1: section 17 keeps only the four questions still open, since docs/vision v0.2 and contracts 5–6 now agree on the rest; section 1 drops the image-fetch difference (the skill uses 30 s too); section 12 lists the fallback service with its `stop_grace_period`. v0.4: the SIGTERM shutdown ends within `DRAIN_SECONDS`, dropping a `complete` or heartbeat call in flight (it could take 20 + 10 + 5 = 35 s, past the 30 s grace); the worker API client retries by the error body's `retryable` and `retry_after_s` (contracts 2), not by status, and waits `retry_after_s`; section 1 states the HTTP timeouts and only the two skill differences that remain. v0.3.1: why the immediate re-claim after a `204` can't spin while the API shuts down (probed). v0.3: the hosted fallback gives the guided check the same 8,000-token budget as the other calls (docs/vision README 12 #27), and the fallback row points to the full list of stripped schema keywords. v0.2: the fallback worker reads its hosted-LLM key from `LLM_API_KEY`, the name `api` and the backend README §9 use (it was `ANTHROPIC_API_KEY`). v0.1: the worker process (`--caps perception|vlm|fallback`): configuration, the heartbeat and claim loops with slots, leases and the SIGTERM drain, cancellation by drop, the VLM adapter with its per-call schema builder and decoding, the hosted fallback, per-card settings for the RX 9070 XT, and the rig's compose services; compiled on Rust 1.99.1.
+> **Status:** Draft v0.5.7, 2026-10-21. v0.5.7: the prompts are `system@2`, `findings@5`, `indicators@2` and `verify@2` (vision vlm.md 7); an `other` species or organism whose `other_name` names a listed option takes its id, a damage finding keeps `other_description` only with `other`, a repeated damage finding is dropped, and a string that reaches its limit goes back to its last full sentence or word (section 9). v0.5.6: the 3070's perception worker ran on the rig (S2): `worker-cuda` loads every perception model on CUDA and heartbeats `ort_ep: cuda`; it runs in `control-plane.compose.yml` (the 3070 is in the control-plane host), and the default log filter is `info,ort=warn` (section 12). v0.5.5: ST1 to ST5 are built and ran on a laptop (S1): with the empty knowledge base's label versions (`STUB_LABEL_SET_VERSION=d4f0f0534fb74a8d`, `STUB_CLASSIFIER_LABELS_VERSION` empty) a scan streams all five perception stages and goes on to `context`; the worker flags `--vlm-*` and `--fallback-*` have distinct ids, and the worker logs at `info` without `RUST_LOG`. v0.5.4: the adapter sends an indicators call as parallel parts when its backend limits the questions per call (`VlmBackend::max_questions`; 12 on the hosted model, because the API refuses a schema of 20 question objects as too large and a call can ask 27), each part with its own schema and prompt and retried on its own; two ignored live tests of the hosted schemas; 35 tests. v0.5.3: the perception worker reads its thresholds from the manifest with `PerceptionConfig::from_manifest`, the environment sets only the batch caps and never above the manifest's, and start-up refuses an fp16 model on `ORT_EP=cpu` or a file whose tensor names differ from the manifest (gaps G4, G6 and G11); `VLM_BASE_URL` defaults to `http://vllm-nv:8000`, the compose service's name (G7), all from [issue #12](https://github.com/aacruzgon/GreenLens/issues/12). v0.5.2: open question 3 is settled: xgrammar enforces `anyOf` with `null`. v0.5.1: section 12's image path is the registry's, `ghcr.io/aacruzgon/greenlens/worker` ([infra 3](../infra/README.md#3-images)). v0.5: section 15.1 designs stub vision (`--stub-vision`, refused in a release build without `PDM_ALLOW_STUB_VISION`), the canned `perception` result the API accepts, its marks in `model_versions` and logs, the tests, and seven work items for the roadmap's slice S1; section 17 has six new questions; no section number changes. v0.4.2: the rig's compose listing gives each worker an `env_file` with its own `WORKER_TOKEN` (the worker reads no `WORKER_TOKEN_FILE`). v0.4.1: section 17 keeps only the four questions still open, since docs/vision v0.2 and contracts 5–6 now agree on the rest; section 1 drops the image-fetch difference (the skill uses 30 s too); section 12 lists the fallback service with its `stop_grace_period`. v0.4: the SIGTERM shutdown ends within `DRAIN_SECONDS`, dropping a `complete` or heartbeat call in flight (it could take 20 + 10 + 5 = 35 s, past the 30 s grace); the worker API client retries by the error body's `retryable` and `retry_after_s` (contracts 2), not by status, and waits `retry_after_s`; section 1 states the HTTP timeouts and only the two skill differences that remain. v0.3.1: why the immediate re-claim after a `204` can't spin while the API shuts down (probed). v0.3: the hosted fallback gives the guided check the same 8,000-token budget as the other calls (docs/vision README 12 #27), and the fallback row points to the full list of stripped schema keywords. v0.2: the fallback worker reads its hosted-LLM key from `LLM_API_KEY`, the name `api` and the backend README §9 use (it was `ANTHROPIC_API_KEY`). v0.1: the worker process (`--caps perception|vlm|fallback`): configuration, the heartbeat and claim loops with slots, leases and the SIGTERM drain, cancellation by drop, the VLM adapter with its per-call schema builder and decoding, the hosted fallback, per-card settings for the RX 9070 XT, and the rig's compose services; compiled on Rust 1.99.1.
 
 Companion to the [backend architecture](README.md), the [`vision` crate](vision.md) (the perception models and image code it uses), the [`integrations` crate](integrations.md) (its HTTP clients for the VLM server and the LLM API) and the [`domain` crate](domain.md) (the job types and the `VisionModel` port). Every listing is copied from the compiled source of `bins/worker` by the docgen tool. `cargo check -p worker` (also `--features cuda`), `cargo clippy -p worker --all-targets` and `cargo test -p worker` pass: 35 tests, among them the loop on paused time against a fake broker and the VLM adapter against a scripted backend.
 
@@ -1207,7 +1207,7 @@ impl JobRunner {
 | `label_set_version`, `classifier_labels_version` | ✓: the job's in `complete`; every loaded one, comma-separated, in the heartbeat | | |
 | `<model name>` (manifest entry names: `leaf_detector`, `sam_encoder`, `sam_decoder`, `bioclip`, `disease_head…`, `plant_probe`) | ✓ | | |
 
-`vlm_prompts` is `system@1,findings@2,indicators@1,verify@1,guided@1`, in the contract's `name@n` form with the prompt versions of [vision vlm 7](../vision/vlm.md#7-prompts); `vlm_certainty` is `0.4/0.65/0.85`.
+`vlm_prompts` is `system@2,findings@5,indicators@2,verify@2,guided@1`, in the contract's `name@n` form with the prompt versions of [vision vlm 7](../vision/vlm.md#7-prompts); `vlm_certainty` is `0.4/0.65/0.85`.
 
 ---
 
@@ -1365,7 +1365,7 @@ pub const MAX_QUESTIONS_PER_CALL: usize = 12;
 /// The prompt versions ([vision vlm 7]), in the contract's `name@n` form.
 ///
 /// [vision vlm 7]: ../../../docs/vision/vlm.md#7-prompts
-pub const PROMPTS: &str = "system@1,findings@2,indicators@1,verify@1,guided@1";
+pub const PROMPTS: &str = "system@2,findings@5,indicators@2,verify@2,guided@1";
 
 /// Certainty words to confidences ([contracts 6], after decoding): 0.4 / 0.65 / 0.85 until
 /// calibration moves each value within its band, never above 0.85.
@@ -1976,7 +1976,7 @@ pub fn findings(
     }
     s.push('\n');
     s.push_str(SOIL);
-    s.push_str("\n\n3. organisms: every insect, mite, spider, slug, snail, worm, bird or other animal you can see, up to 10. Choose the label from this list, or \"other\" with a short name in other_name. Box each one, or the group when there are many of the same kind close together. count is one, few (2 to 10) or many.\n");
+    s.push_str("\n\n3. organisms: every insect, mite, spider, slug, snail, worm, bird or other animal you can see, up to 10. Choose its id from this list, even when you know the animal by another name, or \"other\" with a name of two or three words in other_name (null otherwise). Box each one, or the group when there are many of the same kind close together. count is one, few (2 to 10) or many.\n");
     for o in organisms {
         let _ = writeln!(s, "- {}: {}", o.id, o.name);
     }
@@ -1992,7 +1992,7 @@ pub fn findings(
 pub fn indicators(questions: &[Question<'_>], new_photo: bool) -> String {
     let mut s = String::from(
         "Answer each question about this plant from the photos. For each one:
-- reason: first, at most 60 characters on what you see that decides it.
+- reason: first, a few words on what you see that decides it, under 40 characters.
 - answer: yes, no, or unsure. Answer unsure when the photos don't show it clearly; that is better than a guess.
 - image: the image that decided it, or null.
 ",
@@ -2038,7 +2038,7 @@ pub const fn guided(kind: GuidedKind) -> &'static str {
 }
 ```
 
-**After decoding.** Strings are truncated to their limits by characters and boxes clamped for every backend, because the hosted API's schema loses the limits and a server may not enforce them. A box with no area after clamping drops an organism (which needs one) and leaves a damage finding without a region ([vision vlm 9](../vision/vlm.md#9-box-formats)). Certainty words map through the profile's `CertaintyMap`.
+**After decoding.** Strings are truncated to their limits by characters and boxes clamped for every backend, because the hosted API's schema loses the limits and a server may not enforce them. A string that reaches its limit was most likely stopped there by `maxLength` mid-word, sometimes in another language ([vision vlm 4](../vision/vlm.md#4-serving)), so `truncate` takes it back to its last full sentence, or failing that its last full word; a shorter string is kept as it is. A box with no area after clamping drops an organism (which needs one) and leaves a damage finding without a region ([vision vlm 9](../vision/vlm.md#9-box-formats)). A damage finding with the same pattern, image, region and `other_description` as an earlier one is dropped, because a model in a loop can fill the list with one finding. An `other` species or organism whose `other_name` is a listed option's id or name (case, surrounding spaces and `_` for a space don't matter) takes that option's id: the day-1 check got `other` with `other_name: "apple"` while `apple` was listed, and a prompt that asks for the id silences Qwen3.5's soil readings ([vision vlm 4](../vision/vlm.md#p5s-prompt-changes-on-qwen35-2026-10-21--ran)). `other_name` and `other_description` are kept only with `other`, so a known species, organism or damage pattern carries no free text. Certainty words map through the profile's `CertaintyMap`.
 
 ```rust
 /// Why an answer failed validation. Each is retried once, then fails the job with
@@ -2084,8 +2084,36 @@ pub struct CallImages<'c> {
 }
 
 /// Cuts a string to `max` characters (not bytes, so a multi-byte character is never split).
+/// A string that reaches `max` was most likely stopped there by the schema's `maxLength`, mid-word
+/// and sometimes in another language (vision vlm.md 4), so it goes back to its last full sentence,
+/// or failing that its last full word (the whole cut when it ends at the end of a word).
 pub fn truncate(s: &str, max: usize) -> String {
-    s.chars().take(max).collect()
+    let cut: String = s.chars().take(max).collect();
+    if s.chars().count() < max {
+        return cut;
+    }
+    // The cut's last word is whole when a space ends the cut or follows it; a text of exactly
+    // `max` was stopped there, so its last word may be cut.
+    let word_ends =
+        cut.ends_with(char::is_whitespace) || s.chars().nth(max).is_some_and(char::is_whitespace);
+    let cut = cut.trim_end();
+    if cut.ends_with(['.', '!', '?']) {
+        return cut.to_owned();
+    }
+    let mut chars = cut.char_indices().peekable();
+    let mut sentence_end = None;
+    while let Some((i, c)) = chars.next() {
+        if matches!(c, '.' | '!' | '?') && chars.peek().is_some_and(|&(_, n)| n.is_whitespace()) {
+            sentence_end = Some(i + c.len_utf8());
+        }
+    }
+    let kept = match (sentence_end, cut.rfind(char::is_whitespace)) {
+        (Some(end), _) => &cut[..end],
+        (None, _) if word_ends => cut,
+        (None, Some(space)) => &cut[..space],
+        (None, None) => cut,
+    };
+    kept.trim_end_matches([',', ';', ':', ' ']).to_owned()
 }
 
 /// Converts a raw `bbox_2d` to the stored image's `[x, y, w, h]` by the adapter's format,
@@ -2114,7 +2142,14 @@ pub fn findings(
 ) -> Result<VlmFindings, Invalid> {
     let raw: VlmFindingsRaw = serde_json::from_str(text)?;
     let species_id: Option<SpeciesId> = if raw.species_guess.species == OTHER {
-        None
+        // `other` naming a listed species is that species: the day-1 check got `other` with
+        // `other_name: "apple"` while `apple` was listed (vision vlm.md 4).
+        raw.species_guess.other_name.as_deref().and_then(|n| {
+            species
+                .iter()
+                .find(|x| names(n, x.id.as_str(), &x.name))
+                .map(|x| x.id.clone())
+        })
     } else {
         Some(
             known(
