@@ -97,6 +97,7 @@ CC BY 4.0 requires attribution, a link to the licence, and a note of changes. Ou
 | iNaturalist (the species head's and the trained plant probe's photos, `ml/training/data/splits/inat_species.tsv`) | CC0 1.0 or CC BY 4.0, per photo | each photo's observer, credited in the index with the change made (re-encoded, metadata removed) | <https://www.inaturalist.org> |
 | WIDER FACE (YuNet's training data) | CC BY-NC-ND 4.0, see `yunet` | Yang et al., "WIDER FACE: A Face Detection Benchmark", CVPR 2016 (*unverified*) | <http://shuoyang1213.me/WIDERFACE/> |
 | COCO 2017 (`leaf_detector`'s background photos; evaluation negatives) | CC BY 4.0 for the annotations; each image keeps its Flickr licence, most of them non-commercial. The background photos are only CC BY, CC BY-SA or no known copyright | Lin et al., "Microsoft COCO: Common Objects in Context", ECCV 2014 | <https://cocodataset.org> |
+| PlantSeg (fits the spot segmenter's ten colour thresholds in `api`; no weights) | CC BY-NC 4.0 on the Zenodo record used (an earlier record says CC BY-NC-ND 4.0); its photos were scraped from the web and keep their owners' copyright (*unverified*) | Wei et al., "PlantSeg: A Large-Scale In-the-wild Dataset for Plant Disease Segmentation", arXiv:2409.04038, 2024 | <https://zenodo.org/records/17719108> |
 | TreeOfLife-200M (BioCLIP 2's training data) | CC0 as a compilation; images may keep their own terms, see `bioclip` | see the BioCLIP 2 paper | <https://huggingface.co/datasets/imageomics/TreeOfLife-200M> |
 
 **PlantDoc.** The photos were scraped from the web, so their owners keep their copyright (§9 item 3). This is fine for training; we never redistribute the images.
@@ -104,5 +105,7 @@ CC BY 4.0 requires attribution, a link to the licence, and a note of changes. Ou
 **Tomato-Pakistan 2026.** Every file is an augmented copy, about 934 originals. 302 of the originals are PlantDoc's scraped photos, and our mapping drops them. Any other scraped photos keep their owners' copyright (*unverified*). Shipping weights trained on this set is a team decision (§9). No Data in Brief paper was found.
 
 **iNaturalist.** Research-grade observations with an agreeing identification, observed 2019 to 2025, one photo each; only CC0 and CC BY photos are used. CC BY needs each observer's credit: the index lists every photo's licence and credit, and that list ships with any head trained on it. Not in `manifest.toml` yet: the species head and the trained plant probe get their own sections when they ship.
+
+**PlantSeg.** Non-commercial. Nothing is trained on it and no image or mask is redistributed: it fits the ten `SpotThresholds` constants that ship in `api` (`backend/crates/vision/src/measure/spots.rs`; [report](../training/eval/reports/spots-2026-10-22.md)). Whether constants fitted on non-commercial data may ship in a commercial product is part of D12 ([#14](https://github.com/aacruzgon/GreenLens/issues/14)); if not, the hand-drawn masks of evaluation 6 replace it.
 
 **iBean.** Smartphone field photos of bean leaves from Uganda, annotated by NaCRRI. The head uses it only if beans become supported.
