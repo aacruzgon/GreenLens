@@ -558,7 +558,7 @@ def test_review_rebuilds_the_record_sections_from_the_yaml(seed_dir):
     d["indicators"].append({**d["indicators"][1], "id": "tomato_early_blight.added_by_hand",
                             "discriminating": False})
     p.write_text(yaml.safe_dump(d, sort_keys=False))
-    assert review.run(seed_dir, all_records=True) == (["problems/tomato_early_blight.review.md"], [])
+    assert review.run(seed_dir, all_records=True) == (["problems/tomato_early_blight.review.md"], [], [])
     body = p.with_suffix(".review.md").read_text()
     assert body.startswith("# Review: Early blight (`tomato_early_blight`)\n\nDraft of 2026-10-20 by `m`.")
     assert "## Model notes (as first drafted)\n\nThe model's note." in body
@@ -580,7 +580,7 @@ def test_review_rebuilds_the_record_sections_from_the_yaml(seed_dir):
     again = p.with_suffix(".review.md").read_text()
     added = again.split("- **tomato_early_blight.added_by_hand**")[1].split("\n\n")[0]
     assert "`example_extension_tomato_diseases.1`: Early blight starts" in added
-    assert review.run(seed_dir, all_records=True) == ([], [])
+    assert review.run(seed_dir, all_records=True) == ([], [], [])
 
 
 def test_review_keeps_each_files_citations_and_sections_and_names_unknown_ids(seed_dir, tmp_path):
@@ -601,9 +601,10 @@ def test_review_keeps_each_files_citations_and_sections_and_names_unknown_ids(se
     (tags / "example_extension_tomato_diseases.jsonl").write_text("".join(
         json.dumps({"id": f"example_extension_tomato_diseases.{n}", "dropped": None, "withheld": None}) + "\n"
         for n in (1, 2, 3)))
-    done, errors = review.run(seed_dir, tmp_path / "no_plan.yaml", all_records=True, tags=tags)
+    done, errors, unchecked = review.run(seed_dir, tmp_path / "no_plan.yaml", all_records=True, tags=tags)
     assert errors == ["problems/tomato_early_blight.review.md: cites `example_extension_tomato_diseases.99`, an "
                       "unknown chunk id: tag.py never saw it (build/tags/example_extension_tomato_diseases.jsonl)"]
+    assert unchecked == []
     body = eb.read_text()
     item = lambda name: body.split(f"- **{name}**")[1].split("\n\n")[0]
     assert "diseases.3`" in item("remove_lower_infected_leaves")
@@ -611,9 +612,32 @@ def test_review_keeps_each_files_citations_and_sections_and_names_unknown_ids(se
     assert "diseases.1`" in item("avoid_overhead_watering"), "a step new to this file starts from the others'"
     assert "`example_extension_tomato_diseases.99`: **unknown chunk id**: tag.py never saw it" in item("mulch_soil_surface")
     assert "## Open questions\n\n- Is the mulch step needed?" in body, "a reviewer's own section stays"
-    # Without build/tags, a chunk the seed doesn't carry may be one the dose check withheld; only an
-    # unknown source is certainly wrong.
-    quote, unknown = review.quoter(load(seed_dir), {}, None)
-    text = quote(["example_extension_tomato_diseases.99", "nosuch.1"])
-    assert "withheld by the dose check, unless the id is wrong" in text
-    assert unknown == [("nosuch.1", "its source isn't in sources.yaml")]
+
+
+
+def test_review_checks_every_uncommitted_id_it_can_and_writes_the_same_line_on_any_machine(seed_dir, tmp_path):
+    seed = load(seed_dir)
+    plan = {"facts_only_sources": ["example_extension_tomato_diseases"]}
+    ids = ["example_extension_tomato_diseases.7", "example_extension_tomato_diseases.999", "nosuch.1"]
+    row = lambda n, **kw: json.dumps({"id": f"example_extension_tomato_diseases.{n}", **kw}) + "\n"
+    tags, chunks = tmp_path / "tags", tmp_path / "chunks"
+    tags.mkdir(), chunks.mkdir()
+    (tags / "example_extension_tomato_diseases.jsonl").write_text(row(7, dropped=None, withheld=None))
+    (chunks / "example_extension_tomato_diseases.jsonl").write_text(row(7))
+    # A facts-only source's chunks aren't committed, so a typo among them is caught only through
+    # build/tags or build/chunks; with neither, the id is listed as unchecked.
+    seen = {}
+    for name, kw in (("tags", {"tags": tags}), ("chunks", {"chunks": chunks}), ("neither", {})):
+        quote, unknown, unchecked = review.quoter(seed, plan, **kw)
+        seen[name] = quote(ids)
+        assert [i for i, _ in unknown] == (["nosuch.1"] if name == "neither"
+                                           else ["example_extension_tomato_diseases.999", "nosuch.1"])
+        assert unchecked == (ids[:2] if name == "neither" else [])
+    line = lambda text: next(l for l in text.splitlines() if "diseases.7`" in l)
+    assert line(seen["tags"]) == line(seen["chunks"]) == line(seen["neither"])
+    assert "wording not committed" in line(seen["tags"])
+    # A chunk the dose check withheld reads the same whether build/tags says so or not.
+    (tags / "example_extension_tomato_diseases.jsonl").write_text(row(7, dropped=None, withheld="dose check: 2%"))
+    with_tags = review.quoter(seed, {}, tags=tags)[0](["example_extension_tomato_diseases.7"])
+    without = review.quoter(seed, {})[0](["example_extension_tomato_diseases.7"])
+    assert with_tags == without and "it gives a rate" in without

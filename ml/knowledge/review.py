@@ -20,7 +20,9 @@ writes "  - `<chunk id>`" under it; the next run then quotes that excerpt.
 Excerpts are quoted from seed/chunks, and one the seed doesn't carry (a facts-only source or a
 withheld chunk) is linked instead, as extract.py does, so the script needs no model. With
 build/tags, it also knows which chunks the dose check withheld, so an id tag.py never saw, or one
-it dropped, is an error; without it, only an id whose source isn't in sources.yaml is.
+it dropped, is an error, facts-only ones included; without it, build/chunks shows whether the page
+has the chunk. With neither, an id is only checked for its source, and the run lists the ids it
+couldn't check on stderr. The line written for an id never depends on which of these the machine has.
 """
 
 from __future__ import annotations
@@ -63,37 +65,51 @@ def cites(section: str) -> dict[str | None, list[str]]:
     return out
 
 
-def quoter(seed, plan: dict, tags: Path | None = None):
-    """extract._quote over the committed chunks, linking any cited chunk the seed doesn't carry,
-    and the list it adds (id, reason) to for every cited id that names no excerpt."""
+def _jsonl(folder: Path | None) -> dict[str, dict[str, dict]]:
+    """{source id: {chunk id: row}} from a folder of <source>.jsonl files, empty without one."""
+    out = {}
+    for path in sorted(folder.glob("*.jsonl")) if folder and folder.is_dir() else []:
+        rows = (json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
+        out[path.stem] = {d["id"]: d for d in rows}
+    return out
+
+
+def quoter(seed, plan: dict, tags: Path | None = None, chunks: Path | None = None):
+    """extract._quote over the committed chunks, linking any cited chunk the seed doesn't carry; the
+    list it adds (id, reason) to for every cited id that names no excerpt; and the list of cited ids
+    it couldn't check, having neither build/tags nor build/chunks for their source. The line written
+    for an id is the same either way, so runs on different machines don't rewrite each other's."""
     facts_only = set(plan.get("facts_only_sources", []))
     by_hand = plan.get("withheld_chunks") or {}
     urls = {s["id"]: s["url"] for s in seed.sources}
     committed = {c["id"]: c for c in seed.chunks}
-    decided = {}   # build/tags/<source>.jsonl: every chunk tag.py saw, with what it decided
-    for path in sorted(tags.glob("*.jsonl")) if tags and tags.is_dir() else []:
-        rows = (json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
-        decided[path.stem] = {d["id"]: d for d in rows}
+    decided = _jsonl(tags)       # build/tags: every chunk tag.py saw, with what it decided
+    on_page = _jsonl(chunks)     # build/chunks: every chunk of the page, before tagging
     unknown: list[tuple[str, str]] = []
+    unchecked: list[str] = []
 
     def withheld(i: str, src: str) -> str | None:
         """Why the seed doesn't carry `i`: None for a facts-only source, a reason, or raises KeyError."""
         if src not in urls:
             raise KeyError("its source isn't in sources.yaml")
+        d = decided.get(src, {}).get(i)
+        if src in decided:
+            if d is None:
+                raise KeyError(f"tag.py never saw it (build/tags/{src}.jsonl)")
+            if d.get("dropped"):
+                raise KeyError(f"tag.py dropped it ({d['dropped']})")
+        elif src in on_page:
+            if i not in on_page[src]:
+                raise KeyError(f"the page has no such chunk (build/chunks/{src}.jsonl)")
+        elif i not in unchecked:
+            unchecked.append(i)
         if src in facts_only:
             return None
         if i in by_hand:
             return f"withheld at review: {by_hand[i]}"
-        if src not in decided:
-            return "not in seed/chunks: withheld by the dose check, unless the id is wrong (run tag.py to tell)"
-        d = decided[src].get(i)
-        if d is None:
-            raise KeyError(f"tag.py never saw it (build/tags/{src}.jsonl)")
-        if d.get("dropped"):
-            raise KeyError(f"tag.py dropped it ({d['dropped']})")
-        if not d.get("withheld"):
+        if d is not None and not d.get("withheld"):
             raise KeyError("tag.py kept it, but seed/chunks doesn't have it: run tag.py again")
-        return d["withheld"]
+        return "dose check"
 
     def quote(ids) -> str:
         known, lines = dict(committed), []
@@ -108,7 +124,7 @@ def quoter(seed, plan: dict, tags: Path | None = None):
                 lines.append(f"  - `{i}`: **unknown chunk id**: {e.args[0]}")
         cited = [i for i in ids or [] if i in known]
         return "\n".join(([extract._quote(known, cited, facts_only, urls)] if cited or not lines else []) + lines)
-    return quote, unknown
+    return quote, unknown, unchecked
 
 
 def _products(seed, texts: list[str]) -> list[dict]:
@@ -183,13 +199,14 @@ def rebuild(body: str, sections: list[str], old_sections: list[tuple[str, str]])
 
 
 def run(seed_root: Path = SEED, plan_path: Path = PLAN, all_records: bool = False,
-        tags: Path | None = None) -> tuple[list[str], list[str]]:
-    """The review files rewritten, and the cited ids that name no excerpt, one line each.
-    `tags` defaults to build/tags for the real seed."""
+        tags: Path | None = None, chunks: Path | None = None) -> tuple[list[str], list[str], list[str]]:
+    """The review files rewritten; the cited ids that name no excerpt, one line each; and the cited
+    ids not in seed/chunks that couldn't be checked. `tags` and `chunks` default to build/tags and
+    build/chunks for the real seed."""
     seed = load(seed_root)
-    if tags is None and seed_root.resolve() == SEED.resolve():
-        tags = extract.TAGS
-    quote, unknown = quoter(seed, read_yaml(plan_path) if plan_path.exists() else {}, tags)
+    if seed_root.resolve() == SEED.resolve():
+        tags, chunks = tags or extract.TAGS, chunks or validate.BUILT_CHUNKS
+    quote, unknown, unchecked = quoter(seed, read_yaml(plan_path) if plan_path.exists() else {}, tags, chunks)
     shared: dict[str, dict[str, list[str]]] = {"## Treatments": {}, "## Products": {}}
     for path in sorted((seed_root / "problems").glob("*.review.md")):
         for h, t in split(path.read_text(encoding="utf-8"))[1]:
@@ -219,7 +236,7 @@ def run(seed_root: Path = SEED, plan_path: Path = PLAN, all_records: bool = Fals
             if new != body:
                 path.write_text(new, encoding="utf-8", newline="\n")
                 done.append(f"{folder}/{path.name}")
-    return done, errors
+    return done, errors, sorted(unchecked)
 
 
 def main() -> int:
@@ -227,9 +244,13 @@ def main() -> int:
     ap.add_argument("--seed", type=Path, default=SEED)
     ap.add_argument("--all", action="store_true")
     args = ap.parse_args()
-    done, errors = run(args.seed, all_records=args.all)
+    done, errors, unchecked = run(args.seed, all_records=args.all)
     for line in done:
         print(f"rewrote {line}", file=sys.stderr)
+    if unchecked:
+        print(f"{len(unchecked)} cited id(s) not in seed/chunks weren't checked, with no build/tags or "
+              f"build/chunks for their source; run fetch, chunk and tag to check them: {', '.join(unchecked)}",
+              file=sys.stderr)
     for line in errors:
         print(line)
     return 1 if errors else 0
