@@ -24,7 +24,10 @@ export default function AppLayout() {
           options={{ presentation: "formSheet", sheetAllowedDetents: [0.5], sheetGrabberVisible: true }}
         />
         {/* Capture is a camera: it covers the screen, like the Camera app (design 3.1). */}
-        <Stack.Screen name="capture/[scanId]" options={{ presentation: "fullScreenModal" }} />
+        <Stack.Screen name="capture/[scanId]/index" options={{ presentation: "fullScreenModal" }} />
+        {/* A question's photo and the guided soil checks: the capture view cut to one slot (screens 3.2). */}
+        <Stack.Screen name="capture/[scanId]/question/[questionId]" options={{ presentation: "fullScreenModal" }} />
+        <Stack.Screen name="capture/[scanId]/guided/[kind]" options={{ presentation: "fullScreenModal" }} />
         {/* Analyse replaces capture with the scan, which stays full screen and dark like the camera (design 3.1). */}
         <Stack.Screen name="scans/[scanId]" options={{ presentation: "fullScreenModal" }} />
       </Stack>
