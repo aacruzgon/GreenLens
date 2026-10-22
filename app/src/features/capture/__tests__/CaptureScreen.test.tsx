@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { Alert } from "react-native";
 
-import { ApiError, newKey, scans, setTransport } from "@/api";
+import { ApiError, newKey, scans, setTransport, tasks } from "@/api";
 import { IDS, mockStore, mockTransport, resetMock, scenario } from "@/api/mock";
 import { files } from "@/platform";
 import { ThemeProvider } from "@/ui";
@@ -225,6 +225,18 @@ describe("CaptureScreen", () => {
     await fireEvent.press(shutter());
     expect(await screen.findByText("Couldn't replace the photo. Try again removes it, then take a new one.")).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Whole plant, taken" })).toBeTruthy();
+  });
+
+  it("says Discard also deletes a jar-test task started on the scan", async () => {
+    const alert = jest.spyOn(Alert, "alert");
+    const id = await newScan();
+    await tasks.create({ garden_id: IDS.garden, plant_id: IDS.tomato2, scan_id: id, title: "Photograph the jar test" }, newKey());
+    await renderCapture(id);
+    await waitFor(() => {
+      alert.mockClear();
+      fireEvent.press(screen.getByRole("button", { name: "Discard" }));
+      expect(alert).toHaveBeenCalledWith("Discard this scan?", "Its photos and its jar-test task will be deleted.", expect.any(Array));
+    });
   });
 
   it("treats a scan already deleted as discarded", async () => {

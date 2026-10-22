@@ -81,6 +81,11 @@ export function scanTargetOf(task: Pick<Task, "source" | "plant_id" | "repeat">)
   return task.source === "plan" && task.repeat && task.plant_id ? task.plant_id : undefined;
 }
 
+/** A jar-test task's scan: the only tasks with a scan link, which open that scan's jar capture (contracts 9; flows 8). */
+export function jarScanOf(task: Pick<Task, "scan_id">): string | undefined {
+  return task.scan_id;
+}
+
 /** "Toronto" from "Toronto, ON": the place in the hero's eyebrow. */
 export function placeName(locationLabel: string): string {
   return locationLabel.split(",")[0]!.trim() || locationLabel;

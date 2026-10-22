@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 
-import { isApiError, newKey, qk, scans, useDeleteScan, usePlant, useScan, useSubmitScan, type IdempotencyKey } from "@/api";
+import { flattenPages, isApiError, newKey, qk, scans, useDeleteScan, usePlant, useScan, useSubmitScan, useTasks, type IdempotencyKey } from "@/api";
 import { backoffMs } from "@/lib/backoff";
 import { files, haptics, type CapturedShot } from "@/platform";
 
@@ -21,6 +21,7 @@ import {
   uploadOutcome,
   type CaptureDraft,
 } from "../model/draft";
+import { jarTaskOf } from "../model/oneShot";
 import { MODES, NEEDED, modeOf, type CaptureKind } from "../model/shotPlan";
 import type { ShotFile, Slot, SlotEvent } from "../model/slot";
 import { useDraftStore } from "./draftStore";
@@ -49,6 +50,8 @@ export function useCaptureSession(scanId: string) {
   const qc = useQueryClient();
   const scan = useScan(scanId);
   const plant = usePlant(scan.data?.plant_id ?? "");
+  // A jar test started before submit has a task on this scan; Discard says it goes too (screens 3.2).
+  const openTasks = useTasks(scan.data?.garden_id ?? "", { state: "open" });
   const draft = useDraftStore((s) => s.drafts[scanId]);
   const submit = useSubmitScan();
   const deleteScan = useDeleteScan();
@@ -284,6 +287,7 @@ export function useCaptureSession(scanId: string) {
     scan,
     view: draft ? sessionView(draft, plant.data?.name) : undefined,
     problem,
+    jarTask: jarTaskOf(flattenPages(openTasks.data), scanId),
     busy: { submitting: submit.isPending, discarding: deleteScan.isPending },
     actions: {
       selectMode,
