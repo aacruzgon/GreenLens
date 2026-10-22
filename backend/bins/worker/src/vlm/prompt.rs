@@ -1,4 +1,4 @@
-//! The prompts of [vision vlm 7] (`system@2`, `findings@4`, `indicators@2`, `verify@2`,
+//! The prompts of [vision vlm 7] (`system@2`, `findings@5`, `indicators@2`, `verify@2`,
 //! `guided@1`), filled from the payload. They borrow the payload and return owned strings;
 //! nothing here allocates more than the text itself.
 //!
@@ -77,11 +77,11 @@ const SOIL: &str = "2. soil: for each aspect, the value you see in the image tha
 - erosion: none, rills (small channels), exposed_roots
 - weeds: none, few, many";
 
-const DAMAGE: &str = "4. damage: patterns of damage done by animals (insects, mites, slugs, birds, mammals) on the leaves, stems, fruit or soil, up to 10, each with the image and a box when it is in one area (null when it is spread over the whole plant). List each pattern once for each area it covers, and never repeat a finding. Disease is not damage: leave out spots, rings, halos, lesions, yellowing, wilting, rot and mould caused by disease, whatever their colour or shape. They are not leaf_mines and not other.
+const DAMAGE: &str = "4. damage: patterns of damage on the leaves, stems, fruit or soil, up to 10, each with the image and a box when it is in one area (null when it is spread over the whole plant):
 - shot_holes: many small round holes, a few millimetres across
 - ragged_holes: large irregular holes, often with slime nearby
 - chewed_margins: leaf edges eaten away
-- leaf_mines: narrow winding tunnels, like a scribble, or irregular see-through blotches, eaten inside the leaf by a larva, often with a thin dark line of droppings inside. Spots of any colour are not mines. Neither is a long straight or elongated streak, stripe or band along the leaf or its veins, even a pale one that looks like a tunnel: that is a disease lesion.
+- leaf_mines: pale winding tunnels or blotches inside the leaf
 - sticky_residue: shiny sticky coating on leaves
 - sooty_mould: black powdery coating
 - webbing: fine silk between leaves or stems
@@ -95,7 +95,8 @@ const DAMAGE: &str = "4. damage: patterns of damage done by animals (insects, mi
 - tracks: footprints
 - droppings: droppings of animals larger than insects
 - pecked_fruit: fruit with beak holes
-- other: other damage by an animal, described in other_description in a few words. other_description is null for every other pattern.
+- other: anything else, described in other_description
+Spots, yellowing and mould caused by disease are not damage patterns here.
 
 5. notes: at most two short sentences about anything else important you see, under 120 characters in all, or an empty string.";
 
@@ -116,7 +117,7 @@ pub fn findings(
         }
         None => s.push_str("The plant's species is not known.\n\n"),
     }
-    s.push_str("1. species_guess: the species you see. If it is one of the species in this list, answer its id, the word before the colon, even when you know it by another or a more specific name, such as a variety. Answer \"other\" only when it is none of them, with its common name in other_name in two or three words; other_name is null otherwise.\n");
+    s.push_str("1. species_guess: the species you see. If it is one of the species in this list, answer its id, the word before the colon, even when you know it by another or a more specific name, such as a variety. Answer \"other\" only when it is none of them, with its common name in other_name in two or three words.\n");
     for o in species {
         let _ = writeln!(s, "- {}: {}", o.id, o.name);
     }
