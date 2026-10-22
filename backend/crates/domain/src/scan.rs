@@ -509,6 +509,10 @@ pub struct Question {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(nullable = false)]
     pub options: Option<Vec<QuestionOption>>,
+    /// Indicator questions: the indicator it asks about, e.g. `concentric_rings`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    pub indicator_id: Option<crate::id::IndicatorSlug>,
     /// `photo_request`: which shot to take.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(nullable = false)]
@@ -1003,3 +1007,56 @@ pub struct Created<T: Table> {
 
 /// The `201` of `POST /scans/{id}/feedback`.
 pub type FeedbackCreated = Created<crate::id::table::ScanFeedback>;
+
+#[cfg(test)]
+mod question_tests {
+    use super::*;
+
+    fn question(kind: QuestionKind, indicator_id: Option<&str>) -> Question {
+        Question {
+            id: "01JAX3K9T6R2B8V0QZ4M7D1E80".parse().unwrap(),
+            run: Run(1),
+            kind,
+            text: "Do the spots have rings?".into(),
+            options: None,
+            indicator_id: indicator_id.map(|s| s.parse().unwrap()),
+            photo_kind: None,
+            photo_hint: None,
+            candidates: vec!["tomato_early_blight".parse().unwrap()],
+            asked_at: "2026-10-22T10:00:00Z".parse().unwrap(),
+            continue_at: "2026-10-22T10:10:00Z".parse().unwrap(),
+            status: QuestionStatus::Open,
+        }
+    }
+
+    #[test]
+    fn an_indicator_question_names_its_indicator() {
+        let json =
+            serde_json::to_value(question(QuestionKind::Indicator, Some("concentric_rings")))
+                .unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "id": "01JAX3K9T6R2B8V0QZ4M7D1E80",
+                "run": 1,
+                "kind": "indicator",
+                "text": "Do the spots have rings?",
+                "indicator_id": "concentric_rings",
+                "candidates": ["tomato_early_blight"],
+                "asked_at": "2026-10-22T10:00:00Z",
+                "continue_at": "2026-10-22T10:10:00Z",
+                "status": "open",
+            })
+        );
+        let back: Question = serde_json::from_value(json).unwrap();
+        assert_eq!(back.indicator_id.unwrap().as_str(), "concentric_rings");
+    }
+
+    #[test]
+    fn a_photo_request_has_no_indicator_id() {
+        let json = serde_json::to_value(question(QuestionKind::PhotoRequest, None)).unwrap();
+        assert!(json.get("indicator_id").is_none());
+        let back: Question = serde_json::from_value(json).unwrap();
+        assert!(back.indicator_id.is_none());
+    }
+}
