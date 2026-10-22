@@ -10,7 +10,7 @@ import type { Answer, GuidedKind, ScanImage } from "@/domain/types";
 import { useScanJarTask, useStartCapture } from "@/features/capture";
 
 import { hotspotsOf, readingImageId, speciesChip } from "../model/hotspots";
-import { phaseLine, phasesOf } from "../model/phases";
+import { phaseLine, phasesOf, soilLine } from "../model/phases";
 import { useScanEvents } from "./useScanEvents";
 
 export type Ending =
@@ -84,7 +84,7 @@ export function useLiveAnalysis(scanId: string) {
     closedTask.current = task.id;
     updateTask.mutate({ id: task.id, body: { done: true } });
   }, [jarDone, jarTask.task, role, updateTask]);
-  const checkingSoil = state?.guidedChecks.some((c) => c.status === "analysing") ?? false;
+  const soil = useMemo(() => (state ? soilLine(state) : undefined), [state]);
 
   const actions = {
     answer: (option: Answer) => {
@@ -155,7 +155,7 @@ export function useLiveAnalysis(scanId: string) {
     sending,
     answerProblem,
     ending,
-    checkingSoil,
+    soil,
     canAnswer,
     canRetry,
     canCheckSoil: canCheckSoil && state?.status !== "failed",

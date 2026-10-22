@@ -21,7 +21,8 @@ export const PHASES: readonly PhaseDef[] = [
   { key: "measure", label: "Measuring spots", stages: ["measurement"] },
   { key: "context", label: "Checking weather and soil", stages: ["context"] },
   { key: "problems", label: "Gathering likely problems", stages: ["retrieve"] },
-  { key: "signs", label: "Checking telltale signs", stages: ["vlm_findings", "vlm_indicators", "guided", "verify"] },
+  // Not `guided`: a soil check runs beside the run, has its own card, and isn't part of its time.
+  { key: "signs", label: "Checking telltale signs", stages: ["vlm_findings", "vlm_indicators", "verify"] },
   { key: "weigh", label: "Weighing the evidence", stages: ["scoring", "fusion"] },
   { key: "plan", label: "Writing your plan", stages: ["plan"] },
 ];
@@ -178,4 +179,29 @@ export function formatSeconds(ms: number): string {
 /** How many phases have ticked, for the haptic per tick. */
 export function tickCount(phases: readonly PhaseView[]): number {
   return phases.filter((p) => p.state === "done" || p.state === "skipped").length;
+}
+
+export interface SoilLine {
+  checking: boolean;
+  title: string;
+  detail?: string;
+}
+
+/**
+ * The soil check's card (flows 8): "Checking your soil photo" while a check is analysing, then the newest check's
+ * outcome: its texture, a jar that hasn't settled (no texture, its task stays), or a photo that couldn't be read.
+ */
+export function soilLine(state: Pick<ScanState, "guidedChecks">): SoilLine | undefined {
+  if (state.guidedChecks.some((c) => c.status === "analysing")) return { checking: true, title: "Checking your soil photo" };
+  const last = state.guidedChecks[state.guidedChecks.length - 1];
+  if (!last) return undefined;
+  const test = last.kind === "jar_test" ? "jar test" : "squeeze test";
+  if (last.status === "failed") return { checking: false, title: "We couldn't read your soil photo", detail: `Try the ${test} again.` };
+  const texture = last.result?.detail?.value;
+  if (!last.result || !texture) {
+    return last.kind === "jar_test"
+      ? { checking: false, title: "The jar hasn't settled yet", detail: "Photograph it again in a few hours." }
+      : { checking: false, title: "Your soil photo was unclear", detail: "Try the squeeze test again." };
+  }
+  return { checking: false, title: `Your soil: ${texture}`, detail: `From the ${test}.` };
 }

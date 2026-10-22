@@ -4,7 +4,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 
-import { newKey, scans, setTransport } from "@/api";
+import { newKey, qk, scans, setTransport } from "@/api";
 import { IDS, mockStore, mockTransport, resetMock, scenario } from "@/api/mock";
 import { ThemeProvider } from "@/ui";
 
@@ -48,10 +48,13 @@ async function submitted(plantId: string, nextScan?: "no_plant_found"): Promise<
   return scan.id;
 }
 
+let lastClient: QueryClient | undefined;
+
 /** The scan screen; with `sheet`, the species sheet beside it, as when "Change" opens it over the screen. */
 async function renderScan(scanId: string, sheet?: { plantId: string }) {
   mockParams = { scanId, ...sheet };
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } } });
+  lastClient = qc;
   await render(
     <QueryClientProvider client={qc}>
       <ThemeProvider scheme="dark" reducedMotion>
@@ -171,6 +174,22 @@ describe("ScanScreen", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByTestId("analysis-ring", undefined, RUN)).toBeTruthy();
     expect(screen.queryByTestId("scan-load-error")).toBeNull();
+  });
+
+  it("shows a soil check's texture when it finishes, and the plan it replaces", async () => {
+    const scanId = await submitted(IDS.tomato2);
+    await renderScan(scanId);
+    await fireEvent.press(await screen.findByRole("button", { name: "Yes, rings" }, RUN));
+    await screen.findByTestId("see-result", undefined, RUN);
+    expect(screen.queryByTestId("soil-result")).toBeNull();
+
+    // As capture's Send does: the photo, then the scan's record invalidated.
+    await scans.uploadImage(scanId, { kind: "squeeze_test", file: new Blob(["x"], { type: "image/jpeg" }) }, newKey());
+    await lastClient!.invalidateQueries({ queryKey: qk.scan(scanId) });
+    expect(await screen.findByText("Your soil: loamy", undefined, RUN)).toBeTruthy();
+    expect(screen.getByText("From the squeeze test.")).toBeTruthy();
+    expect(screen.queryByTestId("checking-soil")).toBeNull();
+    await waitFor(() => expect(screen.getByText("Plan updated")).toBeTruthy(), RUN);
   });
 
   it("shows a failed run with New scan", async () => {

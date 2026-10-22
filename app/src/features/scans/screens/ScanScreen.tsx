@@ -98,9 +98,18 @@ function LiveAnalysis() {
             <FailureCard failure={v.state.failure} canAct={v.canRetry} busy={v.retrying} onRetry={v.actions.retry} onNewScan={v.actions.newScan} />
           ) : null}
           {ending.kind === "low_evidence" ? <LowEvidenceCard canAct={v.canRetry} onCloserPhoto={v.actions.closerPhoto} /> : null}
-          {v.checkingSoil ? (
-            <Panel testID="checking-soil">
-              <Text variant="subheadline">Checking your soil photo</Text>
+          {v.soil ? (
+            <Panel testID={v.soil.checking ? "checking-soil" : "soil-result"}>
+              <View style={{ gap: 2 }} accessibilityLiveRegion="polite">
+                <Text variant="subheadline" style={{ fontWeight: v.soil.checking ? "400" : "600" }}>
+                  {v.soil.title}
+                </Text>
+                {v.soil.detail ? (
+                  <Text variant="footnote" color="textMuted">
+                    {v.soil.detail}
+                  </Text>
+                ) : null}
+              </View>
             </Panel>
           ) : null}
         </View>

@@ -1,7 +1,7 @@
 import type { Observation, ScanDetail, ScanEvent, ScanEventBody } from "@/domain/types";
 
 import { bandShift, hotspotsOf, labelSides, readingImageId } from "./hotspots";
-import { phaseLine, phasesOf, tickCount } from "./phases";
+import { phaseLine, phasesOf, soilLine, tickCount } from "./phases";
 import { applyScanEvent, effectsOf, isReplay, reconcile, seed, stateAtRest, type ScanState } from "./scanState";
 
 const TS = "2026-10-22T14:00:00Z";
@@ -286,6 +286,24 @@ describe("effectsOf", () => {
 });
 
 describe("phases", () => {
+  it("leaves a soil check out of the run's time and its steps", () => {
+    const planned = fold(seed(detail()), run(EXAMPLE));
+    const total = phaseLine(planned).total;
+    const n = planned.lastSeq;
+    const checked = fold(planned, run([{ type: "stage_started", stage: "guided" }, { type: "stage_completed", stage: "guided", duration_ms: 1500 }], n + 1));
+    expect(phaseLine(checked).total).toBe(total);
+    expect(phasesOf(checked).find((p) => p.key === "signs")?.state).toBe("done");
+  });
+
+  it("words the soil check: checking, its texture, an unsettled jar, a failure", () => {
+    const texture = obs("o_tex", { stage: "soil", pipeline_stage: "guided", source: "vlm", label: "Jar settled: loamy soil", detail: { aspect: "texture", value: "loamy", guided_kind: "jar_test" } });
+    expect(soilLine({ guidedChecks: [] })).toBeUndefined();
+    expect(soilLine({ guidedChecks: [{ image_id: "a", kind: "jar_test", status: "analysing" }] })).toEqual({ checking: true, title: "Checking your soil photo" });
+    expect(soilLine({ guidedChecks: [{ image_id: "a", kind: "jar_test", status: "done", result: texture }] })).toEqual({ checking: false, title: "Your soil: loamy", detail: "From the jar test." });
+    expect(soilLine({ guidedChecks: [{ image_id: "a", kind: "jar_test", status: "done" }] })?.title).toBe("The jar hasn't settled yet");
+    expect(soilLine({ guidedChecks: [{ image_id: "a", kind: "squeeze_test", status: "failed" }] })).toEqual({ checking: false, title: "We couldn't read your soil photo", detail: "Try the squeeze test again." });
+  });
+
   it("ticks each phase as a later one starts and says what is next", () => {
     const upTo = (n: number) => fold(seed(detail()), run(EXAMPLE.slice(0, n)));
     // Running the disease stage: plant and species have ticked.
