@@ -372,8 +372,10 @@ struct Joined(Option<thread::JoinHandle<()>>);
 
 impl Drop for Joined {
     fn drop(&mut self) {
-        if let Some(thread) = self.0.take() {
-            let _ = thread.join();
+        if let Some(thread) = self.0.take()
+            && thread.join().is_err()
+        {
+            tracing::error!("the inference thread panicked");
         }
     }
 }

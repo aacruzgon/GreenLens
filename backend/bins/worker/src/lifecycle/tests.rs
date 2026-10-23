@@ -631,7 +631,9 @@ async fn the_whole_shutdown_ends_within_the_drain_bound() {
 async fn a_failed_stop_signal_still_shuts_down_and_returns_the_error() {
     let w = worker(fake(0), false, 1);
     let stopped = async { Err(std::io::Error::other("no signal handler")) };
+    let started = Instant::now();
     let err = run_until(Arc::clone(&w), stopped).await.unwrap_err();
+    assert_eq!(started.elapsed(), Duration::ZERO); // no job to drain, so nothing waits
     assert_eq!(err.to_string(), "no signal handler");
     assert_eq!(Arc::strong_count(&w), 1); // the claim and heartbeat tasks have ended
 }
