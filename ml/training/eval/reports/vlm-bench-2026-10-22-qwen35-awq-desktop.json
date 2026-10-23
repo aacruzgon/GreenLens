@@ -1,0 +1,207 @@
+[
+  {
+    "label": "qwen35-awq-desktop",
+    "max_pixels": 1003520,
+    "concurrency": 2,
+    "peak_gpu_mib": 12796,
+    "peak_kv_cache": 0.13245033112582782,
+    "exit": 0,
+    "seconds": 204.6,
+    "model": "cyankiwi/Qwen3.5-9B-AWQ-4bit",
+    "jobs": 65,
+    "finished": 65,
+    "retried_calls": 0,
+    "job_ms_p50": 5955,
+    "job_ms_p95": 7878,
+    "call_ms_p50": {
+      "findings": 2271,
+      "indicators": 3564
+    },
+    "species_agree": 0.9846153846153847,
+    "diagnosis_top1_sure": 0.15384615384615385,
+    "diagnosis_n": 26,
+    "diagnosis_by_photo_size": {
+      "under_1mp": {
+        "hits": 3,
+        "n": 11
+      },
+      "1mp_and_up": {
+        "hits": 1,
+        "n": 15
+      }
+    },
+    "healthy_no_candidate": 0.9090909090909091,
+    "healthy_n": 11,
+    "yes_on_healthy": 0.010101010101010102,
+    "unsure_share": 0.26837606837606837,
+    "top_ties": 5,
+    "damage_findings": {
+      "other": 65,
+      "leaf_mines": 9,
+      "chewed_margins": 7,
+      "sooty_mould": 1,
+      "frass": 1
+    },
+    "organisms_reported": 1,
+    "indicators": {
+      "corn_common_rust.elongated_pustules": {
+        "truth": {
+          "no": 3
+        },
+        "other": {
+          "no": 7
+        }
+      },
+      "corn_common_rust.pustules_both_sides": {
+        "truth": {
+          "no": 2,
+          "unsure": 1
+        },
+        "other": {
+          "no": 7
+        }
+      },
+      "corn_common_rust.raised_pustules": {
+        "truth": {
+          "no": 3
+        },
+        "other": {
+          "no": 7
+        }
+      },
+      "corn_gray_leaf_spot.bounded_by_veins": {
+        "truth": {
+          "no": 2
+        },
+        "other": {
+          "no": 5,
+          "yes": 3
+        }
+      },
+      "corn_gray_leaf_spot.grey_tan_colour": {
+        "truth": {
+          "yes": 2
+        },
+        "other": {
+          "no": 8
+        }
+      },
+      "corn_gray_leaf_spot.rectangular_lesions": {
+        "truth": {
+          "no": 2
+        },
+        "other": {
+          "no": 7,
+          "yes": 1
+        }
+      },
+      "corn_northern_leaf_blight.cigar_shaped_lesions": {
+        "truth": {
+          "yes": 1,
+          "no": 2
+        },
+        "other": {
+          "no": 6,
+          "yes": 1
+        }
+      },
+      "corn_northern_leaf_blight.lesions_cross_veins": {
+        "truth": {
+          "no": 3
+        },
+        "other": {
+          "no": 7
+        }
+      },
+      "corn_northern_leaf_blight.lower_leaves_first": {
+        "truth": {
+          "unsure": 3
+        },
+        "other": {
+          "unsure": 6,
+          "no": 1
+        }
+      },
+      "tomato_early_blight.concentric_rings": {
+        "truth": {
+          "no": 6
+        },
+        "other": {
+          "no": 25
+        }
+      },
+      "tomato_early_blight.lower_leaves_first": {
+        "truth": {
+          "unsure": 6
+        },
+        "other": {
+          "unsure": 25
+        }
+      },
+      "tomato_early_blight.yellow_halo": {
+        "truth": {
+          "yes": 2,
+          "no": 4
+        },
+        "other": {
+          "yes": 3,
+          "no": 22
+        }
+      },
+      "tomato_late_blight.dark_stem_lesions": {
+        "truth": {
+          "unsure": 7,
+          "no": 1
+        },
+        "other": {
+          "unsure": 18,
+          "no": 5
+        }
+      },
+      "tomato_late_blight.water_soaked_patches": {
+        "truth": {
+          "no": 8
+        },
+        "other": {
+          "no": 23
+        }
+      },
+      "tomato_late_blight.white_mould_underside": {
+        "truth": {
+          "unsure": 8
+        },
+        "other": {
+          "unsure": 23
+        }
+      },
+      "tomato_septoria_leaf_spot.dark_specks_in_centre": {
+        "truth": {
+          "no": 4
+        },
+        "other": {
+          "no": 27
+        }
+      },
+      "tomato_septoria_leaf_spot.many_spots_per_leaf": {
+        "truth": {
+          "no": 3,
+          "yes": 1
+        },
+        "other": {
+          "no": 20,
+          "yes": 7
+        }
+      },
+      "tomato_septoria_leaf_spot.small_spots": {
+        "truth": {
+          "no": 3,
+          "yes": 1
+        },
+        "other": {
+          "no": 15,
+          "yes": 12
+        }
+      }
+    }
+  }
+]
