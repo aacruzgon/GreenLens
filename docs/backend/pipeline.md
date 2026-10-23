@@ -1,6 +1,6 @@
 # PDM Backend: `pipeline` crate
 
-> **Status:** Draft v0.5.2, 2026-10-23. v0.5.2: `job_completed` stores a perception result's masks: each RLE is written to object storage as an 8-bit PNG before `complete_job` records it with the segmentation observations and sets its region's `mask_id`, and measurement finds a region's mask by that id (section 4). v0.5.1: a `guided` job's completion sends no catch-up stage events, since the `guided` stage is shared by the run's checks and the fold can't tell them apart; the catch-up wiring is tested through `api`'s fake store (`tests/pipeline.rs`); a failed read of the run's stage events is logged with its error chain; open questions 4 to 6 record the limits and the bug the audit found. v0.5: `job_completed` sends the stage events the stream missed before a job's findings (`catch_up::ResultStages`, read through `EventRepo::run_stage_events`): a stage left started gets its `stage_completed`, a stage of the result with no event in the run gets both, with `duration_ms: 0`, so a stage whose worker events were lost while `api` was down doesn't stay open (backend roadmap gap 9). v0.4: `PipelineDeps` gains `beliefs` (Agent Memory) and `PipelineConfig` its `beliefs_read_timeout`; the plan step reads the plant's current beliefs beside its shared memories and passes them to the plan writer, and the scan summary memory has topic `health`, so each new summary supersedes the last in Agent Memory. v0.3.1: open question 3 is resolved: the run's evidence fields are in the schema. v0.3: the cross-crate fixes: `ScanWriter` lost `job_queued` (the store's `Notify` is the only wake-up), `plan` releases its claim after 3 lost compare-and-sets, `worker_events` forwards a `guided` job's stage events on the scan's current run, `labels_loaded` splits the heartbeat's comma-separated lists, organism findings get `detail.length_mm` from the depth map before their `finding` events, and fusion counts a humid stretch in the past week (`past_7_days.longest_humid_run_days`). v0.2: fusion reads the shared `WeatherThresholds` (`PipelineConfig::weather`): a humid stretch is two days in a row with ≥ 10 hours over 90% each (the mean-humidity and past-week variants are gone), frost is a 2 m minimum ≤ 0.5 °C or the day's `frost_risk`, hard frost ≤ −2 °C; the memory summary is embedded with `EmbedMode::Document`; `PhotoAnswerStart::Segment` boxes its job. v0.1: `api`'s own work between a scan's jobs: the `retrieve`, `score` and `plan` steps under the scan's step claim, every entry point that claims them, measurable indicators, fusion, re-planning, runs and recovery, compiled on Rust 1.99.1 against the `domain`, `knowledge`, `agent` and `vision` crates.
+> **Status:** Draft v0.5.3, 2026-10-23. v0.5.3: a species-change run's completion leaves the earlier run's segmentation and masks alone, a question job's partial result covers the question's photos alone and replaces nothing tied to no image, and masks put after the lease is lost are deleted (section 4). v0.5.2: `job_completed` stores a perception result's masks: each RLE is written to object storage as an 8-bit PNG before `complete_job` records it with the segmentation observations and sets its region's `mask_id`, and measurement finds a region's mask by that id (section 4). v0.5.1: a `guided` job's completion sends no catch-up stage events, since the `guided` stage is shared by the run's checks and the fold can't tell them apart; the catch-up wiring is tested through `api`'s fake store (`tests/pipeline.rs`); a failed read of the run's stage events is logged with its error chain; open questions 4 to 6 record the limits and the bug the audit found. v0.5: `job_completed` sends the stage events the stream missed before a job's findings (`catch_up::ResultStages`, read through `EventRepo::run_stage_events`): a stage left started gets its `stage_completed`, a stage of the result with no event in the run gets both, with `duration_ms: 0`, so a stage whose worker events were lost while `api` was down doesn't stay open (backend roadmap gap 9). v0.4: `PipelineDeps` gains `beliefs` (Agent Memory) and `PipelineConfig` its `beliefs_read_timeout`; the plan step reads the plant's current beliefs beside its shared memories and passes them to the plan writer, and the scan summary memory has topic `health`, so each new summary supersedes the last in Agent Memory. v0.3.1: open question 3 is resolved: the run's evidence fields are in the schema. v0.3: the cross-crate fixes: `ScanWriter` lost `job_queued` (the store's `Notify` is the only wake-up), `plan` releases its claim after 3 lost compare-and-sets, `worker_events` forwards a `guided` job's stage events on the scan's current run, `labels_loaded` splits the heartbeat's comma-separated lists, organism findings get `detail.length_mm` from the depth map before their `finding` events, and fusion counts a humid stretch in the past week (`past_7_days.longest_humid_run_days`). v0.2: fusion reads the shared `WeatherThresholds` (`PipelineConfig::weather`): a humid stretch is two days in a row with ≥ 10 hours over 90% each (the mean-humidity and past-week variants are gone), frost is a 2 m minimum ≤ 0.5 °C or the day's `frost_risk`, hard frost ≤ −2 °C; the memory summary is embedded with `EmbedMode::Document`; `PhotoAnswerStart::Segment` boxes its job. v0.1: `api`'s own work between a scan's jobs: the `retrieve`, `score` and `plan` steps under the scan's step claim, every entry point that claims them, measurable indicators, fusion, re-planning, runs and recovery, compiled on Rust 1.99.1 against the `domain`, `knowledge`, `agent` and `vision` crates.
 
 Companion to the [backend architecture](README.md). It implements [contracts 3, steps between jobs](../architecture/contracts.md#scan-lifecycle), [contracts 4](../architecture/contracts.md#4-scan-events-sse) (event order), [contracts 7](../architecture/contracts.md#7-pipeline-records), [architecture 6](../architecture/README.md#6-analysis-pipeline), [8.1](../architecture/README.md#81-scan--diagnosis--plan) and [8.3](../architecture/README.md#83-forecast-alerts), and [database 4, steps between jobs](../database/README.md#steps-between-jobs-) and [plan writes](../database/README.md#plan-writes-compare-and-set-). The rules of retrieve-then-verify are in [knowledge](knowledge.md). Every listing is copied from `crates/pipeline` by the docgen tool. `cargo check --workspace`, `cargo clippy -p pipeline --all-targets` and `cargo test -p pipeline` pass.
 
@@ -181,7 +181,9 @@ pub struct PipelineDeps {
     /// [`EmbedMode::Document`](domain::ports::EmbedMode::Document): the pipeline only stores
     /// memories and never searches.
     pub embedder: Arc<dyn TextEmbedder>,
-    /// Photos and depth maps for measurement.
+    /// Photos and depth maps for measurement, and a perception job's masks. Its deletes must
+    /// not stop when a request is dropped ([storage 4], never cancel a delete): `api` passes
+    /// its delete queue's store (`blob::DeleteQueue::queued_store`).
     pub blobs: Arc<dyn BlobStore>,
     /// The measurement geometry (`vision::measure` behind [`ImageMeasurer`]).
     pub measurer: Arc<dyn ImageMeasurer>,
@@ -430,9 +432,56 @@ pub fn set_organism_length(write: &mut ObservationWrite, index: usize, length_mm
 }
 ```
 
-**Segmentation masks** ([contracts 5](../architecture/contracts.md#results), `PerceptionRegion.mask`; [storage 4](../storage/README.md#4-writes-and-deletes)). When a perception job completes, `job_completed` stores each region's mask before the store records the result: the RLE must fit its photo (`size` is the stored `[height, width]`), `vision::rle::to_png` turns it into an 8-bit grayscale PNG on the blocking pool under a CPU permit, and `BlobStore::put` writes it under `gardens/{garden}/scans/{scan}/masks/{mask}.png` (`ObjectKey::mask`). `results::attach_masks` then adds each `NewMask` to the segmentation write and sets its region's `mask_id`, so `complete_job` writes the records with the observations, and `GET /scans/{id}` and the `finding` events sign a `mask_url`. The object comes first, so a crash leaves an object without a record, which the orphan sweep removes, never a record without its object. A mask that doesn't fit its photo or doesn't decode is left out and logged, and its region is kept without it, since masks are optional. A partial result stores no masks: the final result replaces its observations. Measurement finds a region's mask by that `mask_id` (`regions_of`), since region ids repeat across runs.
+**Segmentation masks** ([contracts 5](../architecture/contracts.md#results), `PerceptionRegion.mask`; [storage 4](../storage/README.md#4-writes-and-deletes)). When a perception job completes, `job_completed` stores each region's mask before the store records the result: the RLE must fit its photo (`size` is the stored `[height, width]`), `vision::rle::to_png` turns it into an 8-bit grayscale PNG on the blocking pool under a CPU permit, and `BlobStore::put` writes it under `gardens/{garden}/scans/{scan}/masks/{mask}.png` (`ObjectKey::mask`). `results::attach_masks` then adds each `NewMask` to the segmentation write and sets its region's `mask_id`, so `complete_job` writes the records with the observations, and `GET /scans/{id}` and the `finding` events sign a `mask_url`. The object comes first, so a crash leaves an object without a record, which the orphan sweep removes, never a record without its object. A mask that doesn't fit its photo or doesn't decode is left out and logged, and its region is kept without it, since masks are optional. A partial result stores no masks: the final result replaces its observations. A result covers the images `covered_images` gives, for its partial results too: a question job's covers the question's photos alone and, like its completion, replaces nothing tied to no image, so a question photo's partial segmentation leaves the run's regions and masks alone ([contracts 3](../architecture/contracts.md#3-scan-rest-api), observations across runs).
+
+A run's job stores segmentation only when its run re-runs it (`segments`, the rule `catch_up` applies to the run's `run_started`): a species-change run keeps the earlier run's regions, which the worker passes through without masks and at confidence 1, so its completion drops the segmentation write and stores no masks, and the earlier observations keep their `mask_id`s and the masks their records. A read of the run's events that fails fails the completion before anything is stored, and the worker retries it. After the puts the lease is checked again: a garden or account deletion that started meanwhile cancelled the job and may have listed the garden's prefix before the objects landed, and the sweep never lists a deleted garden, so without a live lease the new objects are deleted through `deps.blobs`, best effort, and nothing is recorded. `api` gives the pipeline its delete queue's store (`blob::DeleteQueue::queued_store`), so that delete is never cancelled with the request. Measurement finds a region's mask by that `mask_id` (`regions_of`), since region ids repeat across runs.
 
 ```rust
+/// The images a job's result covers, whose earlier observations of each stage it replaces
+/// ([contracts 3], observations across runs): the question's photos for a question's
+/// perception job, else the run's plant and soil photos that answer no question.
+fn covered_images(snap: &domain::ports::ScanSnapshot, job: &LeasedJob) -> Vec<domain::id::ImageId> {
+    snap.scan
+        .images
+        .iter()
+        .filter(|i| match job.question {
+            Some(q) if job.kind == JobKind::Perception => i.answers_question_id == Some(q),
+            _ => i.kind.is_plant_or_soil() && i.answers_question_id.is_none(),
+        })
+        .map(|i| i.id)
+        .collect()
+}
+```
+
+```rust
+/// Whether a perception job's regions are its own segmentation, to be stored with their
+/// masks. A question's photo is always segmented. A run's job is not when the run's
+/// `run_started` leaves segmentation out: a species-change run keeps the earlier run's
+/// regions ([contracts 3], observations across runs), which the worker passes through
+/// without masks and at confidence 1, so storing them would replace the earlier run's
+/// observations and drop their masks. [`catch_up`] reads the same rule for the stage
+/// events. A run with no stored `run_started` is taken to segment, as a first run does.
+async fn segments(
+    &self,
+    job: &LeasedJob,
+    run: domain::wire::Run,
+) -> Result<bool, PipelineError> {
+    if job.question.is_some() {
+        return Ok(true);
+    }
+    let events = self.deps.store.run_stage_events(job.scan, run).await?;
+    Ok(events
+        .iter()
+        .rev()
+        .find_map(|e| match e {
+            ScanEventBody::RunStarted { rerun_stages, .. } => {
+                Some(rerun_stages.contains(&Stage::Segmentation))
+            }
+            _ => None,
+        })
+        .unwrap_or(true))
+}
+
 /// A perception result's masks ([contracts 5], `PerceptionRegion.mask`): each region's RLE,
 /// on an image of the scan at that image's stored size, is encoded as an 8-bit PNG
 /// (`vision::rle::to_png`, on the blocking pool under a CPU permit) and put under
@@ -445,7 +494,10 @@ pub fn set_organism_length(write: &mut ObservationWrite, index: usize, length_mm
 /// worker's retry of `complete` writes them again under new ids; the orphan sweep removes
 /// the objects of the attempt that failed. A `complete` repeated after the job is done
 /// writes nothing: the lease is no longer live, and `complete_job` answers
-/// `AlreadyCompleted`.
+/// `AlreadyCompleted`. The lease is checked again after the puts: when it is gone (a
+/// garden or account deletion cancelled the job meanwhile, and its listing may have missed
+/// the new objects) the objects are deleted through `deps.blobs`, best effort, and none
+/// is recorded.
 async fn store_masks(
     &self,
     lease: &Lease,
@@ -514,7 +566,29 @@ async fn store_masks(
             rle,
         });
     }
-    Ok(masks)
+    if masks.is_empty() {
+        return Ok(masks);
+    }
+    // The lease again, after the puts: a garden or account deletion that started meanwhile
+    // cancelled the job and may have listed the garden's prefix before the objects landed,
+    // and the orphan sweep never lists a deleted garden's prefix. So without a live lease
+    // the objects are deleted here, best effort, and nothing is recorded.
+    let outcome = match self.deps.store.live_lease(lease, self.now()).await {
+        Ok(Some(_)) => return Ok(masks),
+        Ok(None) => Ok(Vec::new()),
+        Err(e) => Err(e.into()),
+    };
+    let keys: Vec<_> = masks.into_iter().map(|m| m.storage_key).collect();
+    match self.deps.blobs.delete_keys(&keys).await {
+        Ok(report) if report.failed.is_empty() => {}
+        Ok(report) => {
+            tracing::warn!(%scan, failed = report.failed.len(), "masks of a lost lease not all deleted");
+        }
+        Err(e) => {
+            tracing::warn!(%scan, error = %crate::error::Chain(&e), "masks of a lost lease not deleted");
+        }
+    }
+    outcome
 }
 ```
 
@@ -1820,6 +1894,7 @@ fn reports(worker: &LiveWorker, key: &str, version: &str) -> bool {
 | Late work fails | Never fails the scan: `question_resolved` (`dropped`) or a failed `guided_check_done` |
 | The per-scan writer retires and comes back | `seq` comes from `append_event`'s transaction, so the sequence continues ([section 17](#17-open-questions-and-decisions)) |
 | `complete` is retried after a timeout | A lease that is no longer live writes no mask, and `complete_job` answers `AlreadyCompleted`. A failed mask put fails the completion before anything is recorded, so the retry writes the masks again under new ids, and the sweep removes the objects of the attempt that failed |
+| A garden is deleted while a job's masks are put | The lease is checked again after the puts; without it the new objects are deleted and nothing is recorded, since the sweep never lists a deleted garden's prefix |
 | `api` is down while a job runs | The worker's `events` calls fail and are dropped; `complete` sends the missing stage events before the findings ([section 10](#10-events)) |
 
 ---
@@ -1930,7 +2005,7 @@ impl PipelineError {
 | Missing stage events | Lost after `plant_check` started: one `stage_completed` per stage, before the findings, no second start; every event arrived: none added; a requeue's second start completed; passed-through regions are no segmentation stage; a `vlm` result without answers completes `vlm_indicators` as `all_measured`; a `guided` result sends none, even with its stage open |
 | Others | Score modes, local dates in the garden's zone |
 
-The steps' I/O paths are exercised through `api`'s fake store in its integration tests ([api](api.md)). `api`'s `tests/pipeline.rs` drives `Pipeline::job_completed` over that fake store with a recording `ScanWriter`: a perception job whose stage events were lost sends one `emit`, the missing stage events then the findings; a repeated `complete` (`AlreadyCompleted`) sends nothing; a failed `run_stage_events` still sends the findings, without stage events; a `verify` job closes its `verify` stage; a guided completion sends `guided_check_done` alone and never reads the stage events; a perception result with masks writes each as a PNG to an in-memory `BlobStore` and links it to its region, a region without a fitting mask keeps none, a repeated `complete` writes no object, and a failed put fails the completion before `complete_job`.
+The steps' I/O paths are exercised through `api`'s fake store in its integration tests ([api](api.md)). `api`'s `tests/pipeline.rs` drives `Pipeline::job_completed` over that fake store with a recording `ScanWriter`: a perception job whose stage events were lost sends one `emit`, the missing stage events then the findings; a repeated `complete` (`AlreadyCompleted`) sends nothing; a failed `run_stage_events` still sends the findings, without stage events; a `verify` job closes its `verify` stage; a guided completion sends `guided_check_done` alone and never reads the stage events; a perception result with masks writes each as a PNG to an in-memory `BlobStore` and links it to its region, a region without a fitting mask keeps none, a repeated `complete` writes no object, and a failed put fails the completion before `complete_job`; a transposed mask (`[width, height]` on a photo that isn't square) is left out; masks put after the lease is lost are deleted and the worker gets `lease_lost`; a species-change run's passed-through regions write no segmentation and no object; a question photo is segmented with its mask even in a species-change run; and a question photo's partial result covers that photo alone, without replacing what is tied to no image.
 
 ---
 
