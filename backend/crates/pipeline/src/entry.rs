@@ -668,7 +668,10 @@ impl Pipeline {
     /// worker's retry of `complete` writes them again under new ids; the orphan sweep removes
     /// the objects of the attempt that failed. A `complete` repeated after the job is done
     /// writes nothing: the lease is no longer live, and `complete_job` answers
-    /// `AlreadyCompleted`.
+    /// `AlreadyCompleted`. The lease is checked again after the puts: when it is gone (a
+    /// garden or account deletion cancelled the job meanwhile, and its listing may have missed
+    /// the new objects) the objects are deleted through `deps.blobs`, best effort, and none
+    /// is recorded.
     async fn store_masks(
         &self,
         lease: &Lease,
@@ -737,7 +740,29 @@ impl Pipeline {
                 rle,
             });
         }
-        Ok(masks)
+        if masks.is_empty() {
+            return Ok(masks);
+        }
+        // The lease again, after the puts: a garden or account deletion that started meanwhile
+        // cancelled the job and may have listed the garden's prefix before the objects landed,
+        // and the orphan sweep never lists a deleted garden's prefix. So without a live lease
+        // the objects are deleted here, best effort, and nothing is recorded.
+        let outcome = match self.deps.store.live_lease(lease, self.now()).await {
+            Ok(Some(_)) => return Ok(masks),
+            Ok(None) => Ok(Vec::new()),
+            Err(e) => Err(e.into()),
+        };
+        let keys: Vec<_> = masks.into_iter().map(|m| m.storage_key).collect();
+        match self.deps.blobs.delete_keys(&keys).await {
+            Ok(report) if report.failed.is_empty() => {}
+            Ok(report) => {
+                tracing::warn!(%scan, failed = report.failed.len(), "masks of a lost lease not all deleted");
+            }
+            Err(e) => {
+                tracing::warn!(%scan, error = %crate::error::Chain(&e), "masks of a lost lease not deleted");
+            }
+        }
+        outcome
     }
 
     /// A `guided` job's result ([contracts 7], guided checks and the diagnosis): the check is

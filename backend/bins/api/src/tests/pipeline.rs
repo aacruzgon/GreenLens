@@ -592,10 +592,11 @@ fn store_recording_on(
         .scan_repo
         .expect_snapshot()
         .returning(move |_| Ok(snap()));
+    // Checked before the masks are encoded and, when live, again after their puts.
     store
         .job_repo
         .expect_live_lease()
-        .times(1)
+        .times(if live { 2 } else { 1 })
         .returning(move |_, _| Ok(live.then(|| job(JobKind::Perception))));
     let completions = Arc::clone(completions);
     store
@@ -759,6 +760,64 @@ async fn a_failed_mask_put_fails_the_completion() {
         matches!(result, Err(pipeline::PipelineError::Blob(_))),
         "{result:?}"
     );
+}
+
+/// A lease lost while the masks were put (a garden deletion cancelled the job, and its listing
+/// may have missed them): the objects are deleted, nothing is recorded, and the worker gets
+/// `lease_lost`.
+#[tokio::test]
+async fn masks_put_after_the_lease_is_lost_are_deleted() {
+    let mut store = FakeStore::default();
+    store
+        .scan_repo
+        .expect_snapshot()
+        .returning(|_| Ok(snapshot_with_photos()));
+    let checks = std::sync::atomic::AtomicUsize::new(0);
+    store
+        .job_repo
+        .expect_live_lease()
+        .times(2)
+        .returning(move |_, _| {
+            if checks.fetch_add(1, std::sync::atomic::Ordering::Relaxed) == 0 {
+                Ok(Some(job(JobKind::Perception)))
+            } else {
+                Err(StoreError::Conflict(domain::ports::Conflict::LeaseLost {
+                    job_id: JOB.parse().unwrap(),
+                }))
+            }
+        });
+    store
+        .event_repo
+        .expect_run_stage_events()
+        .returning(|_, _| Ok(lost_after_plant_check()));
+    store.job_repo.expect_complete_job().never();
+    let blobs = Arc::new(blob::MemoryBlobStore::new(Arc::new(FixedClock::at(now()))));
+    let pipeline = pipeline_with_blobs(
+        Arc::new(store),
+        Arc::new(Recorder::default()),
+        Arc::clone(&blobs) as Arc<dyn domain::ports::BlobStore>,
+    );
+
+    let result = pipeline
+        .job_completed(&lease(), job(JobKind::Perception), done(masked_result()))
+        .await;
+
+    assert!(
+        matches!(
+            result,
+            Err(pipeline::PipelineError::Store(StoreError::Conflict(
+                domain::ports::Conflict::LeaseLost { .. }
+            )))
+        ),
+        "{result:?}"
+    );
+    let left = domain::ports::BlobStore::list(
+        blobs.as_ref(),
+        &domain::ports::ObjectPrefix::garden(GARDEN.parse().unwrap()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(left, Vec::new(), "the mask put is deleted");
 }
 
 /// A species-change run that keeps segmentation ([contracts 3], observations across runs):
