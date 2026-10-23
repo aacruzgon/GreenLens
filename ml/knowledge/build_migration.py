@@ -17,6 +17,11 @@ their RustFS keys (photos.py makes them). build/images/ is cleared on every run,
 the photos in the seed. The seed-upload image doesn't use build/: it makes the same photos from the
 seed and checks their keys against this file (upload.py). Removed species, problem and
 organism ids are printed, so the reviewer sees them.
+
+Only what someone has signed loads (seed.signed): a species, problem or organism whose
+`reviewed_by` is still empty, and a treatment only drafts link, stay out of the file until they're
+signed, and the run lists them. So a drafted slice can merge for its signing review without
+holding the rest of the seed back (#143); every other check still runs on the drafts.
 """
 
 from __future__ import annotations
@@ -35,7 +40,7 @@ import numpy as np
 
 from ml.knowledge import embed, validate
 from ml.knowledge.photos import reference_image
-from ml.knowledge.seed import ROOT, SEED, Seed, load
+from ml.knowledge.seed import ROOT, SEED, Seed, load, signed
 
 OUT = ROOT / "backend/migrations/knowledge.surql"
 BUILD = ROOT / "ml/knowledge/build"
@@ -148,7 +153,9 @@ def upserted_ids(text: str, table: str) -> set[str]:
 # --- The file ---------------------------------------------------------------------------------
 
 def build(seed: Seed, embedder, revision: str, templates: list[str]) -> tuple[str, dict, dict]:
-    """The migration text, the summary and the reference photos ({storage key: WebP bytes})."""
+    """The migration text, the summary and the reference photos ({storage key: WebP bytes}), from
+    the signed part of `seed`."""
+    seed = signed(seed)
     labels = bioclip_labels(seed)
     lsv = label_set_version(labels, revision, templates)
     cl = seed.classifier_labels
@@ -258,7 +265,7 @@ def main() -> int:
     args = ap.parse_args()
     seed = load(args.seed)
     try:
-        errors = validate.check(seed)
+        errors = validate.check(seed, drafts=True)
     except validate.DoseCheckUnavailable as e:
         print(f"the dose check can't run: {e}", file=sys.stderr)
         return 2
@@ -272,6 +279,11 @@ def main() -> int:
     except BuildError as e:
         print(f"FAIL: {e}", file=sys.stderr)
         return 1
+    loaded = signed(seed)
+    for folder in ("species", "problems", "organisms", "treatments"):
+        left = sorted({r["id"] for r in getattr(seed, folder)} - {r["id"] for r in getattr(loaded, folder)})
+        if left:
+            print(f"not signed yet, left out: {folder} {', '.join(left)}", file=sys.stderr)
     old = args.out.read_text(encoding="utf-8").replace("\r\n", "\n") if args.out.exists() else ""
     if args.check:
         if old != text:
