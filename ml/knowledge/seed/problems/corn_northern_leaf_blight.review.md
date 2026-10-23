@@ -83,4 +83,4 @@ First review by the knowledge-base owner, before the signing review.
 
 ## Open questions
 
-- **Third discriminating indicator:** the lower leaves first is shared with grey leaf spot, and `whole_leaves_burned` is too. Is there a better third sign, or is length (with its measure) enough as two?
+- **Third discriminating indicator:** the lower leaves first is shared with grey leaf spot, and `whole_leaves_burned` is too. Is there a better third sign, or are the cigar shape and the length enough as two? (The length measure was removed after the second read: the depth camera reports a spot's equal-area diameter, far below a streak's length.)

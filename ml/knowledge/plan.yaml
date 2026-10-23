@@ -40,6 +40,7 @@ withheld_chunks:
   edis_pp362_bacterial_spot_pepper.13: advises Actigard, a commercial product, in tank mixes (S6)
   # Alan's review of #143 (2026-10-23):
   ontario_field_crop_diseases.17: recommends neonicotinoid seed treatments, which a home gardener can't apply (S5)
+  edis_pp362_bacterial_spot_pepper.5: a table's caption without its table
 
 species:
   - id: tomato

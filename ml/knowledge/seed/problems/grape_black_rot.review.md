@@ -13,7 +13,7 @@ Excerpts do not say which leaves (lower or upper) show spots first; 'upper_leave
   - Question: Are there small yellow spots on the grape leaves?
   - `isu_black_rot_grape.1`: Black rot, caused by the fungus Guignardia bidwellii, can cause heavy losses to infected grapes, especially during warm, humid weather. Black rot starts as tiny yellow spots that grow to about 1/4 inch on the leaves. The centers of the spots turn rusty red. Tiny black dots usually form in the center of the spots. These dots contain thousands of spores that can produce new infections. Symptoms on the fruit become apparent when the berries are about half grown. Infected berries can rot in a few days. They shrivel and become hard, black mummies, which contain the same tiny spore containing structures as leaf spots. Black rot is a common Iowa grape disease. The primary winter survival mode for the fungus is in mummified berries. However, other infected plant material can be a safe haven for the fungus.
 
-- **grape_black_rot.leaf_spot_size** (weight 2, discriminating, upper_leaves, leaf_closeup; measure {'max': 8, 'quantity': 'lesion_diameter_mm', 'stat': 'max'})
+- **grape_black_rot.leaf_spot_size** (weight 2, discriminating, upper_leaves, leaf_closeup; measure {'max': 6, 'quantity': 'lesion_diameter_mm', 'stat': 'max'})
   - Text: Leaf spots grow to about 6 mm (a quarter inch) across.
   - Question: Are the leaf spots small, smaller than a pencil eraser?
   - `isu_black_rot_grape.1`: Black rot, caused by the fungus Guignardia bidwellii, can cause heavy losses to infected grapes, especially during warm, humid weather. Black rot starts as tiny yellow spots that grow to about 1/4 inch on the leaves. The centers of the spots turn rusty red. Tiny black dots usually form in the center of the spots. These dots contain thousands of spores that can produce new infections. Symptoms on the fruit become apparent when the berries are about half grown. Infected berries can rot in a few days. They shrivel and become hard, black mummies, which contain the same tiny spore containing structures as leaf spots. Black rot is a common Iowa grape disease. The primary winter survival mode for the fungus is in mummified berries. However, other infected plant material can be a safe haven for the fungus.
@@ -102,6 +102,7 @@ First review by the knowledge-base owner, before the signing review.
 ### After Alan's review of #143 (2026-10-23)
 
 - **Removed `lime_sulfur_delayed_dormant` (S6):** nobody has checked a lime sulphur product registered for home use on grapes in Canada, or its place on Ontario's Allowable List, and a home step names only a product checked in the registry. The plan keeps the four cultural steps. The step can come back with a registration number written here. `lime sulfur` stays in products.yaml as a harmful name.
+- **`leaf_spot_size`:** max 6 mm, the page's "about 1/4 inch", not 8: contracts 7 already adds a 10% margin to a measure.
 
 ## Open questions
 

@@ -20,7 +20,7 @@ indicators:
   - leaf_underside
 - id: corn_common_rust.brick_red_pustules
   text: Small brick-red pustules break through the leaf surface and release brick-red spores.
-  question: Are there small brick-red, bumps breaking through the leaf surface?
+  question: Are there small brick-red bumps breaking through the leaf surface?
   weight: 2
   discriminating: true
   where: upper_leaves

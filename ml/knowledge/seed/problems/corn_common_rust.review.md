@@ -15,7 +15,7 @@ Excerpts do not compare common rust with grey leaf spot or northern leaf blight,
 
 - **corn_common_rust.brick_red_pustules** (weight 2, discriminating, upper_leaves, leaf_closeup, leaf_underside)
   - Text: Small brick-red pustules break through the leaf surface and release brick-red spores.
-  - Question: Are there small brick-red, bumps breaking through the leaf surface?
+  - Question: Are there small brick-red bumps breaking through the leaf surface?
   - `ontario_field_crop_diseases.20`: Incidence: Common rust, as well as southern corn rust, do not overwinter in Ontario but originate from infected corn in the southern U.S. and Mexico. Rust spores are blown into Ontario from these infected corn plants. In most years, rust is of minor economic importance, however development of early spring storm fronts can distribute spores into the province and cause early season infection. The disease is favoured by high humidity, with cool evening temperatures (14°C–18°C) followed by moderate daytime temperatures. Appearance: Early symptoms of rust infection are yellow flecks or spots on either side of the leaf. These develop into small, brick-red pustules that break through the surface, or epidermis (Photo 16–6). The brick-red colour is the result of spores being released from these oval or elongated (2–10 mm (0.1–0.4 in.) long) lesions. Yellowing of the leaf occurs around these lesions. Dead, brown (necrotic) areas of the leaf develop and, in severe cases, the entire leaf dies. The brick-red spores turn black as they mature, causing the lesions and leaf surface to appear black.
 
 - **corn_common_rust.oval_elongated_lesions** (weight 2, discriminating, upper_leaves, leaf_closeup, leaf_underside)
