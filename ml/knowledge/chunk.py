@@ -1,12 +1,20 @@
 """Step 1 of the ingestion, continued (training.md §10, chunking): raw pages → chunk text.
 
-    python3 -m ml.knowledge.chunk      # ml/knowledge/raw/<id>.html → ml/knowledge/build/chunks/<id>.jsonl
+    python3 -m ml.knowledge.chunk      # ml/knowledge/raw/<id>.html or .pdf → ml/knowledge/build/chunks/<id>.jsonl
 
 A page is read as a list of blocks, headings and paragraphs, from its main content only: the
 <article>, else <main>, else the body; an EDIS publication from the document its page embeds.
 Navigation, headers and footers, forms, photos and their captions, and tables are left out.
 Tables are where spray schedules and rates live, and the seed never carries a rate. Reading stops
 at a reference list.
+
+A PDF (raw/<id>.pdf, as fetch.py saves one) is read into the same blocks by type size: the size
+most of its characters have is the body, a larger line is a heading (the larger, the higher), and
+an all-caps line at a column's left edge is the lowest heading, with a "(Latin name)" line under it
+joined to it. Other smaller type, such as captions, boxes and tables, is left out, and so is the
+running header and the page number in the top and bottom margins. Columns are read left before
+right, and a paragraph ends at a gap in the lines, or at a column's foot when its last line ends a
+sentence.
 
 Chunks are then made as the chunking rules say: split on the page's own headings first, then on
 paragraphs, into chunks of about 120–200 words; a chunk never crosses a heading, and chunks don't
@@ -136,8 +144,118 @@ def blocks(page: str) -> list[Block]:
     r = _Reader()
     r.feed(_main_content(page))
     r.close()
+    return _up_to_back_matter(r.blocks)
+
+
+# --- PDF -------------------------------------------------------------------------------------
+
+PDF_MARGIN = 45.0     # points: the running header and the page number sit in these
+PDF_PARA_GAP = 1.4    # a gap over this many line spacings ends a paragraph
+
+
+@dataclass
+class PdfLine:
+    page: int
+    x0: float
+    y0: float         # the baseline side, in points from the page's foot
+    page_width: float
+    page_height: float
+    text: str
+    sizes: list[float]   # the size of each character but spaces
+
+
+def pdf_lines(path: Path) -> list[PdfLine]:
+    """The text lines of a PDF, with their positions and type sizes (pdfminer.six's layout)."""
+    from pdfminer.high_level import extract_pages
+    from pdfminer.layout import LTChar, LTTextContainer, LTTextLine
+
     out = []
-    for b in r.blocks:
+    for n, page in enumerate(extract_pages(str(path)), 1):
+        for box in page:
+            if not isinstance(box, LTTextContainer):
+                continue
+            for line in box:
+                if not isinstance(line, LTTextLine):
+                    continue
+                chars = [c for c in line if isinstance(c, LTChar) and c.get_text().strip()]
+                if chars:
+                    out.append(PdfLine(n, line.x0, line.y0, page.width, page.height,
+                                       line.get_text().strip(), [round(c.size, 1) for c in chars]))
+    return out
+
+
+def _mode(values):
+    counts: dict = {}
+    for v in values:
+        counts[v] = counts.get(v, 0) + 1
+    return max(counts, key=counts.get)
+
+
+def pdf_blocks(lines: list[PdfLine]) -> list[Block]:
+    """A PDF's headings and paragraphs, read by type size (see the module's docstring)."""
+    lines = [ln for ln in lines if PDF_MARGIN < ln.y0 < ln.page_height - PDF_MARGIN]
+    if not lines:
+        return []
+    body = _mode(s for ln in lines for s in ln.sizes)
+
+    def is_body(ln):
+        # A run-in label in other type ("Management Strategies:") doesn't make a line a heading.
+        return 3 * sum(abs(s - body) < 0.3 for s in ln.sizes) >= len(ln.sizes)
+
+    def column(ln):
+        return ln.x0 >= ln.page_width / 2
+
+    lines.sort(key=lambda ln: (ln.page, column(ln), -ln.y0))
+    bodies = [ln for ln in lines if is_body(ln)]
+    edges = [round(ln.x0) for ln in bodies]
+    lefts = sorted(set(edges), key=edges.count)[-2:]      # the two columns' left edges
+    larger = sorted({max(ln.sizes) for ln in lines if not is_body(ln) and max(ln.sizes) > body + 0.3},
+                    reverse=True)
+    spacing = _mode([round(a.y0 - b.y0) for a, b in zip(bodies, bodies[1:])
+                     if a.page == b.page and column(a) == column(b) and 0 < a.y0 - b.y0 < 3 * body] or [body])
+
+    def kind(ln):
+        """0 for body text, a heading level, "name" for a (Latin name) line, or None to skip."""
+        if is_body(ln):
+            return 0
+        if not any(abs(ln.x0 - x) < 4 for x in lefts):
+            return None           # a box, a caption or a table cell, off the columns' edges
+        if max(ln.sizes) > body + 0.3:
+            return min(larger.index(max(ln.sizes)) + 1, 6)
+        letters = [ch for ch in ln.text if ch.isalpha()]
+        if letters and all(ch.isupper() for ch in letters):
+            return min(len(larger) + 1, 6)
+        if ln.text.startswith("(") and ln.text.endswith(")"):
+            return "name"
+        return None
+
+    out: list[Block] = []
+    prev, prev_kind = None, None
+    for ln in lines:
+        k = kind(ln)
+        after_heading = isinstance(prev_kind, int) and prev_kind > 0
+        if k is None or (k == "name" and not after_heading):
+            continue      # a caption between two columns' halves of a paragraph doesn't end it
+        near = prev is not None and prev.page == ln.page and column(prev) == column(ln)
+        if k == "name" or (k and k == prev_kind and near and prev.y0 - ln.y0 < 2.5 * max(ln.sizes)):
+            out[-1].text += " " + ln.text          # a heading on two lines, or its Latin name
+        elif k and out and out[-1].level == k:
+            out[-1].text += " / " + ln.text        # one section under two headings ("COMMON SMUT", "HEAD SMUT")
+        elif k:
+            out.append(Block(k, ln.text))
+        elif prev_kind == 0 and ((near and prev.y0 - ln.y0 <= PDF_PARA_GAP * spacing)
+                                 or (not near and not re.search(r"[.!?:)”\"]$", out[-1].text))):
+            t = out[-1].text
+            out[-1].text = t + ln.text if t.endswith("-") and ln.text[:1].islower() else f"{t} {ln.text}"
+        else:
+            out.append(Block(0, ln.text))
+        prev, prev_kind = ln, k
+    return _up_to_back_matter(out)
+
+
+def _up_to_back_matter(page_blocks: list[Block]) -> list[Block]:
+    out = []
+    for b in page_blocks:
         if b.level and STOP_HEADING.match(b.text):
             break
         if not b.level and (DROP_PARAGRAPH.match(b.text) or re.fullmatch(r"https?://\S+", b.text)):
@@ -200,11 +318,14 @@ def run(seed_root: Path = SEED, raw: Path = RAW, out: Path = CHUNKS) -> list[str
     errors = []
     out.mkdir(parents=True, exist_ok=True)
     for s in text_sources(load(seed_root)):
-        page = raw / f"{s['id']}.html"
-        if not page.exists():
+        page = next((p for p in (raw / f"{s['id']}.pdf", raw / f"{s['id']}.html") if p.exists()), None)
+        if page is None:
             errors.append(f"{s['id']}: not fetched (python3 -m ml.knowledge.fetch)")
             continue
-        recs = chunks(s["id"], blocks(page.read_text(encoding="utf-8", errors="replace")))
+        if page.suffix == ".pdf":
+            recs = chunks(s["id"], pdf_blocks(pdf_lines(page)))
+        else:
+            recs = chunks(s["id"], blocks(page.read_text(encoding="utf-8", errors="replace")))
         if not recs:
             errors.append(f"{s['id']}: no text found in {page.name}")
             continue

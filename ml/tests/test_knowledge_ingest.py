@@ -84,6 +84,24 @@ def test_fetch_obeys_robots_names_itself_and_never_retries_a_refusal(seed_dir, t
     assert [u for u, _ in seen if "ok" in u] == []
 
 
+def test_fetch_saves_a_pdf_as_one(seed_dir, tmp_path):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text="")
+        return httpx.Response(200, content=b"%PDF-1.4\n...", headers={"content-type": "application/pdf"})
+
+    seed = load(seed_dir)
+    seed.sources = [{"id": "guide", "title": "G", "publisher": "P", "url": "https://ext.example/g.pdf",
+                     "retrieved_at": "2026-10-22"}]
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "guide.html").write_text("an old page")
+    f = fetch.Fetcher(httpx.Client(transport=httpx.MockTransport(handler)), sleep=lambda s: None, clock=lambda: 0.0)
+    assert fetch.run(seed, raw, refresh=True, fetcher=f) == []
+    assert (raw / "guide.pdf").read_bytes().startswith(b"%PDF-")
+    assert not (raw / "guide.html").exists(), "chunk.py reads the .pdf first, so an old page can't linger"
+
+
 # --- chunk -----------------------------------------------------------------------------------
 
 PAGE = """<html><body><nav><p>Home | Garden</p></nav>
@@ -140,6 +158,72 @@ def test_chunk_reads_an_edis_document_from_its_page_data():
     page = ('<html><body><div>menu</div><script id="__NEXT_DATA__" type="application/json">'
             + json.dumps({"props": {"pageProps": {"details": {"docContent": doc}}}}) + "</script></body></html>")
     assert chunk.chunks("e", chunk.blocks(page))[0]["text"] == "Yellow stippling on the upper leaf surface."
+
+
+def _pdf(pages: list[list[tuple[float, float, float, str]]]) -> bytes:
+    """A letter-size PDF in Helvetica with each (x, y, size, text) line where it says."""
+    objs = ["<< /Type /Catalog /Pages 2 0 R >>", "", "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    kids = []
+    for lines in pages:
+        esc = lambda t: t.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        stream = "".join(f"BT /F1 {s} Tf {x} {y} Td ({esc(t)}) Tj ET\n" for x, y, s, t in lines)
+        objs.append(f"<< /Length {len(stream)} >>\nstream\n{stream}endstream")
+        objs.append(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                    f"/Resources << /Font << /F1 3 0 R >> >> /Contents {len(objs)} 0 R >>")
+        kids.append(len(objs))
+    objs[1] = f"<< /Type /Pages /Kids [{' '.join(f'{k} 0 R' for k in kids)}] /Count {len(kids)} >>"
+    out, offsets = b"%PDF-1.4\n", []
+    for n, o in enumerate(objs, 1):
+        offsets.append(len(out))
+        out += f"{n} 0 obj\n{o}\nendobj\n".encode("latin-1")
+    xref = len(out)
+    out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n".encode()
+    out += b"".join(f"{o:010d} 00000 n \n".encode() for o in offsets)
+    return out + f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+
+
+# A two-column page in the shape of Ontario's agronomy guide: a running header and a page number
+# in the margins, headings by size, an all-caps disease heading with its Latin name, a caption,
+# and a paragraph that runs on from the foot of the left column to the top of the right one.
+GUIDE = [[
+    (443, 760, 7, "16. Diseases of Field Crops"),
+    (54, 720, 24, "16. Diseases of Field Crops"),
+    (54, 690, 14, "Corn Diseases"),
+    (54, 670, 10, "COMMON RUST"),
+    (54, 658, 10, "(Puccinia sorghi)"),
+    (54, 640, 11, "Appearance: Early symptoms are yellow flecks on"),
+    (54, 627, 11, "either side of the leaf. They become brick-"),
+    (54, 614, 11, "red pustules that break through the surface."),
+    (54, 590, 11, "Management Strategies: Plant tolerant hybrids"),
+    (54, 577, 11, "in the garden, since the spores blow in from"),
+    (72, 500, 10, "Photo 16-1. Rust pustules on a corn leaf."),
+    (54, 26, 12, "361"),
+    (324, 730, 11, "the south on storm fronts each year."),
+    (324, 700, 10, "COMMON SMUT"),
+    (324, 688, 10, "(Ustilago zeae)"),
+    (324, 670, 10, "HEAD SMUT"),
+    (324, 652, 11, "Incidence: Galls form on the ears and tassels"),
+    (324, 639, 11, "and burst to release dark spores."),
+]]
+
+
+def test_chunk_reads_a_two_column_pdf_by_type_size(tmp_path):
+    path = tmp_path / "guide.pdf"
+    path.write_bytes(_pdf(GUIDE))
+    got = [(b.level, b.text) for b in chunk.pdf_blocks(chunk.pdf_lines(path))]
+    assert got == [
+        (1, "16. Diseases of Field Crops"),
+        (2, "Corn Diseases"),
+        (3, "COMMON RUST (Puccinia sorghi)"),
+        (0, "Appearance: Early symptoms are yellow flecks on either side of the leaf. They become "
+            "brick-red pustules that break through the surface."),
+        (0, "Management Strategies: Plant tolerant hybrids in the garden, since the spores blow in "
+            "from the south on storm fronts each year."),
+        (3, "COMMON SMUT (Ustilago zeae) / HEAD SMUT"),
+        (0, "Incidence: Galls form on the ears and tassels and burst to release dark spores."),
+    ]
+    recs = chunk.chunks("g", chunk.pdf_blocks(chunk.pdf_lines(path)))
+    assert recs[0]["heading"] == "Corn Diseases › COMMON RUST (Puccinia sorghi)"
 
 
 # --- the model, faked ------------------------------------------------------------------------
