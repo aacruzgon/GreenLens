@@ -99,6 +99,12 @@ def test_a_kept_observation_becomes_a_case(photos):
     assert inat.case({**entry, "split": "test"}, cand, photos, "x")["split"] == "test"
 
 
+def test_observations_of_one_plant_share_its_key_and_split(photos):
+    entry, cand = kept({102: "whole_plant"}, plant="inat-7")
+    c = inat.case(entry, cand, photos, "x")
+    assert (c["case_id"], c["plant_key"], c["split"]) == ("apple-inat-42", "inat-7", inat.split_of("inat-7"))
+
+
 @pytest.mark.parametrize("images, over, needle", [
     ({100: "leaf_closeup", 102: "skip"}, {}, "exactly one whole_plant"),
     ({100: "whole_plant", 102: "whole_plant"}, {}, "at most 1"),

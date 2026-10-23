@@ -336,6 +336,8 @@ pub mod kb {
         Treatment => "treatment",
         /// `source`
         Source => "source",
+        /// An indicator's own slug, after the dot of its [`IndicatorId`]; there is no table.
+        Indicator => "indicator",
     }
 }
 
@@ -486,6 +488,8 @@ pub type OrganismId = Slug<kb::Organism>;
 pub type TreatmentId = Slug<kb::Treatment>;
 /// `source` slug.
 pub type SourceId = Slug<kb::Source>;
+/// An indicator's own slug (`concentric_rings`), without its problem: [`IndicatorId::slug`].
+pub type IndicatorSlug = Slug<kb::Indicator>;
 
 /// `Slug | "healthy"` ([contracts 5] disease results, [contracts 10] classifier labels).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

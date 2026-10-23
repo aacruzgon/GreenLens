@@ -1,0 +1,12 @@
+# A label_only species (#4, 2026-10-22), so BioCLIP can name it and the VLM diagnoses it: a common
+# garden plant; TOM2024's onion classes aren't trained.
+# The label is ml/training/labels/standin_labels.yaml's.
+id: onion
+scientific_name: Allium cepa
+common_names:
+- Onion
+profile: label_only
+classifier_supported: false
+bioclip_label: Allium cepa with common name onion
+sources: []
+reviewed_by: sara-lahourpour

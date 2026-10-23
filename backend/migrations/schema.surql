@@ -268,7 +268,7 @@ DEFINE FIELD OVERWRITE options     ON question TYPE option<array<object>> FLEXIB
 DEFINE FIELD OVERWRITE photo_kind  ON question TYPE option<string>;
 DEFINE FIELD OVERWRITE photo_hint  ON question TYPE option<string>;
 DEFINE FIELD OVERWRITE candidates  ON question TYPE array<record<disease>>;
-DEFINE FIELD OVERWRITE indicator   ON question TYPE option<string>;   -- the indicator an `indicator` question asks about (server-side only), so an answer becomes that indicator's user evidence
+DEFINE FIELD OVERWRITE indicator   ON question TYPE option<string>;   -- the indicator an `indicator` question asks about (the full `problem.slug` id; the wire `Question.indicator_id` is the part after the dot), so an answer becomes that indicator's user evidence
 -- open and answering are what the app sees; the rest record how the question resolved
 DEFINE FIELD OVERWRITE status      ON question TYPE "open" | "answering" | "answered" | "superseded" | "dropped" DEFAULT "open";
 DEFINE FIELD OVERWRITE answer      ON question TYPE option<"yes" | "no" | "unsure">;

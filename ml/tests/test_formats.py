@@ -20,6 +20,7 @@ def test_label_set_version_vector():
 
 
 def test_templates_match_open_clip():
+    pytest.importorskip("open_clip", reason="needs the training environment (ml/requirements.lock)")
     from open_clip.zero_shot_metadata import OPENAI_IMAGENET_TEMPLATES
 
     assert templates() == [t("{label}") for t in OPENAI_IMAGENET_TEMPLATES]

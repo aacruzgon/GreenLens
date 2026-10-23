@@ -20,7 +20,7 @@ dataset: plantcity
 source: plantcity
 root: .
 splits: { train: . }
-reviewed_by: null
+reviewed_by: sara-lahourpour  # slugs as confirmed on issue #4 (2026-10-22)
 
 originals:
   phash: 4
