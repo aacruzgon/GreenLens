@@ -162,7 +162,7 @@ pub(super) async fn adapter_with(
 /// A photo as the bucket would hold it: decoded with its EXIF orientation applied, resized to
 /// the default stored long side and re-encoded as `WebP` (`vision::upload`, without the face
 /// blur, which needs ONNX Runtime).
-pub(super) fn stored(path: &str, image: &JobImage) -> LoadedImage {
+pub(crate) fn stored(path: &str, image: &JobImage) -> LoadedImage {
     let file = std::fs::read(path).unwrap_or_else(|e| panic!("reading {path}: {e}"));
     let config = UploadConfig::default();
     let decoded = imaging::decode_upload(&file, DecodeLimits::default())
