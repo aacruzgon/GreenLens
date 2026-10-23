@@ -74,12 +74,16 @@ class Usage:
     def cost(self) -> float:
         total = 0.0
         for model, (i, o, cr, cw) in self.tokens.items():
-            pin, pout = PRICES.get(model, (0.0, 0.0))
+            # A model missing from PRICES (one a fallback answered with) is priced as the dearest,
+            # not as free, so the report never understates a run.
+            pin, pout = PRICES.get(model, max(PRICES.values()))
             total += (i * pin + o * pout + cr * pin * 0.1 + cw * pin * 1.25) / 1e6
         return total
 
     def report(self) -> str:
-        parts = [f"{m}: {i} in, {o} out, {cr} cache read" for m, (i, o, cr, _) in self.tokens.items()]
+        unpriced = " (not in PRICES: priced as the dearest model)"
+        parts = [f"{m}: {i} in, {o} out, {cr} cache read{'' if m in PRICES else unpriced}"
+                 for m, (i, o, cr, _) in self.tokens.items()]
         return (f"{self.calls} calls ({self.cached} from the cache); "
                 + ("; ".join(parts) or "no tokens") + f"; about ${self.cost():.2f}")
 

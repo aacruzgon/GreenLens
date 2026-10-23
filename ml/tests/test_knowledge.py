@@ -6,9 +6,12 @@ embedded-engine test loads; set UPDATE_KNOWLEDGE_FIXTURE=1 to rewrite it.
 """
 
 import copy
+import importlib.util
 import json
 import os
+import re
 import shutil
+import tomllib
 from pathlib import Path
 
 import numpy as np
@@ -16,7 +19,7 @@ import pytest
 
 from ml.knowledge import build_migration as bm
 from ml.knowledge import embed, validate
-from ml.knowledge.seed import ROOT, load
+from ml.knowledge.seed import ROOT, load, signed
 
 FIXTURE = Path(__file__).parent / "fixtures/knowledge_seed"
 STORE_FIXTURE = ROOT / "backend/crates/store/tests/embedded/knowledge_fixture.surql"
@@ -228,6 +231,28 @@ def test_removing_a_record_deletes_it(seed):
     assert "DELETE knowledge_chunk RETURN NONE;" in build(seed)[0]
 
 
+def test_only_signed_records_load(seed):
+    # A drafted slice merges before its signing review (#143): its records stay out of the file,
+    # with every link to them, and the rest of the seed still builds.
+    for p in seed.problems:
+        if p["id"] in ("tomato_early_blight", "tomato_septoria_leaf_spot"):
+            p["reviewed_by"] = p["reviewed_at"] = ""
+    next(o for o in seed.organisms if o["id"] == "aphid")["reviewed_by"] = ""
+    before = copy.deepcopy([seed.problems, seed.organisms, seed.chunks])
+    s = signed(seed)
+    assert [p["id"] for p in s.problems] == ["tomato_aphids"]
+    assert s.problems[0]["caused_by"] == [], "the draft organism's link goes"
+    assert [o["id"] for o in s.organisms] == ["ladybug_larva"] and s.organisms[0]["preys_on"] == []
+    assert [t["id"] for t in s.treatments] == ["spray_aphids_off_with_water"], "only drafts linked the rest"
+    assert [(c.get("crop"), c.get("problem")) for c in s.chunks] == [("tomato", None)] * 3, "chunks keep their text"
+    assert [seed.problems, seed.organisms, seed.chunks] == before, "the seed itself is unchanged"
+    text, summary, _ = build(seed)
+    assert "UPSERT disease:`tomato_early_blight`" not in text and "INSERT RELATION INTO looks_like" not in text
+    assert "treatment:`mulch_soil_surface`" not in text
+    assert summary["counts"]["problems"] == 1 and summary["organism_options"] == [
+        {"id": "ladybug_larva", "name": "Ladybug larva"}]
+
+
 def test_values_are_written_safely():
     assert bm.f32(0.1) == "0.1" and bm.f32(24.0) == "24.0" and bm.f32(1 / 3) == "0.33333334"
     assert bm.string("a'b\\c") == "'a\\'b\\\\c'"
@@ -243,6 +268,77 @@ def test_the_store_fixture_is_current(seed):
         STORE_FIXTURE.write_text(text, encoding="utf-8", newline="\n")
     assert STORE_FIXTURE.read_text(encoding="utf-8") == text, (
         "run UPDATE_KNOWLEDGE_FIXTURE=1 pytest ml/tests/test_knowledge.py")
+
+
+class NamedZeros:
+    """The pinned embedder's name with zero vectors: knowledge.surql's rows without the model."""
+
+    def __init__(self):
+        entries = {m["name"]: m for m in tomllib.loads(bm.MANIFEST.read_text())["model"]}
+        self.name = f"{embed.NAME}@{entries['text_embedder']['version']}"
+
+    def embed_documents(self, texts):
+        return np.zeros((len(texts), embed.DIMENSION), np.float32)
+
+
+def stale_line(committed: str, built: str) -> str | None:
+    """Where `committed` first differs from `built`, with both lines, the chunks' vectors left out."""
+    blank = lambda t: re.sub(r"embedding: \[[^\]\n]*\]", "embedding: []", t.replace("\r\n", "\n")).splitlines()
+    a, b = blank(committed), blank(built)
+    for i, (x, y) in enumerate(zip(a, b), 1):
+        if x != y:
+            return f"line {i}: the file has {x[:200]!r}, the seed gives {y[:200]!r}"
+    if len(a) == len(b):
+        return None
+    side, line = ("the file also has", a[len(b)]) if len(a) > len(b) else ("the seed also gives", b[len(a)])
+    return f"line {min(len(a), len(b)) + 1}: {side} {line[:200]!r}"
+
+
+def test_stale_line_leaves_out_only_the_vectors():
+    built = ("UPSERT knowledge_chunk:`a` CONTENT { embedding: [0.0, 0.0], text: 'x' } RETURN NONE;\n"
+             "UPSERT classifier_label:['h', 1] CONTENT { label: 'tomato/healthy' } RETURN NONE;\n"
+             "UPSERT classifier_label:['h', 2] CONTENT { label: 'tomato/leaf_mold' } RETURN NONE;\n")
+    assert stale_line(built.replace("[0.0, 0.0]", "[0.1, -0.2]"), built) is None
+    assert "the file has" in stale_line(built.replace("text: 'x'", "text: 'y'"), built)
+    lines = built.splitlines()
+    missing = stale_line("\n".join(lines[:1] + lines[2:]), built)
+    assert missing.startswith("line 2:") and repr(lines[1]) in missing, missing
+    assert stale_line("\n".join(lines[:2]), built) == f"line 3: the seed also gives {lines[2]!r}"
+    assert stale_line(built + "UPSERT extra;\n", built) == "line 4: the file also has 'UPSERT extra;'"
+    # A vector broken across lines isn't masked as one: the mask stays on its line.
+    assert stale_line(built.replace("[0.0, 0.0]", "[0.0,\n0.0]"), built)
+
+
+def test_knowledge_surql_is_what_the_seed_gives():
+    """Every row of backend/migrations/knowledge.surql is what build_migration writes for the
+    seed, apart from the chunks' embedding vectors, which need the embedder (CI has none). So a
+    seed change committed without rerunning build_migration fails here: for example #125's
+    classifier rows for apple, corn, grape and pepper (Alan's review of #134)."""
+    text, _, _ = bm.build(load(bm.SEED), NamedZeros(), bm.bioclip_revision(), templates())
+    committed = bm.OUT.read_text(encoding="utf-8")
+    assert stale_line(committed, text) is None, (
+        f"knowledge.surql isn't what the seed gives, at {stale_line(committed, text)}; "
+        "run python -m ml.knowledge.build_migration")
+    # The file's first classifier row, whichever head it names, is caught when it is missing.
+    lines = committed.splitlines()
+    row = next((i for i, l in enumerate(lines) if l.startswith("UPSERT classifier_label:")), None)
+    if row is not None:
+        missing = stale_line("\n".join(lines[:row] + lines[row + 1:]), text)
+        assert missing and repr(lines[row][:200]) in missing, missing
+
+
+def test_the_committed_vectors_are_whole():
+    """Every chunk's vector in knowledge.surql has the embedder's dimension, finite values and a
+    norm of 1, as the embedder writes them. The rows test leaves the vectors out, so a file
+    written with zero vectors or one value short would pass it (Alan's review of #145)."""
+    chunks = [l for l in bm.OUT.read_text(encoding="utf-8").splitlines() if l.startswith("UPSERT knowledge_chunk:")]
+    assert chunks
+    for line in chunks:
+        m = re.search(r"embedding: \[([^\]\n]*)\]", line)
+        assert m, line[:80]
+        v = np.array([float(x) for x in m.group(1).split(",")])
+        assert v.shape == (embed.DIMENSION,), (line[:80], v.shape)
+        assert np.isfinite(v).all() and abs(np.linalg.norm(v) - 1) < 1e-3, line[:80]
 
 
 def test_the_cache_embeds_each_text_once(tmp_path):
@@ -268,6 +364,8 @@ GOLDEN = json.loads((Path(__file__).parent / "fixtures/text_embedder_golden.json
 
 @pytest.mark.skipif(not embed.default_manifest().is_file(),
                     reason="needs python3 -m ml.models.fetch --for ingest")
+@pytest.mark.skipif(importlib.util.find_spec("onnxruntime") is None or importlib.util.find_spec("tokenizers") is None,
+                    reason="needs onnxruntime and tokenizers (ml/requirements.lock; CI's requirements-ci.txt has no tokenizers)")
 def test_the_embedder_matches_the_golden_values():
     e = embed.Embedder()
     assert e.name == "snowflake-arctic-embed-xs@d8c86521"

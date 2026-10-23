@@ -1,0 +1,104 @@
+# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
+# apple_scab.review.md and signs reviewed_by and reviewed_at.
+id: apple_scab
+name: Apple scab
+kind: fungal
+affects:
+- apple
+caused_by: []
+damage_patterns: []
+prevalence: common
+indicators:
+- id: apple_scab.black_olive_leaf_spots
+  text: Black or olive-green spots on the leaves
+  question: Are there black or olive-green spots on the leaves?
+  weight: 2
+  discriminating: true
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+- id: apple_scab.velvety_spots
+  text: Early spots look velvety
+  question: Do the dark spots on the leaves look soft and velvety, like felt?
+  weight: 2
+  discriminating: true
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+- id: apple_scab.irregular_spot_margins
+  text: Leaf spots have irregular edges
+  question: Do the dark leaf spots have uneven, ragged edges instead of round, smooth edges?
+  weight: 2
+  discriminating: true
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+- id: apple_scab.spot_size
+  text: Spots start small and may grow up to about 13 mm across
+  question: Are the leaf spots small, no wider than about a fingernail?
+  weight: 1
+  discriminating: false
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+  measure:
+    max: 13
+    quantity: lesion_diameter_mm
+    stat: max
+- id: apple_scab.yellowing_leaves
+  text: Infected leaves turn yellow
+  question: Are the spotted leaves turning yellow?
+  weight: 2
+  discriminating: false
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+  - leaf_closeup
+- id: apple_scab.early_leaf_drop
+  text: Infected leaves fall off early
+  question: Has the tree lost many leaves early?
+  weight: 2
+  discriminating: false
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+- id: apple_scab.fruit_spots
+  text: Distinct brown or black spots on the fruit, often with irregular edges
+  question: Are there brown or black spots on the fruit?
+  weight: 2
+  discriminating: false
+  where: fruit
+  image_kinds:
+  - flower_fruit
+- id: apple_scab.fruit_skin_split
+  text: In severe cases the fruit skin splits open
+  question: Is the skin of the fruit cracked or split open?
+  weight: 1
+  discriminating: false
+  where: fruit
+  image_kinds:
+  - flower_fruit
+- id: apple_scab.misshapen_fruit
+  text: In severe cases the fruit is misshapen
+  question: Is the fruit lopsided or oddly shaped?
+  weight: 1
+  discriminating: false
+  where: fruit
+  image_kinds:
+  - flower_fruit
+conditions:
+  notes: Cool, wet weather in spring favours apple scab. How bad it gets each year depends on the weather.
+looks_like:
+- problem: apple_cedar_apple_rust
+  how_to_tell: Both spot apple leaves in spring. Scab spots are black or olive-green, look velvety when
+    young and have ragged edges. Cedar-apple rust spots are bright yellow-orange, with tiny black dots
+    in the middle, and later small tubes on the underside of the leaf.
+treatments:
+- prune_open_canopy_apple
+- remove_fallen_apple_leaves
+- scab_resistant_apple_cultivars
+sources:
+- isu_apple_scab
+- isu_cedar_apple_rust
+reviewed_by: ''
+reviewed_at: ''

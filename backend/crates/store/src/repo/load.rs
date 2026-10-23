@@ -57,6 +57,7 @@ pub mod sql {
     macro_rules! question_fields {
         () => {
             "id, run, kind, text, options, photo_kind, photo_hint, candidates, asked_at, continue_at,
+  IF indicator != NONE { string::split(indicator, '.')[1] } ELSE { NONE } AS indicator_id,
   IF status = 'answering' { 'answering' } ELSE { 'open' } AS status"
         };
     }

@@ -30,9 +30,11 @@ unless the identification is research grade and the photos clearly show the prob
 `add` appends every kept observation to `manifest.jsonl` as a case. Each case gets `label_basis`
 `source_caption`, the observation's URL as `source`, its photos' licence and credit, and an empty
 `reviewed_by` until a second teammate reviews it (evaluation.md §3). The split is by plant, about
-60% dev, unless the review sets `split`. Organism and damage boxes are drawn later, in CVAT or Label
-Studio. The species head's iNaturalist training photos (training.md §6) must leave out every
-observation listed in the manifest.
+60% dev, unless the review sets `split`. Observations that may show one plant share a `plant` key,
+set in the review (evaluation.md §2, Splits), and their split follows the key, so they land on the
+same side; an entry with `plant` can't also set `split`. Organism and damage boxes are drawn later,
+in CVAT or Label Studio. The species head's iNaturalist training photos (training.md §6) must leave
+out every observation listed in the manifest.
 """
 
 from __future__ import annotations
@@ -75,7 +77,9 @@ REVIEW_HEADER = """\
 #   confidence: probable, or sure when research grade and the signs are clear
 #   images: photo id -> whole_plant (exactly 1), leaf_closeup (at most 2), leaf_underside,
 #           soil_surface, flower_fruit (at most 1 each), or skip
-#   split: optional, dev or test (default: by plant, about 60% dev)
+#   plant: optional, the key of observations that may show the same plant (one observer, one crop,
+#          within 100 m), so they share a split; the lowest observation's, e.g. inat-401728510
+#   split: optional, dev or test (default: by plant, about 60% dev); not with plant
 # Skip any photo that shows a person's face: faces aren't blurred on import yet (evaluation.md §2).
 # Then: python -m ml.training.eval.inat add --labeller <your GitHub login>
 """
@@ -234,6 +238,11 @@ def case(entry: dict, cand: dict, photos: Path, labeller: str) -> dict:
         raise ValueError(f"{where}: confidence must be sure or probable")
     if entry.get("split") not in (None, "dev", "test"):
         raise ValueError(f"{where}: split must be dev or test")
+    plant = entry.get("plant")
+    if plant is not None and not (isinstance(plant, str) and plant.startswith("inat-")):
+        raise ValueError(f"{where}: plant must be a key like inat-401728510, quoted if need be")
+    if plant is not None and entry.get("split") is not None:
+        raise ValueError(f"{where}: set plant or split, not both: a plant's split follows its key")
     if entry["outcome"] == "diagnosed" and not entry.get("problems"):
         raise ValueError(f"{where}: a diagnosed case needs its problems")
     kinds = {int(k): v for k, v in (entry.get("images") or {}).items()}
@@ -253,7 +262,7 @@ def case(entry: dict, cand: dict, photos: Path, labeller: str) -> dict:
         raise ValueError(f"{where}: a scan needs exactly one whole_plant photo")
     order = list(KINDS)
     used.sort(key=lambda pk: order.index(pk[1]))
-    plant_key = f"inat-{entry['obs']}"
+    plant_key = plant or f"inat-{entry['obs']}"
     return {
         "case_id": f"{entry.get('species_id') or 'unknown'}-inat-{entry['obs']}",
         "split": entry.get("split") or split_of(plant_key),

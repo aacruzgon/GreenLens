@@ -1,8 +1,5 @@
 // The garden home's pure selectors (screens 3.1): plants by health, the hero photo, and which tasks are
 // today's in the garden's time zone. No React, no api (README 5).
-import { format } from "date-fns";
-import { TZDate } from "@date-fns/tz";
-
 import type { LocalDate, Memory, Plant, PlantStatus, Task } from "@/domain/types";
 
 /** Sick first, then watch, healthy and dead (roadmap F1 item 4). */
@@ -41,10 +38,8 @@ export function plantCardNote(plant: Pick<Plant, "latest_scan">): string | undef
   return plant.latest_scan?.status === "pending" ? "Scan not submitted" : undefined;
 }
 
-/** Today's date in the garden's calendar, as a LocalDate ("2026-10-19"). */
-export function localToday(timeZone: string, now: Date = new Date()): LocalDate {
-  return format(new TZDate(now.getTime(), timeZone), "yyyy-MM-dd");
-}
+// Today in the garden's calendar moved to domain/format for the Tasks tab and the plan; kept here for home's callers.
+export { localToday } from "@/domain/format";
 
 export function isOpenTask(task: Pick<Task, "done_at" | "dismissed_at">): boolean {
   return !task.done_at && !task.dismissed_at;
@@ -76,18 +71,8 @@ export function todayTasks(tasks: readonly Task[], today: LocalDate, checked: re
     .sort(byDueThenCreated);
 }
 
-/** A plan's repeating task on a plant is a monitoring check: it leads to a scan of that plant (roadmap F1 item 5). */
-export function scanTargetOf(task: Pick<Task, "source" | "plant_id" | "repeat">): string | undefined {
-  return task.source === "plan" && task.repeat && task.plant_id ? task.plant_id : undefined;
-}
-
-/**
- * A jar-test task's scan, which opens that scan's jar capture (flows 8). Only a user's task carries a scan link on the
- * server, and only the jar test makes one (contracts 9); a plan's task opens a new scan instead (scanTargetOf).
- */
-export function jarScanOf(task: Pick<Task, "source" | "scan_id">): string | undefined {
-  return task.source === "user" ? task.scan_id : undefined;
-}
+// Where a task leads moved to domain/tasks for the Tasks tab; kept here for home's callers.
+export { jarScanOf, scanTargetOf } from "@/domain/tasks";
 
 /** "Toronto" from "Toronto, ON": the place in the hero's eyebrow. */
 export function placeName(locationLabel: string): string {

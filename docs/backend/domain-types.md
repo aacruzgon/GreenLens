@@ -1225,6 +1225,10 @@ pub struct Question {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(nullable = false)]
     pub options: Option<Vec<QuestionOption>>,
+    /// Indicator questions: the indicator it asks about, e.g. `concentric_rings`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    pub indicator_id: Option<crate::id::IndicatorSlug>,
     /// `photo_request`: which shot to take.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(nullable = false)]

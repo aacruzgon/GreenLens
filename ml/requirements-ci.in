@@ -9,6 +9,7 @@ numpy
 onnx
 onnxruntime==1.31.0
 opencv-python-headless
+pdfminer.six
 pillow
 pytest
 pyyaml

@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import io
 import json
 import multiprocessing as mp
@@ -176,10 +177,10 @@ def training_hashes(files: list[Path], cache: Path | None = None, workers: int |
 
 # --- the evaluation photos ----------------------------------------------------------------------
 
-def eval_photos(manifest: Path, photos: Path) -> list[tuple[str, Path]]:
-    """Each photo file the manifest names, once: (manifest path, file)."""
+def eval_photos(manifest: bytes, photos: Path) -> list[tuple[str, Path]]:
+    """Each photo file the manifest's bytes name, once: (manifest path, file)."""
     seen: dict[str, Path] = {}
-    for line in manifest.read_text().splitlines():
+    for line in manifest.decode().splitlines():
         if line.strip():
             for im in json.loads(line)["images"]:
                 seen.setdefault(im["file"], photos / im["file"])
@@ -333,7 +334,8 @@ def calibration_lines(cal: dict, hamming_max: int, cosine_min: float | None) -> 
 
 
 def run(args) -> int:
-    photos = eval_photos(args.manifest, args.photos)
+    manifest = args.manifest.read_bytes()  # hashed as read: an edit during the run can't change the recorded SHA
+    photos = eval_photos(manifest, args.photos)
     skipped = skipped_folders(args.sources)
     files = [f for f in training_files(args.raw) if f.relative_to(args.raw).parts[0] not in skipped]
     folders = per_folder(files, args.raw)
@@ -383,7 +385,9 @@ def run(args) -> int:
           out_dir / "matches.jpg")
 
     REPORTS.mkdir(parents=True, exist_ok=True)
-    summary = {"date": args.date, "photos": len(photos), "training_images": len(files), "training_images_by_folder": folders,
+    manifest_sha = hashlib.sha256(manifest).hexdigest()
+    summary = {"date": args.date, "manifest": shown(args.manifest), "manifest_sha256": manifest_sha,
+               "photos": len(photos), "training_images": len(files), "training_images_by_folder": folders,
                "unreadable_training_images": unreadable, "hamming_max": args.hamming,
                "cosine_min": None if cos is None else args.cosine, "matches": matches, "per_photo": per_photo,
                "calibration": cal}
@@ -393,7 +397,7 @@ def run(args) -> int:
     closest = min(per_photo, key=lambda r: r["hamming"])
     lines = [f"# Leakage check: {args.out}", "",
              f"{len(photos)} evaluation photos (`{shown(args.manifest)}`) against {len(files):,} training images "
-             f"under `ml/training/data/raw`, {len(unreadable)} of them unreadable.",
+             f"under `ml/training/data/raw`, {len(unreadable)} of them unreadable. The manifest's SHA-256 is `{manifest_sha}`.",
              f"A match is a perceptual-hash distance of {args.hamming} bits or less over the photo's 8 rotations and flips"
              + ("" if cos is None else f", or a BioCLIP 2 cosine of {args.cosine} or more") + ".", "",
              f"**{len(matches)} match{'' if len(matches) == 1 else 'es'}, {len(failing)} not allowed.**", ""]

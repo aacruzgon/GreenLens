@@ -1,6 +1,8 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.28, 2026-10-21. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.30, 2026-10-22. Companion to the [architecture document](README.md).
+> **v0.10.30**: the indicators and verify prompts are `indicators@3` and `verify@3`, whose reason asks for at most 60 characters (vision vlm.md 7, [#137](https://github.com/aacruzgon/GreenLens/issues/137)), so `vlm_prompts` reads `system@2,findings@5,indicators@3,verify@3,guided@1`.
+> **v0.10.29**: `Question.indicator_id?` is the slug of the indicator an `indicator` question asks about (`concentric_rings`), so the app can draw a picture answer; the server already stored it (section 3); no architecture section changed.
 > **v0.10.28**: the prompts are `system@2`, `findings@5`, `indicators@2` and `verify@2` (vision vlm.md 7, task P5), so `vlm_prompts` reads `system@2,findings@5,indicators@2,verify@2,guided@1`; section 6's "After decoding" adds three rules: an `other` species or organism whose `other_name` names a listed option takes its id, a string that reaches its `maxLength` goes back to its last full sentence or word, and a repeated damage finding is dropped; no wire shape changed.
 > **v0.10.27**: open questions 1 and 9 cite v0.10.24, the version that settled them, instead of v0.10.19 (review of #86); no wire shape changed.
 > **v0.10.26**: a GPS garden whose reverse lookup fails is created with the label "<time zone's city> time zone" ("Toronto time zone") instead of `503`, so only a point with no time zone is refused (section 9, open question 37 settled); where SoilGrids has no data at a Canadian point, the soil profile comes from Soil Landscapes of Canada before any nearby probe, with no nitrogen (sections 9, 10; architecture open decision 10, proposed); no wire shape changed.
@@ -393,6 +395,7 @@ interface Question {
   kind: "indicator" | "photo_request";
   text: string;                       // "Do the spots have rings, like a target?"
   options?: { id: "yes" | "no" | "unsure"; label: string }[];  // indicator questions
+  indicator_id?: Slug;                // indicator questions: the indicator it asks about, its own slug without the problem ("concentric_rings")
   photo_kind?: ImageKind;             // photo_request: which shot to take
   photo_hint?: string;                // "Turn the leaf over and photograph the underside"
   candidates: Slug[];                 // the problems this question separates
@@ -967,7 +970,7 @@ type JobErrorCode =
 | `vlm_server` | `vllm@v0.31.0`, `vllm-rocm@v0.31.0`, `llama.cpp@b7123`, `anthropic` | VLM and fallback workers |
 | `vlm_box_format` | `norm_1000` (VLM workers), `abs_px_prepared` (fallback) | VLM and fallback workers (section 6) |
 | `vlm_max_pixels` | `1003520` | VLM and fallback workers |
-| `vlm_prompts` | `system@2,findings@5,indicators@2,verify@2,guided@1`: every prompt's name and version, comma-separated | VLM and fallback workers |
+| `vlm_prompts` | `system@2,findings@5,indicators@3,verify@3,guided@1`: every prompt's name and version, comma-separated | VLM and fallback workers |
 | `vlm_certainty` | `0.4/0.65/0.85`: the low, medium and high values, slash-separated | VLM and fallback workers |
 | `label_set_version` | the job's own in `complete`; every loaded one, comma-separated, in the heartbeat | Perception and fallback workers |
 | `classifier_labels_version` | as `label_set_version` | Perception and fallback workers |
@@ -2498,6 +2501,8 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.26: a GPS garden whose reverse lookup fails is labelled by its time zone and created; a Canadian garden where SoilGrids has no data takes its soil profile from Soil Landscapes of Canada | 6.4 (soil), 8.5 (garden setup), 15 (open decision 10) |
 | v0.10.27: open questions 1 and 9 cite the version that settled them | none (a citation in section 12 only) |
 | v0.10.28: `vlm_prompts` names `system@2`, `findings@5`, `indicators@2` and `verify@2`; an `other` naming a listed species or organism takes its id, a string at its `maxLength` goes back to a full sentence or word, and a repeated damage finding is dropped | none (the architecture document lists neither prompt versions nor decode rules) |
+| v0.10.29: `Question.indicator_id?`, the indicator an `indicator` question asks about | none (the architecture document doesn't list `Question` fields) |
+| v0.10.30: `vlm_prompts` names `indicators@3` and `verify@3`, whose reason asks for at most 60 characters | none (the architecture document lists no prompt versions) |
 
 ---
 

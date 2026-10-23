@@ -3,3 +3,5 @@ export { haptics } from "./haptics";
 export { requestGardenLocation, type DeviceLocation } from "./location";
 export { files } from "./files";
 export { CameraPreview, pickFromLibrary, useCameraAccess, type CameraPreviewHandle, type CapturedShot } from "./capture";
+export { samplePixels } from "./imagePixels";
+export { links } from "./links";

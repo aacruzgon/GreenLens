@@ -27,6 +27,17 @@ module.exports = defineConfig([
   {
     files: ["src/**/*.{ts,tsx}"],
     rules: {
+      // An import named after a built-in hides it in the whole module, compiled code included: the React
+      // Compiler opens each component with `Symbol.for(...)`, so `Image as Symbol` crashed the scan screen on
+      // iOS while Jest, which doesn't compile, passed (review of #130).
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            ":matches(ImportSpecifier, ImportDefaultSpecifier, ImportNamespaceSpecifier)[local.name=/^(Symbol|Object|Array|Function|Promise|Map|Set|WeakMap|WeakSet|Error|TypeError|JSON|Math|Date|Number|String|Boolean|BigInt|RegExp|Proxy|Reflect|globalThis|undefined|NaN|Infinity)$/]",
+          message: "Don't name an import after a JavaScript built-in: it hides the global in this module, and compiled code uses it. Alias it (`Image as SFSymbol`).",
+        },
+      ],
       "import/no-restricted-paths": [
         "error",
         {
