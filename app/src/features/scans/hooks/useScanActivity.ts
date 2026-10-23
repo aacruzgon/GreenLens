@@ -18,6 +18,7 @@ import type { PhaseLine, PhaseView } from "../model/phases";
 import type { ScanState } from "../model/scanState";
 
 interface Session {
+  scanId: string;
   track: ActivityTrack;
   /** The activity's id once started; undefined without the module or before the start resolves. */
   id?: string;
@@ -53,8 +54,27 @@ export function useScanActivity(
   phases: readonly PhaseView[],
   line: PhaseLine,
 ): void {
-  const session = useRef<Session>({ track: { started: false, ended: false }, chain: Promise.resolve() });
+  const session = useRef<Session>(fresh(scanId));
   const supported = useMemo(() => liveActivity.supported(), []);
+
+  // One session per scan: a new scanId on the same screen starts a new one, and the old one is left (below).
+  // Leaving the scan before it ends: nothing would update the activity any more. Checked a tick later, so a
+  // remount of the same screen (React's development double mount) keeps it. Declared first, so the update
+  // below already sees the new scan's session.
+  useEffect(() => {
+    let s = session.current;
+    if (s.scanId !== scanId) {
+      s = fresh(scanId);
+      session.current = s;
+    }
+    s.mounted = true;
+    return () => {
+      s.mounted = false;
+      setTimeout(() => {
+        if (!s.mounted) run(s, leaveActivityOp(s.track));
+      }, 0);
+    };
+  }, [scanId]);
 
   useEffect(() => {
     if (!supported || !state || !plantName || state.scanId !== scanId) return;
@@ -65,17 +85,8 @@ export function useScanActivity(
     const op = nextActivityOp(s.track, content, { plantName, questionText: state.question?.text });
     run(s, op, { scanId, plantName });
   }, [supported, scanId, plantName, state, phases, line]);
+}
 
-  // Leaving the scan before it ends: nothing would update the activity any more. Checked a tick later, so a
-  // remount of the same screen (React's development double mount) keeps it.
-  useEffect(() => {
-    const s = session.current;
-    s.mounted = true;
-    return () => {
-      s.mounted = false;
-      setTimeout(() => {
-        if (!s.mounted) run(s, leaveActivityOp(s.track));
-      }, 0);
-    };
-  }, [scanId]);
+function fresh(scanId: string): Session {
+  return { scanId, track: { started: false, ended: false }, chain: Promise.resolve() };
 }

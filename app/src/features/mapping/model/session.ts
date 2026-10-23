@@ -41,7 +41,9 @@ export type MappingEvent =
   | { type: "undo" }
   /** Tracking was lost: the garden is mapped again from the start (architecture 6.8). */
   | { type: "restart" }
-  | { type: "load"; map: GardenMap; names: Record<string, string> };
+  | { type: "load"; map: GardenMap; names: Record<string, string> }
+  /** The server says these plants are gone (400 unknown_plant): their pins come out, with no Undo step. */
+  | { type: "dropPlants"; plantIds: string[] };
 
 /** Limits of contracts 9. */
 export const MAX_BEDS = 20;
@@ -91,6 +93,11 @@ export function mappingReducer(state: MappingState, event: MappingEvent): Mappin
     }
     case "restart":
       return { ...emptyMapping, north: state.north };
+    case "dropPlants": {
+      const gone = new Set(event.plantIds);
+      const pins = state.pins.filter((p) => !("plantId" in p.plant && gone.has(p.plant.plantId)));
+      return pins.length === state.pins.length ? state : { ...state, pins };
+    }
     case "load":
       return {
         ...emptyMapping,
@@ -147,4 +154,27 @@ export function sessionSummary(state: MappingState): string {
 /** The open bed's area so far, from 3 corners on: "2.4 m²". */
 export function openBedArea(state: MappingState): string | undefined {
   return state.corners.length >= 3 ? `${polygonArea(state.corners).toFixed(1)} m²` : undefined;
+}
+
+/** What a refused upload means for the session (contracts 9, garden map). */
+export type SaveRefusal =
+  /** Another member uploaded since the session started. */
+  | { type: "stale"; current: number }
+  /** Plants deleted while mapping: drop their pins and resend with the same base and a new key. */
+  | { type: "unknownPlants"; plantIds: string[] }
+  | { type: "other" };
+
+export function saveRefusal(code: string, details: Record<string, unknown> | undefined): SaveRefusal {
+  if (code === "invalid_state" && typeof details?.current_map_version === "number") return { type: "stale", current: details.current_map_version };
+  const ids = details?.plant_ids;
+  if (code === "invalid_request" && details?.problem === "unknown_plant" && Array.isArray(ids) && ids.every((id) => typeof id === "string")) {
+    return { type: "unknownPlants", plantIds: ids };
+  }
+  return { type: "other" };
+}
+
+/** The bed still being drawn when the user saves: closed by them first, or left out. */
+export function openBed(state: MappingState): "none" | "closable" | "too_few" {
+  if (state.corners.length === 0) return "none";
+  return state.corners.length >= 3 ? "closable" : "too_few";
 }

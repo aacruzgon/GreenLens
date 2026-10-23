@@ -1,4 +1,5 @@
 // The depth parts a LiDAR shot uploads (contracts 3, POST /scans/{id}/images; architecture 6.7). Pure.
+import type { DepthMeta } from "@/domain/depth";
 import type { ImageKind } from "@/domain/types";
 
 /**
@@ -14,8 +15,8 @@ export function sendsDepth(kind: ImageKind): boolean {
 }
 
 /** The `DepthMeta` as uploaded: without the distortion table unless the day-1 check asks for it. */
-export function uploadMeta(meta: Record<string, unknown>, sendDistortion = SEND_DISTORTION): Record<string, unknown> {
-  if (sendDistortion || !("distortion" in meta)) return meta;
+export function uploadMeta(meta: DepthMeta, sendDistortion = SEND_DISTORTION): DepthMeta {
+  if (sendDistortion || !meta.distortion) return meta;
   const { distortion: _, ...rest } = meta;
   return rest;
 }

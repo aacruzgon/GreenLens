@@ -1,4 +1,15 @@
-import { emptyMapping, mappingReducer, openBedArea, sessionSummary, toMapInput, undoRemovesMarker, type MappingEvent, type MappingState } from "./session";
+import {
+  emptyMapping,
+  mappingReducer,
+  openBed,
+  openBedArea,
+  saveRefusal,
+  sessionSummary,
+  toMapInput,
+  undoRemovesMarker,
+  type MappingEvent,
+  type MappingState,
+} from "./session";
 
 const run = (events: MappingEvent[], from: MappingState = emptyMapping) => events.reduce(mappingReducer, from);
 
@@ -71,5 +82,38 @@ describe("a mapping session (architecture 6.8)", () => {
       },
     ]);
     expect(toMapInput(s, 3).pins).toEqual([{ plant_id: "p1", x_m: 0.5, y_m: 0.2, bed_id: "b" }]);
+  });
+});
+
+describe("a refused upload (contracts 9)", () => {
+  it("reads a 409 as another member's newer map", () => {
+    expect(saveRefusal("invalid_state", { current_map_version: 4 })).toEqual({ type: "stale", current: 4 });
+  });
+
+  it("reads a 400 unknown_plant as the plants to drop", () => {
+    expect(saveRefusal("invalid_request", { field: "pins", problem: "unknown_plant", plant_ids: ["p1", "p2"] })).toEqual({ type: "unknownPlants", plantIds: ["p1", "p2"] });
+    expect(saveRefusal("invalid_request", { field: "beds", problem: "too_many" })).toEqual({ type: "other" });
+    expect(saveRefusal("invalid_state", undefined)).toEqual({ type: "other" });
+  });
+
+  it("drops the pins of deleted plants and keeps the rest, new plants included", () => {
+    const state = run([
+      { type: "choosePlant", plant: { plantId: "p1", name: "Tomato" } },
+      { type: "pin", at: [0, 0] },
+      { type: "choosePlant", plant: { plantId: "p2", name: "Basil" } },
+      { type: "pin", at: [1, 0] },
+      { type: "choosePlant", plant: { newName: "Chard" } },
+      { type: "pin", at: [2, 0] },
+    ]);
+    const after = mappingReducer(state, { type: "dropPlants", plantIds: ["p1"] });
+    expect(after.pins.map((p) => ("plantId" in p.plant ? p.plant.plantId : p.plant.newName))).toEqual(["p2", "Chard"]);
+    expect(after.history).toBe(state.history);
+    expect(mappingReducer(after, { type: "dropPlants", plantIds: ["p9"] })).toBe(after);
+  });
+
+  it("tells a closable open bed from one with too few corners", () => {
+    expect(openBed(emptyMapping)).toBe("none");
+    expect(openBed(run(square.slice(0, 2)))).toBe("too_few");
+    expect(openBed(run(square.slice(0, 3)))).toBe("closable");
   });
 });

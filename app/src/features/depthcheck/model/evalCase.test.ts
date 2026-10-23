@@ -25,4 +25,11 @@ describe("evaluation captures", () => {
     expect(isCaseId("Tomato 7")).toBe(false);
     expect(isCaseId("../x")).toBe(false);
   });
+
+  it("keeps the ruler's reading with its shot, for the labeller's truth.measured", () => {
+    const ruler = { points: [{ x: 0.2, y: 0.5 }, { x: 0.8, y: 0.5 }] as [{ x: number; y: number }, { x: number; y: number }], measured_mm: 86.1, known_mm: 85.6 };
+    const file = addShot(undefined, "card-0001", "", "leaf_closeup", true, "iPhone18,2", "t1", ruler);
+    expect(file.images[0]!.ruler).toEqual(ruler);
+    expect(addShot(file, "card-0001", "", "leaf_closeup", true, undefined, "t2").images[1]!.ruler).toBeUndefined();
+  });
 });

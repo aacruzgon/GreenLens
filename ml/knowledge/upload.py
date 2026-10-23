@@ -54,9 +54,9 @@ class UploadError(Exception):
 
 def build(seed_root: Path, migration: Path, out: Path) -> int:
     from ml.knowledge.photos import keys_in_migration, reference_images
-    from ml.knowledge.seed import load
+    from ml.knowledge.seed import load, signed
 
-    photos = reference_images(load(seed_root))
+    photos = reference_images(signed(load(seed_root)))
     text = migration.read_text(encoding="utf-8") if migration.is_file() else ""
     want = keys_in_migration(text)
     if set(photos) != want:

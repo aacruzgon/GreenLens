@@ -27,12 +27,15 @@ export interface GardenMappingViewProps {
   /** Once a second while tracking is normal: north clockwise from the map's +y axis. */
   onHeading?: (e: { nativeEvent: { north_deg: number; accuracy_deg: number } }) => void;
   onMountError?: (e: { nativeEvent: { message: string } }) => void;
+  /** The camera was taken away or given back; ARKit then finds its place again, keeping the session's origin. */
+  onInterruption?: (e: { nativeEvent: { interrupted: boolean } }) => void;
 }
 
 interface MappingNative {
   saveWorldMap(gardenId: string, version: number): Promise<void>;
   savedWorldMapVersion(gardenId: string): number | null;
   relocalise(gardenId: string): Promise<"ok" | "failed">;
+  removeWorldMap(gardenId: string): void;
   removeWorldMaps(): void;
 }
 
@@ -56,6 +59,11 @@ export function savedWorldMapVersion(gardenId: string): number | null {
 /** Restarts the open session from the saved world map: "ok" once tracking is back, "failed" after 20 s. */
 export function relocalise(gardenId: string): Promise<"ok" | "failed"> {
   return native ? native.relocalise(gardenId) : Promise.resolve("failed");
+}
+
+/** One garden's: a stale map, or a garden the user left or deleted. */
+export function removeWorldMap(gardenId: string): void {
+  native?.removeWorldMap(gardenId);
 }
 
 /** On sign-out. */

@@ -10,6 +10,17 @@ export interface EvalImage {
   depth_confidence?: string;
   depth_meta?: string;
   report: string;
+  /**
+   * The day-1 check's ruler on this shot: the two ends tapped (normalised, as shown) and the length measured from
+   * the depth, with the length the user said it is. The labeller turns it into `truth.measured` (evaluation 2).
+   */
+  ruler?: EvalRuler;
+}
+
+export interface EvalRuler {
+  points: [{ x: number; y: number }, { x: number; y: number }];
+  measured_mm: number;
+  known_mm?: number;
 }
 
 export interface EvalCaseFile {
@@ -46,13 +57,14 @@ export function addShot(
   hasDepth: boolean,
   deviceModel: string | undefined,
   now: string,
+  ruler?: EvalRuler,
 ): EvalCaseFile {
   const images = saved?.images ?? [];
   return {
     case_id: caseId,
     plant_key: plantKey || saved?.plant_key || caseId,
     ...(deviceModel ?? saved?.device_model ? { device_model: deviceModel ?? saved?.device_model } : {}),
-    images: [...images, shotNames(images.length, kind, hasDepth)],
+    images: [...images, { ...shotNames(images.length, kind, hasDepth), ...(ruler ? { ruler } : {}) }],
     saved_at: now,
   };
 }

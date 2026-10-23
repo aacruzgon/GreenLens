@@ -43,6 +43,16 @@ struct MeshBuilder {
     flat(a, c, d, facing: facing)
   }
 
+  /// Adds another builder's triangles, scaled then moved: two shapes that never move apart become one draw.
+  mutating func append(_ other: MeshBuilder, scale: SIMD3<Float>, offset: SIMD3<Float>) {
+    let base = UInt32(positions.count)
+    for (p, n) in zip(other.positions, other.normals) {
+      positions.append(offset + p * scale)
+      normals.append(simd_normalize(n / scale))
+    }
+    indices += other.indices.map { $0 + base }
+  }
+
   @MainActor
   func resource(_ name: String) -> MeshResource {
     var desc = MeshDescriptor(name: name)
@@ -68,6 +78,17 @@ enum GardenMeshes {
     var b = MeshBuilder()
     addSphere(&b, segments: 8, rings: 6, hemisphere: false)
     return b.resource("blob")
+  }()
+
+  /// A plant's crown: the canopy blob and the smaller top blob in one mesh, in the body's unit space, so a plant
+  /// costs one draw for its greens instead of two (garden-3d 3, under 100 draws).
+  static let crown: MeshResource = {
+    var sphere = MeshBuilder()
+    addSphere(&sphere, segments: 8, rings: 6, hemisphere: false)
+    var b = MeshBuilder()
+    b.append(sphere, scale: SIMD3(0.95, 0.42, 0.95), offset: SIMD3(0, 0.58, 0))
+    b.append(sphere, scale: SIMD3(0.55, 0.2, 0.55), offset: SIMD3(0.18, 0.84, -0.1))
+    return b.resource("crown")
   }()
 
   /// Status ring: an annulus from 0.78 to 1 on the ground, facing up.
@@ -105,7 +126,7 @@ enum GardenMeshes {
     return b.resource("dome")
   }()
 
-  /// Triangles in one plant's shared meshes, for the budget (stem + two blobs + ring, plus pot, disc and cover).
+  /// Triangles in one plant's shared meshes, for the budget (stem + the crown's two blobs + ring, plus pot, disc and cover).
   static let plantTriangles: Int = {
     var s = MeshBuilder(); addPrism(&s, sides: 6, bottomRadius: 1, topRadius: 1, height: 1, topCap: true)
     var bl = MeshBuilder(); addSphere(&bl, segments: 8, rings: 6, hemisphere: false)

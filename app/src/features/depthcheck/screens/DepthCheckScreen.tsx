@@ -9,7 +9,7 @@ import { Image, Pressable, ScrollView, View, useWindowDimensions } from "react-n
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { ImageKind } from "@/domain/types";
-import { CameraPreview, useCameraAccess, useCapabilities, type CameraPreviewHandle, type CaptureReport } from "@/platform";
+import { CameraPreview, isBlackShot, useCameraAccess, useCapabilities, type CameraInterruption, type CameraPreviewHandle, type CaptureReport } from "@/platform";
 import { Banner, Button, Section, Text, TextField, ThemeProvider, camera, minTouch, space, useTheme } from "@/ui";
 
 import { useDepthCheck, type RulerResult } from "../hooks/useDepthCheck";
@@ -25,11 +25,14 @@ const KINDS: { kind: ImageKind; label: string }[] = [
 
 export function DepthCheckScreen() {
   const check = useDepthCheck();
+  const router = useRouter();
   const { depth } = useCapabilities();
   if (!depth) {
+    // A fullScreenModal has no back gesture, so the message carries its own Close.
     return (
-      <View style={{ flex: 1, justifyContent: "center", padding: space[6] }}>
-        <Text variant="body">The depth check needs a LiDAR iPhone and the development build.</Text>
+      <View style={{ flex: 1, justifyContent: "center", padding: space[6], gap: space[4] }}>
+        <Text variant="body">The depth check needs an iPhone or iPad with LiDAR.</Text>
+        <Button label="Close" variant="secondary" onPress={() => router.back()} />
       </View>
     );
   }
@@ -43,12 +46,17 @@ function Aim({ onShot }: { onShot: ReturnType<typeof useDepthCheck>["actions"]["
   const preview = useRef<CameraPreviewHandle>(null);
   const [distance, setDistance] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [paused, setPaused] = useState<CameraInterruption | null>(null);
+  const [failed, setFailed] = useState<string>();
 
   const shoot = async () => {
-    if (!preview.current || busy) return;
+    if (!preview.current || busy || paused) return;
     setBusy(true);
     try {
       onShot(await preview.current.capture());
+      setFailed(undefined);
+    } catch (error) {
+      setFailed(isBlackShot(error) ? "The photo came out black, so it wasn't kept. If the iPhone is mirrored to a Mac, take it on the phone." : "Couldn't take the photo. Try again.");
     } finally {
       setBusy(false);
     }
@@ -59,10 +67,23 @@ function Aim({ onShot }: { onShot: ReturnType<typeof useDepthCheck>["actions"]["
       <View style={{ flex: 1, backgroundColor: camera.black }}>
         <StatusBar style="light" />
         {access.status === "granted" ? (
-          <CameraPreview ref={preview} active onDistance={setDistance} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
+          <CameraPreview
+            ref={preview}
+            active
+            onDistance={setDistance}
+            onInterruption={setPaused}
+            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+          />
         ) : access.status === "ask" ? (
           <View style={{ flex: 1, justifyContent: "center", padding: space[6] }}>
             <Button label="Allow the camera" variant="secondary" onPress={() => void access.request()} />
+          </View>
+        ) : access.status === "denied" ? (
+          <View style={{ flex: 1, justifyContent: "center", padding: space[6], gap: space[4] }}>
+            <Text variant="body" style={{ color: camera.ink }}>
+              The depth check needs the camera. Turn it on in Settings.
+            </Text>
+            <Button label="Open Settings" variant="secondary" onPress={() => void access.openSettings()} />
           </View>
         ) : null}
         {/* The crosshair marks the square the distance is the median of. */}
@@ -75,11 +96,18 @@ function Aim({ onShot }: { onShot: ReturnType<typeof useDepthCheck>["actions"]["
             </Text>
           </View>
         </View>
-        <View style={{ position: "absolute", bottom: insets.bottom + 24, alignSelf: "center" }}>
+        <View style={{ position: "absolute", bottom: insets.bottom + 24, left: 16, right: 16, alignItems: "center", gap: space[3] }}>
+          {paused || failed !== undefined ? (
+            <View accessibilityRole="alert" style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: camera.pill }}>
+              <Text variant="footnote" style={{ color: camera.ink, textAlign: "center" }}>
+                {paused ? "The camera is in use elsewhere. It comes back when that ends." : failed}
+              </Text>
+            </View>
+          ) : null}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Take the photo"
-            disabled={busy || access.status !== "granted"}
+            disabled={busy || Boolean(paused) || access.status !== "granted"}
             onPress={() => void shoot()}
             style={{ width: 76, height: 76, borderRadius: 38, borderWidth: 4, borderColor: camera.ink, alignItems: "center", justifyContent: "center", opacity: busy ? 0.5 : 1 }}
           >
@@ -92,6 +120,7 @@ function Aim({ onShot }: { onShot: ReturnType<typeof useDepthCheck>["actions"]["
 }
 
 function Result({ check }: { check: ReturnType<typeof useDepthCheck> }) {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
@@ -111,7 +140,10 @@ function Result({ check }: { check: ReturnType<typeof useDepthCheck> }) {
         <Text variant="title2" accessibilityRole="header">
           Depth check
         </Text>
-        <Button label="Retake" variant="secondary" size="small" onPress={check.actions.retake} />
+        <View style={{ flexDirection: "row", gap: space[2] }}>
+          <Button label="Retake" variant="secondary" size="small" onPress={check.actions.retake} />
+          <Button label="Close" variant="secondary" size="small" onPress={() => router.back()} />
+        </View>
       </View>
 
       <Pressable
@@ -153,7 +185,7 @@ function Result({ check }: { check: ReturnType<typeof useDepthCheck> }) {
               </Pressable>
             ))}
           </View>
-          <Button label="Save the shot" onPress={() => check.actions.save(caseId.trim(), plantKey.trim(), kind)} />
+          <Button label="Save the shot" onPress={() => check.actions.save(caseId.trim(), plantKey.trim(), kind, Number(known) || undefined)} />
           {check.saved ? <Text variant="footnote" color="textMuted">{`${check.saved}. Files › On My iPhone › PDM › evaluation.`}</Text> : null}
           {check.problem ? <Banner tone="watch" title={check.problem} /> : null}
         </View>
@@ -166,7 +198,7 @@ function Marker({ p, w, h }: { p: Norm; w: number; h: number }) {
   return (
     <View
       pointerEvents="none"
-      style={{ position: "absolute", left: p.x * w - 9, top: p.y * h - 9, width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: "#FFFFFF", backgroundColor: "rgba(0,0,0,0.35)" }}
+      style={{ position: "absolute", left: p.x * w - 9, top: p.y * h - 9, width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: camera.ink, backgroundColor: camera.card }}
     />
   );
 }
@@ -194,7 +226,7 @@ function ReportList({ report }: { report: CaptureReport }) {
     ["Distortion table", d ? (d.has_distortion_table ? "Sent by the camera" : "None") : "—"],
     ["Centre distance", d?.centre_distance_m != null ? `${(d.centre_distance_m * 100).toFixed(1)} cm in the photo's depth` : "No depth at the centre"],
     ["Gravity, camera frame", report.gravity ? `${report.gravity.map((g) => g.toFixed(3)).join(", ")} · camera ${pitchDeg(report.gravity).toFixed(1)}° below level` : "Not read"],
-    ["Depth part", report.dropped ? `Not sent: ${report.dropped.replace("_", " ")}` : "Sent with the upload"],
+    ["Depth part", report.dropped ? `Not sent: ${report.dropped.replaceAll("_", " ")}` : "Sent with the upload"],
   ];
   return (
     <Section title="What the camera gave">

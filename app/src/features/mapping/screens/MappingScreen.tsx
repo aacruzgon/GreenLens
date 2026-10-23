@@ -11,7 +11,7 @@ import { GardenMappingView, useCapabilities, type GardenMappingHandle } from "@/
 import { Button, Text, ThemeProvider, camera, minTouch, space } from "@/ui";
 
 import { useMappingSession } from "../hooks/useMappingSession";
-import { openBedArea, sessionSummary } from "../model/session";
+import { openBed, openBedArea, sessionSummary } from "../model/session";
 
 type Tap = "corner" | "pin";
 
@@ -36,19 +36,45 @@ function Mapping() {
   const { mapping: canMapHere } = useCapabilities();
   const insets = useSafeAreaInsets();
   const [tap, setTap] = useState<Tap>("corner");
+  // ARKit couldn't start (camera access refused, a session error): said once, never a black screen (screens 4).
+  const [mountError, setMountError] = useState<string>();
   const { phase, state, actions } = session;
 
   if (!GardenMappingView || !canMapHere) {
-    return <Message text="Mapping needs a LiDAR iPhone and the development build." onClose={actions.close} />;
+    return <Message text="Mapping needs an iPhone or iPad with LiDAR." onClose={actions.close} />;
   }
   if (phase.type === "loading") return <Message text="" busy onClose={actions.close} />;
+  if (phase.type === "failed") {
+    return <Message text="Couldn't load the garden's map." onClose={actions.close} retry={actions.retry} retrying={session.retrying} />;
+  }
   if (!session.canMap) return <Message text="Only the garden's editors and owner can map it." onClose={actions.close} />;
+  if (mountError !== undefined) return <Message text={mountError} onClose={actions.close} />;
   if (phase.type === "saved") {
-    return <Message text={`Map saved as version ${phase.version}: ${sessionSummary(state)}.`} onClose={actions.close} done />;
+    const dropped =
+      phase.dropped === 0 ? "" : ` ${phase.dropped === 1 ? "One plant was" : `${phase.dropped} plants were`} deleted while you mapped, so ${phase.dropped === 1 ? "its pin was" : "their pins were"} left out.`;
+    return <Message text={`Map saved as version ${phase.version}: ${sessionSummary(state)}.${dropped}`} onClose={actions.close} done />;
   }
 
   const area = openBedArea(state);
-  const hint = TRACKING_HINT[session.tracking];
+  const hint = session.interrupted ? "The camera is paused. Mapping carries on when it's back" : TRACKING_HINT[session.tracking];
+
+  // A bed still being drawn isn't saved silently: close it first, or leave it out (contracts 9 takes closed beds).
+  const confirmSave = () => {
+    const open = openBed(state);
+    if (open === "none") return actions.save();
+    if (open === "closable") {
+      Alert.alert("This bed isn't closed", "Close it and save it with the map, or leave it out.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Leave it out", style: "destructive", onPress: () => actions.save() },
+        { text: "Close and save", onPress: () => actions.save(`Bed ${state.beds.length + 1}`) },
+      ]);
+      return;
+    }
+    Alert.alert("This bed has too few corners", "A bed needs at least 3 corners, so this one is left out.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Save without it", style: "destructive", onPress: () => actions.save() },
+    ]);
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: camera.black }}>
@@ -61,6 +87,8 @@ function Mapping() {
         onGroundTap={(e) => actions.dispatch({ type: "corner", at: [e.nativeEvent.x_m, e.nativeEvent.y_m] })}
         onPinPlaced={(e) => actions.dispatch({ type: "pin", at: [e.nativeEvent.x_m, e.nativeEvent.y_m], canopy: e.nativeEvent.canopy_radius_m })}
         onHeading={(e) => actions.dispatch({ type: "heading", deg: e.nativeEvent.north_deg, accuracy: e.nativeEvent.accuracy_deg })}
+        onInterruption={(e) => actions.onInterruption(e.nativeEvent.interrupted)}
+        onMountError={(e) => setMountError(e.nativeEvent.message || "The camera couldn't start for mapping.")}
       />
 
       <View style={{ position: "absolute", top: insets.top + 8, left: 12, right: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[3] }}>
@@ -74,8 +102,8 @@ function Mapping() {
           label="Save"
           size="small"
           busy={session.saving}
-          disabled={state.beds.length === 0 && state.pins.length === 0}
-          onPress={actions.save}
+          disabled={!session.canSave}
+          onPress={confirmSave}
         />
       </View>
 
@@ -109,12 +137,14 @@ function Mapping() {
               Someone mapped the garden since you started.
             </Text>
             <Text variant="subheadline" style={{ color: camera.inkMuted }}>
-              Their map is version {phase.current}. Replacing it keeps only what you mapped here.
+              Their map is version {phase.current}. Replace it with what you mapped here, or keep theirs. Mapping again starts
+              from nothing, and saving that replaces their map too.
             </Text>
             <View style={{ flexDirection: "row", gap: space[3] }}>
-              <Button label="Replace it" onPress={() => actions.replace(phase.current)} style={{ flex: 1 }} />
+              <Button label="Replace theirs" onPress={() => actions.replace(phase.current)} style={{ flex: 1 }} />
               <Button label="Keep theirs" variant="secondary" onPress={actions.close} style={{ flex: 1 }} />
             </View>
+            <Button label="Map again" variant="plain" onPress={() => actions.mapAgainFromTheirs(phase.current)} />
           </View>
         ) : (
           <>
@@ -219,7 +249,21 @@ function promptName(title: string, placeholder: string, onDone: (name: string) =
   Alert.prompt(title, undefined, [{ text: "Cancel", style: "cancel" }, { text: "Done", onPress: (value?: string) => onDone(value ?? placeholder) }], "plain-text", placeholder);
 }
 
-function Message({ text, busy, done, onClose }: { text: string; busy?: boolean; done?: boolean; onClose: () => void }) {
+function Message({
+  text,
+  busy,
+  done,
+  retry,
+  retrying,
+  onClose,
+}: {
+  text: string;
+  busy?: boolean;
+  done?: boolean;
+  retry?: () => void;
+  retrying?: boolean;
+  onClose: () => void;
+}) {
   return (
     <View style={{ flex: 1, backgroundColor: camera.black, justifyContent: "center", padding: space[6], gap: space[4] }}>
       <StatusBar style="light" />
@@ -229,6 +273,7 @@ function Message({ text, busy, done, onClose }: { text: string; busy?: boolean; 
           {text}
         </Text>
       ) : null}
+      {retry ? <Button label="Try again" onPress={retry} busy={retrying} /> : null}
       <Button label={done ? "Done" : "Close"} variant={done ? "primary" : "secondary"} onPress={onClose} />
     </View>
   );

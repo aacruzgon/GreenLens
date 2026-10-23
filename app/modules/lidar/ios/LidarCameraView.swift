@@ -3,31 +3,51 @@ import CoreMotion
 import ExpoModulesCore
 import ImageIO
 import UIKit
+import os
 
 // The camera on a LiDAR iPhone (architecture 6.7; docs/frontend/README.md 13). It replaces expo-camera there, because
 // only one capture session can use the camera: the preview, the distance hint from streamed depth, and each photo
 // with its depth map registered to it. The photo stays in the sensor frame with its EXIF orientation, so the photo
 // and its depth line up, and the app uploads the file unchanged.
+//
+// The screen shows the photo's whole 4:3 frame. Around it, as the Camera app's View Outside the Frame does, the
+// ultra-wide camera shows what lies outside the frame, dimmed and lined up with it, through a multi-camera session
+// (WWDC22 110429: the LiDAR depth camera uses the wide camera, so the ultra-wide can run beside it). Where the phone
+// can't run both, or the photo would lose its depth, a single session runs and the outside is black.
 
 final class LidarCameraView: ExpoView, AVCaptureDepthDataOutputDelegate {
   let onDistance = EventDispatcher()
   let onReady = EventDispatcher()
   let onMountError = EventDispatcher()
+  /// The camera was taken away (a call, FaceTime, iPhone Mirroring, another app) or given back. An interrupted
+  /// session still counts as running and would store black photos with all-zero depth.
+  let onInterruption = EventDispatcher()
 
-  private let session = AVCaptureSession()
+  private var session = AVCaptureSession()
   private let sessionQueue = DispatchQueue(label: "org.buildnorth.pdm.lidar.session")
   private let depthQueue = DispatchQueue(label: "org.buildnorth.pdm.lidar.depth")
-  private let photoOutput = AVCapturePhotoOutput()
-  private let depthOutput = AVCaptureDepthDataOutput()
+  private var photoOutput = AVCapturePhotoOutput()
+  private var depthOutput = AVCaptureDepthDataOutput()
+  /// The photo's frame, sharp.
   private let previewLayer = AVCaptureVideoPreviewLayer()
+  /// The ultra-wide behind it, showing what lies outside the frame.
+  private let outsideLayer = AVCaptureVideoPreviewLayer()
+  /// Dims everything but the frame.
+  private let dimLayer = CAShapeLayer()
+  /// How much wider the ultra-wide sees than the frame: 0 while it isn't running.
+  private var outsideScale: CGFloat = 0
   private let motion = CMMotionManager()
   private var device: AVCaptureDevice?
   private var configured = false
   private var active = false
   private var lastDistance: CFTimeInterval = 0
-  private var latestCentre: Float?
+  /// Written on the depth queue, read on the session queue.
+  private let latestCentre = OSAllocatedUnfairLock<Float?>(initialState: nil)
+  /// The session queue's own: set from the notifications, read by capture.
+  private var interrupted = false
   private var inFlight: [Int64: PhotoCapture] = [:]
   private var rotation: AnyObject?
+  private var observers: [NSObjectProtocol] = []
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -35,12 +55,33 @@ final class LidarCameraView: ExpoView, AVCaptureDepthDataOutputDelegate {
     backgroundColor = .black
     previewLayer.session = session
     previewLayer.videoGravity = .resizeAspectFill
+    outsideLayer.videoGravity = .resizeAspect
+    outsideLayer.isHidden = true
+    // Black at half strength: Apple doesn't publish how much the Camera app dims the outside.
+    dimLayer.fillRule = .evenOdd
+    dimLayer.fillColor = UIColor.black.withAlphaComponent(0.5).cgColor
+    dimLayer.isHidden = true
+    layer.addSublayer(outsideLayer)
+    layer.addSublayer(dimLayer)
     layer.addSublayer(previewLayer)
   }
 
   override func layoutSubviews() {
     super.layoutSubviews()
-    previewLayer.frame = bounds
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    // The photo's frame: 3:4 in portrait, the screen's width, centred.
+    let height = min(bounds.height, bounds.width * 4 / 3)
+    let frame = CGRect(x: bounds.midX - height * 3 / 8, y: bounds.midY - height / 2, width: height * 3 / 4, height: height)
+    previewLayer.frame = frame
+    if outsideScale > 0 {
+      outsideLayer.frame = frame.insetBy(dx: -frame.width * (outsideScale - 1) / 2, dy: -frame.height * (outsideScale - 1) / 2)
+      let path = UIBezierPath(rect: bounds)
+      path.append(UIBezierPath(rect: frame))
+      dimLayer.frame = bounds
+      dimLayer.path = path.cgPath
+    }
+    CATransaction.commit()
   }
 
   /// False stops the session, so a sheet over capture doesn't keep the camera and the LiDAR running.
@@ -50,9 +91,16 @@ final class LidarCameraView: ExpoView, AVCaptureDepthDataOutputDelegate {
     sessionQueue.async { [weak self] in
       guard let self else { return }
       if value {
-        if !self.configured { self.configure() }
+        if !self.configured {
+          PhotoCapture.removeOldFiles()
+          self.configure()
+          // On main, where removeFromSuperview takes them off again.
+          if self.configured { DispatchQueue.main.async { self.observe() } }
+        }
         guard self.configured else { return }
         if !self.session.isRunning { self.session.startRunning() }
+        // An interruption that ended while the session was stopped may never post its end: ask the session.
+        self.setInterrupted(self.session.isInterrupted, reason: nil)
         DispatchQueue.main.async {
           if self.motion.isDeviceMotionAvailable, !self.motion.isDeviceMotionActive {
             self.motion.deviceMotionUpdateInterval = 1.0 / 30
@@ -67,10 +115,86 @@ final class LidarCameraView: ExpoView, AVCaptureDepthDataOutputDelegate {
     }
   }
 
+  /// The view may get its window after the session is configured: observe then, or never.
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    guard window != nil else { return }
+    // `configured` is the session queue's.
+    sessionQueue.async { [weak self] in
+      guard let self, self.configured else { return }
+      DispatchQueue.main.async { self.observe() }
+    }
+  }
+
   override func removeFromSuperview() {
-    sessionQueue.async { [session] in if session.isRunning { session.stopRunning() } }
+    // On the session queue: the multi-camera set-up replaces the session there.
+    sessionQueue.async { [self] in
+      if session.isRunning { session.stopRunning() }
+      failInFlight("The camera closed before the photo was taken.")
+    }
+    observers.forEach(NotificationCenter.default.removeObserver)
+    observers = []
     motion.stopDeviceMotionUpdates()
     super.removeFromSuperview()
+  }
+
+  // MARK: Interruptions
+
+  /// Watches the configured session: an interruption disables the shutter until it ends, and a media-services reset
+  /// starts the session again.
+  private func observe() {
+    guard window != nil, observers.isEmpty else { return }
+    let centre = NotificationCenter.default
+    observers = [
+      centre.addObserver(forName: AVCaptureSession.wasInterruptedNotification, object: session, queue: nil) { [weak self] note in
+        let raw = note.userInfo?[AVCaptureSessionInterruptionReasonKey] as? Int
+        let reason = raw.flatMap(AVCaptureSession.InterruptionReason.init(rawValue:))
+        self?.sessionQueue.async { self?.setInterrupted(true, reason: reason) }
+      },
+      centre.addObserver(forName: AVCaptureSession.interruptionEndedNotification, object: session, queue: nil) { [weak self] _ in
+        self?.sessionQueue.async {
+          guard let self else { return }
+          self.setInterrupted(false, reason: nil)
+          if self.active, !self.session.isRunning { self.session.startRunning() }
+        }
+      },
+      // Apple's samples restart only after a media-services reset. Any other runtime error leaves the session
+      // stopped, so the screen hears it as a failed mount and falls back to the plain camera (README 13).
+      centre.addObserver(forName: AVCaptureSession.runtimeErrorNotification, object: session, queue: nil) { [weak self] note in
+        let error = note.userInfo?[AVCaptureSessionErrorKey] as? AVError
+        self?.sessionQueue.async {
+          guard let self else { return }
+          self.failInFlight("The camera stopped. Try again.")
+          if error?.code == .mediaServicesWereReset {
+            if self.active { self.session.startRunning() }
+          } else {
+            if self.session.isRunning { self.session.stopRunning() }
+            DispatchQueue.main.async { self.onMountError(["message": "The camera stopped."]) }
+          }
+        }
+      },
+    ]
+  }
+
+  private func setInterrupted(_ value: Bool, reason: AVCaptureSession.InterruptionReason?) {
+    guard value != interrupted else { return }
+    interrupted = value
+    if value { failInFlight("The camera was interrupted.") }
+    let word: String
+    switch reason {
+    case .videoDeviceInUseByAnotherClient: word = "in_use"
+    case .videoDeviceNotAvailableWithMultipleForegroundApps: word = "multitasking"
+    case .videoDeviceNotAvailableDueToSystemPressure: word = "system_pressure"
+    case .videoDeviceNotAvailableInBackground: word = "background"
+    default: word = "other"
+    }
+    DispatchQueue.main.async { self.onInterruption(["interrupted": value, "reason": value ? word : NSNull()]) }
+  }
+
+  /// Rejects every photo still waiting for its delegate, so no promise is left pending.
+  private func failInFlight(_ message: String) {
+    inFlight.values.forEach { $0.fail(message) }
+    inFlight = [:]
   }
 
   // MARK: Configuration
@@ -82,12 +206,20 @@ final class LidarCameraView: ExpoView, AVCaptureDepthDataOutputDelegate {
       return
     }
     let formats = device.formats.filter { !$0.supportedDepthDataFormats.isEmpty && !$0.isVideoBinned }
-    guard let format = formats.max(by: { Self.photoArea($0) < Self.photoArea($1) }),
+    // Several formats share the largest photo; of those, the largest preview (1920x1440 rather than 640x480 on an
+    // iPhone 13 Pro), or the screen shows a low-resolution feed scaled up.
+    guard let format = formats.max(by: { (Self.photoArea($0), Self.videoArea($0)) < (Self.photoArea($1), Self.videoArea($1)) }),
       let depthFormat = format.supportedDepthDataFormats
         .filter({ Self.isDepth($0.formatDescription.mediaSubType.rawValue) })
         .max(by: { $0.formatDescription.dimensions.width < $1.formatDescription.dimensions.width })
     else {
       DispatchQueue.main.async { self.onMountError(["message": "The LiDAR camera has no depth format."]) }
+      return
+    }
+
+    if configureWithOutside(device: device) {
+      self.device = device
+      configured = true
       return
     }
 
@@ -111,6 +243,13 @@ final class LidarCameraView: ExpoView, AVCaptureDepthDataOutputDelegate {
       return
     }
 
+    setUpOutputs(format: format, device: device)
+    self.device = device
+    configured = true
+  }
+
+  /// The photo and depth outputs' settings, and the rotation for the photo's EXIF orientation.
+  private func setUpOutputs(format: AVCaptureDevice.Format, device: AVCaptureDevice) {
     photoOutput.isDepthDataDeliveryEnabled = photoOutput.isDepthDataDeliverySupported
     if let largest = format.supportedMaxPhotoDimensions.max(by: { $0.width * $0.height < $1.width * $1.height }) {
       photoOutput.maxPhotoDimensions = largest
@@ -124,12 +263,130 @@ final class LidarCameraView: ExpoView, AVCaptureDepthDataOutputDelegate {
     if #available(iOS 17.0, *) {
       rotation = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
     }
-    self.device = device
-    configured = true
+  }
+
+  // MARK: Outside the frame
+
+  /// The LiDAR camera and the ultra-wide in one multi-camera session. False, with nothing left configured, where the
+  /// phone can't run them together, where the photo would lose its depth, or where the hardware is over budget.
+  private func configureWithOutside(device lidar: AVCaptureDevice) -> Bool {
+    guard AVCaptureMultiCamSession.isMultiCamSupported,
+      let wide = AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back),
+      AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInLiDARDepthCamera, .builtInUltraWideCamera], mediaType: .video, position: .back)
+        .supportedMultiCamDeviceSets.contains(where: { $0.contains(lidar) && $0.contains(wide) })
+    else { return false }
+
+    let formats = lidar.formats.filter { $0.isMultiCamSupported && !$0.supportedDepthDataFormats.isEmpty && !$0.isVideoBinned }
+    guard let format = formats.max(by: { (Self.photoArea($0), Self.videoArea($0)) < (Self.photoArea($1), Self.videoArea($1)) }),
+      let depthFormat = format.supportedDepthDataFormats
+        .filter({ Self.isDepth($0.formatDescription.mediaSubType.rawValue) })
+        .max(by: { $0.formatDescription.dimensions.width < $1.formatDescription.dimensions.width }),
+      // The outside is dimmed and behind the controls: the smallest 4:3 feed that still looks sharp is enough.
+      let wideFormat = wide.formats
+        .filter({ $0.isMultiCamSupported && Self.isFourByThree($0) && $0.formatDescription.dimensions.width >= 1280 })
+        .min(by: { Self.videoArea($0) < Self.videoArea($1) })
+    else { return false }
+
+    let multi = AVCaptureMultiCamSession()
+    let photo = AVCapturePhotoOutput()
+    let depth = AVCaptureDepthDataOutput()
+    multi.beginConfiguration()
+    do {
+      let lidarInput = try AVCaptureDeviceInput(device: lidar)
+      let wideInput = try AVCaptureDeviceInput(device: wide)
+      guard multi.canAddInput(lidarInput), multi.canAddInput(wideInput), multi.canAddOutput(photo), multi.canAddOutput(depth) else {
+        multi.commitConfiguration()
+        return false
+      }
+      multi.addInputWithNoConnections(lidarInput)
+      multi.addInputWithNoConnections(wideInput)
+      multi.addOutputWithNoConnections(photo)
+      multi.addOutputWithNoConnections(depth)
+
+      guard let video = lidarInput.ports(for: .video, sourceDeviceType: .builtInLiDARDepthCamera, sourceDevicePosition: .back).first,
+        let depthPort = lidarInput.ports(for: .depthData, sourceDeviceType: .builtInLiDARDepthCamera, sourceDevicePosition: .back).first,
+        let wideVideo = wideInput.ports(for: .video, sourceDeviceType: .builtInUltraWideCamera, sourceDevicePosition: .back).first
+      else {
+        multi.commitConfiguration()
+        return false
+      }
+      previewLayer.setSessionWithNoConnection(multi)
+      outsideLayer.setSessionWithNoConnection(multi)
+      let connections = [
+        AVCaptureConnection(inputPort: video, videoPreviewLayer: previewLayer),
+        AVCaptureConnection(inputPort: wideVideo, videoPreviewLayer: outsideLayer),
+        AVCaptureConnection(inputPorts: [video], output: photo),
+        AVCaptureConnection(inputPorts: [depthPort], output: depth),
+      ]
+      guard connections.allSatisfy({ multi.canAddConnection($0) }) else {
+        multi.commitConfiguration()
+        detachOutside()
+        return false
+      }
+      connections.forEach { multi.addConnection($0) }
+      // Upright in portrait, as the single session's preview is by default.
+      for preview in connections.prefix(2) {
+        if #available(iOS 17.0, *) {
+          if preview.isVideoRotationAngleSupported(90) { preview.videoRotationAngle = 90 }
+        } else if preview.isVideoOrientationSupported {
+          preview.videoOrientation = .portrait
+        }
+      }
+
+      try lidar.lockForConfiguration()
+      lidar.activeFormat = format
+      lidar.activeDepthDataFormat = depthFormat
+      lidar.unlockForConfiguration()
+      try wide.lockForConfiguration()
+      wide.activeFormat = wideFormat
+      wide.unlockForConfiguration()
+    } catch {
+      multi.commitConfiguration()
+      detachOutside()
+      return false
+    }
+    multi.commitConfiguration()
+
+    guard photo.isDepthDataDeliverySupported, multi.hardwareCost < 1, multi.systemPressureCost < 1 else {
+      NSLog("LidarCamera: no outside view (photo depth %d, hardware cost %.2f, pressure %.2f)",
+        photo.isDepthDataDeliverySupported ? 1 : 0, multi.hardwareCost, multi.systemPressureCost)
+      detachOutside()
+      return false
+    }
+
+    session = multi
+    photoOutput = photo
+    depthOutput = depth
+    setUpOutputs(format: format, device: lidar)
+    let ratio = tan(Double(wideFormat.videoFieldOfView) * .pi / 360) / tan(Double(format.videoFieldOfView) * .pi / 360)
+    NSLog("LidarCamera: outside view on, %.2fx, hardware cost %.2f", ratio, multi.hardwareCost)
+    DispatchQueue.main.async {
+      self.outsideScale = CGFloat(ratio)
+      self.outsideLayer.isHidden = false
+      self.dimLayer.isHidden = false
+      self.setNeedsLayout()
+    }
+    return true
+  }
+
+  /// Back to the single session after a failed multi-camera set-up.
+  private func detachOutside() {
+    previewLayer.session = session
+    outsideLayer.session = nil
+  }
+
+  private static func isFourByThree(_ f: AVCaptureDevice.Format) -> Bool {
+    let d = f.formatDescription.dimensions
+    return d.width * 3 == d.height * 4
   }
 
   private static func photoArea(_ f: AVCaptureDevice.Format) -> Int32 {
     f.supportedMaxPhotoDimensions.map { $0.width * $0.height }.max() ?? 0
+  }
+
+  private static func videoArea(_ f: AVCaptureDevice.Format) -> Int32 {
+    let d = f.formatDescription.dimensions
+    return d.width * d.height
   }
 
   private static func isDepth(_ subtype: FourCharCode) -> Bool {
@@ -149,7 +406,7 @@ final class LidarCameraView: ExpoView, AVCaptureDepthDataOutputDelegate {
     guard now - lastDistance >= 0.2 else { return }
     lastDistance = now
     let centre = DepthGrid(depthData).centreMedian()
-    latestCentre = centre
+    latestCentre.withLock { $0 = centre }
     DispatchQueue.main.async {
       self.onDistance(["distance_m": centre.map { Double($0) } as Any])
     }
@@ -163,6 +420,10 @@ final class LidarCameraView: ExpoView, AVCaptureDepthDataOutputDelegate {
       guard let self else { return }
       guard self.configured, self.session.isRunning else {
         promise.reject("ERR_LIDAR_NOT_READY", "The camera isn't ready.")
+        return
+      }
+      guard !self.interrupted else {
+        promise.reject("ERR_LIDAR_INTERRUPTED", "The camera is in use elsewhere.")
         return
       }
       let codec: [String: Any] = self.photoOutput.availablePhotoCodecTypes.contains(.jpeg) ? [AVVideoCodecKey: AVVideoCodecType.jpeg] : [:]
@@ -183,7 +444,7 @@ final class LidarCameraView: ExpoView, AVCaptureDepthDataOutputDelegate {
         if connection.isVideoRotationAngleSupported(angle) { connection.videoRotationAngle = angle }
       }
       let gravity = self.motion.deviceMotion.flatMap { DepthMeta.cameraGravity($0.gravity) }
-      let delegate = PhotoCapture(gravity: gravity, centre: self.latestCentre, promise: promise) { [weak self] id in
+      let delegate = PhotoCapture(gravity: gravity, centre: self.latestCentre.withLock { $0 }, promise: promise) { [weak self] id in
         self?.sessionQueue.async { self?.inFlight[id] = nil }
       }
       self.inFlight[settings.uniqueID] = delegate
@@ -198,6 +459,8 @@ private final class PhotoCapture: NSObject, AVCapturePhotoCaptureDelegate {
   private let centre: Float?
   private let promise: Promise
   private let done: (Int64) -> Void
+  /// Delegate callbacks and the session queue's fail() can race: the promise settles once.
+  private let settled = OSAllocatedUnfairLock(initialState: false)
 
   init(gravity: [Double]?, centre: Float?, promise: Promise, done: @escaping (Int64) -> Void) {
     self.gravity = gravity
@@ -206,14 +469,42 @@ private final class PhotoCapture: NSObject, AVCapturePhotoCaptureDelegate {
     self.done = done
   }
 
+  private func settle() -> Bool {
+    settled.withLock { done in
+      defer { done = true }
+      return !done
+    }
+  }
+
+  func fail(_ message: String, code: String = "ERR_LIDAR_CAPTURE") {
+    if settle() { promise.reject(code, message) }
+  }
+
+  private func reject(_ message: String) { fail(message) }
+
+  private func resolve(_ value: [String: Any]) {
+    if settle() { promise.resolve(value) }
+  }
+
+  /// The end of every capture, also one that never delivered a photo.
+  func photoOutput(_ output: AVCapturePhotoOutput, didFinishCaptureFor resolvedSettings: AVCaptureResolvedPhotoSettings, error: Error?) {
+    fail(error?.localizedDescription ?? "The photo wasn't taken.")
+    done(resolvedSettings.uniqueID)
+  }
+
   func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-    defer { done(photo.resolvedSettings.uniqueID) }
     if let error {
-      promise.reject("ERR_LIDAR_CAPTURE", error.localizedDescription)
+      reject(error.localizedDescription)
       return
     }
     guard let jpeg = photo.fileDataRepresentation() else {
-      promise.reject("ERR_LIDAR_CAPTURE", "The photo couldn't be encoded.")
+      reject("The photo couldn't be encoded.")
+      return
+    }
+    // A session that runs but has lost the camera's picture (iPhone Mirroring does this without interrupting it)
+    // still delivers a photo, all black, with all-zero depth. It is a failed shot, never a draft.
+    if Self.isBlack(jpeg) {
+      fail("The photo came out black.", code: "ERR_LIDAR_BLACK")
       return
     }
     do {
@@ -255,21 +546,65 @@ private final class PhotoCapture: NSObject, AVCapturePhotoCaptureDelegate {
           "has_distortion_table": depthData.cameraCalibrationData?.inverseLensDistortionLookupTable != nil,
           "centre_distance_m": grid.centreMedian().map { Double($0) } as Any,
         ]
-        // Depth only with absolute accuracy (architecture 6.7).
-        if absolute, let png = grid.png() {
+        // Depth only with absolute accuracy (architecture 6.7), and only with the intrinsics: the server's
+        // DepthMeta requires them and would refuse the whole meta (contracts 3, invalid_meta).
+        let meta = DepthMeta.record(depthData, gravity: gravity)
+        if grid.validFraction == 0 {
+          report["dropped"] = "no_valid_depth"
+        } else if !absolute {
+          report["dropped"] = "relative_accuracy"
+        } else if meta["intrinsics"] == nil {
+          report["dropped"] = "no_intrinsics"
+        } else if let png = grid.png() {
           let depthURL = dir.appendingPathComponent("\(id)-depth.png")
           try png.write(to: depthURL)
-          result["depth"] = ["depthUri": depthURL.absoluteString, "meta": DepthMeta.record(depthData, gravity: gravity)]
+          result["depth"] = ["depthUri": depthURL.absoluteString, "meta": meta]
         } else {
-          report["dropped"] = absolute ? "encoding" : "relative_accuracy"
+          report["dropped"] = "encoding"
         }
       } else {
         report["dropped"] = "no_depth"
       }
       result["report"] = report
-      promise.resolve(result)
+      resolve(result)
     } catch {
-      promise.reject("ERR_LIDAR_CAPTURE", error.localizedDescription)
+      reject(error.localizedDescription)
+    }
+  }
+
+  /// True when no pixel of a 32-pixel thumbnail is brighter than 4 of 255. A dark scene still has some light in it;
+  /// a photo from a camera that has lost its picture is exactly 0 everywhere.
+  static func isBlack(_ jpeg: Data) -> Bool {
+    let options: [CFString: Any] = [
+      kCGImageSourceCreateThumbnailFromImageAlways: true,
+      kCGImageSourceThumbnailMaxPixelSize: 32,
+    ]
+    guard let source = CGImageSourceCreateWithData(jpeg as CFData, nil),
+      let thumb = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+    else { return false }
+    let width = thumb.width
+    let height = thumb.height
+    var pixels = [UInt8](repeating: 0, count: width * height)
+    let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+      guard let context = CGContext(
+        data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
+        space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)
+      else { return false }
+      context.draw(thumb, in: CGRect(x: 0, y: 0, width: width, height: height))
+      return true
+    }
+    return drawn && (pixels.max() ?? 0) <= 4
+  }
+
+  /// The app copies each shot into its draft, so what is left here after ten minutes is from a capture nobody kept.
+  static func removeOldFiles() {
+    guard let dir = try? directory(),
+      let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])
+    else { return }
+    let cutoff = Date().addingTimeInterval(-600)
+    for file in files {
+      let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+      if modified < cutoff { try? FileManager.default.removeItem(at: file) }
     }
   }
 

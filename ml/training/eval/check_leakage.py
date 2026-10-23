@@ -168,10 +168,10 @@ def training_hashes(files: list[Path], cache: Path | None = None, workers: int |
 
 # --- the evaluation photos ----------------------------------------------------------------------
 
-def eval_photos(manifest: Path, photos: Path) -> list[tuple[str, Path]]:
-    """Each photo file the manifest names, once: (manifest path, file)."""
+def eval_photos(manifest: bytes, photos: Path) -> list[tuple[str, Path]]:
+    """Each photo file the manifest's bytes name, once: (manifest path, file)."""
     seen: dict[str, Path] = {}
-    for line in manifest.read_text().splitlines():
+    for line in manifest.decode().splitlines():
         if line.strip():
             for im in json.loads(line)["images"]:
                 seen.setdefault(im["file"], photos / im["file"])
@@ -325,7 +325,8 @@ def calibration_lines(cal: dict, hamming_max: int, cosine_min: float | None) -> 
 
 
 def run(args) -> int:
-    photos = eval_photos(args.manifest, args.photos)
+    manifest = args.manifest.read_bytes()  # hashed as read: an edit during the run can't change the recorded SHA
+    photos = eval_photos(manifest, args.photos)
     files = training_files(args.raw)
     folders = per_folder(files, args.raw)
     missing = [n for n in required_folders(args.sources) if not folders.get(n)]
@@ -374,7 +375,7 @@ def run(args) -> int:
           out_dir / "matches.jpg")
 
     REPORTS.mkdir(parents=True, exist_ok=True)
-    manifest_sha = hashlib.sha256(args.manifest.read_bytes()).hexdigest()
+    manifest_sha = hashlib.sha256(manifest).hexdigest()
     summary = {"date": args.date, "manifest": shown(args.manifest), "manifest_sha256": manifest_sha,
                "photos": len(photos), "training_images": len(files), "training_images_by_folder": folders,
                "unreadable_training_images": unreadable, "hamming_max": args.hamming,

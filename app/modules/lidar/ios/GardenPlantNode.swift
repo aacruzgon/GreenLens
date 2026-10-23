@@ -4,6 +4,10 @@ import simd
 
 // One plant in the 3D garden: its entities (shared unit meshes, scaled), its label, and the tween that moves it to
 // the values JavaScript sent for the chosen date. A date change only moves the targets; nothing is rebuilt.
+//
+// Instanced (iOS 26, garden-3d 1 and 3): the stem, crown, ring, pot and soil are placeholders with no model, and
+// GardenInstances draws every plant's part of one mesh and material in a single draw. A ring changing colour has its
+// own model for the length of the tween (instances share their material), then goes back to its batch.
 
 @MainActor
 final class PlantNode {
@@ -17,11 +21,22 @@ final class PlantNode {
   private(set) var plant: GardenPlant
   private let body = Entity()
   private let stem: ModelEntity
-  private let canopy: ModelEntity
-  private let top: ModelEntity
+  /// The canopy and top blobs as one mesh (GardenMeshes.crown).
+  private let crown: ModelEntity
   private let ring: ModelEntity
   private let cover: ModelEntity
+  private let pot: Entity?
+  private let soil: Entity?
   private let inPot: Bool
+  private let instanced: Bool
+  private let materials: GardenMaterials
+  /// The crown's material and its batch: the plant's green, or the dead canopy's.
+  private var crownMaterial: Material
+  private var crownKey: String
+  /// False while the ring tweens its colour on its own model.
+  private var ringInBatch = false
+  /// A part joined or left a batch since GardenView last rebuilt the instances.
+  var instancesChanged = true
   private let potRadius: Float
   /// Where the plant stands: the bed's soil, the pot's soil or the plinth.
   let baseY: Float
@@ -45,18 +60,29 @@ final class PlantNode {
   private var accessibilityKey = ""
   private var canopyDead = false
 
-  init(plant: GardenPlant, position: SIMD3<Float>, bedTop: Float?, materials: GardenMaterials, from previous: PlantNode?, growIn: Bool) {
+  init(
+    plant: GardenPlant, position: SIMD3<Float>, bedTop: Float?, materials: GardenMaterials, from previous: PlantNode?, growIn: Bool,
+    instanced: Bool
+  ) {
     id = plant.id
     self.plant = plant
+    self.instanced = instanced
+    self.materials = materials
+    // The ring starts on the unknown status's shared material, so an instanced one starts in that batch.
+    ringInBatch = instanced
     inPot = bedTop == nil
     root.name = Self.namePrefix + plant.id
     root.position = position
 
     let shared = GardenMeshes.self
-    stem = ModelEntity(mesh: shared.stem, materials: [materials.stem])
-    canopy = ModelEntity(mesh: shared.blob, materials: [materials.green(for: plant.name)])
-    top = ModelEntity(mesh: shared.blob, materials: [materials.green(for: plant.name)])
-    ring = ModelEntity(mesh: shared.ring, materials: [materials.ring(for: .unknown)])
+    func part(_ mesh: MeshResource, _ material: Material) -> ModelEntity {
+      instanced ? ModelEntity() : ModelEntity(mesh: mesh, materials: [material])
+    }
+    crownMaterial = materials.green(for: plant.name)
+    crownKey = materials.greenKey(for: plant.name)
+    stem = part(shared.stem, materials.stem)
+    crown = part(shared.crown, crownMaterial)
+    ring = part(shared.ring, materials.ring(for: .unknown))
     cover = ModelEntity(mesh: shared.dome, materials: [materials.cover])
     ringMaterial = materials.ring(for: .unknown)
     ringColour = materials.palette.status(.unknown).rgba
@@ -65,33 +91,32 @@ final class PlantNode {
     if let bedTop {
       potRadius = 0
       baseY = bedTop + 0.004
+      pot = nil
+      soil = nil
     } else {
       // A plant with no bed stands in a terracotta pot (garden-3d; design.md, the showroom).
       potRadius = max(plant.shownRadius * 0.85, 0.12)
       let potHeight: Float = 0.24
-      let pot = ModelEntity(mesh: shared.pot, materials: [materials.pot])
+      let pot = part(shared.pot, materials.pot)
       pot.scale = SIMD3(potRadius, potHeight, potRadius)
-      let soil = ModelEntity(mesh: shared.disc, materials: [materials.soil])
+      let soil = part(shared.disc, materials.soil)
       soil.position = SIMD3(0, potHeight * 0.94, 0)
       soil.scale = SIMD3(potRadius * 0.95, 1, potRadius * 0.95)
       root.addChild(pot)
       root.addChild(soil)
-      GardenMaterials.castShadow(pot)
+      if !instanced { GardenMaterials.castShadow(pot) }
+      self.pot = pot
+      self.soil = soil
       baseY = potHeight * 0.94
     }
 
     // The body is in unit space: scaled to (radius, height, radius) by the tween.
     stem.scale = SIMD3(0.09, 0.5, 0.09)
-    canopy.position = SIMD3(0, 0.58, 0)
-    canopy.scale = SIMD3(0.95, 0.42, 0.95)
-    top.position = SIMD3(0.18, 0.84, -0.1)
-    top.scale = SIMD3(0.55, 0.2, 0.55)
     body.addChild(stem)
-    body.addChild(canopy)
-    body.addChild(top)
+    body.addChild(crown)
     body.position = SIMD3(0, baseY, 0)
     root.addChild(body)
-    for e in [stem, canopy, top] { GardenMaterials.castShadow(e) }
+    if !instanced { for e in [stem, crown] { GardenMaterials.castShadow(e) } }
 
     ring.position = SIMD3(0, (inPot ? 0 : baseY) + 0.006, 0)
     root.addChild(ring)
@@ -140,9 +165,9 @@ final class PlantNode {
     let dead = plant.status == .dead
     if dead != canopyDead {
       canopyDead = dead
-      let m: Material = dead ? materials.deadCanopy : materials.green(for: plant.name)
-      canopy.model?.materials = [m]
-      top.model?.materials = [m]
+      crownMaterial = dead ? materials.deadCanopy : materials.green(for: plant.name)
+      crownKey = dead ? "dead" : materials.greenKey(for: plant.name)
+      if instanced { instancesChanged = true } else { crown.model?.materials = [crownMaterial] }
     }
 
     let text: String
@@ -162,16 +187,9 @@ final class PlantNode {
     let spoken = plant.spokenText
     if spoken != accessibilityKey {
       accessibilityKey = spoken
-      if #available(iOS 17.0, *) {
-        var a = AccessibilityComponent()
-        a.isAccessibilityElement = true
-        a.label = LocalizedStringResource(stringLiteral: spoken)
-        root.components.set(a)
-        label.isAccessibilityElement = false
-      } else {
-        label.isAccessibilityElement = true
-        label.accessibilityLabel = spoken
-      }
+      // The UIKit label is the VoiceOver element on every iOS: an AccessibilityComponent lives in the ARView, which
+      // is out of the window while the garden is frozen. Labels shrunk to a dot keep their full words.
+      label.accessibilityLabel = spoken
     }
 
     updateCollision()
@@ -194,12 +212,25 @@ final class PlantNode {
       // Back on the shared material once the colour has arrived.
       if appliedRingKey != ringMaterialKey {
         appliedRingKey = ringMaterialKey
-        ring.model?.materials = [ringMaterial]
+        if instanced {
+          ring.model = nil
+          ringInBatch = true
+          instancesChanged = true
+        } else {
+          ring.model?.materials = [ringMaterial]
+        }
       }
     } else {
       ringColour += (targetRingColour - ringColour) * k
       appliedRingKey = ""
-      ring.model?.materials = [UnlitMaterial(color: UIColor(rgba: ringColour))]
+      let tween = UnlitMaterial(color: UIColor(rgba: ringColour))
+      if instanced, ring.model == nil {
+        ring.model = ModelComponent(mesh: GardenMeshes.ring, materials: [tween])
+        ringInBatch = false
+        instancesChanged = true
+      } else {
+        ring.model?.materials = [tween]
+      }
       moving = true
     }
     applyTransforms()
@@ -218,6 +249,33 @@ final class PlantNode {
     cover.isEnabled = coverAmount > 0.01
     let coverRadius = radius * 1.1 + 0.04
     cover.scale = SIMD3(coverRadius, height * 1.08 + 0.04, coverRadius) * max(coverAmount, 0.001)
+  }
+
+  /// One instance of a shared mesh: `key` names its batch (the part and its material).
+  struct InstancePart {
+    let key: String
+    let mesh: MeshResource
+    let material: Material
+    let transform: float4x4
+    let castsShadow: Bool
+  }
+
+  /// The instanced parts with their transforms in `space`, for GardenInstances. Empty when not instanced.
+  func instanceParts(in space: Entity) -> [InstancePart] {
+    guard instanced else { return [] }
+    let shared = GardenMeshes.self
+    var parts = [
+      InstancePart(key: "stem", mesh: shared.stem, material: materials.stem, transform: stem.transformMatrix(relativeTo: space), castsShadow: true),
+      InstancePart(key: "crown:" + crownKey, mesh: shared.crown, material: crownMaterial, transform: crown.transformMatrix(relativeTo: space), castsShadow: true),
+    ]
+    if ringInBatch {
+      parts.append(InstancePart(key: "ring:" + ringMaterialKey, mesh: shared.ring, material: ringMaterial, transform: ring.transformMatrix(relativeTo: space), castsShadow: false))
+    }
+    if let pot, let soil {
+      parts.append(InstancePart(key: "pot", mesh: shared.pot, material: materials.pot, transform: pot.transformMatrix(relativeTo: space), castsShadow: true))
+      parts.append(InstancePart(key: "soil", mesh: shared.disc, material: materials.soil, transform: soil.transformMatrix(relativeTo: space), castsShadow: false))
+    }
+    return parts
   }
 
   private func updateCollision() {
@@ -263,6 +321,9 @@ final class GardenMaterials {
     infoRing = UnlitMaterial(color: palette.info)
     mutedRing = UnlitMaterial(color: palette.border)
   }
+
+  /// The batch key of a plant's green: plants of one green share a material.
+  func greenKey(for name: String) -> String { "green:\(palette.green(for: name).rgba)" }
 
   func green(for name: String) -> SimpleMaterial {
     let colour = palette.green(for: name)

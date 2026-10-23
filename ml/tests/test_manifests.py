@@ -122,5 +122,6 @@ def test_a_head_file_is_compared_with_its_labels_without_a_bioclip_entry(tmp_pat
         (tmp_path / name).write_text(entry)
     (tmp_path / "sources.toml").write_text(f'[[file]]\nsha256 = "{sha}"\n')
     (tmp_path / "NOTICES.md").write_text("## disease_head_h1\n")
-    problems, _ = check.check(tmp_path, tmp_path / "files")
+    problems, notes = check.check(tmp_path, tmp_path / "files")
     assert any("the file's labels differ" in p for p in problems), problems
+    assert any("features aren't checked" in n for n in notes), notes

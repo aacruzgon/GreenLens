@@ -5,10 +5,10 @@ import { requireNativeViewManager, requireOptionalNativeModule } from "expo-modu
 import type { ComponentType, Ref } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
 
-/** `DepthMeta` (contracts 3), as the module writes it. */
+/** `DepthMeta` (contracts 3), as the module writes it. A shot without intrinsics carries no depth. */
 export interface DepthMeta {
   source: "lidar";
-  intrinsics?: { fx: number; fy: number; cx: number; cy: number; ref_width: number; ref_height: number };
+  intrinsics: { fx: number; fy: number; cx: number; cy: number; ref_width: number; ref_height: number };
   distortion?: { center: [number, number]; inverse_lookup: number[] };
   gravity?: [number, number, number];
   device_model: string;
@@ -32,7 +32,7 @@ export interface CaptureReport {
   centre_distance_m: number | null;
   gravity: [number, number, number] | null;
   /** Why the shot has no depth part. */
-  dropped?: "no_depth" | "relative_accuracy" | "encoding";
+  dropped?: "no_depth" | "no_valid_depth" | "relative_accuracy" | "no_intrinsics" | "encoding";
 }
 
 export interface LidarShot {
@@ -53,7 +53,11 @@ export interface LidarCameraViewProps {
   onDistance?: (e: { nativeEvent: { distance_m: number | null } }) => void;
   onReady?: () => void;
   onMountError?: (e: { nativeEvent: { message: string } }) => void;
+  /** The camera was taken away (a call, another app, iPhone Mirroring) or given back. The shutter can't work meanwhile. */
+  onInterruption?: (e: { nativeEvent: { interrupted: boolean; reason: CameraInterruption | null } }) => void;
 }
+
+export type CameraInterruption = "in_use" | "multitasking" | "system_pressure" | "background" | "other";
 
 interface LidarNative {
   getCapabilities(): { depth: boolean; mapping: boolean };

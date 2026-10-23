@@ -1,6 +1,6 @@
 # PDM 3D Garden: Rendering Notes
 
-> **Status:** Draft v0.3, 2026-10-18. v0.3: the app is iPhone only, so the 3D garden moves to RealityKit on Metal, as a native view in the LiDAR module, and react-three-fiber on expo-gl (OpenGL ES, deprecated since iOS 12) becomes the fallback; adds the RealityKit APIs with their iOS versions and a new recommendation. v0.2: folds in the PR #43 audit: fiber's optional peers, and status shapes and words as in design §6. v0.1: how to render the stylised 3D garden on iOS, Android and web in Expo SDK 57 (react-three-fiber on expo-gl), the on-device ARKit mesh view, labels, interaction and accessibility, with one open expo-gl bug to patch.
+> **Status:** Draft v0.3.2, 2026-10-23. v0.3.2: after the second run on the iPhone, labels rank the plants that need attention before the nearest, a dot that would still overlap is hidden (never with VoiceOver on), a dot taps as 44 pt, the plants' shared parts draw through `MeshInstancesComponent` on iOS 26, and the view freezes through the turntable's 3 s wait (sections 1 and 3). v0.3.1: after the first run on an iPhone, labels that would overlap shrink to their status dot, and the UIKit labels, not `AccessibilityComponent`s, are VoiceOver's elements, since an idle garden takes the `ARView` out of the window (section 1). v0.3: the app is iPhone only, so the 3D garden moves to RealityKit on Metal, as a native view in the LiDAR module, and react-three-fiber on expo-gl (OpenGL ES, deprecated since iOS 12) becomes the fallback; adds the RealityKit APIs with their iOS versions and a new recommendation. v0.2: folds in the PR #43 audit: fiber's optional peers, and status shapes and words as in design §6. v0.1: how to render the stylised 3D garden on iOS, Android and web in Expo SDK 57 (react-three-fiber on expo-gl), the on-device ARKit mesh view, labels, interaction and accessibility, with one open expo-gl bug to patch.
 
 This note covers how the app can draw the 3D garden view and the optional on-device LiDAR mesh view. It is a companion to [`design.md`](design.md) (same folder), [frontend README](../frontend/README.md) §13 and [architecture 6.8](../architecture/README.md#68-garden-map-lidar). The server holds only bed outlines, pin positions and canopy radii, so the stylised scene is built from that data on the phone. The ARKit mesh never leaves the phone.
 
@@ -54,7 +54,7 @@ The costs:
 | `ARView.entity(at:)` | 13.0 | The entity under a tap |
 | `ARView.project(_:)` | 13.0 | A plant's label position on screen |
 | `SceneEvents.Update` | 13.0 | A per-frame callback to move the labels and run the scrubber's tween |
-| `AccessibilityComponent` | 17.0 | A VoiceOver label per plant entity |
+| `AccessibilityComponent` | 17.0 | Not used: the UIKit labels are the VoiceOver elements, since the `ARView` leaves the window while idle |
 | `RealityView`, `realityViewCameraControls(_:)` | 18.0 | The SwiftUI alternative, with a built-in orbit control |
 | `ViewAttachmentComponent` | visionOS only | Not available on iPhone, so labels are UIKit views (below) |
 
@@ -69,9 +69,9 @@ The costs:
 
 ### Labels, selection and accessibility on Metal
 
-- **Labels are UIKit views** over the `ARView`: a capsule with the status shape, the plant name and, in Growth, the height. On each `SceneEvents.Update`, place each one at `project(_:)` of a point above its plant, and hide it when that returns `nil` or the plant is behind the camera. They get SF Pro, Dynamic Type and VoiceOver as ordinary views. The selected label is outlined, not filled: nothing tinted sits on the 3D view (design §2).
+- **Labels are UIKit views** over the `ARView`: a capsule with the status shape, the plant name and, in Growth, the height. On each `SceneEvents.Update`, place each one at `project(_:)` of a point above its plant, and hide it when that returns `nil` or the plant is behind the camera. They get SF Pro, Dynamic Type and VoiceOver as ordinary views. The selected label is outlined, not filled: nothing tinted sits on the 3D view (design §2). They are placed the selected plant's first, then the plants that need attention (sick, then watch), then from the nearest; a label that would overlap one already placed shrinks to its status dot, and a dot that would still overlap is hidden, its plant's ring still showing the status. With VoiceOver on, nothing is hidden, since each label is a plant's element. A dot is drawn small but taps as 44 pt. (✓ ran on an iPhone 13 Pro Max: 40 full labels piled up, two overlapped at 6 plants, and the first fix left dots over names and the sick plants as dots.)
 - **Tap-to-select** uses `entity(at:)`. Give each plant an invisible `CollisionComponent` shape with a radius of at least 0.25 m, so the target is about 44 pt at the default zoom.
-- **Accessibility:** each plant entity gets an `AccessibilityComponent` label in words ("Tomato 1, sick, 62 cm tall"). The plant list in section 6 stays the screen reader's main view of the garden.
+- **Accessibility:** each plant's UIKit label is its VoiceOver element, with the button trait and its words ("Tomato 1, sick, 62 cm tall"), also when shrunk to a dot; double tap selects the plant. Not an `AccessibilityComponent`: that lives in the `ARView`, which is out of the window while an idle garden shows its snapshot. The plant list in section 6 stays the screen reader's main view of the garden.
 - **Reduce motion:** ✓ `UIAccessibility.isReduceMotionEnabled` (iOS 8). When it is on, skip the grow-in and the turntable, and jump the scrubber with no tween.
 - **One AR session:** the garden's `ARView` is created with `.nonAR` and `automaticallyConfigureSession: false`, so it should run no `ARSession`. The mapping view stays the only camera owner. *unverified: confirm on the device that a non-AR `ARView` starts no session.*
 
@@ -121,7 +121,7 @@ React 19.2.3 sits inside fiber's `>=19 <19.4`. ✓ (bundledNativeModules, npm).
 
 ## 3. Performance budget
 
-On Metal, the same scene limits apply: about 10 beds and 40 plants, under 50,000 triangles, flat materials, one light, and no frames drawn while idle. With `MeshInstancesComponent`, each plant shape is one draw. Measure on the device with Xcode's GPU tools. The bullets below are written for three on expo-gl.
+On Metal, the same scene limits apply: about 10 beds and 40 plants, under 50,000 triangles, flat materials, one light, and no frames drawn while idle. With `MeshInstancesComponent`, each plant shape is one draw: the app batches each shared mesh by material (the stems, the pots, the pots' soil, a crown per green and the dead canopy, a ring per status), so 40 plants come to about a dozen draws instead of 160 to 240. Instances share their entity's material (✓ Apple's `LowLevelInstanceData` has transforms only; a per-instance colour needs a `CustomMaterial` shader), so a ring that is changing colour draws on its own until the tween ends. Before iOS 26 each part is its own entity. The view also freezes through the turntable's 3 s wait and wakes on a timer when the turn starts (✓ measured on the iPhone: 280 ms/s of main thread while drawing). Measure on the device with Xcode's GPU tools. The bullets below are written for three on expo-gl.
 
 All figures are guidance. *unverified:* none was measured on a device for this app; measure on the iPhone 17 Pro Max in the first build day.
 
@@ -194,7 +194,7 @@ This section is written for the fallback (section 2). On Metal, see section 1.
 
 ## 6. Reduced motion and accessibility
 
-The rules apply on both paths. On Metal the reduce-motion check is `UIAccessibility.isReduceMotionEnabled` and the per-plant labels are `AccessibilityComponent`s (section 1); the plant list is a React Native view either way.
+The rules apply on both paths. On Metal the reduce-motion check is `UIAccessibility.isReduceMotionEnabled` and the per-plant labels are the UIKit labels (section 1); the plant list is a React Native view either way.
 
 ### Reduce motion
 
@@ -224,7 +224,7 @@ Draw the 3D garden with **RealityKit on Metal, as a native `GardenView` in `app/
    - then 10 beds and 40 plants, with the frame time measured in Xcode;
    - confirm that the non-AR view starts no AR session while the mapping view is closed.
 4. **LiDAR mesh view.** A `LidarMapView` in the same module that owns the mapping `ARView`, started with the `.showSceneUnderstanding` debug option; own-geometry rendering from `ARMeshAnchor` later if wanted (section 4). A free personal team should be enough to install it, *unverified*.
-5. **Labels and list.** UIKit labels placed from `project(_:)` each frame; an `AccessibilityComponent` per plant; the plant list shown first for screen-reader users; reduce motion removes the grow-in and the turntable.
+5. **Labels and list.** UIKit labels placed from `project(_:)` each frame, shrunk to a status dot where they would overlap, and VoiceOver's element per plant; the plant list shown first for screen-reader users; reduce motion removes the grow-in and the turntable.
 6. **Fallback.** If the native view slips, use fiber on expo-gl (section 2) with the #51543 workaround applied. It runs in Expo Go and needs no Swift.
 
 Biggest risk: the Swift work lands on whoever builds the LiDAR module, so the garden and the mapping compete for the same person. Start the garden spike on day one, beside the LiDAR day-1 check (architecture §10), and agree the `GardenView` props first so the screen can be built against the 2D map meanwhile. A second risk is that nothing here has run on the device yet.

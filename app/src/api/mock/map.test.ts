@@ -44,4 +44,22 @@ describe("PUT /gardens/{id}/map (contracts 9)", () => {
     expect(res.json.error.code).toBe("invalid_state");
     expect(res.json.error.details.current_map_version).toBe(3);
   });
+
+  it("lists every pin of a plant that isn't this garden's, and creates nothing", async () => {
+    const before = (await call("GET", `/gardens/${IDS.garden}/map`)).json.map;
+    const plants = mockStore.plants.size;
+    const res = await call("PUT", `/gardens/${IDS.garden}/map`, {
+      base_version: before.version,
+      beds: [],
+      pins: [
+        { plant_id: "plt_gone1", x_m: 0, y_m: 0 },
+        { new_plant: { name: "Chard" }, x_m: 1, y_m: 1 },
+        { plant_id: "plt_gone2", x_m: 1, y_m: 0 },
+      ],
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.error.code).toBe("invalid_request");
+    expect(res.json.error.details).toEqual({ field: "pins", problem: "unknown_plant", plant_ids: ["plt_gone1", "plt_gone2"] });
+    expect(mockStore.plants.size).toBe(plants);
+  });
 });
