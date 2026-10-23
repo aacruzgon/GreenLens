@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
+    "@bacons/apple-targets": "^5.0.0",
     "@clerk/expo": "^4.13.0",
     "@date-fns/tz": "^1.5.0",
     "@expo-google-fonts/urbanist": "^0.4.2",

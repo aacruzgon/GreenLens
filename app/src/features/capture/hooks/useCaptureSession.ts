@@ -11,6 +11,7 @@ import {
   canAnalyse,
   coverage,
   createDraft,
+  fileUris,
   hasStored,
   modeMark,
   pendingWork,
@@ -24,6 +25,7 @@ import {
 import { MODES, NEEDED, modeOf, type CaptureKind } from "../model/shotPlan";
 import type { ShotFile, Slot, SlotEvent } from "../model/slot";
 import { useDraftStore } from "./draftStore";
+import { shotUpload } from "./shotUpload";
 import { leaveCapture } from "./leaveCapture";
 import { useScanJarTask } from "./useScanJarTask";
 
@@ -110,6 +112,8 @@ export function useCaptureSession(scanId: string) {
   }, [s, scan.error, scan.isFetchedAfterMount, scanId, known]);
 
   const current = () => useDraftStore.getState().drafts[scanId];
+  /** Deletes a shot's kept files: the photo and its depth map. */
+  const forget = (file: ShotFile) => fileUris(file).forEach((u) => files.remove(u));
   const dispatch = (slotId: string, event: SlotEvent) =>
     useDraftStore.getState().update(scanId, (d) => applySlot(d, slotId, event));
   const slotById = (slotId: string) => current()?.slots.find((x) => x.id === slotId);
@@ -122,8 +126,7 @@ export function useCaptureSession(scanId: string) {
     const { file, key } = slot;
     let reencodeNext = false;
     try {
-      const part = await files.toUploadPart(file.uri);
-      const res = await scans.uploadImage(scanId, { kind: slot.kind, file: part }, key as IdempotencyKey);
+      const res = await scans.uploadImage(scanId, await shotUpload(slot.kind, file), key as IdempotencyKey);
       attempts.current.delete(slotId);
       dispatch(slotId, { type: "stored", imageId: res.image.id, noDepth: res.depth?.stored === false });
       void haptics.success();
@@ -144,7 +147,7 @@ export function useCaptureSession(scanId: string) {
         reencodeNext = true;
       } else {
         dispatch(slotId, { type: "refused", message: outcome.message });
-        files.remove(file.uri);
+        forget(file);
         void haptics.warning();
       }
     } finally {
@@ -158,8 +161,9 @@ export function useCaptureSession(scanId: string) {
     try {
       const name = `${slot.id.replace(":", "-")}-${Date.now()}.jpg`;
       const uri = files.keep(scanId, await files.reencode(file.uri, file), name);
-      files.remove(file.uri);
-      const jpeg: ShotFile = { ...file, uri, name, type: "image/jpeg", reencoded: true };
+      forget(file);
+      // Only picked photos are re-encoded, and they have no depth.
+      const jpeg: ShotFile = { ...file, uri, name, type: "image/jpeg", reencoded: true, depth: undefined };
       // A changed body is a new action: a new key (flows 4, re-encoding), with its own retries.
       attempts.current.delete(slot.id);
       dispatch(slot.id, { type: "reencoded", file: jpeg, key: newKey() });
@@ -172,7 +176,7 @@ export function useCaptureSession(scanId: string) {
     const slot = slotById(slotId);
     if (slot?.state !== "deleting" || !slot.imageId || inFlight.current.has(slotId)) return;
     inFlight.current.add(slotId);
-    const old = slot.file?.uri;
+    const old = slot.file;
     const tries = `delete:${slotId}`;
     try {
       await scans.deleteImage(scanId, slot.imageId);
@@ -191,7 +195,7 @@ export function useCaptureSession(scanId: string) {
         attempts.current.delete(tries);
         const message = slot.next ? "Couldn't replace the photo. Try again removes it, then take a new one." : messageOf(error);
         dispatch(slotId, { type: "deleteFailed", message });
-        if (slot.next) files.remove(slot.next.file.uri);
+        if (slot.next) forget(slot.next.file);
         void haptics.warning();
         return;
       }
@@ -199,7 +203,7 @@ export function useCaptureSession(scanId: string) {
     attempts.current.delete(tries);
     inFlight.current.delete(slotId);
     dispatch(slotId, { type: "deleted" });
-    if (old) files.remove(old);
+    if (old) forget(old);
     void qc.invalidateQueries({ queryKey: qk.scan(scanId) });
   }
 
@@ -233,16 +237,19 @@ export function useCaptureSession(scanId: string) {
     if (!d) return;
     const target = shutterTarget(d, d.mode);
     if (!target) return;
-    const name = `${target.slotId.replace(":", "-")}-${Date.now()}.${EXTENSION[shot.file.mimeType]}`;
+    const base = `${target.slotId.replace(":", "-")}-${Date.now()}`;
+    const name = `${base}.${EXTENSION[shot.file.mimeType]}`;
     const uri = files.keep(scanId, shot.file.uri, name);
-    const file: ShotFile = { uri, name, type: shot.file.mimeType, picked, width: shot.file.width, height: shot.file.height };
+    const depthName = `${base}-depth.png`;
+    const depth = shot.depth ? { uri: files.keep(scanId, shot.depth.depthUri, depthName), name: depthName, meta: shot.depth.meta } : undefined;
+    const file: ShotFile = { uri, name, type: shot.file.mimeType, picked, width: shot.file.width, height: shot.file.height, ...(depth ? { depth } : {}) };
     // A retake of a rejected or failed shot replaces its photo; a stored one is deleted first and keeps it till then.
-    const old = target.replace ? undefined : d.slots.find((x) => x.id === target.slotId)?.file?.uri;
+    const old = target.replace ? undefined : d.slots.find((x) => x.id === target.slotId)?.file;
     setProblem(undefined);
     useDraftStore.getState().update(scanId, (x) => takeShot(x, x.mode, file, newKey()));
     // A new shot is a new action, with its own retries.
     attempts.current.delete(target.slotId);
-    if (old) files.remove(old);
+    if (old) forget(old);
   }
 
   function selectMode(kind: CaptureKind) {

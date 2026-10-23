@@ -10,6 +10,7 @@ import { uploadOutcome } from "../model/draft";
 import { initialOneShot, jarTaskRequest, oneShotReducer, oneShotTarget, type OneShotPurpose } from "../model/oneShot";
 import type { ShotFile } from "../model/slot";
 import { leaveCapture } from "./leaveCapture";
+import { shotUpload } from "./shotUpload";
 import { useScanJarTask } from "./useScanJarTask";
 
 function messageOf(error: unknown): string {
@@ -99,6 +100,7 @@ export function useOneShotSession(scanId: string, purpose: OneShotPurpose, data:
       picked,
       width: shot.file.width,
       height: shot.file.height,
+      ...(shot.depth ? { depth: { uri: shot.depth.depthUri, name: shot.depth.depthUri.split("/").pop() ?? "depth.png", meta: shot.depth.meta } } : {}),
     };
     setProblem(undefined);
     dispatch({ type: "take", file, key: newKey() });
@@ -108,8 +110,7 @@ export function useOneShotSession(scanId: string, purpose: OneShotPurpose, data:
     if (!target?.ok || sending.current) return;
     sending.current = true;
     try {
-      const part = await files.toUploadPart(file.uri);
-      const res = await scans.uploadImage(scanId, { kind: target.kind, file: part, questionId: target.questionId }, key as IdempotencyKey);
+      const res = await scans.uploadImage(scanId, await shotUpload(target.kind, file, target.questionId), key as IdempotencyKey);
       dispatch({ type: "stored", imageId: res.image.id });
       void haptics.success();
       void qc.invalidateQueries({ queryKey: qk.scan(scanId) });
@@ -121,7 +122,7 @@ export function useOneShotSession(scanId: string, purpose: OneShotPurpose, data:
       if (outcome.type === "reencode") {
         try {
           const uri = await files.reencode(file.uri, file);
-          const jpeg: ShotFile = { ...file, uri, name: `${file.name.replace(/\.\w+$/, "")}.jpg`, type: "image/jpeg", reencoded: true };
+          const jpeg: ShotFile = { ...file, uri, name: `${file.name.replace(/\.\w+$/, "")}.jpg`, type: "image/jpeg", reencoded: true, depth: undefined };
           // A changed body is a new action with a new key (flows 4, re-encoding).
           const next = newKey();
           dispatch({ type: "reencoded", file: jpeg, key: next });

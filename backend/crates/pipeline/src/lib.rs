@@ -98,7 +98,9 @@ pub struct PipelineDeps {
     /// [`EmbedMode::Document`](domain::ports::EmbedMode::Document): the pipeline only stores
     /// memories and never searches.
     pub embedder: Arc<dyn TextEmbedder>,
-    /// Photos and depth maps for measurement.
+    /// Photos and depth maps for measurement, and a perception job's masks. Its deletes must
+    /// not stop when a request is dropped ([storage 4], never cancel a delete): `api` passes
+    /// its delete queue's store (`blob::DeleteQueue::queued_store`).
     pub blobs: Arc<dyn BlobStore>,
     /// The measurement geometry (`vision::measure` behind [`ImageMeasurer`]).
     pub measurer: Arc<dyn ImageMeasurer>,

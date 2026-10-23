@@ -13,13 +13,18 @@ import { isApiError, openScanStream, qk, scans, useScan, type ScanStreamOptions 
 import type { ScanDetail, ScanEvent } from "@/domain/types";
 import { needsStream } from "@/domain/scan";
 import { backoffMs } from "@/lib/backoff";
-import { haptics } from "@/platform";
+import { haptics, liveActivity } from "@/platform";
 
+import { foregroundGrace } from "../model/foregroundGrace";
 import { phasesOf, tickCount } from "../model/phases";
 import { applyScanEvent, effectsOf, isReplay, reconcile, seed, stateAtRest, type ScanEffect, type ScanState } from "../model/scanState";
 
 /** No bytes for this long, three missed keepalives, is a broken stream (README 10). */
 export const IDLE_MS = 45_000;
+
+/** How long the stream stays open in the background while the scan's Live Activity runs: under the ~30 s of
+ * background time iOS gives the app (modules/live-activity). */
+export const BACKGROUND_GRACE_MS = 25_000;
 
 /** The states of flows 17. */
 export type StreamStatus = "idle" | "connecting" | "streaming" | "refetching" | "waiting" | "paused" | "resting" | "gone";
@@ -342,13 +347,17 @@ export function useScanEvents(scanId: string): ScanEventsResult {
   useEffect(() => () => controller.dispose(), [controller]);
 
   // Closed in the background, reopened on return from the last applied seq (README 10). `inactive` (Control
-  // Center, Notification Center, a call's banner) leaves the stream open.
+  // Center, Notification Center, a call's banner) leaves the stream open. While the scan's Live Activity runs it
+  // closes BACKGROUND_GRACE_MS later instead, inside the background time the activity's module asks iOS for, so
+  // the Lock Screen follows the scan for that long (roadmap F5 item 6).
+  // A return after the grace reconnects even when iOS suspended JavaScript before the timer fired (model/foregroundGrace).
   useEffect(() => {
-    const sub = AppState.addEventListener("change", (next) => {
-      if (next === "background") controller.setForeground(false);
-      else if (next === "active") controller.setForeground(true);
-    });
-    return () => sub.remove();
+    const grace = foregroundGrace(controller, { graceMs: BACKGROUND_GRACE_MS, liveActivityRunning: () => liveActivity.isRunning() });
+    const sub = AppState.addEventListener("change", grace.change);
+    return () => {
+      grace.dispose();
+      sub.remove();
+    };
   }, [controller]);
 
   // Focused, on open and on return (a question photo, a soil check): the record is fetched again, which seeds a

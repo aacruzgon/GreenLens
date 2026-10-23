@@ -21,7 +21,10 @@ use serde::Deserialize;
 use serde_json::json;
 use tokio::{sync::Semaphore, task::JoinSet};
 
-use super::record::{Discard, adapter_with, ctx, stored};
+use super::record::{
+    Discard, FALLBACK_MAX_PIXELS, Recording, adapter_with, ctx, hosted_adapter, stored,
+};
+use crate::vlm::{VlmAdapter, backend::VlmBackend};
 
 /// One line of `VLM_BENCH_CASES`: the payload a `vlm` job would carry, and the photo file of
 /// each of its image ids.
@@ -103,6 +106,55 @@ fn load(photos: &BTreeMap<String, String>, payload: &mut VlmPayload) -> Vec<Load
     loaded
 }
 
+/// Runs one case through `analyse` and returns whether it finished and its output line.
+async fn run_case<B: VlmBackend>(
+    a: VlmAdapter<Recording<B>>,
+    case: Case,
+    max_pixels: u32,
+    concurrency: usize,
+) -> (bool, serde_json::Value) {
+    let mut payload = case.payload;
+    route(&mut payload);
+    let images = load(&case.photos, &mut payload);
+    let job = Instant::now();
+    let result = a.analyse(ctx(), &payload, &images, Arc::new(Discard)).await;
+    let job_ms = job.elapsed().as_millis();
+    let calls: Vec<serde_json::Value> = a
+        .backend
+        .log
+        .lock()
+        .unwrap()
+        .drain(..)
+        .map(|c| {
+            let (finish, chars, error) = match c.outcome {
+                Ok((stop, chars)) => (Some(format!("{stop:?}")), Some(chars), None),
+                Err(e) => (None, None, Some(e)),
+            };
+            json!({
+                "schema": c.schema, "images": c.images, "budget": c.budget, "ms": c.ms,
+                "finish": finish, "chars": chars, "error": error,
+                "input_tokens": c.tokens.map(|t| t.input),
+                "output_tokens": c.tokens.map(|t| t.output),
+                "sizes": c.sizes, "text": c.text,
+            })
+        })
+        .collect();
+    let ok = result.is_ok();
+    let line = match result {
+        Ok(r) => json!({
+            "case_id": case.id, "ok": true, "job_ms": job_ms,
+            "max_pixels": max_pixels, "concurrency": concurrency,
+            "result": r, "calls": calls,
+        }),
+        Err(e) => json!({
+            "case_id": case.id, "ok": false, "job_ms": job_ms,
+            "max_pixels": max_pixels, "concurrency": concurrency,
+            "error": e.to_string(), "calls": calls,
+        }),
+    };
+    (ok, line)
+}
+
 fn env_or<T: std::str::FromStr>(name: &str, default: T) -> T {
     std::env::var(name).ok().map_or(default, |v| {
         v.parse()
@@ -111,18 +163,25 @@ fn env_or<T: std::str::FromStr>(name: &str, default: T) -> T {
 }
 
 /// Runs every case of `VLM_BENCH_CASES` through the worker's `analyse` against a live server
-/// and writes one JSON line per case to `VLM_BENCH_OUT`: `ok`, `job_ms`, the result (or the
-/// error) and each backend call with its schema, image count, budget, time and finish.
+/// or the hosted fallback model and writes one JSON line per case to `VLM_BENCH_OUT`: `ok`,
+/// `job_ms`, the result (or the error) and each backend call with its schema, image count,
+/// budget, time, finish, tokens (hosted only), the size of each image sent and the raw answer.
 ///
 /// ```text
 /// cd backend
 /// VLM_BENCH_BASE_URL=http://127.0.0.1:8000 VLM_BENCH_CASES=cases.jsonl VLM_BENCH_OUT=out.jsonl \
 ///   VLM_BENCH_MAX_PIXELS=1003520 VLM_BENCH_CONCURRENCY=2 \
 ///   cargo test -p worker bench_cases -- --ignored --nocapture
+/// # the fallback (task P9), with the key in infra/dev/.env (gitignored):
+/// set -a; source ../infra/dev/.env; set +a
+/// VLM_BENCH_HOSTED_MODEL=claude-opus-5-5 VLM_BENCH_CASES=cases.jsonl VLM_BENCH_OUT=out.jsonl \
+///   VLM_BENCH_CONCURRENCY=4 cargo test -p worker bench_cases -- --ignored --nocapture
 /// ```
 ///
-/// - `VLM_BENCH_BASE_URL`: the server, without `/v1`; it must serve the model as `vlm`. Unset,
-///   the test returns at once.
+/// - `VLM_BENCH_BASE_URL`: the server, without `/v1`; it must serve the model as `vlm`.
+/// - `VLM_BENCH_HOSTED_MODEL`: the hosted model instead of a server, with the fallback worker's
+///   adapter (`abs_px_prepared`, 1,150,000 pixels and 1568 on the long side, the hosted
+///   budgets) and `LLM_API_KEY`. With neither set, the test returns at once.
 /// - `VLM_API_KEY`: the server's `--api-key`, if it has one.
 /// - `VLM_BENCH_MAX_PIXELS`: the adapter's `max_pixels` (default 1,003,520); the server's own
 ///   limit must be at least this, or it shrinks the images again.
@@ -138,13 +197,19 @@ fn env_or<T: std::str::FromStr>(name: &str, default: T) -> T {
     reason = "the run's summary is the output of this manual test"
 )]
 async fn bench_cases() {
-    let Ok(base_url) = std::env::var("VLM_BENCH_BASE_URL") else {
-        eprintln!("VLM_BENCH_BASE_URL is unset: nothing to run");
+    let hosted = std::env::var("VLM_BENCH_HOSTED_MODEL").ok();
+    let base_url = std::env::var("VLM_BENCH_BASE_URL").unwrap_or_default();
+    if hosted.is_none() && base_url.is_empty() {
+        eprintln!("VLM_BENCH_BASE_URL and VLM_BENCH_HOSTED_MODEL are unset: nothing to run");
         return;
-    };
+    }
     let cases_path = std::env::var("VLM_BENCH_CASES").expect("VLM_BENCH_CASES names the cases");
     let out_path = std::env::var("VLM_BENCH_OUT").expect("VLM_BENCH_OUT names the output");
-    let max_pixels: u32 = env_or("VLM_BENCH_MAX_PIXELS", 1_003_520);
+    let max_pixels: u32 = if hosted.is_some() {
+        FALLBACK_MAX_PIXELS
+    } else {
+        env_or("VLM_BENCH_MAX_PIXELS", 1_003_520)
+    };
     let concurrency: usize = env_or("VLM_BENCH_CONCURRENCY", 1);
     let cases: Vec<Case> = std::fs::read_to_string(&cases_path)
         .unwrap_or_else(|e| panic!("reading {cases_path}: {e}"))
@@ -164,44 +229,17 @@ async fn bench_cases() {
         let (base_url, cpu, slots, out) =
             (base_url.clone(), cpu.clone(), slots.clone(), out.clone());
         let id = case.id.clone();
+        let hosted = hosted.clone();
         let task = tasks.spawn(async move {
             let _slot = slots.acquire_owned().await.unwrap();
-            let a = adapter_with(&base_url, max_pixels, cpu).await;
-            let mut payload = case.payload;
-            route(&mut payload);
-            let images = load(&case.photos, &mut payload);
-            let job = Instant::now();
-            let result = a.analyse(ctx(), &payload, &images, Arc::new(Discard)).await;
-            let job_ms = job.elapsed().as_millis();
-            let calls: Vec<serde_json::Value> = a
-                .backend
-                .log
-                .lock()
-                .unwrap()
-                .drain(..)
-                .map(|c| {
-                    let (finish, chars, error) = match c.outcome {
-                        Ok((stop, chars)) => (Some(format!("{stop:?}")), Some(chars), None),
-                        Err(e) => (None, None, Some(e)),
-                    };
-                    json!({
-                        "schema": c.schema, "images": c.images, "budget": c.budget, "ms": c.ms,
-                        "finish": finish, "chars": chars, "error": error,
-                    })
-                })
-                .collect();
-            let ok = result.is_ok();
-            let line = match result {
-                Ok(r) => json!({
-                    "case_id": case.id, "ok": true, "job_ms": job_ms,
-                    "max_pixels": max_pixels, "concurrency": concurrency,
-                    "result": r, "calls": calls,
-                }),
-                Err(e) => json!({
-                    "case_id": case.id, "ok": false, "job_ms": job_ms,
-                    "max_pixels": max_pixels, "concurrency": concurrency,
-                    "error": e.to_string(), "calls": calls,
-                }),
+            let (ok, line) = match hosted {
+                Some(model) => {
+                    run_case(hosted_adapter(&model, cpu), case, max_pixels, concurrency).await
+                }
+                None => {
+                    let a = adapter_with(&base_url, max_pixels, cpu).await;
+                    run_case(a, case, max_pixels, concurrency).await
+                }
             };
             writeln!(out.lock().unwrap(), "{line}").unwrap();
             ok

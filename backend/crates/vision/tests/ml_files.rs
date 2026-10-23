@@ -184,7 +184,7 @@ fn the_thresholds_come_from_the_committed_manifests() {
         assert_eq!(c.sam.plant_min_leaves, 3, "{file}");
         assert!((c.sam.plant_grow - 0.05).abs() < 1e-12, "{file}");
         assert!((c.sam.plant_min_cover - 0.6).abs() < 1e-12, "{file}");
-        assert!((c.species_temperature - 1.0).abs() < 1e-6, "{file}");
+        assert!((c.species_temperature - 1.3747).abs() < 1e-6, "{file}");
         assert!((c.crop_grow - 0.10).abs() < 1e-12, "{file}");
         let tau_plant = c.tau_plant.expect("the day-1 plant probe's tau_plant");
         assert!((tau_plant - 0.70).abs() < 1e-6, "{file}");

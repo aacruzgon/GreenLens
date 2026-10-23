@@ -222,9 +222,10 @@ async fn a_species_outside_the_knowledge_base_reads_as_none() {
     let tomato: SpeciesId = "tomato".parse().unwrap();
     // `suggest_species` as the pipeline calls it after the fallback's findings: the stub's
     // BioCLIP pick and the VLM's `unknown`, working species `tomato`.
-    store
+    let stored = store
         .suggest_species(
-            f.plant,
+            f.scan,
+            Run(1),
             vec![
                 SpeciesCandidate {
                     species_id: Some(tomato.clone()),
@@ -246,11 +247,17 @@ async fn a_species_outside_the_knowledge_base_reads_as_none() {
         )
         .await
         .expect("suggested");
+    assert!(stored, "run 1 is the scan's current run");
 
     let snap = store.snapshot(f.scan).await.expect("snapshot");
     assert_eq!(snap.plant.species, None);
     assert_eq!(snap.plant.species_status, SpeciesStatus::Suggested);
     assert_eq!(snap.plant.species_candidates.len(), 2);
+    assert_eq!(
+        snap.working_species,
+        Some(tomato.clone()),
+        "the link is kept as written; the knowledge base resolves it"
+    );
     let viewer = check_membership_of::<Viewer>(&*store, f.user, f.garden)
         .await
         .unwrap();
@@ -332,6 +339,446 @@ async fn a_species_outside_the_knowledge_base_reads_as_none() {
     assert_eq!(species.id, tomato);
     assert_eq!(species.scientific_name, "Solanum lycopersicum");
     assert_eq!(species.common_name, "Tomato");
+}
+
+/// The pipeline's suggestion makes its best candidate the working species of the run it came
+/// from, in the same transaction as the plant's suggestion ([architecture 6.2], step 4), so a
+/// confirmation of the same species finds it on the scan. A suggestion from a run that is no
+/// longer current writes nothing, and a run's working species, once set, is never overwritten.
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one scan's path: stale, suggested, confirmed, a new run"
+)]
+async fn a_suggestion_sets_its_runs_working_species() {
+    use domain::{
+        id::SpeciesId,
+        scan::{CandidateSource, SpeciesCandidate, SpeciesChoice, SpeciesStatus},
+    };
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    exec(
+        &store,
+        "CREATE species:tomato SET scientific_name = 'Solanum lycopersicum', common_names = ['Tomato'], profile = 'full',
+           classifier_supported = true, bioclip_label = 'tomato', sources = [], reviewed_by = 'ada';
+         CREATE species:pepper SET scientific_name = 'Capsicum annuum', common_names = ['Pepper'], profile = 'full',
+           classifier_supported = true, bioclip_label = 'pepper', sources = [], reviewed_by = 'ada';",
+    )
+    .await;
+    set_status(&store, f.scan, "analysing").await;
+    let tomato: SpeciesId = "tomato".parse().unwrap();
+    let pepper: SpeciesId = "pepper".parse().unwrap();
+    let candidates = |first: &SpeciesId| {
+        vec![SpeciesCandidate {
+            species_id: Some(first.clone()),
+            name: first.to_string(),
+            score: Confidence::saturating(0.97),
+            source: CandidateSource::Bioclip,
+            reference_image: None,
+        }]
+    };
+    let viewer = check_membership_of::<Viewer>(&*store, f.user, f.garden)
+        .await
+        .unwrap();
+
+    // A stale run (the scan is in run 1): nothing is written.
+    let stored = store
+        .suggest_species(
+            f.scan,
+            Run(0),
+            candidates(&pepper),
+            Some(pepper.clone()),
+            SpeciesStatus::Suggested,
+        )
+        .await
+        .expect("a stale suggestion is not an error");
+    assert!(!stored);
+    let snap = store.snapshot(f.scan).await.expect("snapshot");
+    assert_eq!(snap.working_species, None);
+    assert_eq!(snap.plant.species_status, SpeciesStatus::Unknown);
+    assert_eq!(snap.plant.species_candidates.len(), 0);
+
+    // Run 1's suggestion: the plant is `suggested` and the scan works with tomato.
+    let stored = store
+        .suggest_species(
+            f.scan,
+            Run(1),
+            candidates(&tomato),
+            Some(tomato.clone()),
+            SpeciesStatus::Suggested,
+        )
+        .await
+        .expect("suggested");
+    assert!(stored);
+    let snap = store.snapshot(f.scan).await.expect("snapshot");
+    assert_eq!(snap.working_species, Some(tomato.clone()));
+    assert_eq!(snap.plant.species_status, SpeciesStatus::Suggested);
+    assert_eq!(snap.plant.species.map(|s| s.id), Some(tomato.clone()));
+
+    // The same run suggesting again doesn't move its working species.
+    let stored = store
+        .suggest_species(
+            f.scan,
+            Run(1),
+            candidates(&pepper),
+            Some(pepper.clone()),
+            SpeciesStatus::Suggested,
+        )
+        .await
+        .expect("suggested again");
+    assert!(stored);
+    assert_eq!(
+        store
+            .snapshot(f.scan)
+            .await
+            .expect("snapshot")
+            .working_species,
+        Some(tomato.clone())
+    );
+
+    // Confirming tomato finds it as the run's working species.
+    let confirmed = store
+        .confirm_species(f.editor, f.plant, SpeciesChoice::Known(tomato.clone()))
+        .await
+        .expect("confirmed");
+    let recent = confirmed.recent_scan.expect("the scan follows");
+    assert_eq!(recent.scan, f.scan);
+    assert_eq!(recent.working_species, Some(tomato.clone()));
+    assert_eq!(
+        store
+            .plant(viewer, f.plant)
+            .await
+            .expect("plant")
+            .species_status,
+        SpeciesStatus::Confirmed
+    );
+
+    // A run started with a species (a change to pepper) keeps it against a late suggestion.
+    let started = store
+        .start_run(
+            f.editor,
+            f.scan,
+            RunStart {
+                reason: RunReason::SpeciesChanged,
+                expected_status: ScanStatus::Analysing,
+                expected_run: Run(1),
+                working_species: Some(pepper.clone()),
+                first_job: perception(&f, f.ids.id()),
+                now: t0(),
+            },
+        )
+        .await
+        .expect("species change");
+    assert_eq!(started.run, Run(2));
+    let stored = store
+        .suggest_species(
+            f.scan,
+            Run(2),
+            candidates(&tomato),
+            Some(tomato.clone()),
+            SpeciesStatus::Suggested,
+        )
+        .await
+        .expect("suggested");
+    assert!(stored);
+    let snap = store.snapshot(f.scan).await.expect("snapshot");
+    assert_eq!(snap.working_species, Some(pepper));
+    assert_eq!(
+        snap.plant.species.map(|s| s.id),
+        Some(tomato),
+        "a confirmed plant keeps its species"
+    );
+    assert_eq!(snap.plant.species_status, SpeciesStatus::Confirmed);
+}
+
+/// A species confirmed while the scan is `queued`: the run started without it, and
+/// `adopt_confirmed_species` gives the run the plant's confirmed species, read in the same
+/// transaction, so the latest confirmation wins and a custom species leaves none. Nothing is
+/// written for a plant that isn't confirmed or a run that is no longer current.
+#[tokio::test]
+async fn a_queued_confirmation_becomes_its_runs_working_species() {
+    use domain::{id::SpeciesId, scan::SpeciesChoice};
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    exec(
+        &store,
+        "CREATE species:tomato SET scientific_name = 'Solanum lycopersicum', common_names = ['Tomato'], profile = 'full',
+           classifier_supported = true, bioclip_label = 'tomato', sources = [], reviewed_by = 'ada';
+         CREATE species:pepper SET scientific_name = 'Capsicum annuum', common_names = ['Pepper'], profile = 'full',
+           classifier_supported = true, bioclip_label = 'pepper', sources = [], reviewed_by = 'ada';",
+    )
+    .await;
+    set_status(&store, f.scan, "queued").await;
+    let tomato: SpeciesId = "tomato".parse().unwrap();
+    let pepper: SpeciesId = "pepper".parse().unwrap();
+    let working = async || {
+        store
+            .snapshot(f.scan)
+            .await
+            .expect("snapshot")
+            .working_species
+    };
+
+    // The plant has no confirmed species yet.
+    assert!(!store.adopt_confirmed_species(f.scan, Run(1)).await.unwrap());
+    assert_eq!(working().await, None);
+
+    store
+        .confirm_species(f.editor, f.plant, SpeciesChoice::Known(tomato.clone()))
+        .await
+        .expect("confirmed");
+    assert!(
+        !store.adopt_confirmed_species(f.scan, Run(0)).await.unwrap(),
+        "a stale run"
+    );
+    assert_eq!(working().await, None);
+    assert!(store.adopt_confirmed_species(f.scan, Run(1)).await.unwrap());
+    assert_eq!(working().await, Some(tomato.clone()));
+
+    // A second confirmation while still queued replaces it.
+    store
+        .confirm_species(f.editor, f.plant, SpeciesChoice::Known(pepper.clone()))
+        .await
+        .expect("confirmed again");
+    assert!(store.adopt_confirmed_species(f.scan, Run(1)).await.unwrap());
+    assert_eq!(working().await, Some(pepper));
+
+    // "Something else": the run has no working species.
+    store
+        .confirm_species(f.editor, f.plant, SpeciesChoice::Custom("Heirloom".into()))
+        .await
+        .expect("custom");
+    assert!(store.adopt_confirmed_species(f.scan, Run(1)).await.unwrap());
+    assert_eq!(working().await, None);
+
+    // Claimed: the scan moved on, so the run-start path no longer applies.
+    set_status(&store, f.scan, "analysing").await;
+    store
+        .confirm_species(f.editor, f.plant, SpeciesChoice::Known(tomato))
+        .await
+        .expect("confirmed after the claim");
+    assert!(
+        !store.adopt_confirmed_species(f.scan, Run(1)).await.unwrap(),
+        "an analysing scan"
+    );
+    assert_eq!(working().await, None);
+}
+
+/// A species confirmed while the scan is `queued` reaches the run's queued `perception` job
+/// too: its payload becomes what a run started with that species queues (the species; or for
+/// "something else" no species, `skip_species_identification` and no `species` stage), so the
+/// worker doesn't identify a species the user already named. A job a worker has claimed keeps
+/// its payload: the claim moved the scan to `analysing`, so nothing is written.
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one queued job: known, custom, known again, claimed"
+)]
+async fn a_queued_confirmation_rewrites_its_queued_perception_job() {
+    use domain::{id::SpeciesId, scan::SpeciesChoice};
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    exec(
+        &store,
+        "CREATE species:tomato SET scientific_name = 'Solanum lycopersicum', common_names = ['Tomato'], profile = 'full',
+           classifier_supported = true, bioclip_label = 'tomato', sources = [], reviewed_by = 'ada';
+         CREATE species:pepper SET scientific_name = 'Capsicum annuum', common_names = ['Pepper'], profile = 'full',
+           classifier_supported = true, bioclip_label = 'pepper', sources = [], reviewed_by = 'ada';",
+    )
+    .await;
+    let tomato: SpeciesId = "tomato".parse().unwrap();
+    let pepper: SpeciesId = "pepper".parse().unwrap();
+    let job: JobId = f.ids.id();
+    let mut first = perception(&f, job);
+    if let JobSpec::Perception(p) = &mut first.spec {
+        p.stages = PerceptionStage::ALL.to_vec();
+    }
+    store
+        .start_run(
+            f.editor,
+            f.scan,
+            RunStart {
+                reason: RunReason::Submit,
+                expected_status: ScanStatus::Pending,
+                expected_run: Run(0),
+                working_species: None,
+                first_job: first,
+                now: t0(),
+            },
+        )
+        .await
+        .expect("submit");
+    let payload = async || -> serde_json::Value {
+        let mut r = exec(
+            &store,
+            &format!("SELECT VALUE payload FROM ONLY {};", rec("job", job)),
+        )
+        .await;
+        r.take::<Option<serde_json::Value>>(0)
+            .unwrap()
+            .expect("the job")
+    };
+    let decoded = |p: serde_json::Value| -> PerceptionPayload {
+        serde_json::from_value(p).expect("a perception payload")
+    };
+    let without_species: Vec<PerceptionStage> = PerceptionStage::ALL
+        .into_iter()
+        .filter(|s| *s != PerceptionStage::Species)
+        .collect();
+
+    // A known species: the job names it and still lists every stage.
+    store
+        .confirm_species(f.editor, f.plant, SpeciesChoice::Known(tomato.clone()))
+        .await
+        .expect("confirmed");
+    assert!(store.adopt_confirmed_species(f.scan, Run(1)).await.unwrap());
+    let p = payload().await;
+    assert_eq!(p["species_id"], "tomato");
+    assert!(p.get("skip_species_identification").is_none(), "{p}");
+    let p = decoded(p);
+    assert_eq!(p.species_id, Some(tomato.clone()));
+    assert_eq!(p.stages, PerceptionStage::ALL.to_vec());
+
+    // "Something else": no species, identification skipped, no `species` stage.
+    store
+        .confirm_species(f.editor, f.plant, SpeciesChoice::Custom("Heirloom".into()))
+        .await
+        .expect("custom");
+    assert!(store.adopt_confirmed_species(f.scan, Run(1)).await.unwrap());
+    let p = payload().await;
+    assert!(p.get("species_id").is_none(), "{p}");
+    assert_eq!(p["skip_species_identification"], true);
+    let p = decoded(p);
+    assert!(p.skip_species_identification);
+    assert_eq!(p.stages, without_species);
+
+    // A known species again: the `species` stage is back in its place.
+    store
+        .confirm_species(f.editor, f.plant, SpeciesChoice::Known(tomato.clone()))
+        .await
+        .expect("confirmed again");
+    assert!(store.adopt_confirmed_species(f.scan, Run(1)).await.unwrap());
+    let p = payload().await;
+    assert!(p.get("skip_species_identification").is_none(), "{p}");
+    let p = decoded(p);
+    assert_eq!(p.species_id, Some(tomato.clone()));
+    assert_eq!(p.stages, PerceptionStage::ALL.to_vec());
+    assert_eq!(p.label_set_version, "l1", "the rest is kept");
+
+    // Claimed: the job keeps its payload and the run its working species.
+    let now = t0().plus(Duration::from_secs(1));
+    let claimed = store
+        .claim_job(
+            &"rig-3070".parse().unwrap(),
+            1,
+            claim_policy(&[Capability::Perception], now),
+            now,
+        )
+        .await
+        .unwrap()
+        .expect("claimed");
+    assert_eq!(claimed.job.job_id, job);
+    store
+        .confirm_species(f.editor, f.plant, SpeciesChoice::Known(pepper))
+        .await
+        .expect("confirmed after the claim");
+    assert!(
+        !store.adopt_confirmed_species(f.scan, Run(1)).await.unwrap(),
+        "a claimed job's scan is analysing"
+    );
+    let p = decoded(payload().await);
+    assert_eq!(p.species_id, Some(tomato.clone()));
+    assert_eq!(
+        store
+            .snapshot(f.scan)
+            .await
+            .expect("snapshot")
+            .working_species,
+        Some(tomato)
+    );
+}
+
+/// A scan whose plant or garden is being deleted is not visible (`SCAN_VISIBLE`), though its
+/// own `deleting_at` stays unset: a suggestion or a queued confirmation for it writes nothing
+/// and returns `false`.
+#[tokio::test]
+async fn a_species_write_for_a_scan_being_deleted_writes_nothing() {
+    use domain::{
+        id::SpeciesId,
+        scan::{CandidateSource, SpeciesCandidate, SpeciesChoice, SpeciesStatus},
+    };
+    for garden in [false, true] {
+        let store = support::store().await;
+        let f = fixture(&store).await;
+        exec(
+            &store,
+            "CREATE species:tomato SET scientific_name = 'Solanum lycopersicum', common_names = ['Tomato'], profile = 'full',
+               classifier_supported = true, bioclip_label = 'tomato', sources = [], reviewed_by = 'ada';",
+        )
+        .await;
+        // `queued`, so the confirmation's write is refused by the deletion alone.
+        set_status(&store, f.scan, "queued").await;
+        let tomato: SpeciesId = "tomato".parse().unwrap();
+        store
+            .confirm_species(f.editor, f.plant, SpeciesChoice::Known(tomato.clone()))
+            .await
+            .expect("confirmed");
+        let owner = check_membership_of::<Owner>(&*store, f.user, f.garden)
+            .await
+            .unwrap();
+        if garden {
+            store.start_garden_deletion(owner, t0()).await.unwrap();
+        } else {
+            store
+                .start_plant_deletion(owner, f.plant, t0())
+                .await
+                .unwrap();
+        }
+
+        let stored = store
+            .suggest_species(
+                f.scan,
+                Run(1),
+                vec![SpeciesCandidate {
+                    species_id: Some(tomato.clone()),
+                    name: "Tomato".into(),
+                    score: Confidence::saturating(0.97),
+                    source: CandidateSource::Bioclip,
+                    reference_image: None,
+                }],
+                Some(tomato.clone()),
+                SpeciesStatus::Suggested,
+            )
+            .await
+            .expect("not an error");
+        assert!(!stored, "garden deletion: {garden}");
+        let adopted = store
+            .adopt_confirmed_species(f.scan, Run(1))
+            .await
+            .expect("not an error");
+        assert!(!adopted, "garden deletion: {garden}");
+
+        let mut r = exec(
+            &store,
+            &format!(
+                "RETURN {scan}.deleting_at = NONE AND {scan}.working_species = NONE;
+                 RETURN array::len({plant}.species_candidates ?? []);",
+                scan = rec("scan", f.scan),
+                plant = rec("plant", f.plant),
+            ),
+        )
+        .await;
+        assert_eq!(
+            r.take::<Option<bool>>(0).unwrap(),
+            Some(true),
+            "the scan itself isn't marked, and has no working species (garden deletion: {garden})"
+        );
+        assert_eq!(
+            r.take::<Option<i64>>(1).unwrap(),
+            Some(0),
+            "no candidates (garden deletion: {garden})"
+        );
+    }
 }
 
 /// A user's write that sets a species must name one the knowledge base holds: `POST /plants`,
@@ -619,6 +1066,137 @@ async fn complete_job_paths() {
     );
     let mut r = exec(&store, "SELECT VALUE status FROM guided_check;").await;
     assert_eq!(r.take::<Vec<String>>(0).unwrap(), vec!["failed".to_owned()]);
+}
+
+/// A segmentation write's mask record and its region's `mask_id`.
+fn masked_segmentation(f: &Fixture, image: ImageId) -> (ObservationWrite, domain::ports::NewMask) {
+    let region_id: domain::id::RegionId = format!("{image}.1").parse().expect("a region id");
+    let id = f.ids.id();
+    let mask = domain::ports::NewMask {
+        id,
+        image,
+        region_id,
+        storage_key: ObjectKey::mask(f.garden, f.scan, id),
+        rle: domain::jobs::RleMask {
+            size: [768, 1024],
+            counts: "0".into(),
+        },
+    };
+    let mut o = observation(f, f.ids.id(), image, Stage::Segmentation);
+    o.stage = ObservationStage::Segmentation;
+    o.region = Some(Region {
+        region_id: Some(region_id),
+        image_id: image,
+        bbox: BBox::new(0.1, 0.1, 0.5, 0.5).expect("a valid box"),
+        mask: domain::url::StoredMask {
+            mask_id: Some(mask.id),
+        },
+    });
+    let write = ObservationWrite {
+        stage: Stage::Segmentation,
+        run: Run(1),
+        images: vec![image],
+        replace_imageless: true,
+        observations: vec![o],
+        masks: vec![mask.clone()],
+    };
+    (write, mask)
+}
+
+/// A perception completion records its masks with the segmentation observations: the snapshot
+/// reads them for measurement, the region keeps its `mask_id`, and the signed mask URL finds the
+/// object. A later segmentation write of the same photo replaces the earlier masks with its
+/// observations, and keeps the masks of a photo it doesn't cover.
+#[tokio::test]
+async fn masks_are_stored_and_replaced_with_their_segmentation() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let leaf = image(&f, ImageKind::LeafCloseup, t0());
+    store
+        .add_image(f.editor, f.scan, leaf.clone())
+        .await
+        .unwrap();
+    let whole = image(&f, ImageKind::WholePlant, t0());
+    store
+        .add_image(f.editor, f.scan, whole.clone())
+        .await
+        .unwrap();
+    set_status(&store, f.scan, "analysing").await;
+    store.enqueue_job(perception(&f, f.ids.id())).await.unwrap();
+    let now = t0().plus(Duration::from_secs(1));
+    let worker = "rig-3070";
+    let claimed = store
+        .claim_job(
+            &worker.parse().unwrap(),
+            1,
+            claim_policy(&[Capability::Perception], now),
+            now,
+        )
+        .await
+        .unwrap()
+        .expect("claimed");
+    let lease = lease_of(&claimed, worker);
+
+    let sorted = |mut masks: Vec<domain::ports::NewMask>| {
+        masks.sort_by_key(|m| m.id.to_string());
+        masks
+    };
+    // The other photo's mask, a partial result's mask, then the final result's for the leaf.
+    let (other, kept) = masked_segmentation(&f, whole.id);
+    store.store_partial(&lease, other).await.expect("partial");
+    let (partial, earlier) = masked_segmentation(&f, leaf.id);
+    store.store_partial(&lease, partial).await.expect("partial");
+    assert_eq!(
+        sorted(store.snapshot(f.scan).await.unwrap().masks),
+        [kept.clone(), earlier.clone()]
+    );
+    let (last, mask) = masked_segmentation(&f, leaf.id);
+    let outcome = store
+        .complete_job(
+            &lease,
+            JobCompletion::Done {
+                result: serde_json::json!({ "regions": [] }),
+                observations: vec![last],
+                evidence: Vec::new(),
+                claim: None,
+            },
+            now,
+        )
+        .await
+        .expect("complete");
+    assert!(
+        matches!(outcome, CompletionOutcome::Stored { .. }),
+        "{outcome:?}"
+    );
+
+    let snap = store.snapshot(f.scan).await.unwrap();
+    assert_eq!(
+        sorted(snap.masks.clone()),
+        [kept.clone(), mask.clone()],
+        "the leaf's earlier mask is replaced; the other photo's stays"
+    );
+    let mut regions: Vec<_> = snap
+        .observations
+        .iter()
+        .filter_map(|o| o.region.as_ref())
+        .map(|r| (r.region_id, r.mask.mask_id))
+        .collect();
+    regions.sort_by_key(|(_, m)| m.map(|m| m.to_string()));
+    assert_eq!(
+        regions,
+        [
+            (Some(kept.region_id), Some(kept.id)),
+            (Some(mask.region_id), Some(mask.id))
+        ]
+    );
+    let object = store
+        .mask_object(f.scan, mask.id)
+        .await
+        .unwrap()
+        .expect("the mask's object");
+    assert_eq!(object.key, mask.storage_key);
+    assert_eq!(object.content_type, domain::ports::ContentType::Png);
+    assert_eq!(store.mask_object(f.scan, earlier.id).await.unwrap(), None);
 }
 
 fn err(retryable: bool) -> JobError {
@@ -1696,6 +2274,64 @@ async fn soil_profile_retries() {
             .len(),
         1
     );
+}
+
+/// `LeasedJob::segmentation` comes from the job's own `payload.stages`, which `start_run`
+/// commits with the run: true for a run that segments, false for a species-change run's job
+/// (no segmentation, the earlier regions sent) and for one that only checks the plant. The
+/// lease checks and the stale requeue all read it.
+#[tokio::test]
+async fn a_leased_job_says_whether_it_segments() {
+    let cases = [
+        (PerceptionStage::ALL.to_vec(), true),
+        (
+            vec![
+                PerceptionStage::Species,
+                PerceptionStage::Disease,
+                PerceptionStage::ImageEmbedding,
+            ],
+            false,
+        ),
+        (vec![PerceptionStage::PlantCheck], false),
+    ];
+    for (stages, segments) in cases {
+        let store = support::store().await;
+        let f = fixture(&store).await;
+        set_status(&store, f.scan, "analysing").await;
+        let mut job = perception(&f, f.ids.id());
+        let JobSpec::Perception(payload) = &mut job.spec else {
+            panic!("a perception job")
+        };
+        payload.stages = stages.clone();
+        store.enqueue_job(job).await.unwrap();
+        let now = t0().plus(Duration::from_secs(1));
+        let worker = "rig-3070";
+        let claimed = store
+            .claim_job(
+                &worker.parse().unwrap(),
+                1,
+                claim_policy(&[Capability::Perception], now),
+                now,
+            )
+            .await
+            .unwrap()
+            .expect("claimed");
+        let lease = lease_of(&claimed, worker);
+
+        let checked = store.check_lease(&lease, now).await.unwrap();
+        assert_eq!(checked.segmentation, segments, "check_lease, {stages:?}");
+        let live = store.live_lease(&lease, now).await.unwrap().expect("live");
+        assert_eq!(live.segmentation, segments, "live_lease, {stages:?}");
+        let later = now.plus(Duration::from_secs(150));
+        let requeued: Vec<_> = store
+            .requeue_stale(later)
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| r.job.segmentation)
+            .collect();
+        assert_eq!(requeued, [segments], "requeue_stale, {stages:?}");
+    }
 }
 
 /// `live_lease`: a live lease, a finished one (a late event, dropped), and a lost one; a
