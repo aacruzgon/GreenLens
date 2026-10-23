@@ -3,6 +3,7 @@ import CoreMotion
 import ExpoModulesCore
 import ImageIO
 import UIKit
+import os
 
 // The camera on a LiDAR iPhone (architecture 6.7; docs/frontend/README.md 13). It replaces expo-camera there, because
 // only one capture session can use the camera: the preview, the distance hint from streamed depth, and each photo
@@ -18,6 +19,9 @@ final class LidarCameraView: ExpoView, AVCaptureDepthDataOutputDelegate {
   let onDistance = EventDispatcher()
   let onReady = EventDispatcher()
   let onMountError = EventDispatcher()
+  /// The camera was taken away (a call, FaceTime, iPhone Mirroring, another app) or given back. An interrupted
+  /// session still counts as running and would store black photos with all-zero depth.
+  let onInterruption = EventDispatcher()
 
   private var session = AVCaptureSession()
   private let sessionQueue = DispatchQueue(label: "org.buildnorth.pdm.lidar.session")
@@ -37,9 +41,13 @@ final class LidarCameraView: ExpoView, AVCaptureDepthDataOutputDelegate {
   private var configured = false
   private var active = false
   private var lastDistance: CFTimeInterval = 0
-  private var latestCentre: Float?
+  /// Written on the depth queue, read on the session queue.
+  private let latestCentre = OSAllocatedUnfairLock<Float?>(initialState: nil)
+  /// The session queue's own: set from the notifications, read by capture.
+  private var interrupted = false
   private var inFlight: [Int64: PhotoCapture] = [:]
   private var rotation: AnyObject?
+  private var observers: [NSObjectProtocol] = []
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -83,9 +91,16 @@ final class LidarCameraView: ExpoView, AVCaptureDepthDataOutputDelegate {
     sessionQueue.async { [weak self] in
       guard let self else { return }
       if value {
-        if !self.configured { self.configure() }
+        if !self.configured {
+          PhotoCapture.removeOldFiles()
+          self.configure()
+          // On main, where removeFromSuperview takes them off again.
+          if self.configured { DispatchQueue.main.async { self.observe() } }
+        }
         guard self.configured else { return }
         if !self.session.isRunning { self.session.startRunning() }
+        // An interruption that ended while the session was stopped may never post its end: ask the session.
+        self.setInterrupted(self.session.isInterrupted, reason: nil)
         DispatchQueue.main.async {
           if self.motion.isDeviceMotionAvailable, !self.motion.isDeviceMotionActive {
             self.motion.deviceMotionUpdateInterval = 1.0 / 30
@@ -102,9 +117,66 @@ final class LidarCameraView: ExpoView, AVCaptureDepthDataOutputDelegate {
 
   override func removeFromSuperview() {
     // On the session queue: the multi-camera set-up replaces the session there.
-    sessionQueue.async { [self] in if session.isRunning { session.stopRunning() } }
+    sessionQueue.async { [self] in
+      if session.isRunning { session.stopRunning() }
+      failInFlight("The camera closed before the photo was taken.")
+    }
+    observers.forEach(NotificationCenter.default.removeObserver)
+    observers = []
     motion.stopDeviceMotionUpdates()
     super.removeFromSuperview()
+  }
+
+  // MARK: Interruptions
+
+  /// Watches the configured session: an interruption disables the shutter until it ends, and a media-services reset
+  /// starts the session again.
+  private func observe() {
+    guard window != nil, observers.isEmpty else { return }
+    let centre = NotificationCenter.default
+    observers = [
+      centre.addObserver(forName: AVCaptureSession.wasInterruptedNotification, object: session, queue: nil) { [weak self] note in
+        let raw = note.userInfo?[AVCaptureSessionInterruptionReasonKey] as? Int
+        let reason = raw.flatMap(AVCaptureSession.InterruptionReason.init(rawValue:))
+        self?.sessionQueue.async { self?.setInterrupted(true, reason: reason) }
+      },
+      centre.addObserver(forName: AVCaptureSession.interruptionEndedNotification, object: session, queue: nil) { [weak self] _ in
+        self?.sessionQueue.async {
+          guard let self else { return }
+          self.setInterrupted(false, reason: nil)
+          if self.active, !self.session.isRunning { self.session.startRunning() }
+        }
+      },
+      centre.addObserver(forName: AVCaptureSession.runtimeErrorNotification, object: session, queue: nil) { [weak self] note in
+        let error = note.userInfo?[AVCaptureSessionErrorKey] as? AVError
+        self?.sessionQueue.async {
+          guard let self else { return }
+          self.failInFlight("The camera stopped. Try again.")
+          if error?.code == .mediaServicesWereReset, self.active { self.session.startRunning() }
+        }
+      },
+    ]
+  }
+
+  private func setInterrupted(_ value: Bool, reason: AVCaptureSession.InterruptionReason?) {
+    guard value != interrupted else { return }
+    interrupted = value
+    if value { failInFlight("The camera was interrupted.") }
+    let word: String
+    switch reason {
+    case .videoDeviceInUseByAnotherClient: word = "in_use"
+    case .videoDeviceNotAvailableWithMultipleForegroundApps: word = "multitasking"
+    case .videoDeviceNotAvailableDueToSystemPressure: word = "system_pressure"
+    case .videoDeviceNotAvailableInBackground: word = "background"
+    default: word = "other"
+    }
+    DispatchQueue.main.async { self.onInterruption(["interrupted": value, "reason": value ? word : NSNull()]) }
+  }
+
+  /// Rejects every photo still waiting for its delegate, so no promise is left pending.
+  private func failInFlight(_ message: String) {
+    inFlight.values.forEach { $0.fail(message) }
+    inFlight = [:]
   }
 
   // MARK: Configuration
@@ -316,7 +388,7 @@ final class LidarCameraView: ExpoView, AVCaptureDepthDataOutputDelegate {
     guard now - lastDistance >= 0.2 else { return }
     lastDistance = now
     let centre = DepthGrid(depthData).centreMedian()
-    latestCentre = centre
+    latestCentre.withLock { $0 = centre }
     DispatchQueue.main.async {
       self.onDistance(["distance_m": centre.map { Double($0) } as Any])
     }
@@ -330,6 +402,10 @@ final class LidarCameraView: ExpoView, AVCaptureDepthDataOutputDelegate {
       guard let self else { return }
       guard self.configured, self.session.isRunning else {
         promise.reject("ERR_LIDAR_NOT_READY", "The camera isn't ready.")
+        return
+      }
+      guard !self.interrupted else {
+        promise.reject("ERR_LIDAR_INTERRUPTED", "The camera is in use elsewhere.")
         return
       }
       let codec: [String: Any] = self.photoOutput.availablePhotoCodecTypes.contains(.jpeg) ? [AVVideoCodecKey: AVVideoCodecType.jpeg] : [:]
@@ -350,7 +426,7 @@ final class LidarCameraView: ExpoView, AVCaptureDepthDataOutputDelegate {
         if connection.isVideoRotationAngleSupported(angle) { connection.videoRotationAngle = angle }
       }
       let gravity = self.motion.deviceMotion.flatMap { DepthMeta.cameraGravity($0.gravity) }
-      let delegate = PhotoCapture(gravity: gravity, centre: self.latestCentre, promise: promise) { [weak self] id in
+      let delegate = PhotoCapture(gravity: gravity, centre: self.latestCentre.withLock { $0 }, promise: promise) { [weak self] id in
         self?.sessionQueue.async { self?.inFlight[id] = nil }
       }
       self.inFlight[settings.uniqueID] = delegate
@@ -365,6 +441,8 @@ private final class PhotoCapture: NSObject, AVCapturePhotoCaptureDelegate {
   private let centre: Float?
   private let promise: Promise
   private let done: (Int64) -> Void
+  /// Delegate callbacks and the session queue's fail() can race: the promise settles once.
+  private let settled = OSAllocatedUnfairLock(initialState: false)
 
   init(gravity: [Double]?, centre: Float?, promise: Promise, done: @escaping (Int64) -> Void) {
     self.gravity = gravity
@@ -373,14 +451,36 @@ private final class PhotoCapture: NSObject, AVCapturePhotoCaptureDelegate {
     self.done = done
   }
 
+  private func settle() -> Bool {
+    settled.withLock { done in
+      defer { done = true }
+      return !done
+    }
+  }
+
+  func fail(_ message: String) {
+    if settle() { promise.reject("ERR_LIDAR_CAPTURE", message) }
+  }
+
+  private func reject(_ message: String) { fail(message) }
+
+  private func resolve(_ value: [String: Any]) {
+    if settle() { promise.resolve(value) }
+  }
+
+  /// The end of every capture, also one that never delivered a photo.
+  func photoOutput(_ output: AVCapturePhotoOutput, didFinishCaptureFor resolvedSettings: AVCaptureResolvedPhotoSettings, error: Error?) {
+    fail(error?.localizedDescription ?? "The photo wasn't taken.")
+    done(resolvedSettings.uniqueID)
+  }
+
   func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-    defer { done(photo.resolvedSettings.uniqueID) }
     if let error {
-      promise.reject("ERR_LIDAR_CAPTURE", error.localizedDescription)
+      reject(error.localizedDescription)
       return
     }
     guard let jpeg = photo.fileDataRepresentation() else {
-      promise.reject("ERR_LIDAR_CAPTURE", "The photo couldn't be encoded.")
+      reject("The photo couldn't be encoded.")
       return
     }
     do {
@@ -422,21 +522,39 @@ private final class PhotoCapture: NSObject, AVCapturePhotoCaptureDelegate {
           "has_distortion_table": depthData.cameraCalibrationData?.inverseLensDistortionLookupTable != nil,
           "centre_distance_m": grid.centreMedian().map { Double($0) } as Any,
         ]
-        // Depth only with absolute accuracy (architecture 6.7).
-        if absolute, let png = grid.png() {
+        // Depth only with absolute accuracy (architecture 6.7), and only with the intrinsics: the server's
+        // DepthMeta requires them and would refuse the whole meta (contracts 3, invalid_meta).
+        let meta = DepthMeta.record(depthData, gravity: gravity)
+        if !absolute {
+          report["dropped"] = "relative_accuracy"
+        } else if meta["intrinsics"] == nil {
+          report["dropped"] = "no_intrinsics"
+        } else if let png = grid.png() {
           let depthURL = dir.appendingPathComponent("\(id)-depth.png")
           try png.write(to: depthURL)
-          result["depth"] = ["depthUri": depthURL.absoluteString, "meta": DepthMeta.record(depthData, gravity: gravity)]
+          result["depth"] = ["depthUri": depthURL.absoluteString, "meta": meta]
         } else {
-          report["dropped"] = absolute ? "encoding" : "relative_accuracy"
+          report["dropped"] = "encoding"
         }
       } else {
         report["dropped"] = "no_depth"
       }
       result["report"] = report
-      promise.resolve(result)
+      resolve(result)
     } catch {
-      promise.reject("ERR_LIDAR_CAPTURE", error.localizedDescription)
+      reject(error.localizedDescription)
+    }
+  }
+
+  /// The app copies each shot into its draft, so what is left here after ten minutes is from a capture nobody kept.
+  static func removeOldFiles() {
+    guard let dir = try? directory(),
+      let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])
+    else { return }
+    let cutoff = Date().addingTimeInterval(-600)
+    for file in files {
+      let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+      if modified < cutoff { try? FileManager.default.removeItem(at: file) }
     }
   }
 

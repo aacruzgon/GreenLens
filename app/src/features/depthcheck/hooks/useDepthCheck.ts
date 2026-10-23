@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { ImageKind } from "@/domain/types";
 import { evaluation, haptics, sampleDepth, type CapturedShot } from "@/platform";
 
-import { addShot, isCaseId, type EvalCaseFile } from "../model/evalCase";
+import { addShot, isCaseId, type EvalCaseFile, type EvalRuler } from "../model/evalCase";
 import { distance, toSensor, unproject, type Intrinsics, type Norm } from "../model/ruler";
 
 export type RulerResult = { mm: number } | { problem: string };
@@ -33,7 +33,8 @@ export function useDepthCheck() {
     if (next.length === 2 && shot) setRuler(await measure(shot, next[0], next[1]));
   }
 
-  function save(caseId: string, plantKey: string, kind: ImageKind) {
+  /** `knownMm`: the length the user typed for the ruler, if any. */
+  function save(caseId: string, plantKey: string, kind: ImageKind, knownMm?: number) {
     if (!shot) return;
     if (!isCaseId(caseId)) {
       setProblem("Use a case ID like tomato-0007: lower-case letters, digits and dashes.");
@@ -42,7 +43,8 @@ export function useDepthCheck() {
     try {
       const before = evaluation.read(caseId, "case.json");
       const deviceModel = shot.depth?.meta.device_model;
-      const file: EvalCaseFile = addShot(before ? JSON.parse(before) : undefined, caseId, plantKey, kind, Boolean(shot.depth), deviceModel, new Date().toISOString());
+      const measured = ruler && "mm" in ruler && points.length === 2 ? { points: [points[0]!, points[1]!] as EvalRuler["points"], measured_mm: Math.round(ruler.mm * 10) / 10, ...(knownMm && knownMm > 0 ? { known_mm: knownMm } : {}) } : undefined;
+      const file: EvalCaseFile = addShot(before ? JSON.parse(before) : undefined, caseId, plantKey, kind, Boolean(shot.depth), deviceModel, new Date().toISOString(), measured);
       const names = file.images[file.images.length - 1];
       evaluation.copy(caseId, shot.file.uri, names.file);
       if (shot.depth && names.depth && names.depth_meta) {

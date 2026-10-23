@@ -1,9 +1,19 @@
+import type { DepthMeta } from "@/domain/depth";
+
 import { createDraft, fileUris, reconcileDraft, relocateDraft } from "./draft";
 import { sendsDepth, uploadMeta } from "./depth";
 import { hasDistanceRange } from "./distanceRanges";
+import { pauseText } from "./interruption";
 import type { ShotFile } from "./slot";
 
-const meta = { source: "lidar", device_model: "iPhone18,2", filtered: false, distortion: { center: [1, 2], inverse_lookup: [0, 0.1] } };
+const intrinsics = { fx: 2700, fy: 2700, cx: 2016, cy: 1512, ref_width: 4032, ref_height: 3024 };
+const meta: DepthMeta = {
+  source: "lidar",
+  intrinsics,
+  device_model: "iPhone18,2",
+  filtered: false,
+  distortion: { center: [1, 2], inverse_lookup: [0, 0.1] },
+};
 const file: ShotFile = {
   uri: "file:///old/capture/s1/whole_plant-0-1.jpg",
   name: "whole_plant-0-1.jpg",
@@ -16,7 +26,7 @@ const file: ShotFile = {
 
 describe("depth parts (contracts 3)", () => {
   it("keeps the distortion table on the phone until the day-1 check asks for it", () => {
-    expect(uploadMeta(meta)).toEqual({ source: "lidar", device_model: "iPhone18,2", filtered: false });
+    expect(uploadMeta(meta)).toEqual({ source: "lidar", intrinsics, device_model: "iPhone18,2", filtered: false });
     expect(uploadMeta(meta, true)).toBe(meta);
   });
 
@@ -51,5 +61,13 @@ describe("a shot's depth map in the draft", () => {
     const { unused } = reconcileDraft(draft(), { images: [] }, new Set(["img1"]));
     expect(unused).toEqual(fileUris(file));
     expect(unused).toHaveLength(2);
+  });
+});
+
+describe("camera pauses", () => {
+  it("says why the camera is away, with a fallback for reasons it doesn't know", () => {
+    expect(pauseText("in_use")).toMatch(/Another app/);
+    expect(pauseText("system_pressure")).toMatch(/too warm/);
+    expect(pauseText("other")).toMatch(/paused/);
   });
 });

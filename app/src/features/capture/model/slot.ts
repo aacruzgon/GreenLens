@@ -2,6 +2,7 @@
 // a state doesn't take leaves the slot as it was. A slot holds the exact file it uploads and the idempotency key
 // of that upload, so a retry sends the same bytes under the same key, and anything new (a retake, a re-encode)
 // arrives with a new key (flows 4, same key, same bytes).
+import type { DepthMeta } from "@/domain/depth";
 import type { QualityHint } from "@/domain/types";
 
 import type { CaptureKind } from "./shotPlan";
@@ -27,7 +28,7 @@ export interface ShotFile {
 export interface ShotDepth {
   uri: string;
   name: string;
-  meta: Record<string, unknown>;
+  meta: DepthMeta;
 }
 
 export interface Slot {

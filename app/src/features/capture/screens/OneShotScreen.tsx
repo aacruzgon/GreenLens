@@ -11,10 +11,12 @@ import { CameraPreview, pickFromLibrary, useCameraAccess, useCapabilities, type 
 import { Button, DropCard, Fade, IconButton, Text, ThemeProvider, camera, minTouch, space } from "@/ui";
 
 import { CameraAction, ProblemLine } from "../components/CameraControls";
+import { CameraNotice } from "../components/CameraNotice";
 import { CaptureIcon } from "../components/CaptureIcons";
 import { CoverageDial } from "../components/CoverageDial";
 import { DistanceChip } from "../components/DistanceChip";
 import { hasDistanceRange } from "../model/distanceRanges";
+import { pauseText, type CameraPause } from "../model/interruption";
 import { leaveCapture } from "../hooks/leaveCapture";
 import { useOneShotData, useOneShotSession, type OneShotData, type OneShotSession } from "../hooks/useOneShotSession";
 import { isGuidedKind, type OneShotPurpose } from "../model/oneShot";
@@ -71,6 +73,8 @@ function OneShotCamera({ scanId, purpose, data }: { scanId: string; purpose: One
   // A photo for a question can be measured, so it gets the distance chip; a guided check has no range.
   const { depth } = useCapabilities();
   const [distance, setDistance] = useState<number | null>(null);
+  const [paused, setPaused] = useState<CameraPause | null>(null);
+  const [shotFailed, setShotFailed] = useState(false);
   const [flash, setFlash] = useState(false);
   const [shooting, setShooting] = useState(false);
   const [covered, setCovered] = useState(false);
@@ -91,13 +95,16 @@ function OneShotCamera({ scanId, purpose, data }: { scanId: string; purpose: One
       actions.retake();
       return;
     }
-    if (!preview.current || shooting) return;
+    if (!preview.current || shooting || paused) return;
     setShooting(true);
     try {
       const shot = await preview.current.capture();
+      setShotFailed(false);
       setFlash(true);
       setTimeout(() => setFlash(false), 380);
       actions.take(shot, false);
+    } catch {
+      setShotFailed(true);
     } finally {
       setShooting(false);
     }
@@ -128,6 +135,7 @@ function OneShotCamera({ scanId, purpose, data }: { scanId: string; purpose: One
           ref={preview}
           active={aiming && !covered}
           onDistance={depth ? setDistance : undefined}
+          onInterruption={setPaused}
           style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
         />
       ) : state.step !== "intro" && access.status === "denied" ? (
@@ -190,7 +198,13 @@ function OneShotCamera({ scanId, purpose, data }: { scanId: string; purpose: One
 
       {state.step !== "intro" ? (
         <View style={{ position: "absolute", left: 0, right: 0, bottom: insets.bottom + 16, gap: 14 }}>
-          {depth && aiming && access.status === "granted" && hasDistanceRange(target.kind) ? <DistanceChip kind={target.kind} metres={distance} /> : null}
+          {aiming && paused ? (
+            <CameraNotice text={pauseText(paused)} />
+          ) : aiming && shotFailed ? (
+            <CameraNotice text="Couldn't take the photo. Try again." />
+          ) : depth && aiming && access.status === "granted" && hasDistanceRange(target.kind) ? (
+            <DistanceChip kind={target.kind} metres={distance} />
+          ) : null}
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 22 }}>
             <View style={{ flex: 1, alignItems: "flex-start" }}>
               <IconButton
@@ -203,7 +217,7 @@ function OneShotCamera({ scanId, purpose, data }: { scanId: string; purpose: One
             </View>
             <CoverageDial
               segments={[{ stored: Boolean(photo) }]}
-              shutter={state.step === "review" ? "retake" : aiming && access.status === "granted" && !shooting ? "take" : "busy"}
+              shutter={state.step === "review" ? "retake" : aiming && access.status === "granted" && !shooting && !paused ? "take" : "busy"}
               onShutter={() => void shoot()}
               coverageText={photo ? "Photo taken" : "No photo yet"}
             />

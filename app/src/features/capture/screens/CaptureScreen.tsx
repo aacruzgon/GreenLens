@@ -12,12 +12,14 @@ import { CameraPreview, pickFromLibrary, useCameraAccess, useCapabilities, type 
 import { Button, DropCard, Fade, IconButton, Text, ThemeProvider, camera, minTouch, space } from "@/ui";
 
 import { CameraAction, ProblemLine } from "../components/CameraControls";
+import { CameraNotice } from "../components/CameraNotice";
 import { CaptureIcon } from "../components/CaptureIcons";
 import { CoverageDial } from "../components/CoverageDial";
 import { FramingGuide } from "../components/FramingGuide";
 import { DistanceChip } from "../components/DistanceChip";
 import { ModeBar } from "../components/ModeBar";
 import { useCaptureSession, type CaptureSessionView } from "../hooks/useCaptureSession";
+import { pauseText, type CameraPause } from "../model/interruption";
 
 export function CaptureScreen() {
   return (
@@ -42,6 +44,9 @@ function Capture() {
   // LiDAR phones only: metres to the centre of the frame, for the distance chip (architecture 6.7).
   const { depth } = useCapabilities();
   const [distance, setDistance] = useState<number | null>(null);
+  // The camera taken away by a call or another app: the shutter waits, and the screen says why.
+  const [paused, setPaused] = useState<CameraPause | null>(null);
+  const [shotFailed, setShotFailed] = useState(false);
   const v = session.view;
   const { actions } = session;
 
@@ -57,13 +62,16 @@ function Capture() {
   }, [access]);
 
   const shoot = async () => {
-    if (!preview.current || shooting) return;
+    if (!preview.current || shooting || paused) return;
     setShooting(true);
     try {
       const shot = await preview.current.capture();
+      setShotFailed(false);
       setFlash(true);
       setTimeout(() => setFlash(false), 380);
       actions.addShot(shot, false);
+    } catch {
+      setShotFailed(true);
     } finally {
       setShooting(false);
     }
@@ -116,6 +124,7 @@ function Capture() {
           ref={preview}
           active={!covered}
           onDistance={depth ? setDistance : undefined}
+          onInterruption={setPaused}
           style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
         />
       ) : (
@@ -176,7 +185,13 @@ function Capture() {
 
       {v ? (
         <View style={{ position: "absolute", left: 0, right: 0, bottom: insets.bottom + 8, gap: 14 }}>
-          {depth && access.status === "granted" ? <DistanceChip kind={v.mode.kind} metres={distance} /> : null}
+          {paused ? (
+            <CameraNotice text={pauseText(paused)} />
+          ) : shotFailed ? (
+            <CameraNotice text="Couldn't take the photo. Try again." />
+          ) : depth && access.status === "granted" ? (
+            <DistanceChip kind={v.mode.kind} metres={distance} />
+          ) : null}
           <View style={{ alignSelf: "center", maxWidth: "92%", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: camera.pill }}>
             <Text variant="footnote" style={{ color: camera.ink, textAlign: "center" }} testID="coverage-text">
               <Text variant="footnote" style={{ color: camera.ink, fontWeight: "600" }}>
@@ -198,7 +213,7 @@ function Capture() {
             </View>
             <CoverageDial
               segments={v.dial}
-              shutter={access.status === "granted" && !shooting ? v.shutter : "busy"}
+              shutter={access.status === "granted" && !shooting && !paused ? v.shutter : "busy"}
               onShutter={() => void shoot()}
               coverageText={v.neededText}
             />

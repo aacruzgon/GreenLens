@@ -6,6 +6,7 @@ export {
   CameraPreview,
   pickFromLibrary,
   useCameraAccess,
+  type CameraInterruption,
   type CameraPreviewHandle,
   type CapturedShot,
   type CaptureReport,

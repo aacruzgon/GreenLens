@@ -49,13 +49,18 @@ public final class LidarModule: Module {
       view.relocalise(gardenId: gardenId, promise: promise)
     }.runOnQueue(.main)
 
+    /// A stale map, or a garden the user left or deleted.
+    Function("removeWorldMap") { (gardenId: String) in
+      WorldMaps.remove(gardenId)
+    }
+
     /// On sign-out: nothing of a garden's space stays on the phone.
     Function("removeWorldMaps") {
       WorldMaps.removeAll()
     }
 
     View(GardenMappingView.self) {
-      Events("onTrackingState", "onGroundTap", "onPinPlaced", "onHeading", "onMountError")
+      Events("onTrackingState", "onGroundTap", "onPinPlaced", "onHeading", "onMountError", "onInterruption")
 
       Prop("tapMode") { (view: GardenMappingView, mode: String) in
         view.tapMode = mode
@@ -75,7 +80,7 @@ public final class LidarModule: Module {
     }
 
     View(LidarCameraView.self) {
-      Events("onDistance", "onReady", "onMountError")
+      Events("onDistance", "onReady", "onMountError", "onInterruption")
 
       Prop("active") { (view: LidarCameraView, active: Bool) in
         view.setActive(active)
