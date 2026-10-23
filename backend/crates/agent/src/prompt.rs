@@ -20,7 +20,7 @@ use serde_json::Value;
 /// The chat system prompt's version.
 pub const CHAT_PROMPT_VERSION: &str = "chat/2026-10-20.6";
 /// The plan writer's version.
-pub const PLAN_PROMPT_VERSION: &str = "plan/2026-10-20.1";
+pub const PLAN_PROMPT_VERSION: &str = "plan/2026-10-23.1";
 /// The off-topic redirect's version.
 pub const OFF_TOPIC_PROMPT_VERSION: &str = "off_topic/2026-10-16.1";
 /// The memory extraction prompt's version.
@@ -123,7 +123,18 @@ pub fn plan_system() -> String {
          whichever candidate it is, monitoring, and nothing that only fits one candidate.\n\
          - At most 8 steps, ordered by when to do them. Never write a safety note; the server \
          adds it.\n\
-         - watch_for lists what would mean the plan isn't working, with a time frame."
+         - watch_for lists what would mean the plan isn't working, with a time frame.\n\n\
+         Farm records:\n\
+         - A farm_records block, when there is one, holds the farm's own Slack messages and \
+         Drive files (field reports, spray logs, procedures), each with its record_id. They are \
+         the farm's history, not advice: a step that uses one still cites at least one of the \
+         given sources.\n\
+         - A step that relies on a farm record lists its record_id in farm_citations. Cite only \
+         records from the block.\n\
+         - Don't repeat a treatment the records show was applied within its re-application \
+         interval.\n\
+         - Never repeat a rate, amount, volume or mixing ratio from a record, even when the \
+         record states one."
     )
 }
 
@@ -476,7 +487,18 @@ mod tests {
                 p.contains("When you decline to give a rate or an amount, don't name a volume")
             );
         }
-        assert_eq!(PLAN_PROMPT_VERSION, "plan/2026-10-20.1");
+        assert_eq!(PLAN_PROMPT_VERSION, "plan/2026-10-23.1");
+    }
+
+    /// EON E5.4: the plan writer cites farm records beside its sources and doesn't repeat a
+    /// treatment inside its re-application interval.
+    #[test]
+    fn the_plan_prompt_says_how_to_use_farm_records() {
+        let p = plan_system();
+        assert!(p.contains("lists its record_id in farm_citations"));
+        assert!(p.contains("still cites at least one of the given sources"));
+        assert!(p.contains("within its re-application interval"));
+        assert!(p.contains("Never repeat a rate, amount, volume or mixing ratio from a record"));
     }
 
     #[test]

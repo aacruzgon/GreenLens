@@ -3,16 +3,33 @@
 //! validation checks them, the failures go back once, and the passing steps are returned.
 //!
 //! It stores nothing. `pipeline` builds the [`PlanInput`] (diagnosis, problems, treatments,
-//! organisms, shared memories, the plant's current beliefs, constraints, neighbours), calls [`PlanWriter::write`] and
-//! assembles and stores the `ActionPlan` under the scan's plan lock.
+//! organisms, shared memories, the plant's current beliefs, constraints, neighbours, and the
+//! farm records of [`plan_farm_records`]), calls [`PlanWriter::write`] and assembles and stores
+//! the `ActionPlan` under the scan's plan lock.
+//!
+//! **Farm records** ([connectors 7]). In a garden with synced Slack or Drive records, `pipeline`
+//! runs one search for the plant and the leading candidate and passes the top
+//! [`PLAN_FARM_HITS`] hits. They reach the model in a `farm_records` data block; a step may cite
+//! them in `farm_citations` beside its knowledge sources, never instead of one, and validation
+//! resolves the cited ones into `ActionPlan.farm_records`. Without farm records the request is
+//! the one written before connectors.
+//!
+//! [connectors 7]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#7-the-agent
 
-use std::sync::{Arc, LazyLock};
+use std::{
+    sync::{Arc, LazyLock},
+    time::Duration,
+};
 
 use domain::{
     chat::{Belief, Memory, MemorySource, Usage},
-    id::{OrganismId, ProblemId, SourceId, TreatmentId},
+    connectors::{FarmCitation, FarmRecordHit, FarmRecordKind},
+    id::{GardenId, OrganismId, ProblemId, SourceId, TreatmentId},
     knowledge::{OrganismSeed, ProblemSeed, SeedOrganismRole, SpeciesSeed, TreatmentSeed},
-    ports::{ChatMessage, ChatModel, ChatPurpose, ChatRequest, ChatRole, ContentPart, StopReason},
+    ports::{
+        BoxError, ChatMessage, ChatModel, ChatPurpose, ChatRequest, ChatRole, ContentPart,
+        EmbedMode, FarmRecordFilter, FarmRecordStore, StopReason, TextEmbedder,
+    },
     records::{
         diagnosis::{Diagnosis, DiagnosisStatus, Risk},
         observation::OrganismRole,
@@ -25,10 +42,12 @@ use domain::{
 use serde::Serialize;
 
 use crate::{
+    beliefs::Chain,
     context::{BeliefView, MemoryView},
     error::{PlanWriterError, PrivateMemory},
     prompt::{DataKind, PLAN_PROMPT_VERSION, data_json, plan_system},
     safety::{PlanDraft, ProductCatalogue, RuleFailure, ValidationContext, validate_plan},
+    tools::read::merge_kinds,
 };
 
 /// The JSON Schema of [`PlanWriterOutput`], generated once by `schemars` (contracts 1: fixed
@@ -39,6 +58,21 @@ pub static PLAN_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
 
 /// The default output budget of one plan-writer call (thinking included).
 pub const PLAN_MAX_TOKENS: u32 = 8_192;
+
+/// The most farm records the plan writer is given ([connectors 7]).
+pub const PLAN_FARM_HITS: usize = 4;
+
+/// The hits each kind keeps, when it has them, as `search_farm_records` does without `kind`
+/// (EON gap G16): Slack messages outnumber Drive documents, and the spray log, which says what
+/// was applied and when, must not be crowded out.
+pub const PLAN_FARM_RESERVED: usize = 2;
+
+// Both kinds' reserves fit in the hits.
+const _: () = assert!(PLAN_FARM_HITS >= 2 * PLAN_FARM_RESERVED);
+
+/// How long the plan step waits for its farm records (the count, the query's embedding and the
+/// search) before writing the plan without them.
+pub const FARM_SEARCH_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Shared memories only: the plan writer's memory input, which every member will see in the
 /// plan (architecture 7: "the plan writer reads only shared memories").
@@ -109,6 +143,10 @@ pub struct PlanInput<'k> {
     pub weather: Option<&'k WeatherSummary>,
     /// The sources steps may cite.
     pub known_sources: &'k [SourceId],
+    /// The garden's farm records from [`plan_farm_records`], closest first, at most
+    /// [`PLAN_FARM_HITS`]: the only records a step may cite. Empty when the garden has none or
+    /// the search failed.
+    pub farm_records: &'k [FarmRecordHit],
 }
 
 /// A validated plan, ready for `pipeline` to assemble into an `ActionPlan`.
@@ -122,6 +160,8 @@ pub struct WrittenPlan {
     pub watch_for: Vec<String>,
     /// The sources the steps cite; resolve with `KnowledgeStore::citations`.
     pub citations: Vec<SourceId>,
+    /// The farm records the steps cite, resolved: `ActionPlan.farm_records`.
+    pub farm_records: Vec<FarmCitation>,
     /// The rules the final answer still broke; their steps were dropped.
     pub dropped: Vec<RuleFailure>,
     /// The model that wrote it (`action_plan.llm_model`).
@@ -175,6 +215,11 @@ impl PlanWriter {
     pub async fn write(&self, input: &PlanInput<'_>) -> Result<WrittenPlan, PlanWriterError> {
         let mut request = self.request(input);
         let mut usage = Usage::default();
+        let farm_records: Vec<FarmCitation> = input
+            .farm_records
+            .iter()
+            .map(|h| h.citation.clone())
+            .collect();
         let ctx = ValidationContext {
             treatments: input.treatments,
             products: &self.products,
@@ -183,6 +228,7 @@ impl PlanWriter {
             neighbours: input.neighbours,
             beneficials_seen: beneficials_seen(input.diagnosis, input.organisms),
             known_sources: input.known_sources,
+            farm_records: &farm_records,
         };
 
         let (text, parsed) = self.call(&request, &mut usage).await?;
@@ -215,6 +261,7 @@ impl PlanWriter {
             steps: validation.steps,
             watch_for: validation.watch_for,
             citations: validation.citations,
+            farm_records: validation.farm_records,
             dropped: validation.failures,
             llm_model: self.model.model_name(ChatPurpose::PlanWriter),
             prompt_version: PLAN_PROMPT_VERSION.to_owned(),
@@ -240,6 +287,12 @@ impl PlanWriter {
         if !input.beliefs.is_empty() {
             let beliefs: Vec<BeliefView<'_>> = input.beliefs.iter().map(BeliefView::new).collect();
             content.push(ContentPart::Text(data_json(DataKind::Beliefs, &beliefs)));
+        }
+        if !input.farm_records.is_empty() {
+            content.push(ContentPart::Text(data_json(
+                DataKind::FarmRecords,
+                input.farm_records,
+            )));
         }
         content.push(ContentPart::Text(
             "Write the action plan for this plant as the JSON object the schema describes."
@@ -277,6 +330,89 @@ impl PlanWriter {
         let parsed = serde_json::from_str::<PlanWriterOutput>(completion.text.trim())
             .map_err(|e| e.to_string());
         Ok((completion.text, parsed))
+    }
+}
+
+/// The plan writer's one farm-record search ([connectors 7]): the plant's name and the leading
+/// candidate's, the primary problem or else the top candidate. A healthy plant has no candidate
+/// to search for, so its name alone is searched.
+pub fn farm_query(plant_name: &str, diagnosis: &Diagnosis<Stored>) -> String {
+    let leading = match diagnosis.status {
+        DiagnosisStatus::Healthy => None,
+        DiagnosisStatus::Confirmed | DiagnosisStatus::Uncertain => diagnosis
+            .primary
+            .as_ref()
+            .or_else(|| diagnosis.candidates.first()),
+    };
+    match leading {
+        Some(c) => format!("{plant_name} {}", c.name),
+        None => plant_name.to_owned(),
+    }
+}
+
+/// The farm records for a plan of `garden` ([connectors 7]): `query` ([`farm_query`]) embedded
+/// once and searched in the garden's synced records, the top [`PLAN_FARM_HITS`], each kind
+/// keeping [`PLAN_FARM_RESERVED`] when it has them, closest first.
+///
+/// A garden without records gets none and nothing is embedded, so its plan is written as before
+/// connectors. A failed count, embedding or search, or one slower than `timeout`, is logged and
+/// gives none: the plan is written without farm records rather than failing.
+pub async fn plan_farm_records(
+    farm: &dyn FarmRecordStore,
+    embedder: &dyn TextEmbedder,
+    garden: GardenId,
+    query: &str,
+    timeout: Duration,
+) -> Vec<FarmRecordHit> {
+    let search = async {
+        if farm.garden_record_count(garden).await? == 0 {
+            return Ok::<_, BoxError>(Vec::new());
+        }
+        let Some(query) = embedder
+            .embed(EmbedMode::Query, &[query.to_owned()])
+            .await?
+            .pop()
+        else {
+            return Ok(Vec::new());
+        };
+        let of = |kind| FarmRecordFilter {
+            kind: Some(kind),
+            ..FarmRecordFilter::default()
+        };
+        let (messages, documents) = futures::try_join!(
+            farm.search_records_for_plan(
+                garden,
+                &query,
+                of(FarmRecordKind::Message),
+                PLAN_FARM_HITS
+            ),
+            farm.search_records_for_plan(
+                garden,
+                &query,
+                of(FarmRecordKind::Document),
+                PLAN_FARM_HITS
+            ),
+        )?;
+        Ok(
+            merge_kinds(messages, documents, PLAN_FARM_HITS, PLAN_FARM_RESERVED)
+                .into_iter()
+                .map(|m| m.hit)
+                .collect(),
+        )
+    };
+    match tokio::time::timeout(timeout, search).await {
+        Ok(Ok(hits)) => hits,
+        Ok(Err(e)) => {
+            tracing::warn!(error = %Chain(e.as_ref()), "farm records not searched; the plan is written without them");
+            Vec::new()
+        }
+        Err(_) => {
+            tracing::warn!(
+                timeout_ms = timeout.as_millis(),
+                "farm records not searched in time; the plan is written without them"
+            );
+            Vec::new()
+        }
     }
 }
 

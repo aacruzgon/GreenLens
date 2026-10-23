@@ -495,6 +495,19 @@ pub trait FarmRecordStore: Send + Sync {
         k: usize,
     ) -> Result<Vec<FarmRecordMatch>, StoreError>;
 
+    /// The plan writer's search ([connectors 7], the agent): the same search within the scan's
+    /// garden, for `pipeline`, which holds no member's proof. The garden comes from the scan
+    /// being planned, as for `MemoryStore::shared_for_plan`.
+    ///
+    /// [connectors 7]: https://github.com/aacruzgon/GreenLens/blob/main/docs/connectors/README.md#7-the-agent
+    async fn search_records_for_plan(
+        &self,
+        garden: GardenId,
+        query: &Embedding,
+        filter: FarmRecordFilter,
+        k: usize,
+    ) -> Result<Vec<FarmRecordMatch>, StoreError>;
+
     /// The cleanup: one batch of 500 Slack messages older than the cutoff (180 days), on the
     /// `farm_record_kind_at` index. Documents are not deleted by age: Drive's sync removes a
     /// file when `changes.list` says it is gone.

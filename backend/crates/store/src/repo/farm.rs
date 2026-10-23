@@ -1119,9 +1119,43 @@ impl FarmRecordStore for SurrealStore {
         filter: FarmRecordFilter,
         k: usize,
     ) -> Result<Vec<FarmRecordMatch>, StoreError> {
+        self.search_farm(member.garden(), query, filter, k).await
+    }
+
+    async fn search_records_for_plan(
+        &self,
+        garden: GardenId,
+        query: &Embedding,
+        filter: FarmRecordFilter,
+        k: usize,
+    ) -> Result<Vec<FarmRecordMatch>, StoreError> {
+        self.search_farm(garden, query, filter, k).await
+    }
+
+    async fn delete_records_before(&self, cutoff: Timestamp) -> Result<u32, StoreError> {
+        const WHAT: &str = "delete old farm records";
+        let mut r = run_tx(&self.db, sql::DELETE_RECORDS_BEFORE, |q| {
+            q.bind(("cutoff", dt(cutoff)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        deleted(&mut r, 0, WHAT)
+    }
+}
+
+impl SurrealStore {
+    /// The exact search within one garden, for the chat's tool (by the member's proof) and the
+    /// plan writer (by the scan's garden).
+    async fn search_farm(
+        &self,
+        garden: GardenId,
+        query: &Embedding,
+        filter: FarmRecordFilter,
+        k: usize,
+    ) -> Result<Vec<FarmRecordMatch>, StoreError> {
         const WHAT: &str = "search farm records";
         let mut r = run_tx(&self.db, sql::SEARCH, |q| {
-            q.bind(("garden", rid(&member.garden())))
+            q.bind(("garden", rid(&garden)))
                 .bind(("query", query.0.clone()))
                 .bind(("kind", filter.kind.map(FarmRecordKindRow::from)))
                 .bind(("since", filter.since.map(dt)))
@@ -1156,16 +1190,6 @@ impl FarmRecordStore for SurrealStore {
             })
             .collect::<Result<_, RowError>>()
             .map_err(|e| e.into_store(WHAT))
-    }
-
-    async fn delete_records_before(&self, cutoff: Timestamp) -> Result<u32, StoreError> {
-        const WHAT: &str = "delete old farm records";
-        let mut r = run_tx(&self.db, sql::DELETE_RECORDS_BEFORE, |q| {
-            q.bind(("cutoff", dt(cutoff)))
-        })
-        .await
-        .map_err(|f| f.into_store(WHAT))?;
-        deleted(&mut r, 0, WHAT)
     }
 }
 

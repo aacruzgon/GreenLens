@@ -298,6 +298,10 @@ pub struct PlanStepDraft {
     pub plant_id: Option<PlantId>,
     /// At least one source.
     pub citations: Vec<SourceId>,
+    /// Farm records the step cites, by `record_id`, from those given ([connectors 7]); never
+    /// instead of a source.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub farm_citations: Vec<FarmRecordId>,
 }
 
 /// The plan writer's structured output: the fixed shape whose JSON Schema the agent sends to

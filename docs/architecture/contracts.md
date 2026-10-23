@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.31, 2026-10-23. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.32, 2026-10-23. Companion to the [architecture document](README.md).
+> **v0.10.32**: plan validation checks farm citations (EON E5.4): a step citing a farm record the plan writer wasn't given, or citing farm records without a knowledge source, fails, and `ActionPlan.farm_records` holds the records the passing steps cite; the plan writer's output steps (and `revise_plan`'s `changed_steps`) take the optional `farm_citations`; no API wire shape changed.
 > **v0.10.31**: open question 26 is settled by a live run (vision vlm.md 12, task P9): the fallback's hosted model answers in pixels of the image as sent, so `abs_px_prepared` stays, and its calls finish far inside the doubled `max_runtime`; no wire shape changed.
 > **v0.10.30**: the indicators and verify prompts are `indicators@3` and `verify@3`, whose reason asks for at most 60 characters (vision vlm.md 7, [#137](https://github.com/aacruzgon/GreenLens/issues/137)), so `vlm_prompts` reads `system@2,findings@5,indicators@3,verify@3,guided@1`.
 > **v0.10.29**: `Question.indicator_id?` is the slug of the indicator an `indicator` question asks about (`concentric_rings`), so the app can draw a picture answer; the server already stored it (section 3); no architecture section changed.
@@ -1509,7 +1510,7 @@ interface ActionPlan {
 }
 ```
 
-**Farm records in a plan.** `farm_citations` and `farm_records` are optional and omitted when empty, and a plan stored before connectors reads as citing none. A step still needs at least one knowledge source in `citations`: farm records add the farm's history, never the advice. Every id in a step's `farm_citations` must appear in `ActionPlan.farm_records` (the validation rule is written with the plan writer's search, [EON E5](../EON/README.md#e5-the-agent)). A deleted record leaves its `FarmCitation` in a stored plan as it was.
+**Farm records in a plan.** `farm_citations` and `farm_records` are optional and omitted when empty, and a plan stored before connectors reads as citing none. A step still needs at least one knowledge source in `citations`: farm records add the farm's history, never the advice. Every id in a step's `farm_citations` must appear in `ActionPlan.farm_records`. The plan writer is given the top 4 hits of one search of the garden's records, for the plant and the leading candidate, and a step may cite only those; a `revise_plan` preview may cite only the base plan's `farm_records` ([connectors 7](../connectors/README.md#7-the-agent), [EON E5.4](../EON/README.md#e5-the-agent)). A deleted record leaves its `FarmCitation` in a stored plan as it was.
 
 **Steps to tasks.**
 
@@ -1555,7 +1556,8 @@ When a plan is **superseded**, the system dismisses its open tasks (`dismissed_r
 | Chemical steps carry the safety note | The server adds a fixed `safety_note` to every `chemical` step: "Use only a product registered for this use where you live, and follow its label exactly." The plan writer never writes it |
 | Beneficials are never targeted | A step whose `targets` include an organism with role `beneficial` is rejected. Organisms reported as `other` have role `unknown` and cannot be targeted |
 | Beneficials are not harmed by the way | When the scan found a beneficial organism, a `chemical` step naming a product marked `broad_spectrum` in `products.yaml` is rejected, and the plan writer is asked for a targeted option instead |
-| Every step is cited | `citations` has at least one source, and every source appears in `ActionPlan.citations` |
+| Every step is cited | `citations` has at least one source, and every source appears in `ActionPlan.citations`. Farm records never count as the source: a step whose only citations are farm records fails |
+| Farm citations are given records | Every id in a step's `farm_citations` is one of the farm records the plan writer was given (for a preview, one of the base plan's `farm_records`); the records the passing steps cite become `ActionPlan.farm_records` |
 | Neighbour steps | A step with `plant_id` must be `monitoring`, that plant must be one of the neighbours given to the plan writer (above), and the step's `targets` must include one of that neighbour's `problems`, or an organism one of them is `caused_by`. A `revise_plan` preview is checked against the neighbour list computed from the current map when the preview is made, not the list the base plan was written with; confirming re-checks only that each named plant still exists (section 8) |
 
 **The dose check.** Case-insensitive, with word boundaries (`\b`) around every unit, so "2 lowest leaves" or "3 large leaves" don't match. A text fails when it contains:
@@ -2505,6 +2507,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.29: `Question.indicator_id?`, the indicator an `indicator` question asks about | none (the architecture document doesn't list `Question` fields) |
 | v0.10.30: `vlm_prompts` names `indicators@3` and `verify@3`, whose reason asks for at most 60 characters | none (the architecture document lists no prompt versions) |
 | v0.10.31: open question 26 settled, the fallback's `abs_px_prepared` confirmed live | none (10 already says the fallback's pixel boxes match the prepared image) |
+| v0.10.32: plan validation's farm-citation rules; the plan writer's steps take `farm_citations` | none (7, farm connectors, already says the plan writer passes its top 4 hits and a plan lists the records it cites) |
 
 ---
 

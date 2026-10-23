@@ -697,7 +697,7 @@ async fn a_drive_source_is_all_its_records() {
 }
 
 /// The exact search: only the proof's garden, ranked by cosine similarity, with its filters;
-/// a deleting connector's records are left out.
+/// a deleting connector's records are left out. The plan writer's search by garden agrees.
 #[tokio::test]
 #[expect(clippy::too_many_lines, reason = "two gardens and three filters")]
 async fn the_search_stays_in_its_garden_and_ranks_by_similarity() {
@@ -800,6 +800,17 @@ async fn the_search_stays_in_its_garden_and_ranks_by_similarity() {
         .unwrap();
     assert_eq!(theirs.len(), 1);
     assert_eq!(theirs[0].hit.text, "other garden");
+
+    // The plan writer's search, by the scan's garden, finds the same as its members.
+    for (garden, expected) in [(f.garden, &hits), (other, &theirs)] {
+        assert_eq!(
+            &store
+                .search_records_for_plan(garden, &query, FarmRecordFilter::default(), 10)
+                .await
+                .unwrap(),
+            expected
+        );
+    }
 
     // A disconnected connector's records leave the search at once.
     let owner = owner_of(&store, &f).await;

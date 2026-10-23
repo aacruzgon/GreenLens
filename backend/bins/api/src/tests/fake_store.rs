@@ -743,6 +743,17 @@ mod farm_record_store {
                 .search_records(member, query, filter, k)
                 .await
         }
+        async fn search_records_for_plan(
+            &self,
+            garden: GardenId,
+            query: &Embedding,
+            filter: FarmRecordFilter,
+            k: usize,
+        ) -> Result<Vec<FarmRecordMatch>, StoreError> {
+            self.farm_record_store
+                .search_records_for_plan(garden, query, filter, k)
+                .await
+        }
         async fn delete_records_before(&self, cutoff: Timestamp) -> Result<u32, StoreError> {
             self.farm_record_store.delete_records_before(cutoff).await
         }
