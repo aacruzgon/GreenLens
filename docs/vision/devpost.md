@@ -1,6 +1,6 @@
 # PDM Devpost Write-up: the ML Part
 
-> **Status:** Draft v0.2.2, 2026-10-23. v0.2.2: the split is #147's, 102 dev and 58 test with 9 `sure` test cases, since neighbouring field-dataset frames now share a plant key; the 7 test cases that were used on dev are named, and M18 reports with and without them. v0.2.1: the split is #140's after Alan's second review of #135, 104 dev and 56 test, since a same-plant squash pair moved to test. v0.2: after Alan's review, the 12 garden tomato leaves are out (the second review keeps at most 3 of them), the VLM's 35% sits beside the 33% a random pick gets, prior work says what existed before build week, the species result is the seed's matrix (61%, as the stand-in), case counts are #140's and marked pending, T5 and T11–T14 name their cases, section 10's checklist covers the re-runs, and the duplicates between fields are cut. v0.1: first draft of the ML part of each Devpost field (dev-roadmap M19): what the models do on a scan, how they were built and measured, challenges, accomplishments, lessons, next steps, built with and prior work, with the test split's numbers left as placeholders for M18.
+> **Status:** Draft v0.2.3, 2026-10-23. v0.2.3: the trained plant probe v2 ships (M17), so iNaturalist, iBean and 2,372 licence-clean COCO photos are in shipped weights, each photo credited in `ml/models/credits/`. v0.2.2: the split is #147's, 102 dev and 58 test with 9 `sure` test cases, since neighbouring field-dataset frames now share a plant key; the 7 test cases that were used on dev are named, and M18 reports with and without them. v0.2.1: the split is #140's after Alan's second review of #135, 104 dev and 56 test, since a same-plant squash pair moved to test. v0.2: after Alan's review, the 12 garden tomato leaves are out (the second review keeps at most 3 of them), the VLM's 35% sits beside the 33% a random pick gets, prior work says what existed before build week, the species result is the seed's matrix (61%, as the stand-in), case counts are #140's and marked pending, T5 and T11–T14 name their cases, section 10's checklist covers the re-runs, and the duplicates between fields are cut. v0.1: first draft of the ML part of each Devpost field (dev-roadmap M19): what the models do on a scan, how they were built and measured, challenges, accomplishments, lessons, next steps, built with and prior work, with the test split's numbers left as placeholders for M18.
 
 This file holds the machine-learning part of each field on PDM's Devpost page, ready to paste; each section names its field. The app, the backend and the farm connectors are written up elsewhere. Every number links its source: a section of the vision documents, a committed report, or an open pull request where the fact isn't on `main` yet. Each number carries one of these labels:
 
@@ -55,7 +55,7 @@ BioCLIP 2 does four jobs on the 3070 from one session: species, the plant probe,
 | SAM 2.1 Hiera-T (Meta) | Leaf and plant masks | RTX 3070, fp16 ONNX | Used as is; our own export to two ONNX graphs |
 | BioCLIP 2 (Imageomics) | Species, plant probe, features for our heads, image embeddings | RTX 3070, fp16 ONNX vision tower | Used as is; its text tower builds our label matrix |
 | Disease head (ours) | Problem or healthy, per leaf crop | The perception worker's CPU | Trained: logistic regression on BioCLIP 2 features, 19 classes |
-| Plant probe (ours) | Plant or not, per photo | The perception worker's CPU | Made from BioCLIP 2 text prompts, with no images; a trained probe is measured, not shipped |
+| Plant probe (ours) | Plant or not, per photo | The perception worker's CPU | Logistic regression on the BioCLIP 2 embedding, trained on leaf-dataset and iNaturalist plant photos against licence-clean COCO photos without a plant |
 | Species head (ours) | Species of the five crops | Not in the worker yet | Trained: logistic regression on BioCLIP 2 features |
 | Qwen3.5-9B, as `cyankiwi/Qwen3.5-9B-AWQ-4bit` | Findings and indicator answers | RTX 5070 Ti, vLLM 0.31.0 | Used as is, a community 4-bit quantization; our prompts and JSON schemas |
 | Qwen3-VL-8B-Instruct | The VLM's fallback, by configuration | RTX 5070 Ti, vLLM 0.31.0 | Used as is |
@@ -112,7 +112,7 @@ Each result says where it was measured. The dev numbers were measured on the 115
   - The dev cases chose its regularisation, so the 84% is in-sample; the value chosen isn't dev's best (87%), which keeps that bias small ([training 6](training.md#disease-head)).
   - The numbers assume the species is right, and send each one-photo case's photo as a leaf close-up ([evaluation 5](evaluation.md#results-on-the-dev-cases-2026-10-20--ran-offline-part)).
   - Its temperature, which sets how often it claims a problem at medium confidence, is provisional: M16 refits it on the reviewed dev cases, and M17 ships it.
-- **Plant check (held-out, not the evaluation set):** at the provisional pair `τ_leaf` 0.40 and `τ_plant` 0.70, 0.23% of 854 held-out plant photos fail and 11.0% of 1,000 COCO photos without a plant pass, against targets of 1% and 10%. About half of those that pass show trees, hedges or grass. A trained probe passes 0.1% with no plant photo failing. It ships only after photos from outside its training sources check it ([models 2](models.md#2-plant-present-check)).
+- **Plant check (held-out, not the evaluation set):** with the trained probe at `τ_leaf` 0.99 and `τ_plant` 0.74, none of 1,276 held-out plant photos fail and none of 1,000 COCO photos without a plant pass, against targets of 1% and 10%; the zero-shot probe it replaced let 11.0% through. On the validation split it fails 2.19% of iNaturalist's whole-plant photos, as the zero-shot probe did, and on the 102 dev cases every case passes ([models 2](models.md#2-plant-present-check)).
 - **VLM (dev):** the 65 tomato and corn dev cases, one photo each, with the prompts of Oct 20 ([evaluation 8](evaluation.md#vlm-results-2026-10-20--ran)):
   - all three builds returned valid output on every call, on the first try;
   - bench, on the 5070 Ti at 1 megapixel: Qwen3.5-9B AWQ took 5.3 s per job at the median and 6.4 s at p95, one job at a time; with two at once, every build's p95 stayed at or under 9.6 s, against a 2.5-minute limit;
@@ -221,7 +221,7 @@ T11–T14 can't pass or fail their targets at these counts, so M18 reports them 
 - **Disease as damage:** the structural fix for the VLM's `leaf_mines` (P11).
 - **The other four crops' classes** into `classifier_labels.yaml` once their profiles are signed ([#125](https://github.com/aacruzgon/GreenLens/issues/125)).
 - **The species head in the worker,** with a rule that lets it lift its crops' share, which zero-shot gets right on only 61% of dev cases ([models 6](models.md#6-species-bioclip)).
-- **Full shot sets from real gardens,** with beneficial insects, faces, no-plant shots and LiDAR, to measure what the published photos can't, and to check the trained plant probe before it ships ([models 2](models.md#2-plant-present-check)).
+- **Full shot sets from real gardens,** with beneficial insects, faces, no-plant shots and LiDAR, to measure what the published photos can't, and to check the trained plant probe on the app's own shots ([models 2](models.md#2-plant-present-check)).
 - **More leaves found:** a relabelling pass over PlantDoc's training boxes, the change most likely to raise the detector's recall ([training 5](training.md#5-leaf-detector)).
 - **A second VLM worker** on the RX 9070 XT ([README 4](README.md#4-placement-and-vram-budgets)).
 - **Feedback as training data:** scans a reviewer marks wrong, with a corrected label, join the heads' training data after review, from gardens whose owners agreed ([training 9](training.md#9-feedback-as-training-data)).
@@ -285,12 +285,13 @@ Sources: [README 9](README.md#9-licences-and-notices), [NOTICES](../../ml/models
 | PlantCity | CC BY 4.0 | Copies grouped and deduplicated; its gray leaf spot class dropped |
 | Diseases of maize in the field (University of Pretoria) | CC BY 4.0 | Single-label photos, deduplicated |
 | Makerere University Maize Image Dataset | CC0 1.0, credited | A fixed sample of 600 per class |
-| iNaturalist, training photos | CC0 or CC BY 4.0 per photo, each credited | Only in weights we don't ship yet: the species head and the trained plant probe |
-| COCO train2017, 400 photos | Annotations CC BY 4.0; only photos that are CC BY, CC BY-SA or have no known copyright | The detector's photos with no leaf |
+| iNaturalist, training photos | CC0 or CC BY 4.0 per photo, each credited in `ml/models/credits/` | Whole plants, flowers and fruit for the trained plant probe; the species head isn't shipped yet |
+| COCO 2017, 400 + 2,372 photos | Annotations CC BY 4.0; only photos that are CC BY, CC BY-SA or have no known copyright, picked per image, each credited in `ml/models/credits/` | The detector's photos with no leaf, and the trained plant probe's photos without a plant |
+| iBean | MIT | Bean leaves as plant photos for the trained plant probe |
 
 Sources: [training 3](training.md#3-datasets-and-licences), [NOTICES, Datasets](../../ml/models/NOTICES.md#datasets).
 
-**Datasets for evaluation only, in no shipped weights:** COCO val2017 (4,758 photos) and 1,000 other COCO train2017 photos, as photos without a plant for the plant check (half of val2017 also trained the probe that isn't shipped); four CC BY 4.0 field datasets for the evaluation cases (maize from Bangladesh, 2026; two sets of tomato from Bangladesh, 2025; tomato from Ghana, 2023); and CC0 and CC BY iNaturalist observations from 2026 ([training 3](training.md#3-datasets-and-licences), [evaluation 2](evaluation.md#where-the-photos-come-from)). iBean (MIT) is fetched but not in v3c's training data.
+**Datasets for evaluation only, in no shipped weights:** half of COCO val2017's 4,758 photos without a plant (the tune half, 2,386) and 1,000 other COCO train2017 photos, as photos without a plant for the plant check; four CC BY 4.0 field datasets for the evaluation cases (maize from Bangladesh, 2026; two sets of tomato from Bangladesh, 2025; tomato from Ghana, 2023); and CC0 and CC BY iNaturalist observations from 2026 ([training 3](training.md#3-datasets-and-licences), [evaluation 2](evaluation.md#where-the-photos-come-from)). iBean (MIT) is in the plant probe but not in v3c's training data.
 
 **The pretrained models' own training data,** which we didn't choose: for BioCLIP 2, TreeOfLife-200M (CC0 as a compilation, though its images may keep their own terms), starting from a CLIP ViT-L/14 pre-trained on LAION-2B; for SAM 2.1, SA-1B and SA-V (*unverified*); for YuNet, WIDER FACE (CC BY-NC-ND 4.0); and for RF-DETR's base weights, COCO. Whether a dataset's terms reach a model trained on it is unsettled; the notices say so, and the project's own licence is still for the team to choose ([README 9](README.md#9-licences-and-notices)).
 
@@ -307,7 +308,7 @@ Before scoring:
   - `species_check` with the seed's matrix: zero-shot, the species head and their average;
   - `calibrate` on v3c: the disease head's top 3, its top-1 and its temperature (M16);
   - `vlm_bench` on `findings@5`, the rerun [vlm.md 13](vlm.md#results-and-the-choice-2026-10-20--ran) promises;
-  - `plant_check` again if M17 changes the pair or ships the trained probe.
+  - `plant_check` on the test cases at M17's pair: the trained probe v2 at 0.99 / 0.74.
 - [ ] No disputed case feeds `calibrate`'s fits: #135 drops every case the reviewer called wrong. Its fits still read `probable` cases; each dev number says so, or `calibrate` skips them.
 - [ ] M16's and M17's final values replace the word "provisional" for the temperatures and `τ_leaf` and `τ_plant` in section 3.
 - [ ] Each test number is reported twice: on all the test cases, and without the 7 that were dev cases when choices were made (`apple-inat-401743982`, `apple-inat-401742038`, `apple-inat-401735945`, `squash-inat-407881529`, `corn-maize-bd-2026-gray-leaf-spot-img-500`, `tomato-tomato-bd-2025-late-blight-late-blight-7`, `corn-maize-bd-2026-healthy-leaf-img-43`). T5's second line also leaves out the two repeat leaves.
