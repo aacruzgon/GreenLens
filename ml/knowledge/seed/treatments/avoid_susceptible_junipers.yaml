@@ -1,0 +1,9 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: avoid_susceptible_junipers
+kind: cultural
+text: 'Avoid planting cedars and junipers that get the disease: eastern red cedar (Juniperus virginiana)
+  and Rocky Mountain juniper (Juniperus scopulorum), and their varieties. Keeping apples and cedars apart
+  helps less than you might think, because the spores can travel about 3 km.'
+sources:
+- isu_cedar_apple_rust

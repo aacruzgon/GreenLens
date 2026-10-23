@@ -1,0 +1,115 @@
+# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
+# pepper_bacterial_leaf_spot.review.md and signs reviewed_by and reviewed_at.
+id: pepper_bacterial_leaf_spot
+name: Bacterial leaf spot
+kind: bacterial
+affects:
+- pepper
+caused_by: []
+damage_patterns: []
+prevalence: common
+indicators:
+- id: pepper_bacterial_leaf_spot.small_yellow_green_spots
+  text: Small yellow-green spots on the leaves at first.
+  question: Are there small yellow-green spots on the leaves?
+  weight: 2
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: pepper_bacterial_leaf_spot.water_soaked_border
+  text: Young spots have a water-soaked, wet-looking border; the first water-soaked spots show on the
+    underside of the leaf.
+  question: Do the leaf spots have a wet-looking edge?
+  weight: 2
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+  - leaf_underside
+- id: pepper_bacterial_leaf_spot.spots_merge_blighted
+  text: Spots may join together, so the leaf looks blighted.
+  question: Do the spots run together into large dead patches on the leaf?
+  weight: 1
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: pepper_bacterial_leaf_spot.spots_turn_brown_dry
+  text: Later the spots turn brown and dry up.
+  question: Are the leaf spots brown and dry?
+  weight: 2
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: pepper_bacterial_leaf_spot.greasy_tan_brown_spots
+  text: Spots turn tan to brown and look slightly greasy on the upper side of the leaf; the greasy look
+    is characteristic.
+  question: Do the brown spots on the leaves look shiny or greasy?
+  weight: 3
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: pepper_bacterial_leaf_spot.scorched_leaf_margins
+  text: Leaf edges may look scorched.
+  question: Do the edges of the leaves look brown and scorched?
+  weight: 1
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: pepper_bacterial_leaf_spot.holes_tattered_leaves
+  text: Dried spots fall out and leave holes, often giving the leaves a tattered look.
+  question: Are there small holes in the leaves?
+  weight: 2
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: pepper_bacterial_leaf_spot.severe_leaf_drop
+  text: Heavy leaf drop, which leaves the fruit exposed to sunburn.
+  question: Has the plant lost many of its leaves?
+  weight: 2
+  discriminating: false
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+- id: pepper_bacterial_leaf_spot.raised_scabby_fruit_spots
+  text: Raised, scabby spots on the fruit that turn brown to black.
+  question: Are there raised, rough, scabby spots on the peppers?
+  weight: 2
+  discriminating: false
+  where: fruit
+  image_kinds:
+  - flower_fruit
+- id: pepper_bacterial_leaf_spot.secondary_fruit_rot
+  text: Fungi may get into the fruit spots and cause rot.
+  question: Is there rot on the peppers around the scabby spots?
+  weight: 1
+  discriminating: false
+  where: fruit
+  image_kinds:
+  - flower_fruit
+conditions:
+  notes: Warm, humid weather favours it, especially with frequent wind-driven rain and nights warmer than
+    about 18 °C. Rain, heavy dew and overhead watering spread the bacteria.
+looks_like: []
+treatments:
+- avoid_handling_wet_plants
+- avoid_magnesium_pepper
+- avoid_overhead_watering_pepper
+- clean_seed_transplants_pepper
+- copper_preventive_pepper
+- disinfect_tools_equipment
+- remove_or_bury_debris_pepper
+- remove_volunteers_weeds_pepper
+- resistant_varieties_pepper_bacterial_spot
+- rotate_away_peppers_tomatoes
+- scout_peppers_often
+sources:
+- edis_pp362_bacterial_spot_pepper
+- isu_bacterial_spot_pepper_tomato
+reviewed_by: ''
+reviewed_at: ''

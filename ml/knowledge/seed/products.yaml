@@ -36,6 +36,8 @@
 products:
 - name: acetamiprid
   broad_spectrum: true
+- name: acibenzolar-s-methyl
+  broad_spectrum: false
 - name: bacillus thuringiensis
   broad_spectrum: false
 - name: beauveria bassiana
@@ -44,6 +46,8 @@ products:
   broad_spectrum: true
 - name: canola oil
   broad_spectrum: true
+- name: captan
+  broad_spectrum: false
 - name: carbaryl
   broad_spectrum: true
 - name: chlorothalonil
@@ -65,6 +69,8 @@ products:
 - name: insecticidal oil
   broad_spectrum: true
 - name: insecticidal soap
+  broad_spectrum: true
+- name: lime sulfur
   broad_spectrum: true
 - name: malathion
   broad_spectrum: true

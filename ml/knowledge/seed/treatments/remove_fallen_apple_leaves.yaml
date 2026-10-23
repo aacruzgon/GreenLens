@@ -1,0 +1,9 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: remove_fallen_apple_leaves
+kind: cultural
+text: In autumn, rake up and destroy fallen leaves. The scab fungus survives the winter in them. Either
+  chop them and compost them in a hot compost heap, or throw them out with the rubbish. This is the main
+  way to control scab, because it greatly cuts the spores that infect the tree next spring.
+sources:
+- isu_apple_scab

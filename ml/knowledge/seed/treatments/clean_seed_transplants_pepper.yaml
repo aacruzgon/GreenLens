@@ -1,0 +1,9 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: clean_seed_transplants_pepper
+kind: cultural
+text: The bacteria can travel on seed. Use certified disease-free seed when you can. Check every transplant
+  for disease and plant only healthy ones.
+sources:
+- edis_pp362_bacterial_spot_pepper
+- isu_bacterial_spot_pepper_tomato

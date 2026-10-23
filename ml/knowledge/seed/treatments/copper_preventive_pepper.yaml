@@ -1,0 +1,11 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: copper_preventive_pepper
+kind: chemical
+text: 'Copper is for prevention, not a cure. It can slow the spread but will not clear an infection, so
+  start before any spots appear, or plan it for next season. Use a copper product labelled for peppers,
+  and follow the label exactly. In some areas, such as Florida, many bacterial spot strains no longer
+  respond well to copper, so do not rely on it alone: keep to the other steps too.'
+sources:
+- edis_pp362_bacterial_spot_pepper
+- isu_bacterial_spot_pepper_tomato

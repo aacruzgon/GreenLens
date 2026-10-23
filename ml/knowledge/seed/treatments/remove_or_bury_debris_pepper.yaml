@@ -1,0 +1,10 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: remove_or_bury_debris_pepper
+kind: cultural
+text: Remove infected plant debris, or dig it deeply into the soil. The bacteria survive in old crop debris
+  that has not yet broken down. Clear old pepper and tomato debris before preparing the bed for a new
+  season.
+sources:
+- edis_pp362_bacterial_spot_pepper
+- isu_bacterial_spot_pepper_tomato
