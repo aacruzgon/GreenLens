@@ -3,7 +3,7 @@ evaluation cases, per candidate model, image size and number of jobs in flight.
 
     python -m ml.training.eval.vlm_bench cases [--split dev] [--out PATH]
     python -m ml.training.eval.vlm_bench run --label fp8 [--max-pixels 602112 1003520 ...] [--concurrency 1 2]
-    python -m ml.training.eval.vlm_bench score ml/training/runs/vlm-bench/fp8 ml/training/runs/vlm-bench/qwen35 [--out NAME]
+    python -m ml.training.eval.vlm_bench score ml/training/runs/vlm-bench/fp8 ml/training/runs/vlm-bench/qwen35 [--out NAME] [--cases FILE]
 
 `cases` turns the manifest's cases into `vlm` job payloads. The candidates, their indicator
 questions and the species and organism options are the worker's own fixtures
@@ -297,6 +297,10 @@ def score_run(rows: list[dict], cases_by_id: dict[str, dict]) -> dict:
     species = diag_hit = diag_n = healthy_clean = healthy_n = yes_on_healthy = answers_n = unsure = ties = 0
     by_size = {"under_1mp": [0, 0], "1mp_and_up": [0, 0]}   # diagnosis hits and cases, by the photo's size
     damage, organisms = Counter(), 0
+    # Evaluation 5's certainty words: each finding by the confidence its word mapped to. Only the
+    # species guess has a truth on these cases; damage and organisms are counted (P11's evidence:
+    # these leaves show disease, not animals).
+    certainty = {"species_guess": defaultdict(lambda: [0, 0]), "damage": Counter(), "organisms": Counter()}
     # Each indicator's answers on the sure cases whose truth is its problem, and on the other sure cases.
     per_indicator = defaultdict(lambda: {"truth": Counter(), "other": Counter()})
     for r in ok:
@@ -304,6 +308,11 @@ def score_run(rows: list[dict], cases_by_id: dict[str, dict]) -> dict:
         truth = case["truth"]
         f, a = r["result"]["findings"], r["result"]["indicators"]["answers"]
         species += f["species_guess"].get("species_id") == truth["species_id"]
+        g = certainty["species_guess"][conf_key(f["species_guess"].get("confidence"))]
+        g[0] += 1
+        g[1] += f["species_guess"].get("species_id") == truth["species_id"]
+        certainty["damage"].update(conf_key(d.get("confidence")) for d in f["damage"])
+        certainty["organisms"].update(conf_key(o.get("confidence")) for o in f["organisms"])
         damage.update(d["pattern"] for d in f["damage"])
         organisms += len(f["organisms"])
         answers_n += len(a)
@@ -350,7 +359,15 @@ def score_run(rows: list[dict], cases_by_id: dict[str, dict]) -> dict:
         "unsure_share": unsure / answers_n if answers_n else None, "top_ties": ties,
         "damage_findings": dict(damage), "organisms_reported": organisms,
         "indicators": {k: {side: dict(c) for side, c in v.items()} for k, v in sorted(per_indicator.items())},
+        "certainty": {"species_guess": {k: {"n": n, "right": h} for k, (n, h) in sorted(certainty["species_guess"].items())},
+                      "damage": dict(sorted(certainty["damage"].items())),
+                      "organisms": dict(sorted(certainty["organisms"].items()))},
     }
+
+
+def conf_key(c) -> str:
+    """A finding's mapped confidence as a key: the worker's 0.4 / 0.65 / 0.85, or `none`."""
+    return "none" if c is None else f"{float(c):.2f}"
 
 
 def run_dirs(root: Path) -> list[Path]:
@@ -390,13 +407,45 @@ def indicator_tables(report: list[dict], pixels: int = 1003520) -> list[str]:
     return out
 
 
+def certainty_tables(report: list[dict], pixels: int = 1003520) -> list[str]:
+    """Per model, at the worker's default `pixels` and one job at once: the species guess right per
+    mapped certainty, and the damage and organism findings per certainty (evaluation 5, step 5)."""
+    out = ["", "## Certainty words", "",
+           "Each finding by the confidence its certainty word mapped to (low 0.4, medium 0.65, high 0.85). "
+           "Only the species guess has a truth here; these leaves show disease, so every damage or organism "
+           "finding is a false sign (P11).", "",
+           "| Run | Species guess right, per confidence | Damage findings, per confidence | Organisms, per confidence |",
+           "|---|---|---|---|"]
+    for label in dict.fromkeys(r["label"] for r in report):
+        runs = [r for r in report if r["label"] == label]
+        r = next((x for x in runs if x["max_pixels"] == pixels and x["concurrency"] == 1), runs[0])
+        c = r.get("certainty")
+        if not c:
+            continue
+        sp = ", ".join(f"{k}: {v['right']}/{v['n']}" for k, v in c["species_guess"].items()) or "none"
+        dm = ", ".join(f"{k}: {v}" for k, v in c["damage"].items()) or "none"
+        og = ", ".join(f"{k}: {v}" for k, v in c["organisms"].items()) or "none"
+        out.append(f"| {label} ({r['max_pixels']:,} px, {r['concurrency']} at once) | {sp} | {dm} | {og} |")
+    return out
+
+
+def cases_label(path: Path) -> dict:
+    """Which bench cases a run was scored on, so a report can be scored again: the file (it lives in
+    the git-ignored runs folder), its case count and the start of its SHA-256."""
+    data = path.read_bytes()
+    p = path.resolve()
+    return {"file": str(p.relative_to(ROOT)) if p.is_relative_to(ROOT) else str(p),
+            "cases": sum(1 for line in data.splitlines() if line.strip()), "sha256": hashlib.sha256(data).hexdigest()[:16]}
+
+
 def score(args) -> int:
     report = []
     for run_root in args.runs:
         for d in run_dirs(Path(run_root)):
             try:
                 meta = json.loads((d / "meta.json").read_text())
-                cases_by_id = {b["case_id"]: with_megapixels(b) for b in map(json.loads, Path(meta["cases"]).read_text().splitlines())}
+                cases_file = args.cases or Path(meta["cases"])
+                cases_by_id = {b["case_id"]: with_megapixels(b) for b in map(json.loads, cases_file.read_text().splitlines())}
                 rows = [r for r in read_rows(d / "out.jsonl") if r.get("case_id") in cases_by_id]
             except (OSError, ValueError, KeyError) as e:
                 print(f"skipping {d}: {e}", file=sys.stderr)
@@ -405,12 +454,16 @@ def score(args) -> int:
             s["jobs"] = len(cases_by_id)   # every case, so a run cut short shows the jobs it never ran
             model = meta["models"][0].get("root") or meta["models"][0]["id"] if meta["models"] else None
             report.append({**{k: meta[k] for k in ("label", "max_pixels", "concurrency", "peak_gpu_mib", "peak_kv_cache")},
-                           "exit": meta.get("exit"), "seconds": meta.get("seconds"), "model": model, **s})
+                           "exit": meta.get("exit"), "seconds": meta.get("seconds"), "model": model,
+                           "scored_on": cases_label(cases_file), **s})
     REPORTS.mkdir(parents=True, exist_ok=True)
     (REPORTS / f"vlm-bench-{args.out}.json").write_text(json.dumps(report, indent=2) + "\n")
     f = lambda v, p=False: "n/a" if v is None else (f"{v:.0%}" if p else f"{v / 1000:.1f} s")
     sizes = lambda r: " / ".join(f"{d['hits']}/{d['n']}" for d in r["diagnosis_by_photo_size"].values())
+    on = list({r["scored_on"]["sha256"]: r["scored_on"] for r in report}.values())
     lines = [f"# VLM benchmark: {args.out}", "",
+             "Scored on " + "; ".join(f"`{c['file']}` ({c['cases']} case{'s' * (c['cases'] != 1)}, SHA-256 `{c['sha256']}`)" for c in on)
+             + (" (`--cases`)" if args.cases else ", each run's own cases") + ".", "",
              "| Run | Pixels | At once | Finished | Retried calls | Job p50 | Job p95 | Species | Diagnosis (sure) | Photos under 1 MP / 1 MP and up | Ties | Healthy kept clean | Yes on healthy | Unsure | Damage found | Organisms | Peak GPU |",
              "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in report:
@@ -421,6 +474,7 @@ def score(args) -> int:
                      f"{f(r['diagnosis_top1_sure'], True)} (n={r['diagnosis_n']}) | {sizes(r)} | {r['top_ties']} | {f(r['healthy_no_candidate'], True)} (n={r['healthy_n']}) | "
                      f"{f(r['yes_on_healthy'], True)} | {f(r['unsure_share'], True)} | {dmg} | {r['organisms_reported']} | {r['peak_gpu_mib']:,} MiB |")
     lines += ["", DIAGNOSIS_NOTE]
+    lines += certainty_tables(report)
     lines += indicator_tables(report)
     (REPORTS / f"vlm-bench-{args.out}.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
@@ -448,6 +502,8 @@ def main(argv=None) -> int:
     s = sub.add_parser("score")
     s.add_argument("runs", nargs="+", type=Path)
     s.add_argument("--out", default="vlm-bench")
+    s.add_argument("--cases", type=Path, help="score against these bench cases (from `cases`) instead of each run's own: "
+                                              "a run's rows outside them are left out, and their truth is these cases'")
     args = ap.parse_args(argv)
     return {"cases": cases, "run": run, "score": score}[args.cmd](args)
 

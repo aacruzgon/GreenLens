@@ -13,6 +13,11 @@ Every plant shot of every dev case is embedded whole by BioCLIP 2, as the worker
 - **Average:** models.md 6's rule. The head's and zero-shot's probabilities over the head's
   crops are averaged and scaled to zero-shot's share of those crops; with a matrix whose every
   species is one of the head's crops the share is 1, so this is the plain average.
+- **Head in share:** models.md 6's proposed rule, the head's probabilities in place of
+  zero-shot's over its crops, scaled to their zero-shot share.
+
+Each matrix's report also gives zero-shot's top-1 per true species per case (what a species is
+taken for) and zero-shot's share of the head's crops per shot (how often it is under one half).
 
 Each is scored per shot and per case, the shots combined with the worker's weights (whole plant
 and flower or fruit 2, leaf close-up and underside 1; `vision::perception::heads::combine_species`).
@@ -35,7 +40,7 @@ from ml.pdm_vision import headfile
 from ml.pdm_vision.features import Embedder
 from ml.training.eval.calibrate import SHOT_WEIGHT
 from ml.training.heads.train_disease import softmax
-from ml.training.heads.train_species import LOGIT_SCALE, combine, dev_rows, matrix_species
+from ml.training.heads.train_species import LOGIT_SCALE, combine, dev_rows, head_in_share, matrix_species
 
 ROOT = Path(__file__).resolve().parents[3]
 EVAL = ROOT / "ml/training/eval"
@@ -74,6 +79,14 @@ def by_case(rows: list[dict], p: np.ndarray) -> tuple[list[str], np.ndarray]:
         out.append((p[ix] * w[:, None]).sum(0) / w.sum())
         truth.append(rows[ix[0]]["species_id"])
     return truth, np.stack(out)
+
+
+def confusions(truth: list[str], p: np.ndarray, ids: list[str]) -> dict[str, dict[str, int]]:
+    """For each true species, how often each species is the top 1, most often first."""
+    out: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+    for t, top in zip(truth, np.asarray(ids)[p.argmax(1)]):
+        out[t][str(top)] += 1
+    return {t: dict(c.most_common()) for t, c in sorted(out.items())}
 
 
 def score(truth: list[str], p: np.ndarray, ids: list[str], keep: np.ndarray) -> dict:
@@ -131,8 +144,14 @@ def main(argv=None) -> int:
             _, p_avg_case = by_case(rows, p_avg)
             r["shot"]["average"] = score(truth, p_avg, m["ids"], on_crop)
             r["case"]["average"] = score(case_truth, p_avg_case, m["ids"], case_on_crop)
-            share = p_zs[:, [m["ids"].index(c) for c in crops]].sum(1)
-            r["crop_share_min"] = float(share.min())
+            p_his = head_in_share(p_zs, m["ids"], p_head, crops)
+            _, p_his_case = by_case(rows, p_his)
+            r["shot"]["head in share"] = score(truth, p_his, m["ids"], on_crop)
+            r["case"]["head in share"] = score(case_truth, p_his_case, m["ids"], case_on_crop)
+            share = p_zs[:, [m["ids"].index(c) for c in crops]].sum(1)[on_crop]
+            r["crop_share"] = {"shots": int(on_crop.sum()), "min": float(share.min()),
+                               "median": float(np.median(share)), "under_half": int((share < 0.5).sum())}
+        r["confusions_per_case"] = confusions(case_truth, p_zs_case, m["ids"])
         results.append(r)
 
     kinds = collections.Counter(r["kind"] for r in rows)
@@ -160,11 +179,18 @@ def markdown(rep: dict, name: str) -> str:
         lines += [f"## Matrix `{r['matrix']}`: {r['species']} species", "", f"{r['source']}.", ""]
         if r["missing_crops"]:
             lines += [f"It has no row for {', '.join(r['missing_crops'])}, so there is no average.", ""]
+        if "crop_share" in r:
+            s = r["crop_share"]
+            lines += [f"Zero-shot's share of the head's crops, on their {s['shots']} shots: median {s['median']:.3f}, "
+                      f"lowest {s['min']:.3f}, under one half on {s['under_half']}.", ""]
         lines += ["| Scored | Method | n | Top-1 | Top-3 | Per species (right / n) |", "|---|---|---|---|---|---|"]
         for unit in ("shot", "case"):
             for method, s in r[unit].items():
                 per = ", ".join(f"{k} {v[1]}/{v[0]}" for k, v in s["per_species"].items())
                 lines.append(f"| per {unit} | {method} | {s['n']} | {s['top1']:.3f} | {s['top3']:.3f} | {per} |")
+        lines += ["", "Zero-shot's top 1 per case, by true species:", ""]
+        for t, c in r["confusions_per_case"].items():
+            lines.append(f"- {t}: " + ", ".join(f"{k} {v}" for k, v in c.items()))
         lines.append("")
     return "\n".join(lines)
 
