@@ -11,8 +11,11 @@
 #   verticillium lecanii), the commercial whitefly insecticides in EDIS IN286 .18 (imidacloprid,
 #   thiamethoxam, dinotefuran, cyazypyr), carbaryl and acetamiprid from Clemson's insect-pest table,
 #   and the classes pyrethroid, neonicotinoid and organophosphate. Chlorothalonil and mancozeb stay
-#   for the same reason, though neither is registered for home use in Canada (S1). Neem, sulfur and
-#   sulphur are here to override the plan validator's built-in false (#141).
+#   for the same reason, though neither is registered for home use in Canada (S1). Lime sulfur came
+#   out of grape black rot's steps, since no home-use label for grapes has been checked (S6, #143);
+#   captan, which ISU's black rot page names with mancozeb, and acibenzolar-s-methyl (Actigard, in
+#   EDIS PP362's commercial tank mixes) are in withheld excerpts only. Neem, sulfur and sulphur are
+#   here to override the plan validator's built-in false (#141).
 #
 # Every reason goes in this header: extract.py rewrites the list when it adds a product, and keeps
 # only the comments above it.
@@ -27,15 +30,17 @@
 #   easier on beneficials": it still kills on contact); beauveria bassiana and verticillium lecanii
 #   (IN286 .17: whiteflies "and other insects"); neem, an oil (as above), and sulfur, which harms
 #   predatory mites (Sam's second signing review of #51; no excerpt here covers it, so the rule's
-#   safe side). Both are built into the plan validator as not broad-spectrum, and an entry here
+#   safe side), and lime sulfur with it. Both are built into the plan validator as not broad-spectrum, and an entry here
 #   overrides that; `sulphur` is the built-in British spelling.
 # - false: bacillus thuringiensis (a caterpillar must eat it, and parasitised hornworms have stopped
-#   feeding, Clemson .10), and the fungicides chlorothalonil, copper and mancozeb (no excerpt says
-#   they harm beneficials).
+#   feeding, Clemson .10), the fungicides captan, chlorothalonil, copper and mancozeb (no excerpt says
+#   they harm beneficials), and acibenzolar-s-methyl, which only triggers the plant's own defences.
 # The flags only guard a step that names its product, so a step's own wording matters more.
 products:
 - name: acetamiprid
   broad_spectrum: true
+- name: acibenzolar-s-methyl
+  broad_spectrum: false
 - name: bacillus thuringiensis
   broad_spectrum: false
 - name: beauveria bassiana
@@ -44,6 +49,8 @@ products:
   broad_spectrum: true
 - name: canola oil
   broad_spectrum: true
+- name: captan
+  broad_spectrum: false
 - name: carbaryl
   broad_spectrum: true
 - name: chlorothalonil
@@ -65,6 +72,8 @@ products:
 - name: insecticidal oil
   broad_spectrum: true
 - name: insecticidal soap
+  broad_spectrum: true
+- name: lime sulfur
   broad_spectrum: true
 - name: malathion
   broad_spectrum: true

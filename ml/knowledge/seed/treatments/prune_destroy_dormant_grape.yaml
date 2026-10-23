@@ -1,0 +1,9 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: prune_destroy_dormant_grape
+kind: cultural
+text: While the vines are dormant, prune out and destroy diseased plant material. Be sure to remove all
+  black rot mummies (shrivelled black berries). The fungus survives the winter mainly in these mummies,
+  and also in other infected plant parts.
+sources:
+- isu_black_rot_grape

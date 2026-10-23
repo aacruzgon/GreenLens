@@ -1,0 +1,8 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: resistant_hybrids_nclb
+kind: cultural
+text: Grow corn varieties that are resistant or tolerant to northern corn leaf blight. Note that new races
+  of the fungus can get past some resistance, so a sudden rise in the disease in your area is worth reporting.
+sources:
+- ontario_field_crop_diseases

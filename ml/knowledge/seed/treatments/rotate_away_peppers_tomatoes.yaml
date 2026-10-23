@@ -1,0 +1,9 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: rotate_away_peppers_tomatoes
+kind: cultural
+text: Do not plant peppers or tomatoes in the same spot in back-to-back years. Rotate to get away from
+  old crop debris and self-sown plants.
+sources:
+- edis_pp362_bacterial_spot_pepper
+- isu_bacterial_spot_pepper_tomato

@@ -106,11 +106,12 @@ def check(models: Path, files: Path) -> tuple[list[str], list[str]]:
             own = doc.get("label_set_version") if key == "label_set_version" else doc.get("version")
             if own != e["version"]:
                 problems.append(f"{where}: the file's version {own!r} differs from the entry's {e['version']!r}")
-            if key == "classifier_labels_version" and bioclip:
-                want = f"{doc['features'].split('+', 1)[0]}+{bioclip['sha256'][:16]}"
-                if doc.get("features") != want:
-                    problems.append(f"{where}: features {doc.get('features')!r}, but this manifest's "
-                                    f"bioclip file is {want!r}; the worker would refuse it")
+            if key == "classifier_labels_version":
+                if bioclip:
+                    want = f"{doc['features'].split('+', 1)[0]}+{bioclip['sha256'][:16]}"
+                    if doc.get("features") != want:
+                        problems.append(f"{where}: features {doc.get('features')!r}, but this manifest's "
+                                        f"bioclip file is {want!r}; the worker would refuse it")
                 try:
                     want_rows = head_rows(e)
                 except ValueError:

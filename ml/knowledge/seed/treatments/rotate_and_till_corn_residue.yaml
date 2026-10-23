@@ -1,0 +1,9 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: rotate_and_till_corn_residue
+kind: cultural
+text: Rotate crops and till old corn residue into the soil. The fungus survives the winter in corn residue,
+  and rain splash and wind carry spores from it to new plants. If you do not till, rotating and growing
+  resistant varieties matter even more.
+sources:
+- ontario_field_crop_diseases
