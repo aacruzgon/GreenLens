@@ -9,12 +9,13 @@ import WidgetKit
 struct ScanActivityWidget: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: ScanActivityAttributes.self) { context in
-      LockScreenView(attributes: context.attributes, state: context.state)
+      LockScreenView(attributes: context.attributes, state: context.state, stale: context.isStale)
         .activityBackgroundTint(Color("pdmBackground"))
         .activitySystemActionForegroundColor(Color("pdmText"))
         .widgetURL(scanURL(context.attributes))
     } dynamicIsland: { context in
       let state = context.state
+      let stale = context.isStale && isLive(state)
       return DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
           Label {
@@ -26,19 +27,19 @@ struct ScanActivityWidget: Widget {
           .padding(.leading, 4)
         }
         DynamicIslandExpandedRegion(.trailing) {
-          ElapsedText(state: state)
+          ElapsedText(state: state, stale: stale)
             .font(.headline.monospacedDigit())
             .foregroundStyle(Color("islandMuted"))
             .padding(.trailing, 4)
         }
         DynamicIslandExpandedRegion(.bottom) {
           VStack(alignment: .leading, spacing: 8) {
-            Text(state.stage)
+            Text(stale ? staleText : state.stage)
               .font(.title3.weight(.semibold))
-              .foregroundStyle(stageColor(state, island: true))
+              .foregroundStyle(stale ? Color("islandMuted") : stageColor(state, island: true))
               .lineLimit(1)
             SegmentBar(segments: state.segments, accent: Color("islandAccent"), track: Color("islandTrack"))
-            if let next = state.next {
+            if !stale, let next = state.next {
               Text(next).font(.subheadline.weight(.medium)).foregroundStyle(Color("islandMuted")).lineLimit(1)
             }
           }
@@ -47,7 +48,7 @@ struct ScanActivityWidget: Widget {
       } compactLeading: {
         ProgressRing(state: state)
       } compactTrailing: {
-        CompactTrailing(state: state)
+        CompactTrailing(state: state, stale: stale)
       } minimal: {
         ProgressRing(state: state)
       }
@@ -55,6 +56,14 @@ struct ScanActivityWidget: Widget {
       .keylineTint(Color("islandAccent"))
     }
   }
+}
+
+/// What a stale activity says instead of its stage: the app stopped hearing from the scan, so it may have ended.
+private let staleText = "Open PDM for the latest"
+
+/// Running or waiting for an answer: the states that go stale. A plan or a stop is final.
+private func isLive(_ state: ScanActivityAttributes.ContentState) -> Bool {
+  state.mode == "running" || state.mode == "question"
 }
 
 private func scanURL(_ attributes: ScanActivityAttributes) -> URL? {
@@ -70,13 +79,15 @@ private func stageColor(_ state: ScanActivityAttributes.ContentState, island: Bo
 }
 
 /// The time since the run started, ticking with no update; the run's total once it ends; nothing once stopped.
+/// No ticking clock once stale: the run may have ended.
 struct ElapsedText: View {
   let state: ScanActivityAttributes.ContentState
+  var stale = false
 
   var body: some View {
     if let total = state.total {
       Text(total)
-    } else if state.mode == "failed" {
+    } else if state.mode == "failed" || stale {
       EmptyView()
     } else {
       Text(timerInterval: state.startedAt...state.startedAt.addingTimeInterval(8 * 60 * 60), countsDown: false)
@@ -143,8 +154,18 @@ struct ProgressRing: View {
 /// The compact trailing view: the elapsed time while it runs; a sign once it needs an answer, is ready or stopped.
 struct CompactTrailing: View {
   let state: ScanActivityAttributes.ContentState
+  var stale = false
 
   var body: some View {
+    if stale {
+      Image(systemName: "ellipsis.circle.fill").foregroundStyle(Color("islandMuted"))
+        .accessibilityLabel(staleText)
+    } else {
+      live
+    }
+  }
+
+  @ViewBuilder private var live: some View {
     switch state.mode {
     case "question":
       Image(systemName: "questionmark.circle.fill").foregroundStyle(Color("islandWatch"))
@@ -164,8 +185,10 @@ struct CompactTrailing: View {
 struct LockScreenView: View {
   let attributes: ScanActivityAttributes
   let state: ScanActivityAttributes.ContentState
+  var stale = false
 
   var body: some View {
+    let stale = self.stale && isLive(state)
     VStack(alignment: .leading, spacing: 8) {
       HStack(alignment: .firstTextBaseline) {
         Label {
@@ -176,16 +199,16 @@ struct LockScreenView: View {
         .font(.headline)
         .foregroundStyle(Color("pdmText"))
         Spacer()
-        ElapsedText(state: state)
+        ElapsedText(state: state, stale: stale)
           .font(.headline.monospacedDigit())
           .foregroundStyle(Color("pdmMuted"))
       }
-      Text(state.stage)
+      Text(stale ? staleText : state.stage)
         .font(.title3.weight(.semibold))
-        .foregroundStyle(stageColor(state, island: false))
+        .foregroundStyle(stale ? Color("pdmMuted") : stageColor(state, island: false))
         .lineLimit(1)
       SegmentBar(segments: state.segments, accent: Color("pdmAccent"), track: Color("pdmTrack"))
-      if let next = state.next {
+      if !stale, let next = state.next {
         Text(next)
           .font(.subheadline.weight(.medium))
           .foregroundStyle(Color("pdmMuted"))

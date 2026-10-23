@@ -15,6 +15,7 @@ import { needsStream } from "@/domain/scan";
 import { backoffMs } from "@/lib/backoff";
 import { haptics, liveActivity } from "@/platform";
 
+import { foregroundGrace } from "../model/foregroundGrace";
 import { phasesOf, tickCount } from "../model/phases";
 import { applyScanEvent, effectsOf, isReplay, reconcile, seed, stateAtRest, type ScanEffect, type ScanState } from "../model/scanState";
 
@@ -349,24 +350,12 @@ export function useScanEvents(scanId: string): ScanEventsResult {
   // Center, Notification Center, a call's banner) leaves the stream open. While the scan's Live Activity runs it
   // closes BACKGROUND_GRACE_MS later instead, inside the background time the activity's module asks iOS for, so
   // the Lock Screen follows the scan for that long (roadmap F5 item 6).
+  // A return after the grace reconnects even when iOS suspended JavaScript before the timer fired (model/foregroundGrace).
   useEffect(() => {
-    let grace: ReturnType<typeof setTimeout> | undefined;
-    const clearGrace = () => {
-      if (grace) clearTimeout(grace);
-      grace = undefined;
-    };
-    const sub = AppState.addEventListener("change", (next) => {
-      if (next === "background") {
-        clearGrace();
-        if (liveActivity.isRunning()) grace = setTimeout(() => controller.setForeground(false), BACKGROUND_GRACE_MS);
-        else controller.setForeground(false);
-      } else if (next === "active") {
-        clearGrace();
-        controller.setForeground(true);
-      }
-    });
+    const grace = foregroundGrace(controller, { graceMs: BACKGROUND_GRACE_MS, liveActivityRunning: () => liveActivity.isRunning() });
+    const sub = AppState.addEventListener("change", grace.change);
     return () => {
-      clearGrace();
+      grace.dispose();
       sub.remove();
     };
   }, [controller]);
