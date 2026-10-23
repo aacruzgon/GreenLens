@@ -135,7 +135,7 @@ jobs:
         if: runner.environment == 'github-hosted'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libheif-dev
       - uses: ./.github/actions/self-hosted-env
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: runner.environment == 'github-hosted'
         with:
           workspaces: "backend -> target"
@@ -163,7 +163,7 @@ jobs:
       - name: Rust 1.99.1 with rustfmt and Clippy
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
       - uses: ./.github/actions/self-hosted-env
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: runner.environment == 'github-hosted'
         with:
           workspaces: "backend -> target"
@@ -203,7 +203,7 @@ jobs:
         with:
           python-version: "3.12"
       - uses: ./.github/actions/self-hosted-env
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: runner.environment == 'github-hosted'
         with:
           workspaces: "backend -> target"
@@ -425,7 +425,7 @@ jobs:
       - name: Rust 1.99.1 with rustfmt and Clippy
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
       - uses: ./.github/actions/self-hosted-env
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: runner.environment == 'github-hosted'
         with:
           workspaces: "backend -> target"
@@ -549,7 +549,7 @@ jobs:
       - name: Rust 1.99.1 with rustfmt and Clippy
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
       - uses: ./.github/actions/self-hosted-env
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: runner.environment == 'github-hosted'
         with:
           workspaces: "backend -> target"
