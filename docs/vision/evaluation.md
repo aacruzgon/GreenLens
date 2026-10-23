@@ -181,7 +181,7 @@ What it changes:
 
 - Diagnosis accuracy on the test split rested on 7 `sure` cases: 4 corn (common rust, gray leaf spot and 2 healthy) and 3 tomato (early and late blight); the replacements add 1 ([below](#replacement-cases-2026-10-22)). That is too few to pass or fail section 4's targets ([small counts](#4-metrics-and-acceptance-targets)).
 - No case is left whose label the review disputes: every case Alan called wrong is dropped, and `probable` means the photos don't show the signs. `calibrate.py` reads every dev case, `sure` or `probable`.
-- The dev numbers in section 5 were measured on the 115 dev cases, of which 37 are now dropped and 3 moved to test: the species temperature, the disease head's top 3 and the plant check. They are re-run on the 76.
+- The dev numbers in section 5 were measured on the 115 dev cases, of which 37 are now dropped and 3 moved to test: the species temperature, the disease head's top 3 and the plant check. They are re-run on the 105 dev cases, with the replacements below (M16).
 - An iNaturalist observation's host has to be checked against its host fields and its photos before it's kept.
 
 ### Replacement cases, 2026-10-22
