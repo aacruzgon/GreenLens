@@ -5,6 +5,7 @@ module.exports = {
   moduleNameMapper: {
     "^@/assets/(.*)$": "<rootDir>/assets/$1",
     "^@/(.*)$": "<rootDir>/src/$1",
+    "^@modules/(.*)$": "<rootDir>/modules/$1",
   },
   testPathIgnorePatterns: ["/node_modules/", "/\\.expo/", "/dist/"],
   // ESM-only or untranspiled packages that must go through babel.
