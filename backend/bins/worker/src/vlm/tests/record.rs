@@ -10,6 +10,7 @@ use std::{
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use clap::ValueEnum as _;
 use domain::{
     jobs::{GuidedPayload, JobImage, VerifyPayload, VerifyReason, VlmPayload},
     ports::{JobContext, LoadedImage, ModelError, ProgressError, ProgressSink, VisionModel},
@@ -26,6 +27,7 @@ use vision::{
     upload::UploadConfig,
 };
 
+use crate::config::VlmServerKind;
 use crate::vlm::{
     VlmAdapter,
     backend::{OpenAiBackend, Stop, VlmBackend, VlmCall, VlmReply},
@@ -99,9 +101,19 @@ impl ProgressSink for Discard {
     }
 }
 
+/// `VLM_ADAPTER` as `main.rs` reads it, `vllm` when unset: llama.cpp takes `max_tokens` and
+/// `repeat_penalty` where vLLM takes `max_completion_tokens` and `repetition_penalty`.
+fn flavour() -> ServerFlavour {
+    std::env::var("VLM_ADAPTER").map_or(ServerFlavour::Vllm, |v| {
+        VlmServerKind::from_str(&v, false)
+            .unwrap_or_else(|e| panic!("VLM_ADAPTER={v}: {e}"))
+            .flavour()
+    })
+}
+
 /// The adapter `main.rs` builds for `--caps vlm` with its defaults (`VLM_ADAPTER=vllm`,
 /// `VLM_SERVED_NAME=vlm`, `norm1000`, 32 px cells, 1,003,520 pixels, the local budgets), with
-/// the backend wrapped in [`Recording`].
+/// the backend wrapped in [`Recording`]; `VLM_ADAPTER=llamacpp` sends llama.cpp's fields.
 async fn adapter(base_url: &str) -> VlmAdapter<Recording<OpenAiBackend>> {
     adapter_with(base_url, 1_003_520, Arc::new(Semaphore::new(1))).await
 }
@@ -123,7 +135,7 @@ pub(super) async fn adapter_with(
             base_url: base_url.to_owned(),
             api_key: std::env::var("VLM_API_KEY").ok().map(SecretString::from),
             timeout: Duration::from_secs(240),
-            flavour: ServerFlavour::Vllm,
+            flavour: flavour(),
             retry: RetryPolicy::NONE,
         },
     );
@@ -318,6 +330,7 @@ fn report(case: &str, decoded: &str, log: &Mutex<Vec<Attempt>>) {
 /// - `VLM_RECORD_BASE_URL`: the server, without `/v1`; it must serve the model as `vlm`.
 ///   Unset, the test returns at once.
 /// - `VLM_API_KEY`: the server's `--api-key`, if it has one.
+/// - `VLM_ADAPTER`: `llamacpp` for llama.cpp's `llama-server`; `vllm` when unset.
 /// - `VLM_RECORD_IMAGES`: at least 2 photo paths (JPEG, PNG or `WebP`), comma- or
 ///   colon-separated, assigned in [`SLOTS`] order and reused cyclically: give 7 to have each
 ///   shot (tomato plant, leaf, soil; corn plant, leaf; squeeze test; jar test) its own photo.
