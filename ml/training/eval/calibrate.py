@@ -1,6 +1,8 @@
 """Calibration on the dev cases, the part that runs offline on the model files (evaluation 5; M16).
 
-    python -m ml.training.eval.calibrate [--heads disease-head-v2-2026-10-20 disease-head-v2c-2026-10-20] [--out calibration-<date>]
+    python -m ml.training.eval.calibrate [--heads <version> ...] [--out calibration-<date>]
+
+`--heads` defaults to the head the seed's classifier_labels.yaml names, the API's.
 
 Each dev case runs through the worker's perception steps on the same model files:
 
@@ -10,7 +12,10 @@ Each dev case runs through the worker's perception steps on the same model files
   with the worker's weights (whole plant and flower 2, leaf close-up and underside 1), as
   `vision::perception::heads::combine_species` does. `T` is fitted by the negative log-likelihood
   of the true species, and the report checks evaluation 5's agreement rule: the top-1 accuracy of
-  cases scored 0.8 or more, and the lowest threshold at which it reaches 95%.
+  cases scored 0.8 or more, a case whose species the matrix can't name counted as wrong. If it is
+  under 95%, the threshold is raised to the lowest value at which it holds; the temperature stays
+  at the fit. The JSON keeps each case's inputs (cosines and logits, no image data), so the fits
+  can be recomputed without the photos (`species_data`, `disease_items_from`).
   The fit is also scored with every case at a temperature fitted without it (5 folds).
 - **Disease head (`T_disease`, the head file's `temperature`).** Every leaf crop the shipped
   detector keeps on a leaf shot (`ml.training.heads.crops`, cut as the worker cuts them), or the
@@ -31,7 +36,7 @@ Each dev case runs through the worker's perception steps on the same model files
   ranking. What it changes is how often the head claims a problem at medium confidence, which
   shows a possible problem and keeps a scan from `healthy`, and how often its top class is
   `healthy` at medium, which counts as positive evidence of health (contracts 7). The report gives
-  both, overall and per species, at the file's temperature (fitted on validation), one fitted on
+  both, overall and per species, at the head file's temperature (fitted when the head was chosen), one fitted on
   validation and dev (evaluation 5), one fitted on dev, and one per species fitted on dev; and
   each dev fit again with every case scored at a temperature fitted without it (5 folds).
 
@@ -39,15 +44,17 @@ Not here, since they need the cases through the API (J5): the VLM certainty word
 margin and the indicator weights.
 
 Writes `reports/<out>.md` and `.json`, and a reliability diagram per head and crop as
-`reports/<out>-*.png`. The values aren't written into any model file: the chosen head and the real
-label matrix (M12) aren't final yet, and a rerun takes a minute.
+`reports/<out>-*.png`. The values aren't written into any model file: the final manifests (M17)
+take them by hand.
 """
 
 from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
+import shlex
 import sys
 import tomllib
 from collections import Counter, defaultdict
@@ -175,39 +182,43 @@ def species_calibration(cases: list[dict], photos: Path, matrix: dict, embed) ->
     data = [item(c, shots, ids.index(c["truth"]["species_id"])) for c, shots in usable]
     out_data = [item(c, shots, None) for c, shots in outside]
     fitted = fit_species(data)
-    chosen = agreement_temperature(data, out_data, fitted)
     out = {"cases": len(data), "outside": dict(Counter(c["truth"]["species_id"] for c, _ in outside)),
-           "left_out": dict(left_out), "labels": len(ids), "fitted_temperature": round(fitted, 4),
-           "chosen_temperature": round(chosen, 4) if chosen is not None else None}
-    for name, t in (("t_1", 1.0), ("fitted", fitted)) + ((("chosen", chosen),) if chosen is not None else ()):
+           "left_out": dict(left_out), "labels": len(ids), "fitted_temperature": round(fitted, 4)}
+    for name, t in (("t_1", 1.0), ("fitted", fitted)):
         out[name] = species_summary(data, ids, np.full(len(data), t), out_data, np.full(len(out_data), t))
         out[name]["temperature"] = round(t, 4)
-    # Each fit scored without each case's own photos: fitted on the other folds. The cases the
-    # matrix can't name are dealt into folds too, so each fold's search sees some of them.
+    # The fit scored without each case's own photos: fitted on the other folds. The cases the
+    # matrix can't name are dealt into folds too, so the agreement check sees them in every fold.
     fold = folds([(d[3]["case_id"], d[3]["truth"]["species_id"]) for d in data + out_data])
-    tf, tc = np.empty(len(data)), np.empty(len(data))
-    tf_out, tc_out = np.empty(len(out_data)), np.empty(len(out_data))
-    per_fold, per_fold_chosen = [], []
+    tf, tf_out, per_fold = np.empty(len(data)), np.empty(len(out_data)), []
     for f in range(FOLDS):
-        train = [d for d in data if fold[d[3]["case_id"]] != f]
-        train_out = [d for d in out_data if fold[d[3]["case_id"]] != f]
-        t = fit_species(train)
-        tcf = agreement_temperature(train, train_out, t)
+        t = fit_species([d for d in data if fold[d[3]["case_id"]] != f])
         per_fold.append(round(t, 4))
-        per_fold_chosen.append(round(tcf, 4) if tcf is not None else None)
-        held = [n for n, d in enumerate(data) if fold[d[3]["case_id"]] == f]
-        held_out = [n for n, d in enumerate(out_data) if fold[d[3]["case_id"]] == f]
-        tf[held], tf_out[held_out] = t, t
-        tc[held], tc_out[held_out] = (tcf if tcf is not None else T_SEARCH_CAP), (tcf if tcf is not None else T_SEARCH_CAP)
+        tf[[n for n, d in enumerate(data) if fold[d[3]["case_id"]] == f]] = t
+        tf_out[[n for n, d in enumerate(out_data) if fold[d[3]["case_id"]] == f]] = t
     out["fitted_out_of_fold"] = species_summary(data, ids, tf, out_data, tf_out)
     out["fitted_out_of_fold"]["temperature"] = per_fold
-    out["chosen_out_of_fold"] = species_summary(data, ids, tc, out_data, tc_out)
-    out["chosen_out_of_fold"]["temperature"] = per_fold_chosen
+    out["species_ids"] = ids
+    out["inputs"] = species_inputs(data + out_data)
     return out
 
 
-T_SEARCH_STEP = 0.05
-T_SEARCH_CAP = 5.0
+def species_inputs(data: list) -> list[dict]:
+    """What the fit and every species score are computed from, without image data: each case's
+    shots as their weights and cosines with the matrix's species rows (6 decimals), and the true
+    row (None for a species the matrix can't name). `species_data` reads them back."""
+    return [{"case": c["case_id"], "species": c["truth"]["species_id"], "y": y, "weights": w,
+             "cos": [[round(float(v), 6) for v in shot] for shot in cos]} for cos, w, y, c in data]
+
+
+def species_data(inputs: list[dict]) -> tuple[list, list]:
+    """A report's species inputs as `species_calibration`'s (named, outside) items."""
+    items = [([np.asarray(s, float) for s in r["cos"]], r["weights"], r["y"],
+              {"case_id": r["case"], "truth": {"species_id": r["species"]}}) for r in inputs]
+    return [i for i in items if i[2] is not None], [i for i in items if i[2] is None]
+
+
+THRESHOLD_STEP = 0.01
 
 
 def agreement(data: list, tt: np.ndarray, out_data: list, tt_out: np.ndarray, thr: float = AGREEMENT) -> dict:
@@ -223,17 +234,16 @@ def agreement(data: list, tt: np.ndarray, out_data: list, tt_out: np.ndarray, th
     return {"n": n, "outside": int(hi_out.sum()), "accuracy": float(right_in[hi_in].sum() / n) if n else None}
 
 
-def agreement_temperature(data: list, out_data: list, start: float) -> float | None:
-    """The lowest temperature from `start` up at which the cases scored 0.8 or more are 95% right
-    with the cases outside the matrix counted as wrong (evaluation 5, BioCLIP). `start` itself if
-    it already holds; then a grid of T_SEARCH_STEP up to T_SEARCH_CAP; None if none holds while
-    any case still reaches 0.8. A higher T only flattens the scores, so fewer cases reach 0.8."""
-    grid = [start] + [k * T_SEARCH_STEP for k in range(int(np.floor(start / T_SEARCH_STEP)) + 1,
-                                                      int(round(T_SEARCH_CAP / T_SEARCH_STEP)) + 1)]
-    for t in grid:
-        a = agreement(data, np.full(len(data), t), out_data, np.full(len(out_data), t))
+def agreement_threshold(data: list, tt: np.ndarray, out_data: list, tt_out: np.ndarray) -> dict | None:
+    """Evaluation 5's agreement threshold at these temperatures: 0.8 when the cases scored 0.8 or
+    more, those outside the matrix counted as wrong, are 95% right; otherwise the lowest threshold
+    above it, in steps of 0.01, at which they are; None if none below 1 holds. The temperature stays
+    at the fit: raising it would change every species confidence, not only the one-tap cut."""
+    for k in range(int(round(AGREEMENT / THRESHOLD_STEP)), int(round(1 / THRESHOLD_STEP))):
+        thr = round(k * THRESHOLD_STEP, 2)
+        a = agreement(data, tt, out_data, tt_out, thr)
         if a["n"] == 0 or a["accuracy"] >= AGREEMENT_ACCURACY:
-            return float(t)
+            return {"threshold": thr, **a}
     return None
 
 
@@ -259,11 +269,12 @@ def species_summary(data: list, ids: list[str], tt: np.ndarray, out_data: list =
         sweep.append({"threshold": float(thr), "n": int(m.sum()), "accuracy": float(correct[m].mean()) if m.any() else None})
     ok = [s["threshold"] for s in sweep if s["n"] >= 10 and s["accuracy"] is not None and s["accuracy"] >= AGREEMENT_ACCURACY]
     hi = conf >= AGREEMENT
+    tt_out = np.asarray(tt_out if tt_out is not None else [], float)
     return {
         "top1": float(correct.mean()), "nll": float(-np.log(p[np.arange(len(y)), y] + 1e-12).mean()), "ece": ece(conf, correct),
         "at_agreement": {"n": int(hi.sum()), "accuracy": float(correct[hi].mean()) if hi.any() else None},
-        "at_agreement_with_outside": agreement(data, tt, list(out_data),
-                                               np.asarray(tt_out if tt_out is not None else [], float)),
+        "at_agreement_with_outside": agreement(data, tt, list(out_data), tt_out),
+        "agreement_threshold": agreement_threshold(data, tt, list(out_data), tt_out),
         "lowest_threshold_at_95": min(ok) if ok else None, "sweep": sweep,
         "reliability": reliability(conf, correct),
         "per_species": {ids[s]: {"n": int((y == s).sum()), "top1": float(correct[y == s].mean())} for s in sorted(set(y))},
@@ -271,8 +282,9 @@ def species_summary(data: list, ids: list[str], tt: np.ndarray, out_data: list =
                   for d, k, cf, ok_ in zip(data, top, conf, correct) if not ok_],
         "outside_top": [{"case": d[3]["case_id"], "truth": d[3]["truth"]["species_id"], "top": ids[int(q.argmax())],
                          "score": round(float(q.max()), 3)}
-                        for d, q in zip(out_data, species_matrix(list(out_data), np.asarray(tt_out, float))
-                                        if len(out_data) else [])],
+                        for d, q in zip(out_data, species_matrix(list(out_data), tt_out) if len(out_data) else [])],
+        "per_case": [{"case": d[3]["case_id"], "top": ids[k], "confidence": round(float(cf), 4), "right": bool(r)}
+                     for d, k, cf, r in zip(data, top, conf, correct)],
     }
 
 
@@ -465,6 +477,27 @@ def confusion(items: list, head: dict) -> dict:
     return {sp: {t: dict(c.most_common()) for t, c in sorted(v.items())} for sp, v in sorted(out.items())}
 
 
+def disease_inputs(items: list) -> list[dict]:
+    """Each dev leaf photo's head logits over its species' classes (6 decimals), its label, case,
+    species and source: what the dev fits and scores are computed from. `disease_items_from` reads them back."""
+    out = []
+    for z, y, case, sp, src in items:
+        k = np.flatnonzero(np.isfinite(z))
+        out.append({"case": case, "species": sp, "source": src, "label": int(y), "classes": k.tolist(),
+                    "logits": [round(float(v), 6) for v in z[k]]})
+    return out
+
+
+def disease_items_from(inputs: list[dict], classes: int) -> list:
+    """A report's disease inputs as `disease_items`' items, the other species' classes at -inf."""
+    items = []
+    for r in inputs:
+        z = np.full(classes, -np.inf)
+        z[r["classes"]] = r["logits"]
+        items.append((z, r["label"], r["case"], r["species"], r["source"]))
+    return items
+
+
 def lean(r: dict) -> dict:
     """A subgroup's scores without the reliability bins, which only the whole set's plots use."""
     return {k: v for k, v in r.items() if k != "reliability"}
@@ -501,7 +534,7 @@ def disease_calibration(name: str, cases: list[dict], photos: Path, crops_of, wh
                                 for k, t in temps.items()},
             "dev_per_source_species": {f"{src} {sp}": lean(disease_scores([i for i in dev if i[4] == src and i[3] == sp], temps["t_file"], healthy))
                                        for src, sp in sorted({(i[4], i[3]) for i in dev})},
-            "dev_confusion": confusion(dev, head)}
+            "dev_confusion": confusion(dev, head), "inputs": disease_inputs(dev)}
 
 
 # --- report -------------------------------------------------------------------------------------
@@ -536,11 +569,9 @@ def num(v, d=3) -> str:
 
 def write_report(out: str, species: dict, disease: list[dict], args) -> None:
     REPORTS.mkdir(parents=True, exist_ok=True)
-    (REPORTS / f"{out}.json").write_text(json.dumps({"date": args.date, "species": species, "disease": disease}, indent=2) + "\n")
-    curves = {"T = 1": species["t_1"]["reliability"], f"T = {species['fitted_temperature']}": species["fitted"]["reliability"]}
-    if species.get("chosen"):
-        curves[f"T = {species['chosen_temperature']}, chosen"] = species["chosen"]["reliability"]
-    plot(curves,
+    (REPORTS / f"{out}.json").write_text(json.dumps({"date": args.date, "command": args.command, "manifest": args.manifest_label,
+                                                     "species": species, "disease": disease}, indent=2) + "\n")
+    plot({"T = 1": species["t_1"]["reliability"], f"T = {species['fitted_temperature']}": species["fitted"]["reliability"]},
          REPORTS / f"{out}-species.png", "BioCLIP 2 species, dev cases")
     for d in disease:
         plot({TEMP_SHORT[k]: d["dev"][k]["reliability"] for k in TEMP_NAMES}, REPORTS / f"{out}-{d['head']}.png",
@@ -549,7 +580,11 @@ def write_report(out: str, species: dict, disease: list[dict], args) -> None:
     s1, sf, so = species["t_1"], species["fitted"], species["fitted_out_of_fold"]
     n_out = sum(species["outside"].values())
     outside = ", ".join(f"{v} {k}" for k, v in species["outside"].items()) or "none"
+    m = args.manifest_label
     lines = [f"# Calibration on the dev cases: {out}", "",
+             f"`{args.command}`, on {args.date}, over `{m['file']}` (SHA-256 `{m['sha256']}`). The JSON beside this report holds "
+             "each case's inputs (shot cosines and leaf logits, no image data), so every fit and score here can be recomputed "
+             "without the photos.", "",
              "The offline part of evaluation 5 ([calibrate.py](../calibrate.py)), on the label matrix the API asks for "
              f"(`{args.matrix}`) and the disease heads named. "
              f"Every fit on the dev cases is also scored **out of fold**: each case at a temperature fitted on the other "
@@ -558,28 +593,21 @@ def write_report(out: str, species: dict, disease: list[dict], args) -> None:
              f"{species['cases']} dev cases over the label matrix's {species['labels']} species"
              + (f"; left out: {', '.join(f'{v} {k}' for k, v in species['left_out'].items())}" if species["left_out"] else "")
              + f". Cases whose species the matrix can't name ({outside}) are left out of the fit, which needs the true row, "
-             "and counted as wrong at 0.8: a confident wrong species is what the one-tap rule must not offer. **Chosen** is "
-             "the lowest temperature from the fitted one up at which the cases at 0.8 or more, those included, are 95% right.", "",
-             f"| `species_temperature` | Top-1 | NLL | ECE (15 bins) | Cases at 0.8 or more | Their top-1 | With the {n_out} outside: at 0.8 or more | Their top-1 | Lowest threshold with 95% top-1 |",
-             "|---|---|---|---|---|---|---|---|---|"]
-    rows = [(f"{s1['temperature']}", s1), (f"{sf['temperature']}, fitted", sf),
-            (f"fitted out of fold ({min(so['temperature'])}–{max(so['temperature'])})", so)]
-    if species.get("chosen"):
-        co = species["chosen_out_of_fold"]
-        ts = [t for t in co["temperature"] if t is not None]
-        rows += [(f"**{species['chosen']['temperature']}, chosen**", species["chosen"]),
-                 (f"chosen out of fold ({min(ts)}–{max(ts)}{', a fold with none' if None in co['temperature'] else ''})", co)]
-    for label, r in rows:
-        w = r["at_agreement_with_outside"]
+             "and counted as wrong at the agreement threshold: a confident wrong species is what the one-tap rule must not offer. "
+             "The **agreement threshold** is 0.8 while the cases at 0.8 or more, those included, are 95% right, and otherwise the "
+             "lowest threshold above it at which they are (evaluation 5); the temperature stays at the fit.", "",
+             f"| `species_temperature` | Top-1 | NLL | ECE (15 bins) | Cases at 0.8 or more | Their top-1 | With the {n_out} outside: at 0.8 or more | Their top-1 | Agreement threshold | Lowest threshold with 95% top-1 |",
+             "|---|---|---|---|---|---|---|---|---|---|"]
+    for label, r in ((f"{s1['temperature']}", s1), (f"**{sf['temperature']}, fitted**", sf),
+                     (f"fitted out of fold ({min(so['temperature'])}–{max(so['temperature'])})", so)):
+        w, a = r["at_agreement_with_outside"], r["agreement_threshold"]
+        thr = "none below 1" if a is None else f"{a['threshold']:.2f} ({a['n']} cases, {pct(a['accuracy'])})"
         lines.append(f"| {label} | {pct(r['top1'])} | {num(r['nll'])} | {num(r['ece'])} | {r['at_agreement']['n']} | "
-                     f"{pct(r['at_agreement']['accuracy'])} | {w['n']} ({w['outside']} outside) | {pct(w['accuracy'])} | "
+                     f"{pct(r['at_agreement']['accuracy'])} | {w['n']} ({w['outside']} outside) | {pct(w['accuracy'])} | {thr} | "
                      f"{num(r['lowest_threshold_at_95'], 2)} |")
-    if not species.get("chosen"):
-        lines += ["", f"**No temperature up to {T_SEARCH_CAP} holds the rule** with the outside cases counted."]
-    best = species.get("chosen") or sf
-    lines += ["", f"Per species at {best['temperature']}: " + ", ".join(f"{k} {pct(v['top1'])} of {v['n']}" for k, v in best["per_species"].items()) + ".",
-              "", f"Wrong top-1 at {best['temperature']}: " + ("; ".join(f"`{w['case']}` → {w['top']} ({w['score']})" for w in best["wrong"]) or "none") + ".",
-              "", f"The cases outside the matrix at {best['temperature']}: " + ("; ".join(f"`{w['case']}` ({w['truth']}) → {w['top']} ({w['score']})" for w in best["outside_top"]) or "none") + ".",
+    lines += ["", f"Per species at {sf['temperature']}: " + ", ".join(f"{k} {pct(v['top1'])} of {v['n']}" for k, v in sf["per_species"].items()) + ".",
+              "", f"Wrong top-1 at {sf['temperature']}: " + ("; ".join(f"`{w['case']}` → {w['top']} ({w['score']})" for w in sf["wrong"]) or "none") + ".",
+              "", f"The cases outside the matrix at {sf['temperature']}: " + ("; ".join(f"`{w['case']}` ({w['truth']}) → {w['top']} ({w['score']})" for w in sf["outside_top"]) or "none") + ".",
               "", f"![species reliability]({out}-species.png)", "",
               "## Disease head (`temperature`)", "",
               "Leaf photos of the dev cases with exactly one crop, or none (then the whole close-up; an underside with no "
@@ -642,8 +670,8 @@ def write_report(out: str, species: dict, disease: list[dict], args) -> None:
             lines.append(f"| `{d['head']}` | {label} | " + " | ".join(
                 claims(per[sp]) + (f"; healthy {per[sp]['healthy']['evidence']} of {per[sp]['healthy']['n']}" if per[sp]["healthy"]["n"] else "")
                 for sp in sps) + " |")
-    lines += ["", "**Out of fold.** Each case at the temperature fitted without its fold; the file's value isn't fitted on "
-              "dev, so it doesn't change.", "",
+    lines += ["", "**Out of fold.** Each case at the temperature fitted without its fold; the head file's value isn't "
+              "refitted here, so it has no out-of-fold row.", "",
               "| Head | Temperature | Values per fold | Problem at medium: photos (right) | " + " | ".join(sps) +
               " | Healthy leaves with `healthy` at medium | Healthy leaves blocked | Dev ECE |",
               "|---|---|---|---|" + "---|" * len(sps) + "---|---|---|"]
@@ -659,7 +687,7 @@ def write_report(out: str, species: dict, disease: list[dict], args) -> None:
     (REPORTS / f"{out}.md").write_text("\n".join(lines) + "\n")
 
 
-TEMP_NAMES = {"t_file": "in the file (val)", "t_val_and_dev": "fitted on val and dev", "t_dev": "fitted on dev",
+TEMP_NAMES = {"t_file": "in the head file", "t_val_and_dev": "fitted on val and dev", "t_dev": "fitted on dev",
               "t_per_species_dev": "per species, fitted on dev"}
 TEMP_SHORT = {"t_file": "file", "t_val_and_dev": "val + dev", "t_dev": "dev", "t_per_species_dev": "per species"}
 
@@ -692,11 +720,21 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--manifest", type=Path, default=EVAL / "manifest.jsonl")
     ap.add_argument("--photos", type=Path, default=EVAL / "photos")
-    ap.add_argument("--heads", nargs="*", default=["disease-head-v2-2026-10-20", "disease-head-v2c-2026-10-20"],
-                    help="disease heads under ml/training/runs/heads/<version>/")
+    ap.add_argument("--heads", nargs="*", help="disease heads under ml/training/runs/heads/<version>/ (default: the "
+                    "one the seed's classifier_labels.yaml names, the head the API reads classes for)")
     ap.add_argument("--out", default=f"calibration-{today}")
-    args = ap.parse_args(argv)
+    args = ap.parse_args(sys.argv[1:] if argv is None else argv)
     args.date = today
+    args.command = shlex.join(["python", "-m", "ml.training.eval.calibrate", *(sys.argv[1:] if argv is None else argv)])
+    if not args.heads:
+        head = current.classifier_labels_version()
+        if head is None:
+            raise SystemExit("no --heads, and the seed has no classifier_labels.yaml to name the API's head")
+        args.heads = [head]
+    data = args.manifest.read_bytes()
+    path = args.manifest.resolve()
+    args.manifest_label = {"file": str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path),
+                           "sha256": hashlib.sha256(data).hexdigest()[:16]}
 
     from ml.pdm_vision.features import Embedder
     from ml.training.heads.crops import CropEmbedder

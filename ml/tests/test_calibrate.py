@@ -132,33 +132,59 @@ def species_item(cos, case_id, y, species="tomato"):
     return ([np.asarray(cos, float)], [2.0], y, {"case_id": case_id, "truth": {"species_id": species}})
 
 
-def test_the_agreement_search_counts_cases_outside_the_matrix_as_wrong():
-    # Ten named cases scored high and right at T 1; one outside case scored high too.
+def test_the_agreement_threshold_counts_cases_outside_the_matrix_as_wrong():
+    # Ten named cases scored high and right at T 1; one outside case at 0.88 (softmax of 100 x 0.02).
     named = [species_item([0.30, 0.0], f"n{i}", 0) for i in range(10)]
     t1 = np.ones(10)
     assert cb.agreement(named, t1, [], np.zeros(0))["accuracy"] == 1.0
-    squash = [species_item([0.30, 0.0], "s0", None, "squash")]
+    squash = [species_item([0.02, 0.0], "s0", None, "squash")]
     a = cb.agreement(named, t1, squash, np.ones(1))
     assert a["n"] == 11 and a["outside"] == 1 and abs(a["accuracy"] - 10 / 11) < 1e-9
-    # With nothing outside the fitted value already holds and is kept as it is.
-    assert cb.agreement_temperature(named, [], 1.0) == 1.0
-    # A wrong named case below the others' margin: T rises until it falls under 0.8 while
-    # the right ones stay above, which a larger cosine gap allows.
-    strong = [species_item([0.40, 0.0], f"r{i}", 0) for i in range(19)]
-    weak = [species_item([0.05, 0.0], f"w{i}", 1) for i in range(2)]
-    t = cb.agreement_temperature(strong + weak, [], 1.0)
-    assert t is not None and t > 1.0
-    a = cb.agreement(strong + weak, np.full(21, t), [], np.zeros(0))
-    assert a["accuracy"] >= cb.AGREEMENT_ACCURACY
+    # With nothing outside, the rule holds at 0.8.
+    assert cb.agreement_threshold(named, t1, [], np.zeros(0)) == {"threshold": 0.8, "n": 10, "outside": 0, "accuracy": 1.0}
+    # With it, the threshold rises just past its 0.881, and the temperature isn't touched.
+    assert cb.agreement_threshold(named, t1, squash, np.ones(1)) == {"threshold": 0.89, "n": 10, "outside": 0, "accuracy": 1.0}
 
 
-def test_the_search_gives_up_when_a_wrong_case_stays_as_sure_as_the_right_ones():
+def test_no_threshold_holds_when_a_wrong_case_is_as_sure_as_the_right_ones():
     same = [species_item([0.30, 0.0], f"n{i}", 0) for i in range(3)]
     twin = [species_item([0.30, 0.0], "s0", None, "squash")]
-    # The outside case scores exactly as the right ones: 3 of 4 right at every T while any of
-    # them reaches 0.8, and up to the cap they all still do.
-    assert cb.agreement_temperature(same, twin, 1.0) is None
-    # Below the cap's reach, a weaker twin falls under 0.8 first, so a temperature is found.
-    weak_twin = [species_item([0.05, 0.0], "s1", None, "squash")]
-    t = cb.agreement_temperature(same, weak_twin, 1.0)
-    assert t is not None and cb.agreement(same, np.full(3, t), weak_twin, np.full(1, t))["outside"] == 0
+    assert cb.agreement_threshold(same, np.ones(3), twin, np.ones(1)) is None
+
+
+def test_the_report_inputs_give_back_the_same_fits():
+    named = [species_item([0.30, 0.10, 0.0], "a", 0), species_item([0.12, 0.10, 0.0], "b", 1),
+             species_item([0.05, 0.08, 0.0], "c", 1)]
+    outside = [species_item([0.01, 0.0, 0.02], "d", None, "squash")]
+    back, back_out = cb.species_data(cb.species_inputs(named + outside))
+    assert [b[3]["case_id"] for b in back] == ["a", "b", "c"] and [b[3]["case_id"] for b in back_out] == ["d"]
+    assert abs(cb.fit_species(back) - cb.fit_species(named)) < 1e-4
+    z = np.array([2.0, -np.inf, 0.5, -1.0])
+    items = [(z, 2, "a", "tomato", "inat"), (z + np.array([0, 0, 1.5, 0]), 0, "b", "tomato", "inat")]
+    again = cb.disease_items_from(cb.disease_inputs(items), 4)
+    assert np.array_equal(again[0][0], z) and again[1][1:] == (0, "b", "tomato", "inat")
+    assert abs(cb.fit_items(again) - cb.fit_items(items)) < 1e-6
+
+
+def test_the_committed_calibration_follows_from_its_inputs():
+    """M16's numbers can be checked without the photos: the newest committed report's inputs give
+    back its fitted temperatures, ECE and agreement counts."""
+    import json
+
+    reports = sorted(p for p in cb.REPORTS.glob("calibration-*.json")
+                     if "inputs" in json.loads(p.read_text())["species"])
+    assert reports, "no committed calibration report keeps its inputs"
+    r = json.loads(reports[-1].read_text())
+    sp = r["species"]
+    named, outside = cb.species_data(sp["inputs"])
+    t = cb.fit_species(named)
+    assert abs(t - sp["fitted_temperature"]) < 2e-3
+    s = cb.species_summary(named, sp["species_ids"], np.full(len(named), sp["fitted_temperature"]),
+                           outside, np.full(len(outside), sp["fitted_temperature"]))
+    assert abs(s["ece"] - sp["fitted"]["ece"]) < 1e-3
+    assert s["at_agreement"]["n"] == sp["fitted"]["at_agreement"]["n"]
+    assert s["agreement_threshold"] == sp["fitted"]["agreement_threshold"]
+    for d in r["disease"]:
+        items = cb.disease_items_from(d["inputs"], d["classes"])
+        assert len(items) == d["dev_photos"]
+        assert abs(cb.fit_items(items) - d["temperatures"]["t_dev"]) < 2e-3
