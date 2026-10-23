@@ -126,3 +126,39 @@ def test_an_underside_with_no_leaf_box_is_dropped_and_a_closeup_is_used_whole():
     items, left_out = cb.disease_items(cases, Path("/p"), head, lambda f: np.zeros((0, 4), np.float32), lambda f: whole)
     assert len(items) == 1 and left_out == {"undersides with no leaf box": 1}
     assert cb.confusion(items, head) == {"tomato": {"tomato_early_blight": {"tomato_early_blight": 1}}}
+
+
+def species_item(cos, case_id, y, species="tomato"):
+    return ([np.asarray(cos, float)], [2.0], y, {"case_id": case_id, "truth": {"species_id": species}})
+
+
+def test_the_agreement_search_counts_cases_outside_the_matrix_as_wrong():
+    # Ten named cases scored high and right at T 1; one outside case scored high too.
+    named = [species_item([0.30, 0.0], f"n{i}", 0) for i in range(10)]
+    t1 = np.ones(10)
+    assert cb.agreement(named, t1, [], np.zeros(0))["accuracy"] == 1.0
+    squash = [species_item([0.30, 0.0], "s0", None, "squash")]
+    a = cb.agreement(named, t1, squash, np.ones(1))
+    assert a["n"] == 11 and a["outside"] == 1 and abs(a["accuracy"] - 10 / 11) < 1e-9
+    # With nothing outside the fitted value already holds and is kept as it is.
+    assert cb.agreement_temperature(named, [], 1.0) == 1.0
+    # A wrong named case below the others' margin: T rises until it falls under 0.8 while
+    # the right ones stay above, which a larger cosine gap allows.
+    strong = [species_item([0.40, 0.0], f"r{i}", 0) for i in range(19)]
+    weak = [species_item([0.05, 0.0], f"w{i}", 1) for i in range(2)]
+    t = cb.agreement_temperature(strong + weak, [], 1.0)
+    assert t is not None and t > 1.0
+    a = cb.agreement(strong + weak, np.full(21, t), [], np.zeros(0))
+    assert a["accuracy"] >= cb.AGREEMENT_ACCURACY
+
+
+def test_the_search_gives_up_when_a_wrong_case_stays_as_sure_as_the_right_ones():
+    same = [species_item([0.30, 0.0], f"n{i}", 0) for i in range(3)]
+    twin = [species_item([0.30, 0.0], "s0", None, "squash")]
+    # The outside case scores exactly as the right ones: 3 of 4 right at every T while any of
+    # them reaches 0.8, and up to the cap they all still do.
+    assert cb.agreement_temperature(same, twin, 1.0) is None
+    # Below the cap's reach, a weaker twin falls under 0.8 first, so a temperature is found.
+    weak_twin = [species_item([0.05, 0.0], "s1", None, "squash")]
+    t = cb.agreement_temperature(same, weak_twin, 1.0)
+    assert t is not None and cb.agreement(same, np.full(3, t), weak_twin, np.full(1, t))["outside"] == 0
