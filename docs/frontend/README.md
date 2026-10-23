@@ -1,6 +1,6 @@
 # PDM Frontend Architecture
 
-> **Status:** Draft v0.4.10, 2026-10-22. v0.4.10: `fflate`, and `expo-image-manipulator` sampling the diagnosis's photo for its tint from `expo-image`'s cache (section 4; design open decision 9). v0.4.9: `@expo/ui` gives the live analysis's More button SwiftUI's `Menu` on iOS (section 4). v0.4.8: `AuthBridge` registers the token provider once per sign-in, before the first authed request (section 8). v0.4.7: "Forgot password?" resets the password with an email code (sections 6 and 8). v0.4.6: two-step sign-in is a code by text to the phone given at sign-up, with Clerk's test numbers in development (section 8). v0.4.5: sign-in has no authenticator-app second factor; a new device is confirmed with an email code. v0.4.4: section 4 adds `expo-symbols` and Urbanist, which F0 uses.
+> **Status:** Draft v0.4.11, 2026-10-23. v0.4.11: the LiDAR module's JavaScript surface as built in F5: the shot's report, `sampleDepth`, the world map per garden, `removeWorldMaps` and `GardenView` (section 13); the scan stream stays open 25 s in the background while the Live Activity runs (section 10). v0.4.10: `fflate`, and `expo-image-manipulator` sampling the diagnosis's photo for its tint from `expo-image`'s cache (section 4; design open decision 9). v0.4.9: `@expo/ui` gives the live analysis's More button SwiftUI's `Menu` on iOS (section 4). v0.4.8: `AuthBridge` registers the token provider once per sign-in, before the first authed request (section 8). v0.4.7: "Forgot password?" resets the password with an email code (sections 6 and 8). v0.4.6: two-step sign-in is a code by text to the phone given at sign-up, with Clerk's test numbers in development (section 8). v0.4.5: sign-in has no authenticator-app second factor; a new device is confirmed with an email code. v0.4.4: section 4 adds `expo-symbols` and Urbanist, which F0 uses.
 > v0.4.3: the build plan (section 18) follows the new [roadmap](roadmap.md): the iPhone first in the Conservatory direction, F0 on Oct 20 to the web build on Oct 25. v0.4.2: the backend's OpenAPI spec is committed, so the app uses generated contract types from day 1 instead of hand-written ones (section 9, generated types; build plan). v0.4.1: the schema links point to `backend/migrations/schema.surql`. v0.4 applies the third audit and contracts v0.8.2: species photo paths carry a content hash, a failed scan never holds a question, push coverage, invalidations for confirmed plan revisions, the closer-photo rule, the `SFSafariViewController` cookie note and the CORS preflight reason.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Images:** event URLs arrive fresh, and the cache key is the image ID or the URL path; species photos carry their credit.
@@ -640,7 +640,7 @@ The reducer is tested against the example run in contracts 4, a species-change r
 
 - When the server closes a stream, the app refetches `GET /scans/{id}`. If the record is at rest, the stream stays closed. Otherwise, after a network error or a close the record doesn't explain, the app reconnects with backoff (1, 2, 4 … 30 s) and `Last-Event-ID`.
 - No bytes for 45 seconds, three missed keepalives, counts as a broken stream.
-- The stream closes when the app goes to the background (or the browser tab is hidden) and reopens on return, from the last applied `seq`. In between, push carries the main changes (a plan, a new plan version, a question, a failure) to the scan's creator on native builds ([contracts 9](../architecture/contracts.md#push-notifications)); everyone else sees them on the next read.
+- The stream closes when the app goes to the background (or the browser tab is hidden) and reopens on return, from the last applied `seq`. While the scan's Live Activity runs, it closes 25 s later instead, inside the background time the activity's module asks iOS for, so the Lock Screen follows the scan that long. In between, push carries the main changes (a plan, a new plan version, a question, a failure) to the scan's creator on native builds ([contracts 9](../architecture/contracts.md#push-notifications)); everyone else sees them on the next read.
 - A scan at rest gets its stream back when the user starts late work on it (an answer, a question photo, a guided check, a species change, a retry), when a push arrives for it, or when its screen is focused again and the refetched record isn't at rest.
 - Only the screen that shows a scan holds its stream. Other screens read records and refetch on focus.
 
@@ -831,7 +831,7 @@ interface CapturedShot {
 
 ### The LiDAR module's JavaScript surface
 
-The native side is designed in architecture 6.7 and 6.8. This is the interface the app codes against, in `app/modules/lidar/src/index.ts`, so the app and the Swift work proceed in parallel:
+The native side is designed in architecture 6.7 and 6.8. This is the interface the app codes against, in `app/modules/lidar` (`src/LidarCamera.ts`, `src/GardenMapping.ts`, `src/GardenView.ts`, re-exported by `index.ts`). Features reach it only through `src/platform` (`capabilities`, `capture`, `depth`, `mapping`, `garden3d`).
 
 ```ts
 export function getCapabilities(): { depth: boolean; mapping: boolean };
@@ -839,23 +839,46 @@ export function getCapabilities(): { depth: boolean; mapping: boolean };
 // Camera view with depth. Replaces expo-camera on LiDAR devices: one capture session at a time.
 export const LidarCameraView: React.ComponentType<{
   active: boolean;
-  onDistance?: (e: { distance_m: number | null }) => void;   // median depth at the centre of the frame
-}>;
-export function capturePhoto(view: LidarCameraViewRef): Promise<CapturedShot>;
+  onDistance?: (e: { nativeEvent: { distance_m: number | null } }) => void;   // median depth at the centre, 5 per second
+  onReady?: () => void;
+  onMountError?: (e: { nativeEvent: { message: string } }) => void;
+}> | null;
+// ref.capture(): the JPEG in the sensor frame with its EXIF orientation, the 16-bit depth PNG in millimetres and
+// the DepthMeta (contracts 3) when the depth is absolute, and a report for the day-1 check.
+interface LidarShot {
+  file: { uri: string; mimeType: "image/jpeg"; width: number; height: number };
+  depth?: { depthUri: string; meta: DepthMeta };
+  report: CaptureReport;                 // photo and depth sizes, valid share, accuracy, filtered, distortion table, gravity
+}
+export function sampleDepth(depthUri: string, points: [number, number][], halfSide?: number): Promise<(number | null)[]>;
 
-// AR mapping session.
+// AR mapping session. The world map is kept per garden, so its functions take the garden's ID.
 export const GardenMappingView: React.ComponentType<{
-  onTrackingState?: (e: { state: "normal" | "limited" | "lost" }) => void;
-  onGroundTap?: (e: { x_m: number; y_m: number }) => void;            // bed corners
-  onPinPlaced?: (e: { x_m: number; y_m: number; canopy_radius_m?: number }) => void;
-  onHeading?: (e: { north_deg: number; accuracy_deg: number }) => void;
-}>;
-export function saveWorldMap(version: number): Promise<void>;          // stays on the phone
-export function savedWorldMapVersion(): Promise<number | null>;
-export function relocalise(): Promise<"ok" | "failed">;
+  tapMode: "corner" | "pin";
+  onTrackingState?: (e: { nativeEvent: { state: "normal" | "limited" | "lost" } }) => void;
+  onGroundTap?: (e: { nativeEvent: { x_m: number; y_m: number } }) => void;   // bed corners
+  onPinPlaced?: (e: { nativeEvent: { x_m: number; y_m: number; canopy_radius_m?: number } }) => void;
+  onHeading?: (e: { nativeEvent: { north_deg: number; accuracy_deg: number } }) => void;
+}> | null;                                // ref.undoLast(), ref.clearMarkers(), ref.restart()
+export function saveWorldMap(gardenId: string, version: number): Promise<void>;   // stays on the phone
+export function savedWorldMapVersion(gardenId: string): number | null;
+export function relocalise(gardenId: string): Promise<"ok" | "failed">;
+export function removeWorldMaps(): void;                                          // on sign-out
+
+// The 3D garden on RealityKit, a non-AR ARView (design garden-3d 1).
+export const GardenView: React.ComponentType<{
+  beds: { id: string; name?: string; polygon_m: number[][] }[];
+  plants: { id: string; name: string; x_m: number; y_m: number; canopy_radius_m?: number; height_m?: number;
+            status: "healthy" | "watch" | "sick" | "dead" | "unknown"; tender?: boolean; label?: string; bed_id?: string }[];
+  mode: "health" | "growth" | "frost";
+  selectedPlantId?: string | null;
+  scheme: "light" | "dark";
+  reduceMotion?: boolean;
+  onSelectPlant?: (e: { nativeEvent: { plant_id: string | null } }) => void;
+}> | null;
 ```
 
-Where the native module is absent (Android, the web, Expo Go), `requireOptionalNativeModule` returns `null` and the fallback reports `{ depth: false, mapping: false }`.
+Where the native module is absent (Android, the web, Expo Go), `requireOptionalNativeModule` returns `null`: the views are `null` and `getCapabilities()` reports `{ depth: false, mapping: false }`. Ground-plane coordinates are metres, x to the right of where the phone first looked and y ahead of it; `north_deg` is clockwise from that +y axis.
 
 Docs: [Expo Modules API](https://docs.expo.dev/modules/module-api/) · [`AVDepthData`](https://developer.apple.com/documentation/avfoundation/avdepthdata) · [`ARWorldTrackingConfiguration`](https://developer.apple.com/documentation/arkit/arworldtrackingconfiguration) · [`ARWorldMap`](https://developer.apple.com/documentation/arkit/arworldmap) · [Core Motion](https://developer.apple.com/documentation/coremotion).
 
