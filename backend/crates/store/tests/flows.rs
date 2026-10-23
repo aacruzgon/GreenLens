@@ -491,6 +491,82 @@ async fn a_suggestion_sets_its_runs_working_species() {
     assert_eq!(snap.plant.species_status, SpeciesStatus::Confirmed);
 }
 
+/// A scan whose plant or garden is being deleted is not visible (`SCAN_VISIBLE`), though its
+/// own `deleting_at` stays unset: a suggestion for it writes nothing and returns `false`.
+#[tokio::test]
+async fn a_suggestion_for_a_scan_being_deleted_writes_nothing() {
+    use domain::{
+        id::SpeciesId,
+        scan::{CandidateSource, SpeciesCandidate, SpeciesChoice, SpeciesStatus},
+    };
+    for garden in [false, true] {
+        let store = support::store().await;
+        let f = fixture(&store).await;
+        exec(
+            &store,
+            "CREATE species:tomato SET scientific_name = 'Solanum lycopersicum', common_names = ['Tomato'], profile = 'full',
+               classifier_supported = true, bioclip_label = 'tomato', sources = [], reviewed_by = 'ada';",
+        )
+        .await;
+        set_status(&store, f.scan, "analysing").await;
+        let tomato: SpeciesId = "tomato".parse().unwrap();
+        store
+            .confirm_species(f.editor, f.plant, SpeciesChoice::Known(tomato.clone()))
+            .await
+            .expect("confirmed");
+        let owner = check_membership_of::<Owner>(&*store, f.user, f.garden)
+            .await
+            .unwrap();
+        if garden {
+            store.start_garden_deletion(owner, t0()).await.unwrap();
+        } else {
+            store
+                .start_plant_deletion(owner, f.plant, t0())
+                .await
+                .unwrap();
+        }
+
+        let stored = store
+            .suggest_species(
+                f.scan,
+                Run(1),
+                vec![SpeciesCandidate {
+                    species_id: Some(tomato.clone()),
+                    name: "Tomato".into(),
+                    score: Confidence::saturating(0.97),
+                    source: CandidateSource::Bioclip,
+                    reference_image: None,
+                }],
+                Some(tomato.clone()),
+                SpeciesStatus::Suggested,
+            )
+            .await
+            .expect("not an error");
+        assert!(!stored, "garden deletion: {garden}");
+
+        let mut r = exec(
+            &store,
+            &format!(
+                "RETURN {scan}.deleting_at = NONE AND {scan}.working_species = NONE;
+                 RETURN array::len({plant}.species_candidates ?? []);",
+                scan = rec("scan", f.scan),
+                plant = rec("plant", f.plant),
+            ),
+        )
+        .await;
+        assert_eq!(
+            r.take::<Option<bool>>(0).unwrap(),
+            Some(true),
+            "the scan itself isn't marked, and has no working species (garden deletion: {garden})"
+        );
+        assert_eq!(
+            r.take::<Option<i64>>(1).unwrap(),
+            Some(0),
+            "no candidates (garden deletion: {garden})"
+        );
+    }
+}
+
 /// A user's write that sets a species must name one the knowledge base holds: `POST /plants`,
 /// `POST /plants/{id}/species`, a new plant of `POST /scans` and a new plant of a map upload
 /// refuse any other with `invalid_request` at the request's field, and store nothing. The

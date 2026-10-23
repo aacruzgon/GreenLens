@@ -71,11 +71,12 @@ SELECT id, status, created_at, working_species FROM scan WHERE plant = $plant AN
 COMMIT;";
     /// The pipeline's suggestion for the scan's run `$run`: the plant's candidates and species,
     /// unless already confirmed, and the scan's working species, unless the run has one. A
-    /// run that is no longer current (a new run started meanwhile) writes nothing. Statements:
-    /// 0 `BEGIN`, 1 the scan, 2 whether `$run` is current, 3 the updates, 4 that flag, 5
-    /// `COMMIT`.
+    /// run that is no longer current (a new run started meanwhile), or a scan that is being
+    /// deleted, or whose plant or garden is (the rule of `SCAN_VISIBLE`), writes nothing.
+    /// Statements: 0 `BEGIN`, 1 the scan, 2 whether `$run` is current, 3 the updates, 4 that
+    /// flag, 5 `COMMIT`.
     pub const SUGGEST_SPECIES: &str = "BEGIN;
-LET $sc = (SELECT run, plant, working_species FROM ONLY $scan WHERE deleting_at = NONE);
+LET $sc = (SELECT run, plant, working_species FROM ONLY $scan WHERE deleting_at = NONE AND plant.deleting_at = NONE AND garden.deleting_at = NONE);
 LET $current = $sc != NONE AND $sc.run = $run;
 IF $current {
   UPDATE $sc.plant SET species_candidates = $candidates,

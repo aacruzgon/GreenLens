@@ -91,8 +91,8 @@ pub trait PlantRepo: Send + Sync {
     /// scan's plant gets the candidates and `suggested` with `working` as its species, unless
     /// already confirmed, and the scan's `working_species` becomes `working` unless the run
     /// already has one (a confirmed species, set when the run started). Returns `false`, and
-    /// writes nothing, when `run` is no longer the scan's current run or the scan is being
-    /// deleted.
+    /// writes nothing, when `run` is no longer the scan's current run, or when the scan, its
+    /// plant or its garden is being deleted (the scan is no longer visible).
     async fn suggest_species(
         &self,
         scan: ScanId,
