@@ -380,6 +380,29 @@ def test_tag_uses_the_plans_model_for_a_source_unless_one_is_given(seed_dir, tmp
     assert models(model_id="claude-haiku-5-5") == ["claude-haiku-5-5", "claude-haiku-5-5"]
 
 
+def test_tag_keeps_a_signed_chunks_single_tags_while_its_text_is_the_same(seed_dir, tmp_path):
+    # A page on two crops, re-tagged once the second crop's problem is in the plan: the model can't
+    # pick one crop, but the excerpt signed for tomato must stay findable by a tomato search.
+    signed = {"id": "both.1", "source_id": "both", "crop": "tomato", "problem": "tomato_early_blight",
+              "organism": None, "topic": "symptoms", "text": "Rings on old leaves."}
+    changed = {**signed, "id": "both.2", "text": "Old wording."}
+    (seed_dir / "chunks/both.jsonl").write_text(json.dumps(signed) + "\n" + json.dumps(changed) + "\n")
+    chunks_dir = tmp_path / "chunks"
+    chunks_dir.mkdir()
+    (chunks_dir / "both.jsonl").write_text(
+        json.dumps({"id": "both.1", "source_id": "both", "heading": "", "text": "Rings on old leaves."}) + "\n"
+        + json.dumps({"id": "both.2", "source_id": "both", "heading": "", "text": "New wording."}) + "\n")
+    reply = lambda kw: {"relevant": True, "crop": None, "problem": None, "organism": None, "topic": "conditions",
+                        "problems": ["tomato_early_blight", "tomato_late_blight"], "organisms": []}
+    tag.run(seed_dir, tmp_path / "no-plan.yaml", chunks_dir, tmp_path / "tags",
+            llm.Llm(FakeClient(reply), tmp_path / "c.jsonl"), dose=no_dose, sanitize=identity)
+    kept = {json.loads(l)["id"]: json.loads(l) for l in (seed_dir / "chunks/both.jsonl").read_text().splitlines()}
+    assert kept["both.1"] == signed, "the text is unchanged, so the signed tags stay"
+    assert (kept["both.2"]["crop"], kept["both.2"]["topic"]) == (None, "conditions"), "new text, new tags"
+    lists = json.loads((tmp_path / "tags/both.jsonl").read_text().splitlines()[0])["problems"]
+    assert lists == ["tomato_early_blight", "tomato_late_blight"], "extraction reads the new lists"
+
+
 # --- extract ---------------------------------------------------------------------------------
 
 def test_quote_links_what_the_seed_does_not_carry():

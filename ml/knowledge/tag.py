@@ -19,7 +19,8 @@ own business). One the dose check fails on stays out of the seed, which never ca
 dose or a mixing ratio, wherever the page put one (`withheld`); extraction still reads it, for
 the advice around the rate, and the drafts it writes are dose-checked themselves. plan.yaml's
 `withheld_chunks` withholds the chunks a reviewer named the same way. Kept chunks go
-to seed/chunks/<source_id>.jsonl in the ChunkSeed shape; every decision goes to
+to seed/chunks/<source_id>.jsonl in the ChunkSeed shape; one already there with the same text
+keeps the single tags it was signed with, while its lists in build/tags are the new run's; every decision goes to
 build/tags/<source_id>.jsonl, which extract.py reads, and the script prints a 10% sample per
 source for the teammate's spot check.
 
@@ -151,10 +152,20 @@ def run(seed_root: Path = SEED, plan_path: Path = PLAN, chunks: Path = CHUNKS, t
         for d in decided:
             d["withheld"] = (f"dose check: {failing[d['id']]['reason']}" if d["id"] in failing
                              else f"withheld at review: {by_hand[d['id']]}" if d["id"] in by_hand else None)
-        kept = [{"id": d["id"], "source_id": source_id, "crop": d["crop"], "problem": d["problem"],
-                 "organism": d["organism"], "topic": d["topic"], "text": d["text"]}
-                for d in decided if not d["dropped"] and not d["withheld"]]
         target = seed_root / "chunks" / f"{source_id}.jsonl"
+        # A committed chunk whose text hasn't changed keeps its single tags: they were signed, and
+        # a new crop's problems can make the model's single pick null (a page on pepper and tomato).
+        signed = {c["id"]: c for c in (json.loads(line) for line in target.read_text(encoding="utf-8")
+                                       .splitlines() if line.strip())} if target.exists() else {}
+        kept = []
+        for d in decided:
+            if d["dropped"] or d["withheld"]:
+                continue
+            old = signed.get(d["id"])
+            single = old if old and old["text"] == d["text"] else d
+            kept.append({"id": d["id"], "source_id": source_id, "crop": single["crop"],
+                         "problem": single["problem"], "organism": single["organism"],
+                         "topic": single["topic"], "text": d["text"]})
         if kept and source_id not in facts_only:
             target.write_text("".join(json.dumps(k, ensure_ascii=False) + "\n" for k in kept),
                               encoding="utf-8", newline="\n")
