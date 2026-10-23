@@ -169,17 +169,14 @@ pub enum MaskPngError {
 /// The object behind `GET /scans/{id}/masks/{mask_id}`: the mask decoded and encoded as an 8-bit
 /// grayscale PNG at its own size (the stored image's, `size`), 255 inside and 0 outside.
 pub fn to_png(rle: &RleMask) -> Result<Vec<u8>, MaskPngError> {
+    // `decode` sets inside pixels with `MaskBuf::set`, which writes 255, so the buffer is
+    // already the image: no second full-size copy.
     let mask = decode(rle)?;
-    let inside: Vec<u8> = mask
-        .as_raw()
-        .iter()
-        .map(|&v| if v == 0 { 0 } else { 255 })
-        .collect();
     Ok(crate::depth::encode_png(
         mask.width(),
         mask.height(),
         png::BitDepth::Eight,
-        &inside,
+        mask.as_raw(),
     )?)
 }
 
