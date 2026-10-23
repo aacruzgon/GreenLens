@@ -37,6 +37,19 @@ pair fixed:
 
     python -m ml.training.eval.plant_check --rescore reports/<label>.json   # re-analyse, no models
 
+On the evaluation's cases (evaluation 6, the plant check score: the highest threshold that keeps
+99% recall on the dev cases with a plant), every plant shot of each case is scored and a case
+passes when any of its shots does, as a scan does. For each `--pair`, the case and shot recall,
+the highest τ_plant (τ_leaf fixed) that keeps 99% of cases passing, and at that τ_plant the
+hold-out negatives that pass and the worst dataset's false `no_plant_found` on val, both from
+committed reports' per-photo scores:
+
+    python -m ml.training.eval.plant_check --cases ml/training/eval/manifest.jsonl \
+        --probe ml/training/runs/heads/plant-probe-v1-2026-10-20/plant-probe-v1-2026-10-20.json \
+        --pair A:0.40:0.70 --pair plant-probe-v1-2026-10-20:0.99:0.71 \
+        --holdout-report ml/training/eval/reports/plant-check-test-holdout-2026-10-20-probe-v1.json \
+        --val-report ml/training/eval/reports/plant-check-val-2026-10-20-probe-v1.json
+
 Writes `<out>/<label>.json` (every photo's scores) and `<out>/<label>.md`.
 """
 
@@ -154,7 +167,14 @@ def main(argv=None) -> int:
     ap.add_argument("--note", help="a line for the report's header, such as what the detector was trained on")
     ap.add_argument("--probe", type=Path, action="append", default=[],
                     help="a trained probe file (pdm-linear-head/1, kind plant_probe) scored beside the prompt sets; repeatable")
+    ap.add_argument("--cases", type=Path, help="the evaluation manifest: score its cases instead of a split")
+    ap.add_argument("--case-split", default="dev", help="with --cases: the cases' split")
+    ap.add_argument("--photos", type=Path, help="with --cases: the cases' photos (default: photos/ beside the manifest)")
+    ap.add_argument("--holdout-report", type=Path, help="with --cases: a report whose negatives are the hold-out photos")
+    ap.add_argument("--val-report", type=Path, help="with --cases: a val report, for the per-dataset rule")
     args = ap.parse_args(argv)
+    if args.cases:
+        return cases_main(args)
     prev = json.loads(args.rescore.read_text()) if args.rescore else None
     known = set(prev["sets"]) if prev else set(plant_probe.PROMPT_SETS) | {headfile_version(f) for f in args.probe}
     for pair in args.pair:
@@ -396,6 +416,123 @@ def markdown(r: dict) -> str:
         out += [f"| {x['tau_plant']:.2f} | {pct(x['positives_false_no_plant'])} | {pct(x['no_leaf_rescued'])} | "
                 f"{pct(x['negatives_pass_probe'])} | {pct(x['negatives_pass_check'])} |\n" for x in s["sweep"]]
     return "".join(out)
+
+
+# --- the evaluation's cases (evaluation 6) --------------------------------------------------------
+
+PLANT_KINDS = ("whole_plant", "leaf_closeup", "leaf_underside", "flower_fruit")
+CASE_RECALL = 0.99
+
+
+def case_pass(shot_leaf: np.ndarray, shot_p: np.ndarray, case_of_shot: np.ndarray, n_cases: int,
+              tau_leaf: float, tau_plant: float) -> np.ndarray:
+    """A case passes when any of its plant shots passes (`plant_present` over a scan's shots)."""
+    shot = (shot_leaf >= tau_leaf) | (shot_p >= tau_plant)
+    out = np.zeros(n_cases, bool)
+    np.logical_or.at(out, case_of_shot, shot)
+    return out
+
+
+def highest_tau_plant(shot_leaf, shot_p, case_of_shot, n_cases, tau_leaf, recall: float = CASE_RECALL) -> float | None:
+    """The highest τ_plant on GRID at which at least `recall` of the cases pass."""
+    ok = [float(t) for t in GRID
+          if case_pass(shot_leaf, shot_p, case_of_shot, n_cases, tau_leaf, float(t)).mean() >= recall]
+    return max(ok) if ok else None
+
+
+def report_scores(path: Path, side: str, name: str) -> tuple[np.ndarray, np.ndarray, list[dict]]:
+    doc = json.loads(path.read_text())
+    rows = doc[side]
+    if f"p_{name}" not in rows[0]:
+        raise SystemExit(f"{path}: no p_{name} scores (it has {', '.join(doc['sets'])})")
+    return (np.array([r["leaf"] for r in rows], np.float32), np.array([r[f"p_{name}"] for r in rows]), rows)
+
+
+def cases_main(args) -> int:
+    import datetime as dt
+
+    from ml.pdm_vision import headfile
+    from ml.pdm_vision.features import Embedder
+
+    cases = [c for c in map(json.loads, filter(str.strip, args.cases.read_text().splitlines()))
+             if c["split"] == args.case_split]
+    photos = args.photos or args.cases.parent / "photos"
+    shots = [(n, photos / im["file"], im["kind"]) for n, c in enumerate(cases)
+             for im in c["images"] if im["kind"] in PLANT_KINDS]
+    case_of_shot = np.array([n for n, _, _ in shots])
+    scorer = LeafScorer()
+    print(f"leaf scores: {len(shots)} shots of {len(cases)} cases (CPU)", file=sys.stderr)
+    leaf = np.array([scorer.score(f) for _, f, _ in shots], np.float32)
+    emb = Embedder().files([f for _, f, _ in shots])
+    weights, _ = plant_probe.weights("cpu")
+    probs = {n: plant_probe.probability(emb, w) for n, w in weights.items()}
+    for f in args.probe:
+        doc = headfile.read_linear_head(f)
+        probs[doc["version"]] = plant_probe.probability(emb, doc["weight"][0], float(doc["bias"][0]))
+    pairs = args.pair or [MANIFEST_PAIR]
+    out = {"label": args.label or f"plant-check-{args.case_split}-cases-{dt.date.today().isoformat()}",
+           "cases": len(cases), "shots": len(shots), "kinds": {},
+           "holdout_report": str(args.holdout_report.resolve().relative_to(ROOT)) if args.holdout_report else None,
+           "val_report": str(args.val_report.resolve().relative_to(ROOT)) if args.val_report else None, "pairs": []}
+    for _, _, k in shots:
+        out["kinds"][k] = out["kinds"].get(k, 0) + 1
+    for pair in pairs:
+        name, tl, tp = pair["set"], pair["tau_leaf"], pair["tau_plant"]
+        if name not in probs:
+            raise SystemExit(f"--pair {name}: unknown prompt set or probe (known: {', '.join(probs)})")
+        p = probs[name]
+        passed = case_pass(leaf, p, case_of_shot, len(cases), tl, tp)
+        shot_ok = (leaf >= tl) | (p >= tp)
+        best = highest_tau_plant(leaf, p, case_of_shot, len(cases), tl)
+        r = {"set": name, "tau_leaf": tl, "tau_plant": tp, "case_recall": float(passed.mean()),
+             "shot_recall": float(shot_ok.mean()), "highest_tau_plant_at_99": best,
+             "failing_cases": [{"case": cases[n]["case_id"], "species": cases[n]["truth"].get("species_id"),
+                                "best_leaf": float(leaf[case_of_shot == n].max()),
+                                "best_p": float(p[case_of_shot == n].max())}
+                               for n in np.flatnonzero(~passed)]}
+        for t, key in ((tp, "at_pair"), (best, "at_highest")):
+            if t is None:
+                continue
+            row = {"tau_plant": t, "case_recall": float(case_pass(leaf, p, case_of_shot, len(cases), tl, t).mean())}
+            if args.holdout_report:
+                nl, npp, _ = report_scores(args.holdout_report, "negatives", name)
+                row["holdout_negatives_pass"] = float(np.mean((nl >= tl) | (npp >= t)))
+            if args.val_report:
+                pl, ppp, rows = report_scores(args.val_report, "positives", name)
+                ds = np.array([x["dataset"] for x in rows])
+                row["val_worst_dataset_false_no_plant"] = false_no_plant((pl >= tl) | (ppp >= t), ds)
+            r[key] = row
+        out["pairs"].append(r)
+    args.out.mkdir(parents=True, exist_ok=True)
+    (args.out / f"{out['label']}.json").write_text(json.dumps(out, indent=1) + "\n")
+    (args.out / f"{out['label']}.md").write_text(cases_markdown(out))
+    print(cases_markdown(out))
+    return 0
+
+
+def cases_markdown(r: dict) -> str:
+    def pc(x):
+        return "–" if x is None else f"{100 * x:.1f}%"
+    lines = [f"# Plant check on the evaluation cases: {r['label']}", "",
+             f"{r['cases']} cases, {r['shots']} plant shots ({', '.join(f'{k} {v}' for k, v in sorted(r['kinds'].items()))}). "
+             "Every case has a plant. A case passes when any shot passes (leaf score ≥ τ_leaf or plant probability ≥ τ_plant). "
+             f"Hold-out negatives: `{r['holdout_report']}`; val per dataset: `{r['val_report']}`.", "",
+             "| Pair | τ_plant | Cases passing | Shots passing | Hold-out no-plant photos passing | Val, worst dataset's false `no_plant_found` |",
+             "|---|---|---|---|---|---|"]
+    for p in r["pairs"]:
+        a = p["at_pair"]
+        lines.append(f"| {p['set']} {p['tau_leaf']} / {p['tau_plant']} | {p['tau_plant']} | {pc(a['case_recall'])} | "
+                     f"{pc(p['shot_recall'])} | {pc(a.get('holdout_negatives_pass'))} | {pc(a.get('val_worst_dataset_false_no_plant'))} |")
+        if "at_highest" in p:
+            h = p["at_highest"]
+            lines.append(f"| {p['set']}, highest τ_plant keeping 99% of cases | {h['tau_plant']} | {pc(h['case_recall'])} | | "
+                         f"{pc(h.get('holdout_negatives_pass'))} | {pc(h.get('val_worst_dataset_false_no_plant'))} |")
+    lines.append("")
+    for p in r["pairs"]:
+        f = p["failing_cases"]
+        lines.append(f"Failing at {p['set']} {p['tau_leaf']} / {p['tau_plant']}: " + (
+            "; ".join(f"`{x['case']}` ({x['species']}, best leaf {x['best_leaf']:.2f}, best p {x['best_p']:.2f})" for x in f) or "none") + ".")
+    return "\n".join(lines) + "\n"
 
 
 if __name__ == "__main__":

@@ -1,0 +1,588 @@
+{
+  "date": "2026-10-23",
+  "head": "species-head-v1-2026-10-20",
+  "head_crops": [
+    "tomato",
+    "apple",
+    "grape",
+    "pepper",
+    "corn"
+  ],
+  "species_temperature": 1.3747,
+  "shots": 130,
+  "cases": 102,
+  "kinds": {
+    "whole_plant": 102,
+    "flower_fruit": 5,
+    "leaf_closeup": 21,
+    "leaf_underside": 2
+  },
+  "results": [
+    {
+      "matrix": "233482ce598f591b",
+      "source": "STAND-IN: 20 species from ml/training/labels/standin_labels.yaml, BioCLIP 2 text tower, 80 templates",
+      "species": 20,
+      "missing_crops": [],
+      "shot": {
+        "zero-shot, all shots": {
+          "n": 130,
+          "top1": 0.7538461538461538,
+          "top3": 0.9076923076923077,
+          "per_species": {
+            "apple": [
+              31,
+              29
+            ],
+            "corn": [
+              18,
+              15
+            ],
+            "grape": [
+              22,
+              19
+            ],
+            "squash": [
+              1,
+              0
+            ],
+            "tomato": [
+              58,
+              35
+            ]
+          }
+        },
+        "zero-shot": {
+          "n": 129,
+          "top1": 0.7596899224806202,
+          "top3": 0.9069767441860465,
+          "per_species": {
+            "apple": [
+              31,
+              29
+            ],
+            "corn": [
+              18,
+              15
+            ],
+            "grape": [
+              22,
+              19
+            ],
+            "tomato": [
+              58,
+              35
+            ]
+          }
+        },
+        "head": {
+          "n": 129,
+          "top1": 0.9689922480620154,
+          "top3": 1.0,
+          "per_species": {
+            "apple": [
+              31,
+              30
+            ],
+            "corn": [
+              18,
+              18
+            ],
+            "grape": [
+              22,
+              19
+            ],
+            "tomato": [
+              58,
+              58
+            ]
+          }
+        },
+        "average": {
+          "n": 129,
+          "top1": 0.7829457364341085,
+          "top3": 0.9302325581395349,
+          "per_species": {
+            "apple": [
+              31,
+              29
+            ],
+            "corn": [
+              18,
+              15
+            ],
+            "grape": [
+              22,
+              19
+            ],
+            "tomato": [
+              58,
+              38
+            ]
+          }
+        },
+        "head in share": {
+          "n": 129,
+          "top1": 0.7906976744186046,
+          "top3": 0.937984496124031,
+          "per_species": {
+            "apple": [
+              31,
+              28
+            ],
+            "corn": [
+              18,
+              16
+            ],
+            "grape": [
+              22,
+              19
+            ],
+            "tomato": [
+              58,
+              39
+            ]
+          }
+        }
+      },
+      "case": {
+        "zero-shot, all cases": {
+          "n": 102,
+          "top1": 0.7352941176470589,
+          "top3": 0.9019607843137255,
+          "per_species": {
+            "apple": [
+              15,
+              14
+            ],
+            "corn": [
+              18,
+              15
+            ],
+            "grape": [
+              13,
+              12
+            ],
+            "squash": [
+              1,
+              0
+            ],
+            "tomato": [
+              55,
+              34
+            ]
+          }
+        },
+        "zero-shot": {
+          "n": 101,
+          "top1": 0.7425742574257426,
+          "top3": 0.900990099009901,
+          "per_species": {
+            "apple": [
+              15,
+              14
+            ],
+            "corn": [
+              18,
+              15
+            ],
+            "grape": [
+              13,
+              12
+            ],
+            "tomato": [
+              55,
+              34
+            ]
+          }
+        },
+        "head": {
+          "n": 101,
+          "top1": 0.9900990099009901,
+          "top3": 1.0,
+          "per_species": {
+            "apple": [
+              15,
+              15
+            ],
+            "corn": [
+              18,
+              18
+            ],
+            "grape": [
+              13,
+              12
+            ],
+            "tomato": [
+              55,
+              55
+            ]
+          }
+        },
+        "average": {
+          "n": 101,
+          "top1": 0.7722772277227723,
+          "top3": 0.9306930693069307,
+          "per_species": {
+            "apple": [
+              15,
+              14
+            ],
+            "corn": [
+              18,
+              15
+            ],
+            "grape": [
+              13,
+              12
+            ],
+            "tomato": [
+              55,
+              37
+            ]
+          }
+        },
+        "head in share": {
+          "n": 101,
+          "top1": 0.7821782178217822,
+          "top3": 0.9405940594059405,
+          "per_species": {
+            "apple": [
+              15,
+              14
+            ],
+            "corn": [
+              18,
+              16
+            ],
+            "grape": [
+              13,
+              12
+            ],
+            "tomato": [
+              55,
+              37
+            ]
+          }
+        }
+      },
+      "crop_share": {
+        "shots": 129,
+        "min": 0.023551924154162407,
+        "median": 0.9346783757209778,
+        "under_half": 29
+      },
+      "confusions_per_case": {
+        "apple": {
+          "apple": 14,
+          "peach": 1
+        },
+        "corn": {
+          "corn": 15,
+          "hosta": 2,
+          "soybean": 1
+        },
+        "grape": {
+          "grape": 12,
+          "apple": 1
+        },
+        "squash": {
+          "cucumber": 1
+        },
+        "tomato": {
+          "tomato": 34,
+          "potato": 7,
+          "pepper": 3,
+          "soybean": 3,
+          "peach": 2,
+          "blueberry": 2,
+          "bean": 2,
+          "cucumber": 1,
+          "apple": 1
+        }
+      }
+    },
+    {
+      "matrix": "edb29fe878952e7b",
+      "source": "the knowledge seed (#51, #131): 20 species (tomato full, the rest label_only) and 5 organisms, BioCLIP 2 text tower, 80 templates; ml/training/labels/bioclip_text.py",
+      "species": 20,
+      "missing_crops": [],
+      "shot": {
+        "zero-shot, all shots": {
+          "n": 130,
+          "top1": 0.7538461538461538,
+          "top3": 0.9076923076923077,
+          "per_species": {
+            "apple": [
+              31,
+              29
+            ],
+            "corn": [
+              18,
+              15
+            ],
+            "grape": [
+              22,
+              19
+            ],
+            "squash": [
+              1,
+              0
+            ],
+            "tomato": [
+              58,
+              35
+            ]
+          }
+        },
+        "zero-shot": {
+          "n": 129,
+          "top1": 0.7596899224806202,
+          "top3": 0.9069767441860465,
+          "per_species": {
+            "apple": [
+              31,
+              29
+            ],
+            "corn": [
+              18,
+              15
+            ],
+            "grape": [
+              22,
+              19
+            ],
+            "tomato": [
+              58,
+              35
+            ]
+          }
+        },
+        "head": {
+          "n": 129,
+          "top1": 0.9689922480620154,
+          "top3": 1.0,
+          "per_species": {
+            "apple": [
+              31,
+              30
+            ],
+            "corn": [
+              18,
+              18
+            ],
+            "grape": [
+              22,
+              19
+            ],
+            "tomato": [
+              58,
+              58
+            ]
+          }
+        },
+        "average": {
+          "n": 129,
+          "top1": 0.7829457364341085,
+          "top3": 0.9302325581395349,
+          "per_species": {
+            "apple": [
+              31,
+              29
+            ],
+            "corn": [
+              18,
+              15
+            ],
+            "grape": [
+              22,
+              19
+            ],
+            "tomato": [
+              58,
+              38
+            ]
+          }
+        },
+        "head in share": {
+          "n": 129,
+          "top1": 0.7906976744186046,
+          "top3": 0.937984496124031,
+          "per_species": {
+            "apple": [
+              31,
+              28
+            ],
+            "corn": [
+              18,
+              16
+            ],
+            "grape": [
+              22,
+              19
+            ],
+            "tomato": [
+              58,
+              39
+            ]
+          }
+        }
+      },
+      "case": {
+        "zero-shot, all cases": {
+          "n": 102,
+          "top1": 0.7352941176470589,
+          "top3": 0.9019607843137255,
+          "per_species": {
+            "apple": [
+              15,
+              14
+            ],
+            "corn": [
+              18,
+              15
+            ],
+            "grape": [
+              13,
+              12
+            ],
+            "squash": [
+              1,
+              0
+            ],
+            "tomato": [
+              55,
+              34
+            ]
+          }
+        },
+        "zero-shot": {
+          "n": 101,
+          "top1": 0.7425742574257426,
+          "top3": 0.900990099009901,
+          "per_species": {
+            "apple": [
+              15,
+              14
+            ],
+            "corn": [
+              18,
+              15
+            ],
+            "grape": [
+              13,
+              12
+            ],
+            "tomato": [
+              55,
+              34
+            ]
+          }
+        },
+        "head": {
+          "n": 101,
+          "top1": 0.9900990099009901,
+          "top3": 1.0,
+          "per_species": {
+            "apple": [
+              15,
+              15
+            ],
+            "corn": [
+              18,
+              18
+            ],
+            "grape": [
+              13,
+              12
+            ],
+            "tomato": [
+              55,
+              55
+            ]
+          }
+        },
+        "average": {
+          "n": 101,
+          "top1": 0.7722772277227723,
+          "top3": 0.9306930693069307,
+          "per_species": {
+            "apple": [
+              15,
+              14
+            ],
+            "corn": [
+              18,
+              15
+            ],
+            "grape": [
+              13,
+              12
+            ],
+            "tomato": [
+              55,
+              37
+            ]
+          }
+        },
+        "head in share": {
+          "n": 101,
+          "top1": 0.7821782178217822,
+          "top3": 0.9405940594059405,
+          "per_species": {
+            "apple": [
+              15,
+              14
+            ],
+            "corn": [
+              18,
+              16
+            ],
+            "grape": [
+              13,
+              12
+            ],
+            "tomato": [
+              55,
+              37
+            ]
+          }
+        }
+      },
+      "crop_share": {
+        "shots": 129,
+        "min": 0.023536451160907745,
+        "median": 0.9351539611816406,
+        "under_half": 29
+      },
+      "confusions_per_case": {
+        "apple": {
+          "apple": 14,
+          "peach": 1
+        },
+        "corn": {
+          "corn": 15,
+          "hosta": 2,
+          "soybean": 1
+        },
+        "grape": {
+          "grape": 12,
+          "apple": 1
+        },
+        "squash": {
+          "cucumber": 1
+        },
+        "tomato": {
+          "tomato": 34,
+          "potato": 7,
+          "pepper": 3,
+          "soybean": 3,
+          "peach": 2,
+          "blueberry": 2,
+          "bean": 2,
+          "squash": 1,
+          "apple": 1
+        }
+      }
+    }
+  ]
+}
