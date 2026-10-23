@@ -621,6 +621,118 @@ async fn complete_job_paths() {
     assert_eq!(r.take::<Vec<String>>(0).unwrap(), vec!["failed".to_owned()]);
 }
 
+/// A segmentation write's mask record and its region's `mask_id`.
+fn masked_segmentation(f: &Fixture, image: ImageId) -> (ObservationWrite, domain::ports::NewMask) {
+    let region_id: domain::id::RegionId = format!("{image}.1").parse().expect("a region id");
+    let mask = domain::ports::NewMask {
+        id: f.ids.id(),
+        image,
+        region_id,
+        storage_key: ObjectKey::mask(f.garden, f.scan, f.ids.id()),
+        rle: domain::jobs::RleMask {
+            size: [768, 1024],
+            counts: "0".into(),
+        },
+    };
+    let mut o = observation(f, f.ids.id(), image, Stage::Segmentation);
+    o.stage = ObservationStage::Segmentation;
+    o.region = Some(Region {
+        region_id: Some(region_id),
+        image_id: image,
+        bbox: BBox::new(0.1, 0.1, 0.5, 0.5).expect("a valid box"),
+        mask: domain::url::StoredMask {
+            mask_id: Some(mask.id),
+        },
+    });
+    let write = ObservationWrite {
+        stage: Stage::Segmentation,
+        run: Run(1),
+        images: vec![image],
+        replace_imageless: true,
+        observations: vec![o],
+        masks: vec![mask.clone()],
+    };
+    (write, mask)
+}
+
+/// A perception completion records its masks with the segmentation observations: the snapshot
+/// reads them for measurement, the region keeps its `mask_id`, and the signed mask URL finds the
+/// object. A later segmentation write of the same photo replaces the earlier masks with its
+/// observations.
+#[tokio::test]
+async fn masks_are_stored_and_replaced_with_their_segmentation() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let leaf = image(&f, ImageKind::LeafCloseup, t0());
+    store
+        .add_image(f.editor, f.scan, leaf.clone())
+        .await
+        .unwrap();
+    set_status(&store, f.scan, "analysing").await;
+    store.enqueue_job(perception(&f, f.ids.id())).await.unwrap();
+    let now = t0().plus(Duration::from_secs(1));
+    let worker = "rig-3070";
+    let claimed = store
+        .claim_job(
+            &worker.parse().unwrap(),
+            1,
+            claim_policy(&[Capability::Perception], now),
+            now,
+        )
+        .await
+        .unwrap()
+        .expect("claimed");
+    let lease = lease_of(&claimed, worker);
+
+    // A partial result's mask, then the final result's for the same photo.
+    let (partial, earlier) = masked_segmentation(&f, leaf.id);
+    store.store_partial(&lease, partial).await.expect("partial");
+    assert_eq!(
+        store.snapshot(f.scan).await.unwrap().masks,
+        std::slice::from_ref(&earlier)
+    );
+    let (last, mask) = masked_segmentation(&f, leaf.id);
+    let outcome = store
+        .complete_job(
+            &lease,
+            JobCompletion::Done {
+                result: serde_json::json!({ "regions": [] }),
+                observations: vec![last],
+                evidence: Vec::new(),
+                claim: None,
+            },
+            now,
+        )
+        .await
+        .expect("complete");
+    assert!(
+        matches!(outcome, CompletionOutcome::Stored { .. }),
+        "{outcome:?}"
+    );
+
+    let snap = store.snapshot(f.scan).await.unwrap();
+    assert_eq!(
+        snap.masks,
+        std::slice::from_ref(&mask),
+        "the earlier mask is replaced"
+    );
+    let regions: Vec<_> = snap
+        .observations
+        .iter()
+        .filter_map(|o| o.region.as_ref())
+        .map(|r| (r.region_id, r.mask.mask_id))
+        .collect();
+    assert_eq!(regions, [(Some(mask.region_id), Some(mask.id))]);
+    let object = store
+        .mask_object(f.scan, mask.id)
+        .await
+        .unwrap()
+        .expect("the mask's object");
+    assert_eq!(object.key, mask.storage_key);
+    assert_eq!(object.content_type, domain::ports::ContentType::Png);
+    assert_eq!(store.mask_object(f.scan, earlier.id).await.unwrap(), None);
+}
+
 fn err(retryable: bool) -> JobError {
     JobError {
         code: "model_error".into(),
