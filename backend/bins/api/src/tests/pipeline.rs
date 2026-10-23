@@ -329,10 +329,11 @@ async fn a_perception_job_sends_its_lost_stage_events_then_its_findings() {
             retracted: Vec::new(),
         }),
     );
+    // Read twice: whether the run segments, then the stage events to catch up.
     store
         .event_repo
         .expect_run_stage_events()
-        .times(1)
+        .times(2)
         .returning(|_, _| Ok(lost_after_plant_check()));
     let writer = Arc::new(Recorder::default());
     let pipeline = pipeline(Arc::new(store), Arc::clone(&writer));
@@ -364,12 +365,16 @@ async fn a_perception_job_sends_its_lost_stage_events_then_its_findings() {
     );
 }
 
-/// A repeated `complete` (the store answers `AlreadyCompleted`) sends nothing and reads no
-/// stage events.
+/// A repeated `complete` (the store answers `AlreadyCompleted`) sends nothing, and reads the
+/// run's events only to tell whether it segments, not to catch up.
 #[tokio::test]
 async fn a_repeated_complete_sends_nothing() {
     let mut store = store_completing(false, CompletionOutcome::AlreadyCompleted);
-    store.event_repo.expect_run_stage_events().never();
+    store
+        .event_repo
+        .expect_run_stage_events()
+        .times(1)
+        .returning(|_, _| Ok(lost_after_plant_check()));
     let writer = Arc::new(Recorder::default());
     let pipeline = pipeline(Arc::new(store), Arc::clone(&writer));
 
@@ -387,8 +392,8 @@ async fn a_repeated_complete_sends_nothing() {
     assert_eq!(writer.calls().len(), 0, "no emit");
 }
 
-/// When the run's stage events can't be read, the findings still go out, with no stage
-/// events, and `complete` succeeds.
+/// When the run's stage events can't be read after the result is stored, the findings still
+/// go out, with no stage events, and `complete` succeeds.
 #[tokio::test]
 async fn a_failed_stage_event_read_still_sends_the_findings() {
     let mut store = store_completing(
@@ -398,11 +403,19 @@ async fn a_failed_stage_event_read_still_sends_the_findings() {
             retracted: Vec::new(),
         }),
     );
+    // The first read (whether the run segments) works; the catch-up's read fails.
+    let reads = std::sync::atomic::AtomicUsize::new(0);
     store
         .event_repo
         .expect_run_stage_events()
-        .times(1)
-        .returning(|_, _| Err(StoreError::Unavailable("connection reset".into())));
+        .times(2)
+        .returning(move |_, _| {
+            if reads.fetch_add(1, std::sync::atomic::Ordering::Relaxed) == 0 {
+                Ok(lost_after_plant_check())
+            } else {
+                Err(StoreError::Unavailable("connection reset".into()))
+            }
+        });
     let writer = Arc::new(Recorder::default());
     let pipeline = pipeline(Arc::new(store), Arc::clone(&writer));
 
@@ -504,6 +517,7 @@ async fn a_guided_completion_sends_no_stage_events() {
 const LEAF_IMAGE: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5A";
 const OTHER_IMAGE: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5B";
 const MASK: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5M";
+const QUESTION: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5Q";
 
 fn scan_image(id: &str, width: u32, height: u32) -> domain::scan::ScanImage<Stored> {
     domain::scan::ScanImage {
@@ -563,11 +577,21 @@ type Completions = Arc<Mutex<Vec<domain::ports::JobCompletion>>>;
 /// A store whose lease is `live` (or already completed) and whose `complete_job` records the
 /// completion and answers `outcome`.
 fn store_recording(live: bool, outcome: CompletionOutcome, completions: &Completions) -> FakeStore {
+    store_recording_on(snapshot_with_photos, live, outcome, completions)
+}
+
+/// [`store_recording`] with the snapshot `snap`.
+fn store_recording_on(
+    snap: fn() -> ScanSnapshot,
+    live: bool,
+    outcome: CompletionOutcome,
+    completions: &Completions,
+) -> FakeStore {
     let mut store = FakeStore::default();
     store
         .scan_repo
         .expect_snapshot()
-        .returning(|_| Ok(snapshot_with_photos()));
+        .returning(move |_| Ok(snap()));
     store
         .job_repo
         .expect_live_lease()
@@ -585,7 +609,7 @@ fn store_recording(live: bool, outcome: CompletionOutcome, completions: &Complet
     store
         .event_repo
         .expect_run_stage_events()
-        .returning(|_, _| Ok(Vec::new()));
+        .returning(|_, _| Ok(lost_after_plant_check()));
     store
 }
 
@@ -710,6 +734,10 @@ async fn a_failed_mask_put_fails_the_completion() {
         .job_repo
         .expect_live_lease()
         .returning(|_, _| Ok(Some(job(JobKind::Perception))));
+    store
+        .event_repo
+        .expect_run_stage_events()
+        .returning(|_, _| Ok(lost_after_plant_check()));
     store.job_repo.expect_complete_job().never();
     let mut blobs = MockBlobStore::new();
     blobs.expect_put().times(1).returning(|_, _, _| {
@@ -731,6 +759,123 @@ async fn a_failed_mask_put_fails_the_completion() {
         matches!(result, Err(pipeline::PipelineError::Blob(_))),
         "{result:?}"
     );
+}
+
+/// A species-change run that keeps segmentation ([contracts 3], observations across runs):
+/// the worker passes the earlier run's regions through without masks, at confidence 1. The
+/// completion writes no segmentation, so the store keeps the earlier observations with their
+/// `mask_id`s and their masks; no object is written and the lease isn't checked for masks.
+#[tokio::test]
+async fn a_species_change_run_keeps_the_earlier_regions_and_masks() {
+    let completions = Completions::default();
+    let mut store = FakeStore::default();
+    store
+        .scan_repo
+        .expect_snapshot()
+        .returning(|_| Ok(snapshot_with_photos()));
+    store.job_repo.expect_live_lease().never();
+    let recorded = Arc::clone(&completions);
+    store
+        .job_repo
+        .expect_complete_job()
+        .times(1)
+        .returning(move |_, completion, _| {
+            recorded.lock().unwrap().push(completion);
+            Ok(stored(ObservationDiff::default()))
+        });
+    let earlier = domain::rules::stages::EarlierRun {
+        perception_base_done: true,
+        measured: true,
+    };
+    let stages = domain::rules::stages::run_stages(Some(earlier), false, false);
+    assert!(!stages.contains(&Stage::Segmentation));
+    store
+        .event_repo
+        .expect_run_stage_events()
+        .returning(move |_, _| {
+            Ok(vec![ScanEventBody::RunStarted {
+                reason: RunReason::SpeciesChanged,
+                rerun_stages: stages.clone(),
+            }])
+        });
+    let mut blobs = MockBlobStore::new();
+    blobs.expect_put().never();
+    let pipeline = pipeline_with_blobs(
+        Arc::new(store),
+        Arc::new(Recorder::default()),
+        Arc::new(blobs),
+    );
+    // The earlier run's regions as the worker passes them through, with the stub's species
+    // and disease.
+    let mut result: serde_json::Value = serde_json::from_str(STUB_RESULT).unwrap();
+    result
+        .as_object_mut()
+        .unwrap()
+        .remove("plant_present")
+        .expect("the stub has a plant check");
+    for region in result["regions"].as_array_mut().unwrap() {
+        region.as_object_mut().unwrap().remove("mask");
+        region["confidence"] = serde_json::json!(1.0);
+    }
+    assert_eq!(
+        result["regions"].as_array().unwrap().len(),
+        4,
+        "the stub's four regions"
+    );
+
+    pipeline
+        .job_completed(&lease(), job(JobKind::Perception), done(result))
+        .await
+        .expect("completed");
+
+    let writes = recorded_writes(&completions);
+    let stages: Vec<_> = writes.iter().map(|w| w.stage).collect();
+    assert_eq!(
+        stages,
+        [Stage::Species, Stage::Disease],
+        "no segmentation write, so no mask is deleted"
+    );
+    assert!(writes.iter().all(|w| w.masks.is_empty()));
+}
+
+/// A question's photo is segmented even when its run (a species-change run) left
+/// segmentation out: the question job's regions and masks are its own.
+#[tokio::test]
+async fn a_question_photo_is_segmented_in_a_species_change_run() {
+    let completions = Completions::default();
+    let store = store_recording_on(
+        || {
+            let mut snap = snapshot_with_photos();
+            for image in &mut snap.scan.images {
+                image.answers_question_id = Some(QUESTION.parse().unwrap());
+            }
+            snap
+        },
+        true,
+        stored(ObservationDiff::default()),
+        &completions,
+    );
+    let blobs = Arc::new(blob::MemoryBlobStore::new(Arc::new(FixedClock::at(now()))));
+    let pipeline = pipeline_with_blobs(
+        Arc::new(store),
+        Arc::new(Recorder::default()),
+        Arc::clone(&blobs) as Arc<dyn domain::ports::BlobStore>,
+    );
+    let mut question_job = job(JobKind::Perception);
+    question_job.question = Some(QUESTION.parse().unwrap());
+
+    pipeline
+        .job_completed(&lease(), question_job, done(masked_result()))
+        .await
+        .expect("completed");
+
+    let writes = recorded_writes(&completions);
+    let [segmentation] = &writes[..] else {
+        panic!("the segmentation write alone: {writes:?}")
+    };
+    assert_eq!(segmentation.stage, Stage::Segmentation);
+    assert_eq!(segmentation.masks.len(), 1);
+    assert!(!segmentation.replace_imageless);
 }
 
 /// `GET /scans/{id}` signs a stored mask as `mask_url`, and that URL serves the PNG.

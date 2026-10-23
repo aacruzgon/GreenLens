@@ -4,7 +4,7 @@
 
 use domain::{
     authz::{Editor, Membership, Viewer},
-    events::{ResolvedBy, ScanEventBody},
+    events::{ResolvedBy, ScanEventBody, Stage},
     id::{IndicatorId, ProblemId, QuestionId, ScanId},
     jobs::{
         CompleteJob, JobError, JobKind, JobOutcome, JobResult, JobSpec, VerifyResult, VlmResult,
@@ -51,6 +51,21 @@ pub struct PhotoInfo {
     pub height: u32,
     /// It came with a depth map that fits.
     pub has_depth: bool,
+}
+
+/// The images a job's result covers, whose earlier observations of each stage it replaces
+/// ([contracts 3], observations across runs): the question's photos for a question's
+/// perception job, else the run's plant and soil photos that answer no question.
+fn covered_images(snap: &domain::ports::ScanSnapshot, job: &LeasedJob) -> Vec<domain::id::ImageId> {
+    snap.scan
+        .images
+        .iter()
+        .filter(|i| match job.question {
+            Some(q) if job.kind == JobKind::Perception => i.answers_question_id == Some(q),
+            _ => i.kind.is_plant_or_soil() && i.answers_question_id.is_none(),
+        })
+        .map(|i| i.id)
+        .collect()
 }
 
 fn follow(claim: ClaimAttempt) -> Option<FollowUp> {
@@ -535,17 +550,7 @@ impl Pipeline {
             model_version: &model_version,
             now: self.now(),
         };
-        // The images a result covers: the question photo alone, or the run's plant and soil shots.
-        let images: Vec<_> = snap
-            .scan
-            .images
-            .iter()
-            .filter(|i| match job.question {
-                Some(q) if job.kind == JobKind::Perception => i.answers_question_id == Some(q),
-                _ => i.kind.is_plant_or_soil() && i.answers_question_id.is_none(),
-            })
-            .map(|i| i.id)
-            .collect();
+        let images = covered_images(&snap, job);
         let ids: Vec<_> = snap
             .candidates
             .iter()
@@ -568,8 +573,13 @@ impl Pipeline {
         Ok(match decoded {
             JobResult::Perception(r) => {
                 let mut writes = results::perception_writes(&ctx, &r, &images, &lookups, new_id);
-                let masks = self.store_masks(lease, &snap, &r.regions).await?;
-                results::attach_masks(&mut writes, masks);
+                if self.segments(job, run).await? {
+                    let masks = self.store_masks(lease, &snap, &r.regions).await?;
+                    results::attach_masks(&mut writes, masks);
+                } else {
+                    // The earlier run's regions, passed through: its observations and masks stay.
+                    writes.retain(|w| w.stage != Stage::Segmentation);
+                }
                 if job.question.is_some() {
                     for w in &mut writes {
                         w.replace_imageless = false;
@@ -614,6 +624,34 @@ impl Pipeline {
                 claim: None,
             },
         })
+    }
+
+    /// Whether a perception job's regions are its own segmentation, to be stored with their
+    /// masks. A question's photo is always segmented. A run's job is not when the run's
+    /// `run_started` leaves segmentation out: a species-change run keeps the earlier run's
+    /// regions ([contracts 3], observations across runs), which the worker passes through
+    /// without masks and at confidence 1, so storing them would replace the earlier run's
+    /// observations and drop their masks. [`catch_up`] reads the same rule for the stage
+    /// events. A run with no stored `run_started` is taken to segment, as a first run does.
+    async fn segments(
+        &self,
+        job: &LeasedJob,
+        run: domain::wire::Run,
+    ) -> Result<bool, PipelineError> {
+        if job.question.is_some() {
+            return Ok(true);
+        }
+        let events = self.deps.store.run_stage_events(job.scan, run).await?;
+        Ok(events
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                ScanEventBody::RunStarted { rerun_stages, .. } => {
+                    Some(rerun_stages.contains(&Stage::Segmentation))
+                }
+                _ => None,
+            })
+            .unwrap_or(true))
     }
 
     /// A perception result's masks ([contracts 5], `PerceptionRegion.mask`): each region's RLE,
