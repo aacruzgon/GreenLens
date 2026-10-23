@@ -1024,8 +1024,9 @@ async fn confirming_a_custom_species_after_a_suggestion_starts_a_run() {
 
 /// A species confirmed while the scan is `queued` ([contracts 3]: the run uses the new
 /// species): run 1 started without it, so the pipeline has the store give that run the
-/// plant's confirmed species (`adopt_confirmed_species`; the write is the store test
-/// `a_queued_confirmation_becomes_its_runs_working_species`), and no run starts.
+/// plant's confirmed species (`adopt_confirmed_species`; the writes are the store tests
+/// `a_queued_confirmation_becomes_its_runs_working_species` and
+/// `a_queued_confirmation_rewrites_its_queued_perception_job`), and no run starts.
 #[tokio::test]
 async fn confirming_while_queued_sets_the_runs_working_species() {
     let mut store = FakeStore::default();
@@ -1077,6 +1078,129 @@ async fn confirming_while_queued_sets_the_runs_working_species() {
             rerun: false,
         }]]
     );
+}
+
+/// The store for a confirmation of pepper while the scan is `queued`: `confirm_species` sees
+/// the scan `queued`, and the snapshots answer `snaps` in order (the last one again after
+/// that), each a scan in run 1 with no working species.
+fn store_confirming_while_queued(
+    snaps: Vec<ScanStatus>,
+) -> (FakeStore, domain::ports::MockAuthVerifier) {
+    let mut store = FakeStore::default();
+    let auth = signed_in(&mut store, Some(Role::Editor));
+    store
+        .plant_repo
+        .expect_confirm_species()
+        .times(1)
+        .returning(|_, _, _| {
+            Ok(SpeciesConfirmation {
+                plant: plant(Some(pepper())),
+                recent_scan: Some(RecentScan {
+                    scan: SCAN.parse().unwrap(),
+                    status: ScanStatus::Queued,
+                    created_at: now(),
+                    working_species: None,
+                }),
+            })
+        });
+    let read = Arc::new(Mutex::new(0_usize));
+    store.scan_repo.expect_snapshot().returning(move |_| {
+        let mut n = read.lock().unwrap();
+        let mut snap = snapshot(false);
+        snap.scan.status = snaps[(*n).min(snaps.len() - 1)];
+        snap.plant = plant(Some(pepper()));
+        *n += 1;
+        Ok(snap)
+    });
+    (store, auth)
+}
+
+/// A worker claims the `queued` scan's `perception` job between the confirmation's snapshot
+/// and `adopt_confirmed_species`, so the store refuses the adopt (the scan is `analysing`) and
+/// the job runs without the species. The pipeline decides again on the scan as it now is:
+/// pepper differs from the run's working species, so a species-change run starts with it,
+/// instead of a `rerun: false` that would drop the confirmation.
+#[tokio::test]
+async fn a_claim_before_the_queued_adopt_starts_a_run_with_the_species() {
+    let (mut store, auth) =
+        store_confirming_while_queued(vec![ScanStatus::Queued, ScanStatus::Analysing]);
+    store
+        .plant_repo
+        .expect_adopt_confirmed_species()
+        .withf(|scan, run| *scan == SCAN.parse::<ScanId>().unwrap() && *run == Run(1))
+        .times(1)
+        .returning(|_, _| Ok(false));
+    store
+        .job_repo
+        .expect_live_workers()
+        .returning(|_| Ok(Vec::new()));
+    store
+        .scan_repo
+        .expect_start_run()
+        .withf(|_, _, start| {
+            start.reason == RunReason::SpeciesChanged
+                && start.expected_status == ScanStatus::Analysing
+                && start.expected_run == Run(1)
+                && start.working_species == Some(species("pepper"))
+                && matches!(&start.first_job.spec, JobSpec::Perception(p)
+                    if p.species_id == Some(species("pepper")) && !p.skip_species_identification)
+        })
+        .times(1)
+        .returning(|_, _, _| {
+            Ok(StartedRun {
+                run: Run(2),
+                from: ScanStatus::Analysing,
+                to: ScanStatus::Analysing,
+                superseded_question: None,
+                cancelled_jobs: Vec::new(),
+            })
+        });
+    let writer = Arc::new(Recorder::default());
+
+    let response = app_recording(store, auth, Arc::clone(&writer))
+        .oneshot(post(
+            &format!("/plants/{PLANT}/species"),
+            &serde_json::json!({ "species_id": "pepper" }),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let calls = writer.calls();
+    assert!(
+        matches!(&calls[..], [events] if matches!(&events[..], [
+            ScanEventBody::SpeciesConfirmed { rerun: true, .. },
+            ScanEventBody::RunStarted { reason: RunReason::SpeciesChanged, .. },
+        ])),
+        "{calls:?}"
+    );
+}
+
+/// An adopt refused while every snapshot still reads `queued` (the run changing under each
+/// try) is tried 3 times (`MAX_ADOPT_ATTEMPTS`), then answered as a retryable
+/// `503 upstream_unavailable`, with no event sent as if the species had been adopted.
+#[tokio::test]
+async fn an_adopt_refused_every_time_is_a_retryable_error() {
+    let (mut store, auth) = store_confirming_while_queued(vec![ScanStatus::Queued]);
+    store
+        .plant_repo
+        .expect_adopt_confirmed_species()
+        .times(3)
+        .returning(|_, _| Ok(false));
+    store.scan_repo.expect_start_run().never();
+    let writer = Arc::new(Recorder::default());
+
+    let response = app_recording(store, auth, Arc::clone(&writer))
+        .oneshot(post(
+            &format!("/plants/{PLANT}/species"),
+            &serde_json::json!({ "species_id": "pepper" }),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert!(response.headers().contains_key("retry-after"));
+    assert!(writer.calls().is_empty(), "{:?}", writer.calls());
 }
 
 // ---------------------------------------------------------------------------------------------
