@@ -147,6 +147,13 @@ def test_a_relative_manifest_path_is_reported(tree, monkeypatch):
     assert "(`manifest.jsonl`)" in (tree / "reports" / "t.md").read_text()
 
 
+def test_the_report_records_the_manifests_hash(tree):
+    cl.run(args_for(tree, "--no-bioclip"))
+    sha = cl.hashlib.sha256((tree / "manifest.jsonl").read_bytes()).hexdigest()
+    assert json.loads((tree / "reports" / "t.json").read_text())["manifest_sha256"] == sha
+    assert f"SHA-256 is `{sha}`" in (tree / "reports" / "t.md").read_text()
+
+
 def test_bioclip_skips_an_unreadable_training_file(tree, monkeypatch):
     (tree / "raw" / "tom2024" / "broken.jpg").write_bytes(b"not an image")
     fake = FakeEmbedder()
