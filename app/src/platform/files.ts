@@ -5,9 +5,40 @@ import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 const REENCODE_LONG_SIDE = 3000;
 
 // A capture draft's photos (docs/frontend/README.md 11, capture). The camera and the picker write to the cache,
-// which iOS may empty, so each shot is copied into the documents folder, one folder per scan, and the draft keeps
+// which iOS may empty, so each shot is copied into Application Support, one folder per scan, and the draft keeps
 // that copy's URI: the exact file it uploads, again after the app closes. The folder goes with the draft.
-const root = () => new Directory(Paths.document, "capture");
+//
+// Not Documents: an evaluation build shows Documents in the Files app (app.config.ts), and a draft's photos and
+// depth maps are raw, before the server blurs faces (architecture 11). Drafts kept in Documents/capture by an
+// earlier build move on first use; the draft's URIs follow through relocateDraft, which finds files by name.
+let moved = false;
+function root(): Directory {
+  const dir = new Directory(Paths.document.parentDirectory, "Library", "Application Support", "capture");
+  if (!moved) {
+    moved = true;
+    moveOldDrafts(new Directory(Paths.document, "capture"), dir);
+  }
+  return dir;
+}
+
+function moveOldDrafts(from: Directory, to: Directory): void {
+  try {
+    if (!from.exists) return;
+    for (const scan of from.list()) {
+      if (!(scan instanceof Directory)) continue;
+      const target = new Directory(to, scan.name);
+      target.create({ intermediates: true, idempotent: true });
+      for (const f of scan.list()) {
+        if (!(f instanceof File)) continue;
+        const copy = new File(target, f.name);
+        if (!copy.exists) f.copySync(copy);
+      }
+    }
+    from.delete();
+  } catch {
+    // Left where they were for another try on the next launch.
+  }
+}
 
 export const files = {
   /** Copies a photo into the scan's folder under `name` and returns the copy's URI. */
@@ -22,7 +53,10 @@ export const files = {
 
   /** Where a kept photo is now. The app's folder can move when iOS updates the app, so a saved URI can go stale. */
   locate(scanId: string, name: string): string | undefined {
-    return new File(new Directory(root(), scanId), name).uri;
+    const file = new File(new Directory(root(), scanId), name);
+    // Still in Documents when the move failed part-way: the old copy is the one to upload.
+    const old = new File(new Directory(Paths.document, "capture", scanId), name);
+    return !file.exists && old.exists ? old.uri : file.uri;
   },
 
   /** The multipart file part (README 13, platform/files): expo/fetch takes an expo-file-system File, a Blob. */
