@@ -204,10 +204,10 @@ The same day, more candidates were fetched and screened against their photos for
 
 | | Cases | Dev | Test | `sure`, dev | `sure`, test |
 |---|---|---|---|---|---|
-| After the review | 119 | 76 | 43 | 14 | 7 |
-| With the replacements | 160 | 105 | 55 | 19 | 8 |
+| After the review | 119 | 75 | 44 | 14 | 7 |
+| With the replacements | 160 | 104 | 56 | 19 | 8 |
 
-The set now holds apple 24, corn 30, grape 19, squash 3 and tomato 84. Diagnosis accuracy on the test split rests on 8 `sure` cases, 4 corn and 4 tomato, 5 sick and 3 healthy: these sources hold few photos whose label the photo plainly shows. Its Oct 24 number is reported as a count of 8 with its Wilson interval ([section 4](#4-metrics-and-acceptance-targets)), beside the species and detection metrics on all 55 test cases.
+The set now holds apple 24, corn 30, grape 19, squash 3 and tomato 84. Diagnosis accuracy on the test split rests on 8 `sure` cases, 4 corn and 4 tomato, 5 sick and 3 healthy: these sources hold few photos whose label the photo plainly shows. Its Oct 24 number is reported as a count of 8 with its Wilson interval ([section 4](#4-metrics-and-acceptance-targets)), beside the species and detection metrics on all 56 test cases.
 
 ### Variants
 
