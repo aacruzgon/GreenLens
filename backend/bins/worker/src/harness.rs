@@ -1,7 +1,8 @@
 //! One perception job without the API (task P2 of [docs/vision/dev-roadmap.md]): a job payload
 //! and its photos in, the `complete` body out. The model is built by `main`'s own
-//! `build_model` from the worker's environment, and the job runs through [`JobRunner`] with the
-//! images read from disk instead of the API, so the result is what the worker would send.
+//! `build_model` from the worker's environment, and the job runs through [`run_job`], as a
+//! claimed job does (its soft deadline included), against a worker API that serves the images
+//! from memory and keeps what the job sends, so the result is what the worker would send.
 //!
 //! [docs/vision/dev-roadmap.md]: ../../../../docs/vision/dev-roadmap.md
 #![allow(
@@ -11,16 +12,13 @@
 
 use std::{
     collections::BTreeMap,
-    process::Command,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
+    io::{BufRead as _, BufReader},
+    process::{Child, Command, Stdio},
+    sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant},
 };
 
-use async_trait::async_trait;
 use bytes::Bytes;
 use clap::Parser as _;
 use domain::{
@@ -30,19 +28,20 @@ use domain::{
         JobKind, JobOutcome, JobSpec, PerceptionPayload, PerceptionResult, PerceptionStage,
         WorkerEvent, WorkerEvents, WorkerImagePath,
     },
-    ports::{LoadedImage, ProgressError, ProgressSink},
+    ports::LoadedImage,
     scan::ImageKind,
     wire::{Run, V1},
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::sync::Semaphore;
+use tokio_util::sync::CancellationToken;
 use vision::manifest::Manifest;
 
 use crate::{
     api::{CallError, JobLease, WorkerApi},
-    config::Cli,
-    job::JobRunner,
+    config::{Cli, Timings},
+    job::{JobRunner, run_job},
     vlm::tests::record::stored,
 };
 
@@ -57,9 +56,31 @@ struct JobFile {
     photos: BTreeMap<String, String>,
 }
 
-/// The worker API with the images held in memory. Only `image` is called: [`JobRunner`] takes
-/// the progress sink as an argument, and the harness reads the `complete` body itself.
-struct Files(BTreeMap<ImageId, Bytes>);
+/// The worker API with the images held in memory. It keeps what the job sends, its events and
+/// its `complete` body; the harness has no broker, so `heartbeat` and `claim` are refused.
+struct Files {
+    images: BTreeMap<ImageId, Bytes>,
+    events: Mutex<Vec<WorkerEvent>>,
+    completed: Mutex<Option<CompleteJob>>,
+}
+
+impl Files {
+    fn new(images: BTreeMap<ImageId, Bytes>) -> Self {
+        Self {
+            images,
+            events: Mutex::default(),
+            completed: Mutex::default(),
+        }
+    }
+
+    /// The last run's `complete` body and events, leaving both empty for the next run.
+    fn take(&self) -> (Option<CompleteJob>, Vec<WorkerEvent>) {
+        (
+            self.completed.lock().unwrap().take(),
+            std::mem::take(&mut *self.events.lock().unwrap()),
+        )
+    }
+}
 
 impl WorkerApi for Files {
     async fn heartbeat(&self, _hb: &Heartbeat) -> Result<HeartbeatResponse, CallError> {
@@ -70,31 +91,24 @@ impl WorkerApi for Files {
         Err(CallError::Rejected("the harness has no broker".into()))
     }
 
-    async fn events(&self, _lease: &JobLease, _events: &WorkerEvents) -> Result<(), CallError> {
-        Err(CallError::Rejected("the harness has no broker".into()))
+    async fn events(&self, _lease: &JobLease, events: &WorkerEvents) -> Result<(), CallError> {
+        self.events
+            .lock()
+            .unwrap()
+            .extend(events.events.iter().cloned());
+        Ok(())
     }
 
-    async fn complete(&self, _lease: &JobLease, _body: &CompleteJob) -> Result<(), CallError> {
-        Err(CallError::Rejected("the harness has no broker".into()))
+    async fn complete(&self, _lease: &JobLease, body: &CompleteJob) -> Result<(), CallError> {
+        *self.completed.lock().unwrap() = Some(body.clone());
+        Ok(())
     }
 
     async fn image(&self, _lease: &JobLease, image: &JobImage) -> Result<Bytes, CallError> {
-        self.0
+        self.images
             .get(&image.image_id)
             .cloned()
             .ok_or_else(|| CallError::Rejected(format!("no photo for image {}", image.image_id)))
-    }
-}
-
-/// Keeps every event the model sends, as the API would receive them.
-#[derive(Default)]
-struct Events(Mutex<Vec<WorkerEvent>>);
-
-#[async_trait]
-impl ProgressSink for Events {
-    async fn send(&self, events: Vec<WorkerEvent>) -> Result<(), ProgressError> {
-        self.0.lock().unwrap().extend(events);
-        Ok(())
     }
 }
 
@@ -187,40 +201,91 @@ fn job(payload: PerceptionPayload) -> Job {
     }
 }
 
-/// `nvidia-smi`'s view of the card while the harness runs: the process's own memory, which
-/// WSL doesn't report, and the whole card's, sampled every 50 ms.
+/// `nvidia-smi`'s view of the card while the harness runs, from two `nvidia-smi -lms 50` loops:
+/// the whole card's memory, and this process's own, which WSL doesn't report (null then).
 struct Vram {
-    stop: Arc<AtomicBool>,
-    thread: thread::JoinHandle<Value>,
+    card: Card,
+    card_loop: Option<Loop>,
+    process_loop: Option<Loop>,
 }
 
 impl Vram {
     fn start(device: i32) -> Option<Self> {
         let card = card_mib(device)?;
-        let stop = Arc::new(AtomicBool::new(false));
-        let flag = Arc::clone(&stop);
-        let thread = thread::spawn(move || {
-            let pid = std::process::id();
-            let (mut process_peak, mut card_peak) = (0, card.used);
-            while !flag.load(Ordering::Relaxed) {
-                process_peak = process_peak.max(process_mib(pid));
-                if let Some(c) = card_mib(device) {
-                    card_peak = card_peak.max(c.used);
-                }
-                thread::sleep(Duration::from_millis(50));
-            }
-            json!({
-                "gpu": card.name, "total_mib": card.total, "card_before_mib": card.used,
-                "card_peak_mib": card_peak, "process_peak_mib": process_peak,
-                "free_at_peak_mib": card.total.saturating_sub(card_peak),
-            })
-        });
-        Some(Self { stop, thread })
+        let card_loop = Loop::start(
+            &[
+                &format!("--id={device}"),
+                "--query-gpu=memory.used",
+                "--format=csv,noheader,nounits",
+            ],
+            |line| line.trim().parse().ok(),
+        );
+        let pid = std::process::id();
+        let process_loop = Loop::start(
+            &[
+                "--query-compute-apps=pid,used_memory",
+                "--format=csv,noheader,nounits",
+            ],
+            move |line| {
+                let (p, m) = line.split_once(',')?;
+                (p.trim().parse() == Ok(pid))
+                    .then(|| m.trim().parse().ok())
+                    .flatten()
+            },
+        );
+        Some(Self {
+            card,
+            card_loop,
+            process_loop,
+        })
     }
 
     fn finish(self) -> Value {
-        self.stop.store(true, Ordering::Relaxed);
-        self.thread.join().unwrap()
+        let card_peak = self
+            .card_loop
+            .and_then(Loop::finish)
+            .unwrap_or(0)
+            .max(self.card.used);
+        json!({
+            "gpu": self.card.name, "total_mib": self.card.total,
+            "card_before_mib": self.card.used, "card_peak_mib": card_peak,
+            "process_peak_mib": self.process_loop.and_then(Loop::finish),
+            "free_at_peak_mib": self.card.total.saturating_sub(card_peak),
+        })
+    }
+}
+
+/// One `nvidia-smi` query repeated every 50 ms by `nvidia-smi` itself, and the largest value
+/// `pick` reads from its lines.
+struct Loop {
+    child: Child,
+    reader: thread::JoinHandle<Option<u64>>,
+}
+
+impl Loop {
+    fn start(args: &[&str], pick: impl Fn(&str) -> Option<u64> + Send + 'static) -> Option<Self> {
+        let mut child = Command::new("nvidia-smi")
+            .args(args)
+            .args(["-lms", "50"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
+        let stdout = child.stdout.take()?;
+        let reader = thread::spawn(move || {
+            BufReader::new(stdout)
+                .lines()
+                .map_while(Result::ok)
+                .filter_map(|l| pick(&l))
+                .max()
+        });
+        Some(Self { child, reader })
+    }
+
+    fn finish(mut self) -> Option<u64> {
+        self.child.kill().ok();
+        self.child.wait().ok();
+        self.reader.join().unwrap()
     }
 }
 
@@ -230,38 +295,23 @@ struct Card {
     total: u64,
 }
 
-fn nvidia_smi(args: &[&str]) -> Option<String> {
-    let out = Command::new("nvidia-smi").args(args).output().ok()?;
-    out.status
-        .success()
-        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
-}
-
 fn card_mib(device: i32) -> Option<Card> {
-    let out = nvidia_smi(&[
-        &format!("--id={device}"),
-        "--query-gpu=name,memory.used,memory.total",
-        "--format=csv,noheader,nounits",
-    ])?;
+    let out = Command::new("nvidia-smi")
+        .args([
+            &format!("--id={device}"),
+            "--query-gpu=name,memory.used,memory.total",
+            "--format=csv,noheader,nounits",
+        ])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())?;
+    let out = String::from_utf8_lossy(&out.stdout);
     let mut f = out.lines().next()?.split(',').map(str::trim);
     Some(Card {
         name: f.next()?.to_owned(),
         used: f.next()?.parse().ok()?,
         total: f.next()?.parse().ok()?,
     })
-}
-
-fn process_mib(pid: u32) -> u64 {
-    nvidia_smi(&[
-        "--query-compute-apps=pid,used_memory",
-        "--format=csv,noheader,nounits",
-    ])
-    .unwrap_or_default()
-    .lines()
-    .filter_map(|l| l.split_once(','))
-    .filter(|(p, _)| p.trim().parse() == Ok(pid))
-    .filter_map(|(_, m)| m.trim().parse::<u64>().ok())
-    .sum()
 }
 
 fn ms(since: Instant) -> u64 {
@@ -356,7 +406,7 @@ fn worker_cli() -> Cli {
     .unwrap_or_else(|e| panic!("the worker's environment: {e}"));
     assert!(
         !cli.stub.stub_vision,
-        "STUB_VISION is set: unset it to run the real models"
+        "WORKER_STUB_VISION is set: unset it to run the real models"
     );
     cli
 }
@@ -369,7 +419,9 @@ fn read_job(job_file: Option<String>, photos: Option<String>, cli: &Cli) -> JobF
         )
         .unwrap_or_else(|e| panic!("{path}: {e}")),
         (None, Some(spec)) => {
-            let manifest = Manifest::load(&cli.perception.manifest).unwrap();
+            let manifest = Manifest::load(&cli.perception.manifest).unwrap_or_else(|e| {
+                panic!("MODEL_MANIFEST {}: {e}", cli.perception.manifest.display())
+            });
             photos_job(
                 &spec,
                 version(
@@ -391,8 +443,10 @@ fn read_job(job_file: Option<String>, photos: Option<String>, cli: &Cli) -> JobF
 }
 
 /// Runs one perception job on the worker's model and writes `PERCEPTION_HARNESS_OUT`: the
-/// `complete` body of the last run, its events, the load time, each run's job and stage times,
-/// a summary per image and, on an NVIDIA card, peak VRAM.
+/// `complete` body of the last run, its events, the load time, each run's job and stage times
+/// and outcome, a summary per image and, on an NVIDIA card, peak VRAM. A run past the worker's
+/// soft deadline (`max_runtime_s` less 15 s) ends as `max_runtime_exceeded`, as in production,
+/// and fails the test.
 ///
 /// ```text
 /// cd backend
@@ -412,6 +466,7 @@ fn read_job(job_file: Option<String>, photos: Option<String>, cli: &Cli) -> JobF
 ///   `PERCEPTION_HARNESS_CLASSIFIER_LABELS`, which may be left out when the manifest has only
 ///   one.
 /// - `PERCEPTION_HARNESS_RUNS`: how many times to run the job (default 1), for the time per job.
+/// - `RUST_LOG`: the log filter, `info,ort=warn` by default as in the worker.
 ///
 /// Photos are stored as the bucket would hold them (`WebP` at the default long side) before the
 /// job sees them. With neither `PERCEPTION_HARNESS_JOB` nor `PERCEPTION_HARNESS_PHOTOS` set, the
@@ -439,9 +494,17 @@ async fn perceive_job() {
     let runs: usize = std::env::var("PERCEPTION_HARNESS_RUNS").map_or(1, |v| {
         v.parse().expect("PERCEPTION_HARNESS_RUNS is a number")
     });
+    tracing_subscriber::fmt()
+        .with_test_writer()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,ort=warn")),
+        )
+        .try_init()
+        .ok();
     let cli = worker_cli();
     let mut file = read_job(job_file, photos, &cli);
-    let api = Files(load(&mut file));
+    let api = Arc::new(Files::new(load(&mut file)));
     let images = file.payload.images.clone();
     let job = job(file.payload);
 
@@ -457,17 +520,25 @@ async fn perceive_job() {
     let load_ms = ms(started);
     let runner = JobRunner::new(model, WORKER.parse::<WorkerId>().unwrap());
 
+    let timings = Timings::new(Duration::from_secs(cli.drain_seconds));
+    let soft_deadline = Duration::from_secs(u64::from(job.max_runtime_s))
+        .saturating_sub(timings.stop_before_max_runtime);
     let mut times = Vec::new();
     let mut last = None;
     for _ in 0..runs.max(1) {
-        let events = Arc::new(Events::default());
         let started = Instant::now();
-        let body = runner
-            .execute(&api, &job, events.clone())
-            .await
-            .unwrap_or_else(|_| panic!("the harness's lease can't be lost"));
-        let events = std::mem::take(&mut *events.0.lock().unwrap());
-        times.push(json!({"job_ms": ms(started), "stages_ms": stage_ms(&events)}));
+        let claimed = ClaimedJob::Job(Box::new(job.clone()));
+        run_job(&api, &runner, claimed, &CancellationToken::new(), timings).await;
+        let job_ms = ms(started);
+        let (body, events) = api.take();
+        let body = body.expect("run_job sends a complete body");
+        let outcome = match &body.outcome {
+            JobOutcome::Done { .. } => json!("done"),
+            JobOutcome::Failed { error } => json!(error.code),
+        };
+        times.push(json!({
+            "job_ms": job_ms, "outcome": outcome, "stages_ms": stage_ms(&events),
+        }));
         last = Some((body, events));
     }
     let vram = vram.map(Vram::finish);
@@ -480,7 +551,8 @@ async fn perceive_job() {
         JobOutcome::Failed { error } => json!({"failed": error}),
     };
     let report = json!({
-        "job_id": job.job_id, "load_ms": load_ms, "runs": times,
+        "job_id": job.job_id, "load_ms": load_ms,
+        "soft_deadline_ms": soft_deadline.as_millis(), "runs": times,
         "vram": vram, "summary": summary, "complete": body, "events": events,
     });
     std::fs::write(&out_path, serde_json::to_string_pretty(&report).unwrap()).unwrap();
@@ -494,6 +566,51 @@ async fn perceive_job() {
         matches!(body.outcome, JobOutcome::Done { .. }),
         "the job failed: see {out_path}"
     );
+}
+
+#[tokio::test]
+async fn a_run_keeps_the_complete_body_and_the_events() {
+    use crate::{
+        config::StubArgs,
+        stub::{StubConfig, StubModel},
+    };
+    let config = StubConfig::new(&StubArgs {
+        stub_vision: true,
+        allow_stub_vision: false,
+        label_set_version: Some("labels-1".to_owned()),
+        classifier_labels_version: Some("classes-1".to_owned()),
+        species: vec!["tomato".to_owned()],
+        problems: Vec::new(),
+        plant_present: true,
+        stage_delay_ms: 0,
+    })
+    .unwrap();
+    let runner = JobRunner::new(
+        Arc::new(StubModel::new(config)),
+        WORKER.parse::<WorkerId>().unwrap(),
+    );
+    let file = photos_job(
+        "whole_plant=/p/a.jpg",
+        "labels-1".to_owned(),
+        "classes-1".to_owned(),
+    );
+    let images = file
+        .payload
+        .images
+        .iter()
+        .map(|i| (i.image_id, Bytes::from_static(b"webp")))
+        .collect();
+    let api = Arc::new(Files::new(images));
+    let claimed = ClaimedJob::Job(Box::new(job(file.payload)));
+    let timings = Timings::new(Duration::from_secs(20));
+    run_job(&api, &runner, claimed, &CancellationToken::new(), timings).await;
+
+    let (body, events) = api.take();
+    let body = body.expect("a complete body");
+    assert!(matches!(body.outcome, JobOutcome::Done { .. }));
+    assert_eq!(body.model_versions["worker_id"], WORKER);
+    assert!(stage_ms(&events).contains_key("segmentation"));
+    assert_eq!(api.take(), (None, Vec::new()), "take empties both");
 }
 
 #[test]
