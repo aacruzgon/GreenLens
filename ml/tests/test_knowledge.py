@@ -6,6 +6,7 @@ embedded-engine test loads; set UPDATE_KNOWLEDGE_FIXTURE=1 to rewrite it.
 """
 
 import copy
+import importlib.util
 import json
 import os
 import re
@@ -363,6 +364,8 @@ GOLDEN = json.loads((Path(__file__).parent / "fixtures/text_embedder_golden.json
 
 @pytest.mark.skipif(not embed.default_manifest().is_file(),
                     reason="needs python3 -m ml.models.fetch --for ingest")
+@pytest.mark.skipif(importlib.util.find_spec("onnxruntime") is None or importlib.util.find_spec("tokenizers") is None,
+                    reason="needs onnxruntime and tokenizers (ml/requirements.lock; CI's requirements-ci.txt has no tokenizers)")
 def test_the_embedder_matches_the_golden_values():
     e = embed.Embedder()
     assert e.name == "snowflake-arctic-embed-xs@d8c86521"
