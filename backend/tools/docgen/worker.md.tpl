@@ -223,7 +223,7 @@ Three things end a job early, all through the job's `CancellationToken` (a child
 
 `VlmAdapter<B: VlmBackend>` implements `VisionModel` for `vlm`, `verify` and `guided` jobs ([contracts 6](../architecture/contracts.md#6-vlm-structured-output); [vision vlm](../vision/vlm.md)). `B` is fixed per worker kind at compile time; only the `VisionModel` is a trait object.
 
-@@items vlm/backend.rs VlmImage VlmCall Stop VlmReply VlmBackend OpenAiBackend AnthropicBackend MAX_QUESTIONS_PER_CALL@@
+@@items vlm/backend.rs VlmImage VlmCall Stop Tokens VlmReply VlmBackend OpenAiBackend AnthropicBackend MAX_QUESTIONS_PER_CALL@@
 
 **Large indicators calls on the hosted model.** Anthropic compiles each structured-output schema into a grammar and refuses one that grows too large ("The compiled grammar is too large"). Live on 2026-10-16, with 9-character keys and 3 images, 16 question objects passed and 20 failed; with full-length keys (`q27_` + 24 slug characters) and 4 images, 18 passed and 20 failed; and at 27, dropping each question's `image` or `reason` didn't help. The number of question objects is what counts, so 12 leaves a margin of 6. A call can ask 27 (9 candidates × 3 discriminating indicators, [contracts 5](../architecture/contracts.md#5-worker-api-and-jobs)). So `VlmBackend::max_questions` says how many questions one call may carry: `MAX_QUESTIONS_PER_CALL` (12) for `AnthropicBackend`, no limit for `OpenAiBackend`. `VlmAdapter::indicators` splits a longer list into parts of at most that many, in question order, and sends them in parallel. Each part has its own schema and a prompt that lists only its questions, keeps the question keys of the whole list, and goes through `call_validated` on its own, so a cut-off or invalid part is asked again without the others. The answers are joined in question order, which is what one call would have returned. A worst-case scan on the hosted model makes 3 calls, each sending the images again, and up to 6 if every part needs its retry. vLLM and llama.cpp take the whole list in one call.
 
@@ -301,7 +301,7 @@ The fallback worker takes any job still unclaimed 15 s after `queued_at`, with d
 
 The label lists come from the same manifest files the perception worker loads, because the payload carries only their versions; a version the fallback hasn't loaded fails with `unknown_label_version`, as on the rig.
 
-The fallback's box format is confirmed with one live call on day 2 ([contracts 12](../architecture/contracts.md#12-open-questions), question 26).
+The fallback's box format was confirmed by a live run on 2026-10-23 ([contracts 12](../architecture/contracts.md#12-open-questions), question 26; [report](../../ml/training/eval/reports/p9-fallback-2026-10-23.md)): Opus 5.5 answers in pixels of the image as sent.
 
 ---
 
@@ -672,7 +672,7 @@ The questions of [contracts 12](../architecture/contracts.md#12-open-questions) 
 ## 17. Open questions
 
 1. **`organism_options` without recognition text** ([vision vlm 7](../vision/vlm.md#7-prompts)) is still a proposal ([contracts open question 36](../architecture/contracts.md#12-open-questions)).
-2. **The fallback's runtime.** Opus 5.5 always thinks, so every hosted call gets 8,000 output tokens ([contracts 6](../architecture/contracts.md#after-decoding)). Whether calls that long finish within the fallback's doubled `max_runtime` is measured on day 2 ([contracts open question 26](../architecture/contracts.md#12-open-questions)).
+2. **The fallback's runtime.** Opus 5.5 always thinks, so every hosted call gets 8,000 output tokens ([contracts 6](../architecture/contracts.md#after-decoding)). Settled on 2026-10-23 ([contracts open question 26](../architecture/contracts.md#12-open-questions), [report](../../ml/training/eval/reports/p9-fallback-2026-10-23.md)): at effort low a call used at most 469 output tokens and 9.6 s, and a `vlm` job at most 15.5 s against the fallback's 585 s.
 3. **`anyOf` with `null`** for nullable values in the schema. Settled on 2026-10-16 ([contracts open question 31](../architecture/contracts.md#12-open-questions), [vision vlm 4](../vision/vlm.md#4-serving)): xgrammar in vLLM v0.31.0 produces both branches and blocks values outside the schema. The non-null soil branch needs the prompt to show a reading's shape.
 4. **Cancellation on llama.cpp**: whether a dropped connection frees the slot is *unverified* ([contracts open question 33](../architecture/contracts.md#12-open-questions)).
 5. **Should `api` refuse stub results in production?** Today only `model_versions.stub` tells them apart. A setting such as `API_REJECT_STUB_VISION=true` on the deployed control plane, once S1 is over, would fail a `complete` that carries the key. The alternative is to rely on the release guard and the compose files alone (section 15.1.3).
