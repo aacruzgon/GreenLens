@@ -1,5 +1,20 @@
 # VLM benchmark: 2026-10-22-qwen35-awq-desktop
 
+## Conditions
+
+Added by hand: `vlm_bench`'s report records none of them. The per-case answers, the memory samples and `nvidia-smi`'s process lists are in [`vlm-bench-2026-10-22-qwen35-awq-desktop-run.json`](vlm-bench-2026-10-22-qwen35-awq-desktop-run.json).
+
+- **Cases:** the bench's Oct 20 file of 65 one-photo dev cases (`cases.jsonl`, SHA-256 `d454b133…`), built from the evaluation manifest at `6d33aed` (103 cases, SHA-256 `378494e8…`). That is the dev split as labelled before the second review ([#135](https://github.com/aacruzgon/GreenLens/pull/135)) and the replacement cases ([#140](https://github.com/aacruzgon/GreenLens/pull/140)). 26 diagnosed `sure` cases are scored, and 11 are healthy. On `main` after #140, 7 of those 26 are still `sure`, 12 are `probable` and 7 are dropped, so "4 of 26" is on labels since superseded. It compares like with like only with Oct 20's run on the same file.
+- **Worker and prompts:** `main` at `63790c0`, `system@2`, `findings@5`, `indicators@2`, `verify@2`, `guided@1`.
+- **Server:** Qwen3.5-9B AWQ (`cyankiwi/Qwen3.5-9B-AWQ-4bit` at `156edc4b…`) with thinking off, in `vllm/vllm-openai@sha256:c1c9f6fd…`, at `--gpu-memory-utilization 0.78` and `--max-num-seqs 2`, 1,003,520 pixels, 2 jobs at once.
+- **Desktop:** KDE Plasma (Wayland) freshly logged in on the same card, with no apps open: 330 MiB in 6 graphics processes (`nvidia-smi` before vLLM started).
+- **Start-up** (vLLM's log): 8.41 GiB of weights in 15 s, CUDA graphs in 55 s, 2.45 GiB of KV cache, 65,536 tokens, 4.00 times the concurrency at 16,384. Ready after 151 s (polled every 10 s).
+- **Memory** (`nvidia-smi` once a second, the whole card): 13,058 of 16,303 MiB at the start-up peak, 149 s in; 12,796 MiB at the run's peak, the table's figure. vLLM's process held 11,730 MiB when ready and 12,458 MiB after the run.
+- **Preemptions:** 0 (vLLM's `/metrics` after the run).
+- **Against Oct 20's run on the same file** ([`vlm-bench-2026-10-20-qwen35-awq-desk`](vlm-bench-2026-10-20-qwen35-awq-desk.md), headless, on `main`'s prompts of that day: `system@1`, `findings@2`, `indicators@1`): 53 of the 585 answers changed, in 38 cases, and the reasons' median length fell from 51 to 33 characters.
+
+## Results
+
 | Run | Pixels | At once | Finished | Retried calls | Job p50 | Job p95 | Species | Diagnosis (sure) | Photos under 1 MP / 1 MP and up | Ties | Healthy kept clean | Yes on healthy | Unsure | Damage found | Organisms | Peak GPU |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | qwen35-awq-desktop | 1,003,520 | 2 | 65/65 | 0 | 6.0 s | 7.9 s | 98% | 15% (n=26) | 3/11 / 1/15 | 5 | 91% (n=11) | 1% | 27% | other 65, leaf_mines 9, chewed_margins 7, sooty_mould 1, frass 1 | 1 | 12,796 MiB |
