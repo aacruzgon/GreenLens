@@ -1,6 +1,6 @@
 # infra
 
-The control plane (section 6) and the compose files for the GPU rig. [`rig.compose.yml`](rig.compose.yml) runs the vLLM server (`vllm`) for the VLM ([vision/vlm.md 4](../docs/vision/vlm.md#4-serving)). The workers are added to the same file later. Deployment is described in [architecture 12](../docs/architecture/README.md#12-deployment), and the full infrastructure design, which this file grows into, in [docs/infra](../docs/infra/README.md): there the service is `vllm-nv`, beside `model-fetch`, `perception-worker` and `vlm-worker-nv` ([infra 4](../docs/infra/README.md#infrarigcomposeyml)).
+The control plane (section 6) and the compose files for the GPU rig. [`rig.compose.yml`](rig.compose.yml) is the RTX 5070 Ti's host, `sam-linux`: the vLLM server (`vllm-nv`) for the VLM ([vision/vlm.md 4](../docs/vision/vlm.md#4-serving)) and the VLM worker (`vlm-worker-nv`) that pulls `vlm`, `verify` and `guided` jobs from the control plane and sends them to it. [`rig-amd.compose.yml`](rig-amd.compose.yml) is the same pair for the RX 9070 XT on its own host, a draft until its day-1 check. Deployment is described in [architecture 12](../docs/architecture/README.md#12-deployment), and the full infrastructure design, which this file grows into, in [docs/infra](../docs/infra/README.md): there the 3070's `perception-worker` is in `control-plane.compose.yml` ([infra 4](../docs/infra/README.md#infrarigcomposeyml)).
 
 ## 1. Prerequisites
 
@@ -14,7 +14,7 @@ sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
 ```
 
-Check that a container sees the GPU. SELinux is enforcing, but Docker CE runs here without `selinux-enabled`, so it doesn't label containers: this works with or without `--security-opt label=disable`, and so does reading a bind-mounted file under the home directory (✓ ran 2026-10-23). `rig.compose.yml`'s `vllm` keeps the option for the day dockerd's SELinux support is turned on; there it turns off SELinux confinement for that container only.
+Check that a container sees the GPU. SELinux is enforcing, but Docker CE runs here without `selinux-enabled`, so it doesn't label containers: this works with or without `--security-opt label=disable`, and so does reading a bind-mounted file under the home directory (✓ ran 2026-10-23). `rig.compose.yml`'s `vllm-nv` keeps the option for the day dockerd's SELinux support is turned on; there it turns off SELinux confinement for that container only.
 
 ```bash
 docker run --rm --gpus all --security-opt label=disable \
@@ -28,10 +28,12 @@ The checkpoints must already be in `~/.cache/huggingface`. The service runs with
 ```bash
 cp infra/.env.example infra/.env     # then set VLM_API_KEY and VLM_GPU_UUID
 nvidia-smi --query-gpu=uuid --format=csv,noheader   # the value for VLM_GPU_UUID
-docker compose -f infra/rig.compose.yml up -d vllm
-docker compose -f infra/rig.compose.yml logs -f vllm
+docker compose -f infra/rig.compose.yml up -d vllm-nv
+docker compose -f infra/rig.compose.yml logs -f vllm-nv
 docker compose -f infra/rig.compose.yml down
 ```
+
+The service was named `vllm` until S3. If a container of that name still runs, `down --remove-orphans` once before the first `up`, or the two servers compete for the card.
 
 Start-up takes several minutes (model load, CUDA graph capture); the health check waits up to 10 minutes. Then:
 
@@ -41,6 +43,22 @@ curl http://127.0.0.1:8000/metrics    # KV cache usage and preemption counters
 ```
 
 The port is bound to `127.0.0.1` only. The service does not restart by itself.
+
+### The VLM worker
+
+`vlm-worker-nv` takes jobs from the control plane only while it runs, and starts only once `vllm-nv` is healthy. Bring `vllm-nv` up alone for benchmarks and prompt work; bring both up to serve the app.
+
+1. Get the worker's token from the control plane's owner, over a private channel, and save it as `infra/.env.rig-5070ti-vlm-1` with the one line `WORKER_TOKEN=<token>`. `api` already lists it in `WORKER_TOKENS`.
+2. In `infra/.env`, set `WORKER_IMAGE` (the digest the control plane's `fallback-worker` runs), `API_BASE_URL` (the control plane's Funnel URL) and `VLM_QUANT` (`awq_w4a16` for the chosen checkpoint). The worker reads `VLM_API_KEY`, the checkpoint and the slots from the same file as `vllm-nv`, so the two can't disagree.
+3. Log in to GHCR once with a token that has `read:packages`, since the repository's images are private: `docker login ghcr.io -u <github user>`.
+4. Start both and check:
+
+```bash
+docker compose -f infra/rig.compose.yml up -d            # vllm-nv, then vlm-worker-nv once healthy
+docker compose -f infra/rig.compose.yml logs -f vlm-worker-nv   # "worker starting", then heartbeats
+curl -fsS "$API_BASE_URL/status"                           # lists rig-5070ti-vlm-1 with its vlm_model
+docker compose -f infra/rig.compose.yml stop             # both: the fallback takes the vlm jobs
+```
 
 ## 3. Desktop mode and headless mode
 
@@ -63,8 +81,8 @@ vLLM checks at start that 0.78 of the card is free, then takes its weights, KV c
 
 - **If the desktop holds more than 3,587 MiB (0.22 of the card) when vLLM starts,** vLLM refuses to start.
 - **If the desktop grows while vLLM serves,** whichever allocates next when the card is full fails. That can be the desktop's apps (a browser falls back to software rendering or loses its GPU process, windows go black) or vLLM, on a job that needs back the memory it freed after profiling, which ends its engine. Neither has been provoked (*unverified*).
-- **Before serving:** close what draws on the card and isn't needed (games, browsers with hardware acceleration, Discord, Spotify, Zoom), and check with `nvidia-smi` that the desktop holds well under 3,575 MiB before `up -d vllm`. Open nothing new on `sam-linux` while it serves.
-- **If vLLM stops while serving:** stop the VLM worker too (`vlm-worker-nv`, once [P6](../docs/vision/dev-roadmap.md#phase-2-oct-1819-real-models-the-day-2-benchmark) adds it), so the hosted fallback worker takes the `vlm` jobs 15 seconds after they're queued ([architecture 8.4](../docs/architecture/README.md#84-job-leasing-and-fallback)). Then `docker compose -f infra/rig.compose.yml up -d vllm`, wait for `/health` (about 2.5 minutes), and start the worker again.
+- **Before serving:** close what draws on the card and isn't needed (games, browsers with hardware acceleration, Discord, Spotify, Zoom), and check with `nvidia-smi` that the desktop holds well under 3,575 MiB before `up -d`. Open nothing new on `sam-linux` while it serves.
+- **If vLLM stops while serving:** stop the VLM worker too (`docker compose -f infra/rig.compose.yml stop vlm-worker-nv`), so the hosted fallback worker takes the `vlm` jobs 15 seconds after they're queued ([architecture 8.4](../docs/architecture/README.md#84-job-leasing-and-fallback)). Then `docker compose -f infra/rig.compose.yml up -d`, which starts the worker again once `/health` answers (about 2.5 minutes).
 
 ### Going headless
 
@@ -73,7 +91,7 @@ Work from a laptop. Every desktop program closes, so save first.
 1. `ssh` into the rig (Tailscale works), start `tmux`, and run Claude Code or the commands from there. A Claude Code session in a desktop terminal ends with the desktop.
 2. `sudo systemctl isolate multi-user.target` stops the login screen, so it can't take the GPU again.
 3. Plasma 6 runs KWin, plasmashell and every app as **user** units, which survive both the isolate and `loginctl terminate-session`. Stop them with `systemctl --user stop graphical-session.target app.slice`. tmux, sshd, Tailscale and Docker keep running.
-4. `nvidia-smi` should show no processes and about 34 MiB used. Then `VLM_GPU_MEM_UTIL=0.90 docker compose -f infra/rig.compose.yml up -d vllm`.
+4. `nvidia-smi` should show no processes and about 34 MiB used. Then `VLM_GPU_MEM_UTIL=0.90 docker compose -f infra/rig.compose.yml up -d vllm-nv`.
 
 To return: `down` the service, then `sudo systemctl isolate graphical.target`, log in at the screen, and use 0.78 again. If the login stays on a black screen, the user's D-Bus socket closed with the last desktop session while SSH kept the user manager up: `systemctl --user start dbus.socket`, end the hung `startplasma-wayland`, and log in again (✓ seen 2026-10-22). Qwen3.5-9B AWQ, the chosen model, runs at 0.78 with 2 slots; only Qwen3-VL FP8 needs headless.
 
@@ -81,7 +99,7 @@ To return: `down` the service, then `sudo systemctl isolate graphical.target`, l
 
 **Qwen3.5-9B AWQ was chosen on 2026-10-20** (decision D1, from the day-2 benchmark: [evaluation 8](../docs/vision/evaluation.md#vlm-results-2026-10-20--ran), [vlm.md 2](../docs/vision/vlm.md#2-model-choice)). It is the default in `infra/.env.example` and in `rig.compose.yml`, with thinking off and 2 slots. The Qwen3-VL checkpoints stay as the fallback.
 
-To switch, set both variables together in `infra/.env`, then `down` and `up -d vllm`. A revision belongs to one repository.
+To switch, set both variables together in `infra/.env`, then `down` and `up -d`; the worker reports the new checkpoint as its `vlm_model`. For Qwen3-VL-8B FP8 also set `VLM_QUANT=fp8_block`. A revision belongs to one repository.
 
 | Checkpoint | `VLM_MODEL` | `VLM_REVISION` | `VLM_EXTRA_ARGS` |
 |---|---|---|---|
@@ -95,7 +113,7 @@ To try a checkpoint without editing `infra/.env`, pass the variables from the sh
 
 ```bash
 VLM_MODEL=Qwen/Qwen3-VL-8B-Instruct-FP8 VLM_REVISION=9cdc6310a8cb770ce18efaf4e9935334512aee45 \
-VLM_EXTRA_ARGS= VLM_GPU_MEM_UTIL=0.90 VLM_MAX_NUM_SEQS=2 docker compose -f infra/rig.compose.yml up -d vllm
+VLM_EXTRA_ARGS= VLM_GPU_MEM_UTIL=0.90 VLM_MAX_NUM_SEQS=2 docker compose -f infra/rig.compose.yml up -d vllm-nv
 ```
 
 Every VLM worker must serve the same checkpoint, because a scan's jobs can land on either card ([vision/vlm.md 4](../docs/vision/vlm.md#4-serving), [vision README 4](../docs/vision/README.md#4-placement-and-vram-budgets)).

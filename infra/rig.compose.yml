@@ -1,5 +1,10 @@
-# GPU rig. See infra/README.md. Architecture section 12 names this file.
-# The perception worker and the vlm worker are added here later by their owner.
+# The RTX 5070 Ti's host (sam-linux): the VLM sidecar vllm-nv and its worker vlm-worker-nv.
+# See infra/README.md. Architecture section 12 names this file. The RX 9070 XT's services are in
+# rig-amd.compose.yml on its own host; the 3070's perception worker is in control-plane.compose.yml.
+#
+# The worker pulls jobs from api's public URL and claims only once vllm-nv is healthy. Stop the two
+# together (`docker compose -f infra/rig.compose.yml stop`), so that the hosted fallback takes the
+# vlm jobs while the card trains or benchmarks (infra/README.md section 3).
 #
 # Image: vllm/vllm-openai:v0.31.0, pinned by digest below.
 # The entrypoint is overridden with bash so that environment values, the JSON
@@ -13,8 +18,12 @@
 # VLM_EXTRA_ARGS uses ${VAR-default}: unset gives thinking off, empty gives no extra flag,
 # which is what the Qwen3-VL checkpoints need (infra/README.md section 4).
 
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "5", compress: "true" }
+
 services:
-  vllm:
+  vllm-nv:
     image: vllm/vllm-openai@sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3
     entrypoint: ["/bin/bash", "-c"]
     command:
@@ -73,3 +82,33 @@ services:
       start_period: 600s   # model load and CUDA graph capture are slow
     stop_grace_period: 30s
     restart: "no"
+    logging: *logging
+
+  vlm-worker-nv:
+    image: ${WORKER_IMAGE:?set WORKER_IMAGE in infra/.env}
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp:size=512m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    command: ["--caps", "vlm"]
+    env_file:
+      - .env.rig-5070ti-vlm-1   # WORKER_TOKEN, from the control plane's owner; never committed
+    environment:
+      WORKER_ID: rig-5070ti-vlm-1
+      API_BASE_URL: ${API_BASE_URL:?set API_BASE_URL in infra/.env}
+      VLM_BASE_URL: http://vllm-nv:8000
+      VLM_API_KEY: ${VLM_API_KEY:?set VLM_API_KEY in infra/.env}
+      VLM_ADAPTER: vllm
+      # vlm_model is repository@revision: the checkpoint vllm-nv serves.
+      VLM_MODEL: ${VLM_MODEL:-cyankiwi/Qwen3.5-9B-AWQ-4bit}@${VLM_REVISION:-156edc4bbeb8d1910ee7be9196bafaf1bc052156}
+      VLM_QUANT: ${VLM_QUANT:-awq_w4a16}
+      VLM_SERVER: vllm@v0.31.0
+      VLM_BOX_FORMAT: norm1000
+      VLM_CELL_PX: "32"
+      VLM_MAX_PIXELS: ${VLM_MAX_PIXELS:-1003520}
+      VLM_SLOTS: ${VLM_MAX_NUM_SEQS:-2}   # always the sidecar's --max-num-seqs
+    depends_on:
+      vllm-nv: { condition: service_healthy }
+    stop_grace_period: 30s   # DRAIN_SECONDS (20) + 10 s (worker 12)
+    logging: *logging
