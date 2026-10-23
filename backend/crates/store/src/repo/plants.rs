@@ -8,10 +8,11 @@ use domain::{
     authz::{Editor, Membership, Viewer},
     garden::plants::{GrowthQuantity, MeasurementPoint, TimelineEntry, UpdatePlantRequest},
     id::{GardenId, PlantId, ScanId, SpeciesId},
+    jobs::PerceptionStage,
     ports::{NewPlant, PlantRepo, RecentScan, SpeciesConfirmation, StoreError},
     scan::{Plant, PlantStatus, SpeciesCandidate, SpeciesChoice, SpeciesStatus},
     url::Stored,
-    wire::{Confidence, Page, PageRequest},
+    wire::{Confidence, Page, PageRequest, Run},
 };
 use surrealdb::types::{RecordId, SurrealValue, Value};
 
@@ -69,10 +70,53 @@ UPDATE $plant SET species = $species, custom_species_name = $custom, species_sta
 WHERE garden = $garden AND deleting_at = NONE RETURN VALUE id;
 SELECT id, status, created_at, working_species FROM scan WHERE plant = $plant AND deleting_at = NONE ORDER BY created_at DESC LIMIT 1;
 COMMIT;";
-    /// The pipeline's suggestion, unless the species is already confirmed.
-    pub const SUGGEST_SPECIES: &str = "UPDATE $plant SET species_candidates = $candidates,
-  species = IF species_status = 'confirmed' { species } ELSE { $working },
-  species_status = IF species_status = 'confirmed' { species_status } ELSE { $status };";
+    /// The pipeline's suggestion for the scan's run `$run`: the plant's candidates and species,
+    /// unless already confirmed, and the scan's working species, unless the run has one. A
+    /// run that is no longer current (a new run started meanwhile), or a scan that is being
+    /// deleted, or whose plant or garden is (the rule of `SCAN_VISIBLE`), writes nothing.
+    /// Statements: 0 `BEGIN`, 1 the scan, 2 whether `$run` is current, 3 the updates, 4 that
+    /// flag, 5 `COMMIT`.
+    pub const SUGGEST_SPECIES: &str = "BEGIN;
+LET $sc = (SELECT run, plant, working_species FROM ONLY $scan WHERE deleting_at = NONE AND plant.deleting_at = NONE AND garden.deleting_at = NONE);
+LET $current = $sc != NONE AND $sc.run = $run;
+IF $current {
+  UPDATE $sc.plant SET species_candidates = $candidates,
+    species = IF species_status = 'confirmed' { species } ELSE { $working },
+    species_status = IF species_status = 'confirmed' { species_status } ELSE { $status };
+  IF $sc.working_species = NONE { UPDATE $scan SET working_species = $working };
+};
+RETURN $current;
+COMMIT;";
+    /// The index of the flag in [`SUGGEST_SPECIES`].
+    pub const SUGGEST_SPECIES_RESULT: usize = 4;
+    /// A species confirmed while the scan is `queued`: the scan's run `$run` takes the plant's
+    /// confirmed species, read here so the latest confirmation wins, under the guard of
+    /// [`SUGGEST_SPECIES`] and only while the scan is still `queued`. The run's `perception`
+    /// job, while it is `queued` too, gets the payload a run started with that species would
+    /// have queued: `species_id` the species (none for a custom one),
+    /// `skip_species_identification` set for a custom one only, and `stages` without
+    /// `species` for a custom one and with it otherwise, in the order of `$stages` (every
+    /// perception stage). A claim moves the scan to `analysing` in the claim's transaction,
+    /// so once the job is leased nothing is written. Statements: 0 `BEGIN`, 1 the scan, 2
+    /// whether to write, 3 the updates, 4 that flag, 5 `COMMIT`.
+    pub const ADOPT_CONFIRMED_SPECIES: &str = "BEGIN;
+LET $sc = (SELECT run, status, plant.species AS species, plant.species_status AS species_status,
+    plant.custom_species_name != NONE AS custom FROM ONLY $scan
+  WHERE deleting_at = NONE AND plant.deleting_at = NONE AND garden.deleting_at = NONE);
+LET $adopt = $sc != NONE AND $sc.run = $run AND $sc.status = 'queued' AND $sc.species_status = 'confirmed';
+IF $adopt {
+  UPDATE $scan SET working_species = $sc.species;
+  UPDATE job SET
+    payload.species_id = IF $sc.species = NONE { NONE } ELSE { record::id($sc.species) },
+    payload.skip_species_identification = IF $sc.custom { true } ELSE { NONE },
+    payload.stages = array::intersect($stages, IF $sc.custom { array::complement(payload.stages, [$species_stage]) }
+      ELSE { array::union(payload.stages, [$species_stage]) })
+  WHERE scan = $scan AND status = 'queued' AND kind = 'perception' AND run = $run AND question = NONE;
+};
+RETURN $adopt;
+COMMIT;";
+    /// The index of the flag in [`ADOPT_CONFIRMED_SPECIES`].
+    pub const ADOPT_CONFIRMED_SPECIES_RESULT: usize = 4;
     /// The plant's status after a diagnosis.
     pub const SET_PLANT_STATUS: &str = "UPDATE $plant SET status = $status;";
     /// `GET /plants/{id}/timeline`, newest first (index `scan_plant`), with the diagnosis, the
@@ -362,11 +406,12 @@ impl PlantRepo for SurrealStore {
 
     async fn suggest_species(
         &self,
-        plant: PlantId,
+        scan: ScanId,
+        run: Run,
         candidates: Vec<SpeciesCandidate<Stored>>,
         working: Option<SpeciesId>,
         status: SpeciesStatus,
-    ) -> Result<(), StoreError> {
+    ) -> Result<bool, StoreError> {
         const WHAT: &str = "suggest species";
         let rows = candidates
             .iter()
@@ -381,15 +426,42 @@ impl PlantRepo for SurrealStore {
             .collect::<Result<Vec<_>, RowError>>()
             .map_err(|e| e.into_store(WHAT))?;
         let status = enum_str("species_status", &status).map_err(|e| e.into_store(WHAT))?;
-        run_tx(&self.db, sql::SUGGEST_SPECIES, |q| {
-            q.bind(("plant", rid(&plant)))
+        let mut results = run_tx(&self.db, sql::SUGGEST_SPECIES, |q| {
+            q.bind(("scan", rid(&scan)))
+                .bind(("run", i64::from(run.0)))
                 .bind(("candidates", rows.clone()))
                 .bind(("working", opt_rid(working.as_ref())))
                 .bind(("status", status.clone()))
         })
         .await
-        .map(drop)
-        .map_err(|f| f.into_store(WHAT))
+        .map_err(|f| f.into_store(WHAT))?;
+        let current: Option<bool> = results
+            .take(sql::SUGGEST_SPECIES_RESULT)
+            .map_err(|e| take_failed(WHAT, e))?;
+        Ok(current.unwrap_or(false))
+    }
+
+    async fn adopt_confirmed_species(&self, scan: ScanId, run: Run) -> Result<bool, StoreError> {
+        const WHAT: &str = "adopt confirmed species";
+        let stages = PerceptionStage::ALL
+            .iter()
+            .map(|s| enum_str("stages", s))
+            .collect::<Result<Vec<_>, RowError>>()
+            .map_err(|e| e.into_store(WHAT))?;
+        let species_stage =
+            enum_str("stages", &PerceptionStage::Species).map_err(|e| e.into_store(WHAT))?;
+        let mut results = run_tx(&self.db, sql::ADOPT_CONFIRMED_SPECIES, |q| {
+            q.bind(("scan", rid(&scan)))
+                .bind(("run", i64::from(run.0)))
+                .bind(("stages", stages.clone()))
+                .bind(("species_stage", species_stage.clone()))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        let adopted: Option<bool> = results
+            .take(sql::ADOPT_CONFIRMED_SPECIES_RESULT)
+            .map_err(|e| take_failed(WHAT, e))?;
+        Ok(adopted.unwrap_or(false))
     }
 
     async fn set_plant_status(

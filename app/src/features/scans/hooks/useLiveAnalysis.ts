@@ -11,6 +11,7 @@ import { useScanJarTask, useStartCapture } from "@/features/capture";
 
 import { hotspotsOf, readingImageId, speciesChip } from "../model/hotspots";
 import { phaseLine, phasesOf, soilLine } from "../model/phases";
+import { useScanActivity } from "./useScanActivity";
 import { useScanEvents } from "./useScanEvents";
 
 export type Ending =
@@ -51,6 +52,8 @@ export function useLiveAnalysis(scanId: string) {
   const image = images.find((i) => i.id === readingId) ?? images[0];
 
   const plant = detail?.plant;
+  // The scan on the Lock Screen and in the Dynamic Island while it runs (roadmap F5 item 6).
+  useScanActivity(scanId, plant?.name, state, phases, line);
   const species = state && plant ? speciesChip(state, plant) : undefined;
 
   const diagnosis = state?.diagnosis;

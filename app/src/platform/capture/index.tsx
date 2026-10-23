@@ -1,10 +1,15 @@
 // Capture sources (docs/frontend/README.md 13, adapters): what a feature photographs with. CameraPreview is the
-// CameraCaptureSource on expo-camera; LidarCaptureSource replaces it on LiDAR iPhones once modules/lidar lands
-// (roadmap F5 item 1). pickFromLibrary is the PickerCaptureSource.
+// LiDAR camera from modules/lidar on LiDAR iPhones, with depth and the distance (roadmap F5 item 1), and
+// expo-camera everywhere else. pickFromLibrary is the PickerCaptureSource.
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
-import { forwardRef, useImperativeHandle, useRef } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { Linking, type StyleProp, type ViewStyle } from "react-native";
+
+import type { DepthMeta } from "@/domain/depth";
+import { LidarCameraView, type CameraInterruption, type CaptureReport, type LidarCameraHandle } from "@modules/lidar/src/LidarCamera";
+
+import { capabilities } from "../capabilities";
 
 /** One shot as a source hands it over (README 13). `depth` comes only from the LiDAR module. */
 export interface CapturedShot {
@@ -14,7 +19,19 @@ export interface CapturedShot {
     width: number;
     height: number;
   };
-  depth?: { depthUri: string; confidenceUri?: string; meta: Record<string, unknown> };
+  depth?: { depthUri: string; confidenceUri?: string; meta: DepthMeta };
+  /** LiDAR only: what the module measured about the shot, for the day-1 check. */
+  report?: CaptureReport;
+}
+
+export type { CameraInterruption, CaptureReport, DepthMeta };
+
+/**
+ * The LiDAR camera refused a shot because it came out black: the session ran but had lost the picture, as under
+ * iPhone Mirroring. Nothing was stored.
+ */
+export function isBlackShot(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { code?: unknown }).code === "ERR_LIDAR_BLACK";
 }
 
 export interface CameraPreviewHandle {
@@ -26,13 +43,62 @@ export interface CameraPreviewProps {
   active: boolean;
   style?: StyleProp<ViewStyle>;
   onReady?: () => void;
+  /** LiDAR phones only: metres to what is at the centre of the frame, or null when it has no depth. */
+  onDistance?: (metres: number | null) => void;
+  /** LiDAR phones only: why the camera was taken away, or null when it is back. The shutter can't work meanwhile. */
+  onInterruption?: (reason: CameraInterruption | null) => void;
 }
 
-/** The back camera, full frame. Its photos are JPEG with EXIF orientation applied by the camera (skipProcessing off). */
-export const CameraPreview = forwardRef<CameraPreviewHandle, CameraPreviewProps>(function CameraPreview(
-  { active, style, onReady },
+/**
+ * The back camera, full frame. Its photos are JPEG with EXIF orientation applied by the camera (skipProcessing off).
+ * A LiDAR camera that can't start (no depth format, a session error) falls back to expo-camera for the rest of the
+ * screen's life, so the user gets photos without depth rather than a black screen (README 13, adapters).
+ */
+export const CameraPreview = forwardRef<CameraPreviewHandle, CameraPreviewProps>(function CameraPreview(props, ref) {
+  const [lidarFailed, setLidarFailed] = useState(false);
+  return LidarCameraView && capabilities().depth && !lidarFailed ? (
+    <LidarPreview {...props} ref={ref} onMountError={() => setLidarFailed(true)} />
+  ) : (
+    <PlainPreview {...props} ref={ref} />
+  );
+});
+
+/**
+ * The LiDAR camera: each photo comes with its depth map and `DepthMeta`, in the sensor frame with its EXIF
+ * orientation, and is uploaded unchanged (architecture 6.7). A shot whose depth was dropped is a plain photo.
+ */
+const LidarPreview = forwardRef<CameraPreviewHandle, CameraPreviewProps & { onMountError: () => void }>(function LidarPreview(
+  { active, style, onReady, onDistance, onInterruption, onMountError },
   ref,
 ) {
+  const camera = useRef<LidarCameraHandle>(null);
+  useImperativeHandle(ref, () => ({
+    async capture() {
+      const view = camera.current;
+      if (!view) throw new Error("The camera isn't ready.");
+      const shot = await view.capture();
+      return {
+        file: shot.file,
+        report: shot.report,
+        ...(shot.depth ? { depth: { depthUri: shot.depth.depthUri, meta: { ...shot.depth.meta } } } : {}),
+      };
+    },
+  }));
+  if (!LidarCameraView) return null;
+  return (
+    <LidarCameraView
+      ref={camera}
+      style={style}
+      active={active}
+      onReady={onReady}
+      onDistance={onDistance ? (e) => onDistance(e.nativeEvent.distance_m) : undefined}
+      onInterruption={onInterruption ? (e) => onInterruption(e.nativeEvent.interrupted ? (e.nativeEvent.reason ?? "other") : null) : undefined}
+      onMountError={onMountError}
+    />
+  );
+});
+
+const PlainPreview = forwardRef<CameraPreviewHandle, CameraPreviewProps>(function PlainPreview({ active, style, onReady }, ref) {
   const camera = useRef<CameraView>(null);
   useImperativeHandle(ref, () => ({
     async capture() {

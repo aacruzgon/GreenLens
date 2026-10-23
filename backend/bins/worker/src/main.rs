@@ -77,7 +77,12 @@ async fn main() -> anyhow::Result<()> {
     };
     tracing::info!(caps = ?cli.caps, slots = identity.slots, "worker starting");
     let worker = Arc::new(Worker::new(api, model, identity, timings));
+    // `run_until` drops the last handle on the worker, so the model is gone when it returns: on
+    // the perception worker its inference thread has released every ONNX Runtime session and
+    // been joined. Only then may `main` return, because `exit` unloads the CUDA libraries under
+    // any thread still using them (exit 139 on 2026-10-20; `vision::perception::inference`).
     run_until_sigterm(worker).await?;
+    tracing::info!("stopped");
     Ok(())
 }
 

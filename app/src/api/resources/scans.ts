@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tansta
 
 import { client, ok } from "../client";
 import { isApiError } from "../errors";
+import type { DepthMeta } from "@/domain/depth";
 import type { AnswerRequest, CreateScanRequest, FeedbackRequest, ImageKind, Scan, ScanDetail, UploadImageResponse } from "@/domain/types";
 import { useIdempotentMutation, type IdempotencyKey } from "../idempotency";
 import { STALE } from "../queryClient";
@@ -19,7 +20,7 @@ export interface ShotUpload {
   /** LiDAR phones only: the 16-bit depth PNG, its optional confidence PNG and a `DepthMeta`. */
   depth?: UploadFile;
   depthConfidence?: UploadFile;
-  depthMeta?: Record<string, unknown>;
+  depthMeta?: DepthMeta;
 }
 
 /** The multipart field names of contracts §3: kind, file, question_id, depth, depth_confidence, depth_meta. */

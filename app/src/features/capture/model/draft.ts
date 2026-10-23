@@ -113,7 +113,12 @@ export function resumeDraft(draft: CaptureDraft): CaptureDraft {
 export function relocateDraft(draft: CaptureDraft, locate: (name: string) => string | undefined): CaptureDraft {
   const move = (file: ShotFile): ShotFile => {
     const uri = locate(file.name);
-    return uri ? { ...file, uri } : file;
+    const depthUri = file.depth && locate(file.depth.name);
+    return {
+      ...file,
+      ...(uri ? { uri } : {}),
+      ...(file.depth && depthUri ? { depth: { ...file.depth, uri: depthUri } } : {}),
+    };
   };
   return {
     ...draft,
@@ -123,6 +128,11 @@ export function relocateDraft(draft: CaptureDraft, locate: (name: string) => str
       ...(s.next ? { next: { ...s.next, file: move(s.next.file) } } : {}),
     })),
   };
+}
+
+/** A shot's kept files: the photo, and its depth map on a LiDAR phone. */
+export function fileUris(file: ShotFile): string[] {
+  return file.depth ? [file.uri, file.depth.uri] : [file.uri];
 }
 
 const holdsUpload = (s: Slot) => s.state === "captured" || s.state === "uploading" || s.state === "failed";
@@ -147,7 +157,7 @@ export function reconcileDraft(
     if (!s.imageId || onServer.has(s.imageId)) return s;
     if (s.state === "deleting") return slotReducer(s, { type: "deleted" });
     if (s.state === "stored" && known.has(s.imageId)) {
-      if (s.file) unused.push(s.file.uri);
+      if (s.file) unused.push(...fileUris(s.file));
       return emptySlot(s.kind, s.index);
     }
     return s;

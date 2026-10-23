@@ -70,6 +70,7 @@ fn reply(text: &str, stop: Stop) -> VlmReply {
     VlmReply {
         text: text.to_owned(),
         stop,
+        tokens: None,
     }
 }
 

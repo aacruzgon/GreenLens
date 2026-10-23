@@ -35,6 +35,12 @@ export function parseEnv(raw: Record<string, string | undefined>): EnvResult {
   };
 }
 
+/**
+ * A development or evaluation build: the LiDAR tools in Settings (roadmap F5). The same variable turns on the
+ * Files app's view of Documents in app.config.ts, where the evaluation captures go.
+ */
+export const devTools = process.env.EXPO_PUBLIC_DEV_TOOLS === "1";
+
 // Metro inlines each EXPO_PUBLIC_* value only when it is read by its full name.
 export const envResult = parseEnv({
   EXPO_PUBLIC_API_MODE: process.env.EXPO_PUBLIC_API_MODE,

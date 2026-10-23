@@ -1,6 +1,6 @@
 # PDM Backend: `vision` crate
 
-> **Status:** Draft v0.2.7, 2026-10-20. v0.2.7: open question 7: a HEIC's sensor frame is lost on decode, so a sensor-frame depth map sent with a HEIC is refused (found on the rig with `smoke.py --depth-check`). v0.2.6: the perception adapter takes every tensor name from the manifest (`TensorNames`, gap G4) and checks them against each loaded session at start-up (`check_names`), reads every threshold from `[model.config]` inside `PerceptionPipeline::load` with `PerceptionConfig::from_manifest` and has no default, and refuses an environment batch cap above the manifest's (G6; `tau_leaf` is a new `leaf_detector` key, `tau_plant` comes from `plant_probe`), and refuses fp16 models on the CPU provider (`check_precision`, G11), all from [issue #12](https://github.com/aacruzgon/GreenLens/issues/12). v0.2.5: open question 4 is settled: xgrammar enforces `anyOf` with `null`. v0.2.4: the head and label-matrix loaders read `ml/models/FORMATS.md` (`pdm-label-matrix/1`, `pdm-linear-head/1`), refuse a head trained on another export or a file whose version differs from its entry, and are tested on files written as `ml/` writes them; open question 5 is resolved. v0.2.3: open question 5 is open again: `ml/models/FORMATS.md` is the format of record, and the loader doesn't read it yet. v0.2.2: open question 5 is resolved: vision 6 now fixes the head and label-matrix JSON. v0.2.1: the section 1 note says the `rust-workers` skill follows this crate: `ort` with `load-dynamic` and `api-29`, providers as cargo features chosen by `ORT_EP`, one inference thread and the session pool. v0.2: the text embedder takes `domain::ports::EmbedMode` on each `embed` call instead of offering two pre-set instances (`queries()` and `documents()` are gone). v0.1: ONNX Runtime sessions with the execution provider chosen at run time, the perception models as one `VisionModel`, the CPU upload pipeline (decode, quality, two-pass face blurring, WebP, depth), LiDAR measurement as deterministic geometry, the text embedder and COCO RLE, compiled on Rust 1.99.1 with `ort` 2.0.0-rc.14.
+> **Status:** Draft v0.2.11, 2026-10-23. v0.2.11: `rle::to_png` encodes the decoded mask's own buffer, which `decode` fills with 0 and 255, instead of a second full-size copy. v0.2.10: `rle::to_png` encodes a worker's mask as the 8-bit PNG that `pipeline` stores when a perception job completes and `GET /scans/{id}/masks/{mask_id}` streams; section 11 said `api` decoded a mask on each read, but the route streams the stored object (section 11). v0.2.9: the joined teardown is verified on the 3070 (exit 0, not 139, with "stopped" 61 ms after "shutting down"). v0.2.8: the inference thread is joined, not detached: dropping the last `Inference` waits until the thread has released every session and then the environment, so the perception worker's `main` can't reach `exit` while CUDA sessions are being released (it died with exit 139 on SIGTERM). v0.2.7: open question 7: a HEIC's sensor frame is lost on decode, so a sensor-frame depth map sent with a HEIC is refused (found on the rig with `smoke.py --depth-check`). v0.2.6: the perception adapter takes every tensor name from the manifest (`TensorNames`, gap G4) and checks them against each loaded session at start-up (`check_names`), reads every threshold from `[model.config]` inside `PerceptionPipeline::load` with `PerceptionConfig::from_manifest` and has no default, and refuses an environment batch cap above the manifest's (G6; `tau_leaf` is a new `leaf_detector` key, `tau_plant` comes from `plant_probe`), and refuses fp16 models on the CPU provider (`check_precision`, G11), all from [issue #12](https://github.com/aacruzgon/GreenLens/issues/12). v0.2.5: open question 4 is settled: xgrammar enforces `anyOf` with `null`. v0.2.4: the head and label-matrix loaders read `ml/models/FORMATS.md` (`pdm-label-matrix/1`, `pdm-linear-head/1`), refuse a head trained on another export or a file whose version differs from its entry, and are tested on files written as `ml/` writes them; open question 5 is resolved. v0.2.3: open question 5 is open again: `ml/models/FORMATS.md` is the format of record, and the loader doesn't read it yet. v0.2.2: open question 5 is resolved: vision 6 now fixes the head and label-matrix JSON. v0.2.1: the section 1 note says the `rust-workers` skill follows this crate: `ort` with `load-dynamic` and `api-29`, providers as cargo features chosen by `ORT_EP`, one inference thread and the session pool. v0.2: the text embedder takes `domain::ports::EmbedMode` on each `embed` call instead of offering two pre-set instances (`queries()` and `documents()` are gone). v0.1: ONNX Runtime sessions with the execution provider chosen at run time, the perception models as one `VisionModel`, the CPU upload pipeline (decode, quality, two-pass face blurring, WebP, depth), LiDAR measurement as deterministic geometry, the text embedder and COCO RLE, compiled on Rust 1.99.1 with `ort` 2.0.0-rc.14.
 
 Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports this crate implements, and the [computer-vision design](../vision/README.md), whose model choices it follows. Every listing below is copied from the compiled source of `crates/vision` by the docgen tool. `cargo check -p vision` (also with `--features cuda`, `migraphx`, `webgpu`), `cargo clippy -p vision --all-targets` and `cargo test -p vision` pass: 61 unit tests and 19 tests that load `ml/`'s committed manifest and files written as `ml/` writes them, among them an end-to-end measurement of a synthetic leaf and byte-for-byte RLE fixtures from pycocotools. ONNX Runtime itself never runs in the tests: the default `load-dynamic` feature links nothing, and no test builds a session.
 
@@ -38,7 +38,7 @@ Companion to the [backend architecture](README.md), the [`domain` crate](domain.
 | Depth validation, rotation, intrinsics, face zeroing | `depth` | | `upload`, the measurement stage |
 | LiDAR measurement | `measure` | `SpotSegmenter` (the colour default) | `pipeline`, inside `api` |
 | Text embeddings | `embed` | `TextEmbedder` | `api` (`agent`, `knowledge`) |
-| Masks, COCO RLE | `mask`, `rle` | | perception (encode), `api` (decode to PNG), measurement |
+| Masks, COCO RLE | `mask`, `rle` | | perception (encode), `pipeline` (decode to the stored PNG), measurement |
 
 **What it never does.** No network, no database, no object storage, no job protocol: callers hand in bytes and get bytes and records back. The VLM adapters are not here: they are HTTP clients and live in the [worker](worker.md). Answering measurable indicators from measurements belongs to `pipeline` ([pipeline](pipeline.md)); this crate only measures.
 
@@ -679,10 +679,14 @@ pub struct SessionSpec {
 /// anything from the job (the channel's item type must be `'static`).
 pub type Inputs = Vec<(String, ArrayD<f32>)>;
 
-/// The handle jobs use. Cloning shares the one thread.
+/// The handle jobs use. Cloning shares the one thread; dropping the last clone stops it and
+/// blocks until it has released its sessions (the module docs say why).
 #[derive(Debug, Clone)]
 pub struct Inference {
+    // Fields drop in declaration order: the sender first, so the channel is closed by the time
+    // the last `Joined` waits for the thread. Held only for its `Drop`.
     requests: mpsc::Sender<Request>,
+    _joined: Arc<Joined>,
 }
 
 /// Terminates a run when dropped before [`TerminateOnDrop::disarm`].
@@ -737,12 +741,40 @@ impl Inference {
     /// driver or file fails the worker's start-up before it claims anything. The runtime moves
     /// onto the thread (sessions keep its environment alive).
     pub async fn start(runtime: OrtRuntime, specs: Vec<SessionSpec>) -> Result<Self, VisionError> {
+        Self::spawn(
+            move || {
+                let sessions = load(&runtime, specs)?;
+                // A tuple drops in order: the sessions, then the environment.
+                Ok((sessions, runtime))
+            },
+            |(sessions, _), req| {
+                let result = match sessions.get_mut(&req.slot) {
+                    Some(session) => run(session, &req.inputs, &req.outputs, &req.options),
+                    None => Err(VisionError::Shape {
+                        model: "inference",
+                        detail: format!("{:?} is not loaded", req.slot),
+                    }),
+                };
+                let _ = req.reply.send(result);
+            },
+        )
+        .await
+    }
+
+    /// The thread: `load` builds its state on it, `serve` answers each request, and the state
+    /// drops on the thread when the channel closes, before [`Joined`] lets the last handle go.
+    /// Generic so the tests can check the join without ONNX Runtime.
+    async fn spawn<S, L, F>(load: L, mut serve: F) -> Result<Self, VisionError>
+    where
+        L: FnOnce() -> Result<S, VisionError> + Send + 'static,
+        F: FnMut(&mut S, Request) + Send + 'static,
+    {
         let (requests, mut inbox) = mpsc::channel::<Request>(1);
         let (ready, loaded) = oneshot::channel::<Result<(), VisionError>>();
-        thread::Builder::new()
+        let handle = thread::Builder::new()
             .name("inference".to_owned())
             .spawn(move || {
-                let mut sessions = match load(&runtime, specs) {
+                let mut state = match load() {
                     Ok(s) => s,
                     Err(e) => {
                         let _ = ready.send(Err(e));
@@ -753,19 +785,18 @@ impl Inference {
                     return;
                 }
                 while let Some(req) = inbox.blocking_recv() {
-                    let result = match sessions.get_mut(&req.slot) {
-                        Some(session) => run(session, &req.inputs, &req.outputs, &req.options),
-                        None => Err(VisionError::Shape {
-                            model: "inference",
-                            detail: format!("{:?} is not loaded", req.slot),
-                        }),
-                    };
-                    let _ = req.reply.send(result);
+                    serve(&mut state, req);
                 }
+                drop(state); // here, before the join returns; never during `exit`
             })
             .map_err(|e| VisionError::Resize(format!("spawning the inference thread: {e}")))?;
+        // Built before the wait, so a failed load or a dropped start still joins the thread.
+        let inference = Self {
+            requests,
+            _joined: Arc::new(Joined(Some(handle))),
+        };
         loaded.await.map_err(|_| VisionError::InferenceGone)??;
-        Ok(Self { requests })
+        Ok(inference)
     }
 
     /// Runs one model and returns the named outputs, copied out of ONNX Runtime.
@@ -801,6 +832,8 @@ impl Inference {
 ```
 
 **Cancellation by drop.** The `VisionModel` port cancels by dropping the job's future ([domain 9](domain.md#models)). A dropped future would leave a batch running on the thread, so `Inference::run` arms a `TerminateOnDrop` guard holding the run's `Arc<RunOptions>`: dropped before the reply arrives, it calls `RunOptions::terminate`, and ONNX Runtime ends the run with an error. How quickly a CUDA run notices the flag is *unverified* (the ort example is `no_run` for that reason).
+
+**Teardown: joined, not detached.** Returning from `main` calls libc `exit`, which runs the shared libraries' destructors (ONNX Runtime's CUDA provider, cuDNN, cuBLAS, the CUDA runtime) and doesn't wait for other threads ([`std::thread`](https://doc.rust-lang.org/std/thread/index.html)). With a detached thread, dropping the pipeline only woke the thread, which then released its sessions while `main` returned: on 2026-10-20 the 3070's worker died with SIGSEGV (exit 139) 0.7 s after SIGTERM, with no job held, while the CPU worker stopped cleanly. So every `Inference` clone shares a `Joined` guard declared after the sender: dropping the last clone closes the channel, and the guard blocks until the thread has dropped its sessions, then the environment (a tuple, dropped in order), and ended. The guard exists before start-up waits for the load, so a failed start joins too. The same teardown order breaks elsewhere: [onnxruntime#4017](https://github.com/microsoft/onnxruntime/pull/4017) (CUDA handles freed after the provider's destructor), [ort#124](https://github.com/pykeio/ort/discussions/124) (a CUDA-only crash once the work was done). `dropping_the_last_handle_waits_for_the_thread_to_release_its_sessions` checks the join without ONNX Runtime; ✓ ran on the 3070 on 2026-10-23: `main`'s image gave `die exitCode=139` on `docker compose restart perception-worker`, and this one gave `die exitCode=0`, logging "shutting down: no new claims" and then "stopped" 61 ms later.
 
 ### Batching and caps
 
@@ -3577,6 +3610,31 @@ pub fn decode(rle: &RleMask) -> Result<MaskBuf, RleError> {
     }
     Ok(mask)
 }
+
+/// Why a worker's mask can't be stored as a PNG.
+#[derive(Debug, thiserror::Error)]
+pub enum MaskPngError {
+    /// The run-length string is invalid.
+    #[error("mask does not decode")]
+    Decode(#[from] RleError),
+    /// The PNG encoder failed.
+    #[error("mask png not encoded")]
+    Encode(#[from] png::EncodingError),
+}
+
+/// The object behind `GET /scans/{id}/masks/{mask_id}`: the mask decoded and encoded as an 8-bit
+/// grayscale PNG at its own size (the stored image's, `size`), 255 inside and 0 outside.
+pub fn to_png(rle: &RleMask) -> Result<Vec<u8>, MaskPngError> {
+    // `decode` sets inside pixels with `MaskBuf::set`, which writes 255, so the buffer is
+    // already the image: no second full-size copy.
+    let mask = decode(rle)?;
+    Ok(crate::depth::encode_png(
+        mask.width(),
+        mask.height(),
+        png::BitDepth::Eight,
+        mask.as_raw(),
+    )?)
+}
 ```
 ```rust
 /// An owned 8-bit mask, row-major: non-zero inside.
@@ -3742,7 +3800,7 @@ pub fn outline(mask: MaskView<'_>) -> Vec<(u32, u32)> {
 }
 ```
 
-`api` decodes a stored mask to an 8-bit PNG for `GET /scans/{id}/masks/{mask_id}` with `rle::decode` and the `image` PNG encoder.
+When a perception job completes, `pipeline` turns each region's mask into the object `GET /scans/{id}/masks/{mask_id}` serves with `rle::to_png`: `rle::decode`, then an 8-bit grayscale PNG at the mask's own size (the stored image's), 255 inside and 0 outside, through the `png` encoder the depth maps use. `decode` writes those values (`MaskBuf::set`), so the decoded buffer is encoded as it is, with no second full-size copy. It is stored before its `mask` record ([pipeline 4](pipeline.md#4-ports-and-construction)), and the route streams that object without decoding anything.
 
 ---
 
@@ -3752,7 +3810,7 @@ pub fn outline(mask: MaskView<'_>) -> Vec<(u32, u32)> {
 |---|---|---|
 | Upload pipeline, measurement, RLE | `api`'s blocking pool, called inside `spawn_blocking` behind a semaphore | CPU-bound for 0.1–1 s; tokio's blocking pool grows without bound otherwise |
 | Face detector, text embedder | the caller's blocking thread, one pooled session each | `Session::run(&mut self)`; the pool lets N calls run at once |
-| Perception models | the inference thread, for the life of the process | one owner, no locks, ONNX Runtime's threads off tokio's workers |
+| Perception models | the inference thread, until the last `Inference` drops and joins it | one owner, no locks, ONNX Runtime's threads off tokio's workers |
 | Perception decoding and pre-processing | the blocking pool, behind `PerceptionPipeline.cpu` | owned images in, owned tensors out |
 
 **Named lifetimes.**
@@ -3892,7 +3950,7 @@ impl VisionError {
 | Measurement | pixel footprints (fronto-parallel and 45°); the longest extent; RANSAC finds a 15° plane among outliers and is deterministic; the pinned stream; percentiles; the criteria table; ground choice (raised bed over path, bench above the base); the colour classes; **a synthetic 18 cm leaf at 30 cm with a 30 mm spot measures within 2 mm, 3 cm² and 0.5 cm, twice identically**; organism length |
 | Perception | tensors are CHW and normalised for every resize rule; batches split at the effective cap; detector decode keeps confident large boxes and drops duplicates; SAM prompts and upsampling; species scores follow the closest row and shot weights; the disease head is restricted to the working species; soil shots never count for the plant check |
 | Embedder | CLS pooling and normalisation |
-| RLE and masks | pycocotools fixtures byte for byte; garbage rejected; holes, erosion, resampling, outlines |
+| RLE and masks | pycocotools fixtures byte for byte; garbage rejected; holes, erosion, resampling, outlines; `to_png` gives an 8-bit grayscale PNG of the mask's size, 255 exactly inside |
 
 Nothing here runs ONNX Runtime: `ort` with `cuda` can't link on macOS, and the default `load-dynamic` links nothing but would need a runtime at the first session (the `rust-workers` skill, `ort.md`). Model-level checks (YuNet parity with OpenCV, the embedder's golden vectors, warm-up at the largest batch, VRAM budgets) run on the rig on day 1–2 ([vision evaluation](../vision/evaluation.md)).
 

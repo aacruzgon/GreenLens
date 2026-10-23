@@ -1,5 +1,6 @@
-"""The plant check's guards for a trained probe (review of #85)."""
+"""The plant check: its guards for a trained probe (review of #85) and its case rule."""
 
+import numpy as np
 import pytest
 
 from ml.training.eval import plant_check as pc
@@ -43,3 +44,14 @@ def test_an_unknown_pair_name_is_a_clean_error_on_a_rescore_too(tmp_path, capsys
     with pytest.raises(SystemExit):
         pc.main(["--rescore", str(prev), "--pair", "B:0.4:0.7"])
     assert "unknown prompt set or probe 'B' (known: A)" in capsys.readouterr().err
+
+
+def test_a_case_passes_when_any_of_its_shots_does():
+    # Case 0: a close-up only the probe passes and a whole plant nothing passes; case 1: neither.
+    leaf = np.array([0.1, 0.2, 0.1], np.float32)
+    p = np.array([0.9, 0.3, 0.6])
+    of = np.array([0, 0, 1])
+    assert pc.case_pass(leaf, p, of, 2, 0.4, 0.7).tolist() == [True, False]
+    assert pc.case_pass(leaf, p, of, 2, 0.4, 0.5).tolist() == [True, True]
+    # The highest τ_plant keeping every case is case 1's best shot.
+    assert pc.highest_tau_plant(leaf, p, of, 2, 0.4, recall=1.0) == 0.6
