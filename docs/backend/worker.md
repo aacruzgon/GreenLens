@@ -2305,7 +2305,7 @@ pub struct FallbackModel {
 
 The label lists come from the same manifest files the perception worker loads, because the payload carries only their versions; a version the fallback hasn't loaded fails with `unknown_label_version`, as on the rig.
 
-The fallback's box format is confirmed with one live call on day 2 ([contracts 12](../architecture/contracts.md#12-open-questions), question 26).
+The fallback's box format was confirmed by a live run on 2026-10-23 ([contracts 12](../architecture/contracts.md#12-open-questions), question 26; [report](../../ml/training/eval/reports/p9-fallback-2026-10-23.md)): Opus 5.5 answers in pixels of the image as sent.
 
 ---
 
@@ -2690,7 +2690,7 @@ The questions of [contracts 12](../architecture/contracts.md#12-open-questions) 
 ## 17. Open questions
 
 1. **`organism_options` without recognition text** ([vision vlm 7](../vision/vlm.md#7-prompts)) is still a proposal ([contracts open question 36](../architecture/contracts.md#12-open-questions)).
-2. **The fallback's runtime.** Opus 5.5 always thinks, so every hosted call gets 8,000 output tokens ([contracts 6](../architecture/contracts.md#after-decoding)). Whether calls that long finish within the fallback's doubled `max_runtime` is measured on day 2 ([contracts open question 26](../architecture/contracts.md#12-open-questions)).
+2. **The fallback's runtime.** Opus 5.5 always thinks, so every hosted call gets 8,000 output tokens ([contracts 6](../architecture/contracts.md#after-decoding)). Settled on 2026-10-23 ([contracts open question 26](../architecture/contracts.md#12-open-questions), [report](../../ml/training/eval/reports/p9-fallback-2026-10-23.md)): at effort low a call used at most 469 output tokens and 9.6 s, and a `vlm` job at most 15.5 s against the fallback's 585 s.
 3. **`anyOf` with `null`** for nullable values in the schema. Settled on 2026-10-16 ([contracts open question 31](../architecture/contracts.md#12-open-questions), [vision vlm 4](../vision/vlm.md#4-serving)): xgrammar in vLLM v0.31.0 produces both branches and blocks values outside the schema. The non-null soil branch needs the prompt to show a reading's shape.
 4. **Cancellation on llama.cpp**: whether a dropped connection frees the slot is *unverified* ([contracts open question 33](../architecture/contracts.md#12-open-questions)).
 5. **Should `api` refuse stub results in production?** Today only `model_versions.stub` tells them apart. A setting such as `API_REJECT_STUB_VISION=true` on the deployed control plane, once S1 is over, would fail a `complete` that carries the key. The alternative is to rely on the release guard and the compose files alone (section 15.1.3).
