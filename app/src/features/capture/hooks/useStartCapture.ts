@@ -13,13 +13,16 @@ export function useStartCapture() {
   const router = useRouter();
   const keyFor = useActionKey();
 
-  async function start(target: ScanTarget) {
+  /** `push` keeps the screen it starts from (chat's rescan) under capture; the new-scan sheet replaces itself. */
+  async function start(target: ScanTarget, opts: { push?: boolean } = {}) {
     const body =
       "plantId" in target
         ? { garden_id: gardenId, plant_id: target.plantId }
         : { garden_id: gardenId, new_plant: { name: target.newPlantName.trim() } };
     const scan = await createScan.mutateAsync(body, keyFor(body));
-    router.replace({ pathname: "/capture/[scanId]", params: { scanId: scan.id } });
+    const href = { pathname: "/capture/[scanId]", params: { scanId: scan.id } } as const;
+    if (opts.push) router.push(href);
+    else router.replace(href);
   }
 
   return { start, isPending: createScan.isPending, error: createScan.error };

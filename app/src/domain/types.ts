@@ -166,16 +166,43 @@ export type Pin = S["Pin"];
 
 // Chat
 export type AnchorType = S["AnchorType"];
+export type Anchor = S["Anchor"];
 export type Conversation = S["Conversation"];
 export type ConversationDetail = S["ConversationDetail"];
+export type CreateConversationRequest = S["CreateConversationRequest"];
+/** `Message` (contracts 8). The OpenAPI document inlines it in `Page_Message`, so it is named here. */
+export type Message = S["Page_Message"]["items"][number];
+export type MessageRole = S["MessageRole"];
+export type Attachment = S["Attachment"];
 export type ChatEvent = S["ChatEvent"];
+export type ChatRoute = S["ChatRoute"];
+export type ChatImageUploaded = S["ChatImageUploaded"];
+export type MessageStartedEvent = S["MessageStarted"];
+export type TextDeltaEvent = S["TextDelta"];
+export type ToolStartedEvent = S["ToolStarted"];
+export type ToolFinishedEvent = S["ToolFinished"];
+export type CitationEvent = S["CitationEvent"];
+export type PendingActionEvent = S["PendingActionEvent"];
+export type MemorySavedEvent = S["MemorySaved"];
+export type RescanRequestedEvent = S["RescanRequested"];
+export type MessageCompletedEvent = S["MessageCompleted"];
+export type ChatErrorEvent = S["ChatErrorEvent"];
 export type PendingAction = S["PendingAction"];
+export type PendingStatus = S["PendingStatus"];
+export type PendingPreview = S["Preview"];
+export type WriteTool = S["WriteTool"];
+export type ConfirmResponse = S["ConfirmResponse"];
 export type SendMessageRequest = S["SendMessageRequest"];
+export type MessageFeedbackRequest = S["MessageFeedbackRequest"];
+export type Rating = S["Rating"];
+export type MemoryTopic = S["MemoryTopic"];
 
 // Connectors
 export type Connector = S["Connector"];
 export type ConnectorKind = S["ConnectorKind"];
 export type ConnectorStatus = S["ConnectorStatus"];
+export type ConnectorEndpoint = S["ConnectorEndpoint"];
+export type ConnectorList = S["ConnectorList"];
 
 /** `{ items, next_cursor? }` (contracts 1, lists). */
 export type Page<T> = { items: T[]; next_cursor?: Cursor };

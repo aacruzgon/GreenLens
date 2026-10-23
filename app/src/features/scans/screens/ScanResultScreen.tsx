@@ -6,7 +6,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScrollView, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Button, CitationList, EmptyState, ErrorState, Skeleton, Text, TopEdge, gutter, space, useHeroScroll } from "@/ui";
+import { useAskAbout } from "@/features/chat";
+import { Banner, Button, CitationList, EmptyState, ErrorState, Skeleton, Text, TopEdge, gutter, space, useHeroScroll } from "@/ui";
 
 import { DiagnosisHero, heroHeightFor } from "../components/DiagnosisHero";
 import { FeatureCards } from "../components/FeatureCards";
@@ -32,6 +33,8 @@ export function ScanResultScreen() {
   const { width } = useWindowDimensions();
   const d = useDiagnosis(scanId);
   const { tint, view, plan } = d;
+  const chat = useAskAbout(d.gardenId);
+  const askAbout = () => void chat.ask({ type: "scan", id: scanId });
   // The bar buttons scroll away with the photo; once it is under the status bar, the ground goes behind that.
   const { past, scrollProps } = useHeroScroll(heroHeightFor(width) - insets.top);
 
@@ -187,6 +190,8 @@ export function ScanResultScreen() {
             </View>
           ) : null}
 
+          {chat.problem ? <Banner tone="danger" title={chat.problem} /> : null}
+          <Button label="Ask about this result" variant="secondary" onPress={askAbout} busy={chat.opening} style={{ alignSelf: "center" }} testID="result-ask" />
           {d.canFeedback ? (
             <Button label="Was this right?" variant="secondary" onPress={d.actions.feedback} style={{ alignSelf: "center" }} testID="result-feedback" />
           ) : null}
@@ -201,6 +206,8 @@ export function ScanResultScreen() {
           title={next.step.title}
           photo={d.photo?.source}
           onPlay={() => d.actions.stepByStep(next.index)}
+          onAsk={askAbout}
+          asking={chat.opening}
         />
       ) : null}
     </View>

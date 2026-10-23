@@ -41,6 +41,8 @@ export default function AppLayout() {
           options={{ presentation: "formSheet", sheetAllowedDetents: [0.6, 1], sheetGrabberVisible: true }}
         />
         <Stack.Screen name="plants/[plantId]/index" />
+        {/* A conversation, pushed from the Chat tab or "Ask about this result" (screens 3.6). */}
+        <Stack.Screen name="chat/[conversationId]" />
         {/* The LiDAR day-1 check and evaluation captures: a camera, so full screen (roadmap F5). */}
         <Stack.Screen name="dev/depth-check" options={{ presentation: "fullScreenModal" }} />
         {/* The garden mapping session: the camera, full screen (roadmap F5; flows 11). */}

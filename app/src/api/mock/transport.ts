@@ -5,6 +5,7 @@
 import { polygonArea } from "@/domain/map";
 
 import type { Transport } from "../transport";
+import { registerChatRoutes } from "./chat";
 import { answerRun, guidedCheck, scriptFor, speciesRerun, startRun, takeOutcome } from "./runs";
 import { scenario } from "./scenario";
 import { mockStore, type MockStore } from "./store";
@@ -803,6 +804,10 @@ route("GET", "/scans/:id/events", (c) => {
   const last = raw && /^\d+$/.test(raw) ? Number(raw) : 0;
   return streamResponse(eventStream(c.store, c.params.id, last));
 });
+
+// ---- chat (chat.ts)
+
+registerChatRoutes(route, { jsonObject, streamResponse });
 
 // ---- the transport
 
