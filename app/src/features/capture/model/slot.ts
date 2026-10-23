@@ -20,6 +20,14 @@ export interface ShotFile {
   /** Pixels, for the re-encode's resize. */
   width: number;
   height: number;
+  /** LiDAR phones only: the 16-bit depth PNG kept beside the photo, and its `DepthMeta` (contracts 3). */
+  depth?: ShotDepth;
+}
+
+export interface ShotDepth {
+  uri: string;
+  name: string;
+  meta: Record<string, unknown>;
 }
 
 export interface Slot {

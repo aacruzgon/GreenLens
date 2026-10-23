@@ -2,6 +2,8 @@
 // REST endpoints from the fixture store with the real status codes and ErrorBody errors, and
 // streams scan events as a Server-Sent Events byte stream.
 
+import { polygonArea } from "@/domain/map";
+
 import type { Transport } from "../transport";
 import { answerRun, guidedCheck, scriptFor, speciesRerun, startRun, takeOutcome } from "./runs";
 import { scenario } from "./scenario";
@@ -259,6 +261,52 @@ route("GET", "/gardens/:id/map", (c) =>
     ? jsonResponse(200, { map: c.store.maps.get(c.params.id) ?? null })
     : notFound(),
 );
+
+// A mapping session's upload (contracts 9, garden map): a whole new version, refused when another member mapped
+// since the session started. Plants named in the session are created with it.
+route("PUT", "/gardens/:id/map", async (c) => {
+  const gardenId = c.params.id;
+  if (!c.store.gardens.has(gardenId)) return notFound();
+  const body = (await jsonObject(c)) as unknown as S["GardenMapInput"];
+  const current = c.store.maps.get(gardenId) ?? null;
+  const version = current?.version ?? 0;
+  if (body.base_version !== version) return errorResponse("invalid_state", { current_map_version: version });
+  if (!Array.isArray(body.beds) || body.beds.length > 20) return invalid("beds", "at most 20");
+  if (!Array.isArray(body.pins) || body.pins.length > 200) return invalid("pins", "at most 200");
+  for (const bed of body.beds) {
+    if (!Array.isArray(bed.polygon_m) || bed.polygon_m.length < 3 || bed.polygon_m.length > 50) return invalid("beds.polygon_m", "3–50 points");
+  }
+  const pins: S["Pin"][] = [];
+  for (const pin of body.pins) {
+    let plantId = pin.plant_id;
+    if (!plantId && pin.new_plant) {
+      const plant = createPlant(c.store, gardenId, pin.new_plant.name, pin.new_plant.species_id);
+      if (typeof plant === "string") return invalid("pins.new_plant.species_id", plant);
+      plantId = plant.id;
+    }
+    const plant = plantId ? c.store.plants.get(plantId) : undefined;
+    if (!plant || plant.garden_id !== gardenId) return invalid("pins.plant_id", "not a plant of this garden");
+    pins.push({ plant_id: plant.id, x_m: pin.x_m, y_m: pin.y_m, ...(pin.canopy_radius_m !== undefined ? { canopy_radius_m: pin.canopy_radius_m } : {}), ...(pin.bed_id ? { bed_id: pin.bed_id } : {}) });
+  }
+  const map: S["GardenMap"] = {
+    garden_id: gardenId,
+    version: version + 1,
+    created_at: nowTs(),
+    ...(current?.created_by ? { created_by: current.created_by } : {}),
+    ...(body.north_deg !== undefined ? { north_deg: body.north_deg } : {}),
+    beds: body.beds.map((b) => ({ id: b.id, ...(b.name ? { name: b.name } : {}), polygon_m: b.polygon_m, area_m2: Math.round(polygonArea(b.polygon_m) * 100) / 100 })),
+    pins,
+  };
+  c.store.maps.set(gardenId, map);
+  // Every pin moves to the new version; a plant left without one loses its position (architecture 6.8).
+  for (const plant of c.store.plants.values()) {
+    if (plant.garden_id !== gardenId) continue;
+    const pin = pins.find((p) => p.plant_id === plant.id);
+    if (pin) plant.position = { map_version: map.version, x_m: pin.x_m, y_m: pin.y_m };
+    else delete plant.position;
+  }
+  return jsonResponse(200, map);
+}, true);
 
 // ---- plants
 

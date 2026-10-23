@@ -1,10 +1,14 @@
 // Capture sources (docs/frontend/README.md 13, adapters): what a feature photographs with. CameraPreview is the
-// CameraCaptureSource on expo-camera; LidarCaptureSource replaces it on LiDAR iPhones once modules/lidar lands
-// (roadmap F5 item 1). pickFromLibrary is the PickerCaptureSource.
+// LiDAR camera from modules/lidar on LiDAR iPhones, with depth and the distance (roadmap F5 item 1), and
+// expo-camera everywhere else. pickFromLibrary is the PickerCaptureSource.
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import { Linking, type StyleProp, type ViewStyle } from "react-native";
+
+import { LidarCameraView, type CaptureReport, type DepthMeta, type LidarCameraHandle } from "@modules/lidar/src/LidarCamera";
+
+import { capabilities } from "../capabilities";
 
 /** One shot as a source hands it over (README 13). `depth` comes only from the LiDAR module. */
 export interface CapturedShot {
@@ -14,8 +18,12 @@ export interface CapturedShot {
     width: number;
     height: number;
   };
-  depth?: { depthUri: string; confidenceUri?: string; meta: Record<string, unknown> };
+  depth?: { depthUri: string; confidenceUri?: string; meta: DepthMeta & Record<string, unknown> };
+  /** LiDAR only: what the module measured about the shot, for the day-1 check. */
+  report?: CaptureReport;
 }
+
+export type { CaptureReport, DepthMeta };
 
 export interface CameraPreviewHandle {
   capture(): Promise<CapturedShot>;
@@ -26,13 +34,46 @@ export interface CameraPreviewProps {
   active: boolean;
   style?: StyleProp<ViewStyle>;
   onReady?: () => void;
+  /** LiDAR phones only: metres to what is at the centre of the frame, or null when it has no depth. */
+  onDistance?: (metres: number | null) => void;
 }
 
 /** The back camera, full frame. Its photos are JPEG with EXIF orientation applied by the camera (skipProcessing off). */
-export const CameraPreview = forwardRef<CameraPreviewHandle, CameraPreviewProps>(function CameraPreview(
-  { active, style, onReady },
-  ref,
-) {
+export const CameraPreview = forwardRef<CameraPreviewHandle, CameraPreviewProps>(function CameraPreview(props, ref) {
+  return LidarCameraView && capabilities().depth ? <LidarPreview {...props} ref={ref} /> : <PlainPreview {...props} ref={ref} />;
+});
+
+/**
+ * The LiDAR camera: each photo comes with its depth map and `DepthMeta`, in the sensor frame with its EXIF
+ * orientation, and is uploaded unchanged (architecture 6.7). A shot whose depth was dropped is a plain photo.
+ */
+const LidarPreview = forwardRef<CameraPreviewHandle, CameraPreviewProps>(function LidarPreview({ active, style, onReady, onDistance }, ref) {
+  const camera = useRef<LidarCameraHandle>(null);
+  useImperativeHandle(ref, () => ({
+    async capture() {
+      const view = camera.current;
+      if (!view) throw new Error("The camera isn't ready.");
+      const shot = await view.capture();
+      return {
+        file: shot.file,
+        report: shot.report,
+        ...(shot.depth ? { depth: { depthUri: shot.depth.depthUri, meta: { ...shot.depth.meta } } } : {}),
+      };
+    },
+  }));
+  if (!LidarCameraView) return null;
+  return (
+    <LidarCameraView
+      ref={camera}
+      style={style}
+      active={active}
+      onReady={onReady}
+      onDistance={onDistance ? (e) => onDistance(e.nativeEvent.distance_m) : undefined}
+    />
+  );
+});
+
+const PlainPreview = forwardRef<CameraPreviewHandle, CameraPreviewProps>(function PlainPreview({ active, style, onReady }, ref) {
   const camera = useRef<CameraView>(null);
   useImperativeHandle(ref, () => ({
     async capture() {

@@ -16,6 +16,11 @@ const config: ExpoConfig = {
     infoPlist: {
       NSCameraUsageDescription: "PDM uses the camera to photograph your plants for a diagnosis.",
       NSLocationWhenInUseUsageDescription: "PDM uses your location once, to find your garden's weather and soil.",
+      // The LiDAR day-1 check's evaluation captures leave the phone through the Files app (roadmap F5 item 2).
+      UIFileSharingEnabled: true,
+      LSSupportsOpeningDocumentsInPlace: true,
+      // The scan's Live Activity (targets/scan-activity, modules/live-activity), updated by the app itself.
+      NSSupportsLiveActivities: true,
     },
   },
   web: {
@@ -27,6 +32,8 @@ const config: ExpoConfig = {
     "expo-secure-store",
     "@clerk/expo",
     "expo-asset",
+    // Adds the widget extensions in targets/ to the Xcode project on prebuild (design open decision 4).
+    "@bacons/apple-targets",
     [
       "expo-font",
       {

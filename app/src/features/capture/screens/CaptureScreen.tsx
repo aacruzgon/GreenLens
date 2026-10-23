@@ -8,13 +8,14 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Image, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { CameraPreview, pickFromLibrary, useCameraAccess, type CameraPreviewHandle } from "@/platform";
+import { CameraPreview, pickFromLibrary, useCameraAccess, useCapabilities, type CameraPreviewHandle } from "@/platform";
 import { Button, DropCard, Fade, IconButton, Text, ThemeProvider, camera, minTouch, space } from "@/ui";
 
 import { CameraAction, ProblemLine } from "../components/CameraControls";
 import { CaptureIcon } from "../components/CaptureIcons";
 import { CoverageDial } from "../components/CoverageDial";
 import { FramingGuide } from "../components/FramingGuide";
+import { DistanceChip } from "../components/DistanceChip";
 import { ModeBar } from "../components/ModeBar";
 import { useCaptureSession, type CaptureSessionView } from "../hooks/useCaptureSession";
 
@@ -38,6 +39,9 @@ function Capture() {
   const [covered, setCovered] = useState(false);
   // Where the drop card ends, so the framing guide starts below it.
   const [cardBottom, setCardBottom] = useState(0);
+  // LiDAR phones only: metres to the centre of the frame, for the distance chip (architecture 6.7).
+  const { depth } = useCapabilities();
+  const [distance, setDistance] = useState<number | null>(null);
   const v = session.view;
   const { actions } = session;
 
@@ -108,7 +112,12 @@ function Capture() {
   return (
     <Shell>
       {access.status === "granted" ? (
-        <CameraPreview ref={preview} active={!covered} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
+        <CameraPreview
+          ref={preview}
+          active={!covered}
+          onDistance={depth ? setDistance : undefined}
+          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+        />
       ) : (
         <CameraAccessNote access={access} />
       )}
@@ -167,6 +176,7 @@ function Capture() {
 
       {v ? (
         <View style={{ position: "absolute", left: 0, right: 0, bottom: insets.bottom + 8, gap: 14 }}>
+          {depth && access.status === "granted" ? <DistanceChip kind={v.mode.kind} metres={distance} /> : null}
           <View style={{ alignSelf: "center", maxWidth: "92%", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: camera.pill }}>
             <Text variant="footnote" style={{ color: camera.ink, textAlign: "center" }} testID="coverage-text">
               <Text variant="footnote" style={{ color: camera.ink, fontWeight: "600" }}>
