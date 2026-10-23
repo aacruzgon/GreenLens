@@ -1,7 +1,11 @@
 """Step 2 of the ingestion (training.md §10, tagging): build/chunks → seed/chunks.
 
     python3 -m ml.knowledge.tag                          # claude-sonnet-5-5, medium effort
-    python3 -m ml.knowledge.tag --model claude-opus-5-5  # re-tag a source that failed its spot check
+    python3 -m ml.knowledge.tag --model claude-opus-5-5  # every source on another model, for a trial
+
+A source that fails its spot check is re-tagged with claude-opus-5-5 by naming it in plan.yaml's
+`tag_models`, so every later run, on any machine, tags it with Opus again; `--model` overrides
+the plan for every source.
 
 Each chunk gets `crop`, `problem`, `organism` (a seed or plan slug, or null), `topic` and
 `relevant`, and the lists `problems` and `organisms`: every one the chunk describes or compares,
@@ -36,7 +40,7 @@ from ml.knowledge import llm, validate
 from ml.knowledge.chunk import CHUNKS
 from ml.knowledge.seed import ROOT, SEED, load, read_yaml
 
-PLAN = ROOT / "ml/knowledge/plan.yaml"
+PLAN = validate.PLAN
 TAGS = ROOT / "ml/knowledge/build/tags"
 TOPICS = ["symptoms", "conditions", "management", "care", "recognition"]
 EFFORT = "medium"
@@ -117,14 +121,16 @@ def tag_chunk(model: llm.Llm, model_id: str, system: str, sch: dict, c: dict) ->
 
 
 def run(seed_root: Path = SEED, plan_path: Path = PLAN, chunks: Path = CHUNKS, tags: Path = TAGS,
-        model: llm.Llm | None = None, model_id: str = llm.TAG_MODEL, dose=validate.cargo_dose_check,
+        model: llm.Llm | None = None, model_id: str | None = None, dose=validate.cargo_dose_check,
         sanitize=llm.sanitize, sources: list[str] | None = None, sample_seed: int = 0) -> dict:
-    """Tags every chunk file (or only `sources`); returns {source_id: {kept, dropped, sample}}."""
+    """Tags every chunk file (or only `sources`); returns {source_id: {kept, dropped, sample}}.
+    Each source uses `model_id`, else its plan.yaml `tag_models` entry, else TAG_MODEL."""
     seed = load(seed_root)
     plan = read_yaml(plan_path) if plan_path.exists() else {}
     crops, problems, organisms = ids(seed, plan)
     facts_only = set(plan.get("facts_only_sources", []))
     by_hand = plan.get("withheld_chunks") or {}
+    per_source = plan.get("tag_models") or {}
     system, sch = system_prompt(crops, problems, organisms), sanitize(schema(crops, problems, organisms))
     model = model or llm.Llm()
     tags.mkdir(parents=True, exist_ok=True)
@@ -135,9 +141,10 @@ def run(seed_root: Path = SEED, plan_path: Path = PLAN, chunks: Path = CHUNKS, t
         if sources and source_id not in sources:
             continue
         records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        mid = model_id or per_source.get(source_id, llm.TAG_MODEL)
         decided = []
         for c in records:
-            t = tag_chunk(model, model_id, system, sch, c)
+            t = tag_chunk(model, mid, system, sch, c)
             decided.append({**c, **t, "dropped": None if t["relevant"] else "not relevant"})
         failing = {f["id"]: f for f in dose(seed.products, [{"id": d["id"], "text": d["text"]}
                                                             for d in decided if not d["dropped"]])}
@@ -159,14 +166,15 @@ def run(seed_root: Path = SEED, plan_path: Path = PLAN, chunks: Path = CHUNKS, t
         sample = sorted(rng.sample([d["id"] for d in decided], max(1, round(len(decided) / 10))))
         summary[source_id] = {"kept": len(kept), "dropped": sum(1 for d in decided if d["dropped"]),
                               "withheld": sum(1 for d in decided if d["withheld"]), "sample": sample,
-                              "committed": bool(kept) and source_id not in facts_only}
+                              "committed": bool(kept) and source_id not in facts_only,
+                              "model": mid}
     return summary
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--seed", type=Path, default=SEED)
-    ap.add_argument("--model", default=llm.TAG_MODEL)
+    ap.add_argument("--model", help="tag every source with this model, whatever plan.yaml says")
     ap.add_argument("--source", action="append", help="tag only this source (repeatable)")
     args = ap.parse_args()
     model = llm.Llm()
@@ -177,8 +185,8 @@ def main() -> int:
         return 2
     for source_id, s in summary.items():
         where = "" if s["committed"] or not s["kept"] else " (facts only: not in seed/chunks)"
-        print(f"{source_id}: kept {s['kept']}{where}, dropped {s['dropped']}, withheld {s['withheld']}; "
-              f"spot-check {', '.join(s['sample'])}", file=sys.stderr)
+        print(f"{source_id} ({s['model']}): kept {s['kept']}{where}, dropped {s['dropped']}, "
+              f"withheld {s['withheld']}; spot-check {', '.join(s['sample'])}", file=sys.stderr)
     print(model.usage.report(), file=sys.stderr)
     return 0
 

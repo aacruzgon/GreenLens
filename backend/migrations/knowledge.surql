@@ -105,7 +105,7 @@ UPSERT treatment:`soil_test_lime_ber` CONTENT { kind: 'cultural', sources: [sour
 UPSERT treatment:`soil_test_potassium_early_blight` CONTENT { kind: 'cultural', sources: [source:`clemson_hgic_tomato_diseases`], text: 'Test the garden soil every year, keep potassium at a good level, lime as the soil test advises and side-dress with calcium nitrate; this makes early blight less severe. Follow the soil test and the fertiliser label.' } RETURN NONE;
 UPSERT treatment:`space_plants_apart` CONTENT { kind: 'cultural', sources: [source:`clemson_hgic_tomato_diseases`, source:`isu_septoria_leaf_spot`], text: 'Space plants so they do not touch each other. The extra room lets air move between them, so the leaves stay less humid.' } RETURN NONE;
 UPSERT treatment:`uv_absorbing_greenhouse_film` CONTENT { kind: 'mechanical', sources: [source:`edis_in286_sweetpotato_whitefly`], text: 'Cover a greenhouse with UV-absorbing plastic film. Whiteflies enter these greenhouses less often.' } RETURN NONE;
-DELETE product WHERE id NOT IN [product:`acetamiprid`, product:`bacillus_thuringiensis`, product:`beauveria_bassiana`, product:`bifenthrin`, product:`canola_oil`, product:`carbaryl`, product:`chlorothalonil`, product:`copper`, product:`cyazypyr`, product:`cyfluthrin`, product:`cyhalothrin`, product:`dinotefuran`, product:`horticultural_oil`, product:`imidacloprid`, product:`insecticidal_oil`, product:`insecticidal_soap`, product:`malathion`, product:`mancozeb`, product:`neonicotinoid`, product:`organophosphate`, product:`permethrin`, product:`pyrethrin`, product:`pyrethroid`, product:`spinosad`, product:`thiamethoxam`, product:`verticillium_lecanii`] RETURN NONE;
+DELETE product WHERE id NOT IN [product:`acetamiprid`, product:`bacillus_thuringiensis`, product:`beauveria_bassiana`, product:`bifenthrin`, product:`canola_oil`, product:`carbaryl`, product:`chlorothalonil`, product:`copper`, product:`cyazypyr`, product:`cyfluthrin`, product:`cyhalothrin`, product:`dinotefuran`, product:`horticultural_oil`, product:`imidacloprid`, product:`insecticidal_oil`, product:`insecticidal_soap`, product:`malathion`, product:`mancozeb`, product:`neem`, product:`neonicotinoid`, product:`organophosphate`, product:`permethrin`, product:`pyrethrin`, product:`pyrethroid`, product:`spinosad`, product:`sulfur`, product:`sulphur`, product:`thiamethoxam`, product:`verticillium_lecanii`] RETURN NONE;
 UPSERT product:`acetamiprid` CONTENT { broad_spectrum: true, name: 'acetamiprid' } RETURN NONE;
 UPSERT product:`bacillus_thuringiensis` CONTENT { broad_spectrum: false, name: 'bacillus thuringiensis' } RETURN NONE;
 UPSERT product:`beauveria_bassiana` CONTENT { broad_spectrum: true, name: 'beauveria bassiana' } RETURN NONE;
@@ -124,12 +124,15 @@ UPSERT product:`insecticidal_oil` CONTENT { broad_spectrum: true, name: 'insecti
 UPSERT product:`insecticidal_soap` CONTENT { broad_spectrum: true, name: 'insecticidal soap' } RETURN NONE;
 UPSERT product:`malathion` CONTENT { broad_spectrum: true, name: 'malathion' } RETURN NONE;
 UPSERT product:`mancozeb` CONTENT { broad_spectrum: false, name: 'mancozeb' } RETURN NONE;
+UPSERT product:`neem` CONTENT { broad_spectrum: true, name: 'neem' } RETURN NONE;
 UPSERT product:`neonicotinoid` CONTENT { broad_spectrum: true, name: 'neonicotinoid' } RETURN NONE;
 UPSERT product:`organophosphate` CONTENT { broad_spectrum: true, name: 'organophosphate' } RETURN NONE;
 UPSERT product:`permethrin` CONTENT { broad_spectrum: true, name: 'permethrin' } RETURN NONE;
 UPSERT product:`pyrethrin` CONTENT { broad_spectrum: true, name: 'pyrethrin' } RETURN NONE;
 UPSERT product:`pyrethroid` CONTENT { broad_spectrum: true, name: 'pyrethroid' } RETURN NONE;
 UPSERT product:`spinosad` CONTENT { broad_spectrum: true, name: 'spinosad' } RETURN NONE;
+UPSERT product:`sulfur` CONTENT { broad_spectrum: true, name: 'sulfur' } RETURN NONE;
+UPSERT product:`sulphur` CONTENT { broad_spectrum: true, name: 'sulphur' } RETURN NONE;
 UPSERT product:`thiamethoxam` CONTENT { broad_spectrum: true, name: 'thiamethoxam' } RETURN NONE;
 UPSERT product:`verticillium_lecanii` CONTENT { broad_spectrum: true, name: 'verticillium lecanii' } RETURN NONE;
 DELETE classifier_label WHERE id NOT IN [classifier_label:['disease-head-v3c-2026-10-20', 11], classifier_label:['disease-head-v3c-2026-10-20', 12], classifier_label:['disease-head-v3c-2026-10-20', 13], classifier_label:['disease-head-v3c-2026-10-20', 14], classifier_label:['disease-head-v3c-2026-10-20', 15], classifier_label:['disease-head-v3c-2026-10-20', 16], classifier_label:['disease-head-v3c-2026-10-20', 17], classifier_label:['disease-head-v3c-2026-10-20', 18]] RETURN NONE;

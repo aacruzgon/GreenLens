@@ -18,12 +18,21 @@ doesn't, 2 when the dose check can't run.
   fails: model output is never loaded unreviewed (training.md §10, review). `--drafts` runs
   every other check on the drafts. A problem's `reviewed_by` and `reviewed_at` are signed
   together: a draft has both empty, and one without the other fails even with `--drafts`.
+- For the real seed, plan.yaml's lists are checked against it: every facts-only source and
+  per-source tagging model names a source in sources.yaml, each tagging model is one llm.py
+  knows, and every withheld chunk names a source and stays out of seed/chunks, with no facts-only
+  source's wording in there either. Once fetch and chunk have run, a withheld id must also be in
+  build/chunks: ids are positions on the page, so a typo, or a page that lost a paragraph, would
+  otherwise commit the excerpt unnoticed.
+- A product marked broad_spectrum false can't name one marked true ("neem oil" beside "neem"):
+  the plan validator matches the longer name first, so the false would win.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from collections import Counter
@@ -32,10 +41,14 @@ from pathlib import Path
 
 import jsonschema
 
-from ml.knowledge.seed import ROOT, SEED, Seed, load
+from ml.knowledge.llm import PRICES
+from ml.knowledge.seed import ROOT, SEED, Seed, load, read_yaml
 
 SCHEMA = ROOT / "ml/knowledge/schema/seed.schema.json"
 BACKEND = ROOT / "backend"
+PLAN = ROOT / "ml/knowledge/plan.yaml"
+# chunk.py's CHUNKS, not imported from it: chunk.py pulls in fetch.py and httpx.
+BUILT_CHUNKS = ROOT / "ml/knowledge/build/chunks"
 SINGULAR = {"sources": "source", "species": "species", "problems": "problem",
             "organisms": "organism", "treatments": "treatment"}
 
@@ -79,9 +92,11 @@ def _schema_errors(name: str, schema: dict, value, where: str) -> list[str]:
     return out
 
 
-def check(seed: Seed, dose: DoseChecker | None = cargo_dose_check, drafts: bool = False) -> list[str]:
+def check(seed: Seed, dose: DoseChecker | None = cargo_dose_check, drafts: bool = False,
+          plan: dict | None = None, built: Path | None = None) -> list[str]:
     """Every problem with the seed, as one line each naming its file. Empty when it passes.
-    With `drafts`, records nobody has reviewed yet pass too."""
+    With `drafts`, records nobody has reviewed yet pass too. `plan` and `built` default to
+    plan.yaml and build/chunks for the real seed, and to none for any other."""
     sch, measurable = schemas()
     errors: list[str] = []
     rel = lambda p: str(p.relative_to(seed.root)) if p.is_relative_to(seed.root) else str(p)
@@ -145,6 +160,15 @@ def check(seed: Seed, dose: DoseChecker | None = cargo_dose_check, drafts: bool 
         if k > 1:
             errors.append(f"products.yaml: {n!r} is listed {k} times (names are matched "
                           "case-insensitively)")
+    # The plan validator matches the longest name first, so "neem oil": false would win over
+    # "neem": true in a step that says "neem oil".
+    harmful = [p["name"].lower() for p in seed.products["products"] if p["broad_spectrum"]]
+    for p in seed.products["products"]:
+        name = p["name"].lower()
+        inside = [h for h in harmful if h != name and re.search(rf"\b{re.escape(h)}\b", name)]
+        if not p["broad_spectrum"] and inside:
+            errors.append(f"products.yaml: {name!r} is broad_spectrum false but names {inside[0]!r}, which "
+                          "is true; the longer name would win in a step, so mark it true")
     soil_keys = Counter((s["aspect"], s["value"]) for s in seed.soil_conditions)
     for (a, v), k in sorted(soil_keys.items()):
         if k > 1:
@@ -286,6 +310,45 @@ def check(seed: Seed, dose: DoseChecker | None = cargo_dose_check, drafts: bool 
                       {"id": f"{w}: what_to_do", "text": s["what_to_do"]}]
         for f in dose(seed.products, texts):
             errors.append(f"{f['id']}: fails the dose check ({f['rule']}): {f['reason']}")
+
+    # 10. plan.yaml's lists name what exists, and keep their chunks out of the seed.
+    if plan is None and seed.root.resolve() == SEED.resolve() and PLAN.exists():
+        plan = read_yaml(PLAN) or {}
+        built = built or (BUILT_CHUNKS if BUILT_CHUNKS.is_dir() else None)
+    if plan is not None:
+        errors += plan_errors(seed, plan, built)
+    return errors
+
+
+def plan_errors(seed: Seed, plan: dict, built: Path | None = None) -> list[str]:
+    """Check 10: facts-only sources, tagging models and withheld chunks against the seed, and
+    against build/chunks when it's given."""
+    errors = []
+    sources = {s["id"] for s in seed.sources}
+    committed = {c["id"]: c["source_id"] for c in seed.chunks}
+    facts_only = plan.get("facts_only_sources") or []
+    for key, ids in (("facts_only_sources", facts_only), ("tag_models", plan.get("tag_models") or {})):
+        for s in ids:
+            if s not in sources:
+                errors.append(f"plan.yaml: {key} names {s!r}, which isn't in sources.yaml")
+    for s, model in sorted((plan.get("tag_models") or {}).items()):
+        if model not in PRICES:
+            errors.append(f"plan.yaml: tag_models gives {s!r} the model {model!r}, which llm.py doesn't know "
+                          f"({', '.join(sorted(PRICES))})")
+    for s in sorted({src for src in committed.values() if src in facts_only}):
+        errors.append(f"chunks/{s}.jsonl: {s} is a facts-only source, so its wording can't be committed")
+    for i in plan.get("withheld_chunks") or {}:
+        src = i.rsplit(".", 1)[0]
+        on_page = built / f"{src}.jsonl" if built else None
+        page_ids = ({json.loads(line)["id"] for line in on_page.read_text(encoding="utf-8").splitlines()
+                     if line.strip()} if on_page and on_page.exists() else None)
+        if src not in sources:
+            errors.append(f"plan.yaml: withheld chunk {i!r} names no source in sources.yaml")
+        elif i in committed:
+            errors.append(f"chunks/{src}.jsonl: withheld chunk {i!r} is committed; run tag.py again")
+        elif page_ids is not None and i not in page_ids:
+            errors.append(f"plan.yaml: withheld chunk {i!r} isn't in build/chunks/{src}.jsonl; check the id "
+                          "against the page")
     return errors
 
 
