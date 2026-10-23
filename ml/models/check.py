@@ -10,14 +10,17 @@ Fails (exit 1) unless:
   never overwritten);
 - a label matrix or disease head entry's name ends in its version, and its `label_set_version`
   or `classifier_labels_version` equals that version;
+- a disease head entry lists its `labels` (`species/problem` by output index), the copy that lets
+  `classifier_labels` and the seed comparison run where the model files aren't (CI);
 - NOTICES.md has a `## <entry name>` section for every entry;
 - for each file present locally: its SHA-256 matches; a label matrix's or head's own version
   equals its entry's; a head's `features` names that manifest's `bioclip` file
   (`<version>+<first 16 hex of its SHA-256>`, ml/models/FORMATS.md), as the worker requires;
   a plant probe's file is a one-class `plant_probe` head with its entry's version and the same
-  `features` rule;
+  `features` rule; a disease head's labels equal its entry's `labels`;
 - when the knowledge seed's classifier_labels.yaml exists, each manifest has the head its
-  `model_version` names, and each of its rows equals that head's label at the same index (the
+  `model_version` names; each of its rows equals that head's label at the same index, from the
+  entry's `labels`; and a species in it has every one of the head's classes for that species (the
   file maps only the species whose problems are all in the seed, so it can have fewer rows than
   the head has classes; skipped, with a note, until the file exists).
 
@@ -80,6 +83,11 @@ def check(models: Path, files: Path) -> tuple[list[str], list[str]]:
                     problems.append(f"{where}: the name doesn't end in version {e['version']!r}")
                 if e.get(key) != e["version"]:
                     problems.append(f"{where}: {key} {e.get(key)!r} differs from version {e['version']!r}")
+            if key == "classifier_labels_version":
+                try:
+                    problems += seed_problems(where, e["version"], head_rows(e), notes)
+                except ValueError as err:
+                    problems.append(f"{where}: {err}")
 
             path = files / e["file"]
             if not path.is_file():
@@ -103,8 +111,29 @@ def check(models: Path, files: Path) -> tuple[list[str], list[str]]:
                 if doc.get("features") != want:
                     problems.append(f"{where}: features {doc.get('features')!r}, but this manifest's "
                                     f"bioclip file is {want!r}; the worker would refuse it")
-                problems += seed_problems(where, doc, notes)
+                try:
+                    want_rows = head_rows(e)
+                except ValueError:
+                    continue  # reported above
+                got = [{k: l.get(k) for k in ("index", "label", "species_id", "problem_id")}
+                       for l in doc.get("labels", [])]
+                if got != want_rows:
+                    problems.append(f"{where}: the file's labels differ from the entry's `labels`")
     return problems, notes
+
+
+def head_rows(entry: dict) -> list[dict]:
+    """A disease head's rows from its manifest entry's `labels`, `species/problem` by output index."""
+    labels = entry.get("labels")
+    if not isinstance(labels, list) or not labels:
+        raise ValueError("no `labels`: list the head file's labels, `species/problem` by output index")
+    rows = []
+    for i, label in enumerate(labels):
+        species, sep, problem = str(label).partition("/")
+        if not (sep and species and problem):
+            raise ValueError(f"labels[{i}] {label!r} isn't `species/problem`")
+        rows.append({"index": i, "label": label, "species_id": species, "problem_id": problem})
+    return rows
 
 
 def features_problems(where: str, head: dict, bioclip: dict | None, version: str) -> list[str]:
@@ -143,26 +172,34 @@ def seed_head_problems(manifest: str, entries: list[dict]) -> list[str]:
             f"{seed.get('model_version')!r} (has {', '.join(sorted(heads)) or 'none'})"]
 
 
-def seed_problems(where: str, head: dict, notes: list[str]) -> list[str]:
-    """Each of classifier_labels.yaml's rows against this head's label at the same index."""
+def seed_problems(where: str, version: str, labels: list[dict], notes: list[str]) -> list[str]:
+    """Each of classifier_labels.yaml's rows against this head's label at the same index, and
+    every head class of each species it maps."""
     seed = seed_labels()
     if seed is None:
         msg = f"{SEED_LABELS.relative_to(ROOT)} doesn't exist yet: head labels not compared with the seed"
         if msg not in notes:
             notes.append(msg)
         return []
-    if seed.get("model_version") != head.get("version"):
+    if seed.get("model_version") != version:
         return []  # another head of a change-over; seed_head_problems checks the seed's is listed
-    labels = {l.get("index"): l for l in head["labels"]}
+    by_index = {l["index"]: l for l in labels}
     keys = ("label", "species_id", "problem_id")
     problems = []
-    for r in seed.get("labels", []):
-        l = labels.get(r.get("index"))
+    rows = seed.get("labels", [])
+    for r in rows:
+        l = by_index.get(r.get("index"))
         if l is None:
             problems.append(f"{where}: {SEED_LABELS.name} index {r.get('index')} isn't one of the head's")
         elif any(r.get(k) != l.get(k) for k in keys):
             problems.append(f"{where}: {SEED_LABELS.name} index {r['index']} is "
                             f"{[r.get(k) for k in keys]}, the head's {[l.get(k) for k in keys]}")
+    have = {r.get("index") for r in rows}
+    for species in sorted({r.get("species_id") for r in rows}):
+        lost = [l["label"] for l in labels if l["species_id"] == species and l["index"] not in have]
+        if lost:
+            problems.append(f"{where}: {SEED_LABELS.name} maps {species} without {', '.join(lost)}; "
+                            "the worker would return a class the API has no row for")
     return problems
 
 

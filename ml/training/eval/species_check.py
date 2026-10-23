@@ -6,8 +6,9 @@
 Every plant shot of every dev case is embedded whole by BioCLIP 2, as the worker's pass 1 does
 (`ml.pdm_vision.features`, cached). For each `bioclip_labels_*` entry in the manifest:
 
-- **Zero-shot:** softmax of 100 · e · tᵀ over the matrix's species rows (T 1; a temperature
-  doesn't change the ranking).
+- **Zero-shot:** softmax of 100 / T · e · tᵀ over the matrix's species rows, T the `bioclip`
+  entry's `species_temperature`, as the worker computes it. T doesn't change a shot's ranking,
+  but it does change a case's (its shots are averaged) and the average with the head.
 - **Head:** the species head alone, over its crops, at its own temperature.
 - **Average:** models.md 6's rule. The head's and zero-shot's probabilities over the head's
   crops are averaged and scaled to zero-shot's share of those crops; with a matrix whose every
@@ -15,9 +16,8 @@ Every plant shot of every dev case is embedded whole by BioCLIP 2, as the worker
 
 Each is scored per shot and per case, the shots combined with the worker's weights (whole plant
 and flower or fruit 2, leaf close-up and underside 1; `vision::perception::heads::combine_species`).
-A species the matrix can't name (squash, outside the seed) counts as a miss for zero-shot; the
-head and the average are scored on the head's crops only. Writes a markdown report under
-ml/training/eval/reports/.
+A species the matrix can't name counts as a miss for zero-shot; the head and the average are
+scored on the head's crops only. Writes a markdown report under ml/training/eval/reports/.
 """
 
 from __future__ import annotations
@@ -33,26 +33,33 @@ import numpy as np
 
 from ml.pdm_vision import headfile
 from ml.pdm_vision.features import Embedder
+from ml.training.eval.calibrate import SHOT_WEIGHT
 from ml.training.heads.train_disease import softmax
-from ml.training.heads.train_species import combine, dev_rows
+from ml.training.heads.train_species import LOGIT_SCALE, combine, dev_rows, matrix_species
 
 ROOT = Path(__file__).resolve().parents[3]
 EVAL = ROOT / "ml/training/eval"
 REPORTS = EVAL / "reports"
 MODELS = ROOT / "ml/models"
 RUNS = ROOT / "ml/training/runs/heads"
-WEIGHTS = {"whole_plant": 2.0, "flower_fruit": 2.0, "leaf_closeup": 1.0, "leaf_underside": 1.0}
-LOGIT_SCALE = 100.0
 
 
-def matrices() -> list[dict]:
+def manifest_entries() -> list[dict]:
+    return tomllib.loads((MODELS / "manifest.toml").read_text())["model"]
+
+
+def species_temperature(entries: list[dict]) -> float:
+    """The `bioclip` entry's species_temperature, which the worker divides the logits by."""
+    bioclip = next(e for e in entries if e["name"] == "bioclip")
+    return float(bioclip.get("config", {}).get("species_temperature", 1.0))
+
+
+def matrices(entries: list[dict]) -> list[dict]:
     out = []
-    for e in tomllib.loads((MODELS / "manifest.toml").read_text())["model"]:
+    for e in entries:
         if e["name"].startswith("bioclip_labels"):
-            m = headfile.read_label_matrix(MODELS / "files" / e["file"])
-            idx = [i for i, l in enumerate(m["labels"]) if l["table"] == "species"]
-            out.append({"version": e["version"], "source": e["source"], "rows": m["rows"][idx],
-                        "ids": [m["labels"][i]["id"] for i in idx]})
+            rows, ids = matrix_species(e)
+            out.append({"version": e["version"], "source": e["source"], "rows": rows, "ids": ids})
     return out
 
 
@@ -63,7 +70,7 @@ def by_case(rows: list[dict], p: np.ndarray) -> tuple[list[str], np.ndarray]:
         groups[r["case"]].append(i)
     truth, out = [], []
     for case, ix in sorted(groups.items()):
-        w = np.asarray([WEIGHTS[rows[i]["kind"]] for i in ix])
+        w = np.asarray([SHOT_WEIGHT[rows[i]["kind"]] for i in ix])
         out.append((p[ix] * w[:, None]).sum(0) / w.sum())
         truth.append(rows[ix[0]]["species_id"])
     return truth, np.stack(out)
@@ -91,9 +98,14 @@ def main(argv=None) -> int:
     ap.add_argument("--out", default=f"species-check-{today}")
     args = ap.parse_args(argv)
 
+    rows = dev_rows(args.manifest)
+    if not rows:
+        print("no dev cases: nothing to score")
+        return 0
     head = headfile.read_linear_head(RUNS / args.head / f"{args.head}.json")
     crops = [l["species_id"] for l in head["labels"]]
-    rows = dev_rows(args.manifest)
+    entries = manifest_entries()
+    t_species = species_temperature(entries)
     X = Embedder().files([r["path"] for r in rows])
     truth = [r["species_id"] for r in rows]
     p_head = softmax((X @ head["weight"].T + head["bias"]) / head["temperature"])
@@ -103,8 +115,8 @@ def main(argv=None) -> int:
     everything = np.ones(len(truth), bool)
 
     results = []
-    for m in matrices():
-        p_zs = softmax(LOGIT_SCALE * X @ m["rows"].T)
+    for m in matrices(entries):
+        p_zs = softmax(LOGIT_SCALE / t_species * X @ m["rows"].T)
         missing = [c for c in crops if c not in m["ids"]]
         r = {"matrix": m["version"], "source": m["source"], "species": len(m["ids"]), "missing_crops": missing}
         _, p_zs_case = by_case(rows, p_zs)
@@ -124,7 +136,8 @@ def main(argv=None) -> int:
         results.append(r)
 
     kinds = collections.Counter(r["kind"] for r in rows)
-    report = {"date": today, "head": args.head, "head_crops": crops, "shots": len(rows),
+    report = {"date": today, "head": args.head, "head_crops": crops, "species_temperature": t_species,
+              "shots": len(rows),
               "cases": len(case_truth), "kinds": dict(kinds), "results": results}
     REPORTS.mkdir(parents=True, exist_ok=True)
     (REPORTS / f"{args.out}.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -139,7 +152,8 @@ def markdown(rep: dict, name: str) -> str:
              f"({name}.json has every number). {rep['shots']} plant shots of {rep['cases']} dev cases "
              f"({', '.join(f'{k} {v}' for k, v in sorted(rep['kinds'].items()))}); the species head "
              f"`{rep['head']}` names {', '.join(rep['head_crops'])}.", "",
-             "Zero-shot is over the matrix's species rows at T 1; \"head\" is the species head alone; "
+             f"Zero-shot is over the matrix's species rows at the manifest's `species_temperature` "
+             f"{rep.get('species_temperature', 1.0):g}; \"head\" is the species head alone; "
              "\"average\" is models.md 6's rule (with every species of the matrix one of the head's crops, "
              "the plain average). Rows without \"all\" count only the head's crops, so the three compare.", ""]
     for r in rep["results"]:

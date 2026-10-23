@@ -218,6 +218,17 @@ licence                   = "Data CC BY 4.0 (PlantDoc, TOM2024, Tomato-Pakistan 
 source                    = "logistic regression (C=5: the best val top-1 per crop within one standard error of the best dev top-3) on BioCLIP 2 fp16 features of our leaf detector's crops, 4 augmented views each, from PlantDoc, TOM2024, Tomato-Pakistan 2026, PlantCity, Pretoria's and Makerere's maize; 19 classes (tomato mosaic virus and corn curvularia leaf spot dropped: no knowledge profile); ml/training/heads/train_disease.py --features crops --views 4 --select-on dev-top3; report in ml/training/heads/reports/"
 runs_on                   = "perception"
 classifier_labels_version = "disease-head-v3c-2026-10-20"
+# The head file's labels by output index, so classifier_labels and check.py's seed comparison
+# run where the model files aren't (CI); check.py compares them with the file where it is.
+labels = [
+  "apple/apple_cedar_apple_rust", "apple/apple_scab", "apple/healthy",
+  "corn/corn_common_rust", "corn/corn_gray_leaf_spot", "corn/corn_northern_leaf_blight", "corn/healthy",
+  "grape/grape_black_rot", "grape/healthy",
+  "pepper/healthy", "pepper/pepper_bacterial_leaf_spot",
+  "tomato/healthy", "tomato/tomato_bacterial_spot", "tomato/tomato_early_blight", "tomato/tomato_late_blight",
+  "tomato/tomato_leaf_mold", "tomato/tomato_septoria_leaf_spot", "tomato/tomato_spider_mites",
+  "tomato/tomato_yellow_leaf_curl_virus",
+]
 
   # T_disease (1.8206, fitted on the evaluation set's dev cases, their single-crop leaf photos;
   # evaluation.md §5) lives in the head file's `temperature` only (ml/models/FORMATS.md), so it

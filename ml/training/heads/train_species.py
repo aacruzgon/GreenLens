@@ -78,12 +78,17 @@ def dev_rows(manifest: Path) -> list[dict]:
     return rows
 
 
+def matrix_species(entry: dict) -> tuple[np.ndarray, list[str]]:
+    """A label matrix entry's species rows and their ids (its organism rows left out)."""
+    doc = headfile.read_label_matrix(FILES / entry["file"])
+    idx = [i for i, label in enumerate(doc["labels"]) if label["table"] == "species"]
+    return doc["rows"][idx], [doc["labels"][i]["id"] for i in idx]
+
+
 def label_matrix() -> tuple[np.ndarray, list[str], str]:
     """The species rows of the label matrix the API asks for, their ids and its version."""
     entry = current.matrix_entry(tomllib.loads((ROOT / "ml/models/manifest.toml").read_text())["model"])
-    doc = headfile.read_label_matrix(FILES / entry["file"])
-    idx = [i for i, label in enumerate(doc["labels"]) if label["table"] == "species"]
-    return doc["rows"][idx], [doc["labels"][i]["id"] for i in idx], entry["version"]
+    return *matrix_species(entry), entry["version"]
 
 
 def combine(p_zs: np.ndarray, ids: list[str], p_head: np.ndarray, supported: list[str]) -> np.ndarray:
