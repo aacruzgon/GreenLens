@@ -1,6 +1,6 @@
 # PDM Frontend Architecture
 
-> **Status:** Draft v0.4.11, 2026-10-23. v0.4.11: the LiDAR module's JavaScript surface as built in F5: the shot's report, `sampleDepth`, the world map per garden, `removeWorldMaps` and `GardenView` (section 13); the scan stream stays open 25 s in the background while the Live Activity runs (section 10). v0.4.10: `fflate`, and `expo-image-manipulator` sampling the diagnosis's photo for its tint from `expo-image`'s cache (section 4; design open decision 9). v0.4.9: `@expo/ui` gives the live analysis's More button SwiftUI's `Menu` on iOS (section 4). v0.4.8: `AuthBridge` registers the token provider once per sign-in, before the first authed request (section 8). v0.4.7: "Forgot password?" resets the password with an email code (sections 6 and 8). v0.4.6: two-step sign-in is a code by text to the phone given at sign-up, with Clerk's test numbers in development (section 8). v0.4.5: sign-in has no authenticator-app second factor; a new device is confirmed with an email code. v0.4.4: section 4 adds `expo-symbols` and Urbanist, which F0 uses.
+> **Status:** Draft v0.4.12, 2026-10-23. v0.4.12: chat as built in F6: the stream's event name comes from the SSE `event:` line, the retried send's JSON replay, and the proposed `answer_block` (section 10); section 20 lists the contract changes F6 still needs, held in `src/domain/proposed.ts` until the backend has them. v0.4.11: the LiDAR module's JavaScript surface as built in F5: the shot's report, `sampleDepth`, the world map per garden, `removeWorldMaps` and `GardenView` (section 13); the scan stream stays open 25 s in the background while the Live Activity runs (section 10). v0.4.10: `fflate`, and `expo-image-manipulator` sampling the diagnosis's photo for its tint from `expo-image`'s cache (section 4; design open decision 9). v0.4.9: `@expo/ui` gives the live analysis's More button SwiftUI's `Menu` on iOS (section 4). v0.4.8: `AuthBridge` registers the token provider once per sign-in, before the first authed request (section 8). v0.4.7: "Forgot password?" resets the password with an email code (sections 6 and 8). v0.4.6: two-step sign-in is a code by text to the phone given at sign-up, with Clerk's test numbers in development (section 8). v0.4.5: sign-in has no authenticator-app second factor; a new device is confirmed with an email code. v0.4.4: section 4 adds `expo-symbols` and Urbanist, which F0 uses.
 > v0.4.3: the build plan (section 18) follows the new [roadmap](roadmap.md): the iPhone first in the Conservatory direction, F0 on Oct 20 to the web build on Oct 25. v0.4.2: the backend's OpenAPI spec is committed, so the app uses generated contract types from day 1 instead of hand-written ones (section 9, generated types; build plan). v0.4.1: the schema links point to `backend/migrations/schema.surql`. v0.4 applies the third audit and contracts v0.8.2: species photo paths carry a content hash, a failed scan never holds a question, push coverage, invalidations for confirmed plan revisions, the closer-photo rule, the `SFSafariViewController` cookie note and the CORS preflight reason.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Images:** event URLs arrive fresh, and the cache key is the image ID or the URL path; species photos carry their credit.
@@ -657,6 +657,8 @@ The reducer is tested against the example run in contracts 4, a species-change r
 
 The sequence is in [flows.md](flows.md#9-chat-turn).
 
+**As built in F6.** `api/chatStream.ts` sends the message and decodes each event from the SSE `event:` line, since `data:` holds the variant's fields only (contracts 8); a `200 application/json` answer is the replay `{ message }`, which `openapi.json` doesn't type. The proposed `answer_block` event is read too, and only mock mode sends it until the backend has it (section 20, row 15). `Message` doesn't store `memory_saved` or `rescan_requested`, so the screen keeps them from the turn for the rest of the visit.
+
 ---
 
 ## 11. Feature modules
@@ -1038,6 +1040,17 @@ The third audit added (v0.8.2):
 - failing a scan supersedes its open question, and a guided check that finishes on a failed scan only stores its result, for a resubmit;
 - `POST /tasks` refuses a `scan_id` that is missing or being deleted;
 - species photos are computed from `species_id` when read or sent, and keyed by a content hash, so a reseed never shows an old photo with a new credit.
+
+### F6: what chat still needs (Oct 23)
+
+Built in F6 against the contracts as they are; each shape below is the app's proposal, hand-written in `app/src/domain/proposed.ts` and sent only by mock mode until the backend lands it (a `domain` type, its exact-JSON test, contracts 8 and `openapi.json` in one pull request), when `npm run gen:api` replaces it ([roadmap 17](roadmap.md#17-what-the-app-needs-from-other-tracks)).
+
+| # | What is missing | Proposed | Used in |
+|---|---|---|---|
+| 15 | **Answer blocks** ([design 5](../design/design.md#chat-answers-you-can-interact-with)) | `AnswerBlock`, a tagged union by `kind` (`garden_map`, `weather_hours`, `frost_planner`, `measurement_trend`, `candidates`), each with the records it shows and its `call_id`; the `answer_block` event `{ v: 1, block }`; `Message.blocks`, absent when empty; the `show_block(kind, call_id)` tool, checked against the turn's tool results | The blocks in a chat answer |
+| 16 | **Frost tenderness.** The planner chooses the tender plants, but the knowledge base has only `hardiness_zones` | `frost_tender` on each plant of the `frost_planner` block, from a rule or a species field | The frost cover planner |
+| 17 | **A farm record's text.** EON E10.3 opens an `era` record's text in a sheet, but `FarmCitation` has no text and no route returns a record | `text` on a `FarmCitation` of an `era` connector (synthetic, so nothing private), or `GET /farm-records/{id}` | The record sheet; without it the sheet says the text isn't available |
+| 18 | **`Message` and the replay in OpenAPI.** `Message` is inlined in `Page_Message`, and the `200 application/json` replay of `POST /conversations/{id}/messages` isn't typed | Register `Message` and `MessageReplay` as schemas, with the replay as a second `200` content type | `domain/types.ts` names `Message` from `Page_Message`; `chatStream.ts` reads the replay by hand |
 
 ## 21. Sources
 
