@@ -1,3 +1,5 @@
+import { randomUUID } from "crypto";
+
 import { IDS, mockStore, mockTransport, resetMock } from "./index";
 
 const BASE = "https://mock.pdm.local";
@@ -5,7 +7,7 @@ const BASE = "https://mock.pdm.local";
 async function call(method: string, path: string, body?: unknown) {
   const res = await mockTransport.fetch(`${BASE}${path}`, {
     method,
-    headers: { "content-type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+    headers: { "content-type": "application/json", "Idempotency-Key": randomUUID() },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await res.text();
