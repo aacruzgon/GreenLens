@@ -310,15 +310,16 @@ final class GardenView: ExpoView {
   }
 
   /// Places the labels: the selected plant's first, then the plants that need attention, then the nearest. A label
-  /// that would overlap one already placed shrinks to its status dot (garden-3d 5); a dot that would still overlap
-  /// is hidden, and the plant's ring shows its status. With VoiceOver on, nothing is hidden: each label is a plant's
-  /// accessibility element.
+  /// that would overlap one already placed shrinks to its status dot (garden-3d 5). The dot goes above the plant, on
+  /// its crown, or beside the spot above it, whichever is free first; only when none is free is it hidden, and the
+  /// plant's ring shows its status. With VoiceOver on, nothing is hidden: each label is a plant's accessibility
+  /// element.
   private func layoutLabels() {
     let cameraPosition = camera.position(relativeTo: nil)
     let forward = -camera.transform.matrix.columns.2
     let forward3 = SIMD3(forward.x, forward.y, forward.z)
     let visible = bounds.insetBy(dx: -40, dy: -40)
-    var placed: [(node: PlantNode, point: CGPoint, depth: Float)] = []
+    var placed: [(node: PlantNode, point: CGPoint, crown: CGPoint?, depth: Float)] = []
     for node in nodes.values {
       let anchor = node.labelAnchor
       let depth = simd_dot(anchor - cameraPosition, forward3)
@@ -326,7 +327,7 @@ final class GardenView: ExpoView {
         node.label.isHidden = true
         continue
       }
-      placed.append((node, point, depth))
+      placed.append((node, point, arView.project(node.crownAnchor), depth))
     }
     placed.sort { a, b in
       let sa = a.node.id == selectedPlantId, sb = b.node.id == selectedPlantId
@@ -337,22 +338,31 @@ final class GardenView: ExpoView {
     let voiceOver = UIAccessibility.isVoiceOverRunning
     var taken: [CGRect] = []
     func free(_ frame: CGRect) -> Bool { !taken.contains { $0.intersects(frame.insetBy(dx: -2, dy: -2)) } }
-    for (node, point, _) in placed {
+    for (node, point, crown, _) in placed {
       let full = node.label.fullBounds
       let frame = CGRect(x: point.x - full.width / 2, y: point.y - full.height, width: full.width, height: full.height)
-      let dot = CGRect(x: point.x - full.height / 2, y: point.y - full.height, width: full.height, height: full.height)
       if node.id == selectedPlantId || free(frame) {
         node.label.setCompact(false)
         taken.append(frame)
         node.label.isHidden = false
-      } else if free(dot) || voiceOver {
+        node.label.center = CGPoint(x: frame.midX, y: frame.midY)
+        continue
+      }
+      // A dot's places, by centre: above the plant, on its crown, then either side of the spot above it.
+      let side = full.height
+      let above = CGPoint(x: point.x, y: point.y - side / 2)
+      var spots = [above]
+      if let crown { spots.append(crown) }
+      spots += [CGPoint(x: above.x - side, y: above.y), CGPoint(x: above.x + side, y: above.y)]
+      let dots = spots.map { CGRect(x: $0.x - side / 2, y: $0.y - side / 2, width: side, height: side) }
+      if let dot = dots.first(where: free) ?? (voiceOver ? dots.first : nil) {
         node.label.setCompact(true)
         taken.append(dot)
         node.label.isHidden = false
+        node.label.center = CGPoint(x: dot.midX, y: dot.midY)
       } else {
         node.label.isHidden = true
       }
-      node.label.center = CGPoint(x: point.x, y: point.y - node.label.bounds.height / 2)
     }
   }
 
