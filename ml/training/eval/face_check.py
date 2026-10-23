@@ -58,7 +58,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 
 from ml.training.data import faces as F
 
@@ -187,12 +187,13 @@ def matches_a_face(box: dict, faces: list[dict]) -> bool:
 # --- variants -----------------------------------------------------------------------------------
 
 def make_variant(src: Path, dest: Path, long_side: int | None) -> int:
-    """The upload a phone would send: the photo itself (`None`), or at most `long_side` px on
-    the long side with Lanczos at JPEG quality 85. Returns the bytes."""
+    """The upload a phone would send: the photo itself (`None`), or the upright photo (its EXIF
+    orientation applied, as a phone resizes what it shows) at most `long_side` px on the long side
+    with Lanczos at JPEG quality 85. Returns the bytes."""
     if long_side is None:
         return src.stat().st_size
     if not dest.exists():
-        im = Image.open(src).convert("RGB")
+        im = ImageOps.exif_transpose(Image.open(src)).convert("RGB")
         if max(im.size) > long_side:
             s = long_side / max(im.size)
             im = im.resize((max(1, round(im.size[0] * s)), max(1, round(im.size[1] * s))), Image.Resampling.LANCZOS)
@@ -1103,7 +1104,9 @@ def markdown(r: dict, name: str, notes: str = "") -> str:
         "`vision`'s `face_check` example: `decode_upload`, the quality gate, then `FaceDetector::detect` "
         "(YuNet 2026may on the CPU, the whole image at 1,280 px and 1,280 px tiles of the full image at "
         "stride 960) with `FaceConfig::default()` but the threshold, as three uploads: the photo as it is "
-        "(`original`), and at most 3,200 and 2,048 px on the long side (Lanczos, JPEG quality 85).",
+        "(`original`; for the Open Images photos, `faces.py`'s upright re-encode of the Flickr file at JPEG "
+        "quality 95, smaller than the Flickr file), and at most 3,200 and 2,048 px on the long side (Lanczos, "
+        "JPEG quality 85).",
         "",
         f"A face counts when it is {MIN_FACE} px or more across (its box's width) in the stored image "
         f"(1,600 px long side). It is caught when the detected boxes, grown {GROW:.0%} on each side as "
@@ -1201,7 +1204,8 @@ def markdown(r: dict, name: str, notes: str = "") -> str:
     for name_, c in r["cost"].items():
         for v in r["variants"]:
             x = c[v]
-            out.append(f"| {name_} | {v} | {spread(x['upload_mb'], '', 2)} | {spread(x['megapixels'], '', 1)} "
+            label = "original (`faces.py`'s quality-95 re-encode)" if name_ == "openimages" and v == "original" else v
+            out.append(f"| {name_} | {label} | {spread(x['upload_mb'], '', 2)} | {spread(x['megapixels'], '', 1)} "
                        f"| {spread(x['decode_ms'])} | {spread(x['quality_ms'])} | {spread(x['detect_ms'])} "
                        f"| {spread(x['store_ms'])} | {spread(x['total_ms'])} | {spread(x['stored_webp_kb'])} |")
         if "flickr_original_mb" in c:
