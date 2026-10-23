@@ -67,9 +67,9 @@ Full licence texts are in [`licences/`](licences/). The Apache-2.0 and CC-BY-4.0
 - **Authors and citation:** as `bioclip`.
 - **Caveats:** as `bioclip` (TreeOfLife-200M). The species names and templates are ours and carry no third-party terms.
 
-## bioclip_labels_7c923c7c8b4d055b
+## bioclip_labels_edb29fe878952e7b
 
-- **What it is:** text embeddings made by BioCLIP 2's text tower for every species and organism `bioclip_label` in the knowledge seed (`ml/knowledge/seed/species/`, `organisms/`: 5 species and 5 organisms on 2026-10-22), using the openai-imagenet-80 prompt templates.
+- **What it is:** text embeddings made by BioCLIP 2's text tower for every species and organism `bioclip_label` in the knowledge seed (`ml/knowledge/seed/species/`, `organisms/`: 20 species and 5 organisms on 2026-10-22), using the openai-imagenet-80 prompt templates.
 - **Licence:** MIT, as BioCLIP 2. Text: `licences/MIT-bioclip-2.txt`.
 - **Authors and citation:** as `bioclip`.
 - **Caveats:** as `bioclip` (TreeOfLife-200M). The labels are scientific and common names written in our seed, and the templates are open_clip's; neither carries third-party terms.
