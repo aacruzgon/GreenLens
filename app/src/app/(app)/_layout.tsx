@@ -30,7 +30,7 @@ export default function AppLayout() {
         <Stack.Screen name="capture/[scanId]/guided/[kind]" options={{ presentation: "fullScreenModal" }} />
         {/* Analyse replaces capture with the scan, which stays full screen and dark like the camera (design 3.1).
             One screen per scan: `dismissTo` a scan goes back to that scan's screen, never another scan's. */}
-        <Stack.Screen name="scans/[scanId]/index" options={{ presentation: "fullScreenModal" }} getId={({ params }) => params?.scanId as string | undefined} />
+        <Stack.Screen name="scans/[scanId]/index" options={{ presentation: "fullScreenModal" }} dangerouslySingular={(_name, params) => params?.scanId as string | undefined} />
         {/* "See the diagnosis and plan" pushes the result over the analysis; a plant's timeline opens it too. */}
         <Stack.Screen name="scans/[scanId]/result" />
         {/* The plan step by step covers the screen, with Close at the top (design 5, after Crouton). */}
