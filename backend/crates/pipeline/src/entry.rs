@@ -640,13 +640,19 @@ impl Pipeline {
     ///
     /// Masks are optional: one that doesn't fit its image or doesn't decode is left out and
     /// logged, and its region is kept without it. A failed put fails the completion, so the
-    /// worker's retry of `complete` writes them again under new ids; the orphan sweep removes
-    /// the objects of the attempt that failed. A `complete` repeated after the job is done
-    /// writes nothing: the lease is no longer live, and `complete_job` answers
-    /// `AlreadyCompleted`. The lease is checked again after the puts: when it is gone (a
-    /// garden or account deletion cancelled the job meanwhile, and its listing may have missed
-    /// the new objects) the objects are deleted through `deps.blobs`, best effort, and none
-    /// is recorded.
+    /// worker's retry of `complete` writes them again under new ids; the masks this attempt
+    /// already put are deleted first, best effort, and the orphan sweep removes any that
+    /// stay. A `complete` repeated after the job is done writes nothing: the lease is no
+    /// longer live, and `complete_job` answers `AlreadyCompleted`. The lease is checked again
+    /// after the puts: when it is gone (a garden or account deletion cancelled the job
+    /// meanwhile, and its listing may have missed the new objects) the objects are deleted
+    /// through `deps.blobs`, best effort, and none is recorded; a check that finds the job
+    /// already done (a concurrent duplicate `complete` won) does the same.
+    ///
+    /// In `api`, `deps.blobs` sends deletes through the delete queue and waits for the
+    /// outcome, so the answer to a lost lease waits on it too: at worst 5 attempts × the
+    /// 120-second operation timeout, plus about 15 seconds of back-off. Nothing is lost when
+    /// the request drops meanwhile: the queue keeps the delete running.
     async fn store_masks(
         &self,
         lease: &Lease,
@@ -692,7 +698,7 @@ impl Pipeline {
                 .collect::<Vec<_>>()
         })
         .await?;
-        let mut masks = Vec::new();
+        let mut masks: Vec<domain::ports::NewMask> = Vec::new();
         for (region_id, image, rle, png) in encoded {
             let png = match png {
                 Ok(png) => png,
@@ -703,10 +709,16 @@ impl Pipeline {
             };
             let id = self.deps.ids.id();
             let storage_key = domain::ports::ObjectKey::mask(snap.scan.garden_id, scan, id);
-            self.deps
+            if let Err(e) = self
+                .deps
                 .blobs
                 .put(&storage_key, png.into(), domain::ports::ContentType::Png)
-                .await?;
+                .await
+            {
+                let put: Vec<_> = masks.into_iter().map(|m| m.storage_key).collect();
+                self.delete_masks(scan, &put, "masks of a failed put").await;
+                return Err(e.into());
+            }
             masks.push(domain::ports::NewMask {
                 id,
                 image,
@@ -728,16 +740,26 @@ impl Pipeline {
             Err(e) => Err(e.into()),
         };
         let keys: Vec<_> = masks.into_iter().map(|m| m.storage_key).collect();
-        match self.deps.blobs.delete_keys(&keys).await {
+        self.delete_masks(scan, &keys, "masks of a lost lease")
+            .await;
+        outcome
+    }
+
+    /// Deletes mask objects that will get no record, best effort: a failure is logged, and the
+    /// orphan sweep removes what is left while the garden lives.
+    async fn delete_masks(&self, scan: ScanId, keys: &[domain::ports::ObjectKey], what: &str) {
+        if keys.is_empty() {
+            return;
+        }
+        match self.deps.blobs.delete_keys(keys).await {
             Ok(report) if report.failed.is_empty() => {}
             Ok(report) => {
-                tracing::warn!(%scan, failed = report.failed.len(), "masks of a lost lease not all deleted");
+                tracing::warn!(%scan, failed = report.failed.len(), "{what} not all deleted");
             }
             Err(e) => {
-                tracing::warn!(%scan, error = %crate::error::Chain(&e), "masks of a lost lease not deleted");
+                tracing::warn!(%scan, error = %crate::error::Chain(&e), "{what} not deleted");
             }
         }
-        outcome
     }
 
     /// A `guided` job's result ([contracts 7], guided checks and the diagnosis): the check is

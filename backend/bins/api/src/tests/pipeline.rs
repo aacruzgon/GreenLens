@@ -866,6 +866,134 @@ async fn masks_put_after_the_lease_is_lost_are_deleted() {
     assert_eq!(left, Vec::new(), "the mask put is deleted");
 }
 
+/// A `complete` repeated concurrently by the same lease: the other call finished the job
+/// while this one put its masks, so the second lease check finds it done. The objects are
+/// deleted and none is recorded, and the store answers `AlreadyCompleted`.
+#[tokio::test]
+async fn masks_put_while_a_duplicate_complete_finished_the_job_are_deleted() {
+    let completions = Completions::default();
+    let mut store = FakeStore::default();
+    store
+        .scan_repo
+        .expect_snapshot()
+        .returning(|_| Ok(snapshot_with_photos()));
+    let checks = std::sync::atomic::AtomicUsize::new(0);
+    store
+        .job_repo
+        .expect_live_lease()
+        .times(2)
+        .returning(move |_, _| {
+            Ok(
+                (checks.fetch_add(1, std::sync::atomic::Ordering::Relaxed) == 0)
+                    .then(|| job(JobKind::Perception)),
+            )
+        });
+    let recorded = Arc::clone(&completions);
+    store
+        .job_repo
+        .expect_complete_job()
+        .times(1)
+        .returning(move |_, completion, _| {
+            recorded.lock().unwrap().push(completion);
+            Ok(CompletionOutcome::AlreadyCompleted)
+        });
+    store
+        .event_repo
+        .expect_run_stage_events()
+        .returning(|_, _| Ok(lost_after_plant_check()));
+    let blobs = Arc::new(blob::MemoryBlobStore::new(Arc::new(FixedClock::at(now()))));
+    let pipeline = pipeline_with_blobs(
+        Arc::new(store),
+        Arc::new(Recorder::default()),
+        Arc::clone(&blobs) as Arc<dyn domain::ports::BlobStore>,
+    );
+
+    let handled = pipeline
+        .job_completed(&lease(), job(JobKind::Perception), done(masked_result()))
+        .await
+        .expect("completed");
+
+    assert_eq!(handled.value, CompletionOutcome::AlreadyCompleted);
+    let writes = recorded_writes(&completions);
+    assert!(writes.iter().all(|w| w.masks.is_empty()));
+    let left = domain::ports::BlobStore::list(
+        blobs.as_ref(),
+        &domain::ports::ObjectPrefix::garden(GARDEN.parse().unwrap()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(left, Vec::new(), "the mask put is deleted");
+}
+
+/// A put that fails after another succeeded: the mask already put is deleted before the
+/// completion fails, so the worker's retry, which writes under new ids, leaves no orphan.
+#[tokio::test]
+async fn a_failed_mask_put_deletes_the_masks_already_put() {
+    let mut store = FakeStore::default();
+    store
+        .scan_repo
+        .expect_snapshot()
+        .returning(|_| Ok(snapshot_with_photos()));
+    store
+        .job_repo
+        .expect_live_lease()
+        .times(1)
+        .returning(|_, _| Ok(Some(job(JobKind::Perception))));
+    store
+        .event_repo
+        .expect_run_stage_events()
+        .returning(|_, _| Ok(lost_after_plant_check()));
+    store.job_repo.expect_complete_job().never();
+    let put = Arc::new(Mutex::new(Vec::new()));
+    let mut blobs = MockBlobStore::new();
+    let puts = Arc::clone(&put);
+    blobs.expect_put().times(2).returning(move |key, _, _| {
+        let mut puts = puts.lock().unwrap();
+        if puts.is_empty() {
+            puts.push(key.clone());
+            Ok(())
+        } else {
+            Err(domain::ports::BlobError::Unavailable(
+                "connection reset".into(),
+            ))
+        }
+    });
+    let deleted = Arc::new(Mutex::new(Vec::new()));
+    let on_delete = Arc::clone(&deleted);
+    blobs.expect_delete_keys().times(1).returning(move |keys| {
+        on_delete.lock().unwrap().extend_from_slice(keys);
+        Ok(domain::ports::DeleteReport {
+            deleted: keys.len() as u64,
+            failed: Vec::new(),
+        })
+    });
+    let pipeline = pipeline_with_blobs(
+        Arc::new(store),
+        Arc::new(Recorder::default()),
+        Arc::new(blobs),
+    );
+    // Two masks that fit: one on each 4 × 3 photo.
+    let region = |image: &str| {
+        serde_json::json!({
+            "region_id": format!("{image}.1"), "image_id": image, "class": "leaf",
+            "bbox": [0.1, 0.1, 0.5, 0.5], "confidence": 0.9, "mask": leaf_rle()
+        })
+    };
+    let regions = serde_json::json!({ "regions": [region(LEAF_IMAGE), region(OTHER_IMAGE)] });
+
+    let result = pipeline
+        .job_completed(&lease(), job(JobKind::Perception), done(regions))
+        .await;
+
+    assert!(
+        matches!(result, Err(pipeline::PipelineError::Blob(_))),
+        "{result:?}"
+    );
+    let put = put.lock().unwrap().clone();
+    assert_eq!(put.len(), 1, "the first put succeeded");
+    assert_eq!(*deleted.lock().unwrap(), put, "and its object is deleted");
+}
+
 /// A species-change run's job, whose stages leave segmentation out ([contracts 3],
 /// observations across runs): the worker passes the earlier run's regions through without
 /// masks, at confidence 1. The completion writes no segmentation, so the store keeps the
