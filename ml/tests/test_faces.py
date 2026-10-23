@@ -140,3 +140,22 @@ def test_a_gone_original_is_remembered(tmp_path, monkeypatch):
     assert F.cached(path, "http://x/o.jpg") is None
     assert F.cached(path, "http://x/o.jpg") is None
     assert len(calls) == 1 and path.with_suffix(".gone").exists()
+
+
+def test_the_committed_list_is_fetched_as_recorded(tmp_path, monkeypatch):
+    index = tmp_path / "faces.tsv"
+    rows = [dict(zip(F.COLUMNS, ("a1", "validation", "photos/a1.jpg", "4000", "3000", "1", "CC BY 2.0", "x", "u",
+                                 "1", "30", "75", "1", "0", "0.99"))),
+            dict(zip(F.COLUMNS, ("b2", "test", "photos/b2.jpg", "3000", "4000", "1", "CC BY 2.0", "y", "v",
+                                 "2", "25", "60", "6", "90", "0.98")))]
+    index.write_text("\t".join(F.COLUMNS) + "\n" + "".join("\t".join(r[c] for c in F.COLUMNS) + "\n" for r in rows))
+    before = index.read_text()
+    monkeypatch.setattr(F, "read_info", lambda path, ids: {i: {"OriginalURL": i} for i in ids})
+    monkeypatch.setattr(F, "reference", lambda image_id, split: Image.new("RGB", (8, 8)))
+    got = {"a1": (4000, 3000, 0), "b2": (3000, 4000, 90)}
+    monkeypatch.setattr(F, "fetch_one", lambda image_id, split, row, ref: {
+        "status": "kept", "width": got[image_id][0], "height": got[image_id][1], "turn": got[image_id][2]})
+    assert F.from_index(2, index) == 0
+    got["b2"] = (4000, 3000, 0)                  # Flickr now serves it another way up
+    assert F.from_index(2, index) == 1
+    assert index.read_text() == before           # the list is the record: never rewritten

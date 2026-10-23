@@ -1,7 +1,14 @@
 """Photos of people near plants from Open Images V7, to check the upload's face blur (task M7).
 
     python -m ml.training.data.fetch openimages_v7_faces    # the tables, pinned in sources.yaml
-    python -m ml.training.data.faces [--per-bucket 20] [--workers 4] [--cached-only]
+    python -m ml.training.data.faces [--workers 4]                 # the 93 photos of the committed list
+    python -m ml.training.data.faces --select [--per-bucket 20] [--cached-only]   # a new selection
+
+The committed list, splits/faces_openimages.tsv, is the record of the photos the face check ran
+on. By default this fetches exactly those photos and checks each against its row (the size and
+the turn), writing nothing to the list. `--select` reruns the selection below and overwrites the
+list: the record's last selection ran `--cached-only`, so a fresh one, with every candidate
+downloadable, keeps a different set (the 160 px+ bucket stopped at 17 of 20).
 
 Evaluation only: the photos are never training data, never committed and never put in the
 model repository. They stay under training/eval/faces/ (git-ignored).
@@ -28,7 +35,7 @@ hash of the image ID) within each bucket of that width (BUCKETS), until each buc
 6. dropped when its long side is under MIN_LONG_SIDE;
 7. saved as JPEG quality 95 without metadata to training/eval/faces/photos/<id>.jpg.
 
-Writes splits/faces_openimages.tsv (COLUMNS): the image, its split and file, the upright size,
+`--select` writes splits/faces_openimages.tsv (COLUMNS): the image, its split and file, the upright size,
 the original's bytes, licence, author and Flickr page, the number of faces, the smallest face's
 width in the stored image and at full resolution, the turn applied after EXIF and the match.
 Downloads are cached under training/eval/faces/cache/, so a rerun fetches nothing twice.
@@ -313,15 +320,58 @@ def clean(text: str) -> str:
     return " ".join(html.unescape(text).split())
 
 
+def read_index(path: Path | None = None) -> list[dict]:
+    """The committed list's rows."""
+    with open(path or INDEX, newline="") as f:
+        return list(csv.DictReader(f, delimiter="\t"))
+
+
+def from_index(workers: int, index: Path | None = None) -> int:
+    """Fetch the committed list's photos and check each against its row; the list isn't written.
+    0 when every photo is kept with its recorded size and turn."""
+    rows = read_index(index)
+    info: dict[str, dict] = {}
+    for split, (_, _, info_csv) in SPLITS.items():
+        ids = {r["image_id"] for r in rows if r["split"] == split}
+        if ids:
+            info |= read_info(TABLES / info_csv, ids)
+
+    def one(row: dict) -> tuple[dict, str]:
+        image_id = row["image_id"]
+        if image_id not in info:
+            return row, "not in the image-information table"
+        ref = reference(image_id, row["split"])
+        if ref is None:
+            return row, "no Open Images copy"
+        r = fetch_one(image_id, row["split"], info[image_id], ref)
+        if r["status"] != "kept":
+            return row, r["status"]
+        got = (r["width"], r["height"], r["turn"])
+        want = (int(row["width"]), int(row["height"]), None if row["turn"] in ("", "None") else int(row["turn"]))
+        return row, "" if got == want else f"differs from the list: {got} against {want}"
+
+    with ThreadPoolExecutor(workers) as pool:
+        done = list(pool.map(one, rows))
+    bad = [(row["image_id"], why) for row, why in done if why]
+    for image_id, why in bad:
+        print(f"  {image_id}: {why}", file=sys.stderr)
+    print(f"{len(rows) - len(bad)} of {len(rows)} photos of {index or INDEX} fetched as recorded, in {PHOTOS}")
+    return 1 if bad else 0
+
+
 # --- main ---------------------------------------------------------------------------------------
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--select", action="store_true",
+                    help="rerun the selection and overwrite the committed list (a new record)")
     ap.add_argument("--per-bucket", type=int, default=20)
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--cached-only", action="store_true",
-                    help="rebuild the index from earlier downloads; fetch nothing (Flickr answers 429 when pressed)")
+                    help="with --select: use earlier downloads only; fetch nothing (Flickr answers 429 when pressed)")
     args = ap.parse_args(argv)
+    if not args.select:
+        return from_index(args.workers)
     global CACHED_ONLY
     CACHED_ONLY = args.cached_only
 

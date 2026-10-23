@@ -78,6 +78,16 @@ def check_pin(src: dict, digest: str, what: str = "sha256") -> None:
         raise SystemExit(f"[{name}] {what} mismatch: expected {src['sha256']}, got {digest}")
 
 
+def check_file_pin(name: str, f: dict, path: Path) -> None:
+    """check_pin for one downloaded file; a file whose hash is wrong is deleted, so the next run
+    downloads it again instead of failing on the same bad copy."""
+    digest = sha256_file(path)
+    if f.get("sha256") is not None and digest != f["sha256"]:
+        path.unlink(missing_ok=True)
+        print(f"[{name}] {f['name']}: removed the download, whose sha256 didn't match")
+    check_pin({"name": f"{name}/{f['name']}", "sha256": f.get("sha256")}, digest)
+
+
 def fetch_github_archive(src: dict) -> None:
     name = src["name"]
     archive = RAW / f"{name}.zip"
@@ -322,7 +332,7 @@ def fetch_archives(src: dict) -> None:
         if not archive.exists():
             print(f"[{name}] downloading {f['name']} from {f['url']}")
             download(f["url"], archive)
-        check_pin({"name": f"{name}/{f['name']}", "sha256": f.get("sha256")}, sha256_file(archive))
+        check_file_pin(name, f, archive)
         unpack_any(archive, RAW / name / Path(f["name"]).stem)
     print(f"[{name}] ok: {RAW / name}")
 
@@ -337,7 +347,7 @@ def fetch_files(src: dict) -> None:
         if not dest.exists():
             print(f"[{name}] downloading {f['name']} from {f['url']}")
             download(f["url"], dest)
-        check_pin({"name": f"{name}/{f['name']}", "sha256": f.get("sha256")}, sha256_file(dest))
+        check_file_pin(name, f, dest)
     print(f"[{name}] ok: {RAW / name}")
 
 
