@@ -1,6 +1,6 @@
 # PDM Devpost Write-up: the ML Part
 
-> **Status:** Draft v0.2.1, 2026-10-22. v0.2.1: the split is #140's after Alan's second review of #135, 104 dev and 56 test, since a same-plant squash pair moved to test. v0.2: after Alan's review, the 12 garden tomato leaves are out (the second review keeps at most 3 of them), the VLM's 35% sits beside the 33% a random pick gets, prior work says what existed before build week, the species result is the seed's matrix (61%, as the stand-in), case counts are #140's and marked pending, T5 and T11–T14 name their cases, section 10's checklist covers the re-runs, and the duplicates between fields are cut. v0.1: first draft of the ML part of each Devpost field (dev-roadmap M19): what the models do on a scan, how they were built and measured, challenges, accomplishments, lessons, next steps, built with and prior work, with the test split's numbers left as placeholders for M18.
+> **Status:** Draft v0.2.2, 2026-10-23. v0.2.2: the split is #147's, 102 dev and 58 test with 9 `sure` test cases, since neighbouring field-dataset frames now share a plant key. v0.2.1: the split is #140's after Alan's second review of #135, 104 dev and 56 test, since a same-plant squash pair moved to test. v0.2: after Alan's review, the 12 garden tomato leaves are out (the second review keeps at most 3 of them), the VLM's 35% sits beside the 33% a random pick gets, prior work says what existed before build week, the species result is the seed's matrix (61%, as the stand-in), case counts are #140's and marked pending, T5 and T11–T14 name their cases, section 10's checklist covers the re-runs, and the duplicates between fields are cut. v0.1: first draft of the ML part of each Devpost field (dev-roadmap M19): what the models do on a scan, how they were built and measured, challenges, accomplishments, lessons, next steps, built with and prior work, with the test split's numbers left as placeholders for M18.
 
 This file holds the machine-learning part of each field on PDM's Devpost page, ready to paste; each section names its field. The app, the backend and the farm connectors are written up elsewhere. Every number links its source: a section of the vision documents, a committed report, or an open pull request where the fact isn't on `main` yet. Each number carries one of these labels:
 
@@ -91,9 +91,9 @@ Sources: [README 3](README.md#3-model-inventory) (inventory) and [4](README.md#4
 ### The evaluation set
 
 - **A case is one scan** as the app would send it: its photos, each with its kind, and the truth for that plant ([evaluation 2](evaluation.md#2-the-evaluation-set)).
-- **Split by plant** into dev and test, so two photos of one plant are always on the same side. The test cases are scored once, and no threshold is tuned on them ([evaluation 2](evaluation.md#splits)).
+- **Split by plant** into dev and test, so two photos of one plant are always on the same side. Where a dataset's photos can't show which plant a leaf came from, neighbouring frames count as one plant. The test cases are scored once, and no threshold is tuned on them ([evaluation 2](evaluation.md#splits)).
 - **Labelled** from the knowledge base's reviewed disease profiles, as `sure` or `probable`. Only `sure` cases count toward diagnosis accuracy, so a doubtful label can't punish a right answer ([evaluation 3](evaluation.md#how-cases-are-labelled)).
-- **Reviewed twice.** A second teammate reviewed all 187 cases on Oct 22 against each case's photos and the profile's signs. Settling the review dropped 68: 40 iNaturalist cases whose host wasn't the case's plant, 8 with no readable plant, 17 repeats of a leaf already in the set, and 3 whose photos couldn't settle the reviewer's call. 60 more became `probable` ([#135](https://github.com/aacruzgon/GreenLens/pull/135)). 41 replacement cases, screened for the host, the signs and repeats and reviewed the same way, bring the set to 160: 104 dev and 56 test, with 19 dev and 8 test cases `sure` ([#140](https://github.com/aacruzgon/GreenLens/pull/140)). Pending.
+- **Reviewed twice.** A second teammate reviewed all 187 cases on Oct 22 against each case's photos and the profile's signs. Settling the review dropped 68: 40 iNaturalist cases whose host wasn't the case's plant, 8 with no readable plant, 17 repeats of a leaf already in the set, and 3 whose photos couldn't settle the reviewer's call. 60 more became `probable` ([#135](https://github.com/aacruzgon/GreenLens/pull/135)). 41 replacement cases, screened for the host, the signs and repeats and reviewed the same way, bring the set to 160: 104 dev and 56 test ([#140](https://github.com/aacruzgon/GreenLens/pull/140)). Neighbouring field-dataset frames then took one plant key, which moved 4 cases and left 102 dev and 58 test, with 18 dev and 9 test cases `sure` ([#147](https://github.com/aacruzgon/GreenLens/pull/147)). Pending.
 - **Repeats across splits.** 4 of the 8 repeated leaves had cases in both dev and test while v3c's regularisation and temperature were chosen on dev ([#135](https://github.com/aacruzgon/GreenLens/pull/135)). One case per leaf was kept:
   - Two kept their test case: an early-blight leaf with 3 cases in dev, and a late-blight leaf with 5. So dev photos of these two test leaves helped choose v3c. Both test cases are `probable`, so they count toward species and the disease head's top 3, not diagnosis accuracy. M18 reports the disease head's top 3 with and without them.
   - Two kept their dev case, an early-blight leaf and a bacterial-spot leaf, so no test case shows them.
@@ -102,7 +102,7 @@ Sources: [README 3](README.md#3-model-inventory) (inventory) and [4](README.md#4
 
 ### Results so far: dev cases, held-out photos and benches
 
-Each result says where it was measured. The dev numbers were measured on the 115 dev cases before the second review, which dropped 37 of them and moved 3 to test. M16 re-runs them on the 104 dev cases after #140 ([#135](https://github.com/aacruzgon/GreenLens/pull/135)). Targets are from [evaluation 4](evaluation.md#4-metrics-and-acceptance-targets).
+Each result says where it was measured. The dev numbers were measured on the 115 dev cases before the second review, which dropped 37 of them and moved 3 to test. M16 re-runs them on the 102 dev cases after #147 ([#135](https://github.com/aacruzgon/GreenLens/pull/135), [#147](https://github.com/aacruzgon/GreenLens/pull/147)). Targets are from [evaluation 4](evaluation.md#4-metrics-and-acceptance-targets).
 
 - **Species, BioCLIP 2 zero-shot on the seed's matrix (dev):** the right species first on 61.0% of the 105 dev cases of the five crops, and in the top 3 on 75.2%. Both miss their targets, 85% and 95%. The seed's 20 species are the stand-in matrix's, so it scores as the stand-in did. Tomato is the weak crop, 28 of 63, with 10 of the misses called potato and 8 pepper. Squash, one of the seed's species outside those five crops, is 0 of 10, even under its genus ([#134](https://github.com/aacruzgon/GreenLens/pull/134)).
 - **Species head (dev):** 90.5% on the same cases. Averaged with zero-shot, the rule in [models 6](models.md#6-species-bioclip), it gets 64.8%, since 15 of the seed's 20 species are outside its crops. A better rule is still to choose, and the worker doesn't load a species head yet ([#134](https://github.com/aacruzgon/GreenLens/pull/134)).
@@ -122,7 +122,7 @@ Each result says where it was measured. The dev numbers were measured on the 115
 
 ### Test split, scored once by M18
 
-The test cases: 56, of which 8 are `sure`: 4 corn and 4 tomato, 5 sick and 3 healthy ([#140](https://github.com/aacruzgon/GreenLens/pull/140)). Pending. Each rate is reported as k of n with its 95% Wilson interval. A target counts as met or missed only when the whole interval is on one side of it; otherwise it is undecided at that count ([#135](https://github.com/aacruzgon/GreenLens/pull/135)). Each row names the cases it rests on. Report: `⟨M18: report link⟩`.
+The test cases: 58, of which 9 are `sure`: 5 corn and 4 tomato, 6 sick and 3 healthy ([#147](https://github.com/aacruzgon/GreenLens/pull/147)). Pending. Each rate is reported as k of n with its 95% Wilson interval. A target counts as met or missed only when the whole interval is on one side of it; otherwise it is undecided at that count ([#135](https://github.com/aacruzgon/GreenLens/pull/135)). Each row names the cases it rests on. Report: `⟨M18: report link⟩`.
 
 **Offline, from the scripts that score the dev cases:**
 
@@ -143,16 +143,16 @@ The test cases: 56, of which 8 are `sure`: 4 corn and 4 tomato, 5 sick and 3 hea
 
 | ID | Stage | Metric | Target | Cases | Test result |
 |---|---|---|---|---|---|
-| T11 | Diagnosis | Precision of `confirmed`: the primary problem is a true one | 90% or more; 3 `confirmed` of 3 is 44–100% | The 8 `sure` test cases | `⟨M18: T11, k of n, interval⟩` |
-| T12 | Diagnosis | Diseased cases that end `confirmed` | Report | The 5 diseased `sure` test cases | `⟨M18: T12, k of n⟩` |
+| T11 | Diagnosis | Precision of `confirmed`: the primary problem is a true one | 90% or more; 3 `confirmed` of 3 is 44–100% | The 9 `sure` test cases | `⟨M18: T11, k of n, interval⟩` |
+| T12 | Diagnosis | Diseased cases that end `confirmed` | Report | The 6 diseased `sure` test cases | `⟨M18: T12, k of n⟩` |
 | T13 | Diagnosis | Healthy plants diagnosed with a problem | 10% or less; one miss is 33%, and even 0 of 3 is 0–56% | The 3 healthy `sure` test cases | `⟨M18: T13, k of n, interval⟩` |
-| T14 | Diagnosis | Sick plants diagnosed `healthy` | 5% or less; one miss is 20%, and even 0 of 5 is 0–43% | The 5 diseased `sure` test cases | `⟨M18: T14, k of n, interval⟩` |
+| T14 | Diagnosis | Sick plants diagnosed `healthy` | 5% or less; one miss is 17%, and even 0 of 6 is 0–39% | The 6 diseased `sure` test cases | `⟨M18: T14, k of n, interval⟩` |
 | T15 | Timing | Submit to `diagnosed`, p95, GPU path | 90 s or less | Every test case | `⟨M18: T15, s⟩` |
 | T16 | Timing | The same on the fallback worker | Report | Every test case | `⟨M18: T16, s⟩` |
 | T17 | Upload | Good photos rejected by the blur and exposure check | 5% or less | Every test photo | `⟨M18: T17, k of n⟩` |
 | T18 | Upload | Plant photos with a false face blurred over them | 2% or less | Every test photo | `⟨M18: T18, k of n⟩` |
 
-T11–T14 can't pass or fail their targets at these counts, so M18 reports them beside the dev split's, and beside the species and detection rows on all 56 test cases.
+T11–T14 can't pass or fail their targets at these counts, so M18 reports them beside the dev split's, and beside the species and detection rows on all 58 test cases.
 
 **Not measurable on this test split.** The rest of [evaluation 4](evaluation.md#4-metrics-and-acceptance-targets) needs cases or labels the set doesn't have. The manifest's truth holds each case's outcome, species, problems, organisms and damage, and every case's organisms and damage are empty ([manifest](../../ml/training/eval/manifest.jsonl)).
 
@@ -216,7 +216,7 @@ T11–T14 can't pass or fail their targets at these counts, so M18 reports them 
 
 *Devpost field: What's next for PDM (the ML part).*
 
-- **Calibrate, freeze and score:** temperatures and thresholds refitted on the 104 dev cases after #140 (M16), the final manifest (M17), the test split scored once (M18) ([dev-roadmap](dev-roadmap.md#phase-4-oct-2223-calibration-then-freeze-the-models)).
+- **Calibrate, freeze and score:** temperatures and thresholds refitted on the 102 dev cases after #147 (M16), the final manifest (M17), the test split scored once (M18) ([dev-roadmap](dev-roadmap.md#phase-4-oct-2223-calibration-then-freeze-the-models)).
 - **Disease as damage:** the structural fix for the VLM's `leaf_mines` (P11).
 - **The other four crops' classes** into `classifier_labels.yaml` once their profiles are signed ([#125](https://github.com/aacruzgon/GreenLens/issues/125)).
 - **The species head in the worker,** with a rule that lets it lift its crops' share, which zero-shot gets right on only 61% of dev cases ([models 6](models.md#6-species-bioclip)).
@@ -302,7 +302,7 @@ Fill each placeholder from the scored test run, then commit this file with the r
 Before scoring:
 
 - [ ] #134, #135 and #140 are merged. Refresh every count marked pending (sections 2 and 3, the T rows' case counts and intervals), and replace each link to those pull requests with a link to the document or report it added.
-- [ ] Every dev number in sections 2 to 6 is re-run on the 104 dev cases after #140, and updated:
+- [ ] Every dev number in sections 2 to 6 is re-run on the 102 dev cases after #147, and updated:
   - `species_check` with the seed's matrix: zero-shot, the species head and their average;
   - `calibrate` on v3c: the disease head's top 3, its top-1 and its temperature (M16);
   - `vlm_bench` on `findings@5`, the rerun [vlm.md 13](vlm.md#results-and-the-choice-2026-10-20--ran) promises;
