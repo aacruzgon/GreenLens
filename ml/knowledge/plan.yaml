@@ -14,6 +14,11 @@ facts_only_sources:
   - clemson_hgic_tomato_insect_pests
   - isu_growing_tomatoes_home_garden   # no chunks: the care profile cites it by hand
 
+# Sources tagged with another model than tag.py's default (Sonnet 5.5): each failed its 10% spot
+# check and was re-tagged (training.md §10, running it), so a plain re-run keeps that model.
+tag_models:
+  isu_two_spotted_spider_mite: claude-opus-5-5   # Sonnet dropped .4, a management paragraph (2026-10-20)
+
 # Chunks withheld by hand at the signing review (2026-10-20, S5): they pass the dose check but
 # mustn't reach the chat. tag.py withholds them as it does a chunk that gives a rate, so they
 # stay out of seed/chunks; steps can still cite them, and the review files link them.
