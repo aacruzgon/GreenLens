@@ -45,7 +45,7 @@ Full licence texts are in [`licences/`](licences/). The Apache-2.0 and CC-BY-4.0
 - **Authors:** Roboflow (Isaac Robinson, Peter Robicheaux, Matvei Popov, Deva Ramanan, Neehar Peri).
 - **Citation:** Robinson et al., "RF-DETR: Neural Architecture Search for Real-Time Detection Transformers", arXiv:2511.09554.
 - **Training data:** PlantDoc detection split, and 400 COCO train2017 photos with no plant pixel (`ml/training/data/splits/background_coco_train.tsv`), so the detector learns that a room or a person has no leaf. See [Datasets](#datasets) for both. The base weights were trained on COCO, whose terms are *unverified* here.
-- **Caveat:** each COCO photo keeps its Flickr licence, and only photos whose licence allows commercial use and adaptation were picked (✓ ran on the `license` field of COCO's annotations): 258 CC BY, 135 CC BY-SA and 7 with no known copyright restrictions. Each one's licence is in `background_coco_train.tsv`, and its author's Flickr page is in COCO's annotations. Whether CC BY-SA's ShareAlike reaches weights trained on a photo is the same open question as PlantVillage's (§9 item 2). The photos are never redistributed.
+- **Caveat:** each COCO photo keeps its Flickr licence, and only photos whose licence allows commercial use and adaptation were picked (✓ ran on the `license` field of COCO's annotations): 258 CC BY, 135 CC BY-SA and 7 with no known copyright restrictions. Each one's licence is in `background_coco_train.tsv`, and its author's Flickr page is in COCO's annotations. Whether CC BY-SA's ShareAlike reaches weights trained on a photo is an open question (§9 item 2). The photos are never redistributed.
 
 ## sam_encoder
 
