@@ -628,6 +628,36 @@ async fn the_whole_shutdown_ends_within_the_drain_bound() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_failed_stop_signal_still_shuts_down_and_returns_the_error() {
+    let w = worker(fake(0), false, 1);
+    let stopped = async { Err(std::io::Error::other("no signal handler")) };
+    let started = Instant::now();
+    let err = run_until(Arc::clone(&w), stopped).await.unwrap_err();
+    assert_eq!(started.elapsed(), Duration::ZERO); // no job to drain, so nothing waits
+    assert_eq!(err.to_string(), "no signal handler");
+    assert_eq!(Arc::strong_count(&w), 1); // the claim and heartbeat tasks have ended
+}
+
+/// `main` returns right after `run_until`, and `exit` then unloads the CUDA libraries. So the
+/// model, which on the perception worker owns the inference thread and its sessions, must be
+/// released by then, even with a job abandoned at the drain bound.
+#[tokio::test(start_paused = true)]
+async fn run_until_releases_the_model_before_it_returns() {
+    let model: Arc<dyn VisionModel> = Arc::new(Model { hangs: true });
+    let held = Arc::downgrade(&model);
+    let w = worker_of(fake(1), model, "rig-5070ti-vlm-1", Capability::Vlm, 1);
+    let stopped = async {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        Ok(())
+    };
+    let started = Instant::now();
+    run_until(w, stopped).await.unwrap();
+    // The signal at 1 s, then the whole drain bound: the hung job was abandoned, not finished.
+    assert_eq!(started.elapsed(), Duration::from_secs(21));
+    assert_eq!(held.strong_count(), 0);
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_stub_job_completes_through_the_loop() {
     let w = stub_worker(fake(1), 150);
     let shutdown = CancellationToken::new();
