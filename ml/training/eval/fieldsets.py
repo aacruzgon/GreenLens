@@ -2,7 +2,8 @@
 "Where the photos come from").
 
     python -m ml.training.eval.fieldsets fetch [--per-class 8] [--only SET]
-    python -m ml.training.eval.fieldsets add --labeller NAME
+    python -m ml.training.eval.fieldsets add --labeller NAME [--resplit]
+    python -m ml.training.eval.fieldsets regroup [--resplit]
 
 The team can't photograph tomato or corn diseases in a Toronto October, and iNaturalist has almost
 none from 2026 (inat.py). Researchers publish field photos of them under CC BY 4.0, and the sets in
@@ -35,9 +36,11 @@ citation with the changes made, and an empty `reviewed_by` until a second teamma
 A plant can't be told from these photos, and a set's neighbouring frames may show one plant. So
 `add` gives every run of cases NEIGHBOUR or fewer frames apart in one folder the plant key of its
 lowest frame, and that key's split (evaluation.md §2, Splits), rewriting the cases already in the
-manifest when a new one joins their run. Runs chain: frames 1, 4 and 7 are one plant. A case
+manifest when a new one joins their run. Runs chain: frames 1, 4 and 7 are one plant. A key a
+reviewer set by hand, from the photos, is kept, and the case's run takes it (group_frames). A case
 already in the manifest changes split only with --resplit; without it, `add` lists the moves and
-writes nothing, since a scored test case must not move.
+writes nothing, since a scored test case must not move. `regroup` applies the same to the manifest
+as it stands, after a key is set by hand.
 
 The frame is the first number in the file name, which holds for the sets in fieldsets.yaml. A set
 named by date or hash would need its own frame rule before its photos are added.
@@ -226,24 +229,67 @@ def own_key(file: str) -> str:
 
 def group_frames(cases: list[dict]) -> list[dict]:
     """The cases, with each run of field-set frames NEIGHBOUR or fewer apart in one folder given its
-    lowest frame's plant key and that key's split. Other cases come back as they were."""
-    runs: dict[str, list[tuple[int, int]]] = {}
-    for i, c in enumerate(cases):
-        file = c["images"][0]["file"]
-        if file.startswith("fieldsets/"):
-            folder, n = frame(file)
-            if n is not None:
-                runs.setdefault(folder, []).append((n, i))
-    out = list(cases)
-    for frames in runs.values():
+    lowest frame's plant key and that key's split. Runs chain: frames 1, 4 and 7 are one run.
+
+    A key set by hand from the photos is kept. It is a field-set case's key that is no frame's own key
+    in the case's run. The case's run, the case whose own key it is and every case that carries it
+    form one plant, which takes that key. ValueError when one plant would get two keys set by hand.
+    Cases that aren't field-set photos, and ones with no frame number and no hand-set key, come back
+    as they were."""
+    field = [i for i, c in enumerate(cases) if c["images"][0]["file"].startswith("fieldsets/")]
+    own = {i: own_key(cases[i]["images"][0]["file"]) for i in field}
+    parent = {i: i for i in field}
+
+    def root(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    by_folder: dict[str, list[tuple[int, int]]] = {}
+    for i in field:
+        folder, n = frame(cases[i]["images"][0]["file"])
+        if n is not None:
+            by_folder.setdefault(folder, []).append((n, i))
+    run: dict[int, list[int]] = {}
+    for frames in by_folder.values():
         frames.sort()
         start = 0
         for j in range(1, len(frames) + 1):
             if j == len(frames) or frames[j][0] - frames[j - 1][0] > NEIGHBOUR:
-                key = own_key(cases[frames[start][1]]["images"][0]["file"])
-                for _, i in frames[start:j]:
-                    out[i] = {**cases[i], "plant_key": key, "split": inat.split_of(key)}
+                members = [i for _, i in frames[start:j]]
+                for i in members:
+                    run[i] = members
+                    parent[root(i)] = root(members[0])
                 start = j
+
+    by_own = {k: i for i, k in own.items()}
+    carriers: dict[str, list[int]] = {}
+    for i in field:
+        carriers.setdefault(cases[i]["plant_key"], []).append(i)
+    hand = {i: cases[i]["plant_key"] for i in field
+            if cases[i]["plant_key"] not in {own[m] for m in run.get(i, [i])}}
+    for i, key in hand.items():
+        for m in carriers[key] + ([by_own[key]] if key in by_own else []):
+            parent[root(m)] = root(i)
+
+    plants: dict[int, list[int]] = {}
+    for i in field:
+        plants.setdefault(root(i), []).append(i)
+    out = list(cases)
+    for members in plants.values():
+        keys = sorted({hand[i] for i in members if i in hand})
+        if len(keys) > 1:
+            raise ValueError(f"one plant, two keys set by hand ({', '.join(keys)}): "
+                             + ", ".join(cases[i]["case_id"] for i in members))
+        if keys:
+            key = keys[0]
+        elif members[0] in run:
+            key = own[run[members[0]][0]]
+        else:
+            continue
+        for i in members:
+            out[i] = {**cases[i], "plant_key": key, "split": inat.split_of(key)}
     return out
 
 
@@ -256,6 +302,23 @@ def regroup(lines: list[str]) -> list[str]:
         if new != old:
             out[i] = json.dumps(new, ensure_ascii=False)
     return out
+
+
+def regrouped(lines: list[str], extra: list[str], resplit: bool) -> tuple[list[str] | None, int, int]:
+    """`lines` and `extra` regrouped, how many of `lines` took a new key, and how many changed split.
+    None for the lines when one of `lines` would change split and `resplit` isn't set: the moves are
+    listed on stderr, since a scored test case must not move."""
+    new = regroup(lines + extra)
+    rekeyed = [(json.loads(a), json.loads(b)) for a, b in zip(lines, new) if a != b]
+    moves = [(old["case_id"], old["split"], now["split"]) for old, now in rekeyed if old["split"] != now["split"]]
+    for case_id, was, now in moves:
+        print(f"{case_id}: {was} -> {now}", file=sys.stderr)
+    if moves and not resplit:
+        print(f"nothing written: {len(moves)} cases already in the manifest would change split, listed above. "
+              "Once the test split is scored, a case must not move; if nothing was scored on them, rerun with "
+              "--resplit", file=sys.stderr)
+        return None, len(rekeyed), len(moves)
+    return new, len(rekeyed), len(moves)
 
 
 def contact_sheet(sets: list[dict], cands: dict[str, dict]) -> str:
@@ -377,26 +440,37 @@ def add(args) -> int:
             if c["source"] not in have:
                 added.append(c)
                 have.add(c["source"])
-    new = regroup(lines + [json.dumps(c, ensure_ascii=False) for c in added])
-    rekeyed = [(json.loads(a), json.loads(b)) for a, b in zip(lines, new) if a != b]
-    resplit = [(old["case_id"], old["split"], now["split"]) for old, now in rekeyed if old["split"] != now["split"]]
-    for case_id, was, now in resplit:
-        print(f"{case_id}: {was} -> {now}", file=sys.stderr)
-    if resplit and not args.resplit:
-        print(f"nothing written: {len(resplit)} cases already in the manifest would change split, listed above. "
-              "Once the test split is scored, a case must not move; if nothing was scored on them, rerun with "
-              "--resplit", file=sys.stderr)
+    try:
+        new, rekeyed, moved = regrouped(lines, [json.dumps(c, ensure_ascii=False) for c in added], args.resplit)
+    except ValueError as e:
+        print(f"nothing written: {e}", file=sys.stderr)
+        return 1
+    if new is None:
         return 1
     if new != lines:
         args.manifest.write_text("\n".join(new) + "\n")
     added = [json.loads(line) for line in new[len(lines):]]
     print(f"{len(added)} cases added to {args.manifest} ({sum(c['split'] == 'dev' for c in added)} dev, "
           f"{sum(c['split'] == 'test' for c in added)} test); {undecided} photos marked skip; "
-          f"{len(rekeyed)} cases already there given a neighbouring frame's plant key, {len(resplit)} of them "
-          "moved to its split")
+          f"{rekeyed} cases already there given a neighbouring frame's plant key, {moved} of them moved to its split")
     for p in problems:
         print(f"not added: {p}", file=sys.stderr)
     return 1 if problems else 0
+
+
+def regroup_manifest(args) -> int:
+    lines = args.manifest.read_text().splitlines()
+    try:
+        new, rekeyed, moved = regrouped(lines, [], args.resplit)
+    except ValueError as e:
+        print(f"nothing written: {e}", file=sys.stderr)
+        return 1
+    if new is None:
+        return 1
+    if new != lines:
+        args.manifest.write_text("\n".join(new) + "\n")
+    print(f"{rekeyed} cases in {args.manifest} given a neighbouring frame's plant key, {moved} of them moved to its split")
+    return 0
 
 
 def main(argv=None) -> int:
@@ -412,8 +486,11 @@ def main(argv=None) -> int:
     a.add_argument("--manifest", type=Path, default=inat.MANIFEST)
     a.add_argument("--resplit", action="store_true",
                    help="let a new neighbouring frame move a case already in the manifest to its split")
+    r = sub.add_parser("regroup", help="give manifest.jsonl's neighbouring frames one plant key (evaluation.md §2)")
+    r.add_argument("--manifest", type=Path, default=inat.MANIFEST)
+    r.add_argument("--resplit", action="store_true", help="let a case change split")
     args = ap.parse_args(argv)
-    return fetch(args) if args.command == "fetch" else add(args)
+    return {"fetch": fetch, "add": add, "regroup": regroup_manifest}[args.command](args)
 
 
 if __name__ == "__main__":

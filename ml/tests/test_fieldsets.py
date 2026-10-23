@@ -176,6 +176,45 @@ def test_add_moves_a_case_already_there_to_another_split_only_when_told(photo, m
     assert [json.loads(line)["split"] for line in manifest.read_text().splitlines()] == [now, now]
 
 
+def test_a_key_set_by_hand_is_kept_and_its_run_takes_it():
+    a = "fieldsets/s/a/leaf-"
+    cases = [one_photo(a + "40.jpg"), one_photo(a + "42.jpg"), one_photo(a + "47.jpg", "s-a-leaf-42"),
+             one_photo(a + "80.jpg", "plant-x"), one_photo("fieldsets/s/b/leaf-3.jpg", "plant-x"), one_photo(a + "60.jpg")]
+    out = fs.group_frames(cases)
+    assert [c["plant_key"] for c in out] == ["s-a-leaf-42"] * 3 + ["plant-x"] * 2 + ["s-a-leaf-60"]
+    assert {c["split"] for c in out[:3]} == {inat.split_of("s-a-leaf-42")}
+    assert {c["split"] for c in out[3:5]} == {inat.split_of("plant-x")}
+    assert fs.group_frames(out) == out
+
+
+def test_a_key_grouping_set_follows_its_run_when_a_lower_frame_joins():
+    a = "fieldsets/s/a/leaf-"
+    out = fs.group_frames([one_photo(a + "30.jpg"), one_photo(a + "31.jpg", "s-a-leaf-30"), one_photo(a + "27.jpg")])
+    assert [c["plant_key"] for c in out] == ["s-a-leaf-27"] * 3
+
+
+def test_one_plant_with_two_keys_set_by_hand_is_refused():
+    a = "fieldsets/s/a/leaf-"
+    with pytest.raises(ValueError, match="two keys set by hand"):
+        fs.group_frames([one_photo(a + "40.jpg", "plant-x"), one_photo(a + "42.jpg", "plant-y")])
+
+
+def test_regroup_groups_the_manifest_and_moves_a_case_only_when_told(tmp_path):
+    def manifest_of(*files):
+        m = tmp_path / "manifest.jsonl"
+        m.write_text("".join(json.dumps(one_photo(f, split=inat.split_of(fs.own_key(f)))) + "\n" for f in files))
+        return m, ["regroup", "--manifest", str(m)]
+
+    m, args = manifest_of("fieldsets/maize-bd-2026/common-rust/img-201.jpg", "fieldsets/maize-bd-2026/common-rust/img-203.jpg")
+    assert fs.main(args) == 0
+    assert {json.loads(line)["plant_key"] for line in m.read_text().splitlines()} == {KEY_201}
+    m, args = manifest_of("fieldsets/maize-bd-2026/common-rust/img-201.jpg", "fieldsets/maize-bd-2026/common-rust/img-204.jpg")
+    before = m.read_text()
+    assert fs.main(args) == 1 and m.read_text() == before
+    assert fs.main(args + ["--resplit"]) == 0
+    assert {json.loads(line)["split"] for line in m.read_text().splitlines()} == {inat.split_of(KEY_201)}
+
+
 def test_the_manifests_neighbouring_frames_share_a_plant_key():
     lines = inat.MANIFEST.read_text().splitlines()
-    assert fs.regroup(lines) == lines, "run fieldsets.regroup on manifest.jsonl (evaluation.md §2, Splits)"
+    assert fs.regroup(lines) == lines, "run `python -m ml.training.eval.fieldsets regroup` (evaluation.md §2, Splits)"
