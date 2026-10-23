@@ -627,6 +627,22 @@ async fn the_whole_shutdown_ends_within_the_drain_bound() {
     assert!(w.api.completes.lock().unwrap().is_empty());
 }
 
+/// `main` returns right after `run_until`, and `exit` then unloads the CUDA libraries. So the
+/// model, which on the perception worker owns the inference thread and its sessions, must be
+/// released by then, even with a job abandoned at the drain bound.
+#[tokio::test(start_paused = true)]
+async fn run_until_releases_the_model_before_it_returns() {
+    let model: Arc<dyn VisionModel> = Arc::new(Model { hangs: true });
+    let held = Arc::downgrade(&model);
+    let w = worker_of(fake(1), model, "rig-5070ti-vlm-1", Capability::Vlm, 1);
+    let stopped = async {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        Ok(())
+    };
+    run_until(w, stopped).await.unwrap();
+    assert_eq!(held.strong_count(), 0);
+}
+
 #[tokio::test(start_paused = true)]
 async fn a_stub_job_completes_through_the_loop() {
     let w = stub_worker(fake(1), 150);

@@ -326,7 +326,8 @@ pub async fn run_until_sigterm<A: WorkerApi>(worker: Arc<Worker<A>>) -> std::io:
 /// Heartbeat and claims until `stopped`, then stop claiming, drain, stop heartbeating. The
 /// heartbeat outlives the claim loop so draining jobs keep their leases. From `stopped` to the
 /// return is at most the drain bound: the claim loop and the heartbeat drop a call in flight,
-/// and the drain cuts every job at its bound.
+/// and the drain cuts every job at its bound. It takes `worker` by value and every task holding
+/// a clone has ended, so the worker and its model drop here, before `main` returns.
 pub async fn run_until<A, S>(worker: Arc<Worker<A>>, stopped: S) -> std::io::Result<()>
 where
     A: WorkerApi,
