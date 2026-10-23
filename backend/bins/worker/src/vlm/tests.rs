@@ -107,7 +107,7 @@ fn adapter_with(replies: Vec<VlmReply>, max_questions: Option<usize>) -> VlmAdap
 
 mod bench;
 mod live;
-pub(crate) mod record;
+mod record;
 
 const IMG: &str = "01JAX6BBBBBBBBBBBBBBBBBBBB";
 const JOB: &str = "01JAX5AAAAAAAAAAAAAAAAAAAA";

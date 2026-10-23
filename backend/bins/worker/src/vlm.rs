@@ -423,4 +423,4 @@ impl<B: VlmBackend> VisionModel for VlmAdapter<B> {
 }
 
 #[cfg(test)]
-pub(crate) mod tests;
+mod tests;
