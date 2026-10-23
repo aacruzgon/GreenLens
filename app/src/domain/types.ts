@@ -85,6 +85,7 @@ export type QualityReport = S["QualityReport"];
 export type QualityHint = S["QualityHint"];
 export type Stage = S["Stage"];
 export type RunReason = S["RunReason"];
+export type ProblemKind = S["ProblemKind"];
 
 // Scan events
 export type ScanEvent = S["ScanEvent"];
@@ -123,6 +124,7 @@ export type OrganismRole = S["OrganismRole"];
 export type OrganismFinding = S["OrganismFinding"];
 export type SoilFinding = S["SoilFinding"];
 export type DamageFinding = S["DamageFinding"];
+export type SoilAspect = S["SoilAspect"];
 
 // Diagnosis and plan
 export type Diagnosis = S["Diagnosis"];
@@ -138,6 +140,10 @@ export type StepCategory = S["StepCategory"];
 export type PlanWhen = S["PlanWhen"];
 export type PlanTarget = S["PlanTarget"];
 export type FarmCitation = S["FarmCitation"];
+export type TriggerKind = S["TriggerKind"];
+export type SupersedeReason = S["SupersedeReason"];
+export type EvidenceBasis = S["EvidenceBasis"];
+export type Verdict = S["Verdict"];
 
 // Tasks, weather, memory, map
 export type Task = S["Task"];
@@ -145,6 +151,8 @@ export type CreateTaskRequest = S["CreateTaskRequest"];
 export type UpdateTaskRequest = S["UpdateTaskRequest"];
 export type TaskSource = S["TaskSource"];
 export type TaskState = S["TaskState"];
+export type Repeat = S["Repeat"];
+export type DismissedReason = S["DismissedReason"];
 export type WeatherSummary = S["WeatherSummary"];
 export type GardenWeather = S["GardenWeather"];
 export type ForecastDay = S["ForecastDay"];

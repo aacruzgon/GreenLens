@@ -90,8 +90,12 @@ def _notes_after_table(body: str) -> str:
     if f"\n{SECTION}" not in body:
         return ""
     lines = body.split(f"\n{SECTION}", 1)[1].splitlines()
-    last = max((n for n, l in enumerate(lines) if l.startswith("|")), default=None)
-    return "" if last is None else "\n".join(lines[last + 1:]).strip()
+    # The pair table is the first run of table lines; anything after it, tables included, is notes.
+    first = next((n for n, l in enumerate(lines) if l.startswith("|")), None)
+    if first is None:
+        return ""
+    end = next((n for n in range(first, len(lines)) if not lines[n].startswith("|")), len(lines))
+    return "\n".join(lines[end:]).strip()
 
 
 def _write_flags(path: Path, picked: set[str]) -> None:

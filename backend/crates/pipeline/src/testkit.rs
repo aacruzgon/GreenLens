@@ -153,6 +153,7 @@ pub fn question() -> Question {
         kind: QuestionKind::Indicator,
         text: "Rings?".into(),
         options: None,
+        indicator_id: None,
         photo_kind: None,
         photo_hint: None,
         candidates: Vec::new(),

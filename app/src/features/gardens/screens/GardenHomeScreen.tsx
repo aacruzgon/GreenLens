@@ -160,7 +160,7 @@ export function GardenHomeScreen() {
               ) : emptyGarden ? (
                 <EmptyState title={emptyPlantsTitle(view.can.scan)} style={{ paddingVertical: space[6] }} />
               ) : (
-                <PlantCarousel plants={plants.items} />
+                <PlantCarousel plants={plants.items} onOpen={view.actions.openPlant} />
               )}
             </Section>
           </Enter>

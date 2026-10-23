@@ -269,7 +269,9 @@ export class MockStore {
     } as S["ScanEvent"];
     st.scan.last_event_seq = event.seq;
     st.events.push(event);
-    this.reduce(st, event);
+    // The stored record gets its own copy: a later change to it (a question going to `answering`) must not
+    // rewrite the event the stream replays, as on the server.
+    this.reduce(st, JSON.parse(JSON.stringify(event)) as S["ScanEvent"]);
     this.notify(scanId);
     return event;
   }
@@ -307,6 +309,9 @@ export class MockStore {
       case "plan_ready":
         st.scan.plan_id = ev.plan_id;
         break;
+      case "guided_check_done":
+        st.scan.guided_checks = st.scan.guided_checks.map((c) => (c.image_id === ev.check.image_id ? ev.check : c));
+        break;
       case "failed":
         st.scan.failure = ev.failure;
         break;
@@ -330,6 +335,8 @@ export class MockStore {
     if (!st) return true;
     if (st.running) return false;
     if (st.scan.open_question) return false;
+    // A guided check's job keeps the stream open until its guided_check_done (contracts 4).
+    if (st.scan.guided_checks.some((c) => c.status === "analysing")) return false;
     return st.scan.status === "planned" || st.scan.status === "failed" || st.scan.status === "pending";
   }
 

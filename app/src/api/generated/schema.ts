@@ -3544,6 +3544,8 @@ export interface components {
             continue_at: components["schemas"]["Timestamp"];
             /** @description The question. */
             id: components["schemas"]["Id"];
+            /** @description Indicator questions: the indicator it asks about, e.g. `concentric_rings`. */
+            indicator_id?: components["schemas"]["Slug"];
             /** @description How it is answered. */
             kind: components["schemas"]["QuestionKind"];
             /** @description Indicator questions. */
