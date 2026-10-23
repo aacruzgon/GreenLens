@@ -762,6 +762,64 @@ async fn a_failed_mask_put_fails_the_completion() {
     );
 }
 
+/// A mask sized `[width, height]` instead of `[height, width]` on a photo that isn't square
+/// doesn't fit it, though its pixel count does: it is left out, its region kept without it,
+/// and nothing is written to object storage.
+#[tokio::test]
+async fn a_transposed_mask_is_left_out() {
+    let completions = Completions::default();
+    let mut store = FakeStore::default();
+    store
+        .scan_repo
+        .expect_snapshot()
+        .returning(|_| Ok(snapshot_with_photos()));
+    store.job_repo.expect_live_lease().never();
+    let recorded = Arc::clone(&completions);
+    store
+        .job_repo
+        .expect_complete_job()
+        .times(1)
+        .returning(move |_, completion, _| {
+            recorded.lock().unwrap().push(completion);
+            Ok(stored(ObservationDiff::default()))
+        });
+    store
+        .event_repo
+        .expect_run_stage_events()
+        .returning(|_, _| Ok(lost_after_plant_check()));
+    let mut blobs = MockBlobStore::new();
+    blobs.expect_put().never();
+    let pipeline = pipeline_with_blobs(
+        Arc::new(store),
+        Arc::new(Recorder::default()),
+        Arc::new(blobs),
+    );
+    // The leaf photo is 4 wide and 3 high; this mask is 3 wide and 4 high.
+    let transposed = vision::rle::encode(vision::mask::MaskBuf::empty(3, 4).view());
+    assert_eq!(transposed.size, [4, 3]);
+    let result = serde_json::json!({ "regions": [{
+        "region_id": format!("{LEAF_IMAGE}.1"), "image_id": LEAF_IMAGE, "class": "leaf",
+        "bbox": [0.1, 0.1, 0.5, 0.5], "confidence": 0.9, "mask": transposed
+    }]});
+
+    pipeline
+        .job_completed(&lease(), job(JobKind::Perception), done(result))
+        .await
+        .expect("completed");
+
+    let writes = recorded_writes(&completions);
+    let [segmentation] = &writes[..] else {
+        panic!("the segmentation write alone: {writes:?}")
+    };
+    assert_eq!(segmentation.masks, []);
+    assert!(
+        segmentation
+            .observations
+            .iter()
+            .all(|o| o.region.as_ref().is_some_and(|r| r.mask.mask_id.is_none()))
+    );
+}
+
 /// A lease lost while the masks were put (a garden deletion cancelled the job, and its listing
 /// may have missed them): the objects are deleted, nothing is recorded, and the worker gets
 /// `lease_lost`.
