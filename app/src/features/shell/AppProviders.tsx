@@ -9,6 +9,7 @@ import type { Env } from "@/config/env";
 import { SessionProvider } from "@/features/auth";
 import { useDraftStore } from "@/features/capture";
 import { useActiveGardenStore } from "@/features/gardens";
+import { mapping } from "@/platform";
 import { ThemeProvider } from "@/ui";
 
 // The provider tree of docs/frontend/README.md §7. Called once, after the env check passed.
@@ -27,6 +28,8 @@ function clearSignedOutState() {
   useActiveGardenStore.getState().setGardenId(null);
   // Capture drafts and their photos (README 12).
   useDraftStore.getState().clear();
+  // Garden world maps from mapping sessions (architecture 6.8).
+  mapping.removeAll();
 }
 
 export function AppProviders({ env, children }: { env: Env; children: ReactNode }) {

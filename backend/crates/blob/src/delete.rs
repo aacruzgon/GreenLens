@@ -132,6 +132,77 @@ impl DeleteQueue {
     pub fn in_flight(&self) -> usize {
         self.tracker.len()
     }
+
+    /// The queue's store, with every delete sent through the queue: for code that holds only
+    /// `Arc<dyn BlobStore>` (`pipeline`, whose deletes would otherwise run inside a request
+    /// future). See [`QueuedDeletes`].
+    pub fn queued_store(&self) -> Arc<dyn BlobStore> {
+        Arc::new(QueuedDeletes {
+            queue: self.clone(),
+        })
+    }
+}
+
+/// A [`BlobStore`] whose `delete_keys` and `delete_prefix` [`submit`](DeleteQueue::submit) a
+/// job and wait for its outcome, so a caller dropped while it waits leaves the delete running;
+/// puts, gets and lists go straight to the queue's store. A delete that gave up is the
+/// `DeleteReport` of the keys still failed, or the last attempt's error.
+pub struct QueuedDeletes {
+    queue: DeleteQueue,
+}
+
+impl QueuedDeletes {
+    async fn run(&self, job: DeleteJob) -> Result<DeleteReport, BlobError> {
+        match self.queue.submit(job).outcome().await {
+            Some(DeleteOutcome::Done(report)) => Ok(report),
+            Some(DeleteOutcome::Failed {
+                remaining,
+                error: None,
+            }) => Ok(DeleteReport {
+                deleted: 0,
+                failed: remaining,
+            }),
+            Some(DeleteOutcome::Failed {
+                error: Some(error), ..
+            }) => Err(error),
+            None => Err(BlobError::Unavailable("the delete queue stopped".into())),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl BlobStore for QueuedDeletes {
+    async fn put(
+        &self,
+        key: &ObjectKey,
+        body: bytes::Bytes,
+        content_type: domain::ports::ContentType,
+    ) -> Result<(), BlobError> {
+        self.queue.store.put(key, body, content_type).await
+    }
+
+    async fn get(&self, key: &ObjectKey) -> Result<domain::ports::BlobObject, BlobError> {
+        self.queue.store.get(key).await
+    }
+
+    async fn get_bytes(&self, key: &ObjectKey) -> Result<bytes::Bytes, BlobError> {
+        self.queue.store.get_bytes(key).await
+    }
+
+    async fn delete_keys(&self, keys: &[ObjectKey]) -> Result<DeleteReport, BlobError> {
+        self.run(DeleteJob::Keys(keys.to_vec())).await
+    }
+
+    async fn delete_prefix(&self, prefix: &ObjectPrefix) -> Result<DeleteReport, BlobError> {
+        self.run(DeleteJob::Prefix(prefix.clone())).await
+    }
+
+    async fn list(
+        &self,
+        prefix: &ObjectPrefix,
+    ) -> Result<Vec<domain::ports::ObjectInfo>, BlobError> {
+        self.queue.store.list(prefix).await
+    }
 }
 
 /// One job: up to [`DELETE_ATTEMPTS`] attempts, retrying what failed; each S3 call is bounded only
@@ -237,5 +308,35 @@ mod tests {
             panic!("done");
         };
         assert_eq!(report.deleted, 2, "a missing key counts as deleted");
+    }
+
+    /// The queued store's delete runs on the queue: a caller dropped while it waits leaves it
+    /// running, and `drain` waits for it. Puts go straight to the store.
+    #[tokio::test]
+    async fn a_queued_stores_delete_outlives_its_caller() {
+        let clock = Arc::new(FixedClock::at("2026-10-18T14:00:00Z".parse().unwrap()));
+        let store = Arc::new(MemoryBlobStore::new(clock));
+        let (g, s, i) = ids();
+        let key = ObjectKey::depth(g, s, i);
+        let queue = DeleteQueue::new(store.clone());
+        let queued = queue.queued_store();
+        queued
+            .put(&key, Bytes::from_static(b"d"), ContentType::Png)
+            .await
+            .unwrap();
+        assert_eq!(store.list(&ObjectPrefix::garden(g)).await.unwrap().len(), 1);
+
+        // Polled once, so the job is submitted, then dropped.
+        let keys = [key];
+        let mut delete = queued.delete_keys(&keys);
+        assert!(futures::poll!(delete.as_mut()).is_pending());
+        drop(delete);
+        queue.drain().await;
+        assert_eq!(
+            store.list(&ObjectPrefix::garden(g)).await.unwrap(),
+            Vec::new()
+        );
+        let report = queued.delete_keys(&keys).await.unwrap();
+        assert_eq!(report.deleted, 1, "a missing key counts as deleted");
     }
 }

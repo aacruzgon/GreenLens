@@ -1264,7 +1264,7 @@ mod plant_repo {
         ports::StoreError,
         scan::{Plant, PlantStatus, ScanStatus, SpeciesCandidate, SpeciesChoice, SpeciesStatus},
         url::Stored,
-        wire::{Page, PageRequest, Timestamp},
+        wire::{Page, PageRequest, Run, Timestamp},
     };
 
     use domain::ports::*;
@@ -1310,14 +1310,22 @@ mod plant_repo {
         }
         async fn suggest_species(
             &self,
-            plant: PlantId,
+            scan: ScanId,
+            run: Run,
             candidates: Vec<SpeciesCandidate<Stored>>,
             working: Option<SpeciesId>,
             status: SpeciesStatus,
-        ) -> Result<(), StoreError> {
+        ) -> Result<bool, StoreError> {
             self.plant_repo
-                .suggest_species(plant, candidates, working, status)
+                .suggest_species(scan, run, candidates, working, status)
                 .await
+        }
+        async fn adopt_confirmed_species(
+            &self,
+            scan: ScanId,
+            run: Run,
+        ) -> Result<bool, StoreError> {
+            self.plant_repo.adopt_confirmed_species(scan, run).await
         }
         async fn set_plant_status(
             &self,

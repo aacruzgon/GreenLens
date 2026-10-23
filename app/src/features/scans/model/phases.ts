@@ -142,7 +142,7 @@ export interface PhaseLine {
   now: string;
   /** When the clock runs: the running phase's start. */
   since?: string;
-  /** "in 18 s" once the plan is ready. */
+  /** "took 18 s" once the plan is ready. */
   total?: string;
   /** "Next: weighing the evidence", "Next: your plan". */
   next?: string;
@@ -153,7 +153,7 @@ export function phaseLine(state: ScanState, phases: readonly PhaseView[] = phase
   const totalMs = phases.reduce((sum, p) => sum + (p.durationMs ?? 0), 0);
   if (state.status === "failed") return { now: "Stopped" };
   // A plan that replaced another (a late answer, a species change) says so (plan_superseded's `reason`).
-  if (state.plan && state.status === "planned") return { now: state.plan.notice ? "Plan updated" : "Plan ready", total: `in ${formatSeconds(totalMs)}` };
+  if (state.plan && state.status === "planned") return { now: state.plan.notice ? "Plan updated" : "Plan ready", total: `took ${formatSeconds(totalMs)}` };
   const idx = phases.findIndex((p) => p.state === "running" || p.state === "waiting");
   const current = phases[idx];
   if (state.question && state.status === "awaiting_answer") {
