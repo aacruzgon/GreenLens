@@ -1,16 +1,19 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ScrollView } from "react-native";
 
-import { isApiError, useActionKey, useCreateMemory, useGarden } from "@/api";
+import { isApiError, useActionKey, useCreateMemory, useGarden, usePlant } from "@/api";
 import { can } from "@/domain/permissions";
 import { Button, Text, TextField, space, useTheme } from "@/ui";
 
 import { useActiveGardenId } from "../hooks/useActiveGarden";
 
-// + Note on the garden home (screens 3.1): a note about the whole garden, shared with its members.
+// + Note on the garden home (screens 3.1): a note about the whole garden, shared with its members. From a plant's
+// page (screens 3.5) it carries `plantId`, and the note is about that plant.
 export function NewNoteSheet() {
   const { colors } = useTheme();
+  const { plantId } = useLocalSearchParams<{ plantId?: string }>();
+  const plant = usePlant(plantId ?? "");
   const gardenId = useActiveGardenId();
   const garden = useGarden(gardenId);
   const createMemory = useCreateMemory();
@@ -25,7 +28,7 @@ export function NewNoteSheet() {
   }, [allowed, router]);
 
   async function save() {
-    const body = { garden_id: gardenId, text: text.trim() };
+    const body = { garden_id: gardenId, text: text.trim(), ...(plantId ? { plant_id: plantId } : {}) };
     const saved = await createMemory.mutateAsync(body, keyFor(body)).then(() => true, () => false);
     if (saved) router.back();
   }
@@ -37,11 +40,11 @@ export function NewNoteSheet() {
       keyboardShouldPersistTaps="handled"
     >
       <Text variant="section" accessibilityRole="header">
-        A garden note
+        {plantId ? `A note about ${plant.data?.name ?? "this plant"}` : "A garden note"}
       </Text>
       <TextField
         label="Note"
-        placeholder="The east bed gets shade after 3 pm"
+        placeholder={plantId ? "It's in a container" : "The east bed gets shade after 3 pm"}
         value={text}
         onChangeText={setText}
         multiline

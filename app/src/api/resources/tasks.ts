@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { client, ok } from "../client";
+import { isApiError } from "../errors";
 import type { CreateTaskRequest, Page, Task, UpdateTaskRequest } from "@/domain/types";
 import { useIdempotentMutation, type IdempotencyKey } from "../idempotency";
 import { fetchAllPages, MAX_PAGE_SIZE, nextCursor } from "../pages";
@@ -18,6 +19,10 @@ export const tasks = {
     ok(await client().POST("/tasks", { body, params: { header: { "Idempotency-Key": key } } })),
   update: async (id: string, body: UpdateTaskRequest): Promise<Task> =>
     ok(await client().PATCH("/tasks/{id}", { params: { path: { id } }, body })),
+  /** `user` and `chat` tasks only; the others are dismissed (`409 invalid_state`; contracts 9). */
+  delete: async (id: string): Promise<void> => {
+    await client().DELETE("/tasks/{id}", { params: { path: { id } } });
+  },
 };
 
 export function useTasks(gardenId: string, filter?: TaskFilter) {
@@ -54,5 +59,17 @@ export function useUpdateTask() {
     mutationFn: ({ id, body }: { id: string; body: UpdateTaskRequest }) => tasks.update(id, body),
     // Completing a repeating task creates the next one, so the whole garden's lists refetch.
     onSuccess: (task) => qc.invalidateQueries({ queryKey: qk.tasks(task.garden_id) }),
+  });
+}
+
+export function useDeleteTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    // A 404 means it's already gone (a retry after a lost response): what was asked for.
+    mutationFn: (task: Pick<Task, "id" | "garden_id">) =>
+      tasks.delete(task.id).catch((error: unknown) => {
+        if (!(isApiError(error) && error.status === 404)) throw error;
+      }),
+    onSuccess: (_data, task) => qc.invalidateQueries({ queryKey: qk.tasks(task.garden_id) }),
   });
 }

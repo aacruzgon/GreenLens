@@ -316,7 +316,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: The manifests agree, and ml's tests pass
+      - name: The manifests agree, the seed's classifier labels are current, and ml's tests pass
         # In the seed job's pinned Python 3.12, with requirements-ci.txt's hashed wheels: the training
         # environment's versions without torch or CUDA. No model files, so check compares hashes only
         # where files are present, and the tests that need the files, cargo or open_clip skip (-rs
@@ -327,6 +327,7 @@ jobs:
             python:3.12-slim-trixie@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1 \
             sh -ec 'pip install -q --require-hashes --only-binary=:all: -r ml/requirements-ci.txt
                     python -m ml.models.check
+                    python -m ml.training.labels.classifier_labels --check
                     python -m pytest -q -rs -p no:cacheprovider ml/tests'
 
   app:
