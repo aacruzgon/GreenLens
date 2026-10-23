@@ -7,7 +7,8 @@
 //! cd backend
 //! ls ~/photos/*.jpg | ORT_DYLIB_PATH=/path/to/libonnxruntime.so.1.31.0 \
 //!   cargo run -q --release -p vision --example face_check -- --models-dir ~/.cache/pdm-models \
-//!   [--score-threshold 0.3] [--pass-a-long-side 1280] [--tile 1280] [--tile-stride 960] [--threads 2]
+//!   [--score-threshold 0.3] [--pass-a-long-side 1280] [--tile 1280] [--tile-stride 960] [--threads 2] \
+//!   [--landmarks]
 //! ```
 //!
 //! Loads `yunet` from `<models-dir>/manifest.toml` (hash checked) on the CPU, as `api` does, with
@@ -21,7 +22,21 @@
 //! measured. A file that fails gives `{"path", "error"}`. Exit code 0; 2 when the arguments are
 //! wrong or the detector doesn't load.
 //!
+//! `--landmarks` (a prototype check; `api` ignores the landmarks) runs `detect`'s passes a second
+//! time on a session of its own, with a decode that keeps `YuNet`'s five landmarks (`kps`: right
+//! eye, left eye, nose tip, right and left mouth corners), and merges them as `union_merge` does
+//! while keeping each merged box's members. Each face then has `members`: every pass box merged
+//! into it, as `{pass, x, y, w, h, score, kps}`, `pass` `"whole"` or `"tile"`, the box and the
+//! five `[x, y]` points in pixels of the upright image, not clamped. `landmarks_match` says
+//! whether the merged boxes equal `detect`'s exactly; when they don't, the faces carry no
+//! `members`. `ms.landmarks` is the second run's time.
+//!
 //! [vision evaluation 4]: ../../../../docs/vision/evaluation.md
+#![allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    reason = "the landmark run repeats faces.rs's pixel arithmetic, which the vision crate allows"
+)]
 
 use std::{
     io::{BufRead, Write},
@@ -31,14 +46,17 @@ use std::{
 };
 
 use domain::rules::uploads::stored_long_side;
+use ndarray::Array4;
+use ort::{inputs, session::Session, value::TensorRef};
 use serde_json::{Value, json};
 use vision::{
-    imaging::{self, ImageView},
+    VisionError,
+    imaging::{self, ImageView, PixelRect},
     manifest::Manifest,
-    runtime::{OrtRuntime, RuntimeConfig},
+    runtime::{OrtRuntime, RuntimeConfig, SessionSettings},
     upload::{
         UploadConfig,
-        faces::{FaceConfig, FaceDetector, blur_faces},
+        faces::{FaceBox, FaceConfig, FaceDetector, blur_faces, nms, tile_origins},
         quality,
     },
 };
@@ -48,6 +66,7 @@ struct Args {
     models_dir: PathBuf,
     faces: FaceConfig,
     threads: usize,
+    landmarks: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -57,8 +76,13 @@ fn parse_args() -> Result<Args, String> {
         ..UploadConfig::default().faces
     };
     let mut threads = RuntimeConfig::cpu("face_check").intra_threads;
+    let mut landmarks = false;
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
+        if flag == "--landmarks" {
+            landmarks = true;
+            continue;
+        }
         let value = args.next().ok_or_else(|| format!("{flag} needs a value"))?;
         let number = |what: &str| format!("{flag}: {what}, not {value:?}");
         match flag.as_str() {
@@ -80,17 +104,279 @@ fn parse_args() -> Result<Args, String> {
         models_dir,
         faces,
         threads,
+        landmarks,
     })
 }
 
-fn load(args: &Args) -> Result<FaceDetector, vision::VisionError> {
+/// The detector, and with `--landmarks` a second `YuNet` session for the landmark run.
+fn load(args: &Args) -> Result<(FaceDetector, Option<Session>), VisionError> {
     let runtime = OrtRuntime::init(&RuntimeConfig {
         dylib_path: std::env::var_os("ORT_DYLIB_PATH").map(PathBuf::from),
         intra_threads: args.threads,
         ..RuntimeConfig::cpu("face_check")
     })?;
     let manifest = Manifest::load(&args.models_dir.join("manifest.toml"))?;
-    FaceDetector::load(&runtime, &manifest, args.faces)
+    let detector = FaceDetector::load(&runtime, &manifest, args.faces)?;
+    let session = if args.landmarks {
+        let entry = manifest.entry(FaceDetector::MODEL)?;
+        Some(runtime.session(&manifest.path(entry), SessionSettings::default())?)
+    } else {
+        None
+    };
+    Ok((detector, session))
+}
+
+/// A pass box `[x, y, w, h, score]` and its ten landmark coordinates.
+type Detection = ([f32; 5], [f32; 10]);
+
+/// One pass box with its landmarks, in pixels of the upright image (not clamped).
+#[derive(Debug, Clone, Copy)]
+struct Member {
+    pass: &'static str,
+    rect: [f32; 4],
+    score: f32,
+    kps: [f32; 10],
+}
+
+impl Member {
+    fn to_json(self) -> Value {
+        let points: Vec<[f32; 2]> = self.kps.as_chunks::<2>().0.to_vec();
+        json!({
+            "pass": self.pass, "x": self.rect[0], "y": self.rect[1], "w": self.rect[2],
+            "h": self.rect[3], "score": self.score, "kps": points,
+        })
+    }
+}
+
+/// `FaceDetector::detect`'s passes again, keeping the landmarks: the merged boxes (which must
+/// equal `detect`'s) and, for each, the pass boxes merged into it.
+#[allow(
+    clippy::many_single_char_names,
+    reason = "w, h, tx, ty: image and tile geometry, as in faces.rs"
+)]
+fn detect_with_landmarks(
+    session: &mut Session,
+    image: ImageView<'_>,
+    config: &FaceConfig,
+) -> Result<(Vec<FaceBox>, Vec<Vec<Member>>), VisionError> {
+    let (w, h) = (image.width(), image.height());
+    let (mut found, mut members) = (Vec::new(), Vec::new());
+    let small = imaging::resize_long_side(image, config.pass_a_long_side)?;
+    let scale = (f64::from(w) / f64::from(small.width())) as f32;
+    for (b, kps) in run_pass(session, ImageView::from(&small), config)? {
+        found.push(normalise(b, (0, 0), scale, (w, h)));
+        members.push(vec![member("whole", b, kps, (0, 0), scale)]);
+    }
+    if w.max(h) > config.tile {
+        for (tx, ty) in tile_origins((w, h), config.tile, config.tile_stride) {
+            let rect = PixelRect {
+                x: tx,
+                y: ty,
+                w: config.tile.min(w - tx),
+                h: config.tile.min(h - ty),
+            };
+            let tile = imaging::crop(image, rect);
+            for (b, kps) in run_pass(session, ImageView::from(&tile), config)? {
+                found.push(normalise(b, (tx, ty), 1.0, (w, h)));
+                members.push(vec![member("tile", b, kps, (tx, ty), 1.0)]);
+            }
+        }
+    }
+    Ok(union_merge_members(found, members, config.merge_iou))
+}
+
+/// `faces::run_pass` with the landmarks: BGR, 0–255, zero-padded to multiples of 32; each box
+/// `[x, y, w, h, score]` and its ten landmark coordinates, in the pass image's pixels, after `NMS`.
+#[allow(
+    clippy::many_single_char_names,
+    reason = "w, h, x, y, r, g, b: image notation, as in faces.rs"
+)]
+fn run_pass(
+    session: &mut Session,
+    image: ImageView<'_>,
+    config: &FaceConfig,
+) -> Result<Vec<Detection>, VisionError> {
+    let (w, h) = (image.width(), image.height());
+    let (pw, ph) = (w.div_ceil(32) * 32, h.div_ceil(32) * 32);
+    let mut input = Array4::<f32>::zeros((1, 3, ph as usize, pw as usize));
+    for y in 0..h {
+        for x in 0..w {
+            let [r, g, b] = image.rgb(x, y);
+            let (yy, xx) = (y as usize, x as usize);
+            input[[0, 0, yy, xx]] = f32::from(b);
+            input[[0, 1, yy, xx]] = f32::from(g);
+            input[[0, 2, yy, xx]] = f32::from(r);
+        }
+    }
+    let outputs = session.run(inputs!["input" => TensorRef::from_array_view(&input)?])?;
+    let mut decoded = Vec::new();
+    for stride in [8u32, 16, 32] {
+        let tensor = |prefix: &str| -> Result<&[f32], VisionError> {
+            let name = format!("{prefix}_{stride}");
+            let value = outputs
+                .get(name.as_str())
+                .ok_or_else(|| VisionError::Shape {
+                    model: FaceDetector::MODEL,
+                    detail: format!("missing output {name}"),
+                })?;
+            Ok(value.try_extract_tensor::<f32>()?.1)
+        };
+        let (cls, obj, bbox, kps) = (
+            tensor("cls")?,
+            tensor("obj")?,
+            tensor("bbox")?,
+            tensor("kps")?,
+        );
+        decoded.extend(decode_with_landmarks(
+            stride,
+            cls,
+            obj,
+            bbox,
+            kps,
+            pw,
+            config.score_threshold,
+        ));
+    }
+    // NMS by index, as `nms` does it (a stable sort by score, then greedy), so the landmarks
+    // stay with their boxes; checked against `nms` itself.
+    let boxes: Vec<FaceBox> = decoded.iter().map(|(b, _)| face_box(*b)).collect();
+    let mut order: Vec<usize> = (0..boxes.len()).collect();
+    order.sort_by(|&a, &b| boxes[b].score.total_cmp(&boxes[a].score));
+    let mut kept: Vec<usize> = Vec::new();
+    for i in order {
+        if kept
+            .iter()
+            .all(|&k| boxes[k].iou(&boxes[i]) <= config.nms_iou)
+        {
+            kept.push(i);
+        }
+    }
+    let ours: Vec<FaceBox> = kept.iter().map(|&i| boxes[i]).collect();
+    if ours != nms(boxes.clone(), config.nms_iou) {
+        return Err(VisionError::Shape {
+            model: FaceDetector::MODEL,
+            detail: "NMS with landmarks differs from faces::nms".to_owned(),
+        });
+    }
+    Ok(kept.into_iter().map(|i| decoded[i]).collect())
+}
+
+/// `faces::decode_stride` plus the landmarks, decoded as `OpenCV`'s `face_detect.cpp` does:
+/// point n = ((col + kps[2n])·s, (row + kps[2n+1])·s).
+fn decode_with_landmarks(
+    stride: u32,
+    class: &[f32],
+    obj: &[f32],
+    bbox: &[f32],
+    kps: &[f32],
+    padded_width: u32,
+    threshold: f32,
+) -> Vec<Detection> {
+    let cols = (padded_width / stride) as usize;
+    let s = stride as f32;
+    let mut out = Vec::new();
+    for (i, (&c, &o)) in class.iter().zip(obj).enumerate() {
+        let score = (c.clamp(0.0, 1.0) * o.clamp(0.0, 1.0)).sqrt();
+        if score < threshold || cols == 0 {
+            continue;
+        }
+        let (row, col) = ((i / cols) as f32, (i % cols) as f32);
+        let b = &bbox[i * 4..i * 4 + 4];
+        let (cx, cy) = ((col + b[0]) * s, (row + b[1]) * s);
+        let (w, h) = (b[2].exp() * s, b[3].exp() * s);
+        let mut points = [0.0f32; 10];
+        for (n, p) in kps[i * 10..i * 10 + 10]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .enumerate()
+        {
+            points[2 * n] = (col + p[0]) * s;
+            points[2 * n + 1] = (row + p[1]) * s;
+        }
+        out.push(([cx - w / 2.0, cy - h / 2.0, w, h, score], points));
+    }
+    out
+}
+
+const fn face_box(b: [f32; 5]) -> FaceBox {
+    FaceBox {
+        x: b[0],
+        y: b[1],
+        w: b[2],
+        h: b[3],
+        score: b[4],
+    }
+}
+
+/// `faces::normalise`, the same arithmetic.
+fn normalise(b: [f32; 5], origin: (u32, u32), scale: f32, size: (u32, u32)) -> FaceBox {
+    let (iw, ih) = (size.0 as f32, size.1 as f32);
+    let x = (b[0] * scale + origin.0 as f32).clamp(0.0, iw);
+    let y = (b[1] * scale + origin.1 as f32).clamp(0.0, ih);
+    let x1 = ((b[0] + b[2]) * scale + origin.0 as f32).clamp(0.0, iw);
+    let y1 = ((b[1] + b[3]) * scale + origin.1 as f32).clamp(0.0, ih);
+    FaceBox {
+        x: x / iw,
+        y: y / ih,
+        w: (x1 - x) / iw,
+        h: (y1 - y) / ih,
+        score: b[4],
+    }
+}
+
+/// A pass box and its landmarks in pixels of the upright image.
+fn member(
+    pass: &'static str,
+    b: [f32; 5],
+    kps: [f32; 10],
+    origin: (u32, u32),
+    scale: f32,
+) -> Member {
+    let (ox, oy) = (origin.0 as f32, origin.1 as f32);
+    let mut points = kps;
+    for p in points.as_chunks_mut::<2>().0 {
+        p[0] = p[0] * scale + ox;
+        p[1] = p[1] * scale + oy;
+    }
+    Member {
+        pass,
+        rect: [
+            b[0] * scale + ox,
+            b[1] * scale + oy,
+            b[2] * scale,
+            b[3] * scale,
+        ],
+        score: b[4],
+        kps: points,
+    }
+}
+
+/// `faces::union_merge`, step for step, carrying each box's members along.
+fn union_merge_members(
+    mut boxes: Vec<FaceBox>,
+    mut members: Vec<Vec<Member>>,
+    iou: f32,
+) -> (Vec<FaceBox>, Vec<Vec<Member>>) {
+    loop {
+        let mut merged = false;
+        'outer: for i in 0..boxes.len() {
+            for j in i + 1..boxes.len() {
+                if boxes[i].iou(&boxes[j]) > iou || boxes[i].contains_or_inside(&boxes[j]) {
+                    let u = boxes[i].union(&boxes[j]);
+                    boxes.swap_remove(j);
+                    let moved = members.swap_remove(j);
+                    boxes[i] = u;
+                    members[i].extend(moved);
+                    merged = true;
+                    break 'outer;
+                }
+            }
+        }
+        if !merged {
+            return (boxes, members);
+        }
+    }
 }
 
 fn ms(since: Instant) -> f64 {
@@ -98,7 +384,12 @@ fn ms(since: Instant) -> f64 {
 }
 
 /// One photo through decode, the quality gate, detection, blur, resize and `WebP`.
-fn check(path: &Path, detector: &FaceDetector, config: &UploadConfig) -> Result<Value, String> {
+fn check(
+    path: &Path,
+    detector: &FaceDetector,
+    landmarks: Option<&mut Session>,
+    config: &UploadConfig,
+) -> Result<Value, String> {
     let bytes = std::fs::read(path).map_err(|e| format!("read: {e}"))?;
     let start = Instant::now();
     let decoded =
@@ -117,6 +408,16 @@ fn check(path: &Path, detector: &FaceDetector, config: &UploadConfig) -> Result<
     let detect_ms = ms(t);
 
     let t = Instant::now();
+    let with_landmarks = match landmarks {
+        Some(session) => Some(
+            detect_with_landmarks(session, view, &config.faces)
+                .map_err(|e| format!("landmarks: {e}"))?,
+        ),
+        None => None,
+    };
+    let landmarks_ms = ms(t);
+
+    let t = Instant::now();
     let grown: Vec<_> = found.iter().map(|f| f.grown(detector.grow())).collect();
     let mut upright = decoded.image;
     blur_faces(&mut upright, &grown);
@@ -126,11 +427,19 @@ fn check(path: &Path, detector: &FaceDetector, config: &UploadConfig) -> Result<
     let webp = imaging::encode_webp(ImageView::from(&stored), config.webp_quality);
     let store_ms = ms(t);
 
+    let matched = with_landmarks.as_ref().map(|(boxes, _)| *boxes == found);
     let faces: Vec<Value> = found
         .iter()
-        .map(|f| json!({"x": f.x, "y": f.y, "w": f.w, "h": f.h, "score": f.score}))
+        .enumerate()
+        .map(|(i, f)| {
+            let mut face = json!({"x": f.x, "y": f.y, "w": f.w, "h": f.h, "score": f.score});
+            if let (Some(true), Some((_, members))) = (matched, &with_landmarks) {
+                face["members"] = members[i].iter().map(|m| m.to_json()).collect();
+            }
+            face
+        })
         .collect();
-    Ok(json!({
+    let mut result = json!({
         "path": path,
         "width": width,
         "height": height,
@@ -148,7 +457,12 @@ fn check(path: &Path, detector: &FaceDetector, config: &UploadConfig) -> Result<
             "store": store_ms,
             "total": ms(start),
         },
-    }))
+    });
+    if let Some(matched) = matched {
+        result["landmarks_match"] = json!(matched);
+        result["ms"]["landmarks"] = json!(landmarks_ms);
+    }
+    Ok(result)
 }
 
 #[allow(clippy::print_stderr, reason = "a command-line tool's errors")]
@@ -160,8 +474,8 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let detector = match load(&args) {
-        Ok(detector) => detector,
+    let (detector, mut landmarks) = match load(&args) {
+        Ok(loaded) => loaded,
         Err(e) => {
             eprintln!("face_check: can't load the face detector: {e}");
             return ExitCode::from(2);
@@ -178,8 +492,8 @@ fn main() -> ExitCode {
         if path.as_os_str().is_empty() {
             continue;
         }
-        let result =
-            check(path, &detector, &config).unwrap_or_else(|e| json!({"path": path, "error": e}));
+        let result = check(path, &detector, landmarks.as_mut(), &config)
+            .unwrap_or_else(|e| json!({"path": path, "error": e}));
         // reason: a closed stdout means the caller stopped reading; nothing to report to.
         if writeln!(out, "{result}")
             .and_then(|()| out.flush())
