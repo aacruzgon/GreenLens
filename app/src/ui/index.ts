@@ -27,3 +27,7 @@ export { MeltPhoto, type MeltPhotoProps, type MeltKind } from "./composites/Melt
 export { hiddenSvg, useSvgId } from "./svgId";
 export { ConfidenceBadge, type ConfidenceBadgeProps } from "./composites/ConfidenceBadge";
 export { DropCard, type DropCardProps } from "./composites/DropCard";
+export { Hotspot, type HotspotProps } from "./composites/Hotspot";
+export { PhaseLine, type PhaseLineProps } from "./composites/PhaseLine";
+export { CandidateCompare, type CandidateCompareProps, type CandidatePlate } from "./composites/CandidateCompare";
+export { PictureAnswer, type PictureAnswerProps } from "./composites/PictureAnswer";

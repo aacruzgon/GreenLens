@@ -37,3 +37,20 @@ jest.mock("@clerk/expo", () => {
   };
 });
 jest.mock("@clerk/expo/token-cache", () => ({ tokenCache: undefined }));
+
+// TanStack Query keeps a finished mutation (and an unused query without gcTime: Infinity) for 5 minutes on a
+// timer, which kept Jest running for minutes after a screen suite that completes a task. Its timers don't hold
+// the process open here; tests never wait on them.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { timeoutManager } = require("@tanstack/react-query") as typeof import("@tanstack/react-query");
+// React Native's types say a timer is a number; under Node it is an object with unref().
+const unref = <T,>(timer: T): T => {
+  (timer as { unref?: () => void }).unref?.();
+  return timer;
+};
+timeoutManager.setTimeoutProvider({
+  setTimeout: (cb, ms) => unref(setTimeout(cb, ms)),
+  clearTimeout: (id) => clearTimeout(id),
+  setInterval: (cb, ms) => unref(setInterval(cb, ms)),
+  clearInterval: (id) => clearInterval(id),
+});

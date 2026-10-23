@@ -1,0 +1,12 @@
+# A label_only species (#4, 2026-10-22), so BioCLIP can name it and the VLM diagnoses it: a common
+# garden plant (evaluation.md's label_only cases).
+# The label is ml/training/labels/standin_labels.yaml's.
+id: rose
+scientific_name: Rosa
+common_names:
+- Rose
+profile: label_only
+classifier_supported: false
+bioclip_label: Rosa with common name rose
+sources: []
+reviewed_by: sara-lahourpour

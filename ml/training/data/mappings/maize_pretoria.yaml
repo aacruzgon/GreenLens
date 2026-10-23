@@ -10,7 +10,7 @@ dataset: maize_pretoria
 source: maize_pretoria
 root: .
 splits: { train: . }
-reviewed_by: null
+reviewed_by: sara-lahourpour  # slugs as confirmed on issue #4 (2026-10-22)
 
 sessions:
   exif: true

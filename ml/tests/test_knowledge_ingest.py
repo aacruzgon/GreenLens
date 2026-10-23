@@ -186,6 +186,7 @@ def test_llm_refuses_a_refusal_and_a_cut_off_reply(tmp_path):
             m.call(model=llm.TAG_MODEL, system="s", user="u", schema={}, effort="low", max_tokens=1)
 
 
+@pytest.mark.skipif(shutil.which("cargo") is None, reason="needs cargo")
 def test_the_extraction_schema_passes_the_real_sanitiser():
     sch, _ = validate.schemas()
     s = llm.sanitize(extract.problem_schema(sch, ["a.1", "a.2"], ["tomato_late_blight"], ["mulch"]))

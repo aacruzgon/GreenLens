@@ -1,6 +1,6 @@
 # PDM Frontend Flows
 
-> **Status:** Draft v0.4.5, 2026-10-21. v0.4.5: a question photo and a guided check are sent with Send, after the user sees the photo, and the jar test's task is due 6 hours after Start (sections 6 and 8). v0.4.4: "Forgot password?" resets the password with an email code, then continues like a sign-in (section 1). v0.4.3: a capture slot's delete can fail: after two retries the shot goes back to `stored` (section 14). v0.4.2: the second factor is a code by text, not TOTP (section 1).
+> **Status:** Draft v0.4.6, 2026-10-22. v0.4.6: picture answers by `Question.indicator_id` (section 6). v0.4.5: a question photo and a guided check are sent with Send, after the user sees the photo, and the jar test's task is due 6 hours after Start (sections 6 and 8). v0.4.4: "Forgot password?" resets the password with an email code, then continues like a sign-in (section 1). v0.4.3: a capture slot's delete can fail: after two retries the shot goes back to `stored` (section 14). v0.4.2: the second factor is a code by text, not TOTP (section 1).
 > v0.4 applies the third audit and contracts v0.8.2: a failed scan supersedes its question first, and a guided check that finishes after a failure is kept for a Retry.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Species and capture:** the species card shows each photo's credit, and discarding a capture also deletes its jar-test task.
@@ -256,6 +256,7 @@ Companion to the [frontend architecture](README.md) and the [screens](screens.md
   │                    │◀── question_resolved { by: photo }  or  { by: dropped }     │
 ```
 
+- **Picture answers.** An indicator question carries `indicator_id` (contracts 3). When the app has a drawing for that indicator (so far `concentric_rings`: rings, or plain spots), Yes and No are pictures with their words ("Yes, rings", "No, plain spots"); otherwise they are the server's labels. **Not sure** is always plain text.
 - **The photo goes on Send, not on the shutter.** Its upload makes the question `answering` at once, so the user sees the photo first and can retake it. A refused photo (`422 image_quality`) is taken again; a send that didn't arrive keeps the photo and its key for **Try again**.
 - **Segmentation and measurement** run first only for a photo with depth whose question has a measurable indicator that the photo's kind can show and that no user or measurement has answered (contracts 7, photos sent for a question). When the measurements settle every indicator, no `verify` job runs and the scan is rescored at once.
 - While a question is `answering`, the card accepts nothing else. A second answer or photo gets `409 invalid_state`, and the card refetches the scan.
