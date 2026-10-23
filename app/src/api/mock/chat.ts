@@ -147,6 +147,8 @@ interface TurnCtx {
   text: string;
   canWrite: boolean;
   messageId: string;
+  /** The message came with a chat photo. */
+  withPhoto: boolean;
 }
 
 const KNOWLEDGE: Record<"water" | "frost" | "spacing", S["Citation"]> = {
@@ -387,7 +389,13 @@ function rescanTurn(ctx: TurnCtx): TurnStep[] {
   ];
 }
 
-function defaultTurn(): TurnStep[] {
+function defaultTurn(withPhoto: boolean): TurnStep[] {
+  if (withPhoto) {
+    return [
+      ...tool("call_img", "view_image", "Looking at your photo"),
+      ...say("I've looked at your photo beside the last scan. Ask what you'd like to know: whether the spots are spreading, or what to do next."),
+    ];
+  }
   return [
     ...tool("call_kb", "search_knowledge", "Searching the guides"),
     ...say("I can help with watering, frost, spacing, growth and what the last scan found. Ask about one of your plants, or attach a photo."),
@@ -410,7 +418,7 @@ function turnFor(ctx: TurnCtx): { route: S["ChatRoute"]; steps: TurnStep[]; farm
   if (has("spacing", "space", "crowd", "close", "apart", "map")) return { route: "care_question", steps: spacingTurn(ctx), farm: [] };
   if (has("grow", "height", "tall", "trend")) return { route: "care_question", steps: trendTurn(ctx), farm: [] };
   if (has("sure", "septoria", "tell", "lookalike", "look-alike", "which one")) return { route: "diagnosis_question", steps: lookalikeTurn(), farm: [] };
-  return { route: "care_question", steps: defaultTurn(), farm: [] };
+  return { route: "care_question", steps: defaultTurn(ctx.withPhoto), farm: [] };
 }
 
 // ---- the stream
@@ -440,7 +448,7 @@ function turnStream(store: MockStore, stored: StoredConversation, body: S["SendM
   if (drop) scenario.set({ dropNextStream: false });
   const messageId = store.nextId("msg");
   const role = scenario.get().role;
-  const ctx: TurnCtx = { store, stored, text: body.text, canWrite: role === "editor" || role === "owner", messageId };
+  const ctx: TurnCtx = { store, stored, text: body.text, canWrite: role === "editor" || role === "owner", messageId, withPhoto: (body.image_ids?.length ?? 0) > 0 };
   const turn = turnFor(ctx);
   const sent: Frame[] = [];
   let cancelled = false;
@@ -591,6 +599,10 @@ export function registerChatRoutes(route: Register, h: ChatRouteHelpers): void {
   route("POST", "/conversations/:id/messages", async (c) => {
     const stored = c.store.chat.conversations.get(c.params.id);
     if (!stored) return notFound();
+    if (scenario.get().chatBudgetUsed) {
+      scenario.set({ chatBudgetUsed: false });
+      return errorResponse("budget_exceeded", { budget: "chat_tokens", resets_at: nowTs(8 * 3_600_000) });
+    }
     const key = c.headers.get("idempotency-key");
     const replay = key ? c.store.chat.replays.get(key) : undefined;
     if (replay) return jsonResponse(200, { message: replay });

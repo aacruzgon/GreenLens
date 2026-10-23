@@ -211,9 +211,12 @@ export function useConversationScreen(conversationId: string) {
 
   // The list: stored messages, then the turns not stored yet. A turn whose assistant message is stored gives way to
   // it, lending it the memories and rescans `Message` doesn't keep. An interrupted assistant message can be resent
-  // from the user message before it.
+  // from the user message before it, while it is the last thing in the conversation: once a resend or another
+  // question follows it, a second Resend would only ask twice (seen on the simulator).
   const items: ChatItem[] = useMemo(() => {
     const byMessage = new Map(turns.flatMap((t) => (t.messageId ? [[t.messageId, t] as const] : [])));
+    const storedIds = new Set(stored.map((m) => m.id));
+    const live = turns.some((t) => !(t.messageId && storedIds.has(t.messageId)));
     const out: ChatItem[] = stored.map((m, i) => {
       const t = byMessage.get(m.id);
       return {
@@ -221,11 +224,10 @@ export function useConversationScreen(conversationId: string) {
         key: m.id,
         message: m,
         extras: t && (t.memories.length || t.rescans.length) ? { memories: t.memories, rescans: t.rescans } : undefined,
-        resendable: m.role === "assistant" && m.interrupted && i > 0 && stored[i - 1]!.role === "user",
+        resendable: m.role === "assistant" && m.interrupted && i === stored.length - 1 && !live && stored[i - 1]?.role === "user",
       };
     });
-    const ids = new Set(stored.map((m) => m.id));
-    for (const t of turns) if (!(t.messageId && ids.has(t.messageId))) out.push({ kind: "turn", key: t.localId, turn: t });
+    for (const t of turns) if (!(t.messageId && storedIds.has(t.messageId))) out.push({ kind: "turn", key: t.localId, turn: t });
     return out;
   }, [stored, turns]);
 
@@ -241,6 +243,8 @@ export function useConversationScreen(conversationId: string) {
 
   return {
     loading: query.isPending,
+    /** `404`: deleted with its plant or garden, or never the caller's (contracts 8); there is nothing to retry. */
+    gone: query.isError && isApiError(query.error) && query.error.status === 404,
     error: query.isError ? (isApiError(query.error) ? query.error.message : "This conversation couldn't be loaded.") : undefined,
     conversation,
     gardenId,

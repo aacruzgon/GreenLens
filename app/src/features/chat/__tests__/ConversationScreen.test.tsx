@@ -34,8 +34,11 @@ beforeEach(() => {
 });
 afterEach(() => new Promise((r) => setTimeout(r, 50)));
 
-function wrap(ui: React.ReactElement) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } } });
+let sharedClient: QueryClient;
+const newClient = () => new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } } });
+
+function wrap(ui: React.ReactElement, client?: QueryClient) {
+  const qc = client ?? (sharedClient = newClient());
   return (
     <QueryClientProvider client={qc}>
       <ThemeProvider scheme="light" reducedMotion>
@@ -100,11 +103,33 @@ describe("the conversation (screens 3.6)", () => {
     expect(await screen.findByTestId("resend")).toBeTruthy();
     await fireEvent.press(screen.getByTestId("resend"));
     expect(await screen.findByTestId("block-weather_hours")).toBeTruthy();
+    // The interrupted answer stays, but no longer offers a second Resend (found on the simulator).
+    await waitFor(() => expect(screen.queryByTestId("resend")).toBeNull());
+    expect(screen.getByText("Interrupted")).toBeTruthy();
+  });
+
+  it("shows a confirmed card as added after the screen remounts (found on the simulator)", async () => {
+    const id = await openNew();
+    await ask("Should I water today?");
+    await fireEvent.press(await screen.findByTestId("pending-confirm"));
+    expect(await screen.findByText("Added to your tasks")).toBeTruthy();
+    await screen.unmount();
+    mockParams = { conversationId: id };
+    await render(wrap(<ConversationScreen />, sharedClient));
+    expect(await screen.findByText("Task added")).toBeTruthy();
+    expect(screen.queryByTestId("pending-confirm")).toBeNull();
+  });
+
+  it("says a deleted conversation is gone, with no composer", async () => {
+    mockParams = { conversationId: "conv_deleted" };
+    await render(wrap(<ConversationScreen />));
+    expect(await screen.findByText("This conversation is gone")).toBeTruthy();
+    expect(screen.queryByTestId("composer-input")).toBeNull();
   });
 
   it("says when the chat budget is used up, before any stream", async () => {
     await openNew();
-    scenario.set({ callFault: "budget_exceeded" });
+    scenario.set({ chatBudgetUsed: true });
     await ask("Should I water today?");
     expect(await screen.findByText(/Today's chat limit is used up/)).toBeTruthy();
   });
@@ -146,5 +171,15 @@ describe("the Chat tab", () => {
     expect(screen.getByText("When did we last spray?")).toBeTruthy();
     await fireEvent.press(screen.getByTestId("chat-new"));
     await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith(expect.objectContaining({ pathname: "/chat/[conversationId]" })));
+  });
+
+  it("leaves out a conversation nobody wrote in, and New chat reuses it (found on the simulator)", async () => {
+    const empty = await chat.create({ garden_id: IDS.garden, anchor: { type: "garden", id: IDS.garden } }, newKey());
+    await render(wrap(<ConversationListScreen gardenId={IDS.garden} />));
+    await screen.findByText("When did we last spray?");
+    expect(screen.queryByTestId(`conversation-${empty.id}`)).toBeNull();
+    await fireEvent.press(screen.getByTestId("chat-new"));
+    await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith({ pathname: "/chat/[conversationId]", params: { conversationId: empty.id } }));
+    expect(mockStore.chat.conversations.size).toBe(3);
   });
 });

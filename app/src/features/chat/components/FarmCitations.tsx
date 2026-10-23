@@ -42,8 +42,8 @@ function RecordSheet({ citation, era, timeZone, onClose }: { citation: FarmCitat
               The record&apos;s text isn&apos;t available in the app yet.
             </Text>
           )}
-          {!era ? <Button label={`Open in ${SYSTEM_WORD[citation.system]}`} variant="secondary" onPress={() => void links.openExternal(citation.link)} /> : null}
-          <Button label="Done" onPress={onClose} />
+          {!era ? <Button label={`Open in ${SYSTEM_WORD[citation.system]}`} variant="secondary" size="large" onPress={() => void links.openExternal(citation.link)} /> : null}
+          <Button label="Done" size="large" onPress={onClose} />
         </ScrollView>
       </View>
     </Modal>

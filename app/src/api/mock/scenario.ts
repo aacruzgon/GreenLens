@@ -22,6 +22,11 @@ export interface ScenarioState {
   callFault: CallFault | null;
   /** The next event stream drops after a few events (a network error), then it clears. */
   dropNextStream: boolean;
+  /**
+   * The next chat message is refused with `budget_exceeded` before its stream, then it clears. Its own flag, since
+   * `callFault` goes to whatever call comes first, and a background refetch took it before the send on the simulator.
+   */
+  chatBudgetUsed: boolean;
   /** The garden role the mock answers as; below editor, writes get 403. */
   role: S["Role"];
   /** Multiplies every scripted delay. 0 plays a run instantly (tests). */
@@ -40,6 +45,7 @@ export interface ScenarioState {
   setUploadFault(v: UploadFault | null): void;
   setCallFault(v: CallFault | null): void;
   setDropNextStream(v: boolean): void;
+  setChatBudgetUsed(v: boolean): void;
   setRole(v: S["Role"]): void;
   setDelayScale(v: number): void;
   setEmptyAccount(v: boolean): void;
@@ -51,6 +57,7 @@ const INITIAL = {
   uploadFault: null,
   callFault: null,
   dropNextStream: false,
+  chatBudgetUsed: false,
   role: "owner",
   delayScale: 1,
   keepaliveMs: 15_000,
@@ -64,6 +71,7 @@ export const useScenario = create<ScenarioState>()((set) => ({
   setUploadFault: (uploadFault) => set({ uploadFault }),
   setCallFault: (callFault) => set({ callFault }),
   setDropNextStream: (dropNextStream) => set({ dropNextStream }),
+  setChatBudgetUsed: (chatBudgetUsed) => set({ chatBudgetUsed }),
   setRole: (role) => set({ role }),
   setDelayScale: (delayScale) => set({ delayScale }),
   setEmptyAccount: (emptyAccount) => set({ emptyAccount }),

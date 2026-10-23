@@ -133,16 +133,35 @@ export interface MapFrame {
   height: number;
 }
 
-/** Fits the beds and pins into `width`, keeping the map's aspect, with a margin in metres. */
-export function fitMap(map: GardenMap, width: number, margin = 0.4): MapFrame {
-  const xs = [...map.beds.flatMap((b) => b.polygon_m.map((p) => p[0]!)), ...map.pins.map((p) => p.x_m)];
-  const ys = [...map.beds.flatMap((b) => b.polygon_m.map((p) => p[1]!)), ...map.pins.map((p) => p.y_m)];
-  const minX = Math.min(...xs) - margin;
-  const maxX = Math.max(...xs) + margin;
-  const minY = Math.min(...ys) - margin;
-  const maxY = Math.max(...ys) + margin;
+/**
+ * Fits the map into `width`, keeping its aspect. With `focus`, the frame is the snippet around those plants (at
+ * least `span` metres a side), so two plants 40 cm apart don't draw as one pin: fitting the whole garden did,
+ * and hid their canopy rings, on the simulator. Without it, every bed and pin, with a margin in metres.
+ */
+export function fitMap(map: GardenMap, width: number, focus: readonly string[] = [], span = 1.6, margin = 0.4): MapFrame {
+  const pins = map.pins.filter((p) => focus.includes(p.plant_id));
+  let minX: number, maxX: number, minY: number, maxY: number;
+  if (pins.length) {
+    const xs = pins.map((p) => p.x_m);
+    const ys = pins.map((p) => p.y_m);
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+    const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    const half = Math.max(span, Math.max(...xs) - Math.min(...xs) + 2 * margin, Math.max(...ys) - Math.min(...ys) + 2 * margin) / 2;
+    [minX, maxX, minY, maxY] = [cx - half, cx + half, cy - half * 0.6, cy + half * 0.6];
+  } else {
+    const xs = [...map.beds.flatMap((b) => b.polygon_m.map((p) => p[0]!)), ...map.pins.map((p) => p.x_m)];
+    const ys = [...map.beds.flatMap((b) => b.polygon_m.map((p) => p[1]!)), ...map.pins.map((p) => p.y_m)];
+    [minX, maxX, minY, maxY] = [Math.min(...xs) - margin, Math.max(...xs) + margin, Math.min(...ys) - margin, Math.max(...ys) + margin];
+  }
   const scale = width / Math.max(maxX - minX, 0.5);
   return { scale, ox: minX, oy: minY, width, height: Math.max(maxY - minY, 0.5) * scale };
+}
+
+/** Whether a point in metres falls inside the frame (pins outside a snippet aren't drawn). */
+export function inFrame(frame: MapFrame, x: number, y: number): boolean {
+  const px = (x - frame.ox) * frame.scale;
+  const py = (y - frame.oy) * frame.scale;
+  return px >= 0 && px <= frame.width && py >= 0 && py <= frame.height;
 }
 
 /** Pins are tapped in AR, so distances are given to the nearest 5 cm (design 3.1, the map). */

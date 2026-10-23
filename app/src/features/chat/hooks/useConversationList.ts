@@ -36,7 +36,11 @@ export function useConversationList(gardenId: string) {
     scanDate: c.anchor.type === "scan" && scanPlant.get(c.anchor.id) ? formatMonthDay(scanPlant.get(c.anchor.id)!.at, tz) : undefined,
   });
 
-  const groups = groupConversations(flattenPages(list.data)).map((g) => ({
+  const all = flattenPages(list.data);
+  // A conversation nobody wrote in is left out: New chat, or Ask then Back, would otherwise leave an empty row each
+  // time (seen on the simulator). New chat reuses one instead of starting another.
+  const used = all.filter((c) => c.last_message_at !== undefined);
+  const groups = groupConversations(used).map((g) => ({
     ...g,
     rows: g.items.map((c): ConversationRow => ({
       conversation: c,
@@ -51,7 +55,8 @@ export function useConversationList(gardenId: string) {
     starting.current = true;
     setProblem(undefined);
     try {
-      const c = await create.mutateAsync({ garden_id: gardenId, anchor: { type: "garden", id: gardenId } });
+      const empty = all.find((c) => c.anchor.type === "garden" && c.last_message_at === undefined);
+      const c = empty ?? (await create.mutateAsync({ garden_id: gardenId, anchor: { type: "garden", id: gardenId } }));
       router.push({ pathname: "/chat/[conversationId]", params: { conversationId: c.id } });
     } catch (e) {
       setProblem(isApiError(e) ? e.message : "A new chat couldn't start. Check your network.");

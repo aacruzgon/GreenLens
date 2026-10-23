@@ -104,6 +104,8 @@ export function useMessageFeedback() {
 
 /** What a confirmed card changed: the tasks for a task card, the scan and its plan for a plan card (flows 10). */
 export function invalidateConfirmed(qc: QueryClient, gardenId: string, res: ConfirmResponse): void {
+  // The stored message holds the card, so its new status must be read again (a remount showed the old one).
+  void qc.invalidateQueries({ queryKey: qk.conversation(res.pending_action.conversation_id) });
   void qc.invalidateQueries({ queryKey: qk.tasks(gardenId) });
   const plan = res.result.plan;
   if (plan) {
@@ -124,7 +126,11 @@ export function useConfirmPendingAction(gardenId: string) {
 }
 
 export function useRejectPendingAction() {
-  return useMutation({ mutationFn: (id: string) => chat.reject(id) });
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => chat.reject(id),
+    onSuccess: (res) => qc.invalidateQueries({ queryKey: qk.conversation(res.pending_action.conversation_id) }),
+  });
 }
 
 /** The garden's farm connectors: chat reads them to tell an `era` record from a vendor's (EON E10.3). */

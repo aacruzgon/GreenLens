@@ -1,6 +1,7 @@
 // The measurement trend (design 5): the plant's measured points with their noise band (analytics 2), joined only
 // when there is a trend (3 points over 14 days), with no line past the last point. Opens the plant's page.
-import { View, useWindowDimensions } from "react-native";
+import { useState } from "react";
+import { View } from "react-native";
 import Svg, { Circle, Line, Polyline } from "react-native-svg";
 
 import type { AnswerBlock } from "@/domain/proposed";
@@ -16,9 +17,8 @@ const HEIGHT = 110;
 
 export function MeasurementTrendBlock({ block, onOpenPlant }: { block: Block; onOpenPlant: (plantId: string) => void }) {
   const { colors } = useTheme();
-  const { width: screen } = useWindowDimensions();
-  // The bubble's width less the card's padding, near enough: the chart is drawn in its own box.
-  const width = Math.max(160, Math.min(screen, 520) - 96);
+  // The card's own width, measured, as the map block does.
+  const [width, setWidth] = useState(0);
   const pts = plot(block.points, width - 12, HEIGHT - 12).map((p) => ({ ...p, x: p.x + 6, y: p.y + 6, lo: p.lo + 6, hi: p.hi + 6 }));
   const trend = hasTrend(block.points);
   const word = trendWord(block.points);
@@ -32,7 +32,8 @@ export function MeasurementTrendBlock({ block, onOpenPlant }: { block: Block; on
         </Text>
       ) : (
         <>
-          <Svg width={width} height={HEIGHT} {...hiddenSvg}>
+          <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={{ height: HEIGHT }}>
+          {width ? <Svg width={width} height={HEIGHT} {...hiddenSvg}>
             {pts.map((p) => (
               <Line key={`b-${p.point.scan_id}`} x1={p.x} x2={p.x} y1={p.lo} y2={p.hi} stroke={colors.accentSoft} strokeWidth={6} strokeLinecap="round" />
             ))}
@@ -40,7 +41,8 @@ export function MeasurementTrendBlock({ block, onOpenPlant }: { block: Block; on
             {pts.map((p) => (
               <Circle key={p.point.scan_id} cx={p.x} cy={p.y} r={3.5} fill={colors.surface} stroke={colors.accent} strokeWidth={2} />
             ))}
-          </Svg>
+          </Svg> : null}
+          </View>
           <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
             <Text variant="caption1" color="textMuted">
               {formatLocalDate(series[0]!.created_at.slice(0, 10))} · about {Math.round(series[0]!.value)} cm

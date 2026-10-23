@@ -1,7 +1,7 @@
 import type { AnswerBlock } from "@/domain/proposed";
 import type { ForecastDay, MeasurementPoint } from "@/domain/types";
 
-import { blockSummary, coverRequest, defaultCover, focusDistance, frostSummary, hasTrend, humidHoursText, pinDistanceCm, plot, trendWord } from "./blocks";
+import { blockSummary, coverRequest, defaultCover, fitMap, focusDistance, frostSummary, hasTrend, humidHoursText, inFrame, pinDistanceCm, plot, trendWord } from "./blocks";
 
 const night: ForecastDay = { date: "2026-10-29", t_min_c: -1, t_max_c: 6, mean_rh_pct: 70, hours_rh_over_90: 3, precip_mm: 0, frost_risk: true };
 
@@ -86,6 +86,17 @@ describe("the garden map snippet", () => {
   it("gives distances to the nearest 5 cm, since pins are tapped in AR", () => {
     expect(pinDistanceCm(block.map.pins[0]!, block.map.pins[1]!)).toBe(40);
     expect(focusDistance(block)).toBe("Tomato 1 and Tomato 2 are 40 cm apart.");
+  });
+
+  it("frames the snippet around the focus plants, so 40 cm apart isn't one pin (found on the simulator)", () => {
+    const wide = { ...block.map, pins: [...block.map.pins, { plant_id: "far", x_m: 0.5, y_m: 7 }] };
+    const whole = fitMap(wide, 300);
+    const snippet = fitMap(wide, 300, ["t1", "t2"]);
+    const apart = (f: ReturnType<typeof fitMap>) => 0.41 * f.scale;
+    expect(apart(whole)).toBeLessThan(28);
+    expect(apart(snippet)).toBeGreaterThan(56);
+    expect(inFrame(snippet, 4.8, 2)).toBe(true);
+    expect(inFrame(snippet, 0.5, 7)).toBe(false);
   });
 
   it("summarises every block for VoiceOver", () => {

@@ -1,8 +1,8 @@
 // A conversation (screens 3.6; flows 9, 10, 18, 19): what it is about at the top, the exchanges, and the composer
 // riding the keyboard. Only the conversation's owner reaches it (contracts 8); anyone else gets 404.
-import { FlashList } from "@shopify/flash-list";
+import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,11 +10,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAllPlants, useGarden, useScan } from "@/api";
 import { formatMonthDay } from "@/domain/format";
 import { useStartCapture } from "@/features/capture";
-import { Banner, Button, ErrorState, IconButton, LineIcon, Skeleton, Text, gutter, space, useTheme } from "@/ui";
+import { Banner, Button, EmptyState, ErrorState, IconButton, LineIcon, Skeleton, Text, gutter, space, useTheme } from "@/ui";
 
 import { Composer } from "../components/Composer";
 import { MessageView, type MessageContext } from "../components/MessageView";
-import { useConversationScreen } from "../hooks/useConversationScreen";
+import { useConversationScreen, type ChatItem } from "../hooks/useConversationScreen";
 import { anchorName } from "../model/conversations";
 
 export function ConversationScreen() {
@@ -30,6 +30,15 @@ export function ConversationScreen() {
   const capture = useStartCapture();
   const [rescanError, setRescanError] = useState<string>();
   const tz = garden.data?.time_zone ?? "UTC";
+  // A new turn scrolls into view, also when a block sent it from higher up the conversation (found on the
+  // simulator: "Make it a task" left its card below the fold, past FlashList's autoscroll threshold).
+  const list = useRef<FlashListRef<ChatItem>>(null);
+  const turnCount = s.items.filter((i) => i.kind === "turn").length;
+  const lastTurns = useRef(turnCount);
+  useEffect(() => {
+    if (turnCount > lastTurns.current) requestAnimationFrame(() => list.current?.scrollToEnd({ animated: true }));
+    lastTurns.current = turnCount;
+  }, [turnCount]);
   const plantName = (id: string) => plants.data?.find((p) => p.id === id)?.name;
 
   const about = anchor
@@ -79,7 +88,13 @@ export function ConversationScreen() {
     <View style={{ flex: 1, backgroundColor: colors.background }} testID="conversation-screen">
       {header}
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
-        {s.error ? (
+        {s.gone ? (
+          <EmptyState
+            title="This conversation is gone"
+            message="It was deleted with its plant or garden, or it isn't yours."
+            action={{ label: "Back to chats", onPress: () => router.back(), variant: "secondary" }}
+          />
+        ) : s.error ? (
           <ErrorState message={s.error} onRetry={s.actions.retry} />
         ) : s.loading ? (
           <View style={{ padding: gutter, gap: space[3] }}>
@@ -88,6 +103,7 @@ export function ConversationScreen() {
           </View>
         ) : (
           <FlashList
+            ref={list}
             data={s.items}
             keyExtractor={(item) => item.key}
             getItemType={(item) => (item.kind === "turn" ? "turn" : item.message.role)}
@@ -98,6 +114,8 @@ export function ConversationScreen() {
             )}
             maintainVisibleContentPosition={{ startRenderingFromBottom: true, autoscrollToBottomThreshold: 0.2 }}
             keyboardShouldPersistTaps="handled"
+            // Dragging the conversation puts the keyboard away, as Messages does; nothing else in it would.
+            keyboardDismissMode="interactive"
             contentContainerStyle={{ paddingVertical: space[3] }}
             ListHeaderComponent={
               s.hasOlder ? (
@@ -117,18 +135,20 @@ export function ConversationScreen() {
           />
         )}
         {rescanError ? <Banner tone="danger" title={rescanError} style={{ marginHorizontal: gutter, marginBottom: space[2] }} /> : null}
-        <Composer
-          text={s.composer.text}
-          onChangeText={s.composer.setText}
-          photos={s.composer.photos}
-          canSend={s.composer.canSend}
-          busy={s.composer.busy}
-          onSend={() => s.actions.send()}
-          onAddPhoto={() => void s.actions.addPhoto()}
-          onRetryPhoto={s.actions.retryPhoto}
-          onRemovePhoto={s.actions.removePhoto}
-          bottomInset={insets.bottom}
-        />
+        {s.conversation && !s.gone ? (
+          <Composer
+            text={s.composer.text}
+            onChangeText={s.composer.setText}
+            photos={s.composer.photos}
+            canSend={s.composer.canSend}
+            busy={s.composer.busy}
+            onSend={() => s.actions.send()}
+            onAddPhoto={() => void s.actions.addPhoto()}
+            onRetryPhoto={s.actions.retryPhoto}
+            onRemovePhoto={s.actions.removePhoto}
+            bottomInset={insets.bottom}
+          />
+        ) : null}
       </KeyboardAvoidingView>
     </View>
   );
