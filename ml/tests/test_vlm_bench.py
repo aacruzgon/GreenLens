@@ -84,11 +84,34 @@ def test_a_run_cut_short_is_scored_on_what_it_wrote_and_rerun(tmp_path, monkeypa
     (cut / "out.jsonl").write_text(json.dumps(full[0]) + "\n" + '{"case_id": "tomato-z", "ok"')
     assert vb.finished(done, 2) and not vb.finished(cut, 2) and not vb.finished(empty, 2)
     monkeypatch.setattr(vb, "REPORTS", tmp_path / "reports")
-    vb.score(argparse.Namespace(runs=[tmp_path / "fp8"], out="t"))
+    vb.score(argparse.Namespace(runs=[tmp_path / "fp8"], out="t", cases=None))
     report = json.loads((tmp_path / "reports" / "vlm-bench-t.json").read_text())
     assert [(r["max_pixels"], r["finished"], r["jobs"], r["exit"]) for r in report] == [(602112, 2, 2, 0), (1003520, 1, 2, "timeout")]
     assert report[0]["model"] == "Qwen/Qwen3-VL-8B-Instruct-FP8"
 
+
+def test_runs_are_rescored_on_other_cases_with_their_truth(tmp_path, monkeypatch):
+    b = vb.bench_case(case(), Path("/p"))                                       # early blight, the first candidate
+    d = tmp_path / "q" / "px1003520-c1"
+    d.mkdir(parents=True)
+    own = tmp_path / "cases.jsonl"
+    own.write_text(json.dumps(b) + "\n" + json.dumps({**b, "case_id": "tomato-z"}) + "\n")
+    (d / "meta.json").write_text(json.dumps({"label": "q", "max_pixels": 1003520, "concurrency": 1, "peak_gpu_mib": 1,
+                                             "peak_kv_cache": 0.1, "models": [], "cases": str(own), "exit": 0}))
+    blight = row(b, ["yes"] * 3 + ["no"] * 6)
+    (d / "out.jsonl").write_text(json.dumps(blight) + "\n" + json.dumps({**blight, "case_id": "tomato-z"}) + "\n")
+    relabelled = tmp_path / "cases-new.jsonl"                                  # tomato-z dropped, tomato-x relabelled
+    relabelled.write_text(json.dumps({**b, "truth": {**b["truth"], "problems": ["tomato_septoria_leaf_spot"]}}) + "\n")
+    monkeypatch.setattr(vb, "REPORTS", tmp_path / "reports")
+    vb.score(argparse.Namespace(runs=[tmp_path / "q"], out="own", cases=None))
+    vb.score(argparse.Namespace(runs=[tmp_path / "q"], out="new", cases=relabelled))
+    (before,), (after,) = (json.loads((tmp_path / "reports" / f"vlm-bench-{n}.json").read_text()) for n in ("own", "new"))
+    assert (before["jobs"], before["finished"], before["diagnosis_top1_sure"]) == (2, 2, 1.0)
+    assert (after["jobs"], after["finished"], after["diagnosis_top1_sure"]) == (1, 1, 0.0)
+    assert (before["scored_on"]["cases"], after["scored_on"]["cases"]) == (2, 1)
+    assert after["scored_on"]["file"].endswith("cases-new.jsonl")
+    md = (tmp_path / "reports" / "vlm-bench-new.md").read_text()
+    assert f"cases-new.jsonl` (1 case, SHA-256 `{after['scored_on']['sha256']}`) (`--cases`)" in md
 
 def test_answers_are_counted_per_indicator_on_cases_with_its_problem_and_on_the_rest():
     b = vb.bench_case(case(), Path("/p"))
@@ -117,3 +140,17 @@ def test_a_probable_case_counts_on_neither_side_of_the_per_question_table():
     b = {**vb.bench_case(case(), Path("/p")), "label_confidence": "probable"}
     s = vb.score_run([row(b, ["yes"] * 9)], {b["case_id"]: b})
     assert all(not v["truth"] and not v["other"] for v in s["indicators"].values())
+
+
+def test_findings_are_counted_per_certainty_and_the_species_guess_scored():
+    sick = vb.bench_case(case(), Path("/p"))
+    other = {**vb.bench_case(case(), Path("/p")), "case_id": "tomato-z"}
+    a, b = row(sick, ["no"] * 9, damage=("leaf_mines",)), row(other, ["no"] * 9)
+    a["result"]["findings"]["species_guess"]["confidence"] = 0.85
+    a["result"]["findings"]["damage"][0]["confidence"] = 0.65
+    b["result"]["findings"]["species_guess"] = {"species_id": "pepper", "confidence": 0.85}
+    s = vb.score_run([a, b], {x["case_id"]: x for x in (sick, other)})
+    assert s["certainty"]["species_guess"] == {"0.85": {"n": 2, "right": 1}}
+    assert s["certainty"]["damage"] == {"0.65": 1} and s["certainty"]["organisms"] == {}
+    lines = vb.certainty_tables([{"label": "m", "max_pixels": 1003520, "concurrency": 1, **s}])
+    assert any("0.85: 1/2" in line and "0.65: 1" in line for line in lines)
