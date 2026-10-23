@@ -179,7 +179,7 @@ fn the_thresholds_come_from_the_committed_manifests() {
         assert!((c.detector.min_side_px - 24.0).abs() < 1e-6, "{file}");
         assert_eq!(c.detector.max_per_image, 40, "{file}");
         assert!((c.detector.nms_iou - 0.8).abs() < 1e-6, "{file}");
-        assert!((c.tau_leaf - 0.99).abs() < 1e-6, "{file}");
+        assert!((c.tau_leaf - 0.94).abs() < 1e-6, "{file}");
         assert!((c.sam.min_iou - 0.6).abs() < 1e-6, "{file}");
         assert_eq!(c.sam.plant_min_leaves, 3, "{file}");
         assert!((c.sam.plant_grow - 0.05).abs() < 1e-12, "{file}");
@@ -187,7 +187,7 @@ fn the_thresholds_come_from_the_committed_manifests() {
         assert!((c.species_temperature - 1.3747).abs() < 1e-6, "{file}");
         assert!((c.crop_grow - 0.10).abs() < 1e-12, "{file}");
         let tau_plant = c.tau_plant.expect("the trained plant probe's tau_plant");
-        assert!((tau_plant - 0.74).abs() < 1e-6, "{file}");
+        assert!((tau_plant - 0.31).abs() < 1e-6, "{file}");
     }
 }
 

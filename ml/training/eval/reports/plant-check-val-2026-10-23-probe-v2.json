@@ -3,13 +3,13 @@
  "split": "val",
  "n_positives": 1564,
  "n_negatives": 2386,
- "tau_leaf": 0.99,
+ "tau_leaf": 0.94,
  "logit_scale": 100.0,
  "embedder": "b9016a6865e188c0",
  "rule": "tau_plant = lowest value with the probe alone passing <= 5% of negatives",
  "leaf_only": {
-  "positives_false_no_plant": 1.0,
-  "no_leaf": 1564,
+  "positives_false_no_plant": 0.7666240409207161,
+  "no_leaf": 1199,
   "negatives_pass": 0.0
  },
  "leaf_only_sweep": [
@@ -154,37 +154,37 @@
    }
   },
   {
-   "tau_leaf": 0.99,
-   "positives_false_no_plant": 1.0,
+   "tau_leaf": 0.94,
+   "positives_false_no_plant": 0.7666240409207161,
    "negatives_pass": 0.0,
    "by_dataset": {
     "ibean": {
      "n": 289,
-     "false_no_plant": 1.0
+     "false_no_plant": 0.6782006920415224
     },
     "maize_makerere": {
      "n": 184,
-     "false_no_plant": 1.0
+     "false_no_plant": 0.657608695652174
     },
     "maize_pretoria": {
      "n": 175,
-     "false_no_plant": 1.0
+     "false_no_plant": 0.6742857142857143
     },
     "plantcity": {
      "n": 166,
-     "false_no_plant": 1.0
+     "false_no_plant": 0.7650602409638554
     },
     "plantdoc": {
      "n": 338,
-     "false_no_plant": 1.0
+     "false_no_plant": 0.8195266272189349
     },
     "tom2024": {
      "n": 331,
-     "false_no_plant": 1.0
+     "false_no_plant": 0.8912386706948641
     },
     "tomato_pakistan_2026": {
      "n": 81,
-     "false_no_plant": 1.0
+     "false_no_plant": 0.8024691358024691
     }
    }
   }
@@ -337,9 +337,9 @@
    },
    "chosen": {
     "tau_plant": 0.85,
-    "positives_false_no_plant": 0.08887468030690537,
-    "whole_plants_false_no_plant": 0.11332007952286283,
-    "no_leaf_rescued": 0.9111253196930946,
+    "positives_false_no_plant": 0.0748081841432225,
+    "whole_plants_false_no_plant": 0.11133200795228629,
+    "no_leaf_rescued": 0.902418682235196,
     "negatives_pass_probe": 0.04861693210393965,
     "negatives_pass_check": 0.04861693210393965,
     "by_group": {
@@ -368,9 +368,9 @@
    "sweep": [
     {
      "tau_plant": 0.5,
-     "positives_false_no_plant": 0.010230179028132993,
+     "positives_false_no_plant": 0.0076726342710997444,
      "whole_plants_false_no_plant": 0.03578528827037773,
-     "no_leaf_rescued": 0.989769820971867,
+     "no_leaf_rescued": 0.9899916597164303,
      "negatives_pass_probe": 0.15255658005029338,
      "negatives_pass_check": 0.15255658005029338,
      "by_group": {
@@ -398,9 +398,9 @@
     },
     {
      "tau_plant": 0.6,
-     "positives_false_no_plant": 0.017263427109974423,
-     "whole_plants_false_no_plant": 0.041749502982107355,
-     "no_leaf_rescued": 0.9827365728900256,
+     "positives_false_no_plant": 0.014705882352941176,
+     "whole_plants_false_no_plant": 0.039761431411530816,
+     "no_leaf_rescued": 0.9808173477898249,
      "negatives_pass_probe": 0.12196144174350378,
      "negatives_pass_check": 0.12196144174350378,
      "by_group": {
@@ -428,9 +428,9 @@
     },
     {
      "tau_plant": 0.7,
-     "positives_false_no_plant": 0.03260869565217391,
-     "whole_plants_false_no_plant": 0.06759443339960239,
-     "no_leaf_rescued": 0.967391304347826,
+     "positives_false_no_plant": 0.026214833759590793,
+     "whole_plants_false_no_plant": 0.06560636182902585,
+     "no_leaf_rescued": 0.9658048373644704,
      "negatives_pass_probe": 0.08968985750209556,
      "negatives_pass_check": 0.08968985750209556,
      "by_group": {
@@ -458,9 +458,9 @@
     },
     {
      "tau_plant": 0.8,
-     "positives_false_no_plant": 0.05754475703324808,
-     "whole_plants_false_no_plant": 0.09145129224652088,
-     "no_leaf_rescued": 0.9424552429667519,
+     "positives_false_no_plant": 0.04603580562659847,
+     "whole_plants_false_no_plant": 0.08946322067594434,
+     "no_leaf_rescued": 0.9399499582985822,
      "negatives_pass_probe": 0.06035205364626991,
      "negatives_pass_check": 0.06035205364626991,
      "by_group": {
@@ -488,9 +488,9 @@
     },
     {
      "tau_plant": 0.9,
-     "positives_false_no_plant": 0.12020460358056266,
-     "whole_plants_false_no_plant": 0.14512922465208747,
-     "no_leaf_rescued": 0.8797953964194374,
+     "positives_false_no_plant": 0.09910485933503836,
+     "whole_plants_false_no_plant": 0.14314115308151093,
+     "no_leaf_rescued": 0.8707256046705588,
      "negatives_pass_probe": 0.03604358759430008,
      "negatives_pass_check": 0.03604358759430008,
      "by_group": {
@@ -518,9 +518,9 @@
     },
     {
      "tau_plant": 0.95,
-     "positives_false_no_plant": 0.21035805626598467,
-     "whole_plants_false_no_plant": 0.2345924453280318,
-     "no_leaf_rescued": 0.7896419437340153,
+     "positives_false_no_plant": 0.16432225063938619,
+     "whole_plants_false_no_plant": 0.23260437375745527,
+     "no_leaf_rescued": 0.7856547122602169,
      "negatives_pass_probe": 0.02179379715004191,
      "negatives_pass_check": 0.02179379715004191,
      "by_group": {
@@ -548,11 +548,11 @@
     }
    ],
    "joint": {
-    "tau_leaf": 0.35,
-    "tau_plant": 0.8,
-    "positives_false_no_plant": 0.0025575447570332483,
-    "whole_plants_false_no_plant": 0.02186878727634195,
-    "negatives_pass_check": 0.10854987426655491,
+    "tau_leaf": 0.44,
+    "tau_plant": 0.42,
+    "positives_false_no_plant": 0.0006393861892583121,
+    "whole_plants_false_no_plant": 0.009940357852882704,
+    "negatives_pass_check": 0.20033528918692373,
     "by_dataset": {
      "ibean": {
       "n": 289,
@@ -576,7 +576,7 @@
      },
      "tom2024": {
       "n": 331,
-      "false_no_plant": 0.012084592145015106
+      "false_no_plant": 0.0030211480362537764
      },
      "tomato_pakistan_2026": {
       "n": 81,
@@ -586,10 +586,10 @@
    },
    "joint_every_dataset": {
     "tau_leaf": 0.44,
-    "tau_plant": 0.72,
-    "positives_false_no_plant": 0.0012787723785166241,
-    "whole_plants_false_no_plant": 0.02186878727634195,
-    "negatives_pass_check": 0.11064543168482817,
+    "tau_plant": 0.42,
+    "positives_false_no_plant": 0.0006393861892583121,
+    "whole_plants_false_no_plant": 0.009940357852882704,
+    "negatives_pass_check": 0.20033528918692373,
     "by_dataset": {
      "ibean": {
       "n": 289,
@@ -613,7 +613,7 @@
      },
      "tom2024": {
       "n": 331,
-      "false_no_plant": 0.006042296072507553
+      "false_no_plant": 0.0030211480362537764
      },
      "tomato_pakistan_2026": {
       "n": 81,
@@ -644,9 +644,9 @@
    },
    "chosen": {
     "tau_plant": 0.96,
-    "positives_false_no_plant": 0.06457800511508952,
-    "whole_plants_false_no_plant": 0.1272365805168986,
-    "no_leaf_rescued": 0.9354219948849105,
+    "positives_false_no_plant": 0.052429667519181586,
+    "whole_plants_false_no_plant": 0.12524850894632206,
+    "no_leaf_rescued": 0.9316096747289407,
     "negatives_pass_probe": 0.04819782062028499,
     "negatives_pass_check": 0.04819782062028499,
     "by_group": {
@@ -677,7 +677,7 @@
      "tau_plant": 0.5,
      "positives_false_no_plant": 0.0006393861892583121,
      "whole_plants_false_no_plant": 0.009940357852882704,
-     "no_leaf_rescued": 0.9993606138107417,
+     "no_leaf_rescued": 0.9991659716430359,
      "negatives_pass_probe": 0.34283319362950543,
      "negatives_pass_check": 0.34283319362950543,
      "by_group": {
@@ -707,7 +707,7 @@
      "tau_plant": 0.6,
      "positives_false_no_plant": 0.0006393861892583121,
      "whole_plants_false_no_plant": 0.011928429423459244,
-     "no_leaf_rescued": 0.9993606138107417,
+     "no_leaf_rescued": 0.9991659716430359,
      "negatives_pass_probe": 0.2820620284995809,
      "negatives_pass_check": 0.2820620284995809,
      "by_group": {
@@ -737,7 +737,7 @@
      "tau_plant": 0.7,
      "positives_false_no_plant": 0.0012787723785166241,
      "whole_plants_false_no_plant": 0.019880715705765408,
-     "no_leaf_rescued": 0.9987212276214834,
+     "no_leaf_rescued": 0.9983319432860718,
      "negatives_pass_probe": 0.22087175188600167,
      "negatives_pass_check": 0.22087175188600167,
      "by_group": {
@@ -767,7 +767,7 @@
      "tau_plant": 0.8,
      "positives_false_no_plant": 0.00319693094629156,
      "whole_plants_false_no_plant": 0.033797216699801194,
-     "no_leaf_rescued": 0.9968030690537084,
+     "no_leaf_rescued": 0.9958298582151793,
      "negatives_pass_probe": 0.16345347862531434,
      "negatives_pass_check": 0.16345347862531434,
      "by_group": {
@@ -795,9 +795,9 @@
     },
     {
      "tau_plant": 0.9,
-     "positives_false_no_plant": 0.017263427109974423,
-     "whole_plants_false_no_plant": 0.06560636182902585,
-     "no_leaf_rescued": 0.9827365728900256,
+     "positives_false_no_plant": 0.014705882352941176,
+     "whole_plants_false_no_plant": 0.0636182902584493,
+     "no_leaf_rescued": 0.9808173477898249,
      "negatives_pass_probe": 0.09639564124056998,
      "negatives_pass_check": 0.09639564124056998,
      "by_group": {
@@ -825,9 +825,9 @@
     },
     {
      "tau_plant": 0.95,
-     "positives_false_no_plant": 0.04859335038363171,
-     "whole_plants_false_no_plant": 0.10536779324055666,
-     "no_leaf_rescued": 0.9514066496163683,
+     "positives_false_no_plant": 0.04092071611253197,
+     "whole_plants_false_no_plant": 0.10337972166998012,
+     "no_leaf_rescued": 0.9466221851542952,
      "negatives_pass_probe": 0.055322715842414084,
      "negatives_pass_check": 0.055322715842414084,
      "by_group": {
@@ -855,11 +855,11 @@
     }
    ],
    "joint": {
-    "tau_leaf": 0.42,
-    "tau_plant": 0.94,
-    "positives_false_no_plant": 0.0019181585677749361,
-    "whole_plants_false_no_plant": 0.02186878727634195,
-    "negatives_pass_check": 0.09388097233864208,
+    "tau_leaf": 0.44,
+    "tau_plant": 0.78,
+    "positives_false_no_plant": 0.0006393861892583121,
+    "whole_plants_false_no_plant": 0.009940357852882704,
+    "negatives_pass_check": 0.19907795473595977,
     "by_dataset": {
      "ibean": {
       "n": 289,
@@ -883,7 +883,7 @@
      },
      "tom2024": {
       "n": 331,
-      "false_no_plant": 0.00906344410876133
+      "false_no_plant": 0.0030211480362537764
      },
      "tomato_pakistan_2026": {
       "n": 81,
@@ -892,11 +892,11 @@
     }
    },
    "joint_every_dataset": {
-    "tau_leaf": 0.42,
-    "tau_plant": 0.94,
-    "positives_false_no_plant": 0.0019181585677749361,
-    "whole_plants_false_no_plant": 0.02186878727634195,
-    "negatives_pass_check": 0.09388097233864208,
+    "tau_leaf": 0.44,
+    "tau_plant": 0.78,
+    "positives_false_no_plant": 0.0006393861892583121,
+    "whole_plants_false_no_plant": 0.009940357852882704,
+    "negatives_pass_check": 0.19907795473595977,
     "by_dataset": {
      "ibean": {
       "n": 289,
@@ -920,7 +920,7 @@
      },
      "tom2024": {
       "n": 331,
-      "false_no_plant": 0.00906344410876133
+      "false_no_plant": 0.0030211480362537764
      },
      "tomato_pakistan_2026": {
       "n": 81,
@@ -966,7 +966,7 @@
      "tau_plant": 0.5,
      "positives_false_no_plant": 0.0006393861892583121,
      "whole_plants_false_no_plant": 0.011928429423459244,
-     "no_leaf_rescued": 0.9993606138107417,
+     "no_leaf_rescued": 0.9991659716430359,
      "negatives_pass_probe": 0.004610226320201173,
      "negatives_pass_check": 0.004610226320201173,
      "by_group": {
@@ -996,7 +996,7 @@
      "tau_plant": 0.6,
      "positives_false_no_plant": 0.0006393861892583121,
      "whole_plants_false_no_plant": 0.015904572564612324,
-     "no_leaf_rescued": 0.9993606138107417,
+     "no_leaf_rescued": 0.9991659716430359,
      "negatives_pass_probe": 0.003352891869237217,
      "negatives_pass_check": 0.003352891869237217,
      "by_group": {
@@ -1026,7 +1026,7 @@
      "tau_plant": 0.7,
      "positives_false_no_plant": 0.0006393861892583121,
      "whole_plants_false_no_plant": 0.017892644135188866,
-     "no_leaf_rescued": 0.9993606138107417,
+     "no_leaf_rescued": 0.9991659716430359,
      "negatives_pass_probe": 0.0020955574182732607,
      "negatives_pass_check": 0.0020955574182732607,
      "by_group": {
@@ -1056,7 +1056,7 @@
      "tau_plant": 0.8,
      "positives_false_no_plant": 0.0019181585677749361,
      "whole_plants_false_no_plant": 0.033797216699801194,
-     "no_leaf_rescued": 0.9980818414322251,
+     "no_leaf_rescued": 0.9974979149291076,
      "negatives_pass_probe": 0.0008382229673093043,
      "negatives_pass_check": 0.0008382229673093043,
      "by_group": {
@@ -1086,7 +1086,7 @@
      "tau_plant": 0.9,
      "positives_false_no_plant": 0.004475703324808184,
      "whole_plants_false_no_plant": 0.05964214711729622,
-     "no_leaf_rescued": 0.9955242966751918,
+     "no_leaf_rescued": 0.994161801501251,
      "negatives_pass_probe": 0.00041911148365465214,
      "negatives_pass_check": 0.00041911148365465214,
      "by_group": {
@@ -1114,9 +1114,9 @@
     },
     {
      "tau_plant": 0.95,
-     "positives_false_no_plant": 0.012148337595907928,
+     "positives_false_no_plant": 0.011508951406649617,
      "whole_plants_false_no_plant": 0.10934393638170974,
-     "no_leaf_rescued": 0.9878516624040921,
+     "no_leaf_rescued": 0.9849874895746455,
      "negatives_pass_probe": 0.0,
      "negatives_pass_check": 0.0,
      "by_group": {
@@ -1144,11 +1144,11 @@
     }
    ],
    "joint": {
-    "tau_leaf": 0.99,
-    "tau_plant": 0.74,
-    "positives_false_no_plant": 0.0012787723785166241,
-    "whole_plants_false_no_plant": 0.02186878727634195,
-    "negatives_pass_check": 0.0012573344509639564,
+    "tau_leaf": 0.94,
+    "tau_plant": 0.31,
+    "positives_false_no_plant": 0.0,
+    "whole_plants_false_no_plant": 0.009940357852882704,
+    "negatives_pass_check": 0.009639564124056999,
     "by_dataset": {
      "ibean": {
       "n": 289,
@@ -1168,11 +1168,11 @@
      },
      "plantdoc": {
       "n": 338,
-      "false_no_plant": 0.0029585798816568047
+      "false_no_plant": 0.0
      },
      "tom2024": {
       "n": 331,
-      "false_no_plant": 0.0030211480362537764
+      "false_no_plant": 0.0
      },
      "tomato_pakistan_2026": {
       "n": 81,
@@ -1181,11 +1181,11 @@
     }
    },
    "joint_every_dataset": {
-    "tau_leaf": 0.99,
-    "tau_plant": 0.74,
-    "positives_false_no_plant": 0.0012787723785166241,
-    "whole_plants_false_no_plant": 0.02186878727634195,
-    "negatives_pass_check": 0.0012573344509639564,
+    "tau_leaf": 0.94,
+    "tau_plant": 0.31,
+    "positives_false_no_plant": 0.0,
+    "whole_plants_false_no_plant": 0.009940357852882704,
+    "negatives_pass_check": 0.009639564124056999,
     "by_dataset": {
      "ibean": {
       "n": 289,
@@ -1205,11 +1205,11 @@
      },
      "plantdoc": {
       "n": 338,
-      "false_no_plant": 0.0029585798816568047
+      "false_no_plant": 0.0
      },
      "tom2024": {
       "n": 331,
-      "false_no_plant": 0.0030211480362537764
+      "false_no_plant": 0.0
      },
      "tomato_pakistan_2026": {
       "n": 81,
@@ -1221,88 +1221,88 @@
  },
  "no_leaf_by_problem": {
   "apple_cedar_apple_rust": {
-   "no_leaf": 12,
-   "rescued": 12
+   "no_leaf": 8,
+   "rescued": 8
   },
   "apple_scab": {
-   "no_leaf": 12,
-   "rescued": 12
+   "no_leaf": 8,
+   "rescued": 8
   },
   "bean_angular_leaf_spot": {
+   "no_leaf": 63,
+   "rescued": 63
+  },
+  "bean_rust": {
+   "no_leaf": 80,
+   "rescued": 80
+  },
+  "corn_common_rust": {
+   "no_leaf": 16,
+   "rescued": 16
+  },
+  "corn_curvularia_leaf_spot": {
+   "no_leaf": 32,
+   "rescued": 32
+  },
+  "corn_gray_leaf_spot": {
+   "no_leaf": 75,
+   "rescued": 75
+  },
+  "corn_northern_leaf_blight": {
    "no_leaf": 96,
    "rescued": 96
   },
-  "bean_rust": {
-   "no_leaf": 97,
-   "rescued": 97
-  },
-  "corn_common_rust": {
-   "no_leaf": 36,
-   "rescued": 36
-  },
-  "corn_curvularia_leaf_spot": {
-   "no_leaf": 38,
-   "rescued": 38
-  },
-  "corn_gray_leaf_spot": {
-   "no_leaf": 107,
-   "rescued": 107
-  },
-  "corn_northern_leaf_blight": {
-   "no_leaf": 138,
-   "rescued": 138
-  },
   "grape_black_rot": {
-   "no_leaf": 8,
-   "rescued": 8
+   "no_leaf": 5,
+   "rescued": 5
   },
   "healthy": {
-   "no_leaf": 629,
-   "rescued": 629
+   "no_leaf": 498,
+   "rescued": 498
   },
   "pepper_bacterial_leaf_spot": {
-   "no_leaf": 8,
-   "rescued": 8
+   "no_leaf": 7,
+   "rescued": 7
   },
   "potato_early_blight": {
-   "no_leaf": 14,
-   "rescued": 14
+   "no_leaf": 10,
+   "rescued": 10
   },
   "potato_late_blight": {
-   "no_leaf": 13,
-   "rescued": 13
+   "no_leaf": 11,
+   "rescued": 11
   },
   "squash_powdery_mildew": {
-   "no_leaf": 18,
-   "rescued": 18
+   "no_leaf": 16,
+   "rescued": 16
   },
   "tomato_bacterial_spot": {
-   "no_leaf": 39,
-   "rescued": 39
+   "no_leaf": 27,
+   "rescued": 27
   },
   "tomato_early_blight": {
-   "no_leaf": 37,
-   "rescued": 37
+   "no_leaf": 29,
+   "rescued": 29
   },
   "tomato_late_blight": {
-   "no_leaf": 38,
-   "rescued": 38
+   "no_leaf": 33,
+   "rescued": 33
   },
   "tomato_leaf_mold": {
-   "no_leaf": 67,
-   "rescued": 67
-  },
-  "tomato_mosaic_virus": {
-   "no_leaf": 6,
-   "rescued": 6
-  },
-  "tomato_septoria_leaf_spot": {
    "no_leaf": 47,
    "rescued": 47
   },
+  "tomato_mosaic_virus": {
+   "no_leaf": 5,
+   "rescued": 5
+  },
+  "tomato_septoria_leaf_spot": {
+   "no_leaf": 37,
+   "rescued": 37
+  },
   "tomato_spider_mites": {
-   "no_leaf": 70,
-   "rescued": 70
+   "no_leaf": 62,
+   "rescued": 62
   },
   "tomato_yellow_leaf_curl_virus": {
    "no_leaf": 34,
@@ -34480,8 +34480,9 @@
  "whole_plants": {
   "source": "inat_species.tsv, split val",
   "n": 503,
-  "cap": 0.02186878727634195,
-  "cap_rule": "the joint searches skip pairs failing more whole plants than zero-shot pair A 0.40 / 0.70 (shipped until M17)",
+  "cap": 0.01,
+  "cap_rule": "the joint searches skip pairs failing more than 1% of the whole plants, models.md 2's target",
+  "in_sample": "these photos choose the cap and the pair, and inat_species.tsv has no test split, so their rate is in-sample; the dev cases, whose iNaturalist observations aren't in inat_species.tsv, are the check on photos the search never saw",
   "photos": [
    {
     "path": "inat_species/apple/19963820-30805946.jpg",
@@ -38510,8 +38511,8 @@
   ]
  },
  "detector": "manifest.cpu.toml's leaf_detector",
- "negatives_source": "negatives_tune.tsv",
- "command": "python -m ml.training.eval.plant_check --split val --negatives ml/training/runs/heads/plant-probe-v2-2026-10-23/negatives_tune.tsv --probe ml/training/runs/heads/plant-probe-v2-2026-10-23/plant-probe-v2-2026-10-23.json --pair A:0.40:0.70 --label plant-check-val-2026-10-23-probe-v2 --note 'Trained probe plant-probe-v2-2026-10-23 (licence-clean negatives) beside the zero-shot prompt sets; negatives: the half of COCO val2017'\"'\"'s v1 and v2 didn'\"'\"'t train on.'",
+ "negatives_source": "negatives_coco_tune.tsv",
+ "command": "python -m ml.training.eval.plant_check --split val --negatives ml/training/data/splits/negatives_coco_tune.tsv --probe ml/training/runs/heads/plant-probe-v2-2026-10-23/plant-probe-v2-2026-10-23.json --pair A:0.40:0.70 --label plant-check-val-2026-10-23-probe-v2 --note 'Trained probe plant-probe-v2-2026-10-23 (licence-clean negatives) beside the zero-shot prompt sets; negatives: the half of COCO val2017'\"'\"'s v1 and v2 didn'\"'\"'t train on.'",
  "date": "2026-10-23",
  "inputs": {
   "split": {
@@ -38519,7 +38520,7 @@
    "sha256": "43ab87f1c8dc7b8d"
   },
   "negatives": {
-   "file": "ml/training/runs/heads/plant-probe-v2-2026-10-23/negatives_tune.tsv",
+   "file": "ml/training/data/splits/negatives_coco_tune.tsv",
    "sha256": "37b2adee3537ce77"
   },
   "probes": [

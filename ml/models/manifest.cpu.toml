@@ -109,7 +109,7 @@ precision = "fp32"
 
   [model.config]
   score_threshold  = 0.35                # τ_det, set on the evaluation set
-  tau_leaf         = 0.99                # τ_leaf of the plant check (models.md 2): chosen with plant_probe plant-probe-v2-2026-10-23's tau_plant on the val split (reports/plant-check-val-2026-10-23-probe-v2): at most 1% false no_plant_found on every dataset, no more whole-plant photos failing than the zero-shot pair 0.40 / 0.70, then the fewest no-plant photos passing; at 0.99 the probe does the work, so a manifest without plant_probe would fail most plant photos
+  tau_leaf         = 0.94                # τ_leaf of the plant check (models.md 2): chosen with plant_probe plant-probe-v2-2026-10-23's tau_plant on the val split (reports/plant-check-val-2026-10-23-probe-v2): at most 1% false no_plant_found on every dataset and on iNaturalist's whole plants, then the fewest no-plant photos passing, ties to the lower tau_leaf; no photo scores above 0.958, and alone at 0.94 the leaf score fails 77% of val plant photos, so the two entries go together (check.py refuses one without the other)
   min_side_px      = 24
   max_per_image    = 40
   nms_iou          = 0.8
@@ -268,4 +268,4 @@ source    = "logistic regression (C=5: the fewest tune-half no-plant photos pass
 runs_on   = "perception"
 
   [model.config]
-  tau_plant = 0.74                       # τ_plant of the plant check (models.md 2), with leaf_detector's tau_leaf 0.99, chosen on the val split (reports/plant-check-val-2026-10-23-probe-v2: 0.13% of plant photos fail, at most 0.30% of a dataset, 2.19% of iNaturalist's whole plants, 0.13% of COCO photos without a plant pass); test and hold-out: 0% fail, 0 of 1,000 pass (reports/plant-check-test-holdout-2026-10-23-probe-v2); dev cases: 102 of 102 pass (reports/plant-check-dev-cases-2026-10-23-probe-v2)
+  tau_plant = 0.31                       # τ_plant of the plant check (models.md 2), with leaf_detector's tau_leaf 0.94, chosen on the val split (reports/plant-check-val-2026-10-23-probe-v2: no plant photo fails, 0.99% of iNaturalist's whole plants, in-sample, 0.96% of COCO photos without a plant pass); test and hold-out: 0% fail, 3 of 1,000 pass (reports/plant-check-test-holdout-2026-10-23-probe-v2); dev cases: 102 of 102 pass (reports/plant-check-dev-cases-2026-10-23-probe-v2)

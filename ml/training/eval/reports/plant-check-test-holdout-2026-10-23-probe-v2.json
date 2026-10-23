@@ -3,13 +3,13 @@
  "split": "test",
  "n_positives": 1276,
  "n_negatives": 1000,
- "tau_leaf": 0.99,
+ "tau_leaf": 0.94,
  "logit_scale": 100.0,
  "embedder": "b9016a6865e188c0",
  "rule": "tau_plant = lowest value with the probe alone passing <= 5% of negatives",
  "leaf_only": {
-  "positives_false_no_plant": 1.0,
-  "no_leaf": 1276,
+  "positives_false_no_plant": 0.719435736677116,
+  "no_leaf": 918,
   "negatives_pass": 0.0
  },
  "leaf_only_sweep": [
@@ -154,37 +154,37 @@
    }
   },
   {
-   "tau_leaf": 0.99,
-   "positives_false_no_plant": 1.0,
+   "tau_leaf": 0.94,
+   "positives_false_no_plant": 0.719435736677116,
    "negatives_pass": 0.0,
    "by_dataset": {
     "ibean": {
      "n": 128,
-     "false_no_plant": 1.0
+     "false_no_plant": 0.65625
     },
     "maize_makerere": {
      "n": 182,
-     "false_no_plant": 1.0
+     "false_no_plant": 0.5934065934065934
     },
     "maize_pretoria": {
      "n": 178,
-     "false_no_plant": 1.0
+     "false_no_plant": 0.5224719101123596
     },
     "plantcity": {
      "n": 153,
-     "false_no_plant": 1.0
+     "false_no_plant": 0.7973856209150327
     },
     "plantdoc": {
      "n": 226,
-     "false_no_plant": 1.0
+     "false_no_plant": 0.6858407079646017
     },
     "tom2024": {
      "n": 329,
-     "false_no_plant": 1.0
+     "false_no_plant": 0.8662613981762918
     },
     "tomato_pakistan_2026": {
      "n": 80,
-     "false_no_plant": 1.0
+     "false_no_plant": 0.8875
     }
    }
   }
@@ -318,15 +318,15 @@
    }
   },
   {
-   "name": "plant-probe-v2-2026-10-23 0.99 / 0.74",
+   "name": "plant-probe-v2-2026-10-23 0.94 / 0.31",
    "set": "plant-probe-v2-2026-10-23",
-   "tau_leaf": 0.99,
-   "tau_plant": 0.74,
+   "tau_leaf": 0.94,
+   "tau_plant": 0.31,
    "positives_false_no_plant": 0.0,
    "whole_plants_false_no_plant": null,
    "no_leaf_rescued": 1.0,
-   "negatives_pass_probe": 0.0,
-   "negatives_pass_check": 0.0,
+   "negatives_pass_probe": 0.003,
+   "negatives_pass_check": 0.003,
    "by_group": {
     "indoor": {
      "n": 350,
@@ -335,13 +335,13 @@
     },
     "outdoor": {
      "n": 236,
-     "probe": 0.0,
-     "check": 0.0
+     "probe": 0.00847457627118644,
+     "check": 0.00847457627118644
     },
     "people_pets": {
      "n": 406,
-     "probe": 0.0,
-     "check": 0.0
+     "probe": 0.0024630541871921183,
+     "check": 0.0024630541871921183
     },
     "unlabelled": {
      "n": 8,
@@ -400,9 +400,9 @@
    },
    "chosen": {
     "tau_plant": 0.79,
-    "positives_false_no_plant": 0.054858934169279,
+    "positives_false_no_plant": 0.03683385579937304,
     "whole_plants_false_no_plant": null,
-    "no_leaf_rescued": 0.945141065830721,
+    "no_leaf_rescued": 0.94880174291939,
     "negatives_pass_probe": 0.049,
     "negatives_pass_check": 0.049,
     "by_group": {
@@ -431,9 +431,9 @@
    "sweep": [
     {
      "tau_plant": 0.5,
-     "positives_false_no_plant": 0.009404388714733543,
+     "positives_false_no_plant": 0.0054858934169279,
      "whole_plants_false_no_plant": null,
-     "no_leaf_rescued": 0.9905956112852664,
+     "no_leaf_rescued": 0.9923747276688453,
      "negatives_pass_probe": 0.132,
      "negatives_pass_check": 0.132,
      "by_group": {
@@ -461,9 +461,9 @@
     },
     {
      "tau_plant": 0.6,
-     "positives_false_no_plant": 0.017241379310344827,
+     "positives_false_no_plant": 0.01018808777429467,
      "whole_plants_false_no_plant": null,
-     "no_leaf_rescued": 0.9827586206896551,
+     "no_leaf_rescued": 0.985838779956427,
      "negatives_pass_probe": 0.102,
      "negatives_pass_check": 0.102,
      "by_group": {
@@ -491,9 +491,9 @@
     },
     {
      "tau_plant": 0.7,
-     "positives_false_no_plant": 0.03369905956112853,
+     "positives_false_no_plant": 0.023510971786833857,
      "whole_plants_false_no_plant": null,
-     "no_leaf_rescued": 0.9663009404388715,
+     "no_leaf_rescued": 0.9673202614379085,
      "negatives_pass_probe": 0.075,
      "negatives_pass_check": 0.075,
      "by_group": {
@@ -521,9 +521,9 @@
     },
     {
      "tau_plant": 0.8,
-     "positives_false_no_plant": 0.05721003134796238,
+     "positives_false_no_plant": 0.03918495297805643,
      "whole_plants_false_no_plant": null,
-     "no_leaf_rescued": 0.9427899686520376,
+     "no_leaf_rescued": 0.9455337690631809,
      "negatives_pass_probe": 0.047,
      "negatives_pass_check": 0.047,
      "by_group": {
@@ -551,9 +551,9 @@
     },
     {
      "tau_plant": 0.9,
-     "positives_false_no_plant": 0.11833855799373041,
+     "positives_false_no_plant": 0.08150470219435736,
      "whole_plants_false_no_plant": null,
-     "no_leaf_rescued": 0.8816614420062696,
+     "no_leaf_rescued": 0.8867102396514162,
      "negatives_pass_probe": 0.029,
      "negatives_pass_check": 0.029,
      "by_group": {
@@ -581,9 +581,9 @@
     },
     {
      "tau_plant": 0.95,
-     "positives_false_no_plant": 0.22962382445141066,
+     "positives_false_no_plant": 0.1614420062695925,
      "whole_plants_false_no_plant": null,
-     "no_leaf_rescued": 0.7703761755485894,
+     "no_leaf_rescued": 0.775599128540305,
      "negatives_pass_probe": 0.017,
      "negatives_pass_check": 0.017,
      "by_group": {
@@ -648,7 +648,7 @@
     }
    },
    "joint_every_dataset": {
-    "tau_leaf": 0.59,
+    "tau_leaf": 0.58,
     "tau_plant": 0.93,
     "positives_false_no_plant": 0.003918495297805642,
     "whole_plants_false_no_plant": null,
@@ -707,9 +707,9 @@
    },
    "chosen": {
     "tau_plant": 0.95,
-    "positives_false_no_plant": 0.047021943573667714,
+    "positives_false_no_plant": 0.03683385579937304,
     "whole_plants_false_no_plant": null,
-    "no_leaf_rescued": 0.9529780564263323,
+    "no_leaf_rescued": 0.94880174291939,
     "negatives_pass_probe": 0.049,
     "negatives_pass_check": 0.049,
     "by_group": {
@@ -828,9 +828,9 @@
     },
     {
      "tau_plant": 0.8,
-     "positives_false_no_plant": 0.0007836990595611285,
+     "positives_false_no_plant": 0.0,
      "whole_plants_false_no_plant": null,
-     "no_leaf_rescued": 0.9992163009404389,
+     "no_leaf_rescued": 1.0,
      "negatives_pass_probe": 0.153,
      "negatives_pass_check": 0.153,
      "by_group": {
@@ -858,9 +858,9 @@
     },
     {
      "tau_plant": 0.9,
-     "positives_false_no_plant": 0.007836990595611285,
+     "positives_false_no_plant": 0.006269592476489028,
      "whole_plants_false_no_plant": null,
-     "no_leaf_rescued": 0.9921630094043887,
+     "no_leaf_rescued": 0.9912854030501089,
      "negatives_pass_probe": 0.09,
      "negatives_pass_check": 0.09,
      "by_group": {
@@ -888,9 +888,9 @@
     },
     {
      "tau_plant": 0.95,
-     "positives_false_no_plant": 0.047021943573667714,
+     "positives_false_no_plant": 0.03683385579937304,
      "whole_plants_false_no_plant": null,
-     "no_leaf_rescued": 0.9529780564263323,
+     "no_leaf_rescued": 0.94880174291939,
      "negatives_pass_probe": 0.049,
      "negatives_pass_check": 0.049,
      "by_group": {
@@ -918,9 +918,9 @@
     }
    ],
    "joint": {
-    "tau_leaf": 0.56,
+    "tau_leaf": 0.55,
     "tau_plant": 0.99,
-    "positives_false_no_plant": 0.009404388714733543,
+    "positives_false_no_plant": 0.007836990595611285,
     "whole_plants_false_no_plant": null,
     "negatives_pass_check": 0.024,
     "by_dataset": {
@@ -934,7 +934,7 @@
      },
      "maize_pretoria": {
       "n": 178,
-      "false_no_plant": 0.0056179775280898875
+      "false_no_plant": 0.0
      },
      "plantcity": {
       "n": 153,
@@ -946,7 +946,7 @@
      },
      "tom2024": {
       "n": 329,
-      "false_no_plant": 0.030395136778115502
+      "false_no_plant": 0.02735562310030395
      },
      "tomato_pakistan_2026": {
       "n": 80,
@@ -955,7 +955,7 @@
     }
    },
    "joint_every_dataset": {
-    "tau_leaf": 0.56,
+    "tau_leaf": 0.55,
     "tau_plant": 0.98,
     "positives_false_no_plant": 0.003134796238244514,
     "whole_plants_false_no_plant": null,
@@ -1149,7 +1149,7 @@
      "tau_plant": 0.9,
      "positives_false_no_plant": 0.0023510971786833857,
      "whole_plants_false_no_plant": null,
-     "no_leaf_rescued": 0.9976489028213166,
+     "no_leaf_rescued": 0.9967320261437909,
      "negatives_pass_probe": 0.0,
      "negatives_pass_check": 0.0,
      "by_group": {
@@ -1177,9 +1177,9 @@
     },
     {
      "tau_plant": 0.95,
-     "positives_false_no_plant": 0.01018808777429467,
+     "positives_false_no_plant": 0.009404388714733543,
      "whole_plants_false_no_plant": null,
-     "no_leaf_rescued": 0.9898119122257053,
+     "no_leaf_rescued": 0.9869281045751634,
      "negatives_pass_probe": 0.0,
      "negatives_pass_check": 0.0,
      "by_group": {
@@ -1207,7 +1207,7 @@
     }
    ],
    "joint": {
-    "tau_leaf": 0.99,
+    "tau_leaf": 0.84,
     "tau_plant": 0.63,
     "positives_false_no_plant": 0.0,
     "whole_plants_false_no_plant": null,
@@ -1244,7 +1244,7 @@
     }
    },
    "joint_every_dataset": {
-    "tau_leaf": 0.99,
+    "tau_leaf": 0.84,
     "tau_plant": 0.63,
     "positives_false_no_plant": 0.0,
     "whole_plants_false_no_plant": null,
@@ -1284,88 +1284,88 @@
  },
  "no_leaf_by_problem": {
   "apple_cedar_apple_rust": {
-   "no_leaf": 10,
-   "rescued": 10
+   "no_leaf": 4,
+   "rescued": 4
   },
   "apple_scab": {
-   "no_leaf": 10,
-   "rescued": 10
+   "no_leaf": 7,
+   "rescued": 7
   },
   "bean_angular_leaf_spot": {
-   "no_leaf": 43,
-   "rescued": 43
+   "no_leaf": 25,
+   "rescued": 25
   },
   "bean_rust": {
-   "no_leaf": 43,
-   "rescued": 43
+   "no_leaf": 36,
+   "rescued": 36
   },
   "corn_common_rust": {
-   "no_leaf": 30,
-   "rescued": 30
+   "no_leaf": 15,
+   "rescued": 15
   },
   "corn_curvularia_leaf_spot": {
-   "no_leaf": 34,
-   "rescued": 34
+   "no_leaf": 21,
+   "rescued": 21
   },
   "corn_gray_leaf_spot": {
-   "no_leaf": 92,
-   "rescued": 92
+   "no_leaf": 46,
+   "rescued": 46
   },
   "corn_northern_leaf_blight": {
-   "no_leaf": 137,
-   "rescued": 137
+   "no_leaf": 81,
+   "rescued": 81
   },
   "grape_black_rot": {
-   "no_leaf": 8,
-   "rescued": 8
+   "no_leaf": 4,
+   "rescued": 4
   },
   "healthy": {
-   "no_leaf": 517,
-   "rescued": 517
+   "no_leaf": 385,
+   "rescued": 385
   },
   "pepper_bacterial_leaf_spot": {
-   "no_leaf": 9,
-   "rescued": 9
+   "no_leaf": 4,
+   "rescued": 4
   },
   "potato_early_blight": {
-   "no_leaf": 6,
-   "rescued": 6
+   "no_leaf": 3,
+   "rescued": 3
   },
   "potato_late_blight": {
-   "no_leaf": 5,
-   "rescued": 5
+   "no_leaf": 4,
+   "rescued": 4
   },
   "squash_powdery_mildew": {
-   "no_leaf": 6,
-   "rescued": 6
+   "no_leaf": 2,
+   "rescued": 2
   },
   "tomato_bacterial_spot": {
-   "no_leaf": 32,
-   "rescued": 32
+   "no_leaf": 27,
+   "rescued": 27
   },
   "tomato_early_blight": {
-   "no_leaf": 35,
-   "rescued": 35
+   "no_leaf": 29,
+   "rescued": 29
   },
   "tomato_late_blight": {
-   "no_leaf": 48,
-   "rescued": 48
+   "no_leaf": 47,
+   "rescued": 47
   },
   "tomato_leaf_mold": {
-   "no_leaf": 60,
-   "rescued": 60
+   "no_leaf": 45,
+   "rescued": 45
   },
   "tomato_mosaic_virus": {
-   "no_leaf": 10,
-   "rescued": 10
+   "no_leaf": 7,
+   "rescued": 7
   },
   "tomato_septoria_leaf_spot": {
-   "no_leaf": 38,
-   "rescued": 38
+   "no_leaf": 33,
+   "rescued": 33
   },
   "tomato_spider_mites": {
-   "no_leaf": 73,
-   "rescued": 73
+   "no_leaf": 63,
+   "rescued": 63
   },
   "tomato_yellow_leaf_curl_virus": {
    "no_leaf": 30,
@@ -20862,7 +20862,7 @@
  ],
  "detector": "manifest.cpu.toml's leaf_detector",
  "negatives_source": "negatives_coco_train_holdout.tsv",
- "command": "python -m ml.training.eval.plant_check --split test --negatives ml/training/data/splits/negatives_coco_train_holdout.tsv --probe ml/training/runs/heads/plant-probe-v2-2026-10-23/plant-probe-v2-2026-10-23.json --pair A:0.40:0.70 --pair plant-probe-v2-2026-10-23:0.99:0.74 --label plant-check-test-holdout-2026-10-23-probe-v2 --note 'Final check of the pairs chosen on val: the test split and COCO train2017'\"'\"'s hold-out (v1 was checked on it once on Oct 20).'",
+ "command": "python -m ml.training.eval.plant_check --split test --negatives ml/training/data/splits/negatives_coco_train_holdout.tsv --probe ml/training/runs/heads/plant-probe-v2-2026-10-23/plant-probe-v2-2026-10-23.json --pair A:0.40:0.70 --pair plant-probe-v2-2026-10-23:0.94:0.31 --label plant-check-test-holdout-2026-10-23-probe-v2 --note 'Final check of the pairs chosen on val: the test split and COCO train2017'\"'\"'s hold-out (v1 was checked on it once on Oct 20).'",
  "date": "2026-10-23",
  "inputs": {
   "split": {
