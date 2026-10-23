@@ -1,6 +1,5 @@
 // The distance hint on LiDAR phones (README 11, capture; architecture 6.7): the good range per kind, and the
-// chip's words. The ranges move with the LiDAR day-1 check. Until F5's module sends distances, nothing calls this
-// on the phone.
+// chip's words. The ranges move with the LiDAR day-1 check (architecture 10).
 import type { CaptureKind } from "./shotPlan";
 
 /** Metres. */
@@ -11,6 +10,11 @@ export const DISTANCE_RANGES: Record<CaptureKind, { min: number; max: number }> 
   soil_surface: { min: 0.3, max: 0.8 },
   flower_fruit: { min: 0.3, max: 0.8 },
 };
+
+/** Kinds with a distance range: every capture kind, not the guided checks. */
+export function hasDistanceRange(kind: string): kind is CaptureKind {
+  return kind in DISTANCE_RANGES;
+}
 
 export type DistanceFit = "good" | "closer" | "back";
 
