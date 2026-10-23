@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from ml.training.eval import fieldsets as fs
+from ml.training.eval import inat
 
 ML = Path(__file__).resolve().parents[1]
 SET = {"name": "maize-bd-2026", "dataset": "sb4wwjs8bz", "version": 1, "licence": "CC BY 4.0",
@@ -115,3 +116,105 @@ def test_add_writes_reviewed_photos_once(photo, monkeypatch):
     (root / "fieldsets/review.yaml").write_text(yaml.safe_dump([{**block, "photos": {pid: "skip"}}]))
     manifest.unlink()
     assert fs.main(args) == 0 and not manifest.exists()
+
+
+def one_photo(file, plant_key=None, split="dev"):
+    return {"case_id": file, "split": split, "plant_key": plant_key or fs.own_key(file), "images": [{"file": file}]}
+
+
+def test_a_frame_is_the_first_number_in_the_file_name():
+    assert fs.frame("fieldsets/t/healthy/img-3472-02d.jpg") == ("fieldsets/t/healthy", 3472)
+    assert fs.frame("fieldsets/c/septoria/septoria-leaf-spot1910-ko9m8s.jpg") == ("fieldsets/c/septoria", 1910)
+    assert fs.frame("fieldsets/c/septoria/leaf.jpg") == ("fieldsets/c/septoria", None)
+
+
+def test_neighbouring_frames_share_the_lowest_frames_plant_key_and_split():
+    files = ["fieldsets/s/a/leaf-10.jpg", "fieldsets/s/a/leaf-7.jpg", "fieldsets/s/a/leaf-8.jpg",
+             "fieldsets/s/a/leaf-14.jpg", "fieldsets/s/b/leaf-9.jpg", "fieldsets/s/a/leaf.jpg"]
+    cases = [one_photo(f, split="test") for f in files] + [one_photo("inat/1/2.jpg", "inat-1", "test")]
+    out = fs.group_frames(cases)
+    assert [c["plant_key"] for c in out[:3]] == ["s-a-leaf-7"] * 3
+    assert {c["split"] for c in out[:3]} == {inat.split_of("s-a-leaf-7")}
+    assert out[3]["plant_key"] == "s-a-leaf-14" and out[3]["split"] == inat.split_of("s-a-leaf-14")
+    assert out[4]["plant_key"] == "s-b-leaf-9"
+    assert out[5:] == cases[5:]
+
+
+def add_beside(photo, monkeypatch, there: str):
+    """The fixture's img-201 reviewed, with the case `there` already in the manifest on its own key."""
+    root, pid, cand = photo
+    monkeypatch.setattr(fs, "load_sets", lambda only: [SET])
+    (root / "fieldsets/candidates.json").write_text(json.dumps({pid: cand}))
+    block = {**fs.review_block(SET, cand["class"], [pid]), "photos": {pid: "sure"}}
+    (root / "fieldsets/review.yaml").write_text(yaml.safe_dump([block]))
+    manifest = root / "manifest.jsonl"
+    case = {**one_photo(there, split=inat.split_of(fs.own_key(there))), "source": "elsewhere"}
+    manifest.write_text(json.dumps(case) + "\n")
+    return manifest, ["add", "--labeller", "x", "--photos", str(root), "--manifest", str(manifest)]
+
+
+KEY_201 = "maize-bd-2026-common-rust-img-201"
+
+
+def test_add_gives_a_case_already_there_its_new_neighbours_key(photo, monkeypatch):
+    manifest, args = add_beside(photo, monkeypatch, "fieldsets/maize-bd-2026/common-rust/img-203.jpg")
+    assert inat.split_of("maize-bd-2026-common-rust-img-203") == inat.split_of(KEY_201)
+    assert fs.main(args) == 0
+    cases = [json.loads(line) for line in manifest.read_text().splitlines()]
+    assert [(c["plant_key"], c["split"]) for c in cases] == [(KEY_201, inat.split_of(KEY_201))] * 2
+
+
+def test_add_moves_a_case_already_there_to_another_split_only_when_told(photo, monkeypatch, capsys):
+    there = "fieldsets/maize-bd-2026/common-rust/img-204.jpg"
+    manifest, args = add_beside(photo, monkeypatch, there)
+    was, now = inat.split_of(fs.own_key(there)), inat.split_of(KEY_201)
+    assert was != now
+    before = manifest.read_text()
+    assert fs.main(args) == 1 and manifest.read_text() == before
+    assert f"{there}: {was} -> {now}" in capsys.readouterr().err
+    assert fs.main(args + ["--resplit"]) == 0
+    assert [json.loads(line)["split"] for line in manifest.read_text().splitlines()] == [now, now]
+
+
+def test_a_key_set_by_hand_is_kept_and_its_run_takes_it():
+    a = "fieldsets/s/a/leaf-"
+    cases = [one_photo(a + "40.jpg"), one_photo(a + "42.jpg"), one_photo(a + "47.jpg", "s-a-leaf-42"),
+             one_photo(a + "80.jpg", "plant-x"), one_photo("fieldsets/s/b/leaf-3.jpg", "plant-x"), one_photo(a + "60.jpg")]
+    out = fs.group_frames(cases)
+    assert [c["plant_key"] for c in out] == ["s-a-leaf-42"] * 3 + ["plant-x"] * 2 + ["s-a-leaf-60"]
+    assert {c["split"] for c in out[:3]} == {inat.split_of("s-a-leaf-42")}
+    assert {c["split"] for c in out[3:5]} == {inat.split_of("plant-x")}
+    assert fs.group_frames(out) == out
+
+
+def test_a_key_grouping_set_follows_its_run_when_a_lower_frame_joins():
+    a = "fieldsets/s/a/leaf-"
+    out = fs.group_frames([one_photo(a + "30.jpg"), one_photo(a + "31.jpg", "s-a-leaf-30"), one_photo(a + "27.jpg")])
+    assert [c["plant_key"] for c in out] == ["s-a-leaf-27"] * 3
+
+
+def test_one_plant_with_two_keys_set_by_hand_is_refused():
+    a = "fieldsets/s/a/leaf-"
+    with pytest.raises(ValueError, match="two keys set by hand"):
+        fs.group_frames([one_photo(a + "40.jpg", "plant-x"), one_photo(a + "42.jpg", "plant-y")])
+
+
+def test_regroup_groups_the_manifest_and_moves_a_case_only_when_told(tmp_path):
+    def manifest_of(*files):
+        m = tmp_path / "manifest.jsonl"
+        m.write_text("".join(json.dumps(one_photo(f, split=inat.split_of(fs.own_key(f)))) + "\n" for f in files))
+        return m, ["regroup", "--manifest", str(m)]
+
+    m, args = manifest_of("fieldsets/maize-bd-2026/common-rust/img-201.jpg", "fieldsets/maize-bd-2026/common-rust/img-203.jpg")
+    assert fs.main(args) == 0
+    assert {json.loads(line)["plant_key"] for line in m.read_text().splitlines()} == {KEY_201}
+    m, args = manifest_of("fieldsets/maize-bd-2026/common-rust/img-201.jpg", "fieldsets/maize-bd-2026/common-rust/img-204.jpg")
+    before = m.read_text()
+    assert fs.main(args) == 1 and m.read_text() == before
+    assert fs.main(args + ["--resplit"]) == 0
+    assert {json.loads(line)["split"] for line in m.read_text().splitlines()} == {inat.split_of(KEY_201)}
+
+
+def test_the_manifests_neighbouring_frames_share_a_plant_key():
+    lines = inat.MANIFEST.read_text().splitlines()
+    assert fs.regroup(lines) == lines, "run `python -m ml.training.eval.fieldsets regroup` (evaluation.md §2, Splits)"
