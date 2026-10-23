@@ -1,0 +1,64 @@
+{
+ "label": "plant-check-dev-cases-2026-10-22",
+ "cases": 102,
+ "shots": 130,
+ "kinds": {
+  "whole_plant": 102,
+  "flower_fruit": 5,
+  "leaf_closeup": 21,
+  "leaf_underside": 2
+ },
+ "holdout_report": "ml/training/eval/reports/plant-check-test-holdout-2026-10-20-probe-v1.json",
+ "val_report": "ml/training/eval/reports/plant-check-val-2026-10-20-probe-v1.json",
+ "pairs": [
+  {
+   "set": "A",
+   "tau_leaf": 0.4,
+   "tau_plant": 0.7,
+   "case_recall": 0.9901960784313726,
+   "shot_recall": 0.9923076923076923,
+   "highest_tau_plant_at_99": 0.98,
+   "failing_cases": [
+    {
+     "case": "tomato-inat-401855015",
+     "species": "tomato",
+     "best_leaf": 0.362415611743927,
+     "best_p": 0.5601539015769958
+    }
+   ],
+   "at_pair": {
+    "tau_plant": 0.7,
+    "case_recall": 0.9901960784313726,
+    "holdout_negatives_pass": 0.11,
+    "val_worst_dataset_false_no_plant": 0.006042296072507553
+   },
+   "at_highest": {
+    "tau_plant": 0.98,
+    "case_recall": 0.9901960784313726,
+    "holdout_negatives_pass": 0.05,
+    "val_worst_dataset_false_no_plant": 0.030211480362537766
+   }
+  },
+  {
+   "set": "plant-probe-v1-2026-10-20",
+   "tau_leaf": 0.99,
+   "tau_plant": 0.71,
+   "case_recall": 1.0,
+   "shot_recall": 1.0,
+   "highest_tau_plant_at_99": 0.96,
+   "failing_cases": [],
+   "at_pair": {
+    "tau_plant": 0.71,
+    "case_recall": 1.0,
+    "holdout_negatives_pass": 0.001,
+    "val_worst_dataset_false_no_plant": 0.0030211480362537764
+   },
+   "at_highest": {
+    "tau_plant": 0.96,
+    "case_recall": 0.9901960784313726,
+    "holdout_negatives_pass": 0.0,
+    "val_worst_dataset_false_no_plant": 0.029585798816568046
+   }
+  }
+ ]
+}
