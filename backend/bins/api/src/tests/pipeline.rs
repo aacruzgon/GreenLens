@@ -865,12 +865,10 @@ fn store_confirming(
     (store, auth)
 }
 
-/// Run 1's suggestion, then confirming the suggested species: the working species the
-/// confirmation compares with is the one the suggestion's store write recorded (here the
-/// fake's record of `suggest_species`; the write itself is the store test
-/// `a_suggestion_sets_its_runs_working_species`), so the run and its question are kept.
-#[tokio::test]
-async fn confirming_the_suggested_species_keeps_the_run_and_its_question() {
+/// Completes run 1's `vlm` job and returns the working species the pipeline gave the store's
+/// `suggest_species` (here the fake's record; the write itself is the store test
+/// `a_suggestion_sets_its_runs_working_species`): tomato, the best candidate.
+async fn suggested_working_species() -> Option<SpeciesId> {
     let recorded: Arc<Mutex<Option<SpeciesId>>> = Arc::default();
     let mut store = store_completing_vlm(1);
     let write = Arc::clone(&recorded);
@@ -892,6 +890,16 @@ async fn confirming_the_suggested_species_keeps_the_run_and_its_question() {
         Some(species("tomato")),
         "the suggestion was stored"
     );
+    working
+}
+
+/// Run 1's suggestion, then confirming the suggested species: the working species the
+/// confirmation compares with is the one the suggestion's store write recorded (here the
+/// fake's record of `suggest_species`; the write itself is the store test
+/// `a_suggestion_sets_its_runs_working_species`), so the run and its question are kept.
+#[tokio::test]
+async fn confirming_the_suggested_species_keeps_the_run_and_its_question() {
+    let working = suggested_working_species().await;
 
     let (mut store, auth) = store_confirming(SpeciesChoice::Known(species("tomato")), working);
     store.scan_repo.expect_start_run().never();
@@ -970,11 +978,14 @@ async fn confirming_another_species_starts_a_run() {
 
 /// "Something else" after a suggestion ([contracts 3]): the custom name differs from the run's
 /// working species, so a run starts without a species, skipping species identification, and
-/// supersedes the open question.
+/// supersedes the open question. The working species is the one run 1's suggestion recorded,
+/// as in the test above: before the suggestion set it, the run had none, a custom name
+/// compared equal to it, and no run started.
 #[tokio::test]
 async fn confirming_a_custom_species_after_a_suggestion_starts_a_run() {
+    let working = suggested_working_species().await;
     let custom = SpeciesChoice::Custom("Heirloom tomato".into());
-    let (mut store, auth) = store_confirming(custom, Some(species("tomato")));
+    let (mut store, auth) = store_confirming(custom, working);
     store
         .job_repo
         .expect_live_workers()
