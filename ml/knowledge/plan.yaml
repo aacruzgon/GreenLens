@@ -5,6 +5,10 @@
 # The tomato slice: the seven problems disease head v3c predicts for tomato (its eighth tomato
 # class is healthy; #120), the bacterial speck its sources pair with bacterial spot, blossom-end
 # rot, the pests the sources cover, and the natural enemies the sources say attack them.
+#
+# The four-crop slice (#125): the seven problems disease heads v2c (#85) and v3c (#120) predict on
+# apple, corn, grape and pepper, whose species are label_only (#51). The slugs are the training
+# mappings' (D3), so classifier_labels.yaml can name them once they're signed.
 
 # Sources with no reuse grant (sources.yaml): their facts go into the drafts, rewritten and
 # cited, but their wording isn't committed. tag.py leaves them out of seed/chunks, extract.py
@@ -29,6 +33,11 @@ withheld_chunks:
   ontario_tomato_bacterial_diseases.38: recommends tank-mixing mancozeb with copper (S1, S2)
   isu_two_spotted_spider_mite.4: lists malathion and permethrin as home sprays (S6)
   isu_tomato_hornworm.3: suggests a synthetic home garden insecticide for hornworms (S6)
+  # #125's first review (2026-10-22), by the same rules:
+  isu_black_rot_grape.2: recommends mancozeb or captan as home sprays (S1)
+  edis_pp362_bacterial_spot_pepper.11: recommends combining copper with mancozeb (S1, S2)
+  edis_pp362_bacterial_spot_pepper.12: recommends a copper-mancozeb spray programme (S1, S2)
+  edis_pp362_bacterial_spot_pepper.13: advises Actigard, a commercial product, in tank mixes (S6)
 
 species:
   - id: tomato
@@ -48,6 +57,13 @@ problems:
   - { id: tomato_hornworms, name: Hornworms, affects: [tomato], caused_by: [hornworm] }
   - { id: tomato_whiteflies, name: Whiteflies, affects: [tomato], caused_by: [whitefly] }
   - { id: tomato_blossom_end_rot, name: Blossom-end rot, affects: [tomato] }
+  - { id: apple_scab, name: Apple scab, affects: [apple] }
+  - { id: apple_cedar_apple_rust, name: Cedar-apple rust, affects: [apple] }
+  - { id: corn_northern_leaf_blight, name: Northern corn leaf blight, affects: [corn] }
+  - { id: corn_gray_leaf_spot, name: Gray leaf spot, affects: [corn] }
+  - { id: corn_common_rust, name: Common rust, affects: [corn] }
+  - { id: grape_black_rot, name: Black rot, affects: [grape] }
+  - { id: pepper_bacterial_leaf_spot, name: Bacterial leaf spot, affects: [pepper] }
 
 organisms:
   - { id: two_spotted_spider_mite, name: Two-spotted spider mite, scientific_name: Tetranychus urticae }
