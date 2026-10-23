@@ -76,7 +76,7 @@ precision = "fp32"
   max_batch           = 16
   species_temperature = 1.3747           # T_species (M16): fitted on the 102 dev cases (#147's split) with the seed's
                                          # matrix edb29fe878952e7b; at it, 56 score 0.8 or more and 98% of them are right,
-                                         # out of fold 1.29–1.44; ml/training/eval/reports/calibration-2026-10-22
+                                         # out of fold 1.29–1.44; ml/training/eval/reports/calibration-2026-10-23
   gpu_mem_limit_mb    = 1229
 
   [model.check]                          # 50 PlantDoc test photos vs PyTorch fp32
