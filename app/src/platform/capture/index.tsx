@@ -26,6 +26,14 @@ export interface CapturedShot {
 
 export type { CameraInterruption, CaptureReport, DepthMeta };
 
+/**
+ * The LiDAR camera refused a shot because it came out black: the session ran but had lost the picture, as under
+ * iPhone Mirroring. Nothing was stored.
+ */
+export function isBlackShot(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { code?: unknown }).code === "ERR_LIDAR_BLACK";
+}
+
 export interface CameraPreviewHandle {
   capture(): Promise<CapturedShot>;
 }

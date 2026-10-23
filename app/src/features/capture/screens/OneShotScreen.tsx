@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { CameraPreview, pickFromLibrary, useCameraAccess, useCapabilities, type CameraPreviewHandle } from "@/platform";
+import { CameraPreview, isBlackShot, pickFromLibrary, useCameraAccess, useCapabilities, type CameraPreviewHandle } from "@/platform";
 import { Button, DropCard, Fade, IconButton, Text, ThemeProvider, camera, minTouch, space } from "@/ui";
 
 import { CameraAction, ProblemLine } from "../components/CameraControls";
@@ -16,7 +16,7 @@ import { CaptureIcon } from "../components/CaptureIcons";
 import { CoverageDial } from "../components/CoverageDial";
 import { DistanceChip } from "../components/DistanceChip";
 import { hasDistanceRange } from "../model/distanceRanges";
-import { pauseText, type CameraPause } from "../model/interruption";
+import { pauseText, shotFailedText, type CameraPause } from "../model/interruption";
 import { leaveCapture } from "../hooks/leaveCapture";
 import { useOneShotData, useOneShotSession, type OneShotData, type OneShotSession } from "../hooks/useOneShotSession";
 import { isGuidedKind, type OneShotPurpose } from "../model/oneShot";
@@ -74,7 +74,7 @@ function OneShotCamera({ scanId, purpose, data }: { scanId: string; purpose: One
   const { depth } = useCapabilities();
   const [distance, setDistance] = useState<number | null>(null);
   const [paused, setPaused] = useState<CameraPause | null>(null);
-  const [shotFailed, setShotFailed] = useState(false);
+  const [shotFailed, setShotFailed] = useState<string>();
   const [flash, setFlash] = useState(false);
   const [shooting, setShooting] = useState(false);
   const [covered, setCovered] = useState(false);
@@ -99,12 +99,12 @@ function OneShotCamera({ scanId, purpose, data }: { scanId: string; purpose: One
     setShooting(true);
     try {
       const shot = await preview.current.capture();
-      setShotFailed(false);
+      setShotFailed(undefined);
       setFlash(true);
       setTimeout(() => setFlash(false), 380);
       actions.take(shot, false);
-    } catch {
-      setShotFailed(true);
+    } catch (error) {
+      setShotFailed(shotFailedText(isBlackShot(error)));
     } finally {
       setShooting(false);
     }
@@ -200,8 +200,8 @@ function OneShotCamera({ scanId, purpose, data }: { scanId: string; purpose: One
         <View style={{ position: "absolute", left: 0, right: 0, bottom: insets.bottom + 16, gap: 14 }}>
           {aiming && paused ? (
             <CameraNotice text={pauseText(paused)} />
-          ) : aiming && shotFailed ? (
-            <CameraNotice text="Couldn't take the photo. Try again." />
+          ) : aiming && shotFailed !== undefined ? (
+            <CameraNotice text={shotFailed} />
           ) : depth && aiming && access.status === "granted" && hasDistanceRange(target.kind) ? (
             <DistanceChip kind={target.kind} metres={distance} />
           ) : null}

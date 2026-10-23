@@ -115,6 +115,17 @@ final class LidarCameraView: ExpoView, AVCaptureDepthDataOutputDelegate {
     }
   }
 
+  /// The view may get its window after the session is configured: observe then, or never.
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    guard window != nil else { return }
+    // `configured` is the session queue's.
+    sessionQueue.async { [weak self] in
+      guard let self, self.configured else { return }
+      DispatchQueue.main.async { self.observe() }
+    }
+  }
+
   override func removeFromSuperview() {
     // On the session queue: the multi-camera set-up replaces the session there.
     sessionQueue.async { [self] in
@@ -147,12 +158,19 @@ final class LidarCameraView: ExpoView, AVCaptureDepthDataOutputDelegate {
           if self.active, !self.session.isRunning { self.session.startRunning() }
         }
       },
+      // Apple's samples restart only after a media-services reset. Any other runtime error leaves the session
+      // stopped, so the screen hears it as a failed mount and falls back to the plain camera (README 13).
       centre.addObserver(forName: AVCaptureSession.runtimeErrorNotification, object: session, queue: nil) { [weak self] note in
         let error = note.userInfo?[AVCaptureSessionErrorKey] as? AVError
         self?.sessionQueue.async {
           guard let self else { return }
           self.failInFlight("The camera stopped. Try again.")
-          if error?.code == .mediaServicesWereReset, self.active { self.session.startRunning() }
+          if error?.code == .mediaServicesWereReset {
+            if self.active { self.session.startRunning() }
+          } else {
+            if self.session.isRunning { self.session.stopRunning() }
+            DispatchQueue.main.async { self.onMountError(["message": "The camera stopped."]) }
+          }
         }
       },
     ]
@@ -458,8 +476,8 @@ private final class PhotoCapture: NSObject, AVCapturePhotoCaptureDelegate {
     }
   }
 
-  func fail(_ message: String) {
-    if settle() { promise.reject("ERR_LIDAR_CAPTURE", message) }
+  func fail(_ message: String, code: String = "ERR_LIDAR_CAPTURE") {
+    if settle() { promise.reject(code, message) }
   }
 
   private func reject(_ message: String) { fail(message) }
@@ -481,6 +499,12 @@ private final class PhotoCapture: NSObject, AVCapturePhotoCaptureDelegate {
     }
     guard let jpeg = photo.fileDataRepresentation() else {
       reject("The photo couldn't be encoded.")
+      return
+    }
+    // A session that runs but has lost the camera's picture (iPhone Mirroring does this without interrupting it)
+    // still delivers a photo, all black, with all-zero depth. It is a failed shot, never a draft.
+    if Self.isBlack(jpeg) {
+      fail("The photo came out black.", code: "ERR_LIDAR_BLACK")
       return
     }
     do {
@@ -525,7 +549,9 @@ private final class PhotoCapture: NSObject, AVCapturePhotoCaptureDelegate {
         // Depth only with absolute accuracy (architecture 6.7), and only with the intrinsics: the server's
         // DepthMeta requires them and would refuse the whole meta (contracts 3, invalid_meta).
         let meta = DepthMeta.record(depthData, gravity: gravity)
-        if !absolute {
+        if grid.validFraction == 0 {
+          report["dropped"] = "no_valid_depth"
+        } else if !absolute {
           report["dropped"] = "relative_accuracy"
         } else if meta["intrinsics"] == nil {
           report["dropped"] = "no_intrinsics"
@@ -544,6 +570,30 @@ private final class PhotoCapture: NSObject, AVCapturePhotoCaptureDelegate {
     } catch {
       reject(error.localizedDescription)
     }
+  }
+
+  /// True when no pixel of a 32-pixel thumbnail is brighter than 4 of 255. A dark scene still has some light in it;
+  /// a photo from a camera that has lost its picture is exactly 0 everywhere.
+  static func isBlack(_ jpeg: Data) -> Bool {
+    let options: [CFString: Any] = [
+      kCGImageSourceCreateThumbnailFromImageAlways: true,
+      kCGImageSourceThumbnailMaxPixelSize: 32,
+    ]
+    guard let source = CGImageSourceCreateWithData(jpeg as CFData, nil),
+      let thumb = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+    else { return false }
+    let width = thumb.width
+    let height = thumb.height
+    var pixels = [UInt8](repeating: 0, count: width * height)
+    let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+      guard let context = CGContext(
+        data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
+        space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)
+      else { return false }
+      context.draw(thumb, in: CGRect(x: 0, y: 0, width: width, height: height))
+      return true
+    }
+    return drawn && (pixels.max() ?? 0) <= 4
   }
 
   /// The app copies each shot into its draft, so what is left here after ten minutes is from a capture nobody kept.

@@ -4,6 +4,7 @@ export { requestGardenLocation, type DeviceLocation } from "./location";
 export { files } from "./files";
 export {
   CameraPreview,
+  isBlackShot,
   pickFromLibrary,
   useCameraAccess,
   type CameraInterruption,

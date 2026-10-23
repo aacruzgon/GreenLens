@@ -9,7 +9,7 @@ import { Image, Pressable, ScrollView, View, useWindowDimensions } from "react-n
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { ImageKind } from "@/domain/types";
-import { CameraPreview, useCameraAccess, useCapabilities, type CameraInterruption, type CameraPreviewHandle, type CaptureReport } from "@/platform";
+import { CameraPreview, isBlackShot, useCameraAccess, useCapabilities, type CameraInterruption, type CameraPreviewHandle, type CaptureReport } from "@/platform";
 import { Banner, Button, Section, Text, TextField, ThemeProvider, camera, minTouch, space, useTheme } from "@/ui";
 
 import { useDepthCheck, type RulerResult } from "../hooks/useDepthCheck";
@@ -47,16 +47,16 @@ function Aim({ onShot }: { onShot: ReturnType<typeof useDepthCheck>["actions"]["
   const [distance, setDistance] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [paused, setPaused] = useState<CameraInterruption | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<string>();
 
   const shoot = async () => {
     if (!preview.current || busy || paused) return;
     setBusy(true);
     try {
       onShot(await preview.current.capture());
-      setFailed(false);
-    } catch {
-      setFailed(true);
+      setFailed(undefined);
+    } catch (error) {
+      setFailed(isBlackShot(error) ? "The photo came out black, so it wasn't kept. If the iPhone is mirrored to a Mac, take it on the phone." : "Couldn't take the photo. Try again.");
     } finally {
       setBusy(false);
     }
@@ -97,10 +97,10 @@ function Aim({ onShot }: { onShot: ReturnType<typeof useDepthCheck>["actions"]["
           </View>
         </View>
         <View style={{ position: "absolute", bottom: insets.bottom + 24, left: 16, right: 16, alignItems: "center", gap: space[3] }}>
-          {paused || failed ? (
+          {paused || failed !== undefined ? (
             <View accessibilityRole="alert" style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: camera.pill }}>
               <Text variant="footnote" style={{ color: camera.ink, textAlign: "center" }}>
-                {paused ? "The camera is in use elsewhere. It comes back when that ends." : "Couldn't take the photo. Try again."}
+                {paused ? "The camera is in use elsewhere. It comes back when that ends." : failed}
               </Text>
             </View>
           ) : null}
@@ -120,6 +120,7 @@ function Aim({ onShot }: { onShot: ReturnType<typeof useDepthCheck>["actions"]["
 }
 
 function Result({ check }: { check: ReturnType<typeof useDepthCheck> }) {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
@@ -139,7 +140,10 @@ function Result({ check }: { check: ReturnType<typeof useDepthCheck> }) {
         <Text variant="title2" accessibilityRole="header">
           Depth check
         </Text>
-        <Button label="Retake" variant="secondary" size="small" onPress={check.actions.retake} />
+        <View style={{ flexDirection: "row", gap: space[2] }}>
+          <Button label="Retake" variant="secondary" size="small" onPress={check.actions.retake} />
+          <Button label="Close" variant="secondary" size="small" onPress={() => router.back()} />
+        </View>
       </View>
 
       <Pressable
@@ -222,7 +226,7 @@ function ReportList({ report }: { report: CaptureReport }) {
     ["Distortion table", d ? (d.has_distortion_table ? "Sent by the camera" : "None") : "—"],
     ["Centre distance", d?.centre_distance_m != null ? `${(d.centre_distance_m * 100).toFixed(1)} cm in the photo's depth` : "No depth at the centre"],
     ["Gravity, camera frame", report.gravity ? `${report.gravity.map((g) => g.toFixed(3)).join(", ")} · camera ${pitchDeg(report.gravity).toFixed(1)}° below level` : "Not read"],
-    ["Depth part", report.dropped ? `Not sent: ${report.dropped.replace("_", " ")}` : "Sent with the upload"],
+    ["Depth part", report.dropped ? `Not sent: ${report.dropped.replaceAll("_", " ")}` : "Sent with the upload"],
   ];
   return (
     <Section title="What the camera gave">

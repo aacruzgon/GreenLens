@@ -32,7 +32,7 @@ export interface CaptureReport {
   centre_distance_m: number | null;
   gravity: [number, number, number] | null;
   /** Why the shot has no depth part. */
-  dropped?: "no_depth" | "relative_accuracy" | "no_intrinsics" | "encoding";
+  dropped?: "no_depth" | "no_valid_depth" | "relative_accuracy" | "no_intrinsics" | "encoding";
 }
 
 export interface LidarShot {

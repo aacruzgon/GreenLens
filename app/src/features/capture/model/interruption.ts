@@ -17,3 +17,10 @@ export function pauseText(reason: CameraPause): string {
       return "The camera is paused. It comes back on its own.";
   }
 }
+
+/** Why the last shot failed. A black shot came from a camera that ran without its picture, and wasn't kept. */
+export function shotFailedText(black: boolean): string {
+  return black
+    ? "The photo came out black, so it wasn't kept. If the iPhone is mirrored to a Mac, take it on the phone."
+    : "Couldn't take the photo. Try again.";
+}
