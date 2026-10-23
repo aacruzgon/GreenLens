@@ -4,6 +4,8 @@
     python -m ml.training.eval.face_check run --models-dir DIR [--thresholds 0.15 0.2 0.3 …] [--sets dev]
     python -m ml.training.eval.face_check run … --variants original --thresholds 0.3 --pass-a-long-side 640
     python -m ml.training.eval.face_check score [--out faces-2026-10-22] [--notes notes.md] [--crop-thresholds 0.3]
+    python -m ml.training.eval.face_check run … --variants original --landmarks
+    python -m ml.training.eval.face_check landmarks [--notes notes.md] [--crop-threshold 0.15 --crop-grow 0.35]
 
 `run` builds `vision`'s `face_check` example in release (`backend/crates/vision/examples/
 face_check.rs`: `imaging::decode_upload`, the quality gate on its 512 px downscale, then
@@ -30,6 +32,16 @@ quality scores' drift between sizes; and bytes and milliseconds per size. Crops 
 face and every unmatched box at `--crop-thresholds`, and pages of them, go to
 training/runs/faces/crops/. The report is eval/reports/<out>.md and .json; `--notes` adds what a
 person saw in the crops after the headline.
+
+`landmarks` is a prototype check, not shipped: whether YuNet's five landmarks, which `api` ignores,
+can veto the face boxes on leaves. `run --landmarks` runs the example with `--landmarks` (each
+merged box with the pass boxes merged into it and their points; `-kps.jsonl`). A merged box takes
+its highest-scoring member's points; BOUNDS on their geometry, normalised by the box or by the
+eyes-to-mouth axis, are each set to keep KEEP of the true-face boxes at FIT_AT on one half of the
+Open Images photos (`halves`), and scored on the other half, on all of them and on the dev plant
+photos, which never set anything; a logistic regression on the same features is scored beside
+them. Report: eval/reports/faces-landmarks-<date>.md and .json; crops under
+training/runs/faces/landmarks/crops/.
 """
 
 from __future__ import annotations
@@ -37,6 +49,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import math
 import os
 import statistics
 import subprocess
@@ -44,6 +57,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+import numpy as np
 from PIL import Image, ImageDraw
 
 from ml.training.data import faces as F
@@ -226,9 +240,11 @@ def variants_of(photo_set: str, photos: list[dict]) -> dict[str, dict[str, tuple
 
 # --- running the example ------------------------------------------------------------------------
 
-def raw_path(photo_set: str, variant: str, threshold: float, pass_a: int | None = None) -> Path:
-    """The example's output; `pass_a` names a run with pass A at another size (an extra pass)."""
-    suffix = "" if pass_a is None else f"-a{pass_a}"
+def raw_path(photo_set: str, variant: str, threshold: float, pass_a: int | None = None,
+             landmarks: bool = False) -> Path:
+    """The example's output; `pass_a` names a run with pass A at another size (an extra pass),
+    `landmarks` a run with `--landmarks` (`-kps`)."""
+    suffix = ("" if pass_a is None else f"-a{pass_a}") + ("-kps" if landmarks else "")
     return RUNS / "raw" / f"{photo_set}-{variant}-{threshold}{suffix}.jsonl"
 
 
@@ -238,11 +254,11 @@ def build() -> None:
 
 
 def run_example(paths: list[Path], threshold: float, models_dir: Path, ort: Path, out: Path,
-                pass_a: int | None = None) -> None:
+                pass_a: int | None = None, landmarks: bool = False) -> None:
     env = os.environ | {"ORT_DYLIB_PATH": str(ort)}
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_suffix(".part")
-    extra = [] if pass_a is None else ["--pass-a-long-side", str(pass_a)]
+    extra = ([] if pass_a is None else ["--pass-a-long-side", str(pass_a)]) + (["--landmarks"] if landmarks else [])
     with tmp.open("w") as f:
         subprocess.run([str(EXAMPLE), "--models-dir", str(models_dir), "--score-threshold", str(threshold), *extra],
                        input="".join(f"{p}\n" for p in paths), text=True, stdout=f, check=True, env=env)
@@ -260,12 +276,12 @@ def cmd_run(args) -> int:
         files = variants_of(name, photos)
         for t in args.thresholds:
             for v in args.variants:
-                out = raw_path(name, v, t, args.pass_a_long_side)
+                out = raw_path(name, v, t, args.pass_a_long_side, args.landmarks)
                 if out.exists() and not args.force:
                     continue
                 print(f"{name} {v} at {t}: {len(photos)} photos", file=sys.stderr, flush=True)
                 run_example([files[v][p["key"]][0] for p in photos], t, Path(args.models_dir).expanduser(), ort, out,
-                            args.pass_a_long_side)
+                            args.pass_a_long_side, args.landmarks)
     return 0
 
 
@@ -556,6 +572,497 @@ def cmd_score(args) -> int:
     return 0
 
 
+# --- landmarks: a prototype filter on YuNet's five points ---------------------------------------
+
+LANDMARK_THRESHOLDS = (0.3, 0.2, 0.15)
+FIT_AT = 0.15          # the detector threshold whose true-face boxes set the bounds
+KEEP = 0.995           # each bound keeps this share of the true-face boxes it is set on
+LANDMARK_GROWS = (0.25, 0.35)
+PROFILE = 0.5          # eye distance under half the eyes-to-mouth distance: a face near profile
+# YuNet's points, in its order: right eye, left eye, nose tip, right and left mouth corners (the
+# person's right, so the image's left in a frontal face). The face's own frame: "up" runs from the
+# mouth corners' midpoint to the eyes' midpoint, and L is that distance.
+BOUNDS = (
+    ("outside", "max"),       # the farthest point outside the box, as a share of the box's side
+    ("roll", "max"),          # degrees between "up" and the image's up: wide, for tilted heads
+    ("nose_height", "min"),   # the nose along "up": 0 at the mouth line, 1 at the eye line
+    ("nose_height", "max"),
+    ("eye_mouth", "min"),     # L as a share of the box's size, √(w·h)
+    ("eye_mouth", "max"),
+    ("eye_side", "min"),      # the right-to-left eye vector across "up", over L: > 0 unless mirrored
+    ("mouth_side", "min"),    # the same for the mouth corners
+    ("eye_width", "max"),     # eye distance as a share of the box's size; no minimum, for profiles
+    ("mouth_eye", "min"),     # mouth width over eye distance
+    ("mouth_eye", "max"),
+)
+
+
+def landmark_features(member: dict) -> dict[str, float]:
+    """The geometry of one pass box's five points (`{x, y, w, h, kps}` in pixels), normalised by
+    the box or by the face's own eyes-to-mouth axis, so it doesn't depend on the photo's size."""
+    x, y, w, h = member["x"], member["y"], member["w"], member["h"]
+    (rex, rey), (lex, ley), (nx, ny), (rmx, rmy), (lmx, lmy) = member["kps"]
+    size = (w * h) ** 0.5 if w > 0 and h > 0 else float("nan")
+    ex, ey, mx, my = (rex + lex) / 2, (rey + ley) / 2, (rmx + lmx) / 2, (rmy + lmy) / 2
+    ux, uy = ex - mx, ey - my                       # "up", in image pixels (y grows down)
+    l2 = ux * ux + uy * uy
+    if not l2 > 0 or not size > 0:
+        return {name: float("nan") for name, _ in BOUNDS} | {"yaw": float("nan")}
+    length = l2 ** 0.5
+    eye, mouth = (lex - rex, ley - rey), (lmx - rmx, lmy - rmy)
+    eye_d, mouth_d = (eye[0] ** 2 + eye[1] ** 2) ** 0.5, (mouth[0] ** 2 + mouth[1] ** 2) ** 0.5
+    outside = max(max(x - px, px - x - w) / w if w else 0.0 for px, _ in member["kps"])
+    outside = max(outside, max(max(y - py, py - y - h) / h if h else 0.0 for _, py in member["kps"]), 0.0)
+    return {
+        "outside": outside,
+        "roll": abs(math.degrees(math.atan2(ux, -uy))),
+        "nose_height": ((nx - mx) * ux + (ny - my) * uy) / l2,
+        "eye_mouth": length / size,
+        "eye_side": (ux * eye[1] - uy * eye[0]) / l2,
+        "mouth_side": (ux * mouth[1] - uy * mouth[0]) / l2,
+        "eye_width": eye_d / size,
+        "mouth_eye": mouth_d / eye_d if eye_d > 0 else float("inf"),
+        "yaw": eye_d / length,                      # under PROFILE: near profile
+    }
+
+
+def bound_name(feature: str, side: str) -> str:
+    return f"{feature} {side}"
+
+
+def fit_bounds(features: list[dict], keep: float = KEEP) -> dict[str, float]:
+    """Each bound of BOUNDS set so it alone keeps `keep` of `features` (linear quantiles)."""
+    out = {}
+    for feature, side in BOUNDS:
+        values = np.array([f[feature] for f in features if math.isfinite(f[feature])])
+        out[bound_name(feature, side)] = float(np.quantile(values, 1 - keep if side == "min" else keep))
+    return out
+
+
+def failed_bounds(features: dict, bounds: dict[str, float]) -> list[str]:
+    """The bounds a box's features break; a feature that isn't a number breaks its bounds."""
+    out = []
+    for feature, side in BOUNDS:
+        name, v = bound_name(feature, side), features[feature]
+        if name in bounds and (math.isnan(v) or (v < bounds[name] if side == "min" else v > bounds[name])):
+            out.append(name)
+    return out
+
+
+def top_member(face: dict) -> dict:
+    """The landmarks a merged box takes: those of its highest-scoring member (the first on a tie)."""
+    return max(face["members"], key=lambda m: m["score"])
+
+
+def member_spread(face: dict) -> float | None:
+    """How far the passes disagree on a merged box's points: the largest distance between a point
+    of the top member and the same point of another member, over the top member's L. `None` for a
+    box with one member."""
+    top = top_member(face)
+    (rex, rey), (lex, ley), _, (rmx, rmy), (lmx, lmy) = top["kps"]
+    length = math.dist(((rex + lex) / 2, (rey + ley) / 2), ((rmx + lmx) / 2, (rmy + lmy) / 2))
+    others = [m for m in face["members"] if m is not top]
+    if not others or not length > 0:
+        return None
+    return max(math.dist(a, b) for m in others for a, b in zip(top["kps"], m["kps"])) / length
+
+
+def looks_like_a_face(face: dict, bounds: dict[str, float], policy: str = "top") -> bool:
+    """Whether a merged box passes the bounds: on its top member's points (`top`) or on any
+    member's (`any`)."""
+    members = [top_member(face)] if policy == "top" else face["members"]
+    return any(not failed_bounds(landmark_features(m), bounds) for m in members)
+
+
+def halves(keys) -> dict[str, str]:
+    """A fixed split by photo ID: sorted, then alternately A and B."""
+    return {k: "AB"[i % 2] for i, k in enumerate(sorted(keys))}
+
+
+class LearnedRule:
+    """Logistic regression on the bounds' features of the top member, the true-face boxes against
+    the boxes on no annotated face in the Open Images photos, its cut set like a bound's: keeping
+    `keep` of the true-face boxes it was fitted on."""
+    FEATURES = tuple(dict.fromkeys(f for f, _ in BOUNDS))
+
+    def __init__(self, positives: list[dict], negatives: list[dict], keep: float = KEEP):
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.pipeline import make_pipeline
+        from sklearn.preprocessing import StandardScaler
+        x = np.array([self.row(f) for f in positives + negatives])
+        y = np.array([1] * len(positives) + [0] * len(negatives))
+        self.model = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000, class_weight="balanced"))
+        self.model.fit(x, y)
+        self.cut = float(np.quantile(self.score(positives), 1 - keep))
+
+    @classmethod
+    def row(cls, f: dict) -> list[float]:
+        return [min(max(f[k], -1e3), 1e3) if math.isfinite(f[k]) else 1e3 for k in cls.FEATURES]
+
+    def score(self, features: list[dict]) -> np.ndarray:
+        if not features:
+            return np.array([])
+        return self.model.decision_function(np.array([self.row(f) for f in features]))
+
+    def keeps(self, face: dict) -> bool:
+        return bool(self.score([landmark_features(top_member(face))])[0] >= self.cut)
+
+
+def landmark_runs(photo_set: str, photos: list[dict], files: dict, thresholds) -> dict[float, dict[str, dict]]:
+    """The `--landmarks` runs on the original uploads: threshold → photo key → the example's line."""
+    out = {}
+    for t in thresholds:
+        raw = read_raw(raw_path(photo_set, "original", t, landmarks=True))
+        out[t] = {}
+        for p in photos:
+            r = raw[str(files[photo_set]["original"][p["key"]][0].resolve())]
+            if "error" in r:
+                raise SystemExit(f"{p['key']} at {t}: {r['error']}")
+            out[t][p["key"]] = r
+    return out
+
+
+def same_boxes(a: list[dict], b: list[dict]) -> bool:
+    keys = ("x", "y", "w", "h", "score")
+    return [[f[k] for k in keys] for f in a] == [[f[k] for k in keys] for f in b]
+
+
+def filtered(result: dict, keep) -> dict:
+    return {"faces": [f for f in result["faces"] if keep(f)]}
+
+
+def setting_scores(oi: list[dict], gt: dict, oi_runs: dict[str, dict], dev_runs: dict[str, dict],
+                   side: dict[str, str], keep, grow: float) -> dict:
+    """Recall per half and on all photos, and the dev plant photos' false blur, with the merged
+    boxes `keep` keeps, grown by `grow`."""
+    faces = []
+    for p in oi:
+        r = filtered(oi_runs[p["key"]], keep)
+        faces += [f | {"photo": p["key"], "half": side[p["key"]]}
+                  for f in score_photo(r, gt[p["key"]], (p["width"], p["height"]), grow) if f["stored_px"] >= MIN_FACE]
+    dev_kept = {k: filtered(r, keep)["faces"] for k, r in dev_runs.items()}
+    shares = [blurred_share(b, grow) for b in dev_kept.values()]
+    with_a_box = sorted(k for k, b in dev_kept.items() if b)
+    return {
+        "recall": {"A": recall([f for f in faces if f["half"] == "A"]),
+                   "B": recall([f for f in faces if f["half"] == "B"]), "all": recall(faces)},
+        "missed": [{k: f[k] for k in ("photo", "face", "stored_px", "covered", "occluded", "truncated")}
+                   for f in faces if not f["caught"]],
+        "dev": {"photos": len(dev_kept), "with_a_box": len(with_a_box),
+                "share": round(len(with_a_box) / len(dev_kept), 4) if dev_kept else None,
+                "blurred_share_mean": round(statistics.fmean(shares), 4) if shares else None,
+                "blurred_share_max": round(max(shares), 4) if shares else None,
+                "boxes": sum(len(b) for b in dev_kept.values()), "photos_with_a_box": with_a_box},
+    }
+
+
+def draw_points(im: Image.Image, member: dict, box: tuple[int, int, int, int], colour: str = "lime") -> None:
+    """The five points of `member` (pixels of the full photo) on a crop of it starting at `box`."""
+    d = ImageDraw.Draw(im)
+    r = max(2, int((box[2] - box[0]) / 80))
+    colours = ("red", "red", "yellow", "cyan", "cyan")
+    for (px, py), c in zip(member["kps"], colours):
+        px, py = px - box[0], py - box[1]
+        d.ellipse([px - r, py - r, px + r, py + r], outline=c, width=max(1, r // 2))
+    x, y, w, h = member["x"] - box[0], member["y"] - box[1], member["w"], member["h"]
+    d.rectangle([x, y, x + w, y + h], outline=colour, width=max(1, r // 2))
+
+
+def landmark_crop(path: Path, rect: tuple[float, float, float, float], members: list[dict],
+                  extra: list[tuple[tuple[float, float, float, float], str]] = (), pad: float = 2.0) -> Image.Image:
+    """A crop around `rect` (normalised) with each member's box and points drawn."""
+    im = Image.open(path).convert("RGB")
+    w, h = im.size
+    x0, y0, x1, y1 = rect[0] * w, rect[1] * h, rect[2] * w, rect[3] * h
+    half = max(x1 - x0, y1 - y0, 96 / pad) * pad / 2
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    box = (int(max(0, cx - half)), int(max(0, cy - half)), int(min(w, cx + half)), int(min(h, cy + half)))
+    crop = im.crop(box)
+    d = ImageDraw.Draw(crop)
+    for (a, b, c, e), colour in extra:
+        d.rectangle([a * w - box[0], b * h - box[1], c * w - box[0], e * h - box[1]], outline=colour,
+                    width=max(2, int((box[2] - box[0]) / 150)))
+    for m in members:
+        draw_points(crop, m, box)
+    return crop
+
+
+def cmd_landmarks(args) -> int:
+    date = args.date or dt.date.today().isoformat()
+    out_name = args.out or f"faces-landmarks-{date}"
+    oi = openimages_photos()
+    dev = dev_photos(photos=args.eval_photos)
+    by_split: dict[str, set[str]] = defaultdict(set)
+    for p in oi:
+        by_split[p["split"]].add(p["key"])
+    gt: dict[str, list[dict]] = {}
+    for split, ids in by_split.items():
+        gt |= F.read_faces(F.TABLES / F.SPLITS[split][0], ids)
+    files = {"openimages": {"original": {p["key"]: (p["path"], 0) for p in oi}},
+             "dev": {"original": {p["key"]: (p["path"], 0) for p in dev}}}
+    thresholds = sorted(args.thresholds, reverse=True)
+    oi_runs = landmark_runs("openimages", oi, files, thresholds)
+    dev_runs = landmark_runs("dev", dev, files, thresholds)
+    side = halves(p["key"] for p in oi)
+
+    # the run's boxes are the shipped detector's: equal to detect's in the same process, and to the
+    # report's runs where those exist
+    checks = {}
+    for name, runs in (("openimages", oi_runs), ("dev", dev_runs)):
+        for t, rs in runs.items():
+            not_matched = sorted(k for k, r in rs.items() if not r.get("landmarks_match"))
+            if not_matched:
+                raise SystemExit(f"{name} at {t}: the landmark run's boxes differ from detect's on {not_matched[:5]}")
+            report_raw = raw_path(name, "original", t)
+            same = None
+            if report_raw.exists():
+                old = read_raw(report_raw)
+                photos = oi if name == "openimages" else dev
+                same = sum(same_boxes(old[str(files[name]["original"][p["key"]][0].resolve())]["faces"],
+                                      rs[p["key"]]["faces"]) for p in photos)
+            boxes = [f for r in rs.values() for f in r["faces"]]
+            checks[f"{name}@{t}"] = {"photos": len(rs), "landmarks_match": len(rs), "same_as_report_run": same,
+                                     "boxes": len(boxes), "with_one_member": sum(len(f["members"]) == 1 for f in boxes)}
+
+    def true_and_other(t: float, half: str | None) -> tuple[list[dict], list[dict]]:
+        pos, neg = [], []
+        for p in oi:
+            if half is not None and side[p["key"]] != half:
+                continue
+            for f in oi_runs[t][p["key"]]["faces"]:
+                (pos if matches_a_face(f, gt[p["key"]]) else neg).append(landmark_features(top_member(f)))
+        return pos, neg
+
+    fits = {}
+    for half in "AB":
+        pos, neg = true_and_other(FIT_AT, half)
+        fits[half] = {"bounds": fit_bounds(pos), "true_boxes": len(pos), "other_boxes": len(neg)}
+        fits[half]["learned"] = LearnedRule(pos, neg)
+    other = {"A": "B", "B": "A"}
+
+    def keeper(kind: str, half: str):
+        if kind == "off":
+            return lambda f: True
+        if kind == "learned":
+            return fits[half]["learned"].keeps
+        return lambda f: looks_like_a_face(f, fits[half]["bounds"], kind)
+
+    grid = []
+    for t in thresholds:
+        for g in LANDMARK_GROWS:
+            for kind in ("off", "top", "any", "learned"):
+                a = setting_scores(oi, gt, oi_runs[t], dev_runs[t], side, keeper(kind, "A"), g)
+                b = setting_scores(oi, gt, oi_runs[t], dev_runs[t], side, keeper(kind, "B"), g)
+                grid.append({"threshold": t, "grow": g, "filter": kind,
+                             "recall_held_out_B": a["recall"]["B"], "recall_held_out_A": b["recall"]["A"],
+                             "recall_all": a["recall"]["all"], "missed": a["missed"], "dev": a["dev"],
+                             "dev_fit_on_B": {k: b["dev"][k] for k in ("with_a_box", "share", "blurred_share_mean")}})
+
+    # what the bounds keep and break, box by box, with the bounds set on half A
+    bounds_a = fits["A"]["bounds"]
+    boxes = {}
+    for t in thresholds:
+        pos_all, neg_all = true_and_other(t, None)
+        dev_feats = [landmark_features(top_member(f)) for r in dev_runs[t].values() for f in r["faces"]]
+        profile = [f for f in pos_all if f["yaw"] < PROFILE]
+
+        def kept(fs):
+            return sum(not failed_bounds(f, bounds_a) for f in fs)
+        broken = defaultdict(lambda: [0, 0, 0])
+        for i, fs in enumerate((pos_all, neg_all, dev_feats)):
+            for f in fs:
+                for name in failed_bounds(f, bounds_a):
+                    broken[name][i] += 1
+        boxes[str(t)] = {"true": [kept(pos_all), len(pos_all)], "other": [kept(neg_all), len(neg_all)],
+                         "dev": [kept(dev_feats), len(dev_feats)], "true_near_profile": [kept(profile), len(profile)],
+                         "true_half_A": None, "broken": dict(broken)}
+        if t == FIT_AT:
+            pa, _ = true_and_other(t, "A")
+            boxes[str(t)]["true_half_A"] = [kept(pa), len(pa)]
+    quantiles = {}
+    pos_all, neg_all = true_and_other(FIT_AT, None)
+    dev_feats = [landmark_features(top_member(f)) for r in dev_runs[FIT_AT].values() for f in r["faces"]]
+    for feature in LearnedRule.FEATURES + ("yaw",):
+        quantiles[feature] = {name: [round(float(v), 3) for v in np.quantile(
+            [f[feature] for f in fs if math.isfinite(f[feature])], (0.005, 0.05, 0.5, 0.95, 0.995))]
+            for name, fs in (("true", pos_all), ("other", neg_all), ("dev", dev_feats))}
+    spreads: dict[str, list[float]] = {"true": [], "other": [], "dev": []}
+    for p in oi:
+        for f in oi_runs[FIT_AT][p["key"]]["faces"]:
+            spreads["true" if matches_a_face(f, gt[p["key"]]) else "other"].append(member_spread(f))
+    spreads["dev"] = [member_spread(f) for r in dev_runs[FIT_AT].values() for f in r["faces"]]
+    quantiles["spread"] = {}
+    for k, v in spreads.items():
+        v = [x for x in v if x is not None]
+        quantiles["spread"][k] = [round(float(x), 3) for x in np.quantile(v, (0.005, 0.05, 0.5, 0.95, 0.995))] if v else []
+
+    report = {"date": date, "photos": len(oi), "dev_photos": len(dev), "thresholds": thresholds,
+              "fit_at": FIT_AT, "keep": KEEP, "grows": list(LANDMARK_GROWS), "profile_yaw": PROFILE,
+              "halves": {h: sorted(k for k, s_ in side.items() if s_ == h) for h in "AB"},
+              "checks": checks,
+              "fits": {h: {"bounds": {k: round(v, 4) for k, v in f["bounds"].items()}, "true_boxes": f["true_boxes"],
+                           "other_boxes": f["other_boxes"]} for h, f in fits.items()},
+              "boxes": boxes, "quantiles_at_fit": quantiles, "grid": grid}
+
+    # crops: the setting asked for, its missed faces and the dev photos it still blurs
+    crop_dir = RUNS / "landmarks" / "crops"
+    if args.crop_threshold is not None:
+        for old in crop_dir.glob("*.jpg"):
+            old.unlink()
+        pick = next(x for x in grid if x["threshold"] == args.crop_threshold and x["grow"] == args.crop_grow
+                    and x["filter"] == args.crop_filter)
+        keep = keeper(args.crop_filter, "A")
+        items = []
+        for m in pick["missed"]:
+            p = next(q for q in oi if q["key"] == m["photo"])
+            face = gt[p["key"]][m["face"]]
+            r = oi_runs[args.crop_threshold][p["key"]]
+            near = [f for f in r["faces"] if covered_share(face_rect(face), [grown(f, 1.0)]) > 0]
+            members = [top_member(f) for f in near]
+            extra = [(face_rect(face), "red")] + [(grown(f, args.crop_grow), "blue" if keep(f) else "orange")
+                                                  for f in near]
+            im = landmark_crop(p["path"], face_rect(face), members, extra)
+            label = f"{p['key']}#{m['face']} {m['stored_px']:.0f}px cov {m['covered']:.2f}"
+            save_landmark_crop(crop_dir, im, f"missed-{p['key']}-{m['face']}.jpg")
+            items.append((im, label))
+        crop_sheets(items, crop_dir / "sheet-missed")
+        items = []
+        for k in pick["dev"]["photos_with_a_box"]:
+            p = next(q for q in dev if q["key"] == k)
+            for i, f in enumerate(x for x in dev_runs[args.crop_threshold][k]["faces"] if keep(x)):
+                rect = (f["x"], f["y"], f["x"] + f["w"], f["y"] + f["h"])
+                im = landmark_crop(p["path"], rect, [top_member(f)], [(grown(f, args.crop_grow), "orange")], pad=2.5)
+                save_landmark_crop(crop_dir, im, f"dev-{k.replace('#', '_')}-{i}.jpg")
+                items.append((im, f"{k} {f['score']:.2f}"))
+        crop_sheets(items, crop_dir / "sheet-dev")
+        # true-face boxes the bounds drop, on all 93 photos at the crop threshold
+        items = []
+        for p in oi:
+            for i, f in enumerate(oi_runs[args.crop_threshold][p["key"]]["faces"]):
+                if matches_a_face(f, gt[p["key"]]) and not keep(f):
+                    rect = (f["x"], f["y"], f["x"] + f["w"], f["y"] + f["h"])
+                    why = ", ".join(failed_bounds(landmark_features(top_member(f)), bounds_a))
+                    im = landmark_crop(p["path"], rect, [top_member(f)], pad=2.0)
+                    items.append((im, f"{p['key']} {f['score']:.2f} {why}"))
+        crop_sheets(items, crop_dir / "sheet-dropped-true")
+        report["crops"] = {"threshold": args.crop_threshold, "grow": args.crop_grow, "filter": args.crop_filter,
+                           "dir": str(crop_dir.relative_to(ROOT)) if crop_dir.is_relative_to(ROOT) else str(crop_dir)}
+
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    (REPORTS / f"{out_name}.json").write_text(json.dumps(report, indent=1) + "\n")
+    notes = Path(args.notes).read_text() if args.notes else ""
+    (REPORTS / f"{out_name}.md").write_text(landmarks_markdown(report, out_name, notes))
+    print(f"wrote {REPORTS / out_name}.md and .json")
+    return 0
+
+
+def save_landmark_crop(crop_dir: Path, im: Image.Image, name: str) -> None:
+    crop_dir.mkdir(parents=True, exist_ok=True)
+    im.save(crop_dir / name, quality=90)
+
+
+FILTER_NAMES = {"off": "off", "top": "on (top member)", "any": "on (any member)", "learned": "learned"}
+
+
+def landmarks_markdown(r: dict, name: str, notes: str = "") -> str:
+    """The landmark check's tables; `notes` (what the numbers and crops show) goes after the method."""
+    fit = r["fits"]["A"]
+    out = [
+        f"# Face check, landmarks: {name}", "",
+        "A prototype check, not shipped: could YuNet's five landmarks (right eye, left eye, nose tip, right and "
+        "left mouth corners), which `api` ignores, tell the face boxes on leaves from real faces? Same photos and "
+        f"scoring as [faces-2026-10-22](faces-2026-10-22.md): {r['photos']} Open Images photos as uploaded, and the "
+        f"{r['dev_photos']} dev plant photos.", "",
+        "**Method.**",
+        "",
+        "- `vision`'s `face_check` example with `--landmarks` runs `FaceDetector::detect`, then the same passes again "
+        "with a decode that keeps the landmarks, and merges them as `union_merge` does, keeping each merged box's "
+        "members (the pass boxes merged into it). The merged boxes are the shipped detector's: equal to `detect`'s "
+        "in the same run on every photo, and to the main report's runs (table below). The decode matches OpenCV "
+        "4.12's `FaceDetectorYN` to 0.0002 px on 80 boxes of 6 images at 1,280 px.",
+        "- A merged box takes the landmarks of its **highest-scoring member** (`on (top member)`). `on (any member)` "
+        "keeps a box when any member passes.",
+        "- **Bounds** on the landmarks, each normalised by the box or by the face's own axis: \"up\" runs from the "
+        "mouth corners' midpoint to the eyes' midpoint, and L is that distance. Each bound is set so it alone keeps "
+        f"{r['keep']:.1%} of the true-face boxes (boxes matching an annotated face) at threshold {r['fit_at']} on "
+        f"half A of the photos ({len(r['halves']['A'])} photos, {fit['true_boxes']} true-face boxes; half B is the "
+        "other "
+        f"{len(r['halves']['B'])}, alternately by sorted photo ID). The same bounds apply at every threshold.",
+        "- Recall is measured on half B (held out), and on all 93 photos, with growth 25% as shipped and 35% as the "
+        "main report proposes. The dev photos never set anything. `Fit on B` swaps the halves.",
+        "- **Learned:** logistic regression on the same features, the true-face boxes against the boxes on no "
+        "annotated face in half A's photos, cut to keep 99.5% of half A's true-face boxes.",
+        "",
+    ]
+    if notes.strip():
+        out += [notes.strip(), ""]
+    out += ["## Bounds, set on half A", "",
+            "| Bound | Value | What it says |", "|---|---|---|"]
+    says = {
+        "outside max": "how far the farthest point may lie outside the box, as a share of the box's side",
+        "roll max": "degrees between the face's \"up\" and the image's up",
+        "nose_height min": "the nose along \"up\": 0 is the mouth line, 1 the eye line",
+        "nose_height max": "",
+        "eye_mouth min": "L as a share of the box's size, √(w·h)",
+        "eye_mouth max": "",
+        "eye_side min": "the right-to-left eye vector across \"up\", over L (below 0: mirrored)",
+        "mouth_side min": "the same for the mouth corners",
+        "eye_width max": "eye distance as a share of the box's size (no minimum, so profiles pass)",
+        "mouth_eye min": "mouth width over eye distance",
+        "mouth_eye max": "",
+    }
+    for k, v in fit["bounds"].items():
+        out.append(f"| `{k}` | {v:.3f} | {says.get(k, '')} |")
+    out += ["", "## Recall and false blur, original uploads", "",
+            "Recall: faces 20 px+ across in the stored image whose box the grown boxes cover 90% or more. Dev: the dev "
+            "plant photos with any box left (target 2%), and the share of an average dev photo blurred. Bounds set "
+            "on half A unless marked.", "",
+            "| Threshold | Growth | Filter | Recall, half B (held out) | Recall, all 93 | Recall, half A (fit on B) "
+            "| Dev photos with a box | Dev area blurred, mean (max) | Dev photos, fit on B |",
+            "|---|---|---|---|---|---|---|---|---|"]
+    for x in r["grid"]:
+        d = x["dev"]
+        out.append(f"| {x['threshold']} | {x['grow']:.0%} | {FILTER_NAMES[x['filter']]} | {pct(x['recall_held_out_B'])} "
+                   f"| {pct(x['recall_all'])} | {pct(x['recall_held_out_A'])} "
+                   f"| {d['with_a_box']}/{d['photos']} ({100 * d['share']:.1f}%) "
+                   f"| {100 * d['blurred_share_mean']:.1f}% ({100 * d['blurred_share_max']:.0f}%) "
+                   f"| {x['dev_fit_on_B']['with_a_box']}/{d['photos']} |")
+    out += ["", "## Boxes the bounds keep", "",
+            "Merged boxes, by the landmarks of their top member, with the bounds set on half A. True: on an "
+            "annotated face (all 93 photos). Other: on no annotated face in the Open Images photos (dogs, wheels, "
+            f"fabric, a few unannotated faces). Near profile: true-face boxes whose eye distance is under "
+            f"{r['profile_yaw']:.0%} of L.", "",
+            "| Threshold | True-face boxes | Near profile | Other boxes | Dev plant boxes |", "|---|---|---|---|---|"]
+    for t, b in r["boxes"].items():
+        cell = lambda v: f"{v[0]}/{v[1]} ({100 * v[0] / v[1]:.1f}%)" if v[1] else "–"  # noqa: E731
+        out.append(f"| {t} | {cell(b['true'])} | {cell(b['true_near_profile'])} | {cell(b['other'])} | {cell(b['dev'])} |")
+    fa = r["boxes"][str(r["fit_at"])]
+    if fa.get("true_half_A"):
+        out += ["", f"On half A at {r['fit_at']}, the bounds together keep {fa['true_half_A'][0]} of its "
+                f"{fa['true_half_A'][1]} true-face boxes."]
+    out += ["", f"Boxes each bound breaks at {r['fit_at']} (a box can break several):", "",
+            "| Bound | True-face boxes | Other boxes | Dev plant boxes |", "|---|---|---|---|"]
+    for k in fit["bounds"]:
+        v = fa["broken"].get(k, [0, 0, 0])
+        out.append(f"| `{k}` | {v[0]} | {v[1]} | {v[2]} |")
+    out += ["", f"## The features at {r['fit_at']}", "",
+            "Quantiles 0.5%, 5%, 50%, 95% and 99.5% of the top member's features, all 93 photos and every dev "
+            "photo. Not bounds: `yaw` is eye distance over L; `spread`, on boxes with two members or more, is the "
+            "largest distance between a point of the top member and the same point of another member, over L.", "",
+            "| Feature | True-face boxes | Other boxes | Dev plant boxes |", "|---|---|---|---|"]
+    for k, q in r["quantiles_at_fit"].items():
+        out.append(f"| `{k}` | " + " | ".join(" / ".join(f"{v:g}" for v in q[n]) or "–" for n in ("true", "other", "dev"))
+                   + " |")
+    out += ["", "## Checks", "",
+            "| Run | Photos | Boxes equal to `detect`'s | Equal to the main report's run | Merged boxes | With one member |",
+            "|---|---|---|---|---|---|"]
+    for k, c in r["checks"].items():
+        same = "–" if c["same_as_report_run"] is None else f"{c['same_as_report_run']}/{c['photos']}"
+        out.append(f"| {k} | {c['photos']} | {c['landmarks_match']}/{c['photos']} | {same} | {c['boxes']} "
+                   f"| {c['with_one_member']} |")
+    return "\n".join(out) + "\n"
+
+
 def cpu_name() -> str:
     try:
         for line in Path("/proc/cpuinfo").read_text().splitlines():
@@ -731,16 +1238,27 @@ def main(argv=None) -> int:
     r.add_argument("--pass-a-long-side", type=int,
                    help="run with pass A at this size instead (FaceConfig::pass_a_long_side), to score an extra "
                         "whole-image pass; written as <set>-<variant>-<threshold>-a<size>.jsonl")
+    r.add_argument("--landmarks", action="store_true",
+                   help="also keep YuNet's landmarks of every merged box (the example's --landmarks), for the "
+                        "landmark check; written as <set>-<variant>-<threshold>-kps.jsonl")
     s = sub.add_parser("score", help="score the raw files and write the report")
     s.add_argument("--date")
     s.add_argument("--out")
     s.add_argument("--notes", help="a Markdown file of what the crops show, put after the headline")
     s.add_argument("--crop-thresholds", type=float, nargs="+", default=[SHIPPED],
                    help="thresholds whose missed faces and false boxes are cropped (dev photos: the original only)")
-    for p in (r, s):
+    lm = sub.add_parser("landmarks", help="score the --landmarks runs: the landmark filter's recall and false blur")
+    lm.add_argument("--date")
+    lm.add_argument("--out")
+    lm.add_argument("--notes", help="a Markdown file of what the numbers and crops show, put after the method")
+    lm.add_argument("--thresholds", type=float, nargs="+", default=list(LANDMARK_THRESHOLDS))
+    lm.add_argument("--crop-threshold", type=float, help="crop the missed faces and blurred dev photos of this setting")
+    lm.add_argument("--crop-grow", type=float, default=GROW)
+    lm.add_argument("--crop-filter", choices=list(FILTER_NAMES), default="top")
+    for p in (r, s, lm):
         p.add_argument("--eval-photos", type=Path, help="the evaluation photos (default: ml/training/eval/photos)")
     args = ap.parse_args(argv)
-    return cmd_run(args) if args.cmd == "run" else cmd_score(args)
+    return {"run": cmd_run, "score": cmd_score, "landmarks": cmd_landmarks}[args.cmd](args)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,9 @@ boxes, size buckets, upload variants, and a whole `score` run on fake example ou
 from __future__ import annotations
 
 import json
+import math
 
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -194,3 +196,203 @@ def test_score_writes_the_report_from_the_example_output(tmp_path, monkeypatch):
     tradeoff = report["min_box"]["original@0.2"]
     assert tradeoff["12"]["dev_with_a_box"] == 1 and tradeoff["16"]["recall"]["recall"] == 1.0
     assert tradeoff["0"]["dev_share"] == 1.0
+
+
+# --- the landmark filter ------------------------------------------------------------------------
+
+def member(points, box=(100.0, 100.0, 100.0, 120.0), score=0.9, pass_="whole") -> dict:
+    """A pass box as the example's `--landmarks` writes it: pixels of the upright image."""
+    x, y, w, h = box
+    return {"pass": pass_, "x": x, "y": y, "w": w, "h": h, "score": score, "kps": [list(p) for p in points]}
+
+
+# right eye, left eye, nose tip, right and left mouth corners: an upright face in (100, 100, 100, 120)
+FRONTAL = [(130, 150), (170, 150), (150, 175), (135, 200), (165, 200)]
+PROFILE_RIGHT = [(165, 150), (175, 151), (188, 176), (166, 200), (173, 200)]   # turned: points to one side
+
+
+def rotated(points, degrees, centre=(150, 175)):
+    a = math.radians(degrees)
+    cx, cy = centre
+    return [(cx + (x - cx) * math.cos(a) - (y - cy) * math.sin(a), cy + (x - cx) * math.sin(a) + (y - cy) * math.cos(a))
+            for x, y in points]
+
+
+def test_landmark_features_of_an_upright_frontal_face():
+    f = fc.landmark_features(member(FRONTAL))
+    size = (100 * 120) ** 0.5
+    assert f["outside"] == 0.0 and f["roll"] == pytest.approx(0.0)
+    assert f["nose_height"] == pytest.approx(0.5)            # halfway from the mouth line to the eye line
+    assert f["eye_mouth"] == pytest.approx(50 / size)
+    assert f["eye_side"] == pytest.approx(40 / 50) and f["mouth_side"] == pytest.approx(30 / 50)
+    assert f["eye_width"] == pytest.approx(40 / size)
+    assert f["mouth_eye"] == pytest.approx(0.75) and f["yaw"] == pytest.approx(0.8)
+
+
+def test_only_roll_changes_when_the_face_tilts():
+    upright = fc.landmark_features(member(FRONTAL))
+    for degrees in (30, -75, 180):
+        f = fc.landmark_features(member(rotated(FRONTAL, degrees)))
+        assert f["roll"] == pytest.approx(abs(degrees))
+        for k in ("nose_height", "eye_mouth", "eye_side", "mouth_side", "eye_width", "mouth_eye"):
+            assert f[k] == pytest.approx(upright[k]), k
+
+
+def test_points_outside_the_box_are_measured_by_the_box_side():
+    points = FRONTAL[:4] + [(215, 230)]          # a mouth corner 15 px right of a 100 px wide box
+    assert fc.landmark_features(member(points))["outside"] == pytest.approx(0.15)
+    points = FRONTAL[:4] + [(165, 250)]          # 30 px below a 120 px tall box
+    assert fc.landmark_features(member(points))["outside"] == pytest.approx(0.25)
+
+
+BOUNDS = {"outside max": 0.1, "roll max": 60.0, "nose_height min": 0.2, "nose_height max": 0.7,
+          "eye_mouth min": 0.25, "eye_mouth max": 0.7, "eye_side min": 0.0, "mouth_side min": 0.0,
+          "eye_width max": 0.6, "mouth_eye min": 0.3, "mouth_eye max": 1.5}
+
+
+def test_the_bounds_keep_profiles_and_tilted_heads():
+    assert fc.failed_bounds(fc.landmark_features(member(FRONTAL)), BOUNDS) == []
+    profile = fc.landmark_features(member(PROFILE_RIGHT))
+    assert profile["yaw"] < fc.PROFILE                       # the eyes collapse to one side
+    assert fc.failed_bounds(profile, BOUNDS) == []           # no minimum eye distance
+    assert fc.failed_bounds(fc.landmark_features(member(rotated(FRONTAL, 45))), BOUNDS) == []
+
+
+def test_the_bounds_drop_layouts_that_are_not_a_face():
+    def broken(points):
+        return fc.failed_bounds(fc.landmark_features(member(points)), BOUNDS)
+    assert broken(rotated(FRONTAL, 180)) == ["roll max"]                                        # upside down
+    mirrored = [FRONTAL[1], FRONTAL[0], FRONTAL[2], FRONTAL[4], FRONTAL[3]]
+    assert broken(mirrored) == ["eye_side min", "mouth_side min"]
+    assert broken(FRONTAL[:2] + [(150, 145)] + FRONTAL[3:]) == ["nose_height max"]              # nose above the eyes
+    assert broken([(150, 160)] * 5) == list(BOUNDS)          # all points on one spot: no axis, every bound fails
+    assert broken(FRONTAL[:3] + [(110, 200), (190, 200)]) == ["mouth_eye max"]                   # a mouth twice the eyes
+
+
+def test_fit_bounds_keeps_the_share_asked_per_bound():
+    rng = np.random.default_rng(0)
+    feats = []
+    for _ in range(2000):
+        jitter = [(x + rng.normal(0, 3), y + rng.normal(0, 3)) for x, y in FRONTAL]
+        feats.append(fc.landmark_features(member(rotated(jitter, rng.normal(0, 15)))))
+    bounds = fc.fit_bounds(feats, 0.995)
+    assert set(bounds) == {fc.bound_name(f, s) for f, s in fc.BOUNDS}
+    for name in bounds:
+        kept = sum(name not in fc.failed_bounds(f, {name: bounds[name]}) for f in feats)
+        if name == "outside max":       # every point is inside the box here: the bound keeps them all
+            assert bounds[name] == 0.0 and kept == len(feats)
+        else:
+            assert kept / len(feats) == pytest.approx(0.995, abs=0.002), name
+    assert bounds["nose_height min"] < 0.5 < bounds["nose_height max"]
+
+
+def test_the_learned_rule_keeps_its_share_of_faces():
+    rng = np.random.default_rng(1)
+
+    def sample(points, n):
+        return [fc.landmark_features(member([(x + rng.normal(0, 3), y + rng.normal(0, 3)) for x, y in points]))
+                for _ in range(n)]
+    faces, others = sample(FRONTAL, 400), sample(rotated(FRONTAL, 180), 400)
+    rule = fc.LearnedRule(faces, others)
+    assert (rule.score(faces) >= rule.cut).mean() == pytest.approx(0.995, abs=0.003)
+    assert (rule.score(others) >= rule.cut).mean() == 0.0
+    face = {"members": [member(FRONTAL, score=0.3), member(rotated(FRONTAL, 180), score=0.8)]}
+    assert not rule.keeps(face)                     # the top member's points decide
+
+
+def test_a_merged_box_takes_its_top_members_landmarks():
+    good = member(FRONTAL, score=0.4, pass_="tile")
+    bad = member(rotated(FRONTAL, 180), score=0.6)
+    face = {"x": 0.1, "y": 0.1, "w": 0.2, "h": 0.2, "score": 0.6, "members": [good, bad]}
+    assert fc.top_member(face) is bad
+    assert not fc.looks_like_a_face(face, BOUNDS, "top")
+    assert fc.looks_like_a_face(face, BOUNDS, "any")                  # the tile's box passes
+    tie = {"members": [member(FRONTAL, score=0.5), member(rotated(FRONTAL, 180), score=0.5)]}
+    assert fc.top_member(tie) is tie["members"][0]                    # the first on a tie
+    assert fc.looks_like_a_face(tie, BOUNDS, "top")
+
+
+def test_member_spread_is_the_passes_disagreement_over_the_eyes_to_mouth_distance():
+    shifted = [(x + 10, y) for x, y in FRONTAL]                       # every point 10 px right: 0.2 L
+    face = {"members": [member(FRONTAL, score=0.9), member(shifted, score=0.5)]}
+    assert fc.member_spread(face) == pytest.approx(10 / 50)
+    assert fc.member_spread({"members": [member(FRONTAL)]}) is None
+
+
+def test_halves_alternate_by_sorted_photo_id():
+    assert fc.halves(["c", "a", "d", "b"]) == {"a": "A", "b": "B", "c": "A", "d": "B"}
+
+
+def test_landmarks_writes_the_report_from_the_example_output(tmp_path, monkeypatch):
+    """Two Open Images photos (one per half), each with a face whose box has a face's points and a
+    box elsewhere whose points are upside down, and one dev photo with the same false box."""
+    faces_dir, tables = tmp_path / "faces", tmp_path / "tables"
+    (faces_dir / "photos").mkdir(parents=True)
+    tables.mkdir()
+    rows, boxes_csv = [], []
+    for k in ("oia", "oib"):
+        Image.new("RGB", (4000, 3000), (120, 120, 120)).save(faces_dir / f"photos/{k}.jpg", quality=90)
+        rows.append("\t".join([k, "test", f"photos/{k}.jpg", "4000", "3000", "3000000", "CC BY 2.0", "A",
+                               "https://x", "1", "160.0", "400.0", "1", "0", "1.0"]))
+        boxes_csv.append(f"{k},xclick,/m/0dzct,1,0.40,0.50,0.40,0.53,0,0,0,0,0")   # 160 px stored
+    index = tmp_path / "faces_openimages.tsv"
+    index.write_text("\t".join(F.COLUMNS) + "\n" + "\n".join(rows) + "\n")
+    (tables / F.SPLITS["test"][0]).write_text(
+        "ImageID,Source,LabelName,Confidence,XMin,XMax,YMin,YMax,IsOccluded,IsTruncated,IsGroupOf,IsDepiction,IsInside\n"
+        + "\n".join(boxes_csv) + "\n")
+    photos = tmp_path / "photos"
+    (photos / "x").mkdir(parents=True)
+    Image.new("RGB", (1000, 800), (40, 160, 40)).save(photos / "x/leaf.jpg", quality=90)
+    manifest = tmp_path / "manifest.jsonl"
+    manifest.write_text(json.dumps({"case_id": "c", "split": "dev",
+                                    "images": [{"file": "x/leaf.jpg", "kind": "leaf_closeup"}]}) + "\n")
+    runs = tmp_path / "runs"
+    for name, value in [("INDEX", index), ("FACES", faces_dir), ("TABLES", tables)]:
+        monkeypatch.setattr(F, name, value)
+    for name, value in [("RUNS", runs), ("MANIFEST", manifest), ("EVAL_PHOTOS", photos),
+                        ("REPORTS", tmp_path / "reports")]:
+        monkeypatch.setattr(fc, name, value)
+
+    def scaled(points, box, size):
+        """FRONTAL's layout moved into `box` (normalised) of an image of `size`."""
+        bx, by, bw, bh = box[0] * size[0], box[1] * size[1], box[2] * size[0], box[3] * size[1]
+        return [((x - 100) / 100 * bw + bx, (y - 100) / 120 * bh + by) for x, y in points], (bx, by, bw, bh)
+
+    def face_with(points, box, size, score):
+        kps, px = scaled(points, box, size)
+        return {"x": box[0], "y": box[1], "w": box[2], "h": box[3], "score": score,
+                "members": [member(kps, px, score)]}
+
+    def line(path, size, faces) -> str:
+        return json.dumps({"path": str(path), "width": size[0], "height": size[1], "faces": faces,
+                           "landmarks_match": True})
+
+    true_box, false_box = (0.41, 0.41, 0.08, 0.11), (0.8, 0.1, 0.05, 0.07)
+    upside_down = rotated(FRONTAL, 180)
+    for t in fc.LANDMARK_THRESHOLDS:
+        out = fc.raw_path("openimages", "original", t, landmarks=True)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("".join(line(faces_dir / f"photos/{k}.jpg", (4000, 3000),
+                                    [face_with(FRONTAL, true_box, (4000, 3000), 0.9),
+                                     face_with(upside_down, false_box, (4000, 3000), 0.5)]) + "\n"
+                               for k in ("oia", "oib")))
+        fc.raw_path("dev", "original", t, landmarks=True).write_text(
+            line(photos / "x/leaf.jpg", (1000, 800), [face_with(upside_down, (0.4, 0.4, 0.1, 0.1), (1000, 800), 0.4)])
+            + "\n")
+
+    assert fc.main(["landmarks", "--date", "2026-10-22", "--out", "lm-test", "--crop-threshold", "0.15"]) == 0
+    report = json.loads((tmp_path / "reports/lm-test.json").read_text())
+    assert report["halves"] == {"A": ["oia"], "B": ["oib"]}
+    assert report["checks"]["openimages@0.3"]["same_as_report_run"] is None       # no plain run to compare
+    assert report["fits"]["A"]["true_boxes"] == 1 and report["fits"]["A"]["other_boxes"] == 1
+    grid = {(x["threshold"], x["grow"], x["filter"]): x for x in report["grid"]}
+    off, on = grid[(0.15, 0.25, "off")], grid[(0.15, 0.25, "top")]
+    assert off["recall_all"]["caught"] == 2 and off["dev"]["with_a_box"] == 1
+    assert off["dev"]["blurred_share_mean"] == pytest.approx(0.0225)               # 0.15 x 0.15
+    assert on["recall_held_out_B"] == {"faces": 1, "caught": 1, "recall": 1.0}     # the face's box is kept
+    assert on["dev"]["with_a_box"] == 0 and on["dev"]["blurred_share_mean"] == 0.0
+    assert report["boxes"]["0.15"]["true"] == [2, 2] and report["boxes"]["0.15"]["other"] == [0, 2]
+    assert {x["filter"] for x in report["grid"]} == {"off", "top", "any", "learned"}
+    md = (tmp_path / "reports/lm-test.md").read_text()
+    assert "| 0.15 | 25% | on (top member) | 100.0% (1/1) | 100.0% (2/2) | 100.0% (1/1) | 0/1 (0.0%) |" in md
+    assert (runs / "landmarks/crops/sheet-dropped-true-01.jpg").exists() is False   # no true box dropped
