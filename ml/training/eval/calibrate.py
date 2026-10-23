@@ -181,9 +181,19 @@ def species_calibration(cases: list[dict], photos: Path, matrix: dict, embed) ->
 
     data = [item(c, shots, ids.index(c["truth"]["species_id"])) for c, shots in usable]
     out_data = [item(c, shots, None) for c, shots in outside]
-    fitted = fit_species(data)
     out = {"cases": len(data), "outside": dict(Counter(c["truth"]["species_id"] for c, _ in outside)),
-           "left_out": dict(left_out), "labels": len(ids), "fitted_temperature": round(fitted, 4)}
+           "left_out": dict(left_out), "labels": len(ids), **species_rows(data, out_data, ids)}
+    out["species_ids"] = ids
+    out["inputs"] = species_inputs(data + out_data)
+    return out
+
+
+def species_rows(data: list, out_data: list, ids: list[str]) -> dict:
+    """The fitted temperature and the report's three rows (T = 1, fitted, fitted out of fold), from
+    the cases the matrix names (`data`) and those it can't (`out_data`): everything the report's
+    species part computes, so a test can recompute it from the committed inputs."""
+    fitted = fit_species(data)
+    out = {"fitted_temperature": round(fitted, 4)}
     for name, t in (("t_1", 1.0), ("fitted", fitted)):
         out[name] = species_summary(data, ids, np.full(len(data), t), out_data, np.full(len(out_data), t))
         out[name]["temperature"] = round(t, 4)
@@ -198,8 +208,6 @@ def species_calibration(cases: list[dict], photos: Path, matrix: dict, embed) ->
         tf_out[[n for n, d in enumerate(out_data) if fold[d[3]["case_id"]] == f]] = t
     out["fitted_out_of_fold"] = species_summary(data, ids, tf, out_data, tf_out)
     out["fitted_out_of_fold"]["temperature"] = per_fold
-    out["species_ids"] = ids
-    out["inputs"] = species_inputs(data + out_data)
     return out
 
 
@@ -515,26 +523,40 @@ def disease_calibration(name: str, cases: list[dict], photos: Path, crops_of, wh
     temps = {"t_file": float(head["temperature"]), "t_val_and_dev": fit_items(val + dev),
              "t_dev": fit_items(dev), "t_per_species_dev": fit_per_species(dev)}
     fits = {"t_val_and_dev": lambda tr: fit_items(val + tr), "t_dev": fit_items, "t_per_species_dev": fit_per_species}
-    oof = {k: out_of_fold(dev, f) for k, f in fits.items()}
+    rows = disease_dev_rows(dev, healthy, temps, fits)
     species = sorted({i[3] for i in dev})
     one_photo = {c["case_id"] for c in cases if len(c["images"]) == 1 and c["images"][0]["kind"] not in LEAFY}
-    return {"head": name, "classes": len(head["labels"]), "dev_photos": len(dev), "val_photos": len(val),
-            "dev_one_photo": sum(i[2] in one_photo for i in dev),
+    return {"head": name, "classes": len(head["labels"]), "healthy_classes": sorted(healthy), "dev_photos": len(dev),
+            "val_photos": len(val), "dev_one_photo": sum(i[2] in one_photo for i in dev),
             "dev_one_photo_healthy": sum(i[2] in one_photo and i[1] in healthy for i in dev),
             "classes_per_species": {sp: int(sum(l["species_id"] == sp for l in head["labels"])) for sp in species},
             "left_out": dict(left_out), "bounds": list(T_BOUNDS),
             "temperatures": {k: rounded(t) for k, t in temps.items()},
-            "dev": {k: disease_scores(dev, t, healthy) for k, t in temps.items()},
+            "dev": rows["dev"],
             "val": {k: disease_scores(val, t, healthy) for k, t in temps.items()},
-            "dev_out_of_fold": {k: {**disease_scores(dev, tt, healthy), "fold_temperatures": [rounded(t) for t in fs],
-                                    "per_species": {sp: lean(disease_scores([i for i in dev if i[3] == sp], tt[[i[3] == sp for i in dev]], healthy))
-                                                    for sp in species}}
-                                for k, (tt, fs) in oof.items()},
-            "dev_per_species": {k: {sp: lean(disease_scores([i for i in dev if i[3] == sp], t, healthy)) for sp in species}
-                                for k, t in temps.items()},
-            "dev_per_source_species": {f"{src} {sp}": lean(disease_scores([i for i in dev if i[4] == src and i[3] == sp], temps["t_file"], healthy))
-                                       for src, sp in sorted({(i[4], i[3]) for i in dev})},
+            "dev_out_of_fold": rows["dev_out_of_fold"], "dev_per_species": rows["dev_per_species"],
+            "dev_per_source_species": rows["dev_per_source_species"],
             "dev_confusion": confusion(dev, head), "inputs": disease_inputs(dev)}
+
+
+def disease_dev_rows(dev: list, healthy: set[int], temps: dict, fits: dict) -> dict:
+    """The report's scores on the dev photos: at each of `temps`, out of fold for each of `fits`
+    (`fit(training items)` as in `out_of_fold`), per species, and per source and species at
+    `t_file`. Everything here follows from the committed inputs and the temperatures, so a test can
+    recompute it."""
+    species = sorted({i[3] for i in dev})
+    oof = {k: out_of_fold(dev, f) for k, f in fits.items()}
+    return {
+        "dev": {k: disease_scores(dev, t, healthy) for k, t in temps.items()},
+        "dev_out_of_fold": {k: {**disease_scores(dev, tt, healthy), "fold_temperatures": [rounded(t) for t in fs],
+                                "per_species": {sp: lean(disease_scores([i for i in dev if i[3] == sp], tt[[i[3] == sp for i in dev]], healthy))
+                                                for sp in species}}
+                            for k, (tt, fs) in oof.items()},
+        "dev_per_species": {k: {sp: lean(disease_scores([i for i in dev if i[3] == sp], t, healthy)) for sp in species}
+                            for k, t in temps.items()},
+        "dev_per_source_species": {f"{src} {sp}": lean(disease_scores([i for i in dev if i[4] == src and i[3] == sp], temps["t_file"], healthy))
+                                   for src, sp in sorted({(i[4], i[3]) for i in dev})},
+    }
 
 
 # --- report -------------------------------------------------------------------------------------

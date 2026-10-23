@@ -166,25 +166,88 @@ def test_the_report_inputs_give_back_the_same_fits():
     assert abs(cb.fit_items(again) - cb.fit_items(items)) < 1e-6
 
 
-def test_the_committed_calibration_follows_from_its_inputs():
-    """M16's numbers can be checked without the photos: the newest committed report's inputs give
-    back its fitted temperatures, ECE and agreement counts."""
+def calibration_reports() -> list[dict]:
+    """Every committed calibration report that keeps its inputs, newest first by its own `date`
+    (a file name can sort a same-day rerun before the first run; review of #156)."""
     import json
 
-    reports = sorted(p for p in cb.REPORTS.glob("calibration-*.json")
-                     if "inputs" in json.loads(p.read_text())["species"])
+    reports = [{**json.loads(p.read_text()), "_file": p.name} for p in cb.REPORTS.glob("calibration-*.json")]
+    reports = [r for r in reports if "inputs" in r["species"]]
+    return sorted(reports, key=lambda r: (r["date"], r["_file"]), reverse=True)
+
+
+def same(got, want, where: str, tol: float = 2e-3) -> None:
+    """`got` equals the report's `want`: numbers within `tol`, everything else exactly, every key of
+    `want` present."""
+    if isinstance(want, dict):
+        assert isinstance(got, dict) and want.keys() <= got.keys(), f"{where}: keys {sorted(want.keys() - got.keys())} missing"
+        for k, v in want.items():
+            same(got[k], v, f"{where}.{k}", tol)
+    elif isinstance(want, list):
+        assert isinstance(got, list) and len(got) == len(want), f"{where}: {len(got)} items, the report has {len(want)}"
+        for n, (g, w) in enumerate(zip(got, want)):
+            same(g, w, f"{where}[{n}]", tol)
+    elif isinstance(want, bool) or want is None or isinstance(want, str):
+        assert got == want, f"{where}: {got!r}, the report has {want!r}"
+    else:
+        assert abs(float(got) - float(want)) <= tol, f"{where}: {got}, the report has {want}"
+
+
+def healthy_classes(d: dict) -> set[int]:
+    """The head's `healthy` classes: from the report, or from the head's labels in the manifest."""
+    import tomllib
+
+    if "healthy_classes" in d:
+        return set(d["healthy_classes"])
+    manifest = tomllib.loads((cb.ROOT / "ml/models/manifest.toml").read_text())
+    entry = next(e for e in manifest["model"] if e.get("version") == d["head"])
+    return {n for n, label in enumerate(entry["labels"]) if label.split("/")[-1] == "healthy"}
+
+
+def test_every_committed_calibration_follows_from_its_inputs():
+    """M16's numbers can be checked without the photos: each committed report's inputs give back
+    every row it reports. Species: the fitted temperature and the T = 1, fitted and out-of-fold rows
+    (top 1, NLL, ECE, the agreement counts and accuracies, the sweep, per case). Disease: the dev
+    fits, and the dev scores at every temperature, out of fold, per species and per source, claims
+    included. Only what needs the val photos (fitting `t_val_and_dev`, the val scores) isn't."""
+    import json
+
+    reports = calibration_reports()
     assert reports, "no committed calibration report keeps its inputs"
-    r = json.loads(reports[-1].read_text())
-    sp = r["species"]
-    named, outside = cb.species_data(sp["inputs"])
-    t = cb.fit_species(named)
-    assert abs(t - sp["fitted_temperature"]) < 2e-3
-    s = cb.species_summary(named, sp["species_ids"], np.full(len(named), sp["fitted_temperature"]),
-                           outside, np.full(len(outside), sp["fitted_temperature"]))
-    assert abs(s["ece"] - sp["fitted"]["ece"]) < 1e-3
-    assert s["at_agreement"]["n"] == sp["fitted"]["at_agreement"]["n"]
-    assert s["agreement_threshold"] == sp["fitted"]["agreement_threshold"]
-    for d in r["disease"]:
-        items = cb.disease_items_from(d["inputs"], d["classes"])
-        assert len(items) == d["dev_photos"]
-        assert abs(cb.fit_items(items) - d["temperatures"]["t_dev"]) < 2e-3
+    for r in reports:
+        f, sp = r["_file"], r["species"]
+        named, outside = cb.species_data(sp["inputs"])
+        rows = json.loads(json.dumps(cb.species_rows(named, outside, sp["species_ids"])))
+        for k in ("fitted_temperature", "t_1", "fitted", "fitted_out_of_fold"):
+            same(rows[k], sp[k], f"{f} species.{k}")
+        for d in r["disease"]:
+            dev = cb.disease_items_from(d["inputs"], d["classes"])
+            assert len(dev) == d["dev_photos"], f
+            t = d["temperatures"]
+            temps = {"t_file": t["t_file"], "t_val_and_dev": t["t_val_and_dev"],
+                     "t_dev": cb.fit_items(dev), "t_per_species_dev": cb.fit_per_species(dev)}
+            same(cb.rounded(temps["t_dev"]), t["t_dev"], f"{f} {d['head']}.temperatures.t_dev")
+            same(cb.rounded(temps["t_per_species_dev"]), t["t_per_species_dev"], f"{f} {d['head']}.temperatures.t_per_species_dev")
+            got = json.loads(json.dumps(cb.disease_dev_rows(
+                dev, healthy_classes(d), temps, {"t_dev": cb.fit_items, "t_per_species_dev": cb.fit_per_species})))
+            for k in ("dev", "dev_per_species", "dev_per_source_species"):
+                same(got[k], d[k], f"{f} {d['head']}.{k}")
+            for k in ("t_dev", "t_per_species_dev"):
+                same(got["dev_out_of_fold"][k], d["dev_out_of_fold"][k], f"{f} {d['head']}.dev_out_of_fold.{k}")
+
+
+def test_the_manifests_carry_the_newest_calibration():
+    """Both manifests' `species_temperature` is the newest report's fit, and their disease head is
+    the one it calibrated."""
+    import tomllib
+
+    reports = calibration_reports()
+    newest = reports[0]
+    same_day = {r["species"]["fitted_temperature"] for r in reports if r["date"] == newest["date"]}
+    assert same_day == {newest["species"]["fitted_temperature"]}, f"reports dated {newest['date']} disagree: {same_day}"
+    for name in ("manifest.toml", "manifest.cpu.toml"):
+        entries = tomllib.loads((cb.ROOT / "ml/models" / name).read_text())["model"]
+        bioclip = next(e for e in entries if e["name"] == "bioclip")
+        assert bioclip["config"]["species_temperature"] == newest["species"]["fitted_temperature"], name
+        heads = {e["version"] for e in entries if e["name"].startswith("disease_head")}
+        assert {d["head"] for d in newest["disease"]} <= heads, name
