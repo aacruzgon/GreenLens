@@ -916,3 +916,60 @@ async fn confirming_another_species_starts_a_run() {
         "{calls:?}"
     );
 }
+
+/// A species confirmed while the scan is `queued` ([contracts 3]: the run uses the new
+/// species): run 1 started without it, so the pipeline has the store give that run the
+/// plant's confirmed species (`adopt_confirmed_species`; the write is the store test
+/// `a_queued_confirmation_becomes_its_runs_working_species`), and no run starts.
+#[tokio::test]
+async fn confirming_while_queued_sets_the_runs_working_species() {
+    let mut store = FakeStore::default();
+    let auth = signed_in(&mut store, Some(Role::Editor));
+    store
+        .plant_repo
+        .expect_confirm_species()
+        .times(1)
+        .returning(|_, _, _| {
+            Ok(SpeciesConfirmation {
+                plant: plant(Some(pepper())),
+                recent_scan: Some(RecentScan {
+                    scan: SCAN.parse().unwrap(),
+                    status: ScanStatus::Queued,
+                    created_at: now(),
+                    working_species: None,
+                }),
+            })
+        });
+    store.scan_repo.expect_snapshot().returning(|_| {
+        let mut snap = snapshot(false);
+        snap.scan.status = ScanStatus::Queued;
+        snap.plant = plant(Some(pepper()));
+        Ok(snap)
+    });
+    store
+        .plant_repo
+        .expect_adopt_confirmed_species()
+        .withf(|scan, run| *scan == SCAN.parse::<ScanId>().unwrap() && *run == Run(1))
+        .times(1)
+        .returning(|_, _| Ok(true));
+    store.scan_repo.expect_start_run().never();
+    let writer = Arc::new(Recorder::default());
+
+    let response = app_recording(store, auth, Arc::clone(&writer))
+        .oneshot(post(
+            &format!("/plants/{PLANT}/species"),
+            &serde_json::json!({ "species_id": "pepper" }),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        writer.calls(),
+        [vec![ScanEventBody::SpeciesConfirmed {
+            species_id: Some(species("pepper")),
+            custom_name: None,
+            rerun: false,
+        }]]
+    );
+}

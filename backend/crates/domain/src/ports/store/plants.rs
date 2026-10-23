@@ -102,6 +102,14 @@ pub trait PlantRepo: Send + Sync {
         status: SpeciesStatus,
     ) -> Result<bool, StoreError>;
 
+    /// A species confirmed while the scan is `queued` ([contracts 3]: the run uses the new
+    /// species): the scan's run `run`, which started without it, takes the plant's confirmed
+    /// species as its working species, read in the same transaction, so the latest
+    /// confirmation wins (none for a custom species). Returns `false`, and writes nothing,
+    /// under the same conditions as [`PlantRepo::suggest_species`], or when the plant's
+    /// species is not confirmed.
+    async fn adopt_confirmed_species(&self, scan: ScanId, run: Run) -> Result<bool, StoreError>;
+
     /// The plant's status after a scan's diagnosis.
     async fn set_plant_status(&self, plant: PlantId, status: PlantStatus)
     -> Result<(), StoreError>;

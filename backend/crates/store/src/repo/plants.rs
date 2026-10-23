@@ -88,6 +88,19 @@ RETURN $current;
 COMMIT;";
     /// The index of the flag in [`SUGGEST_SPECIES`].
     pub const SUGGEST_SPECIES_RESULT: usize = 4;
+    /// A species confirmed while the scan is `queued`: the scan's run `$run` takes the plant's
+    /// confirmed species, read here so the latest confirmation wins, under the guard of
+    /// [`SUGGEST_SPECIES`]. Statements: 0 `BEGIN`, 1 the scan, 2 whether to write, 3 the
+    /// update, 4 that flag, 5 `COMMIT`.
+    pub const ADOPT_CONFIRMED_SPECIES: &str = "BEGIN;
+LET $sc = (SELECT run, plant.species AS species, plant.species_status AS species_status FROM ONLY $scan
+  WHERE deleting_at = NONE AND plant.deleting_at = NONE AND garden.deleting_at = NONE);
+LET $adopt = $sc != NONE AND $sc.run = $run AND $sc.species_status = 'confirmed';
+IF $adopt { UPDATE $scan SET working_species = $sc.species };
+RETURN $adopt;
+COMMIT;";
+    /// The index of the flag in [`ADOPT_CONFIRMED_SPECIES`].
+    pub const ADOPT_CONFIRMED_SPECIES_RESULT: usize = 4;
     /// The plant's status after a diagnosis.
     pub const SET_PLANT_STATUS: &str = "UPDATE $plant SET status = $status;";
     /// `GET /plants/{id}/timeline`, newest first (index `scan_plant`), with the diagnosis, the
@@ -410,6 +423,19 @@ impl PlantRepo for SurrealStore {
             .take(sql::SUGGEST_SPECIES_RESULT)
             .map_err(|e| take_failed(WHAT, e))?;
         Ok(current.unwrap_or(false))
+    }
+
+    async fn adopt_confirmed_species(&self, scan: ScanId, run: Run) -> Result<bool, StoreError> {
+        const WHAT: &str = "adopt confirmed species";
+        let mut results = run_tx(&self.db, sql::ADOPT_CONFIRMED_SPECIES, |q| {
+            q.bind(("scan", rid(&scan))).bind(("run", i64::from(run.0)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        let adopted: Option<bool> = results
+            .take(sql::ADOPT_CONFIRMED_SPECIES_RESULT)
+            .map_err(|e| take_failed(WHAT, e))?;
+        Ok(adopted.unwrap_or(false))
     }
 
     async fn set_plant_status(

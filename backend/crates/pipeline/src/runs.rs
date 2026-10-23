@@ -213,7 +213,8 @@ impl Pipeline {
 
     /// `POST /plants/{id}/species` ([contracts 3]): confirms or corrects the species; the
     /// plant's most recent scan follows it, with a new run when it is past `queued` and the
-    /// species differs from the run's working species.
+    /// species differs from the run's working species. A `queued` scan's run takes the new
+    /// species as its working species; a `pending` scan's run starts with it at submit.
     pub async fn species_confirmed(
         &self,
         editor: Membership<Editor>,
@@ -243,6 +244,15 @@ impl Pipeline {
             recent.working_species != new_species,
         );
         let snap = self.deps.store.snapshot(recent.scan).await?;
+        if follow == SpeciesFollow::AtRunStart && recent.status == ScanStatus::Queued {
+            // The run started before the confirmation, without it: its working species
+            // becomes the plant's confirmed one now, before `retrieve` and the `vlm` job read
+            // it. Its queued `perception` job keeps the payload it was queued with.
+            self.deps
+                .store
+                .adopt_confirmed_species(recent.scan, snap.scan.run)
+                .await?;
+        }
         if follow != SpeciesFollow::NewRun {
             if snap.scan.run.0 > 0 {
                 self.emit(

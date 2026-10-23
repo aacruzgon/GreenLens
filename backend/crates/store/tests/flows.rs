@@ -491,10 +491,72 @@ async fn a_suggestion_sets_its_runs_working_species() {
     assert_eq!(snap.plant.species_status, SpeciesStatus::Confirmed);
 }
 
-/// A scan whose plant or garden is being deleted is not visible (`SCAN_VISIBLE`), though its
-/// own `deleting_at` stays unset: a suggestion for it writes nothing and returns `false`.
+/// A species confirmed while the scan is `queued`: the run started without it, and
+/// `adopt_confirmed_species` gives the run the plant's confirmed species, read in the same
+/// transaction, so the latest confirmation wins and a custom species leaves none. Nothing is
+/// written for a plant that isn't confirmed or a run that is no longer current.
 #[tokio::test]
-async fn a_suggestion_for_a_scan_being_deleted_writes_nothing() {
+async fn a_queued_confirmation_becomes_its_runs_working_species() {
+    use domain::{id::SpeciesId, scan::SpeciesChoice};
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    exec(
+        &store,
+        "CREATE species:tomato SET scientific_name = 'Solanum lycopersicum', common_names = ['Tomato'], profile = 'full',
+           classifier_supported = true, bioclip_label = 'tomato', sources = [], reviewed_by = 'ada';
+         CREATE species:pepper SET scientific_name = 'Capsicum annuum', common_names = ['Pepper'], profile = 'full',
+           classifier_supported = true, bioclip_label = 'pepper', sources = [], reviewed_by = 'ada';",
+    )
+    .await;
+    set_status(&store, f.scan, "queued").await;
+    let tomato: SpeciesId = "tomato".parse().unwrap();
+    let pepper: SpeciesId = "pepper".parse().unwrap();
+    let working = async || {
+        store
+            .snapshot(f.scan)
+            .await
+            .expect("snapshot")
+            .working_species
+    };
+
+    // The plant has no confirmed species yet.
+    assert!(!store.adopt_confirmed_species(f.scan, Run(1)).await.unwrap());
+    assert_eq!(working().await, None);
+
+    store
+        .confirm_species(f.editor, f.plant, SpeciesChoice::Known(tomato.clone()))
+        .await
+        .expect("confirmed");
+    assert!(
+        !store.adopt_confirmed_species(f.scan, Run(0)).await.unwrap(),
+        "a stale run"
+    );
+    assert_eq!(working().await, None);
+    assert!(store.adopt_confirmed_species(f.scan, Run(1)).await.unwrap());
+    assert_eq!(working().await, Some(tomato));
+
+    // A second confirmation while still queued replaces it.
+    store
+        .confirm_species(f.editor, f.plant, SpeciesChoice::Known(pepper.clone()))
+        .await
+        .expect("confirmed again");
+    assert!(store.adopt_confirmed_species(f.scan, Run(1)).await.unwrap());
+    assert_eq!(working().await, Some(pepper));
+
+    // "Something else": the run has no working species.
+    store
+        .confirm_species(f.editor, f.plant, SpeciesChoice::Custom("Heirloom".into()))
+        .await
+        .expect("custom");
+    assert!(store.adopt_confirmed_species(f.scan, Run(1)).await.unwrap());
+    assert_eq!(working().await, None);
+}
+
+/// A scan whose plant or garden is being deleted is not visible (`SCAN_VISIBLE`), though its
+/// own `deleting_at` stays unset: a suggestion or a queued confirmation for it writes nothing
+/// and returns `false`.
+#[tokio::test]
+async fn a_species_write_for_a_scan_being_deleted_writes_nothing() {
     use domain::{
         id::SpeciesId,
         scan::{CandidateSource, SpeciesCandidate, SpeciesChoice, SpeciesStatus},
@@ -543,6 +605,11 @@ async fn a_suggestion_for_a_scan_being_deleted_writes_nothing() {
             .await
             .expect("not an error");
         assert!(!stored, "garden deletion: {garden}");
+        let adopted = store
+            .adopt_confirmed_species(f.scan, Run(1))
+            .await
+            .expect("not an error");
+        assert!(!adopted, "garden deletion: {garden}");
 
         let mut r = exec(
             &store,

@@ -1320,6 +1320,13 @@ mod plant_repo {
                 .suggest_species(scan, run, candidates, working, status)
                 .await
         }
+        async fn adopt_confirmed_species(
+            &self,
+            scan: ScanId,
+            run: Run,
+        ) -> Result<bool, StoreError> {
+            self.plant_repo.adopt_confirmed_species(scan, run).await
+        }
         async fn set_plant_status(
             &self,
             plant: PlantId,
