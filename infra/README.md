@@ -52,9 +52,10 @@ Measured on 2026-10-16:
 |---|---|---|---|---|
 | Desktop | 0.78 | Qwen3-VL-8B **AWQ** | 2.93 GiB, 21,344 tokens at 16,384 max length | Day-1 checks and prompt work, one job at a time |
 | Desktop budget | 0.78 | **Qwen3.5-9B AWQ (chosen)**, `VLM_MAX_NUM_SEQS=2` ✓ ran 2026-10-20 | 2.45 GiB, 65,536 tokens (4 times the concurrency at 16,384); 8.41 GiB of weights; 12,500 MiB peak; healthy after 151 s | Everything, with 2 slots: the 65 benchmark cases ran as fast as at 0.90, with no preemption. Measured headless, so the desktop's 2.3–2.9 GB on top makes 14.8–15.4 of 16.3 GB |
+| Desktop, logged in | 0.78 | Qwen3.5-9B AWQ (chosen), `VLM_MAX_NUM_SEQS=2` ✓ ran 2026-10-22 | The same 2.45 GiB and 65,536 tokens; the desktop 330 MiB (a fresh login, no apps open); 13,058 of 16,303 MiB at the start-up peak, 12,796 during the run; healthy after 151 s | The demo: the 65 benchmark cases in 204 s at 2 at once (214 s headless), no preemption ([report](../ml/training/eval/reports/vlm-bench-2026-10-22-qwen35-awq-desktop.md)). vLLM's own peak, about 12.7 GB, plus the desktop's 2.3–2.9 GB with its apps open makes 15.0–15.6 of 16.3 GB, by arithmetic |
 | Desktop | 0.78 | Qwen3-VL-8B FP8 | **Doesn't start:** 10.37 GiB of weights leave 0.99 GiB of KV (0.59 GiB with an FP8 cache) | — |
-| Headless | 0.90 | Qwen3-VL-8B FP8 (the primary) | 2.4 GiB, 17,440 tokens; 16,528 with `VLM_MAX_NUM_SEQS=2` | Full-size runs and benchmarks |
-| Headless | 0.90 | Qwen3.5-9B AWQ (the challenger), `VLM_MAX_NUM_SEQS=2` ✓ ran | 115,550 tokens (7.05 times the concurrency at 16,384); 8.41 GiB of weights; 13,686 of 16,303 MiB used; healthy after 150 s | Full-size runs and benchmarks |
+| Headless | 0.90 | Qwen3-VL-8B FP8 (the fallback) | 2.4 GiB, 17,440 tokens; 16,528 with `VLM_MAX_NUM_SEQS=2` | Full-size runs and benchmarks |
+| Headless | 0.90 | Qwen3.5-9B AWQ (chosen), `VLM_MAX_NUM_SEQS=2` ✓ ran | 115,550 tokens (7.05 times the concurrency at 16,384); 8.41 GiB of weights; 13,686 of 16,303 MiB used; healthy after 150 s | Full-size runs and benchmarks |
 
 ### Going headless
 
