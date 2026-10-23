@@ -1,8 +1,10 @@
 // The GardenView spike (roadmap F5 item 3; garden-3d 7): the mock garden in the native 3D view, the three modes,
 // the date, tap to select, and a 10 × 4 garden for the frame-time check on the iPhone. A dev screen, not the
 // garden's real screen (F7).
+import { Host, Picker, Text as SwiftText } from "@expo/ui/swift-ui";
+import { accessibilityLabel, pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
 import { useMemo, useReducer } from "react";
-import { Switch, View } from "react-native";
+import { Platform, Switch, View } from "react-native";
 
 import { GardenView } from "@/platform";
 
@@ -12,9 +14,9 @@ import { buildScene, plantSpoken, sceneSummary, spikeReducer, type GardenMode, t
 import { largeGarden, MOCK_MAP, MOCK_PLANTS, SPIKE_DATES } from "../model/spikeGarden";
 
 const MODES: { mode: GardenMode; label: string }[] = [
-  { mode: "health", label: "HEALTH" },
-  { mode: "growth", label: "GROWTH" },
-  { mode: "frost", label: "FROST" },
+  { mode: "health", label: "Health" },
+  { mode: "growth", label: "Growth" },
+  { mode: "frost", label: "Frost" },
 ];
 
 const INITIAL: SpikeState = { mode: "health", dateIndex: 2, large: false, selectedId: null };
@@ -40,17 +42,34 @@ export function Garden3DSpikeScreen() {
         </Text>
       </View>
 
-      <View style={{ flexDirection: "row", gap: space[2] }} accessibilityRole="radiogroup">
-        {MODES.map((m) => (
-          <Chip
-            key={m.mode}
-            label={m.label}
-            selected={state.mode === m.mode}
-            onPress={() => dispatch({ type: "mode", mode: m.mode })}
-            accessibilityLabel={`${m.label.toLowerCase()} mode`}
-          />
-        ))}
-      </View>
+      {/* Apple's segmented control (design 6: controls are Apple's own); chips where SwiftUI isn't there. */}
+      {Platform.OS === "ios" ? (
+        <Host matchContents={{ vertical: true }} colorScheme={scheme} style={{ alignSelf: "stretch" }}>
+          <Picker
+            selection={state.mode}
+            onSelectionChange={(mode: GardenMode) => dispatch({ type: "mode", mode })}
+            modifiers={[pickerStyle("segmented"), accessibilityLabel("Garden mode")]}
+          >
+            {MODES.map((m) => (
+              <SwiftText key={m.mode} modifiers={[tag(m.mode)]}>
+                {m.label}
+              </SwiftText>
+            ))}
+          </Picker>
+        </Host>
+      ) : (
+        <View style={{ flexDirection: "row", gap: space[2] }} accessibilityRole="radiogroup">
+          {MODES.map((m) => (
+            <Chip
+              key={m.mode}
+              label={m.label}
+              selected={state.mode === m.mode}
+              onPress={() => dispatch({ type: "mode", mode: m.mode })}
+              accessibilityLabel={`${m.label} mode`}
+            />
+          ))}
+        </View>
+      )}
 
       {GardenView ? (
         <GardenView

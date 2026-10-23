@@ -17,8 +17,8 @@ final class PlantNode {
   private(set) var plant: GardenPlant
   private let body = Entity()
   private let stem: ModelEntity
-  private let canopy: ModelEntity
-  private let top: ModelEntity
+  /// The canopy and top blobs as one mesh (GardenMeshes.crown).
+  private let crown: ModelEntity
   private let ring: ModelEntity
   private let cover: ModelEntity
   private let inPot: Bool
@@ -54,8 +54,7 @@ final class PlantNode {
 
     let shared = GardenMeshes.self
     stem = ModelEntity(mesh: shared.stem, materials: [materials.stem])
-    canopy = ModelEntity(mesh: shared.blob, materials: [materials.green(for: plant.name)])
-    top = ModelEntity(mesh: shared.blob, materials: [materials.green(for: plant.name)])
+    crown = ModelEntity(mesh: shared.crown, materials: [materials.green(for: plant.name)])
     ring = ModelEntity(mesh: shared.ring, materials: [materials.ring(for: .unknown)])
     cover = ModelEntity(mesh: shared.dome, materials: [materials.cover])
     ringMaterial = materials.ring(for: .unknown)
@@ -82,16 +81,11 @@ final class PlantNode {
 
     // The body is in unit space: scaled to (radius, height, radius) by the tween.
     stem.scale = SIMD3(0.09, 0.5, 0.09)
-    canopy.position = SIMD3(0, 0.58, 0)
-    canopy.scale = SIMD3(0.95, 0.42, 0.95)
-    top.position = SIMD3(0.18, 0.84, -0.1)
-    top.scale = SIMD3(0.55, 0.2, 0.55)
     body.addChild(stem)
-    body.addChild(canopy)
-    body.addChild(top)
+    body.addChild(crown)
     body.position = SIMD3(0, baseY, 0)
     root.addChild(body)
-    for e in [stem, canopy, top] { GardenMaterials.castShadow(e) }
+    for e in [stem, crown] { GardenMaterials.castShadow(e) }
 
     ring.position = SIMD3(0, (inPot ? 0 : baseY) + 0.006, 0)
     root.addChild(ring)
@@ -141,8 +135,7 @@ final class PlantNode {
     if dead != canopyDead {
       canopyDead = dead
       let m: Material = dead ? materials.deadCanopy : materials.green(for: plant.name)
-      canopy.model?.materials = [m]
-      top.model?.materials = [m]
+      crown.model?.materials = [m]
     }
 
     let text: String
@@ -162,16 +155,9 @@ final class PlantNode {
     let spoken = plant.spokenText
     if spoken != accessibilityKey {
       accessibilityKey = spoken
-      if #available(iOS 17.0, *) {
-        var a = AccessibilityComponent()
-        a.isAccessibilityElement = true
-        a.label = LocalizedStringResource(stringLiteral: spoken)
-        root.components.set(a)
-        label.isAccessibilityElement = false
-      } else {
-        label.isAccessibilityElement = true
-        label.accessibilityLabel = spoken
-      }
+      // The UIKit label is the VoiceOver element on every iOS: an AccessibilityComponent lives in the ARView, which
+      // is out of the window while the garden is frozen. Labels shrunk to a dot keep their full words.
+      label.accessibilityLabel = spoken
     }
 
     updateCollision()

@@ -3,6 +3,7 @@
 import {
   GardenMappingView,
   relocalise,
+  removeWorldMap,
   removeWorldMaps,
   saveWorldMap,
   savedWorldMapVersion,
@@ -18,6 +19,8 @@ export const mapping = {
   saveWorldMap,
   savedWorldMapVersion,
   relocalise,
+  /** One garden's: a map of an older version, or a garden the user left or deleted. */
+  remove: removeWorldMap,
   /** On sign-out: no garden's space stays on the phone. */
   removeAll: removeWorldMaps,
 };

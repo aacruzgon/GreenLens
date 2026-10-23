@@ -10,6 +10,11 @@ final class GardenLabelView: UIView {
   private var status: GardenStatus = .unknown
   private var palette = GardenPalette.light
   private(set) var selected = false
+  /// Shrunk to its status shape: the label would overlap one placed before it (garden-3d 5).
+  private(set) var compact = false
+  private var fullSize = CGSize.zero
+  /// VoiceOver's double tap selects the plant, as a tap on the label does.
+  var onActivate: (() -> Void)?
 
   private static let shapeSide: CGFloat = 9
   private static let padH: CGFloat = 8
@@ -24,6 +29,22 @@ final class GardenLabelView: UIView {
     text.adjustsFontForContentSizeCategory = true
     text.numberOfLines = 1
     addSubview(text)
+    isAccessibilityElement = true
+    accessibilityTraits = .button
+  }
+
+  override func accessibilityActivate() -> Bool {
+    onActivate?()
+    return onActivate != nil
+  }
+
+  /// The full label's size, whether or not it is shown compact.
+  var fullBounds: CGSize { fullSize }
+
+  func setCompact(_ value: Bool) {
+    guard value != compact else { return }
+    compact = value
+    layoutContent()
   }
 
   @available(*, unavailable)
@@ -40,7 +61,6 @@ final class GardenLabelView: UIView {
     backgroundColor = palette.surface
     layer.borderColor = (selected ? palette.text : palette.border).cgColor
     layer.borderWidth = selected ? 2 : 1
-    accessibilityLabel = value
     drawShape()
     sizeToFitContent()
   }
@@ -49,12 +69,21 @@ final class GardenLabelView: UIView {
   func sizeToFitContent() {
     let textSize = text.sizeThatFits(CGSize(width: 240, height: 100))
     let height = max(22, ceil(textSize.height) + 6)
-    let width = Self.padH + Self.shapeSide + Self.gap + ceil(textSize.width) + Self.padH
+    fullSize = CGSize(width: Self.padH + Self.shapeSide + Self.gap + ceil(textSize.width) + Self.padH, height: height)
+    layoutContent()
+  }
+
+  private func layoutContent() {
+    let textSize = text.sizeThatFits(CGSize(width: 240, height: 100))
+    let height = fullSize.height
+    // Compact is a dot: the status shape in a circle.
+    let width = compact ? height : fullSize.width
+    text.isHidden = compact
     let centre = center
     bounds = CGRect(x: 0, y: 0, width: width, height: height)
     center = centre
     layer.cornerRadius = height / 2
-    shape.frame = CGRect(x: Self.padH, y: (height - Self.shapeSide) / 2, width: Self.shapeSide, height: Self.shapeSide)
+    shape.frame = CGRect(x: compact ? (width - Self.shapeSide) / 2 : Self.padH, y: (height - Self.shapeSide) / 2, width: Self.shapeSide, height: Self.shapeSide)
     text.frame = CGRect(x: Self.padH + Self.shapeSide + Self.gap, y: (height - ceil(textSize.height)) / 2, width: ceil(textSize.width), height: ceil(textSize.height))
   }
 

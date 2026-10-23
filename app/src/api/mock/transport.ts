@@ -276,6 +276,13 @@ route("PUT", "/gardens/:id/map", async (c) => {
   for (const bed of body.beds) {
     if (!Array.isArray(bed.polygon_m) || bed.polygon_m.length < 3 || bed.polygon_m.length > 50) return invalid("beds.polygon_m", "3–50 points");
   }
+  // Every plant that isn't this garden's, listed at once, before anything is created (contracts 9).
+  const unknown = body.pins.flatMap((pin) => {
+    if (!pin.plant_id) return [];
+    const plant = c.store.plants.get(pin.plant_id);
+    return plant && plant.garden_id === gardenId ? [] : [pin.plant_id];
+  });
+  if (unknown.length > 0) return errorResponse("invalid_request", { field: "pins", problem: "unknown_plant", plant_ids: unknown });
   const pins: S["Pin"][] = [];
   for (const pin of body.pins) {
     let plantId = pin.plant_id;

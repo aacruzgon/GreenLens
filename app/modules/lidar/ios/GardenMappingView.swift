@@ -18,6 +18,8 @@ final class GardenMappingView: ExpoView, ARSessionDelegate, CLLocationManagerDel
   let onPinPlaced = EventDispatcher()
   let onHeading = EventDispatcher()
   let onMountError = EventDispatcher()
+  /// The camera was taken away (a call, another app, iPhone Mirroring) or given back.
+  let onInterruption = EventDispatcher()
 
   /// "corner" puts a bed corner on the ground, "pin" a plant's pin.
   var tapMode = "corner"
@@ -31,6 +33,7 @@ final class GardenMappingView: ExpoView, ARSessionDelegate, CLLocationManagerDel
   private var lastState: String?
   private var lastHeading: CFTimeInterval = 0
   private var relocalised: ((String) -> Void)?
+  private var interrupted = false
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -47,6 +50,8 @@ final class GardenMappingView: ExpoView, ARSessionDelegate, CLLocationManagerDel
     arView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped(_:))))
     location.delegate = self
     location.headingFilter = 1
+    // Only for the true heading: the compass gives true north only while location updates run.
+    location.desiredAccuracy = kCLLocationAccuracyKilometer
   }
 
   override func layoutSubviews() {
@@ -78,13 +83,34 @@ final class GardenMappingView: ExpoView, ARSessionDelegate, CLLocationManagerDel
     config.initialWorldMap = worldMap
     arView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
     running = true
+    interrupted = false
     if CLLocationManager.headingAvailable() { location.startUpdatingHeading() }
+    startLocation()
   }
+
+  /// Location runs only for true north. Without it the heading is magnetic, which is off by the local declination
+  /// (about 10° in Toronto), so it is reported as too inaccurate to send (the app's 20° gate).
+  private func startLocation() {
+    switch location.authorizationStatus {
+    case .notDetermined: location.requestWhenInUseAuthorization()
+    case .authorizedWhenInUse, .authorizedAlways: location.startUpdatingLocation()
+    default: break
+    }
+  }
+
+  func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    if running { startLocation() }
+  }
+
+  func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {}
+
+  func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
 
   private func stop() {
     guard running else { return }
     arView.session.pause()
     location.stopUpdatingHeading()
+    location.stopUpdatingLocation()
     running = false
     relocalised?("failed")
     relocalised = nil
@@ -94,6 +120,7 @@ final class GardenMappingView: ExpoView, ARSessionDelegate, CLLocationManagerDel
   // MARK: Taps
 
   @objc private func tapped(_ gesture: UITapGestureRecognizer) {
+    guard !interrupted else { return }
     let point = gesture.location(in: arView)
     if tapMode == "pin" {
       // A plant is rarely a plane: any surface, the mesh included, then the ground under it.
@@ -139,23 +166,32 @@ final class GardenMappingView: ExpoView, ARSessionDelegate, CLLocationManagerDel
     markers.removeAll()
   }
 
-  /// The canopy's radius around a pin from the reconstructed mesh: the ground is the lowest mesh point within a
-  /// metre, the plant is what stands more than 5 cm above it within 75 cm, and the radius is the 90th percentile of
-  /// its horizontal distances. Nil with too little mesh. Shown on the map, not used by any rule (architecture 6.8).
+  /// The canopy's radius around a pin from the reconstructed mesh. The ground is low in what lies within 40 cm of
+  /// the pin (the 10th percentile), so a raised bed's soil is the ground and the path beside it isn't; with too
+  /// little mesh there, the lowest point within a metre. The plant is what stands more than 5 cm above the ground
+  /// within 75 cm, and the radius is the 90th percentile of its horizontal distances. Nil with too little mesh.
+  /// Shown on the map, not used by any rule (architecture 6.8). Unverified on a real bed.
   private func canopyRadius(x: Float, z: Float) -> Float? {
     guard let frame = arView.session.currentFrame else { return nil }
     var near: [(d: Float, y: Float)] = []
     for case let mesh as ARMeshAnchor in frame.anchors {
       let vertices = mesh.geometry.vertices
-      let buffer = vertices.buffer.contents()
+      guard vertices.format == .float3 else { continue }
+      let buffer = UnsafeRawPointer(vertices.buffer.contents())
       for i in 0..<vertices.count {
-        let v = buffer.advanced(by: vertices.offset + vertices.stride * i).assumingMemoryBound(to: SIMD3<Float>.self).pointee
-        let world = mesh.transform * SIMD4(v.x, v.y, v.z, 1)
+        // Three Floats at the buffer's stride (12 bytes): a SIMD3<Float> load would read 16 and run past the end.
+        let at = vertices.offset + vertices.stride * i
+        let vx = buffer.load(fromByteOffset: at, as: Float.self)
+        let vy = buffer.load(fromByteOffset: at + 4, as: Float.self)
+        let vz = buffer.load(fromByteOffset: at + 8, as: Float.self)
+        let world = mesh.transform * SIMD4(vx, vy, vz, 1)
         let d = ((world.x - x) * (world.x - x) + (world.z - z) * (world.z - z)).squareRoot()
         if d <= 1 { near.append((d, world.y)) }
       }
     }
-    guard let ground = near.map(\.y).min() else { return nil }
+    let close = near.filter { $0.d <= 0.4 }.map(\.y).sorted()
+    let groundLevel = close.count >= 30 ? close[close.count / 10] : near.map(\.y).min()
+    guard let ground = groundLevel else { return nil }
     let plant = near.filter { $0.d <= 0.75 && $0.y > ground + 0.05 }.map(\.d).sorted()
     guard plant.count >= 30 else { return nil }
     return plant[min(plant.count - 1, Int(Float(plant.count) * 0.9))]
@@ -174,10 +210,24 @@ final class GardenMappingView: ExpoView, ARSessionDelegate, CLLocationManagerDel
       relocalised = nil
       done("ok")
     }
-    guard state != lastState else { return }
+    // During an interruption the camera is gone, not lost: the session keeps its origin and finds it again after.
+    guard state != lastState, !(interrupted && state == "lost") else { return }
     lastState = state
     onTrackingState(["state": state])
   }
+
+  func sessionWasInterrupted(_ session: ARSession) {
+    interrupted = true
+    onInterruption(["interrupted": true])
+  }
+
+  /// ARKit tries to find its place again after an interruption, keeping the session's origin and the markers.
+  func sessionInterruptionEnded(_ session: ARSession) {
+    interrupted = false
+    onInterruption(["interrupted": false])
+  }
+
+  func sessionShouldAttemptRelocalization(_ session: ARSession) -> Bool { true }
 
   func session(_ session: ARSession, didFailWithError error: Error) {
     onTrackingState(["state": "lost"])
@@ -191,16 +241,19 @@ final class GardenMappingView: ExpoView, ARSessionDelegate, CLLocationManagerDel
   /// its heading on the Earth from the compass, read at the same moment with the phone held up.
   func locationManager(_ manager: CLLocationManager, didUpdateHeading heading: CLHeading) {
     let now = CACurrentMediaTime()
-    guard now - lastHeading >= 1, heading.headingAccuracy >= 0, let frame = arView.session.currentFrame,
+    guard now - lastHeading >= 1, !interrupted, heading.headingAccuracy >= 0, let frame = arView.session.currentFrame,
       case .normal = frame.camera.trackingState
     else { return }
     lastHeading = now
     let forward = -frame.camera.transform.columns.2
     guard (forward.x * forward.x + forward.z * forward.z) > 0.1 else { return }
     let onMap = Double(atan2(forward.x, -forward.z)) * 180 / .pi
-    let onEarth = heading.trueHeading >= 0 ? heading.trueHeading : heading.magneticHeading
+    let isTrue = heading.trueHeading >= 0
+    let onEarth = isTrue ? heading.trueHeading : heading.magneticHeading
     let north = (onMap - onEarth).truncatingRemainder(dividingBy: 360)
-    onHeading(["north_deg": north < 0 ? north + 360 : north, "accuracy_deg": heading.headingAccuracy])
+    // A magnetic heading is off by the declination, which the phone can't know without a location.
+    let accuracy = isTrue ? heading.headingAccuracy : max(heading.headingAccuracy, 30)
+    onHeading(["north_deg": north < 0 ? north + 360 : north, "accuracy_deg": accuracy])
   }
 
   // MARK: World map
@@ -214,7 +267,12 @@ final class GardenMappingView: ExpoView, ARSessionDelegate, CLLocationManagerDel
       }
       do {
         let data = try NSKeyedArchiver.archivedData(withRootObject: map, requiringSecureCoding: true)
-        try data.write(to: try WorldMaps.url(gardenId), options: [.atomic, .completeFileProtection])
+        var url = try WorldMaps.url(gardenId)
+        try data.write(to: url, options: [.atomic, .completeFileProtection])
+        // Not in iCloud or computer backups: the garden's space stays on this phone (architecture 6.8).
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try url.setResourceValues(values)
         UserDefaults.standard.set(version, forKey: WorldMaps.versionKey(gardenId))
         promise.resolve(nil)
       } catch {
@@ -266,6 +324,12 @@ enum WorldMaps {
   static func savedVersion(_ gardenId: String) -> Int? {
     guard let url = try? url(gardenId), FileManager.default.fileExists(atPath: url.path) else { return nil }
     return UserDefaults.standard.object(forKey: versionKey(gardenId)) as? Int
+  }
+
+  /// Deletes one garden's world map: a stale one, or when the user leaves or deletes the garden.
+  static func remove(_ gardenId: String) {
+    if let url = try? url(gardenId) { try? FileManager.default.removeItem(at: url) }
+    UserDefaults.standard.removeObject(forKey: versionKey(gardenId))
   }
 
   /// Deletes every saved world map: on sign-out.

@@ -11,8 +11,8 @@ import simd
 //
 // Idle frames: RealityKit has no public render-on-demand switch for ARView. When nothing has moved for a moment
 // (no gesture, no tween, the turntable done or off), the view snapshots itself, shows the snapshot and takes the
-// ARView out of the window, which stops its drawing; the next gesture, tap or prop change puts it back. Unverified
-// on a device: measure with Xcode's GPU tools that an idle garden draws no frames.
+// ARView out of the window, which stops its drawing; the next gesture, tap, prop change or new size puts it back.
+// The first build woke on every layout and drew 60 fps idle; check again with Metal System Trace.
 
 final class GardenView: ExpoView {
   let onSelectPlant = EventDispatcher()
@@ -62,6 +62,7 @@ final class GardenView: ExpoView {
   private var sceneExtent = SIMD2<Float>(4, 4)
   private var cameraDirty = true
   private var labelsDirty = true
+  private var laidOutSize = CGSize.zero
 
   // Motion and idle.
   private var gestureActive = false
@@ -125,6 +126,10 @@ final class GardenView: ExpoView {
 
   override func layoutSubviews() {
     super.layoutSubviews()
+    // Freezing takes the ARView out, which lays this view out again: only a new size wakes it, or the view would
+    // loop freeze, snapshot, wake (measured at 60 fps idle on an iPhone 13 Pro Max).
+    guard bounds.size != laidOutSize else { return }
+    laidOutSize = bounds.size
     arView.frame = bounds
     snapshotView.frame = bounds
     labelLayer.frame = bounds
@@ -194,10 +199,11 @@ final class GardenView: ExpoView {
     plinth.position = SIMD3(0, -Self.plinthHeight / 2, 0)
     staticRoot.addChild(plinth)
 
-    // Plaster beds extruded from the map's polygons, with terracotta soil.
+    // Plaster beds extruded from the map's polygons, with terracotta soil. The map's y is the session's -z
+    // (GardenMappingView), so it goes back to -z here; +z would draw the garden's mirror image.
     var bedIds = Set<String>()
     for bed in beds {
-      let polygon = bed.polygon.map { $0 - centre }
+      let polygon = bed.polygon.map { SIMD2($0.x - centre.x, -($0.y - centre.y)) }
       guard let meshes = GardenMeshes.bed(polygon: polygon, height: Self.bedHeight, inset: 0.06) else { continue }
       bedIds.insert(bed.id)
       let plaster = ModelEntity(mesh: meshes.plaster, materials: [materials.plaster])
@@ -212,11 +218,12 @@ final class GardenView: ExpoView {
       let inBed = plant.bedId.map { bedIds.contains($0) } ?? false
       let node = PlantNode(
         plant: plant,
-        position: SIMD3(plant.x - centre.x, 0, plant.y - centre.y),
+        position: SIMD3(plant.x - centre.x, 0, -(plant.y - centre.y)),
         bedTop: inBed ? Self.bedHeight : nil,
         materials: materials,
         from: previous[plant.id],
         growIn: growIn || previous[plant.id] == nil && !firstBuild && !reduceMotion)
+      node.label.onActivate = { [weak self] in self?.select(plant.id) }
       nodes[plant.id] = node
       plantsRoot.addChild(node.root)
       labelLayer.addSubview(node.label)
@@ -262,11 +269,13 @@ final class GardenView: ExpoView {
   }
 
   private func distance() -> Float {
-    // Fit the plinth in the narrower of the two fields of view, never nearer than 16.8 m (the 24° long lens).
+    // Fit the plinth in the narrower of the two fields of view, never nearer than 16.8 m (the 24° long lens). The
+    // orbit turns the plinth, so fit its diagonal, the widest it can look; the longer side alone let a 6-plant
+    // garden run off the right edge at the first framing.
     let half = Self.fieldOfView / 2 * .pi / 180
     let aspect = bounds.height > 0 ? Float(bounds.width / bounds.height) : 1
     let horizontalHalf = atan(tan(half) * aspect)
-    let extent = max(sceneExtent.x, sceneExtent.y)
+    let extent = simd_length(sceneExtent)
     let fit = extent / 2 / tan(min(half, horizontalHalf)) * 1.1
     return max(Self.minDistance, fit) * zoom
   }
@@ -278,17 +287,34 @@ final class GardenView: ExpoView {
     camera.look(at: target, from: position, relativeTo: nil)
   }
 
+  /// Places the labels: the selected plant's first, then the nearest. A label that would overlap one already placed
+  /// shrinks to its status dot (garden-3d 5), so a zoomed-out or crowded garden shows dots, not a pile of names.
   private func layoutLabels() {
     let cameraPosition = camera.position(relativeTo: nil)
     let forward = -camera.transform.matrix.columns.2
     let forward3 = SIMD3(forward.x, forward.y, forward.z)
     let visible = bounds.insetBy(dx: -40, dy: -40)
+    var placed: [(node: PlantNode, point: CGPoint, depth: Float)] = []
     for node in nodes.values {
       let anchor = node.labelAnchor
-      guard simd_dot(anchor - cameraPosition, forward3) > 0, let point = arView.project(anchor), visible.contains(point) else {
+      let depth = simd_dot(anchor - cameraPosition, forward3)
+      guard depth > 0, let point = arView.project(anchor), visible.contains(point) else {
         node.label.isHidden = true
         continue
       }
+      placed.append((node, point, depth))
+    }
+    placed.sort { a, b in
+      let sa = a.node.id == selectedPlantId, sb = b.node.id == selectedPlantId
+      return sa != sb ? sa : a.depth < b.depth
+    }
+    var taken: [CGRect] = []
+    for (node, point, _) in placed {
+      let full = node.label.fullBounds
+      let frame = CGRect(x: point.x - full.width / 2, y: point.y - full.height, width: full.width, height: full.height)
+      let fits = node.id == selectedPlantId || !taken.contains { $0.intersects(frame.insetBy(dx: -2, dy: -2)) }
+      node.label.setCompact(!fits)
+      if fits { taken.append(frame) }
       node.label.isHidden = false
       node.label.center = CGPoint(x: point.x, y: point.y - node.label.bounds.height / 2)
     }
@@ -358,10 +384,15 @@ final class GardenView: ExpoView {
         entity = e.parent
       }
     }
-    // Shown at once; JavaScript confirms through selectedPlantId.
-    selectedPlantId = hit
+    select(hit)
+  }
+
+  /// Shown at once; JavaScript confirms through selectedPlantId.
+  private func select(_ plantId: String?) {
+    lastInteraction = CACurrentMediaTime()
+    selectedPlantId = plantId
     applyProps()
-    onSelectPlant(["plant_id": hit.map { $0 as Any } ?? NSNull()])
+    onSelectPlant(["plant_id": plantId.map { $0 as Any } ?? NSNull()])
   }
 
   private func interaction(_ state: UIGestureRecognizer.State) {
