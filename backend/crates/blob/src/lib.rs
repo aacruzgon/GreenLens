@@ -12,7 +12,7 @@ pub mod s3;
 pub mod sweep;
 
 pub use client::{BlobConfig, storage_client};
-pub use delete::{DeleteHandle, DeleteJob, DeleteOutcome, DeleteQueue};
+pub use delete::{DeleteHandle, DeleteJob, DeleteOutcome, DeleteQueue, QueuedDeletes};
 pub use memory::MemoryBlobStore;
 pub use s3::S3BlobStore;
 pub use sweep::orphan_candidates;

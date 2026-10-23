@@ -17,6 +17,7 @@ use domain::{
     vlm::{BoxFormat, GuidedTexture, VlmFindings, VlmIndicatorAnswers},
 };
 use integrations::{
+    anthropic::{AnthropicClient, AnthropicConfig},
     http::{HttpConfig, RetryPolicy, SecretString},
     openai_compat::{OpenAiCompatClient, OpenAiCompatConfig, ServerFlavour},
 };
@@ -28,7 +29,7 @@ use vision::{
 
 use crate::vlm::{
     VlmAdapter,
-    backend::{OpenAiBackend, Stop, VlmBackend, VlmCall, VlmReply},
+    backend::{AnthropicBackend, OpenAiBackend, Stop, Tokens, VlmBackend, VlmCall, VlmReply},
     profile::{AdapterProfile, CallBudget, CertaintyMap, VlmIdentity},
 };
 
@@ -59,6 +60,12 @@ pub(super) struct Attempt {
     pub(super) budget: u32,
     pub(super) ms: u128,
     pub(super) outcome: Result<(Stop, usize), String>,
+    /// The tokens used, when the backend reports them.
+    pub(super) tokens: Option<Tokens>,
+    /// The answer as sent, before decoding: its boxes in the model's own coordinates.
+    pub(super) text: Option<String>,
+    /// Each image's size as sent (width, height), which `abs_px_prepared` boxes are in.
+    pub(super) sizes: Vec<(u32, u32)>,
 }
 
 /// The real backend, unchanged, with a log of each call: the adapter retries inside, so this
@@ -68,9 +75,29 @@ pub(super) struct Recording<B> {
     pub(super) log: Mutex<Vec<Attempt>>,
 }
 
+impl<B> Recording<B> {
+    const fn new(inner: B) -> Self {
+        Self {
+            inner,
+            log: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+/// A JPEG's size from its header.
+fn jpeg_size(jpeg: &[u8]) -> (u32, u32) {
+    image::ImageReader::with_format(std::io::Cursor::new(jpeg), image::ImageFormat::Jpeg)
+        .into_dimensions()
+        .unwrap_or((0, 0))
+}
+
 impl<B: VlmBackend> VlmBackend for Recording<B> {
     fn name(&self) -> &'static str {
         self.inner.name()
+    }
+
+    fn max_questions(&self) -> Option<usize> {
+        self.inner.max_questions()
     }
 
     async fn call<'a>(&'a self, call: &'a VlmCall<'a>) -> Result<VlmReply, ModelError> {
@@ -85,6 +112,9 @@ impl<B: VlmBackend> VlmBackend for Recording<B> {
                 .as_ref()
                 .map(|r| (r.stop, r.text.len()))
                 .map_err(ToString::to_string),
+            tokens: reply.as_ref().ok().and_then(|r| r.tokens),
+            text: reply.as_ref().ok().map(|r| r.text.clone()),
+            sizes: call.images.iter().map(|i| jpeg_size(i.jpeg)).collect(),
         });
         reply
     }
@@ -150,10 +180,52 @@ pub(super) async fn adapter_with(
         },
     };
     VlmAdapter::new(
-        Recording {
-            inner: OpenAiBackend::new(client, "vlm".to_owned()),
-            log: Mutex::new(Vec::new()),
+        Recording::new(OpenAiBackend::new(client, "vlm".to_owned())),
+        profile,
+        cpu,
+    )
+}
+
+/// `FALLBACK_MAX_PIXELS`'s default: the most pixels the hosted API takes without resizing.
+pub(super) const FALLBACK_MAX_PIXELS: u32 = 1_150_000;
+
+/// The adapter `main.rs` builds for `--caps fallback` with its defaults (`abs_px_prepared`,
+/// 1 px cells, at most 1,150,000 pixels and 1568 on the long side, the hosted budgets, no
+/// retries and 300 s a call), calling `model` with `LLM_API_KEY`, with the backend wrapped in
+/// [`Recording`] (task P9).
+pub(super) fn hosted_adapter(
+    model: &str,
+    cpu: Arc<Semaphore>,
+) -> VlmAdapter<Recording<AnthropicBackend>> {
+    let http = integrations::http::client(&HttpConfig {
+        read_timeout: Duration::from_secs(600),
+        ..HttpConfig::default()
+    })
+    .unwrap();
+    let key = std::env::var("LLM_API_KEY").expect("LLM_API_KEY is not set");
+    let mut config = AnthropicConfig::new(SecretString::from(key));
+    config.retry = RetryPolicy::NONE;
+    config.request_timeout = Duration::from_secs(300);
+    model.clone_into(&mut config.models.vision_fallback);
+    let profile = AdapterProfile {
+        box_format: BoxFormat::AbsPxPrepared,
+        cell_px: 1,
+        max_pixels: FALLBACK_MAX_PIXELS,
+        max_long_side: Some(1568),
+        jpeg_quality: 90,
+        budget: CallBudget::HOSTED,
+        certainty: CertaintyMap::default(),
+        identity: VlmIdentity {
+            model: model.to_owned(),
+            quant: None,
+            server: "anthropic".to_owned(),
         },
+    };
+    VlmAdapter::new(
+        Recording::new(AnthropicBackend::new(
+            AnthropicClient::new(http, config),
+            model.to_owned(),
+        )),
         profile,
         cpu,
     )
