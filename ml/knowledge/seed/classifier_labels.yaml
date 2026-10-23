@@ -1,0 +1,36 @@
+# Written by python -m ml.training.labels.classifier_labels from disease_head/disease-head-v3c-2026-10-20.json;
+# don't edit by hand. Left out until their problems are in the seed: apple, corn, grape, pepper.
+model_version: disease-head-v3c-2026-10-20
+labels:
+- index: 11
+  label: tomato/healthy
+  species_id: tomato
+  problem_id: healthy
+- index: 12
+  label: tomato/tomato_bacterial_spot
+  species_id: tomato
+  problem_id: tomato_bacterial_spot
+- index: 13
+  label: tomato/tomato_early_blight
+  species_id: tomato
+  problem_id: tomato_early_blight
+- index: 14
+  label: tomato/tomato_late_blight
+  species_id: tomato
+  problem_id: tomato_late_blight
+- index: 15
+  label: tomato/tomato_leaf_mold
+  species_id: tomato
+  problem_id: tomato_leaf_mold
+- index: 16
+  label: tomato/tomato_septoria_leaf_spot
+  species_id: tomato
+  problem_id: tomato_septoria_leaf_spot
+- index: 17
+  label: tomato/tomato_spider_mites
+  species_id: tomato
+  problem_id: tomato_spider_mites
+- index: 18
+  label: tomato/tomato_yellow_leaf_curl_virus
+  species_id: tomato
+  problem_id: tomato_yellow_leaf_curl_virus

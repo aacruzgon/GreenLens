@@ -11,7 +11,7 @@ dataset: plantdoc
 source: plantdoc_cls                 # data/raw/<source>/
 root: PlantDoc-Dataset-5467f6012d78d1c446145d5f582da6096f852ae8
 splits: { train: train, test: test } # split → folder under root; the class is the image's folder
-reviewed_by: null
+reviewed_by: sara-lahourpour  # slugs as confirmed on issue #4 (2026-10-22)
 
 classes:
   "Apple leaf":                         { species_id: apple,      problem_id: healthy }

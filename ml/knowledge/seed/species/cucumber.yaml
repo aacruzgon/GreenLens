@@ -1,0 +1,12 @@
+# A label_only species (#4, 2026-10-22), so BioCLIP can name it and the VLM diagnoses it: a common
+# garden plant, and what the dev cases' squash were read as (evaluation.md, 2026-10-20).
+# The label is ml/training/labels/standin_labels.yaml's.
+id: cucumber
+scientific_name: Cucumis sativus
+common_names:
+- Cucumber
+profile: label_only
+classifier_supported: false
+bioclip_label: Cucumis sativus with common name cucumber
+sources: []
+reviewed_by: sara-lahourpour

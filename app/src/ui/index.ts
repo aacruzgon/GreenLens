@@ -27,3 +27,13 @@ export { MeltPhoto, type MeltPhotoProps, type MeltKind } from "./composites/Melt
 export { hiddenSvg, useSvgId } from "./svgId";
 export { ConfidenceBadge, type ConfidenceBadgeProps } from "./composites/ConfidenceBadge";
 export { DropCard, type DropCardProps } from "./composites/DropCard";
+export { Hotspot, type HotspotProps } from "./composites/Hotspot";
+export { PhaseLine, type PhaseLineProps } from "./composites/PhaseLine";
+export { CandidateCompare, type CandidateCompareProps, type CandidatePlate } from "./composites/CandidateCompare";
+export { PictureAnswer, type PictureAnswerProps } from "./composites/PictureAnswer";
+export { LineIcon, type LineIconName, type LineIconProps } from "./composites/LineIcon";
+export { CitationList, CiteNumber, type CitationListProps } from "./composites/CitationList";
+export { PhotoTint, type PhotoTintProps } from "./composites/PhotoTint";
+export { BarButton, BAR_INK, type BarButtonProps } from "./composites/BarButton";
+export { TopEdge, TopScrim, useHeroScroll, type TopEdgeProps } from "./composites/TopEdge";
+export { photoTint, dominantHue, contrast, type PhotoTint as PhotoTintColors } from "./tint";

@@ -1,0 +1,15 @@
+# A label_only species (#4, 2026-10-22), so BioCLIP can name it and the VLM diagnoses it: a crop
+# with a full profile to come. The label names the genus, not Cucurbita pepo alone: the dev cases'
+# squash read as cucumber, grape or bean under the stand-in's C. pepo (evaluation.md, 2026-10-20).
+# The label is ml/training/labels/standin_labels.yaml's, widened to the genus.
+id: squash
+scientific_name: Cucurbita
+common_names:
+- Squash
+- Zucchini
+- Pumpkin
+profile: label_only
+classifier_supported: false
+bioclip_label: Cucurbita with common name squash
+sources: []
+reviewed_by: sara-lahourpour

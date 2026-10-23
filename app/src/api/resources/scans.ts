@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tansta
 
 import { client, ok } from "../client";
 import { isApiError } from "../errors";
-import type { AnswerRequest, CreateScanRequest, ImageKind, Scan, ScanDetail, UploadImageResponse } from "@/domain/types";
+import type { AnswerRequest, CreateScanRequest, FeedbackRequest, ImageKind, Scan, ScanDetail, UploadImageResponse } from "@/domain/types";
 import { useIdempotentMutation, type IdempotencyKey } from "../idempotency";
 import { STALE } from "../queryClient";
 import { qk } from "../queryKeys";
@@ -53,6 +53,9 @@ export const scans = {
   submit: async (id: string): Promise<Scan> => ok(await client().POST("/scans/{id}/submit", { params: { path: { id } } })),
   answer: async (id: string, body: AnswerRequest, key: IdempotencyKey): Promise<Scan> =>
     ok(await client().POST("/scans/{id}/answers", { params: { path: { id }, header: idem(key) }, body })),
+  /** Reviewer and up, once the scan is submitted (`409 invalid_state` while `pending`; contracts 3). */
+  feedback: async (id: string, body: FeedbackRequest, key: IdempotencyKey): Promise<{ id: string }> =>
+    ok(await client().POST("/scans/{id}/feedback", { params: { path: { id }, header: idem(key) }, body })),
   /** Removes a stored shot while the scan is `pending`, to replace it (contracts 3). */
   deleteImage: async (id: string, imageId: string): Promise<void> => {
     await client().DELETE("/scans/{id}/images/{image_id}", { params: { path: { id, image_id: imageId } } });
@@ -119,5 +122,12 @@ export function useDeleteScan() {
       // A pending scan's jar-test task goes with it.
       return Promise.all([invalidatePlant(qc, scan, true), qc.invalidateQueries({ queryKey: qk.tasks(scan.garden_id) })]);
     },
+  });
+}
+
+/** Feedback on a scan's result (screens 3.11). Nothing on screen reads it back, so nothing to invalidate. */
+export function useScanFeedback(scanId: string) {
+  return useIdempotentMutation({
+    mutationFn: (body: FeedbackRequest, key) => scans.feedback(scanId, body, key),
   });
 }

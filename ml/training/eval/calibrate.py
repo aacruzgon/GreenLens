@@ -58,6 +58,7 @@ from scipy.optimize import minimize_scalar
 
 from ml.pdm_vision import preprocess as pp
 from ml.pdm_vision.headfile import read_label_matrix, read_linear_head
+from ml.training.labels import current
 
 ROOT = Path(__file__).resolve().parents[3]
 EVAL = ROOT / "ml/training/eval"
@@ -619,7 +620,7 @@ def main(argv=None) -> int:
 
     cases = dev_cases(args.manifest)
     entries = tomllib.loads((MODELS / "manifest.toml").read_text())["model"]
-    matrix_entry = next(e for e in entries if e["name"].startswith("bioclip_labels"))
+    matrix_entry = current.matrix_entry(entries)
     matrix = read_label_matrix(MODELS / "files" / matrix_entry["file"])
     embedder = Embedder()
     species = species_calibration(cases, args.photos, matrix, embedder.images)
