@@ -55,6 +55,7 @@ Measured on 2026-10-16:
 | Desktop, logged in | 0.78 | Qwen3.5-9B AWQ (chosen), `VLM_MAX_NUM_SEQS=2` ✓ ran 2026-10-22 | The same 2.45 GiB and 65,536 tokens; the desktop 330 MiB (a fresh login, no apps open); 13,058 of 16,303 MiB at the start-up peak, 12,796 during the run; healthy after 151 s | The demo: the 65 benchmark cases in 204 s at 2 at once (214 s headless), no preemption ([report](../ml/training/eval/reports/vlm-bench-2026-10-22-qwen35-awq-desktop.md)). vLLM's own peak, 13,058 − 330 = 12,728 MiB, plus the desktop's 2.3–2.9 GB with its apps open makes about 15,000–15,600 of 16,303 MiB, by arithmetic |
 | Desktop | 0.78 | Qwen3-VL-8B FP8 | **Doesn't start:** 10.37 GiB of weights leave 0.99 GiB of KV (0.59 GiB with an FP8 cache) | — |
 | Headless | 0.90 | Qwen3-VL-8B FP8 (the fallback) | 2.4 GiB, 17,440 tokens; 16,528 with `VLM_MAX_NUM_SEQS=2` | Full-size runs and benchmarks |
+| Desktop, logged in | 0.90 | Qwen3-VL-8B FP8 and Qwen3.5-9B AWQ, `VLM_MAX_NUM_SEQS=2` ✓ ran 2026-10-23 | The desktop 329 MiB (no apps open); the card peaked at 14,729 MiB (FP8) and 14,633 MiB (Qwen3.5) of 16,303 | D1's re-check, both models to the end ([vlm.md 13](../docs/vision/vlm.md#re-check-on-the-shipped-prompts-2026-10-23--ran)). 0.90 needs 14,673 MiB free at start, so the desktop must hold under 1,630 MiB: with its apps open, vLLM doesn't start |
 | Headless | 0.90 | Qwen3.5-9B AWQ (chosen), `VLM_MAX_NUM_SEQS=2` ✓ ran | 115,550 tokens (7.05 times the concurrency at 16,384); 8.41 GiB of weights; 13,686 of 16,303 MiB used; healthy after 150 s | Full-size runs and benchmarks |
 
 ### Beside the desktop, on demo day
@@ -75,7 +76,7 @@ Work from a laptop. Every desktop program closes, so save first.
 3. Plasma 6 runs KWin, plasmashell and every app as **user** units, which survive both the isolate and `loginctl terminate-session`. Stop them with `systemctl --user stop graphical-session.target app.slice`. tmux, sshd, Tailscale and Docker keep running.
 4. `nvidia-smi` should show no processes and about 34 MiB used. Then `VLM_GPU_MEM_UTIL=0.90 docker compose -f infra/rig.compose.yml up -d vllm`.
 
-To return: `down` the service, then `sudo systemctl isolate graphical.target`, log in at the screen, and use 0.78 again. If the login stays on a black screen, the user's D-Bus socket closed with the last desktop session while SSH kept the user manager up: `systemctl --user start dbus.socket`, end the hung `startplasma-wayland`, and log in again (✓ seen 2026-10-22). Qwen3.5-9B AWQ, the chosen model, runs at 0.78 with 2 slots; only Qwen3-VL FP8 needs headless.
+To return: `down` the service, then `sudo systemctl isolate graphical.target`, log in at the screen, and use 0.78 again. If the login stays on a black screen, the user's D-Bus socket closed with the last desktop session while SSH kept the user manager up: `systemctl --user start dbus.socket`, end the hung `startplasma-wayland`, and log in again (✓ seen 2026-10-22). Qwen3.5-9B AWQ, the chosen model, runs at 0.78 with 2 slots; only Qwen3-VL FP8 needs 0.90, which starts only while the desktop holds under 1,630 MiB: freshly logged in with no apps open, or headless.
 
 ## 4. Switching checkpoints
 
@@ -86,7 +87,7 @@ To switch, set both variables together in `infra/.env`, then `down` and `up -d v
 | Checkpoint | `VLM_MODEL` | `VLM_REVISION` | `VLM_EXTRA_ARGS` |
 |---|---|---|---|
 | **Chosen**, Qwen3.5-9B AWQ 4-bit | `cyankiwi/Qwen3.5-9B-AWQ-4bit` | `156edc4bbeb8d1910ee7be9196bafaf1bc052156` | `'--default-chat-template-kwargs "{\"enable_thinking\": false}"'`, or leave the line out |
-| Fallback, Qwen3-VL-8B FP8 (headless only) | `Qwen/Qwen3-VL-8B-Instruct-FP8` | `9cdc6310a8cb770ce18efaf4e9935334512aee45` | Empty: `VLM_EXTRA_ARGS=` |
+| Fallback, Qwen3-VL-8B FP8 (0.90: no desktop apps open, or headless) | `Qwen/Qwen3-VL-8B-Instruct-FP8` | `9cdc6310a8cb770ce18efaf4e9935334512aee45` | Empty: `VLM_EXTRA_ARGS=` |
 | Fallback, Qwen3-VL-8B AWQ 4-bit | `cyankiwi/Qwen3-VL-8B-Instruct-AWQ-4bit` | `87196f7771efdd7022a8d8f094ac6e063bf87f5c` | Empty: `VLM_EXTRA_ARGS=` |
 
 Qwen3.5 thinks before it answers by default, and the worker expects the JSON answer alone, so thinking must be off. The compose file reads `VLM_EXTRA_ARGS` with `${VLM_EXTRA_ARGS-…}`, so a missing line gives thinking off and an empty one gives no extra flag.
