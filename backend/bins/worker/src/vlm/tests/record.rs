@@ -186,6 +186,9 @@ pub(super) async fn adapter_with(
     )
 }
 
+/// `FALLBACK_MAX_PIXELS`'s default: the most pixels the hosted API takes without resizing.
+pub(super) const FALLBACK_MAX_PIXELS: u32 = 1_150_000;
+
 /// The adapter `main.rs` builds for `--caps fallback` with its defaults (`abs_px_prepared`,
 /// 1 px cells, at most 1,150,000 pixels and 1568 on the long side, the hosted budgets, no
 /// retries and 300 s a call), calling `model` with `LLM_API_KEY`, with the backend wrapped in
@@ -207,7 +210,7 @@ pub(super) fn hosted_adapter(
     let profile = AdapterProfile {
         box_format: BoxFormat::AbsPxPrepared,
         cell_px: 1,
-        max_pixels: 1_150_000,
+        max_pixels: FALLBACK_MAX_PIXELS,
         max_long_side: Some(1568),
         jpeg_quality: 90,
         budget: CallBudget::HOSTED,

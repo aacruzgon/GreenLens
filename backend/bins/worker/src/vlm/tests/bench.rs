@@ -21,7 +21,9 @@ use serde::Deserialize;
 use serde_json::json;
 use tokio::{sync::Semaphore, task::JoinSet};
 
-use super::record::{Discard, Recording, adapter_with, ctx, hosted_adapter, stored};
+use super::record::{
+    Discard, FALLBACK_MAX_PIXELS, Recording, adapter_with, ctx, hosted_adapter, stored,
+};
 use crate::vlm::{VlmAdapter, backend::VlmBackend};
 
 /// One line of `VLM_BENCH_CASES`: the payload a `vlm` job would carry, and the photo file of
@@ -204,7 +206,7 @@ async fn bench_cases() {
     let cases_path = std::env::var("VLM_BENCH_CASES").expect("VLM_BENCH_CASES names the cases");
     let out_path = std::env::var("VLM_BENCH_OUT").expect("VLM_BENCH_OUT names the output");
     let max_pixels: u32 = if hosted.is_some() {
-        1_150_000
+        FALLBACK_MAX_PIXELS
     } else {
         env_or("VLM_BENCH_MAX_PIXELS", 1_003_520)
     };
@@ -232,7 +234,7 @@ async fn bench_cases() {
             let _slot = slots.acquire_owned().await.unwrap();
             let (ok, line) = match hosted {
                 Some(model) => {
-                    run_case(hosted_adapter(&model, cpu), case, 1_150_000, concurrency).await
+                    run_case(hosted_adapter(&model, cpu), case, max_pixels, concurrency).await
                 }
                 None => {
                     let a = adapter_with(&base_url, max_pixels, cpu).await;

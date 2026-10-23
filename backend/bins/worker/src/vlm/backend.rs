@@ -56,7 +56,9 @@ pub enum Stop {
     Refusal,
 }
 
-/// The tokens a call used, as the backend reported them.
+/// The tokens a call used, as the backend reported them. `input` is the API's `input_tokens`
+/// alone, which is every input token while the hosted backend sets no `cache_control`; with
+/// caching on, the cache-creation and cache-read tokens would have to be added to it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Tokens {
     /// Input tokens, images included.
