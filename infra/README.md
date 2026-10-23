@@ -14,7 +14,7 @@ sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
 ```
 
-Check that a container sees the GPU. SELinux is enforcing, so every container that touches the GPU or a mounted path needs `label=disable`:
+Check that a container sees the GPU. SELinux is enforcing, but Docker CE runs here without `selinux-enabled`, so it doesn't label containers: this works with or without `--security-opt label=disable`, and so does reading a bind-mounted file under the home directory (✓ ran 2026-10-23). `rig.compose.yml`'s `vllm` keeps the option for the day dockerd's SELinux support is turned on; there it turns off SELinux confinement for that container only.
 
 ```bash
 docker run --rm --gpus all --security-opt label=disable \
@@ -51,11 +51,20 @@ Measured on 2026-10-16:
 | Mode | `VLM_GPU_MEM_UTIL` | Checkpoint | KV cache | Use for |
 |---|---|---|---|---|
 | Desktop | 0.78 | Qwen3-VL-8B **AWQ** | 2.93 GiB, 21,344 tokens at 16,384 max length | Day-1 checks and prompt work, one job at a time |
-| Desktop budget | 0.78 | **Qwen3.5-9B AWQ (chosen)**, `VLM_MAX_NUM_SEQS=2` ✓ ran 2026-10-20 | 2.45 GiB, 65,536 tokens (4 times the concurrency at 16,384); 8.41 GiB of weights; 12,500 MiB peak; healthy after 151 s | Everything, with 2 slots: the 65 benchmark cases ran as fast as at 0.90, with no preemption. Measured headless, so the desktop's 2.3–2.9 GB on top makes 14.8–15.4 of 16.3 GB |
-| Desktop, logged in | 0.78 | Qwen3.5-9B AWQ (chosen), `VLM_MAX_NUM_SEQS=2` ✓ ran 2026-10-22 | The same 2.45 GiB and 65,536 tokens; the desktop 330 MiB (a fresh login, no apps open); 13,058 of 16,303 MiB at the start-up peak, 12,796 during the run; healthy after 151 s | The demo: the 65 benchmark cases in 204 s at 2 at once (214 s headless), no preemption ([report](../ml/training/eval/reports/vlm-bench-2026-10-22-qwen35-awq-desktop.md)). vLLM's own peak, about 12.7 GB, plus the desktop's 2.3–2.9 GB with its apps open makes 15.0–15.6 of 16.3 GB, by arithmetic |
+| Desktop budget | 0.78 | **Qwen3.5-9B AWQ (chosen)**, `VLM_MAX_NUM_SEQS=2` ✓ ran 2026-10-20 | 2.45 GiB, 65,536 tokens (4 times the concurrency at 16,384); 8.41 GiB of weights; 12,500 MiB peak; healthy after 151 s | Everything, with 2 slots: the 65 benchmark cases ran as fast as at 0.90, with no preemption. Measured headless, so the desktop's 2.3–2.9 GB on top makes about 14,800–15,400 of 16,303 MiB |
+| Desktop, logged in | 0.78 | Qwen3.5-9B AWQ (chosen), `VLM_MAX_NUM_SEQS=2` ✓ ran 2026-10-22 | The same 2.45 GiB and 65,536 tokens; the desktop 330 MiB (a fresh login, no apps open); 13,058 of 16,303 MiB at the start-up peak, 12,796 during the run; healthy after 151 s | The demo: the 65 benchmark cases in 204 s at 2 at once (214 s headless), no preemption ([report](../ml/training/eval/reports/vlm-bench-2026-10-22-qwen35-awq-desktop.md)). vLLM's own peak, 13,058 − 330 = 12,728 MiB, plus the desktop's 2.3–2.9 GB with its apps open makes about 15,000–15,600 of 16,303 MiB, by arithmetic |
 | Desktop | 0.78 | Qwen3-VL-8B FP8 | **Doesn't start:** 10.37 GiB of weights leave 0.99 GiB of KV (0.59 GiB with an FP8 cache) | — |
 | Headless | 0.90 | Qwen3-VL-8B FP8 (the fallback) | 2.4 GiB, 17,440 tokens; 16,528 with `VLM_MAX_NUM_SEQS=2` | Full-size runs and benchmarks |
 | Headless | 0.90 | Qwen3.5-9B AWQ (chosen), `VLM_MAX_NUM_SEQS=2` ✓ ran | 115,550 tokens (7.05 times the concurrency at 16,384); 8.41 GiB of weights; 13,686 of 16,303 MiB used; healthy after 150 s | Full-size runs and benchmarks |
+
+### Beside the desktop, on demo day
+
+vLLM checks at start that 0.78 of the card is free, then takes its weights, KV cache and CUDA graphs. Its own use still moves with the jobs: on Oct 22 it held 11,730 MiB when ready and 12,458 MiB after the run, and about 12,728 MiB at its start-up profiling peak, which is what it plans for. That leaves the desktop 3,575 MiB.
+
+- **If the desktop holds more than 3,587 MiB (0.22 of the card) when vLLM starts,** vLLM refuses to start.
+- **If the desktop grows while vLLM serves,** whichever allocates next when the card is full fails. That can be the desktop's apps (a browser falls back to software rendering or loses its GPU process, windows go black) or vLLM, on a job that needs back the memory it freed after profiling, which ends its engine. Neither has been provoked (*unverified*).
+- **Before serving:** close what draws on the card and isn't needed (games, browsers with hardware acceleration, Discord, Spotify, Zoom), and check with `nvidia-smi` that the desktop holds well under 3,575 MiB before `up -d vllm`. Open nothing new on `sam-linux` while it serves.
+- **If vLLM stops while serving:** stop the VLM worker too (`vlm-worker-nv`, once [P6](../docs/vision/dev-roadmap.md#phase-2-oct-1819-real-models-the-day-2-benchmark) adds it), so the hosted fallback worker takes the `vlm` jobs 15 seconds after they're queued ([architecture 8.4](../docs/architecture/README.md#84-job-leasing-and-fallback)). Then `docker compose -f infra/rig.compose.yml up -d vllm`, wait for `/health` (about 2.5 minutes), and start the worker again.
 
 ### Going headless
 
@@ -66,7 +75,7 @@ Work from a laptop. Every desktop program closes, so save first.
 3. Plasma 6 runs KWin, plasmashell and every app as **user** units, which survive both the isolate and `loginctl terminate-session`. Stop them with `systemctl --user stop graphical-session.target app.slice`. tmux, sshd, Tailscale and Docker keep running.
 4. `nvidia-smi` should show no processes and about 34 MiB used. Then `VLM_GPU_MEM_UTIL=0.90 docker compose -f infra/rig.compose.yml up -d vllm`.
 
-To return: `down` the service, then `sudo systemctl isolate graphical.target`, log in at the screen, and use 0.78 again. Qwen3.5-9B AWQ, the chosen model, runs at 0.78 with 2 slots; only Qwen3-VL FP8 needs headless.
+To return: `down` the service, then `sudo systemctl isolate graphical.target`, log in at the screen, and use 0.78 again. If the login stays on a black screen, the user's D-Bus socket closed with the last desktop session while SSH kept the user manager up: `systemctl --user start dbus.socket`, end the hung `startplasma-wayland`, and log in again (✓ seen 2026-10-22). Qwen3.5-9B AWQ, the chosen model, runs at 0.78 with 2 slots; only Qwen3-VL FP8 needs headless.
 
 ## 4. Switching checkpoints
 
