@@ -2859,7 +2859,7 @@ ORDER BY similarity DESC LIMIT $k;";
 | `delete_records`, `delete_chunks_from`, `delete_source_records` | `DELETE_RECORDS` (`vendor_id IN $vendor_ids` on `farm_record_connector`); `DELETE_CHUNKS_FROM`, a key range `farm_record:[$connector, $vendor_id, $from]..=[$connector, $vendor_id, ..]`; `DELETE_SOURCE_RECORDS`, by the `source` stored on each record (index `farm_record_source`), 500 at a time |
 | `source_vendor_ids_since` | `SOURCE_VENDOR_IDS_SINCE`, the same source filter with `at >= $since` |
 | `garden_record_count` | `GARDEN_RECORD_COUNT` on `farm_record_garden` |
-| `garden_has_records` | `GARDEN_HAS_RECORDS`: at most one id on `farm_record_garden`, leaving out a connector being deleted as `SEARCH` does; the plan writer asks before embedding its query (EON E5.4) ✓ `the_search_stays_in_its_garden_and_ranks_by_similarity` |
+| `garden_has_records` | `GARDEN_HAS_RECORDS`: at most one id on `farm_record_garden`, leaving out a connector being deleted as `SEARCH` does; the plan writer asks before embedding its query (EON E5.4) ✓ `the_search_stays_in_its_garden_and_ranks_by_similarity`, `the_record_check_leaves_out_only_a_deleting_connector` |
 | `search_records`, `search_records_for_plan` | `SEARCH` below (EON gap G7): `kind`, `since`, `until` and `author` filters (gap G12) ✓ `the_search_filters_by_until_and_author`. The first takes the member's proof (the chat's tool), the second the scan's garden (the plan writer, EON E5.4); both run the same query ✓ `the_search_stays_in_its_garden_and_ranks_by_similarity` |
 | `delete_records_before` | `DELETE_RECORDS_BEFORE`, Slack messages only, on `farm_record_kind_at`, 500 at a time |
 
@@ -3120,6 +3120,7 @@ The store returns the domain's `StoreError` ([domain 6](domain.md#6-errors)); `a
 | `deletes_by_item_chunk_and_source` | `source_vendor_ids_since` by stored source and time (`C10/` isn't `C1`'s); a re-chunked document keeps chunk 0; delete by item; delete by source leaves the other channels' records |
 | `a_drive_source_is_all_its_records` | A Drive connector's folder is all its records |
 | `the_search_stays_in_its_garden_and_ranks_by_similarity` | Hits ranked by cosine, `k`, `kind` and `since`; another garden's record with the exact query vector never comes back; a deleting connector's records leave at once |
+| `the_record_check_leaves_out_only_a_deleting_connector` | With one of a garden's two connectors being deleted, `garden_has_records` and `search_records_for_plan` follow the other: true and its record only, then false once its records are gone (EON E5.4) |
 | `counts_cleanup_and_deletion` | `garden_record_count` and `record_count` (501); the 180-day cleanup in batches; the pending cleanup; a connector's deletion in batches of 500, records before the connector, only once it is `deleting` |
 | `plans_and_messages_carry_farm_citations` | A plan's `farm_records` and a step's `farm_citations`, a message's `farm_citations`, through the store; a plan and messages whose fields were removed and defined again (no backfill) read as empty |
 | `migrations.rs` | The migration runner: order, records, the hash lock, a changed, missing or out-of-order file, a failing file, a raced file, the knowledge set replaced and re-applied after a numbered file (section 4 lists each test) |

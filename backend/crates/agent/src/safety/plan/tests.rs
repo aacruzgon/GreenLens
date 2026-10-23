@@ -189,6 +189,14 @@ fn farm_citations_need_a_given_record_and_a_knowledge_source() {
         assert_eq!(rules(&v), [PlanRule::UnknownFarmRecord], "{raw}");
     }
 
+    // A long made-up id is repeated in the retry message only in part.
+    let mut s = step("s1", 1);
+    s.farm_citations = vec![format!("01JAX3K9T6R2B8V0QZ4M7D1E5C.0.{}", "é".repeat(500))];
+    let v = validate_plan(draft(vec![s]), &kb.ctx(false));
+    let reason = &v.failures[0].reason;
+    assert!(reason.contains("é…"), "{reason}");
+    assert!(reason.chars().count() < 200, "{reason}");
+
     // Two steps cite the spray log, one of them twice, and a third cites none: each step lists
     // it once and the plan resolves it once.
     let mut s1 = step("s1", 1);

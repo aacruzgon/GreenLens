@@ -829,6 +829,50 @@ async fn the_search_stays_in_its_garden_and_ranks_by_similarity() {
     assert!(!store.garden_has_records(f.garden).await.unwrap());
 }
 
+/// The plan writer's check and search follow the connectors that stay: with one of a garden's
+/// two connectors being deleted, the garden has records while the other holds some, and none
+/// once it holds none.
+#[tokio::test]
+async fn the_record_check_leaves_out_only_a_deleting_connector() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let owner = owner_of(&store, &f).await;
+    let going = active_slack(&store, &f, f.garden).await;
+    let staying = active_slack(&store, &f, f.garden).await;
+    for (c, vendor_id, text, i) in [
+        (going, "C1/1.000100", "going", 0),
+        (staying, "C2/1.000100", "staying", 1),
+    ] {
+        store
+            .upsert_records(
+                c,
+                vec![record(c, vendor_id, 0, text, Some(one_hot(i)), t0())],
+            )
+            .await
+            .unwrap();
+    }
+    store.start_connector_deletion(owner, going).await.unwrap();
+
+    assert!(store.garden_has_records(f.garden).await.unwrap());
+    let hits = store
+        .search_records_for_plan(
+            f.garden,
+            &Embedding(one_hot(0)),
+            FarmRecordFilter::default(),
+            10,
+        )
+        .await
+        .unwrap();
+    let texts: Vec<&str> = hits.iter().map(|h| h.hit.text.as_str()).collect();
+    assert_eq!(texts, ["staying"]);
+
+    store
+        .delete_source_records(staying, "C2".into())
+        .await
+        .unwrap();
+    assert!(!store.garden_has_records(f.garden).await.unwrap());
+}
+
 /// `until` keeps what came before the instant; `author` matches part of the display name,
 /// ignoring case, and never a record without an author (EON gap G12).
 #[tokio::test]

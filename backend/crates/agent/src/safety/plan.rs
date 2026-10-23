@@ -424,7 +424,10 @@ fn check_step(
             }
             _ => fail(
                 PlanRule::UnknownFarmRecord,
-                format!("farm record {raw} is not one you were given"),
+                format!(
+                    "farm record {} is not one you were given",
+                    truncated(raw, MAX_ECHOED_ID)
+                ),
             ),
         }
     }
@@ -493,6 +496,17 @@ fn targets_neighbour_problem(
                 .is_some_and(|seed| seed.caused_by.contains(o))
         }),
     })
+}
+
+/// The most characters of a model-written id a retry message repeats.
+const MAX_ECHOED_ID: usize = 120;
+
+/// `text` cut to at most `max` characters, on a character boundary, with "…" when cut.
+fn truncated(text: &str, max: usize) -> std::borrow::Cow<'_, str> {
+    match text.char_indices().nth(max) {
+        Some((end, _)) => format!("{}…", &text[..end]).into(),
+        None => text.into(),
+    }
 }
 
 fn join(ids: &[ProblemId]) -> String {
