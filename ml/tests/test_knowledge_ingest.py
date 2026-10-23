@@ -84,6 +84,24 @@ def test_fetch_obeys_robots_names_itself_and_never_retries_a_refusal(seed_dir, t
     assert [u for u, _ in seen if "ok" in u] == []
 
 
+def test_fetch_saves_a_pdf_as_one(seed_dir, tmp_path):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text="")
+        return httpx.Response(200, content=b"%PDF-1.4\n...", headers={"content-type": "application/pdf"})
+
+    seed = load(seed_dir)
+    seed.sources = [{"id": "guide", "title": "G", "publisher": "P", "url": "https://ext.example/g.pdf",
+                     "retrieved_at": "2026-10-22"}]
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "guide.html").write_text("an old page")
+    f = fetch.Fetcher(httpx.Client(transport=httpx.MockTransport(handler)), sleep=lambda s: None, clock=lambda: 0.0)
+    assert fetch.run(seed, raw, refresh=True, fetcher=f) == []
+    assert (raw / "guide.pdf").read_bytes().startswith(b"%PDF-")
+    assert not (raw / "guide.html").exists(), "chunk.py reads the .pdf first, so an old page can't linger"
+
+
 # --- chunk -----------------------------------------------------------------------------------
 
 PAGE = """<html><body><nav><p>Home | Garden</p></nav>
@@ -140,6 +158,90 @@ def test_chunk_reads_an_edis_document_from_its_page_data():
     page = ('<html><body><div>menu</div><script id="__NEXT_DATA__" type="application/json">'
             + json.dumps({"props": {"pageProps": {"details": {"docContent": doc}}}}) + "</script></body></html>")
     assert chunk.chunks("e", chunk.blocks(page))[0]["text"] == "Yellow stippling on the upper leaf surface."
+
+
+def _pdf(pages: list[list[tuple[float, float, float, str]]]) -> bytes:
+    """A letter-size PDF in Helvetica with each (x, y, size, text) line where it says."""
+    objs = ["<< /Type /Catalog /Pages 2 0 R >>", "", "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    kids = []
+    for lines in pages:
+        esc = lambda t: t.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        stream = "".join(f"BT /F1 {s} Tf {x} {y} Td ({esc(t)}) Tj ET\n" for x, y, s, t in lines)
+        objs.append(f"<< /Length {len(stream)} >>\nstream\n{stream}endstream")
+        objs.append(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                    f"/Resources << /Font << /F1 3 0 R >> >> /Contents {len(objs)} 0 R >>")
+        kids.append(len(objs))
+    objs[1] = f"<< /Type /Pages /Kids [{' '.join(f'{k} 0 R' for k in kids)}] /Count {len(kids)} >>"
+    out, offsets = b"%PDF-1.4\n", []
+    for n, o in enumerate(objs, 1):
+        offsets.append(len(out))
+        out += f"{n} 0 obj\n{o}\nendobj\n".encode("latin-1")
+    xref = len(out)
+    out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n".encode()
+    out += b"".join(f"{o:010d} 00000 n \n".encode() for o in offsets)
+    return out + f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+
+
+# A two-column page in the shape of Ontario's agronomy guide: a running header and a page number
+# in the margins, headings by size, an all-caps disease heading with its Latin name, a caption,
+# and a paragraph that runs on from the foot of the left column to the top of the right one.
+GUIDE = [[
+    (443, 760, 7, "16. Diseases of Field Crops"),
+    (54, 720, 24, "16. Diseases of Field Crops"),
+    (54, 690, 14, "Corn Diseases"),
+    (54, 670, 10, "COMMON RUST"),
+    (54, 658, 10, "(Puccinia sorghi)"),
+    (54, 640, 11, "Appearance: Early symptoms are yellow flecks on"),
+    (54, 627, 11, "either side of the leaf. They become brick-"),
+    (54, 614, 11, "red pustules that break through the surface."),
+    (54, 590, 11, "Management Strategies: Plant tolerant hybrids"),
+    (54, 577, 11, "in the garden, since the spores blow in from"),
+    (72, 500, 10, "Photo 16-1. Rust pustules on a corn leaf."),
+    (54, 26, 12, "361"),
+    (324, 730, 11, "the south on storm fronts each year."),
+    (324, 700, 10, "COMMON SMUT"),
+    (324, 688, 10, "(Ustilago zeae)"),
+    (324, 670, 10, "HEAD SMUT"),
+    (324, 652, 11, "Incidence: Galls form on the ears and tassels"),
+    (324, 639, 11, "and burst to release dark spores."),
+]]
+
+
+def test_chunk_reads_a_two_column_pdf_by_type_size(tmp_path):
+    path = tmp_path / "guide.pdf"
+    path.write_bytes(_pdf(GUIDE))
+    got = [(b.level, b.text) for b in chunk.pdf_blocks(chunk.pdf_lines(path))]
+    assert got == [
+        (1, "16. Diseases of Field Crops"),
+        (2, "Corn Diseases"),
+        (3, "COMMON RUST (Puccinia sorghi)"),
+        (0, "Appearance: Early symptoms are yellow flecks on either side of the leaf. They become "
+            "brick-red pustules that break through the surface."),
+        (0, "Management Strategies: Plant tolerant hybrids in the garden, since the spores blow in "
+            "from the south on storm fronts each year."),
+        (3, "COMMON SMUT (Ustilago zeae) / HEAD SMUT"),
+        (0, "Incidence: Galls form on the ears and tassels and burst to release dark spores."),
+    ]
+    recs = chunk.chunks("g", chunk.pdf_blocks(chunk.pdf_lines(path)))
+    assert recs[0]["heading"] == "Corn Diseases › COMMON RUST (Puccinia sorghi)"
+
+
+def test_chunk_pdf_keeps_a_table_sections_heading_and_a_suspended_hyphens_space():
+    # Alan's review of #143: "second-or third-leaf", and a table-only section renaming the next.
+    line = lambda x, y, size, text: chunk.PdfLine(1, x, y, 612, 792, text, [size] * len(text.replace(" ", "")))
+    got = [(b.level, b.text) for b in chunk.pdf_blocks([
+        line(54, 700, 10, "LEAF SCORCH"),
+        line(200, 688, 9, "Cause"), line(300, 688, 9, "Spread"), line(200, 676, 9, "Wind"),
+        line(54, 660, 10, "TAR SPOT"),
+        line(54, 648, 10, "(Phyllachora maydis),"),
+        line(54, 610, 10, "GRAY TAR SPOT"),
+        line(54, 594, 11, "Appearance: Black raised spots at the second-"),
+        line(54, 581, 11, "or third-leaf stage, and light-"),
+        line(54, 568, 11, "tan streaks follow.")])]
+    level = got[0][0]
+    assert got == [(level, "LEAF SCORCH"), (level, "TAR SPOT / GRAY TAR SPOT"),
+                   (0, "Appearance: Black raised spots at the second- or third-leaf stage, and "
+                       "light-tan streaks follow.")]
 
 
 # --- the model, faked ------------------------------------------------------------------------
@@ -294,6 +396,52 @@ def test_tag_uses_the_plans_model_for_a_source_unless_one_is_given(seed_dir, tmp
 
     assert models() == ["claude-opus-5-5", "claude-sonnet-5-5"]
     assert models(model_id="claude-haiku-5-5") == ["claude-haiku-5-5", "claude-haiku-5-5"]
+
+
+def tag_both(seed_dir, tmp_path, committed, texts, reply, **kw):
+    """Runs tag on source `both` with `committed` in seed/chunks; returns the new seed/chunks by id."""
+    (seed_dir / "chunks/both.jsonl").write_text("".join(json.dumps(c) + "\n" for c in committed))
+    chunks_dir = tmp_path / "chunks"
+    chunks_dir.mkdir(exist_ok=True)
+    (chunks_dir / "both.jsonl").write_text("".join(
+        json.dumps({"id": f"both.{i}", "source_id": "both", "heading": "", "text": x}) + "\n"
+        for i, x in enumerate(texts, 1)))
+    tag.run(seed_dir, tmp_path / "no-plan.yaml", chunks_dir, tmp_path / "tags",
+            llm.Llm(FakeClient(reply), tmp_path / "c.jsonl"), dose=no_dose, sanitize=identity, **kw)
+    return {json.loads(l)["id"]: json.loads(l) for l in (seed_dir / "chunks/both.jsonl").read_text().splitlines()}
+
+
+SIGNED = {"id": "both.1", "source_id": "both", "crop": "tomato", "problem": "tomato_early_blight",
+          "organism": None, "topic": "symptoms", "text": "Rings on old leaves."}
+NULL_PICK = lambda kw: {"relevant": True, "crop": None, "problem": None, "organism": None, "topic": "conditions",
+                        "problems": ["tomato_early_blight", "tomato_late_blight"], "organisms": []}
+
+
+def test_tag_keeps_a_committed_tag_the_new_run_leaves_null(seed_dir, tmp_path):
+    # A page on two crops, re-tagged once the second crop's problem is in the plan: the model can't
+    # pick one crop, but the excerpt signed for tomato must stay findable by a tomato search.
+    changed = {**SIGNED, "id": "both.2", "text": "Old wording."}
+    kept = tag_both(seed_dir, tmp_path, [SIGNED, changed], ["Rings on old leaves.", "New wording."], NULL_PICK)
+    assert kept["both.1"] == {**SIGNED, "topic": "conditions"}, "the null picks keep the committed tags"
+    assert (kept["both.2"]["crop"], kept["both.2"]["topic"]) == (None, "conditions"), "new text, new tags"
+    lists = json.loads((tmp_path / "tags/both.jsonl").read_text().splitlines()[0])["problems"]
+    assert lists == ["tomato_early_blight", "tomato_late_blight"], "extraction reads the new lists"
+
+
+def test_tag_matches_committed_chunks_by_text_not_id(seed_dir, tmp_path):
+    # A chunker fix adds a chunk in front, so the signed text is now both.2 (Alan's review of #143).
+    kept = tag_both(seed_dir, tmp_path, [SIGNED], ["A new first paragraph.", "Rings on old leaves."], NULL_PICK)
+    assert (kept["both.2"]["crop"], kept["both.2"]["problem"]) == ("tomato", "tomato_early_blight")
+    assert kept["both.1"]["crop"] is None, "a new text keeps nothing"
+
+
+def test_tag_takes_a_new_pick_and_retag_takes_the_new_run_as_it_is(seed_dir, tmp_path):
+    # A better model re-tags a badly tagged source (#51): its picks replace the committed ones.
+    pepper = lambda kw: {**NULL_PICK(kw), "crop": "pepper", "problem": None}
+    kept = tag_both(seed_dir, tmp_path, [SIGNED], ["Rings on old leaves."], pepper)
+    assert (kept["both.1"]["crop"], kept["both.1"]["problem"]) == ("pepper", "tomato_early_blight")
+    kept = tag_both(seed_dir, tmp_path, [SIGNED], ["Rings on old leaves."], pepper, retag={"both"})
+    assert (kept["both.1"]["crop"], kept["both.1"]["problem"]) == ("pepper", None)
 
 
 # --- extract ---------------------------------------------------------------------------------

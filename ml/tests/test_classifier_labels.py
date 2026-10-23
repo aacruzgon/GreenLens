@@ -1,5 +1,7 @@
 """classifier_labels.yaml from the disease head (training.md §8)."""
 
+from types import SimpleNamespace
+
 import pytest
 
 from ml.training.labels import classifier_labels as cl
@@ -21,6 +23,17 @@ def test_a_species_goes_in_only_when_every_class_maps():
     assert left == {"apple": ["apple_scab"]}, "apple's healthy class doesn't bring it in alone"
     keep, left = cl.rows(LABELS, {"tomato_early_blight"}, BOTH)
     assert keep == [] and set(left) == BOTH
+
+
+def test_a_draft_problem_doesnt_map_its_class():
+    """Unsigned drafts (#143) leave their species to the VLM until they're signed (Alan's review)."""
+    seed = SimpleNamespace(problems=[{"id": "apple_scab", "reviewed_by": ""},
+                                     {"id": "tomato_early_blight", "reviewed_by": "sam-michaels"},
+                                     {"id": "tomato_leaf_mold", "reviewed_by": "sara-lahourpour"}])
+    assert cl.signed_problems(seed) == {"tomato_early_blight", "tomato_leaf_mold"}
+    keep, left = cl.rows(LABELS, cl.signed_problems(seed), BOTH)
+    assert [r["species_id"] for r in keep] == ["tomato"] * 3
+    assert left == {"apple": ["apple_scab"]}
 
 
 def test_a_species_without_a_species_file_stays_out():

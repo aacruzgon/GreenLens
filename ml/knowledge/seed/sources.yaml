@@ -5,7 +5,8 @@
 # Garden and Ontario pages are kept nearly whole, and the facts-only sources not at all. The
 # profiles state facts in our own words.
 #
-# Terms, as each publisher states them (checked 2026-10-20):
+# Terms, as each publisher states them (checked 2026-10-20; again on 2026-10-22 for #125's five
+# sources, the Ontario chapter by its guide's page, the ISU and EDIS articles each on its own page):
 # - Ontario (ontario.ca/page/copyright-information): "If credit is given and Crown copyright is
 #   acknowledged, the materials may be reproduced for non-commercial purposes if no changes are
 #   made to the original content." Commercial use needs a licence from the King's Printer.
@@ -31,6 +32,12 @@
   url: https://www.ontario.ca/page/bacterial-diseases-tomato-bacterial-spot-bacterial-speck-and-bacterial-canker
   licence: "Crown copyright. Non-commercial reproduction without changes, with credit; commercial use needs a licence. Credit: Janice LeBoeuf, Mike Celetti, Diane Cuppels, Jim Dick, Ron Pitblado and Steve Loewen; Ontario Ministry of Agriculture, Food and Agribusiness. © King's Printer for Ontario, 2012–2026."
   retrieved_at: 2026-10-19
+- id: ontario_field_crop_diseases
+  title: "Agronomy Guide for Field Crops (Publication 811), Chapter 16: Diseases of Field Crops"
+  publisher: Ontario Ministry of Agriculture, Food and Agribusiness
+  url: https://www.ontario.ca/files/2022-10/omafra-agronomy-guide-for-field-crops-chapter-16-en-2022-10-13.pdf
+  licence: "Crown copyright. Non-commercial reproduction without changes, with credit; commercial use needs a licence. The chapter is a PDF, linked from the guide's page (ontario.ca/page/publication-811-agronomy-guide-field-crops; published 2022-10-24, updated 2024-01-16). Credit: Agronomy Guide for Field Crops, Publication 811, Chapter 16; Ontario Ministry of Agriculture, Food and Agribusiness. © King's Printer for Ontario, 2012–2026."
+  retrieved_at: 2026-10-22
 
 # --- Iowa State University Extension and Outreach, Yard and Garden ---------------------------
 - id: isu_septoria_leaf_spot
@@ -69,6 +76,24 @@
   url: https://yardandgarden.extension.iastate.edu/how-to/growing-tomatoes-home-garden
   licence: "© Iowa State University of Science and Technology (the page's only notice). Unlike the Yard and Garden encyclopedia articles, this how-to page carries no republishing note, so it is used for facts only: cited by the tomato care profile, with no wording committed. Credit: Aaron Steil, Yard and Garden, Iowa State University Extension and Outreach (last reviewed April 2024)."
   retrieved_at: 2026-10-20
+- id: isu_apple_scab
+  title: Apple Scab
+  publisher: Iowa State University Extension and Outreach, Yard and Garden
+  url: https://yardandgarden.extension.iastate.edu/encyclopedia/apple-scab
+  licence: "May be republished without further permission if published as written, with credit to the author, Yard and Garden, and Iowa State University Extension and Outreach. Credit: Lina M Rodriguez Salamanca, Yard and Garden, Iowa State University Extension and Outreach (last reviewed April 2022)."
+  retrieved_at: 2026-10-22
+- id: isu_cedar_apple_rust
+  title: Cedar-Apple Rust
+  publisher: Iowa State University Extension and Outreach, Yard and Garden
+  url: https://yardandgarden.extension.iastate.edu/encyclopedia/cedar-apple-rust
+  licence: "May be republished without further permission if published as written, with credit to the author, Yard and Garden, and Iowa State University Extension and Outreach. Credit: Lina M Rodriguez Salamanca, Yard and Garden, Iowa State University Extension and Outreach (last reviewed April 2022)."
+  retrieved_at: 2026-10-22
+- id: isu_black_rot_grape
+  title: Black Rot of Grape
+  publisher: Iowa State University Extension and Outreach, Yard and Garden
+  url: https://yardandgarden.extension.iastate.edu/encyclopedia/black-rot-grape
+  licence: "May be republished without further permission if published as written, with credit to the author, Yard and Garden, and Iowa State University Extension and Outreach. Credit: Barbara Ambruzs, Yard and Garden, Iowa State University Extension and Outreach (last reviewed June 2026)."
+  retrieved_at: 2026-10-22
 
 # --- UF/IFAS EDIS ----------------------------------------------------------------------------
 - id: edis_in307_twospotted_spider_mite
@@ -83,6 +108,12 @@
   url: https://edis.ifas.ufl.edu/publication/IN286
   licence: "CC BY-NC-ND 4.0: non-commercial sharing with attribution, without changes. Credit: Heather J. McAuslane and Hugh A. Smith, Sweetpotato Whitefly B Biotype, Bemisia tabaci (Gennadius) (EENY-129/IN286), UF/IFAS Extension, EDIS, 2000, revised 2015, https://doi.org/10.32473/edis-in286-2002."
   retrieved_at: 2026-10-20
+- id: edis_pp362_bacterial_spot_pepper
+  title: Bacterial Spot of Pepper (PP362)
+  publisher: UF/IFAS Extension, EDIS
+  url: https://edis.ifas.ufl.edu/publication/PP362
+  licence: "CC BY-NC-ND 4.0: non-commercial sharing with attribution, without changes. Credit: Camille McAvoy, Pamela Roberts and Jeffrey Jones, Bacterial Spot of Pepper (PP362), UF/IFAS Extension, EDIS, 2021, reviewed 2024, https://doi.org/10.32473/edis-pp362-2021."
+  retrieved_at: 2026-10-22
 
 # --- Clemson HGIC (facts only: no wording committed) -----------------------------------------
 - id: clemson_hgic_tomato_diseases

@@ -19,8 +19,12 @@ own business). One the dose check fails on stays out of the seed, which never ca
 dose or a mixing ratio, wherever the page put one (`withheld`); extraction still reads it, for
 the advice around the rate, and the drafts it writes are dose-checked themselves. plan.yaml's
 `withheld_chunks` withholds the chunks a reviewer named the same way. Kept chunks go
-to seed/chunks/<source_id>.jsonl in the ChunkSeed shape; every decision goes to
-build/tags/<source_id>.jsonl, which extract.py reads, and the script prints a 10% sample per
+to seed/chunks/<source_id>.jsonl in the ChunkSeed shape. Where the new run picks no `crop`,
+`problem` or `organism` for a chunk whose text is already there (matched by text, so a shifted id
+doesn't matter), the committed tag stays: a new crop's problems can make the model's single pick
+null on a page about two crops. A pick the new run does make replaces the old one, and `--retag
+<source>` takes the new run's tags as they are. The lists in build/tags are always the new run's;
+every decision goes to build/tags/<source_id>.jsonl, which extract.py reads, and the script prints a 10% sample per
 source for the teammate's spot check.
 
 A source in plan.yaml's `facts_only_sources` has no reuse grant: its chunks are tagged and
@@ -122,9 +126,11 @@ def tag_chunk(model: llm.Llm, model_id: str, system: str, sch: dict, c: dict) ->
 
 def run(seed_root: Path = SEED, plan_path: Path = PLAN, chunks: Path = CHUNKS, tags: Path = TAGS,
         model: llm.Llm | None = None, model_id: str | None = None, dose=validate.cargo_dose_check,
-        sanitize=llm.sanitize, sources: list[str] | None = None, sample_seed: int = 0) -> dict:
+        sanitize=llm.sanitize, sources: list[str] | None = None, sample_seed: int = 0,
+        retag: set[str] = frozenset()) -> dict:
     """Tags every chunk file (or only `sources`); returns {source_id: {kept, dropped, sample}}.
-    Each source uses `model_id`, else its plan.yaml `tag_models` entry, else TAG_MODEL."""
+    Each source uses `model_id`, else its plan.yaml `tag_models` entry, else TAG_MODEL. A source in
+    `retag` doesn't keep its committed tags where the new pick is null."""
     seed = load(seed_root)
     plan = read_yaml(plan_path) if plan_path.exists() else {}
     crops, problems, organisms = ids(seed, plan)
@@ -151,10 +157,20 @@ def run(seed_root: Path = SEED, plan_path: Path = PLAN, chunks: Path = CHUNKS, t
         for d in decided:
             d["withheld"] = (f"dose check: {failing[d['id']]['reason']}" if d["id"] in failing
                              else f"withheld at review: {by_hand[d['id']]}" if d["id"] in by_hand else None)
-        kept = [{"id": d["id"], "source_id": source_id, "crop": d["crop"], "problem": d["problem"],
-                 "organism": d["organism"], "topic": d["topic"], "text": d["text"]}
-                for d in decided if not d["dropped"] and not d["withheld"]]
         target = seed_root / "chunks" / f"{source_id}.jsonl"
+        # A committed chunk keeps a single tag the new run leaves null: a new crop's problems can
+        # make the model's single pick null (a page on pepper and tomato). Matched by text, so a
+        # chunker fix that shifts ids doesn't lose it.
+        committed = {c["text"]: c for c in (json.loads(line) for line in target.read_text(encoding="utf-8")
+                                            .splitlines() if line.strip())} \
+            if target.exists() and source_id not in retag else {}
+        kept = []
+        for d in decided:
+            if d["dropped"] or d["withheld"]:
+                continue
+            old = committed.get(d["text"], {})
+            pick = {k: d[k] if d[k] is not None else old.get(k) for k in ("crop", "problem", "organism")}
+            kept.append({"id": d["id"], "source_id": source_id, **pick, "topic": d["topic"], "text": d["text"]})
         if kept and source_id not in facts_only:
             target.write_text("".join(json.dumps(k, ensure_ascii=False) + "\n" for k in kept),
                               encoding="utf-8", newline="\n")
@@ -176,10 +192,12 @@ def main() -> int:
     ap.add_argument("--seed", type=Path, default=SEED)
     ap.add_argument("--model", help="tag every source with this model, whatever plan.yaml says")
     ap.add_argument("--source", action="append", help="tag only this source (repeatable)")
+    ap.add_argument("--retag", action="append", default=[], metavar="SOURCE",
+                    help="take the new run's tags for this source, even where they're null (repeatable)")
     args = ap.parse_args()
     model = llm.Llm()
     try:
-        summary = run(args.seed, model=model, model_id=args.model, sources=args.source)
+        summary = run(args.seed, model=model, model_id=args.model, sources=args.source, retag=set(args.retag))
     except (llm.LlmError, validate.DoseCheckUnavailable) as e:
         print(f"FAIL {e}", file=sys.stderr)
         return 2

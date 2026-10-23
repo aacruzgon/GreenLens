@@ -1,0 +1,71 @@
+# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
+# corn_northern_leaf_blight.review.md and signs reviewed_by and reviewed_at.
+id: corn_northern_leaf_blight
+name: Northern corn leaf blight
+kind: fungal
+affects:
+- corn
+caused_by: []
+damage_patterns: []
+prevalence: common
+indicators:
+- id: corn_northern_leaf_blight.elliptical_grey_tan_streaks
+  text: Long, oval (elliptical) streaks on the leaves, grey-green or tan in colour.
+  question: Are there long, oval, grey-green or tan streaks on the leaves?
+  weight: 3
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: corn_northern_leaf_blight.long_lesion_size
+  text: The streaks can be long, about 2 to 15 cm, longer than grey leaf spot's.
+  question: Are the streaks long, stretching along a large part of the leaf?
+  weight: 2
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: corn_northern_leaf_blight.starts_on_lower_leaves
+  text: The streaks most often start on the lower leaves.
+  question: Are the streaks mostly on the lower leaves of the plant?
+  weight: 2
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - whole_plant
+- id: corn_northern_leaf_blight.lesions_merge_blighted_areas
+  text: As the disease develops, streaks may join into large dead (blighted) areas.
+  question: Have several streaks run together into large dead areas on the leaf?
+  weight: 1
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+  - whole_plant
+- id: corn_northern_leaf_blight.whole_leaves_burned
+  text: In some cases whole leaves die and look burned.
+  question: Do whole leaves look dead and dried, as if burned?
+  weight: 1
+  discriminating: false
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+conditions:
+  notes: Moderate temperatures with long spells of humid or rainy weather favour the disease. Spores spread
+    from old corn residue on the ground by wind and splashing rain.
+  temp_c:
+    max: 27
+    min: 18
+looks_like:
+- problem: corn_gray_leaf_spot
+  how_to_tell: Grey leaf spot makes narrow, rectangular, light-tan spots with straight sides that run
+    along the leaf veins, about 2 to 7 cm long, turning grey as they age; it shows soon after tasselling.
+    Northern corn leaf blight makes oval (elliptical), grey-green or tan streaks that can be much longer,
+    about 2 to 15 cm.
+treatments:
+- resistant_hybrids_nclb
+- rotate_and_till_corn_residue
+sources:
+- ontario_field_crop_diseases
+reviewed_by: ''
+reviewed_at: ''
