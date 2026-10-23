@@ -878,6 +878,73 @@ async fn a_question_photo_is_segmented_in_a_species_change_run() {
     assert!(!segmentation.replace_imageless);
 }
 
+/// A question photo's `partial_result` covers that photo alone and replaces nothing tied to
+/// no image, as the job's `complete` does ([contracts 3]): the run's segmentation and masks
+/// on the other photos stay.
+#[tokio::test]
+async fn a_question_photos_partial_result_covers_that_photo_alone() {
+    let mut store = FakeStore::default();
+    store.scan_repo.expect_snapshot().returning(|_| {
+        let mut snap = snapshot_with_photos();
+        snap.scan.images[1].answers_question_id = Some(QUESTION.parse().unwrap());
+        Ok(snap)
+    });
+    let writes = Arc::new(Mutex::new(Vec::new()));
+    let recorded = Arc::clone(&writes);
+    store
+        .analysis_repo
+        .expect_store_partial()
+        .times(2)
+        .returning(move |_, write| {
+            recorded.lock().unwrap().push(write);
+            Ok(ObservationDiff::default())
+        });
+    let pipeline = pipeline(Arc::new(store), Arc::new(Recorder::default()));
+    let regions: Vec<domain::jobs::PerceptionRegion> =
+        serde_json::from_value(masked_result()["regions"].clone()).unwrap();
+    let partial = |question| {
+        let mut job = job(JobKind::Perception);
+        job.question = question;
+        let events = vec![domain::jobs::WorkerEvent::PartialResult {
+            stage: Stage::Segmentation,
+            result: domain::jobs::PartialResult::Segmentation {
+                regions: regions.clone(),
+            },
+        }];
+        (job, events)
+    };
+
+    let (question_job, events) = partial(Some(QUESTION.parse().unwrap()));
+    pipeline
+        .worker_events(&lease(), question_job, events)
+        .await
+        .expect("stored");
+    let (run_job, events) = partial(None);
+    pipeline
+        .worker_events(&lease(), run_job, events)
+        .await
+        .expect("stored");
+
+    let writes = writes.lock().unwrap().clone();
+    let covered: Vec<_> = writes
+        .iter()
+        .map(|w: &domain::ports::ObservationWrite| {
+            (
+                w.images.iter().map(ToString::to_string).collect::<Vec<_>>(),
+                w.replace_imageless,
+            )
+        })
+        .collect();
+    assert_eq!(
+        covered,
+        [
+            (vec![OTHER_IMAGE.to_owned()], false),
+            (vec![LEAF_IMAGE.to_owned()], true),
+        ],
+        "the question's photo alone, then the run's photos without it"
+    );
+}
+
 /// `GET /scans/{id}` signs a stored mask as `mask_url`, and that URL serves the PNG.
 #[tokio::test]
 async fn a_stored_mask_is_signed_on_the_scan_and_served_as_png() {

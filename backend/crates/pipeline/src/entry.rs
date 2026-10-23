@@ -288,13 +288,7 @@ impl Pipeline {
     ) -> Result<Option<domain::ports::ObservationWrite>, PipelineError> {
         use domain::jobs::PartialResult as P;
         let snap = self.deps.store.snapshot(job.scan).await?;
-        let images: Vec<_> = snap
-            .scan
-            .images
-            .iter()
-            .filter(|i| i.kind.is_plant_or_soil())
-            .map(|i| i.id)
-            .collect();
+        let images = covered_images(&snap, job);
         let names = std::collections::BTreeMap::new();
         let ctx = results::ObsContext {
             scan: job.scan,
@@ -312,7 +306,7 @@ impl Pipeline {
                 .into_iter()
                 .next()
         };
-        Ok(match result {
+        let write = match result {
             P::PlantCheck { plant_present } => as_result(empty_perception(Some(plant_present))),
             P::Segmentation { regions } => as_result(domain::jobs::PerceptionResult {
                 regions,
@@ -333,7 +327,15 @@ impl Pipeline {
                 self.add_organism_lengths(&snap, &mut write).await;
                 Some(write)
             }
-        })
+        };
+        // A question photo's observations replace nothing of the run's ([contracts 3]), as in
+        // the job's `done`.
+        Ok(write.map(|mut w| {
+            if job.question.is_some() {
+                w.replace_imageless = false;
+            }
+            w
+        }))
     }
 
     /// [contracts 7] organism length: sizes each organism finding on a photo with depth
