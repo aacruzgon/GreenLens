@@ -1,6 +1,6 @@
 {
   "platforms": ["apple"],
   "apple": {
-    "modules": ["LidarModule", "LidarGardenModule"]
+    "modules": ["LidarModule", "LidarGardenModule", "LidarModePickerModule"]
   }
 }

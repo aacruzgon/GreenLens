@@ -17,4 +17,5 @@ export { capabilities, useCapabilities, type Capabilities } from "./capabilities
 export { evaluation, sampleDepth } from "./depth";
 export { GardenMappingView, mapping, type GardenMappingHandle, type TrackingState } from "./mapping";
 export { liveActivity, type ScanActivityAlert, type ScanActivityAttributes, type ScanActivityDismissal, type ScanActivityState } from "./liveActivity";
+export { ModePickerView, type ModePickerItem, type ModePickerViewProps } from "./modePicker";
 export { GardenView, type GardenSelectEvent, type GardenViewBed, type GardenViewMode, type GardenViewPlant, type GardenViewProps, type GardenViewStatus } from "./garden3d";
