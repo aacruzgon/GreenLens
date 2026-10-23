@@ -17,14 +17,16 @@ export interface DiagnosisHeroProps {
   onInGarden: () => void;
 }
 
+/** The photo's height: 4:3.4 of the width (styles.css .scan-hero). */
+export const heroHeightFor = (width: number) => Math.round((width * 3.4) / 4);
+
 /** How far the name hangs below the photo's bottom edge (styles.css .profile-head: top calc(100% - 26px)). */
 const OVERHANG = 26;
 
 export function DiagnosisHero({ photo, ground, header, onBack, onInGarden }: DiagnosisHeroProps) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  // styles.css: the hero photo at 4:3.4 of the width.
-  const height = Math.round((width * 3.4) / 4);
+  const height = heroHeightFor(width);
   return (
     <View testID="diagnosis-hero">
       <PhotoTint source={photo?.source ?? null} accessibilityLabel={photo?.label ?? ""} ground={ground} height={height} />

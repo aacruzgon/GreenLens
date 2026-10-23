@@ -1,6 +1,7 @@
 // The web build draws the photo onto a small canvas and reads it back. A signed URL on another origin needs CORS
 // from the image host for getImageData; without it the read throws and the diagnosis keeps the wash.
 import { Asset } from "expo-asset";
+import type { ImageSource } from "expo-image";
 
 import type { Pixels } from "@/lib/png";
 
@@ -16,8 +17,9 @@ function load(src: string): Promise<HTMLImageElement> {
   });
 }
 
-export async function samplePixels(source: number | string, _key: string): Promise<Pixels> {
-  const src = typeof source === "number" ? Asset.fromModule(source).uri : source;
+export async function samplePixels(source: number | ImageSource): Promise<Pixels> {
+  const src = typeof source === "number" ? Asset.fromModule(source).uri : source.uri;
+  if (!src) throw new Error("no photo");
   const img = await load(src);
   const width = SAMPLE_WIDTH;
   const height = Math.max(1, Math.round((img.naturalHeight / img.naturalWidth) * width));

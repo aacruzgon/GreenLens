@@ -181,4 +181,15 @@ describe("the diagnosis and plan", () => {
     expect(screen.queryByTestId("task-check")).toBeNull();
     expect(screen.queryByTestId("result-feedback")).toBeNull();
   });
+
+  it("puts the ground behind the status bar once the photo has scrolled away", async () => {
+    await renderResult(await planned("yes"));
+    const edge = () => screen.getByTestId("top-edge", { includeHiddenElements: true }).props.accessibilityElementsHidden;
+    expect(edge()).toBe(true);
+    const scroll = (y: number) => fireEvent.scroll(screen.getByTestId("result-scroll"), { nativeEvent: { contentOffset: { y }, contentSize: { height: 3000, width: 390 }, layoutMeasurement: { height: 844, width: 390 } } });
+    await scroll(800);
+    expect(edge()).toBe(false);
+    await scroll(0);
+    expect(edge()).toBe(true);
+  });
 });

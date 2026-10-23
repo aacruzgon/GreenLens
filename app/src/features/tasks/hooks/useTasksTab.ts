@@ -1,7 +1,7 @@
 // The Tasks tab's view model (roadmap 10 item 9; screens 3.7): the garden's tasks grouped by due date in its time
 // zone, the Open, Done and Alerts views, and the swipe actions each task's source allows. Viewers read only.
-import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
 
 import { isApiError, useAllPlants, useAllTasks, useDeleteTask, useGarden, useUpdateTask } from "@/api";
 import { localToday } from "@/domain/format";
@@ -31,11 +31,13 @@ export function useTasksTab(gardenId: string) {
   const garden = useGarden(gardenId);
   const tasks = useAllTasks(gardenId);
   const plants = useAllPlants(gardenId);
-  const { complete, done, failed } = useCompleteTask();
+  const { complete, done, failed, clear } = useCompleteTask();
   const update = useUpdateTask();
   const remove = useDeleteTask();
   const [view, setView] = useState<TaskView>("open");
   const [problem, setProblem] = useState<string>();
+  // The tab stays mounted, so the tasks checked in Open leave it when the tab loses focus or the view changes.
+  useFocusEffect(useCallback(() => clear, [clear]));
 
   const role = garden.data?.my_role;
   const canWrite = can(role, "task.write");
@@ -46,7 +48,7 @@ export function useTasksTab(gardenId: string) {
   const sections = useMemo(() => {
     if (!tasks.data || !today) return undefined;
     const names = new Map((plants.data ?? []).map((p) => [p.id, p.name]));
-    // A task checked here stays in Open, checked, until the screen leaves (useCompleteTask).
+    // A task checked here stays in Open, struck through, until the tab loses focus or the view changes.
     const shown = view === "open" ? tasks.data.filter((t) => done.has(t.id) || (!t.done_at && !t.dismissed_at)) : tasksIn(view, tasks.data);
     const groups = view === "done" ? [{ key: "done", title: "Done", tasks: shown }] : groupByDue(shown, today);
     return groups.map((g) => ({
@@ -73,18 +75,23 @@ export function useTasksTab(gardenId: string) {
     void haptics.warning();
   };
 
+  // The garden gives the dates their time zone, so the list can't show without it.
+  const loadError = tasks.error ?? garden.error;
   return {
-    loading: !sections && !tasks.error,
-    error: tasks.error ? (isApiError(tasks.error) ? tasks.error.message : "Your tasks didn't load.") : undefined,
+    loading: !sections && !loadError,
+    error: loadError ? (isApiError(loadError) ? loadError.message : "Your tasks didn't load.") : undefined,
     refreshing: tasks.isRefetching,
     view,
     sections: sections ?? [],
     canWrite,
     problem: problem ?? (failed ? (failed.message ?? "That task didn't save. Try again.") : undefined),
     actions: {
-      setView,
+      setView: (next: TaskView) => {
+        clear();
+        setView(next);
+      },
       refresh: () => void Promise.all([tasks.refetch(), plants.refetch()]),
-      retry: () => void tasks.refetch(),
+      retry: () => void Promise.all([tasks.refetch(), garden.refetch()]),
       done: (t: Task) => {
         setProblem(undefined);
         if (canWrite) complete(t);

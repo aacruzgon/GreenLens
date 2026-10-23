@@ -35,4 +35,5 @@ export { LineIcon, type LineIconName, type LineIconProps } from "./composites/Li
 export { CitationList, CiteNumber, type CitationListProps } from "./composites/CitationList";
 export { PhotoTint, type PhotoTintProps } from "./composites/PhotoTint";
 export { BarButton, BAR_INK, type BarButtonProps } from "./composites/BarButton";
+export { TopEdge, TopScrim, useHeroScroll, type TopEdgeProps } from "./composites/TopEdge";
 export { photoTint, dominantHue, contrast, type PhotoTint as PhotoTintColors } from "./tint";

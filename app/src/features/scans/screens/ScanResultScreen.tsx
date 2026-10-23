@@ -3,13 +3,12 @@
 // ground tinted from it, the diagnosis sits centred over the faded edge, and the lists follow on cards over the
 // tint, with the plan's mini player at the bottom. It follows the light or dark scheme: it is not a camera screen.
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { StatusBar } from "expo-status-bar";
-import { ScrollView, View } from "react-native";
+import { ScrollView, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Button, CitationList, EmptyState, ErrorState, Skeleton, Text, gutter, space } from "@/ui";
+import { Button, CitationList, EmptyState, ErrorState, Skeleton, Text, TopEdge, gutter, space, useHeroScroll } from "@/ui";
 
-import { DiagnosisHero } from "../components/DiagnosisHero";
+import { DiagnosisHero, heroHeightFor } from "../components/DiagnosisHero";
 import { FeatureCards } from "../components/FeatureCards";
 import { MINI_PLAYER_HEIGHT, MiniPlayer } from "../components/MiniPlayer";
 import { PlanChecklist } from "../components/PlanChecklist";
@@ -30,8 +29,11 @@ export function ScanResultScreen() {
   const { scanId } = useLocalSearchParams<{ scanId: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const d = useDiagnosis(scanId);
   const { tint, view, plan } = d;
+  // The bar buttons scroll away with the photo; once it is under the status bar, the ground goes behind that.
+  const { past, scrollProps } = useHeroScroll(heroHeightFor(width) - insets.top);
 
   if (d.gone || (d.error && !d.view)) {
     return (
@@ -71,8 +73,9 @@ export function ScanResultScreen() {
   const next = plan?.next;
   return (
     <View style={{ flex: 1, backgroundColor: tint.ground }} testID="scan-result">
-      <StatusBar style="light" />
       <ScrollView
+        {...scrollProps}
+        testID="result-scroll"
         contentInsetAdjustmentBehavior="never"
         contentContainerStyle={{ paddingBottom: insets.bottom + space[8] + (next ? MINI_PLAYER_HEIGHT + space[4] : 0) }}
       >
@@ -189,6 +192,7 @@ export function ScanResultScreen() {
           ) : null}
         </View>
       </ScrollView>
+      <TopEdge past={past} color={tint.ground} separator={tint.separator} height={insets.top} />
 
       {next && plan ? (
         <MiniPlayer

@@ -1,6 +1,7 @@
 // A round bar button over a photo (design 3.1: Back and In the garden float over the diagnosis's photo as clear
 // glass bar buttons). Clear Liquid Glass where iOS draws it; elsewhere, and with Reduce Transparency on, the
-// mockup's white disc with a hairline (styles.css .glass-btn). White ink: it sits on the photo's dark scrim.
+// mockup's white disc with a hairline (styles.css .glass-btn). White ink: it sits on the photo's dark scrim
+// (TopScrim), and a screen swaps it for a plain button once the photo has scrolled away (TopEdge).
 import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
 import { GlassView } from "expo-glass-effect";

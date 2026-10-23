@@ -13,11 +13,10 @@ export function usePhotoTint(image: Pick<ScanImage, "id" | "url"> | undefined): 
   const hue = useQuery({
     queryKey: ["photoTint", image?.id ?? ""],
     queryFn: async () => {
-      const src = imageSource(image?.url, image?.id);
-      if (src === null) return null;
-      const source = typeof src === "number" ? src : src.uri;
-      if (!source) return null;
-      return dominantHue((await samplePixels(source, image?.id ?? "photo")).data) ?? null;
+      // The same source as the photo on screen, so its cache key, and so its download, is shared.
+      const source = imageSource(image?.url, image?.id);
+      if (source === null) return null;
+      return dominantHue((await samplePixels(source)).data) ?? null;
     },
     enabled: Boolean(image?.id),
     staleTime: Infinity,

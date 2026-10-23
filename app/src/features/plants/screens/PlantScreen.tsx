@@ -2,7 +2,6 @@
 // the timeline of scans (each opening its result), its notes, and Scan. The growth curve comes with Insights in F7.
 import { Image } from "expo-image";
 import { useLocalSearchParams } from "expo-router";
-import { StatusBar } from "expo-status-bar";
 import { Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -19,10 +18,13 @@ import {
   Skeleton,
   StatusChip,
   Text,
+  TopEdge,
+  TopScrim,
   gutter,
   minTouch,
   radii,
   space,
+  useHeroScroll,
   useTheme,
 } from "@/ui";
 
@@ -35,6 +37,11 @@ export function PlantScreen() {
   const { width } = useWindowDimensions();
   const v = usePlantDetail(plantId);
   const p = v.plant;
+  const heroHeight = Math.round(width * 0.9);
+  // Back floats at the top. Once the name reaches it, the ground goes behind it and Back takes the scheme's ink.
+  const backTop = Math.max(insets.top - 2, 8);
+  const edgeHeight = backTop + minTouch + space[2];
+  const { past, scrollProps } = useHeroScroll(heroHeight - space[16] - edgeHeight);
 
   if (v.notFound || v.error) {
     return (
@@ -48,13 +55,15 @@ export function PlantScreen() {
     );
   }
 
-  const heroHeight = Math.round(width * 0.9);
+  const overPhoto = Boolean(v.photo) && !past;
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }} testID="plant-screen">
-      {v.photo ? <StatusBar style="light" /> : null}
-      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + space[10] }}>
+      <ScrollView {...scrollProps} contentContainerStyle={{ paddingBottom: insets.bottom + space[10] }}>
         {v.photo ? (
-          <MeltPhoto source={v.photo} accessibilityLabel={p ? `${p.name}, its latest photo` : ""} melt="hero" height={heroHeight} />
+          <View>
+            <MeltPhoto source={v.photo} accessibilityLabel={p ? `${p.name}, its latest photo` : ""} melt="hero" height={heroHeight} />
+            <TopScrim />
+          </View>
         ) : (
           <View style={{ height: insets.top + minTouch + space[6], backgroundColor: colors.wash }} />
         )}
@@ -167,8 +176,9 @@ export function PlantScreen() {
         </View>
       </ScrollView>
 
-      <View pointerEvents="box-none" style={{ position: "absolute", top: Math.max(insets.top - 2, 8), left: 14 }}>
-        {v.photo ? (
+      {v.photo ? <TopEdge past={past} color={colors.background} separator={colors.border} height={edgeHeight} /> : null}
+      <View pointerEvents="box-none" style={{ position: "absolute", top: backTop, left: 14 }}>
+        {overPhoto ? (
           <BarButton accessibilityLabel="Back" onPress={v.actions.back} testID="plant-back">
             <LineIcon name="back" color={BAR_INK} size={22} strokeWidth={2} />
           </BarButton>
