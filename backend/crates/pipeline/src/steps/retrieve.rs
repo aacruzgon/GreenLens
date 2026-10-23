@@ -445,10 +445,11 @@ pub(crate) fn regions_of(snap: &ScanSnapshot, image: ImageId) -> Vec<MeasureRegi
                 .as_ref()
                 .and_then(|d| d.region_class)
                 .unwrap_or(RegionClass::Leaf);
-            let mask = snap
-                .masks
-                .iter()
-                .find(|m| m.region_id == region_id)
+            // By the region's own `mask_id`: region ids repeat across runs (`<image_id>.<n>`).
+            let mask = region
+                .mask
+                .mask_id
+                .and_then(|id| snap.masks.iter().find(|m| m.id == id))
                 .map(|m| m.rle.clone());
             Some(MeasureRegion {
                 region_id,

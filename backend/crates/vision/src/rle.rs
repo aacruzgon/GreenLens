@@ -155,6 +155,34 @@ pub fn decode(rle: &RleMask) -> Result<MaskBuf, RleError> {
     Ok(mask)
 }
 
+/// Why a worker's mask can't be stored as a PNG.
+#[derive(Debug, thiserror::Error)]
+pub enum MaskPngError {
+    /// The run-length string is invalid.
+    #[error("mask does not decode")]
+    Decode(#[from] RleError),
+    /// The PNG encoder failed.
+    #[error("mask png not encoded")]
+    Encode(#[from] png::EncodingError),
+}
+
+/// The object behind `GET /scans/{id}/masks/{mask_id}`: the mask decoded and encoded as an 8-bit
+/// grayscale PNG at its own size (the stored image's, `size`), 255 inside and 0 outside.
+pub fn to_png(rle: &RleMask) -> Result<Vec<u8>, MaskPngError> {
+    let mask = decode(rle)?;
+    let inside: Vec<u8> = mask
+        .as_raw()
+        .iter()
+        .map(|&v| if v == 0 { 0 } else { 255 })
+        .collect();
+    Ok(crate::depth::encode_png(
+        mask.width(),
+        mask.height(),
+        png::BitDepth::Eight,
+        &inside,
+    )?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,5 +221,31 @@ mod tests {
             decode(&rle("5", 2, 2)),
             Err(RleError::SizeMismatch { .. })
         ));
+    }
+
+    /// The stored mask is an 8-bit grayscale PNG of the mask's size, 255 exactly where the
+    /// mask is inside; an invalid mask is no PNG.
+    #[test]
+    fn a_mask_becomes_an_8_bit_png_of_its_size() {
+        let mut mask = MaskBuf::empty(3, 2);
+        mask.set(1, 0, true);
+        mask.set(2, 1, true);
+        let rle = encode(mask.view());
+        assert_eq!(rle.size, [2, 3]);
+        let bytes = to_png(&rle).unwrap();
+        let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+        let mut reader = decoder.read_info().unwrap();
+        let mut buf = vec![0; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut buf).unwrap();
+        assert_eq!((info.width, info.height), (3, 2));
+        assert_eq!(info.color_type, png::ColorType::Grayscale);
+        assert_eq!(info.bit_depth, png::BitDepth::Eight);
+        assert_eq!(&buf[..info.buffer_size()], [0, 255, 0, 0, 0, 255]);
+
+        let bad = RleMask {
+            size: [2, 2],
+            counts: "!!".to_owned(),
+        };
+        assert!(matches!(to_png(&bad), Err(MaskPngError::Decode(_))));
     }
 }

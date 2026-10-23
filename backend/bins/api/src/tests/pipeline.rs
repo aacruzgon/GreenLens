@@ -104,6 +104,15 @@ fn now() -> Timestamp {
 
 /// The pipeline over `store`, with an empty knowledge base and `writer` recording its events.
 fn pipeline(store: Arc<FakeStore>, writer: Arc<Recorder>) -> Pipeline {
+    pipeline_with_blobs(store, writer, Arc::new(MockBlobStore::new()))
+}
+
+/// [`pipeline`] over the object store `blobs`.
+fn pipeline_with_blobs(
+    store: Arc<FakeStore>,
+    writer: Arc<Recorder>,
+    blobs: Arc<dyn domain::ports::BlobStore>,
+) -> Pipeline {
     let mut knowledge = MockKnowledgeStore::new();
     knowledge.expect_problems().returning(|_| Ok(Vec::new()));
     Pipeline::new(PipelineDeps {
@@ -114,7 +123,7 @@ fn pipeline(store: Arc<FakeStore>, writer: Arc<Recorder>) -> Pipeline {
         memory: Arc::new(MockMemoryStore::new()),
         beliefs: Arc::new(MockBeliefStore::new()),
         embedder: Arc::new(MockTextEmbedder::new()),
-        blobs: Arc::new(MockBlobStore::new()),
+        blobs,
         measurer: Arc::new(NoMeasurer),
         plan_author: Arc::new(NoPlans),
         clock: Arc::new(FixedClock::at(now())),
@@ -485,6 +494,334 @@ async fn a_guided_completion_sends_no_stage_events() {
             if check.status == GuidedCheckStatus::Done),
         "{calls:?}"
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Perception masks ([contracts 5], `PerceptionRegion.mask`): each is written to object storage
+// as a PNG before `complete_job` records it with the segmentation observations, and its region
+// gets the `mask_id` that `GET /scans/{id}` signs as `mask_url`.
+
+const LEAF_IMAGE: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5A";
+const OTHER_IMAGE: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5B";
+const MASK: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5M";
+
+fn scan_image(id: &str, width: u32, height: u32) -> domain::scan::ScanImage<Stored> {
+    domain::scan::ScanImage {
+        id: id.parse().unwrap(),
+        kind: domain::scan::ImageKind::LeafCloseup,
+        answers_question_id: None,
+        width,
+        height,
+        url: domain::url::NoUrl,
+        uploaded_at: now(),
+        depth: None,
+    }
+}
+
+/// A leaf mask on a 4 × 3 photo: the middle two columns of the lower two rows.
+fn leaf_rle() -> domain::jobs::RleMask {
+    let mut mask = vision::mask::MaskBuf::empty(4, 3);
+    for (x, y) in [(1, 1), (2, 1), (1, 2), (2, 2)] {
+        mask.set(x, y, true);
+    }
+    vision::rle::encode(mask.view())
+}
+
+/// Three leaf regions on two 4 × 3 photos: one with a mask, one without, and one whose mask
+/// has another size than its photo.
+fn masked_result() -> serde_json::Value {
+    let region = |id: String, image: &str, mask: Option<domain::jobs::RleMask>| {
+        let mut r = serde_json::json!({
+            "region_id": id, "image_id": image, "class": "leaf",
+            "bbox": [0.1, 0.1, 0.5, 0.5], "confidence": 0.9
+        });
+        if let Some(mask) = mask {
+            r["mask"] = serde_json::to_value(mask).unwrap();
+        }
+        r
+    };
+    let other_size = domain::jobs::RleMask {
+        size: [6, 8],
+        counts: "P1".into(),
+    };
+    serde_json::json!({ "regions": [
+        region(format!("{LEAF_IMAGE}.1"), LEAF_IMAGE, Some(leaf_rle())),
+        region(format!("{LEAF_IMAGE}.2"), LEAF_IMAGE, None),
+        region(format!("{OTHER_IMAGE}.1"), OTHER_IMAGE, Some(other_size)),
+    ]})
+}
+
+fn snapshot_with_photos() -> ScanSnapshot {
+    let mut snap = snapshot(false);
+    snap.scan.images = vec![scan_image(LEAF_IMAGE, 4, 3), scan_image(OTHER_IMAGE, 4, 3)];
+    snap
+}
+
+/// Every completion `complete_job` was given.
+type Completions = Arc<Mutex<Vec<domain::ports::JobCompletion>>>;
+
+/// A store whose lease is `live` (or already completed) and whose `complete_job` records the
+/// completion and answers `outcome`.
+fn store_recording(live: bool, outcome: CompletionOutcome, completions: &Completions) -> FakeStore {
+    let mut store = FakeStore::default();
+    store
+        .scan_repo
+        .expect_snapshot()
+        .returning(|_| Ok(snapshot_with_photos()));
+    store
+        .job_repo
+        .expect_live_lease()
+        .times(1)
+        .returning(move |_, _| Ok(live.then(|| job(JobKind::Perception))));
+    let completions = Arc::clone(completions);
+    store
+        .job_repo
+        .expect_complete_job()
+        .times(1)
+        .returning(move |_, completion, _| {
+            completions.lock().unwrap().push(completion);
+            Ok(outcome.clone())
+        });
+    store
+        .event_repo
+        .expect_run_stage_events()
+        .returning(|_, _| Ok(Vec::new()));
+    store
+}
+
+/// The observation writes of the one completion recorded.
+fn recorded_writes(completions: &Completions) -> Vec<domain::ports::ObservationWrite> {
+    let completions = completions.lock().unwrap().clone();
+    match &completions[..] {
+        [domain::ports::JobCompletion::Done { observations, .. }] => observations.clone(),
+        other => panic!("one `done` completion, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_perception_result_stores_its_masks_and_links_their_regions() {
+    use domain::ports::BlobStore as _;
+    let completions = Completions::default();
+    let store = store_recording(true, stored(ObservationDiff::default()), &completions);
+    let blobs = Arc::new(blob::MemoryBlobStore::new(Arc::new(FixedClock::at(now()))));
+    let pipeline = pipeline_with_blobs(
+        Arc::new(store),
+        Arc::new(Recorder::default()),
+        Arc::clone(&blobs) as Arc<dyn domain::ports::BlobStore>,
+    );
+
+    pipeline
+        .job_completed(&lease(), job(JobKind::Perception), done(masked_result()))
+        .await
+        .expect("completed");
+
+    let writes = recorded_writes(&completions);
+    let [segmentation] = &writes[..] else {
+        panic!("the segmentation write alone: {writes:?}")
+    };
+    assert_eq!(segmentation.stage, Stage::Segmentation);
+    let [mask] = &segmentation.masks[..] else {
+        panic!("one mask: {:?}", segmentation.masks)
+    };
+    assert_eq!(mask.region_id.to_string(), format!("{LEAF_IMAGE}.1"));
+    assert_eq!(mask.image.to_string(), LEAF_IMAGE);
+    assert_eq!(mask.rle, leaf_rle());
+    assert_eq!(
+        mask.storage_key,
+        domain::ports::ObjectKey::mask(GARDEN.parse().unwrap(), SCAN.parse().unwrap(), mask.id)
+    );
+    let linked: Vec<_> = segmentation
+        .observations
+        .iter()
+        .map(|o| {
+            let region = o.region.as_ref().expect("a segmentation region");
+            (
+                region.region_id.expect("a region id").to_string(),
+                region.mask.mask_id,
+            )
+        })
+        .collect();
+    assert_eq!(
+        linked,
+        [
+            (format!("{LEAF_IMAGE}.1"), Some(mask.id)),
+            (format!("{LEAF_IMAGE}.2"), None),
+            (format!("{OTHER_IMAGE}.1"), None),
+        ],
+        "a region without a fitting mask keeps none"
+    );
+    let png = blobs
+        .get_bytes(&mask.storage_key)
+        .await
+        .expect("the object is written");
+    assert_eq!(png.as_ref(), vision::rle::to_png(&leaf_rle()).unwrap());
+    let object = blobs.get(&mask.storage_key).await.unwrap();
+    assert_eq!(object.content_type, "image/png");
+    let all = blobs
+        .list(&domain::ports::ObjectPrefix::scan(
+            GARDEN.parse().unwrap(),
+            SCAN.parse().unwrap(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(all.len(), 1, "one object, for the one stored mask");
+}
+
+/// A `complete` repeated after the job is done (the lease is no longer live) writes no object
+/// and records no mask; the store answers `AlreadyCompleted`.
+#[tokio::test]
+async fn a_repeated_complete_writes_no_mask() {
+    let completions = Completions::default();
+    let store = store_recording(false, CompletionOutcome::AlreadyCompleted, &completions);
+    let mut blobs = MockBlobStore::new();
+    blobs.expect_put().never();
+    let pipeline = pipeline_with_blobs(
+        Arc::new(store),
+        Arc::new(Recorder::default()),
+        Arc::new(blobs),
+    );
+
+    let handled = pipeline
+        .job_completed(&lease(), job(JobKind::Perception), done(masked_result()))
+        .await
+        .expect("completed");
+
+    assert_eq!(handled.value, CompletionOutcome::AlreadyCompleted);
+    let writes = recorded_writes(&completions);
+    assert!(writes.iter().all(|w| w.masks.is_empty()));
+    assert!(
+        writes
+            .iter()
+            .flat_map(|w| &w.observations)
+            .all(|o| o.region.as_ref().is_none_or(|r| r.mask.mask_id.is_none()))
+    );
+}
+
+/// A put that fails fails the completion before anything is recorded, so the worker's retry
+/// of `complete` writes the masks again.
+#[tokio::test]
+async fn a_failed_mask_put_fails_the_completion() {
+    let mut store = FakeStore::default();
+    store
+        .scan_repo
+        .expect_snapshot()
+        .returning(|_| Ok(snapshot_with_photos()));
+    store
+        .job_repo
+        .expect_live_lease()
+        .returning(|_, _| Ok(Some(job(JobKind::Perception))));
+    store.job_repo.expect_complete_job().never();
+    let mut blobs = MockBlobStore::new();
+    blobs.expect_put().times(1).returning(|_, _, _| {
+        Err(domain::ports::BlobError::Unavailable(
+            "connection reset".into(),
+        ))
+    });
+    let pipeline = pipeline_with_blobs(
+        Arc::new(store),
+        Arc::new(Recorder::default()),
+        Arc::new(blobs),
+    );
+
+    let result = pipeline
+        .job_completed(&lease(), job(JobKind::Perception), done(masked_result()))
+        .await;
+
+    assert!(
+        matches!(result, Err(pipeline::PipelineError::Blob(_))),
+        "{result:?}"
+    );
+}
+
+/// `GET /scans/{id}` signs a stored mask as `mask_url`, and that URL serves the PNG.
+#[tokio::test]
+async fn a_stored_mask_is_signed_on_the_scan_and_served_as_png() {
+    use futures::StreamExt as _;
+    use http_body_util::BodyExt as _;
+    let mask_id: domain::id::MaskId = MASK.parse().unwrap();
+    let key =
+        domain::ports::ObjectKey::mask(GARDEN.parse().unwrap(), SCAN.parse().unwrap(), mask_id);
+    let png = vision::rle::to_png(&leaf_rle()).unwrap();
+    let mut store = FakeStore::default();
+    let auth = signed_in(&mut store, Some(Role::Viewer));
+    store
+        .scan_repo
+        .expect_scan_detail()
+        .times(1)
+        .returning(move |_, _| {
+            let snap = snapshot_with_photos();
+            let mut leaf = finding();
+            leaf.region = Some(Region {
+                region_id: Some(format!("{LEAF_IMAGE}.1").parse().unwrap()),
+                image_id: LEAF_IMAGE.parse().unwrap(),
+                bbox: BBox::FULL,
+                mask: domain::url::StoredMask {
+                    mask_id: Some(mask_id),
+                },
+            });
+            Ok(domain::scan::ScanDetail {
+                scan: snap.scan,
+                plant: snap.plant,
+                observations: vec![leaf],
+                weather: None,
+                diagnosis: None,
+                plan: None,
+            })
+        });
+    let stored_key = key.clone();
+    store
+        .scan_repo
+        .expect_mask_object()
+        .times(1)
+        .returning(move |scan, mask| {
+            assert_eq!((scan.to_string(), mask), (SCAN.to_owned(), mask_id));
+            Ok(Some(domain::ports::ObjectRef {
+                key: stored_key.clone(),
+                content_type: domain::ports::ContentType::Png,
+            }))
+        });
+    let mut blob = MockBlobStore::new();
+    let bytes = bytes::Bytes::from(png.clone());
+    blob.expect_get()
+        .withf(move |k| *k == key)
+        .times(1)
+        .returning(move |_| {
+            let body = bytes.clone();
+            Ok(domain::ports::BlobObject {
+                content_type: "image/png".to_owned(),
+                length: Some(body.len() as u64),
+                etag: None,
+                body: futures::stream::once(async move { Ok(body) }).boxed(),
+            })
+        });
+    let app = crate::router::app(super::state(store, auth, blob, no_images()));
+
+    let response = app
+        .clone()
+        .oneshot(super::get(&format!("/scans/{SCAN}")))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json(response).await;
+    let region = &body["observations"][0]["region"];
+    assert!(region.get("mask_id").is_none(), "{region}");
+    let url = region["mask_url"].as_str().expect("a signed mask URL");
+    let path = url
+        .strip_prefix("https://api.test")
+        .expect("on the public base");
+    assert!(
+        path.starts_with(&format!("/scans/{SCAN}/masks/{MASK}?exp=")),
+        "{path}"
+    );
+
+    let response = app
+        .oneshot(Request::get(path).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CONTENT_TYPE], "image/png");
+    let served = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(served.as_ref(), png.as_slice());
 }
 
 // ---------------------------------------------------------------------------------------------

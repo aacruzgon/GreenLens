@@ -405,7 +405,7 @@ impl Pipeline {
                 },
                 Ok(decoded) => {
                     stages = Some(ResultStages::of(&decoded));
-                    self.done(&job, &complete.model_versions, result, decoded)
+                    self.done(lease, &job, &complete.model_versions, result, decoded)
                         .await?
                 }
             },
@@ -514,6 +514,7 @@ impl Pipeline {
 
     async fn done(
         &self,
+        lease: &Lease,
         job: &LeasedJob,
         versions: &std::collections::BTreeMap<String, String>,
         raw: serde_json::Value,
@@ -567,6 +568,8 @@ impl Pipeline {
         Ok(match decoded {
             JobResult::Perception(r) => {
                 let mut writes = results::perception_writes(&ctx, &r, &images, &lookups, new_id);
+                let masks = self.store_masks(lease, &snap, &r.regions).await?;
+                results::attach_masks(&mut writes, masks);
                 if job.question.is_some() {
                     for w in &mut writes {
                         w.replace_imageless = false;
@@ -611,6 +614,90 @@ impl Pipeline {
                 claim: None,
             },
         })
+    }
+
+    /// A perception result's masks ([contracts 5], `PerceptionRegion.mask`): each region's RLE,
+    /// on an image of the scan at that image's stored size, is encoded as an 8-bit PNG
+    /// (`vision::rle::to_png`, on the blocking pool under a CPU permit) and put under
+    /// `gardens/{garden}/scans/{scan}/masks/{mask}.png` before its record is written, so a crash
+    /// leaves an object without a record, never the reverse ([storage 4]). The records are
+    /// written by `complete_job` with the segmentation observations.
+    ///
+    /// Masks are optional: one that doesn't fit its image or doesn't decode is left out and
+    /// logged, and its region is kept without it. A failed put fails the completion, so the
+    /// worker's retry of `complete` writes them again under new ids; the orphan sweep removes
+    /// the objects of the attempt that failed. A `complete` repeated after the job is done
+    /// writes nothing: the lease is no longer live, and `complete_job` answers
+    /// `AlreadyCompleted`.
+    async fn store_masks(
+        &self,
+        lease: &Lease,
+        snap: &domain::ports::ScanSnapshot,
+        regions: &[domain::jobs::PerceptionRegion],
+    ) -> Result<Vec<domain::ports::NewMask>, PipelineError> {
+        let scan = snap.scan.id;
+        let masked: Vec<_> = regions
+            .iter()
+            .filter_map(|r| {
+                let rle = r.mask.as_ref()?;
+                let image = snap.scan.images.iter().find(|i| i.id == r.image_id);
+                if image.is_some_and(|i| rle.size == [i.height, i.width]) {
+                    Some((r.region_id, r.image_id, rle.clone()))
+                } else {
+                    tracing::warn!(%scan, region = %r.region_id, "mask doesn't fit its image; region kept without it");
+                    None
+                }
+            })
+            .collect();
+        if masked.is_empty()
+            || self
+                .deps
+                .store
+                .live_lease(lease, self.now())
+                .await?
+                .is_none()
+        {
+            return Ok(Vec::new());
+        }
+        let permit = std::sync::Arc::clone(&self.deps.config.cpu_permits)
+            .acquire_owned()
+            .await
+            .map_err(|_| PipelineError::Inconsistent("cpu semaphore closed"))?;
+        let encoded = tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            masked
+                .into_iter()
+                .map(|(region, image, rle)| {
+                    let png = vision::rle::to_png(&rle);
+                    (region, image, rle, png)
+                })
+                .collect::<Vec<_>>()
+        })
+        .await?;
+        let mut masks = Vec::new();
+        for (region_id, image, rle, png) in encoded {
+            let png = match png {
+                Ok(png) => png,
+                Err(e) => {
+                    tracing::warn!(%scan, region = %region_id, error = %crate::error::Chain(&e), "mask not stored; region kept without it");
+                    continue;
+                }
+            };
+            let id = self.deps.ids.id();
+            let storage_key = domain::ports::ObjectKey::mask(snap.scan.garden_id, scan, id);
+            self.deps
+                .blobs
+                .put(&storage_key, png.into(), domain::ports::ContentType::Png)
+                .await?;
+            masks.push(domain::ports::NewMask {
+                id,
+                image,
+                region_id,
+                storage_key,
+                rle,
+            });
+        }
+        Ok(masks)
     }
 
     /// A `guided` job's result ([contracts 7], guided checks and the diagnosis): the check is
