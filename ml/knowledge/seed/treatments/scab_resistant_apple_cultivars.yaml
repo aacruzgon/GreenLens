@@ -1,0 +1,9 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: scab_resistant_apple_cultivars
+kind: cultural
+text: Plant scab-resistant apple or crabapple varieties. This is the best defence. Redfree, Liberty, William's
+  Pride and Freedom are apple varieties that are immune to apple scab and to cedar-apple rust.
+sources:
+- isu_apple_scab
+- isu_cedar_apple_rust

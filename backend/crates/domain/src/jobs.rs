@@ -794,7 +794,7 @@ impl ModelVersionKey {
     pub const VLM_BOX_FORMAT: &'static str = "vlm_box_format";
     /// VLM and fallback workers: `1003520`.
     pub const VLM_MAX_PIXELS: &'static str = "vlm_max_pixels";
-    /// VLM and fallback workers: `findings@3,indicators@2,guided@1`.
+    /// VLM and fallback workers: `system@2,findings@5,indicators@3,verify@3,guided@1`.
     pub const VLM_PROMPTS: &'static str = "vlm_prompts";
     /// VLM and fallback workers: `0.4/0.65/0.85`.
     pub const VLM_CERTAINTY: &'static str = "vlm_certainty";

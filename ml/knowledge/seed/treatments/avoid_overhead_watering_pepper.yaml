@@ -1,0 +1,9 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: avoid_overhead_watering_pepper
+kind: cultural
+text: Avoid watering from above whenever you can. Water spreads the bacteria and helps the disease develop,
+  so water at the base of the plants.
+sources:
+- edis_pp362_bacterial_spot_pepper
+- isu_bacterial_spot_pepper_tomato

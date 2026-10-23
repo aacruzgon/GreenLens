@@ -1,0 +1,9 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: resistant_varieties_pepper_bacterial_spot
+kind: cultural
+text: If bacterial spot has been a problem before, grow a pepper variety with resistance genes to bacterial
+  spot. Some newer bell pepper varieties resist all known races, but many older varieties and many hot
+  and specialty peppers do not. Choose the variety with care.
+sources:
+- edis_pp362_bacterial_spot_pepper

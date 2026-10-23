@@ -12,9 +12,10 @@ no `--head`, it takes the one the seed's classifier_labels.yaml already names, w
 knowledge.surql's `classifier_labels_version`.
 
 A species goes in only when it has a species file and every one of its classes maps: each problem
-is in the seed's problems/ (or is `healthy`). A species with a class the seed lacks stays out
-whole, so it never gets a diagnosis from only some of its classes, and its problems are left to
-the VLM until their profiles are signed. Each species file's `classifier_supported` line is set to
+is signed in the seed's problems/ (or is `healthy`). A draft from extract.py, with `reviewed_by`
+still empty, doesn't count, since build_migration refuses to load it. A species with a class the
+seed lacks stays out whole, so it never gets a diagnosis from only some of its classes, and its
+problems are left to the VLM until their profiles are signed. Each species file's `classifier_supported` line is set to
 whether the species went in, as the loader requires.
 
 The worker reads the head file, not this one, so it still returns a left-out class's slug; the
@@ -93,6 +94,11 @@ def species_files(seed_dir: Path, supported: set[str]) -> dict[Path, str]:
     return out
 
 
+def signed_problems(seed) -> set[str]:
+    """The ids of the seed's signed problems: a draft's `reviewed_by` is still empty."""
+    return {p["id"] for p in seed.problems if str(p.get("reviewed_by") or "").strip()}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--head", help="the disease head's version, when the manifest lists several")
@@ -107,7 +113,7 @@ def main() -> int:
     except ValueError as e:
         raise SystemExit(f"{args.manifest}: {entry['name']}: {e}") from e
     seed = load(args.seed)
-    keep, left = rows(labels, {p["id"] for p in seed.problems}, {s["id"] for s in seed.species})
+    keep, left = rows(labels, signed_problems(seed), {s["id"] for s in seed.species})
     text = render(entry["version"], entry["file"], keep, left)
     out = args.seed / OUT_NAME
     species = species_files(args.seed, {r["species_id"] for r in keep})
