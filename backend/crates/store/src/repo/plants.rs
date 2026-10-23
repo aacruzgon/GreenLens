@@ -8,6 +8,7 @@ use domain::{
     authz::{Editor, Membership, Viewer},
     garden::plants::{GrowthQuantity, MeasurementPoint, TimelineEntry, UpdatePlantRequest},
     id::{GardenId, PlantId, ScanId, SpeciesId},
+    jobs::PerceptionStage,
     ports::{NewPlant, PlantRepo, RecentScan, SpeciesConfirmation, StoreError},
     scan::{Plant, PlantStatus, SpeciesCandidate, SpeciesChoice, SpeciesStatus},
     url::Stored,
@@ -90,13 +91,28 @@ COMMIT;";
     pub const SUGGEST_SPECIES_RESULT: usize = 4;
     /// A species confirmed while the scan is `queued`: the scan's run `$run` takes the plant's
     /// confirmed species, read here so the latest confirmation wins, under the guard of
-    /// [`SUGGEST_SPECIES`]. Statements: 0 `BEGIN`, 1 the scan, 2 whether to write, 3 the
-    /// update, 4 that flag, 5 `COMMIT`.
+    /// [`SUGGEST_SPECIES`] and only while the scan is still `queued`. The run's `perception`
+    /// job, while it is `queued` too, gets the payload a run started with that species would
+    /// have queued: `species_id` the species (none for a custom one),
+    /// `skip_species_identification` set for a custom one only, and `stages` without
+    /// `species` for a custom one and with it otherwise, in the order of `$stages` (every
+    /// perception stage). A claim moves the scan to `analysing` in the claim's transaction,
+    /// so once the job is leased nothing is written. Statements: 0 `BEGIN`, 1 the scan, 2
+    /// whether to write, 3 the updates, 4 that flag, 5 `COMMIT`.
     pub const ADOPT_CONFIRMED_SPECIES: &str = "BEGIN;
-LET $sc = (SELECT run, plant.species AS species, plant.species_status AS species_status FROM ONLY $scan
+LET $sc = (SELECT run, status, plant.species AS species, plant.species_status AS species_status,
+    plant.custom_species_name != NONE AS custom FROM ONLY $scan
   WHERE deleting_at = NONE AND plant.deleting_at = NONE AND garden.deleting_at = NONE);
-LET $adopt = $sc != NONE AND $sc.run = $run AND $sc.species_status = 'confirmed';
-IF $adopt { UPDATE $scan SET working_species = $sc.species };
+LET $adopt = $sc != NONE AND $sc.run = $run AND $sc.status = 'queued' AND $sc.species_status = 'confirmed';
+IF $adopt {
+  UPDATE $scan SET working_species = $sc.species;
+  UPDATE job SET
+    payload.species_id = IF $sc.species = NONE { NONE } ELSE { record::id($sc.species) },
+    payload.skip_species_identification = IF $sc.custom { true } ELSE { NONE },
+    payload.stages = array::intersect($stages, IF $sc.custom { array::complement(payload.stages, [$species_stage]) }
+      ELSE { array::union(payload.stages, [$species_stage]) })
+  WHERE scan = $scan AND status = 'queued' AND kind = 'perception' AND run = $run AND question = NONE;
+};
 RETURN $adopt;
 COMMIT;";
     /// The index of the flag in [`ADOPT_CONFIRMED_SPECIES`].
@@ -427,8 +443,18 @@ impl PlantRepo for SurrealStore {
 
     async fn adopt_confirmed_species(&self, scan: ScanId, run: Run) -> Result<bool, StoreError> {
         const WHAT: &str = "adopt confirmed species";
+        let stages = PerceptionStage::ALL
+            .iter()
+            .map(|s| enum_str("stages", s))
+            .collect::<Result<Vec<_>, RowError>>()
+            .map_err(|e| e.into_store(WHAT))?;
+        let species_stage =
+            enum_str("stages", &PerceptionStage::Species).map_err(|e| e.into_store(WHAT))?;
         let mut results = run_tx(&self.db, sql::ADOPT_CONFIRMED_SPECIES, |q| {
-            q.bind(("scan", rid(&scan))).bind(("run", i64::from(run.0)))
+            q.bind(("scan", rid(&scan)))
+                .bind(("run", i64::from(run.0)))
+                .bind(("stages", stages.clone()))
+                .bind(("species_stage", species_stage.clone()))
         })
         .await
         .map_err(|f| f.into_store(WHAT))?;

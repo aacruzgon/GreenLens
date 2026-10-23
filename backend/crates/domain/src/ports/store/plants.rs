@@ -105,8 +105,12 @@ pub trait PlantRepo: Send + Sync {
     /// A species confirmed while the scan is `queued` ([contracts 3]: the run uses the new
     /// species): the scan's run `run`, which started without it, takes the plant's confirmed
     /// species as its working species, read in the same transaction, so the latest
-    /// confirmation wins (none for a custom species). Returns `false`, and writes nothing,
-    /// under the same conditions as [`PlantRepo::suggest_species`], or when the plant's
+    /// confirmation wins (none for a custom species). In the same transaction the run's
+    /// `perception` job, while still `queued`, gets the payload a run started with that
+    /// species would have queued: `species_id` the species, or for a custom species none,
+    /// `skip_species_identification` and no `species` stage. Returns `false`, and writes
+    /// nothing, under the same conditions as [`PlantRepo::suggest_species`], when the scan is
+    /// no longer `queued` (a worker's claim moves it to `analysing`), or when the plant's
     /// species is not confirmed.
     async fn adopt_confirmed_species(&self, scan: ScanId, run: Run) -> Result<bool, StoreError>;
 
