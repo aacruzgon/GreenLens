@@ -101,6 +101,15 @@ def combine(p_zs: np.ndarray, ids: list[str], p_head: np.ndarray, supported: lis
     return out
 
 
+def head_in_share(p_zs: np.ndarray, ids: list[str], p_head: np.ndarray, supported: list[str]) -> np.ndarray:
+    """models.md 6's proposed rule: the head's probabilities in place of zero-shot's over the
+    supported crops, scaled so the crops keep their zero-shot share."""
+    sup = [ids.index(s) for s in supported]
+    out = p_zs.copy()
+    out[:, sup] = p_zs[:, sup].sum(1, keepdims=True) * p_head
+    return out
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--version", required=True)
