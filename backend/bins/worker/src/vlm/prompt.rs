@@ -1,4 +1,4 @@
-//! The prompts of [vision vlm 7] (`system@2`, `findings@5`, `indicators@2`, `verify@2`,
+//! The prompts of [vision vlm 7] (`system@2`, `findings@5`, `indicators@3`, `verify@3`,
 //! `guided@1`), filled from the payload. They borrow the payload and return owned strings;
 //! nothing here allocates more than the text itself.
 //!
@@ -151,7 +151,7 @@ const fn where_text(w: IndicatorWhere) -> &'static str {
 pub fn indicators(questions: &[Question<'_>], new_photo: bool) -> String {
     let mut s = String::from(
         "Answer each question about this plant from the photos. For each one:
-- reason: first, a few words on what you see that decides it, under 40 characters.
+- reason: first, at most 60 characters on what you see that decides it.
 - answer: yes, no, or unsure. Answer unsure when the photos don't show it clearly; that is better than a guess.
 - image: the image that decided it, or null.
 ",
