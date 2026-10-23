@@ -167,3 +167,34 @@ def test_the_manifest_is_hashed_as_read_not_after_the_run(tree, monkeypatch):
     recorded = json.loads((tree / "reports" / "t.json").read_text())["manifest_sha256"]
     assert recorded == cl.hashlib.sha256(read).hexdigest()
 
+
+def test_the_newest_committed_report_checked_the_current_manifest():
+    newest = max(cl.REPORTS.glob("leakage-*.json"))
+    sha = cl.hashlib.sha256((cl.EVAL / "manifest.jsonl").read_bytes()).hexdigest()
+    assert json.loads(newest.read_text())["manifest_sha256"] == sha, (
+        f"{newest.name} checked another manifest: rerun `python -m ml.training.eval.check_leakage` (evaluation.md §2)")
+
+
+def test_bioclip_skips_an_unreadable_training_file(tree, monkeypatch):
+    (tree / "raw" / "tom2024" / "broken.jpg").write_bytes(b"not an image")
+    fake = FakeEmbedder()
+    monkeypatch.setattr(cl, "embedder", lambda: fake)
+    assert cl.run(args_for(tree)) == 1
+    assert not any(p.name == "broken.jpg" for p in fake.seen)
+    report = json.loads((tree / "reports" / "t.json").read_text())
+    assert report["unreadable_training_images"] == ["tom2024/broken.jpg"]
+    match = report["matches"][0]
+    assert (match["photo"], match["training"]) == ("inat/copy.jpg", "plantdoc/leaf.jpg") and match["cosine"] > 0.95
+
+
+def test_calibration_measures_each_edit(tree, monkeypatch):
+    for i in range(4):
+        save(picture(10 + i), tree / "raw" / "tom2024" / f"more-{i}.jpg")
+    monkeypatch.setattr(cl, "embedder", lambda: FakeEmbedder())
+    cl.run(args_for(tree, "--calibrate", "4"))
+    cal = json.loads((tree / "reports" / "t.json").read_text())["calibration"]
+    assert cal["images"] == 4 and list(cal["edits"]) == list(cl.EDITS)
+    for name in ("half size", "rotated 90°", "mirrored"):
+        assert cal["edits"][name]["hash_caught"] == 1.0, (name, cal["edits"][name])
+    assert all(0 <= e["either_caught"] <= 1 and e["cosine_min"] <= 1.0001 for e in cal["edits"].values())
+    assert "## Calibration" in (tree / "reports" / "t.md").read_text()
