@@ -34,6 +34,8 @@ const config: ExpoConfig = {
     "expo-asset",
     // Adds the widget extensions in targets/ to the Xcode project on prebuild (design open decision 4).
     "@bacons/apple-targets",
+    // The scene life cycle, without which iOS 27 stops the app at launch (plugins/withSceneLifecycle.js).
+    "./plugins/withSceneLifecycle",
     [
       "expo-font",
       {
