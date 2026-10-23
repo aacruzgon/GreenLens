@@ -14,8 +14,9 @@ Positives are the split's plant photos; "no leaf" are those whose leaf score is 
 which only the probe can pass. Negatives are COCO photos without a potted plant or broccoli, by
 group (`outdoor` photos may show trees or grass): by default COCO val2017
 (`ml/training/data/splits/negatives_coco.tsv`), or with `--negatives` another list, such as the
-COCO train2017 hold-out (`negatives_coco_train_holdout.tsv`, disjoint from the detector's
-background photos). For every τ_plant it reports the false `no_plant_found` rate on positives,
+half of it no trained probe learns from (`negatives_coco_tune.tsv`, the same list
+`train_plant_probe` writes beside each probe) or the COCO train2017 hold-out
+(`negatives_coco_train_holdout.tsv`, disjoint from the detector's background photos). For every τ_plant it reports the false `no_plant_found` rate on positives,
 the share of no-leaf photos rescued, and the share of negatives that pass, by the probe alone
 and by the whole check. False `no_plant_found` is also reported per dataset, because the pooled
 rate can meet the target while the field photos (TOM2024) miss it.
@@ -25,18 +26,22 @@ lowest value at which the probe alone passes at most 5% of the negatives. The fi
 the leaf score alone passes about half of the negatives at τ_leaf 0.35, so that rule can't reach
 models.md 2's target, and the report also searches both thresholds together: for each prompt
 set, the pair with the fewest negatives passing among those with false `no_plant_found` at most
-1% (models.md 2), once on the pooled positives and once on every dataset separately.
+1% (models.md 2), once on the pooled positives and once on every dataset separately. Ties go to
+the lower τ_leaf, so the leaf detector passes every plant photo it can without letting more
+negatives through, then to the lower τ_plant. (Ties went to the higher τ_leaf until M17; for
+probe v2 that picked 0.99, above every leaf score measured, which switched the detector off.)
 `REFERENCE_PAIR`, the zero-shot pair the manifest shipped until M17, is reported with its own
 numbers.
 
 Whole plants. The split's photos are mostly leaves, so on the val split the check also scores
 iNaturalist's val photos (`inat_species.tsv`: the five crops as whole plants, flowers and fruit,
 and cacti, stonecrops, aroids, mints and gourds), reported as their own column and kept out of
-the pooled and per-dataset rates. No pair reaches 1% on them, so the joint searches instead skip
-any pair that fails more of them than `REFERENCE_PAIR` does. Without that, probe v2's search
-chose τ_plant 0.85 to stop one more tune photo and missed 4.2% of whole plants; with it, 0.74
-and 2.2%, the zero-shot pair's rate (M17, 2026-10-23). The trained probes learn from
-iNaturalist's train photos only.
+the pooled and per-dataset rates. The joint searches hold them to the same target: they skip any
+pair that fails more than 1% of them. Without that, probe v2's search chose τ_plant 0.85 to stop
+one more tune photo and missed 4.2% of whole plants; with it, 0.31 and 0.99% (M17, 2026-10-23).
+These photos choose the pair and there is no test split of them, so their rate is in-sample; the
+dev cases (below), whose iNaturalist observations aren't in `inat_species.tsv`, are the check on
+photos the search never saw. The trained probes learn from iNaturalist's train photos only.
 
 A pair chosen on a split does a little better there than on new photos. To report a chosen pair
 on photos it wasn't chosen on, score the test split against the hold-out negatives with the
@@ -56,7 +61,7 @@ committed reports' per-photo scores:
 
     python -m ml.training.eval.plant_check --cases ml/training/eval/manifest.jsonl \
         --probe ml/training/runs/heads/plant-probe-v2-2026-10-23/plant-probe-v2-2026-10-23.json \
-        --pair A:0.40:0.70 --pair plant-probe-v2-2026-10-23:0.99:0.74 \
+        --pair A:0.40:0.70 --pair plant-probe-v2-2026-10-23:0.94:0.31 \
         --holdout-report ml/training/eval/reports/plant-check-test-holdout-2026-10-23-probe-v2.json \
         --val-report ml/training/eval/reports/plant-check-val-2026-10-23-probe-v2.json
 
@@ -89,8 +94,8 @@ GRID = np.round(np.arange(0.01, 1.0, 0.01), 2)
 # The zero-shot pair manifest.toml shipped until M17, with leaf_detector
 # rfdetr-s-leaf-2026-10-19-bglic: prompt set A, chosen on the val split with at most 1% false
 # no_plant_found on every dataset (reports/plant-check-val-2026-10-19-detector-bglic). It needs no
-# file, so every run scores it; its rate on whole plants caps the joint searches. From M17 the
-# manifest ships plant-probe-v2-2026-10-23 at 0.99 / 0.74, reported with --probe and --pair.
+# file, so every run scores it. From M17 the manifest ships plant-probe-v2-2026-10-23 at
+# 0.94 / 0.31, reported with --probe and --pair.
 REFERENCE_PAIR = {"set": "A", "tau_leaf": 0.40, "tau_plant": 0.70}
 REFERENCE_NAME = "zero-shot pair A 0.40 / 0.70 (shipped until M17)"
 LEAF_ONLY_SWEEP = (0.35, 0.5, 0.7, 0.9)
@@ -137,7 +142,7 @@ def joint(pos_leaf, pos_p, neg_leaf, neg_p, max_fn: float = MAX_FALSE_NO_PLANT,
           whole_max: float | None = None) -> dict | None:
     """The (τ_leaf, τ_plant) pair with the fewest negatives passing among those failing at most
     `max_fn` of the plant photos (of each dataset, when `datasets` is given) and, when `whole` is
-    given, at most `whole_max` of the whole-plant photos; ties go to the higher τ_leaf, then the
+    given, at most `whole_max` of the whole-plant photos; ties go to the lower τ_leaf, then the
     lower τ_plant."""
     best = None
     for tl in np.round(np.arange(0.35, 1.0, 0.01), 2):
@@ -149,7 +154,7 @@ def joint(pos_leaf, pos_p, neg_leaf, neg_p, max_fn: float = MAX_FALSE_NO_PLANT,
             if wf is not None and whole_max is not None and wf > whole_max:
                 continue
             fp = float(np.mean((neg_leaf >= tl) | (neg_p >= tp)))
-            key = (fp, -tl, tp)
+            key = (fp, tl, tp)
             if best is None or key < best[0]:
                 best = (key, {"tau_leaf": float(tl), "tau_plant": float(tp),
                               "positives_false_no_plant": float(np.mean(~((pos_leaf >= tl) | (pos_p >= tp)))),
@@ -339,8 +344,7 @@ def analyse(split, label, pos, neg, pos_leaf, neg_leaf, probs, tau_leaf, scale, 
     groups = [r["group"] for r in neg]
     datasets = np.array([r["dataset"] for r in pos])
     w_of = (lambda name: (whole["leaf"], whole["p"][name])) if whole else (lambda name: None)
-    ref = REFERENCE_PAIR
-    whole_max = whole_false(w_of(ref["set"]), ref["tau_leaf"], ref["tau_plant"]) if whole and ref["set"] in probs else None
+    whole_max = MAX_FALSE_NO_PLANT if whole else None
     sets = {}
     for name, (pos_p, neg_p) in probs.items():
         tau = choose_tau(neg_p)
@@ -402,7 +406,11 @@ def analyse(split, label, pos, neg, pos_leaf, neg_leaf, probs, tau_leaf, scale, 
     if whole:
         report["whole_plants"] = {
             "source": f"{INAT.name}, split val", "n": len(whole["rows"]), "cap": whole_max,
-            "cap_rule": f"the joint searches skip pairs failing more whole plants than {REFERENCE_NAME}",
+            "cap_rule": f"the joint searches skip pairs failing more than {MAX_FALSE_NO_PLANT:.0%} of the whole "
+                        "plants, models.md 2's target",
+            "in_sample": ("these photos choose the cap and the pair, and inat_species.tsv has no test split, so "
+                          "their rate is in-sample; the dev cases, whose iNaturalist observations aren't in "
+                          "inat_species.tsv, are the check on photos the search never saw"),
             "photos": [{**r, "leaf": round(float(whole["leaf"][i]), 4),
                         **{f"p_{n}": round(float(whole["p"][n][i]), 4) for n in sets}}
                        for i, r in enumerate(whole["rows"])]}
@@ -481,9 +489,10 @@ def markdown(r: dict) -> str:
            "## Joint search: both thresholds against models.md 2's target\n\n",
            "Pooled: false `no_plant_found` at most 1% over all plant photos. Every dataset: at most 1% on "
            "each dataset, so the field photos can't hide behind the web photos.",
-           *([f" Both also skip any pair failing more of the {r['whole_plants']['n']} whole-plant photos "
-              f"({r['whole_plants']['source']}) than the zero-shot pair does: "
-              f"{pct(r['whole_plants']['cap'], 2)}."] if r.get("whole_plants") else []), "\n\n",
+           *([f" Both also skip any pair failing more than {pct(r['whole_plants']['cap'], 0)} of the "
+              f"{r['whole_plants']['n']} whole-plant photos ({r['whole_plants']['source']}). Those photos "
+              "choose the cap and the pair and have no test split, so their rate is in-sample; the dev cases "
+              "are the check on photos the search never saw."] if r.get("whole_plants") else []), "\n\n",
            "| Constraint | Prompts | τ_leaf | τ_plant | false no_plant |" + "".join(f" {d} |" for d in names)
            + whole_head(r)[0] + " negatives pass: check |\n",
            "|---|---|---|---|---|" + "---|" * len(names) + whole_head(r)[1] + "---|\n"]
