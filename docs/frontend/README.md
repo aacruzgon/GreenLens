@@ -1,6 +1,6 @@
 # PDM Frontend Architecture
 
-> **Status:** Draft v0.4.11, 2026-10-23. v0.4.11: the LiDAR module's JavaScript surface as built in F5: the shot's report, `sampleDepth`, the world map per garden, `removeWorldMaps` and `GardenView` (section 13); the scan stream stays open 25 s in the background while the Live Activity runs (section 10). v0.4.10: `fflate`, and `expo-image-manipulator` sampling the diagnosis's photo for its tint from `expo-image`'s cache (section 4; design open decision 9). v0.4.9: `@expo/ui` gives the live analysis's More button SwiftUI's `Menu` on iOS (section 4). v0.4.8: `AuthBridge` registers the token provider once per sign-in, before the first authed request (section 8). v0.4.7: "Forgot password?" resets the password with an email code (sections 6 and 8). v0.4.6: two-step sign-in is a code by text to the phone given at sign-up, with Clerk's test numbers in development (section 8). v0.4.5: sign-in has no authenticator-app second factor; a new device is confirmed with an email code. v0.4.4: section 4 adds `expo-symbols` and Urbanist, which F0 uses.
+> **Status:** Draft v0.4.12, 2026-10-23. v0.4.12: the LiDAR module adds `ModePickerView`, capture's mode bar as Apple's segmented control on glass, and the camera view shows the photo's 4:3 frame with the ultra-wide outside it (section 13). v0.4.11: the LiDAR module's JavaScript surface as built in F5: the shot's report, `sampleDepth`, the world map per garden, `removeWorldMaps` and `GardenView` (section 13); the scan stream stays open 25 s in the background while the Live Activity runs (section 10). v0.4.10: `fflate`, and `expo-image-manipulator` sampling the diagnosis's photo for its tint from `expo-image`'s cache (section 4; design open decision 9). v0.4.9: `@expo/ui` gives the live analysis's More button SwiftUI's `Menu` on iOS (section 4). v0.4.8: `AuthBridge` registers the token provider once per sign-in, before the first authed request (section 8). v0.4.7: "Forgot password?" resets the password with an email code (sections 6 and 8). v0.4.6: two-step sign-in is a code by text to the phone given at sign-up, with Clerk's test numbers in development (section 8). v0.4.5: sign-in has no authenticator-app second factor; a new device is confirmed with an email code. v0.4.4: section 4 adds `expo-symbols` and Urbanist, which F0 uses.
 > v0.4.3: the build plan (section 18) follows the new [roadmap](roadmap.md): the iPhone first in the Conservatory direction, F0 on Oct 20 to the web build on Oct 25. v0.4.2: the backend's OpenAPI spec is committed, so the app uses generated contract types from day 1 instead of hand-written ones (section 9, generated types; build plan). v0.4.1: the schema links point to `backend/migrations/schema.surql`. v0.4 applies the third audit and contracts v0.8.2: species photo paths carry a content hash, a failed scan never holds a question, push coverage, invalidations for confirmed plan revisions, the closer-photo rule, the `SFSafariViewController` cookie note and the CORS preflight reason.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Images:** event URLs arrive fresh, and the cache key is the image ID or the URL path; species photos carry their credit.
@@ -831,12 +831,14 @@ interface CapturedShot {
 
 ### The LiDAR module's JavaScript surface
 
-The native side is designed in architecture 6.7 and 6.8. This is the interface the app codes against, in `app/modules/lidar` (`src/LidarCamera.ts`, `src/GardenMapping.ts`, `src/GardenView.ts`, re-exported by `index.ts`). Features reach it only through `src/platform` (`capabilities`, `capture`, `depth`, `mapping`, `garden3d`).
+The native side is designed in architecture 6.7 and 6.8. This is the interface the app codes against, in `app/modules/lidar` (`src/LidarCamera.ts`, `src/GardenMapping.ts`, `src/GardenView.ts`, `src/ModePicker.ts`, re-exported by `index.ts`). Features reach it only through `src/platform` (`capabilities`, `capture`, `depth`, `mapping`, `garden3d`, `modePicker`).
 
 ```ts
 export function getCapabilities(): { depth: boolean; mapping: boolean };
 
-// Camera view with depth. Replaces expo-camera on LiDAR devices: one capture session at a time.
+// Camera view with depth. Replaces expo-camera on LiDAR devices: one capture session at a time. Shows the photo's
+// 4:3 frame from the largest preview at the largest photo; where the phone can run both cameras and keep the photo's
+// depth, the ultra-wide shows what lies outside the frame, dimmed (design 3.1).
 export const LidarCameraView: React.ComponentType<{
   active: boolean;
   onDistance?: (e: { nativeEvent: { distance_m: number | null } }) => void;   // median depth at the centre, 5 per second
@@ -875,6 +877,12 @@ export const GardenView: React.ComponentType<{
   scheme: "light" | "dark";
   reduceMotion?: boolean;
   onSelectPlant?: (e: { nativeEvent: { plant_id: string | null } }) => void;
+}> | null;
+
+// Capture's mode bar: iOS 26's segmented control on interactive Liquid Glass (design 3.1 and 6).
+export const ModePickerView: React.ComponentType<{
+  items: { kind: string; label: string; mark: "none" | "stored" | "busy" | "problem"; selected: boolean }[];
+  onSelect: (e: { nativeEvent: { kind: string } }) => void;
 }> | null;
 ```
 
