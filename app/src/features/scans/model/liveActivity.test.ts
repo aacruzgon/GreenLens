@@ -139,7 +139,7 @@ describe("the Live Activity following a scripted scan", () => {
     const last = ops[ops.length - 1];
     expect(last).toMatchObject({
       kind: "end",
-      content: { mode: "planned", stage: "Plan ready", total: "in 11 s" },
+      content: { mode: "planned", stage: "Plan ready", total: "took 11 s" },
       dismissal: { policy: "after", afterSeconds: SUMMARY_SECONDS },
     });
     expect(last?.kind === "end" && last.content.segments).toEqual([

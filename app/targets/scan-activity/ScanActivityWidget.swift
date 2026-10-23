@@ -236,5 +236,5 @@ struct LockScreenView: View {
   ScanActivityAttributes.ContentState(
     mode: "planned", stage: "Plan ready", next: nil,
     segments: ["done", "done", "done", "skipped", "done", "done", "done", "done", "done"],
-    startedAt: Date().addingTimeInterval(-18), total: "in 18 s")
+    startedAt: Date().addingTimeInterval(-18), total: "took 18 s")
 }

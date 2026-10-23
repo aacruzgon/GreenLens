@@ -12,11 +12,16 @@ const REENCODE_LONG_SIDE = 3000;
 // depth maps are raw, before the server blurs faces (architecture 11). Drafts kept in Documents/capture by an
 // earlier build move on first use; the draft's URIs follow through relocateDraft, which finds files by name.
 let moved = false;
+/** Where an earlier build kept drafts. Whatever a failed move left there goes with the drafts it belongs to. */
+function oldRoot(): Directory {
+  return new Directory(Paths.document, "capture");
+}
+
 function root(): Directory {
   const dir = new Directory(Paths.document.parentDirectory, "Library", "Application Support", "capture");
   if (!moved) {
     moved = true;
-    moveOldDrafts(new Directory(Paths.document, "capture"), dir);
+    moveOldDrafts(oldRoot(), dir);
   }
   return dir;
 }
@@ -55,7 +60,7 @@ export const files = {
   locate(scanId: string, name: string): string | undefined {
     const file = new File(new Directory(root(), scanId), name);
     // Still in Documents when the move failed part-way: the old copy is the one to upload.
-    const old = new File(new Directory(Paths.document, "capture", scanId), name);
+    const old = new File(new Directory(oldRoot(), scanId), name);
     return !file.exists && old.exists ? old.uri : file.uri;
   },
 
@@ -87,13 +92,15 @@ export const files = {
 
   /** Deletes a scan's folder with every photo in it. */
   drop(scanId: string): void {
-    const dir = new Directory(root(), scanId);
-    if (dir.exists) dir.delete();
+    for (const dir of [new Directory(root(), scanId), new Directory(oldRoot(), scanId)]) {
+      if (dir.exists) dir.delete();
+    }
   },
 
   /** Deletes every draft's photos: on sign-out. */
   dropAll(): void {
-    const dir = root();
-    if (dir.exists) dir.delete();
+    for (const dir of [root(), oldRoot()]) {
+      if (dir.exists) dir.delete();
+    }
   },
 };

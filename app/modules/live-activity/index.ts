@@ -23,7 +23,7 @@ export interface ScanActivityState {
   segments: SegmentState[];
   /** Milliseconds since 1970: the run's start, from which the elapsed time ticks. */
   startedAt: number;
-  /** "in 18 s" once the run ends. */
+  /** "took 18 s" once the run ends. */
   total?: string;
 }
 

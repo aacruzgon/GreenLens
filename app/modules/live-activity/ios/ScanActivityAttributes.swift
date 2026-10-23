@@ -19,7 +19,7 @@ struct ScanActivityAttributes: ActivityAttributes {
     var segments: [String]
     /// When the run started; the elapsed time ticks from it without an update.
     var startedAt: Date
-    /// The run's total once it ends ("in 18 s"); replaces the ticking time.
+    /// The run's total once it ends ("took 18 s"); replaces the ticking time.
     var total: String?
   }
 
