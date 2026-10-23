@@ -242,6 +242,11 @@ final class PlantNode {
     root.position + SIMD3(0, baseY + height + 0.12, 0)
   }
 
+  /// The middle of the crown, where a dot can sit when the space above the plant is taken.
+  var crownAnchor: SIMD3<Float> {
+    root.position + SIMD3(0, baseY + height * 0.7, 0)
+  }
+
   private func applyTransforms() {
     body.scale = SIMD3(radius, max(height, 0.001), radius)
     let ringRadius = max(radius * 1.15 + 0.04, inPot ? potRadius + 0.05 : 0)
