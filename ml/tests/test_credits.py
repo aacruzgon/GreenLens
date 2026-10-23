@@ -21,7 +21,18 @@ def test_every_coco_photo_in_shipped_weights_is_credited_with_its_licence():
     for name, p in photos.items():
         r = rows[name]
         assert (r["split"], r["models"].split(","), r["licence"]) == (p["split"], p["models"], p["licence"]), name
+        assert r["licence_url"] == wc.LICENCE_URLS[p["licence"]], name
         assert r["flickr_page"].startswith("https://flic.kr/p/"), name
+
+
+def test_each_cc_licence_in_the_credits_ships_its_text():
+    # COCO's photos are CC BY 2.0 and CC BY-SA 2.0, not 4.0 (Alan's review of #167).
+    texts = {"by/2.0": "CC-BY-2.0.txt", "by-sa/2.0": "CC-BY-SA-2.0.txt"}
+    used = {r["licence_url"] for r in wc.read_tsv(wc.CREDITS / "coco.tsv")}
+    for url in used:
+        if "creativecommons.org" in url:
+            name = texts[url.split("/licenses/")[1].rstrip("/")]
+            assert (wc.HERE / "licences" / name).is_file(), name
 
 
 def test_the_coco_lists_are_the_shipped_models_training_lists():
