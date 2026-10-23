@@ -1,0 +1,85 @@
+# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
+# grape_black_rot.review.md and signs reviewed_by and reviewed_at.
+id: grape_black_rot
+name: Black rot
+kind: fungal
+affects:
+- grape
+caused_by: []
+damage_patterns: []
+prevalence: common
+indicators:
+- id: grape_black_rot.yellow_leaf_spots
+  text: Tiny yellow spots on the leaves, which grow larger over time.
+  question: Are there small yellow spots on the grape leaves?
+  weight: 2
+  discriminating: true
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+- id: grape_black_rot.leaf_spot_size
+  text: Leaf spots grow to about 6 mm (a quarter inch) across.
+  question: Are the leaf spots small, smaller than a pencil eraser?
+  weight: 2
+  discriminating: true
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+  measure:
+    max: 6
+    quantity: lesion_diameter_mm
+    stat: max
+- id: grape_black_rot.rusty_red_spot_centres
+  text: The centres of the leaf spots turn rusty red.
+  question: Do the leaf spots have a rusty red centre?
+  weight: 2
+  discriminating: true
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+- id: grape_black_rot.black_dots_in_spots
+  text: Tiny black dots usually form in the centre of the leaf spots. They hold spores that start new
+    infections.
+  question: Are there tiny black dots in the middle of the leaf spots?
+  weight: 2
+  discriminating: false
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+- id: grape_black_rot.rotting_berries
+  text: Infected berries can rot within a few days. Fruit symptoms show when the berries are about half
+    grown.
+  question: Are some grape berries rotting?
+  weight: 2
+  discriminating: false
+  where: fruit
+  image_kinds:
+  - flower_fruit
+- id: grape_black_rot.black_mummified_berries
+  text: Infected berries shrivel and become hard, black mummies.
+  question: Are some grape berries shrivelled and black, like raisins?
+  weight: 2
+  discriminating: false
+  where: fruit
+  image_kinds:
+  - flower_fruit
+- id: grape_black_rot.black_dots_on_mummies
+  text: The mummified berries carry the same tiny black spore dots as the leaf spots.
+  question: Do the shrivelled black berries have tiny black dots on their surface?
+  weight: 2
+  discriminating: false
+  where: fruit
+  image_kinds:
+  - flower_fruit
+conditions:
+  notes: Warm, humid weather favours black rot and can lead to heavy losses.
+looks_like: []
+treatments:
+- canopy_drying_grape
+- prune_destroy_dormant_grape
+- remove_damaged_clusters_fallen_berries
+- remove_wild_grapes
+sources:
+- isu_black_rot_grape
+reviewed_by: ''
+reviewed_at: ''

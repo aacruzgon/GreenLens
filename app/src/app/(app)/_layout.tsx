@@ -28,8 +28,29 @@ export default function AppLayout() {
         {/* A question's photo and the guided soil checks: the capture view cut to one slot (screens 3.2). */}
         <Stack.Screen name="capture/[scanId]/question/[questionId]" options={{ presentation: "fullScreenModal" }} />
         <Stack.Screen name="capture/[scanId]/guided/[kind]" options={{ presentation: "fullScreenModal" }} />
-        {/* Analyse replaces capture with the scan, which stays full screen and dark like the camera (design 3.1). */}
-        <Stack.Screen name="scans/[scanId]" options={{ presentation: "fullScreenModal" }} />
+        {/* Analyse replaces capture with the scan, which stays full screen and dark like the camera (design 3.1).
+            One screen per scan: `dismissTo` a scan goes back to that scan's screen, never another scan's. */}
+        <Stack.Screen name="scans/[scanId]/index" options={{ presentation: "fullScreenModal" }} getId={({ params }) => params?.scanId as string | undefined} />
+        {/* "See the diagnosis and plan" pushes the result over the analysis; a plant's timeline opens it too. */}
+        <Stack.Screen name="scans/[scanId]/result" />
+        {/* The plan step by step covers the screen, with Close at the top (design 5, after Crouton). */}
+        <Stack.Screen name="scans/[scanId]/steps" options={{ presentation: "fullScreenModal" }} />
+        {/* "Was this right?", for reviewers and up (screens 3.11). */}
+        <Stack.Screen
+          name="scans/[scanId]/feedback"
+          options={{ presentation: "formSheet", sheetAllowedDetents: [0.6, 1], sheetGrabberVisible: true }}
+        />
+        <Stack.Screen name="plants/[plantId]/index" />
+        {/* A new task, or an edit of the user's own (screens 3.7). */}
+        <Stack.Screen
+          name="tasks/edit"
+          options={{ presentation: "formSheet", sheetAllowedDetents: [0.75, 1], sheetGrabberVisible: true }}
+        />
+        {/* The species check's "Change": the top candidates and a search, as a sheet (flows 7, screens 3.11). */}
+        <Stack.Screen
+          name="plants/[plantId]/species"
+          options={{ presentation: "formSheet", sheetAllowedDetents: [0.6, 1], sheetGrabberVisible: true }}
+        />
       </Stack>
     </SessionGate>
   );

@@ -147,6 +147,37 @@ def test_a_relative_manifest_path_is_reported(tree, monkeypatch):
     assert "(`manifest.jsonl`)" in (tree / "reports" / "t.md").read_text()
 
 
+def test_the_report_records_the_manifests_hash(tree):
+    cl.run(args_for(tree, "--no-bioclip"))
+    sha = cl.hashlib.sha256((tree / "manifest.jsonl").read_bytes()).hexdigest()
+    assert json.loads((tree / "reports" / "t.json").read_text())["manifest_sha256"] == sha
+    assert f"SHA-256 is `{sha}`" in (tree / "reports" / "t.md").read_text()
+
+
+def test_the_manifest_is_hashed_as_read_not_after_the_run(tree, monkeypatch):
+    read = (tree / "manifest.jsonl").read_bytes()
+    walk = cl.training_files
+
+    def edit_during_the_run(raw):
+        (tree / "manifest.jsonl").write_bytes(read + b"\n")
+        return walk(raw)
+
+    monkeypatch.setattr(cl, "training_files", edit_during_the_run)
+    cl.run(args_for(tree, "--no-bioclip"))
+    recorded = json.loads((tree / "reports" / "t.json").read_text())["manifest_sha256"]
+    assert recorded == cl.hashlib.sha256(read).hexdigest()
+
+
+def test_the_newest_committed_report_checked_the_current_manifest():
+    reports = {p.name: json.loads(p.read_text()) for p in cl.REPORTS.glob("leakage-*.json")}
+    newest = max(r["date"] for r in reports.values())  # by the run's date, so a same-day rerun counts whatever its name
+    sha = cl.hashlib.sha256((cl.EVAL / "manifest.jsonl").read_bytes()).hexdigest()
+    names = [n for n, r in reports.items() if r["date"] == newest]
+    assert sha in {reports[n].get("manifest_sha256") for n in names}, (
+        f"{', '.join(names)} checked another manifest: rerun `python -m ml.training.eval.check_leakage` "
+        "(evaluation.md §2)")
+
+
 def test_bioclip_skips_an_unreadable_training_file(tree, monkeypatch):
     (tree / "raw" / "tom2024" / "broken.jpg").write_bytes(b"not an image")
     fake = FakeEmbedder()

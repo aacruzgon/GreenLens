@@ -113,8 +113,9 @@ export function useOneShotSession(scanId: string, purpose: OneShotPurpose, data:
       dispatch({ type: "stored", imageId: res.image.id });
       void haptics.success();
       void qc.invalidateQueries({ queryKey: qk.scan(scanId) });
-      // The scan screen shows the photo being checked (flows 6) or the check analysing (flows 8).
-      if (mounted.current) router.replace({ pathname: "/scans/[scanId]", params: { scanId } });
+      // The scan screen shows the photo being checked (flows 6) or the check analysing (flows 8): back to it when it
+      // opened this screen, in its place when a task or a link did.
+      if (mounted.current) router.dismissTo({ pathname: "/scans/[scanId]", params: { scanId } });
     } catch (error) {
       const outcome = uploadOutcome(isApiError(error) ? error : undefined, file);
       if (outcome.type === "reencode") {

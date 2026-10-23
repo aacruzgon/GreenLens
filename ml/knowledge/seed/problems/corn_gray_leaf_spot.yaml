@@ -1,0 +1,79 @@
+# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
+# corn_gray_leaf_spot.review.md and signs reviewed_by and reviewed_at.
+id: corn_gray_leaf_spot
+name: Gray leaf spot
+kind: fungal
+affects:
+- corn
+caused_by: []
+damage_patterns: []
+prevalence: occasional
+indicators:
+- id: corn_gray_leaf_spot.lesion_length_2_to_7_cm
+  text: Lesions are about 2 to 7 cm long.
+  question: Are the spots short stripes, a few centimetres long?
+  weight: 2
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: corn_gray_leaf_spot.narrow_rectangular_lesions
+  text: Lesions are narrow and rectangular, with straight edges.
+  question: Are the spots long, narrow and shaped like rectangles with straight sides?
+  weight: 3
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: corn_gray_leaf_spot.lesions_parallel_to_veins
+  text: Lesions run parallel with the leaf veins.
+  question: Do the long spots run in the same direction as the leaf veins?
+  weight: 3
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: corn_gray_leaf_spot.light_tan_lesions
+  text: Young lesions are light tan.
+  question: Are the spots a light tan colour?
+  weight: 2
+  discriminating: true
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: corn_gray_leaf_spot.grey_mature_lesions
+  text: As lesions mature they turn grey.
+  question: Are the spots grey?
+  weight: 2
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - leaf_closeup
+- id: corn_gray_leaf_spot.lesions_merge_kill_leaves
+  text: Mature lesions join together and kill or blight entire leaves.
+  question: Have the spots run together into large dead patches?
+  weight: 2
+  discriminating: false
+  where: whole_plant
+  image_kinds:
+  - leaf_closeup
+  - whole_plant
+- id: corn_gray_leaf_spot.lower_leaves_after_tasselling
+  text: Symptoms start on the lower leaves, soon after the plant tassels.
+  question: Are the spots mostly on the lower leaves?
+  weight: 2
+  discriminating: false
+  where: lower_leaves
+  image_kinds:
+  - whole_plant
+conditions:
+  notes: Warm, wet, humid weather favours the disease and spore production. Worst where corn follows corn
+    in fields with much corn residue.
+looks_like: []
+treatments:
+- resistant_hybrids_gls
+- rotate_and_till_corn_residue
+sources:
+- ontario_field_crop_diseases
+reviewed_by: ''
+reviewed_at: ''

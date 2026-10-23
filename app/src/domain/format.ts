@@ -1,7 +1,7 @@
 // Units, confidence band words and local dates (in the garden's time zone).
-import { format, formatDistanceStrict, isSameDay } from "date-fns";
+import { addDays, format, formatDistanceStrict, isSameDay } from "date-fns";
 import { TZDate } from "@date-fns/tz";
-import type { ConfidenceBand, MeasureQuantity } from "./types";
+import type { ConfidenceBand, LocalDate, MeasureQuantity } from "./types";
 
 export const BAND_WORD: Record<ConfidenceBand, string> = {
   low: "low",
@@ -85,4 +85,15 @@ export function formatAgo(iso: string, now: Date = new Date()): string {
 export function formatLocalDate(local: string): string {
   const [y = 1970, m = 1, d = 1] = local.split("-").map(Number);
   return format(new Date(y, m - 1, d), "MMM d");
+}
+
+/** Today's date in the garden's calendar, as a LocalDate ("2026-10-19"). */
+export function localToday(timeZone: string, now: Date = new Date()): LocalDate {
+  return format(new TZDate(now.getTime(), timeZone), "yyyy-MM-dd");
+}
+
+/** A LocalDate `days` later (or earlier, when negative). Calendar arithmetic, no time zone. */
+export function addLocalDays(local: LocalDate, days: number): LocalDate {
+  const [y = 1970, m = 1, d = 1] = local.split("-").map(Number);
+  return format(addDays(new Date(y, m - 1, d), days), "yyyy-MM-dd");
 }

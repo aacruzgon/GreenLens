@@ -1,0 +1,8 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: prune_open_canopy_apple
+kind: cultural
+text: Prune and train the tree to keep the canopy open. Better airflow lets the leaves dry faster, so
+  fewer infections start.
+sources:
+- isu_apple_scab

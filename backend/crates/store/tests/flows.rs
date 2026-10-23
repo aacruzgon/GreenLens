@@ -701,6 +701,7 @@ async fn ask_and_answer() {
         kind: QuestionKind::Indicator,
         text: "Do the spots have rings?".into(),
         options: None,
+        indicator_id: Some("concentric_rings".parse().unwrap()),
         photo_kind: None,
         photo_hint: None,
         candidates: vec!["tomato_early_blight".parse().unwrap()],

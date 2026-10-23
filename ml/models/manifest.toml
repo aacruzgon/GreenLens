@@ -8,10 +8,11 @@
 # mismatch. After changing this file, run `python -m ml.models.cpu_manifest` and
 # `python -m ml.models.check`.
 #
-# Status 2026-10-20: development entries. The leaf detector is its clean fine-tune; the label
-# matrix is a STAND-IN (ml/training/labels/standin_labels.yaml) until the knowledge seed has
-# species and organism files; the disease head is v3c on our detector's leaf crops, with
-# proposed slugs (issue #4). Thresholds are the docs' starting values, set from the
+# Status 2026-10-22: development entries. The leaf detector is its clean fine-tune; the label
+# matrix is the knowledge seed's (5 species, 5 organisms), beside the 20-species STAND-IN
+# (ml/training/labels/standin_labels.yaml) during the change-over; the disease head is v3c on
+# our detector's leaf crops, with #4's slugs, and the seed's classifier_labels.yaml maps
+# tomato's 8 of its 19 classes. Thresholds are the docs' starting values, set from the
 # evaluation set on Oct 22–23.
 
 # --- api (control plane): the S1 entries of docs/vision/README.md §6, upstream files ---
@@ -185,6 +186,25 @@ source            = "STAND-IN: 20 species from ml/training/labels/standin_labels
 runs_on           = "perception"
 label_set_version = "233482ce598f591b"
 
+# The knowledge seed's matrix, the label set knowledge.surql names (edb29fe878952e7b); the
+# stand-in above stays until no queued or leased job names it (README 6, the change-over).
+[[model]]
+name              = "bioclip_labels_edb29fe878952e7b"
+version           = "edb29fe878952e7b"
+file              = "bioclip_labels/bioclip_labels_edb29fe878952e7b.json"
+sha256            = "7c327d832937330dc46f83c3836a193c9913a39ff92a3ae1819857d84828b36b"
+licence           = "MIT"
+source            = "the knowledge seed (#51, #131): 20 species (tomato full, the rest label_only) and 5 organisms, BioCLIP 2 text tower, 80 templates; ml/training/labels/bioclip_text.py"
+runs_on           = "perception"
+label_set_version = "edb29fe878952e7b"
+
+  # The evaluation's dev cases, softmax over the 20 species rows (T 1); a case's shots combined
+  # with the worker's weights (ml/training/eval/reports/species-check-2026-10-22).
+  [model.check]
+  dev_top1_per_shot  = 0.647             # 133 shots of tomato, apple, grape and corn; the stand-in the same
+  dev_top1_per_case  = 0.610             # 105 cases, as the stand-in; tomato 28 of 63 (10 called potato, 8 pepper)
+  dev_top3_all_cases = 0.713             # all 115 cases; squash 0 of 10, even under its genus
+
 [[model]]
 name                      = "disease_head_disease-head-v3c-2026-10-20"
 version                   = "disease-head-v3c-2026-10-20"
@@ -194,6 +214,17 @@ licence                   = "Data CC BY 4.0 (PlantDoc, TOM2024, Tomato-Pakistan 
 source                    = "logistic regression (C=5: the best val top-1 per crop within one standard error of the best dev top-3) on BioCLIP 2 fp16 features of our leaf detector's crops, 4 augmented views each, from PlantDoc, TOM2024, Tomato-Pakistan 2026, PlantCity, Pretoria's and Makerere's maize; 19 classes (tomato mosaic virus and corn curvularia leaf spot dropped: no knowledge profile); ml/training/heads/train_disease.py --features crops --views 4 --select-on dev-top3; report in ml/training/heads/reports/"
 runs_on                   = "perception"
 classifier_labels_version = "disease-head-v3c-2026-10-20"
+# The head file's labels by output index, so classifier_labels and check.py's seed comparison
+# run where the model files aren't (CI); check.py compares them with the file where it is.
+labels = [
+  "apple/apple_cedar_apple_rust", "apple/apple_scab", "apple/healthy",
+  "corn/corn_common_rust", "corn/corn_gray_leaf_spot", "corn/corn_northern_leaf_blight", "corn/healthy",
+  "grape/grape_black_rot", "grape/healthy",
+  "pepper/healthy", "pepper/pepper_bacterial_leaf_spot",
+  "tomato/healthy", "tomato/tomato_bacterial_spot", "tomato/tomato_early_blight", "tomato/tomato_late_blight",
+  "tomato/tomato_leaf_mold", "tomato/tomato_septoria_leaf_spot", "tomato/tomato_spider_mites",
+  "tomato/tomato_yellow_leaf_curl_virus",
+]
 
   # T_disease (1.8206, fitted on the evaluation set's dev cases, their single-crop leaf photos;
   # evaluation.md §5) lives in the head file's `temperature` only (ml/models/FORMATS.md), so it

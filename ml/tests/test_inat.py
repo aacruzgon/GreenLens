@@ -1,6 +1,7 @@
 """`training.eval.inat`: taxon matching, licences, metadata stripping, the review and the cases."""
 
 import io
+import json
 
 import pytest
 from PIL import Image
@@ -99,6 +100,20 @@ def test_a_kept_observation_becomes_a_case(photos):
     assert inat.case({**entry, "split": "test"}, cand, photos, "x")["split"] == "test"
 
 
+def test_no_plant_is_in_both_splits():
+    splits = {}
+    for line in inat.MANIFEST.read_text().splitlines():
+        case = json.loads(line)
+        splits.setdefault(case["plant_key"], set()).add(case["split"])
+    assert not [key for key, s in splits.items() if len(s) > 1]
+
+
+def test_observations_of_one_plant_share_its_key_and_split(photos):
+    entry, cand = kept({102: "whole_plant"}, plant="inat-7")
+    c = inat.case(entry, cand, photos, "x")
+    assert (c["case_id"], c["plant_key"], c["split"]) == ("apple-inat-42", "inat-7", inat.split_of("inat-7"))
+
+
 @pytest.mark.parametrize("images, over, needle", [
     ({100: "leaf_closeup", 102: "skip"}, {}, "exactly one whole_plant"),
     ({100: "whole_plant", 102: "whole_plant"}, {}, "at most 1"),
@@ -106,6 +121,8 @@ def test_a_kept_observation_becomes_a_case(photos):
     ({100: "whole_plant"}, {"outcome": "sick"}, "outcome"),
     ({100: "whole_plant"}, {"problems": []}, "needs its problems"),
     ({100: "whole_plant"}, {"confidence": "maybe"}, "confidence"),
+    ({100: "whole_plant"}, {"plant": 401728510}, "plant must be"),
+    ({100: "whole_plant"}, {"plant": "inat-7", "split": "dev"}, "not both"),
 ])
 def test_a_case_that_isnt_a_valid_scan_is_refused(photos, images, over, needle):
     entry, cand = kept(images, **over)

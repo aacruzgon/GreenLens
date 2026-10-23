@@ -1,7 +1,11 @@
 """The manifests, sources.toml and NOTICES.md stay consistent (docs/vision/README.md §6)."""
 
+import json
 import tomllib
 from pathlib import Path
+
+import pytest
+import yaml
 
 from ml.models import check
 
@@ -44,3 +48,80 @@ def test_plant_probe_file_rules():
                         ({"classes": 2}, "one-class")):
         problems = check.features_problems("m: plant_probe", {**good, **bad}, bioclip, "p1")
         assert any(needle in p for p in problems), (bad, problems)
+
+
+def test_seed_rows_are_compared_by_index(tmp_path, monkeypatch):
+    """classifier_labels.yaml may map fewer classes than the head; each row must match its index,
+    and a species it maps must have all of the head's classes."""
+    labels = check.head_rows({"labels": ["apple/apple_scab", "tomato/healthy", "tomato/tomato_leaf_mold"]})
+    seed = tmp_path / "classifier_labels.yaml"
+    monkeypatch.setattr(check, "SEED_LABELS", seed)
+
+    def problems(version: str, rows: list[dict]) -> list[str]:
+        seed.write_text(yaml.safe_dump({"model_version": version, "labels": rows}))
+        return check.seed_problems("m: disease_head_h1", "h1", labels, [])
+
+    tomato = [dict(l) for l in labels[1:]]
+    assert problems("h1", tomato) == []
+    assert problems("h0", tomato) == [], "another head of a change-over isn't compared"
+    wrong = [tomato[0], {**tomato[1], "problem_id": "tomato_late_blight"}]
+    assert any("index 2" in p for p in problems("h1", wrong))
+    assert any("isn't one of the head's" in p for p in problems("h1", [*tomato, {**tomato[0], "index": 5}]))
+    assert any("without tomato/tomato_leaf_mold" in p for p in problems("h1", tomato[:1]))
+
+    assert check.seed_head_problems("m", [{"name": "disease_head_h1", "version": "h1"}]) == []
+    assert "no disease head" in check.seed_head_problems("m", [{"name": "disease_head_h0", "version": "h0"}])[0]
+
+
+def test_a_head_entry_lists_its_labels():
+    """The copy of the head's labels that classifier_labels --check and the seed comparison read
+    where the model files aren't (CI); check.py compares it with the file where it is."""
+    rows = check.head_rows({"labels": ["corn/healthy", "corn/corn_common_rust"]})
+    assert rows[1] == {"index": 1, "label": "corn/corn_common_rust", "species_id": "corn", "problem_id": "corn_common_rust"}
+    for bad in ({}, {"labels": []}, {"labels": ["corn"]}, {"labels": ["/healthy"]}):
+        with pytest.raises(ValueError):
+            check.head_rows(bad)
+    for name in check.MANIFESTS:
+        for n, e in entries(name).items():
+            if n.startswith("disease_head"):
+                assert len(check.head_rows(e)) > 1, (name, n)
+
+
+def test_each_manifest_has_the_label_matrix_knowledge_names():
+    """api asks every perception job for knowledge.surql's label_set_version; a worker on these
+    manifests must have that matrix, or real scans are refused (#51, Oct 20)."""
+    from ml.training.labels import current
+
+    version = current.label_set_version()
+    for name in check.MANIFESTS:
+        entry = current.matrix_entry(list(entries(name).values()))
+        assert entry["version"] == version and entry["name"] == f"bioclip_labels_{version}"
+
+
+def test_knowledge_names_the_seeds_versions():
+    """knowledge.surql's knowledge_meta is what the API loads; it must carry the versions the seed
+    gives, or it is stale (python -m ml.knowledge.build_migration)."""
+    from ml.training.labels import current
+
+    knowledge = MODELS.parent.parent / "backend/migrations/knowledge.surql"
+    meta = next(l for l in knowledge.read_text().splitlines() if l.startswith("UPSERT knowledge_meta:`current`"))
+    assert f"label_set_version: '{current.label_set_version()}'" in meta
+    assert f"classifier_labels_version: '{current.classifier_labels_version() or ''}'" in meta
+
+
+def test_a_head_file_is_compared_with_its_labels_without_a_bioclip_entry(tmp_path):
+    """The labels check doesn't depend on the manifest's bioclip entry (Alan's review of #134)."""
+    head = {"version": "h1", "features": "bioclip-2+0", "labels": [
+        {"index": 0, "label": "corn/healthy", "species_id": "corn", "problem_id": "healthy"}]}
+    (tmp_path / "files").mkdir()
+    (tmp_path / "files/h1.json").write_text(json.dumps(head))
+    sha = check.sha256(tmp_path / "files/h1.json")
+    entry = (f'[[model]]\nname = "disease_head_h1"\nversion = "h1"\nfile = "h1.json"\nsha256 = "{sha}"\n'
+             f'licence = "x"\nruns_on = "perception"\nclassifier_labels_version = "h1"\nlabels = ["corn/corn_common_rust"]\n')
+    for name in check.MANIFESTS:
+        (tmp_path / name).write_text(entry)
+    (tmp_path / "sources.toml").write_text(f'[[file]]\nsha256 = "{sha}"\n')
+    (tmp_path / "NOTICES.md").write_text("## disease_head_h1\n")
+    problems, notes = check.check(tmp_path, tmp_path / "files")
+    assert any("the file's labels differ" in p for p in problems), problems
+    assert any("features aren't checked" in n for n in notes), notes

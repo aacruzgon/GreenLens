@@ -1,0 +1,91 @@
+# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
+# corn_common_rust.review.md and signs reviewed_by and reviewed_at.
+id: corn_common_rust
+name: Common rust
+kind: fungal
+affects:
+- corn
+caused_by: []
+damage_patterns: []
+prevalence: occasional
+indicators:
+- id: corn_common_rust.yellow_flecks_early
+  text: Early on, small yellow flecks or spots appear on either side of the leaf.
+  question: Are there small yellow flecks or spots on the leaf?
+  weight: 2
+  discriminating: true
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+  - leaf_underside
+- id: corn_common_rust.brick_red_pustules
+  text: Small brick-red pustules break through the leaf surface and release brick-red spores.
+  question: Are there small brick-red bumps breaking through the leaf surface?
+  weight: 2
+  discriminating: true
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+  - leaf_underside
+- id: corn_common_rust.oval_elongated_lesions
+  text: The pustules are oval or elongated.
+  question: Are the bumps oval or long and narrow in shape?
+  weight: 2
+  discriminating: true
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+  - leaf_underside
+- id: corn_common_rust.lesion_size_2_10mm
+  text: The pustules are small, about 2 to 10 mm long.
+  question: Are the rust-coloured bumps small, no longer than a grain of rice?
+  weight: 2
+  discriminating: false
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+  - leaf_underside
+- id: corn_common_rust.yellowing_around_lesions
+  text: The leaf turns yellow around the pustules.
+  question: Is the leaf yellow around the red or dark bumps?
+  weight: 2
+  discriminating: false
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+- id: corn_common_rust.pustules_turn_black
+  text: As they mature, the brick-red spores turn black, so the pustules and leaf surface look black.
+  question: Have the bumps turned black, making the leaf look black in places?
+  weight: 2
+  discriminating: false
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+  - leaf_underside
+- id: corn_common_rust.brown_dead_areas
+  text: Dead, brown areas develop on the leaf.
+  question: Are there dead, brown patches on the leaf?
+  weight: 2
+  discriminating: false
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+- id: corn_common_rust.whole_leaf_dies
+  text: In severe cases the whole leaf dies.
+  question: Are whole leaves on the plant dead and brown?
+  weight: 1
+  discriminating: false
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+conditions:
+  notes: Favoured by high humidity, with cool evenings of 14 to 18 °C followed by moderate daytime temperatures.
+    Spores do not survive winter in Ontario; they blow in from the southern U.S. and Mexico, and early
+    spring storm fronts can bring early infection.
+looks_like: []
+treatments:
+- tolerant_corn_hybrids_rust
+sources:
+- ontario_field_crop_diseases
+reviewed_by: ''
+reviewed_at: ''

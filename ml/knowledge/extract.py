@@ -12,8 +12,8 @@ look-alike, treatment and product comes back with the chunk ids it was taken fro
 a review file next to the draft (<id>.review.md) with each cited excerpt in full, so the reviewer
 can check each line against its source; a facts-only excerpt is named and linked, not quoted.
 
-A draft is written with `reviewed_by: ""` and `reviewed_at: ""`, which the loader refuses
-(validate.py; --drafts lets the other checks run on drafts), and with `discriminating: false`
+A draft is written with `reviewed_by: ""` and `reviewed_at: ""`, which build_migration.py
+leaves out of knowledge.surql until it's signed (seed.signed; validate.py --drafts checks the rest), and with `discriminating: false`
 everywhere: discriminate.py proposes the three. Treatments are shared: the model sees the seed's
 treatments and reuses one by id where it fits, and each is reviewed, with its text, in the review
 file of every problem that links it. Products named in a treatment go to products.yaml with a
@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import itertools
 import json
 import re
 import sys
@@ -92,10 +93,13 @@ on, or a days-to-harvest wait, in words, without numbers of a rate.
 prevention, started before symptoms or for next season, when an excerpt says so.
 - `products`: every pest-control product a treatment names, by its active ingredient or type \
 in one or two lowercase words, as it appears in the treatment text ("copper", "chlorothalonil", \
-"insecticidal soap", "pyrethroid"). `broad_spectrum` is true for an insecticide or miticide that \
-also kills beneficial insects or mites (organophosphates, carbamates, pyrethroids, pyrethrins, \
-or one an excerpt says kills the insects or mites it contacts); false for fungicides, \
-bactericides and Bacillus thuringiensis."""
+"insecticidal soap", "pyrethroid"). `broad_spectrum` is true for anything that kills beneficial \
+insects or mites on contact or through its residue: the contact and systemic insecticides and \
+miticides (organophosphates, carbamates, pyrethroids, pyrethrins, neonicotinoids, spinosad), \
+insecticidal soap and every oil (neem, horticultural, canola), sulfur, which is also sold as a \
+fungicide, and insect-killing fungi such as Beauveria bassiana. It is false only for what the \
+pest must eat (Bacillus thuringiensis) and for the other fungicides and bactericides (copper, \
+chlorothalonil, mancozeb). When unsure, true: a wrong true only offers a gentler step."""
 
 ORGANISM_RULES = RULES + """
 
@@ -338,7 +342,10 @@ class Extractor:
                 added.append(x["name"])
         if added:
             current["products"].sort(key=lambda x: x["name"].lower())
-            p.write_text(yaml.safe_dump(current, sort_keys=False, allow_unicode=True),
+            # safe_dump drops comments, so the header with the broad_spectrum rule is carried over.
+            old = p.read_text(encoding="utf-8").splitlines(keepends=True) if p.exists() else []
+            header = "".join(itertools.takewhile(lambda l: l.startswith("#") or not l.strip(), old))
+            p.write_text(header + yaml.safe_dump(current, sort_keys=False, allow_unicode=True),
                          encoding="utf-8", newline="\n")
         return added
 

@@ -22,8 +22,9 @@ pytest
 jsonschema
 httpx
 # Knowledge ingestion (ml/knowledge/, docs/vision/training.md §10): the hosted model for tagging and
-# extraction, and the text embedder's tokenizer
+# extraction, the text embedder's tokenizer, and PDF sources' text and type sizes (chunk.py)
 anthropic
+pdfminer.six
 tokenizers
 # SAM 2.1 export (ml/training/export/sam2.py)
 sam-2 @ git+https://github.com/facebookresearch/sam2@2b90b9f5ceec907a1c18123530e92e794ad901a4

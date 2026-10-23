@@ -1,0 +1,9 @@
+# DRAFT from ml/knowledge/extract.py: reviewed, with its text, in the review file of
+# every problem that links it; loaded once those problems are signed.
+id: remove_volunteers_weeds_pepper
+kind: cultural
+text: Pull up pepper and tomato plants that come up on their own. Control weeds, especially nightshade
+  and ground cherry. The bacteria can survive on all of these.
+sources:
+- edis_pp362_bacterial_spot_pepper
+- isu_bacterial_spot_pepper_tomato

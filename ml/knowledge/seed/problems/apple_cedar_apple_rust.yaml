@@ -1,0 +1,66 @@
+# DRAFT from ml/knowledge/extract.py: not loaded until a teammate checks it against
+# apple_cedar_apple_rust.review.md and signs reviewed_by and reviewed_at.
+id: apple_cedar_apple_rust
+name: Cedar-apple rust
+kind: fungal
+affects:
+- apple
+caused_by: []
+damage_patterns: []
+prevalence: occasional
+indicators:
+- id: apple_cedar_apple_rust.small_yellow_spots_upper_surface
+  text: Small yellow spots on the upper leaf surface, appearing shortly after bloom.
+  question: Are there small yellow spots on the top side of the leaves?
+  weight: 2
+  discriminating: true
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+- id: apple_cedar_apple_rust.bright_yellow_orange_spots
+  text: The spots slowly grow larger and turn a bright yellow-orange colour. These bright spots make the
+    disease easy to identify.
+  question: Are there bright yellow-orange spots on the leaves?
+  weight: 3
+  discriminating: true
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+- id: apple_cedar_apple_rust.black_dots_in_spot_centres
+  text: Small black dots form in the centre of the leaf spots in late spring or early summer.
+  question: Are there tiny black dots in the middle of the orange spots on the leaves?
+  weight: 2
+  discriminating: false
+  where: upper_leaves
+  image_kinds:
+  - leaf_closeup
+- id: apple_cedar_apple_rust.tubes_on_leaf_underside
+  text: In late summer, small tube-like structures grow on the underside of the leaves.
+  question: Are there small tube-like growths on the underside of the leaves?
+  weight: 2
+  discriminating: true
+  where: leaf_underside
+  image_kinds:
+  - leaf_underside
+- id: apple_cedar_apple_rust.early_leaf_drop
+  text: Heavily infected leaves may drop early.
+  question: Has the tree dropped many leaves early, before autumn?
+  weight: 1
+  discriminating: false
+  where: whole_plant
+  image_kinds:
+  - whole_plant
+conditions:
+  notes: Warm, rainy days in spring (late April and early May in the source region) make the galls on
+    cedars and junipers swell and release spores. Wind carries the spores to apple trees. Infection happens
+    when spores land on a susceptible apple and conditions stay moist. The fungus needs both an apple
+    and a cedar or juniper nearby to complete its life cycle.
+looks_like: []
+treatments:
+- avoid_susceptible_junipers
+- prune_rust_galls_junipers
+- rust_resistant_apple_crabapple_cultivars
+sources:
+- isu_cedar_apple_rust
+reviewed_by: ''
+reviewed_at: ''

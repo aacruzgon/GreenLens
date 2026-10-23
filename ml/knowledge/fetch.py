@@ -3,7 +3,8 @@
     python3 -m ml.knowledge.fetch              # fetch what isn't in ml/knowledge/raw/ yet
     python3 -m ml.knowledge.fetch --refresh    # fetch everything again
 
-Each source is one document. Its page goes to ml/knowledge/raw/<id>.html as served, with
+Each source is one document. Its page goes to ml/knowledge/raw/<id>.html as served (a PDF to
+raw/<id>.pdf), with
 raw/<id>.json beside it (the final URL, the status, the time and the SHA-256), so chunking can
 run again without the network. raw/ is not committed: the seed keeps excerpts only as far as
 each source's terms allow, and none from a source with no reuse grant (architecture 5, licensing).
@@ -110,15 +111,19 @@ def run(seed: Seed, raw: Path = RAW, refresh: bool = False,
     raw.mkdir(parents=True, exist_ok=True)
     errors = []
     for s in text_sources(seed):
-        page, meta_path = raw / f"{s['id']}.html", raw / f"{s['id']}.json"
-        if page.exists() and meta_path.exists() and not refresh:
+        pages = [raw / f"{s['id']}.html", raw / f"{s['id']}.pdf"]
+        meta_path = raw / f"{s['id']}.json"
+        if any(p.exists() for p in pages) and meta_path.exists() and not refresh:
             continue
         try:
             body, meta = fetcher.fetch(s["url"])
         except (FetchError, httpx.HTTPError) as e:
             errors.append(f"{s['id']}: {e}")
             continue
-        page.write_bytes(body)
+        is_pdf = body.startswith(b"%PDF-") or meta["content_type"].startswith("application/pdf")
+        for p in pages:
+            p.unlink(missing_ok=True)
+        pages[is_pdf].write_bytes(body)
         meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
         print(f"fetched {s['id']}: {len(body) / 1024:.0f} KiB", file=sys.stderr)
     return errors
