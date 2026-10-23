@@ -12,12 +12,12 @@ import json
 from pathlib import Path
 
 from ml.knowledge import build_migration as bm
-from ml.knowledge.seed import SEED, load
+from ml.knowledge.seed import SEED, load, signed
 
 
 def label_set_version(seed: Path = SEED, manifest: Path = bm.MANIFEST) -> str:
     """The seed's label_set_version, which api puts in every perception payload."""
-    labels = bm.bioclip_labels(load(seed))
+    labels = bm.bioclip_labels(signed(load(seed)))
     return bm.label_set_version(labels, bm.bioclip_revision(manifest), json.loads(bm.TEMPLATES.read_text()))
 
 

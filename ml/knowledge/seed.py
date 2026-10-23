@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import yaml
@@ -101,3 +101,51 @@ def load(root: Path = SEED) -> Seed:
                 seed.chunks.append(c)
                 seed.paths[id(c)] = p.with_name(f"{p.name}:{n}")
     return seed
+
+
+def is_signed(record: dict) -> bool:
+    """Someone has reviewed it: a draft from extract.py has `reviewed_by` still empty."""
+    return bool(str(record.get("reviewed_by") or "").strip())
+
+
+def signed(seed: Seed) -> Seed:
+    """The part of the seed that loads (#143): the species, problems and organisms someone has
+    signed; the treatments a signed problem links, or that no problem links; every product, soil
+    condition, source and chunk; and only the links between records that load. A chunk tagged with
+    a draft keeps its text, with that tag empty. Drafts stay in the seed for their review, so a
+    slice can merge before it's signed and loads on the first build after.
+
+    The records it changes are copies, which keep their files in `paths`."""
+    out = replace(seed, paths=dict(seed.paths))
+
+    def keep(rows: list[dict], **links: set[str]) -> list[dict]:
+        """`rows` with each list-of-ids field in `links` cut to the ids it names."""
+        kept = []
+        for r in rows:
+            new = {**r, **{f: [x for x in r.get(f) or [] if x in ids] for f, ids in links.items()
+                           if f in r}}
+            out.paths[id(new)] = seed.paths.get(id(r), seed.root)
+            kept.append(new)
+        return kept
+
+    species = {s["id"] for s in seed.species if is_signed(s)}
+    problems = {p["id"] for p in seed.problems if is_signed(p)}
+    organisms = {o["id"] for o in seed.organisms if is_signed(o)}
+    linked = {t for p in seed.problems for t in p.get("treatments") or []}
+    by_signed = {t for p in seed.problems if p["id"] in problems for t in p.get("treatments") or []}
+    treatments = {t["id"] for t in seed.treatments if t["id"] in by_signed or t["id"] not in linked}
+
+    out.species = [s for s in seed.species if s["id"] in species]
+    out.organisms = keep([o for o in seed.organisms if o["id"] in organisms], preys_on=organisms)
+    out.treatments = [t for t in seed.treatments if t["id"] in treatments]
+    out.problems = keep([p for p in seed.problems if p["id"] in problems], affects=species,
+                        caused_by=organisms, treatments=treatments)
+    for p in out.problems:
+        p["looks_like"] = [l for l in p.get("looks_like") or [] if l["problem"] in problems]
+    loaded = {"crop": species, "problem": problems, "organism": organisms}
+    out.chunks = []
+    for c in seed.chunks:
+        new = {**c, **{f: None for f, ids in loaded.items() if c.get(f) and c[f] not in ids}}
+        out.paths[id(new)] = seed.paths.get(id(c), seed.root)
+        out.chunks.append(new)
+    return out
