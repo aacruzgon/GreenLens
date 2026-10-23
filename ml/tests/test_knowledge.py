@@ -6,6 +6,7 @@ embedded-engine test loads; set UPDATE_KNOWLEDGE_FIXTURE=1 to rewrite it.
 """
 
 import copy
+import importlib.util
 import json
 import os
 import re
@@ -281,13 +282,31 @@ class NamedZeros:
 
 
 def stale_line(committed: str, built: str) -> str | None:
-    """The first line of `committed` that differs from `built`, the chunks' vectors left out."""
-    blank = lambda t: re.sub(r"embedding: \[[^\]]*\]", "embedding: []", t.replace("\r\n", "\n")).splitlines()
+    """Where `committed` first differs from `built`, with both lines, the chunks' vectors left out."""
+    blank = lambda t: re.sub(r"embedding: \[[^\]\n]*\]", "embedding: []", t.replace("\r\n", "\n")).splitlines()
     a, b = blank(committed), blank(built)
-    for x, y in zip(a, b):
+    for i, (x, y) in enumerate(zip(a, b), 1):
         if x != y:
-            return x[:200]
-    return None if len(a) == len(b) else f"{len(a)} lines, the seed gives {len(b)}"
+            return f"line {i}: the file has {x[:200]!r}, the seed gives {y[:200]!r}"
+    if len(a) == len(b):
+        return None
+    side, line = ("the file also has", a[len(b)]) if len(a) > len(b) else ("the seed also gives", b[len(a)])
+    return f"line {min(len(a), len(b)) + 1}: {side} {line[:200]!r}"
+
+
+def test_stale_line_leaves_out_only_the_vectors():
+    built = ("UPSERT knowledge_chunk:`a` CONTENT { embedding: [0.0, 0.0], text: 'x' } RETURN NONE;\n"
+             "UPSERT classifier_label:['h', 1] CONTENT { label: 'tomato/healthy' } RETURN NONE;\n"
+             "UPSERT classifier_label:['h', 2] CONTENT { label: 'tomato/leaf_mold' } RETURN NONE;\n")
+    assert stale_line(built.replace("[0.0, 0.0]", "[0.1, -0.2]"), built) is None
+    assert "the file has" in stale_line(built.replace("text: 'x'", "text: 'y'"), built)
+    lines = built.splitlines()
+    missing = stale_line("\n".join(lines[:1] + lines[2:]), built)
+    assert missing.startswith("line 2:") and repr(lines[1]) in missing, missing
+    assert stale_line("\n".join(lines[:2]), built) == f"line 3: the seed also gives {lines[2]!r}"
+    assert stale_line(built + "UPSERT extra;\n", built) == "line 4: the file also has 'UPSERT extra;'"
+    # A vector broken across lines isn't masked as one: the mask stays on its line.
+    assert stale_line(built.replace("[0.0, 0.0]", "[0.0,\n0.0]"), built)
 
 
 def test_knowledge_surql_is_what_the_seed_gives():
@@ -298,10 +317,28 @@ def test_knowledge_surql_is_what_the_seed_gives():
     text, _, _ = bm.build(load(bm.SEED), NamedZeros(), bm.bioclip_revision(), templates())
     committed = bm.OUT.read_text(encoding="utf-8")
     assert stale_line(committed, text) is None, (
-        f"knowledge.surql isn't what the seed gives at: {stale_line(committed, text)}; "
+        f"knowledge.surql isn't what the seed gives, at {stale_line(committed, text)}; "
         "run python -m ml.knowledge.build_migration")
-    one_row = "\n".join(l for l in committed.splitlines() if "classifier_label:['disease-head-v3c-2026-10-20', 14]" not in l)
-    assert stale_line(one_row, text), "a missing classifier_label row is caught"
+    # The file's first classifier row, whichever head it names, is caught when it is missing.
+    lines = committed.splitlines()
+    row = next((i for i, l in enumerate(lines) if l.startswith("UPSERT classifier_label:")), None)
+    if row is not None:
+        missing = stale_line("\n".join(lines[:row] + lines[row + 1:]), text)
+        assert missing and repr(lines[row][:200]) in missing, missing
+
+
+def test_the_committed_vectors_are_whole():
+    """Every chunk's vector in knowledge.surql has the embedder's dimension, finite values and a
+    norm of 1, as the embedder writes them. The rows test leaves the vectors out, so a file
+    written with zero vectors or one value short would pass it (Alan's review of #145)."""
+    chunks = [l for l in bm.OUT.read_text(encoding="utf-8").splitlines() if l.startswith("UPSERT knowledge_chunk:")]
+    assert chunks
+    for line in chunks:
+        m = re.search(r"embedding: \[([^\]\n]*)\]", line)
+        assert m, line[:80]
+        v = np.array([float(x) for x in m.group(1).split(",")])
+        assert v.shape == (embed.DIMENSION,), (line[:80], v.shape)
+        assert np.isfinite(v).all() and abs(np.linalg.norm(v) - 1) < 1e-3, line[:80]
 
 
 def test_the_cache_embeds_each_text_once(tmp_path):
@@ -327,6 +364,8 @@ GOLDEN = json.loads((Path(__file__).parent / "fixtures/text_embedder_golden.json
 
 @pytest.mark.skipif(not embed.default_manifest().is_file(),
                     reason="needs python3 -m ml.models.fetch --for ingest")
+@pytest.mark.skipif(importlib.util.find_spec("onnxruntime") is None or importlib.util.find_spec("tokenizers") is None,
+                    reason="needs onnxruntime and tokenizers (ml/requirements.lock; CI's requirements-ci.txt has no tokenizers)")
 def test_the_embedder_matches_the_golden_values():
     e = embed.Embedder()
     assert e.name == "snowflake-arctic-embed-xs@d8c86521"
