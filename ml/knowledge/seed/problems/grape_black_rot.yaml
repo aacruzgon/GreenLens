@@ -76,7 +76,6 @@ conditions:
 looks_like: []
 treatments:
 - canopy_drying_grape
-- lime_sulfur_delayed_dormant
 - prune_destroy_dormant_grape
 - remove_damaged_clusters_fallen_berries
 - remove_wild_grapes

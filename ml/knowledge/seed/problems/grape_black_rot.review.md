@@ -58,9 +58,6 @@ Excerpts do not say which leaves (lower or upper) show spots first; 'upper_leave
 - **canopy_drying_grape** (cultural): Help the vines dry quickly after rain or dew. Prune and train the vines, choose a good row direction, and space the plants properly.
   - `isu_black_rot_grape.2` (https://yardandgarden.extension.iastate.edu/encyclopedia/black-rot-grape, withheld at review: recommends mancozeb or captan as home sprays (S1): run fetch and chunk, then read build/chunks/isu_black_rot_grape.jsonl)
 
-- **lime_sulfur_delayed_dormant** (chemical): If black rot has been a problem in past years, spray liquid lime sulfur just before the buds break. This lowers the risk for the coming season. Use a product labelled for grapes and follow the label.
-  - `isu_black_rot_grape.2` (https://yardandgarden.extension.iastate.edu/encyclopedia/black-rot-grape, withheld at review: recommends mancozeb or captan as home sprays (S1): run fetch and chunk, then read build/chunks/isu_black_rot_grape.jsonl)
-
 - **prune_destroy_dormant_grape** (cultural): While the vines are dormant, prune out and destroy diseased plant material. Be sure to remove all black rot mummies (shrivelled black berries). The fungus survives the winter mainly in these mummies, and also in other infected plant parts.
   - `isu_black_rot_grape.1`: Black rot, caused by the fungus Guignardia bidwellii, can cause heavy losses to infected grapes, especially during warm, humid weather. Black rot starts as tiny yellow spots that grow to about 1/4 inch on the leaves. The centers of the spots turn rusty red. Tiny black dots usually form in the center of the spots. These dots contain thousands of spores that can produce new infections. Symptoms on the fruit become apparent when the berries are about half grown. Infected berries can rot in a few days. They shrivel and become hard, black mummies, which contain the same tiny spore containing structures as leaf spots. Black rot is a common Iowa grape disease. The primary winter survival mode for the fungus is in mummified berries. However, other infected plant material can be a safe haven for the fungus.
   - `isu_black_rot_grape.2` (https://yardandgarden.extension.iastate.edu/encyclopedia/black-rot-grape, withheld at review: recommends mancozeb or captan as home sprays (S1): run fetch and chunk, then read build/chunks/isu_black_rot_grape.jsonl)
@@ -70,14 +67,6 @@ Excerpts do not say which leaves (lower or upper) show spots first; 'upper_leave
 
 - **remove_wild_grapes** (cultural): Remove wild grapes growing around your planting. They can carry the disease.
   - `isu_black_rot_grape.2` (https://yardandgarden.extension.iastate.edu/encyclopedia/black-rot-grape, withheld at review: recommends mancozeb or captan as home sprays (S1): run fetch and chunk, then read build/chunks/isu_black_rot_grape.jsonl)
-
-## Products
-
-- **lime sulfur**, broad-spectrum: True
-  - `isu_black_rot_grape.2` (https://yardandgarden.extension.iastate.edu/encyclopedia/black-rot-grape, withheld at review: recommends mancozeb or captan as home sprays (S1): run fetch and chunk, then read build/chunks/isu_black_rot_grape.jsonl)
-
-- **sulfur**, broad-spectrum: True
-  - (no excerpt cited)
 
 ## Discriminating indicators
 
@@ -110,7 +99,10 @@ First review by the knowledge-base owner, before the signing review.
 - **`leaf_spot_size`:** max 8 mm, so a spot of about a quarter inch isn't rejected at the edge; the question compares it with a pencil eraser.
 - **Questions and text:** mummies are "shrivelled and black" (hardness can't be seen); berries "can" rot in a few days, as `.1` says.
 
+### After Alan's review of #143 (2026-10-23)
+
+- **Removed `lime_sulfur_delayed_dormant` (S6):** nobody has checked a lime sulphur product registered for home use on grapes in Canada, or its place on Ontario's Allowable List, and a home step names only a product checked in the registry. The plan keeps the four cultural steps. The step can come back with a registration number written here. `lime sulfur` stays in products.yaml as a harmful name.
+
 ## Open questions
 
-- **`lime_sulfur_delayed_dormant` (S6):** is a lime sulphur product registered for home use on grapes in Canada, and is it on Ontario's Allowable List? Not checked in Health Canada's registry yet.
 - **One source:** the grape slice rests on one ISU page, with one committed excerpt.
