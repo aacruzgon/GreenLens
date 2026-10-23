@@ -25,8 +25,8 @@
 #   pages on extension.colostate.edu carry only "© 2026 Colorado State University", no reuse
 #   grant: facts only. They're written for Colorado's soils, so a record takes from them only what
 #   holds for a garden in general.
-# - The ISU how-to pages on moss, algae and mulch fungi carry no republishing note, like the
-#   tomato how-to above: facts only.
+# - The ISU how-to pages on moss, algae, mulch fungi and watering carry no republishing note,
+#   like the tomato how-to above: facts only.
 #
 # GreenLens is a non-commercial student project, which these terms cover. If it is ever
 # commercialised, Ontario, EDIS, CSU and Clemson must be revisited (#46).
@@ -123,6 +123,12 @@
   publisher: Iowa State University Extension and Outreach, Yard and Garden
   url: https://yardandgarden.extension.iastate.edu/how-to/managing-strange-looking-fungi-landscape-mulch
   licence: "© Iowa State University of Science and Technology. A how-to page with no republishing note: facts only, no wording committed. Credit: Aaron Steil and Richard Jauron, Yard and Garden, Iowa State University Extension and Outreach (last reviewed July 2023)."
+  retrieved_at: 2026-10-23
+- id: isu_watering_tips
+  title: Watering Tips for the Garden, Lawn, and Landscape
+  publisher: Iowa State University Extension and Outreach, Yard and Garden
+  url: https://yardandgarden.extension.iastate.edu/how-to/watering-tips-garden-lawn-and-landscape
+  licence: "© Iowa State University of Science and Technology. A how-to page with no republishing note: facts only, no wording committed. Credit: Aaron Steil, Yard and Garden, Iowa State University Extension and Outreach (last reviewed March 2024)."
   retrieved_at: 2026-10-23
 
 # --- UF/IFAS EDIS ----------------------------------------------------------------------------

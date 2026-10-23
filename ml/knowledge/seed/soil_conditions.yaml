@@ -1,7 +1,8 @@
 # Soil conditions (contracts §10, SoilConditionSeed): what a soil reading means and what to do,
 # for each SoilAspect value the VLM or a guided check reports that calls for advice (contracts §6).
-# A value with no entry ("moist", "crumbly", "mulched", "none") needs none. The API shows an
-# entry with the soil findings, and the plan writer reads it (architecture 5, knowledge base).
+# A value with no entry ("moist", "crumbly", "mulched", "none") needs none. The API is to show an
+# entry with the soil findings, and the plan writer to read it (architecture 5, knowledge base);
+# neither does yet, so the rows load into knowledge.surql and wait for that wiring.
 #
 # Written by hand on 2026-10-23 (#46) from the sources each entry lists, in our own words. Most
 # are facts-only how-to pages (sources.yaml), so no wording is quoted. CSU's pages are written for
@@ -14,11 +15,13 @@
 # --- moisture ------------------------------------------------------------------------------
 - aspect: moisture
   value: dry
-  description: The soil surface looks dry. Bare soil loses water fastest from its surface.
-  what_to_do: Water slowly, so it soaks in instead of running off; if it runs off, water in
-    several shorter sessions. A layer of mulch cuts the water lost from the surface and keeps the
-    moisture steadier between waterings.
-  sources: [csu_mulching, csu_soil_drainage]
+  description: The soil surface looks dry. The surface dries first, fastest on bare soil, so the
+    soil around the roots can still be moist.
+  what_to_do: Feel the soil 2–5 cm down before watering, and water only if it's dry there too.
+    Then water slowly, so it soaks in instead of running off, until the soil is moist about 12–15 cm
+    down; if it runs off, water in several shorter sessions. A layer of mulch cuts the water lost
+    from the surface and keeps the moisture steadier between waterings.
+  sources: [isu_watering_tips, csu_mulching, csu_soil_drainage]
 - aspect: moisture
   value: wet
   description: The soil looks wet. Roots need air as well as water, and plants kept in wet soil
@@ -31,10 +34,10 @@
   value: waterlogged
   description: The soil looks saturated, with standing water or puddles. Roots stop working
     without air, and if it stays this way most plants decline or die.
-  what_to_do: Check the drainage, if you can, by digging a hole about 30 cm deep and filling it with
-    water. If it hasn't drained in half an hour, the soil drains poorly. Water less, fill low spots or
-    lead the water away, and work organic matter into the soil to open it up. Where water keeps
-    standing, a raised bed lifts the roots above it.
+  what_to_do: Water less, and fill low spots or lead the water away. Once the soil has drained, check
+    how well it drains by digging a hole about 30 cm deep and filling it with water. If it hasn't
+    drained in half an hour, the soil drains poorly; work organic matter into it to open it up. Where
+    water keeps standing, a raised bed lifts the roots above it.
   sources: [csu_soil_drainage, isu_moss_lawn_garden]
 
 # --- surface -------------------------------------------------------------------------------
@@ -65,7 +68,7 @@
     mostly from traffic, including feet on moist soil, and from heavy rain on bare clay.
   what_to_do: Keep off the bed, especially when it's wet, and use set paths or raised beds. Work
     organic matter into the top 15–20 cm and keep the surface mulched. In a lawn or under a tree,
-    use a core aerator instead. Adding sand or gypsum doesn't loosen it.
+    use a core aerator instead. Adding sand doesn't loosen it.
   sources: [csu_soil_compaction, ontario_field_crops_soil_management, isu_moss_lawn_garden]
 
 # --- colour --------------------------------------------------------------------------------
@@ -116,11 +119,14 @@
   sources: [isu_algae_lawn]
 - aspect: deposits
   value: mould
-  description: A mould or fungus is growing on the soil or mulch. Most such growths feed on
-    decaying organic matter, such as slime moulds, which start as yellow or orange foam and dry to
-    a white powder. They don't harm plants.
-  what_to_do: Leave it to dry up and fade, or scoop it up if it bothers you. Loosening the mulch so
-    it dries out makes it less welcome. A fungicide isn't needed.
+  description: A mould or fungus is growing on mulch or on the soil. Most such growths in mulch,
+    such as stinkhorns, bird's nest fungi and slime moulds, live on the decaying wood or on the
+    bacteria and other organisms in it, and don't harm plants. Slime moulds start as a yellow or
+    orange foam and dry to a white powder within days.
+  what_to_do: On mulch, or on soil away from the stems, leave it to dry up and fade, or scoop it up
+    if it bothers you. Loosening the mulch with a rake so it dries out discourages some, such as
+    bird's nest fungi. A white or fuzzy growth on a stem, or on the soil right at its base, is
+    different. Look closely at the plant for signs of disease.
   sources: [isu_fungi_landscape_mulch]
 
 # --- erosion -------------------------------------------------------------------------------
@@ -138,9 +144,10 @@
 - aspect: weeds
   value: many
   description: Many weeds are growing in the bed.
-  what_to_do: Remove them, then mulch the bed deep enough to suppress new ones, about 10 cm of wood
-    chips or gravel. Avoid tilling, which brings buried weed seeds up to germinate. Plastic sheeting
-    or weed fabric under the mulch isn't recommended in a garden bed.
+  what_to_do: Remove them, then mulch the bed deep enough to suppress new ones, about 10 cm, such as
+    wood chips, or dry grass clippings or shredded leaves in a vegetable bed. Avoid tilling, which
+    brings buried weed seeds up to germinate. Under mulch around shrubs and perennials, plastic
+    sheeting or weed fabric isn't recommended, since it keeps air and water from the soil.
   sources: [csu_mulching, csu_soil_compaction]
 
 # --- texture (guided checks) ---------------------------------------------------------------
