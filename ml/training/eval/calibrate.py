@@ -77,6 +77,7 @@ SHOT_WEIGHT = {"whole_plant": 2.0, "flower_fruit": 2.0, "leaf_closeup": 1.0, "le
 LEAFY = ("leaf_closeup", "leaf_underside")
 AGREEMENT = 0.8          # architecture 6.2: BioCLIP's top-1 in the high band
 AGREEMENT_ACCURACY = 0.95
+MIN_CASES = 10           # the fewest cases at a threshold that can show its accuracy
 MEDIUM = 0.5             # contracts 1: the medium band starts here
 BINS = 15
 FOLDS = 5
@@ -245,12 +246,16 @@ def agreement(data: list, tt: np.ndarray, out_data: list, tt_out: np.ndarray, th
 def agreement_threshold(data: list, tt: np.ndarray, out_data: list, tt_out: np.ndarray) -> dict | None:
     """Evaluation 5's agreement threshold at these temperatures: 0.8 when the cases scored 0.8 or
     more, those outside the matrix counted as wrong, are 95% right; otherwise the lowest threshold
-    above it, in steps of 0.01, at which they are; None if none below 1 holds. The temperature stays
-    at the fit: raising it would change every species confidence, not only the one-tap cut."""
+    above it, in steps of 0.01, at which they are. None if no threshold below 1 holds with at least
+    `MIN_CASES` cases scored that high: a threshold no case reaches shows nothing (Alan's reviews of
+    #156 and #167). The temperature stays at the fit: raising it would change every species
+    confidence, not only the one-tap cut."""
     for k in range(int(round(AGREEMENT / THRESHOLD_STEP)), int(round(1 / THRESHOLD_STEP))):
         thr = round(k * THRESHOLD_STEP, 2)
         a = agreement(data, tt, out_data, tt_out, thr)
-        if a["n"] == 0 or a["accuracy"] >= AGREEMENT_ACCURACY:
+        if a["n"] < MIN_CASES:
+            return None
+        if a["accuracy"] >= AGREEMENT_ACCURACY:
             return {"threshold": thr, **a}
     return None
 
@@ -275,7 +280,7 @@ def species_summary(data: list, ids: list[str], tt: np.ndarray, out_data: list =
     for thr in np.round(np.arange(0.5, 1.0, 0.05), 2):
         m = conf >= thr
         sweep.append({"threshold": float(thr), "n": int(m.sum()), "accuracy": float(correct[m].mean()) if m.any() else None})
-    ok = [s["threshold"] for s in sweep if s["n"] >= 10 and s["accuracy"] is not None and s["accuracy"] >= AGREEMENT_ACCURACY]
+    ok = [s["threshold"] for s in sweep if s["n"] >= MIN_CASES and s["accuracy"] is not None and s["accuracy"] >= AGREEMENT_ACCURACY]
     hi = conf >= AGREEMENT
     tt_out = np.asarray(tt_out if tt_out is not None else [], float)
     return {

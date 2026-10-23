@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from ml.training.eval import calibrate as cb
 
@@ -147,9 +148,19 @@ def test_the_agreement_threshold_counts_cases_outside_the_matrix_as_wrong():
 
 
 def test_no_threshold_holds_when_a_wrong_case_is_as_sure_as_the_right_ones():
-    same = [species_item([0.30, 0.0], f"n{i}", 0) for i in range(3)]
-    twin = [species_item([0.30, 0.0], "s0", None, "squash")]
-    assert cb.agreement_threshold(same, np.ones(3), twin, np.ones(1)) is None
+    alike = [species_item([0.30, 0.0], f"n{i}", 0) for i in range(10)]
+    twins = [species_item([0.30, 0.0], f"s{i}", None, "squash") for i in range(2)]
+    assert cb.agreement_threshold(alike, np.ones(10), twins, np.ones(2)) is None
+
+
+def test_a_threshold_needs_ten_cases_scored_that_high():
+    # Ten right cases at 0.88 and one wrong at 0.98: 0.89 would leave only the wrong case and
+    # 0.99 none, so no threshold holds (Alan's review of #156 found 0.99 returned with no cases).
+    right = [species_item([0.02, 0.0], f"n{i}", 0) for i in range(10)]
+    wrong = [species_item([0.04, 0.0], "s0", None, "squash")]
+    assert cb.agreement_threshold(right, np.ones(10), wrong, np.ones(1)) is None
+    # Nine right cases alone are too few to show 95%.
+    assert cb.agreement_threshold(right[:9], np.ones(9), [], np.zeros(0)) is None
 
 
 def test_the_report_inputs_give_back_the_same_fits():
@@ -176,21 +187,41 @@ def calibration_reports() -> list[dict]:
     return sorted(reports, key=lambda r: (r["date"], r["_file"]), reverse=True)
 
 
-def same(got, want, where: str, tol: float = 2e-3) -> None:
-    """`got` equals the report's `want`: numbers within `tol`, everything else exactly, every key of
-    `want` present."""
+def tolerance(want) -> float:
+    """How far a recomputed number may sit from the report's. The inputs are stored rounded, so a
+    number rounded to 3 or 4 decimals can flip by one unit in its last decimal; an unrounded one
+    stays within 1e-5 here, and may move by less than 1e-4, the markdown's precision (Alan's review
+    of #167: 2e-3 let an NLL and an ECE be edited by 0.0015 and 0.0019)."""
+    text = repr(float(want))
+    digits = len(text.partition(".")[2]) if "e" not in text else 99
+    return 10.0 ** -max(digits, 3) + 1e-12 if digits <= 4 else 1e-4
+
+
+def same(got, want, where: str) -> None:
+    """`got` equals the report's `want`: the same keys both ways, the same lengths, integers and
+    everything else exactly, other numbers within `tolerance`."""
     if isinstance(want, dict):
-        assert isinstance(got, dict) and want.keys() <= got.keys(), f"{where}: keys {sorted(want.keys() - got.keys())} missing"
+        assert isinstance(got, dict), f"{where}: {got!r}, the report has a table"
+        assert got.keys() == want.keys(), (f"{where}: keys {sorted(want.keys() - got.keys())} only in the report, "
+                                           f"{sorted(got.keys() - want.keys())} only recomputed")
         for k, v in want.items():
-            same(got[k], v, f"{where}.{k}", tol)
+            same(got[k], v, f"{where}.{k}")
     elif isinstance(want, list):
         assert isinstance(got, list) and len(got) == len(want), f"{where}: {len(got)} items, the report has {len(want)}"
         for n, (g, w) in enumerate(zip(got, want)):
-            same(g, w, f"{where}[{n}]", tol)
-    elif isinstance(want, bool) or want is None or isinstance(want, str):
+            same(g, w, f"{where}[{n}]")
+    elif isinstance(want, (bool, str, int)) or want is None:
         assert got == want, f"{where}: {got!r}, the report has {want!r}"
     else:
-        assert abs(float(got) - float(want)) <= tol, f"{where}: {got}, the report has {want}"
+        assert abs(float(got) - want) <= tolerance(want), f"{where}: {got}, the report has {want}"
+
+
+def test_the_comparison_catches_small_edits_and_missing_rows():
+    for got, want in (({"nll": 1.0671395}, {"nll": 1.0686395}), ({"ece": 0.1301}, {"ece": 0.132}),
+                      ({"a": 1, "b": 2}, {"a": 1}), ({"a": 1}, {"a": 1, "b": 2}), ({"n": 10}, {"n": 11})):
+        with pytest.raises(AssertionError):
+            same(got, want, "r")
+    same({"score": 0.579, "nll": 1.0671395, "n": 10}, {"score": 0.578, "nll": 1.0671359, "n": 10}, "r")
 
 
 def healthy_classes(d: dict) -> set[int]:
