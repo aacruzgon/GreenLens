@@ -11,7 +11,7 @@ Added by hand: `vlm_bench`'s report records none of them. The per-case answers, 
 - **Start-up** (vLLM's log): 8.41 GiB of weights in 15 s, CUDA graphs in 55 s, 2.45 GiB of KV cache, 65,536 tokens, 4.00 times the concurrency at 16,384. Ready after 151 s (polled every 10 s).
 - **Memory** (`nvidia-smi` once a second, the whole card): 13,058 of 16,303 MiB at the start-up peak, 149 s in; 12,796 MiB at the run's peak, the table's figure. vLLM's process held 11,730 MiB when ready and 12,458 MiB after the run.
 - **Preemptions:** 0 (vLLM's `/metrics` after the run).
-- **Against Oct 20's run on the same file** ([`vlm-bench-2026-10-20-qwen35-awq-desk`](vlm-bench-2026-10-20-qwen35-awq-desk.md), headless, on `main`'s prompts of that day: `system@1`, `findings@2`, `indicators@1`): 53 of the 585 answers changed, in 38 cases, and the reasons' median length fell from 51 to 33 characters.
+- **Against Oct 20's run on the same file** ([`vlm-bench-2026-10-20-qwen35-awq-desk`](vlm-bench-2026-10-20-qwen35-awq-desk.md), headless, on `main`'s prompts of that day: `system@1`, `findings@2`, `indicators@1`): 53 of the 585 answers changed, in 38 cases, and the reasons' median length fell from 51 to 33 characters. [#137](https://github.com/aacruzgon/GreenLens/issues/137)'s headless runs on the same file trace the lower diagnosis count to `indicators@2`'s 40-character reason, which `indicators@3` puts back to 60 ([#142](https://github.com/aacruzgon/GreenLens/pull/142)).
 
 ## Results
 
