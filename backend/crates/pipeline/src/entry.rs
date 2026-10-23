@@ -575,11 +575,14 @@ impl Pipeline {
         Ok(match decoded {
             JobResult::Perception(r) => {
                 let mut writes = results::perception_writes(&ctx, &r, &images, &lookups, new_id);
-                if self.segments(job, run).await? {
+                if job.segmentation {
                     let masks = self.store_masks(lease, &snap, &r.regions).await?;
                     results::attach_masks(&mut writes, masks);
                 } else {
-                    // The earlier run's regions, passed through: its observations and masks stay.
+                    // A job without segmentation (a species-change run's) is sent the earlier
+                    // run's regions, which the worker passes through without masks and at
+                    // confidence 1 ([contracts 3], observations across runs). Storing them would
+                    // replace the earlier observations and drop their masks, so they stay.
                     writes.retain(|w| w.stage != Stage::Segmentation);
                 }
                 if job.question.is_some() {
@@ -626,34 +629,6 @@ impl Pipeline {
                 claim: None,
             },
         })
-    }
-
-    /// Whether a perception job's regions are its own segmentation, to be stored with their
-    /// masks. A question's photo is always segmented. A run's job is not when the run's
-    /// `run_started` leaves segmentation out: a species-change run keeps the earlier run's
-    /// regions ([contracts 3], observations across runs), which the worker passes through
-    /// without masks and at confidence 1, so storing them would replace the earlier run's
-    /// observations and drop their masks. [`catch_up`] reads the same rule for the stage
-    /// events. A run with no stored `run_started` is taken to segment, as a first run does.
-    async fn segments(
-        &self,
-        job: &LeasedJob,
-        run: domain::wire::Run,
-    ) -> Result<bool, PipelineError> {
-        if job.question.is_some() {
-            return Ok(true);
-        }
-        let events = self.deps.store.run_stage_events(job.scan, run).await?;
-        Ok(events
-            .iter()
-            .rev()
-            .find_map(|e| match e {
-                ScanEventBody::RunStarted { rerun_stages, .. } => {
-                    Some(rerun_stages.contains(&Stage::Segmentation))
-                }
-                _ => None,
-            })
-            .unwrap_or(true))
     }
 
     /// A perception result's masks ([contracts 5], `PerceptionRegion.mask`): each region's RLE,

@@ -1829,6 +1829,64 @@ async fn soil_profile_retries() {
     );
 }
 
+/// `LeasedJob::segmentation` comes from the job's own `payload.stages`, which `start_run`
+/// commits with the run: true for a run that segments, false for a species-change run's job
+/// (no segmentation, the earlier regions sent) and for one that only checks the plant. The
+/// lease checks and the stale requeue all read it.
+#[tokio::test]
+async fn a_leased_job_says_whether_it_segments() {
+    let cases = [
+        (PerceptionStage::ALL.to_vec(), true),
+        (
+            vec![
+                PerceptionStage::Species,
+                PerceptionStage::Disease,
+                PerceptionStage::ImageEmbedding,
+            ],
+            false,
+        ),
+        (vec![PerceptionStage::PlantCheck], false),
+    ];
+    for (stages, segments) in cases {
+        let store = support::store().await;
+        let f = fixture(&store).await;
+        set_status(&store, f.scan, "analysing").await;
+        let mut job = perception(&f, f.ids.id());
+        let JobSpec::Perception(payload) = &mut job.spec else {
+            panic!("a perception job")
+        };
+        payload.stages = stages.clone();
+        store.enqueue_job(job).await.unwrap();
+        let now = t0().plus(Duration::from_secs(1));
+        let worker = "rig-3070";
+        let claimed = store
+            .claim_job(
+                &worker.parse().unwrap(),
+                1,
+                claim_policy(&[Capability::Perception], now),
+                now,
+            )
+            .await
+            .unwrap()
+            .expect("claimed");
+        let lease = lease_of(&claimed, worker);
+
+        let checked = store.check_lease(&lease, now).await.unwrap();
+        assert_eq!(checked.segmentation, segments, "check_lease, {stages:?}");
+        let live = store.live_lease(&lease, now).await.unwrap().expect("live");
+        assert_eq!(live.segmentation, segments, "live_lease, {stages:?}");
+        let later = now.plus(Duration::from_secs(150));
+        let requeued: Vec<_> = store
+            .requeue_stale(later)
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| r.job.segmentation)
+            .collect();
+        assert_eq!(requeued, [segments], "requeue_stale, {stages:?}");
+    }
+}
+
 /// `live_lease`: a live lease, a finished one (a late event, dropped), and a lost one; a
 /// requeue wakes the claim long poll.
 #[tokio::test]
