@@ -380,27 +380,50 @@ def test_tag_uses_the_plans_model_for_a_source_unless_one_is_given(seed_dir, tmp
     assert models(model_id="claude-haiku-5-5") == ["claude-haiku-5-5", "claude-haiku-5-5"]
 
 
-def test_tag_keeps_a_signed_chunks_single_tags_while_its_text_is_the_same(seed_dir, tmp_path):
+def tag_both(seed_dir, tmp_path, committed, texts, reply, **kw):
+    """Runs tag on source `both` with `committed` in seed/chunks; returns the new seed/chunks by id."""
+    (seed_dir / "chunks/both.jsonl").write_text("".join(json.dumps(c) + "\n" for c in committed))
+    chunks_dir = tmp_path / "chunks"
+    chunks_dir.mkdir(exist_ok=True)
+    (chunks_dir / "both.jsonl").write_text("".join(
+        json.dumps({"id": f"both.{i}", "source_id": "both", "heading": "", "text": x}) + "\n"
+        for i, x in enumerate(texts, 1)))
+    tag.run(seed_dir, tmp_path / "no-plan.yaml", chunks_dir, tmp_path / "tags",
+            llm.Llm(FakeClient(reply), tmp_path / "c.jsonl"), dose=no_dose, sanitize=identity, **kw)
+    return {json.loads(l)["id"]: json.loads(l) for l in (seed_dir / "chunks/both.jsonl").read_text().splitlines()}
+
+
+SIGNED = {"id": "both.1", "source_id": "both", "crop": "tomato", "problem": "tomato_early_blight",
+          "organism": None, "topic": "symptoms", "text": "Rings on old leaves."}
+NULL_PICK = lambda kw: {"relevant": True, "crop": None, "problem": None, "organism": None, "topic": "conditions",
+                        "problems": ["tomato_early_blight", "tomato_late_blight"], "organisms": []}
+
+
+def test_tag_keeps_a_committed_tag_the_new_run_leaves_null(seed_dir, tmp_path):
     # A page on two crops, re-tagged once the second crop's problem is in the plan: the model can't
     # pick one crop, but the excerpt signed for tomato must stay findable by a tomato search.
-    signed = {"id": "both.1", "source_id": "both", "crop": "tomato", "problem": "tomato_early_blight",
-              "organism": None, "topic": "symptoms", "text": "Rings on old leaves."}
-    changed = {**signed, "id": "both.2", "text": "Old wording."}
-    (seed_dir / "chunks/both.jsonl").write_text(json.dumps(signed) + "\n" + json.dumps(changed) + "\n")
-    chunks_dir = tmp_path / "chunks"
-    chunks_dir.mkdir()
-    (chunks_dir / "both.jsonl").write_text(
-        json.dumps({"id": "both.1", "source_id": "both", "heading": "", "text": "Rings on old leaves."}) + "\n"
-        + json.dumps({"id": "both.2", "source_id": "both", "heading": "", "text": "New wording."}) + "\n")
-    reply = lambda kw: {"relevant": True, "crop": None, "problem": None, "organism": None, "topic": "conditions",
-                        "problems": ["tomato_early_blight", "tomato_late_blight"], "organisms": []}
-    tag.run(seed_dir, tmp_path / "no-plan.yaml", chunks_dir, tmp_path / "tags",
-            llm.Llm(FakeClient(reply), tmp_path / "c.jsonl"), dose=no_dose, sanitize=identity)
-    kept = {json.loads(l)["id"]: json.loads(l) for l in (seed_dir / "chunks/both.jsonl").read_text().splitlines()}
-    assert kept["both.1"] == signed, "the text is unchanged, so the signed tags stay"
+    changed = {**SIGNED, "id": "both.2", "text": "Old wording."}
+    kept = tag_both(seed_dir, tmp_path, [SIGNED, changed], ["Rings on old leaves.", "New wording."], NULL_PICK)
+    assert kept["both.1"] == {**SIGNED, "topic": "conditions"}, "the null picks keep the committed tags"
     assert (kept["both.2"]["crop"], kept["both.2"]["topic"]) == (None, "conditions"), "new text, new tags"
     lists = json.loads((tmp_path / "tags/both.jsonl").read_text().splitlines()[0])["problems"]
     assert lists == ["tomato_early_blight", "tomato_late_blight"], "extraction reads the new lists"
+
+
+def test_tag_matches_committed_chunks_by_text_not_id(seed_dir, tmp_path):
+    # A chunker fix adds a chunk in front, so the signed text is now both.2 (Alan's review of #143).
+    kept = tag_both(seed_dir, tmp_path, [SIGNED], ["A new first paragraph.", "Rings on old leaves."], NULL_PICK)
+    assert (kept["both.2"]["crop"], kept["both.2"]["problem"]) == ("tomato", "tomato_early_blight")
+    assert kept["both.1"]["crop"] is None, "a new text keeps nothing"
+
+
+def test_tag_takes_a_new_pick_and_retag_takes_the_new_run_as_it_is(seed_dir, tmp_path):
+    # A better model re-tags a badly tagged source (#51): its picks replace the committed ones.
+    pepper = lambda kw: {**NULL_PICK(kw), "crop": "pepper", "problem": None}
+    kept = tag_both(seed_dir, tmp_path, [SIGNED], ["Rings on old leaves."], pepper)
+    assert (kept["both.1"]["crop"], kept["both.1"]["problem"]) == ("pepper", "tomato_early_blight")
+    kept = tag_both(seed_dir, tmp_path, [SIGNED], ["Rings on old leaves."], pepper, retag={"both"})
+    assert (kept["both.1"]["crop"], kept["both.1"]["problem"]) == ("pepper", None)
 
 
 # --- extract ---------------------------------------------------------------------------------
