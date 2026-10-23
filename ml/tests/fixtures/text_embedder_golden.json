@@ -1,11 +1,12 @@
 {
-  "about": "The text embedder's golden test (docs/vision/models.md §10): the model's input text (queries already carry the query prefix), and the first 8 values of its vector from snowflake-arctic-embed-xs@d8c86521, recorded by ml/knowledge/embed.py on 2026-10-18.",
+  "about": "The text embedder's golden test (docs/vision/models.md §10): the model's input text (queries already carry the query prefix), its token count after truncation at 512, and the first 8 values of its vector from snowflake-arctic-embed-xs@d8c86521, recorded by ml/tests/make_text_golden.py on 2026-10-22 (the first 5 cases on 2026-10-18).",
   "model": "snowflake-arctic-embed-xs@d8c86521",
   "cases": [
     {
       "mode": "query",
       "text": "Why are my tomato leaves turning yellow?",
       "input": "Represent this sentence for searching relevant passages: Why are my tomato leaves turning yellow?",
+      "tokens": 18,
       "first_8": [
         -0.033419,
         0.060024,
@@ -21,6 +22,7 @@
       "mode": "query",
       "text": "brown spots with rings on lower leaves",
       "input": "Represent this sentence for searching relevant passages: brown spots with rings on lower leaves",
+      "tokens": 17,
       "first_8": [
         -0.055326,
         0.041614,
@@ -36,6 +38,7 @@
       "mode": "document",
       "text": "Early blight starts as small brown spots on the lower leaves. The spots grow and form rings like a target.",
       "input": "Early blight starts as small brown spots on the lower leaves. The spots grow and form rings like a target.",
+      "tokens": 25,
       "first_8": [
         0.01245,
         0.05206,
@@ -51,6 +54,7 @@
       "mode": "document",
       "text": "Water at the base of the plant, early in the day, so the leaves stay dry.",
       "input": "Water at the base of the plant, early in the day, so the leaves stay dry.",
+      "tokens": 21,
       "first_8": [
         0.028261,
         0.090712,
@@ -66,6 +70,7 @@
       "mode": "document",
       "text": "Ladybug larvae are long, dark grey, spiky, with orange spots, and eat aphids.",
       "input": "Ladybug larvae are long, dark grey, spiky, with orange spots, and eat aphids.",
+      "tokens": 26,
       "first_8": [
         0.054455,
         0.046882,
@@ -75,6 +80,246 @@
         -0.0102,
         -0.07243,
         -0.120638
+      ]
+    },
+    {
+      "mode": "query",
+      "text": "What's eating holes in my kale?",
+      "input": "Represent this sentence for searching relevant passages: What's eating holes in my kale?",
+      "tokens": 20,
+      "first_8": [
+        -0.021604,
+        -0.038318,
+        -0.001602,
+        -0.049884,
+        0.001066,
+        -0.074424,
+        -0.129084,
+        -0.040983
+      ]
+    },
+    {
+      "mode": "query",
+      "text": "WHY IS MY BASIL WILTING",
+      "input": "Represent this sentence for searching relevant passages: WHY IS MY BASIL WILTING",
+      "tokens": 16,
+      "first_8": [
+        0.002622,
+        0.062806,
+        0.040812,
+        0.023985,
+        -0.028821,
+        0.002571,
+        -0.061202,
+        -0.01662
+      ]
+    },
+    {
+      "mode": "query",
+      "text": "powdery mildew squash",
+      "input": "Represent this sentence for searching relevant passages: powdery mildew squash",
+      "tokens": 15,
+      "first_8": [
+        -0.000856,
+        0.020255,
+        -0.019565,
+        -0.028616,
+        -0.021188,
+        0.023781,
+        -0.025995,
+        -0.033123
+      ]
+    },
+    {
+      "mode": "query",
+      "text": "Is it safe to spray neem oil at 30 °C?",
+      "input": "Represent this sentence for searching relevant passages: Is it safe to spray neem oil at 30 °C?",
+      "tokens": 22,
+      "first_8": [
+        0.00789,
+        0.059807,
+        0.027475,
+        -0.000597,
+        0.026741,
+        0.063604,
+        -0.036488,
+        0.024108
+      ]
+    },
+    {
+      "mode": "query",
+      "text": "Pourquoi les feuilles de mes tomates sont-elles tachées ?",
+      "input": "Represent this sentence for searching relevant passages: Pourquoi les feuilles de mes tomates sont-elles tachées ?",
+      "tokens": 31,
+      "first_8": [
+        -0.0265,
+        0.027704,
+        0.076341,
+        -0.02827,
+        0.020443,
+        -0.085899,
+        0.000636,
+        -0.042995
+      ]
+    },
+    {
+      "mode": "query",
+      "text": "tiny white bugs 🐛 under pepper leaves",
+      "input": "Represent this sentence for searching relevant passages: tiny white bugs 🐛 under pepper leaves",
+      "tokens": 17,
+      "first_8": [
+        0.004434,
+        0.076185,
+        0.014967,
+        0.01715,
+        0.008618,
+        -0.024947,
+        0.001497,
+        -0.060792
+      ]
+    },
+    {
+      "mode": "query",
+      "text": "Can I pick grapes 14 days after a copper spray?",
+      "input": "Represent this sentence for searching relevant passages: Can I pick grapes 14 days after a copper spray?",
+      "tokens": 21,
+      "first_8": [
+        0.021988,
+        0.036071,
+        -0.01444,
+        -0.018384,
+        0.007476,
+        -0.116293,
+        -0.051779,
+        -0.022697
+      ]
+    },
+    {
+      "mode": "document",
+      "text": "Two-spotted spider mites (Tetranychus urticae) feed on the undersides of leaves and leave fine webbing.",
+      "input": "Two-spotted spider mites (Tetranychus urticae) feed on the undersides of leaves and leave fine webbing.",
+      "tokens": 30,
+      "first_8": [
+        -0.050485,
+        0.106607,
+        0.023472,
+        0.003959,
+        -0.011027,
+        0.034671,
+        -0.099582,
+        -0.038563
+      ]
+    },
+    {
+      "mode": "document",
+      "text": "The user's garden is in Ottawa, zone 5a; the last frost is around May 10.",
+      "input": "The user's garden is in Ottawa, zone 5a; the last frost is around May 10.",
+      "tokens": 23,
+      "first_8": [
+        0.005202,
+        0.101413,
+        0.019318,
+        -0.033387,
+        0.01582,
+        0.008563,
+        0.030425,
+        -0.037952
+      ]
+    },
+    {
+      "mode": "document",
+      "text": "Spread 2–3 cm of mulch and keep the soil pH between 6.0 and 6.8.",
+      "input": "Spread 2–3 cm of mulch and keep the soil pH between 6.0 and 6.8.",
+      "tokens": 24,
+      "first_8": [
+        0.000745,
+        0.048733,
+        0.053202,
+        0.009802,
+        -0.036324,
+        -0.044877,
+        0.023147,
+        -0.05156
+      ]
+    },
+    {
+      "mode": "document",
+      "text": "Symptoms:\n- yellow halos around the spots\n- leaves drop\tafter heavy rain",
+      "input": "Symptoms:\n- yellow halos around the spots\n- leaves drop\tafter heavy rain",
+      "tokens": 17,
+      "first_8": [
+        0.030898,
+        0.054159,
+        0.074642,
+        -0.016943,
+        0.037933,
+        -0.004033,
+        -0.040199,
+        -0.096081
+      ]
+    },
+    {
+      "mode": "document",
+      "text": "Ladybug",
+      "input": "Ladybug",
+      "tokens": 5,
+      "first_8": [
+        0.004694,
+        0.035744,
+        0.024621,
+        -0.015389,
+        -0.033355,
+        0.004465,
+        -0.079837,
+        -0.102202
+      ]
+    },
+    {
+      "mode": "document",
+      "text": "  water   deeply,  then   wait  two days  ",
+      "input": "  water   deeply,  then   wait  two days  ",
+      "tokens": 9,
+      "first_8": [
+        0.00898,
+        0.023446,
+        0.046579,
+        0.002151,
+        -0.04146,
+        -0.027961,
+        -0.008788,
+        -0.072938
+      ]
+    },
+    {
+      "mode": "document",
+      "text": "Symptoms are evident in the foliage, particularly older (lower) leaves. Septoria blight causes numerous small (about 1/8\" to 1/4\" in diameter) brown spots that develop light tan to white center as they age. Rapid defoliation occurs soon after if left untreated.The overall effect of both blights is similar. Leaves turn yellow, brown, then wither and die.",
+      "input": "Symptoms are evident in the foliage, particularly older (lower) leaves. Septoria blight causes numerous small (about 1/8\" to 1/4\" in diameter) brown spots that develop light tan to white center as they age. Rapid defoliation occurs soon after if left untreated.The overall effect of both blights is similar. Leaves turn yellow, brown, then wither and die.",
+      "tokens": 85,
+      "first_8": [
+        0.071654,
+        4.3e-05,
+        0.020092,
+        -0.022789,
+        -0.018233,
+        0.005235,
+        0.013993,
+        -0.021597
+      ]
+    },
+    {
+      "mode": "document",
+      "text": "Day 1: no new spots on the lower leaves, soil still damp after watering. Day 2: no new spots on the lower leaves, soil still damp after watering. Day 3: no new spots on the lower leaves, soil still damp after watering. Day 4: no new spots on the lower leaves, soil still damp after watering. Day 5: no new spots on the lower leaves, soil still damp after watering. Day 6: no new spots on the lower leaves, soil still damp after watering. Day 7: no new spots on the lower leaves, soil still damp after watering. Day 8: no new spots on the lower leaves, soil still damp after watering. Day 9: no new spots on the lower leaves, soil still damp after watering. Day 10: no new spots on the lower leaves, soil still damp after watering. Day 11: no new spots on the lower leaves, soil still damp after watering. Day 12: no new spots on the lower leaves, soil still damp after watering. Day 13: no new spots on the lower leaves, soil still damp after watering. Day 14: no new spots on the lower leaves, soil still damp after watering. Day 15: no new spots on the lower leaves, soil still damp after watering. Day 16: no new spots on the lower leaves, soil still damp after watering. Day 17: no new spots on the lower leaves, soil still damp after watering. Day 18: no new spots on the lower leaves, soil still damp after watering. Day 19: no new spots on the lower leaves, soil still damp after watering. Day 20: no new spots on the lower leaves, soil still damp after watering. Day 21: no new spots on the lower leaves, soil still damp after watering. Day 22: no new spots on the lower leaves, soil still damp after watering. Day 23: no new spots on the lower leaves, soil still damp after watering. Day 24: no new spots on the lower leaves, soil still damp after watering. Day 25: no new spots on the lower leaves, soil still damp after watering. Day 26: no new spots on the lower leaves, soil still damp after watering. Day 27: no new spots on the lower leaves, soil still damp after watering. Day 28: no new spots on the lower leaves, soil still damp after watering. Day 29: no new spots on the lower leaves, soil still damp after watering. Day 30: no new spots on the lower leaves, soil still damp after watering. Day 31: no new spots on the lower leaves, soil still damp after watering. Day 32: no new spots on the lower leaves, soil still damp after watering. Day 33: no new spots on the lower leaves, soil still damp after watering. Day 34: no new spots on the lower leaves, soil still damp after watering. Day 35: no new spots on the lower leaves, soil still damp after watering. Day 36: no new spots on the lower leaves, soil still damp after watering. Day 37: no new spots on the lower leaves, soil still damp after watering. Day 38: no new spots on the lower leaves, soil still damp after watering. Day 39: no new spots on the lower leaves, soil still damp after watering. Day 40: no new spots on the lower leaves, soil still damp after watering. Day 41: no new spots on the lower leaves, soil still damp after watering. Day 42: no new spots on the lower leaves, soil still damp after watering. Day 43: no new spots on the lower leaves, soil still damp after watering. Day 44: no new spots on the lower leaves, soil still damp after watering. Day 45: no new spots on the lower leaves, soil still damp after watering. Day 46: no new spots on the lower leaves, soil still damp after watering. Day 47: no new spots on the lower leaves, soil still damp after watering. Day 48: no new spots on the lower leaves, soil still damp after watering. Day 49: no new spots on the lower leaves, soil still damp after watering. Day 50: no new spots on the lower leaves, soil still damp after watering. Day 51: no new spots on the lower leaves, soil still damp after watering. Day 52: no new spots on the lower leaves, soil still damp after watering. Day 53: no new spots on the lower leaves, soil still damp after watering. Day 54: no new spots on the lower leaves, soil still damp after watering. Day 55: no new spots on the lower leaves, soil still damp after watering. Day 56: no new spots on the lower leaves, soil still damp after watering. Day 57: no new spots on the lower leaves, soil still damp after watering. Day 58: no new spots on the lower leaves, soil still damp after watering. Day 59: no new spots on the lower leaves, soil still damp after watering. Day 60: no new spots on the lower leaves, soil still damp after watering.",
+      "input": "Day 1: no new spots on the lower leaves, soil still damp after watering. Day 2: no new spots on the lower leaves, soil still damp after watering. Day 3: no new spots on the lower leaves, soil still damp after watering. Day 4: no new spots on the lower leaves, soil still damp after watering. Day 5: no new spots on the lower leaves, soil still damp after watering. Day 6: no new spots on the lower leaves, soil still damp after watering. Day 7: no new spots on the lower leaves, soil still damp after watering. Day 8: no new spots on the lower leaves, soil still damp after watering. Day 9: no new spots on the lower leaves, soil still damp after watering. Day 10: no new spots on the lower leaves, soil still damp after watering. Day 11: no new spots on the lower leaves, soil still damp after watering. Day 12: no new spots on the lower leaves, soil still damp after watering. Day 13: no new spots on the lower leaves, soil still damp after watering. Day 14: no new spots on the lower leaves, soil still damp after watering. Day 15: no new spots on the lower leaves, soil still damp after watering. Day 16: no new spots on the lower leaves, soil still damp after watering. Day 17: no new spots on the lower leaves, soil still damp after watering. Day 18: no new spots on the lower leaves, soil still damp after watering. Day 19: no new spots on the lower leaves, soil still damp after watering. Day 20: no new spots on the lower leaves, soil still damp after watering. Day 21: no new spots on the lower leaves, soil still damp after watering. Day 22: no new spots on the lower leaves, soil still damp after watering. Day 23: no new spots on the lower leaves, soil still damp after watering. Day 24: no new spots on the lower leaves, soil still damp after watering. Day 25: no new spots on the lower leaves, soil still damp after watering. Day 26: no new spots on the lower leaves, soil still damp after watering. Day 27: no new spots on the lower leaves, soil still damp after watering. Day 28: no new spots on the lower leaves, soil still damp after watering. Day 29: no new spots on the lower leaves, soil still damp after watering. Day 30: no new spots on the lower leaves, soil still damp after watering. Day 31: no new spots on the lower leaves, soil still damp after watering. Day 32: no new spots on the lower leaves, soil still damp after watering. Day 33: no new spots on the lower leaves, soil still damp after watering. Day 34: no new spots on the lower leaves, soil still damp after watering. Day 35: no new spots on the lower leaves, soil still damp after watering. Day 36: no new spots on the lower leaves, soil still damp after watering. Day 37: no new spots on the lower leaves, soil still damp after watering. Day 38: no new spots on the lower leaves, soil still damp after watering. Day 39: no new spots on the lower leaves, soil still damp after watering. Day 40: no new spots on the lower leaves, soil still damp after watering. Day 41: no new spots on the lower leaves, soil still damp after watering. Day 42: no new spots on the lower leaves, soil still damp after watering. Day 43: no new spots on the lower leaves, soil still damp after watering. Day 44: no new spots on the lower leaves, soil still damp after watering. Day 45: no new spots on the lower leaves, soil still damp after watering. Day 46: no new spots on the lower leaves, soil still damp after watering. Day 47: no new spots on the lower leaves, soil still damp after watering. Day 48: no new spots on the lower leaves, soil still damp after watering. Day 49: no new spots on the lower leaves, soil still damp after watering. Day 50: no new spots on the lower leaves, soil still damp after watering. Day 51: no new spots on the lower leaves, soil still damp after watering. Day 52: no new spots on the lower leaves, soil still damp after watering. Day 53: no new spots on the lower leaves, soil still damp after watering. Day 54: no new spots on the lower leaves, soil still damp after watering. Day 55: no new spots on the lower leaves, soil still damp after watering. Day 56: no new spots on the lower leaves, soil still damp after watering. Day 57: no new spots on the lower leaves, soil still damp after watering. Day 58: no new spots on the lower leaves, soil still damp after watering. Day 59: no new spots on the lower leaves, soil still damp after watering. Day 60: no new spots on the lower leaves, soil still damp after watering.",
+      "tokens": 512,
+      "first_8": [
+        0.041142,
+        0.037045,
+        0.019858,
+        0.044335,
+        0.001296,
+        -0.040161,
+        -0.014073,
+        -0.068552
       ]
     }
   ]

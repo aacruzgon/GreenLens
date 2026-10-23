@@ -1,0 +1,13 @@
+# A label_only species (#4, 2026-10-22), so BioCLIP can name it and the VLM diagnoses it: not a
+# disease-head crop; the iBean classes aren't trained.
+# The label is ml/training/labels/standin_labels.yaml's.
+id: bean
+scientific_name: Phaseolus vulgaris
+common_names:
+- Bean
+- Common bean
+profile: label_only
+classifier_supported: false
+bioclip_label: Phaseolus vulgaris with common name common bean
+sources: []
+reviewed_by: sara-lahourpour

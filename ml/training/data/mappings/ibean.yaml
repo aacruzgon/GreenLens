@@ -1,12 +1,13 @@
 # iBean → slugs  (training.md §4, step 3)
-# PROPOSED slugs (issue #4). Bean is used only if beans become a supported crop; until the
-# group decides, the classes train like any other and can be dropped by removing this file.
+# Not used for the heads: bean is a label_only species (issue #4, 2026-10-22), not a disease-head
+# crop, so train_disease.py leaves its classes out (--supported). Kept, with its slugs, so bean can
+# become a head crop once its problems have profiles.
 
 dataset: ibean
 source: ibean
 root: data
 splits: { train: train/train, validation: validation/validation, test: test/test }
-reviewed_by: null
+reviewed_by: sara-lahourpour  # slugs as confirmed on issue #4 (2026-10-22)
 
 classes:
   "healthy":           { species_id: bean, problem_id: healthy }

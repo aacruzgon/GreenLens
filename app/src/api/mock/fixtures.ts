@@ -36,6 +36,10 @@ export interface StoredScan {
   events: S["ScanEvent"][];
   /** A scripted run is still emitting events. */
   running: boolean;
+  /** Bumped by each script played into the scan; a script stops when a later one starts (runs.ts, `play`). */
+  playing?: number;
+  /** The species the current run works with (null for a typed name), compared by a species change. */
+  workingSpeciesId?: string | null;
 }
 
 export type StoredPlant = Omit<S["Plant"], "latest_scan">;

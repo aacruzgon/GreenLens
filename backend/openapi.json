@@ -10017,6 +10017,10 @@
             "$ref": "#/components/schemas/Id",
             "description": "The question."
           },
+          "indicator_id": {
+            "$ref": "#/components/schemas/Slug",
+            "description": "Indicator questions: the indicator it asks about, e.g. `concentric_rings`."
+          },
           "kind": {
             "$ref": "#/components/schemas/QuestionKind",
             "description": "How it is answered."
