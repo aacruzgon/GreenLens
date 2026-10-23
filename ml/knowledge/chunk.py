@@ -184,6 +184,14 @@ def pdf_lines(path: Path) -> list[PdfLine]:
     return out
 
 
+# A line after a suspended hyphen ("second-" / "or third-leaf stage") keeps its space.
+SUSPENDED = re.compile(r"(?:or|and|nor)\b")   # not "to": "white-" / "to-pink" is one word
+# Two same-level headings are one section ("COMMON SMUT", "HEAD SMUT") when at most this many
+# skipped lines sit between them: a caption, or a Latin name ending in a comma. A table's cells are
+# more, and the first heading keeps its own (table-only) section.
+PDF_MERGE_SKIPS = 2
+
+
 def _mode(values):
     counts: dict = {}
     for v in values:
@@ -230,26 +238,28 @@ def pdf_blocks(lines: list[PdfLine]) -> list[Block]:
         return None
 
     out: list[Block] = []
-    prev, prev_kind = None, None
+    prev, prev_kind, skipped = None, None, 0
     for ln in lines:
         k = kind(ln)
         after_heading = isinstance(prev_kind, int) and prev_kind > 0
         if k is None or (k == "name" and not after_heading):
+            skipped += 1
             continue      # a caption between two columns' halves of a paragraph doesn't end it
         near = prev is not None and prev.page == ln.page and column(prev) == column(ln)
         if k == "name" or (k and k == prev_kind and near and prev.y0 - ln.y0 < 2.5 * max(ln.sizes)):
             out[-1].text += " " + ln.text          # a heading on two lines, or its Latin name
-        elif k and out and out[-1].level == k:
+        elif k and out and out[-1].level == k and skipped <= PDF_MERGE_SKIPS:
             out[-1].text += " / " + ln.text        # one section under two headings ("COMMON SMUT", "HEAD SMUT")
         elif k:
             out.append(Block(k, ln.text))
         elif prev_kind == 0 and ((near and prev.y0 - ln.y0 <= PDF_PARA_GAP * spacing)
                                  or (not near and not re.search(r"[.!?:)”\"]$", out[-1].text))):
             t = out[-1].text
-            out[-1].text = t + ln.text if t.endswith("-") and ln.text[:1].islower() else f"{t} {ln.text}"
+            hyphenated = t.endswith("-") and ln.text[:1].islower() and not SUSPENDED.match(ln.text)
+            out[-1].text = t + ln.text if hyphenated else f"{t} {ln.text}"
         else:
             out.append(Block(0, ln.text))
-        prev, prev_kind = ln, k
+        prev, prev_kind, skipped = ln, k, 0
     return _up_to_back_matter(out)
 
 

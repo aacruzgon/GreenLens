@@ -226,6 +226,24 @@ def test_chunk_reads_a_two_column_pdf_by_type_size(tmp_path):
     assert recs[0]["heading"] == "Corn Diseases › COMMON RUST (Puccinia sorghi)"
 
 
+def test_chunk_pdf_keeps_a_table_sections_heading_and_a_suspended_hyphens_space():
+    # Alan's review of #143: "second-or third-leaf", and a table-only section renaming the next.
+    line = lambda x, y, size, text: chunk.PdfLine(1, x, y, 612, 792, text, [size] * len(text.replace(" ", "")))
+    got = [(b.level, b.text) for b in chunk.pdf_blocks([
+        line(54, 700, 10, "LEAF SCORCH"),
+        line(200, 688, 9, "Cause"), line(300, 688, 9, "Spread"), line(200, 676, 9, "Wind"),
+        line(54, 660, 10, "TAR SPOT"),
+        line(54, 648, 10, "(Phyllachora maydis),"),
+        line(54, 610, 10, "GRAY TAR SPOT"),
+        line(54, 594, 11, "Appearance: Black raised spots at the second-"),
+        line(54, 581, 11, "or third-leaf stage, and light-"),
+        line(54, 568, 11, "tan streaks follow.")])]
+    level = got[0][0]
+    assert got == [(level, "LEAF SCORCH"), (level, "TAR SPOT / GRAY TAR SPOT"),
+                   (0, "Appearance: Black raised spots at the second- or third-leaf stage, and "
+                       "light-tan streaks follow.")]
+
+
 # --- the model, faked ------------------------------------------------------------------------
 
 class FakeClient:
