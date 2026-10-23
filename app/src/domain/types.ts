@@ -85,6 +85,7 @@ export type QualityReport = S["QualityReport"];
 export type QualityHint = S["QualityHint"];
 export type Stage = S["Stage"];
 export type RunReason = S["RunReason"];
+export type ProblemKind = S["ProblemKind"];
 
 // Scan events
 export type ScanEvent = S["ScanEvent"];

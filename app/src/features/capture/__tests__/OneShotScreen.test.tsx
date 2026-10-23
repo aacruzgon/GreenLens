@@ -33,7 +33,7 @@ jest.mock("@/platform/files", () => ({
 }));
 // jest-expo's expo-crypto stub returns no UUID; every action needs a real idempotency key.
 jest.mock("expo-crypto", () => ({ randomUUID: () => jest.requireActual<{ randomUUID: () => string }>("crypto").randomUUID() }));
-const mockRouter = { canGoBack: jest.fn(() => true), back: jest.fn(), replace: jest.fn(), push: jest.fn() };
+const mockRouter = { canGoBack: jest.fn(() => true), back: jest.fn(), replace: jest.fn(), push: jest.fn(), dismissTo: jest.fn() };
 let mockParams: Record<string, string> = {};
 jest.mock("expo-router", () => ({
   useLocalSearchParams: () => mockParams,
@@ -102,7 +102,7 @@ describe("question mode", () => {
     expect(send().props.accessibilityState).toMatchObject({ disabled: false });
 
     await fireEvent.press(send());
-    await waitFor(() => expect(mockRouter.replace).toHaveBeenCalledWith({ pathname: "/scans/[scanId]", params: { scanId } }));
+    await waitFor(() => expect(mockRouter.dismissTo).toHaveBeenCalledWith({ pathname: "/scans/[scanId]", params: { scanId } }));
     const scan = mockStore.scan(scanId)!.scan;
     expect(scan.images.map((i) => [i.kind, i.answers_question_id])).toEqual([["leaf_underside", "q-underside"]]);
     expect(scan.open_question?.status).toBe("answering");
@@ -164,8 +164,9 @@ describe("guided mode", () => {
     expect(await screen.findByText("Photograph the soil in your open hand, from about 30 cm.")).toBeTruthy();
     await fireEvent.press(shutter());
     await fireEvent.press(await screen.findByTestId("send"));
-    await waitFor(() => expect(mockRouter.replace).toHaveBeenCalled());
-    expect(mockStore.scan(scanId)!.scan.guided_checks).toEqual([expect.objectContaining({ kind: "squeeze_test", status: "analysing" })]);
+    await waitFor(() => expect(mockRouter.dismissTo).toHaveBeenCalled());
+    // A new check, which the mock's guided job (no delays here) may already have finished.
+    expect(mockStore.scan(scanId)!.scan.guided_checks).toEqual([expect.objectContaining({ kind: "squeeze_test", status: expect.stringMatching(/^(analysing|done)$/) })]);
     // The squeeze test adds no task.
     expect(mockStore.tasks.filter((t) => t.scan_id === scanId)).toHaveLength(0);
   });
@@ -258,7 +259,7 @@ describe("guided mode", () => {
     const close = screen.getByRole("button", { name: "Close" });
     expect(close.props.accessibilityState).toMatchObject({ disabled: true });
     release();
-    await waitFor(() => expect(mockRouter.replace).toHaveBeenCalled());
+    await waitFor(() => expect(mockRouter.dismissTo).toHaveBeenCalled());
     expect(mockRouter.back).not.toHaveBeenCalled();
   });
 

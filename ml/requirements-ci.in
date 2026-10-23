@@ -1,0 +1,16 @@
+# What CI's ml job installs to run `python -m ml.models.check` and `pytest ml/tests` (docs/infra §2).
+# No torch or CUDA: the tests that need them skip. The versions are ml/requirements.lock's; onnxruntime
+# is the CPU build of the lock's onnxruntime-gpu, at the same version.
+#   uv pip compile ml/requirements-ci.in -c ml/requirements.lock --generate-hashes \
+#     --python-version 3.12 --python-platform x86_64-manylinux_2_28 --no-header -o ml/requirements-ci.txt
+httpx
+jsonschema
+numpy
+onnx
+onnxruntime==1.31.0
+opencv-python-headless
+pillow
+pytest
+pyyaml
+scikit-learn
+scipy

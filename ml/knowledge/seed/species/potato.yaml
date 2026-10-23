@@ -1,0 +1,12 @@
+# A label_only species (#4, 2026-10-22), so BioCLIP can name it and the VLM diagnoses it: a crop
+# with a full profile to come; not in the disease head until there is a healthy-potato source.
+# The label is ml/training/labels/standin_labels.yaml's.
+id: potato
+scientific_name: Solanum tuberosum
+common_names:
+- Potato
+profile: label_only
+classifier_supported: false
+bioclip_label: Solanum tuberosum with common name potato
+sources: []
+reviewed_by: sara-lahourpour

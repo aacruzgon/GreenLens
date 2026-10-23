@@ -40,7 +40,6 @@ function scrollTo(y: number) {
   return fireEvent.scroll(screen.getByTestId("garden-home-scroll"), { nativeEvent: { contentOffset: { x: 0, y } } });
 }
 
-
 beforeEach(() => {
   resetMock();
   scenario.set({ delayScale: 0 });
