@@ -63,7 +63,11 @@ pub fn step_to_draft(step: PlanStep) -> PlanStepDraft {
         targets: step.targets,
         plant_id: step.plant_id,
         citations: step.citations,
-        farm_citations: step.farm_citations,
+        farm_citations: step
+            .farm_citations
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
     }
 }
 
@@ -408,12 +412,20 @@ fn check_step(
             );
         }
     }
-    for id in &draft.farm_citations {
-        if !index.farm_records.contains_key(id) {
-            fail(
+    // Each farm record once, in the model's order; an id that doesn't parse is as unknown as
+    // one the plan wasn't given.
+    let mut farm_citations: Vec<FarmRecordId> = Vec::with_capacity(draft.farm_citations.len());
+    for raw in &draft.farm_citations {
+        match raw.parse::<FarmRecordId>() {
+            Ok(id) if index.farm_records.contains_key(&id) => {
+                if !farm_citations.contains(&id) {
+                    farm_citations.push(id);
+                }
+            }
+            _ => fail(
                 PlanRule::UnknownFarmRecord,
-                format!("farm record {id} is not one you were given"),
-            );
+                format!("farm record {raw} is not one you were given"),
+            ),
         }
     }
 
@@ -460,7 +472,7 @@ fn check_step(
         targets: draft.targets,
         plant_id: draft.plant_id,
         citations: draft.citations,
-        farm_citations: draft.farm_citations,
+        farm_citations,
         safety_note,
     })
 }

@@ -244,7 +244,7 @@ fn vendor_ids(hits: &[FarmRecordHit]) -> Vec<&str> {
 /// A garden with 5 matching Slack messages and 1 Drive document.
 fn farm_with_records() -> MockFarmRecordStore {
     let mut farm = MockFarmRecordStore::new();
-    farm.expect_garden_record_count().returning(|_| Ok(6));
+    farm.expect_garden_has_records().returning(|_| Ok(true));
     farm.expect_search_records_for_plan()
         .withf(|garden, _, filter, k| {
             garden.to_string() == crate::testing::GARDEN
@@ -309,7 +309,7 @@ async fn the_plan_gets_the_top_four_farm_records() {
 #[tokio::test]
 async fn a_garden_without_farm_records_is_not_searched() {
     let mut farm = MockFarmRecordStore::new();
-    farm.expect_garden_record_count().returning(|_| Ok(0));
+    farm.expect_garden_has_records().returning(|_| Ok(false));
     farm.expect_search_records_for_plan().never();
     let mut embedder = MockTextEmbedder::new();
     embedder.expect_embed().never();
@@ -339,7 +339,7 @@ impl TextEmbedder for SlowEmbedder {
 #[tokio::test(start_paused = true)]
 async fn a_failed_or_slow_search_gives_no_farm_records() {
     let mut farm = MockFarmRecordStore::new();
-    farm.expect_garden_record_count().returning(|_| Ok(6));
+    farm.expect_garden_has_records().returning(|_| Ok(true));
     farm.expect_search_records_for_plan()
         .returning(|_, _, _, _| Err(StoreError::Unavailable("offline".into())));
     let embedder = query_embedder("Bed 3");
@@ -347,7 +347,7 @@ async fn a_failed_or_slow_search_gives_no_farm_records() {
     assert_eq!(hits, Vec::new());
 
     let mut farm = MockFarmRecordStore::new();
-    farm.expect_garden_record_count().returning(|_| Ok(6));
+    farm.expect_garden_has_records().returning(|_| Ok(true));
     farm.expect_search_records_for_plan().never();
     let hits =
         plan_farm_records(&farm, &SlowEmbedder, garden(), "Bed 3", FARM_SEARCH_TIMEOUT).await;
@@ -451,4 +451,30 @@ fn the_plan_schema_offers_farm_citations() {
             .contains(&json!("farm_citations")),
         "optional: a garden without farm records writes the plan as before"
     );
+}
+
+/// When the second answer doesn't parse, the first validation stands, with its own farm
+/// records: those its passing steps cite.
+#[tokio::test]
+async fn an_unparseable_second_answer_keeps_the_first_rounds_farm_records() {
+    let mut loaded = Loaded::new();
+    loaded.farm_records = vec![crate::testing::spray_log_hit()];
+    let spray_log = loaded.farm_records[0].citation.clone();
+    let mut cited = step_json("s1", "Remove the lowest infected leaves");
+    cited["farm_citations"] = json!([spray_log.record_id]);
+    let mut dosed = step_json("s2", "Spray 2 tbsp of soap");
+    dosed["farm_citations"] = json!([spray_log.record_id]);
+    let model = Arc::new(ScriptedModel::completions(vec![
+        answer(&[cited, dosed]),
+        ("not json".to_owned(), StopReason::EndTurn),
+    ]));
+    let plan = writer(&model).write(&loaded.input()).await.unwrap();
+    assert_eq!(model.sent().len(), 2);
+    assert_eq!(plan.steps.len(), 1);
+    assert_eq!(plan.dropped[0].rule, PlanRule::Dose);
+    assert_eq!(
+        plan.steps[0].farm_citations,
+        vec![spray_log.record_id.clone()]
+    );
+    assert_eq!(plan.farm_records, vec![spray_log]);
 }

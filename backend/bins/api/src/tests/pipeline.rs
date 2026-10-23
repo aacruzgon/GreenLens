@@ -2261,8 +2261,8 @@ async fn the_plan_step_gives_the_writer_farm_records_and_stores_the_cited_ones()
         .returning(move |_| Ok(snap.clone()));
     store
         .farm_record_store
-        .expect_garden_record_count()
-        .returning(|_| Ok(2));
+        .expect_garden_has_records()
+        .returning(|_| Ok(true));
     store
         .farm_record_store
         .expect_search_records_for_plan()

@@ -705,6 +705,7 @@ async fn the_search_stays_in_its_garden_and_ranks_by_similarity() {
     let f = fixture(&store).await;
     let viewer: Membership<Viewer> = owner_of(&store, &f).await.at_least();
     let c = active_slack(&store, &f, f.garden).await;
+    assert!(!store.garden_has_records(f.garden).await.unwrap());
     let near = vec![0.9, 0.1, 0.0, 0.0];
     let middle = vec![0.5, 0.5, 0.0, 0.0];
     let far = vec![0.0, 0.0, 1.0, 0.0];
@@ -801,7 +802,9 @@ async fn the_search_stays_in_its_garden_and_ranks_by_similarity() {
     assert_eq!(theirs.len(), 1);
     assert_eq!(theirs[0].hit.text, "other garden");
 
-    // The plan writer's search, by the scan's garden, finds the same as its members.
+    // The plan writer's check and search, by the scan's garden, find the same as its members.
+    assert!(store.garden_has_records(f.garden).await.unwrap());
+    assert!(store.garden_has_records(other).await.unwrap());
     for (garden, expected) in [(f.garden, &hits), (other, &theirs)] {
         assert_eq!(
             &store
@@ -812,7 +815,8 @@ async fn the_search_stays_in_its_garden_and_ranks_by_similarity() {
         );
     }
 
-    // A disconnected connector's records leave the search at once.
+    // A disconnected connector's records leave the search, and the plan writer's check, at
+    // once.
     let owner = owner_of(&store, &f).await;
     store.start_connector_deletion(owner, c).await.unwrap();
     assert_eq!(
@@ -822,6 +826,7 @@ async fn the_search_stays_in_its_garden_and_ranks_by_similarity() {
             .unwrap(),
         Vec::new()
     );
+    assert!(!store.garden_has_records(f.garden).await.unwrap());
 }
 
 /// `until` keeps what came before the instant; `author` matches part of the display name,

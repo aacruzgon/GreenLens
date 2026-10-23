@@ -311,6 +311,9 @@ COMMIT;";
     /// A garden's records (index `farm_record_garden`), for the 10,000 limit.
     pub const GARDEN_RECORD_COUNT: &str =
         "RETURN count(SELECT VALUE id FROM farm_record WHERE garden = $garden);";
+    /// Whether a garden has a searchable record: the first one (index `farm_record_garden`)
+    /// whose connector isn't being deleted, as `SEARCH` leaves those out.
+    pub const GARDEN_HAS_RECORDS: &str = "RETURN count(SELECT VALUE id FROM farm_record WHERE garden = $garden AND connector.status != 'deleting' LIMIT 1) > 0;";
     /// `search_farm_records` (EON gap G7): `memory`'s exact cosine search without its sharing
     /// filter, within one garden, leaving out a connector being deleted. `$author` comes
     /// lowercased (EON gap G12).
@@ -1110,6 +1113,17 @@ impl FarmRecordStore for SurrealStore {
         .map_err(|f| f.into_store(WHAT))?;
         let count: Option<i64> = r.take(0).map_err(|e| take_failed(WHAT, e))?;
         Ok(u32::try_from(count.unwrap_or(0)).unwrap_or(u32::MAX))
+    }
+
+    async fn garden_has_records(&self, garden: GardenId) -> Result<bool, StoreError> {
+        const WHAT: &str = "garden has farm records";
+        let mut r = run_tx(&self.db, sql::GARDEN_HAS_RECORDS, |q| {
+            q.bind(("garden", rid(&garden)))
+        })
+        .await
+        .map_err(|f| f.into_store(WHAT))?;
+        let found: Option<bool> = r.take(0).map_err(|e| take_failed(WHAT, e))?;
+        Ok(found.unwrap_or(false))
     }
 
     async fn search_records(

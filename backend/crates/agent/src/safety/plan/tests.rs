@@ -165,14 +165,11 @@ fn farm_citations_need_a_given_record_and_a_knowledge_source() {
     let id = spray_log.record_id.clone();
 
     let mut missing = step("s1", 1);
-    missing.farm_citations = vec![
-        "01JAX3K9T6R2B8V0QZ4M7D1E5C.0.C024BE91L/1729000000.000100"
-            .parse()
-            .unwrap(),
-    ];
+    missing.farm_citations =
+        vec!["01JAX3K9T6R2B8V0QZ4M7D1E5C.0.C024BE91L/1729000000.000100".to_owned()];
     let mut only_farm = step("s2", 2);
     only_farm.citations.clear();
-    only_farm.farm_citations = vec![id.clone()];
+    only_farm.farm_citations = vec![id.to_string()];
     let v = validate_plan(draft(vec![missing, only_farm]), &kb.ctx(false));
     assert_eq!(rules(&v), [PlanRule::UnknownFarmRecord, PlanRule::Uncited]);
     let retry = v.retry_message();
@@ -180,11 +177,24 @@ fn farm_citations_need_a_given_record_and_a_knowledge_source() {
     assert!(retry.contains("step s2: farm records are not sources"));
     assert!(v.steps.is_empty() && v.farm_records.is_empty());
 
-    // Two steps cite the spray log and a third cites none: it is resolved once.
+    // Ids that match the schema's pattern but aren't ids (a ULID past the 128 bits, a number
+    // with a leading zero) refuse the step, not the answer.
+    for raw in [
+        "ZZJAX3K9T6R2B8V0QZ4M7D1E5C.0.D_SPRAY",
+        "01JAX3K9T6R2B8V0QZ4M7D1E5C.00.D_SPRAY",
+    ] {
+        let mut s = step("s1", 1);
+        s.farm_citations = vec![raw.to_owned()];
+        let v = validate_plan(draft(vec![s]), &kb.ctx(false));
+        assert_eq!(rules(&v), [PlanRule::UnknownFarmRecord], "{raw}");
+    }
+
+    // Two steps cite the spray log, one of them twice, and a third cites none: each step lists
+    // it once and the plan resolves it once.
     let mut s1 = step("s1", 1);
-    s1.farm_citations = vec![id.clone()];
+    s1.farm_citations = vec![id.to_string(), id.to_string()];
     let mut s2 = step("s2", 2);
-    s2.farm_citations = vec![id.clone()];
+    s2.farm_citations = vec![id.to_string()];
     let v = validate_plan(draft(vec![s1, s2, step("s3", 3)]), &kb.ctx(false));
     assert!(v.is_clean(), "{:?}", v.failures);
     assert_eq!(v.steps[0].farm_citations, vec![id.clone()]);

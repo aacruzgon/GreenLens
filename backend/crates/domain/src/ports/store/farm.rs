@@ -495,6 +495,10 @@ pub trait FarmRecordStore: Send + Sync {
         k: usize,
     ) -> Result<Vec<FarmRecordMatch>, StoreError>;
 
+    /// Whether the garden has a record the search would find (one of a connector not being
+    /// deleted), read with a limit of one: the plan writer asks before embedding its query.
+    async fn garden_has_records(&self, garden: GardenId) -> Result<bool, StoreError>;
+
     /// The plan writer's search ([connectors 7], the agent): the same search within the scan's
     /// garden, for `pipeline`, which holds no member's proof. The garden comes from the scan
     /// being planned, as for `MemoryStore::shared_for_plan`.

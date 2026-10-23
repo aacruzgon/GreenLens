@@ -70,8 +70,8 @@ pub const PLAN_FARM_RESERVED: usize = 2;
 // Both kinds' reserves fit in the hits.
 const _: () = assert!(PLAN_FARM_HITS >= 2 * PLAN_FARM_RESERVED);
 
-/// How long the plan step waits for its farm records (the count, the query's embedding and the
-/// search) before writing the plan without them.
+/// How long the plan step waits for its farm records (the check for any, the query's embedding
+/// and the search) before writing the plan without them.
 pub const FARM_SEARCH_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Shared memories only: the plan writer's memory input, which every member will see in the
@@ -355,7 +355,7 @@ pub fn farm_query(plant_name: &str, diagnosis: &Diagnosis<Stored>) -> String {
 /// keeping [`PLAN_FARM_RESERVED`] when it has them, closest first.
 ///
 /// A garden without records gets none and nothing is embedded, so its plan is written as before
-/// connectors. A failed count, embedding or search, or one slower than `timeout`, is logged and
+/// connectors. A failed check, embedding or search, or one slower than `timeout`, is logged and
 /// gives none: the plan is written without farm records rather than failing.
 pub async fn plan_farm_records(
     farm: &dyn FarmRecordStore,
@@ -365,7 +365,7 @@ pub async fn plan_farm_records(
     timeout: Duration,
 ) -> Vec<FarmRecordHit> {
     let search = async {
-        if farm.garden_record_count(garden).await? == 0 {
+        if !farm.garden_has_records(garden).await? {
             return Ok::<_, BoxError>(Vec::new());
         }
         let Some(query) = embedder

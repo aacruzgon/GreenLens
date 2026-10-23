@@ -743,6 +743,9 @@ mod farm_record_store {
                 .search_records(member, query, filter, k)
                 .await
         }
+        async fn garden_has_records(&self, garden: GardenId) -> Result<bool, StoreError> {
+            self.farm_record_store.garden_has_records(garden).await
+        }
         async fn search_records_for_plan(
             &self,
             garden: GardenId,
