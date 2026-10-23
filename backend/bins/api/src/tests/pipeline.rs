@@ -1,6 +1,7 @@
 //! The real `pipeline::Pipeline` over the fake store: the stage events a job's `complete`
 //! sends for the ones the stream lost (backend roadmap gap 9, `Pipeline::job_completed`), and
-//! `POST /plants/{id}/species` through the router with the pipeline wired in.
+//! `POST /plants/{id}/species` and `POST /scans/{id}/submit` through the router with the
+//! pipeline wired in.
 
 use std::sync::{Arc, Mutex};
 
@@ -13,7 +14,7 @@ use tower::ServiceExt;
 use domain::{
     events::{ResolvedBy, RunReason, ScanEventBody, Stage},
     id::{ImageId, JobId, ScanId, SpeciesId},
-    jobs::{CompleteJob, JobKind, JobOutcome},
+    jobs::{CompleteJob, JobKind, JobOutcome, JobSpec},
     knowledge::ClassifierLabels,
     ports::{
         ClaimAttempt, CompletionOutcome, GardenContext, GuidedFinish, Lease, LeasedJob,
@@ -26,11 +27,12 @@ use domain::{
         weather::{Coordinates, LocationPrecision, WeatherCell},
     },
     scan::{
-        GuidedCheck, GuidedCheckStatus, GuidedKind, Plant, PlantStatus, Question, QuestionKind,
-        QuestionStatus, Scan, ScanStatus, SpeciesChoice, SpeciesRef, SpeciesStatus,
+        GuidedCheck, GuidedCheckStatus, GuidedKind, ImageKind, Plant, PlantStatus, Question,
+        QuestionKind, QuestionStatus, Scan, ScanFailure, ScanFailureCode, ScanImage, ScanStatus,
+        SpeciesChoice, SpeciesRef, SpeciesStatus,
     },
     testing::{FixedClock, SequentialIds},
-    url::Stored,
+    url::{NoUrl, Stored},
     wire::{BBox, Confidence, EventSeq, Region, Role, Run, Timestamp, V1},
 };
 use pipeline::{
@@ -798,28 +800,48 @@ fn app_recording(
     crate::router::app(state)
 }
 
-/// The scan after run 1 suggested tomato and asked an indicator question, and the store
-/// confirming `chosen`.
-fn store_confirming(chosen: SpeciesRef) -> (FakeStore, domain::ports::MockAuthVerifier) {
+/// The plant after the store confirmed `choice`.
+fn confirmed_plant(choice: &SpeciesChoice) -> Plant<Stored> {
+    match choice {
+        SpeciesChoice::Known(id) => plant(Some(if *id == species("pepper") {
+            pepper()
+        } else {
+            tomato()
+        })),
+        SpeciesChoice::Custom(name) => Plant {
+            species_status: SpeciesStatus::Confirmed,
+            custom_species_name: Some(name.clone()),
+            ..plant(None)
+        },
+    }
+}
+
+/// The scan after run 1 suggested a species and asked an indicator question, with `working`
+/// as the run's working species, and the store confirming `chosen`.
+fn store_confirming(
+    chosen: SpeciesChoice,
+    working: Option<SpeciesId>,
+) -> (FakeStore, domain::ports::MockAuthVerifier) {
     let mut store = FakeStore::default();
     let auth = signed_in(&mut store, Some(Role::Editor));
+    let recent_working = working.clone();
     store
         .plant_repo
         .expect_confirm_species()
         .times(1)
         .returning(move |_, _, choice| {
-            assert_eq!(choice, SpeciesChoice::Known(chosen.id.clone()));
+            assert_eq!(choice, chosen);
             Ok(SpeciesConfirmation {
-                plant: plant(Some(chosen.clone())),
+                plant: confirmed_plant(&choice),
                 recent_scan: Some(RecentScan {
                     scan: SCAN.parse().unwrap(),
                     status: ScanStatus::AwaitingAnswer,
                     created_at: now(),
-                    working_species: Some(species("tomato")),
+                    working_species: recent_working.clone(),
                 }),
             })
         });
-    store.scan_repo.expect_snapshot().returning(|_| {
+    store.scan_repo.expect_snapshot().returning(move |_| {
         let mut snap = snapshot(false);
         snap.scan.status = ScanStatus::AwaitingAnswer;
         snap.scan.open_question = Some(Question {
@@ -836,16 +858,42 @@ fn store_confirming(chosen: SpeciesRef) -> (FakeStore, domain::ports::MockAuthVe
             continue_at: now(),
             status: QuestionStatus::Open,
         });
-        snap.working_species = Some(species("tomato"));
+        snap.working_species.clone_from(&working);
         snap.observations = vec![bioclip_tomato(1)];
         Ok(snap)
     });
     (store, auth)
 }
 
+/// Run 1's suggestion, then confirming the suggested species: the working species the
+/// confirmation compares with is the one the suggestion's store write recorded (here the
+/// fake's record of `suggest_species`; the write itself is the store test
+/// `a_suggestion_sets_its_runs_working_species`), so the run and its question are kept.
 #[tokio::test]
 async fn confirming_the_suggested_species_keeps_the_run_and_its_question() {
-    let (mut store, auth) = store_confirming(tomato());
+    let recorded: Arc<Mutex<Option<SpeciesId>>> = Arc::default();
+    let mut store = store_completing_vlm(1);
+    let write = Arc::clone(&recorded);
+    store
+        .plant_repo
+        .expect_suggest_species()
+        .times(1)
+        .returning(move |_, _, _, working, _| {
+            *write.lock().unwrap() = working;
+            Ok(true)
+        });
+    pipeline(Arc::new(store), Arc::new(Recorder::default()))
+        .job_completed(&lease(), job(JobKind::Vlm), done(vlm_result()))
+        .await
+        .expect("completed");
+    let working = recorded.lock().unwrap().clone();
+    assert_eq!(
+        working,
+        Some(species("tomato")),
+        "the suggestion was stored"
+    );
+
+    let (mut store, auth) = store_confirming(SpeciesChoice::Known(species("tomato")), working);
     store.scan_repo.expect_start_run().never();
     let writer = Arc::new(Recorder::default());
 
@@ -870,7 +918,10 @@ async fn confirming_the_suggested_species_keeps_the_run_and_its_question() {
 
 #[tokio::test]
 async fn confirming_another_species_starts_a_run() {
-    let (mut store, auth) = store_confirming(pepper());
+    let (mut store, auth) = store_confirming(
+        SpeciesChoice::Known(species("pepper")),
+        Some(species("tomato")),
+    );
     store
         .job_repo
         .expect_live_workers()
@@ -909,6 +960,60 @@ async fn confirming_another_species_starts_a_run() {
     assert!(
         matches!(&calls[..], [events] if matches!(&events[..], [
             ScanEventBody::SpeciesConfirmed { rerun: true, .. },
+            ScanEventBody::RunStarted { reason: RunReason::SpeciesChanged, .. },
+            ScanEventBody::QuestionResolved { by: ResolvedBy::Superseded, .. },
+            ScanEventBody::StatusChanged { to: ScanStatus::Analysing, .. },
+        ])),
+        "{calls:?}"
+    );
+}
+
+/// "Something else" after a suggestion ([contracts 3]): the custom name differs from the run's
+/// working species, so a run starts without a species, skipping species identification, and
+/// supersedes the open question.
+#[tokio::test]
+async fn confirming_a_custom_species_after_a_suggestion_starts_a_run() {
+    let custom = SpeciesChoice::Custom("Heirloom tomato".into());
+    let (mut store, auth) = store_confirming(custom, Some(species("tomato")));
+    store
+        .job_repo
+        .expect_live_workers()
+        .returning(|_| Ok(Vec::new()));
+    store
+        .scan_repo
+        .expect_start_run()
+        .withf(|_, _, start| {
+            start.reason == RunReason::SpeciesChanged
+                && start.expected_run == Run(1)
+                && start.working_species.is_none()
+                && matches!(&start.first_job.spec, JobSpec::Perception(p)
+                    if p.species_id.is_none() && p.skip_species_identification)
+        })
+        .times(1)
+        .returning(|_, _, _| {
+            Ok(StartedRun {
+                run: Run(2),
+                from: ScanStatus::AwaitingAnswer,
+                to: ScanStatus::Analysing,
+                superseded_question: Some(QUESTION.parse().unwrap()),
+                cancelled_jobs: Vec::new(),
+            })
+        });
+    let writer = Arc::new(Recorder::default());
+
+    let response = app_recording(store, auth, Arc::clone(&writer))
+        .oneshot(post(
+            &format!("/plants/{PLANT}/species"),
+            &serde_json::json!({ "custom_name": "Heirloom tomato" }),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let calls = writer.calls();
+    assert!(
+        matches!(&calls[..], [events] if matches!(&events[..], [
+            ScanEventBody::SpeciesConfirmed { species_id: None, custom_name: Some(_), rerun: true },
             ScanEventBody::RunStarted { reason: RunReason::SpeciesChanged, .. },
             ScanEventBody::QuestionResolved { by: ResolvedBy::Superseded, .. },
             ScanEventBody::StatusChanged { to: ScanStatus::Analysing, .. },
@@ -972,4 +1077,122 @@ async fn confirming_while_queued_sets_the_runs_working_species() {
             rerun: false,
         }]]
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Submit's working species ([architecture 6.2], step 4): a run starts with the plant's
+// confirmed species, the one its `perception` job names, and otherwise with none, never the
+// scan's working species from an earlier run.
+
+/// The scan to submit: `status` (with `failure`), a whole-plant photo, `plant`, and `working`
+/// as the scan's working species.
+fn submittable(
+    status: ScanStatus,
+    failure: Option<&ScanFailure>,
+    plant: &Plant<Stored>,
+    working: Option<&SpeciesId>,
+) -> ScanSnapshot {
+    let mut snap = snapshot(false);
+    snap.scan.status = status;
+    snap.scan.run = Run(u32::from(status != ScanStatus::Pending));
+    snap.scan.failure = failure.cloned();
+    snap.scan.images = vec![ScanImage {
+        id: "01JAX6BBBBBBBBBBBBBBBBBBB1".parse().unwrap(),
+        kind: ImageKind::WholePlant,
+        answers_question_id: None,
+        width: 1024,
+        height: 768,
+        url: NoUrl,
+        uploaded_at: now(),
+        depth: None,
+    }];
+    snap.plant = plant.clone();
+    snap.working_species = working.cloned();
+    snap
+}
+
+/// A store submitting `snap`'s scan, expecting a run that starts with `expected` as its
+/// working species and its `perception` job's species.
+fn store_submitting(
+    snap: ScanSnapshot,
+    expected: Option<SpeciesId>,
+) -> (FakeStore, domain::ports::MockAuthVerifier) {
+    let mut store = FakeStore::default();
+    let auth = signed_in(&mut store, Some(Role::Editor));
+    let scan = snap.scan.clone();
+    store
+        .scan_repo
+        .expect_scan()
+        .returning(move |_, _| Ok(scan.clone()));
+    store
+        .scan_repo
+        .expect_snapshot()
+        .returning(move |_| Ok(snap.clone()));
+    store
+        .job_repo
+        .expect_live_workers()
+        .returning(|_| Ok(Vec::new()));
+    store
+        .scan_repo
+        .expect_start_run()
+        .withf(move |_, _, start| {
+            let named = match &start.first_job.spec {
+                JobSpec::Perception(p) => p.species_id.as_ref(),
+                _ => None,
+            };
+            matches!(start.first_job.spec, JobSpec::Perception(_))
+                && start.working_species == expected
+                && named == expected.as_ref()
+        })
+        .times(1)
+        .returning(|_, _, start| {
+            Ok(StartedRun {
+                run: start.expected_run.next(),
+                from: start.expected_status,
+                to: ScanStatus::Queued,
+                superseded_question: None,
+                cancelled_jobs: Vec::new(),
+            })
+        });
+    (store, auth)
+}
+
+async fn submit(store: FakeStore, auth: domain::ports::MockAuthVerifier) -> StatusCode {
+    app_with_pipeline(store, auth)
+        .oneshot(
+            Request::post(format!("/scans/{SCAN}/submit"))
+                .header(header::AUTHORIZATION, "Bearer session-token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+        .status()
+}
+
+#[tokio::test]
+async fn submitting_a_confirmed_plants_scan_starts_with_its_species() {
+    let snap = submittable(ScanStatus::Pending, None, &plant(Some(tomato())), None);
+    let (store, auth) = store_submitting(snap, Some(species("tomato")));
+    assert_eq!(submit(store, auth).await, StatusCode::ACCEPTED);
+}
+
+/// A resubmitted run of an unconfirmed plant identifies the species again: it doesn't keep the
+/// failed run's suggestion, which the snapshot still holds.
+#[tokio::test]
+async fn a_resubmitted_run_does_not_keep_the_earlier_suggestion() {
+    let suggested = Plant {
+        species_status: SpeciesStatus::Suggested,
+        species: Some(tomato()),
+        ..plant(None)
+    };
+    let failure = ScanFailure::new(ScanFailureCode::ProcessingError, "Something went wrong.");
+    let snap = submittable(
+        ScanStatus::Failed,
+        Some(&failure),
+        &suggested,
+        Some(&species("tomato")),
+    );
+    let (store, auth) = store_submitting(snap, None);
+    assert_eq!(submit(store, auth).await, StatusCode::ACCEPTED);
 }
