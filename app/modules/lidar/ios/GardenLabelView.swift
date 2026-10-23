@@ -38,6 +38,14 @@ final class GardenLabelView: UIView {
     return onActivate != nil
   }
 
+  /// Where a tap selects the plant: the label and a margin, at least 44 pt square, so a dot is a full target (HIG,
+  /// accessibility).
+  var hitFrame: CGRect {
+    let f = frame.insetBy(dx: -6, dy: -6)
+    let dx = max(0, (44 - f.width) / 2), dy = max(0, (44 - f.height) / 2)
+    return f.insetBy(dx: -dx, dy: -dy)
+  }
+
   /// The full label's size, whether or not it is shown compact.
   var fullBounds: CGSize { fullSize }
 

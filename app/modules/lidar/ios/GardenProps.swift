@@ -41,6 +41,15 @@ enum GardenStatus: String {
     case .unknown: return "status unknown"
     }
   }
+
+  /// How much a plant asks to be looked at: its name keeps its label before a healthy plant's does.
+  var attention: Int {
+    switch self {
+    case .sick: return 2
+    case .watch: return 1
+    case .healthy, .dead, .unknown: return 0
+    }
+  }
 }
 
 enum GardenMode: String {

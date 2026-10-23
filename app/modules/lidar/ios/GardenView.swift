@@ -10,9 +10,10 @@ import simd
 // select, UIKit labels placed with project(_:) on every SceneEvents.Update.
 //
 // Idle frames: RealityKit has no public render-on-demand switch for ARView. When nothing has moved for a moment
-// (no gesture, no tween, the turntable done or off), the view snapshots itself, shows the snapshot and takes the
-// ARView out of the window, which stops its drawing; the next gesture, tap, prop change or new size puts it back.
-// The first build woke on every layout and drew 60 fps idle; check again with Metal System Trace.
+// (no gesture, no tween, the turntable not turning), the view snapshots itself, shows the snapshot and takes the
+// ARView out of the window, which stops its drawing; the next gesture, tap, prop change or new size puts it back,
+// and a timer does when the turntable is due to start. The first build woke on every layout and drew 60 fps idle;
+// the second drew through the turntable's 3 s wait, with nothing moving.
 
 final class GardenView: ExpoView {
   let onSelectPlant = EventDispatcher()
@@ -53,6 +54,8 @@ final class GardenView: ExpoView {
   private var builtPlantsKey: String?
   private var builtScheme: String?
   private var materials = GardenMaterials(palette: .light)
+  /// GardenInstances on iOS 26; nil before, where each plant draws its own entities.
+  private var instances: AnyObject?
 
   // The orbit camera.
   private var target = SIMD3<Float>(0, 0.2, 0)
@@ -70,6 +73,8 @@ final class GardenView: ExpoView {
   private var idleSince: CFTimeInterval?
   private var frozen = false
   private var freezing = false
+  /// Moves on every freeze and wake, so a turntable timer from an earlier freeze does nothing.
+  private var freezeGeneration = 0
   private var systemReduceMotion = UIAccessibility.isReduceMotionEnabled
   private var reduceMotion: Bool { reduceMotionProp || systemReduceMotion }
 
@@ -101,6 +106,11 @@ final class GardenView: ExpoView {
     worldAnchor.addChild(plantsRoot)
     worldAnchor.addChild(camera)
     worldAnchor.addChild(keyLight)
+    if #available(iOS 26.0, *) {
+      let batches = GardenInstances()
+      worldAnchor.addChild(batches.root)
+      instances = batches
+    }
     arView.scene.addAnchor(worldAnchor)
 
     updateSubscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] event in
@@ -175,6 +185,7 @@ final class GardenView: ExpoView {
     let firstBuild = previous.isEmpty
     staticRoot.children.removeAll()
     plantsRoot.children.removeAll()
+    if #available(iOS 26.0, *) { (instances as? GardenInstances)?.removeAll() }
     for node in previous.values { node.label.removeFromSuperview() }
     nodes = [:]
 
@@ -222,7 +233,8 @@ final class GardenView: ExpoView {
         bedTop: inBed ? Self.bedHeight : nil,
         materials: materials,
         from: previous[plant.id],
-        growIn: growIn || previous[plant.id] == nil && !firstBuild && !reduceMotion)
+        growIn: growIn || previous[plant.id] == nil && !firstBuild && !reduceMotion,
+        instanced: instances != nil)
       node.label.onActivate = { [weak self] in self?.select(plant.id) }
       nodes[plant.id] = node
       plantsRoot.addChild(node.root)
@@ -251,21 +263,31 @@ final class GardenView: ExpoView {
     for node in nodes.values where node.step(dt: dt, snap: reduceMotion) {
       moving = true
     }
+    if moving || nodes.values.contains(where: \.instancesChanged) { updateInstances() }
     if cameraDirty || moving || labelsDirty {
       layoutLabels()
       cameraDirty = false
       labelsDirty = false
     }
 
-    // Keep drawing while the turntable is still to come; otherwise freeze once still.
-    let turntablePending = !reduceMotion && sinceTouch < Self.turntableDelay + Self.turntableRun
-    if moving || gestureActive || turntablePending {
+    // Freeze once still, the turntable's wait included: freeze() sets a timer for its start.
+    if moving || gestureActive {
       idleSince = nil
     } else if let since = idleSince {
       if now - since > Self.freezeAfter { freeze() }
     } else {
       idleSince = now
     }
+  }
+
+  private func updateInstances() {
+    guard #available(iOS 26.0, *), let batches = instances as? GardenInstances else { return }
+    var parts: [PlantNode.InstancePart] = []
+    for node in nodes.values {
+      parts += node.instanceParts(in: plantsRoot)
+      node.instancesChanged = false
+    }
+    batches.update(parts)
   }
 
   private func distance() -> Float {
@@ -287,8 +309,10 @@ final class GardenView: ExpoView {
     camera.look(at: target, from: position, relativeTo: nil)
   }
 
-  /// Places the labels: the selected plant's first, then the nearest. A label that would overlap one already placed
-  /// shrinks to its status dot (garden-3d 5), so a zoomed-out or crowded garden shows dots, not a pile of names.
+  /// Places the labels: the selected plant's first, then the plants that need attention, then the nearest. A label
+  /// that would overlap one already placed shrinks to its status dot (garden-3d 5); a dot that would still overlap
+  /// is hidden, and the plant's ring shows its status. With VoiceOver on, nothing is hidden: each label is a plant's
+  /// accessibility element.
   private func layoutLabels() {
     let cameraPosition = camera.position(relativeTo: nil)
     let forward = -camera.transform.matrix.columns.2
@@ -306,16 +330,28 @@ final class GardenView: ExpoView {
     }
     placed.sort { a, b in
       let sa = a.node.id == selectedPlantId, sb = b.node.id == selectedPlantId
-      return sa != sb ? sa : a.depth < b.depth
+      if sa != sb { return sa }
+      let ua = a.node.plant.status.attention, ub = b.node.plant.status.attention
+      return ua != ub ? ua > ub : a.depth < b.depth
     }
+    let voiceOver = UIAccessibility.isVoiceOverRunning
     var taken: [CGRect] = []
+    func free(_ frame: CGRect) -> Bool { !taken.contains { $0.intersects(frame.insetBy(dx: -2, dy: -2)) } }
     for (node, point, _) in placed {
       let full = node.label.fullBounds
       let frame = CGRect(x: point.x - full.width / 2, y: point.y - full.height, width: full.width, height: full.height)
-      let fits = node.id == selectedPlantId || !taken.contains { $0.intersects(frame.insetBy(dx: -2, dy: -2)) }
-      node.label.setCompact(!fits)
-      if fits { taken.append(frame) }
-      node.label.isHidden = false
+      let dot = CGRect(x: point.x - full.height / 2, y: point.y - full.height, width: full.height, height: full.height)
+      if node.id == selectedPlantId || free(frame) {
+        node.label.setCompact(false)
+        taken.append(frame)
+        node.label.isHidden = false
+      } else if free(dot) || voiceOver {
+        node.label.setCompact(true)
+        taken.append(dot)
+        node.label.isHidden = false
+      } else {
+        node.label.isHidden = true
+      }
       node.label.center = CGPoint(x: point.x, y: point.y - node.label.bounds.height / 2)
     }
   }
@@ -333,6 +369,20 @@ final class GardenView: ExpoView {
       self.snapshotView.isHidden = false
       self.arView.removeFromSuperview()
       self.frozen = true
+      self.freezeGeneration += 1
+      self.wakeForTurntable()
+    }
+  }
+
+  /// A frozen view still owes the turntable its turn: wake when it is due to start.
+  private func wakeForTurntable() {
+    guard !reduceMotion else { return }
+    let wait = lastInteraction + Self.turntableDelay - CACurrentMediaTime()
+    guard wait > 0 else { return }
+    let generation = freezeGeneration
+    DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+      guard let self, self.frozen, self.freezeGeneration == generation else { return }
+      self.wake()
     }
   }
 
@@ -340,6 +390,7 @@ final class GardenView: ExpoView {
     idleSince = nil
     guard frozen else { return }
     frozen = false
+    freezeGeneration += 1
     insertSubview(arView, belowSubview: snapshotView)
     arView.frame = bounds
     // Keep the snapshot up until the ARView has drawn again.
@@ -373,7 +424,7 @@ final class GardenView: ExpoView {
     let point = g.location(in: self)
     var hit: String?
     // A label is a target too.
-    for node in nodes.values where !node.label.isHidden && node.label.frame.insetBy(dx: -6, dy: -6).contains(point) {
+    for node in nodes.values where !node.label.isHidden && node.label.hitFrame.contains(point) {
       hit = node.id
       break
     }
