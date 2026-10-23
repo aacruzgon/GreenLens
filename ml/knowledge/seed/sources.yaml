@@ -21,9 +21,15 @@
 #   attribution". The licence excludes individual images, and none is used.
 # - Clemson HGIC: © Clemson University, no reuse grant found. Facts only (plan.yaml,
 #   facts_only_sources): the profiles cite it, but none of its wording is committed.
+# - Colorado State University Extension, CMG GardenNotes (checked 2026-10-23): the notes as web
+#   pages on extension.colostate.edu carry only "© 2026 Colorado State University", no reuse
+#   grant: facts only. They're written for Colorado's soils, so a record takes from them only what
+#   holds for a garden in general.
+# - The ISU how-to pages on moss, algae and mulch fungi carry no republishing note, like the
+#   tomato how-to above: facts only.
 #
 # GreenLens is a non-commercial student project, which these terms cover. If it is ever
-# commercialised, Ontario, EDIS and Clemson must be revisited (#46).
+# commercialised, Ontario, EDIS, CSU and Clemson must be revisited (#46).
 
 # --- Ontario ---------------------------------------------------------------------------------
 - id: ontario_tomato_bacterial_diseases
@@ -38,6 +44,12 @@
   url: https://www.ontario.ca/files/2022-10/omafra-agronomy-guide-for-field-crops-chapter-16-en-2022-10-13.pdf
   licence: "Crown copyright. Non-commercial reproduction without changes, with credit; commercial use needs a licence. The chapter is a PDF, linked from the guide's page (ontario.ca/page/publication-811-agronomy-guide-field-crops; published 2022-10-24, updated 2024-01-16). Credit: Agronomy Guide for Field Crops, Publication 811, Chapter 16; Ontario Ministry of Agriculture, Food and Agribusiness. © King's Printer for Ontario, 2012–2026."
   retrieved_at: 2026-10-22
+- id: ontario_field_crops_soil_management
+  title: "Agronomy Guide for Field Crops (Publication 811), Chapter 8: Managing for Healthy Soils"
+  publisher: Ontario Ministry of Agriculture, Food and Agribusiness
+  url: https://www.ontario.ca/files/2022-10/omafra-agronomy-guide-for-field-crops-chapter-8-en-2022-10-13.pdf
+  licence: "Crown copyright. Non-commercial reproduction without changes, with credit; commercial use needs a licence. The chapter is a PDF, linked from the guide's page (ontario.ca/page/publication-811-agronomy-guide-field-crops). Credit: Agronomy Guide for Field Crops, Publication 811, Chapter 8; Ontario Ministry of Agriculture, Food and Agribusiness. © King's Printer for Ontario, 2012–2026."
+  retrieved_at: 2026-10-23
 
 # --- Iowa State University Extension and Outreach, Yard and Garden ---------------------------
 - id: isu_septoria_leaf_spot
@@ -94,6 +106,24 @@
   url: https://yardandgarden.extension.iastate.edu/encyclopedia/black-rot-grape
   licence: "May be republished without further permission if published as written, with credit to the author, Yard and Garden, and Iowa State University Extension and Outreach. Credit: Barbara Ambruzs, Yard and Garden, Iowa State University Extension and Outreach (last reviewed June 2026)."
   retrieved_at: 2026-10-22
+- id: isu_moss_lawn_garden
+  title: How to Manage Moss in the Lawn and Garden
+  publisher: Iowa State University Extension and Outreach, Yard and Garden
+  url: https://yardandgarden.extension.iastate.edu/how-to/how-manage-moss-lawn-and-garden
+  licence: "© Iowa State University of Science and Technology. A how-to page with no republishing note: facts only, no wording committed. Credit: Richard Jauron, Yard and Garden, Iowa State University Extension and Outreach (last reviewed March 2024)."
+  retrieved_at: 2026-10-23
+- id: isu_algae_lawn
+  title: Managing Algae in the Lawn
+  publisher: Iowa State University Extension and Outreach, Yard and Garden
+  url: https://yardandgarden.extension.iastate.edu/how-to/managing-algae-lawn
+  licence: "© Iowa State University of Science and Technology. A how-to page with no republishing note: facts only, no wording committed. Credit: Paula Flynn, Yard and Garden, Iowa State University Extension and Outreach (last reviewed April 2025)."
+  retrieved_at: 2026-10-23
+- id: isu_fungi_landscape_mulch
+  title: Managing Strange-Looking Fungi in Landscape Mulch and Lawns
+  publisher: Iowa State University Extension and Outreach, Yard and Garden
+  url: https://yardandgarden.extension.iastate.edu/how-to/managing-strange-looking-fungi-landscape-mulch
+  licence: "© Iowa State University of Science and Technology. A how-to page with no republishing note: facts only, no wording committed. Credit: Aaron Steil and Richard Jauron, Yard and Garden, Iowa State University Extension and Outreach (last reviewed July 2023)."
+  retrieved_at: 2026-10-23
 
 # --- UF/IFAS EDIS ----------------------------------------------------------------------------
 - id: edis_in307_twospotted_spider_mite
@@ -114,6 +144,38 @@
   url: https://edis.ifas.ufl.edu/publication/PP362
   licence: "CC BY-NC-ND 4.0: non-commercial sharing with attribution, without changes. Credit: Camille McAvoy, Pamela Roberts and Jeffrey Jones, Bacterial Spot of Pepper (PP362), UF/IFAS Extension, EDIS, 2021, reviewed 2024, https://doi.org/10.32473/edis-pp362-2021."
   retrieved_at: 2026-10-22
+
+# --- Colorado State University Extension, Colorado Master Gardener (facts only) ---------------
+- id: csu_soil_texture
+  title: "Estimating Soil Texture: Sandy, Loamy, or Clayey (CMG GardenNotes #214)"
+  publisher: Colorado State University Extension, Colorado Master Gardener program
+  url: https://extension.colostate.edu/resource/estimating-soil-texture-sandy-loamy-or-clayey/
+  licence: "© 2026 Colorado State University (the page's only notice): facts only, no wording committed. Credit: Adrian Card, David Whiting, Carl Wilson and Jean Reeder, Colorado State University Extension (reviewed September 2022)."
+  retrieved_at: 2026-10-23
+- id: csu_soil_compaction
+  title: "Soil Compaction (CMG GardenNotes #215)"
+  publisher: Colorado State University Extension, Colorado Master Gardener program
+  url: https://extension.colostate.edu/resource/soil-compaction/
+  licence: "© 2026 Colorado State University (the page's only notice): facts only, no wording committed. Credit: Adrian Card, Eric Hammond, David Whiting, Carl Wilson and Jean Reeder, Colorado State University Extension (reviewed September 2022)."
+  retrieved_at: 2026-10-23
+- id: csu_soil_drainage
+  title: "Soil Drainage (CMG GardenNotes #219)"
+  publisher: Colorado State University Extension, Colorado Master Gardener program
+  url: https://extension.colostate.edu/resource/soil-drainage/
+  licence: "© 2026 Colorado State University (the page's only notice): facts only, no wording committed. Credit: Adrian Card, David Whiting, Carl Wilson, Jean Reeder and Susan Carter, Colorado State University Extension (reviewed September 2022)."
+  retrieved_at: 2026-10-23
+- id: csu_saline_soils
+  title: "Saline Soils (CMG GardenNotes #224)"
+  publisher: Colorado State University Extension, Colorado Master Gardener program
+  url: https://extension.colostate.edu/resource/saline-soils/
+  licence: "© 2026 Colorado State University (the page's only notice): facts only, no wording committed. Credit: Adrian Card, David Whiting, Carl Wilson, Jean Reeder and Susan Carter, Colorado State University Extension (reviewed August 2022)."
+  retrieved_at: 2026-10-23
+- id: csu_mulching
+  title: "Mulching (CMG GardenNotes #245)"
+  publisher: Colorado State University Extension, Colorado Master Gardener program
+  url: https://extension.colostate.edu/resource/mulching/
+  licence: "© 2026 Colorado State University (the page's only notice): facts only, no wording committed. Credit: Eric Hammond, David Whiting, Carl Wilson, Catherine Moravec and Jean Reeder, Colorado State University Extension (reviewed April 2023)."
+  retrieved_at: 2026-10-23
 
 # --- Clemson HGIC (facts only: no wording committed) -----------------------------------------
 - id: clemson_hgic_tomato_diseases
