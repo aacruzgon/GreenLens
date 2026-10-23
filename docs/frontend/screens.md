@@ -1,6 +1,6 @@
 # PDM Frontend Screens
 
-> **Status:** Draft v0.4.12, 2026-10-22. v0.4.12: the soil card words each server value (the squeeze test's `holds_ball` is "Your soil: loamy · It holds a ball.") and reads `unclear` as an unclear photo (3.3). v0.4.11: after the third review of #130, a soil check's card shows its outcome ("Your soil: loamy", a jar that hasn't settled, a photo that couldn't be read), and the stage card leaves the check out of the run's steps and time (3.3). v0.4.10: after the second review of #130, the photo slides only while the question is up and counts the labels; the soil checks are a native menu; a soil check finishes with its texture; a scan that can't load says so with Try again, and an offline one shows its cached record (3.3). v0.4.9: after the review of #130, the live analysis shows the snapshot until the replay catches up, moves the photo so the hotspots sit between the cards, puts a label above its oval when another is below, says "Plan updated" for a superseding plan, and opens the soil checks from the More button (3.3). v0.4.8: the live analysis as built in F3: the stage card and its run log, hotspots, the species chip, "Not sure yet", picture answers by `Question.indicator_id`, the ring and the pill, and the result route (3.3). v0.4.7: capture's question and guided modes in full: the photo before Send, the jar test's task and its row opening the camera (3.2). v0.4.6: a password reset by email code, from sign-in and from a sign-up whose email is taken (1, 3.10). v0.4.5: capture's mode bar is Liquid Glass, solid with Reduce Transparency. v0.4.4: capture's pill asks for a missing needed shot before the optional ones, and a failed removal keeps the shot with **Try again**. v0.4.3: capture as built in F2, after the Camera app: the mode bar and the coverage dial replace the shot strip, the instruction drops from the top, and a full mode's shutter retakes its shot. v0.4.2: sign-up takes a phone number, and sign-in asks for a code by text. v0.4.1: no authenticator-app second factor.
+> **Status:** Draft v0.5.0, 2026-10-22. v0.5.0: the diagnosis, plan, step by step, plant page and Tasks tab as built in F4 (3.3–3.5, 3.7), and the steps route (sections 1 and 2); after the review of #132, the photo screens' top edge once the photo scrolls away, and when a checked task leaves Open. v0.4.12: the soil card words each server value (the squeeze test's `holds_ball` is "Your soil: loamy · It holds a ball.") and reads `unclear` as an unclear photo (3.3). v0.4.11: after the third review of #130, a soil check's card shows its outcome ("Your soil: loamy", a jar that hasn't settled, a photo that couldn't be read), and the stage card leaves the check out of the run's steps and time (3.3). v0.4.10: after the second review of #130, the photo slides only while the question is up and counts the labels; the soil checks are a native menu; a soil check finishes with its texture; a scan that can't load says so with Try again, and an offline one shows its cached record (3.3). v0.4.9: after the review of #130, the live analysis shows the snapshot until the replay catches up, moves the photo so the hotspots sit between the cards, puts a label above its oval when another is below, says "Plan updated" for a superseding plan, and opens the soil checks from the More button (3.3). v0.4.8: the live analysis as built in F3: the stage card and its run log, hotspots, the species chip, "Not sure yet", picture answers by `Question.indicator_id`, the ring and the pill, and the result route (3.3). v0.4.7: capture's question and guided modes in full: the photo before Send, the jar test's task and its row opening the camera (3.2). v0.4.6: a password reset by email code, from sign-in and from a sign-up whose email is taken (1, 3.10). v0.4.5: capture's mode bar is Liquid Glass, solid with Reduce Transparency. v0.4.4: capture's pill asks for a missing needed shot before the optional ones, and a failed removal keeps the shot with **Try again**. v0.4.3: capture as built in F2, after the Camera app: the mode bar and the coverage dial replace the shot strip, the instruction drops from the top, and a full mode's shutter retakes its shot. v0.4.2: sign-up takes a phone number, and sign-in asks for a code by text. v0.4.1: no authenticator-app second factor.
 > v0.4 applies the third audit: Google and Apple sign-in are hidden only in embedded web views, and the note delete rule names who deletes which note.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **New-plant sheet:** added, with `POST /plants`.
@@ -81,7 +81,7 @@ Wireframes show layout and content, not visual design. They are drawn at phone w
    │  ▼                                                   │                │
    │ scans/[scanId] ──── "Ask about this result" ─────────┼────────────────┘
    │   │   │   │                                          │
-   │   │   │   ├─▶ scans/[scanId]/result (the diagnosis and plan, F4)
+   │   │   │   ├─▶ scans/[scanId]/result (the diagnosis and plan, F4) ─▶ scans/[scanId]/steps
    │   │   │   └─▶ scans/[scanId]/feedback (sheet, reviewer and up)
    │   │   └─▶ capture/[scanId]/guided/[kind] ◀───────────┘ jar-test task (task.scan_id)
    │   └─▶ capture/[scanId]/question/[questionId]
@@ -121,6 +121,8 @@ Wireframes show layout and content, not visual design. They are drawn at phone w
 | `capture/[scanId]/question/[questionId]` | capture | One photo for a question | `GET /scans/{id}` | `POST /scans/{id}/images` with `question_id` | Editor, owner |
 | `capture/[scanId]/guided/[kind]` | capture | Squeeze or jar test | `GET /scans/{id}` | `POST /scans/{id}/images`, `POST /tasks` with `scan_id` (jar), `PATCH /tasks/{id}` | Editor, owner |
 | `scans/[scanId]` | scans | Live progress and results (3.3, 3.4) | `GET /scans/{id}`, `GET /scans/{id}/events` | `POST /scans/{id}/answers`, `POST /plants/{id}/species`, `PATCH /tasks/{id}`, `POST /scans/{id}/submit` (Retry), `POST /scans` (New scan), `DELETE /scans/{id}` (Discard, while `pending`) | All read; the writes for editors and owners |
+| `scans/[scanId]/result` | scans | The diagnosis and plan (3.3, 3.4) | `GET /scans/{id}`, `GET /scans/{id}/events`, `GET /tasks`, `GET /plants` | `PATCH /tasks/{id}`, `POST /scans/{id}/answers` | All read; checks and answers for editors and owners |
+| `scans/[scanId]/steps` | scans | The plan step by step (3.4) | `GET /scans/{id}`, `GET /tasks` | `PATCH /tasks/{id}` | All read; Done for editors and owners |
 | `scans/[scanId]/feedback` (sheet) | scans | Scan feedback (3.11) | | `POST /scans/{id}/feedback` | Reviewer, editor, owner; only once the scan is submitted (contracts 3) |
 | `chat/[conversationId]` | chat | Conversation (3.6) | `GET /conversations/{id}` | Messages, images, cards, memories, message feedback | The conversation's owner |
 | `account/delete` | account | What is deleted, then deletion | | `DELETE /me` | Signed in |
@@ -312,6 +314,16 @@ Capture is always dark and follows the Camera app ([design 3.1](../design/design
 - Checking a step's box completes its task (`PATCH /tasks/{id} { done: true }`), for editors and owners. Viewers see the boxes read-only.
 - After `plan_superseded`, a notice says why ("Updated after your answer", "Updated for pepper", "Updated after the soil check", "Updated from chat").
 
+**The diagnosis and plan, as built in F4** ([design 3.1](../design/design.md#31-conservatory), after Apple Music). `scans/[scanId]/result` follows the light or dark scheme, unlike the camera screens:
+
+- **The photo** (the close-up, else the whole plant) fades into a ground tinted from its dominant hue (D9, on the phone; a grey photo keeps the wash). **Back** and **In the garden** float over it as clear glass bar buttons, white over a dark scrim at the top of the photo; In the garden goes to the garden home until F7's garden view. Once the photo has scrolled under the status bar, the ground fades in behind the status bar with a hairline, and the status bar takes the scheme's ink.
+- **The diagnosis** is centred over the photo's faded edge in Urbanist at 40 pt, worded by `domain/diagnosis.ts`, with its basis below ("Tomato 2 · from 2 photos, your answer and the weather"). With `low_evidence`, the words of section 6 and **Take a closer photo** (editors and owners).
+- **Sideways cards:** each risk, its crowding driver first ("Risk of spread: high · Crowded: 40 cm from Tomato 1"), then each organism ("Also found · Ladybug larva · Leave it: it eats aphids"; an invasive one has How to report).
+- **Lists on cards over the tint**, no shadows: What matched (a "measured" tag on an indicator answered by depth, and the contradicted ones with "Not seen" or "You said no"), the provisional plan's open question with text answers, Your plan, Watch for, Your constraints, Weather at the scan, Soil, Measurements, Found on the plant (with bands), Sources, and **Was this right?** for reviewers and up.
+- **Your plan ›** opens step by step. Each step has its timing, category, other plant ("plant removed" when gone), source numbers, the safety note as sent, and its farm records, which open in Slack or Drive. Checking a box completes the step's task; a repeating step shows its next open task once the last is done. Viewers see no boxes.
+- **The mini player** is a solid bar at the bottom: "Up next · step 2 of 5" with the first step still to do, and play. Ask joins it in F6.
+- **Step by step** (`scans/[scanId]/steps`, full screen): Close, "Your plan", "1 of 5" and a dot per step; the step's timing and category, its title in Urbanist at 30 pt, its detail, a repeating step's dates as chips ("Adds 5 tasks", or "Every 3 days, starting Oct 20" without an end), a trigger's note ("A task appears when the forecast shows rain"), the safety note and its source. **Done** completes the task and moves on; **Later** moves on; a step without a task, or for a viewer, has **Next**. The end says how many steps are done.
+
 ### 3.5 Plant detail and timeline
 
 ```
@@ -342,6 +354,8 @@ Capture is always dark and follows the Camera app ([design 3.1](../design/design
 
 - A **`pending` scan** shows "Continue scan" (with a local draft) or "Not submitted" at the top of the timeline, with **Discard**.
 - The growth curve is shown on every device; only LiDAR scans add points.
+
+**As built in F4:** the melt hero from the latest scan's photo with Back as a glass bar button over a dark scrim; once the name scrolls up to Back, the page's ground fades in behind the status bar and Back, and Back and the status bar take the scheme's ink. Then the name at 40 pt, the status chip, the species with its status and **Change** (editors), **Scan** as the screen's one green pill, the timeline (a result opens the diagnosis, a running scan the analysis, a pending one capture; "Show older scans" pages), and the notes with **Add a note** (editors). The growth curve comes with Insights in F7, the ⋯ menu and Ask later. Plant cards on the garden home open this page.
 
 ### 3.6 Chat
 
@@ -396,6 +410,8 @@ Capture is always dark and follows the Camera app ([design 3.1](../design/design
 
 - Swipe actions, for editors and owners: **Done** for every task; **Dismiss** for plan and alert tasks; **Delete** only for user and chat tasks, which can also be edited (contracts 9, tasks). Viewers see the list read-only.
 - A repeating task shows its interval; completing it shows the next one.
+
+**As built in F4:** Open, Done and Alerts as chips under a large title, and **+ Task** for editors. Open groups by due date in the garden's time zone: Overdue, Today, Tomorrow, each later date ("Mon, Oct 26"), No date. The meta line carries the source (Plan, Alert, Chat) and the plant. The swipe actions are also VoiceOver actions on the row. A task checked in Open stays there, struck through, until the view changes or the tab loses focus. A tap edits a user or chat task, opens a jar task's capture, starts a monitoring task's scan, or opens the task's plant. `tasks/edit` is a sheet: the title, when (today, tomorrow, in a week, no date, or the date it has), repeat (once, daily, weekly, every 2 weeks), the plant for a new task, and notes.
 
 ### 3.8 Garden map
 

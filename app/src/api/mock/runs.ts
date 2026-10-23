@@ -267,9 +267,20 @@ function liveBlight(): Script {
   const afterAnswer = (_ctx: RunCtx, answer: S["Answer"]): Step[] => {
     const lowerLeaves = ev("lower_leaves_first", "Spots started on the lowest leaves", "yes", 2, "vlm");
     const halo = ev("yellow_halo", "Yellow halo around the spots", "yes", 1, "vlm");
-    const scoreOf = (): { primary?: S["CandidateScore"]; candidates: S["CandidateScore"][]; status: S["DiagnosisStatus"] } => {
+    // With depth, the spots' measured size answers an indicator: the diagnosis's "measured" row (roadmap 10 item 4).
+    const spotSize = (ctx: RunCtx): S["IndicatorEvidence"][] => {
+      const o = ctx.store.scan(ctx.scanId)?.observations.find((x) => x.detail?.measurement?.quantity === "lesion_diameter_mm");
+      const m = o?.detail?.measurement;
+      if (!o || !m) return [];
+      return [{ ...ev("lesion_size", "Spots", "yes", 2, "measurement"), measured: { image_id: o.region?.image_id ?? images(ctx).leaf, quantity: m.quantity, value: m.value } }];
+    };
+    const scoreOf = (ctx: RunCtx): { primary?: S["CandidateScore"]; candidates: S["CandidateScore"][]; status: S["DiagnosisStatus"] } => {
       if (answer === "yes") {
-        const blight = makeScore(PROBLEMS.earlyBlight, 6, { fit: "favourable", matched: [ev(RINGS_INDICATOR, RINGS_TEXT, "yes", 3, "user"), lowerLeaves, halo] });
+        const blight = makeScore(PROBLEMS.earlyBlight, 6, {
+          fit: "favourable",
+          matched: [ev(RINGS_INDICATOR, RINGS_TEXT, "yes", 3, "user"), lowerLeaves, ...spotSize(ctx)],
+          contradicted: [{ ...halo, answer: "no" }],
+        });
         const sept = makeScore(PROBLEMS.septoria, 2, { fit: "favourable", matched: [lowerLeaves], unsure: [ev("small_many_spots", "Many small round spots with grey centres", "unsure", 3, "vlm")] });
         return { primary: blight, candidates: [blight, sept], status: "confirmed" };
       }
@@ -290,7 +301,7 @@ function liveBlight(): Script {
       ...stage("scoring", 700),
       at(250, (ctx) => {
         const p = plantOf(ctx);
-        const s = scoreOf();
+        const s = scoreOf(ctx);
         const isT2 = p.id === IDS.tomato2;
         const diagnosis = makeDiagnosis({
           id: ctx.id("diag"), scanId: ctx.scanId, run: ctx.run, ts: ctx.ts(), status: s.status,

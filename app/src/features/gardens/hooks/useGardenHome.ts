@@ -169,6 +169,7 @@ export function useGardenHome(gardenId: string) {
         if (plantId) router.push({ pathname: "/scan/new", params: { plantId } });
       },
       addNote: () => router.push("/notes/new"),
+      openPlant: (plantId: string) => router.push({ pathname: "/plants/[plantId]", params: { plantId } }),
       switchGarden: (id: string) => useActiveGardenStore.getState().setGardenId(id),
       // The new-scan sheet with nothing chosen; it lets the user name a new plant.
       addPlant: () => router.push("/scan/new"),

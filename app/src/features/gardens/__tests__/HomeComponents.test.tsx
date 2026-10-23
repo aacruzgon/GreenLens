@@ -65,9 +65,11 @@ describe("AlertCard", () => {
 });
 
 describe("PlantCarousel", () => {
-  it("shows each plant's name, status and a pending scan", async () => {
+  it("shows each plant's name, status and a pending scan, and opens a plant", async () => {
+    const onOpen = jest.fn();
     await themed(
       <PlantCarousel
+        onOpen={onOpen}
         plants={[
           { id: "t1", name: "Tomato 1", status: "sick", photo: { uri: "https://example.com/t1.jpg" } },
           { id: "p", name: "Pepper", status: "watch", photo: null, note: "Scan not submitted" },
@@ -77,6 +79,8 @@ describe("PlantCarousel", () => {
     expect(screen.getByText("Tomato 1")).toBeTruthy();
     expect(screen.getByLabelText("Status: Sick")).toBeTruthy();
     expect(screen.getByLabelText("Pepper, Watch, Scan not submitted")).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText("Pepper, Watch, Scan not submitted"));
+    expect(onOpen).toHaveBeenCalledWith("p");
     expect(screen.getByTestId("icon-leaf", { includeHiddenElements: true })).toBeTruthy();
   });
 });

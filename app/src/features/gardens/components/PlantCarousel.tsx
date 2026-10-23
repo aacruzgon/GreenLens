@@ -9,12 +9,13 @@ import { PLANT_CARD_HEIGHT, PLANT_CARD_WIDTH, PlantCard } from "./PlantCard";
 
 export interface PlantCarouselProps {
   plants: PlantCardView[];
-  // Opening a plant joins with plant detail in F4; until then the cards are not pressable.
+  /** Opens the plant's page (screens 3.5). */
+  onOpen: (plantId: string) => void;
 }
 
 const GAP = space[3];
 
-export function PlantCarousel({ plants }: PlantCarouselProps) {
+export function PlantCarousel({ plants, onOpen }: PlantCarouselProps) {
   return (
     <ScrollView
       horizontal
@@ -35,6 +36,7 @@ export function PlantCarousel({ plants }: PlantCarouselProps) {
           status={p.status}
           photo={p.photo}
           note={p.note}
+          onPress={() => onOpen(p.id)}
         />
       ))}
     </ScrollView>
