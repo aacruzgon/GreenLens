@@ -158,10 +158,24 @@ pub struct InferRequest {
     pub respond_to: oneshot::Sender<usize>,
 }
 
-/// Owns the GPU sessions on one OS thread for the life of the process.
+/// Owns the GPU sessions on one OS thread, which the last clone joins when it drops.
 #[derive(Clone)]
 pub struct Inference {
+    // The sender drops first, so the channel is closed when `Joined` waits.
     requests: mpsc::Sender<InferRequest>,
+    _joined: Arc<Joined>,
+}
+
+/// `exit` unloads native libraries under a detached thread that is still releasing sessions
+/// (exit 139 on the 3070, 2026-10-20), so the thread is joined, not left to the process.
+struct Joined(Option<thread::JoinHandle<()>>);
+
+impl Drop for Joined {
+    fn drop(&mut self) {
+        if let Some(thread) = self.0.take() {
+            let _ = thread.join();
+        }
+    }
 }
 
 impl Inference {
@@ -172,7 +186,7 @@ impl Inference {
         M: FnMut(&[f32]) -> usize,
     {
         let (requests, mut inbox) = mpsc::channel::<InferRequest>(1);
-        thread::Builder::new()
+        let handle = thread::Builder::new()
             .name("inference".to_owned())
             .spawn(move || {
                 let mut model = load();
@@ -188,7 +202,10 @@ impl Inference {
                     let _ = req.respond_to.send(out);
                 }
             })?;
-        Ok(Self { requests })
+        Ok(Self {
+            requests,
+            _joined: Arc::new(Joined(Some(handle))),
+        })
     }
 
     /// `None` only when the inference thread has stopped. To cancel, drop the future.

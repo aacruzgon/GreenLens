@@ -361,7 +361,21 @@ struct Request {
 /// The inference thread (rust-async blocking.md §4) owns the sessions; jobs send it batches.
 #[derive(Clone)]
 pub struct Inference {
+    // Fields drop in order: the sender first, so the channel is closed when `Joined` waits.
     requests: mpsc::Sender<Request>,
+    _joined: Arc<Joined>,
+}
+
+/// Joins the thread when the last clone drops. `exit` unloads the CUDA libraries under a
+/// detached thread that is still releasing sessions (exit 139 on the 3070, 2026-10-20).
+struct Joined(Option<thread::JoinHandle<()>>);
+
+impl Drop for Joined {
+    fn drop(&mut self) {
+        if let Some(thread) = self.0.take() {
+            let _ = thread.join();
+        }
+    }
 }
 
 impl Inference {
@@ -374,7 +388,7 @@ impl Inference {
     ) -> anyhow::Result<Self> {
         let (requests, mut inbox) = mpsc::channel::<Request>(1);
         let (ready, loaded) = oneshot::channel();
-        thread::Builder::new()
+        let handle = thread::Builder::new()
             .name("inference".to_owned())
             .spawn(move || {
                 let mut models = match load_models(&dir, dylib.as_deref(), cpu_threads) {
@@ -391,8 +405,13 @@ impl Inference {
                     let _ = req.reply.send(logits);
                 }
             })?;
+        // Built before the wait, so a failed load still joins the thread.
+        let inference = Self {
+            requests,
+            _joined: Arc::new(Joined(Some(handle))),
+        };
         loaded.await??;
-        Ok(Self { requests })
+        Ok(inference)
     }
 
     /// Runs one batch. Dropping this future terminates the run inside ONNX Runtime instead of
