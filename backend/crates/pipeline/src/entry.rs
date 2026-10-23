@@ -4,7 +4,7 @@
 
 use domain::{
     authz::{Editor, Membership, Viewer},
-    events::{ResolvedBy, ScanEventBody},
+    events::{ResolvedBy, ScanEventBody, Stage},
     id::{IndicatorId, ProblemId, QuestionId, ScanId},
     jobs::{
         CompleteJob, JobError, JobKind, JobOutcome, JobResult, JobSpec, VerifyResult, VlmResult,
@@ -51,6 +51,21 @@ pub struct PhotoInfo {
     pub height: u32,
     /// It came with a depth map that fits.
     pub has_depth: bool,
+}
+
+/// The images a job's result covers, whose earlier observations of each stage it replaces
+/// ([contracts 3], observations across runs): the question's photos for a question's
+/// perception job, else the run's plant and soil photos that answer no question.
+fn covered_images(snap: &domain::ports::ScanSnapshot, job: &LeasedJob) -> Vec<domain::id::ImageId> {
+    snap.scan
+        .images
+        .iter()
+        .filter(|i| match job.question {
+            Some(q) if job.kind == JobKind::Perception => i.answers_question_id == Some(q),
+            _ => i.kind.is_plant_or_soil() && i.answers_question_id.is_none(),
+        })
+        .map(|i| i.id)
+        .collect()
 }
 
 fn follow(claim: ClaimAttempt) -> Option<FollowUp> {
@@ -273,13 +288,7 @@ impl Pipeline {
     ) -> Result<Option<domain::ports::ObservationWrite>, PipelineError> {
         use domain::jobs::PartialResult as P;
         let snap = self.deps.store.snapshot(job.scan).await?;
-        let images: Vec<_> = snap
-            .scan
-            .images
-            .iter()
-            .filter(|i| i.kind.is_plant_or_soil())
-            .map(|i| i.id)
-            .collect();
+        let images = covered_images(&snap, job);
         let names = std::collections::BTreeMap::new();
         let ctx = results::ObsContext {
             scan: job.scan,
@@ -297,7 +306,7 @@ impl Pipeline {
                 .into_iter()
                 .next()
         };
-        Ok(match result {
+        let write = match result {
             P::PlantCheck { plant_present } => as_result(empty_perception(Some(plant_present))),
             P::Segmentation { regions } => as_result(domain::jobs::PerceptionResult {
                 regions,
@@ -318,7 +327,15 @@ impl Pipeline {
                 self.add_organism_lengths(&snap, &mut write).await;
                 Some(write)
             }
-        })
+        };
+        // A question photo's observations replace nothing of the run's ([contracts 3]), as in
+        // the job's `done`.
+        Ok(write.map(|mut w| {
+            if job.question.is_some() {
+                w.replace_imageless = false;
+            }
+            w
+        }))
     }
 
     /// [contracts 7] organism length: sizes each organism finding on a photo with depth
@@ -405,7 +422,7 @@ impl Pipeline {
                 },
                 Ok(decoded) => {
                     stages = Some(ResultStages::of(&decoded));
-                    self.done(&job, &complete.model_versions, result, decoded)
+                    self.done(lease, &job, &complete.model_versions, result, decoded)
                         .await?
                 }
             },
@@ -433,7 +450,7 @@ impl Pipeline {
                 let events = catch_up::completion_events(stages.as_ref(), &run_events, diff);
                 self.emit(job.scan, run, events).await?;
                 if is_vlm {
-                    self.suggest_species(job.scan).await?;
+                    self.suggest_species(job.scan, run).await?;
                 }
                 match (follow(*claim), job.question, job.kind) {
                     (Some(f), _, _) => Some(f),
@@ -514,6 +531,7 @@ impl Pipeline {
 
     async fn done(
         &self,
+        lease: &Lease,
         job: &LeasedJob,
         versions: &std::collections::BTreeMap<String, String>,
         raw: serde_json::Value,
@@ -534,17 +552,7 @@ impl Pipeline {
             model_version: &model_version,
             now: self.now(),
         };
-        // The images a result covers: the question photo alone, or the run's plant and soil shots.
-        let images: Vec<_> = snap
-            .scan
-            .images
-            .iter()
-            .filter(|i| match job.question {
-                Some(q) if job.kind == JobKind::Perception => i.answers_question_id == Some(q),
-                _ => i.kind.is_plant_or_soil() && i.answers_question_id.is_none(),
-            })
-            .map(|i| i.id)
-            .collect();
+        let images = covered_images(&snap, job);
         let ids: Vec<_> = snap
             .candidates
             .iter()
@@ -567,6 +575,16 @@ impl Pipeline {
         Ok(match decoded {
             JobResult::Perception(r) => {
                 let mut writes = results::perception_writes(&ctx, &r, &images, &lookups, new_id);
+                if job.segmentation {
+                    let masks = self.store_masks(lease, &snap, &r.regions).await?;
+                    results::attach_masks(&mut writes, masks);
+                } else {
+                    // A job without segmentation (a species-change run's) is sent the earlier
+                    // run's regions, which the worker passes through without masks and at
+                    // confidence 1 ([contracts 3], observations across runs). Storing them would
+                    // replace the earlier observations and drop their masks, so they stay.
+                    writes.retain(|w| w.stage != Stage::Segmentation);
+                }
                 if job.question.is_some() {
                     for w in &mut writes {
                         w.replace_imageless = false;
@@ -611,6 +629,137 @@ impl Pipeline {
                 claim: None,
             },
         })
+    }
+
+    /// A perception result's masks ([contracts 5], `PerceptionRegion.mask`): each region's RLE,
+    /// on an image of the scan at that image's stored size, is encoded as an 8-bit PNG
+    /// (`vision::rle::to_png`, on the blocking pool under a CPU permit) and put under
+    /// `gardens/{garden}/scans/{scan}/masks/{mask}.png` before its record is written, so a crash
+    /// leaves an object without a record, never the reverse ([storage 4]). The records are
+    /// written by `complete_job` with the segmentation observations.
+    ///
+    /// Masks are optional: one that doesn't fit its image or doesn't decode is left out and
+    /// logged, and its region is kept without it. A failed put fails the completion, so the
+    /// worker's retry of `complete` writes them again under new ids; the masks this attempt
+    /// already put are deleted first, best effort, and the orphan sweep removes any that
+    /// stay. A `complete` repeated after the job is done writes nothing: the lease is no
+    /// longer live, and `complete_job` answers `AlreadyCompleted`. The lease is checked again
+    /// after the puts: when it is gone (a garden or account deletion cancelled the job
+    /// meanwhile, and its listing may have missed the new objects) the objects are deleted
+    /// through `deps.blobs`, best effort, and none is recorded; a check that finds the job
+    /// already done (a concurrent duplicate `complete` won) does the same.
+    ///
+    /// In `api`, `deps.blobs` sends deletes through the delete queue and waits for the
+    /// outcome, so the answer to a lost lease waits on it too: at worst 5 attempts × the
+    /// 120-second operation timeout, plus about 15 seconds of back-off. Nothing is lost when
+    /// the request drops meanwhile: the queue keeps the delete running.
+    async fn store_masks(
+        &self,
+        lease: &Lease,
+        snap: &domain::ports::ScanSnapshot,
+        regions: &[domain::jobs::PerceptionRegion],
+    ) -> Result<Vec<domain::ports::NewMask>, PipelineError> {
+        let scan = snap.scan.id;
+        let masked: Vec<_> = regions
+            .iter()
+            .filter_map(|r| {
+                let rle = r.mask.as_ref()?;
+                let image = snap.scan.images.iter().find(|i| i.id == r.image_id);
+                if image.is_some_and(|i| rle.size == [i.height, i.width]) {
+                    Some((r.region_id, r.image_id, rle.clone()))
+                } else {
+                    tracing::warn!(%scan, region = %r.region_id, "mask doesn't fit its image; region kept without it");
+                    None
+                }
+            })
+            .collect();
+        if masked.is_empty()
+            || self
+                .deps
+                .store
+                .live_lease(lease, self.now())
+                .await?
+                .is_none()
+        {
+            return Ok(Vec::new());
+        }
+        let permit = std::sync::Arc::clone(&self.deps.config.cpu_permits)
+            .acquire_owned()
+            .await
+            .map_err(|_| PipelineError::Inconsistent("cpu semaphore closed"))?;
+        let encoded = tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            masked
+                .into_iter()
+                .map(|(region, image, rle)| {
+                    let png = vision::rle::to_png(&rle);
+                    (region, image, rle, png)
+                })
+                .collect::<Vec<_>>()
+        })
+        .await?;
+        let mut masks: Vec<domain::ports::NewMask> = Vec::new();
+        for (region_id, image, rle, png) in encoded {
+            let png = match png {
+                Ok(png) => png,
+                Err(e) => {
+                    tracing::warn!(%scan, region = %region_id, error = %crate::error::Chain(&e), "mask not stored; region kept without it");
+                    continue;
+                }
+            };
+            let id = self.deps.ids.id();
+            let storage_key = domain::ports::ObjectKey::mask(snap.scan.garden_id, scan, id);
+            if let Err(e) = self
+                .deps
+                .blobs
+                .put(&storage_key, png.into(), domain::ports::ContentType::Png)
+                .await
+            {
+                let put: Vec<_> = masks.into_iter().map(|m| m.storage_key).collect();
+                self.delete_masks(scan, &put, "masks of a failed put").await;
+                return Err(e.into());
+            }
+            masks.push(domain::ports::NewMask {
+                id,
+                image,
+                region_id,
+                storage_key,
+                rle,
+            });
+        }
+        if masks.is_empty() {
+            return Ok(masks);
+        }
+        // The lease again, after the puts: a garden or account deletion that started meanwhile
+        // cancelled the job and may have listed the garden's prefix before the objects landed,
+        // and the orphan sweep never lists a deleted garden's prefix. So without a live lease
+        // the objects are deleted here, best effort, and nothing is recorded.
+        let outcome = match self.deps.store.live_lease(lease, self.now()).await {
+            Ok(Some(_)) => return Ok(masks),
+            Ok(None) => Ok(Vec::new()),
+            Err(e) => Err(e.into()),
+        };
+        let keys: Vec<_> = masks.into_iter().map(|m| m.storage_key).collect();
+        self.delete_masks(scan, &keys, "masks of a lost lease")
+            .await;
+        outcome
+    }
+
+    /// Deletes mask objects that will get no record, best effort: a failure is logged, and the
+    /// orphan sweep removes what is left while the garden lives.
+    async fn delete_masks(&self, scan: ScanId, keys: &[domain::ports::ObjectKey], what: &str) {
+        if keys.is_empty() {
+            return;
+        }
+        match self.deps.blobs.delete_keys(keys).await {
+            Ok(report) if report.failed.is_empty() => {}
+            Ok(report) => {
+                tracing::warn!(%scan, failed = report.failed.len(), "{what} not all deleted");
+            }
+            Err(e) => {
+                tracing::warn!(%scan, error = %crate::error::Chain(&e), "{what} not deleted");
+            }
+        }
     }
 
     /// A `guided` job's result ([contracts 7], guided checks and the diagnosis): the check is
@@ -686,11 +835,21 @@ impl Pipeline {
     }
 
     /// After the VLM's findings ([architecture 6.2], [contracts 4] `species_suggested`):
-    /// `BioCLIP` and the VLM compared; the plant becomes `suggested` unless already confirmed.
-    async fn suggest_species(&self, scan: ScanId) -> Result<(), PipelineError> {
+    /// `BioCLIP` and the VLM compared; the plant becomes `suggested` unless already confirmed,
+    /// and the best candidate becomes the working species of the VLM job's run `run`, which
+    /// the later steps and a confirmation compare with. A run that is no longer current sends
+    /// nothing.
+    async fn suggest_species(
+        &self,
+        scan: ScanId,
+        run: domain::wire::Run,
+    ) -> Result<(), PipelineError> {
         use domain::records::observation::{KnowledgeRef, ObservationStage};
         let snap = self.deps.store.snapshot(scan).await?;
-        if snap.plant.species_status == SpeciesStatus::Confirmed || snap.custom_species {
+        if snap.scan.run != run
+            || snap.plant.species_status == SpeciesStatus::Confirmed
+            || snap.custom_species
+        {
             return Ok(());
         }
         let species_of =
@@ -721,18 +880,23 @@ impl Pipeline {
             })
             .map(|o| (species_of(o), o.label.clone(), o.confidence.confidence()));
         let (candidates, working) = results::species_suggestion(&bioclip, vlm);
-        self.deps
+        let stored = self
+            .deps
             .store
             .suggest_species(
-                snap.plant.id,
+                scan,
+                run,
                 candidates.clone(),
                 working.clone(),
                 SpeciesStatus::Suggested,
             )
             .await?;
+        if !stored {
+            return Ok(());
+        }
         self.emit(
             scan,
-            snap.scan.run,
+            run,
             vec![ScanEventBody::SpeciesSuggested {
                 candidates,
                 working_species_id: working,

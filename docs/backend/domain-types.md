@@ -3261,8 +3261,8 @@ pub enum VlmGuidedRaw {
 #[serde(rename_all = "snake_case")]
 pub enum BoxFormat {
     /// Pixels of the prepared image: divide by its size. The Qwen2.5-VL baseline on vLLM, and
-    /// the fallback worker's hosted LLM (sent images it won't resize) until one live call
-    /// confirms it (contracts open question 26).
+    /// the fallback worker's hosted LLM (sent images it won't resize), confirmed by a live run
+    /// on 2026-10-23 (contracts open question 26).
     AbsPxPrepared,
     /// 0–1000: divide by 1000. The chosen Qwen3-VL-class models (Qwen3-VL, Qwen3.5) on vLLM or
     /// llama.cpp; the `vlm_box_format` default.
