@@ -140,19 +140,40 @@ def test_neighbouring_frames_share_the_lowest_frames_plant_key_and_split():
     assert out[5:] == cases[5:]
 
 
-def test_add_gives_a_case_already_there_its_new_neighbours_key(photo, monkeypatch):
+def add_beside(photo, monkeypatch, there: str):
+    """The fixture's img-201 reviewed, with the case `there` already in the manifest on its own key."""
     root, pid, cand = photo
     monkeypatch.setattr(fs, "load_sets", lambda only: [SET])
     (root / "fieldsets/candidates.json").write_text(json.dumps({pid: cand}))
     block = {**fs.review_block(SET, cand["class"], [pid]), "photos": {pid: "sure"}}
     (root / "fieldsets/review.yaml").write_text(yaml.safe_dump([block]))
     manifest = root / "manifest.jsonl"
-    there = {**one_photo("fieldsets/maize-bd-2026/common-rust/img-203.jpg"), "source": "elsewhere"}
-    manifest.write_text(json.dumps(there) + "\n")
-    assert fs.main(["add", "--labeller", "x", "--photos", str(root), "--manifest", str(manifest)]) == 0
+    case = {**one_photo(there, split=inat.split_of(fs.own_key(there))), "source": "elsewhere"}
+    manifest.write_text(json.dumps(case) + "\n")
+    return manifest, ["add", "--labeller", "x", "--photos", str(root), "--manifest", str(manifest)]
+
+
+KEY_201 = "maize-bd-2026-common-rust-img-201"
+
+
+def test_add_gives_a_case_already_there_its_new_neighbours_key(photo, monkeypatch):
+    manifest, args = add_beside(photo, monkeypatch, "fieldsets/maize-bd-2026/common-rust/img-203.jpg")
+    assert inat.split_of("maize-bd-2026-common-rust-img-203") == inat.split_of(KEY_201)
+    assert fs.main(args) == 0
     cases = [json.loads(line) for line in manifest.read_text().splitlines()]
-    key = "maize-bd-2026-common-rust-img-201"
-    assert [(c["plant_key"], c["split"]) for c in cases] == [(key, inat.split_of(key))] * 2
+    assert [(c["plant_key"], c["split"]) for c in cases] == [(KEY_201, inat.split_of(KEY_201))] * 2
+
+
+def test_add_moves_a_case_already_there_to_another_split_only_when_told(photo, monkeypatch, capsys):
+    there = "fieldsets/maize-bd-2026/common-rust/img-204.jpg"
+    manifest, args = add_beside(photo, monkeypatch, there)
+    was, now = inat.split_of(fs.own_key(there)), inat.split_of(KEY_201)
+    assert was != now
+    before = manifest.read_text()
+    assert fs.main(args) == 1 and manifest.read_text() == before
+    assert f"{there}: {was} -> {now}" in capsys.readouterr().err
+    assert fs.main(args + ["--resplit"]) == 0
+    assert [json.loads(line)["split"] for line in manifest.read_text().splitlines()] == [now, now]
 
 
 def test_the_manifests_neighbouring_frames_share_a_plant_key():

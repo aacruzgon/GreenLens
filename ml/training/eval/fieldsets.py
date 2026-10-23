@@ -35,7 +35,12 @@ citation with the changes made, and an empty `reviewed_by` until a second teamma
 A plant can't be told from these photos, and a set's neighbouring frames may show one plant. So
 `add` gives every run of cases NEIGHBOUR or fewer frames apart in one folder the plant key of its
 lowest frame, and that key's split (evaluation.md §2, Splits), rewriting the cases already in the
-manifest when a new one joins their run. The frame is the first number in the file name.
+manifest when a new one joins their run. Runs chain: frames 1, 4 and 7 are one plant. A case
+already in the manifest changes split only with --resplit; without it, `add` lists the moves and
+writes nothing, since a scored test case must not move.
+
+The frame is the first number in the file name, which holds for the sets in fieldsets.yaml. A set
+named by date or hash would need its own frame rule before its photos are added.
 """
 
 from __future__ import annotations
@@ -373,13 +378,22 @@ def add(args) -> int:
                 added.append(c)
                 have.add(c["source"])
     new = regroup(lines + [json.dumps(c, ensure_ascii=False) for c in added])
+    rekeyed = [(json.loads(a), json.loads(b)) for a, b in zip(lines, new) if a != b]
+    resplit = [(old["case_id"], old["split"], now["split"]) for old, now in rekeyed if old["split"] != now["split"]]
+    for case_id, was, now in resplit:
+        print(f"{case_id}: {was} -> {now}", file=sys.stderr)
+    if resplit and not args.resplit:
+        print(f"nothing written: {len(resplit)} cases already in the manifest would change split, listed above. "
+              "Once the test split is scored, a case must not move; if nothing was scored on them, rerun with "
+              "--resplit", file=sys.stderr)
+        return 1
     if new != lines:
         args.manifest.write_text("\n".join(new) + "\n")
     added = [json.loads(line) for line in new[len(lines):]]
-    moved = sum(a != b for a, b in zip(lines, new))
     print(f"{len(added)} cases added to {args.manifest} ({sum(c['split'] == 'dev' for c in added)} dev, "
           f"{sum(c['split'] == 'test' for c in added)} test); {undecided} photos marked skip; "
-          f"{moved} cases already there given a neighbouring frame's plant key")
+          f"{len(rekeyed)} cases already there given a neighbouring frame's plant key, {len(resplit)} of them "
+          "moved to its split")
     for p in problems:
         print(f"not added: {p}", file=sys.stderr)
     return 1 if problems else 0
@@ -396,6 +410,8 @@ def main(argv=None) -> int:
     a.add_argument("--labeller", required=True, help="your GitHub login")
     a.add_argument("--photos", type=Path, default=inat.PHOTOS)
     a.add_argument("--manifest", type=Path, default=inat.MANIFEST)
+    a.add_argument("--resplit", action="store_true",
+                   help="let a new neighbouring frame move a case already in the manifest to its split")
     args = ap.parse_args(argv)
     return fetch(args) if args.command == "fetch" else add(args)
 
