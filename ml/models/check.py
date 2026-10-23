@@ -99,6 +99,8 @@ def check(models: Path, files: Path) -> tuple[list[str], list[str]]:
                 continue
             if e["name"] == "plant_probe" and e["file"].endswith(".json"):
                 problems += features_problems(where, json.loads(path.read_text()), bioclip, e["version"])
+                if not bioclip:
+                    notes.append(no_bioclip(where))
                 continue
             if not e["file"].endswith(".json") or not key:
                 continue
@@ -112,6 +114,8 @@ def check(models: Path, files: Path) -> tuple[list[str], list[str]]:
                     if doc.get("features") != want:
                         problems.append(f"{where}: features {doc.get('features')!r}, but this manifest's "
                                         f"bioclip file is {want!r}; the worker would refuse it")
+                else:
+                    notes.append(no_bioclip(where))
                 try:
                     want_rows = head_rows(e)
                 except ValueError:
@@ -135,6 +139,10 @@ def head_rows(entry: dict) -> list[dict]:
             raise ValueError(f"labels[{i}] {label!r} isn't `species/problem`")
         rows.append({"index": i, "label": label, "species_id": species, "problem_id": problem})
     return rows
+
+
+def no_bioclip(where: str) -> str:
+    return f"{where}: its features aren't checked, since this manifest has no bioclip entry"
 
 
 def features_problems(where: str, head: dict, bioclip: dict | None, version: str) -> list[str]:
