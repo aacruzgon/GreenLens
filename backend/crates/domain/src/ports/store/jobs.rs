@@ -54,6 +54,12 @@ pub struct LeasedJob {
     pub run: Option<Run>,
     /// Its question.
     pub question: Option<QuestionId>,
+    /// A `perception` job whose payload's `stages` include `segmentation`, read from the job
+    /// row that `start_run` commits with the run: its regions are its own segmentation. A
+    /// species-change run's job leaves segmentation out and is sent the earlier run's regions
+    /// ([contracts 3], observations across runs); a question photo's job is segmentation
+    /// alone. `false` for every other kind. Not on the wire.
+    pub segmentation: bool,
 }
 
 /// A job's completion, stored under its lease with everything it produced and the step claim
