@@ -11,7 +11,7 @@ use domain::{
     ports::{NewPlant, PlantRepo, RecentScan, SpeciesConfirmation, StoreError},
     scan::{Plant, PlantStatus, SpeciesCandidate, SpeciesChoice, SpeciesStatus},
     url::Stored,
-    wire::{Confidence, Page, PageRequest},
+    wire::{Confidence, Page, PageRequest, Run},
 };
 use surrealdb::types::{RecordId, SurrealValue, Value};
 
@@ -69,10 +69,24 @@ UPDATE $plant SET species = $species, custom_species_name = $custom, species_sta
 WHERE garden = $garden AND deleting_at = NONE RETURN VALUE id;
 SELECT id, status, created_at, working_species FROM scan WHERE plant = $plant AND deleting_at = NONE ORDER BY created_at DESC LIMIT 1;
 COMMIT;";
-    /// The pipeline's suggestion, unless the species is already confirmed.
-    pub const SUGGEST_SPECIES: &str = "UPDATE $plant SET species_candidates = $candidates,
-  species = IF species_status = 'confirmed' { species } ELSE { $working },
-  species_status = IF species_status = 'confirmed' { species_status } ELSE { $status };";
+    /// The pipeline's suggestion for the scan's run `$run`: the plant's candidates and species,
+    /// unless already confirmed, and the scan's working species, unless the run has one. A
+    /// run that is no longer current (a new run started meanwhile) writes nothing. Statements:
+    /// 0 `BEGIN`, 1 the scan, 2 whether `$run` is current, 3 the updates, 4 that flag, 5
+    /// `COMMIT`.
+    pub const SUGGEST_SPECIES: &str = "BEGIN;
+LET $sc = (SELECT run, plant, working_species FROM ONLY $scan WHERE deleting_at = NONE);
+LET $current = $sc != NONE AND $sc.run = $run;
+IF $current {
+  UPDATE $sc.plant SET species_candidates = $candidates,
+    species = IF species_status = 'confirmed' { species } ELSE { $working },
+    species_status = IF species_status = 'confirmed' { species_status } ELSE { $status };
+  IF $sc.working_species = NONE { UPDATE $scan SET working_species = $working };
+};
+RETURN $current;
+COMMIT;";
+    /// The index of the flag in [`SUGGEST_SPECIES`].
+    pub const SUGGEST_SPECIES_RESULT: usize = 4;
     /// The plant's status after a diagnosis.
     pub const SET_PLANT_STATUS: &str = "UPDATE $plant SET status = $status;";
     /// `GET /plants/{id}/timeline`, newest first (index `scan_plant`), with the diagnosis, the
@@ -362,11 +376,12 @@ impl PlantRepo for SurrealStore {
 
     async fn suggest_species(
         &self,
-        plant: PlantId,
+        scan: ScanId,
+        run: Run,
         candidates: Vec<SpeciesCandidate<Stored>>,
         working: Option<SpeciesId>,
         status: SpeciesStatus,
-    ) -> Result<(), StoreError> {
+    ) -> Result<bool, StoreError> {
         const WHAT: &str = "suggest species";
         let rows = candidates
             .iter()
@@ -381,15 +396,19 @@ impl PlantRepo for SurrealStore {
             .collect::<Result<Vec<_>, RowError>>()
             .map_err(|e| e.into_store(WHAT))?;
         let status = enum_str("species_status", &status).map_err(|e| e.into_store(WHAT))?;
-        run_tx(&self.db, sql::SUGGEST_SPECIES, |q| {
-            q.bind(("plant", rid(&plant)))
+        let mut results = run_tx(&self.db, sql::SUGGEST_SPECIES, |q| {
+            q.bind(("scan", rid(&scan)))
+                .bind(("run", i64::from(run.0)))
                 .bind(("candidates", rows.clone()))
                 .bind(("working", opt_rid(working.as_ref())))
                 .bind(("status", status.clone()))
         })
         .await
-        .map(drop)
-        .map_err(|f| f.into_store(WHAT))
+        .map_err(|f| f.into_store(WHAT))?;
+        let current: Option<bool> = results
+            .take(sql::SUGGEST_SPECIES_RESULT)
+            .map_err(|e| take_failed(WHAT, e))?;
+        Ok(current.unwrap_or(false))
     }
 
     async fn set_plant_status(

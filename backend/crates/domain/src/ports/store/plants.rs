@@ -8,7 +8,7 @@ use crate::{
     ports::StoreError,
     scan::{Plant, PlantStatus, ScanStatus, SpeciesCandidate, SpeciesChoice, SpeciesStatus},
     url::Stored,
-    wire::{Page, PageRequest, Timestamp},
+    wire::{Page, PageRequest, Run, Timestamp},
 };
 
 /// `POST /plants`, with its id.
@@ -87,14 +87,20 @@ pub trait PlantRepo: Send + Sync {
         choice: SpeciesChoice,
     ) -> Result<SpeciesConfirmation, StoreError>;
 
-    /// The pipeline's species suggestion: candidates and `suggested`, unless already confirmed.
+    /// The pipeline's species suggestion for the scan's run `run`, in one transaction: the
+    /// scan's plant gets the candidates and `suggested` with `working` as its species, unless
+    /// already confirmed, and the scan's `working_species` becomes `working` unless the run
+    /// already has one (a confirmed species, set when the run started). Returns `false`, and
+    /// writes nothing, when `run` is no longer the scan's current run or the scan is being
+    /// deleted.
     async fn suggest_species(
         &self,
-        plant: PlantId,
+        scan: ScanId,
+        run: Run,
         candidates: Vec<SpeciesCandidate<Stored>>,
         working: Option<SpeciesId>,
         status: SpeciesStatus,
-    ) -> Result<(), StoreError>;
+    ) -> Result<bool, StoreError>;
 
     /// The plant's status after a scan's diagnosis.
     async fn set_plant_status(&self, plant: PlantId, status: PlantStatus)

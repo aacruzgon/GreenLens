@@ -5,7 +5,7 @@
 use domain::{
     authz::{Editor, Membership, Viewer},
     events::{ResolvedBy, RunReason, ScanEventBody, Stage},
-    id::{PlantId, ScanId},
+    id::{PlantId, ScanId, SpeciesId},
     jobs::{Capability, JobKind, JobSpec, PriorRegion, RegionClass},
     ports::{IdGenExt, LiveWorker, NewJob, RunStart, ScanSnapshot},
     records::observation::ObservationStage,
@@ -13,7 +13,7 @@ use domain::{
         scan_state::{SpeciesFollow, SubmitDecision, decide_submit, species_follow},
         stages::{EarlierRun, perception_stages, run_stages},
     },
-    scan::{Plant, Scan, ScanStatus, SpeciesChoice},
+    scan::{Plant, Scan, ScanStatus, SpeciesChoice, SpeciesStatus},
     url::Stored,
 };
 
@@ -96,6 +96,18 @@ pub fn prior_regions(snap: &ScanSnapshot) -> Vec<PriorRegion> {
         .collect()
 }
 
+/// The plant's confirmed species: what a submitted run's `perception` job names, and the
+/// working species that run starts with. Otherwise `None`, and the run's working species is
+/// the best candidate of its own `species_suggested` ([architecture 6.2], step 4); a
+/// resubmitted run doesn't keep the earlier run's suggestion, since it identifies the species
+/// again.
+fn confirmed_species(snap: &ScanSnapshot) -> Option<SpeciesId> {
+    match snap.plant.species_status {
+        SpeciesStatus::Confirmed => snap.plant.species.as_ref().map(|s| s.id.clone()),
+        _ => None,
+    }
+}
+
 impl Pipeline {
     /// The run's `perception` job for these stages, after checking the label versions.
     async fn perception_job(
@@ -117,11 +129,9 @@ impl Pipeline {
         let (species_id, skip) = match choice {
             Some(SpeciesChoice::Known(id)) => (Some(id.clone()), false),
             Some(SpeciesChoice::Custom(_)) => (None, true),
-            None => match snap.plant.species_status {
-                domain::scan::SpeciesStatus::Confirmed => {
-                    (snap.plant.species.as_ref().map(|s| s.id.clone()), false)
-                }
-                _ => (None, snap.custom_species),
+            None => match confirmed_species(snap) {
+                Some(id) => (Some(id), false),
+                None => (None, snap.custom_species),
             },
         };
         let id = self.deps.ids.id();
@@ -182,7 +192,7 @@ impl Pipeline {
                     reason,
                     expected_status: current.status,
                     expected_run: current.run,
-                    working_species: snap.working_species.clone(),
+                    working_species: confirmed_species(&snap),
                     first_job: job,
                     now: self.now(),
                 },

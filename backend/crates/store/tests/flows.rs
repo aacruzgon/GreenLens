@@ -222,9 +222,10 @@ async fn a_species_outside_the_knowledge_base_reads_as_none() {
     let tomato: SpeciesId = "tomato".parse().unwrap();
     // `suggest_species` as the pipeline calls it after the fallback's findings: the stub's
     // BioCLIP pick and the VLM's `unknown`, working species `tomato`.
-    store
+    let stored = store
         .suggest_species(
-            f.plant,
+            f.scan,
+            Run(1),
             vec![
                 SpeciesCandidate {
                     species_id: Some(tomato.clone()),
@@ -246,11 +247,17 @@ async fn a_species_outside_the_knowledge_base_reads_as_none() {
         )
         .await
         .expect("suggested");
+    assert!(stored, "run 1 is the scan's current run");
 
     let snap = store.snapshot(f.scan).await.expect("snapshot");
     assert_eq!(snap.plant.species, None);
     assert_eq!(snap.plant.species_status, SpeciesStatus::Suggested);
     assert_eq!(snap.plant.species_candidates.len(), 2);
+    assert_eq!(
+        snap.working_species,
+        Some(tomato.clone()),
+        "the link is kept as written; the knowledge base resolves it"
+    );
     let viewer = check_membership_of::<Viewer>(&*store, f.user, f.garden)
         .await
         .unwrap();
@@ -332,6 +339,156 @@ async fn a_species_outside_the_knowledge_base_reads_as_none() {
     assert_eq!(species.id, tomato);
     assert_eq!(species.scientific_name, "Solanum lycopersicum");
     assert_eq!(species.common_name, "Tomato");
+}
+
+/// The pipeline's suggestion makes its best candidate the working species of the run it came
+/// from, in the same transaction as the plant's suggestion ([architecture 6.2], step 4), so a
+/// confirmation of the same species finds it on the scan. A suggestion from a run that is no
+/// longer current writes nothing, and a run's working species, once set, is never overwritten.
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one scan's path: stale, suggested, confirmed, a new run"
+)]
+async fn a_suggestion_sets_its_runs_working_species() {
+    use domain::{
+        id::SpeciesId,
+        scan::{CandidateSource, SpeciesCandidate, SpeciesChoice, SpeciesStatus},
+    };
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    exec(
+        &store,
+        "CREATE species:tomato SET scientific_name = 'Solanum lycopersicum', common_names = ['Tomato'], profile = 'full',
+           classifier_supported = true, bioclip_label = 'tomato', sources = [], reviewed_by = 'ada';
+         CREATE species:pepper SET scientific_name = 'Capsicum annuum', common_names = ['Pepper'], profile = 'full',
+           classifier_supported = true, bioclip_label = 'pepper', sources = [], reviewed_by = 'ada';",
+    )
+    .await;
+    set_status(&store, f.scan, "analysing").await;
+    let tomato: SpeciesId = "tomato".parse().unwrap();
+    let pepper: SpeciesId = "pepper".parse().unwrap();
+    let candidates = |first: &SpeciesId| {
+        vec![SpeciesCandidate {
+            species_id: Some(first.clone()),
+            name: first.to_string(),
+            score: Confidence::saturating(0.97),
+            source: CandidateSource::Bioclip,
+            reference_image: None,
+        }]
+    };
+    let viewer = check_membership_of::<Viewer>(&*store, f.user, f.garden)
+        .await
+        .unwrap();
+
+    // A stale run (the scan is in run 1): nothing is written.
+    let stored = store
+        .suggest_species(
+            f.scan,
+            Run(0),
+            candidates(&pepper),
+            Some(pepper.clone()),
+            SpeciesStatus::Suggested,
+        )
+        .await
+        .expect("a stale suggestion is not an error");
+    assert!(!stored);
+    let snap = store.snapshot(f.scan).await.expect("snapshot");
+    assert_eq!(snap.working_species, None);
+    assert_eq!(snap.plant.species_status, SpeciesStatus::Unknown);
+    assert_eq!(snap.plant.species_candidates.len(), 0);
+
+    // Run 1's suggestion: the plant is `suggested` and the scan works with tomato.
+    let stored = store
+        .suggest_species(
+            f.scan,
+            Run(1),
+            candidates(&tomato),
+            Some(tomato.clone()),
+            SpeciesStatus::Suggested,
+        )
+        .await
+        .expect("suggested");
+    assert!(stored);
+    let snap = store.snapshot(f.scan).await.expect("snapshot");
+    assert_eq!(snap.working_species, Some(tomato.clone()));
+    assert_eq!(snap.plant.species_status, SpeciesStatus::Suggested);
+    assert_eq!(snap.plant.species.map(|s| s.id), Some(tomato.clone()));
+
+    // The same run suggesting again doesn't move its working species.
+    let stored = store
+        .suggest_species(
+            f.scan,
+            Run(1),
+            candidates(&pepper),
+            Some(pepper.clone()),
+            SpeciesStatus::Suggested,
+        )
+        .await
+        .expect("suggested again");
+    assert!(stored);
+    assert_eq!(
+        store
+            .snapshot(f.scan)
+            .await
+            .expect("snapshot")
+            .working_species,
+        Some(tomato.clone())
+    );
+
+    // Confirming tomato finds it as the run's working species.
+    let confirmed = store
+        .confirm_species(f.editor, f.plant, SpeciesChoice::Known(tomato.clone()))
+        .await
+        .expect("confirmed");
+    let recent = confirmed.recent_scan.expect("the scan follows");
+    assert_eq!(recent.scan, f.scan);
+    assert_eq!(recent.working_species, Some(tomato.clone()));
+    assert_eq!(
+        store
+            .plant(viewer, f.plant)
+            .await
+            .expect("plant")
+            .species_status,
+        SpeciesStatus::Confirmed
+    );
+
+    // A run started with a species (a change to pepper) keeps it against a late suggestion.
+    let started = store
+        .start_run(
+            f.editor,
+            f.scan,
+            RunStart {
+                reason: RunReason::SpeciesChanged,
+                expected_status: ScanStatus::Analysing,
+                expected_run: Run(1),
+                working_species: Some(pepper.clone()),
+                first_job: perception(&f, f.ids.id()),
+                now: t0(),
+            },
+        )
+        .await
+        .expect("species change");
+    assert_eq!(started.run, Run(2));
+    let stored = store
+        .suggest_species(
+            f.scan,
+            Run(2),
+            candidates(&tomato),
+            Some(tomato.clone()),
+            SpeciesStatus::Suggested,
+        )
+        .await
+        .expect("suggested");
+    assert!(stored);
+    let snap = store.snapshot(f.scan).await.expect("snapshot");
+    assert_eq!(snap.working_species, Some(pepper));
+    assert_eq!(
+        snap.plant.species.map(|s| s.id),
+        Some(tomato),
+        "a confirmed plant keeps its species"
+    );
+    assert_eq!(snap.plant.species_status, SpeciesStatus::Confirmed);
 }
 
 /// A user's write that sets a species must name one the knowledge base holds: `POST /plants`,
