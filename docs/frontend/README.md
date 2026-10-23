@@ -1,6 +1,6 @@
 # PDM Frontend Architecture
 
-> **Status:** Draft v0.4.13, 2026-10-23. v0.4.13: F5 after review: the LiDAR camera reports interruptions and falls back to `expo-camera` when it can't start, depth goes up only with intrinsics, the mapping view gains `onInterruption`, true north and `removeWorldMap`, drafts move to Application Support and the LiDAR tools need `EXPO_PUBLIC_DEV_TOOLS` (sections 11, 13, 17); a return after the background grace reconnects the stream (section 10); open decision 11 asks who alerts for a scan, the Live Activity or push. v0.4.12: the LiDAR module adds `ModePickerView`, capture's mode bar as Apple's segmented control on glass, and the camera view shows the photo's 4:3 frame with the ultra-wide outside it (section 13). v0.4.11: the LiDAR module's JavaScript surface as built in F5: the shot's report, `sampleDepth`, the world map per garden, `removeWorldMaps` and `GardenView` (section 13); the scan stream stays open 25 s in the background while the Live Activity runs (section 10). v0.4.10: `fflate`, and `expo-image-manipulator` sampling the diagnosis's photo for its tint from `expo-image`'s cache (section 4; design open decision 9). v0.4.9: `@expo/ui` gives the live analysis's More button SwiftUI's `Menu` on iOS (section 4). v0.4.8: `AuthBridge` registers the token provider once per sign-in, before the first authed request (section 8). v0.4.7: "Forgot password?" resets the password with an email code (sections 6 and 8). v0.4.6: two-step sign-in is a code by text to the phone given at sign-up, with Clerk's test numbers in development (section 8). v0.4.5: sign-in has no authenticator-app second factor; a new device is confirmed with an email code. v0.4.4: section 4 adds `expo-symbols` and Urbanist, which F0 uses.
+> **Status:** Draft v0.4.14, 2026-10-23. v0.4.14: the LiDAR camera refuses an all-black photo (`ERR_LIDAR_BLACK`) and depth with no valid pixel, falls back on any runtime error but a media-services reset, and the mapping view reports ARKit's fatal errors through `onMountError` (section 13); `.env.example` and section 17 say to prebuild with `--clean` after turning `EXPO_PUBLIC_DEV_TOOLS` off. v0.4.13: F5 after review: the LiDAR camera reports interruptions and falls back to `expo-camera` when it can't start, depth goes up only with intrinsics, the mapping view gains `onInterruption`, true north and `removeWorldMap`, drafts move to Application Support and the LiDAR tools need `EXPO_PUBLIC_DEV_TOOLS` (sections 11, 13, 17); a return after the background grace reconnects the stream (section 10); open decision 11 asks who alerts for a scan, the Live Activity or push. v0.4.12: the LiDAR module adds `ModePickerView`, capture's mode bar as Apple's segmented control on glass, and the camera view shows the photo's 4:3 frame with the ultra-wide outside it (section 13). v0.4.11: the LiDAR module's JavaScript surface as built in F5: the shot's report, `sampleDepth`, the world map per garden, `removeWorldMaps` and `GardenView` (section 13); the scan stream stays open 25 s in the background while the Live Activity runs (section 10). v0.4.10: `fflate`, and `expo-image-manipulator` sampling the diagnosis's photo for its tint from `expo-image`'s cache (section 4; design open decision 9). v0.4.9: `@expo/ui` gives the live analysis's More button SwiftUI's `Menu` on iOS (section 4). v0.4.8: `AuthBridge` registers the token provider once per sign-in, before the first authed request (section 8). v0.4.7: "Forgot password?" resets the password with an email code (sections 6 and 8). v0.4.6: two-step sign-in is a code by text to the phone given at sign-up, with Clerk's test numbers in development (section 8). v0.4.5: sign-in has no authenticator-app second factor; a new device is confirmed with an email code. v0.4.4: section 4 adds `expo-symbols` and Urbanist, which F0 uses.
 > v0.4.3: the build plan (section 18) follows the new [roadmap](roadmap.md): the iPhone first in the Conservatory direction, F0 on Oct 20 to the web build on Oct 25. v0.4.2: the backend's OpenAPI spec is committed, so the app uses generated contract types from day 1 instead of hand-written ones (section 9, generated types; build plan). v0.4.1: the schema links point to `backend/migrations/schema.surql`. v0.4 applies the third audit and contracts v0.8.2: species photo paths carry a content hash, a failed scan never holds a question, push coverage, invalidations for confirmed plan revisions, the closer-photo rule, the `SFSafariViewController` cookie note and the CORS preflight reason.
 > v0.3 applies the second audit and contracts v0.8.1:
 >   - **Images:** event URLs arrive fresh, and the cache key is the image ID or the URL path; species photos carry their credit.
@@ -851,12 +851,13 @@ export const LidarCameraView: React.ComponentType<{
 // ref.capture(): the JPEG in the sensor frame with its EXIF orientation, the 16-bit depth PNG in millimetres and
 // the DepthMeta (contracts 3) when the depth is absolute and the camera gave its intrinsics (the server requires
 // them), and a report for the day-1 check. A capture the camera never finishes, or one cut by an interruption,
-// rejects; it never stays pending.
+// rejects; it never stays pending. An all-black photo (a session running without its picture, as under iPhone
+// Mirroring) rejects with the code ERR_LIDAR_BLACK and is never stored; platform's isBlackShot() tells it apart.
 interface LidarShot {
   file: { uri: string; mimeType: "image/jpeg"; width: number; height: number };
   depth?: { depthUri: string; meta: DepthMeta };
   report: CaptureReport;                 // photo and depth sizes, valid share, accuracy, filtered, distortion table, gravity,
-                                         // and `dropped`: no_depth, relative_accuracy, no_intrinsics or encoding
+                                         // and `dropped`: no_depth, no_valid_depth, relative_accuracy, no_intrinsics or encoding
 }
 export function sampleDepth(depthUri: string, points: [number, number][], halfSide?: number): Promise<(number | null)[]>;
 
@@ -869,6 +870,7 @@ export const GardenMappingView: React.ComponentType<{
   // True north while location runs for the session; a magnetic heading reports at least 30° of accuracy, which the
   // app's 20° gate leaves out.
   onHeading?: (e: { nativeEvent: { north_deg: number; accuracy_deg: number } }) => void;
+  // ARKit stopped for good: no camera permission, no sensors, or a third failed session. The screen shows the message.
   onMountError?: (e: { nativeEvent: { message: string } }) => void;
   // The camera taken away and given back: ARKit then finds its place again with the same origin, so no restart.
   onInterruption?: (e: { nativeEvent: { interrupted: boolean } }) => void;
@@ -900,7 +902,7 @@ export const ModePickerView: React.ComponentType<{
 
 Where the native module is absent (Android, the web, Expo Go), `requireOptionalNativeModule` returns `null`: the views are `null` and `getCapabilities()` reports `{ depth: false, mapping: false }`. Ground-plane coordinates are metres, x to the right of where the phone first looked and y ahead of it (ARKit's −z); `north_deg` is clockwise from that +y axis. `GardenView` puts map y back on −z, or the garden would be drawn as its mirror image.
 
-A `LidarCameraView` that sends `onMountError` (no depth format, a session that can't start) is replaced by `expo-camera` for the rest of the screen's life: the user gets photos without depth, never a black screen. An ESLint zone keeps every folder of `src` but `src/platform` from importing `modules/` (section 5).
+A `LidarCameraView` that sends `onMountError` (no depth format, a session that can't start, a runtime error other than a media-services reset) is replaced by `expo-camera` for the rest of the screen's life: the user gets photos without depth, never a black screen. An ESLint zone keeps every folder of `src` but `src/platform` from importing `modules/` (section 5).
 
 The development and evaluation build's tools (the depth check, the 3D garden spike, and the mapping session until the map screen lands in F7) show in Settings only when `EXPO_PUBLIC_DEV_TOOLS=1`; the same variable turns on the Files app's view of Documents in `app.config.ts`, where the evaluation captures go (section 17). Capture drafts are kept in Application Support, which the Files app never shows (section 11).
 
@@ -977,7 +979,7 @@ The fixtures use the same types as the live client, so a contract change that br
 | `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` | `pk_test_…` | Public by design; still kept in `.env`, out of git |
 | `EXPO_PUBLIC_API_URL` | `https://api.example.org` | No trailing slash |
 | `EXPO_PUBLIC_API_MODE` | `live` or `mock` | Section 15 |
-| `EXPO_PUBLIC_DEV_TOOLS` | `1` or empty | `1` for a development or evaluation build: the LiDAR tools in Settings and Documents in the Files app (section 13). Empty for a build that goes to users. `app.config.ts` reads it at prebuild, so prebuild again after changing it |
+| `EXPO_PUBLIC_DEV_TOOLS` | `1` or empty | `1` for a development or evaluation build: the LiDAR tools in Settings and Documents in the Files app (section 13). Empty for a build that goes to users; `.env.example` has `1`, the development setup. `app.config.ts` reads it at prebuild: prebuild again after turning it on, and run `npx expo prebuild --clean` after turning it off, since Expo merges Info.plist keys and can't remove the Files app's |
 
 `EXPO_PUBLIC_*` values are compiled into the app and readable by anyone who has it, so nothing secret goes in one ([environment variables](https://docs.expo.dev/guides/environment-variables/)). `app/.env.example` lists them with placeholders.
 
