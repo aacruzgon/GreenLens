@@ -306,7 +306,7 @@ The second round ([review](https://github.com/aacruzgon/GreenLens/pull/148), Oct
 
 **Closes.** [Design open decision](../design/design.md#10-open-decisions) 7, with the agent work in backend S5.
 
-**State on Oct 23.** Every item is built on the contracts as they are, in `app/src/features/chat`, and runs in mock mode; the mock's exit checks pass in Jest (`features/chat/__tests__`). The live checks wait on the backend: the answer blocks and an `era` record's text are proposed contracts (section 17), and the API never sends them yet.
+**State on Oct 23.** Every item is built on the contracts as they are, in `app/src/features/chat`, and runs in mock mode; the mock's exit checks pass in Jest (`features/chat/__tests__`) and were run by hand on the iPhone 18 Pro simulator (iOS 27) in a development build, in light and dark mode: the scripted turn with its chips, block and card; the frost planner to a confirmed task on the Tasks tab; Resend after a dropped stream; the budget message; each block; the `era` record sheet; a chat photo; Ask about this result; the rescan into capture; Undo and feedback. The run's fixes are in the app: the conversation scrolls to a new turn and lets the keyboard go on a drag, a confirmed card stays confirmed after a remount, Resend shows only on the last answer, the map snippet frames the plants it is about, and empty conversations stay out of the list. The live checks wait on the backend: the answer blocks and an `era` record's text are proposed contracts (section 17), and the API never sends them yet.
 
 | Item | Built | Waits on |
 |---|---|---|
