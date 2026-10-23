@@ -110,3 +110,8 @@ auth   = "hf"
 sha256 = "b4e78618d78d6091a617ae3d47e54d88c53b30865b533b0ebf666e7cdc173ded"
 url    = "https://huggingface.co/GreenLens/pdm-models/resolve/8473aadd0ba732cb761cb0a0b97ddd38e259b851/disease_head/disease-head-v3c-2026-10-20.cpu.json"
 auth   = "hf"
+
+[[file]]                                  # bioclip_labels_edb29fe878952e7b
+sha256 = "7c327d832937330dc46f83c3836a193c9913a39ff92a3ae1819857d84828b36b"
+url    = "https://huggingface.co/GreenLens/pdm-models/resolve/2dd8ddfd0d67bc7aa0e21efb13b324a515ecb26f/bioclip_labels/bioclip_labels_edb29fe878952e7b.json"
+auth   = "hf"

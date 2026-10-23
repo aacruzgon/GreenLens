@@ -28,7 +28,7 @@ care:
     min: 6.0
   spacing_cm: 60
   water: medium
-classifier_supported: false
+classifier_supported: true
 bioclip_label: Solanum lycopersicum with common name tomato
 sources:
 - clemson_hgic_tomato_diseases
