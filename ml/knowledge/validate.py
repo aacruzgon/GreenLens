@@ -16,7 +16,8 @@ doesn't, 2 when the dose check can't run.
   drift from the 400 lines of rules the plans and chat are checked with.
 - A species, problem or organism with an empty `reviewed_by` is a draft from extract.py, and
   fails: model output is never loaded unreviewed (training.md §10, review). `--drafts` runs
-  every other check on the drafts. A problem's `reviewed_by` and `reviewed_at` are signed
+  every other check on the drafts; build_migration.py uses it and leaves the drafts out of the
+  file (seed.signed). A problem's `reviewed_by` and `reviewed_at` are signed
   together: a draft has both empty, and one without the other fails even with `--drafts`.
 - For the real seed, plan.yaml's lists are checked against it: every facts-only source and
   per-source tagging model names a source in sources.yaml, each tagging model is one llm.py

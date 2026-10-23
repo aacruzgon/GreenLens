@@ -18,7 +18,7 @@ import pytest
 
 from ml.knowledge import build_migration as bm
 from ml.knowledge import embed, validate
-from ml.knowledge.seed import ROOT, load
+from ml.knowledge.seed import ROOT, load, signed
 
 FIXTURE = Path(__file__).parent / "fixtures/knowledge_seed"
 STORE_FIXTURE = ROOT / "backend/crates/store/tests/embedded/knowledge_fixture.surql"
@@ -228,6 +228,28 @@ def test_removing_a_record_deletes_it(seed):
     assert "preys_on->" not in text
     seed.chunks = []
     assert "DELETE knowledge_chunk RETURN NONE;" in build(seed)[0]
+
+
+def test_only_signed_records_load(seed):
+    # A drafted slice merges before its signing review (#143): its records stay out of the file,
+    # with every link to them, and the rest of the seed still builds.
+    for p in seed.problems:
+        if p["id"] in ("tomato_early_blight", "tomato_septoria_leaf_spot"):
+            p["reviewed_by"] = p["reviewed_at"] = ""
+    next(o for o in seed.organisms if o["id"] == "aphid")["reviewed_by"] = ""
+    before = copy.deepcopy([seed.problems, seed.organisms, seed.chunks])
+    s = signed(seed)
+    assert [p["id"] for p in s.problems] == ["tomato_aphids"]
+    assert s.problems[0]["caused_by"] == [], "the draft organism's link goes"
+    assert [o["id"] for o in s.organisms] == ["ladybug_larva"] and s.organisms[0]["preys_on"] == []
+    assert [t["id"] for t in s.treatments] == ["spray_aphids_off_with_water"], "only drafts linked the rest"
+    assert [(c.get("crop"), c.get("problem")) for c in s.chunks] == [("tomato", None)] * 3, "chunks keep their text"
+    assert [seed.problems, seed.organisms, seed.chunks] == before, "the seed itself is unchanged"
+    text, summary, _ = build(seed)
+    assert "UPSERT disease:`tomato_early_blight`" not in text and "INSERT RELATION INTO looks_like" not in text
+    assert "treatment:`mulch_soil_surface`" not in text
+    assert summary["counts"]["problems"] == 1 and summary["organism_options"] == [
+        {"id": "ladybug_larva", "name": "Ladybug larva"}]
 
 
 def test_values_are_written_safely():

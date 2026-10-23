@@ -12,8 +12,8 @@ look-alike, treatment and product comes back with the chunk ids it was taken fro
 a review file next to the draft (<id>.review.md) with each cited excerpt in full, so the reviewer
 can check each line against its source; a facts-only excerpt is named and linked, not quoted.
 
-A draft is written with `reviewed_by: ""` and `reviewed_at: ""`, which the loader refuses
-(validate.py; --drafts lets the other checks run on drafts), and with `discriminating: false`
+A draft is written with `reviewed_by: ""` and `reviewed_at: ""`, which build_migration.py
+leaves out of knowledge.surql until it's signed (seed.signed; validate.py --drafts checks the rest), and with `discriminating: false`
 everywhere: discriminate.py proposes the three. Treatments are shared: the model sees the seed's
 treatments and reuses one by id where it fits, and each is reviewed, with its text, in the review
 file of every problem that links it. Products named in a treatment go to products.yaml with a
