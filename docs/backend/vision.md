@@ -2960,7 +2960,7 @@ pub fn measure_leaf(
 /// hold-out spot diseases the mean of the lesion and healthy-leaf `IoU`s rose from 0.382 to 0.497
 /// ([report]). In short: brown to red hues (0–45°) and greys are necrotic, as is anything darker
 /// than a fifth of the leaf; yellow (45–66°) is halo; the rest is leaf ([architecture 15], open
-/// decision 17).
+/// decision 17). A necrotic patch under `min_spot_share` of the leaf is leaf too.
 ///
 /// [report]: ../../../ml/training/eval/reports/spots-2026-10-22.md
 /// [architecture 15]: ../../../docs/architecture/README.md#15-open-decisions
@@ -2986,6 +2986,10 @@ pub struct SpotThresholds {
     pub halo_hue_max: f64,
     /// See `halo_hue_max`.
     pub halo_saturation: f64,
+    /// A necrotic patch (4-connected) smaller than this share of the leaf's pixels is leaf:
+    /// a speck of glare, grain or edge noise, not a lesion. A share rather than a pixel count,
+    /// so it holds at any resolution and distance. 0 keeps every patch.
+    pub min_spot_share: f64,
 }
 
 /// The colour-threshold segmenter.

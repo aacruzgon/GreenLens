@@ -48,6 +48,7 @@ fn thresholds(
             "halo_hue_min" => &mut t.halo_hue_min,
             "halo_hue_max" => &mut t.halo_hue_max,
             "halo_saturation" => &mut t.halo_saturation,
+            "min_spot_share" => &mut t.min_spot_share,
             other => return Err(format!("unknown threshold {other}")),
         };
         *field = v;
