@@ -505,7 +505,7 @@ Read in the vendors' own documents (docs). These replace the matching *unverifie
 | A hosted chat model's API key for the evaluation | The team's provider account | E8 |
 | The app's project (F0), connectors screen and connect flow (F7) | [App roadmap](../frontend/roadmap.md) | E10 |
 | The plan writer's inputs and a real-model diagnosis | S4's plan step | E5.4, E9.0 |
-| The knowledge seed in the deployed database | Done on 2026-10-23 ([PR #51](https://github.com/aacruzgon/GreenLens/pull/51), ML task M12): 3 of the 6 beds' species | E9.0's species |
+| Kale, zucchini and garlic in the knowledge seed, or the fixture's names changed to match it (the seed loaded on 2026-10-23, [#51](https://github.com/aacruzgon/GreenLens/pull/51), M12, and gave 3 of the 6 beds their species) | The knowledge track | E9.0's species |
 
 **Decisions this roadmap proposes.** Each changes or fills in the design; the pull request that builds it records the decision in connectors.
 
