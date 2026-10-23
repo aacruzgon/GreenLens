@@ -1,5 +1,6 @@
 """The manifests, sources.toml and NOTICES.md stay consistent (docs/vision/README.md §6)."""
 
+import json
 import tomllib
 from pathlib import Path
 
@@ -106,3 +107,20 @@ def test_knowledge_names_the_seeds_versions():
     meta = next(l for l in knowledge.read_text().splitlines() if l.startswith("UPSERT knowledge_meta:`current`"))
     assert f"label_set_version: '{current.label_set_version()}'" in meta
     assert f"classifier_labels_version: '{current.classifier_labels_version() or ''}'" in meta
+
+
+def test_a_head_file_is_compared_with_its_labels_without_a_bioclip_entry(tmp_path):
+    """The labels check doesn't depend on the manifest's bioclip entry (Alan's review of #134)."""
+    head = {"version": "h1", "features": "bioclip-2+0", "labels": [
+        {"index": 0, "label": "corn/healthy", "species_id": "corn", "problem_id": "healthy"}]}
+    (tmp_path / "files").mkdir()
+    (tmp_path / "files/h1.json").write_text(json.dumps(head))
+    sha = check.sha256(tmp_path / "files/h1.json")
+    entry = (f'[[model]]\nname = "disease_head_h1"\nversion = "h1"\nfile = "h1.json"\nsha256 = "{sha}"\n'
+             f'licence = "x"\nruns_on = "perception"\nclassifier_labels_version = "h1"\nlabels = ["corn/corn_common_rust"]\n')
+    for name in check.MANIFESTS:
+        (tmp_path / name).write_text(entry)
+    (tmp_path / "sources.toml").write_text(f'[[file]]\nsha256 = "{sha}"\n')
+    (tmp_path / "NOTICES.md").write_text("## disease_head_h1\n")
+    problems, _ = check.check(tmp_path, tmp_path / "files")
+    assert any("the file's labels differ" in p for p in problems), problems

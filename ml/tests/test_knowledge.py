@@ -8,7 +8,9 @@ embedded-engine test loads; set UPDATE_KNOWLEDGE_FIXTURE=1 to rewrite it.
 import copy
 import json
 import os
+import re
 import shutil
+import tomllib
 from pathlib import Path
 
 import numpy as np
@@ -243,6 +245,41 @@ def test_the_store_fixture_is_current(seed):
         STORE_FIXTURE.write_text(text, encoding="utf-8", newline="\n")
     assert STORE_FIXTURE.read_text(encoding="utf-8") == text, (
         "run UPDATE_KNOWLEDGE_FIXTURE=1 pytest ml/tests/test_knowledge.py")
+
+
+class NamedZeros:
+    """The pinned embedder's name with zero vectors: knowledge.surql's rows without the model."""
+
+    def __init__(self):
+        entries = {m["name"]: m for m in tomllib.loads(bm.MANIFEST.read_text())["model"]}
+        self.name = f"{embed.NAME}@{entries['text_embedder']['version']}"
+
+    def embed_documents(self, texts):
+        return np.zeros((len(texts), embed.DIMENSION), np.float32)
+
+
+def stale_line(committed: str, built: str) -> str | None:
+    """The first line of `committed` that differs from `built`, the chunks' vectors left out."""
+    blank = lambda t: re.sub(r"embedding: \[[^\]]*\]", "embedding: []", t.replace("\r\n", "\n")).splitlines()
+    a, b = blank(committed), blank(built)
+    for x, y in zip(a, b):
+        if x != y:
+            return x[:200]
+    return None if len(a) == len(b) else f"{len(a)} lines, the seed gives {len(b)}"
+
+
+def test_knowledge_surql_is_what_the_seed_gives():
+    """Every row of backend/migrations/knowledge.surql is what build_migration writes for the
+    seed, apart from the chunks' embedding vectors, which need the embedder (CI has none). So a
+    seed change committed without rerunning build_migration fails here: for example #125's
+    classifier rows for apple, corn, grape and pepper (Alan's review of #134)."""
+    text, _, _ = bm.build(load(bm.SEED), NamedZeros(), bm.bioclip_revision(), templates())
+    committed = bm.OUT.read_text(encoding="utf-8")
+    assert stale_line(committed, text) is None, (
+        f"knowledge.surql isn't what the seed gives at: {stale_line(committed, text)}; "
+        "run python -m ml.knowledge.build_migration")
+    one_row = "\n".join(l for l in committed.splitlines() if "classifier_label:['disease-head-v3c-2026-10-20', 14]" not in l)
+    assert stale_line(one_row, text), "a missing classifier_label row is caught"
 
 
 def test_the_cache_embeds_each_text_once(tmp_path):
