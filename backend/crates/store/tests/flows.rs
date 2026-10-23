@@ -1068,6 +1068,137 @@ async fn complete_job_paths() {
     assert_eq!(r.take::<Vec<String>>(0).unwrap(), vec!["failed".to_owned()]);
 }
 
+/// A segmentation write's mask record and its region's `mask_id`.
+fn masked_segmentation(f: &Fixture, image: ImageId) -> (ObservationWrite, domain::ports::NewMask) {
+    let region_id: domain::id::RegionId = format!("{image}.1").parse().expect("a region id");
+    let id = f.ids.id();
+    let mask = domain::ports::NewMask {
+        id,
+        image,
+        region_id,
+        storage_key: ObjectKey::mask(f.garden, f.scan, id),
+        rle: domain::jobs::RleMask {
+            size: [768, 1024],
+            counts: "0".into(),
+        },
+    };
+    let mut o = observation(f, f.ids.id(), image, Stage::Segmentation);
+    o.stage = ObservationStage::Segmentation;
+    o.region = Some(Region {
+        region_id: Some(region_id),
+        image_id: image,
+        bbox: BBox::new(0.1, 0.1, 0.5, 0.5).expect("a valid box"),
+        mask: domain::url::StoredMask {
+            mask_id: Some(mask.id),
+        },
+    });
+    let write = ObservationWrite {
+        stage: Stage::Segmentation,
+        run: Run(1),
+        images: vec![image],
+        replace_imageless: true,
+        observations: vec![o],
+        masks: vec![mask.clone()],
+    };
+    (write, mask)
+}
+
+/// A perception completion records its masks with the segmentation observations: the snapshot
+/// reads them for measurement, the region keeps its `mask_id`, and the signed mask URL finds the
+/// object. A later segmentation write of the same photo replaces the earlier masks with its
+/// observations, and keeps the masks of a photo it doesn't cover.
+#[tokio::test]
+async fn masks_are_stored_and_replaced_with_their_segmentation() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    let leaf = image(&f, ImageKind::LeafCloseup, t0());
+    store
+        .add_image(f.editor, f.scan, leaf.clone())
+        .await
+        .unwrap();
+    let whole = image(&f, ImageKind::WholePlant, t0());
+    store
+        .add_image(f.editor, f.scan, whole.clone())
+        .await
+        .unwrap();
+    set_status(&store, f.scan, "analysing").await;
+    store.enqueue_job(perception(&f, f.ids.id())).await.unwrap();
+    let now = t0().plus(Duration::from_secs(1));
+    let worker = "rig-3070";
+    let claimed = store
+        .claim_job(
+            &worker.parse().unwrap(),
+            1,
+            claim_policy(&[Capability::Perception], now),
+            now,
+        )
+        .await
+        .unwrap()
+        .expect("claimed");
+    let lease = lease_of(&claimed, worker);
+
+    let sorted = |mut masks: Vec<domain::ports::NewMask>| {
+        masks.sort_by_key(|m| m.id.to_string());
+        masks
+    };
+    // The other photo's mask, a partial result's mask, then the final result's for the leaf.
+    let (other, kept) = masked_segmentation(&f, whole.id);
+    store.store_partial(&lease, other).await.expect("partial");
+    let (partial, earlier) = masked_segmentation(&f, leaf.id);
+    store.store_partial(&lease, partial).await.expect("partial");
+    assert_eq!(
+        sorted(store.snapshot(f.scan).await.unwrap().masks),
+        [kept.clone(), earlier.clone()]
+    );
+    let (last, mask) = masked_segmentation(&f, leaf.id);
+    let outcome = store
+        .complete_job(
+            &lease,
+            JobCompletion::Done {
+                result: serde_json::json!({ "regions": [] }),
+                observations: vec![last],
+                evidence: Vec::new(),
+                claim: None,
+            },
+            now,
+        )
+        .await
+        .expect("complete");
+    assert!(
+        matches!(outcome, CompletionOutcome::Stored { .. }),
+        "{outcome:?}"
+    );
+
+    let snap = store.snapshot(f.scan).await.unwrap();
+    assert_eq!(
+        sorted(snap.masks.clone()),
+        [kept.clone(), mask.clone()],
+        "the leaf's earlier mask is replaced; the other photo's stays"
+    );
+    let mut regions: Vec<_> = snap
+        .observations
+        .iter()
+        .filter_map(|o| o.region.as_ref())
+        .map(|r| (r.region_id, r.mask.mask_id))
+        .collect();
+    regions.sort_by_key(|(_, m)| m.map(|m| m.to_string()));
+    assert_eq!(
+        regions,
+        [
+            (Some(kept.region_id), Some(kept.id)),
+            (Some(mask.region_id), Some(mask.id))
+        ]
+    );
+    let object = store
+        .mask_object(f.scan, mask.id)
+        .await
+        .unwrap()
+        .expect("the mask's object");
+    assert_eq!(object.key, mask.storage_key);
+    assert_eq!(object.content_type, domain::ports::ContentType::Png);
+    assert_eq!(store.mask_object(f.scan, earlier.id).await.unwrap(), None);
+}
+
 fn err(retryable: bool) -> JobError {
     JobError {
         code: "model_error".into(),
@@ -2143,6 +2274,64 @@ async fn soil_profile_retries() {
             .len(),
         1
     );
+}
+
+/// `LeasedJob::segmentation` comes from the job's own `payload.stages`, which `start_run`
+/// commits with the run: true for a run that segments, false for a species-change run's job
+/// (no segmentation, the earlier regions sent) and for one that only checks the plant. The
+/// lease checks and the stale requeue all read it.
+#[tokio::test]
+async fn a_leased_job_says_whether_it_segments() {
+    let cases = [
+        (PerceptionStage::ALL.to_vec(), true),
+        (
+            vec![
+                PerceptionStage::Species,
+                PerceptionStage::Disease,
+                PerceptionStage::ImageEmbedding,
+            ],
+            false,
+        ),
+        (vec![PerceptionStage::PlantCheck], false),
+    ];
+    for (stages, segments) in cases {
+        let store = support::store().await;
+        let f = fixture(&store).await;
+        set_status(&store, f.scan, "analysing").await;
+        let mut job = perception(&f, f.ids.id());
+        let JobSpec::Perception(payload) = &mut job.spec else {
+            panic!("a perception job")
+        };
+        payload.stages = stages.clone();
+        store.enqueue_job(job).await.unwrap();
+        let now = t0().plus(Duration::from_secs(1));
+        let worker = "rig-3070";
+        let claimed = store
+            .claim_job(
+                &worker.parse().unwrap(),
+                1,
+                claim_policy(&[Capability::Perception], now),
+                now,
+            )
+            .await
+            .unwrap()
+            .expect("claimed");
+        let lease = lease_of(&claimed, worker);
+
+        let checked = store.check_lease(&lease, now).await.unwrap();
+        assert_eq!(checked.segmentation, segments, "check_lease, {stages:?}");
+        let live = store.live_lease(&lease, now).await.unwrap().expect("live");
+        assert_eq!(live.segmentation, segments, "live_lease, {stages:?}");
+        let later = now.plus(Duration::from_secs(150));
+        let requeued: Vec<_> = store
+            .requeue_stale(later)
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| r.job.segmentation)
+            .collect();
+        assert_eq!(requeued, [segments], "requeue_stale, {stages:?}");
+    }
 }
 
 /// `live_lease`: a live lease, a finished one (a late event, dropped), and a lost one; a
