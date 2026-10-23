@@ -34,6 +34,8 @@ final class GardenMappingView: ExpoView, ARSessionDelegate, CLLocationManagerDel
   private var lastHeading: CFTimeInterval = 0
   private var relocalised: ((String) -> Void)?
   private var interrupted = false
+  /// Sessions that stopped on an error since this view opened: the third gives up.
+  private var failures = 0
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -229,10 +231,31 @@ final class GardenMappingView: ExpoView, ARSessionDelegate, CLLocationManagerDel
 
   func sessionShouldAttemptRelocalization(_ session: ARSession) -> Bool { true }
 
+  /// The session has stopped (ARSessionObserver). Without the camera's permission or the sensors, running it again
+  /// can't help, so the screen says why instead of showing a black view. Anything else is a lost session: tracking
+  /// starts again from nothing, and the screen starts the map over (architecture 6.8).
   func session(_ session: ARSession, didFailWithError error: Error) {
-    onTrackingState(["state": "lost"])
     relocalised?("failed")
     relocalised = nil
+    let code = (error as? ARError)?.code
+    switch code {
+    case .cameraUnauthorized:
+      running = false
+      onMountError(["message": "PDM can't use the camera. Allow it in Settings › PDM › Camera."])
+    case .sensorUnavailable, .sensorFailed, .unsupportedConfiguration:
+      running = false
+      onMountError(["message": "The camera and motion sensors aren't available for mapping right now."])
+    default:
+      onTrackingState(["state": "lost"])
+      lastState = "lost"
+      running = false
+      failures += 1
+      if failures >= 3 {
+        onMountError(["message": "Mapping stopped working on this iPhone. Close it and try again."])
+      } else if window != nil {
+        start(worldMap: nil)
+      }
+    }
   }
 
   // MARK: Compass

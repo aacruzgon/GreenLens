@@ -149,6 +149,8 @@ export function useMappingSession(gardenId: string, view: RefObject<GardenMappin
     problem,
     canMap: can(role, "map.capture"),
     saving: put.isPending,
+    /** Try again after a failed load is fetching. */
+    retrying: failed && (garden.isFetching || map.isFetching || plants.isFetching),
     /** Save works only while mapping, with something mapped and the camera there. */
     canSave: phase.type === "mapping" && hasContent && !interrupted,
     /** Plants without a pin in this session first. */

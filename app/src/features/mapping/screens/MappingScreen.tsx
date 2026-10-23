@@ -37,7 +37,7 @@ function Mapping() {
   const insets = useSafeAreaInsets();
   const [tap, setTap] = useState<Tap>("corner");
   // ARKit couldn't start (camera access refused, a session error): said once, never a black screen (screens 4).
-  const [mountError, setMountError] = useState(false);
+  const [mountError, setMountError] = useState<string>();
   const { phase, state, actions } = session;
 
   if (!GardenMappingView || !canMapHere) {
@@ -45,12 +45,10 @@ function Mapping() {
   }
   if (phase.type === "loading") return <Message text="" busy onClose={actions.close} />;
   if (phase.type === "failed") {
-    return <Message text="Couldn't load the garden's map." onClose={actions.close} retry={actions.retry} />;
+    return <Message text="Couldn't load the garden's map." onClose={actions.close} retry={actions.retry} retrying={session.retrying} />;
   }
   if (!session.canMap) return <Message text="Only the garden's editors and owner can map it." onClose={actions.close} />;
-  if (mountError) {
-    return <Message text="The camera couldn't start for mapping. If PDM can't use the camera, turn it on in Settings." onClose={actions.close} />;
-  }
+  if (mountError !== undefined) return <Message text={mountError} onClose={actions.close} />;
   if (phase.type === "saved") {
     const dropped =
       phase.dropped === 0 ? "" : ` ${phase.dropped === 1 ? "One plant was" : `${phase.dropped} plants were`} deleted while you mapped, so ${phase.dropped === 1 ? "its pin was" : "their pins were"} left out.`;
@@ -90,7 +88,7 @@ function Mapping() {
         onPinPlaced={(e) => actions.dispatch({ type: "pin", at: [e.nativeEvent.x_m, e.nativeEvent.y_m], canopy: e.nativeEvent.canopy_radius_m })}
         onHeading={(e) => actions.dispatch({ type: "heading", deg: e.nativeEvent.north_deg, accuracy: e.nativeEvent.accuracy_deg })}
         onInterruption={(e) => actions.onInterruption(e.nativeEvent.interrupted)}
-        onMountError={() => setMountError(true)}
+        onMountError={(e) => setMountError(e.nativeEvent.message || "The camera couldn't start for mapping.")}
       />
 
       <View style={{ position: "absolute", top: insets.top + 8, left: 12, right: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[3] }}>
@@ -251,7 +249,21 @@ function promptName(title: string, placeholder: string, onDone: (name: string) =
   Alert.prompt(title, undefined, [{ text: "Cancel", style: "cancel" }, { text: "Done", onPress: (value?: string) => onDone(value ?? placeholder) }], "plain-text", placeholder);
 }
 
-function Message({ text, busy, done, retry, onClose }: { text: string; busy?: boolean; done?: boolean; retry?: () => void; onClose: () => void }) {
+function Message({
+  text,
+  busy,
+  done,
+  retry,
+  retrying,
+  onClose,
+}: {
+  text: string;
+  busy?: boolean;
+  done?: boolean;
+  retry?: () => void;
+  retrying?: boolean;
+  onClose: () => void;
+}) {
   return (
     <View style={{ flex: 1, backgroundColor: camera.black, justifyContent: "center", padding: space[6], gap: space[4] }}>
       <StatusBar style="light" />
@@ -261,7 +273,7 @@ function Message({ text, busy, done, retry, onClose }: { text: string; busy?: bo
           {text}
         </Text>
       ) : null}
-      {retry ? <Button label="Try again" onPress={retry} /> : null}
+      {retry ? <Button label="Try again" onPress={retry} busy={retrying} /> : null}
       <Button label={done ? "Done" : "Close"} variant={done ? "primary" : "secondary"} onPress={onClose} />
     </View>
   );
