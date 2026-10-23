@@ -53,7 +53,8 @@ def from_seed() -> list[dict]:
     for table, folder in (("species", "species"), ("organism", "organisms")):
         for f in sorted((SEED / folder).glob("*.yaml")):
             d = yaml.safe_load(f.read_text())
-            labels.append({"id": d["id"], "table": table, "label": d["bioclip_label"]})
+            if str(d.get("reviewed_by") or "").strip():     # a draft isn't loaded (seed.signed)
+                labels.append({"id": d["id"], "table": table, "label": d["bioclip_label"]})
     return labels
 
 
