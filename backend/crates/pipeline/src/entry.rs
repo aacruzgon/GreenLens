@@ -450,7 +450,7 @@ impl Pipeline {
                 let events = catch_up::completion_events(stages.as_ref(), &run_events, diff);
                 self.emit(job.scan, run, events).await?;
                 if is_vlm {
-                    self.suggest_species(job.scan).await?;
+                    self.suggest_species(job.scan, run).await?;
                 }
                 match (follow(*claim), job.question, job.kind) {
                     (Some(f), _, _) => Some(f),
@@ -835,11 +835,21 @@ impl Pipeline {
     }
 
     /// After the VLM's findings ([architecture 6.2], [contracts 4] `species_suggested`):
-    /// `BioCLIP` and the VLM compared; the plant becomes `suggested` unless already confirmed.
-    async fn suggest_species(&self, scan: ScanId) -> Result<(), PipelineError> {
+    /// `BioCLIP` and the VLM compared; the plant becomes `suggested` unless already confirmed,
+    /// and the best candidate becomes the working species of the VLM job's run `run`, which
+    /// the later steps and a confirmation compare with. A run that is no longer current sends
+    /// nothing.
+    async fn suggest_species(
+        &self,
+        scan: ScanId,
+        run: domain::wire::Run,
+    ) -> Result<(), PipelineError> {
         use domain::records::observation::{KnowledgeRef, ObservationStage};
         let snap = self.deps.store.snapshot(scan).await?;
-        if snap.plant.species_status == SpeciesStatus::Confirmed || snap.custom_species {
+        if snap.scan.run != run
+            || snap.plant.species_status == SpeciesStatus::Confirmed
+            || snap.custom_species
+        {
             return Ok(());
         }
         let species_of =
@@ -870,18 +880,23 @@ impl Pipeline {
             })
             .map(|o| (species_of(o), o.label.clone(), o.confidence.confidence()));
         let (candidates, working) = results::species_suggestion(&bioclip, vlm);
-        self.deps
+        let stored = self
+            .deps
             .store
             .suggest_species(
-                snap.plant.id,
+                scan,
+                run,
                 candidates.clone(),
                 working.clone(),
                 SpeciesStatus::Suggested,
             )
             .await?;
+        if !stored {
+            return Ok(());
+        }
         self.emit(
             scan,
-            snap.scan.run,
+            run,
             vec![ScanEventBody::SpeciesSuggested {
                 candidates,
                 working_species_id: working,
