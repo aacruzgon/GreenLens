@@ -1498,8 +1498,6 @@ async fn confirming_a_known_species_is_200() {
 // another one starts a new run. The deployed control plane's bug of 2026-10-23: the suggestion
 // never reached the scan, so confirming the suggested tomato re-ran the scan.
 
-const QUESTION: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5Q";
-
 fn species(id: &str) -> SpeciesId {
     id.parse().unwrap()
 }
