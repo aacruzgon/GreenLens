@@ -101,3 +101,42 @@ def test_plantseg_selection_keeps_large_known_photos_capped_by_half(tmp_path, mo
     assert sum(r["half"] == "fit" for r in chosen) == 3 and sum(r["half"] == "holdout" for r in chosen) == 3
     assert all(r["crop"] == "tomato" and r["width"] == 800 for r in chosen)
     assert chosen == plantseg.select(rows, root)
+
+
+def test_patches_under_the_share_of_the_leaf_are_leaf():
+    # spots.rs, patches_under_the_share_of_the_leaf_are_leaf: a brown pixel at (1, 1) and a 3 x 3
+    # brown patch at (5..8, 5..8) on a 10 x 10 leaf.
+    rgb = np.full((10, 10, 3), GREEN, dtype=np.uint8)
+    rgb[1, 1] = [110, 70, 30]
+    rgb[5:8, 5:8] = [110, 70, 30]
+    leaf = np.full((10, 10), 255, dtype=np.uint8)
+    necrotic = lambda share: np.flatnonzero(sf.segment(rgb, leaf, {**sf.DEFAULTS, "min_spot_share": share}) == sf.NECROTIC).tolist()
+    assert len(necrotic(0.0)) == 10
+    assert necrotic(0.05) == [55, 56, 57, 65, 66, 67, 75, 76, 77]
+
+
+def test_holes_are_gaps_that_dont_reach_the_box_edge():
+    ring = np.ones((7, 7), bool)
+    ring[2:4, 2:4] = False   # one hole
+    ring[5, 5] = False       # another
+    assert sf.holes(ring) == 2
+    notch = np.ones((7, 7), bool)
+    notch[3, 0:4] = False    # open to the box's edge: a notch, not a hole
+    assert sf.holes(notch) == 0
+    assert sf.holes(np.zeros((3, 3), bool)) == 0
+    assert sorted(sf.hole_sizes(ring).tolist()) == [1, 4]
+
+
+def test_a_photo_is_clean_when_no_leaf_keeps_a_spot_at_the_share():
+    leaf = lambda sizes, holes=0: {"px": 1000, "tp": 0, "fp": int(sum(sizes)), "fn": 0, "sizes": np.array(sizes),
+                                   "gt": np.zeros(len(sizes)), "hole_sizes": np.full(holes, 5)}
+    photos = [[leaf([1, 2])], [leaf([1]), leaf([50])], [leaf([], holes=1)]]
+    assert sf.at_share(photos, 0.0)["clean_pct"] == round(100 / 3, 1)        # only the leaf with no patch
+    r = sf.at_share(photos, 0.01)                                             # patches under 10 px go
+    assert r["clean_pct"] == round(200 / 3, 1) and r["clean_with_holes_pct"] == round(100 / 3, 1)
+
+
+def test_the_share_is_the_largest_within_the_tolerance():
+    rates = {0.0: 2.0, 1e-4: 2.5, 2e-4: 3.0, 5e-4: 3.5, 1e-3: 2.9}
+    assert sf.choose_share(rates, 0.01) == 1e-3   # the largest share at most 1 point above 2.0
+    assert sf.choose_share(rates, 0.0) == 0.0
