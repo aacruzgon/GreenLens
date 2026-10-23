@@ -660,9 +660,9 @@ The benchmark ran on the 65 one-photo tomato and corn dev cases, since the team'
 - **The prompts:** P5's changes ran one at a time on Qwen3.5 (section 4): `findings@5` keeps those that held, and the tomato's early-blight spots stay `leaf_mines` with every wording tried (task P11; [#45](https://github.com/aacruzgon/GreenLens/pull/45)). The numbers above are for `main`'s prompts (`findings@2`, `indicators@1`); after #45, one bench run of the 65 cases on its prompts (about 8 minutes) re-checks the choice. Its result is below; the full cases' would be recorded here too.
 - **`VLM_SLOTS` 2 and `VLM_MAX_PIXELS` 1,003,520** on the 5070 Ti (section 6; contracts open questions 1 and 9). Size made no difference to the diagnosis from 0.6 to 2.0 MP, and the larger default keeps small organisms visible.
 
-### Re-check on the shipped prompts (2026-10-22, ✓ ran)
+### Re-check on the shipped prompts (2026-10-23, ✓ ran)
 
-`main`'s prompts since [#142](https://github.com/aacruzgon/GreenLens/pull/142), `system@2,findings@5,indicators@3`, on both candidates, headless at 0.90 with 2 slots, at 1,003,520 pixels and one job at a time. They ran on the 75 bench cases of [#140](https://github.com/aacruzgon/GreenLens/pull/140)'s dev split and are scored on the 72 that stay dev after [#147](https://github.com/aacruzgon/GreenLens/pull/147)'s frame grouping ([report](../../ml/training/eval/reports/vlm-bench-2026-10-22.md); the 73rd dev case came from test and never ran):
+`main`'s prompts since [#142](https://github.com/aacruzgon/GreenLens/pull/142), `system@2,findings@5,indicators@3`, on both candidates at 0.90 with 2 slots, at 1,003,520 pixels and one job at a time, from 23:48 on Oct 22 to 00:11 on Oct 23. KDE was logged in on the card (329 MiB in use before vLLM started), and the card peaked at 14,633 MiB (Qwen3.5) and 14,729 MiB (FP8) of 16,303, the desktop's share included. They ran on the 75 bench cases of [#140](https://github.com/aacruzgon/GreenLens/pull/140)'s dev split and are scored on the 72 that stay dev after [#147](https://github.com/aacruzgon/GreenLens/pull/147)'s frame grouping ([report](../../ml/training/eval/reports/vlm-bench-2026-10-23.md); the 73rd dev case came from test and never ran):
 
 | | Qwen3.5-9B AWQ | Qwen3-VL-8B FP8 |
 |---|---|---|
@@ -673,7 +673,7 @@ The benchmark ran on the 65 one-photo tomato and corn dev cases, since the team'
 | Damage reported on these leaves, none labelled | 84, 63 of them `other` | 67: 29 `other`, 21 `chewed_margins`, 10 `leaf_mines` |
 | Organisms reported, none labelled | 2 | 42 |
 
-- **The choice holds: Qwen3.5-9B AWQ.** On the 52 cases every run since Oct 20 has, each prompt version gives Qwen3.5 2 of the 6 `sure` cases and FP8 0 or 1 ([report](../../ml/training/eval/reports/vlm-bench-2026-10-22-prompts.md)): Oct 20's `findings@2,indicators@1`, [#45](https://github.com/aacruzgon/GreenLens/pull/45)'s `findings@5,indicators@2` and #142's `indicators@3`.
+- **The choice holds: Qwen3.5-9B AWQ.** On the 52 cases every run since Oct 20 has, each prompt version gives Qwen3.5 2 of the 6 `sure` cases and FP8 0 or 1 ([report](../../ml/training/eval/reports/vlm-bench-2026-10-23-prompts.md)): Oct 20's `findings@2,indicators@1`, [#45](https://github.com/aacruzgon/GreenLens/pull/45)'s `findings@5,indicators@2` and #142's `indicators@3`.
 - **Too few cases to rank the prompts.** M10's second review left 6 or 7 `sure` cases in these sets, so the runs show only that no prompt version reverses D1.
 - **Both still report damage these disease leaves don't show** (P11). FP8 also reports 42 organisms on them.
 - **The certainty words.** Qwen3.5's species guess is right on all 32 it calls `low` and 39 of the 40 it calls `high`; FP8 calls all 72 `high`, 71 right. So the word says little about whether the guess is right, and evaluation 5 keeps the default values ([evaluation 5](evaluation.md#results-on-the-102-dev-cases-2026-10-23--ran-offline-part)).

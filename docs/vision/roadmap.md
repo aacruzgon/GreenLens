@@ -61,7 +61,7 @@ Day 8 of 10 (Oct 23). **The models are trained, measured and calibrated offline;
   - v3c's top 3 holds the true problem on 93% of the 72 leaf photos with a problem (guessing 62%). Its temperature is M17's choice; the numbers favour keeping 1.82, since the dev fit (1.29) adds 5 claims with 2 right at a higher dev ECE.
   - The plant check on the cases: the shipped pair passes 101 of 102 and the trained probe all 102, with 0.1% of no-plant photos passing against 11.0%. Shipping the probe is M17's.
   - The VLM certainty words keep their defaults: no case labels organisms, damage or soil.
-  - **D1's re-check** on the shipped prompts (`findings@5`, `indicators@3`): Qwen3.5 diagnoses 3 of 7 `sure` cases, FP8 1, and no prompt version reverses the choice ([vlm.md 13](vlm.md#re-check-on-the-shipped-prompts-2026-10-22--ran)).
+  - **D1's re-check** on the shipped prompts (`findings@5`, `indicators@3`): Qwen3.5 diagnoses 3 of 7 `sure` cases, FP8 1, and no prompt version reverses the choice ([vlm.md 13](vlm.md#re-check-on-the-shipped-prompts-2026-10-23--ran)).
 
 ## 2. Branches and pull requests
 
@@ -122,7 +122,7 @@ Day 8 of 10 (Oct 23). **The models are trained, measured and calibrated offline;
 | COCO val2017 negatives (evaluation only) | Done | 4,758 photos without a potted plant or broccoli: `ml/training/data/negatives.py`, `splits/negatives_coco.tsv`; M13's trained probe will use them too |
 | Fake VLM server (`ml.training.eval.fake_vlm`) | Done | Replays the worker's own recorded calls (dev-roadmap M20, section 5); the 27 tests in `ml/tests/test_fake_vlm.py` pass, and tomato's verify call replays its own recording |
 | vLLM ROCm on the RX 9070 XT | Not ours | AMD day-1 check, owner of that card |
-| BioCLIP zero-shot on 20 team photos | Waiting | On the dev cases in their place (✓ ran 2026-10-23, the seed's matrix at `species_temperature` 1.3747, [#156](https://github.com/aacruzgon/GreenLens/pull/156)): top 3 90%, top 1 74% of the 101 cases of the head's crops ([report](../../ml/training/eval/reports/species-check-2026-10-22.md)); the team's photos wait on #52 |
+| BioCLIP zero-shot on 20 team photos | Waiting | On the dev cases in their place (✓ ran 2026-10-23, the seed's matrix at `species_temperature` 1.3747, [#156](https://github.com/aacruzgon/GreenLens/pull/156)): top 3 90%, top 1 74% of the 101 cases of the head's crops ([report](../../ml/training/eval/reports/species-check-2026-10-23.md)); the team's photos wait on #52 |
 | Face detector on 10 team photos | Waiting | YuNet is in the manifest; needs the photos |
 | Evaluation photos (Oct 16–23) | In progress | Sources merged: iNaturalist ([#70](https://github.com/aacruzgon/GreenLens/pull/70)) and published field datasets for tomato and corn ([#76](https://github.com/aacruzgon/GreenLens/pull/76)), with phone-condition variants. 118 field-set and 273 iNaturalist photos wait on review in `ml/training/eval/photos/`; full shot sets, soil, faces, look-alikes and LiDAR still need phones ([#52](https://github.com/aacruzgon/GreenLens/issues/52)); [evaluation 2](evaluation.md#2-the-evaluation-set) |
 | Ask an extension office about confirming cases | Not started | |
@@ -158,7 +158,7 @@ Decisions are tracked in one table, [dev-roadmap section 9](dev-roadmap.md#9-dec
 
 1. **D1** is decided in [#86](https://github.com/aacruzgon/GreenLens/pull/86): Qwen3.5-9B AWQ, 2 slots at 1,003,520 pixels on the 5070 Ti. **P5 is done:** [#45](https://github.com/aacruzgon/GreenLens/pull/45) merged with `findings@5` (8f8337c), re-recorded by us (b2f53d1), and it meets the narrowed condition on Qwen3.5 ([runs](../../ml/training/eval/reports/p5-qwen35-2026-10-21.md)). FP8 isn't a clean fallback while it calls the corn's blight `chewed_margins` and shares its tomato boxes. Left:
    - one bench run of the 65 cases on #45's prompts (about 8 minutes) re-checks D1 ([vlm.md 13](vlm.md#13-day-2-benchmark)): done in [#137](https://github.com/aacruzgon/GreenLens/issues/137), and D1 holds, with FP8 at 2 of the 28 settled cases against Qwen3.5's 7–8; `indicators@3` ([#142](https://github.com/aacruzgon/GreenLens/pull/142)) puts back the reason length whose cut cost Qwen3.5 3 of the old 26;
-   - on the shipped `findings@5` and `indicators@3` and the 102 dev cases, [#156](https://github.com/aacruzgon/GreenLens/pull/156) checks it again: Qwen3.5 diagnoses 3 of the 7 `sure` cases and FP8 1 ([vlm.md 13](vlm.md#re-check-on-the-shipped-prompts-2026-10-22--ran));
+   - on the shipped `findings@5` and `indicators@3` and the 102 dev cases, [#156](https://github.com/aacruzgon/GreenLens/pull/156) checks it again: Qwen3.5 diagnoses 3 of the 7 `sure` cases and FP8 1 ([vlm.md 13](vlm.md#re-check-on-the-shipped-prompts-2026-10-23--ran));
    - the tomato's `leaf_mines` are P11's, Sara's structural fix, which we rerun, with a plain soil shot from #52 in place of the wilting plant.
 2. **[#134](https://github.com/aacruzgon/GreenLens/pull/134):** `classifier_labels.yaml` (tomato's 8 classes) and the seed's label matrix (M12). Left after it:
    - the other four crops' classes after [#125](https://github.com/aacruzgon/GreenLens/issues/125): rerun `python -m ml.training.labels.classifier_labels` and `python -m ml.knowledge.build_migration`;
