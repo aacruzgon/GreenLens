@@ -31,6 +31,11 @@ training image it matches. A rerun keeps the review's edits.
 `add` appends the reviewed photos to manifest.jsonl. Each case gets `label_basis`
 `source_caption`, the dataset's URL with the file's path as `source`, the set's licence and its
 citation with the changes made, and an empty `reviewed_by` until a second teammate checks it.
+
+A plant can't be told from these photos, and a set's neighbouring frames may show one plant. So
+`add` gives every run of cases NEIGHBOUR or fewer frames apart in one folder the plant key of its
+lowest frame, and that key's split (evaluation.md §2, Splits), rewriting the cases already in the
+manifest when a new one joins their run. The frame is the first number in the file name.
 """
 
 from __future__ import annotations
@@ -59,6 +64,7 @@ IMAGE_EXT = {".jpg", ".jpeg", ".png"}
 COPY = 0.95        # cosine to a training image at or above which a pick is a copy
 SAME_PLANT = 0.93  # repeats of one leaf measured 0.93-0.97 in these sets; the training splits use 0.97
 POOL = 5           # photos downloaded per photo kept, to make up for the repeats and copies dropped
+NEIGHBOUR = 3      # frames this far apart or closer in one folder may show one plant
 VERDICTS = ("sure", "probable", "skip")
 REVIEW_HEADER = """\
 # Review of the field-dataset photos (ml/training/eval/fieldsets.py). Open index.html beside this
@@ -201,6 +207,52 @@ def case(block: dict, pid: str, verdict: str, cand: dict, s: dict, photos: Path,
     }
 
 
+def frame(file: str) -> tuple[str, int | None]:
+    """A field-set photo's folder and frame number, the first number in its file name."""
+    folder, _, name = file.rpartition("/")
+    m = re.search(r"\d+", Path(name).stem)
+    return folder, int(m.group()) if m else None
+
+
+def own_key(file: str) -> str:
+    """The plant key a field-set photo has on its own: its path under fieldsets/, without the extension."""
+    return str(Path(file).relative_to("fieldsets").with_suffix("")).replace("/", "-")
+
+
+def group_frames(cases: list[dict]) -> list[dict]:
+    """The cases, with each run of field-set frames NEIGHBOUR or fewer apart in one folder given its
+    lowest frame's plant key and that key's split. Other cases come back as they were."""
+    runs: dict[str, list[tuple[int, int]]] = {}
+    for i, c in enumerate(cases):
+        file = c["images"][0]["file"]
+        if file.startswith("fieldsets/"):
+            folder, n = frame(file)
+            if n is not None:
+                runs.setdefault(folder, []).append((n, i))
+    out = list(cases)
+    for frames in runs.values():
+        frames.sort()
+        start = 0
+        for j in range(1, len(frames) + 1):
+            if j == len(frames) or frames[j][0] - frames[j - 1][0] > NEIGHBOUR:
+                key = own_key(cases[frames[start][1]]["images"][0]["file"])
+                for _, i in frames[start:j]:
+                    out[i] = {**cases[i], "plant_key": key, "split": inat.split_of(key)}
+                start = j
+    return out
+
+
+def regroup(lines: list[str]) -> list[str]:
+    """Manifest lines with group_frames applied. A line whose case doesn't change is kept as it was."""
+    at = [i for i, line in enumerate(lines) if line.strip()]
+    cases = [json.loads(lines[i]) for i in at]
+    out = list(lines)
+    for i, old, new in zip(at, cases, group_frames(cases)):
+        if new != old:
+            out[i] = json.dumps(new, ensure_ascii=False)
+    return out
+
+
 def contact_sheet(sets: list[dict], cands: dict[str, dict]) -> str:
     parts = ["<!doctype html><meta charset=utf-8><title>Field-dataset photos</title><style>"
              "body{font:14px system-ui;margin:16px}img{height:240px;display:block}"
@@ -320,12 +372,14 @@ def add(args) -> int:
             if c["source"] not in have:
                 added.append(c)
                 have.add(c["source"])
-    if added:
-        with args.manifest.open("a") as f:
-            for c in added:
-                f.write(json.dumps(c, ensure_ascii=False) + "\n")
+    new = regroup(lines + [json.dumps(c, ensure_ascii=False) for c in added])
+    if new != lines:
+        args.manifest.write_text("\n".join(new) + "\n")
+    added = [json.loads(line) for line in new[len(lines):]]
+    moved = sum(a != b for a, b in zip(lines, new))
     print(f"{len(added)} cases added to {args.manifest} ({sum(c['split'] == 'dev' for c in added)} dev, "
-          f"{sum(c['split'] == 'test' for c in added)} test); {undecided} photos marked skip")
+          f"{sum(c['split'] == 'test' for c in added)} test); {undecided} photos marked skip; "
+          f"{moved} cases already there given a neighbouring frame's plant key")
     for p in problems:
         print(f"not added: {p}", file=sys.stderr)
     return 1 if problems else 0

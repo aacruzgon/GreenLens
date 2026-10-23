@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from ml.training.eval import fieldsets as fs
+from ml.training.eval import inat
 
 ML = Path(__file__).resolve().parents[1]
 SET = {"name": "maize-bd-2026", "dataset": "sb4wwjs8bz", "version": 1, "licence": "CC BY 4.0",
@@ -115,3 +116,45 @@ def test_add_writes_reviewed_photos_once(photo, monkeypatch):
     (root / "fieldsets/review.yaml").write_text(yaml.safe_dump([{**block, "photos": {pid: "skip"}}]))
     manifest.unlink()
     assert fs.main(args) == 0 and not manifest.exists()
+
+
+def one_photo(file, plant_key=None, split="dev"):
+    return {"case_id": file, "split": split, "plant_key": plant_key or fs.own_key(file), "images": [{"file": file}]}
+
+
+def test_a_frame_is_the_first_number_in_the_file_name():
+    assert fs.frame("fieldsets/t/healthy/img-3472-02d.jpg") == ("fieldsets/t/healthy", 3472)
+    assert fs.frame("fieldsets/c/septoria/septoria-leaf-spot1910-ko9m8s.jpg") == ("fieldsets/c/septoria", 1910)
+    assert fs.frame("fieldsets/c/septoria/leaf.jpg") == ("fieldsets/c/septoria", None)
+
+
+def test_neighbouring_frames_share_the_lowest_frames_plant_key_and_split():
+    files = ["fieldsets/s/a/leaf-10.jpg", "fieldsets/s/a/leaf-7.jpg", "fieldsets/s/a/leaf-8.jpg",
+             "fieldsets/s/a/leaf-14.jpg", "fieldsets/s/b/leaf-9.jpg", "fieldsets/s/a/leaf.jpg"]
+    cases = [one_photo(f, split="test") for f in files] + [one_photo("inat/1/2.jpg", "inat-1", "test")]
+    out = fs.group_frames(cases)
+    assert [c["plant_key"] for c in out[:3]] == ["s-a-leaf-7"] * 3
+    assert {c["split"] for c in out[:3]} == {inat.split_of("s-a-leaf-7")}
+    assert out[3]["plant_key"] == "s-a-leaf-14" and out[3]["split"] == inat.split_of("s-a-leaf-14")
+    assert out[4]["plant_key"] == "s-b-leaf-9"
+    assert out[5:] == cases[5:]
+
+
+def test_add_gives_a_case_already_there_its_new_neighbours_key(photo, monkeypatch):
+    root, pid, cand = photo
+    monkeypatch.setattr(fs, "load_sets", lambda only: [SET])
+    (root / "fieldsets/candidates.json").write_text(json.dumps({pid: cand}))
+    block = {**fs.review_block(SET, cand["class"], [pid]), "photos": {pid: "sure"}}
+    (root / "fieldsets/review.yaml").write_text(yaml.safe_dump([block]))
+    manifest = root / "manifest.jsonl"
+    there = {**one_photo("fieldsets/maize-bd-2026/common-rust/img-203.jpg"), "source": "elsewhere"}
+    manifest.write_text(json.dumps(there) + "\n")
+    assert fs.main(["add", "--labeller", "x", "--photos", str(root), "--manifest", str(manifest)]) == 0
+    cases = [json.loads(line) for line in manifest.read_text().splitlines()]
+    key = "maize-bd-2026-common-rust-img-201"
+    assert [(c["plant_key"], c["split"]) for c in cases] == [(key, inat.split_of(key))] * 2
+
+
+def test_the_manifests_neighbouring_frames_share_a_plant_key():
+    lines = inat.MANIFEST.read_text().splitlines()
+    assert fs.regroup(lines) == lines, "run fieldsets.regroup on manifest.jsonl (evaluation.md §2, Splits)"
