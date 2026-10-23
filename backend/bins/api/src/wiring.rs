@@ -548,11 +548,13 @@ fn blob_store(config: &Config) -> Arc<dyn BlobStore> {
     }))
 }
 
-/// The analysis pipeline over the ports, with its plan author on the chat model.
+/// The analysis pipeline over the ports, with its plan author on the chat model. Its object
+/// store deletes through `deletes`, so they are never cancelled ([storage 4]).
 fn pipeline_api(
     config: &Config,
     ports: &Ports,
     writers: &Arc<ScanWriters>,
+    deletes: &blob::DeleteQueue,
     measurer: Arc<dyn pipeline::ImageMeasurer>,
     chat_model: &Arc<dyn ChatModel>,
     products: &Arc<agent::safety::ProductCatalogue>,
@@ -565,7 +567,7 @@ fn pipeline_api(
         memory: Arc::clone(&ports.memory),
         beliefs: Arc::clone(&ports.beliefs),
         embedder: Arc::clone(&ports.embedder),
-        blobs: Arc::clone(&ports.blob),
+        blobs: deletes.queued_store(),
         measurer,
         plan_author: Arc::new(agent::PlanWriter::new(
             Arc::clone(chat_model),
@@ -677,10 +679,13 @@ pub async fn build(
         tasks.clone(),
         shutdown.clone(),
     ));
+    // The one delete queue: every RustFS delete in `api` goes through it, and `main` drains it.
+    let deletes = blob::DeleteQueue::new(Arc::clone(&blob));
     let pipeline = pipeline_api(
         &config,
         &ports,
         &writers,
+        &deletes,
         models.measurer,
         &out.chat_model,
         &products,
@@ -692,8 +697,6 @@ pub async fn build(
         products,
         tasks.clone(),
     );
-    // The one delete queue: every RustFS delete in `api` goes through it, and `main` drains it.
-    let deletes = blob::DeleteQueue::new(Arc::clone(&blob));
     let mut deletions = DeletionRunner::new(
         store,
         deletes.clone(),

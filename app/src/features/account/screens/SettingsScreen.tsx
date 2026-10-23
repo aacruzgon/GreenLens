@@ -7,6 +7,7 @@ import { useSession } from "@/features/auth";
 import { Banner, Button, ListItem, Screen, Section, Text, space } from "@/ui";
 
 import { DemoControls } from "../components/DemoControls";
+import { DeviceTools } from "../components/DeviceTools";
 
 // Settings (screens 3.9), F0's part: the account and sign-out; the gardens, members and notifications come in F7.
 export function SettingsScreen() {
@@ -40,6 +41,7 @@ export function SettingsScreen() {
           ) : null}
         </Section>
         {mock ? <DemoControls /> : null}
+        <DeviceTools />
         <Button label="Sign out" variant="secondary" onPress={signOut} busy={signingOut} />
         {mock ? (
           <Text variant="footnote" color="textMuted" align="center">

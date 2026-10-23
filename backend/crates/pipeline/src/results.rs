@@ -10,7 +10,7 @@ use domain::{
     id::{IndicatorId, ObservationId, ProblemOrHealthy},
     jobs::{PerceptionRegion, PerceptionResult, SpeciesResult},
     knowledge::{IndicatorSeed, OrganismSeed},
-    ports::ObservationWrite,
+    ports::{NewMask, ObservationWrite},
     records::{
         diagnosis::{EvidenceSource, IndicatorEvidence},
         observation::{
@@ -78,9 +78,9 @@ fn obs(
     }
 }
 
-/// The perception result's observations, one write per stage it ran. Masks are recorded by
-/// the caller (it writes each RLE as a PNG to object storage first) and attached to their
-/// segmentation write; `mask_ids` maps a region to its stored mask.
+/// The perception result's observations, one write per stage it ran, with no masks: a job's
+/// completion writes each region's RLE as a PNG to object storage first and then adds the
+/// records with [`attach_masks`]; a partial result stores none.
 pub fn perception_writes(
     ctx: &ObsContext<'_>,
     result: &PerceptionResult,
@@ -156,6 +156,27 @@ pub fn perception_writes(
         writes.push(write(Stage::Disease, list));
     }
     writes
+}
+
+/// Adds stored masks to the segmentation write of [`perception_writes`]: each mask whose region
+/// has an observation there is recorded with it, and that observation's region gets its
+/// `mask_id`, so a response or an event signs a `mask_url` ([contracts 1], regions). A mask
+/// whose region isn't in the write is left out, so no record outlines a region that isn't stored.
+pub fn attach_masks(writes: &mut [ObservationWrite], masks: Vec<NewMask>) {
+    let Some(write) = writes.iter_mut().find(|w| w.stage == Stage::Segmentation) else {
+        return;
+    };
+    for mask in masks {
+        let region = write
+            .observations
+            .iter_mut()
+            .filter_map(|o| o.region.as_mut())
+            .find(|r| r.region_id == Some(mask.region_id));
+        if let Some(region) = region {
+            region.mask.mask_id = Some(mask.id);
+            write.masks.push(mask);
+        }
+    }
 }
 
 fn region_obs(

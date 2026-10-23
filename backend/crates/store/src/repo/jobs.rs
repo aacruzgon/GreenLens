@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use domain::{
     garden::ops::{QueueCounts, Status, WorkerStatus},
     id::{ImageId, JobId, WorkerId},
-    jobs::{Capability, Heartbeat, HeartbeatResponse, Job, JobKind},
+    jobs::{Capability, Heartbeat, HeartbeatResponse, Job, JobKind, PerceptionStage},
     ports::{
         ClaimAttempt, ClaimedJob, CompletionOutcome, Conflict, ContentType, JobCompletion, JobRepo,
         Lease, LeasedJob, LiveWorker, NewJob, ObjectKey, ObjectRef, RequeuedJob, StoreError,
@@ -131,7 +131,7 @@ FOR $j IN array::union($expired, $orphaned) {
       WHERE scan = $j.scan AND status = 'analysing' AND image = type::record('scan_image', $j.payload.image.image_id);
   };
 };
-SELECT id, kind, scan, run, question, status FROM job WHERE id IN array::union($expired, $orphaned);
+SELECT id, kind, scan, run, question, status, payload.stages AS stages FROM job WHERE id IN array::union($expired, $orphaned);
 COMMIT;";
     /// The index of the result in [`REQUEUE_STALE`].
     pub const REQUEUE_STALE_RESULT: usize = 5;
@@ -147,7 +147,8 @@ COMMIT;";
     /// or a job this same lease already finished (`done` or `failed`), so a repeated `complete`
     /// reaches `complete_job`, which answers `AlreadyCompleted` (contracts 5: `204`). A requeue
     /// clears the token, so a requeued job never matches.
-    pub const CHECK_LEASE: &str = "SELECT id, kind, scan, run, question, status FROM $job
+    pub const CHECK_LEASE: &str =
+        "SELECT id, kind, scan, run, question, status, payload.stages AS stages FROM $job
 WHERE lease_token = $lease_token AND worker = $worker
   AND ((status = 'leased' AND lease_until >= $now) OR status IN ['done', 'failed']);";
 
@@ -160,7 +161,7 @@ SELECT VALUE storage_key FROM $image WHERE scan = $j.scan;";
 
     /// What `complete_job` reads first: a repeat by the same lease after `done` or `failed`
     /// answers `AlreadyCompleted`; anything else but a live lease is `lease_lost`.
-    pub const LEASE_STATE: &str = "SELECT status, lease_token, worker, lease_until, kind, scan, run, question FROM ONLY $job;";
+    pub const LEASE_STATE: &str = "SELECT status, lease_token, worker, lease_until, kind, scan, run, question, payload.stages AS stages FROM ONLY $job;";
 
     /// `complete` with `status: done`, under the lease: each stage's observations (replacing
     /// per image, [database 5]), the VLM's indicator answers (ranked, schema v1.4), the job
@@ -348,6 +349,8 @@ pub struct LeaseStateRow {
     pub run: Option<i64>,
     /// Its question.
     pub question: Option<RecordId>,
+    /// `payload.stages`: a perception job's stages, `NONE` for other kinds.
+    pub stages: Option<serde_json::Value>,
 }
 
 /// One worker of [`sql::STATUS`].
@@ -390,6 +393,8 @@ pub struct JobHeadRow {
     pub question: Option<RecordId>,
     /// Its status after the statement.
     pub status: JobStatusRow,
+    /// `payload.stages`: a perception job's stages, `NONE` for other kinds.
+    pub stages: Option<serde_json::Value>,
 }
 
 impl TryFrom<&JobHeadRow> for LeasedJob {
@@ -402,7 +407,22 @@ impl TryFrom<&JobHeadRow> for LeasedJob {
             scan: from_rid(&row.scan)?,
             run: row.run.map(|r| u32_of("run", r).map(Run)).transpose()?,
             question: from_opt_rid(row.question.as_ref())?,
+            segmentation: runs_segmentation(row.kind, row.stages.as_ref())?,
         })
+    }
+}
+
+/// Whether a job runs segmentation: a perception job whose `payload.stages` include it.
+fn runs_segmentation(
+    kind: JobKindRow,
+    stages: Option<&serde_json::Value>,
+) -> Result<bool, RowError> {
+    match (JobKind::from(kind), stages) {
+        (JobKind::Perception, Some(stages)) => {
+            let stages: Vec<PerceptionStage> = from_json("payload.stages", stages.clone())?;
+            Ok(stages.contains(&PerceptionStage::Segmentation))
+        }
+        _ => Ok(false),
     }
 }
 
@@ -646,6 +666,7 @@ impl JobRepo for SurrealStore {
             run: state.run,
             question: state.question.clone(),
             status: state.status,
+            stages: state.stages.clone(),
         })
         .map_err(|e| e.into_store(WHAT))?;
         let map_lost = |f: DbFailure| {
