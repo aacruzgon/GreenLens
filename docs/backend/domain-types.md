@@ -5197,8 +5197,9 @@ pub struct FrostPlant {
     /// Every field of `BlockPlant`.
     #[serde(flatten)]
     pub plant: BlockPlant,
-    /// `true` for a species with `frost: tender`, `false` for `hardy`; absent when the species
-    /// is unknown or its sources don't say. Never `false` for "don't know".
+    /// `true` for a confirmed species with `frost: tender`, `false` for `hardy`; absent when the
+    /// species is only suggested or unknown, or its sources don't say. Never `false` for "don't
+    /// know".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(nullable = false)]
     pub frost_tender: Option<bool>,
@@ -5226,10 +5227,10 @@ pub enum BlockBody {
         map: GardenMap,
         /// Plant → plants within `NEIGHBOUR_RADIUS_M`, from the result.
         neighbours: BTreeMap<PlantId, Vec<PlantId>>,
-        /// Every plant pinned on the map, from the store.
+        /// Every live plant pinned on the map, from the store.
         plants: Vec<BlockPlant>,
-        /// The plants the answer is about, from the `show_block` call; each is pinned on the
-        /// map. May be empty.
+        /// The plants the answer is about, from the `show_block` call, once each: each is one of
+        /// `plants`. May be empty.
         focus_plant_ids: Vec<PlantId>,
     },
     /// From `get_forecast`, or from `get_scan`'s weather snapshot.
@@ -5245,7 +5246,8 @@ pub enum BlockBody {
     FrostPlanner {
         /// The result's days with `frost_risk`, first first.
         nights: Vec<ForecastDay>,
-        /// The garden's live plants, from the store, with their species' frost tenderness.
+        /// The garden's live plants that aren't dead, from the store, with their confirmed
+        /// species' frost tenderness.
         plants: Vec<FrostPlant>,
     },
     /// From `get_plant_measurements`.
