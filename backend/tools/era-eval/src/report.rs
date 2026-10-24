@@ -126,6 +126,9 @@ pub struct PlanReport {
     pub steps: Vec<PlanStepReport>,
     /// What to watch for.
     pub watch_for: Vec<String>,
+    /// The farm records the writer was given (its one search's hits), by vendor id, closest
+    /// first: whether the planted message (`C_FIELD/1788216000.009700`) was among them.
+    pub given_farm_records: Vec<String>,
     /// The farm records its steps cite (`ActionPlan.farm_records`).
     pub farm_records: Vec<FarmRecordReport>,
     /// The rules the final answer still broke; their steps were dropped.
@@ -202,26 +205,35 @@ impl Report {
         }
     }
 
-    /// A line per plan question: the farm records each run's plan cites.
+    /// A line per plan question: the farm records each run's writer was given and the ones its
+    /// plan cites.
     fn plan_citations(&self, model: &str, out: &mut String) {
+        let list = |ids: &[String]| {
+            if ids.is_empty() {
+                "none".to_owned()
+            } else {
+                ids.join(", ")
+            }
+        };
         for q in &self.questions {
             let cited: Vec<String> = q
                 .runs
                 .iter()
-                .filter(|r| r.model == model && r.plan.is_some())
-                .map(|r| {
-                    let ids = if r.farm_citations.is_empty() {
-                        "none".to_owned()
-                    } else {
-                        r.farm_citations.join(", ")
-                    };
-                    format!("run {}: {ids}", r.run)
+                .filter(|r| r.model == model)
+                .filter_map(|r| {
+                    let plan = r.plan.as_ref()?;
+                    Some(format!(
+                        "run {}: given {}; cites {}",
+                        r.run,
+                        list(&plan.given_farm_records),
+                        list(&r.farm_citations)
+                    ))
                 })
                 .collect();
             if !cited.is_empty() {
                 let _ = writeln!(
                     out,
-                    "\n{}: the farm records the plan cites: {}.",
+                    "\n{}: the plan's farm records: {}.",
                     q.id,
                     cited.join("; ")
                 );
