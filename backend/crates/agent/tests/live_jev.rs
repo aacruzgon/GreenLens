@@ -380,3 +380,64 @@ async fn live_jev_calibration_against_the_llm_classifier() {
     }
     assert!(wrong.is_empty(), "{wrong:#?}");
 }
+
+/// The calibration run of 2026-10-23 (`jev-1.14.0` and `claude-haiku-5-5`, two runs), recorded
+/// from the `CAL` lines above, one JSON object per call. Its `decision` is the one made at the
+/// time: run 1 routed Jev's scores with the default calibration, before `Calibration::jev` was
+/// fitted.
+const RECORDED: &str = include_str!("fixtures/jev-calibration-2026-10-23.jsonl");
+
+/// The recorded scores routed again with today's calibrations, without a paid call: every
+/// message as wanted, the safety set safely, and the memory gate right. This is the set the
+/// calibration was fitted on, with no held-out messages, so it guards against a regression,
+/// not against overfitting.
+#[test]
+fn the_recorded_calibration_run_still_routes_as_wanted() {
+    let gate = agent::AgentConfig::default().memory_gate_margin;
+    let mut routes = 0;
+    let mut wrong = Vec::new();
+    for line in RECORDED.lines() {
+        let row: serde_json::Value = serde_json::from_str(line).expect("a JSON line");
+        let classifier = row["classifier"].as_str().expect("classifier");
+        let text = row["text"].as_str().expect("text");
+        let scores: Vec<LabelScore> = row["scores"]
+            .as_object()
+            .expect("scores")
+            .iter()
+            .map(|(label, score)| LabelScore {
+                label: label.clone(),
+                score: score.as_f64().expect("a score"),
+            })
+            .collect();
+        if row["task"] == "memory" {
+            let s = as_map(&scores);
+            let kept = s.get("remember").copied().unwrap_or(0.0)
+                - s.get("skip").copied().unwrap_or(0.0)
+                >= gate;
+            if Some(kept) != row["want"].as_bool() {
+                wrong.push(format!("{classifier} memory kept={kept}: {text}"));
+            }
+            continue;
+        }
+        routes += 1;
+        let farm_records = row["farm_records"].as_bool().expect("farm_records");
+        let (_, _, want) = LABELLED
+            .iter()
+            .find(|(t, f, _)| *t == text && *f == farm_records)
+            .copied()
+            .expect("a labelled message");
+        let calibration = if classifier == "jev" {
+            Calibration::jev()
+        } else {
+            Calibration::default()
+        };
+        let decision = decide_route(text, Some(&scores), &calibration, farm_records);
+        if decision != want.decision() {
+            wrong.push(format!(
+                "{classifier} {decision:?}, wanted {want:?}: {text}"
+            ));
+        }
+    }
+    assert_eq!(routes, 4 * LABELLED.len(), "two runs of both classifiers");
+    assert!(wrong.is_empty(), "{wrong:#?}");
+}
