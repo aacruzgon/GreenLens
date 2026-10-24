@@ -618,10 +618,15 @@ def rebuilt(doc: dict, measured: dict, argv: list[str], draws: int = FLOOR_DRAWS
     recorded = doc["inputs"]["manifest"]
     manifest = ROOT / recorded["file"]
     cases, sha = split_cases(manifest, doc["split"])
-    if sha[:16] != recorded["sha256"] and cases_sha(cases) != recorded.get("split_sha256"):
+    split, kept = cases_sha(cases), recorded.get("split_sha256")
+    if sha[:16] != recorded["sha256"] and split != kept:
         raise SystemExit(f"{manifest}'s {doc['split']} cases changed since the report was made")
+    if kept is not None and split != kept:
+        raise SystemExit(f"{manifest} is the file the report read, but its {doc['split']} cases hash to {split}, "
+                         f"not the recorded {kept}: cases_sha changed, and a rebuild won't overwrite the record")
+    # The manifest's sha256 stays the file the run read, even when the file has since changed.
     keep = {k: doc[k] for k in ("date", "command", "split", "cases", "shipped", "missing", "inputs", "vlm_meta") if k in doc}
-    keep["inputs"] = {**doc["inputs"], "manifest": {**recorded, "split_sha256": cases_sha(cases)}}
+    keep["inputs"] = {**doc["inputs"], "manifest": {**recorded, "split_sha256": split}}
     notes = notes if notes is not None else doc.get("notes", measured.get("notes"))
     measured = {k: v for k, v in measured.items() if k != "notes"}
     rep = {**keep, "measured": measured, **assemble(measured, cases, draws)}
