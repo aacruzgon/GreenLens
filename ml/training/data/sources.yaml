@@ -180,10 +180,12 @@ datasets:
     url: https://zenodo.org/records/17719108
     sha256: e91f8bb8c0cd1918228cfb178ac2a4d953c85a06f8cb88090404af7194274f8a   # SHA-256 of the sorted "path sha256" listing of its 3,903 members, per fetch.py
     licence: >-
-      CC BY-NC 4.0 on this record (the earlier record 13958858 says CC BY-NC-ND 4.0); its photos are
-      scraped from the web, and Metadata.csv names each one's page. Non-commercial: fitting the
-      spot thresholds only, never training data, and the photos are never republished. Whether
-      thresholds fitted on it may ship is part of D12 (#14)
+      CC BY-NC 4.0 on this version, the latest of seven: Zenodo's versions of concept 13293890
+      say CC BY-NC-ND 4.0 (13293891, 13762907, 13924591, 13958858), CC BY 4.0 (14935094,
+      16665770) or CC BY-NC 4.0 (17719108), and GitHub says nothing (docs/vision/training.md 3).
+      Its photos are scraped from the web, and Metadata.csv names each one's page. Non-commercial:
+      fitting the spot thresholds only, never training data, and the photos are never republished.
+      Whether thresholds fitted on it may ship is part of D12 (#14)
     citation: "Wei et al., PlantSeg: A Large-Scale In-the-wild Dataset for Plant Disease Segmentation, arXiv:2409.04038, 2024"
     ship: false
     use: spot colour thresholds (fitting only, never training data)
