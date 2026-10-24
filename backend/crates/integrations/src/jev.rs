@@ -353,6 +353,15 @@ impl TextClassifier for JevClassifier {
             input_tokens = body.usage.as_ref().map(|u| u.input_tokens),
             "jev answered"
         );
+        if body.model != self.config.model {
+            // The calibration was fitted on the pinned version; another one may route differently.
+            tracing::warn!(
+                model = MODEL,
+                asked = %self.config.model,
+                answered = %body.model,
+                "jev answered with another model version than JEV_MODEL"
+            );
+        }
         scores(task, &body.answers)
             .ok_or_else(|| invalid("no answer to the questions asked".into()))
     }
