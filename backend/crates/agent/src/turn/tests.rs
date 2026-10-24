@@ -687,14 +687,15 @@ async fn a_tool_result_reaches_the_model_inside_a_data_block() {
         panic!("a successful result is sent as framed text")
     };
     assert!(
-        framed.starts_with("<data kind=\"tool_result\">\n"),
+        framed.starts_with("<data kind=\"tool_result\" call_id=\"toolu_1\">\n"),
         "{framed}"
     );
     assert!(framed.ends_with("\n</data>"), "{framed}");
     assert_eq!(framed.matches("</data>").count(), 1, "{framed}");
     assert_eq!(framed.to_ascii_lowercase().matches("<data").count(), 1);
     // Inside, the tool's JSON, with the planted tags' `<` escaped.
-    let body = &framed["<data kind=\"tool_result\">\n".len()..framed.len() - "\n</data>".len()];
+    let body = &framed["<data kind=\"tool_result\" call_id=\"toolu_1\">\n".len()
+        ..framed.len() - "\n</data>".len()];
     let parsed: serde_json::Value = serde_json::from_str(body).unwrap();
     assert_eq!(parsed["memories"][0]["text"], injection.as_str());
     assert_eq!(
@@ -910,7 +911,7 @@ async fn a_cited_farm_record_is_stored_and_its_rate_never_reaches_the_app() {
         panic!("a successful result is sent as framed text")
     };
     assert!(
-        framed.starts_with("<data kind=\"farm_records\">\n"),
+        framed.starts_with("<data kind=\"farm_records\" call_id=\"toolu_1\">\n"),
         "{framed}"
     );
     assert!(framed.ends_with("\n</data>"));

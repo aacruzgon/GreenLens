@@ -634,3 +634,102 @@ async fn refused_blocks_send_no_event_and_give_the_model_a_tool_error() {
         );
     }
 }
+
+/// The hosted model never sees the provider's call ids except in the framed result: a model
+/// that copies the `call_id` attribute of the forecast's `data` element gets its block.
+#[tokio::test]
+async fn the_model_names_the_call_by_the_id_in_its_framed_result() {
+    let (agent, model, _) = harness(frost_setup(
+        vec![
+            tool_round(vec![call("toolu_fc", "get_forecast", json!({"days": 7}))]),
+            tool_round(vec![call(
+                "toolu_show",
+                "show_block",
+                json!({"kind": "frost_planner", "call_id": crate::testing::FRAMED_ID}),
+            )]),
+            answer("Cover the tomato on Thursday night."),
+        ],
+        &[false, false, true, true],
+    ));
+    let stream = agent
+        .start_turn(request(
+            owner(Role::Viewer).await,
+            "Will the frost hurt my plants?",
+        ))
+        .await
+        .unwrap();
+    let (events, _) = collect(stream).await;
+    let framed = model.sent()[1]
+        .messages
+        .iter()
+        .flat_map(|m| &m.content)
+        .find_map(|p| match p {
+            ContentPart::ToolResult {
+                call_id, content, ..
+            } if call_id == "toolu_fc" => content.as_str().map(str::to_owned),
+            _ => None,
+        })
+        .unwrap();
+    assert!(
+        framed.starts_with("<data kind=\"tool_result\" call_id=\"toolu_fc\">"),
+        "{framed}"
+    );
+    let blocks = blocks_of(&events);
+    assert_eq!(blocks.len(), 1, "{:?}", show_block_results(&model));
+    assert_eq!(blocks[0].call_id, "toolu_fc");
+}
+
+/// `call_id` may name the tool when this answer called it once with success (live, the model
+/// named `get_forecast`), and the block keeps the call's real id. Two calls of that tool make
+/// the name ambiguous: refused, with the reason.
+#[tokio::test]
+async fn a_tool_name_names_its_only_call_and_two_calls_are_refused() {
+    let (agent, model, _) = harness(frost_setup(
+        vec![
+            tool_round(vec![call("toolu_fc", "get_forecast", json!({"days": 7}))]),
+            tool_round(vec![show("s1", "frost_planner", "get_forecast")]),
+            answer("Cover the tomato on Thursday night."),
+        ],
+        &[false, false, true, true],
+    ));
+    let stream = agent
+        .start_turn(request(
+            owner(Role::Viewer).await,
+            "Will the frost hurt my plants?",
+        ))
+        .await
+        .unwrap();
+    let (events, _) = collect(stream).await;
+    let blocks = blocks_of(&events);
+    assert_eq!(blocks.len(), 1, "{:?}", show_block_results(&model));
+    assert_eq!(
+        blocks[0].call_id, "toolu_fc",
+        "the call's own id, not the tool name"
+    );
+
+    let (agent, model, _) = harness(frost_setup(
+        vec![
+            tool_round(vec![
+                call("toolu_fc", "get_forecast", json!({"days": 7})),
+                call("toolu_fc2", "get_forecast", json!({"days": 2})),
+            ]),
+            tool_round(vec![show("s1", "frost_planner", "get_forecast")]),
+            answer("Cover the tomato on Thursday night."),
+        ],
+        &[false, false, true, true],
+    ));
+    let stream = agent
+        .start_turn(request(
+            owner(Role::Viewer).await,
+            "Will the frost hurt my plants?",
+        ))
+        .await
+        .unwrap();
+    let (events, _) = collect(stream).await;
+    assert_eq!(blocks_of(&events).len(), 0);
+    let results = show_block_results(&model);
+    assert_eq!(results.len(), 1);
+    assert!(results[0].0, "refused");
+    let reason = results[0].1["error"].as_str().unwrap();
+    assert!(reason.contains("called get_forecast 2 times"), "{reason}");
+}

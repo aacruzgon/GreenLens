@@ -168,21 +168,21 @@ pub async fn build(
             "This answer already shows {MESSAGE_MAX_BLOCKS} blocks, the most it can. Answer in text."
         )));
     }
+    let call_id = resolve(calls, &args.call_id)?;
     if sent
         .iter()
-        .any(|b| b.kind() == kind && b.call_id == args.call_id)
+        .any(|b| b.kind() == kind && b.call_id == call_id)
     {
         return Err(refuse(format!(
-            "This answer already shows a {} block of {}.",
+            "This answer already shows a {} block of {call_id}.",
             kind.as_str(),
-            args.call_id
         )));
     }
     let focus = args.focus_plant_ids.unwrap_or_default();
     if kind != AnswerBlockKind::GardenMap && !focus.is_empty() {
         return Err(refuse("focus_plant_ids is for garden_map only."));
     }
-    let anchor = anchor(calls, &args.call_id)?;
+    let anchor = anchor(calls, &call_id)?;
     let wrong_anchor = || {
         refuse(format!(
             "A {} block is built from {}, not from {}.",
@@ -228,10 +228,41 @@ pub async fn build(
         }
         _ => return Err(wrong_anchor()),
     };
-    Ok(AnswerBlock {
-        call_id: args.call_id,
-        body,
-    })
+    Ok(AnswerBlock { call_id, body })
+}
+
+/// The call a `show_block` names: its `call_id` as the result's `data` block gives it, or, as a
+/// fallback, the name of a tool this answer called once with success (the model can't know an
+/// id it was never shown, and live it named the tool: S5 checks, 2026-10-24). A tool called
+/// several times is refused, so the block is never built from a guess.
+fn resolve(calls: &[ContentPart], named: &str) -> Result<String, ToolError> {
+    let is_call =
+        |p: &ContentPart| matches!(p, ContentPart::ToolCall { call_id, .. } if call_id == named);
+    if calls.iter().any(is_call) {
+        return Ok(named.to_owned());
+    }
+    let ok = |id: &str| {
+        calls.iter().any(|p| {
+            matches!(p, ContentPart::ToolResult { call_id, is_error: false, .. } if call_id == id)
+        })
+    };
+    let ids: Vec<&str> = calls
+        .iter()
+        .filter_map(|p| match p {
+            ContentPart::ToolCall { call_id, name, .. } if name == named && ok(call_id) => {
+                Some(call_id.as_str())
+            }
+            _ => None,
+        })
+        .collect();
+    match ids.as_slice() {
+        [one] => Ok((*one).to_owned()),
+        [] => Ok(named.to_owned()),
+        several => Err(refuse(format!(
+            "This answer called {named} {} times: name one by the call_id of its result.",
+            several.len()
+        ))),
+    }
 }
 
 async fn garden_map(

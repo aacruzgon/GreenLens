@@ -916,7 +916,7 @@ async fn run_tool(
         content.clone()
     } else {
         let kind = tool.map_or(DataKind::ToolResult, crate::tools::DynTool::data_kind);
-        tool_result(kind, &content)
+        tool_result(kind, &call_id, &content)
     };
     reply.tool_calls.push(ContentPart::ToolResult {
         call_id: call_id.clone(),
