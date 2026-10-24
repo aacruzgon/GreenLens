@@ -14,8 +14,9 @@ training photo is still that photo to a model (training.md §4 counts augmented 
 duplicates), so it would measure memory.
 
 Only `diagnosed` and `healthy` cases get variants, and a variant keeps the outcome, species,
-problems, soil and indicators of its original's truth. Boxes, masks, depth and measurements are
-dropped, since tilting and cropping move them. Each transform is mild enough that a person can
+problems, soil, indicators, `look_alike` and `organisms_unboxed` of its original's truth. Boxes,
+masks, depth and measurements are dropped, since tilting and cropping move them; a variant of a case
+with organism boxes is marked `organisms_unboxed`, as the animals still show. Each transform is mild enough that a person can
 still see the problem, and is seeded by the case and the transform, so a rerun writes the same
 bytes. Photos go to photos/variants/<transform>/<the original's path>, and --out is rewritten.
 """
@@ -119,7 +120,7 @@ def offcentre(im: Image.Image, rng: np.random.Generator) -> Image.Image:
 
 TRANSFORMS = {f.__name__: f for f in (tilt, dim, warm, cool, blur, far, jpeg, offcentre)}
 OUTCOMES = ("diagnosed", "healthy")
-KEPT_TRUTH = ("outcome", "species_id", "problems", "soil", "indicators")
+KEPT_TRUTH = ("outcome", "species_id", "problems", "soil", "indicators", "look_alike", "organisms_unboxed")
 
 
 def variant(c: dict, name: str, photos: Path) -> dict:
@@ -136,6 +137,8 @@ def variant(c: dict, name: str, photos: Path) -> dict:
         out.save(dest, "JPEG", quality=92)
         images.append({"file": rel, "sha256": inat.sha256(dest), "kind": img["kind"]})
     truth = {k: c["truth"][k] for k in KEPT_TRUTH if k in c["truth"]}
+    if c["truth"].get("organisms"):
+        truth["organisms_unboxed"] = True   # the animals still show; their boxes are dropped
     v = {**c, "case_id": f"{c['case_id']}~{name}", "images": images,
          "truth": {**truth, "organisms": [], "damage": []}, "derived_from": c["case_id"], "transform": name}
     if c.get("credit"):
