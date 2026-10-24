@@ -364,7 +364,7 @@ Work 8–11 are the contract changes the app's chat needs (app roadmap [F6](../f
 
 **Decides:** open decisions 6 and 8, and design open decision 7 (the first set of answer block kinds). Decision 6 was decided on Oct 20 by the agent evaluation (`claude-opus-5-5`); decision 8 is decided by #193 (Jev, with the LLM fallback); design decision 7 by #191.
 
-**State on 2026-10-24.** S5 is built, and its exit checks ran on a laptop against a local `api` with the hosted model, Jev and Agent Memory: [`backend/tools/smoke/s5.py`](../../backend/tools/smoke/s5.py) ([#200](https://github.com/aacruzgon/GreenLens/pull/200)). A slice is done only when its checks pass on the deployed control plane (section 2), so S5 stays open until the rig runs the same script.
+**State on 2026-10-24.** S5 is built, and its exit checks ran on a laptop against a local `api` with the hosted model, Jev and Agent Memory: [`backend/tools/smoke/s5.py`](../../backend/tools/smoke/s5.py) ([#200](https://github.com/aacruzgon/GreenLens/pull/200)). A slice is done only when its checks pass on the deployed control plane (section 2), so S5 stays open until the rig runs the same script. Every check passed on the laptop except the dose check, which never fired: asked for exact amounts, the model declined by itself, so no sentence reached the dose check. The live runs cost about US$5.35 in model calls.
 
 | Work | State |
 |---|---|
@@ -398,6 +398,7 @@ Work 8–11 are the contract changes the app's chat needs (app roadmap [F6](../f
 4. The farm record's text on E9.2's demo garden (EON E9.3).
 5. A mapping session from the iPhone, and the spacing warning in the next scan's plan.
 6. Agent Memory's cost on Studio's Usage page.
+7. The dose check again, with a prompt that gets the model to state an amount, so the check is seen replacing a sentence.
 
 ---
 
