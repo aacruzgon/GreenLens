@@ -45,6 +45,7 @@ pub use entry::{PhotoInfo, SubmitOutcome};
 pub use error::PipelineError;
 pub use measure::{ImageMeasurer, MeasureFailed, MeasureRequest, MeasuredQuantity};
 pub use plan_author::PlanAuthor;
+pub use steps::plan::{PlanContext, PlanPorts, plan_context};
 pub use writer::{PlanGuard, ScanWriter};
 
 /// Tunables that the contracts leave to the evaluation set.
@@ -94,9 +95,10 @@ pub struct PipelineDeps {
     /// Agent Memory: the plant's current beliefs for the plan writer; `NoBeliefs` when it
     /// isn't configured.
     pub beliefs: Arc<dyn BeliefStore>,
-    /// Text embeddings for the pipeline's memory summary, embedded as
-    /// [`EmbedMode::Document`](domain::ports::EmbedMode::Document): the pipeline only stores
-    /// memories and never searches.
+    /// Text embeddings: the pipeline's memory summary, embedded as
+    /// [`EmbedMode::Document`](domain::ports::EmbedMode::Document), and the plan writer's
+    /// farm-record query, embedded as [`EmbedMode::Query`](domain::ports::EmbedMode::Query)
+    /// (`agent::plan_writer::plan_farm_records`).
     pub embedder: Arc<dyn TextEmbedder>,
     /// Photos and depth maps for measurement, and a perception job's masks. Its deletes must
     /// not stop when a request is dropped ([storage 4], never cancel a delete): `api` passes

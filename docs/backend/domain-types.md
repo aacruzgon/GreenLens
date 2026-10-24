@@ -1,6 +1,6 @@
 # PDM Backend: `domain` contract types
 
-> **Status:** Draft v0.3.4, 2026-10-19. v0.3.4: the farm connectors' wire types ([connectors](../connectors/README.md), roadmap E1.1): `Connector` and its enums, the connect requests, `FarmCitation`, `FarmRecordId` and `ConnectorId`; `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations`, absent when empty; the `search_farm_records` tool. v0.3.3: memories gain a `topic`, and the beliefs mirrored into Agent Memory get their wire types (`Belief`, `PlantBeliefs`, `BeliefHit`, `MemorySearch`). v0.3.2: the schema links point to `backend/migrations/schema.surql`. v0.3.1: `JobErrorCode`'s comments follow contracts 5: `max_runtime_exceeded` is settled (question 18), and `unsupported_version` and `model_error` carry the contract's full meaning. v0.3: `PastWeather` gains `longest_humid_run_days` (contracts v0.10, section 7), the longest run of humid days in the past week, so a past humid stretch is detectable. v0.2: follows contracts v0.9 and v0.10 where they touch shapes: `JobError.code` is a `JobErrorCode` (`max_runtime_exceeded` and `unknown_label_version` included), the `model_versions` keys are `ModelVersionKey` constants, `Invite.created_by` is optional, worker payloads never carry a mask URL and `complete` results are read by the job's kind (both as v0.1 had them); `BoxFormat`'s comments name the models of each format. v0.1: every shape of [contracts.md](../architecture/contracts.md) v0.8.2 as compiled Rust, section by section, with the serde and schema decisions explained and a TypeScript → Rust map.
+> **Status:** Draft v0.3.5, 2026-10-23. v0.3.5: `PlanStepDraft.farm_citations`, the farm records a plan-writer step cites, optional and omitted when empty, strings that validation parses so a bad id refuses the step and not the answer (EON E5.4). v0.3.4: the farm connectors' wire types ([connectors](../connectors/README.md), roadmap E1.1): `Connector` and its enums, the connect requests, `FarmCitation`, `FarmRecordId` and `ConnectorId`; `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations`, absent when empty; the `search_farm_records` tool. v0.3.3: memories gain a `topic`, and the beliefs mirrored into Agent Memory get their wire types (`Belief`, `PlantBeliefs`, `BeliefHit`, `MemorySearch`). v0.3.2: the schema links point to `backend/migrations/schema.surql`. v0.3.1: `JobErrorCode`'s comments follow contracts 5: `max_runtime_exceeded` is settled (question 18), and `unsupported_version` and `model_error` carry the contract's full meaning. v0.3: `PastWeather` gains `longest_humid_run_days` (contracts v0.10, section 7), the longest run of humid days in the past week, so a past humid stretch is detectable. v0.2: follows contracts v0.9 and v0.10 where they touch shapes: `JobError.code` is a `JobErrorCode` (`max_runtime_exceeded` and `unknown_label_version` included), the `model_versions` keys are `ModelVersionKey` constants, `Invite.created_by` is optional, worker payloads never carry a mask URL and `complete` results are read by the job's kind (both as v0.1 had them); `BoxFormat`'s comments name the models of each format. v0.1: every shape of [contracts.md](../architecture/contracts.md) v0.8.2 as compiled Rust, section by section, with the serde and schema decisions explained and a TypeScript → Rust map.
 
 Companion to the [backend architecture](README.md) and to the [`domain` crate](domain.md). Sections 1–10 follow [contracts.md](../architecture/contracts.md) 1–10, so "contracts 7" and "domain-types 7" describe the same shapes. Every listing is copied from the compiled source of `crates/domain` (`cargo check`, `cargo test` and `cargo clippy --all-targets` pass on Rust 1.99.1 with serde 1.0.229, utoipa 6.0.0, schemars 1.2.3, chrono 0.4.45 and ulid 3.0.0); the module paths are in [the map](#11-typescript-to-rust-map).
 
@@ -2981,7 +2981,7 @@ pub const OTHER: &str = "other";
 
 ```rust
 /// `soil.moisture` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilMoisture {
     /// Dry.
@@ -2995,7 +2995,7 @@ pub enum SoilMoisture {
 }
 
 /// `soil.surface` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilSurface {
     /// Normal.
@@ -3007,7 +3007,7 @@ pub enum SoilSurface {
 }
 
 /// `soil.structure` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilStructure {
     /// Crumbly.
@@ -3021,7 +3021,7 @@ pub enum SoilStructure {
 }
 
 /// `soil.colour` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilColour {
     /// Dark.
@@ -3035,7 +3035,7 @@ pub enum SoilColour {
 }
 
 /// `soil.cover` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilCover {
     /// Bare.
@@ -3049,7 +3049,7 @@ pub enum SoilCover {
 }
 
 /// `soil.deposits` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilDeposits {
     /// None.
@@ -3065,7 +3065,7 @@ pub enum SoilDeposits {
 }
 
 /// `soil.erosion` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilErosion {
     /// None.
@@ -3077,7 +3077,7 @@ pub enum SoilErosion {
 }
 
 /// `soil.weeds` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilWeeds {
     /// None.
@@ -3202,7 +3202,9 @@ pub fn indicator_key(n: usize, indicator: &IndicatorId) -> String {
 }
 
 /// `squeeze_test.result`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum SqueezeResult {
     /// Sandy.
@@ -3216,7 +3218,9 @@ pub enum SqueezeResult {
 }
 
 /// `jar_test.texture`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum JarTexture {
     /// Sandy.
@@ -4302,6 +4306,15 @@ pub struct PlanStepDraft {
     pub plant_id: Option<PlantId>,
     /// At least one source.
     pub citations: Vec<SourceId>,
+    /// Farm records the step cites, by `record_id` (`<connector_id>.<n>.<vendor_id>`), from those
+    /// given ([connectors 7]); never instead of a source. Strings as the model wrote them:
+    /// validation parses each, so an id that doesn't parse refuses the step, never the whole
+    /// answer.
+    // Plain strings in the schema too: with `FarmRecordId`'s pattern on its items,
+    // `revise_plan`'s strict input schema, which embeds this type, passed Anthropic's limit and
+    // every chat turn got `400 Schema is too complex` (Oct 23; tools' strict budget test).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub farm_citations: Vec<String>,
 }
 
 /// The plan writer's structured output: the fixed shape whose JSON Schema the agent sends to

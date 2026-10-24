@@ -1,0 +1,203 @@
+# Soil conditions (contracts §10, SoilConditionSeed): what a soil reading means and what to do,
+# for each SoilAspect value the VLM or a guided check reports that calls for advice (contracts §6).
+# A value with no entry ("moist", "crumbly", "mulched", "none") needs none. The API is to show an
+# entry with the soil findings, and the plan writer to read it (architecture 5, knowledge base);
+# neither does yet, so the rows load into knowledge.surql and wait for that wiring.
+#
+# Written by hand on 2026-10-23 (#46) from the sources each entry lists, in our own words. Most
+# are facts-only how-to pages (sources.yaml), so no wording is quoted. CSU's pages are written for
+# Colorado, so an entry takes from them only what holds for a garden in general. No entry names a
+# product or gives a rate.
+#
+# Left out until a source covers them: surface "cracked", colour "grey_mottled" and erosion
+# "exposed_roots".
+
+# --- moisture ------------------------------------------------------------------------------
+- aspect: moisture
+  value: dry
+  description: The soil surface looks dry. The surface dries first, fastest on bare soil, so the
+    soil around the roots can still be moist.
+  what_to_do: Feel the soil 2–5 cm down before watering, and water only if it's dry there too.
+    Then water slowly, so it soaks in instead of running off, until the soil is moist about 12–15 cm
+    down; if it runs off, water in several shorter sessions. A layer of mulch cuts the water lost
+    from the surface and keeps the moisture steadier between waterings.
+  sources: [isu_watering_tips, csu_mulching, csu_soil_drainage]
+- aspect: moisture
+  value: wet
+  description: The soil looks wet. Roots need air as well as water, and plants kept in wet soil
+    root shallowly and are prone to root rot.
+  what_to_do: Let the surface dry before watering again, and avoid watering often or at night.
+    Much surface wetness comes from watering too much or too often. Stay off the bed while it's
+    wet, since wet soil packs down easily.
+  sources: [csu_soil_drainage, csu_soil_compaction, isu_algae_lawn]
+- aspect: moisture
+  value: waterlogged
+  description: The soil looks saturated, with standing water or puddles. Roots stop working
+    without air, and if it stays this way most plants decline or die.
+  what_to_do: Water less, and fill low spots or lead the water away. Once the soil has drained, check
+    how well it drains by digging a hole about 30 cm deep and filling it with water. If it hasn't
+    drained in half an hour, the soil drains poorly; work organic matter into it to open it up. Where
+    water keeps standing, a raised bed lifts the roots above it.
+  sources: [csu_soil_drainage, isu_moss_lawn_garden]
+
+# --- surface -------------------------------------------------------------------------------
+- aspect: surface
+  value: crusted
+  description: A hard crust has formed on the surface. Rain or sprinkler drops break up the top
+    layer of soil with poor structure, and it sets hard as it dries. A crust slows water soaking in,
+    increases runoff, and can stop seedlings from coming up.
+  what_to_do: Keep the surface covered with mulch, which takes the force of the drops. Add organic
+    matter over time, which builds a structure that holds together when wet. Avoid working the soil
+    when it's wet.
+  sources: [ontario_field_crops_soil_management, csu_soil_compaction, csu_mulching]
+
+# --- structure -----------------------------------------------------------------------------
+- aspect: structure
+  value: cloddy
+  description: The soil is in large, hard clods. Clods have few pores for roots, water and air.
+    They form when soil with poor structure is dug or tilled, especially clay dug while wet, and can
+    last for years.
+  what_to_do: Dig only when the soil is dry enough. A handful squeezed into a ball should crumble.
+    If it only changes shape, it's too wet. Dig in organic matter, and keep the bed mulched instead
+    of digging it often.
+  sources: [ontario_field_crops_soil_management, csu_soil_compaction]
+- aspect: structure
+  value: compacted
+  description: The soil looks packed and dense. Compaction squeezes out the large pores, so air
+    and water move poorly, roots stay shallow, and plants grow weakly. It's hard to fix, and comes
+    mostly from traffic, including feet on moist soil, and from heavy rain on bare clay.
+  what_to_do: Keep off the bed, especially when it's wet, and use set paths or raised beds. Work
+    organic matter into the top 15–20 cm and keep the surface mulched. In a lawn or under a tree,
+    use a core aerator instead. Adding sand doesn't loosen it.
+  sources: [csu_soil_compaction, ontario_field_crops_soil_management, isu_moss_lawn_garden]
+
+# --- colour --------------------------------------------------------------------------------
+- aspect: colour
+  value: pale
+  description: The soil is light-coloured. At the same moisture, lighter soil usually holds less
+    organic matter than darker soil. A patch lighter than the rest can mean topsoil has been lost,
+    or subsoil dug up into it.
+  what_to_do: Add organic matter, such as compost, and keep the soil covered with mulch or plants.
+    A lab soil test measures organic matter if you want a number.
+  sources: [ontario_field_crops_soil_management, csu_soil_compaction]
+
+# --- cover ---------------------------------------------------------------------------------
+- aspect: cover
+  value: bare
+  description: The soil is bare. Bare soil dries out fastest, crusts and erodes more easily, and
+    leaves room for weeds.
+  what_to_do: Mulch the bed, for example with wood chips around perennials and shrubs, or with dry
+    grass clippings or shredded leaves in vegetable beds. Use clippings only from lawns not treated
+    with herbicide. A cover of mulch or plants keeps the soil moist, protects it from rain, and
+    suppresses weeds.
+  sources: [csu_mulching, ontario_field_crops_soil_management]
+
+# --- deposits ------------------------------------------------------------------------------
+- aspect: deposits
+  value: salt_crust
+  description: A white crust is on the surface. Salts left behind as water evaporates can build
+    up where water doesn't drain down through the soil. High salt makes it hard for roots to take
+    up water and can burn leaf edges. Only a soil test can measure it.
+  what_to_do: Where the soil drains, water deeply and slowly with clean water to wash salts below
+    the roots; where it doesn't, improve the drainage first. Avoid fertilizer the soil doesn't need,
+    and compost or manure that may be salty. Keep de-icing salt away from the bed.
+  sources: [csu_saline_soils, csu_soil_drainage]
+- aspect: deposits
+  value: moss
+  description: Moss is growing on the soil. It doesn't harm plants, but it's a sign of damp,
+    shady, poorly drained or compacted soil, or low fertility.
+  what_to_do: Rake it off if you don't want it. To keep it from coming back, loosen the top few
+    centimetres of soil now and then so the surface dries, and fix what it points to, such as
+    shade, poor drainage or compaction. A soil test shows whether fertility is low.
+  sources: [isu_moss_lawn_garden]
+- aspect: deposits
+  value: algae
+  description: A green to blackish scum is on the soil. Algae grow where the surface stays wet,
+    often in low, shaded or compacted spots, and the scum dries into a crust that cracks.
+  what_to_do: Let the surface dry out, water less often and not at night, and improve the drainage.
+    Loosen compacted spots and let in more light.
+  sources: [isu_algae_lawn]
+- aspect: deposits
+  value: mould
+  description: A mould or fungus is growing on mulch or on the soil. Most such growths in mulch,
+    such as stinkhorns, bird's nest fungi and slime moulds, live on the decaying wood or on the
+    bacteria and other organisms in it, and don't harm plants. Slime moulds start as a yellow or
+    orange foam and dry to a white powder within days.
+  what_to_do: On mulch, or on soil away from the stems, leave it to dry up and fade, or scoop it up
+    if it bothers you. Loosening the mulch with a rake so it dries out discourages some, such as
+    bird's nest fungi. A white or fuzzy growth on a stem, or on the soil right at its base, is
+    different. Look closely at the plant for signs of disease.
+  sources: [isu_fungi_landscape_mulch]
+
+# --- erosion -------------------------------------------------------------------------------
+- aspect: erosion
+  value: rills
+  description: Small channels have been cut into the soil by running water. Water is carrying
+    topsoil away.
+  what_to_do: Cover the soil with mulch or plants, which slow runoff and hold the soil. On a slope,
+    a ground cover or turf does this best. Add organic matter over time so the soil takes in water
+    more easily. Look for where the water comes from, such as overwatering, and lead it
+    away.
+  sources: [ontario_field_crops_soil_management, csu_soil_drainage, csu_mulching]
+
+# --- weeds ---------------------------------------------------------------------------------
+- aspect: weeds
+  value: many
+  description: Many weeds are growing in the bed.
+  what_to_do: Remove them, then mulch the bed deep enough to suppress new ones, about 10 cm, such as
+    wood chips, or dry grass clippings or shredded leaves in a vegetable bed. Avoid tilling, which
+    brings buried weed seeds up to germinate. Under mulch around shrubs and perennials, plastic
+    sheeting or weed fabric isn't recommended, since it keeps air and water from the soil.
+  sources: [csu_mulching, csu_soil_compaction]
+
+# --- texture (guided checks) ---------------------------------------------------------------
+# Squeeze test: a moistened handful squeezed into a ball (worker's guided prompt).
+- aspect: texture
+  value: crumbles
+  description: The moistened soil breaks apart when squeezed, a sign of a coarse, sandy soil.
+    Water drains through it quickly, so it dries out fast.
+  what_to_do: Add organic matter regularly to help it hold water, and mulch to cut drying.
+  sources: [csu_soil_texture, csu_soil_drainage]
+- aspect: texture
+  value: holds_ball
+  description: The moistened soil holds a ball but changes shape easily, a sign of a medium
+    texture, such as a sandy loam or a silt loam.
+  what_to_do: Keep it that way by adding organic matter, such as compost, and keeping the surface
+    covered.
+  sources: [csu_soil_texture, ontario_field_crops_soil_management]
+- aspect: texture
+  value: sticky_ribbon
+  description: The moistened soil is sticky and forms a ribbon, a sign of a fine, clayey soil.
+    Water moves slowly through its small pores, so it drains poorly and packs down easily. A soil
+    with as little as a fifth clay behaves this way.
+  what_to_do: Don't dig or walk on it while it's wet. Work organic matter into the top 15–20 cm and
+    keep it mulched, which opens up larger pores. Adding sand doesn't help, and can make it set
+    harder. Raised beds with paths keep feet off the growing soil.
+  sources: [csu_soil_texture, csu_soil_compaction, csu_soil_drainage]
+# Jar test: the soil shaken in water and left to settle into layers.
+- aspect: texture
+  value: sandy
+  description: The jar test shows a sandy soil, mostly coarse particles. Water drains through it
+    quickly, so it dries out fast.
+  what_to_do: Add organic matter regularly to help it hold water, and mulch to cut drying.
+  sources: [csu_soil_texture, csu_soil_drainage]
+- aspect: texture
+  value: loamy
+  description: The jar test shows a loam, a mix of sand, silt and clay.
+  what_to_do: Keep it that way by adding organic matter, such as compost, and keeping the surface
+    covered.
+  sources: [csu_soil_texture, ontario_field_crops_soil_management]
+- aspect: texture
+  value: silty
+  description: The jar test shows a soil high in silt, which feels smooth, like flour, when moist.
+  what_to_do: Add organic matter, which builds a structure that holds together when wet, and keep
+    the surface mulched.
+  sources: [csu_soil_texture, ontario_field_crops_soil_management, csu_mulching]
+- aspect: texture
+  value: clayey
+  description: The jar test shows a clayey soil. Water moves slowly through its small pores, so it
+    drains poorly and packs down easily. A soil with as little as a fifth clay behaves this way.
+  what_to_do: Don't dig or walk on it while it's wet. Work organic matter into the top 15–20 cm and
+    keep it mulched, which opens up larger pores. Adding sand doesn't help, and can make it set
+    harder. Raised beds with paths keep feet off the growing soil.
+  sources: [csu_soil_texture, csu_soil_compaction, csu_soil_drainage]

@@ -1,0 +1,32 @@
+{
+  "version": "plant-probe-v2-2026-10-23",
+  "C": 5,
+  "probe_alone_on_val": {
+    "tau_plant_probe_alone": 0.8055965900421143,
+    "negatives_pass": 0.0008382229673093043,
+    "false_no_plant": 0.009675858732462506,
+    "false_no_plant_by_source": {
+      "inaturalist": 0.033797216699801194,
+      "leaf datasets": 0.0019181585677749361
+    }
+  },
+  "counts": {
+    "plant_train": {
+      "leaf datasets": 7107,
+      "inaturalist": 2012
+    },
+    "plant_val": {
+      "leaf datasets": 1564,
+      "inaturalist": 503
+    },
+    "negatives_train": 2372,
+    "negatives_tune": 2386,
+    "negatives_train_licences": {
+      "Attribution License": 1531,
+      "Attribution-ShareAlike License": 811,
+      "No known copyright restrictions": 30
+    }
+  },
+  "negatives_train_list": "negatives_probe_train.tsv",
+  "note": "The probe alone, at the \u03c4_plant where it fails 1% of val plant photos, against the tune half of COCO val2017's negatives. The plant check is leaf score >= \u03c4_leaf OR p(plant) >= \u03c4_plant; plant_check --probe chooses the pair."
+}

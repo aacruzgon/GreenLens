@@ -21,6 +21,8 @@ def repo(tmp_path):
     store.mkdir()
     (models / "NOTICES.md").write_text("## yunet\n## bioclip\n")
     (models / "licences" / "MIT.txt").write_text("MIT")
+    (models / "credits").mkdir()
+    (models / "credits" / "coco.tsv").write_text("file\tflickr_page\n")
     blobs = {"yunet/y.onnx": b"face", "bioclip/b.onnx": b"tower"}
     for path, data in blobs.items():
         (store / Path(path).name).write_bytes(data)
@@ -43,6 +45,7 @@ def test_fetches_then_downloads_nothing(repo, capsys, monkeypatch):
     assert (dest / "bioclip/b.onnx").read_bytes() == b"tower"
     assert (dest / "manifest.toml").read_text() == manifest.read_text()
     assert (dest / "NOTICES.md").exists() and (dest / "licences/MIT.txt").exists()
+    assert (dest / "credits/coco.tsv").exists(), "the photo credits travel with the notices"
     capsys.readouterr()
     fetch.fetch(manifest, sources, ["perception", "api"], dest)
     assert "fetch " not in capsys.readouterr().out
@@ -104,6 +107,7 @@ def test_a_new_manifest_keeps_the_previous_and_removes_what_neither_names(repo, 
     assert (dest / "manifest.previous.toml").read_text() == first
     assert (dest / "yunet/y.onnx").exists(), "the previous manifest still names it"
     assert not (dest / "stray.bin").exists()
+    assert (dest / "credits/coco.tsv").exists() and (dest / "licences/MIT.txt").exists(), "never cleaned"
     fetch.fetch(manifest, sources, ["perception", "api"], dest)   # same manifest: previous unchanged
     assert tomllib.loads((dest / "manifest.previous.toml").read_text())["model"][0]["file"] == "yunet/y.onnx"
 
