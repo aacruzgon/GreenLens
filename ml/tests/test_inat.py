@@ -183,3 +183,48 @@ def test_a_name_shared_by_a_complex_and_a_species_picks_the_species():
     assert inat.pick_taxon(results, "Podosphaera") == 3
     with pytest.raises(SystemExit):
         inat.pick_taxon(results, "Erysiphe necator")
+
+
+PEST = {"taxon": "Animalia", "match": "descendants", "host": "Rosa", "host_rank": "genus", "group": "pests",
+        "species_id": "rose", "problems": [], "outcome": "healthy", "quality": "all"}
+
+
+def test_a_target_is_named_by_its_taxon_and_its_host():
+    assert inat.target_key(TARGET) == "Venturia inaequalis"
+    assert inat.target_key(PEST) == "Animalia on Rosa"
+
+
+@pytest.mark.parametrize("quality, grades", [
+    (None, "research"), ("research", "research"), ("any", "research,needs_id"),
+    ("all", "research,needs_id,casual"),   # a garden plant marked as cultivated is casual
+])
+def test_quality_sets_the_grades_searched(quality, grades):
+    target = {**TARGET, "quality": quality} if quality else {k: v for k, v in TARGET.items() if k != "quality"}
+    assert inat.query(target, 7, "2026-01-01")["quality_grade"] == grades
+
+
+def test_an_unknown_quality_is_refused():
+    with pytest.raises(SystemExit, match="quality must be one of"):
+        inat.query({**TARGET, "quality": "casual"}, 7, "2026-01-01")
+
+
+def test_a_host_is_searched_through_its_observation_field():
+    q = inat.query(PEST, 1, "2026-01-01", ("Host Plant ID", 47148))
+    assert q["field:Host Plant ID"] == 47148 and q["taxon_id"] == 1
+    assert not any(k.startswith("field:") for k in inat.query(TARGET, 7, "2026-01-01"))
+
+
+def test_a_host_search_asks_each_host_field_and_counts_an_observation_once(monkeypatch):
+    def animal(i):
+        return {**obs(taxon_id=50, ancestors=(1,)), "id": i}
+    by_field = {"Host": [animal(1), animal(2)], "Host Plant ID": [animal(2), animal(3)], "Eating": [animal(1)]}
+    asked = []
+
+    def api(path, **q):
+        [field] = [k.removeprefix("field:") for k in q if k.startswith("field:")]
+        asked.append((field, q[f"field:{field}"]))
+        return {"results": by_field[field], "total_results": len(by_field[field])}
+    monkeypatch.setattr(inat, "api", api)
+    found, total = inat.search(PEST, 1, "2026-01-01", limit=10, host_tid=47148)
+    assert asked == [(f, 47148) for f in inat.HOST_FIELDS]
+    assert [o["id"] for o in found] == [1, 2, 3] and total == 5

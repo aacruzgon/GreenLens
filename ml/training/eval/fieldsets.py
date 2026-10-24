@@ -19,8 +19,10 @@ none from 2026 (inat.py). Researchers publish field photos of them under CC BY 4
 - One photo per case. A dataset photo shows a leaf or a few, so the case sends it as the
   `whole_plant` shot, as a user who only photographs the sick leaf would (the API needs one). The
   harness reports these cases as their own slice, by `source`.
-- Reviewed before use, as in inat.py: a teammate marks each photo `sure` (the signs are clear),
-  `probable` or `skip`. Only `sure` cases count toward diagnosis accuracy (evaluation.md §3).
+- Reviewed before use, as in inat.py: a reviewer marks each photo `sure` (the signs are clear),
+  `probable` or `skip`. Only `sure` cases count toward diagnosis accuracy (evaluation.md §3). M10's
+  31 photos of 2026-10-24 were screened by Claude, since no one on the team can judge plant photos,
+  and are all `probable`.
 
 `fetch` lists each class folder through Mendeley Data's API and takes photos in a stable hash
 order: three times --per-class of them are downloaded, checked against the SHA-256 Mendeley
@@ -31,7 +33,7 @@ training image it matches. A rerun keeps the review's edits.
 
 `add` appends the reviewed photos to manifest.jsonl. Each case gets `label_basis`
 `source_caption`, the dataset's URL with the file's path as `source`, the set's licence and its
-citation with the changes made, and an empty `reviewed_by` until a second teammate checks it.
+citation with the changes made, and an empty `reviewed_by` until a second reviewer checks it.
 
 A plant can't be told from these photos, and a set's neighbouring frames may show one plant. So
 `add` gives every run of cases NEIGHBOUR or fewer frames apart in one folder the plant key of its

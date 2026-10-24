@@ -250,3 +250,30 @@ def test_a_scan_needs_one_whole_plant_photo(inbox, photos, tmp_path, capsys):
     keep_all(photos)
     rc, scans, _ = add(photos, tmp_path)
     assert rc == 1 and scans == [] and "exactly one whole_plant" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("field, name", [
+    ("file", "../01-whole_plant.jpg"), ("depth", "/etc/passwd"), ("report", "sub/01-report.json"),
+    ("depth_meta", ".."), ("file", "..\\01-whole_plant.jpg"),
+])
+def test_case_json_names_files_in_its_own_folder_only(inbox, photos, capsys, field, name):
+    d = app_case(inbox)
+    case = json.loads((d / "case.json").read_text())
+    case["images"][0][field] = name
+    (d / "case.json").write_text(json.dumps(case))
+    rc, review = run_scan(inbox, photos)
+    assert rc == 1 and review == [] and "isn't a file name in the case folder" in capsys.readouterr().err
+    assert not (photos / "captures" / "tomato-lidar-01").exists()
+
+
+def test_both_kinds_of_photo_keep_their_colour_profile(inbox, photos):
+    from PIL import ImageCms
+
+    icc = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()   # stands in for Display P3
+    buf = io.BytesIO()
+    Image.new("RGB", (40, 30), "green").save(buf, "JPEG", icc_profile=icc)
+    for keep in (captures.keep_orientation, captures.inat.strip):
+        with Image.open(io.BytesIO(keep(buf.getvalue()))) as im:
+            assert im.info.get("icc_profile") == icc
+    with Image.open(io.BytesIO(captures.keep_orientation(jpeg()))) as im:
+        assert "icc_profile" not in im.info   # none added to a photo that had none

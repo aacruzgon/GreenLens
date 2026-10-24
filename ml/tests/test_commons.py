@@ -83,3 +83,10 @@ def test_add_appends_only_kept_cases_once(tmp_path):
     args = ["add", "--labeller", "x", "--cases", str(cases), "--photos", str(tmp_path), "--manifest", str(manifest)]
     assert commons.main(args) == 0 and commons.main(args) == 0
     assert [json.loads(line)["case_id"] for line in manifest.read_text().splitlines()] == ["pepper-commons-pepper-sunscald"]
+
+
+@pytest.mark.parametrize("short, stored", [
+    ("CC0", "CC0 1.0"), ("CC0 1.0", "CC0 1.0"), ("Public domain", "Public domain"), ("CC BY-SA 4.0", "CC BY-SA 4.0"),
+])
+def test_cc0_is_stored_as_cc0_1_0_as_inaturalists_is(short, stored):
+    assert commons.licence_name(short) == stored and commons.LICENCE.match(stored)

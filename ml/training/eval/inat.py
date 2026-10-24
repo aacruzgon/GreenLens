@@ -13,7 +13,9 @@ find locally, such as diseased crops in late October. Three rules keep the score
   *unverified*; PlantDoc dates from 2019. Never use a photo from a web search: PlantDoc was scraped
   from Google Images.
 - Each target's taxon is matched exactly, since iNaturalist's filter also returns related taxa, and
-  a teammate reviews every observation before it becomes a case.
+  every observation is reviewed before it becomes a case: by a teammate, or by Claude's screen for
+  M10's cases of 2026-10-24, since no one on the team can judge plant photos (those are `probable`,
+  `labelled_by` claude-opus-5-5; evaluation.md §3).
 
 A target with a `host` finds organisms whose observer recorded the plant they were on, in the
 observation fields `Host`, `Host Plant ID` or `Eating` (HOST_FIELDS), so a pest case's plant is
@@ -209,13 +211,15 @@ def candidate(obs: dict, target: dict) -> dict:
 
 
 def strip(data: bytes) -> bytes:
-    """The photo re-encoded as JPEG with its EXIF orientation applied and no metadata (no location)."""
+    """The photo re-encoded as JPEG with its EXIF orientation applied and no metadata (no location),
+    keeping only its colour profile."""
     from PIL import Image, ImageOps
 
     with Image.open(io.BytesIO(data)) as im:
+        icc = im.info.get("icc_profile")   # kept: a Display P3 photo's colours depend on it
         out = ImageOps.exif_transpose(im).convert("RGB")
     buf = io.BytesIO()
-    out.save(buf, "JPEG", quality=95)
+    out.save(buf, "JPEG", quality=95, **({"icc_profile": icc} if icc else {}))
     return buf.getvalue()
 
 

@@ -15,7 +15,11 @@ case by hand: its files with their shot kinds and its truth. Three rules, chosen
 - Photos from before 2026 are used, though BioCLIP 2's training data may hold them (EOL draws on
   Commons *unverified*), so each case records when it was `taken` and the report shows `source`
   Commons as its own slice.
-- A teammate reviews each case before `add` writes it (`keep: true`), as for iNaturalist.
+- Each case is reviewed before `add` writes it (`keep: true`), as for iNaturalist: M10's 12 kept
+  cases were screened by Claude on 2026-10-24, since no one on the team can judge plant photos, so
+  they stay `probable` with `labelled_by` claude-opus-5-5 (evaluation.md §3).
+- Commons writes CC0 as "CC0"; it is stored as "CC0 1.0", as iNaturalist's is. "Public domain" is
+  a different licence (a file out of copyright) and stays as Commons writes it.
 
 `fetch` reads each file's licence, author and date from the Commons API (extmetadata), downloads the
 original re-encoded with no metadata (`inat.strip`) to `photos/commons/` (git-ignored), and writes
@@ -70,6 +74,11 @@ def taken(raw: str) -> str:
     return m.group(1) if m else text
 
 
+def licence_name(short: str) -> str:
+    """Commons' short licence name as the manifest writes it: CC0 is CC0 1.0, as for iNaturalist."""
+    return "CC0 1.0" if short == "CC0" else short
+
+
 def file_info(titles: list[str]) -> dict[str, dict]:
     """Each file's original URL, licence, author and date, keyed by the title as given."""
     out = {}
@@ -85,7 +94,7 @@ def file_info(titles: list[str]) -> dict[str, dict]:
             ii = page["imageinfo"][0]
             meta = ii.get("extmetadata") or {}
             value = lambda k: (meta.get(k) or {}).get("value", "")  # noqa: E731
-            out[given] = {"url": ii["url"], "page": ii["descriptionurl"], "licence": plain(value("LicenseShortName")),
+            out[given] = {"url": ii["url"], "page": ii["descriptionurl"], "licence": licence_name(plain(value("LicenseShortName"))),
                           "artist": plain(value("Artist")) or plain(value("Credit")), "taken": taken(value("DateTimeOriginal"))}
     return out
 

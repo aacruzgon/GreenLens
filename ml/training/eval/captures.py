@@ -20,7 +20,8 @@ INBOX holds one folder per case, named by its case ID (lower-case letters, digit
 - A photo with depth keeps its pixels in the sensor frame and only its EXIF orientation, since the
   API turns the depth map with the photo (contracts 3); it is re-encoded at JPEG quality 95, which
   keeps its frame and size. Every other photo is turned upright and keeps no metadata, as iNaturalist
-  photos are (`inat.strip`). Both lose their location.
+  photos are (`inat.strip`). Both lose their location and keep their colour profile (an iPhone's
+  Display P3), so their colours are the ones the app uploads.
 - The depth PNG and DepthMeta are copied unchanged, the module's report beside them.
 
 It writes `photos/captures/review.yaml`, one entry per case with `keep: false`, and prints each
@@ -31,7 +32,7 @@ edits.
 `add` appends every kept case. A scan, with exactly one `whole_plant` photo, goes to `manifest.jsonl`;
 a soil case, whose photos are all soil shots or guided checks, goes to `manifest.soil.jsonl`, since
 it isn't a scan (evaluation.md §3). New cases go to dev (`inat.new_split`), `source` "team" and
-`licence` "team-internal", with an empty `reviewed_by` until a second teammate reviews them.
+`licence` "team-internal", with an empty `reviewed_by` until a second reviewer checks them.
 """
 
 from __future__ import annotations
@@ -137,17 +138,19 @@ def orientation_of(data: bytes) -> int:
 
 
 def keep_orientation(data: bytes) -> bytes:
-    """The photo as JPEG in its stored frame, with only its EXIF orientation: no location, no other tag."""
+    """The photo as JPEG in its stored frame, with only its EXIF orientation and its colour profile:
+    no location, no other tag."""
     from PIL import Image
 
     with Image.open(io.BytesIO(data)) as im:
         orientation = int(im.getexif().get(0x0112, 1))
+        icc = im.info.get("icc_profile")
         out = im.convert("RGB")
     exif = Image.Exif()
     if orientation != 1:
         exif[0x0112] = orientation
     buf = io.BytesIO()
-    out.save(buf, "JPEG", quality=95, exif=exif.tobytes())
+    out.save(buf, "JPEG", quality=95, exif=exif.tobytes(), **({"icc_profile": icc} if icc else {}))
     return buf.getvalue()
 
 
@@ -195,6 +198,11 @@ def soil_prefill(case_id: str) -> dict:
     return out
 
 
+def in_folder(name: str) -> bool:
+    """Whether a file named in case.json stays in its case folder: a plain name, no path."""
+    return isinstance(name, str) and name not in ("", ".", "..") and "/" not in name and "\\" not in name
+
+
 def read_case(folder: Path) -> dict:
     """A case folder as a capture: its ID, plant key, device and shots with their source files."""
     case_id = folder.name
@@ -207,6 +215,9 @@ def read_case(folder: Path) -> dict:
             raise CaptureError(f"{case_id}: case.json names {app.get('case_id')!r}")
         shots = []
         for img in app.get("images") or []:
+            for k in ("file", "depth", "depth_meta", "report"):
+                if img.get(k) and not in_folder(img[k]):
+                    raise CaptureError(f"{case_id}: case.json's {k} {img[k]!r} isn't a file name in the case folder")
             shot = {"kind": img["kind"], "photo": folder / img["file"], "name": img["file"]}
             if img.get("depth"):
                 shot["depth"], shot["depth_meta"] = folder / img["depth"], folder / img["depth_meta"]
