@@ -110,6 +110,11 @@ def test_a_camera_photo_is_turned_upright_with_no_metadata(inbox, photos):
     ("soil-clay-jar-settled-1", "jar_test", {"soil": {"texture": "clayey"}, "guided": {"settled": True, "texture": "clayey"},
                                              "confidence": "sure"}),
     ("soil-sand-jar-cloudy-1", "jar_test", {"soil": {"texture": "sandy"}, "guided": {"settled": False}, "confidence": "sure"}),
+    # topsoil names no texture: the settled jar shows it, and the reviewer writes it in
+    ("soil-topsoil-surface-wet-1", "soil_surface", {"soil": {"moisture": "wet"}, "confidence": "probable"}),
+    ("soil-topsoil-squeeze-1", "squeeze_test", {"soil": {}, "guided": {"result": "unclear"}, "confidence": "probable"}),
+    ("soil-topsoil-jar-settled-1", "jar_test", {"soil": {}, "guided": {"settled": True, "texture": "unclear"},
+                                                "confidence": "probable"}),
 ])
 def test_a_soil_case_starts_from_its_name(inbox, photos, case_id, kind, prefill):
     d = inbox / case_id

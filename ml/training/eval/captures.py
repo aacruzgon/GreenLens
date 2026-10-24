@@ -98,7 +98,7 @@ REVIEW_HEADER = """\
 #               scale card), lesion_count, hole_count; leave out what you didn't measure
 #   A soil case (soil shots and guided checks only):
 #     soil: the readings you're sure of, by aspect: moisture, surface, structure, colour, cover,
-#           deposits, erosion, weeds, and texture from the soil you bought
+#           deposits, erosion, weeds, and texture from the bag's label or the settled jar's layers
 #     guided: squeeze: result (crumbles, holds_ball, sticky_ribbon); jar: settled, texture
 #   confidence: sure, or probable (a bag's texture its label doesn't state is probable)
 #   label_basis: team_consensus, or expert / extension_office when one confirmed it
