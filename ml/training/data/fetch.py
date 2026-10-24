@@ -15,6 +15,9 @@ Two kinds take part of a big upload:
   "path sha256" lines of the files written, as for `mendeley_folder`.
 - `archives` downloads several archives (zip or RAR), each pinned by its own SHA-256, into
   data/raw/<name>.archives/ and unpacks each to data/raw/<name>/<archive name without suffix>/.
+
+`files` downloads plain files (tables such as CSVs), each pinned by its own SHA-256, to
+data/raw/<name>/<file name>, and unpacks nothing.
 """
 
 from __future__ import annotations
@@ -73,6 +76,16 @@ def check_pin(src: dict, digest: str, what: str = "sha256") -> None:
             raise SystemExit(f"[{name}] refusing an unpinned source; rerun with --pin to fetch it anyway")
     elif digest != src["sha256"]:
         raise SystemExit(f"[{name}] {what} mismatch: expected {src['sha256']}, got {digest}")
+
+
+def check_file_pin(name: str, f: dict, path: Path) -> None:
+    """check_pin for one downloaded file; a file whose hash is wrong is deleted, so the next run
+    downloads it again instead of failing on the same bad copy."""
+    digest = sha256_file(path)
+    if f.get("sha256") is not None and digest != f["sha256"]:
+        path.unlink(missing_ok=True)
+        print(f"[{name}] {f['name']}: removed the download, whose sha256 didn't match")
+    check_pin({"name": f"{name}/{f['name']}", "sha256": f.get("sha256")}, digest)
 
 
 def fetch_github_archive(src: dict) -> None:
@@ -319,8 +332,22 @@ def fetch_archives(src: dict) -> None:
         if not archive.exists():
             print(f"[{name}] downloading {f['name']} from {f['url']}")
             download(f["url"], archive)
-        check_pin({"name": f"{name}/{f['name']}", "sha256": f.get("sha256")}, sha256_file(archive))
+        check_file_pin(name, f, archive)
         unpack_any(archive, RAW / name / Path(f["name"]).stem)
+    print(f"[{name}] ok: {RAW / name}")
+
+
+def fetch_files(src: dict) -> None:
+    """Plain files, each checked against its own pinned SHA-256, kept as data/raw/<name>/<file name>."""
+    name = src["name"]
+    for f in src["files"]:
+        dest = RAW / name / f["name"]
+        if f.get("sha256") is None and not PIN:
+            raise SystemExit(f"[{name}] {f['name']}: refusing an unpinned file; rerun with --pin")
+        if not dest.exists():
+            print(f"[{name}] downloading {f['name']} from {f['url']}")
+            download(f["url"], dest)
+        check_file_pin(name, f, dest)
     print(f"[{name}] ok: {RAW / name}")
 
 
@@ -363,6 +390,8 @@ def main(only: list[str]) -> None:
             fetch_zip_members(src)
         elif kind == "archives":
             fetch_archives(src)
+        elif kind == "files":
+            fetch_files(src)
         elif kind == "huggingface":
             fetch_huggingface(src)
         elif kind == "file":

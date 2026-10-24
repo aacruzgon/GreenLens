@@ -4302,9 +4302,13 @@ pub struct PlanStepDraft {
     pub plant_id: Option<PlantId>,
     /// At least one source.
     pub citations: Vec<SourceId>,
-    /// Farm records the step cites, by `record_id`, from those given ([connectors 7]); never
-    /// instead of a source. Strings as the model wrote them: validation parses each, so an id
-    /// that doesn't parse refuses the step, never the whole answer.
+    /// Farm records the step cites, by `record_id` (`<connector_id>.<n>.<vendor_id>`), from those
+    /// given ([connectors 7]); never instead of a source. Strings as the model wrote them:
+    /// validation parses each, so an id that doesn't parse refuses the step, never the whole
+    /// answer.
+    // Plain strings in the schema too: with `FarmRecordId`'s pattern on its items,
+    // `revise_plan`'s strict input schema, which embeds this type, passed Anthropic's limit and
+    // every chat turn got `400 Schema is too complex` (Oct 23; tools' strict budget test).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub farm_citations: Vec<String>,
 }
