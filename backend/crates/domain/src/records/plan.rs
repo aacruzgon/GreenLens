@@ -300,9 +300,11 @@ pub struct PlanStepDraft {
     pub citations: Vec<SourceId>,
     /// Farm records the step cites, by `record_id`, from those given ([connectors 7]); never
     /// instead of a source. Strings as the model wrote them: validation parses each, so an id
-    /// that doesn't parse refuses the step, never the whole answer.
+    /// that doesn't parse refuses the step, never the whole answer. Plain strings in the schema
+    /// too: with `FarmRecordId`'s pattern on its items, `revise_plan`'s strict input schema, which
+    /// embeds this type, passed Anthropic's limit and every chat turn got `400 Schema is too
+    /// complex` (Oct 24).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[schemars(with = "Vec<FarmRecordId>")]
     pub farm_citations: Vec<String>,
 }
 
