@@ -6,6 +6,20 @@
 //! it; and ONNX Runtime's own intra-op threads stay off tokio's workers, so the heartbeat keeps
 //! ticking during a 30-second batch. A dropped job terminates its running model through
 //! `RunOptions::terminate`.
+//!
+//! The thread is joined, never detached: dropping the last [`Inference`] closes the channel and
+//! waits until the thread has released every session, then the environment. Returning from
+//! `main` calls libc `exit`, which runs the shared libraries' destructors (ONNX Runtime's CUDA
+//! provider, cuDNN, cuBLAS, the CUDA runtime) without waiting for other threads ([`std::thread`]:
+//! "when the main thread of a Rust program terminates, the entire program shuts down, even if
+//! other threads are still running"). A detached thread still in `ReleaseSession` then frees CUDA
+//! memory and handles torn down under it: the 3070's worker died with SIGSEGV (exit 139) 0.7 s
+//! after SIGTERM on 2026-10-20, while the CPU worker, with no CUDA libraries, stopped cleanly.
+//! Related teardown-order crashes: [onnxruntime#4017] (CUDA provider handles freed after the
+//! provider's destructor) and [ort#124] (a CUDA-only crash once the program's work was done).
+//!
+//! [onnxruntime#4017]: https://github.com/microsoft/onnxruntime/pull/4017
+//! [ort#124]: https://github.com/pykeio/ort/discussions/124
 
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc, thread};
 
@@ -68,10 +82,32 @@ struct Request {
     reply: oneshot::Sender<Result<Vec<ArrayD<f32>>, VisionError>>,
 }
 
-/// The handle jobs use. Cloning shares the one thread.
+/// The handle jobs use. Cloning shares the one thread; dropping the last clone stops it and
+/// blocks until it has released its sessions (the module docs say why).
 #[derive(Debug, Clone)]
 pub struct Inference {
+    // Fields drop in declaration order: the sender first, so the channel is closed by the time
+    // the last `Joined` waits for the thread. Held only for its `Drop`.
     requests: mpsc::Sender<Request>,
+    _joined: Arc<Joined>,
+}
+
+/// Joins the inference thread when dropped. Every [`Inference`] clone shares it, so the join runs
+/// once, after the last clone's sender has gone.
+#[derive(Debug)]
+struct Joined(Option<thread::JoinHandle<()>>);
+
+impl Drop for Joined {
+    fn drop(&mut self) {
+        // A blocking wait on whatever thread drops the last handle: the end of `run_until` at
+        // shutdown, or a failed start-up. It lasts as long as ONNX Runtime takes to release the
+        // sessions; a cancelled run has already been told to stop.
+        if let Some(thread) = self.0.take()
+            && thread.join().is_err()
+        {
+            tracing::error!("the inference thread panicked");
+        }
+    }
 }
 
 impl std::fmt::Debug for Request {
@@ -87,12 +123,40 @@ impl Inference {
     /// driver or file fails the worker's start-up before it claims anything. The runtime moves
     /// onto the thread (sessions keep its environment alive).
     pub async fn start(runtime: OrtRuntime, specs: Vec<SessionSpec>) -> Result<Self, VisionError> {
+        Self::spawn(
+            move || {
+                let sessions = load(&runtime, specs)?;
+                // A tuple drops in order: the sessions, then the environment.
+                Ok((sessions, runtime))
+            },
+            |(sessions, _), req| {
+                let result = match sessions.get_mut(&req.slot) {
+                    Some(session) => run(session, &req.inputs, &req.outputs, &req.options),
+                    None => Err(VisionError::Shape {
+                        model: "inference",
+                        detail: format!("{:?} is not loaded", req.slot),
+                    }),
+                };
+                let _ = req.reply.send(result);
+            },
+        )
+        .await
+    }
+
+    /// The thread: `load` builds its state on it, `serve` answers each request, and the state
+    /// drops on the thread when the channel closes, before [`Joined`] lets the last handle go.
+    /// Generic so the tests can check the join without ONNX Runtime.
+    async fn spawn<S, L, F>(load: L, mut serve: F) -> Result<Self, VisionError>
+    where
+        L: FnOnce() -> Result<S, VisionError> + Send + 'static,
+        F: FnMut(&mut S, Request) + Send + 'static,
+    {
         let (requests, mut inbox) = mpsc::channel::<Request>(1);
         let (ready, loaded) = oneshot::channel::<Result<(), VisionError>>();
-        thread::Builder::new()
+        let handle = thread::Builder::new()
             .name("inference".to_owned())
             .spawn(move || {
-                let mut sessions = match load(&runtime, specs) {
+                let mut state = match load() {
                     Ok(s) => s,
                     Err(e) => {
                         let _ = ready.send(Err(e));
@@ -103,19 +167,18 @@ impl Inference {
                     return;
                 }
                 while let Some(req) = inbox.blocking_recv() {
-                    let result = match sessions.get_mut(&req.slot) {
-                        Some(session) => run(session, &req.inputs, &req.outputs, &req.options),
-                        None => Err(VisionError::Shape {
-                            model: "inference",
-                            detail: format!("{:?} is not loaded", req.slot),
-                        }),
-                    };
-                    let _ = req.reply.send(result);
+                    serve(&mut state, req);
                 }
+                drop(state); // here, before the join returns; never during `exit`
             })
             .map_err(|e| VisionError::Resize(format!("spawning the inference thread: {e}")))?;
+        // Built before the wait, so a failed load or a dropped start still joins the thread.
+        let inference = Self {
+            requests,
+            _joined: Arc::new(Joined(Some(handle))),
+        };
         loaded.await.map_err(|_| VisionError::InferenceGone)??;
-        Ok(Self { requests })
+        Ok(inference)
     }
 
     /// Runs one model and returns the named outputs, copied out of ONNX Runtime.
@@ -275,7 +338,39 @@ fn run(
 
 #[cfg(test)]
 mod tests {
-    use super::check_names;
+    use std::{
+        sync::atomic::{AtomicBool, Ordering},
+        time::Duration,
+    };
+
+    use super::*;
+
+    /// Stands in for the sessions: its drop takes a while, as `ReleaseSession` on CUDA does, and
+    /// then records that it ran.
+    struct Sessions(Arc<AtomicBool>);
+
+    impl Drop for Sessions {
+        fn drop(&mut self) {
+            thread::sleep(Duration::from_millis(200));
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+
+    /// The exit-139 order: before, the last handle's drop returned at once and `main` could reach
+    /// `exit` while the detached thread was still releasing its sessions.
+    #[tokio::test]
+    async fn dropping_the_last_handle_waits_for_the_thread_to_release_its_sessions() {
+        let released = Arc::new(AtomicBool::new(false));
+        let state = Sessions(Arc::clone(&released));
+        let inference = Inference::spawn(move || Ok(state), |_, _| {})
+            .await
+            .unwrap();
+        let other = inference.clone();
+        drop(inference);
+        assert!(!released.load(Ordering::SeqCst), "a clone is still alive");
+        drop(other);
+        assert!(released.load(Ordering::SeqCst));
+    }
 
     fn names(n: &[&str]) -> Vec<String> {
         n.iter().map(|&s| s.to_owned()).collect()
