@@ -15,6 +15,10 @@ find locally, such as diseased crops in late October. Three rules keep the score
 - Each target's taxon is matched exactly, since iNaturalist's filter also returns related taxa, and
   a teammate reviews every observation before it becomes a case.
 
+A target with a `host` finds organisms whose observer recorded the plant they were on, in the
+observation fields `Host`, `Host Plant ID` or `Eating` (HOST_FIELDS), so a pest case's plant is
+known rather than guessed from the photo; the reviewer still checks that the plant shows.
+
 `fetch` searches each target in `inat_targets.yaml` and downloads the licensed photos at
 iNaturalist's largest size (2048 px on the long side) to `photos/inat/` (git-ignored), re-encoded
 with no metadata. It writes `photos/inat/candidates.json`, a contact sheet `photos/inat/index.html`
@@ -29,10 +33,11 @@ unless the identification is research grade and the photos clearly show the prob
 
 `add` appends every kept observation to `manifest.jsonl` as a case. Each case gets `label_basis`
 `source_caption`, the observation's URL as `source`, its photos' licence and credit, and an empty
-`reviewed_by` until a second teammate reviews it (evaluation.md §3). The split is by plant, about
-60% dev, unless the review sets `split`. Observations that may show one plant share a `plant` key,
-set in the review (evaluation.md §2, Splits), and their split follows the key, so they land on the
-same side; an entry with `plant` can't also set `split`. Organism and damage boxes are drawn later,
+`reviewed_by` until a second teammate reviews it (evaluation.md §3). New cases go to dev: M18 scored
+the test split once on 2026-10-23, and it is never added to or scored again (`new_split`). A case
+of a plant the manifest already has in test is refused, so a plant never spans the splits.
+Observations that may show one plant share a `plant` key, set in the review (evaluation.md §2,
+Splits); an entry with `plant` can't also set `split`. Organism and damage boxes are drawn later,
 in CVAT or Label Studio. The species head's iNaturalist training photos (training.md §6) must leave
 out every observation listed in the manifest.
 """
@@ -67,7 +72,19 @@ LICENCES = {"cc0": "CC0 1.0", "cc-by": "CC BY 4.0"}
 CHANGES = "re-encoded, metadata removed"  # CC BY asks that changes be indicated
 KINDS = {"whole_plant": 1, "leaf_closeup": 2, "leaf_underside": 1, "soil_surface": 1, "flower_fruit": 1}
 OUTCOMES = ("diagnosed", "healthy", "no_plant_found", "photos_unusable", "rejected_at_upload")
+# Abiotic problems that mimic disease (evaluation.md §2, look-alikes). The knowledge base names none
+# of them, so a look-alike case is `diagnosed` with no problems and its `look_alike`: the scan
+# should end without a `confirmed` disease.
+LOOK_ALIKES = ("nitrogen_deficiency", "phosphorus_deficiency", "potassium_deficiency", "magnesium_deficiency",
+               "nutrient_deficiency", "hail_damage", "sunscald", "frost_damage", "herbicide_injury",
+               "overwatering", "salt_burn")
 LIFE_STAGES = {"larva": (1, 6)}  # iNaturalist's Life Stage annotation: term 1, value 6
+# A target's `quality`: research grade only; also needs_id; or also casual, which a garden plant
+# marked as cultivated always is (iNaturalist's quality grades, read 2026-10-24).
+QUALITY = {"research": "research", "any": "research,needs_id", "all": "research,needs_id,casual"}
+# Observation fields that name the plant an organism was on, each a taxon (✓ ran 2026-10-24: 42
+# observations from 2026 with CC0 or CC BY photos name tomato in one of them, 120 grape, 200 rose).
+HOST_FIELDS = ("Host", "Host Plant ID", "Eating")
 DEV_SHARE = 0.6
 PAGE = 200
 REVIEW_HEADER = """\
@@ -79,7 +96,7 @@ REVIEW_HEADER = """\
 #           soil_surface, flower_fruit (at most 1 each), or skip
 #   plant: optional, the key of observations that may show the same plant (one observer, one crop,
 #          within 100 m), so they share a split; the lowest observation's, e.g. inat-401728510
-#   split: optional, dev or test (default: by plant, about 60% dev); not with plant
+#   split: optional, and only dev: the test split is frozen since M18 (2026-10-23); not with plant
 # Skip any photo that shows a person's face: faces aren't blurred on import yet (evaluation.md §2).
 # Then: python -m ml.training.eval.inat add --labeller <your GitHub login>
 """
@@ -127,28 +144,42 @@ def usable_photos(obs: dict) -> list[dict]:
     return [p for p in obs.get("photos") or [] if p.get("license_code") in LICENCES]
 
 
-def query(target: dict, tid: int, since: str) -> dict:
+def target_key(target: dict) -> str:
+    """A target's name in the review and on the contact sheet: its taxon, and its host if any."""
+    return f"{target['taxon']} on {target['host']}" if target.get("host") else target["taxon"]
+
+
+def query(target: dict, tid: int, since: str, host: tuple[str, int] | None = None) -> dict:
+    """The search for one target; `host`: an observation field and the host plant's taxon id."""
+    quality = target.get("quality", "research")
+    if quality not in QUALITY:
+        raise SystemExit(f"{target_key(target)}: quality must be one of {', '.join(QUALITY)}")
     q = {"taxon_id": tid, "d1": since, "photo_license": ",".join(LICENCES), "photos": "true",
-         "quality_grade": "research" if target.get("quality", "research") == "research" else "research,needs_id",
-         "per_page": PAGE, "order_by": "created_at", "order": "desc"}
+         "quality_grade": QUALITY[quality], "per_page": PAGE, "order_by": "created_at", "order": "desc"}
     if stage := target.get("life_stage"):
         q["term_id"], q["term_value_id"] = LIFE_STAGES[stage]
+    if host:
+        q[f"field:{host[0]}"] = host[1]
     return q
 
 
-def search(target: dict, tid: int, since: str, limit: int, max_pages: int = 5) -> tuple[list[dict], int]:
-    """Up to `limit` matching observations with a usable photo, and the API's total before matching."""
-    found, total = [], 0
-    for page in range(1, max_pages + 1):
-        res = api("observations", page=page, **query(target, tid, since))
-        total = res["total_results"]
-        for obs in res["results"]:
-            if matches(obs, tid, target.get("match", "exact")) and usable_photos(obs):
-                found.append(obs)
-                if len(found) == limit:
-                    return found, total
-        if page * PAGE >= total:
-            break
+def search(target: dict, tid: int, since: str, limit: int, max_pages: int = 5,
+           host_tid: int | None = None) -> tuple[list[dict], int]:
+    """Up to `limit` matching observations with a usable photo, and the API's total before matching.
+    With `host_tid`, each of HOST_FIELDS is searched in turn, and an observation counts once."""
+    found, seen, total = [], set(), 0
+    for host in [(f, host_tid) for f in HOST_FIELDS] if host_tid else [None]:
+        for page in range(1, max_pages + 1):
+            res = api("observations", page=page, **query(target, tid, since, host))
+            for obs in res["results"]:
+                if obs["id"] not in seen and matches(obs, tid, target.get("match", "exact")) and usable_photos(obs):
+                    seen.add(obs["id"])
+                    found.append(obs)
+                    if len(found) == limit:
+                        return found, total + res["total_results"]
+            if page * PAGE >= res["total_results"]:
+                break
+        total += res["total_results"]
     return found, total
 
 
@@ -173,7 +204,7 @@ def candidate(obs: dict, target: dict) -> dict:
                        "file": f"inat/{obs['id']}-{p['id']}.jpg"})
     return {
         "obs": obs["id"], "url": obs["uri"], "taxon": obs["taxon"]["name"], "quality": obs["quality_grade"],
-        "observed_on": obs.get("observed_on"), "target": target["taxon"], "photos": photos,
+        "observed_on": obs.get("observed_on"), "target": target_key(target), "photos": photos,
     }
 
 
@@ -208,10 +239,13 @@ def download(photo: dict, photos: Path) -> bool:
 
 
 def review_entry(cand: dict, target: dict) -> dict:
-    return {"obs": cand["obs"], "keep": False, "taxon": f"{cand['taxon']} ({cand['quality']})",
-            "species_id": target["species_id"], "problems": list(target["problems"]),
-            "outcome": target["outcome"], "confidence": "probable",
-            "images": {p["id"]: "skip" for p in cand["photos"]}}
+    entry = {"obs": cand["obs"], "keep": False, "taxon": f"{cand['taxon']} ({cand['quality']})",
+             "species_id": target["species_id"], "problems": list(target["problems"]),
+             "outcome": target["outcome"], "confidence": "probable",
+             "images": {p["id"]: "skip" for p in cand["photos"]}}
+    if target.get("look_alike"):
+        entry["look_alike"] = target["look_alike"]
+    return entry
 
 
 def merge_review(existing: list[dict], new: list[dict]) -> list[dict]:
@@ -221,30 +255,68 @@ def merge_review(existing: list[dict], new: list[dict]) -> list[dict]:
 
 
 def split_of(plant_key: str) -> str:
+    """The split the first cases took by plant, about 60% dev. New cases take `new_split`'s."""
     h = int(hashlib.sha256(f"eval_split|{plant_key}".encode()).hexdigest()[:16], 16) / 16**16
     return "dev" if h < DEV_SHARE else "test"
+
+
+def check_truth(outcome, problems, look_alike, where: str) -> None:
+    """A case's outcome, problems and look-alike agree (evaluation.md §3); ValueError otherwise."""
+    if outcome not in OUTCOMES:
+        raise ValueError(f"{where}: outcome must be one of {', '.join(OUTCOMES)}")
+    if look_alike is not None:
+        if look_alike not in LOOK_ALIKES:
+            raise ValueError(f"{where}: look_alike must be one of {', '.join(LOOK_ALIKES)}")
+        if outcome != "diagnosed" or problems:
+            raise ValueError(f"{where}: a look-alike is diagnosed with no problems: the knowledge base names none")
+    elif outcome == "diagnosed" and not problems:
+        raise ValueError(f"{where}: a diagnosed case needs its problems, or a look_alike")
+
+
+def truth_of(entry: dict) -> dict:
+    """A scan case's truth from a review entry or a class (evaluation.md §3)."""
+    truth = {"outcome": entry["outcome"], "species_id": entry.get("species_id"),
+             "problems": list(entry.get("problems") or []), "organisms": [], "damage": []}
+    if entry.get("look_alike") is not None:
+        truth["look_alike"] = entry["look_alike"]
+    return truth
+
+
+def plant_splits(manifest: Path) -> dict[str, str]:
+    """Each plant key in the manifest and its split."""
+    if not manifest.exists():
+        return {}
+    return {(c := json.loads(line))["plant_key"]: c["split"]
+            for line in manifest.read_text().splitlines() if line.strip()}
+
+
+def new_split(plant_key: str, splits: dict[str, str], asked: str | None = None) -> str:
+    """A new case's split: dev. M18 scored the test split once on 2026-10-23 (evaluation.md §4),
+    so nothing joins it; a case of a plant already in test is refused, as a plant never spans the
+    splits. ValueError otherwise."""
+    if asked not in (None, "dev"):
+        raise ValueError(f"split must be dev: the test split is frozen since M18 (2026-10-23), not {asked!r}")
+    if splits.get(plant_key) == "test":
+        raise ValueError(f"plant {plant_key} is in the test split, which M18 scored once; leave this case out")
+    return "dev"
 
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def case(entry: dict, cand: dict, photos: Path, labeller: str) -> dict:
-    """A manifest case (evaluation.md §3) from a kept review entry; ValueError when it isn't one."""
+def case(entry: dict, cand: dict, photos: Path, labeller: str, splits: dict[str, str] | None = None) -> dict:
+    """A manifest case (evaluation.md §3) from a kept review entry; ValueError when it isn't one.
+    `splits`: the manifest's plant keys and their splits (`plant_splits`)."""
     where = f"observation {entry['obs']}"
-    if entry.get("outcome") not in OUTCOMES:
-        raise ValueError(f"{where}: outcome must be one of {', '.join(OUTCOMES)}")
+    check_truth(entry.get("outcome"), entry.get("problems"), entry.get("look_alike"), where)
     if entry.get("confidence") not in ("sure", "probable"):
         raise ValueError(f"{where}: confidence must be sure or probable")
-    if entry.get("split") not in (None, "dev", "test"):
-        raise ValueError(f"{where}: split must be dev or test")
     plant = entry.get("plant")
     if plant is not None and not (isinstance(plant, str) and plant.startswith("inat-")):
         raise ValueError(f"{where}: plant must be a key like inat-401728510, quoted if need be")
     if plant is not None and entry.get("split") is not None:
         raise ValueError(f"{where}: set plant or split, not both: a plant's split follows its key")
-    if entry["outcome"] == "diagnosed" and not entry.get("problems"):
-        raise ValueError(f"{where}: a diagnosed case needs its problems")
     kinds = {int(k): v for k, v in (entry.get("images") or {}).items()}
     used = []
     for p in cand["photos"]:
@@ -263,13 +335,16 @@ def case(entry: dict, cand: dict, photos: Path, labeller: str) -> dict:
     order = list(KINDS)
     used.sort(key=lambda pk: order.index(pk[1]))
     plant_key = plant or f"inat-{entry['obs']}"
+    try:
+        split = new_split(plant_key, splits or {}, entry.get("split"))
+    except ValueError as e:
+        raise ValueError(f"{where}: {e}") from None
     return {
         "case_id": f"{entry.get('species_id') or 'unknown'}-inat-{entry['obs']}",
-        "split": entry.get("split") or split_of(plant_key),
+        "split": split,
         "plant_key": plant_key,
         "images": [{"file": p["file"], "sha256": sha256(photos / p["file"]), "kind": k} for p, k in used],
-        "truth": {"outcome": entry["outcome"], "species_id": entry.get("species_id"),
-                  "problems": list(entry.get("problems") or []), "organisms": [], "damage": []},
+        "truth": truth_of(entry),
         "label_basis": "source_caption",
         "label_confidence": entry["confidence"],
         "source": cand["url"],
@@ -281,7 +356,7 @@ def case(entry: dict, cand: dict, photos: Path, labeller: str) -> dict:
 
 
 def contact_sheet(cands: list[dict], targets: list[dict]) -> str:
-    notes = {t["taxon"]: t for t in targets}
+    notes = {target_key(t): t for t in targets}
     parts = ["<!doctype html><meta charset=utf-8><title>iNaturalist candidates</title><style>"
              "body{font:14px system-ui;margin:16px}img{height:220px;margin:4px;vertical-align:top}"
              "figure{display:inline-block;margin:0 8px 8px 0}figcaption{font:12px monospace}"
@@ -289,9 +364,10 @@ def contact_sheet(cands: list[dict], targets: list[dict]) -> str:
              "<h1>iNaturalist candidates</h1><p>Fill in <code>review.yaml</code> beside this page, "
              "then run <code>python -m ml.training.eval.inat add --labeller &lt;login&gt;</code>.</p>"]
     for target in targets:
-        group = [c for c in cands if c["target"] == target["taxon"]]
-        parts.append(f"<h2>{html.escape(target['taxon'])} ({len(group)})</h2>")
-        if note := notes[target["taxon"]].get("note"):
+        key = target_key(target)
+        group = [c for c in cands if c["target"] == key]
+        parts.append(f"<h2>{html.escape(key)} ({len(group)})</h2>")
+        if note := notes[key].get("note"):
             parts.append(f"<p><b>Note:</b> {html.escape(note)}</p>")
         for c in group:
             figs = "".join(f"<figure><a href='{html.escape(Path(p['file']).name)}'><img src='{html.escape(Path(p['file']).name)}' loading=lazy></a>"
@@ -305,8 +381,8 @@ def contact_sheet(cands: list[dict], targets: list[dict]) -> str:
 def load_targets(only: list[str] | None) -> list[dict]:
     targets = yaml.safe_load(TARGETS.read_text())["targets"]
     if only:
-        targets = [t for t in targets if t["taxon"] in only]
-        if missing := set(only) - {t["taxon"] for t in targets}:
+        targets = [t for t in targets if t["taxon"] in only or target_key(t) in only]
+        if missing := set(only) - {n for t in targets for n in (t["taxon"], target_key(t))}:
             raise SystemExit(f"not in {TARGETS.name}: {', '.join(sorted(missing))}")
     return targets
 
@@ -332,8 +408,9 @@ def fetch(args) -> int:
     new_entries = []
     for target in targets:
         tid = taxon_id(target["taxon"], target.get("rank"))
-        found, total = search(target, tid, args.since, args.per_target)
-        print(f"{target['taxon']}: {len(found)} matching observations with CC0 or CC BY photos "
+        host_tid = taxon_id(target["host"], target.get("host_rank")) if target.get("host") else None
+        found, total = search(target, tid, args.since, target.get("per_target", args.per_target), host_tid=host_tid)
+        print(f"{target_key(target)}: {len(found)} matching observations with CC0 or CC BY photos "
               f"(of {total} from iNaturalist's filter)", flush=True)
         if args.count:
             continue
@@ -358,7 +435,7 @@ def fetch(args) -> int:
     cands_path.write_text(json.dumps(cands, indent=1) + "\n")
     all_targets = load_targets(None)
     (inat / "index.html").write_text(contact_sheet(cands, [t for t in all_targets
-                                                          if any(c["target"] == t["taxon"] for c in cands)]))
+                                                          if any(c["target"] == target_key(t) for c in cands)]))
     existing = yaml.safe_load(review_path.read_text()) if review_path.exists() else []
     review = merge_review(existing or [], new_entries)
     review_path.write_text(REVIEW_HEADER + yaml.safe_dump(review, sort_keys=False, allow_unicode=True))
@@ -374,12 +451,13 @@ def add(args) -> int:
     lines = args.manifest.read_text().splitlines() if args.manifest.exists() else []
     # By observation, not case_id: a species corrected after an `add` changes the case_id.
     have = {json.loads(line)["source"] for line in lines if line.strip()}
+    splits = plant_splits(args.manifest)
     added, problems = [], []
     for entry in review:
         if not entry.get("keep"):
             continue
         try:
-            c = case(entry, cands[entry["obs"]], args.photos, args.labeller)
+            c = case(entry, cands[entry["obs"]], args.photos, args.labeller, splits)
         except (ValueError, KeyError) as e:
             problems.append(str(e))
             continue

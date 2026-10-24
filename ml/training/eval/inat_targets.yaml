@@ -7,7 +7,11 @@
 #   species_id   the plant the case is about, as a knowledge-base slug; null when the host varies
 #   problems     knowledge-base problem slugs (training/data/mappings); [] for a healthy plant
 #   outcome      the scan's expected outcome (evaluation.md §3)
-#   quality      research: identifications the community agrees on; any: also needs_id
+#   quality      research: identifications the community agrees on; any: also needs_id; all: also
+#                casual, which every garden plant marked as cultivated is
+#   host         optional: the plant the organism was on, in the observation's Host, Host Plant ID
+#                or Eating field (inat.py's HOST_FIELDS); host_rank as rank, for a genus
+#   per_target   optional: at most this many observations, in place of --per-target
 #   life_stage   optional: larva (iNaturalist's Life Stage annotation)
 #   match        exact (the default) or descendants, for a genus or family
 #   rank         optional: the taxon's rank when its name has several (default: the species)
@@ -93,3 +97,156 @@ targets:
     quality: research
     life_stage: larva
     note: the classic killed-by-mistake case; set the host plant, and the outcome if the plant is sick
+
+# --- Added 2026-10-24 (M10): the groups the team's photos were to give (#52) --------------------
+# Pests on a named crop: an organism whose observer recorded the plant it was on. Set the problems
+# when the knowledge base names the pest (tomato_whiteflies, tomato_spider_mites, tomato_hornworms),
+# with outcome diagnosed; otherwise keep problems [] and set the outcome from the plant's look.
+  - taxon: Animalia
+    match: descendants
+    host: Solanum lycopersicum
+    group: pests
+    species_id: tomato
+    problems: []
+    outcome: healthy
+    quality: any
+    per_target: 20
+    note: keep only photos where the tomato plant shows; whiteflies (Bemisia, Trialeurodes) are tomato_whiteflies
+  - taxon: Animalia
+    match: descendants
+    host: Capsicum annuum
+    group: pests
+    species_id: pepper
+    problems: []
+    outcome: healthy
+    quality: any
+    per_target: 10
+    note: keep only photos where the pepper plant shows
+  - taxon: Animalia
+    match: descendants
+    host: Vitis
+    host_rank: genus
+    group: pests
+    species_id: grape
+    problems: []
+    outcome: healthy
+    quality: any
+    per_target: 15
+    note: keep leaves and fruit with the pest or its damage; galls and mines are damage cases too
+  - taxon: Animalia
+    match: descendants
+    host: Malus domestica
+    group: pests
+    species_id: apple
+    problems: []
+    outcome: healthy
+    quality: any
+    per_target: 10
+    note: keep only photos where the apple leaves or fruit show
+  - taxon: Animalia
+    match: descendants
+    host: Rosa
+    host_rank: genus
+    group: pests
+    species_id: rose
+    problems: []
+    outcome: healthy
+    quality: any
+    per_target: 10
+    note: rose is label_only, so no diagnosis is expected; galls and sawfly damage are damage cases
+# Beneficials and the hornworm: the host isn't recorded, so check it on the photos.
+  - taxon: Cotesia congregata
+    group: pests
+    species_id: tomato
+    problems: [tomato_hornworms]
+    outcome: diagnosed
+    quality: any
+    per_target: 8
+    note: white wasp cocoons on a hornworm, the parasitised one to leave alone; keep tomato or pepper hosts
+  - taxon: Manduca quinquemaculatus
+    group: pests
+    species_id: tomato
+    problems: [tomato_hornworms]
+    outcome: diagnosed
+    quality: any
+    life_stage: larva
+    per_target: 8
+    note: keep tomato hosts only, or change species_id
+  - taxon: Manduca sexta
+    group: pests
+    species_id: tomato
+    problems: [tomato_hornworms]
+    outcome: diagnosed
+    quality: any
+    life_stage: larva
+    per_target: 8
+    note: keep tomato hosts only (it eats pepper, potato and tobacco too), or change species_id
+  - taxon: Chrysopidae
+    match: descendants
+    group: pests
+    species_id: null
+    problems: []
+    outcome: healthy
+    quality: any
+    life_stage: larva
+    per_target: 8
+    note: lacewing larvae, a predator; set the host plant, and keep only a plant that can be named
+  - taxon: Syrphidae
+    match: descendants
+    group: pests
+    species_id: null
+    problems: []
+    outcome: healthy
+    quality: any
+    life_stage: larva
+    per_target: 8
+    note: hoverfly larvae, a predator of aphids; set the host plant, and keep only a plant that can be named
+# label_only species and the pepper plant: garden plants, so casual observations count (quality all).
+  - taxon: Capsicum annuum
+    group: healthy
+    species_id: pepper
+    problems: []
+    outcome: healthy
+    quality: all
+    per_target: 12
+    note: a supported crop; set problems and outcome diagnosed when sick (pepper_bacterial_leaf_spot)
+  - taxon: Ocimum basilicum
+    group: label_only
+    species_id: basil
+    problems: []
+    outcome: healthy
+    quality: all
+    per_target: 8
+  - taxon: Lactuca sativa
+    group: label_only
+    species_id: lettuce
+    problems: []
+    outcome: healthy
+    quality: all
+    per_target: 8
+  - taxon: Phaseolus vulgaris
+    group: label_only
+    species_id: bean
+    problems: []
+    outcome: healthy
+    quality: all
+    per_target: 8
+  - taxon: Rosa
+    rank: genus
+    match: descendants
+    group: label_only
+    species_id: rose
+    problems: []
+    outcome: healthy
+    quality: all
+    per_target: 8
+    note: garden roses only; wild roses in a hedge aren't a garden scan
+  - taxon: Hosta
+    rank: genus
+    match: descendants
+    group: label_only
+    species_id: hosta
+    problems: []
+    outcome: healthy
+    quality: all
+    per_target: 8

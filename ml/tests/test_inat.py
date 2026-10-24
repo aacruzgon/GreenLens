@@ -96,8 +96,24 @@ def test_a_kept_observation_becomes_a_case(photos):
                           "organisms": [], "damage": []}
     assert (c["label_basis"], c["label_confidence"], c["licence"]) == ("source_caption", "probable", "CC BY 4.0 and CC0 1.0")
     assert c["source"] == "https://www.inaturalist.org/observations/42" and c["reviewed_by"] == ""
-    assert c["split"] == inat.split_of("inat-42") and c["split"] in ("dev", "test")
-    assert inat.case({**entry, "split": "test"}, cand, photos, "x")["split"] == "test"
+    assert c["split"] == "dev"
+    assert inat.case({**entry, "split": "dev"}, cand, photos, "x")["split"] == "dev"
+
+
+def test_new_cases_never_join_the_test_split_m18_scored(photos):
+    entry, cand = kept({102: "whole_plant"})
+    with pytest.raises(ValueError, match="frozen"):
+        inat.case({**entry, "split": "test"}, cand, photos, "x")
+    with pytest.raises(ValueError, match="plant inat-7 is in the test split"):
+        inat.case({**entry, "plant": "inat-7"}, cand, photos, "x", {"inat-7": "test"})
+    assert inat.case({**entry, "plant": "inat-7"}, cand, photos, "x", {"inat-7": "dev"})["split"] == "dev"
+
+
+def test_plant_splits_reads_the_manifest(tmp_path):
+    manifest = tmp_path / "manifest.jsonl"
+    assert inat.plant_splits(manifest) == {}
+    manifest.write_text('{"plant_key": "a", "split": "test"}\n\n{"plant_key": "b", "split": "dev"}\n')
+    assert inat.plant_splits(manifest) == {"a": "test", "b": "dev"}
 
 
 def test_no_plant_is_in_both_splits():
@@ -111,7 +127,7 @@ def test_no_plant_is_in_both_splits():
 def test_observations_of_one_plant_share_its_key_and_split(photos):
     entry, cand = kept({102: "whole_plant"}, plant="inat-7")
     c = inat.case(entry, cand, photos, "x")
-    assert (c["case_id"], c["plant_key"], c["split"]) == ("apple-inat-42", "inat-7", inat.split_of("inat-7"))
+    assert (c["case_id"], c["plant_key"], c["split"]) == ("apple-inat-42", "inat-7", "dev")
 
 
 @pytest.mark.parametrize("images, over, needle", [

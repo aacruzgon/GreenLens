@@ -173,8 +173,11 @@ def source_url(s: dict, path: str) -> str:
 
 def review_block(s: dict, folder: str, ids: list[str]) -> dict:
     c = s["classes"][folder]
-    return {"set": s["name"], "class": folder, "species_id": c["species_id"], "problems": list(c["problems"]),
-            "outcome": c["outcome"], "photos": {i: "skip" for i in ids}}
+    block = {"set": s["name"], "class": folder, "species_id": c["species_id"], "problems": list(c["problems"]),
+             "outcome": c["outcome"], "photos": {i: "skip" for i in ids}}
+    if c.get("look_alike"):
+        block["look_alike"] = c["look_alike"]
+    return block
 
 
 def merge_review(existing: list[dict], new: list[dict]) -> tuple[list[dict], int]:
@@ -193,18 +196,14 @@ def case(block: dict, pid: str, verdict: str, cand: dict, s: dict, photos: Path,
     """A manifest case (evaluation.md §3) for one reviewed photo; ValueError when it isn't one."""
     if verdict not in ("sure", "probable"):
         raise ValueError(f"{pid}: verdict must be one of {', '.join(VERDICTS)}")
-    if block.get("outcome") not in inat.OUTCOMES:
-        raise ValueError(f"{pid}: outcome must be one of {', '.join(inat.OUTCOMES)}")
-    if block["outcome"] == "diagnosed" and not block.get("problems"):
-        raise ValueError(f"{pid}: a diagnosed case needs its problems")
+    inat.check_truth(block.get("outcome"), block.get("problems"), block.get("look_alike"), pid)
     plant_key = pid.replace("/", "-")
     return {
         "case_id": f"{block.get('species_id') or 'unknown'}-{plant_key}",
-        "split": inat.split_of(plant_key),
+        "split": inat.new_split(plant_key, {}),  # group_frames gives its run's split
         "plant_key": plant_key,
         "images": [{"file": cand["file"], "sha256": inat.sha256(photos / cand["file"]), "kind": "whole_plant"}],
-        "truth": {"outcome": block["outcome"], "species_id": block.get("species_id"),
-                  "problems": list(block.get("problems") or []), "organisms": [], "damage": []},
+        "truth": inat.truth_of(block),
         "label_basis": "source_caption",
         "label_confidence": verdict,
         "source": cand["source"],
@@ -227,9 +226,14 @@ def own_key(file: str) -> str:
     return str(Path(file).relative_to("fieldsets").with_suffix("")).replace("/", "-")
 
 
-def group_frames(cases: list[dict]) -> list[dict]:
+def group_frames(cases: list[dict], frozen: bool = True) -> list[dict]:
     """The cases, with each run of field-set frames NEIGHBOUR or fewer apart in one folder given its
-    lowest frame's plant key and that key's split. Runs chain: frames 1, 4 and 7 are one run.
+    lowest frame's plant key and one split. Runs chain: frames 1, 4 and 7 are one run.
+
+    The split: since M18 scored the test split once (2026-10-23), `frozen`, a plant is in test only
+    when one of its cases already is, and in dev otherwise, so a new plant goes to dev. The manifest
+    as M18 scored it gives the same splits either way, as each plant there took its key's split.
+    Without `frozen`, a plant takes its key's split (`inat.split_of`), the rule before M18.
 
     A key set by hand from the photos is kept. It is a field-set case's key that is no frame's own key
     in the case's run. The case's run, the case whose own key it is and every case that carries it
@@ -288,8 +292,12 @@ def group_frames(cases: list[dict]) -> list[dict]:
             key = own[run[members[0]][0]]
         else:
             continue
+        if frozen:
+            split = "test" if any(cases[i]["split"] == "test" for i in members) else "dev"
+        else:
+            split = inat.split_of(key)
         for i in members:
-            out[i] = {**cases[i], "plant_key": key, "split": inat.split_of(key)}
+            out[i] = {**cases[i], "plant_key": key, "split": split}
     return out
 
 
@@ -440,13 +448,22 @@ def add(args) -> int:
             if c["source"] not in have:
                 added.append(c)
                 have.add(c["source"])
-    try:
-        new, rekeyed, moved = regrouped(lines, [json.dumps(c, ensure_ascii=False) for c in added], args.resplit)
-    except ValueError as e:
-        print(f"nothing written: {e}", file=sys.stderr)
-        return 1
-    if new is None:
-        return 1
+    while True:
+        try:
+            new, rekeyed, moved = regrouped(lines, [json.dumps(c, ensure_ascii=False) for c in added], args.resplit)
+        except ValueError as e:
+            print(f"nothing written: {e}", file=sys.stderr)
+            return 1
+        if new is None:
+            return 1
+        # A new photo of a plant already in the test split would join it, which M18 scored once:
+        # leave it out and group the rest again, so no case already there takes its key.
+        frozen = {json.loads(line)["source"] for line in new[len(lines):] if json.loads(line)["split"] == "test"}
+        if not frozen:
+            break
+        problems += [f"{c['case_id']}: a neighbouring frame of a test case, which M18 scored once; skip this photo"
+                     for c in added if c["source"] in frozen]
+        added = [c for c in added if c["source"] not in frozen]
     if new != lines:
         args.manifest.write_text("\n".join(new) + "\n")
     added = [json.loads(line) for line in new[len(lines):]]
