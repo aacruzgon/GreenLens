@@ -3,7 +3,7 @@
 // the message's words, so the demo questions of design 5 each get the tool chips, text, answer block, citation,
 // card or memory they show. Answer blocks and a farm record's text are proposed contracts (domain/proposed.ts).
 
-import type { AnswerBlock, BlockPlant, ChatMessage, FarmCitationWithText, FrostPlant } from "@/domain/proposed";
+import type { AnswerBlock, BlockPlant, ChatMessage, FrostPlant } from "@/domain/proposed";
 
 import { SPECIES_FROST } from "./fixtures";
 import { scenario, type ChatFault } from "./scenario";
@@ -39,7 +39,7 @@ export const ERA_SLACK = "conn_era_slack";
 export const ERA_DRIVE = "conn_era_drive";
 
 /** Farm records the demo garden's `era` connectors hold, with the text the record sheet shows. */
-function farmRecords(k: DateKit): Record<"spray" | "field", FarmCitationWithText> {
+function farmRecords(k: DateKit): Record<"spray" | "field", S["FarmCitation"]> {
   return {
     spray: {
       record_id: `${ERA_DRIVE}.1.spray-log-2026`,
@@ -414,7 +414,7 @@ function lookalikeTurn(): TurnStep[] {
   ];
 }
 
-function farmTurn(ctx: TurnCtx): { steps: TurnStep[]; farm: FarmCitationWithText[] } {
+function farmTurn(ctx: TurnCtx): { steps: TurnStep[]; farm: S["FarmCitation"][] } {
   const records = farmRecords(ctx.store.dates);
   return {
     steps: [
@@ -449,7 +449,7 @@ function defaultTurn(withPhoto: boolean): TurnStep[] {
 }
 
 /** The turn for a message, and the farm records it checked (those arrive on the stored message only). */
-function turnFor(ctx: TurnCtx): { route: S["ChatRoute"]; steps: TurnStep[]; farm: FarmCitationWithText[] } {
+function turnFor(ctx: TurnCtx): { route: S["ChatRoute"]; steps: TurnStep[]; farm: S["FarmCitation"][] } {
   const t = ctx.text.toLowerCase();
   const has = (...words: string[]) => words.some((w) => t.includes(w));
   if (has("task to cover", "add a task to cover")) return { route: "task_change", steps: coverTaskTurn(ctx), farm: [] };
@@ -477,7 +477,7 @@ function frameText(f: Frame): string {
 }
 
 /** The assistant message the events build, stored when the turn ends (complete or interrupted). */
-function assemble(id: string, frames: Frame[], farm: FarmCitationWithText[], interrupted: boolean): ChatMessage {
+function assemble(id: string, frames: Frame[], farm: S["FarmCitation"][], interrupted: boolean): ChatMessage {
   const msg: ChatMessage = { id, role: "assistant", text: "", attachments: [], citations: [], pending_actions: [], interrupted, created_at: nowTs() };
   for (const f of frames) {
     if (f.event === "text_delta") msg.text += f.data.text as string;

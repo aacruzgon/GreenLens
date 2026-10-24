@@ -7,6 +7,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { newKey, scans, setTransport } from "@/api";
 import { IDS, mockStore, mockTransport, resetMock, scenario } from "@/api/mock";
 import type { Answer } from "@/domain/types";
+import { links } from "@/platform";
 import { ThemeProvider } from "@/ui";
 
 import { ScanResultScreen } from "../screens/ScanResultScreen";
@@ -110,6 +111,34 @@ describe("the diagnosis and plan", () => {
     expect(screen.getByText("Up next · step 1 of 5")).toBeTruthy();
     expect(within(screen.getByTestId("mini-player")).getByText("Remove the infected leaves")).toBeTruthy();
     expect(planTasks(scanId)).toHaveLength(5);
+  });
+
+  it("opens an era farm record's text in a sheet, labelled as demo data, and never its link (EON decision 10)", async () => {
+    const scanId = await planned("yes");
+    await renderResult(scanId);
+    const step = await screen.findByTestId("plan-step-remove_infected_leaves", {}, RUN);
+    await waitFor(() => expect(within(step).getByText(/Spray log 2026.*Demo/)).toBeTruthy(), RUN);
+    const open = jest.spyOn(links, "openExternal");
+    await fireEvent.press(within(step).getByText(/Spray log 2026/));
+    const sheet = await screen.findByTestId("farm-record-sheet");
+    expect(within(sheet).getByText("Demo data from Era by Eon (synthetic)")).toBeTruthy();
+    expect(within(sheet).getByText(/Aug 2: east bed again/)).toBeTruthy();
+    expect(within(sheet).queryByText(/^Open in/)).toBeNull();
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("opens a vendor's farm record in Slack or Drive, with no sheet", async () => {
+    mockStore.chat.connectors = mockStore.chat.connectors.map((c) => ({ ...c, endpoint: "vendor" as const }));
+    const scanId = await planned("yes");
+    await renderResult(scanId);
+    const step = await screen.findByTestId("plan-step-remove_infected_leaves", {}, RUN);
+    const open = jest.spyOn(links, "openExternal").mockResolvedValue(undefined as never);
+    await waitFor(() => expect(within(step).getByText(/Spray log 2026/)).toBeTruthy(), RUN);
+    // Wait for the connectors, so the record no longer reads as demo.
+    await waitFor(() => expect(within(step).queryByText(/Demo/)).toBeNull(), RUN);
+    await fireEvent.press(within(step).getByText(/Spray log 2026/));
+    expect(open).toHaveBeenCalledWith("http://era-drive:8080/file/spray-log-2026");
+    expect(screen.queryByTestId("farm-record-sheet")).toBeNull();
   });
 
   it("completes a step's task when its box is checked, and moves the mini player on", async () => {

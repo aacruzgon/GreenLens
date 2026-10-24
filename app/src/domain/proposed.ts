@@ -4,9 +4,8 @@
 // contracts.md 8 and openapi.json), `npm run gen:api` brings the real one, this file goes, and types.ts names it.
 // Only mock mode sends them today; the live API never does, and every reader treats them as optional. The answer
 // blocks follow the backend's version in PR #191 (S5 work 8: `AnswerBlock`, `FrostPlant`, `Lookalike`,
-// `ProblemRef`), `FarmCitation.text` follows PR #189, and `Message` with `MessageReplay` PR #186.
+// `ProblemRef`), and `Message` with `MessageReplay` PR #186.
 import type {
-  FarmCitation,
   ForecastDay,
   GardenMap,
   GrowthQuantity,
@@ -97,18 +96,10 @@ export interface AnswerBlockEvent {
   block: AnswerBlock;
 }
 
-/** `Message` with the proposed `blocks` (absent when empty, like `farm_citations`) and farm records' text. */
-export type ChatMessage = Omit<Message, "farm_citations"> & {
-  farm_citations?: FarmCitationWithText[];
+/** `Message` with the proposed `blocks` (absent when empty, like `farm_citations`). */
+export type ChatMessage = Message & {
   blocks?: AnswerBlock[];
 };
-
-/**
- * A farm citation with the record's text. E10.3 opens an `era` record's text in a sheet, but `FarmCitation`
- * carries no text and no route returns a farm record. Proposed: `text` on the citation for `era` records only
- * (they are synthetic, so nothing private leaves the server), or `GET /farm-records/{id}`.
- */
-export type FarmCitationWithText = FarmCitation & { text?: string };
 
 /**
  * A timeline entry with the plant's status after that scan (roadmap F7: the garden's date scrubber and Insights'

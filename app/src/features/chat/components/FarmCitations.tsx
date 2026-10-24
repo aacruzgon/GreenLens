@@ -1,61 +1,27 @@
 // The farm records an answer checked (EON E10.3; contracts 8, `farm_citations`): a vendor's record opens in Slack
 // or Drive; an `era` record opens its text in a sheet, labelled as Era's synthetic data (EON decision 10).
 import { useState } from "react";
-import { Modal, Pressable, ScrollView, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Pressable, View } from "react-native";
 
 import { useConnectors } from "@/api";
-import type { FarmCitationWithText } from "@/domain/proposed";
-import { formatDateTime } from "@/domain/format";
+import type { FarmCitation } from "@/domain/types";
 import { links } from "@/platform";
-import { Banner, Button, LineIcon, Text, gutter, minTouch, space, useTheme } from "@/ui";
+import { LineIcon, Text, minTouch, space, useTheme } from "@/ui";
 
 import { isVendorRecord, openFarmCitation, SYSTEM_WORD } from "../model/farm";
+import { FarmRecordSheet } from "./FarmRecordSheet";
 
 export interface FarmCitationsProps {
-  citations: readonly FarmCitationWithText[];
+  citations: readonly FarmCitation[];
   gardenId: string;
   timeZone: string;
-}
-
-/** `vendor`: the record's connector is known and real, so its link opens; anything else reads as demo data. */
-function RecordSheet({ citation, vendor, timeZone, onClose }: { citation: FarmCitationWithText; vendor: boolean; timeZone: string; onClose: () => void }) {
-  const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
-  const meta = [SYSTEM_WORD[citation.system], citation.author, formatDateTime(citation.at, timeZone)].filter(Boolean).join(" · ");
-  return (
-    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: colors.background }} testID="farm-record-sheet">
-        <ScrollView contentContainerStyle={{ padding: gutter, paddingTop: space[6], gap: space[4], paddingBottom: insets.bottom + space[6] }}>
-          <Text variant="title3" emphasis accessibilityRole="header">
-            {citation.title}
-          </Text>
-          <Text variant="footnote" color="textMuted">
-            {meta}
-          </Text>
-          {!vendor ? <Banner tone="info" title="Demo data from Era by Eon (synthetic)" message="This record comes from Era's simulator, not a real farm." /> : null}
-          {citation.text ? (
-            <Text variant="body" selectable>
-              {citation.text}
-            </Text>
-          ) : (
-            <Text variant="body" color="textMuted">
-              The record&apos;s text isn&apos;t available in the app yet.
-            </Text>
-          )}
-          {vendor ? <Button label={`Open in ${SYSTEM_WORD[citation.system]}`} variant="secondary" size="large" onPress={() => void links.openExternal(citation.link)} /> : null}
-          <Button label="Done" size="large" onPress={onClose} />
-        </ScrollView>
-      </View>
-    </Modal>
-  );
 }
 
 export function FarmCitations({ citations, gardenId, timeZone }: FarmCitationsProps) {
   const { colors } = useTheme();
   const connectors = useConnectors(gardenId);
   const list = connectors.data?.connectors;
-  const [open, setOpen] = useState<FarmCitationWithText>();
+  const [open, setOpen] = useState<FarmCitation>();
   if (citations.length === 0) return null;
   return (
     <View testID="farm-citations">
@@ -93,7 +59,7 @@ export function FarmCitations({ citations, gardenId, timeZone }: FarmCitationsPr
           </Pressable>
         );
       })}
-      {open ? <RecordSheet citation={open} vendor={isVendorRecord(open, list)} timeZone={timeZone} onClose={() => setOpen(undefined)} /> : null}
+      {open ? <FarmRecordSheet citation={open} vendor={isVendorRecord(open, list)} timeZone={timeZone} onClose={() => setOpen(undefined)} /> : null}
     </View>
   );
 }
