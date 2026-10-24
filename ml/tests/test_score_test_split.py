@@ -279,3 +279,27 @@ def test_the_report_rebuilds_after_the_manifest_gains_other_cases_but_not_after_
     new.write_text("\n".join([dev, *lines]) + "\n")
     with pytest.raises(SystemExit, match="test cases changed"):
         ts.rebuilt(moved, doc["measured"], None)
+
+
+def test_a_dev_case_moved_into_test_is_refused(tmp_path):
+    path = ts.REPORTS / "test-split-2026-10-23"
+    doc = json.loads(path.with_suffix(".json").read_text())
+    lines = (ts.ROOT / doc["inputs"]["manifest"]["file"]).read_text().splitlines()
+    new = tmp_path / "manifest.jsonl"
+    moved = doc | {"inputs": doc["inputs"] | {"manifest": doc["inputs"]["manifest"] | {"file": str(new)}}}
+    dev = next(i for i, l in enumerate(lines) if json.loads(l)["split"] == "dev")
+    into_test = json.loads(lines[dev]) | {"split": "test"}
+    new.write_text("\n".join([*lines[:dev], json.dumps(into_test), *lines[dev + 1:]]) + "\n")
+    with pytest.raises(SystemExit, match="test cases changed"):
+        ts.rebuilt(moved, doc["measured"], None)
+
+
+def test_a_rebuild_never_overwrites_a_recorded_split_hash():
+    import hashlib
+
+    path = ts.REPORTS / "test-split-2026-10-23"
+    doc = json.loads(path.with_suffix(".json").read_text())
+    now = hashlib.sha256((ts.ROOT / doc["inputs"]["manifest"]["file"]).read_bytes()).hexdigest()[:16]
+    other = doc | {"inputs": doc["inputs"] | {"manifest": doc["inputs"]["manifest"] | {"sha256": now, "split_sha256": "0" * 16}}}
+    with pytest.raises(SystemExit, match="cases_sha changed"):
+        ts.rebuilt(other, doc["measured"], None)
