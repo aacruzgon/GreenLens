@@ -512,3 +512,14 @@ def test_recording_problems_catches_a_stale_key_and_an_invalid_answer():
     answer.pop(next(iter(answer)))  # drop a required field
     first["response"]["choices"][0]["message"]["content"] = json.dumps(answer)
     assert recording_problems(doc) == ["0: key", "0: answer"]
+
+
+def test_a_recorded_damage_finding_without_a_trace_is_conformed_to_an_empty_trace():
+    # The Oct 23 recordings predate `findings@6`: conformed to the new schema, their damage
+    # findings get `trace: ""`, which the worker drops (vision dev-roadmap P11).
+    old = recorded_findings()
+    del old["damage"][0]["trace"]
+    schema = vc.findings_schema(3, RECORDED_SPECIES, RECORDED_ORGANISMS)
+    out = fv.conform(old, schema, ["img1", "img2", "img3"])
+    assert out["damage"][0]["trace"] == ""
+    assert out["damage"][0]["pattern"] == "shot_holes"

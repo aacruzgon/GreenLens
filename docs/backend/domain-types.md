@@ -3157,8 +3157,8 @@ pub struct DamageRaw {
     /// The animal seen, or the trace it left, that shows an animal made the damage (a larva in
     /// the mine, frass, webbing, bite marks), at most 60 characters; empty when none is visible.
     /// Written first, so the pattern follows from it. A finding without one is dropped in
-    /// decoding (task P11): a disease lesion has no trace. Missing reads as empty.
-    #[serde(default)]
+    /// decoding (task P11): a disease lesion has no trace. Required: a reply without it is
+    /// invalid output, retried once like any other ([contracts 6], after decoding).
     pub trace: String,
     /// The pattern.
     pub pattern: DamagePattern,

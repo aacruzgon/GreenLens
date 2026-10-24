@@ -277,53 +277,129 @@ fn organism_findings(
     Ok(organism_findings)
 }
 
-/// Words that say a trace is absent: a trace with one of them is no trace.
-const NEGATIONS: &str = "no none not nothing without unknown unclear unsure n/a na";
+/// Words that say what follows is absent: a clause with one names no trace ("no insect seen").
+const NEGATIONS: [&str; 7] = ["no", "not", "none", "nothing", "without", "absent", "never"];
 
-/// Words that describe a disease sign, its colour, shape or place, or join other words, by group.
-/// A trace made only of these names no animal and nothing an animal left (task P11): "brown spots
-/// with a yellow halo", "concentric rings on the lower leaves".
-const NOT_A_TRACE: [&str; 5] = [
-    // Disease signs, and words that only say something is there.
-    "spot spots spotting speck specks lesion lesions blight ring rings concentric target halo \
-     halos streak streaks stripe stripes blotch blotches patch patches discolouration \
-     discoloration discoloured discolored yellowing browning wilting wilt chlorosis chlorotic \
-     necrosis necrotic rot rotting rotten mould mold mildew powdery downy rust fungus fungal \
-     fungi bacterial viral virus disease diseased infection infected canker cankers scab \
-     sunscald scorch scorched dieback dead dying dried dry tissue mark marks dot dots pustule \
-     pustules spores sign signs symptom symptoms damage damaged visible seen trace traces",
-    // Colours.
-    "brown dark black yellow pale white grey gray tan red purple orange light green brownish \
-     yellowish blackish",
-    // Shapes, sizes and amounts.
-    "small large tiny big round circular irregular elongated long angular many few several some \
-     area areas surface sunken raised",
-    // Plant parts.
-    "leaf leaves leaflet leaflets stem stems fruit fruits plant plants margin margins edge edges \
-     vein veins tip tips lower upper older",
-    // Joining words.
-    "a an the of on in with and or along across between inside around its their at to by from \
-     has have is are",
+/// Roots of the words that name an animal, or something only an animal leaves (task P11): a
+/// trace names one of them in a clause that isn't negated. A word matches a root it starts or
+/// ends with (a plural `s` aside), so "hornworm" matches `worm`, "whiteflies" `whitefl` and
+/// "chewed" `chew`, while "limited" holds `mite` in its middle and doesn't. An allow-list,
+/// because a disease described in any words ("brown spots on the tomato leaf", "long tan lesions
+/// on the corn leaf") must fail, and the words a lesion can be described in have no end.
+const TRACE_ROOTS: [&str; 52] = [
+    // Animals and their stages.
+    "insect",
+    "larva",
+    "caterpillar",
+    "worm",
+    "grub",
+    "maggot",
+    "beetle",
+    "weevil",
+    "aphid",
+    "mite",
+    "thrip",
+    "whitefl",
+    "butterfl",
+    "sawfl",
+    "bug",
+    "hopper",
+    "psyllid",
+    "earwig",
+    "cricket",
+    "borer",
+    "leafmin",
+    "wasp",
+    "nymph",
+    "pupa",
+    "cocoon",
+    "snail",
+    "bird",
+    "deer",
+    "rabbit",
+    "rodent",
+    "mouse",
+    "mice",
+    "vole",
+    "squirrel",
+    "chipmunk",
+    "groundhog",
+    "raccoon",
+    // What an animal leaves.
+    "frass",
+    "excrement",
+    "honeydew",
+    "web",
+    "silk",
+    "tunnel",
+    "burrow",
+    "slime",
+    "bite",
+    "bitten",
+    "chew",
+    "gnaw",
+    "nibbl",
+    "footprint",
+    "molehill",
 ];
 
-/// Whether `word` is one of the space-separated words of `list`.
-fn listed(list: &str, word: &str) -> bool {
-    list.split_whitespace().any(|w| w == word)
+/// Animal and trace words matched whole, since as roots they would match other words: "ant" in
+/// "plant", "egg" in "eggplant", "fly" in "flyspeck", "miner" in "mineral", "moth" in "mother",
+/// "droppings" in "leaf dropping".
+const TRACE_WORDS: [&str; 26] = [
+    "ant",
+    "ants",
+    "bee",
+    "bees",
+    "egg",
+    "eggs",
+    "fly",
+    "flies",
+    "moth",
+    "moths",
+    "slug",
+    "slugs",
+    "miner",
+    "miners",
+    "mole",
+    "moles",
+    "droppings",
+    "cut",
+    "cuts",
+    "teeth",
+    "tooth",
+    "track",
+    "tracks",
+    "trail",
+    "trails",
+    "mounds",
+];
+
+/// Whether one lower-case word names an animal or its trace.
+fn trace_word(word: &str) -> bool {
+    let singular = word.strip_suffix('s').unwrap_or(word);
+    TRACE_WORDS.contains(&word)
+        || TRACE_ROOTS
+            .iter()
+            .any(|root| word.starts_with(root) || singular.ends_with(root))
 }
 
-/// Whether a damage finding's `trace` names an animal or something an animal left. Empty, negated
-/// ("no insect seen") or made only of disease, colour, shape and place words, it doesn't.
+/// Whether a damage finding's `trace` names an animal or something an animal left: some clause
+/// of it, not negated, holds a word of [`TRACE_ROOTS`] or [`TRACE_WORDS`]. Clauses split at
+/// punctuation and at "but", so "frass, but no larva seen" keeps its frass while "no insect
+/// visible" names nothing.
 fn names_a_trace(trace: &str) -> bool {
     let lower = trace.to_lowercase();
-    let words: Vec<&str> = lower
-        .split(|c: char| !(c.is_alphanumeric() || c == '/'))
-        .filter(|w| !w.is_empty())
-        .collect();
-    !words.is_empty()
-        && !words.iter().any(|w| listed(NEGATIONS, w))
-        && words
-            .iter()
-            .any(|w| !NOT_A_TRACE.iter().any(|group| listed(group, w)))
+    lower
+        .split([',', ';', '.', ':', '(', ')'])
+        .flat_map(|part| part.split(" but "))
+        .any(|clause| {
+            let words: Vec<&str> = clause
+                .split(|c: char| !c.is_alphabetic())
+                .filter(|w| !w.is_empty())
+                .collect();
+            !words.iter().any(|w| NEGATIONS.contains(w)) && words.iter().any(|w| trace_word(w))
+        })
 }
 
 /// The damage of a findings answer, at most `max_items`. A finding whose `trace` names no animal
@@ -778,6 +854,27 @@ mod tests {
     }
 
     #[test]
+    fn a_damage_finding_without_its_trace_field_is_invalid_output() {
+        let a = prepared(IMG1, 100, 100);
+        let b = prepared(IMG2, 100, 100);
+        let json =
+            findings_json("[0,0,10,10]").replace(r#""trace":"flea beetles on the leaf","#, "");
+        let decoded = findings(
+            &json,
+            &CallImages::new(vec![&a, &b]),
+            &[SpeciesOption {
+                id: "tomato".parse().unwrap(),
+                name: "Tomato".to_owned(),
+            }],
+            &[],
+            BoxFormat::Norm1000,
+            &CertaintyMap::default(),
+            Limits::CONTRACT,
+        );
+        assert!(matches!(decoded, Err(Invalid::Json(_))), "{decoded:?}");
+    }
+
+    #[test]
     fn damage_without_a_trace_is_dropped() {
         let a = prepared(IMG1, 100, 100);
         let b = prepared(IMG2, 100, 100);
@@ -800,8 +897,6 @@ mod tests {
             item("no insect visible", "shot_holes"),
             item("", "leaf_mines"),
             item("  ", "webbing"),
-            // A server that ignores the schema may leave the field out: that is no trace either.
-            r#"{"pattern":"sooty_mould","other_description":null,"image":"img2","bbox_2d":null,"certainty":"low"}"#.to_owned(),
         ]
         .join(",");
         let f = findings_with_damage(&damage, &a, &b);
@@ -826,6 +921,14 @@ mod tests {
             "dark frass line inside the mine",
             "holes chewed by beetles",
             "deer footprints",
+            "Tomato hornworm",
+            "whiteflies under the leaf",
+            "frass, but no larva seen",
+            "larva tunnels, no adult visible",
+            "unknown insect",
+            "clean cut stem at the soil line",
+            "eggs on the underside",
+            "sticky honeydew",
         ] {
             assert!(names_a_trace(kept), "{kept}");
         }
@@ -841,6 +944,19 @@ mod tests {
             "yellowing leaf margins",
             "grey powdery mould on the upper leaves",
             "necrotic tissue",
+            // P11's two cases, with the crop named: no word on the lists.
+            "brown spots on the tomato leaf",
+            "long tan lesions on the corn leaf",
+            "early blight lesions",
+            "septoria leaf spot",
+            "water-soaked lesions on the eggplant",
+            "spots on the plant's leaves",
+            "2 brown spots/lesions",
+            "small round spots with a yellow halo ar",
+            "angular spots limited by veins",
+            "mineral deficiency between the veins",
+            "flyspeck on the fruit",
+            "leaf dropping from the lower stem",
         ] {
             assert!(!names_a_trace(dropped), "{dropped}");
         }

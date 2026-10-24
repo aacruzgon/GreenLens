@@ -358,8 +358,8 @@ pub struct DamageRaw {
     /// The animal seen, or the trace it left, that shows an animal made the damage (a larva in
     /// the mine, frass, webbing, bite marks), at most 60 characters; empty when none is visible.
     /// Written first, so the pattern follows from it. A finding without one is dropped in
-    /// decoding (task P11): a disease lesion has no trace. Missing reads as empty.
-    #[serde(default)]
+    /// decoding (task P11): a disease lesion has no trace. Required: a reply without it is
+    /// invalid output, retried once like any other ([contracts 6], after decoding).
     pub trace: String,
     /// The pattern.
     pub pattern: DamagePattern,
@@ -690,12 +690,13 @@ mod tests {
         let d: DamageRaw = serde_json::from_str(raw).unwrap();
         assert_eq!(d.trace, "larva in the tunnel");
         assert_eq!(serde_json::to_string(&d).unwrap(), raw);
-        // A server that ignores the schema may leave it out: that reads as no trace.
-        let without: DamageRaw = serde_json::from_str(
-            r#"{"pattern":"other","other_description":"x","image":"img1","bbox_2d":null,"certainty":"low"}"#,
-        )
-        .unwrap();
-        assert_eq!(without.trace, "");
+        // A server that ignores the schema and leaves it out sent invalid output.
+        assert!(
+            serde_json::from_str::<DamageRaw>(
+                r#"{"pattern":"other","other_description":"x","image":"img1","bbox_2d":null,"certainty":"low"}"#,
+            )
+            .is_err()
+        );
     }
 
     #[test]
