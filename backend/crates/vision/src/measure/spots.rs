@@ -47,7 +47,7 @@ pub struct SpotThresholds {
 
 /// The default `min_spot_share`, fitted on 2026-10-22 ([report], specks): the largest share at
 /// which `PlantSeg`'s diseased fit photos read clean at most a point more often than with no
-/// filter (2.5% against 1.7%). It turns the healthy check photos with no spot from 13% to 22%.
+/// filter (2.5% against 1.7%). The healthy check photos with no spot go from 13.2% to 21.1%.
 ///
 /// [report]: ../../../ml/training/eval/reports/spots-2026-10-22.md
 pub const MIN_SPOT_SHARE: f64 = 2e-5;
@@ -182,6 +182,19 @@ mod tests {
         assert_eq!(s.classify([110, 70, 30], leaf_value), SpotClass::Necrotic); // brown
         assert_eq!(s.classify([15, 15, 10], leaf_value), SpotClass::Necrotic); // black
         assert_eq!(s.classify([200, 190, 40], leaf_value), SpotClass::Halo); // yellow
+    }
+
+    #[test]
+    fn the_fitted_values_move_these_pixels() {
+        // colour-1 called them leaf, necrotic, halo and necrotic. A dull brown is necrotic, a dark
+        // green leaf, a yellow-green past 66° leaf, and glare stays necrotic. test_spot_fit.py
+        // checks the same pixels against the report's fitted values.
+        let s = ColourSpotSegmenter::default();
+        let leaf_value = hsv([60, 140, 50]).2;
+        assert_eq!(s.classify([120, 110, 100], leaf_value), SpotClass::Necrotic);
+        assert_eq!(s.classify([50, 60, 40], leaf_value), SpotClass::Leaf);
+        assert_eq!(s.classify([180, 200, 40], leaf_value), SpotClass::Leaf);
+        assert_eq!(s.classify([235, 235, 235], leaf_value), SpotClass::Necrotic);
     }
 
     #[test]

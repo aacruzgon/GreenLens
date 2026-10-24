@@ -1,7 +1,7 @@
 //! Runs the perception worker's own models on image files, without the API or a job queue:
 //! `ml/training/eval/spot_fit.py` takes the leaf masks the worker would cut (the leaf detector,
-//! then SAM) from photos with labelled lesions. It is a first cut of the perception harness
-//! (docs/vision/dev-roadmap.md, P2).
+//! then SAM) from photos with labelled lesions. A local tool for M15 (docs/vision/dev-roadmap.md);
+//! the perception harness is the worker test `perceive_job` (P2).
 //!
 //! ```text
 //! cd backend
@@ -79,9 +79,10 @@ fn fail(what: &str, e: &dyn std::fmt::Display) -> ! {
     std::process::exit(2);
 }
 
-/// A fixed ULID per job and per image: the result only has to name its own image.
+/// A fixed ULID per job and per image: the result only has to name its own image. 26 characters
+/// for any `n` under 10^8 (decimal digits are Crockford base32).
 fn ulid(n: usize) -> String {
-    format!("01JAX5AAAAAAAAAAAAAAAA{n:04}")
+    format!("01JAX5AAAAAAAAAAAA{n:08}")
 }
 
 async fn one(
