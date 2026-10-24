@@ -187,9 +187,8 @@ def build(seed: Seed, embedder, revision: str, templates: list[str]) -> tuple[st
             "profile": s["profile"], "care": s.get("care"),
             "classifier_supported": s["classifier_supported"],
             "bioclip_label": s["bioclip_label"], "sources": srcs(s["sources"]),
-            "reviewed_by": s["reviewed_by"], "reference_images": images}
-        if s.get("frost"):  # only when the seed says it; absent stays NONE (contracts 10)
-            content["frost"] = s["frost"]
+            "reviewed_by": s["reviewed_by"], "reference_images": images,
+            "frost": s.get("frost")}  # absent stays NONE (contracts 10)
         species_rows.append((rec("species", s["id"]), content))
     table("species", species_rows)
     table("disease", [(rec("disease", p["id"]), {
