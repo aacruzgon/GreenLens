@@ -45,11 +45,15 @@ Every call decoded and validated with the worker's code on the first attempt: no
 | Whole test | — | 23 s |
 
 - **The tomato's spots are still `leaf_mines`.** `findings@5` didn't change, so neither did the answer. That is P11's structural fix, not a recording problem.
-- **6 of the 27 indicator reasons reach the schema's 60-character cap** and stop mid-word ("…but it is unclear if it"). The cap hasn't changed; `indicators@3` raised the prompt's ask from "under 40 characters" to "at most 60", and in the Oct 22 file the longest reason was 48. Decode cuts a reason at the cap back to its last full word (`truncate` in `backend/bins/worker/src/vlm/decode.rs`), so these validate.
+- **The reasons now run up to the schema's 60-character cap.** The cap was already 60; `indicators@3` raised the prompt's ask from "under 40 characters" to "at most 60". In the Oct 22 file the longest reason was 48, and every one ended with a full stop. Here, 20 of the 27 have none.
+  - **6 are exactly 60 characters.** One is cut mid-word ("…rather than wet, g"). The other five end on a whole word but mid-thought: "…but it is unclear if it" (twice), "…resembling a target", "…resembling a cigar shape" and "…rather than large wet".
+  - **Some under the cap stop mid-phrase too:** "…healthy with no dark" (55), "…do not align with leaf" (56) and "…to be a lower or mid-level" (59). Most likely the grammar's `maxLength` left no room for the next word, so the model closed the string.
+  - **The grammar holds every reason to 60, so all of them validate.** Decode doesn't make them valid; it trims them. `truncate` (`backend/bins/worker/src/vlm/decode.rs`) treats a reason of exactly 60 as cut and, with no sentence end in it, drops its last word. So the five whole-word ones lose one: "…unclear if" (twice), "…resembling a", "…resembling a cigar", "…than large", and the mid-word one becomes "…rather than wet". Reasons under 60 pass through as they are.
+  - **The fix is [#183](https://github.com/aacruzgon/GreenLens/issues/183):** ask for about 50 characters under the cap of 60, or raise the schema's cap above what the prompt asks for. The second is a contract change (`Limits::CONTRACT.reason`, stored as `IndicatorEvidence.reason`).
 
 ## Checks on the new default
 
 On the branch rebased onto `main` at 0d86a82 (with #162's `record.rs`):
 
 - **Replay:** `python3 -m ml.training.eval.fake_vlm` with no `--recordings`, then the same test against it. 7 of 7 calls decode and validate (3.4 s), every one an exact replay, and the server logs no `text drift`.
-- **The fake server's tests:** `python3 -m pytest ml/tests/test_fake_vlm.py`, 27 passed.
+- **The fake server's tests:** `python3 -m pytest ml/tests/test_fake_vlm.py`, 27 passed. In review, 5 tests were added that check every file in `recordings/`: each key recomputes from its redacted request, and each 200 answer is valid for its request's schema. With them, 32 pass.
