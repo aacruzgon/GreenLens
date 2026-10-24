@@ -52,11 +52,19 @@ def species_id(api, species):
     """The knowledge base's id for a fixture species, or None when it doesn't hold it.
 
     A scientific name can cover several species (Brassica oleracea is kale, cabbage and
-    broccoli), so the common name decides between them.
+    broccoli), so the common name decides between them. A species recorded by its genus only
+    (squash is Cucurbita, for Zucchini's Cucurbita pepo) counts when one of its names contains
+    the fixture's common name: `q` matches every name, though the list shows only the first
+    common name, so two such species can't be told apart and give None (a warning) instead.
     """
     sci = species["scientific_name"].lower()
     matches = [s for s in pages(api, "/species", {"q": species["scientific_name"]})
                if s["scientific_name"].lower() == sci]
+    if not matches:
+        genus = sci.split()[0]
+        matches = [s for s in pages(api, "/species", {"q": species["common_name"]})
+                   if s["scientific_name"].lower() == genus]
+        return matches[0]["id"] if len(matches) == 1 else None
     if len(matches) > 1:
         common = species["common_name"].lower()
         matches = [s for s in matches if (s.get("common_name") or "").lower() == common] or matches
