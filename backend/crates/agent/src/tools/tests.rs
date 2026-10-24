@@ -781,3 +781,221 @@ fn the_strict_tool_schemas_stay_inside_anthropics_budget() {
     assert!(cost.optional <= 12, "{cost:?}");
     assert!(cost.unions <= 10, "{cost:?}");
 }
+
+/// `show_block`'s kinds the turn tests don't reach: `weather_hours` from a scan's snapshot,
+/// `measurement_trend` and `candidates`, each built from the turn's results and the store.
+mod show_block {
+    use std::sync::Arc;
+
+    use domain::{
+        chat::{Anchor, AnswerBlock, AnswerBlockKind, BlockBody},
+        ports::{MockKnowledgeStore, MockMemoryStore, MockPlantRepo, NoBeliefs},
+    };
+
+    use super::*;
+    use crate::{
+        error::ToolError,
+        testing::{GARDEN, garden_deps, now, owner},
+        tools::blocks::{ShowBlockArgs, build},
+    };
+
+    const PLANT: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5F";
+    const SCAN: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5H";
+
+    fn calls(
+        name: &str,
+        arguments: serde_json::Value,
+        result: serde_json::Value,
+    ) -> Vec<ContentPart> {
+        vec![
+            ContentPart::ToolCall {
+                call_id: "toolu_1".to_owned(),
+                name: name.to_owned(),
+                arguments,
+            },
+            ContentPart::ToolResult {
+                call_id: "toolu_1".to_owned(),
+                content: result,
+                is_error: false,
+            },
+        ]
+    }
+
+    fn point(quantity: &str, value: f64) -> serde_json::Value {
+        json!({"scan_id": SCAN, "created_at": "2026-10-11T15:00:00Z", "quantity": quantity,
+               "value": value, "confidence_band": "high"})
+    }
+
+    async fn show(
+        deps: &AgentDeps,
+        kind: AnswerBlockKind,
+        calls: &[ContentPart],
+    ) -> Result<AnswerBlock, ToolError> {
+        let ctx = ToolCtx {
+            deps,
+            owner: owner(Role::Viewer).await,
+            anchor: Anchor::Garden(GARDEN.parse().unwrap()),
+            plant: None,
+            message_id: "01JAX3K9T6R2B8V0QZ4M7D1E72".parse().unwrap(),
+            now: now(),
+        };
+        let args = ShowBlockArgs {
+            kind,
+            call_id: "toolu_1".to_owned(),
+            focus_plant_ids: None,
+        };
+        build(&ctx, calls, &[], args).await
+    }
+
+    fn deps() -> AgentDeps {
+        let mut deps = garden_deps(MockMemoryStore::new(), Arc::new(NoBeliefs));
+        let mut plants = MockPlantRepo::new();
+        plants.expect_plant().returning(|_, id| {
+            Ok(serde_json::from_value(json!({
+                "id": id, "garden_id": GARDEN, "name": "Tomato 1", "species_status": "unknown",
+                "species_candidates": [], "status": "watch", "created_at": "2026-10-01T00:00:00Z"
+            }))
+            .unwrap())
+        });
+        deps.stores.plants = Arc::new(plants);
+        let mut knowledge = MockKnowledgeStore::new();
+        knowledge
+            .expect_problem()
+            .returning(|_| Ok(fixtures::problems().into_iter().next()));
+        deps.knowledge = Arc::new(knowledge);
+        deps
+    }
+
+    #[tokio::test]
+    async fn weather_hours_from_a_scan_takes_its_snapshot_and_names_the_scan() {
+        let day = json!({"date": "2026-10-11", "t_min_c": 12.0, "t_max_c": 21.0, "precip_mm": 3.0,
+                         "mean_rh_pct": 91.0, "hours_rh_over_90": 14, "frost_risk": false});
+        let deps = deps();
+        let result = json!({"id": SCAN, "status": "planned", "weather": {"forecast": [day]}});
+        let block = show(
+            &deps,
+            AnswerBlockKind::WeatherHours,
+            &calls("get_scan", json!({"scan_id": SCAN}), result),
+        )
+        .await
+        .unwrap();
+        let BlockBody::WeatherHours { days, scan_id } = block.body else {
+            panic!()
+        };
+        assert_eq!(scan_id.map(|s| s.to_string()).as_deref(), Some(SCAN));
+        assert_eq!(days.len(), 1);
+        assert_eq!(days[0].hours_rh_over_90, 14);
+
+        let bare = json!({"id": SCAN, "status": "planned"});
+        let refused = show(
+            &deps,
+            AnswerBlockKind::WeatherHours,
+            &calls("get_scan", json!({"scan_id": SCAN}), bare),
+        )
+        .await
+        .unwrap_err();
+        assert!(refused.for_model().contains("no weather"), "{refused}");
+    }
+
+    #[tokio::test]
+    async fn a_measurement_trend_names_its_plant_and_refuses_mixed_quantities() {
+        let deps = deps();
+        let one = json!([point("plant_height_cm", 38.5)]);
+        let block = show(
+            &deps,
+            AnswerBlockKind::MeasurementTrend,
+            &calls("get_plant_measurements", json!({"plant_id": PLANT}), one),
+        )
+        .await
+        .unwrap();
+        let BlockBody::MeasurementTrend {
+            plant_id,
+            plant_name,
+            quantity,
+            points,
+        } = block.body
+        else {
+            panic!()
+        };
+        assert_eq!(plant_id.to_string(), PLANT);
+        assert_eq!(plant_name, "Tomato 1");
+        assert_eq!(
+            quantity,
+            domain::garden::plants::GrowthQuantity::PlantHeightCm
+        );
+        assert_eq!(points.len(), 1);
+
+        let mixed = json!([
+            point("plant_height_cm", 38.5),
+            point("canopy_width_cm", 30.0)
+        ]);
+        let refused = show(
+            &deps,
+            AnswerBlockKind::MeasurementTrend,
+            &calls("get_plant_measurements", json!({"plant_id": PLANT}), mixed),
+        )
+        .await
+        .unwrap_err();
+        assert!(refused.for_model().contains("mix"), "{refused}");
+        // With the call's quantity, the points are taken as returned.
+        let asked = calls(
+            "get_plant_measurements",
+            json!({"plant_id": PLANT, "quantity": "canopy_width_cm"}),
+            json!([point("canopy_width_cm", 30.0)]),
+        );
+        assert!(
+            show(&deps, AnswerBlockKind::MeasurementTrend, &asked)
+                .await
+                .is_ok()
+        );
+        let none = calls(
+            "get_plant_measurements",
+            json!({"plant_id": PLANT}),
+            json!([]),
+        );
+        assert!(
+            show(&deps, AnswerBlockKind::MeasurementTrend, &none)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn candidates_name_the_problem_from_the_knowledge_base() {
+        let deps = deps();
+        let lookalikes = json!([{"problem_id": "septoria_leaf_spot", "name": "Septoria leaf spot",
+                                 "how_to_tell": "Smaller spots with grey centres."}]);
+        let block = show(
+            &deps,
+            AnswerBlockKind::Candidates,
+            &calls(
+                "compare_lookalikes",
+                json!({"disease": "tomato_early_blight"}),
+                lookalikes,
+            ),
+        )
+        .await
+        .unwrap();
+        let BlockBody::Candidates {
+            disease,
+            lookalikes,
+        } = block.body
+        else {
+            panic!()
+        };
+        assert_eq!(disease.problem_id.to_string(), "tomato_early_blight");
+        assert_eq!(disease.name, "tomato_early_blight", "the fixture's name");
+        assert_eq!(lookalikes.len(), 1);
+
+        let none = calls(
+            "compare_lookalikes",
+            json!({"disease": "tomato_early_blight"}),
+            json!([]),
+        );
+        assert!(
+            show(&deps, AnswerBlockKind::Candidates, &none)
+                .await
+                .is_err()
+        );
+    }
+}
