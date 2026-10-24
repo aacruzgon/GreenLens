@@ -83,6 +83,11 @@ def schemas() -> tuple[dict, dict]:
     return d["schemas"], d["measurable_from"]
 
 
+def soil_values() -> dict[str, list[str]]:
+    """The values each soil aspect can take, from the domain's enums."""
+    return json.loads(SCHEMA.read_text(encoding="utf-8"))["soil_values"]
+
+
 def _schema_errors(name: str, schema: dict, value, where: str) -> list[str]:
     v = jsonschema.validators.validator_for(schema)(
         schema, format_checker=jsonschema.FormatChecker())
@@ -174,6 +179,11 @@ def check(seed: Seed, dose: DoseChecker | None = cargo_dose_check, drafts: bool 
     for (a, v), k in sorted(soil_keys.items()):
         if k > 1:
             errors.append(f"soil_conditions.yaml: {a} {v} is listed {k} times")
+    allowed = soil_values()
+    for s in seed.soil_conditions:
+        if s["value"] not in allowed[s["aspect"]]:
+            errors.append(f"soil_conditions.yaml: {s['value']!r} isn't a {s['aspect']} value; "
+                          f"the VLM and the guided checks report {', '.join(allowed[s['aspect']])}")
 
     # 4. References resolve.
     known = {t: {d["id"] for d in getattr(seed, t)}
