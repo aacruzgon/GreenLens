@@ -1,3 +1,7 @@
+// The mock's demo garden is in Toronto, and its fixtures are dated by the device's day. Tests run in the
+// garden's zone, so a machine elsewhere, or a runner on UTC, sees the same days. Workers inherit it.
+process.env.TZ = "America/Toronto";
+
 /** @type {import('jest').Config} */
 module.exports = {
   preset: "jest-expo",
