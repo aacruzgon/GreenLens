@@ -53,6 +53,10 @@ pub struct Question {
     /// With `target = "plan"`: the `garden.json` scan whose plan the writer writes.
     #[serde(default)]
     pub scan: Option<String>,
+    /// With `target = "plan"`: the vendor id of a synced farm record to plant among the records
+    /// the writer is given (G23), e.g. `C_FIELD/1788216000.009700`.
+    #[serde(default)]
+    pub plant_record: Option<String>,
     /// What kind of fact the answer is.
     pub kind: Kind,
     /// The expected fact; empty for `refusal` and `behaviour`.
@@ -236,7 +240,7 @@ mod tests {
     #[test]
     fn the_fixture_parses() {
         let answers = Answers::parse(FIXTURE).unwrap();
-        assert_eq!(answers.questions.len(), 19);
+        assert_eq!(answers.questions.len(), 20);
         assert_eq!(answers.fixture, "maple-row");
     }
 
