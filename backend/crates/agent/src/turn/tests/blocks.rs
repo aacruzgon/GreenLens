@@ -189,7 +189,10 @@ fn show_block_results(model: &ScriptedModel) -> Vec<(bool, serde_json::Value)> {
 }
 
 #[tokio::test]
-#[expect(clippy::too_many_lines, reason = "the roadmap's exit check, step by step")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the roadmap's exit check, step by step"
+)]
 async fn a_frost_question_streams_a_frost_planner_after_the_forecast_and_stores_it() {
     let (agent, model, seen) = harness(frost_setup(
         vec![
