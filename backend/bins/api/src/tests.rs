@@ -1041,3 +1041,18 @@ fn the_committed_openapi_document_matches_the_types() {
         "backend/openapi.json is stale: run `cargo run -p api -- openapi > openapi.json` in backend/"
     );
 }
+
+#[test]
+fn the_poison_control_text_setting_reaches_the_agent_config() {
+    let default = crate::wiring::agent_config(&config());
+    assert_eq!(
+        default.poison_control_text,
+        agent::safety::routes::POISON_CONTROL_TEXT
+    );
+
+    let local = "Ontario Poison Centre: 1 800 000 0000.";
+    let set = crate::wiring::agent_config(&config_with(&[("POISON_CONTROL_TEXT", local)]));
+    assert_eq!(set.poison_control_text, local);
+    // Nothing else about the agent changes.
+    assert_eq!(set.summarise_every, default.summarise_every);
+}

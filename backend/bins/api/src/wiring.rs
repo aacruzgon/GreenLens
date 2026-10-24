@@ -584,12 +584,22 @@ fn pipeline_api(
     }))
 }
 
+/// The agent's settings: the defaults, with the deployment's poison-control text when set.
+pub(crate) fn agent_config(config: &Config) -> agent::AgentConfig {
+    let mut agent_config = agent::AgentConfig::default();
+    if let Some(text) = &config.poison_control_text {
+        text.clone_into(&mut agent_config.poison_control_text);
+    }
+    agent_config
+}
+
 /// The chat agent over the ports, with its chat model, classifier and product catalogue.
 fn chat_turns(
     ports: &Ports,
     chat: Arc<dyn ChatModel>,
     classifier: Arc<dyn TextClassifier>,
     products: Arc<agent::safety::ProductCatalogue>,
+    config: agent::AgentConfig,
     tasks: TaskTracker,
 ) -> Arc<dyn ChatTurns> {
     Arc::new(agent::ChatAgent::new(
@@ -606,7 +616,7 @@ fn chat_turns(
             clock: Arc::clone(&ports.clock),
             ids: Arc::clone(&ports.ids),
             products,
-            config: agent::AgentConfig::default(),
+            config,
         },
         tasks,
     ))
@@ -695,6 +705,7 @@ pub async fn build(
         out.chat_model,
         out.classifier,
         products,
+        agent_config(&config),
         tasks.clone(),
     );
     let mut deletions = DeletionRunner::new(

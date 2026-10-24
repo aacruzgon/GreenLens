@@ -183,6 +183,9 @@ pub struct Config {
     pub shutdown_drain: Duration,
     /// `DIAGNOSIS_MARGIN`: the fusion margin of contracts 7 (open question 3).
     pub diagnosis_margin: i32,
+    /// `POISON_CONTROL_TEXT`: the local poison-control numbers, shown verbatim when the router
+    /// takes the poison-control route. Unset or empty keeps the agent's generic text.
+    pub poison_control_text: Option<String>,
     /// `LOG_FORMAT`: `json` (default) or `pretty`.
     pub log_json: bool,
     /// The weather thresholds: the one instance handed to Open-Meteo (`frost_risk`), the
@@ -273,6 +276,7 @@ impl Config {
             rate_per_minute: env.parse("RATE_PER_MINUTE", 120)?,
             shutdown_drain: Duration::from_secs(env.parse("SHUTDOWN_DRAIN_S", 30)?),
             diagnosis_margin: env.parse("DIAGNOSIS_MARGIN", 2)?,
+            poison_control_text: env.get("POISON_CONTROL_TEXT").map(|t| t.trim().to_owned()),
             log_json: env.or("LOG_FORMAT", "json") != "pretty",
             weather: WeatherThresholds::default(),
             database: DatabaseConfig {
@@ -490,6 +494,21 @@ mod tests {
         assert_eq!(config.request_timeout, Duration::from_secs(10));
         assert_eq!(config.worker_tokens.len(), 1);
         assert!(!format!("{config:?}").contains(&"x".repeat(40)));
+    }
+
+    #[test]
+    fn poison_control_text_is_optional_and_trimmed() {
+        let mut vars = base();
+        let read = |vars: &BTreeMap<&'static str, String>| {
+            Config::from_lookup(|k| vars.get(k).cloned())
+                .unwrap()
+                .poison_control_text
+        };
+        assert_eq!(read(&vars), None);
+        vars.insert("POISON_CONTROL_TEXT", "  ".to_owned());
+        assert_eq!(read(&vars), None);
+        vars.insert("POISON_CONTROL_TEXT", " Call 1 800 000 0000. ".to_owned());
+        assert_eq!(read(&vars).as_deref(), Some("Call 1 800 000 0000."));
     }
 
     #[test]
