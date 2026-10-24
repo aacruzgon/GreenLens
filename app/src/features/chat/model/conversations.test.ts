@@ -1,6 +1,6 @@
 import type { Conversation } from "@/domain/types";
 
-import { anchorName, conversationTitle, groupConversations, nameList } from "./conversations";
+import { anchorName, conversationTitle, groupConversations, nameList, suggestions } from "./conversations";
 
 const conv = (id: string, type: "garden" | "plant" | "scan", at: string, title?: string): Conversation => ({
   id,
@@ -40,5 +40,12 @@ describe("the conversation list (screens 3.6)", () => {
     expect(nameList([])).toBe("");
     expect(nameList(["A"])).toBe("A");
     expect(nameList(["A", "B", "C"])).toBe("A, B and C");
+  });
+});
+
+describe("suggested follow-ups", () => {
+  it("offers two by anchor, leaving out what was asked", () => {
+    expect(suggestions("garden", [])).toEqual(["Should I water today?", "Should I cover anything this week?"]);
+    expect(suggestions("garden", ["should I water today? "])).toEqual(["Should I cover anything this week?", "Are any plants too close together?"]);
   });
 });

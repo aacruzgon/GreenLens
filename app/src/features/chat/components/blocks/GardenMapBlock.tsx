@@ -1,6 +1,6 @@
 // The garden map snippet (design 5): the beds and a pin per plant in its status shape, the plants the answer is
-// about outlined with their canopy, and their distance to the nearest 5 cm. A tap on a pin shows its status and
-// height; Open goes to the plant. Drawn with react-native-svg, so it works without WebGL (design 3.1, the map).
+// about outlined with their canopy and named under their pin, and their distance to the nearest 5 cm. A tap on a
+// pin shows its status and height; Open goes to the plant. Drawn with react-native-svg, so it works without WebGL (design 3.1, the map).
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 import Svg, { Circle, Polygon } from "react-native-svg";
@@ -42,7 +42,7 @@ export function GardenMapBlock({ block, onOpenPlant }: { block: Block; onOpenPla
           if (!width || !p || !inFrame(frame, pin.x_m, pin.y_m)) return null;
           const focus = block.focus_plant_ids.includes(pin.plant_id);
           const on = picked === pin.plant_id;
-          return (
+          return [
             <Pressable
               key={pin.plant_id}
               accessibilityRole="button"
@@ -65,8 +65,21 @@ export function GardenMapBlock({ block, onOpenPlant }: { block: Block; onOpenPla
               }}
             >
               <StatusShape status={p.status} size={10} />
-            </Pressable>
-          );
+            </Pressable>,
+            focus ? (
+              <Text
+                key={`n-${pin.plant_id}`}
+                variant="caption2"
+                emphasis
+                numberOfLines={1}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+                style={{ position: "absolute", left: px(pin.x_m) - 44, top: py(pin.y_m) + 16, width: 88, textAlign: "center" }}
+              >
+                {p.name}
+              </Text>
+            ) : null,
+          ];
         })}
       </View>
       {distance ? <Text variant="subheadline">{distance}</Text> : null}
@@ -75,7 +88,7 @@ export function GardenMapBlock({ block, onOpenPlant }: { block: Block; onOpenPla
           <StatusShape status={chosen.status} />
           <Text variant="subheadline" style={{ flex: 1 }}>
             {chosen.name} · {statusWords[chosen.status]}
-            {chosen.height_cm !== undefined ? ` · about ${Math.round(chosen.height_cm)} cm` : ""}
+            {chosen.height_cm !== undefined ? ` · about ${Math.round(chosen.height_cm)} cm tall` : ""}
           </Text>
           <Button label="Open" variant="secondary" size="small" onPress={() => onOpenPlant(chosen.plant_id)} accessibilityLabel={`Open ${chosen.name}`} />
         </View>

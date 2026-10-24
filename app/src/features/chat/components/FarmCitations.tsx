@@ -10,7 +10,7 @@ import { formatDateTime } from "@/domain/format";
 import { links } from "@/platform";
 import { Banner, Button, LineIcon, Text, gutter, minTouch, space, useTheme } from "@/ui";
 
-import { isEraRecord, openFarmCitation, SYSTEM_WORD } from "../model/farm";
+import { isVendorRecord, openFarmCitation, SYSTEM_WORD } from "../model/farm";
 
 export interface FarmCitationsProps {
   citations: readonly FarmCitationWithText[];
@@ -18,7 +18,8 @@ export interface FarmCitationsProps {
   timeZone: string;
 }
 
-function RecordSheet({ citation, era, timeZone, onClose }: { citation: FarmCitationWithText; era: boolean; timeZone: string; onClose: () => void }) {
+/** `vendor`: the record's connector is known and real, so its link opens; anything else reads as demo data. */
+function RecordSheet({ citation, vendor, timeZone, onClose }: { citation: FarmCitationWithText; vendor: boolean; timeZone: string; onClose: () => void }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const meta = [SYSTEM_WORD[citation.system], citation.author, formatDateTime(citation.at, timeZone)].filter(Boolean).join(" · ");
@@ -32,7 +33,7 @@ function RecordSheet({ citation, era, timeZone, onClose }: { citation: FarmCitat
           <Text variant="footnote" color="textMuted">
             {meta}
           </Text>
-          {era ? <Banner tone="info" title="Demo data from Era by Eon (synthetic)" message="This record comes from Era's simulator, not a real farm." /> : null}
+          {!vendor ? <Banner tone="info" title="Demo data from Era by Eon (synthetic)" message="This record comes from Era's simulator, not a real farm." /> : null}
           {citation.text ? (
             <Text variant="body" selectable>
               {citation.text}
@@ -42,7 +43,7 @@ function RecordSheet({ citation, era, timeZone, onClose }: { citation: FarmCitat
               The record&apos;s text isn&apos;t available in the app yet.
             </Text>
           )}
-          {!era ? <Button label={`Open in ${SYSTEM_WORD[citation.system]}`} variant="secondary" size="large" onPress={() => void links.openExternal(citation.link)} /> : null}
+          {vendor ? <Button label={`Open in ${SYSTEM_WORD[citation.system]}`} variant="secondary" size="large" onPress={() => void links.openExternal(citation.link)} /> : null}
           <Button label="Done" size="large" onPress={onClose} />
         </ScrollView>
       </View>
@@ -62,7 +63,8 @@ export function FarmCitations({ citations, gardenId, timeZone }: FarmCitationsPr
         Records checked
       </Text>
       {citations.map((c) => {
-        const era = list ? isEraRecord(c, list) : false;
+        // Shown as demo data once the connectors are known and this one isn't a vendor's.
+        const era = list ? !isVendorRecord(c, list) : false;
         return (
           <Pressable
             key={c.record_id}
@@ -91,7 +93,7 @@ export function FarmCitations({ citations, gardenId, timeZone }: FarmCitationsPr
           </Pressable>
         );
       })}
-      {open ? <RecordSheet citation={open} era={list ? isEraRecord(open, list) : true} timeZone={timeZone} onClose={() => setOpen(undefined)} /> : null}
+      {open ? <RecordSheet citation={open} vendor={isVendorRecord(open, list)} timeZone={timeZone} onClose={() => setOpen(undefined)} /> : null}
     </View>
   );
 }

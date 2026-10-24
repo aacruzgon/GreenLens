@@ -10,9 +10,10 @@ export function connectorIdOf(recordId: string): string {
   return dot === -1 ? recordId : recordId.slice(0, dot);
 }
 
-export function isEraRecord(c: Pick<FarmCitationWithText, "record_id">, connectors: readonly Pick<Connector, "id" | "endpoint">[]): boolean {
+/** A record from a connector the app knows to be a real vendor's: the only kind whose link may be opened. */
+export function isVendorRecord(c: Pick<FarmCitationWithText, "record_id">, connectors: readonly Pick<Connector, "id" | "endpoint">[] | undefined): boolean {
   const id = connectorIdOf(c.record_id);
-  return connectors.some((x) => x.id === id && x.endpoint === "era");
+  return connectors?.find((x) => x.id === id)?.endpoint === "vendor";
 }
 
 export const SYSTEM_WORD: Record<FarmCitationWithText["system"], string> = { slack: "Slack", google_drive: "Google Drive" };
@@ -20,11 +21,9 @@ export const SYSTEM_WORD: Record<FarmCitationWithText["system"], string> = { sla
 export type FarmOpen = { kind: "external"; url: string } | { kind: "sheet"; citation: FarmCitationWithText };
 
 /**
- * What a tap on a farm citation does. Until the connectors are known (or when they don't list the record's), the
- * sheet opens: a simulator link must never be opened, and the sheet offers a vendor record's link anyway.
+ * What a tap on a farm citation does. Until the connectors are known, or when they don't list the record's, the
+ * sheet opens, as demo data with no link: a simulator link must never be opened (EON E9.3, E10.3).
  */
 export function openFarmCitation(c: FarmCitationWithText, connectors: readonly Pick<Connector, "id" | "endpoint">[] | undefined): FarmOpen {
-  const id = connectorIdOf(c.record_id);
-  const connector = connectors?.find((x) => x.id === id);
-  return connector?.endpoint === "vendor" ? { kind: "external", url: c.link } : { kind: "sheet", citation: c };
+  return isVendorRecord(c, connectors) ? { kind: "external", url: c.link } : { kind: "sheet", citation: c };
 }

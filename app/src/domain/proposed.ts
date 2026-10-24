@@ -2,7 +2,9 @@
 // interact with"). Hand-written, unlike types.ts, because no `domain` type exists to generate them from. Each one
 // is the app's proposal: when the backend lands its version (the `domain` type, its exact-JSON test,
 // contracts.md 8 and openapi.json), `npm run gen:api` brings the real one, this file goes, and types.ts names it.
-// Only mock mode sends them today; the live API never does, and every reader treats them as optional.
+// Only mock mode sends them today; the live API never does, and every reader treats them as optional. The answer
+// blocks follow the backend's version in PR #191 (S5 work 8: `AnswerBlock`, `FrostPlant`, `Lookalike`,
+// `ProblemRef`), `FarmCitation.text` follows PR #189, and `Message` with `MessageReplay` PR #186.
 import type { FarmCitation, ForecastDay, GardenMap, GrowthQuantity, Id, MeasurementPoint, Message, PlantStatus, Slug } from "./types";
 
 /** A plant as a block shows it: the records' name, status and latest height, never the model's words. */
@@ -14,18 +16,22 @@ export interface BlockPlant {
   height_cm?: number;
 }
 
+/** `FrostPlant = BlockPlant & { frost_tender? }`: absent when the species is unknown or its sources don't say. */
+export type FrostPlant = BlockPlant & { frost_tender?: boolean };
+
 /**
  * `AnswerBlock`, a tagged union by `kind` (design 5). Each holds the records it shows and the `call_id` of the
- * tool result they came from; the agent picks one with `show_block(kind, call_id)`, which the API checks against
- * that turn's tool results. No block carries free text the model wrote.
+ * tool result they came from; the agent picks one with `show_block({ kind, call_id, focus_plant_ids? })`, which
+ * the API checks against that turn's tool results and fills from the store. No block carries free text the model
+ * wrote, and `show_block` sends no tool chip.
  */
 export type AnswerBlock = { call_id: string } & (
   | {
-      /** From `get_garden_map` and `get_plant_measurements`. */
+      /** From `get_garden_map`. */
       kind: "garden_map";
       map: GardenMap;
       plants: BlockPlant[];
-      /** The plants the answer is about, outlined on the map. */
+      /** The plants the answer is about, from the `show_block` call; each is on the map. May be empty. */
       focus_plant_ids: Id[];
       /** `get_garden_map`'s `neighbours`. */
       neighbours: Record<Id, Id[]>;
@@ -38,15 +44,15 @@ export type AnswerBlock = { call_id: string } & (
       scan_id?: Id;
     }
   | {
-      /** From `get_forecast`, `get_garden_map` and `get_species_profile`. */
+      /** From `get_forecast`. The API refuses the block when no night has frost. */
       kind: "frost_planner";
       /** The forecast days with `frost_risk`, first one first. */
       nights: ForecastDay[];
       /**
-       * Every plant on the map. `frost_tender` comes from the species profile: the knowledge base has only
-       * `hardiness_zones` today, so the API needs a rule or a field for it.
+       * The garden's live plants (not the map's pins, so a garden with no map has a planner), with the species'
+       * `frost: "tender" | "hardy"` as `frost_tender`.
        */
-      plants: (BlockPlant & { frost_tender: boolean })[];
+      plants: FrostPlant[];
     }
   | {
       /** From `get_plant_measurements`. */

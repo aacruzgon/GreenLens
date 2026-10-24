@@ -1,14 +1,17 @@
 // F6's mock exit checks in Jest (roadmap 12), over the mock with no delays: a scripted turn streams with a tool
-// chip, a block and a card; the frost planner's choice becomes a task card that a confirm adds to the tasks; a
-// dropped stream offers Resend; an era record opens its text in a sheet; a viewer gets no card.
+// chip, a block and a card; the frost planner's choice becomes tasks; a dropped stream offers Resend; an era record
+// opens its text in a sheet; a viewer gets no card. And the review's cases (PR #151): leaving mid-answer, a
+// refetch during a turn, `409 request_in_progress`, an `error` event, a stream that goes quiet, a plan card.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 
-import { chat, newKey, setTransport } from "@/api";
+import { chat, newKey, qk, setTransport } from "@/api";
 import { IDS, mockStore, mockTransport, resetMock, scenario } from "@/api/mock";
+import { links } from "@/platform";
 import { ThemeProvider } from "@/ui";
 
 import { ConversationListScreen } from "../screens/ConversationListScreen";
+import { chatTiming } from "../hooks/useConversationScreen";
 import { ConversationScreen } from "../screens/ConversationScreen";
 
 jest.mock("expo-crypto", () => ({ randomUUID: () => jest.requireActual<{ randomUUID: () => string }>("crypto").randomUUID() }));
@@ -19,9 +22,10 @@ jest.mock("expo-router", () => ({
   useRouter: () => mockRouter,
   useFocusEffect: () => undefined,
 }));
+const mockStart = jest.fn(async () => undefined);
 jest.mock("@/features/capture", () => ({
   ...jest.requireActual<object>("@/features/capture"),
-  useStartCapture: () => ({ start: jest.fn(async () => undefined), isPending: false, error: null }),
+  useStartCapture: () => ({ start: mockStart, isPending: false, error: null }),
 }));
 
 jest.setTimeout(30_000);
@@ -32,7 +36,11 @@ beforeEach(() => {
   setTransport(mockTransport);
   jest.clearAllMocks();
 });
-afterEach(() => new Promise((r) => setTimeout(r, 50)));
+afterEach(async () => {
+  await new Promise((r) => setTimeout(r, 50));
+  jest.restoreAllMocks();
+  chatTiming.idleMs = 45_000;
+});
 
 let sharedClient: QueryClient;
 const newClient = () => new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } } });
@@ -54,6 +62,34 @@ async function openNew(anchor: { type: "garden" | "plant"; id: string } = { type
   await render(wrap(<ConversationScreen />));
   await screen.findByText(/Ask about/);
   return c.id;
+}
+
+/** The idempotency keys of every send, read off the mock transport. */
+function sendKeys(): () => string[] {
+  const keys: string[] = [];
+  const real = mockTransport.fetch.bind(mockTransport);
+  jest.spyOn(mockTransport, "fetch").mockImplementation((input, init) => {
+    const url = typeof input === "string" ? input : input.url;
+    const method = init?.method ?? (typeof input === "string" ? "GET" : input.method);
+    if (method === "POST" && /\/messages$/.test(url)) {
+      const headers = new Headers(init?.headers ?? (typeof input === "string" ? undefined : input.headers));
+      keys.push(headers.get("idempotency-key") ?? "");
+    }
+    return real(input, init);
+  });
+  return () => keys;
+}
+
+const userCount = (conversationId: string, text: string) =>
+  mockStore.chat.conversations.get(conversationId)!.messages.filter((m) => m.role === "user" && m.text === text).length;
+
+/** Waits until the cached conversation holds a message matching `pred`, then for the screen to draw it. */
+async function cached(id: string, pred: (m: { role: string; interrupted: boolean }) => boolean) {
+  await waitFor(() => {
+    const data = sharedClient.getQueryData<{ pages: { messages: { items: { role: string; interrupted: boolean }[] } }[] }>(qk.conversation(id));
+    expect(data?.pages[0]?.messages.items.some(pred)).toBe(true);
+  });
+  await new Promise((r) => setTimeout(r, 100));
 }
 
 async function ask(text: string) {
@@ -81,19 +117,35 @@ describe("the conversation (screens 3.6)", () => {
     expect(await screen.findByTestId("block-frost_planner", {}, { timeout: 8000 })).toBeTruthy();
   });
 
-  it("turns the frost planner's choice into a confirmed task (F6 live check, on the mock)", async () => {
+  it("turns the frost planner's choice into tasks, one per plant, with no card (F6 live check, S5's rule)", async () => {
     await openNew();
     await ask("Should I cover anything this week?");
     const planner = await screen.findByTestId("block-frost_planner");
     expect(within(planner).getByTestId("frost-summary").props.children).toMatch(/^Cover 4 plants/);
+    // Lettuce's species has no frost record: not known, never hardy, and not chosen.
+    expect(within(within(planner).getByTestId(`frost-plant-${IDS.lettuce}`)).getByText("Not known")).toBeTruthy();
     // Basil off: the summary follows.
     await fireEvent.press(within(planner).getByTestId(`frost-plant-${IDS.basil}`));
     expect(within(planner).getByTestId("frost-summary").props.children).toMatch(/^Cover 3 plants.*Basil stays uncovered/);
-    await fireEvent.press(within(planner).getByTestId("frost-ask"));
-    const confirm = await screen.findByTestId("pending-confirm");
-    await fireEvent.press(confirm);
-    await waitFor(() => expect(mockStore.tasks.some((t) => t.source === "chat" && /Tomato 1, Tomato 2 and Pepper/.test(t.title) && !/Basil/.test(t.title))).toBe(true));
-    expect(await screen.findByText("Added to your tasks")).toBeTruthy();
+    const before = mockStore.tasks.length;
+    await fireEvent.press(within(planner).getByTestId("frost-add"));
+    expect(await within(planner).findByTestId("frost-added")).toBeTruthy();
+    const added = mockStore.tasks.slice(before);
+    expect(added.map((t) => t.plant_id).sort()).toEqual([IDS.tomato1, IDS.tomato2, IDS.pepper].sort());
+    expect(added.every((t) => t.due === added[0]!.due && /^Cover .* before \w+day's frost$/.test(t.title))).toBe(true);
+    expect(screen.queryByTestId("pending-confirm")).toBeNull();
+    // Basil can still be added on its own; the three already added aren't added again.
+    await fireEvent.press(within(planner).getByTestId(`frost-plant-${IDS.basil}`));
+    await fireEvent.press(within(planner).getByTestId("frost-add"));
+    await waitFor(() => expect(mockStore.tasks.length).toBe(before + 4));
+  });
+
+  it("gives a viewer the frost planner without Add", async () => {
+    scenario.set({ role: "viewer" });
+    await openNew();
+    await ask("Should I cover anything this week?");
+    const planner = await screen.findByTestId("block-frost_planner");
+    expect(within(planner).queryByTestId("frost-add")).toBeNull();
   });
 
   it("offers Resend when the stream drops (flows 18)", async () => {
@@ -129,7 +181,7 @@ describe("the conversation (screens 3.6)", () => {
 
   it("says when the chat budget is used up, before any stream", async () => {
     await openNew();
-    scenario.set({ chatBudgetUsed: true });
+    scenario.set({ chatFault: "budget_exceeded" });
     await ask("Should I water today?");
     expect(await screen.findByText(/Today's chat limit is used up/)).toBeTruthy();
   });
@@ -156,10 +208,115 @@ describe("the conversation (screens 3.6)", () => {
     await render(wrap(<ConversationScreen />));
     const records = await screen.findByTestId("farm-citations");
     await waitFor(() => expect(within(records).getAllByText("DEMO")).toHaveLength(2));
+    const open = jest.spyOn(links, "openExternal");
     await fireEvent.press(within(records).getByText("Spray log 2026"));
     const sheet = await screen.findByTestId("farm-record-sheet");
     expect(within(sheet).getByText("Demo data from Era by Eon (synthetic)")).toBeTruthy();
     expect(within(sheet).getByText(/Aug 2: east bed again/)).toBeTruthy();
+    expect(within(sheet).queryByText(/^Open in/)).toBeNull();
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("never offers a record's link when its connector isn't known (found in review)", async () => {
+    mockStore.chat.connectors = mockStore.chat.connectors.filter((c) => !/slack/.test(c.id));
+    mockParams = { conversationId: "conv_garden_spray" };
+    await render(wrap(<ConversationScreen />));
+    const records = await screen.findByTestId("farm-citations");
+    await waitFor(() => expect(within(records).getAllByText("DEMO")).toHaveLength(2));
+    const open = jest.spyOn(links, "openExternal");
+    await fireEvent.press(within(records).getByText(/#field-reports/));
+    const sheet = await screen.findByTestId("farm-record-sheet");
+    expect(within(sheet).getByText("Demo data from Era by Eon (synthetic)")).toBeTruthy();
+    expect(within(sheet).queryByText(/^Open in/)).toBeNull();
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("shows the question, Interrupted and Resend after leaving mid-answer (review must-fix)", async () => {
+    scenario.set({ delayScale: 1 });
+    const id = await openNew();
+    await ask("Should I water today?");
+    await screen.findByText("Checking the forecast", {}, { timeout: 3000 });
+    await screen.unmount();
+    await waitFor(() => expect(mockStore.chat.conversations.get(id)!.messages.at(-1)?.interrupted).toBe(true));
+    scenario.set({ delayScale: 0 });
+    await render(wrap(<ConversationScreen />, sharedClient));
+    expect(await screen.findByText("Should I water today?")).toBeTruthy();
+    expect(await screen.findByText("Interrupted")).toBeTruthy();
+    expect(screen.getByTestId("resend")).toBeTruthy();
+  });
+
+  it("draws the question once when the conversation refetches during a turn (review)", async () => {
+    chatTiming.idleMs = 60_000;
+    scenario.set({ chatFault: "stall" });
+    const id = await openNew();
+    await ask("Should I water today?");
+    await waitFor(() => expect(userCount(id, "Should I water today?")).toBe(1));
+    await sharedClient.invalidateQueries({ queryKey: qk.conversation(id) });
+    // The refetch holds the stored question while the turn still draws its own.
+    await cached(id, (m) => m.role === "user");
+    expect(screen.getAllByText("Should I water today?")).toHaveLength(1);
+    await screen.unmount();
+    chatTiming.idleMs = 45_000;
+  });
+
+  it("waits out 409 request_in_progress with the same key, and asks only once (review)", async () => {
+    const keys = sendKeys();
+    const id = await openNew();
+    scenario.set({ chatFault: "in_progress" });
+    await ask("Should I water today?");
+    expect(await screen.findByTestId("block-weather_hours", {}, { timeout: 8000 })).toBeTruthy();
+    expect(new Set(keys()).size).toBe(1);
+    expect(keys().length).toBe(3);
+    expect(userCount(id, "Should I water today?")).toBe(1);
+    expect(screen.getAllByText("Should I water today?")).toHaveLength(1);
+  });
+
+  it("keeps an error event's text after the stored message arrives, with Resend (review)", async () => {
+    const id = await openNew();
+    scenario.set({ chatFault: "error_event" });
+    await ask("Should I water today?");
+    // The stored message has landed (it says only `interrupted`), and the error text is still the one shown.
+    await cached(id, (m) => m.role === "assistant" && m.interrupted);
+    expect(screen.getByText("The assistant stopped partway. Try again in a minute.")).toBeTruthy();
+    expect(screen.getByTestId("resend")).toBeTruthy();
+    expect(screen.getByText("Didn't finish")).toBeTruthy();
+    expect(screen.queryByText("Interrupted")).toBeNull();
+  });
+
+  it("takes a stream that goes quiet as dropped, with Resend on a new key (review)", async () => {
+    chatTiming.idleMs = 300;
+    const keys = sendKeys();
+    await openNew();
+    scenario.set({ chatFault: "stall" });
+    await ask("Should I water today?");
+    await fireEvent.press(await screen.findByTestId("resend", {}, { timeout: 5000 }));
+    expect(await screen.findByTestId("block-weather_hours")).toBeTruthy();
+    expect(new Set(keys()).size).toBe(2);
+    chatTiming.idleMs = 45_000;
+  });
+
+  it("confirms a plan card into a new plan version (review)", async () => {
+    await openNew({ type: "plant", id: IDS.tomato1 });
+    await ask("No copper, please.");
+    expect(await screen.findByText("This changes the plan for everyone in the garden.")).toBeTruthy();
+    await fireEvent.press(screen.getByTestId("pending-confirm"));
+    expect(await screen.findByText("Plan updated")).toBeTruthy();
+    const plans = [...mockStore.scans.values()].flatMap((st) => (st.plan ? [st.plan] : []));
+    expect(plans.some((p) => p.constraints.some((c) => c.text === "No copper products"))).toBe(true);
+  });
+
+  it("starts the rescan on the shot the agent asked for (flows 9)", async () => {
+    await openNew({ type: "plant", id: IDS.tomato2 });
+    await ask("Can you take a closer look?");
+    await fireEvent.press(await screen.findByText("Take a new photo"));
+    expect(mockStart).toHaveBeenCalledWith({ plantId: IDS.tomato2, photoKind: "leaf_closeup" }, { push: true });
+  });
+
+  it("sends a suggested follow-up", async () => {
+    await openNew();
+    const chips = await screen.findByTestId("suggestions");
+    await fireEvent.press(within(chips).getByText("Should I water today?"));
+    expect(await screen.findByTestId("block-weather_hours")).toBeTruthy();
   });
 });
 

@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { View } from "react-native";
 
-import { chooseAccount, useScenario, type DemoAccount, type NextScan, type UploadFault } from "@/api/mock";
+import { chooseAccount, useScenario, type ChatFault, type DemoAccount, type NextScan, type UploadFault } from "@/api/mock";
 import type { Role } from "@/domain/types";
 import { Chip, Section, Text, space } from "@/ui";
 
@@ -23,11 +23,14 @@ const UPLOAD_FAULTS: { value: UploadFault | null; label: string }[] = [
 ];
 
 /** The next stream (a chat answer or a scan's events) drops after a few events; or the next chat message is over budget. */
-type NextFault = "none" | "drop" | "budget";
+type NextFault = "none" | "drop" | ChatFault;
 const NEXT_FAULTS: { value: NextFault; label: string }[] = [
   { value: "none", label: "None" },
   { value: "drop", label: "Stream drops" },
-  { value: "budget", label: "Chat budget used up" },
+  { value: "budget_exceeded", label: "Chat budget used up" },
+  { value: "error_event", label: "Chat answer errors" },
+  { value: "stall", label: "Chat goes quiet" },
+  { value: "in_progress", label: "Chat reply lost" },
 ];
 
 const ACCOUNTS: { value: DemoAccount; label: string }[] = [
@@ -57,7 +60,7 @@ export function DemoControls() {
         </ChipRow>
         <ChipRow label="Next stream or call">
           {NEXT_FAULTS.map((o) => {
-            const current: NextFault = s.dropNextStream ? "drop" : s.chatBudgetUsed ? "budget" : "none";
+            const current: NextFault = s.dropNextStream ? "drop" : (s.chatFault ?? "none");
             return (
               <Chip
                 key={o.value}
@@ -65,7 +68,7 @@ export function DemoControls() {
                 selected={current === o.value}
                 onPress={() => {
                   s.setDropNextStream(o.value === "drop");
-                  s.setChatBudgetUsed(o.value === "budget");
+                  s.setChatFault(o.value === "none" || o.value === "drop" ? null : o.value);
                 }}
               />
             );

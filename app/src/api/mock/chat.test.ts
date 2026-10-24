@@ -127,6 +127,46 @@ describe("mock chat", () => {
     expect(list.connectors.every((x) => x.endpoint === "era")).toBe(true);
   });
 
+  it("fills the frost planner from the garden's plants, leaving frost_tender out where the species doesn't say", async () => {
+    const c = await gardenConversation();
+    const { events } = await collect(c.id, "Should I cover anything this week?");
+    const block = events.find((e) => e.type === "answer_block");
+    if (block?.type !== "answer_block" || block.block.kind !== "frost_planner") throw new Error("no planner");
+    expect(block.block.plants).toHaveLength(mockStore.plants.size);
+    const lettuce = block.block.plants.find((p) => p.plant_id === IDS.lettuce)!;
+    expect("frost_tender" in lettuce).toBe(false);
+    expect(block.block.plants.find((p) => p.plant_id === IDS.kale)?.frost_tender).toBe(false);
+  });
+
+  it("ends a turn with an error event and stores it as interrupted", async () => {
+    const c = await gardenConversation();
+    scenario.set({ chatFault: "error_event" });
+    const { events } = await collect(c.id, "Should I water today?");
+    expect(events.at(-1)).toMatchObject({ type: "error", retryable: true });
+    expect(((await chat.get(c.id)).messages.items[0] as ChatMessage).interrupted).toBe(true);
+  });
+
+  it("answers a retry of a lost send with 409 request_in_progress, then the replay", async () => {
+    const c = await gardenConversation();
+    scenario.set({ chatFault: "in_progress" });
+    const key = newKey();
+    await expect(sendChatMessage(c.id, { text: "Should I water today?" }, key)).rejects.toBeInstanceOf(TypeError);
+    await expect(sendChatMessage(c.id, { text: "Should I water today?" }, key)).rejects.toMatchObject({ code: "request_in_progress", retryAfterS: 2 });
+    expect((await sendChatMessage(c.id, { text: "Should I water today?" }, key)).kind).toBe("replay");
+    expect((await chat.get(c.id)).messages.items.filter((m) => m.role === "user")).toHaveLength(1);
+  });
+
+  it("confirms a plan card into a new version with the constraint, and a retry gets the same plan", async () => {
+    const c = await chat.create({ garden_id: IDS.garden, anchor: { type: "plant", id: IDS.tomato1 } }, newKey());
+    const { events } = await collect(c.id, "No copper, please.");
+    const pa = events.find((e) => e.type === "pending_action");
+    if (pa?.type !== "pending_action" || pa.pending_action.preview.kind !== "plan") throw new Error("no plan card");
+    const base = pa.pending_action.preview.base_plan_id;
+    const res = await chat.confirm(pa.pending_action.id);
+    expect(res.result.plan).toMatchObject({ supersedes: base, constraints: [expect.objectContaining({ text: "No copper products" })] });
+    expect((await chat.confirm(pa.pending_action.id)).result.plan?.id).toBe(res.result.plan?.id);
+  });
+
   it("refuses a message over 2,000 characters before the stream", async () => {
     const c = await gardenConversation();
     await expect(sendChatMessage(c.id, { text: "x".repeat(2001) }, newKey())).rejects.toMatchObject({ code: "invalid_request" });

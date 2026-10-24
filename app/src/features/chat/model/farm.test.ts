@@ -1,6 +1,6 @@
 import type { FarmCitationWithText } from "@/domain/proposed";
 
-import { connectorIdOf, isEraRecord, openFarmCitation } from "./farm";
+import { connectorIdOf, isVendorRecord, openFarmCitation } from "./farm";
 
 const citation = (record_id: string): FarmCitationWithText => ({
   record_id,
@@ -23,11 +23,15 @@ describe("farm citations (EON E10.3)", () => {
   it("opens a vendor record in its app and an era record's text in a sheet", () => {
     expect(openFarmCitation(citation("conn_real.1.x"), connectors)).toEqual({ kind: "external", url: "https://farm.slack.com/archives/C1/p1" });
     expect(openFarmCitation(citation("conn_era.1.x"), connectors).kind).toBe("sheet");
-    expect(isEraRecord(citation("conn_era.1.x"), connectors)).toBe(true);
+    expect(isVendorRecord(citation("conn_era.1.x"), connectors)).toBe(false);
+    expect(isVendorRecord(citation("conn_real.1.x"), connectors)).toBe(true);
   });
 
   it("never opens a link before the connectors are known", () => {
     expect(openFarmCitation(citation("conn_real.1.x"), undefined).kind).toBe("sheet");
     expect(openFarmCitation(citation("conn_gone.1.x"), connectors).kind).toBe("sheet");
+    // The sheet offers Open only for a known vendor connector (found in review).
+    expect(isVendorRecord(citation("conn_gone.1.x"), connectors)).toBe(false);
+    expect(isVendorRecord(citation("conn_real.1.x"), undefined)).toBe(false);
   });
 });

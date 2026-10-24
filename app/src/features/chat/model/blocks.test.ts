@@ -1,7 +1,7 @@
 import type { AnswerBlock } from "@/domain/proposed";
 import type { ForecastDay, MeasurementPoint } from "@/domain/types";
 
-import { blockSummary, coverRequest, defaultCover, fitMap, focusDistance, frostSummary, hasTrend, humidHoursText, inFrame, pinDistanceCm, plot, trendWord } from "./blocks";
+import { alreadyCovered, blockSummary, coverTasks, defaultCover, fitMap, focusDistance, frostOrder, frostSummary, frostWord, hasTrend, humidHoursText, inFrame, pinDistanceCm, plot, trendWord } from "./blocks";
 
 const night: ForecastDay = { date: "2026-10-29", t_min_c: -1, t_max_c: 6, mean_rh_pct: 70, hours_rh_over_90: 3, precip_mm: 0, frost_risk: true };
 
@@ -13,6 +13,7 @@ const planner: Extract<AnswerBlock, { kind: "frost_planner" }> = {
     { plant_id: "t1", name: "Tomato 1", status: "sick", frost_tender: true },
     { plant_id: "b", name: "Basil", status: "healthy", frost_tender: true },
     { plant_id: "k", name: "Kale", status: "healthy", frost_tender: false },
+    { plant_id: "l", name: "Lettuce", status: "healthy" },
   ],
 };
 
@@ -35,8 +36,25 @@ describe("the frost cover planner (design 5)", () => {
     expect(frostSummary(planner, [])).toBe("No plants chosen to cover.");
   });
 
-  it("asks for the task in words, so the agent answers with a card", () => {
-    expect(coverRequest(planner, ["t1", "k"])).toBe("Add a task to cover Tomato 1 and Kale on Thursday evening.");
+  it("shows a plant with no frost record as not known, never hardy, and leaves it unchosen (S5)", () => {
+    const lettuce = planner.plants.find((p) => p.plant_id === "l")!;
+    expect(frostWord(lettuce)).toBe("Not known");
+    expect(defaultCover(planner)).not.toContain("l");
+    expect(frostOrder(planner.plants).map((p) => p.plant_id)).toEqual(["b", "t1", "l", "k"]);
+    expect(blockSummary(planner)).toMatch(/Not known for Lettuce\.$/);
+  });
+
+  it("writes one task per chosen plant, due the first frost night, titled from the records (S5)", () => {
+    expect(coverTasks(planner, "g1", ["t1", "k"])).toEqual([
+      expect.objectContaining({ garden_id: "g1", plant_id: "t1", title: "Cover Tomato 1 before Thursday's frost", due: "2026-10-29" }),
+      expect.objectContaining({ garden_id: "g1", plant_id: "k", title: "Cover Kale before Thursday's frost", due: "2026-10-29" }),
+    ]);
+  });
+
+  it("knows which plants already have an open cover task for that night", () => {
+    const task = (plant_id: string, due: string, done = false) =>
+      ({ id: plant_id, garden_id: "g1", plant_id, title: "Cover it before Thursday's frost", due, source: "user", created_at: "2026-10-23T00:00:00Z", ...(done ? { done_at: "2026-10-23T01:00:00Z" } : {}) }) as Parameters<typeof alreadyCovered>[1][number];
+    expect([...alreadyCovered(planner, [task("t1", "2026-10-29"), task("b", "2026-10-30"), task("k", "2026-10-29", true)])]).toEqual(["t1"]);
   });
 });
 
@@ -101,7 +119,7 @@ describe("the garden map snippet", () => {
 
   it("summarises every block for VoiceOver", () => {
     expect(blockSummary(block)).toBe("Garden map with 0 beds and 2 plants. Tomato 1 and Tomato 2 are 40 cm apart.");
-    expect(blockSummary(planner)).toBe("Frost cover planner. Frost on Thursday night, low of -1 °C. Tender plants: Tomato 1 and Basil.");
+    expect(blockSummary(planner)).toBe("Frost cover planner. Frost on Thursday night, low of -1 °C. Tender plants: Tomato 1 and Basil. Not known for Lettuce.");
     expect(blockSummary({ kind: "weather_hours", call_id: "c", days: [night] })).toBe("Humid hours, 1 days: Thursday 3.");
     expect(humidHoursText({ ...night, hours_rh_over_90: 1 })).toBe("1 hour over 90% humidity");
   });

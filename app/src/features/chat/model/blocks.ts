@@ -4,7 +4,7 @@
 // least 14 days, only medium bands and up enter a series, no extrapolation, and weather is a pattern, never a cause.
 import type { AnswerBlock, BlockPlant } from "@/domain/proposed";
 import { formatLocalDate } from "@/domain/format";
-import type { ForecastDay, GardenMap, MeasurementPoint, Pin } from "@/domain/types";
+import type { CreateTaskRequest, ForecastDay, GardenMap, MeasurementPoint, Pin, Task } from "@/domain/types";
 
 import { nameList } from "./conversations";
 
@@ -21,9 +21,20 @@ function weekday(date: string): string {
 
 export type FrostPlant = Block<"frost_planner">["plants"][number];
 
+/** `frost_tender` in a word. Absent means the knowledge base doesn't say, which is never "hardy". */
+export function frostWord(p: FrostPlant): "Tender" | "Hardy" | "Not known" {
+  return p.frost_tender === true ? "Tender" : p.frost_tender === false ? "Hardy" : "Not known";
+}
+
+/** The planner's order: tender first, then unknown, then hardy; by name within each. */
+export function frostOrder(plants: readonly FrostPlant[]): FrostPlant[] {
+  const rank = (p: FrostPlant) => (p.frost_tender === true ? 0 : p.frost_tender === undefined ? 1 : 2);
+  return [...plants].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+}
+
 /** The plants the planner starts with chosen: the tender ones. */
 export function defaultCover(block: Block<"frost_planner">): string[] {
-  return block.plants.filter((p) => p.frost_tender).map((p) => p.plant_id);
+  return block.plants.filter((p) => p.frost_tender === true).map((p) => p.plant_id);
 }
 
 export function frostNight(block: Block<"frost_planner">): ForecastDay | undefined {
@@ -37,16 +48,39 @@ export function frostSummary(block: Block<"frost_planner">, chosen: readonly str
   const when = night ? `on ${weekday(night.date)} evening` : "before the frost";
   if (names.length === 0) return "No plants chosen to cover.";
   const count = names.length === 1 ? "1 plant" : `${names.length} plants`;
-  const uncovered = block.plants.filter((p) => p.frost_tender && !chosen.includes(p.plant_id)).map((p) => p.name);
+  const uncovered = block.plants.filter((p) => p.frost_tender === true && !chosen.includes(p.plant_id)).map((p) => p.name);
   const left = uncovered.length ? ` ${nameList(uncovered)} ${uncovered.length === 1 ? "stays" : "stay"} uncovered.` : "";
   return `Cover ${count} ${when}: ${nameList(names)}.${left}`;
 }
 
-/** The message the planner sends: the agent answers with a `create_task` card, so the task needs a confirm. */
-export function coverRequest(block: Block<"frost_planner">, chosen: readonly string[]): string {
+const COVER_DETAIL = "Put a sheet or frost cloth over it in the evening, and take it off in the morning.";
+
+/**
+ * The planner's tasks: one per chosen plant, due the first frost night, for `POST /tasks` (S5's rule: a write the
+ * user starts in the app's own UI is already confirmed, so there is no `create_task` card). The title is written
+ * from the records: "Cover Tomato 1 before Thursday's frost".
+ */
+export function coverTasks(block: Block<"frost_planner">, gardenId: string, chosen: readonly string[]): CreateTaskRequest[] {
   const night = frostNight(block);
-  const names = block.plants.filter((p) => chosen.includes(p.plant_id)).map((p) => p.name);
-  return `Add a task to cover ${nameList(names)}${night ? ` on ${weekday(night.date)} evening` : ""}.`;
+  return block.plants
+    .filter((p) => chosen.includes(p.plant_id))
+    .map((p) => ({
+      garden_id: gardenId,
+      plant_id: p.plant_id,
+      title: `Cover ${p.name} before ${night ? `${weekday(night.date)}'s` : "the"} frost`,
+      detail: COVER_DETAIL,
+      ...(night ? { due: night.date } : {}),
+    }));
+}
+
+/** The planner's plants that already have an open cover task for the first frost night (added here, or before). */
+export function alreadyCovered(block: Block<"frost_planner">, tasks: readonly Task[]): Set<string> {
+  const night = frostNight(block);
+  return new Set(
+    tasks
+      .filter((t) => !t.done_at && !t.dismissed_at && t.plant_id && t.title.startsWith("Cover ") && (!night || t.due === night.date))
+      .map((t) => t.plant_id!),
+  );
 }
 
 // ---- weather hours
@@ -195,8 +229,9 @@ export function blockSummary(block: AnswerBlock): string {
       return `Humid hours, ${block.days.length} days: ${block.days.map((d) => `${weekday(d.date)} ${d.hours_rh_over_90}`).join(", ")}.`;
     case "frost_planner": {
       const night = frostNight(block);
-      const tender = block.plants.filter((p) => p.frost_tender).map((p) => p.name);
-      return `Frost cover planner. ${night ? `Frost on ${weekday(night.date)} night, low of ${night.t_min_c} °C.` : ""} Tender plants: ${nameList(tender) || "none"}.`.replace(/\s+/g, " ").trim();
+      const tender = block.plants.filter((p) => p.frost_tender === true).map((p) => p.name);
+      const unknown = block.plants.filter((p) => p.frost_tender === undefined).map((p) => p.name);
+      return `Frost cover planner. ${night ? `Frost on ${weekday(night.date)} night, low of ${night.t_min_c} °C.` : ""} Tender plants: ${nameList(tender) || "none"}.${unknown.length ? ` Not known for ${nameList(unknown)}.` : ""}`.replace(/\s+/g, " ").trim();
     }
     case "measurement_trend": {
       const pts = chartPoints(block.points);

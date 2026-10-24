@@ -2,11 +2,13 @@
 // streaming now, the composer's text and photos, and sending with the retry and resend rules of README 10.
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AccessibilityInfo } from "react-native";
 
 import { chat, flattenPages, isApiError, newKey, qk, sendChatMessage, useConversation, useGarden, type ChatStreamEvent, type IdempotencyKey } from "@/api";
 import type { ChatMessage } from "@/domain/proposed";
 import { can } from "@/domain/permissions";
 import type { Attachment, Conversation, Memory } from "@/domain/types";
+import { backoffMs } from "@/lib/backoff";
 import { uuid } from "@/lib/uuid";
 import { pickFromLibrary } from "@/platform";
 
@@ -17,6 +19,23 @@ export const MAX_PHOTOS = 3;
 
 /** A network error before any response is retried with the same key this many times (flows 9). */
 const NETWORK_RETRIES = 2;
+/** `409 request_in_progress` (the first attempt is still running) is waited out this many times, same key. */
+const IN_PROGRESS_RETRIES = 3;
+
+/**
+ * No bytes for this long, keepalives included, and the stream is taken as dropped (README 10, the scan stream's
+ * rule: the API sends keepalives on chat streams too). Mutable for tests.
+ */
+export const chatTiming = { idleMs: 45_000 };
+
+const wait = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    const t = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => {
+      clearTimeout(t);
+      resolve();
+    });
+  });
 
 export interface ComposerPhoto {
   localId: string;
@@ -34,6 +53,8 @@ export interface ComposerPhoto {
 export interface TurnExtras {
   memories: Memory[];
   rescans: RescanRequest[];
+  /** The `error` event that ended the turn: its text stays, where the stored message only says `interrupted`. */
+  error?: TurnError;
 }
 
 export type ChatItem =
@@ -47,6 +68,13 @@ function turnError(e: unknown): TurnError {
   }
   return { code: "network", message: "No connection. Check your network and try again.", retryable: true };
 }
+
+/** VoiceOver reads a finished answer and an error out; `accessibilityLiveRegion` is Android's only. */
+function announce(text: string) {
+  if (text) AccessibilityInfo.announceForAccessibility(text);
+}
+
+const errorWords = (e: TurnError) => (e.code === "budget_exceeded" ? "Today's chat limit is used up." : e.message);
 
 /** The api's decoded event is the reducer's event with more fields (`v`, `tool`). */
 const toTurnEvent = (e: ChatStreamEvent): TurnEvent => e;
@@ -86,52 +114,98 @@ export function useConversationScreen(conversationId: string) {
     setTurns((all) => all.map((t) => (t.localId === localId ? turnReducer(t, action) : t)));
   }, []);
 
-  const refresh = useCallback(() => {
-    void qc.invalidateQueries({ queryKey: qk.conversation(conversationId) });
-    if (gardenId) void qc.invalidateQueries({ queryKey: qk.conversations(gardenId) });
-  }, [qc, conversationId, gardenId]);
+  /**
+   * After a turn the stored conversation is fetched again. A turn closed by leaving the screen still changed it
+   * (the server stores the question and an interrupted reply), so its cache is only marked stale, for the next
+   * visit to fetch.
+   */
+  const refresh = useCallback(
+    (left = false) => {
+      const refetchType = left ? "none" : "active";
+      void qc.invalidateQueries({ queryKey: qk.conversation(conversationId), refetchType });
+      if (gardenId) void qc.invalidateQueries({ queryKey: qk.conversations(gardenId), refetchType });
+    },
+    [qc, conversationId, gardenId],
+  );
 
   const run = useCallback(
     async (localId: string, body: { text: string; image_ids?: string[] }) => {
       const key = newKey();
+      // `abort` is leaving the screen; `conn` is this request, which a silent stream also closes.
       const abort = new AbortController();
+      const conn = new AbortController();
+      abort.signal.addEventListener("abort", () => conn.abort());
       aborts.current.add(abort);
       let sawMemory = false;
+      let idle: ReturnType<typeof setTimeout> | undefined;
+      const onActivity = () => {
+        clearTimeout(idle);
+        idle = setTimeout(() => conn.abort(), chatTiming.idleMs);
+      };
       try {
         let result: Awaited<ReturnType<typeof sendChatMessage>> | undefined;
-        for (let attempt = 0; ; attempt++) {
+        let network = 0;
+        let inProgress = 0;
+        for (;;) {
           try {
-            result = await sendChatMessage(conversationId, body, key, { signal: abort.signal });
+            result = await sendChatMessage(conversationId, body, key, { signal: conn.signal, onActivity });
             break;
           } catch (e) {
             if (abort.signal.aborted) return;
-            // A network error before any response: the same key again, which may return the replay (flows 9).
-            if (!isApiError(e) && attempt < NETWORK_RETRIES) continue;
+            // A network error before any response: the same key again after a short wait, which may return the
+            // replay (flows 9). If the first attempt did reach the server, the retry hears `409
+            // request_in_progress` and waits `retry_after_s` before asking again with that key: a new key would
+            // ask the question twice.
+            if (!isApiError(e) && network < NETWORK_RETRIES) {
+              await wait(backoffMs(network++, { baseMs: 500 }), abort.signal);
+              continue;
+            }
+            if (isApiError(e) && e.code === "request_in_progress" && inProgress < IN_PROGRESS_RETRIES) {
+              inProgress++;
+              await wait((e.retryAfterS ?? 2) * 1_000, abort.signal);
+              continue;
+            }
             dispatch(localId, { type: "failed", error: turnError(e) });
+            announce(errorWords(turnError(e)));
             return;
           }
         }
         if (result.kind === "replay") {
           dispatch(localId, { type: "replayed", message: result.message });
+          announce(result.message.text);
           return;
         }
         let ended = false;
+        let said = "";
+        onActivity();
         try {
           for await (const event of result.events) {
             dispatch(localId, { type: "event", event: toTurnEvent(event) });
             if (event.type === "memory_saved") sawMemory = true;
-            if (event.type === "message_completed" || event.type === "error") ended = true;
+            if (event.type === "text_delta") said += event.text;
+            if (event.type === "message_completed") {
+              ended = true;
+              announce(said);
+            }
+            if (event.type === "error") {
+              ended = true;
+              announce(event.message);
+            }
           }
         } catch {
           // The stream broke after it started.
         }
-        if (!ended && !abort.signal.aborted) dispatch(localId, { type: "dropped" });
-      } finally {
-        aborts.current.delete(abort);
-        if (!abort.signal.aborted) {
-          refresh();
-          if (sawMemory && gardenId) void qc.invalidateQueries({ queryKey: qk.memories(gardenId) });
+        if (!ended && !abort.signal.aborted) {
+          // A drop, or no bytes for `idleMs`: the request is closed, and Resend is offered.
+          conn.abort();
+          dispatch(localId, { type: "dropped" });
+          announce("The answer was interrupted.");
         }
+      } finally {
+        clearTimeout(idle);
+        aborts.current.delete(abort);
+        refresh(abort.signal.aborted);
+        if (!abort.signal.aborted && sawMemory && gardenId) void qc.invalidateQueries({ queryKey: qk.memories(gardenId) });
       }
     },
     [conversationId, dispatch, refresh, qc, gardenId],
@@ -210,24 +284,39 @@ export function useConversationScreen(conversationId: string) {
   const removePhoto = useCallback((localId: string) => setPhotos((all) => all.filter((p) => p.localId !== localId)), []);
 
   // The list: stored messages, then the turns not stored yet. A turn whose assistant message is stored gives way to
-  // it, lending it the memories and rescans `Message` doesn't keep. An interrupted assistant message can be resent
-  // from the user message before it, while it is the last thing in the conversation: once a resend or another
-  // question follows it, a second Resend would only ask twice (seen on the simulator).
+  // it, lending it what `Message` doesn't keep: memories, rescans and an `error` event's text. The server stores a
+  // question before its stream starts, so a refetch during a turn (a card confirmed mid-answer, a drop) brings it
+  // in while the turn still draws it: a stored question after the last stored answer that a live turn asks is
+  // left to the turn. An interrupted assistant message can be resent from the user message before it, while it is
+  // the last thing in the conversation: once a resend or another question follows it, a second Resend would only
+  // ask twice (seen on the simulator).
   const items: ChatItem[] = useMemo(() => {
     const byMessage = new Map(turns.flatMap((t) => (t.messageId ? [[t.messageId, t] as const] : [])));
     const storedIds = new Set(stored.map((m) => m.id));
-    const live = turns.some((t) => !(t.messageId && storedIds.has(t.messageId)));
-    const out: ChatItem[] = stored.map((m, i) => {
+    const liveTurns = turns.filter((t) => !(t.messageId && storedIds.has(t.messageId)));
+    const asked = liveTurns.map((t) => t.request.text);
+    const hidden = new Set<string>();
+    for (let i = stored.length - 1; i >= 0 && stored[i]!.role === "user"; i--) {
+      const at = asked.indexOf(stored[i]!.text);
+      if (at === -1) continue;
+      asked.splice(at, 1);
+      hidden.add(stored[i]!.id);
+    }
+    const shown = stored.filter((m) => !hidden.has(m.id));
+    const live = liveTurns.length > 0;
+    const out: ChatItem[] = shown.map((m, i) => {
       const t = byMessage.get(m.id);
+      const error = t?.status === "errored" ? t.error : undefined;
       return {
         kind: "message",
         key: m.id,
         message: m,
-        extras: t && (t.memories.length || t.rescans.length) ? { memories: t.memories, rescans: t.rescans } : undefined,
-        resendable: m.role === "assistant" && m.interrupted && i === stored.length - 1 && !live && stored[i - 1]?.role === "user",
+        extras: t && (t.memories.length || t.rescans.length || error) ? { memories: t.memories, rescans: t.rescans, ...(error ? { error } : {}) } : undefined,
+        resendable:
+          m.role === "assistant" && m.interrupted && i === shown.length - 1 && !live && shown[i - 1]?.role === "user" && (error ? error.retryable : true),
       };
     });
-    for (const t of turns) if (!(t.messageId && storedIds.has(t.messageId))) out.push({ kind: "turn", key: t.localId, turn: t });
+    for (const t of liveTurns) out.push({ kind: "turn", key: t.localId, turn: t });
     return out;
   }, [stored, turns]);
 
@@ -249,12 +338,15 @@ export function useConversationScreen(conversationId: string) {
     conversation,
     gardenId,
     items,
+    /** The questions asked so far, so a suggestion isn't offered twice. */
+    asked: [...stored.filter((m) => m.role === "user").map((m) => m.text), ...turns.map((t) => t.request.text)],
     hasOlder: query.hasNextPage,
     loadOlder: () => void query.fetchNextPage(),
     loadingOlder: query.isFetchingNextPage,
     canWrite: can(role, "chat.write_tools"),
     canShare: can(role, "memory.share"),
     canScan: can(role, "scan.create"),
+    canAddTasks: can(role, "task.write"),
     composer: { text, setText, photos, canSend, busy, uploading },
     actions: { send, resend, requestBefore, addPhoto, retryPhoto, removePhoto, retry: () => void query.refetch() },
   };

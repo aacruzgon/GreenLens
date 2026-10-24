@@ -67,6 +67,8 @@ export type SendResult =
 
 export interface SendOptions {
   signal?: AbortSignal;
+  /** Every chunk of bytes, keepalives included, so the caller can tell a quiet stream from a dead one. */
+  onActivity?: () => void;
 }
 
 /**
@@ -95,7 +97,7 @@ export async function sendChatMessage(
   const stream = data as ReadableStream<Uint8Array> | null | undefined;
   async function* events(): AsyncGenerator<ChatStreamEvent> {
     if (!stream) return;
-    for await (const msg of readSse(stream, { signal: opts.signal })) {
+    for await (const msg of readSse(stream, { signal: opts.signal, onActivity: opts.onActivity })) {
       const event = decodeChatEvent(msg.event, msg.data);
       if (event) yield event;
     }

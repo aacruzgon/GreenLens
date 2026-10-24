@@ -28,15 +28,15 @@ export interface MessageContext {
   canWrite: boolean;
   canShare: boolean;
   canScan: boolean;
-  /** A turn is streaming: blocks don't send another. */
+  /** `task.write`, for the frost planner's Add. */
+  canAddTasks: boolean;
+  /** A turn is streaming: Resend waits. */
   busy: boolean;
   plantName: (id: string) => string | undefined;
-  /** Sends a message now (a block's request). */
-  onAsk: (text: string) => void;
   /** Puts text in the composer ("Ask again"). */
   onPrefill: (text: string) => void;
   onOpenPlant: (plantId: string) => void;
-  onRescan: (plantId: string) => void;
+  onRescan: (plantId: string, photoKind: RescanRequest["photoKind"]) => void;
   rescanning: boolean;
   onResend: (request: { text: string; attachments: Attachment[] }, failedLocalId?: string) => void;
   requestBefore: (messageId: string) => { text: string; attachments: Attachment[] } | undefined;
@@ -109,7 +109,7 @@ function Answer(p: AnswerProps) {
         </View>
       ) : null}
       {p.blocks.map((b, i) => (
-        <AnswerBlockView key={`${b.kind}-${b.call_id}-${i}`} block={b} canWrite={ctx.canWrite} busy={ctx.busy} onAsk={ctx.onAsk} onOpenPlant={ctx.onOpenPlant} />
+        <AnswerBlockView key={`${b.kind}-${b.call_id}-${i}`} block={b} gardenId={ctx.gardenId} canAddTasks={ctx.canAddTasks} onOpenPlant={ctx.onOpenPlant} />
       ))}
       {p.citations.length ? (
         <View style={{ borderRadius: radii.field, backgroundColor: colors.surfaceMuted, overflow: "hidden" }}>
@@ -125,7 +125,7 @@ function Answer(p: AnswerProps) {
         <MemoryCard key={m.id} memory={m} canShare={ctx.canShare} />
       ))}
       {p.rescans.map((r, i) => (
-        <RescanCard key={`${r.plantId}-${i}`} rescan={r} plantName={ctx.plantName(r.plantId)} canScan={ctx.canScan} starting={ctx.rescanning} onScan={() => ctx.onRescan(r.plantId)} />
+        <RescanCard key={`${r.plantId}-${i}`} rescan={r} plantName={ctx.plantName(r.plantId)} canScan={ctx.canScan} starting={ctx.rescanning} onScan={() => ctx.onRescan(r.plantId, r.photoKind)} />
       ))}
       {p.status === "errored" && p.error ? (
         <Text variant="footnote" color="danger" accessibilityLiveRegion="polite">
@@ -148,7 +148,8 @@ function Answer(p: AnswerProps) {
           {p.onResend ? <Button label="Resend" variant="secondary" size="small" onPress={p.onResend} disabled={ctx.busy} testID="resend" /> : null}
         </View>
       ) : null}
-      {p.status === "complete" && p.feedbackId ? <FeedbackRow messageId={p.feedbackId} /> : null}
+      {/* Keyed by message: FlashList recycles cells, and the row's state belongs to one answer. */}
+      {p.status === "complete" && p.feedbackId ? <FeedbackRow key={p.feedbackId} messageId={p.feedbackId} /> : null}
     </View>
   );
 }
@@ -161,7 +162,7 @@ export function MessageView({ item, ctx }: { item: ChatItem; ctx: MessageContext
     return (
       <Answer
         ctx={ctx}
-        status={m.interrupted ? "interrupted" : "complete"}
+        status={item.extras?.error ? "errored" : m.interrupted ? "interrupted" : "complete"}
         text={m.text}
         tools={[]}
         blocks={m.blocks ?? []}
@@ -170,6 +171,7 @@ export function MessageView({ item, ctx }: { item: ChatItem; ctx: MessageContext
         pending={m.pending_actions}
         memories={item.extras?.memories ?? []}
         rescans={item.extras?.rescans ?? []}
+        error={item.extras?.error}
         feedbackId={m.interrupted ? undefined : m.id}
         onResend={request ? () => ctx.onResend(request) : undefined}
       />

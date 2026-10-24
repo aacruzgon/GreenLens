@@ -60,3 +60,18 @@ export function nameList(names: readonly string[]): string {
   if (names.length <= 1) return names[0] ?? "";
   return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
+
+/**
+ * Follow-up questions under the conversation (the design's mockup, screens 3.6), by what it is about, leaving out
+ * ones already asked. Fixed wording the app owns: they name no diagnosis, and a tap sends the question as is.
+ */
+const SUGGESTIONS: Record<AnchorType, readonly string[]> = {
+  garden: ["Should I water today?", "Should I cover anything this week?", "Are any plants too close together?"],
+  plant: ["How has it grown?", "Is it too close to its neighbours?", "Should I water today?"],
+  scan: ["How do I tell it from look-alikes?", "Should I water today?", "Is it too close to its neighbours?"],
+};
+
+export function suggestions(anchor: AnchorType, asked: readonly string[], max = 2): string[] {
+  const seen = new Set(asked.map((t) => t.trim().toLowerCase()));
+  return SUGGESTIONS[anchor].filter((q) => !seen.has(q.toLowerCase())).slice(0, max);
+}

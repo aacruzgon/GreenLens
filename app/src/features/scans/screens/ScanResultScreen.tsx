@@ -191,7 +191,8 @@ export function ScanResultScreen() {
           ) : null}
 
           {chat.problem ? <Banner tone="danger" title={chat.problem} /> : null}
-          <Button label="Ask about this result" variant="secondary" onPress={askAbout} busy={chat.opening} style={{ alignSelf: "center" }} testID="result-ask" />
+          {/* The result screen's main action, as in the mockup: the large primary button. */}
+          <Button label="Ask about this result" size="large" onPress={askAbout} busy={chat.opening} style={{ alignSelf: "stretch" }} testID="result-ask" />
           {d.canFeedback ? (
             <Button label="Was this right?" variant="secondary" onPress={d.actions.feedback} style={{ alignSelf: "center" }} testID="result-feedback" />
           ) : null}

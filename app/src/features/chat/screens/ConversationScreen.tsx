@@ -14,8 +14,9 @@ import { Banner, Button, EmptyState, ErrorState, IconButton, LineIcon, Skeleton,
 
 import { Composer } from "../components/Composer";
 import { MessageView, type MessageContext } from "../components/MessageView";
+import { SuggestionChips } from "../components/SuggestionChips";
 import { useConversationScreen, type ChatItem } from "../hooks/useConversationScreen";
-import { anchorName } from "../model/conversations";
+import { anchorName, suggestions } from "../model/conversations";
 
 export function ConversationScreen() {
   const { conversationId } = useLocalSearchParams<{ conversationId: string }>();
@@ -56,14 +57,14 @@ export function ConversationScreen() {
     canWrite: s.canWrite,
     canShare: s.canShare,
     canScan: s.canScan,
+    canAddTasks: s.canAddTasks,
     busy: s.composer.busy,
     plantName,
-    onAsk: (text) => s.actions.send(text),
     onPrefill: (text) => s.composer.setText(text),
     onOpenPlant: (plantId) => router.push({ pathname: "/plants/[plantId]", params: { plantId } }),
-    onRescan: (plantId) => {
+    onRescan: (plantId, photoKind) => {
       setRescanError(undefined);
-      capture.start({ plantId }, { push: true }).catch(() => setRescanError("The scan couldn't start. Check your network."));
+      capture.start({ plantId, photoKind }, { push: true }).catch(() => setRescanError("The scan couldn't start. Check your network."));
     },
     rescanning: capture.isPending,
     onResend: s.actions.resend,
@@ -120,6 +121,13 @@ export function ConversationScreen() {
             ListHeaderComponent={
               s.hasOlder ? (
                 <Button label="Earlier messages" variant="plain" size="small" onPress={s.loadOlder} busy={s.loadingOlder} style={{ alignSelf: "center" }} />
+              ) : null
+            }
+            ListFooterComponent={
+              anchor && !s.composer.busy ? (
+                <View style={{ paddingHorizontal: gutter, paddingTop: space[2] }}>
+                  <SuggestionChips questions={suggestions(anchor.type, s.asked)} disabled={s.composer.busy} onAsk={(q) => s.actions.send(q)} />
+                </View>
               ) : null
             }
             ListEmptyComponent={

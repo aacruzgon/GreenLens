@@ -27,14 +27,17 @@ function Thumb({ photo, onRetry, onRemove }: { photo: ComposerPhoto; onRetry: ()
       <View style={{ width: 76, height: 76, borderRadius: radii.thumb, overflow: "hidden", backgroundColor: colors.wash }}>
         <Image source={{ uri: photo.uri }} contentFit="cover" style={{ flex: 1, opacity: photo.status === "ready" ? 1 : 0.5 }} accessibilityLabel="Attached photo" />
         {photo.status === "uploading" ? <ActivityIndicator style={{ position: "absolute", top: 28, left: 28 }} color={colors.text} /> : null}
+        {/* A 44 pt target in the corner, around the small visible circle. */}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Remove photo"
           onPress={onRemove}
-          hitSlop={8}
-          style={{ position: "absolute", top: 4, right: 4, width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface }}
+          testID="composer-photo-remove"
+          style={{ position: "absolute", top: 0, right: 0, width: minTouch, height: minTouch, alignItems: "flex-end", padding: 4 }}
         >
-          <LineIcon name="x" color={colors.text} size={12} />
+          <View style={{ width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface }}>
+            <LineIcon name="x" color={colors.text} size={12} />
+          </View>
         </Pressable>
       </View>
       {photo.status === "error" ? (
@@ -42,7 +45,7 @@ function Thumb({ photo, onRetry, onRemove }: { photo: ComposerPhoto; onRetry: ()
           <Text variant="caption2" color="danger" numberOfLines={3}>
             {photo.error}
           </Text>
-          <Pressable accessibilityRole="button" onPress={onRetry} hitSlop={6}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Retry the upload" onPress={onRetry} style={{ minHeight: minTouch, justifyContent: "center" }}>
             <Text variant="caption1" color="accent" emphasis>
               Retry
             </Text>

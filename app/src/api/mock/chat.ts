@@ -3,9 +3,9 @@
 // the message's words, so the demo questions of design 5 each get the tool chips, text, answer block, citation,
 // card or memory they show. Answer blocks and a farm record's text are proposed contracts (domain/proposed.ts).
 
-import type { AnswerBlock, BlockPlant, ChatMessage, FarmCitationWithText } from "@/domain/proposed";
+import type { AnswerBlock, BlockPlant, ChatMessage, FarmCitationWithText, FrostPlant } from "@/domain/proposed";
 
-import { scenario } from "./scenario";
+import { scenario, type ChatFault } from "./scenario";
 import type { MockStore } from "./store";
 import { mockImageUrl } from "./images";
 import { emptyResponse, errorResponse, jsonResponse, nowTs, paginate, type DateKit, type S } from "./util";
@@ -22,8 +22,12 @@ export interface StoredConversation {
 export class ChatState {
   conversations = new Map<string, StoredConversation>();
   pending = new Map<string, S["PendingAction"]>();
+  /** A confirmed `revise_plan` card → the plan version it stored, for a retried confirm. */
+  revisions = new Map<string, S["ActionPlan"]>();
   /** Idempotency key → the completed assistant message, the replay of a retried send (contracts 1). */
   replays = new Map<string, ChatMessage>();
+  /** Keys whose first attempt lost its response (`chatFault: "in_progress"`): the next try hears `409 request_in_progress`. */
+  inProgress = new Set<string>();
   feedback = new Map<string, S["MessageFeedbackRequest"]>();
   /** Uploaded chat images by id, with the conversation they belong to. */
   images = new Map<string, { conversationId: string; url: string }>();
@@ -157,8 +161,11 @@ const KNOWLEDGE: Record<"water" | "frost" | "spacing", S["Citation"]> = {
   spacing: { source_id: "umn-ext-tomato-spacing", publisher: "University of Minnesota Extension", title: "Growing tomatoes in the home garden", url: "https://extension.umn.edu/vegetables/growing-tomatoes" },
 };
 
-/** Tender to frost in the demo garden's species (the knowledge base's rule is a proposed contract). */
-const TENDER = new Set(["tomato", "pepper", "basil"]);
+/**
+ * The demo species' `frost` (S5 work 9: a species field, `tender` or `hardy`). Lettuce has none, so its plants'
+ * `frost_tender` is absent: the planner shows it as not known, never as hardy.
+ */
+const FROST: Record<string, "tender" | "hardy"> = { tomato: "tender", pepper: "tender", basil: "tender", kale: "hardy" };
 
 function tool(id: string, name: string, label: string): TurnStep[] {
   return [
@@ -226,11 +233,13 @@ function weekday(date: string): string {
 
 function frostTurn(ctx: TurnCtx): TurnStep[] {
   const night = frostNights(ctx.store)[0];
-  const plants = blockPlants(ctx.store).map((p) => ({
-    ...p,
-    frost_tender: TENDER.has(ctx.store.plants.get(p.plant_id)?.species?.id ?? ""),
-  }));
-  const tender = plants.filter((p) => p.frost_tender);
+  // The garden's live plants, not the map's pins (S5), with their species' frost.
+  const plants: FrostPlant[] = blockPlants(ctx.store).map((p) => {
+    const frost = FROST[ctx.store.plants.get(p.plant_id)?.species?.id ?? ""];
+    return frost ? { ...p, frost_tender: frost === "tender" } : p;
+  });
+  const tender = plants.filter((p) => p.frost_tender === true);
+  // No frost night: the API refuses the block, and the text stands alone.
   if (!night) {
     return [...tool("call_fc", "get_forecast", "Checking the forecast"), ...say("No frost is forecast in the next 7 days, so nothing needs covering this week.")];
   }
@@ -238,15 +247,14 @@ function frostTurn(ctx: TurnCtx): TurnStep[] {
   const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0] ?? "none";
   return [
     ...tool("call_fc", "get_forecast", "Checking the forecast"),
-    ...tool("call_map", "get_garden_map", "Reading the garden map"),
     ...tool("call_sp", "get_species_profile", "Checking which plants are tender"),
-    ...say(`Frost is forecast on ${weekday(night.date)} night, with a low of ${night.t_min_c} °C. ${tender.length} of your plants are tender to frost: ${list}. Choose which to cover below, and I can add a task for that evening.`),
+    ...say(`Frost is forecast on ${weekday(night.date)} night, with a low of ${night.t_min_c} °C. ${tender.length} of your plants are tender to frost: ${list}. Choose which to cover below, and add them to your tasks for that evening.`),
     block({ kind: "frost_planner", call_id: "call_fc", nights: frostNights(ctx.store), plants }),
     cite(KNOWLEDGE.frost),
   ];
 }
 
-/** "Add a task to cover Tomato 1 and Basil on Thursday evening", the frost planner's request. */
+/** "Add a task to cover Tomato 1 and Basil on Thursday evening", typed: the agent's `create_task` card. */
 function coverTaskTurn(ctx: TurnCtx): TurnStep[] {
   const night = frostNights(ctx.store)[0];
   const chosen = [...ctx.store.plants.values()].filter((p) => ctx.text.toLowerCase().includes(p.name.toLowerCase()));
@@ -263,6 +271,48 @@ function coverTaskTurn(ctx: TurnCtx): TurnStep[] {
   return [
     ...tool("call_task", "create_task", "Preparing a task"),
     ...say("Here is the task. It is added only when you confirm."),
+    { delay: 150, frame: { event: "pending_action", data: { pending_action: action } } },
+  ];
+}
+
+/** The scan whose plan a revision changes: the anchor's, else the plant's or Tomato 1's latest planned scan. */
+function planScan(ctx: TurnCtx) {
+  const a = ctx.stored.conversation.anchor;
+  if (a.type === "scan") return ctx.store.scan(a.id);
+  const plantId = anchorPlant(ctx) ?? plantNamed(ctx.store, ctx.text)?.id ?? [...ctx.store.plants.keys()][0];
+  return [...ctx.store.scans.values()]
+    .filter((st) => st.scan.plant_id === plantId && st.plan)
+    .sort((x, y) => y.scan.created_at.localeCompare(x.scan.created_at))[0];
+}
+
+/** "No copper, please": a `revise_plan` card, which a confirm turns into a new plan version (contracts 8). */
+function planTurn(ctx: TurnCtx): TurnStep[] {
+  const st = planScan(ctx);
+  const plan = st?.plan;
+  if (!plan) return say("There's no plan to change yet. Once a scan has a plan, I can change it with you.");
+  if (!ctx.canWrite) return say("Only editors and owners can change the plan. Ask one of them, and they can change it here.");
+  const chemical = plan.steps.find((x) => x.category === "chemical") ?? plan.steps.at(-1)!;
+  const changed: S["PlanStep"] = {
+    ...chemical,
+    title: "Remove the spotted lower leaves each week instead of spraying",
+    detail: "Cut them off at the stem on a dry day and bin them, not the compost. No copper products.",
+    category: "mechanical",
+  };
+  delete changed.safety_note;
+  const conv = ctx.stored.conversation;
+  const action: S["PendingAction"] = {
+    id: ctx.store.nextId("pa"),
+    conversation_id: conv.id,
+    tool: "revise_plan",
+    status: "proposed",
+    card: { title: "Change the plan?", body: "Replace the copper spray with removing the spotted leaves each week, and keep copper out of later versions.", confirm_label: "Change plan", reject_label: "Keep plan" },
+    preview: { kind: "plan", base_plan_id: plan.id, plan_summary: plan.summary, changed_steps: [changed], removed_step_ids: [], constraints_added: ["No copper products"] },
+    expires_at: nowTs(24 * 3_600_000),
+  };
+  ctx.store.chat.pending.set(action.id, action);
+  return [
+    ...tool("call_plan", "revise_plan", "Preparing a plan change"),
+    ...say("Here is the change. The plan changes only when you confirm, and it changes for everyone in the garden."),
     { delay: 150, frame: { event: "pending_action", data: { pending_action: action } } },
   ];
 }
@@ -407,6 +457,7 @@ function turnFor(ctx: TurnCtx): { route: S["ChatRoute"]; steps: TurnStep[]; farm
   const t = ctx.text.toLowerCase();
   const has = (...words: string[]) => words.some((w) => t.includes(w));
   if (has("task to cover", "add a task to cover")) return { route: "task_change", steps: coverTaskTurn(ctx), farm: [] };
+  if (has("copper", "organic", "change the plan")) return { route: "task_change", steps: planTurn(ctx), farm: [] };
   if (has("frost", "cover", "cold")) return { route: "care_question", steps: frostTurn(ctx), farm: [] };
   if (has("container", "in a pot", "remember")) return { route: "care_question", steps: memoryTurn(ctx), farm: [] };
   if (has("water", "rain")) return { route: "care_question", steps: waterTurn(ctx), farm: [] };
@@ -442,7 +493,7 @@ function assemble(id: string, frames: Frame[], farm: FarmCitationWithText[], int
   return msg;
 }
 
-function turnStream(store: MockStore, stored: StoredConversation, body: S["SendMessageRequest"], key: string | null): ReadableStream<Uint8Array> {
+function turnStream(store: MockStore, stored: StoredConversation, body: S["SendMessageRequest"], key: string | null, fault: ChatFault | null = null): ReadableStream<Uint8Array> {
   const gen = store.generation;
   const drop = scenario.get().dropNextStream;
   if (drop) scenario.set({ dropNextStream: false });
@@ -453,6 +504,7 @@ function turnStream(store: MockStore, stored: StoredConversation, body: S["SendM
   const sent: Frame[] = [];
   let cancelled = false;
   let finished = false;
+  let unstall: (() => void) | undefined;
 
   const finish = (interrupted: boolean) => {
     if (finished || store.generation !== gen) return;
@@ -483,6 +535,19 @@ function turnStream(store: MockStore, stored: StoredConversation, body: S["SendM
           controller.error(new TypeError("Network request failed"));
           return;
         }
+        if (fault === "error_event" && count >= 4) {
+          // The server ends the turn with an `error` event and stores it as interrupted (contracts 8).
+          const error: Frame = { event: "error", data: { code: "upstream_unavailable", message: "The assistant stopped partway. Try again in a minute.", retryable: true } };
+          controller.enqueue(encoder.encode(frameText(error)));
+          finish(true);
+          controller.close();
+          return;
+        }
+        if (fault === "stall" && count >= 3) {
+          // Quiet, with no keepalives, until the app gives up and closes it.
+          await new Promise<void>((resolve) => (unstall = resolve));
+          return finish(true);
+        }
       }
       finish(false);
       controller.enqueue(encoder.encode(frameText({ event: "message_completed", data: { message_id: messageId, usage: { tokens_in: 1840, tokens_out: 160 } } })));
@@ -499,11 +564,44 @@ function turnStream(store: MockStore, stored: StoredConversation, body: S["SendM
     cancel() {
       cancelled = true;
       finish(true);
+      unstall?.();
     },
   });
 }
 
 // ---- routes
+
+/**
+ * A confirmed plan revision: a new version of the scan's plan with the changed steps, the removed ones gone and the
+ * constraints added, superseding the base (`plan_superseded`, reason `chat_revision`). A base that is no longer
+ * current is `409 invalid_state` with `current_plan_id`, which the card shows as "Ask again".
+ */
+function confirmPlan(store: MockStore, action: S["PendingAction"], preview: Extract<S["Preview"], { kind: "plan" }>): Response {
+  const st = [...store.scans.values()].find((x) => x.plan && (x.plan.id === preview.base_plan_id || x.plan.supersedes === preview.base_plan_id || x.scan.plan_id === preview.base_plan_id));
+  const base = st?.plan;
+  if (!st || !base) return errorResponse("invalid_state", { status: action.status });
+  if (base.id !== preview.base_plan_id) return errorResponse("invalid_state", { status: action.status, current_plan_id: base.id });
+  const changed = new Map(preview.changed_steps.map((x) => [x.id, x]));
+  const steps = base.steps.filter((x) => !preview.removed_step_ids.includes(x.id)).map((x) => changed.get(x.id) ?? x);
+  for (const x of preview.changed_steps) if (!base.steps.some((b) => b.id === x.id)) steps.push(x);
+  const at = nowTs();
+  const plan: S["ActionPlan"] = {
+    ...base,
+    id: store.nextId("plan"),
+    version: base.version + 1,
+    supersedes: base.id,
+    summary: preview.plan_summary,
+    steps,
+    constraints: [...base.constraints, ...preview.constraints_added.map((text) => ({ text, from_pending_action_id: action.id, created_at: at }))],
+    created_at: at,
+  };
+  st.plan = plan;
+  st.scan.plan_id = plan.id;
+  store.emit(st.scan.id, { type: "plan_superseded", old_plan_id: base.id, new_plan_id: plan.id, reason: "chat_revision" });
+  action.status = "confirmed";
+  store.chat.revisions.set(action.id, plan);
+  return jsonResponse(200, { pending_action: action, result: { plan } });
+}
 
 export interface ChatRouteCtx {
   params: Record<string, string>;
@@ -599,11 +697,11 @@ export function registerChatRoutes(route: Register, h: ChatRouteHelpers): void {
   route("POST", "/conversations/:id/messages", async (c) => {
     const stored = c.store.chat.conversations.get(c.params.id);
     if (!stored) return notFound();
-    if (scenario.get().chatBudgetUsed) {
-      scenario.set({ chatBudgetUsed: false });
-      return errorResponse("budget_exceeded", { budget: "chat_tokens", resets_at: nowTs(8 * 3_600_000) });
-    }
+    const fault = scenario.get().chatFault;
+    if (fault) scenario.set({ chatFault: null });
+    if (fault === "budget_exceeded") return errorResponse("budget_exceeded", { budget: "chat_tokens", resets_at: nowTs(8 * 3_600_000) });
     const key = c.headers.get("idempotency-key");
+    if (key && c.store.chat.inProgress.delete(key)) return errorResponse("request_in_progress", { status: "running" });
     const replay = key ? c.store.chat.replays.get(key) : undefined;
     if (replay) return jsonResponse(200, { message: replay });
     const body = await h.jsonObject(c);
@@ -622,7 +720,15 @@ export function registerChatRoutes(route: Register, h: ChatRouteHelpers): void {
     stored.messages.push(user);
     stored.conversation.title ??= text.length > 60 ? `${text.slice(0, 57)}…` : text;
     stored.conversation.last_message_at = user.created_at;
-    return h.streamResponse(turnStream(c.store, stored, { text, image_ids: imageIds as string[] }, key));
+    const stream = turnStream(c.store, stored, { text, image_ids: imageIds as string[] }, key, fault);
+    if (fault === "in_progress" && key) {
+      // The turn runs to the end on the server, but its response never reaches the app.
+      const reader = stream.getReader();
+      while (!(await reader.read()).done);
+      c.store.chat.inProgress.add(key);
+      throw new TypeError("Network request failed");
+    }
+    return h.streamResponse(stream);
   });
 
   route("POST", "/messages/:id/feedback", async (c) => {
@@ -639,13 +745,14 @@ export function registerChatRoutes(route: Register, h: ChatRouteHelpers): void {
     if (!action) return notFound();
     if (action.status === "confirmed") {
       const task = action.preview.kind === "task" ? c.store.tasks.find((t) => t.id === `task_${action.id}`) : undefined;
-      return jsonResponse(200, { pending_action: action, result: task ? { task } : {} });
+      const plan = action.preview.kind === "plan" ? c.store.chat.revisions.get(action.id) : undefined;
+      return jsonResponse(200, { pending_action: action, result: task ? { task } : plan ? { plan } : {} });
     }
     if (action.status !== "proposed" || action.expires_at < nowTs()) {
       if (action.status === "proposed") action.status = "expired";
       return errorResponse("invalid_state", { status: action.status });
     }
-    if (action.preview.kind !== "task") return errorResponse("invalid_state", { status: action.status });
+    if (action.preview.kind === "plan") return confirmPlan(c.store, action, action.preview);
     const preview = action.preview.task;
     if (preview.plant_id && !c.store.plants.has(preview.plant_id)) return errorResponse("invalid_state", { status: action.status, hint: "plant_removed" });
     const task: S["Task"] = { ...preview, id: `task_${action.id}`, source: "chat", created_at: nowTs() };
