@@ -22,7 +22,9 @@ pub struct AgentConfig {
     pub memory_hits: usize,
     /// Knowledge hits `search_knowledge` returns.
     pub knowledge_hits: usize,
-    /// The daily chat token budget per user, input and output together (architecture 11).
+    /// The daily chat token budget per user, in budget tokens: input and output together, cache
+    /// reads at 0.1 and cache writes at 1.25 of an input token (`CallUsage::budget_tokens`;
+    /// architecture 11, abuse and cost).
     pub daily_chat_tokens: u64,
     /// `max_tokens` of one chat model call.
     pub chat_max_tokens: u32,

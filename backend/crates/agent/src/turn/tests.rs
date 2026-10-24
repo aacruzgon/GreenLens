@@ -70,7 +70,8 @@ async fn owner(role: Role) -> ConversationOwner<Viewer> {
 #[derive(Default)]
 struct Seen {
     stored: Mutex<Vec<NewMessage>>,
-    usage_added: Mutex<Vec<Usage>>,
+    /// Every `add_chat_usage`: the raw counts and the turn's budget weight.
+    usage_added: Mutex<Vec<(Usage, u64)>>,
     /// Every task the classifier was asked.
     classified: Mutex<Vec<ClassifierTask>>,
     /// Every card stored: its message, and whether that message was stored already.
@@ -235,13 +236,13 @@ fn harness(setup: Setup) -> (ChatAgent, Arc<ScriptedModel>, Arc<Seen>) {
     let spent = setup.spent_today;
     usage.expect_usage().returning(move |_, _| {
         Ok(UsageTotals {
-            tokens_in: spent,
+            chat_budget: spent,
             ..UsageTotals::default()
         })
     });
     let s = seen.clone();
-    usage.expect_add_chat_usage().returning(move |_, _, u| {
-        s.usage_added.lock().unwrap().push(u);
+    usage.expect_add_chat_usage().returning(move |_, _, u, b| {
+        s.usage_added.lock().unwrap().push((u, b));
         Ok(UsageTotals::default())
     });
 
@@ -354,10 +355,10 @@ fn text_of(events: &[ChatEvent]) -> String {
 }
 
 fn usage(i: u32, o: u32) -> ChatChunk {
-    ChatChunk::Usage(Usage {
+    ChatChunk::Usage(domain::ports::CallUsage::plain(Usage {
         tokens_in: i,
         tokens_out: o,
-    })
+    }))
 }
 
 #[tokio::test]
@@ -404,7 +405,7 @@ async fn a_failing_sentence_is_replaced_before_it_is_streamed() {
         Some(CHAT_PROMPT_VERSION)
     );
     assert_eq!(stored[1].tokens_in, 800);
-    assert_eq!(seen.usage_added.lock().unwrap()[0].tokens_out, 40);
+    assert_eq!(seen.usage_added.lock().unwrap()[0].0.tokens_out, 40);
 }
 
 /// The streamed and the stored text of a turn whose model writes `before`, calls a tool, then
@@ -1221,6 +1222,58 @@ async fn the_budget_is_checked_before_the_stream() {
     assert_eq!(budget, Budget::ChatTokens);
     assert_eq!(resets_at, "2026-10-17T00:00:00Z".parse().unwrap());
     assert_eq!(model.sent().len(), 0);
+}
+
+/// The day's budget counts a call's cache reads at 0.1 and cache writes at 1.25 of an input
+/// token, while the stored and streamed usage keep every token. Two calls of 10,000 input
+/// tokens, 9,000 of them cache reads, weigh 1,000 + 900 + 50 out each.
+#[tokio::test]
+async fn the_budget_weighs_cache_reads_and_writes() {
+    let cached = || {
+        ChatChunk::Usage(domain::ports::CallUsage {
+            usage: Usage {
+                tokens_in: 10_000,
+                tokens_out: 50,
+            },
+            cache_read: 9_000,
+            cache_write: 0,
+        })
+    };
+    let (agent, _, seen) = harness(Setup::new(vec![
+        vec![
+            ChatChunk::ToolCall {
+                call_id: "toolu_1".to_owned(),
+                name: "list_tasks".to_owned(),
+                arguments: json!({}),
+            },
+            cached(),
+            ChatChunk::Done(StopReason::ToolUse),
+        ],
+        vec![
+            ChatChunk::TextDelta("No open tasks.".to_owned()),
+            cached(),
+            ChatChunk::Done(StopReason::EndTurn),
+        ],
+    ]));
+    let stream = agent
+        .start_turn(request(owner(Role::Editor).await, "Any tasks?"))
+        .await
+        .unwrap();
+    let (events, _) = collect(stream).await;
+    let Some(ChatEvent::MessageCompleted(done)) = events.last() else {
+        panic!("{:?}", names(&events))
+    };
+    assert_eq!((done.usage.tokens_in, done.usage.tokens_out), (20_000, 100));
+    assert_eq!(
+        *seen.usage_added.lock().unwrap(),
+        [(
+            Usage {
+                tokens_in: 20_000,
+                tokens_out: 100
+            },
+            2 * (1_000 + 900 + 50)
+        )]
+    );
 }
 
 #[tokio::test]

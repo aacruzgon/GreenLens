@@ -245,7 +245,7 @@ struct Recorder<'a> {
 impl Recorder<'_> {
     fn see(&mut self, chunk: &Result<ChatChunk, ModelError>) {
         match chunk {
-            Ok(ChatChunk::Usage(usage)) => self.latest = Some(*usage),
+            Ok(ChatChunk::Usage(usage)) => self.latest = Some(usage.usage),
             Ok(ChatChunk::Done(_)) | Err(_) => self.flush(),
             Ok(ChatChunk::ToolCall {
                 name, arguments, ..
@@ -380,10 +380,10 @@ mod tests {
     }
 
     fn usage(tokens_in: u32, tokens_out: u32) -> ChatChunk {
-        ChatChunk::Usage(domain::chat::Usage {
+        ChatChunk::Usage(domain::ports::CallUsage::plain(domain::chat::Usage {
             tokens_in,
             tokens_out,
-        })
+        }))
     }
 
     #[test]

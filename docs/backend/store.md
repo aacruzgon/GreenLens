@@ -2672,8 +2672,7 @@ pub mod sql {
     pub const USAGE: &str = "SELECT * FROM ONLY $usage;";
     /// Chat tokens after a turn ([database 4], limits ✓: `+=` on a missing record starts from
     /// the default).
-    pub const ADD_CHAT_USAGE: &str =
-        "UPSERT ONLY $usage SET tokens_in += $tokens_in, tokens_out += $tokens_out RETURN AFTER;";
+    pub const ADD_CHAT_USAGE: &str = "UPSERT ONLY $usage SET tokens_in += $tokens_in, tokens_out += $tokens_out, chat_budget += $budget RETURN AFTER;";
 }
 ```
 

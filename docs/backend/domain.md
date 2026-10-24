@@ -3671,6 +3671,59 @@ pub enum StopReason {
     Refusal,
 }
 
+/// One call's token counts as the provider bills them: [`Usage`] (every input token, cached or
+/// not, as `message_completed` and the stored message carry it) with the part of the input
+/// read from and written to the prompt cache. Only the daily chat budget reads the split
+/// ([`CallUsage::budget_tokens`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CallUsage {
+    /// All input and output tokens.
+    pub usage: Usage,
+    /// Of `usage.tokens_in`, the tokens read from the prompt cache.
+    pub cache_read: u32,
+    /// Of `usage.tokens_in`, the tokens written to the prompt cache.
+    pub cache_write: u32,
+}
+
+impl CallUsage {
+    /// A cache read counts as this fraction of an input token in the budget: Anthropic's
+    /// usual ratio (0.1×; Opus 5.5 bills 0.05×, so the budget errs high).
+    pub const CACHE_READ_WEIGHT: (u64, u64) = (1, 10);
+    /// A cache write counts as 1.25 input tokens: Anthropic's price for the 5-minute cache,
+    /// the one the agent uses.
+    pub const CACHE_WRITE_WEIGHT: (u64, u64) = (5, 4);
+
+    /// Counts that carry no cache split (a provider that reports none, a test).
+    #[must_use]
+    pub const fn plain(usage: Usage) -> Self {
+        Self {
+            usage,
+            cache_read: 0,
+            cache_write: 0,
+        }
+    }
+
+    /// The call's weight in the daily chat budget: uncached input and output at 1, cache
+    /// reads at 0.1 and cache writes at 1.25, each rounded up. Anthropic's prices, from the
+    /// prompt-caching guide (cache reads 0.1× the input price, 5-minute writes 1.25×), so the
+    /// budget follows what a turn costs; most of a tool turn's input is the cached prefix
+    /// read again on each call.
+    #[must_use]
+    pub fn budget_tokens(&self) -> u64 {
+        let read = u64::from(self.cache_read);
+        let write = u64::from(self.cache_write);
+        let uncached = u64::from(self.usage.tokens_in)
+            .saturating_sub(read)
+            .saturating_sub(write);
+        let (rn, rd) = Self::CACHE_READ_WEIGHT;
+        let (wn, wd) = Self::CACHE_WRITE_WEIGHT;
+        uncached
+            + (read * rn).div_ceil(rd)
+            + (write * wn).div_ceil(wd)
+            + u64::from(self.usage.tokens_out)
+    }
+}
+
 /// One piece of a streamed answer.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChatChunk {
@@ -3690,7 +3743,7 @@ pub enum ChatChunk {
     /// Token counts, once known. The counts are cumulative for the call: a later `Usage`
     /// replaces an earlier one (it is not added to it), and the last one before `Done` is the
     /// call's total.
-    Usage(Usage),
+    Usage(CallUsage),
     /// The end.
     Done(StopReason),
 }
@@ -6950,6 +7003,9 @@ pub struct UsageTotals {
     pub tokens_in: u64,
     /// Chat tokens out.
     pub tokens_out: u64,
+    /// Chat tokens as the daily budget counts them, cache reads and writes weighted by price
+    /// ([`CallUsage::budget_tokens`](crate::ports::CallUsage::budget_tokens)).
+    pub chat_budget: u64,
 }
 
 /// The `usage_daily` table. The scan count is incremented inside `ScanRepo::create_scan`'s
@@ -6960,12 +7016,14 @@ pub trait UsageRepo: Send + Sync {
     /// The day's totals, for the budget check before a chat turn.
     async fn usage(&self, user: UserId, day: chrono::NaiveDate) -> Result<UsageTotals, StoreError>;
 
-    /// `UPSERT … SET tokens_in += …, tokens_out += …` after a chat turn.
+    /// `UPSERT … SET tokens_in += …, tokens_out += …, chat_budget += …` after a chat turn:
+    /// the raw counts, and the turn's weight in the budget.
     async fn add_chat_usage(
         &self,
         user: UserId,
         day: chrono::NaiveDate,
         usage: Usage,
+        budget_tokens: u64,
     ) -> Result<UsageTotals, StoreError>;
 }
 ```
