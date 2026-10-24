@@ -6,6 +6,7 @@ mod connect;
 
 use std::{path::Path, sync::Arc, time::Duration};
 
+use agent::safety::Calibration;
 use anyhow::Context as _;
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -417,19 +418,20 @@ async fn outbound(config: &Config, clock: &Arc<dyn Clock>) -> anyhow::Result<Out
         },
     );
     let chat_model: Arc<dyn ChatModel> = Arc::new(agent::model::AnthropicChat::new(llm));
-    let classifier: Arc<dyn TextClassifier> = match &config.providers.jev {
-        Some((base_url, api_key)) => Arc::new(JevClassifier::new(
-            http.clone(),
-            JevConfig {
-                base_url: base_url.clone(),
-                api_key: api_key.clone(),
-                timeout: Duration::from_secs(2),
-            },
-        )),
-        None => Arc::new(agent::model::LlmClassifier::new(
+    // `agent_config` picks the router calibration on the same condition.
+    let classifier: Arc<dyn TextClassifier> = if let Some(jev) = &config.providers.jev {
+        tracing::info!(model = %jev.model, "text classifier: jev");
+        let jev_config = JevConfig {
+            model: jev.model.clone(),
+            ..JevConfig::new(jev.url.clone(), jev.api_key.clone())
+        };
+        Arc::new(JevClassifier::new(http.clone(), jev_config))
+    } else {
+        tracing::info!("text classifier: the LLM fallback (JEV_API_KEY is not set)");
+        Arc::new(agent::model::LlmClassifier::new(
             Arc::clone(&chat_model),
             256,
-        )),
+        ))
     };
     let connect: Arc<dyn ConnectVendors> = Arc::new(connect::VendorClients::new(
         |c| SlackClient::new(http.clone(), c),
@@ -584,12 +586,44 @@ fn pipeline_api(
     }))
 }
 
-/// The chat agent over the ports, with its chat model, classifier and product catalogue.
+/// The router calibration of the classifier `build` wires: `Calibration::jev()` with Jev,
+/// the default with the LLM classifier, whose scores differ ([agent 7]).
+///
+/// [agent 7]: https://github.com/aacruzgon/GreenLens/blob/main/docs/backend/agent.md#7-router-and-safety-gate
+fn router_calibration(config: &Config) -> Calibration {
+    if config.providers.jev.is_some() {
+        Calibration::jev()
+    } else {
+        Calibration::default()
+    }
+}
+
+/// The agent's settings: the defaults, with the router calibration of the classifier wired and
+/// the deployment's poison-control text when set. The text must pass the dose check, as the
+/// agent runs it through that check when it answers.
+pub(crate) fn agent_config(
+    config: &Config,
+    products: &agent::safety::ProductCatalogue,
+) -> Result<agent::AgentConfig, crate::config::ConfigError> {
+    let mut agent_config = agent::AgentConfig {
+        calibration: router_calibration(config),
+        ..agent::AgentConfig::default()
+    };
+    if let Some(text) = &config.poison_control_text {
+        crate::config::check_poison_control_text(text, products)?;
+        text.clone_into(&mut agent_config.poison_control_text);
+    }
+    Ok(agent_config)
+}
+
+/// The chat agent over the ports, with its chat model, classifier, product catalogue and
+/// settings ([`agent_config`]).
 fn chat_turns(
     ports: &Ports,
     chat: Arc<dyn ChatModel>,
     classifier: Arc<dyn TextClassifier>,
     products: Arc<agent::safety::ProductCatalogue>,
+    config: agent::AgentConfig,
     tasks: TaskTracker,
 ) -> Arc<dyn ChatTurns> {
     Arc::new(agent::ChatAgent::new(
@@ -606,7 +640,7 @@ fn chat_turns(
             clock: Arc::clone(&ports.clock),
             ids: Arc::clone(&ports.ids),
             products,
-            config: agent::AgentConfig::default(),
+            config,
         },
         tasks,
     ))
@@ -690,11 +724,13 @@ pub async fn build(
         &out.chat_model,
         &products,
     );
+    let agent_settings = agent_config(&config, &products)?;
     let chat = chat_turns(
         &ports,
         out.chat_model,
         out.classifier,
         products,
+        agent_settings,
         tasks.clone(),
     );
     let mut deletions = DeletionRunner::new(

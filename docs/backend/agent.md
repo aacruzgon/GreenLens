@@ -1,6 +1,6 @@
 # PDM Backend: `agent` crate
 
-> **Status:** Draft v0.6.11, 2026-10-23. v0.6.11: the dose check's clock times may follow an opening parenthesis (`is_clock_time`; EON gap G20's re-run). v0.6.10: EON E5.4: the plan writer gets the garden's farm records (`plan_farm_records`: one query, the plant and the leading candidate, the top 4 with 2 kept for each kind, nothing embedded without records, none on a failure or after 5 s) in a `farm_records` block; validation refuses a farm citation it wasn't given or can't parse and a step cited by farm records alone, lists each record once per step, and returns the cited records as `farm_records`; the plan prompt is `plan/2026-10-23.1` and tells the model to leave instructions aimed at it, found in a record, out of the plan, while the farm's procedures, memories and beliefs still apply. v0.6.9: gap G17 (docs/EON): the chat prompt (`chat/2026-10-20.6`), for a question not about the record, also says not to say it ignored instructions in it, not to sum them up or warn about them, and quotes the closing line to leave out; a new prompt test. v0.6.8: gap G22 (docs/EON): the ratio rules let dates, years, clock times and labels through: each rule has an `Exempt`, and `first_match` walks a rule's matches until one isn't exempt, so a ratio after an exempt match still fails ("Bed 3: 1:10 copper"); `in_exempt` passes "<n> in <year>" (`YEARS`, 2016–2036, not a multiple of 50, with no measure, `parts`, `of`, `with`, `water` or mixture word after it) and a numbered bed before the first term with `days`, `weeks` or `months` ending the phrase ("bed 2 in 10 days"); `colon_exempt` passes a clock time (`is_clock_time`: an ISO timestamp, or a time word `at`, `by`, `until`, `from`, `before`, `after`, `since` or `between`, a date, or a range's clock-time start before it, with an hour from 5 or `am`, `pm`, `o'clock`, `UTC` or `GMT` after it; no leading-zero, `:00`, `h` or part-of-day marker) and a label (`LABEL_START`-anchored label word, month and day or numeric date, an ISO date anywhere or a year at the start, with words after the count; or a label word anywhere with a date after the colon, `may` and `mar` only before the end, punctuation, a number or `and`); an independent audit's 85 adversarial ratio shapes shaped the rules; two new dose tests and a `remember` test (contracts v0.10.23). v0.6.7: gap G19 (docs/EON): the dose check's `Rate` also matches `RATE_BASE`: `per` before a field measure (`hectare`, `ha`, `acre`, optionally after a number, a fraction, `half` or `quarter`), a container (`tank`, `spray tank`, `tankful`, `tankload`, `backpack`, `knapsack`, `sprayer`, `jerry can`, `bucket`, `watering can`) or an area with a number ("100 m²", "10 square metres", "100 sq. ft."), and `/` before a field measure or an area with a number only, so "1/2 acre" and "rainwater/tank water" pass; `sq` joins the sentence splitter's abbreviations; `RATE_UNIT` adds `ℓ`, `ltr`, `lt`, `qt`, `pt` and an optional `US`, `UK` or `imperial`, so "a bag per acre" and "a capful per qt" fail while spacing passes; three new tests (117 in all) cover the new rates, spacing and sizes, and the known misses (a rate per plant, per length of row, per area without a number). v0.6.6: gap G13 (docs/EON): the dose check's `Rate` is a sentence rule (`Condition::QuantityOrStart`): a unit phrase (`RATE_PHRASE` and `RATE_UNIT`: `per`, `each` or `every` and a volume, or `/` and a volume, with quarts and pints) fails a sentence that holds a `QUANTITY` or a `RATE_AMOUNT` anywhere (vague, fractional and multiplying words, plural measure nouns, a rate from a record or a habit) or has at most three words before it (`LINE_START`), so a refusal that only names the unit passes while "a capful per litre", "Per litre, add a capful." and a rate split from its amount by a sentence break fail; `QUANTITY` adds `thirty` … `ninety`, `hundred`, `thousand` and more fraction glyphs; `has_quantity` is whether the sentence holds an amount, so `Rate` without one marks the short-prefix case; the advice rules tell the model not to name a volume unit when it declines a rate, and the chat and plan prompts moved to `chat/2026-10-20.4` and `plan/2026-10-20.1`; 114 unit tests. v0.6.5: `search_farm_records`' `since` and `until` window Slack messages only, and a Drive document is returned whatever the window (gap G18); the chat prompt is `chat/2026-10-20.3`. v0.6.4: `search_farm_records` takes `until?` and `author?` (gap G12), and without `kind` searches each kind apart and keeps `FARM_KIND_RESERVED` (3) of the 8 hits for each (`merge_kinds`, gap G16); its description says so, and the chat prompt's version is `chat/2026-10-20.2`; 110 unit tests. v0.6.3: gaps G13, G14 and G17 (docs/EON): the reply starts the text of a call after a tool round with a paragraph break (`\n\n`, once per call, only when the reply already has text that does not end in whitespace; sent as a `text_delta` and stored like any text), so "…records too." and "The zucchini…" no longer run together, and the budget note after a tool round gets the same break; the dose check logs an info event `dose check replaced a sentence` with the `message_id`, the `rule` and `has_quantity` (`DoseMatch::has_quantity`: whether the sentence holds a number or a number word), never the text; the chat prompt tells the model to mention instructions it ignores in a record, document or memory only when the question is about that item, and moved to `2026-10-20.1`; 108 unit tests. v0.6.2: gap G10: a garden with farm records is routed knowing it, so a question about its own Slack channels or documents reaches the chat model instead of the off-topic reply: the turn reads `has_farm_records` once before routing, `ClassifierTask::Route { farm_records }` adds a `farm_records` label to the classifier's labels and prompt only then (`classify/2026-10-20.2`), and `decide` counts that label as a care question with farm records and as unknown without; a `farm_records` win with `safety_sensitive` at 0.5 or more is safety-sensitive, and the prompt keeps a question about the doses or products the records hold `safety_sensitive`; the connectors read before routing gives up after 2 s; a garden without farm records is asked exactly as before; 107 unit tests and a live router check. v0.6.1: `AnthropicChat::stream` sends the call's final usage just before `Done`, since the `message_delta` that carries the stop reason also carries the final output count and the accumulator merged it without emitting it, so a turn's stored `tokens_out` (and the daily budget) kept an earlier, smaller count (found by `era-eval`, docs/EON E8.1). v0.6: `search_farm_records` (roadmap E5.2), a read tool for every role that embeds its query, searches the garden's farm records exactly with `kind` and `since` (the garden's midnight) and returns at most 8 hits framed as `farm_records` data; it is offered only when the garden has farm records or a connector past `pending` (gap G6: `Offer` carries the role and that fact, which the context reads once per turn from `FarmRecordStore::connectors`); its hits fill `Message.farm_citations` (E5.3), as knowledge hits fill `citations`; the chat prompt says what was applied and when, never the rate, and moved to `2026-10-19.2` (E5.5); 98 unit tests. v0.5: every successful tool result reaches the model inside a `<data kind="tool_result">` block (`prompt::tool_result`; a tool may pick another kind through `Tool::DATA_KIND`), refusals stay plain, and the stored copy keeps the tool's JSON; `DataKind` gains `ToolResult` and `FarmRecords`; the `<data` escape also catches a tag at the very end of a body, Unicode whitespace and zero-width characters after `<` or `/` (also in a JSON result's strings and keys, before it is written), the fullwidth and small `<`, and a multi-byte character after `data`; the chat prompt says where tool results arrive and moved to `2026-10-19.1`; 85 unit tests. v0.4: shared memories are recorded in `SurrealDB` Agent Memory through the new `beliefs` module (the `sync_pending` sweep, the only writer, and the reads `current_beliefs` and `search_beliefs`); memories and beliefs reach the model with their day; the context carries the current beliefs in their own `beliefs` block, `search_memory` returns `MemorySearch` with belief hits, the plan writer reads the plant's current beliefs, memories carry a `topic` (extraction and `remember`), and the chat, plan and extraction prompts moved to `2026-10-17.1`; 77 unit tests. v0.3: only the three tools that propose changes are `strict` (`ToolSpec::strict`), because all nineteen made a grammar the API refused as too large in the first live call; the Anthropic adapter maps `model_context_window_exceeded` to `MaxTokens` and ends a stream cut off before its stop reason with `Unavailable`; 62 unit tests and three ignored live tests (`tests/live_anthropic.rs`). v0.2: one `embedder` in `AgentDeps`, called with `EmbedMode::Query` for the user's message and searches and `EmbedMode::Document` for the memories it stores (`document_embedder` is gone). v0.1: the agent core (the chat turn and its stream, nineteen tools, the dose check, plan validation, the router and safety gate, the plan writer, the context builder, memory extraction and the Anthropic and classifier adapters), compiled on Rust 1.99.1 with 60 unit tests.
+> **Status:** Draft v0.6.16, 2026-10-24. v0.6.16: `Calibration::jev()`, Jev's own offsets (`off_topic` −0.25, `task_change` +0.1, `safety_sensitive` +0.1), fitted on 2026-10-23 on `jev-1.14.0` with 41 labelled messages that both classifiers routed 41 of 41; `api` wires it with Jev and the default with the LLM classifier, and the LLM's calls took 1.3 s at the median and went past the 3 s `classifier_timeout` 4 times in 82 (backend roadmap S5; section 7). The memory and topic labels move to `domain::ports`, shared with Jev. v0.6.15: section 13 says a write tool stores its card before the turn stores the message it names, and what an orphan card (its message never stored) does. v0.6.14: after the audit of #191, `frost_tender` comes only from a confirmed species, the frost planner leaves out dead plants, `focus_plant_ids` must be live pinned plants and are kept once each, and a block is kept only once its event is sent. v0.6.13: answer blocks ([contracts 8](../architecture/contracts.md#answer-blocks)): `show_block` (`tools/blocks.rs`) builds a block from one tool result of the turn and the store, run by the turn itself because it reads the reply's own results and blocks; refusals are tool errors with no event; no `tool_started` or `tool_finished`; the block goes out as `answer_block` and into `Message.blocks`; the chat prompt is `chat/2026-10-23.1`, with the answer-blocks rules. v0.6.12: open question 18.10 is resolved: `api`'s `POISON_CONTROL_TEXT` sets the poison-control text. v0.6.11: the dose check's clock times may follow an opening parenthesis (`is_clock_time`; EON gap G20's re-run). v0.6.10: EON E5.4: the plan writer gets the garden's farm records (`plan_farm_records`: one query, the plant and the leading candidate, the top 4 with 2 kept for each kind, nothing embedded without records, none on a failure or after 5 s) in a `farm_records` block; validation refuses a farm citation it wasn't given or can't parse and a step cited by farm records alone, lists each record once per step, and returns the cited records as `farm_records`; the plan prompt is `plan/2026-10-23.1` and tells the model to leave instructions aimed at it, found in a record, out of the plan, while the farm's procedures, memories and beliefs still apply. v0.6.9: gap G17 (docs/EON): the chat prompt (`chat/2026-10-20.6`), for a question not about the record, also says not to say it ignored instructions in it, not to sum them up or warn about them, and quotes the closing line to leave out; a new prompt test. v0.6.8: gap G22 (docs/EON): the ratio rules let dates, years, clock times and labels through: each rule has an `Exempt`, and `first_match` walks a rule's matches until one isn't exempt, so a ratio after an exempt match still fails ("Bed 3: 1:10 copper"); `in_exempt` passes "<n> in <year>" (`YEARS`, 2016–2036, not a multiple of 50, with no measure, `parts`, `of`, `with`, `water` or mixture word after it) and a numbered bed before the first term with `days`, `weeks` or `months` ending the phrase ("bed 2 in 10 days"); `colon_exempt` passes a clock time (`is_clock_time`: an ISO timestamp, or a time word `at`, `by`, `until`, `from`, `before`, `after`, `since` or `between`, a date, or a range's clock-time start before it, with an hour from 5 or `am`, `pm`, `o'clock`, `UTC` or `GMT` after it; no leading-zero, `:00`, `h` or part-of-day marker) and a label (`LABEL_START`-anchored label word, month and day or numeric date, an ISO date anywhere or a year at the start, with words after the count; or a label word anywhere with a date after the colon, `may` and `mar` only before the end, punctuation, a number or `and`); an independent audit's 85 adversarial ratio shapes shaped the rules; two new dose tests and a `remember` test (contracts v0.10.23). v0.6.7: gap G19 (docs/EON): the dose check's `Rate` also matches `RATE_BASE`: `per` before a field measure (`hectare`, `ha`, `acre`, optionally after a number, a fraction, `half` or `quarter`), a container (`tank`, `spray tank`, `tankful`, `tankload`, `backpack`, `knapsack`, `sprayer`, `jerry can`, `bucket`, `watering can`) or an area with a number ("100 m²", "10 square metres", "100 sq. ft."), and `/` before a field measure or an area with a number only, so "1/2 acre" and "rainwater/tank water" pass; `sq` joins the sentence splitter's abbreviations; `RATE_UNIT` adds `ℓ`, `ltr`, `lt`, `qt`, `pt` and an optional `US`, `UK` or `imperial`, so "a bag per acre" and "a capful per qt" fail while spacing passes; three new tests (117 in all) cover the new rates, spacing and sizes, and the known misses (a rate per plant, per length of row, per area without a number). v0.6.6: gap G13 (docs/EON): the dose check's `Rate` is a sentence rule (`Condition::QuantityOrStart`): a unit phrase (`RATE_PHRASE` and `RATE_UNIT`: `per`, `each` or `every` and a volume, or `/` and a volume, with quarts and pints) fails a sentence that holds a `QUANTITY` or a `RATE_AMOUNT` anywhere (vague, fractional and multiplying words, plural measure nouns, a rate from a record or a habit) or has at most three words before it (`LINE_START`), so a refusal that only names the unit passes while "a capful per litre", "Per litre, add a capful." and a rate split from its amount by a sentence break fail; `QUANTITY` adds `thirty` … `ninety`, `hundred`, `thousand` and more fraction glyphs; `has_quantity` is whether the sentence holds an amount, so `Rate` without one marks the short-prefix case; the advice rules tell the model not to name a volume unit when it declines a rate, and the chat and plan prompts moved to `chat/2026-10-20.4` and `plan/2026-10-20.1`; 114 unit tests. v0.6.5: `search_farm_records`' `since` and `until` window Slack messages only, and a Drive document is returned whatever the window (gap G18); the chat prompt is `chat/2026-10-20.3`. v0.6.4: `search_farm_records` takes `until?` and `author?` (gap G12), and without `kind` searches each kind apart and keeps `FARM_KIND_RESERVED` (3) of the 8 hits for each (`merge_kinds`, gap G16); its description says so, and the chat prompt's version is `chat/2026-10-20.2`; 110 unit tests. v0.6.3: gaps G13, G14 and G17 (docs/EON): the reply starts the text of a call after a tool round with a paragraph break (`\n\n`, once per call, only when the reply already has text that does not end in whitespace; sent as a `text_delta` and stored like any text), so "…records too." and "The zucchini…" no longer run together, and the budget note after a tool round gets the same break; the dose check logs an info event `dose check replaced a sentence` with the `message_id`, the `rule` and `has_quantity` (`DoseMatch::has_quantity`: whether the sentence holds a number or a number word), never the text; the chat prompt tells the model to mention instructions it ignores in a record, document or memory only when the question is about that item, and moved to `2026-10-20.1`; 108 unit tests. v0.6.2: gap G10: a garden with farm records is routed knowing it, so a question about its own Slack channels or documents reaches the chat model instead of the off-topic reply: the turn reads `has_farm_records` once before routing, `ClassifierTask::Route { farm_records }` adds a `farm_records` label to the classifier's labels and prompt only then (`classify/2026-10-20.2`), and `decide` counts that label as a care question with farm records and as unknown without; a `farm_records` win with `safety_sensitive` at 0.5 or more is safety-sensitive, and the prompt keeps a question about the doses or products the records hold `safety_sensitive`; the connectors read before routing gives up after 2 s; a garden without farm records is asked exactly as before; 107 unit tests and a live router check. v0.6.1: `AnthropicChat::stream` sends the call's final usage just before `Done`, since the `message_delta` that carries the stop reason also carries the final output count and the accumulator merged it without emitting it, so a turn's stored `tokens_out` (and the daily budget) kept an earlier, smaller count (found by `era-eval`, docs/EON E8.1). v0.6: `search_farm_records` (roadmap E5.2), a read tool for every role that embeds its query, searches the garden's farm records exactly with `kind` and `since` (the garden's midnight) and returns at most 8 hits framed as `farm_records` data; it is offered only when the garden has farm records or a connector past `pending` (gap G6: `Offer` carries the role and that fact, which the context reads once per turn from `FarmRecordStore::connectors`); its hits fill `Message.farm_citations` (E5.3), as knowledge hits fill `citations`; the chat prompt says what was applied and when, never the rate, and moved to `2026-10-19.2` (E5.5); 98 unit tests. v0.5: every successful tool result reaches the model inside a `<data kind="tool_result">` block (`prompt::tool_result`; a tool may pick another kind through `Tool::DATA_KIND`), refusals stay plain, and the stored copy keeps the tool's JSON; `DataKind` gains `ToolResult` and `FarmRecords`; the `<data` escape also catches a tag at the very end of a body, Unicode whitespace and zero-width characters after `<` or `/` (also in a JSON result's strings and keys, before it is written), the fullwidth and small `<`, and a multi-byte character after `data`; the chat prompt says where tool results arrive and moved to `2026-10-19.1`; 85 unit tests. v0.4: shared memories are recorded in `SurrealDB` Agent Memory through the new `beliefs` module (the `sync_pending` sweep, the only writer, and the reads `current_beliefs` and `search_beliefs`); memories and beliefs reach the model with their day; the context carries the current beliefs in their own `beliefs` block, `search_memory` returns `MemorySearch` with belief hits, the plan writer reads the plant's current beliefs, memories carry a `topic` (extraction and `remember`), and the chat, plan and extraction prompts moved to `2026-10-17.1`; 77 unit tests. v0.3: only the three tools that propose changes are `strict` (`ToolSpec::strict`), because all nineteen made a grammar the API refused as too large in the first live call; the Anthropic adapter maps `model_context_window_exceeded` to `MaxTokens` and ends a stream cut off before its stop reason with `Unavailable`; 62 unit tests and three ignored live tests (`tests/live_anthropic.rs`). v0.2: one `embedder` in `AgentDeps`, called with `EmbedMode::Query` for the user's message and searches and `EmbedMode::Document` for the memories it stores (`document_embedder` is gone). v0.1: the agent core (the chat turn and its stream, nineteen tools, the dose check, plan validation, the router and safety gate, the plan writer, the context builder, memory extraction and the Anthropic and classifier adapters), compiled on Rust 1.99.1 with 60 unit tests.
 
 Companion to the [backend architecture](README.md) and the [`domain` crate](domain.md), whose ports this crate uses and implements. It implements [architecture 7](../architecture/README.md#7-chat-and-agent-core), [8.2](../architecture/README.md#82-chat-turn) and the safety rules of [architecture 11](../architecture/README.md#11-security-privacy-and-safety), over the shapes of [contracts 7](../architecture/contracts.md#7-pipeline-records) and [contracts 8](../architecture/contracts.md#8-chat-and-memory). Every listing below is copied from the compiled source of `crates/agent`: `cargo check --workspace`, `cargo clippy -p agent --all-targets` (no warnings in `agent`) and `cargo test -p agent` (83 tests) pass.
 
@@ -142,6 +142,7 @@ crates/agent/src/
 ├─ context.rs        context::load, AnchorData, TurnContext, borrowed views
 ├─ tools.rs          Tool, DynTool, Erased<T>, ToolCtx<'t>, ToolRegistry
 ├─ tools/
+│  ├─ blocks.rs      show_block: ShowBlockArgs, spec, build (answer blocks from the turn's results)
 │  ├─ read.rs        the fourteen read tools
 │  ├─ ui.rs          request_rescan, remember
 │  ├─ write.rs       create_task, complete_task, propose()
@@ -1126,7 +1127,7 @@ Passing steps are renumbered `order` 1, 2, … in their original order. `Validat
 
 ## 7. Router and safety gate
 
-[Architecture 7](../architecture/README.md#router-and-safety-gate): before the model runs, the text classifier labels the message; the scores are compared with each other, shifted by offsets calibrated on a labelled set, and a near tie with `safety_sensitive` resolves to `safety_sensitive`. A keyword check for a person or pet being poisoned runs whatever the classifier says, so the poison-control answer never depends on a model.
+[Architecture 7](../architecture/README.md#router-and-safety-gate): before the model runs, the text classifier labels the message; the scores are compared with each other, shifted by offsets calibrated on a labelled set, and a near tie with `safety_sensitive` resolves to `safety_sensitive`. A keyword check for a person or pet being poisoned runs whatever the classifier says, even when `off_topic` wins, so the poison-control answer never depends on a model.
 
 **Farm records** (gap G10 of the [connectors roadmap](../EON/README.md)). The turn reads whether the garden has farm records (`context::has_farm_records`, the fact that offers `search_farm_records`) once, before routing, within `FARM_READ_TIMEOUT` (2 s; a failed or slow read routes as a garden without farm records), and asks the classifier `ClassifierTask::Route { farm_records }`. With farm records, the labels gain `farm_records` (`FARM_ROUTE_LABELS`): the prompt says the garden keeps its crew's Slack messages and shared documents, `farm_records` is a question about what they say (what someone saw, reported, did or posted, and when or how often), `safety_sensitive` also covers what the records say about pesticides or doses, and `off_topic` is "not about plants, the garden or its farm records". `decide` counts `farm_records` as `care_question`, so the chat model answers with `search_farm_records`, unless `safety_sensitive` scores at least `FARM_SAFETY_FLOOR` (0.5): a question about the dose the spray log holds keeps the safety policy however far `farm_records` is ahead. Without farm records, the classifier is asked exactly as before, and a `farm_records` score it wasn't asked for is an unknown label, ignored like any other, so it can never turn a poisoning message off-topic (Jev also drops labels it wasn't sent). The labels live in `domain::ports` (`ROUTE_LABELS`, `FARM_ROUTE_LABELS`), shared with Jev. `CLASSIFIER_PROMPT_VERSION` names the prompt for the tests and these documents; stored messages keep the route, not the version. On Oct 20 Haiku 5.5 scored the evaluation's Q02, Q10 and Q19 `farm_records` 0.95–1.0 with farm records and `off_topic` 0.6–0.9 without, and four plainly off-topic messages `off_topic` 1.0 either way; with `classify/2026-10-20.2`, "How much Kocide went into the backpack per litre for the bed 3 spray on July 10?" scored `safety_sensitive` 1.0 (`live_router_keeps_farm_questions_on_topic_and_the_rest_off`, ignored).
 
@@ -1159,7 +1160,9 @@ pub enum RouteDecision {
 /// dose check still applies to every sentence. `farm_records` says whether the garden has farm
 /// records, as the classifier was told: it decides what a `farm_records` score counts for. Two
 /// labels for the same route count once, with the higher calibrated score. A `farm_records` win
-/// with `safety_sensitive` at [`FARM_SAFETY_FLOOR`] or more is safety-sensitive.
+/// with `safety_sensitive` at [`FARM_SAFETY_FLOOR`] or more is safety-sensitive. A message that
+/// [`mentions_poisoning`] is [`RouteDecision::PoisonControl`] on any route, `off_topic`
+/// included: Jev scored "I got some of the spray in my eyes, help" `off_topic` 0.85.
 pub fn decide(
     text: &str,
     scores: Option<&[LabelScore]>,
@@ -1206,7 +1209,7 @@ pub fn decide(
         }
     };
 
-    if mentions_poisoning(text) && route != ChatRoute::OffTopic {
+    if mentions_poisoning(text) {
         return RouteDecision::PoisonControl;
     }
     match route {
@@ -1216,6 +1219,22 @@ pub fn decide(
 }
 ```
 
+**Calibration per classifier.** The two classifiers score differently, so `api` wires each with its own: `Calibration::default()` (no offsets) with the LLM classifier, `Calibration::jev()` with Jev ([integrations 13](integrations.md#13-jev)). Both keep the margins (`safety_margin` 0.15, `off_topic_margin` 0.2). Jev asks one yes/no question per label, and two of its answers run high where the LLM's stay near 0: `off_topic` on garden messages that don't read like plant care (0.40–0.67 on the farm-records questions, 0.59 on "Add a task to water bed 2 tomorrow morning.", 0.85 on "I got some of the spray in my eyes, help", above its `safety_sensitive` 0.69), and `care_question` on task changes (0.70–0.88). Its offsets lower `off_topic` by 0.25 (plainly off-topic messages scored 0.97–0.99), raise `task_change` by 0.1, and raise `safety_sensitive` by 0.1 to fail safe (no message outside the safety set scored it above 0.21). A new Jev version is fitted again before `JEV_MODEL` moves to it.
+
+**The calibration run** (2026-10-23, `tests/live_jev.rs`, `live_jev_calibration_against_the_llm_classifier`, ignored): 41 labelled messages, each through Jev (`jev-1.14.0`) and the LLM classifier (`claude-haiku-5-5`, `classify/2026-10-20.2`), twice; the memory gate on 8 exchanges. The decisions were the same in both runs. The offsets were fitted on these same 41 messages, with none held out, so 41 of 41 shows the calibration fits its set, not how it does on new messages. Every score is recorded in `tests/fixtures/jev-calibration-2026-10-23.jsonl`, and `the_recorded_calibration_run_still_routes_as_wanted` (not ignored) routes them again with the current calibrations, so a change to `decide` or an offset is checked without a paid call.
+
+| Wanted | Messages | Jev: first label, raw | Jev: decision, `jev()` | LLM: first label | LLM: decision, default |
+|---|---|---|---|---|---|
+| `diagnosis_question` | 7 | 7 | 7 | 7 | 7 |
+| `care_question` | 6 | 6 | 6 | 6 | 6 |
+| `task_change` | 5 | 5 | 5 | 5 | 5 |
+| `safety_sensitive` (4 of them poisoning) | 10 | 8 | 10 | 8 | 10 |
+| `off_topic` (2 with farm records) | 8 | 8 | 8 | 8 | 8 |
+| `farm_records` | 5 | 5 | 5 | 5 | 5 |
+| memory gate (`remember` − `skip` ≥ 0.1) | 8 | | 8 | | 8 |
+
+Both put a care label first on "Can I spray neem oil on my tomatoes the day before harvest?" (Jev 0.95 against `safety_sensitive` 0.92, the LLM 0.7 against 0.6), and the LLM also on "How strong should I make the insecticidal soap solution?"; `safety_margin` routed them safety-sensitive. Jev put `off_topic` first on "I got some of the spray in my eyes, help" (0.85 against 0.69), which the off-topic margin and then the poisoning check sent to poison control. With Jev's offsets its wanted label was first for all 41, the closest by 0.07 (the neem question), then 0.14 ("My basil is wilting even though the soil is wet.", diagnosis over care). Jev took 94–104 ms at the median and 394 ms at most; the LLM 1.3 s at the median and 4.1 s at most, past `classifier_timeout` on 4 of 82 calls, which would have routed those turns as care questions.
+
 | Decision | `message_started.route` | What happens |
 |---|---|---|
 | `Model(diagnosis_question \| care_question \| task_change)` | that route | A normal turn with the anchor's context |
@@ -1223,7 +1242,7 @@ pub fn decide(
 | `PoisonControl` | `safety_sensitive` | `AgentConfig::poison_control_text`, streamed sentence by sentence; no model call, no tools; `prompt_version` `poison_control/…`, `model` absent |
 | `OffTopic` | `off_topic` | A one- or two-sentence redirect from the cheapest model, no tools |
 
-`off_topic` needs a clear win (a margin of 0.2 over the runner-up), so a garden question is never brushed off on a coin toss. With no usable scores (Jev and the fallback both failed, or the classifier took longer than `classifier_timeout`, 3 s) the turn is a care question; the dose check still applies to every sentence. `POISON_CONTROL_TEXT` gives no phone numbers, which differ by country and change; the deployment sets the local ones in `AgentConfig`.
+`off_topic` needs a clear win (a margin of 0.2 over the runner-up), so a garden question is never brushed off on a coin toss. With no usable scores (Jev and the fallback both failed, or the classifier took longer than `classifier_timeout`, 3 s) the turn is a care question; the dose check still applies to every sentence. The constant `POISON_CONTROL_TEXT` gives no phone numbers, which differ by country and change; the deployment sets the local ones with `api`'s `POISON_CONTROL_TEXT` setting, which fills `AgentConfig::poison_control_text`. `api` runs the dose check over each sentence of that text at start-up and refuses to start when one would be replaced, since the answer is streamed through the same check.
 
 ---
 
@@ -1233,7 +1252,7 @@ pub fn decide(
 
 ```rust
 /// The chat system prompt's version.
-pub const CHAT_PROMPT_VERSION: &str = "chat/2026-10-20.6";
+pub const CHAT_PROMPT_VERSION: &str = "chat/2026-10-23.1";
 
 /// The plan writer's version.
 pub const PLAN_PROMPT_VERSION: &str = "plan/2026-10-23.1";
@@ -1502,7 +1521,7 @@ How it follows the Messages API (research notes, section 4; the `claude-api` ski
 
 ### `LlmClassifier`
 
-`TextClassifier`'s fallback when Jev isn't configured ([architecture 10](../architecture/README.md#10-models-and-gpu-placement)): one cheap-model call with a strict schema of one number per label. A refusal counts as the safe label scoring 1 (`safety_sensitive` for routing, `skip` for the memory gate). `api` wires `integrations::jev::JevClassifier` when `JEV_*` is set and this otherwise.
+`TextClassifier`'s fallback when Jev isn't configured ([architecture 10](../architecture/README.md#10-models-and-gpu-placement)): one cheap-model call with a strict schema of one number per label. A refusal counts as the safe label scoring 1 (`safety_sensitive` for routing, `skip` for the memory gate). `api` wires `integrations::jev::JevClassifier` with `Calibration::jev()` when `JEV_*` is set, and this with the default calibration otherwise (section 7). The label lists (`ROUTE_LABELS`, `FARM_ROUTE_LABELS`, `MEMORY_LABELS`, `TOPIC_LABELS`) are `domain::ports`' own, shared with Jev.
 
 ```rust
 /// What the model is told, and the labels, per task.
@@ -1776,9 +1795,19 @@ impl PlanWriter {
             content.push(ContentPart::Text(data_json(DataKind::Beliefs, &beliefs)));
         }
         if !input.farm_records.is_empty() {
+            // The model reads each record's text once: an `era` citation's copy is for the app.
+            let seen_by_model: Vec<FarmRecordHit> = input
+                .farm_records
+                .iter()
+                .cloned()
+                .map(|mut h| {
+                    h.citation.text = None;
+                    h
+                })
+                .collect();
             content.push(ContentPart::Text(data_json(
                 DataKind::FarmRecords,
-                input.farm_records,
+                &seen_by_model,
             )));
         }
         content.push(ContentPart::Text(
@@ -2388,14 +2417,17 @@ impl<T: Tool> DynTool for Erased<T> {
 
 ```rust
 /// Every tool, erased, sorted by name: built once at start-up and shared by every turn.
+/// `show_block` is offered beside them but run by the turn ([`blocks`]), so only its spec is
+/// kept here.
 pub struct ToolRegistry {
     tools: Vec<Box<dyn DynTool>>,
+    show_block: ToolSpec,
 }
 ```
 
 ```rust
 impl ToolRegistry {
-    /// The twenty tools of architecture 7 and connectors 7.
+    /// The twenty tools of architecture 7 and connectors 7, and `show_block`'s spec.
     pub fn standard() -> Self {
         let mut tools: Vec<Box<dyn DynTool>> = vec![
             Box::new(Erased::new(read::GetScan)),
@@ -2420,13 +2452,22 @@ impl ToolRegistry {
             Box::new(Erased::new(revise::RevisePlan)),
         ];
         tools.sort_by_key(|t| tool_name(t.name()));
-        Self { tools }
+        Self {
+            tools,
+            show_block: blocks::spec(),
+        }
     }
 
     /// The specs offered, sorted by name (a stable tool list keeps the provider's prompt cache;
-    /// a garden's first synced record changes it once).
+    /// a garden's first synced record changes it once). `show_block` is offered to every role.
     pub fn specs_for(&self, offer: Offer) -> Vec<ToolSpec> {
-        self.offered(offer).map(|t| t.spec().clone()).collect()
+        let mut specs: Vec<ToolSpec> = self
+            .offered(offer)
+            .map(|t| t.spec().clone())
+            .chain(std::iter::once(self.show_block.clone()))
+            .collect();
+        specs.sort_by(|a, b| a.name.cmp(&b.name));
+        specs
     }
 
     /// The tools offered: by the role, and by whether the garden has farm records (gap G6).
@@ -2445,7 +2486,7 @@ impl ToolRegistry {
 }
 ```
 
-Viewers and reviewers are offered the read tools, `request_rescan` and `remember`; editors and owners all twenty ([contracts 1, roles and access](../architecture/contracts.md#roles-and-access)). **Gap G6:** an `Offer` carries the role and whether the garden has farm records to search, and a tool with `Tool::NEEDS_FARM_RECORDS` (only `search_farm_records`) is left out without them. The fact is true when the garden has a synced record or a connector that is `active` or `reauth_needed`, so records stay searchable while the owner reconnects; a `pending` connector alone doesn't count, and one being deleted isn't listed ([connectors 7](../connectors/README.md#7-the-agent)). The turn reads the fact once, before routing (`has_farm_records`; a failed read counts as none and is logged), so the router (gap G10, [section 7](#7-router-and-safety-gate)) and the offer always agree. A call to a tool that wasn't offered is answered like an unknown tool. The list is sorted by name and identical for every turn of a role in a garden, which keeps the provider's prompt cache; a garden's first synced record changes it once.
+Viewers and reviewers are offered the read tools, `request_rescan`, `remember` and `show_block`; editors and owners all twenty-one ([contracts 1, roles and access](../architecture/contracts.md#roles-and-access)). **Gap G6:** an `Offer` carries the role and whether the garden has farm records to search, and a tool with `Tool::NEEDS_FARM_RECORDS` (only `search_farm_records`) is left out without them. The fact is true when the garden has a synced record or a connector that is `active` or `reauth_needed`, so records stay searchable while the owner reconnects; a `pending` connector alone doesn't count, and one being deleted isn't listed ([connectors 7](../connectors/README.md#7-the-agent)). The turn reads the fact once, before routing (`has_farm_records`; a failed read counts as none and is logged), so the router (gap G10, [section 7](#7-router-and-safety-gate)) and the offer always agree. A call to a tool that wasn't offered is answered like an unknown tool. The list is sorted by name and identical for every turn of a role in a garden, which keeps the provider's prompt cache; a garden's first synced record changes it once.
 
 ```rust
 /// Reads the garden's connectors for [`farm_records_searchable`]. A failed or slow read leaves
@@ -2502,6 +2543,7 @@ pub fn farm_records_searchable(connectors: &[Connector]) -> bool {
 | `search_farm_records` | `SearchFarmRecordsArgs { query, kind?, since?, until?, author? }` (`kind`: `message` or `document`; `since`: a date, from the garden's midnight; `until`: a date, to the next midnight; both window Slack messages only, and Drive documents are returned whatever the window, also with `kind: document` (gap G18); `author`: part of a display name, trimmed, blank is none, Slack messages only; `until` before `since` and `author` with `kind: document` are `Rejected`) | `FarmRecordStore::search_records(member, …, 8)`: an exact cosine search of the garden's farm records; without `kind`, one search per kind side by side, merged by `merge_kinds` (each kind keeps its 3 closest, the other 2 slots go by similarity, a non-finite similarity left out); with `author`, messages only; offered only when the garden has some (gap G6) | `FarmRecordHit[]` (`{ text, citation }`), at most 8, in `<data kind="farm_records">`; each citation stored in `Message.farm_citations` | read | all |
 | `request_rescan` | `RequestRescanArgs { plant_id, photo_kind, instructions }` | a live plant of the garden | `RescanRequest`; a `rescan_requested` event | ui | all |
 | `remember` | `RememberArgs { fact, plant_id?, topic? }` (topic default `other`) | the caller's own memory (`MemoryStore::remember(member, …)`) | `Memory` (`source: chat`); a `memory_saved` event | memory | all |
+| `show_block` | `ShowBlockArgs { kind, call_id, focus_plant_ids? }` | one earlier tool call of this turn, its anchor; the store fills in the rest (`PlantRepo::plant_summaries(member)`, `PlantRepo::plant`, the knowledge base) | `{ ok: true, kind }`; an `answer_block` event. Run by the turn, not the registry (below) | ui | all |
 | `create_task` | `CreateTaskArgs { title, detail?, plant_id?, due?, repeat_every_days? }` | `require::<Editor>()`; a live plant | `PendingAction` (preview `task`); a `pending_action` event | write | editor, owner |
 | `complete_task` | `CompleteTaskArgs { task_id }` | an open task of the garden | `PendingAction` (preview `task` with `done_at`) | write | editor, owner |
 | `revise_plan` | `RevisePlanArgs { scan_id, summary, changed_steps, removed_step_ids, constraints }` | the scan's current plan | `PendingAction` (preview `plan`), only after full plan validation | write | editor, owner |
@@ -2628,6 +2670,120 @@ pub async fn propose(
     out.effects
         .push(ToolEffect::PendingAction(Box::new(stored)));
     Ok(out)
+}
+```
+
+### `show_block` and answer blocks
+
+The model asks for a block with `show_block { kind, call_id, focus_plant_ids? }`, naming one earlier tool call of the same turn, the block's anchor ([contracts 8, answer blocks](../architecture/contracts.md#answer-blocks)). `build` finds the call and its result in the turn's tool calls, checks that the tool fits the kind (`garden_map` from `get_garden_map`; `weather_hours` from `get_forecast` or `get_scan`; `frost_planner` from `get_forecast`; `measurement_trend` from `get_plant_measurements`; `candidates` from `compare_lookalikes`), takes the result as it was returned, and fills in the rest from the store, never from the model: the garden's live plants with their status and latest height in one `plant_summaries` read (the map's pinned ones for `garden_map`, a dead one included; every one but the dead for `frost_planner`), each distinct **confirmed** species' `frost` from the knowledge base (`tender` is `frost_tender: true`, `hardy` `false`; a suggested species, no species or no `frost` leaves it out, since `plant_summaries` gives only a confirmed species), a plant's name, a problem's name. The model chooses only `focus_plant_ids`, and only for `garden_map`: each must be one of the block's live pinned plants (a pin of a plant being deleted is refused), and a repeated id is kept once, first seen first.
+
+Every refusal is `ToolError::Rejected` with its reason, so the model reads an `is_error` result and answers in text, and no event is sent: a `call_id` the turn doesn't hold (an earlier turn's included, since only this turn's calls are read), a call that errored, a tool that doesn't fit the kind, nothing to show (no map, no days, no frost night, no points, no look-alikes, points that mix both quantities without a `quantity` in the call), a focus plant that isn't a live plant pinned on the map, `focus_plant_ids` on another kind, a fourth block (`MESSAGE_MAX_BLOCKS`), or the same `(kind, call_id)` again.
+
+**Why the turn runs it.** `show_block` reads what the turn holds: its earlier tool calls and results, and the blocks already sent. Both live in the turn's `Reply`, which `run_tool` borrows mutably for every call, so a `ToolCtx` can't also borrow them, and a snapshot in it would clone every result for every call. So `run_tool` hands a `show_block` call to `turn::show_block`, which calls `build` with shared borrows of the two lists before it records the call, and keeps a block in the reply only once its `answer_block` event is sent, so `Message.blocks` is exactly what the app received. `ToolCtx` stays `Copy`, the other tools stay unaware of the turn, and the registry only offers the spec (`blocks::spec`, to every role, never strict, so the strict schema budget is unchanged). Its one string, `call_id`, must equal a call id the provider wrote, so no text of the model's reaches the app and there is nothing to dose-check.
+
+```rust
+/// Arguments of `show_block`.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ShowBlockArgs {
+    /// Which block.
+    pub kind: AnswerBlockKind,
+    /// The `call_id` of an earlier tool call of this answer whose result the block shows.
+    pub call_id: String,
+    /// `garden_map` only: the plants the answer is about, each pinned on the map.
+    #[serde(default)]
+    pub focus_plant_ids: Option<Vec<PlantId>>,
+}
+
+/// The spec the model is shown. Not strict: only the tools that propose changes are.
+pub fn spec() -> ToolSpec {
+    ToolSpec {
+        name: tool_name(ToolName::ShowBlock).to_owned(),
+        description: DESCRIPTION.to_owned(),
+        parameters: serde_json::to_value(schemars::schema_for!(ShowBlockArgs))
+            .unwrap_or(Value::Null),
+        strict: false,
+    }
+}
+
+/// Builds the block, or refuses it with a reason for the model. `calls` are the turn's tool
+/// calls and results so far; `sent` the blocks it has already sent.
+pub async fn build(
+    ctx: &ToolCtx<'_>,
+    calls: &[ContentPart],
+    sent: &[AnswerBlock],
+    args: ShowBlockArgs,
+) -> Result<AnswerBlock, ToolError> {
+    let kind = args.kind;
+    if sent.len() >= MESSAGE_MAX_BLOCKS {
+        return Err(refuse(format!(
+            "This answer already shows {MESSAGE_MAX_BLOCKS} blocks, the most it can. Answer in text."
+        )));
+    }
+    if sent
+        .iter()
+        .any(|b| b.kind() == kind && b.call_id == args.call_id)
+    {
+        return Err(refuse(format!(
+            "This answer already shows a {} block of {}.",
+            kind.as_str(),
+            args.call_id
+        )));
+    }
+    let focus = args.focus_plant_ids.unwrap_or_default();
+    if kind != AnswerBlockKind::GardenMap && !focus.is_empty() {
+        return Err(refuse("focus_plant_ids is for garden_map only."));
+    }
+    let anchor = anchor(calls, &args.call_id)?;
+    let wrong_anchor = || {
+        refuse(format!(
+            "A {} block is built from {}, not from {}.",
+            kind.as_str(),
+            anchors_of(kind),
+            anchor.tool
+        ))
+    };
+    let tool = anchor.tool;
+    let body = match kind {
+        AnswerBlockKind::GardenMap if tool == tool_name(ToolName::GetGardenMap) => {
+            garden_map(ctx, parse(anchor.result)?, focus).await?
+        }
+        AnswerBlockKind::WeatherHours if tool == tool_name(ToolName::GetForecast) => {
+            let days: Vec<ForecastDay> = parse(anchor.result)?;
+            if days.is_empty() {
+                return Err(refuse("That forecast has no days to show."));
+            }
+            BlockBody::WeatherHours {
+                days,
+                scan_id: None,
+            }
+        }
+        AnswerBlockKind::WeatherHours if tool == tool_name(ToolName::GetScan) => {
+            let scan: ScanWeather = parse(anchor.result)?;
+            let days = scan.weather.map(|w| w.forecast).unwrap_or_default();
+            if days.is_empty() {
+                return Err(refuse("That scan has no weather snapshot to show."));
+            }
+            BlockBody::WeatherHours {
+                days,
+                scan_id: Some(scan.id),
+            }
+        }
+        AnswerBlockKind::FrostPlanner if tool == tool_name(ToolName::GetForecast) => {
+            frost_planner(ctx, parse(anchor.result)?).await?
+        }
+        AnswerBlockKind::MeasurementTrend if tool == tool_name(ToolName::GetPlantMeasurements) => {
+            measurement_trend(ctx, parse(anchor.arguments)?, parse(anchor.result)?).await?
+        }
+        AnswerBlockKind::Candidates if tool == tool_name(ToolName::CompareLookalikes) => {
+            candidates(ctx, parse(anchor.arguments)?, parse(anchor.result)?).await?
+        }
+        _ => return Err(wrong_anchor()),
+    };
+    Ok(AnswerBlock {
+        call_id: args.call_id,
+        body,
+    })
 }
 ```
 
@@ -2881,6 +3037,10 @@ sequenceDiagram
             Tools-->>Task: ToolOutput (content, images, effects)
             Task-->>App: citation, pending_action, memory_saved, rescan_requested
             Task-->>App: tool_finished
+            opt show_block (no tool_started or tool_finished)
+                Task->>Tools: blocks::build (the turn's results, the store)
+                Task-->>App: answer_block, or nothing and a tool error to the model
+            end
             Task->>Task: append the assistant turn unchanged, then the results
         end
     end
@@ -3016,6 +3176,7 @@ impl ChatAgent {
                     attachments: image_ids,
                     citations: Vec::new(),
                     farm_citations: Vec::new(),
+                    blocks: Vec::new(),
                     tool_calls: Vec::new(),
                     route: Some(decision.route()),
                     interrupted: false,
@@ -3064,7 +3225,8 @@ Errors before the stream starts are ordinary HTTP errors ([contracts 8, sending 
 - **Per-sentence dose check.** Text deltas go through a `SentenceSplitter`; each complete sentence is dose-checked and a failing one is replaced by the fixed safety note, keeping its surrounding whitespace, before its `text_delta` is sent. At the end of every model call the splitter is flushed, so text before a tool call ("Let me check the forecast") is checked and sent too. When a call after a tool round starts with text and the reply already has text that does not end in whitespace, a `\n\n` text delta goes first (gap G14), once per call and never at the start of a reply. A replaced sentence is logged at info with the message id, the rule and whether the match held a digit (gap G13), never the text. The stored message text is exactly what was streamed.
 - **Tool use.** On `stop_reason: tool_use` the tools run in order, each between `tool_started` (with the tool's UI label) and `tool_finished { ok }`. The assistant turn goes back into the next request **exactly as the model wrote it** (its raw text, its reasoning blocks in place, its tool calls), then one `Tool` message with every result and any images after them. The raw text is replayed, not the checked one: editing the assistant turn would invalidate the thinking blocks that follow it. A unit test checks that the second request is the first plus those two messages, byte for byte.
 - **The cap.** At most `max_model_calls` (6) calls; a turn that still wants tools after the last ends with `LOOP_CAP_TEXT`. A refusal ends with `REFUSAL_TEXT` and runs no tool of that call.
-- **Effects** become events: `citation` (deduplicated by source, and stored on the message), `pending_action`, `memory_saved`, `rescan_requested`. A farm record's citation (roadmap E5.3) is collected the way a knowledge source's is, from every hit the tool returned, deduplicated by `record_id`, and stored as the message's `farm_citations`; contracts 8 has no event for it, so the app reads it from the stored message.
+- **Effects** become events: `citation` (deduplicated by source, and stored on the message), `pending_action`, `memory_saved`, `rescan_requested`. A built answer block becomes `answer_block` and is stored in the message's `blocks`, in order; `show_block` has no chip events. A farm record's citation (roadmap E5.3) is collected the way a knowledge source's is, from every hit the tool returned, deduplicated by `record_id`, and stored as the message's `farm_citations`; contracts 8 has no event for it, so the app reads it from the stored message.
+- **Cards before their message.** A write tool stores its card (`ChatRepo::create_pending_action`) during the tool loop, naming the turn's assistant message, which is stored only at the end of the turn, so the store accepts a message that doesn't exist yet. The end stores the message on every outcome. If that write fails, or the task dies first, the card is an orphan: it stays `proposed` until it expires, the client can still confirm or reject it from the `pending_action` event it holds, and no message shows it after a reload.
 - **The end.** The reply is stored with its model, prompt version, token counts, citations and tool calls and results (never sent to the app), and the usage is added to the day's total. On a completed turn the memory gate runs ([section 14](#14-memory)), then `message_completed { message_id, usage }`.
 
 ### Token budget
@@ -3550,7 +3712,7 @@ Real ambiguities found while writing the crate, with the choice made. They belon
 7. **A failing summary or `watch_for` item after the retry.** Contracts 7 says failing steps are dropped. Here a failing `watch_for` item is dropped and a failing summary is replaced by a fixed sentence (`FALLBACK_SUMMARY`), so the plan is still stored.
 8. **`memory_saved` after an automatic extraction** is sent before `message_completed`, which delays completion by the gate and the extraction (about one cheap call). The alternative, a second stream or a push, isn't in the contracts.
 9. **`interrupted` for a failed turn.** A turn that ends with an `error` event is stored with `interrupted: true`, since it never reached `message_completed`.
-10. **The poison-control text** has no phone numbers; the deployment provides the local ones.
+10. **The poison-control text** has no phone numbers; the deployment provides the local ones. Resolved: `api` reads the optional `POISON_CONTROL_TEXT` setting into `AgentConfig::poison_control_text`; unset keeps the generic text.
 
 ### Contracts 12, questions 12–24
 

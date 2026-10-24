@@ -3,10 +3,12 @@
 //! fakes of the seams.
 
 mod beliefs;
+mod chat;
 mod connect;
 mod connector_deletion;
 mod connectors;
 mod fake_store;
+mod pending_actions;
 mod pipeline;
 
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
@@ -1040,4 +1042,56 @@ fn the_committed_openapi_document_matches_the_types() {
         committed.trim_end() == generated,
         "backend/openapi.json is stale: run `cargo run -p api -- openapi > openapi.json` in backend/"
     );
+}
+
+#[test]
+fn the_poison_control_text_setting_reaches_the_agent_config() {
+    let products =
+        agent::safety::ProductCatalogue::new(&domain::knowledge::ProductsSeed::default());
+    let default = crate::wiring::agent_config(&config(), &products).unwrap();
+    assert_eq!(
+        default.poison_control_text,
+        agent::safety::routes::POISON_CONTROL_TEXT
+    );
+
+    let local = "Ontario Poison Centre: 1 800 000 0000.";
+    let set =
+        crate::wiring::agent_config(&config_with(&[("POISON_CONTROL_TEXT", local)]), &products)
+            .unwrap();
+    assert_eq!(set.poison_control_text, local);
+    // Nothing else about the agent changes.
+    assert_eq!(set.summarise_every, default.summarise_every);
+
+    // A text the dose check would replace stops start-up.
+    let refused = crate::wiring::agent_config(
+        &config_with(&[(
+            "POISON_CONTROL_TEXT",
+            "Poison Centre, 24/7: 1-800-268-9017.",
+        )]),
+        &products,
+    );
+    assert!(refused.is_err());
+}
+
+/// The calibration follows the classifier `build` wires, and composes with the poison text.
+#[test]
+fn the_router_calibration_follows_the_classifier_and_keeps_the_poison_text() {
+    use agent::safety::Calibration;
+    let products =
+        agent::safety::ProductCatalogue::new(&domain::knowledge::ProductsSeed::default());
+    let llm = crate::wiring::agent_config(&config(), &products).unwrap();
+    assert_eq!(llm.calibration, Calibration::default());
+
+    let local = "Ontario Poison Centre: 1 800 000 0000.";
+    let jev = crate::wiring::agent_config(
+        &config_with(&[
+            ("JEV_URL", "https://api.typesafe.ai"),
+            ("JEV_API_KEY", "jk"),
+            ("POISON_CONTROL_TEXT", local),
+        ]),
+        &products,
+    )
+    .unwrap();
+    assert_eq!(jev.calibration, Calibration::jev());
+    assert_eq!(jev.poison_control_text, local);
 }

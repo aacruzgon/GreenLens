@@ -70,6 +70,20 @@ pub struct ClerkConfig {
     pub webhook_secret: SecretString,
 }
 
+/// Jev, the optional text classifier ([architecture 7]): `JEV_URL` and `JEV_API_KEY` together
+/// or neither.
+#[derive(Debug, Clone)]
+pub struct JevSettings {
+    /// `JEV_URL`: `TypeSafe`'s API origin, `https://api.typesafe.ai`.
+    pub url: String,
+    /// `JEV_API_KEY`.
+    pub api_key: SecretString,
+    /// `JEV_MODEL`: a versioned model id, `integrations::jev::DEFAULT_MODEL` (`jev-1.14.0`)
+    /// unless set. Never an alias such as `jev-latest`, which moves with each release while
+    /// the router's calibration stays fitted on one version.
+    pub model: String,
+}
+
 /// `SurrealDB` Agent Memory, where shared memories are mirrored (architecture 7, memory). All
 /// three variables or none.
 #[derive(Debug, Clone)]
@@ -144,9 +158,9 @@ pub struct ProviderConfig {
     /// `LLM_CHEAP_MODEL`: summaries, memory extraction, off-topic replies, the classifier
     /// fallback; the client's default when unset.
     pub llm_cheap_model: Option<String>,
-    /// `JEV_API_KEY` and `JEV_URL`: the optional text classifier ([architecture 7]); the LLM
-    /// fallback when unset.
-    pub jev: Option<(String, SecretString)>,
+    /// `JEV_API_KEY`, `JEV_URL` and `JEV_MODEL`: the optional text classifier
+    /// ([architecture 7]); the LLM fallback when unset.
+    pub jev: Option<JevSettings>,
     /// `EXPO_ACCESS_TOKEN`: only when enhanced push security is on.
     pub expo_access_token: Option<SecretString>,
     /// `OPEN_METEO_API_KEY`: only for Open-Meteo's commercial endpoint.
@@ -183,6 +197,10 @@ pub struct Config {
     pub shutdown_drain: Duration,
     /// `DIAGNOSIS_MARGIN`: the fusion margin of contracts 7 (open question 3).
     pub diagnosis_margin: i32,
+    /// `POISON_CONTROL_TEXT`: the local poison-control numbers, shown as written when the router
+    /// takes the poison-control route; every sentence must pass the dose check
+    /// ([`check_poison_control_text`]). Unset or empty keeps the agent's generic text.
+    pub poison_control_text: Option<String>,
     /// `LOG_FORMAT`: `json` (default) or `pretty`.
     pub log_json: bool,
     /// The weather thresholds: the one instance handed to Open-Meteo (`frost_risk`), the
@@ -273,6 +291,7 @@ impl Config {
             rate_per_minute: env.parse("RATE_PER_MINUTE", 120)?,
             shutdown_drain: Duration::from_secs(env.parse("SHUTDOWN_DRAIN_S", 30)?),
             diagnosis_margin: env.parse("DIAGNOSIS_MARGIN", 2)?,
+            poison_control_text: env.get("POISON_CONTROL_TEXT").map(|t| t.trim().to_owned()),
             log_json: env.or("LOG_FORMAT", "json") != "pretty",
             weather: WeatherThresholds::default(),
             database: DatabaseConfig {
@@ -297,10 +316,7 @@ impl Config {
                 llm_api_key: env.secret("LLM_API_KEY")?,
                 llm_chat_model: env.get("LLM_CHAT_MODEL"),
                 llm_cheap_model: env.get("LLM_CHEAP_MODEL"),
-                jev: match env.get("JEV_API_KEY") {
-                    Some(key) => Some((env.required("JEV_URL")?, SecretString::from(key))),
-                    None => None,
-                },
+                jev: jev(&env)?,
                 expo_access_token: env.get("EXPO_ACCESS_TOKEN").map(SecretString::from),
                 open_meteo_api_key: env.get("OPEN_METEO_API_KEY").map(SecretString::from),
                 agent_memory: agent_memory(&env)?,
@@ -308,6 +324,31 @@ impl Config {
             connectors: connectors(&env)?,
         })
     }
+}
+
+/// Refuses a poison-control text whose sentence the dose check would replace at run time: the
+/// agent streams that text sentence by sentence through the same check, so a number such as
+/// "24/7: 1-800-..." read as a ratio would be swapped for the safety note in the one answer that
+/// must carry the numbers.
+pub fn check_poison_control_text(
+    text: &str,
+    products: &agent::safety::ProductCatalogue,
+) -> Result<(), ConfigError> {
+    let mut splitter = agent::safety::SentenceSplitter::new();
+    let sentences = splitter.push(text).into_iter().chain(splitter.finish());
+    for sentence in sentences {
+        if let Some(found) = agent::safety::dose_check(&sentence, products) {
+            return Err(ConfigError::Invalid {
+                name: "POISON_CONTROL_TEXT",
+                problem: format!(
+                    "the dose check ({:?}) would replace this sentence: {:?}",
+                    found.rule,
+                    sentence.trim()
+                ),
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Whether `url` may be the app's return target: `https`, or a custom app scheme, never a
@@ -407,6 +448,56 @@ fn http_base<F: Fn(&str) -> Option<String>>(
         .transpose()
 }
 
+/// Jev's variables, which turn it on only with `JEV_API_KEY`: `JEV_URL` and `JEV_API_KEY` are
+/// set together or not at all, and `JEV_MODEL` alone is refused too, so a half-configured Jev
+/// never silently becomes the LLM classifier. `JEV_MODEL` must be a versioned id.
+fn jev<F: Fn(&str) -> Option<String>>(env: &Env<F>) -> Result<Option<JevSettings>, ConfigError> {
+    let (url, key, model) = (
+        env.get("JEV_URL"),
+        env.get("JEV_API_KEY"),
+        env.get("JEV_MODEL"),
+    );
+    let (url, key) = match (url, key) {
+        (None, None) if model.is_none() => return Ok(None),
+        (Some(url), Some(key)) => (url, key),
+        (url, _) => {
+            return Err(ConfigError::Invalid {
+                name: if url.is_none() {
+                    "JEV_URL"
+                } else {
+                    "JEV_API_KEY"
+                },
+                problem: "JEV_URL and JEV_API_KEY are set together or not at all, and JEV_MODEL \
+                          only with them"
+                    .to_owned(),
+            });
+        }
+    };
+    let model = model.unwrap_or_else(|| integrations::jev::DEFAULT_MODEL.to_owned());
+    if !versioned_jev_model(&model) {
+        return Err(ConfigError::Invalid {
+            name: "JEV_MODEL",
+            problem: "a versioned model id such as jev-1.14.0, not an alias".to_owned(),
+        });
+    }
+    Ok(Some(JevSettings {
+        url: url.trim().trim_end_matches('/').to_owned(),
+        api_key: SecretString::from(key),
+        model,
+    }))
+}
+
+/// `jev-<major>.<minor>.<patch>`, digits only: never an alias such as `jev-latest`.
+fn versioned_jev_model(model: &str) -> bool {
+    model.strip_prefix("jev-").is_some_and(|v| {
+        let parts: Vec<&str> = v.split('.').collect();
+        parts.len() == 3
+            && parts
+                .iter()
+                .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+    })
+}
+
 /// All three Agent Memory variables, or none; a partial set names the first missing one.
 fn agent_memory<F: Fn(&str) -> Option<String>>(
     env: &Env<F>,
@@ -490,6 +581,86 @@ mod tests {
         assert_eq!(config.request_timeout, Duration::from_secs(10));
         assert_eq!(config.worker_tokens.len(), 1);
         assert!(!format!("{config:?}").contains(&"x".repeat(40)));
+    }
+
+    #[test]
+    fn jev_is_pinned_and_needs_its_url() {
+        let mut vars = base();
+        let config = Config::from_lookup(|k| vars.get(k).cloned()).unwrap();
+        assert!(config.providers.jev.is_none());
+        let refused = |vars: &BTreeMap<&'static str, String>, want: &str| {
+            let error = Config::from_lookup(|k| vars.get(k).cloned()).unwrap_err();
+            assert!(
+                matches!(&error, ConfigError::Invalid { name, .. } if *name == want),
+                "{error:?}"
+            );
+        };
+        // A partial set is refused, naming what is missing, never silently ignored.
+        vars.insert("JEV_API_KEY", "jk".to_owned());
+        refused(&vars, "JEV_URL");
+        vars.remove("JEV_API_KEY");
+        vars.insert("JEV_URL", "https://api.typesafe.ai/".to_owned());
+        refused(&vars, "JEV_API_KEY");
+        vars.remove("JEV_URL");
+        vars.insert("JEV_MODEL", "jev-1.14.0".to_owned());
+        refused(&vars, "JEV_URL");
+        vars.remove("JEV_MODEL");
+        vars.insert("JEV_API_KEY", "jk".to_owned());
+        vars.insert("JEV_URL", "https://api.typesafe.ai/".to_owned());
+        let config = Config::from_lookup(|k| vars.get(k).cloned()).unwrap();
+        let jev = config.providers.jev.unwrap();
+        assert_eq!(jev.url, "https://api.typesafe.ai");
+        assert_eq!(jev.model, "jev-1.14.0");
+        for alias in [
+            "jev-latest",
+            "jev-preview",
+            "jev-1.14",
+            "jev-1.14.0-rc1",
+            "other-1.0.0",
+        ] {
+            vars.insert("JEV_MODEL", alias.to_owned());
+            refused(&vars, "JEV_MODEL");
+        }
+        vars.insert("JEV_MODEL", "jev-1.13.0".to_owned());
+        let config = Config::from_lookup(|k| vars.get(k).cloned()).unwrap();
+        assert_eq!(config.providers.jev.unwrap().model, "jev-1.13.0");
+    }
+
+    #[test]
+    fn poison_control_text_is_optional_and_trimmed() {
+        let mut vars = base();
+        let read = |vars: &BTreeMap<&'static str, String>| {
+            Config::from_lookup(|k| vars.get(k).cloned())
+                .unwrap()
+                .poison_control_text
+        };
+        assert_eq!(read(&vars), None);
+        vars.insert("POISON_CONTROL_TEXT", "  ".to_owned());
+        assert_eq!(read(&vars), None);
+        vars.insert("POISON_CONTROL_TEXT", " Call 1 800 000 0000. ".to_owned());
+        assert_eq!(read(&vars).as_deref(), Some("Call 1 800 000 0000."));
+    }
+
+    #[test]
+    fn a_poison_control_text_the_dose_check_would_replace_is_refused() {
+        let products =
+            agent::safety::ProductCatalogue::new(&domain::knowledge::ProductsSeed::default());
+        let demo = "Poisoning? Call the Ontario Poison Centre now: 1-800-268-9017 (24 hours), or 911 \
+            if the person is unwell. For a pet, call your vet or the Pet Poison Helpline: \
+            1-855-764-7661 (a fee applies). Have the product label or a photo of the plant ready. \
+            Do not make anyone vomit unless they tell you to.";
+        check_poison_control_text(demo, &products).unwrap();
+
+        let error = check_poison_control_text(
+            "Call the Ontario Poison Centre, 24/7: 1-800-268-9017. Keep the label ready.",
+            &products,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            &error,
+            ConfigError::Invalid { name: "POISON_CONTROL_TEXT", problem }
+                if problem.contains("ColonRatio") && problem.contains("24/7: 1-800-268-9017")
+        ));
     }
 
     #[test]
