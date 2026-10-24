@@ -2767,10 +2767,11 @@ async fn chat_usage_adds_raw_counts_and_the_budget_weight() {
 }
 
 /// A usage row from before `chat_budget` existed, as the deployment had on 2026-10-24: the
-/// next scan and the next chat both write it, and its budget starts at 0.
+/// next scan writes it and its budget reads 0. Only a write that doesn't set the field could
+/// fail; a chat's `chat_budget += n` sets it, so it passed even before `DEFAULT ALWAYS`.
 #[tokio::test]
-async fn a_usage_row_from_before_chat_budget_takes_a_scan_and_a_chat() {
-    use domain::{chat::Usage, ports::UsageRepo};
+async fn a_usage_row_from_before_chat_budget_takes_the_next_scan() {
+    use domain::ports::UsageRepo;
     let store = support::store().await;
     let f = fixture(&store).await;
     let day = t0().utc_day();
@@ -2780,6 +2781,12 @@ async fn a_usage_row_from_before_chat_budget_takes_a_scan_and_a_chat() {
     )
     .await;
     store::apply_schema_with(store.db()).await.unwrap();
+    let mut r = exec(&store, "SELECT VALUE chat_budget FROM usage_daily;").await;
+    assert_eq!(
+        r.take::<Vec<Option<i64>>>(0).unwrap(),
+        vec![None],
+        "the row has no chat_budget"
+    );
 
     store
         .create_scan(
@@ -2793,16 +2800,6 @@ async fn a_usage_row_from_before_chat_budget_takes_a_scan_and_a_chat() {
         )
         .await
         .expect("the scan's usage write");
-    let usage = Usage {
-        tokens_in: 10,
-        tokens_out: 5,
-    };
-    let after = store
-        .add_chat_usage(f.user, day, usage, 9)
-        .await
-        .expect("the chat's usage write");
-    assert_eq!(
-        (after.scans, after.tokens_in, after.chat_budget),
-        (2, 10, 9)
-    );
+    let after = store.usage(f.user, day).await.unwrap();
+    assert_eq!((after.scans, after.chat_budget), (2, 0));
 }
