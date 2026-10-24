@@ -1272,3 +1272,119 @@ async fn knowledge_search_returns_the_nearest_chunks_first() {
     let texts: Vec<_> = hits.iter().map(|h| h.text.as_str()).collect();
     assert_eq!(texts, ["chunk 1", "chunk 2"], "nearest first, k of them");
 }
+
+/// A species finding of run 1, as the pipeline converts a worker's result.
+fn species_finding(
+    f: &support::Fixture,
+    id: domain::id::ObservationId,
+    label: &str,
+    model_version: &str,
+) -> domain::records::observation::Observation<domain::url::Stored> {
+    use domain::records::observation::{Observation, ObservationSource, ObservationStage};
+    Observation {
+        id,
+        scan_id: f.scan,
+        run: Run(1),
+        stage: ObservationStage::Species,
+        pipeline_stage: domain::events::Stage::Species,
+        label: label.to_owned(),
+        knowledge_ref: None,
+        role: None,
+        detail: None,
+        confidence: domain::wire::Rated(domain::wire::Confidence::new(0.6).expect("a confidence")),
+        region: None,
+        source: ObservationSource::Bioclip,
+        model_version: model_version.to_owned(),
+        created_at: t0(),
+    }
+}
+
+/// [contracts 5] partial results: a write that keeps a stored finding's id (the pipeline's
+/// `keep_partial_ids`, for a `complete` that repeats a partial result) replaces its record with
+/// the new content and reports nothing; a new id is added and an id it dropped is retracted.
+#[tokio::test]
+async fn a_write_that_keeps_a_partial_findings_id_reports_no_change() {
+    let store = support::store().await;
+    let f = fixture(&store).await;
+    set_status(&store, f.scan, "queued").await;
+    let job: JobId = f.ids.id();
+    store
+        .enqueue_job(perception_job(&f, job, None))
+        .await
+        .unwrap();
+    let worker: domain::id::WorkerId = "rig-3070".parse().unwrap();
+    let now = t0().plus(Duration::from_secs(1));
+    let claimed = store
+        .claim_job(
+            &worker,
+            1,
+            claim_policy(&[Capability::Perception], now),
+            now,
+        )
+        .await
+        .unwrap()
+        .expect("a job");
+    let lease = domain::ports::Lease {
+        job,
+        token: claimed.job.lease_token,
+        worker,
+    };
+    let write = |observations| domain::ports::ObservationWrite {
+        stage: domain::events::Stage::Species,
+        run: Run(1),
+        images: Vec::new(),
+        replace_imageless: true,
+        observations,
+        masks: Vec::new(),
+    };
+    let (tomato, potato) = (f.ids.id(), f.ids.id());
+    let partial = store
+        .store_partial(
+            &lease,
+            write(vec![
+                species_finding(&f, tomato, "Tomato", "partial"),
+                species_finding(&f, potato, "Potato", "partial"),
+            ]),
+        )
+        .await
+        .unwrap();
+    assert_eq!(partial.added.len(), 2);
+
+    // The same findings under the same ids, from the job's own versions: no change to report.
+    let repeat = store
+        .store_partial(
+            &lease,
+            write(vec![
+                species_finding(&f, tomato, "Tomato", "bioclip-2"),
+                species_finding(&f, potato, "Potato", "bioclip-2"),
+            ]),
+        )
+        .await
+        .unwrap();
+    assert!(repeat.added.is_empty(), "{repeat:?}");
+    assert!(repeat.retracted.is_empty(), "{repeat:?}");
+    let stored = store.observations(f.scan).await.unwrap();
+    assert_eq!(stored.len(), 2);
+    assert!(
+        stored.iter().all(|o| o.model_version == "bioclip-2"),
+        "the records hold the new content"
+    );
+
+    // One kept, one changed under a new id.
+    let pepper = f.ids.id();
+    let changed = store
+        .store_partial(
+            &lease,
+            write(vec![
+                species_finding(&f, tomato, "Tomato", "bioclip-2"),
+                species_finding(&f, pepper, "Pepper", "bioclip-2"),
+            ]),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        changed.added.iter().map(|o| o.id).collect::<Vec<_>>(),
+        [pepper]
+    );
+    assert_eq!(changed.retracted, [potato]);
+}

@@ -1,6 +1,9 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.11.0, 2026-10-23. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.11.3, 2026-10-24. Companion to the [architecture document](README.md).
+> **v0.11.3**: answer blocks: each tool result's `data` element carries its `call_id`, the id `show_block` names, and `call_id` may name the tool when it ran once with success in the turn (section 8, answer blocks); live, the model never saw an id and named the tool, so no block ever showed; no wire change.
+> **v0.11.2**: the write tools (`create_task`, `complete_task`, `revise_plan`) are sent to the model under strict tool use with every argument required, so `null`, or `[]` for a list, means none (section 8, tool return shapes); the live S5 checks found the hosted model never filled an optional argument; no wire change.
+> **v0.11.1**: open question 35 is settled: the Jev adapter follows TypeSafe's published System One API and ran against it on 2026-10-23, and `api` uses it when `JEV_*` is set (backend integrations 13); no wire shape changed.
 > **v0.11.0**: answer blocks (design open decision 7): `AnswerBlock` in five kinds, each anchored on one tool result of the turn and filled in from the store, the `show_block` tool, the `answer_block` event and `Message.blocks` (section 8, answer blocks).
 > **v0.10.36**: `FarmCitation.text?` is the cited record as the farm wrote it, rates included, set only when the record's connector is an `era` one (its data is synthetic), so the app can show it in a sheet instead of opening the simulator's link (EON decision 10); plans and messages store it with the citation, and no route returns a record (sections 7, 8, 9).
 > **v0.10.35**: `SpeciesSeed.frost?: "tender" | "hardy"` (section 10), a top-level field outside `care`: tender is damaged by a light frost, hardy stands one, absent when the sources don't say; `get_species_profile` returns it with the profile (section 8); backend roadmap S5 work 9's domain and schema half, the seed values are the knowledge track's.
@@ -1844,6 +1847,8 @@ The agent's tools return the same records the app sees. Every tool runs as the s
 
 **Tool arguments are strict.** A call with a field the tool doesn't know, or a malformed id, is refused before the tool runs, and the model gets the reason as an error result, so it can correct the call; a misspelt optional argument is never silently ignored. An id that names nothing the tool may see is answered like a `404` ("No such image").
 
+**Write tools get every argument.** The three write tools are sent under strict tool use, and their schemas list every argument as required: an argument with no value comes as `null`, or `[]` for a list, and means none. Under strict tool use the hosted model never fills an optional argument, so a `revise_plan` came without its steps and a `create_task` without its plant.
+
 ### Answer blocks
 
 An answer can carry **answer blocks**: native components the app draws with the text, from a fixed set ([design 5](../design/design.md#chat-answers-you-can-interact-with)). The model asks for one with `show_block`; the API builds it from records, never from text the model wrote.
@@ -1880,7 +1885,7 @@ interface FrostPlant extends BlockPlant {
 | `measurement_trend` | `get_plant_measurements` | `points`, as returned, oldest first | `plant_id` from the call's arguments, `plant_name` from the store; `quantity` from the call, or from the points | No points. The call gave no `quantity` and the points mix both quantities |
 | `candidates` | `compare_lookalikes` | `lookalikes` | `disease.problem_id` from the call's arguments, its `name` from the knowledge base | No look-alikes |
 
-- **One anchor per block.** `show_block` names one tool call of **the same turn** by its `call_id`, after that call returned. The API refuses a `call_id` the turn doesn't hold (one from an earlier turn included), a call that errored, and a result whose tool doesn't fit the kind.
+- **One anchor per block.** `show_block` names one tool call of **the same turn** by its `call_id`, after that call returned. The model reads each call's id in the `call_id` attribute of the result's `data` element (`<data kind="tool_result" call_id="toolu_…">`), since the provider never shows it otherwise. `call_id` may also name the tool when it ran once with success in that turn, and the block then carries that call's id. A tool that ran several times must be named by its id, or the call is refused. The API refuses a `call_id` the turn doesn't hold (one from an earlier turn included), a call that errored, and a result whose tool doesn't fit the kind.
 - **Filled in from the store, never from the model.** Plant names, statuses, latest heights, species frost and problem names come from the store and the knowledge base, so a block holds records and ids only. The model chooses only `focus_plant_ids`, and only for `garden_map`; each must be one of the block's live pinned plants.
 - **`frost_tender` is never a guess.** It comes only from a species the user confirmed (or named when creating the plant), never from a suggestion. It is omitted, not `false`, when the plant's species is suggested or unknown, or its species has no `frost` ([section 10](#10-knowledge-seed-format)): the app shows "unknown", not "hardy".
 - **`weather_hours` rows are daily.** A forecast day keeps its shape (section 7, `WeatherSummary`); "tap a day for its hours over 90%" reads `hours_rh_over_90`. With `scan_id`, the days are the scan's snapshot of the forecast at scan time, not the hours before the scan.
@@ -2573,6 +2578,9 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.35: `SpeciesSeed.frost` (`tender` or `hardy`), top-level, absent when unknown | 5 (Species profiles) |
 | v0.10.36: `FarmCitation.text?`, set only for a record of an `era` connector, so the app shows an Era record in a sheet (EON decision 10) | 7 (farm connectors: an `era` citation carries the record's text; the dose check still covers the model's sentences only) |
 | v0.11.0: answer blocks: `AnswerBlock` (`garden_map`, `weather_hours`, `frost_planner`, `measurement_trend`, `candidates`), each anchored on one tool result of the turn and filled in from the store; the `show_block` tool for every role; the `answer_block` event; `Message.blocks`, at most 3 | 7 (tools; answer blocks) |
+| v0.11.1: open question 35 settled, Jev's adapter on the real API | 10 (the Jev note), 15 (open decision 8) |
+| v0.11.2: the write tools' strict schemas require every argument, `null` or `[]` meaning none | none (7 doesn't describe the tools' schemas) |
+| v0.11.3: a tool result's `data` element carries its `call_id`; `show_block` may name a tool that ran once | none (7 doesn't describe the framing or the anchor rule) |
 
 ---
 
@@ -2612,7 +2620,7 @@ The contracts changed these parts of the architecture document, which has been u
 32. **Apple's principal-point convention** and the exact use of the inverse-distortion table in `DepthMeta` are *unverified* until the LiDAR day-1 check (open question 11) ([backend vision 15](../backend/vision.md#15-open-questions)).
 33. **Cancelling a call on llama.cpp.** A worker stops a cancelled job by dropping its connection. Whether llama.cpp then frees the slot is *unverified*; it matters on the RX 9070 XT if it serves llama.cpp (open question 25) ([backend worker 17](../backend/worker.md#17-open-questions)).
 34. **Request limits.** The general rate limit (120 requests a minute per user) and the JSON body limit (1 MiB) are placeholders that no document gives. Confirm them, or set them from the build-week load ([backend api 23](../backend/api.md#23-open-questions)).
-35. **Jev's API.** The `TextClassifier` adapter for Jev is a placeholder until early access arrives; until then every call uses the LLM fallback ([backend integrations 19](../backend/integrations.md#19-open-questions)).
+35. **Jev's API.** **Settled (v0.11.1):** the adapter asks TypeSafe's System One API (`POST /v1/systemone`) one yes/no question per label on a pinned model, `jev-1.14.0`, and ran against it on 2026-10-23; `api` uses it when `JEV_*` is set, with its own router calibration, and the LLM fallback otherwise ([backend integrations 13](../backend/integrations.md#13-jev), [backend agent 7](../backend/agent.md#7-router-and-safety-gate)).
 36. **`organism_options` without recognition text.** The VLM payload's `organism_options` carry an id and a name only; adding each organism's `recognition` text to the prompt is a proposal of docs/vision, not yet in the contract ([backend worker 17](../backend/worker.md#17-open-questions)).
 37. **Reverse geocoding for a GPS garden.** **Settled (v0.10.26):** a failed reverse lookup labels the garden "<time zone's city> time zone" and creation goes ahead (section 9). It names the zone rather than a town, because an Ottawa garden shares Toronto's zone. Still open: relabelling such a garden once Nominatim answers again, which needs a stored flag and a scheduler task ([backend integrations 19](../backend/integrations.md#19-open-questions)).
 38. **Zippopotam's terms** are unchecked. Confirm them, or switch it off and refuse a bare forward sortation area (section 9, geocoding) ([backend integrations 19](../backend/integrations.md#19-open-questions)).

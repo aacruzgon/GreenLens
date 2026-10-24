@@ -7,10 +7,9 @@ use domain::{
     events::{ResolvedBy, ScanEventBody, Stage},
     id::{IndicatorId, ProblemId, QuestionId, ScanId},
     jobs::{
-        CompleteJob, JobError, JobKind, JobOutcome, JobResult, JobSpec, VerifyResult, VlmResult,
-        WorkerEvent,
+        CompleteJob, JobError, JobKind, JobOutcome, JobResult, JobSpec, VerifyResult, WorkerEvent,
     },
-    knowledge::{IndicatorSeed, OrganismSeed},
+    knowledge::IndicatorSeed,
     ports::{
         ClaimAttempt, CompletionOutcome, DueQuestion, IdGenExt, JobCompletion, Lease, LeasedJob,
         NewJob, PhotoAnswerStart, PlanWrite, QuestionStepOutput,
@@ -289,7 +288,6 @@ impl Pipeline {
         use domain::jobs::PartialResult as P;
         let snap = self.deps.store.snapshot(job.scan).await?;
         let images = covered_images(&snap, job);
-        let names = std::collections::BTreeMap::new();
         let ctx = results::ObsContext {
             scan: job.scan,
             run,
@@ -297,45 +295,40 @@ impl Pipeline {
             model_version: "partial",
             now: self.now(),
         };
-        let lookups = results::Lookups {
-            problem_names: &names,
-            organisms: &[],
-        };
-        let as_result = |r: domain::jobs::PerceptionResult| {
-            results::perception_writes(&ctx, &r, &images, &lookups, || self.deps.ids.id())
-                .into_iter()
-                .next()
-        };
-        let write = match result {
-            P::PlantCheck { plant_present } => as_result(empty_perception(Some(plant_present))),
-            P::Segmentation { regions } => as_result(domain::jobs::PerceptionResult {
+        // Named as `done` names the job's `complete`, so a stage that didn't change keeps its
+        // findings (`results::keep_partial_ids`).
+        let perception = match result {
+            P::PlantCheck { plant_present } => empty_perception(Some(plant_present)),
+            P::Segmentation { regions } => domain::jobs::PerceptionResult {
                 regions,
                 ..empty_perception(None)
-            }),
-            P::Species { species } => as_result(domain::jobs::PerceptionResult {
+            },
+            P::Species { species } => domain::jobs::PerceptionResult {
                 species: Some(species),
                 ..empty_perception(None)
-            }),
-            P::Disease { disease } => as_result(domain::jobs::PerceptionResult {
+            },
+            P::Disease { disease } => domain::jobs::PerceptionResult {
                 disease: Some(disease),
                 ..empty_perception(None)
-            }),
+            },
             P::VlmFindings { findings } => {
-                let mut write = results::findings_write(&ctx, &findings, &images, &lookups, || {
-                    self.deps.ids.id()
-                });
+                let names = self.names(None, Some(&findings)).await?;
+                let mut write =
+                    results::findings_write(&ctx, &findings, &images, &names.lookups(), || {
+                        self.deps.ids.id()
+                    });
                 self.add_organism_lengths(&snap, &mut write).await;
-                Some(write)
+                return Ok(Some(question_scoped(job, write)));
             }
         };
-        // A question photo's observations replace nothing of the run's ([contracts 3]), as in
-        // the job's `done`.
-        Ok(write.map(|mut w| {
-            if job.question.is_some() {
-                w.replace_imageless = false;
-            }
-            w
-        }))
+        let names = self.names(Some(&perception), None).await?;
+        let write =
+            results::perception_writes(&ctx, &perception, &images, &names.lookups(), || {
+                self.deps.ids.id()
+            })
+            .into_iter()
+            .next();
+        Ok(write.map(|w| question_scoped(job, w)))
     }
 
     /// [contracts 7] organism length: sizes each organism finding on a photo with depth
@@ -494,14 +487,57 @@ impl Pipeline {
     }
 
     /// The organism profiles a `vlm` result's findings name.
-    async fn organism_profiles(&self, r: &VlmResult) -> Result<Vec<OrganismSeed>, PipelineError> {
-        let mut organisms = Vec::new();
-        for f in &r.findings.organisms {
-            if let Some(id) = &f.organism_id {
-                organisms.extend(self.deps.knowledge.organism(id).await?);
+    /// What a result's observations are named from ([`results::Names`]): the classifier's
+    /// problems, `BioCLIP`'s species and the VLM's species guess from the knowledge base, and the
+    /// organisms the VLM named.
+    async fn names(
+        &self,
+        perception: Option<&domain::jobs::PerceptionResult>,
+        findings: Option<&domain::vlm::VlmFindings>,
+    ) -> Result<results::Names, PipelineError> {
+        let k = &self.deps.knowledge;
+        let mut names = results::Names::default();
+        if let Some(r) = perception {
+            let mut problems: Vec<ProblemId> = r
+                .disease
+                .iter()
+                .flatten()
+                .flat_map(|d| &d.top)
+                .filter_map(|t| match &t.problem_id {
+                    domain::id::ProblemOrHealthy::Problem(p) => Some(p.clone()),
+                    domain::id::ProblemOrHealthy::Healthy => None,
+                })
+                .collect();
+            problems.sort();
+            problems.dedup();
+            names.problems = k
+                .problems(&problems)
+                .await?
+                .into_iter()
+                .map(|p| (p.id.to_string(), p.name))
+                .collect();
+        }
+        let species: Vec<domain::id::SpeciesId> = perception
+            .iter()
+            .flat_map(|r| r.species.iter().flat_map(|s| &s.candidates))
+            .filter_map(|c| c.species_id.clone())
+            .chain(findings.and_then(|f| f.species_guess.species_id.clone()))
+            .collect();
+        for id in &species {
+            if let Some(name) = k
+                .species(id)
+                .await?
+                .and_then(|s| s.common_names.into_iter().next())
+            {
+                names.species.insert(id.to_string(), name);
             }
         }
-        Ok(organisms)
+        for f in findings.iter().flat_map(|f| &f.organisms) {
+            if let Some(id) = &f.organism_id {
+                names.organisms.extend(k.organism(id).await?);
+            }
+        }
+        Ok(names)
     }
 
     /// The evidence of a `verify` result, matched against every asked profile.
@@ -559,22 +595,16 @@ impl Pipeline {
             .map(|c| c.problem_id.clone())
             .collect();
         let profiles = self.deps.knowledge.problems(&ids).await?;
-        let names = profiles
-            .iter()
-            .map(|p| (p.id.to_string(), p.name.clone()))
-            .collect();
         let asked: Vec<&IndicatorSeed> = profiles
             .iter()
             .flat_map(domain::knowledge::ProblemSeed::discriminating)
             .collect();
-        let lookups = results::Lookups {
-            problem_names: &names,
-            organisms: &[],
-        };
         let new_id = || self.deps.ids.id();
         Ok(match decoded {
             JobResult::Perception(r) => {
-                let mut writes = results::perception_writes(&ctx, &r, &images, &lookups, new_id);
+                let names = self.names(Some(&r), None).await?;
+                let mut writes =
+                    results::perception_writes(&ctx, &r, &images, &names.lookups(), new_id);
                 if job.segmentation {
                     let masks = self.store_masks(lease, &snap, &r.regions).await?;
                     results::attach_masks(&mut writes, masks);
@@ -590,6 +620,7 @@ impl Pipeline {
                         w.replace_imageless = false;
                     }
                 }
+                results::keep_partial_ids(&mut writes, &snap.observations);
                 JobCompletion::Done {
                     result: raw,
                     observations: writes,
@@ -598,17 +629,15 @@ impl Pipeline {
                 }
             }
             JobResult::Vlm(r) => {
-                let organisms = self.organism_profiles(&r).await?;
-                let lookups = results::Lookups {
-                    organisms: &organisms,
-                    ..lookups
-                };
+                let names = self.names(None, Some(&r.findings)).await?;
                 let mut findings =
-                    results::findings_write(&ctx, &r.findings, &images, &lookups, new_id);
+                    results::findings_write(&ctx, &r.findings, &images, &names.lookups(), new_id);
                 self.add_organism_lengths(&snap, &mut findings).await;
+                let mut writes = vec![findings];
+                results::keep_partial_ids(&mut writes, &snap.observations);
                 JobCompletion::Done {
                     result: raw,
-                    observations: vec![findings],
+                    observations: writes,
                     evidence: results::vlm_evidence(&r.indicators, &asked),
                     claim: Some(PipelineStep::Score),
                 }
@@ -1098,6 +1127,18 @@ fn stage_event(event: WorkerEvent) -> Option<ScanEventBody<Stored>> {
     }
 }
 
+/// A question photo's observations replace nothing of the run's ([contracts 3]), as in the
+/// job's `done`.
+fn question_scoped(
+    job: &LeasedJob,
+    mut write: domain::ports::ObservationWrite,
+) -> domain::ports::ObservationWrite {
+    if job.question.is_some() {
+        write.replace_imageless = false;
+    }
+    write
+}
+
 fn empty_perception(plant_present: Option<bool>) -> domain::jobs::PerceptionResult {
     domain::jobs::PerceptionResult {
         plant_present,
@@ -1199,6 +1240,7 @@ mod tests {
         let names = std::collections::BTreeMap::new();
         let lookups = results::Lookups {
             problem_names: &names,
+            species_names: &names,
             organisms: &[],
         };
         let mut n = 0_u32;

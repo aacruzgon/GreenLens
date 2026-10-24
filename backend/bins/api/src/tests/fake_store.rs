@@ -962,8 +962,11 @@ mod usage_repo {
             user: UserId,
             day: chrono::NaiveDate,
             usage: Usage,
+            budget_tokens: u64,
         ) -> Result<UsageTotals, StoreError> {
-            self.usage_repo.add_chat_usage(user, day, usage).await
+            self.usage_repo
+                .add_chat_usage(user, day, usage, budget_tokens)
+                .await
         }
     }
 }

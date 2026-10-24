@@ -1,6 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { liveTransport, queryClient, setBaseUrl, setTransport } from "@/api";
@@ -36,11 +37,14 @@ export function AppProviders({ env, children }: { env: Env; children: ReactNode 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <SessionProvider publishableKey={env.clerkPublishableKey} onSignedOut={clearSignedOutState}>
-          <QueryClientProvider client={queryClient}>
-            <ThemeProvider>{children}</ThemeProvider>
-          </QueryClientProvider>
-        </SessionProvider>
+        {/* The chat composer rides the keyboard (README 4, react-native-keyboard-controller). */}
+        <KeyboardProvider>
+          <SessionProvider publishableKey={env.clerkPublishableKey} onSignedOut={clearSignedOutState}>
+            <QueryClientProvider client={queryClient}>
+              <ThemeProvider>{children}</ThemeProvider>
+            </QueryClientProvider>
+          </SessionProvider>
+        </KeyboardProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

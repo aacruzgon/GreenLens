@@ -201,6 +201,15 @@ impl Usage {
         }
     }
 
+    /// The domain's counts with the cache split, for the daily chat budget.
+    pub const fn to_call(&self) -> domain::ports::CallUsage {
+        domain::ports::CallUsage {
+            usage: self.to_domain(),
+            cache_read: self.cache_read_input_tokens,
+            cache_write: self.cache_creation_input_tokens,
+        }
+    }
+
     /// Merges a cumulative update: fields the update carries replace ours.
     pub(crate) fn merge(&mut self, update: &UsageUpdate) {
         if let Some(v) = update.input_tokens {

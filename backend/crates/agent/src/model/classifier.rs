@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use domain::ports::{
     ChatMessage, ChatModel, ChatPurpose, ChatRequest, ChatRole, ClassifierTask, ContentPart,
-    LabelScore, ModelError, StopReason, TextClassifier,
+    LabelScore, ModelError, PriorExchange, StopReason, TextClassifier,
 };
 use serde_json::{Map, Value, json};
 
@@ -16,17 +16,8 @@ use crate::{
     safety::routes::{FARM_ROUTE_LABELS, ROUTE_LABELS},
 };
 
-/// The memory gate's labels.
-pub const MEMORY_LABELS: [&str; 2] = ["remember", "skip"];
-
-/// The chunk topics ([contracts 10], `ChunkTopic`).
-pub const TOPIC_LABELS: [&str; 5] = [
-    "symptoms",
-    "conditions",
-    "management",
-    "care",
-    "recognition",
-];
+/// The memory gate's labels and the chunk topics, shared with Jev.
+pub use domain::ports::{MEMORY_LABELS, TOPIC_LABELS};
 
 /// What the model is told, and the labels, per task.
 pub const fn task_labels(task: ClassifierTask) -> (&'static str, &'static [&'static str]) {
@@ -66,6 +57,12 @@ pub const fn task_labels(task: ClassifierTask) -> (&'static str, &'static [&'sta
     }
 }
 
+/// Added to the route's system prompt when the message comes with the exchange before it.
+pub const CONTEXT_RULE: &str = "\n\nThe transcript block is the exchange just before the \
+message, for context only. Score the user_message block, the gardener's newest message, reading \
+the transcript only to understand what it refers to: a follow-up about the earlier answer is about \
+what that answer was about.";
+
 /// The strict output schema: one number per label, all required.
 pub fn score_schema(labels: &[&str]) -> Value {
     let properties: Map<String, Value> = labels
@@ -102,13 +99,41 @@ impl LlmClassifier {
 
     /// The request for one message.
     pub fn request(&self, task: ClassifierTask, text: &str) -> ChatRequest {
+        self.request_with_context(task, text, None)
+    }
+
+    /// The request for one message with the conversation's last exchange. For a route with an
+    /// exchange, the exchange goes first in a `transcript` block and the system prompt says to
+    /// score the message after it ([`CONTEXT_RULE`]); otherwise the request is
+    /// [`request`](Self::request)'s.
+    pub fn request_with_context(
+        &self,
+        task: ClassifierTask,
+        text: &str,
+        prior: Option<&PriorExchange>,
+    ) -> ChatRequest {
         let (description, labels) = task_labels(task);
+        let prior = prior.filter(|p| matches!(task, ClassifierTask::Route { .. }) && !p.is_empty());
+        let mut system = classifier_system(description, labels);
+        let mut content = Vec::new();
+        if let Some(p) = prior {
+            system.push_str(CONTEXT_RULE);
+            let mut earlier = Vec::new();
+            if let Some(user) = &p.user {
+                earlier.push(format!("Gardener: {user}"));
+            }
+            if let Some(assistant) = &p.assistant {
+                earlier.push(format!("Assistant: {assistant}"));
+            }
+            content.push(data(DataKind::Transcript, &earlier.join("\n")));
+        }
+        content.push(data(DataKind::UserMessage, text));
         ChatRequest {
             purpose: ChatPurpose::Classification,
-            system: classifier_system(description, labels),
+            system,
             messages: vec![ChatMessage {
                 role: ChatRole::User,
-                content: vec![ContentPart::Text(data(DataKind::UserMessage, text))],
+                content: vec![ContentPart::Text(content.join("\n"))],
             }],
             tools: Vec::new(),
             response_schema: Some(score_schema(labels)),
@@ -162,8 +187,18 @@ impl TextClassifier for LlmClassifier {
         task: ClassifierTask,
         text: &str,
     ) -> Result<Vec<LabelScore>, ModelError> {
+        self.classify_with_context(task, text, &PriorExchange::default())
+            .await
+    }
+
+    async fn classify_with_context(
+        &self,
+        task: ClassifierTask,
+        text: &str,
+        prior: &PriorExchange,
+    ) -> Result<Vec<LabelScore>, ModelError> {
         let (_, labels) = task_labels(task);
-        let request = self.request(task, text);
+        let request = self.request_with_context(task, text, Some(prior));
         let completion = self.model.complete(&request).await?;
         if completion.stop == StopReason::Refusal {
             return Ok(refused(task, labels));
@@ -200,6 +235,55 @@ mod tests {
         assert_eq!(s["required"].as_array().unwrap().len(), 5);
     }
 
+    /// A follow-up's route puts the exchange before it in a `transcript` block ahead of the
+    /// message and tells the model to score the message; the first message, and the other
+    /// tasks, are asked as before.
+    #[test]
+    fn a_route_with_context_puts_the_exchange_first_and_says_what_to_score() {
+        let c = LlmClassifier::new(
+            Arc::new(crate::testing::ScriptedModel::completing(
+                "{}",
+                StopReason::EndTurn,
+            )),
+            256,
+        );
+        let route = ClassifierTask::Route {
+            farm_records: false,
+        };
+        let prior = PriorExchange {
+            user: Some("Will the frost hurt my tomatoes?".to_owned()),
+            assistant: Some("Frost is likely on Thursday night.".to_owned()),
+        };
+        let text_of = |r: &ChatRequest| match &r.messages[0].content[..] {
+            [ContentPart::Text(t)] => t.clone(),
+            other => panic!("{other:?}"),
+        };
+        let with = c.request_with_context(route, "What did you just say?", Some(&prior));
+        assert!(with.system.ends_with(CONTEXT_RULE));
+        assert_eq!(
+            text_of(&with),
+            format!(
+                "{}\n{}",
+                data(
+                    DataKind::Transcript,
+                    "Gardener: Will the frost hurt my tomatoes?\nAssistant: Frost is likely on \
+                     Thursday night."
+                ),
+                data(DataKind::UserMessage, "What did you just say?")
+            )
+        );
+        for (task, p) in [
+            (route, None),
+            (route, Some(&PriorExchange::default())),
+            (ClassifierTask::MemoryWorthy, Some(&prior)),
+        ] {
+            let plain = c.request(task, "hello");
+            let asked = c.request_with_context(task, "hello", p);
+            assert_eq!(asked.system, plain.system);
+            assert_eq!(text_of(&asked), data(DataKind::UserMessage, "hello"));
+        }
+    }
+
     /// Gap G10: a garden without farm records is asked exactly as before; one with them gets
     /// the `farm_records` label, and `off_topic` no longer covers its records.
     #[test]
@@ -220,7 +304,7 @@ mod tests {
         assert_eq!(schema["required"].as_array().unwrap().len(), 6);
         assert_eq!(
             crate::prompt::CLASSIFIER_PROMPT_VERSION,
-            "classify/2026-10-20.2"
+            "classify/2026-10-24.1"
         );
 
         let c = LlmClassifier::new(

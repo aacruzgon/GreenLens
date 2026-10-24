@@ -1,6 +1,6 @@
 # PDM Analytics
 
-> **Status:** Draft v0.2, 2026-10-17. v0.2: folds in the PR #43 audit: bands as in contracts §1, P3's exception to the 14-day trend rule, and a fixture with one diagnosis per plant and today's live scan of Tomato 2. v0.1: the in-app insights for a plant, a garden and a farm, built only from data PDM already stores, with what each needs from the backend, the demo moment and its mock data, and the privacy and wording rules.
+> **Status:** Draft v0.3, 2026-10-24. v0.3: section 6's fixture dates follow the garden's calendar, not the device's, and today's morning fixtures never come after now. v0.2: folds in the PR #43 audit: bands as in contracts §1, P3's exception to the 14-day trend rule, and a fixture with one diagnosis per plant and today's live scan of Tomato 2. v0.1: the in-app insights for a plant, a garden and a farm, built only from data PDM already stores, with what each needs from the backend, the demo moment and its mock data, and the privacy and wording rules.
 
 This note designs the insights the app shows its users: charts and short statements about their plants and gardens. It is a companion to [`design.md`](design.md) (same folder), [screens](../frontend/screens.md) and the 3D garden notes in [`garden-3d.md`](garden-3d.md). Every insight here uses data the contracts already define. Where an insight needs a new endpoint or field, section 5 names it. Where it would need data PDM doesn't capture, it is in the "later" list, not in the design.
 
@@ -243,7 +243,7 @@ Two insights, about 20 seconds together:
 
 ### Seeded data for mock mode
 
-The mock fixture store (frontend §15) needs these, using the mockup's garden. Dates are relative to the device's date (today − 27 days and so on), so the demo always looks current.
+The mock fixture store (frontend §15) needs these, using the mockup's garden. Dates are relative to today in the garden's calendar (its time zone, `America/Toronto`; today − 27 days and so on), so the demo always looks current and a task due today is due today wherever the phone is. Today's fixtures sit in the morning: before noon their times are squeezed, in order, into the hours already past, so nothing seeded is later than now.
 
 | Fixture | Values |
 |---|---|

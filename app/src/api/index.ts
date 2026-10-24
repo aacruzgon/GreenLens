@@ -26,6 +26,7 @@ export {
 } from "./idempotency";
 export { SseParser, readSse, type SseMessage, type ReadSseOptions } from "./sse";
 export { openScanStream, decodeScanEvent, type ScanStreamOptions } from "./scanStream";
+export { sendChatMessage, decodeChatEvent, type ChatStreamEvent, type ChatEventType, type SendResult } from "./chatStream";
 export { fetchAllPages, flattenPages, nextCursor, MAX_PAGE_SIZE, type Page } from "./pages";
 export { qk, type TaskFilter, type ConversationAnchor } from "./queryKeys";
 export { createQueryClient, queryClient, STALE } from "./queryClient";
@@ -37,3 +38,4 @@ export * from "./resources/tasks";
 export * from "./resources/scans";
 export * from "./resources/species";
 export * from "./resources/memories";
+export * from "./resources/chat";

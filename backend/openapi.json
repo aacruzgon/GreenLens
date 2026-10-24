@@ -8252,6 +8252,13 @@
             },
             "description": "The user's images."
           },
+          "blocks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnswerBlock"
+            },
+            "description": "The answer blocks an assistant message sent, in order, at most 3 ([contracts 8], answer\nblocks); absent when it sent none, and read as empty from a message stored before them."
+          },
           "citations": {
             "type": "array",
             "items": {

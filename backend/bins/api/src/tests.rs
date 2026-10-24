@@ -10,6 +10,7 @@ mod connectors;
 mod fake_store;
 mod pending_actions;
 mod pipeline;
+mod scan_harness;
 
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
@@ -1071,4 +1072,27 @@ fn the_poison_control_text_setting_reaches_the_agent_config() {
         &products,
     );
     assert!(refused.is_err());
+}
+
+/// The calibration follows the classifier `build` wires, and composes with the poison text.
+#[test]
+fn the_router_calibration_follows_the_classifier_and_keeps_the_poison_text() {
+    use agent::safety::Calibration;
+    let products =
+        agent::safety::ProductCatalogue::new(&domain::knowledge::ProductsSeed::default());
+    let llm = crate::wiring::agent_config(&config(), &products).unwrap();
+    assert_eq!(llm.calibration, Calibration::llm());
+
+    let local = "Ontario Poison Centre: 1 800 000 0000.";
+    let jev = crate::wiring::agent_config(
+        &config_with(&[
+            ("JEV_URL", "https://api.typesafe.ai"),
+            ("JEV_API_KEY", "jk"),
+            ("POISON_CONTROL_TEXT", local),
+        ]),
+        &products,
+    )
+    .unwrap();
+    assert_eq!(jev.calibration, Calibration::jev());
+    assert_eq!(jev.poison_control_text, local);
 }

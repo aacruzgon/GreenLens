@@ -105,3 +105,67 @@ Every event missed during the restart must arrive once after the resume, none tw
 Face blurring: `--face-photo face.jpg --out-dir /tmp/faces`, then look at the saved image. Faces are blurred and stored, not refused.
 
 Scans and gardens the script creates are left in place (names start `smoke `).
+
+## S5: chat and the garden map (`s5.py`)
+
+`s5.py` runs backend roadmap S5's live checks against a running `api`, in `smoke.py`'s style, and signs in the same way. It prints PASS, FAIL or SKIP with the evidence for each check, then the chat turns' token usage and a cost range. It exits 1 if any check failed. SKIP means the check couldn't prove its claim on this run (an option missing, or the case didn't come up), never a pass.
+
+| Check | What it proves |
+|---|---|
+| `openapi` | `Message` and `MessageReplay` are schemas in `/openapi.json` (or the committed file), and `POST /conversations/{id}/messages` lists `application/json` (`MessageReplay`) and `text/event-stream` under `200` |
+| `poison` | With `--poison-text` (the `POISON_CONTROL_TEXT` `api` runs with): a poisoning message streams exactly that text, with no tool call. SKIP without it |
+| `chat` | Two turns on a scan conversation. The first calls `get_forecast` (`tool_started` and `tool_finished`). The second runs on context rebuilt as text (agent open question 18.2). Prints the route, the tools, the time to first text and the usage |
+| `card` | One `revise_plan` card with a step about the lowest leaves, confirmed: a new version that `supersedes` the base and holds that step's title and detail as shown, `reason: chat_revision` with `--db-check`, and a retried confirm gives the same plan. A second card is rejected, and confirming it then gives `409` |
+| `tasks` | A `create_task` card with the plant, the asked due date, a 3-day repeat and a detail that says to look under the leaves, confirmed. Then a `complete_task` card for that task, confirmed (`done_at`) |
+| `memory` | A garden fact gives `memory_saved` with a private `chat` memory before `message_completed`, then `POST /memories/{id}/share`. That the plan writer reads only shared memories is covered by unit tests, named in the output |
+| `beliefs` | Agent Memory, on a new plant. Two watering notes and a soil note leave one current watering belief and the older one with `superseded_at`, within one sweep (10 s). A private chat memory about the plant never appears in the beliefs, nor in the entity read with `--agent-memory-env`, which must first hold the soil note's text. Deleting the newer note removes it, and the older one is current again. SKIP when `available: false` |
+| `beliefs-erase` | With `--agent-memory-env`: deleting the plant leaves no entity in Agent Memory within one sweep. SKIP without it |
+| `map` | `PUT /gardens/{id}/map` with two tomatoes 30 cm apart (under 0.75 × 60 cm), a lettuce and a basil; a second `PUT` from the same `base_version` gives `409`. Then a chat answer that runs `get_garden_map` and shows a `garden_map` block: the API's own neighbours (tomato A with tomato B and the lettuce, basil alone), and the answer names the tomatoes' crowding with a distance. The crowding rule isn't in `get_garden_map`'s result (fusion applies it during a scan), so the answer's words are its evidence |
+| `frost` | In a new garden at `--frost-lat`/`--frost-lon` (default Yellowknife) with a tomato and a lettuce: "Will the frost on Thursday hurt my plants?" streams a `frost_planner` block after its `get_forecast` call's `tool_finished`, each plant's `frost_tender` as `--frost-expect` says (`tender` true, `hardy` false, `none` absent), and the stored message holds the same blocks. SKIP when that forecast has no frost night |
+| `dose` | "How many tablespoons … per gallon …?": the route is `safety_sensitive` and no streamed sentence holds an amount (digits or number words with a unit, or a unit per a volume). SKIP (not exercised) unless the dose check replaced a sentence, which shows as the safety note in the stream |
+| `unset` | With `--restart-without-agent-memory` and `--restore-cmd`: `available: false` and a working chat turn, then `api` restored and Agent Memory back. SKIP without both |
+
+**What it writes.** Without `--scan-id`, it first drives a new scan of `--photo` to `plan_ready` in a garden it makes, answering each indicator question with `--answer` (default `yes`). With `--scan-id` it uses that scan: it chats there, and the card check confirms one revision of its plan and rejects a second card. Nothing else touches that scan's garden: the memory, task, belief and map plants go in a fresh `s5 work …` garden, and the frost plants in a fresh `s5 frost …` garden. `--cleanup` deletes the gardens the script made, and only those. `--expect-problem tomato_early_blight` stops the run when the scan's primary problem is another.
+
+**One test user per run.** Each user has a daily chat budget (`daily_chat_tokens`). Give each run its own `--email` (a `+clerk_test` address) and `--phone-suffix` (Clerk's test numbers +1555555 0100–0199; one already in use is refused).
+
+**Cost.** One full run is about 15 chat turns on `claude-opus-5-5`, and costs about US$2 to US$3. The script prints a range, because the stream reports only the total input: every input token a cache read (low) or a cache write (high).
+
+**Clerk.** The control plane trusts the same Clerk **development** instance as the laptop (S1), so `--env-file` is any file holding that instance's `CLERK_SECRET_KEY` (`sk_test_…`). The script refuses any other key.
+
+### Locally
+
+As for `smoke.py`, plus Agent Memory's three variables and `POISON_CONTROL_TEXT` for `api`, and both workers: the stub for perception (with the label versions of `migrations/knowledge.surql`'s first line) and the fallback for the VLM job. Without `HF_TOKEN`, give the fallback a manifest without the `bioclip_labels` and `disease_head` entries. It then answers VLM jobs only.
+
+The seed has no species `frost` yet (the knowledge track's job), so `--frost-expect` defaults to `none` for both. To see a `true` on the laptop, set one in the dev database, restart `api` (its knowledge index is read at start), and put it back after:
+
+```
+UPDATE species:tomato SET frost = 'tender';     -- then --frost-expect tomato=tender,lettuce=none
+UPDATE species:tomato UNSET frost;              -- afterwards, then restart api again
+```
+
+```
+AGENT_MEMORY_URL=… AGENT_MEMORY_CONTEXT_ID=… AGENT_MEMORY_API_KEY=… POISON_CONTROL_TEXT="…" cargo run -p api
+WORKER_ID=… WORKER_TOKEN=… STUB_LABEL_SET_VERSION=… STUB_CLASSIFIER_LABELS_VERSION=… \
+  STUB_PROBLEMS=tomato_early_blight cargo run -p worker -- --caps perception --stub-vision
+cargo run -p worker -- --caps fallback
+python3 tools/smoke/s5.py --photo ../app/assets/mock/tomato-blight.jpg \
+  --email s5a+clerk_test@example.com --phone-suffix 157 \
+  --agent-memory-env ../.env.agent-memory --db-check --poison-text "…" \
+  --restart-without-agent-memory "<restart api without AGENT_MEMORY_*>" \
+  --restore-cmd "<restart api as it was>" --cleanup
+```
+
+`--agent-memory-env` is read as a file, never from the environment. It accepts the `AGENT_MEMORY_*` names or the vendor's old `SPECTRON_*` ones. `--db-check` reads the revised plan's stored reason with the dev compose's SurrealDB root user, so it is for the laptop only.
+
+### Against the deployed control plane
+
+```
+python3 tools/smoke/s5.py --base-url https://<control-plane-host> --photo <an early-blight leaf> \
+  --expect-problem tomato_early_blight --email s5-rig+clerk_test@example.com --phone-suffix 191 \
+  --agent-memory-env <file with the deployment's AGENT_MEMORY_*> --poison-text "<its POISON_CONTROL_TEXT>" \
+  --restart-without-agent-memory "ssh rig '<restart api without AGENT_MEMORY_*>'" \
+  --restore-cmd "ssh rig '<restart api as deployed>'" --cleanup
+```
+
+Leave out `--db-check`. With `--photo`, the rig's models diagnose the scan the script makes, which gives S5's early-blight exit check its real diagnosis. A later run can reuse that scan with `--scan-id` and the same `--email`, because the test user must own the scan.
