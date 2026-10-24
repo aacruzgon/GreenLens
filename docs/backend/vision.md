@@ -1,6 +1,6 @@
 # PDM Backend: `vision` crate
 
-> **Status:** Draft v0.2.9, 2026-10-23. v0.2.9: the joined teardown is verified on the 3070 (exit 0, not 139, with "stopped" 61 ms after "shutting down"). v0.2.8: the inference thread is joined, not detached: dropping the last `Inference` waits until the thread has released every session and then the environment, so the perception worker's `main` can't reach `exit` while CUDA sessions are being released (it died with exit 139 on SIGTERM). v0.2.7: open question 7: a HEIC's sensor frame is lost on decode, so a sensor-frame depth map sent with a HEIC is refused (found on the rig with `smoke.py --depth-check`). v0.2.6: the perception adapter takes every tensor name from the manifest (`TensorNames`, gap G4) and checks them against each loaded session at start-up (`check_names`), reads every threshold from `[model.config]` inside `PerceptionPipeline::load` with `PerceptionConfig::from_manifest` and has no default, and refuses an environment batch cap above the manifest's (G6; `tau_leaf` is a new `leaf_detector` key, `tau_plant` comes from `plant_probe`), and refuses fp16 models on the CPU provider (`check_precision`, G11), all from [issue #12](https://github.com/aacruzgon/GreenLens/issues/12). v0.2.5: open question 4 is settled: xgrammar enforces `anyOf` with `null`. v0.2.4: the head and label-matrix loaders read `ml/models/FORMATS.md` (`pdm-label-matrix/1`, `pdm-linear-head/1`), refuse a head trained on another export or a file whose version differs from its entry, and are tested on files written as `ml/` writes them; open question 5 is resolved. v0.2.3: open question 5 is open again: `ml/models/FORMATS.md` is the format of record, and the loader doesn't read it yet. v0.2.2: open question 5 is resolved: vision 6 now fixes the head and label-matrix JSON. v0.2.1: the section 1 note says the `rust-workers` skill follows this crate: `ort` with `load-dynamic` and `api-29`, providers as cargo features chosen by `ORT_EP`, one inference thread and the session pool. v0.2: the text embedder takes `domain::ports::EmbedMode` on each `embed` call instead of offering two pre-set instances (`queries()` and `documents()` are gone). v0.1: ONNX Runtime sessions with the execution provider chosen at run time, the perception models as one `VisionModel`, the CPU upload pipeline (decode, quality, two-pass face blurring, WebP, depth), LiDAR measurement as deterministic geometry, the text embedder and COCO RLE, compiled on Rust 1.99.1 with `ort` 2.0.0-rc.14.
+> **Status:** Draft v0.2.11, 2026-10-23. v0.2.11: `rle::to_png` encodes the decoded mask's own buffer, which `decode` fills with 0 and 255, instead of a second full-size copy. v0.2.10: `rle::to_png` encodes a worker's mask as the 8-bit PNG that `pipeline` stores when a perception job completes and `GET /scans/{id}/masks/{mask_id}` streams; section 11 said `api` decoded a mask on each read, but the route streams the stored object (section 11). v0.2.9: the joined teardown is verified on the 3070 (exit 0, not 139, with "stopped" 61 ms after "shutting down"). v0.2.8: the inference thread is joined, not detached: dropping the last `Inference` waits until the thread has released every session and then the environment, so the perception worker's `main` can't reach `exit` while CUDA sessions are being released (it died with exit 139 on SIGTERM). v0.2.7: open question 7: a HEIC's sensor frame is lost on decode, so a sensor-frame depth map sent with a HEIC is refused (found on the rig with `smoke.py --depth-check`). v0.2.6: the perception adapter takes every tensor name from the manifest (`TensorNames`, gap G4) and checks them against each loaded session at start-up (`check_names`), reads every threshold from `[model.config]` inside `PerceptionPipeline::load` with `PerceptionConfig::from_manifest` and has no default, and refuses an environment batch cap above the manifest's (G6; `tau_leaf` is a new `leaf_detector` key, `tau_plant` comes from `plant_probe`), and refuses fp16 models on the CPU provider (`check_precision`, G11), all from [issue #12](https://github.com/aacruzgon/GreenLens/issues/12). v0.2.5: open question 4 is settled: xgrammar enforces `anyOf` with `null`. v0.2.4: the head and label-matrix loaders read `ml/models/FORMATS.md` (`pdm-label-matrix/1`, `pdm-linear-head/1`), refuse a head trained on another export or a file whose version differs from its entry, and are tested on files written as `ml/` writes them; open question 5 is resolved. v0.2.3: open question 5 is open again: `ml/models/FORMATS.md` is the format of record, and the loader doesn't read it yet. v0.2.2: open question 5 is resolved: vision 6 now fixes the head and label-matrix JSON. v0.2.1: the section 1 note says the `rust-workers` skill follows this crate: `ort` with `load-dynamic` and `api-29`, providers as cargo features chosen by `ORT_EP`, one inference thread and the session pool. v0.2: the text embedder takes `domain::ports::EmbedMode` on each `embed` call instead of offering two pre-set instances (`queries()` and `documents()` are gone). v0.1: ONNX Runtime sessions with the execution provider chosen at run time, the perception models as one `VisionModel`, the CPU upload pipeline (decode, quality, two-pass face blurring, WebP, depth), LiDAR measurement as deterministic geometry, the text embedder and COCO RLE, compiled on Rust 1.99.1 with `ort` 2.0.0-rc.14.
 
 Companion to the [backend architecture](README.md), the [`domain` crate](domain.md) whose ports this crate implements, and the [computer-vision design](../vision/README.md), whose model choices it follows. Every listing below is copied from the compiled source of `crates/vision` by the docgen tool. `cargo check -p vision` (also with `--features cuda`, `migraphx`, `webgpu`), `cargo clippy -p vision --all-targets` and `cargo test -p vision` pass: 61 unit tests and 19 tests that load `ml/`'s committed manifest and files written as `ml/` writes them, among them an end-to-end measurement of a synthetic leaf and byte-for-byte RLE fixtures from pycocotools. ONNX Runtime itself never runs in the tests: the default `load-dynamic` feature links nothing, and no test builds a session.
 
@@ -38,7 +38,7 @@ Companion to the [backend architecture](README.md), the [`domain` crate](domain.
 | Depth validation, rotation, intrinsics, face zeroing | `depth` | | `upload`, the measurement stage |
 | LiDAR measurement | `measure` | `SpotSegmenter` (the colour default) | `pipeline`, inside `api` |
 | Text embeddings | `embed` | `TextEmbedder` | `api` (`agent`, `knowledge`) |
-| Masks, COCO RLE | `mask`, `rle` | | perception (encode), `api` (decode to PNG), measurement |
+| Masks, COCO RLE | `mask`, `rle` | | perception (encode), `pipeline` (decode to the stored PNG), measurement |
 
 **What it never does.** No network, no database, no object storage, no job protocol: callers hand in bytes and get bytes and records back. The VLM adapters are not here: they are HTTP clients and live in the [worker](worker.md). Answering measurable indicators from measurements belongs to `pipeline` ([pipeline](pipeline.md)); this crate only measures.
 
@@ -2988,9 +2988,14 @@ pub fn measure_leaf(
 }
 ```
 ```rust
-/// Thresholds in HSV, relative to the leaf's median value. Starting values, set from the
-/// evaluation set's `LiDAR` leaves ([architecture 15], open decision 17).
+/// Thresholds in HSV, relative to the leaf's median value. The defaults were fitted on 2026-10-22
+/// (M15) on `PlantSeg`'s lesion masks inside the leaf masks our detector and SAM cut: on its
+/// hold-out spot diseases the mean of the lesion and healthy-leaf `IoU`s rose from 0.382 to 0.497
+/// ([report]). In short: brown to red hues (0–45°) and greys are necrotic, as is anything darker
+/// than a fifth of the leaf; yellow (45–66°) is halo; the rest is leaf ([architecture 15], open
+/// decision 17). A necrotic patch under `min_spot_share` of the leaf is leaf too.
 ///
+/// [report]: ../../../ml/training/eval/reports/spots-2026-10-22.md
 /// [architecture 15]: ../../../docs/architecture/README.md#15-open-decisions
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SpotThresholds {
@@ -3014,6 +3019,10 @@ pub struct SpotThresholds {
     pub halo_hue_max: f64,
     /// See `halo_hue_max`.
     pub halo_saturation: f64,
+    /// A necrotic patch (4-connected) smaller than this share of the leaf's pixels is leaf:
+    /// a speck of glare, grain or edge noise, not a lesion. A share rather than a pixel count,
+    /// so it holds at any resolution and distance. 0 keeps every patch.
+    pub min_spot_share: f64,
 }
 
 /// The colour-threshold segmenter.
@@ -3610,6 +3619,31 @@ pub fn decode(rle: &RleMask) -> Result<MaskBuf, RleError> {
     }
     Ok(mask)
 }
+
+/// Why a worker's mask can't be stored as a PNG.
+#[derive(Debug, thiserror::Error)]
+pub enum MaskPngError {
+    /// The run-length string is invalid.
+    #[error("mask does not decode")]
+    Decode(#[from] RleError),
+    /// The PNG encoder failed.
+    #[error("mask png not encoded")]
+    Encode(#[from] png::EncodingError),
+}
+
+/// The object behind `GET /scans/{id}/masks/{mask_id}`: the mask decoded and encoded as an 8-bit
+/// grayscale PNG at its own size (the stored image's, `size`), 255 inside and 0 outside.
+pub fn to_png(rle: &RleMask) -> Result<Vec<u8>, MaskPngError> {
+    // `decode` sets inside pixels with `MaskBuf::set`, which writes 255, so the buffer is
+    // already the image: no second full-size copy.
+    let mask = decode(rle)?;
+    Ok(crate::depth::encode_png(
+        mask.width(),
+        mask.height(),
+        png::BitDepth::Eight,
+        mask.as_raw(),
+    )?)
+}
 ```
 ```rust
 /// An owned 8-bit mask, row-major: non-zero inside.
@@ -3775,7 +3809,7 @@ pub fn outline(mask: MaskView<'_>) -> Vec<(u32, u32)> {
 }
 ```
 
-`api` decodes a stored mask to an 8-bit PNG for `GET /scans/{id}/masks/{mask_id}` with `rle::decode` and the `image` PNG encoder.
+When a perception job completes, `pipeline` turns each region's mask into the object `GET /scans/{id}/masks/{mask_id}` serves with `rle::to_png`: `rle::decode`, then an 8-bit grayscale PNG at the mask's own size (the stored image's), 255 inside and 0 outside, through the `png` encoder the depth maps use. `decode` writes those values (`MaskBuf::set`), so the decoded buffer is encoded as it is, with no second full-size copy. It is stored before its `mask` record ([pipeline 4](pipeline.md#4-ports-and-construction)), and the route streams that object without decoding anything.
 
 ---
 
@@ -3925,7 +3959,7 @@ impl VisionError {
 | Measurement | pixel footprints (fronto-parallel and 45°); the longest extent; RANSAC finds a 15° plane among outliers and is deterministic; the pinned stream; percentiles; the criteria table; ground choice (raised bed over path, bench above the base); the colour classes; **a synthetic 18 cm leaf at 30 cm with a 30 mm spot measures within 2 mm, 3 cm² and 0.5 cm, twice identically**; organism length |
 | Perception | tensors are CHW and normalised for every resize rule; batches split at the effective cap; detector decode keeps confident large boxes and drops duplicates; SAM prompts and upsampling; species scores follow the closest row and shot weights; the disease head is restricted to the working species; soil shots never count for the plant check |
 | Embedder | CLS pooling and normalisation |
-| RLE and masks | pycocotools fixtures byte for byte; garbage rejected; holes, erosion, resampling, outlines |
+| RLE and masks | pycocotools fixtures byte for byte; garbage rejected; holes, erosion, resampling, outlines; `to_png` gives an 8-bit grayscale PNG of the mask's size, 255 exactly inside |
 
 Nothing here runs ONNX Runtime: `ort` with `cuda` can't link on macOS, and the default `load-dynamic` links nothing but would need a runtime at the first session (the `rust-workers` skill, `ort.md`). Model-level checks (YuNet parity with OpenCV, the embedder's golden vectors, warm-up at the largest batch, VRAM budgets) run on the rig on day 1–2 ([vision evaluation](../vision/evaluation.md)).
 

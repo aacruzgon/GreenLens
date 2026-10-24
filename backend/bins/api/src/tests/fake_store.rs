@@ -743,6 +743,20 @@ mod farm_record_store {
                 .search_records(member, query, filter, k)
                 .await
         }
+        async fn garden_has_records(&self, garden: GardenId) -> Result<bool, StoreError> {
+            self.farm_record_store.garden_has_records(garden).await
+        }
+        async fn search_records_for_plan(
+            &self,
+            garden: GardenId,
+            query: &Embedding,
+            filter: FarmRecordFilter,
+            k: usize,
+        ) -> Result<Vec<FarmRecordMatch>, StoreError> {
+            self.farm_record_store
+                .search_records_for_plan(garden, query, filter, k)
+                .await
+        }
         async fn delete_records_before(&self, cutoff: Timestamp) -> Result<u32, StoreError> {
             self.farm_record_store.delete_records_before(cutoff).await
         }
@@ -1264,7 +1278,7 @@ mod plant_repo {
         ports::StoreError,
         scan::{Plant, PlantStatus, ScanStatus, SpeciesCandidate, SpeciesChoice, SpeciesStatus},
         url::Stored,
-        wire::{Page, PageRequest, Timestamp},
+        wire::{Page, PageRequest, Run, Timestamp},
     };
 
     use domain::ports::*;
@@ -1310,14 +1324,22 @@ mod plant_repo {
         }
         async fn suggest_species(
             &self,
-            plant: PlantId,
+            scan: ScanId,
+            run: Run,
             candidates: Vec<SpeciesCandidate<Stored>>,
             working: Option<SpeciesId>,
             status: SpeciesStatus,
-        ) -> Result<(), StoreError> {
+        ) -> Result<bool, StoreError> {
             self.plant_repo
-                .suggest_species(plant, candidates, working, status)
+                .suggest_species(scan, run, candidates, working, status)
                 .await
+        }
+        async fn adopt_confirmed_species(
+            &self,
+            scan: ScanId,
+            run: Run,
+        ) -> Result<bool, StoreError> {
+            self.plant_repo.adopt_confirmed_species(scan, run).await
         }
         async fn set_plant_status(
             &self,

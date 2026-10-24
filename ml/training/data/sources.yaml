@@ -2,6 +2,10 @@
 # fetch.py downloads each one, checks its SHA-256 and unpacks it under data/raw/<name>/.
 # A null sha256 means "not pinned yet": fetch.py prints the hash so it can be filled in.
 # Only sources with `ship: true` may go into weights we ship (licence allows commercial use).
+# A `ship: false` source whose photos keep their own licences may still lend single photos whose
+# licence allows commercial use and adaptation, picked per image into a list that records each
+# photo's licence and that the trainer checks (COCO: the leaf detector's background photos, the
+# trained plant probe's no-plant photos; docs/vision/training.md §3).
 
 datasets:
   - name: plantdoc_cls
@@ -166,6 +170,31 @@ datasets:
     ship: true
     use: species head and the trained plant probe
 
+  - name: plantseg
+    description: >-
+      PlantSeg, in-the-wild photos of diseased plants with pixel masks of their lesions; only the
+      spot-type leaf diseases of the head's crops (about 0.28 GB of a 1.06 GB zip), whose masks
+      fit the spot segmenter's colour thresholds
+    kind: zip_members
+    zips:
+      - url: https://zenodo.org/records/17719108/files/plantseg.zip?download=1   # 1,057,281,724 bytes, md5:9358a66dff88cdd15c4fe009763c40a3
+    include:
+      - '^plantseg/Metadata\.csv$'
+      - '^plantseg/(images|annotations)/(train|val|test)/(tomato_(bacterial_leaf_spot|early_blight|late_blight|septoria_leaf_spot|leaf_mold)|corn_(gray_leaf_spot|northern_leaf_blight|rust)|apple_(black_rot|rust|scab)|grape_(black_rot|leaf_spot|downy_mildew)|bell_pepper_(bacterial_spot|frogeye_leaf_spot|powdery_mildew)|(squash|zucchini)_(powdery_mildew|downy_mildew))_[^/]+\.(jpe?g|JPE?G|png)$'
+    url: https://zenodo.org/records/17719108
+    sha256: e91f8bb8c0cd1918228cfb178ac2a4d953c85a06f8cb88090404af7194274f8a   # SHA-256 of the sorted "path sha256" listing of its 3,903 members, per fetch.py
+    licence: >-
+      CC BY-NC 4.0 on this version, the latest of seven: Zenodo's versions of concept 13293890
+      say CC BY-NC-ND 4.0 (13293891, 13762907, 13924591, 13958858), CC BY 4.0 (14935094,
+      16665770) or CC BY-NC 4.0 (17719108), and GitHub says nothing (docs/vision/training.md 3).
+      Its photos are scraped from the web, and Metadata.csv names each one's page. Non-commercial:
+      fitting the spot thresholds only, never training data, and the photos are never republished.
+      Whether thresholds fitted on it may ship is part of D12 (#14)
+    citation: "Wei et al., PlantSeg: A Large-Scale In-the-wild Dataset for Plant Disease Segmentation, arXiv:2409.04038, 2024"
+    ship: false
+    use: spot colour thresholds (fitting only, never training data)
+    leakage: false   # neither training data nor evaluation cases: check_leakage skips it
+
   - name: coco_val2017
     description: COCO val2017, 5,000 images (about 778 MB); the source of photos with no plant for scoring the plant check
     kind: direct
@@ -174,7 +203,9 @@ datasets:
     licence: "COCO: annotations CC BY 4.0; images keep their Flickr licences (unverified per image)"
     citation: "Lin et al., Microsoft COCO: Common Objects in Context, ECCV 2014"
     ship: false
-    use: plant-check negatives (evaluation only, never training data)
+    use: >-
+      plant-check negatives; the trained plant probe v2 also learns from 602 of these photos whose
+      licence allows commercial use and adaptation, picked per image (splits/negatives_probe_train.tsv)
 
   - name: coco_annotations_2017
     description: COCO 2017 train/val annotations (about 241 MB); instances_val2017.json says which val2017 images show a potted plant or broccoli
@@ -184,7 +215,35 @@ datasets:
     licence: "COCO: annotations CC BY 4.0; images keep their Flickr licences (unverified per image)"
     citation: "Lin et al., Microsoft COCO: Common Objects in Context, ECCV 2014"
     ship: false
-    use: plant-check negatives (evaluation only, never training data)
+    use: which COCO photos show a potted plant or broccoli, and each photo's licence
+
+  - name: openimages_v7_faces
+    description: >-
+      Open Images V7 validation and test tables (boxes, human-verified image labels, image
+      information with each photo's Flickr original, licence and author; about 285 MB). The
+      face-blur check's photos are picked from them by ml.training.data.faces: a `Human face` box
+      and a verified plant, houseplant, flower, tree or flowerpot label, no group or depiction
+      face box, a Flickr original of 2,000 px or more. The photos are kept under
+      training/eval/faces/ (git-ignored), never trained on; each one's licence and credit are in
+      splits/faces_openimages.tsv
+    kind: files
+    files:
+      - {name: validation-annotations-bbox.csv, url: https://storage.googleapis.com/openimages/v5/validation-annotations-bbox.csv, sha256: d8bbd59410af14835d7733165a7bb8a3f0213981b22dd5077b0b9f7878991ff2}
+      - {name: test-annotations-bbox.csv, url: https://storage.googleapis.com/openimages/v5/test-annotations-bbox.csv, sha256: fe22e579b9453875601576859d14ef3304058165de139c66b725e599202bd7b1}
+      - {name: oidv7-val-annotations-human-imagelabels.csv, url: https://storage.googleapis.com/openimages/v7/oidv7-val-annotations-human-imagelabels.csv, sha256: 92ddbdfceb3626e044df5e89100b24f6c22a79c1888a4bddd00a6f231d86d56a}
+      - {name: oidv7-test-annotations-human-imagelabels.csv, url: https://storage.googleapis.com/openimages/v7/oidv7-test-annotations-human-imagelabels.csv, sha256: 917d3ca8c0a2e09d652fb3148e9264df6117bfcaccf425a60a29b23269487953}
+      - {name: validation-images-with-rotation.csv, url: https://storage.googleapis.com/openimages/2018_04/validation/validation-images-with-rotation.csv, sha256: ed93a0e121fe345effdfc7359b848dbc64a1ff6778c8c73563157cb500b33a17}
+      - {name: test-images-with-rotation.csv, url: https://storage.googleapis.com/openimages/2018_04/test/test-images-with-rotation.csv, sha256: de55c6b8cbda32a79f4a20f28572d54e9c49d527a4006725675764074a51a36d}
+      - {name: oidv7-class-descriptions.csv, url: https://storage.googleapis.com/openimages/v7/oidv7-class-descriptions.csv, sha256: 84a4373a0efb7fd6d93fe19b0e7ceb6c1b855c233d13b9b78a9a33655c9fdce3}
+    url: https://storage.googleapis.com/openimages/web/index.html
+    fetched_by: ml.training.data.faces (the photos)
+    index: splits/faces_openimages.tsv
+    licence: "Open Images: annotations CC BY 4.0 (Google); each image's own licence from its image-information row, CC BY 2.0 for every photo kept (checked per photo in the index)"
+    citation: >-
+      Kuznetsova A. et al. (2020) The Open Images Dataset V4, IJCV 128; each photo's Flickr
+      author, as credited in the index
+    ship: false
+    use: face-blur recall of the upload's face detector (evaluation only, never training data)
 
 models:
   - name: bioclip2

@@ -182,7 +182,7 @@ pub const OTHER: &str = "other";
 // ---------------------------------------------------------------------------------------------
 
 /// `soil.moisture` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilMoisture {
     /// Dry.
@@ -196,7 +196,7 @@ pub enum SoilMoisture {
 }
 
 /// `soil.surface` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilSurface {
     /// Normal.
@@ -208,7 +208,7 @@ pub enum SoilSurface {
 }
 
 /// `soil.structure` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilStructure {
     /// Crumbly.
@@ -222,7 +222,7 @@ pub enum SoilStructure {
 }
 
 /// `soil.colour` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilColour {
     /// Dark.
@@ -236,7 +236,7 @@ pub enum SoilColour {
 }
 
 /// `soil.cover` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilCover {
     /// Bare.
@@ -250,7 +250,7 @@ pub enum SoilCover {
 }
 
 /// `soil.deposits` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilDeposits {
     /// None.
@@ -266,7 +266,7 @@ pub enum SoilDeposits {
 }
 
 /// `soil.erosion` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilErosion {
     /// None.
@@ -278,7 +278,7 @@ pub enum SoilErosion {
 }
 
 /// `soil.weeds` values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilWeeds {
     /// None.
@@ -403,7 +403,9 @@ pub fn indicator_key(n: usize, indicator: &IndicatorId) -> String {
 }
 
 /// `squeeze_test.result`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum SqueezeResult {
     /// Sandy.
@@ -417,7 +419,9 @@ pub enum SqueezeResult {
 }
 
 /// `jar_test.texture`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum JarTexture {
     /// Sandy.
@@ -462,8 +466,8 @@ pub enum VlmGuidedRaw {
 #[serde(rename_all = "snake_case")]
 pub enum BoxFormat {
     /// Pixels of the prepared image: divide by its size. The Qwen2.5-VL baseline on vLLM, and
-    /// the fallback worker's hosted LLM (sent images it won't resize) until one live call
-    /// confirms it (contracts open question 26).
+    /// the fallback worker's hosted LLM (sent images it won't resize), confirmed by a live run
+    /// on 2026-10-23 (contracts open question 26).
     AbsPxPrepared,
     /// 0–1000: divide by 1000. The chosen Qwen3-VL-class models (Qwen3-VL, Qwen3.5) on vLLM or
     /// llama.cpp; the `vlm_box_format` default.

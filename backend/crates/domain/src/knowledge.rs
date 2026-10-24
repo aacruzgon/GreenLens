@@ -688,8 +688,77 @@ mod tests {
                       the_seed_schema_file_is_current; set UPDATE_SEED_SCHEMA=1 to rewrite it.",
             "measurable_from": measurable_from,
             "schemas": schemas,
+            "soil_values": soil_values(),
         });
         serde_json::to_string_pretty(&sorted(file)).unwrap() + "\n"
+    }
+
+    /// The values each `SoilAspect` can take, for `soil_conditions.yaml` (`value` is a string
+    /// there). `texture` takes the squeeze test's and the jar test's.
+    fn soil_values() -> std::collections::BTreeMap<SoilAspect, Vec<String>> {
+        use std::collections::BTreeMap;
+
+        use schemars::{Schema, schema_for};
+
+        use crate::vlm::{
+            JarTexture, SoilColour, SoilCover, SoilDeposits, SoilErosion, SoilMoisture,
+            SoilStructure, SoilSurface, SoilWeeds, SqueezeResult,
+        };
+
+        // A unit enum's schema lists its values under `oneOf`, one `const` each, or as `enum`.
+        fn values(s: Schema) -> Vec<String> {
+            let v = s.to_value();
+            let consts = v["oneOf"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|b| &b["const"]);
+            consts
+                .chain(v["enum"].as_array().into_iter().flatten())
+                .filter_map(|c| c.as_str().map(str::to_owned))
+                .collect()
+        }
+        let mut texture = values(schema_for!(SqueezeResult));
+        for v in values(schema_for!(JarTexture)) {
+            if !texture.contains(&v) {
+                texture.push(v);
+            }
+        }
+        BTreeMap::from([
+            (SoilAspect::Moisture, values(schema_for!(SoilMoisture))),
+            (SoilAspect::Surface, values(schema_for!(SoilSurface))),
+            (SoilAspect::Structure, values(schema_for!(SoilStructure))),
+            (SoilAspect::Colour, values(schema_for!(SoilColour))),
+            (SoilAspect::Cover, values(schema_for!(SoilCover))),
+            (SoilAspect::Deposits, values(schema_for!(SoilDeposits))),
+            (SoilAspect::Erosion, values(schema_for!(SoilErosion))),
+            (SoilAspect::Weeds, values(schema_for!(SoilWeeds))),
+            (SoilAspect::Texture, texture),
+        ])
+    }
+
+    #[test]
+    fn every_soil_aspect_has_values() {
+        let v = soil_values();
+        assert_eq!(v.len(), 9);
+        assert!(v.values().all(|vs| !vs.is_empty()));
+        assert_eq!(
+            v[&SoilAspect::Deposits],
+            ["none", "salt_crust", "moss", "algae", "mould"]
+        );
+        assert_eq!(
+            v[&SoilAspect::Texture],
+            [
+                "crumbles",
+                "holds_ball",
+                "sticky_ribbon",
+                "unclear",
+                "sandy",
+                "loamy",
+                "silty",
+                "clayey"
+            ]
+        );
     }
 
     /// Object keys in sorted order at every depth. `serde_json` keeps insertion order when another

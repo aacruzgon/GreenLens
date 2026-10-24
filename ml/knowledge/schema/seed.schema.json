@@ -1414,5 +1414,63 @@
       "title": "TreatmentSeed",
       "type": "object"
     }
+  },
+  "soil_values": {
+    "colour": [
+      "dark",
+      "medium",
+      "pale",
+      "grey_mottled"
+    ],
+    "cover": [
+      "bare",
+      "mulched",
+      "residue",
+      "ground_cover"
+    ],
+    "deposits": [
+      "none",
+      "salt_crust",
+      "moss",
+      "algae",
+      "mould"
+    ],
+    "erosion": [
+      "none",
+      "rills",
+      "exposed_roots"
+    ],
+    "moisture": [
+      "dry",
+      "moist",
+      "wet",
+      "waterlogged"
+    ],
+    "structure": [
+      "crumbly",
+      "cloddy",
+      "compacted",
+      "unclear"
+    ],
+    "surface": [
+      "normal",
+      "crusted",
+      "cracked"
+    ],
+    "texture": [
+      "crumbles",
+      "holds_ball",
+      "sticky_ribbon",
+      "unclear",
+      "sandy",
+      "loamy",
+      "silty",
+      "clayey"
+    ],
+    "weeds": [
+      "none",
+      "few",
+      "many"
+    ]
   }
 }

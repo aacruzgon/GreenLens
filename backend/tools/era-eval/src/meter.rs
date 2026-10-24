@@ -120,6 +120,8 @@ pub struct Meter {
     tool_calls: Mutex<Vec<ToolCall>>,
     /// The chat model's streamed text, every call in order (EON gap G20).
     text: Mutex<String>,
+    /// The plan writer's answers, every call in order, as the model wrote them.
+    plan_answers: Mutex<Vec<String>>,
 }
 
 impl Meter {
@@ -130,7 +132,29 @@ impl Meter {
             calls: Mutex::new(Vec::new()),
             tool_calls: Mutex::new(Vec::new()),
             text: Mutex::new(String::new()),
+            plan_answers: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Plan-writer answers recorded so far.
+    pub fn plan_answers_len(&self) -> usize {
+        self.plan_answers
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len()
+    }
+
+    /// The plan writer's answers since `from` (a [`Meter::plan_answers_len`]): each round's
+    /// raw JSON, before validation.
+    pub fn plan_answers_since(&self, from: usize) -> Vec<String> {
+        let answers = self
+            .plan_answers
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        answers
+            .get(from..)
+            .map(<[String]>::to_vec)
+            .unwrap_or_default()
     }
 
     /// Bytes of chat text recorded so far.
@@ -294,6 +318,12 @@ impl ChatModel for Meter {
     async fn complete(&self, request: &ChatRequest) -> Result<ChatCompletion, ModelError> {
         let completion = self.inner.complete(request).await?;
         self.record(request.purpose, completion.usage);
+        if request.purpose == ChatPurpose::PlanWriter {
+            self.plan_answers
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(completion.text.clone());
+        }
         Ok(completion)
     }
 }
