@@ -1,6 +1,8 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.11.6, 2026-10-24. v0.11.6: the API keeps only the disease classes with a `classifier_label` row for the classified species, so a species whose problems aren't in the knowledge base yet gets no classifier result (section 5, classifier candidates; #144). Companion to the [architecture document](README.md).
+> **Status:** Draft v0.11.7, 2026-10-24. Companion to the [architecture document](README.md).
+> **v0.11.7**: the API keeps only the disease classes with a `classifier_label` row for the classified species, so a species whose problems aren't in the knowledge base yet gets no classifier result (section 5, classifier candidates; [#144](https://github.com/aacruzgon/GreenLens/issues/144)).
+> **v0.11.6**: an indicator answer's `reason` has a `maxLength` of 100, above the 60 characters the prompt asks for, so the grammar no longer cuts the reason the answer follows from (section 6, indicators call; vision vlm.md 7, [#183](https://github.com/aacruzgon/GreenLens/issues/183)); the prompts are unchanged, and `IndicatorEvidence.reason` has no cap of its own.
 > **v0.11.5**: each damage finding of the VLM's findings call names, first, the animal seen or the trace it left (`VlmFindingsRaw.damage[].trace`), and the worker drops one that names none, so a disease lesion reported as damage never reaches the API (section 6, task P11 of the vision dev-roadmap); `vlm_prompts` names `findings@6` (section 5). `VlmFindings` and the OpenAPI document are unchanged.
 > **v0.11.4**: the disease classifier's call counts in a candidate's score as `CandidateScore.classifier_weight` (3 at high confidence, 2 at medium), and `confirmed` needs at least one matched indicator, so the classifier ranks but never confirms alone; on the fallback the hosted LLM's disease call is an observation of source `llm_fallback`, which picks candidates but adds no weight, since the same model answers the indicators; a run whose classifier named a candidate asks the user an indicator rather than for another close-up (section 7); open questions 3 (the margin stays 2) and 29 (a plan-writer outage on a first plan fails the scan) are settled in backend roadmap S4.
 > **v0.11.3**: answer blocks: each tool result's `data` element carries its `call_id`, the id `show_block` names, and `call_id` may name the tool when it ran once with success in the turn (section 8, answer blocks); live, the model never saw an id and named the tool, so no block ever showed; no wire change.
@@ -1148,7 +1150,7 @@ Earthworms are reported as organisms, not as a soil aspect.
 ```ts
 // one required key per indicator in the payload, e.g. "q1_concentric_rings"
 type VlmIndicatorsRaw = Record<string, {
-  reason: string;               // maxLength 60; written first, so the answer follows from it
+  reason: string;               // maxLength 100, above the prompt's 60; written first, so the answer follows from it
   answer: "yes" | "no" | "unsure";
   image: ImageAlias | null;     // the shot that decided it
 }>;
@@ -2588,7 +2590,8 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.11.3: a tool result's `data` element carries its `call_id`; `show_block` may name a tool that ran once | none (7 doesn't describe the framing or the anchor rule) |
 | v0.11.4: `CandidateScore.classifier_weight`, the disease classifier's call counted in a candidate's score; `confirmed` needs a matched indicator; a classifier-named candidate gets an indicator question, not a photo request; open questions 3 and 29 settled | 6.3 (step 3); 15 (open decision 14) |
 | v0.11.5: a VLM damage finding names its `trace`, and one with none is dropped; `vlm_prompts` names `findings@6` | 6.5 (the damage patterns row) |
-| v0.11.6: the API keeps only the disease classes with a `classifier_label` row for the classified species | 6.1 (the disease classification row) |
+| v0.11.6: an indicator answer's `reason` has `maxLength` 100, above the prompt's 60 | none (6.1 says only "a short reason") |
+| v0.11.7: the API keeps only the disease classes with a `classifier_label` row for the classified species | 6.1 (the disease classification row) |
 
 ---
 

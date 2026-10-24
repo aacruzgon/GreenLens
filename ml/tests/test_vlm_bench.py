@@ -177,3 +177,15 @@ def test_a_look_alike_is_kept_clean_when_no_candidate_comes_out_on_top():
     s = vb.score_run([row(clean, ["no"] * n), row(fooled, ["yes"] + ["no"] * (n - 1))],
                      {b["case_id"]: b for b in (clean, fooled)})
     assert (s["look_alike_n"], s["look_alike_no_candidate"], s["diagnosis_n"]) == (2, 0.5, 0)
+
+
+def test_reasons_are_measured_and_answers_compared_with_another_run():
+    b = vb.bench_case(case(), Path("/p"))
+    old = row(b, ["yes", "no", "unsure"])
+    new = row(b, ["yes", "yes", "unsure"])
+    for x, reason in zip(old["result"]["indicators"]["answers"], ["Rings.", "x" * 60, "cut at the"]):
+        x["reason"] = reason
+    q = vb.reason_lengths([old, row(b, [], ok=False)])
+    assert q == {"n": 3, "median": 10, "p90": 60, "max": 60, "no_closing_stop": 2}
+    assert vb.answer_changes([new], [old]) == {"shared": 3, "changed": 1}
+    assert vb.reason_lengths([])["max"] is None
