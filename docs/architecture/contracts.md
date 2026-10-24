@@ -1,6 +1,7 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.34, 2026-10-23. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.11.1, 2026-10-23. Companion to the [architecture document](README.md).
+> **v0.11.1**: open question 35 is settled: the Jev adapter follows TypeSafe's published System One API and ran against it on 2026-10-23, and `api` uses it when `JEV_*` is set (backend integrations 13); no wire shape changed.
 > **v0.10.34**: the dose check reads a clock time after an opening parenthesis as it would without one, so "on 31 August (22:40 UTC)" passes while "Mix copper (18:40 utc)" still fails (EON gap G20's re-run).
 > **v0.10.33**: section 7 says a necrotic group under `min_spot_share` (2e-5) of its leaf is a speck the `SpotSegmenter` folds into the leaf, not a spot, for the spot measurements and the `healthy` rule, and open question 10's spot colour thresholds are set (vision evaluation 6, M15); no wire shape changed.
 > **v0.10.32**: plan validation checks farm citations (EON E5.4): a step citing a farm record the plan writer wasn't given, or citing farm records without a knowledge source, fails, and `ActionPlan.farm_records` holds the records the passing steps cite; the plan writer's output steps (and `revise_plan`'s `changed_steps`) take the optional `farm_citations`, as strings, so an id that doesn't parse fails its step and not the answer; no API wire shape changed.
@@ -2512,6 +2513,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.32: plan validation's farm-citation rules; the plan writer's steps take `farm_citations` | none (7, farm connectors, already says the plan writer passes its top 4 hits and a plan lists the records it cites) |
 | v0.10.33: a necrotic group under `min_spot_share` of its leaf is a speck folded into the leaf, not a spot, for the spot measurements and the `healthy` rule; open question 10's spot colour thresholds are set | 6.7 (spots), 15 (decision 17) |
 | v0.10.34: a clock time after an opening parenthesis is a clock time to the dose check ("on 31 August (22:40 UTC)") | none: 11 names clock times only as a category, which this doesn't change |
+| v0.11.1: open question 35 settled, Jev's adapter on the real API | 10 (the Jev note), 15 (open decision 8) |
 
 ---
 
@@ -2551,7 +2553,7 @@ The contracts changed these parts of the architecture document, which has been u
 32. **Apple's principal-point convention** and the exact use of the inverse-distortion table in `DepthMeta` are *unverified* until the LiDAR day-1 check (open question 11) ([backend vision 15](../backend/vision.md#15-open-questions)).
 33. **Cancelling a call on llama.cpp.** A worker stops a cancelled job by dropping its connection. Whether llama.cpp then frees the slot is *unverified*; it matters on the RX 9070 XT if it serves llama.cpp (open question 25) ([backend worker 17](../backend/worker.md#17-open-questions)).
 34. **Request limits.** The general rate limit (120 requests a minute per user) and the JSON body limit (1 MiB) are placeholders that no document gives. Confirm them, or set them from the build-week load ([backend api 23](../backend/api.md#23-open-questions)).
-35. **Jev's API.** The `TextClassifier` adapter for Jev is a placeholder until early access arrives; until then every call uses the LLM fallback ([backend integrations 19](../backend/integrations.md#19-open-questions)).
+35. **Jev's API.** **Settled (v0.11.1):** the adapter asks TypeSafe's System One API (`POST /v1/systemone`) one yes/no question per label on a pinned model, `jev-1.14.0`, and ran against it on 2026-10-23; `api` uses it when `JEV_*` is set, with its own router calibration, and the LLM fallback otherwise ([backend integrations 13](../backend/integrations.md#13-jev), [backend agent 7](../backend/agent.md#7-router-and-safety-gate)).
 36. **`organism_options` without recognition text.** The VLM payload's `organism_options` carry an id and a name only; adding each organism's `recognition` text to the prompt is a proposal of docs/vision, not yet in the contract ([backend worker 17](../backend/worker.md#17-open-questions)).
 37. **Reverse geocoding for a GPS garden.** **Settled (v0.10.26):** a failed reverse lookup labels the garden "<time zone's city> time zone" and creation goes ahead (section 9). It names the zone rather than a town, because an Ottawa garden shares Toronto's zone. Still open: relabelling such a garden once Nominatim answers again, which needs a stored flag and a scheduler task ([backend integrations 19](../backend/integrations.md#19-open-questions)).
 38. **Zippopotam's terms** are unchecked. Confirm them, or switch it off and refuse a bare forward sortation area (section 9, geocoding) ([backend integrations 19](../backend/integrations.md#19-open-questions)).
