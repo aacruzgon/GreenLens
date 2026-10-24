@@ -30,6 +30,8 @@ const DIAGNOSIS: &str = "01JAX3K9T6R2B8V0QZ4M7D1E5D";
 #[derive(Default)]
 struct RecordingPipeline {
     writes: Mutex<Vec<PlanWrite>>,
+    /// What `store_revision` fails with, once, instead of storing.
+    fail: Mutex<Option<PipelineError>>,
 }
 
 #[async_trait]
@@ -40,6 +42,9 @@ impl PipelineApi for Arc<RecordingPipeline> {
         _: ScanId,
         write: PlanWrite,
     ) -> Result<ActionPlan, PipelineError> {
+        if let Some(error) = self.fail.lock().unwrap().take() {
+            return Err(error);
+        }
         let plan = write.plan.clone();
         self.writes.lock().unwrap().push(write);
         Ok(plan)
@@ -216,10 +221,26 @@ fn revised() -> RevisedPlan {
 #[derive(Default)]
 struct Setup {
     chat: Option<FixedRevision>,
+    /// What the pipeline's `store_revision` fails with.
+    pipeline_error: Option<PipelineError>,
 }
 
 /// A store whose conversation `CONV` belongs to the caller, with `action` as its card.
 fn store_with_card(role: Role, action: Option<PendingAction>) -> (FakeStore, MockAuthVerifier) {
+    store_with_record(
+        role,
+        action.map(|action| PendingActionRecord {
+            action,
+            result: None,
+        }),
+    )
+}
+
+/// [`store_with_card`] with the stored record, result included.
+fn store_with_record(
+    role: Role,
+    record: Option<PendingActionRecord>,
+) -> (FakeStore, MockAuthVerifier) {
     let mut store = FakeStore::default();
     let auth = signed_in(&mut store, Some(role));
     store
@@ -235,21 +256,22 @@ fn store_with_card(role: Role, action: Option<PendingAction>) -> (FakeStore, Moc
                 garden: GARDEN.parse().unwrap(),
             }))
         });
-    if let Some(action) = action {
+    if let Some(record) = record {
         store
             .chat_repo
             .expect_pending_action()
-            .returning(move |_, _| {
-                Ok(PendingActionRecord {
-                    action: action.clone(),
-                    result: None,
-                })
-            });
+            .returning(move |_, _| Ok(record.clone()));
     }
     (store, auth)
 }
 
-fn expect_confirmed(store: &mut FakeStore, action: PendingAction) {
+/// `mark_confirmed` is called once; the result it receives is kept in the returned cell.
+fn expect_confirmed(
+    store: &mut FakeStore,
+    action: PendingAction,
+) -> Arc<Mutex<Option<ConfirmResult>>> {
+    let kept = Arc::new(Mutex::new(None));
+    let seen = Arc::clone(&kept);
     store
         .chat_repo
         .expect_mark_confirmed()
@@ -257,10 +279,10 @@ fn expect_confirmed(store: &mut FakeStore, action: PendingAction) {
         .returning(move |_, _, result, _| {
             let mut confirmed = action.clone();
             confirmed.status = PendingStatus::Confirmed;
-            // The store keeps the result; the handler answers with its own copy.
-            let _: ConfirmResult = result;
+            *seen.lock().unwrap() = Some(result);
             Ok(confirmed)
         });
+    kept
 }
 
 async fn post_to(app: axum::Router, action: &str, verb: &str) -> (StatusCode, serde_json::Value) {
@@ -298,9 +320,10 @@ fn app(
 async fn confirm(
     store: FakeStore,
     auth: MockAuthVerifier,
-    setup: Setup,
+    mut setup: Setup,
 ) -> (StatusCode, serde_json::Value, Arc<RecordingPipeline>) {
     let pipeline = Arc::new(RecordingPipeline::default());
+    *pipeline.fail.lock().unwrap() = setup.pipeline_error.take();
     let (status, body) = post_to(app(store, auth, setup, &pipeline), ACTION, "confirm").await;
     (status, body, pipeline)
 }
@@ -320,11 +343,14 @@ async fn confirming_a_create_task_card_creates_the_task_with_source_chat() {
                 && new.created_by == Some(USER.parse().unwrap())
         })
         .returning(|_, _| Ok(serde_json::from_value::<Task>(task_json()).unwrap()));
-    expect_confirmed(&mut store, action);
+    let stored = expect_confirmed(&mut store, action);
 
     let (status, body, _) = confirm(store, auth, Setup::default()).await;
 
     assert_eq!(status, StatusCode::OK);
+    // The response carries exactly what `mark_confirmed` stored.
+    let stored = stored.lock().unwrap().clone().unwrap();
+    assert_eq!(body["result"], serde_json::to_value(&stored).unwrap());
     assert_eq!(body["pending_action"]["status"], "confirmed");
     assert_eq!(body["result"]["task"]["id"], TASK);
     assert_eq!(body["result"]["task"]["source"], "chat");
@@ -342,6 +368,7 @@ async fn confirming_a_revise_plan_card_stores_a_new_version_with_reason_chat_rev
     expect_confirmed(&mut store, action);
     let setup = Setup {
         chat: Some(FixedRevision(Ok(revised()))),
+        pipeline_error: None,
     };
 
     let (status, body, pipeline) = confirm(store, auth, setup).await;
@@ -416,7 +443,10 @@ async fn confirming_a_proposed_card_past_its_expiry_is_409_expired() {
 }
 
 #[tokio::test]
-async fn confirming_a_revision_whose_base_is_no_longer_current_is_409_with_current_plan_id() {
+async fn a_preview_that_no_longer_applies_to_its_base_is_409_with_current_plan_id() {
+    // The defensive `apply_preview` path: the handler reads the base by the preview's own id, so
+    // production reaches it only if that plan is replaced between the read and the apply. The
+    // real race is `a_lost_plan_race_in_the_store_is_409_with_current_plan_id` below.
     let action = plan_card("proposed");
     let (mut store, auth) = store_with_card(Role::Editor, Some(action));
     store
@@ -429,6 +459,7 @@ async fn confirming_a_revision_whose_base_is_no_longer_current_is_409_with_curre
             base: PLAN.parse().unwrap(),
             current: NEWER_PLAN.parse().unwrap(),
         }))),
+        pipeline_error: None,
     };
 
     let (status, body, pipeline) = confirm(store, auth, setup).await;
@@ -472,5 +503,91 @@ async fn a_viewer_can_neither_confirm_nor_reject_a_card() {
 
         assert_eq!(status, StatusCode::FORBIDDEN, "{verb}");
         assert_eq!(body["error"]["code"], "forbidden", "{verb}");
+    }
+}
+
+/// A revision card, a base plan the store still has, and a pipeline that fails with `error`.
+async fn confirm_revision_failing_with(error: PipelineError) -> (StatusCode, serde_json::Value) {
+    let (mut store, auth) = store_with_card(Role::Editor, Some(plan_card("proposed")));
+    store
+        .plan_repo
+        .expect_plan()
+        .returning(|_, _| Ok(plan(PLAN, 1)));
+    store.chat_repo.expect_mark_confirmed().never();
+    let setup = Setup {
+        chat: Some(FixedRevision(Ok(revised()))),
+        pipeline_error: Some(error),
+    };
+    let (status, body, pipeline) = confirm(store, auth, setup).await;
+    assert!(pipeline.writes.lock().unwrap().is_empty());
+    (status, body)
+}
+
+#[tokio::test]
+async fn a_lost_plan_race_in_the_store_is_409_with_current_plan_id() {
+    // The store's compare-and-set on `base_plan_id` (`write_revision`) lost to a newer plan.
+    let (status, body) = confirm_revision_failing_with(PipelineError::Store(StoreError::Conflict(
+        domain::ports::Conflict::StalePlan {
+            current: Some(NEWER_PLAN.parse().unwrap()),
+        },
+    )))
+    .await;
+
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["error"]["code"], "invalid_state");
+    assert_eq!(body["error"]["details"]["current_plan_id"], NEWER_PLAN);
+}
+
+#[tokio::test]
+async fn a_revision_citing_a_removed_neighbour_is_409_with_hint_neighbour_removed() {
+    let (status, body) =
+        confirm_revision_failing_with(PipelineError::Store(StoreError::NotFound)).await;
+
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["error"]["code"], "invalid_state");
+    assert_eq!(body["error"]["details"]["hint"], "neighbour_removed");
+}
+
+#[tokio::test]
+async fn a_retry_of_a_confirmed_card_answers_200_with_the_first_result_and_stores_nothing() {
+    let mut action = task_card("confirmed", "2026-10-19T14:00:00Z");
+    action.status = PendingStatus::Confirmed;
+    let first = ConfirmResult {
+        task: Some(serde_json::from_value::<Task>(task_json()).unwrap()),
+        plan: None,
+    };
+    let (mut store, auth) = store_with_record(
+        Role::Editor,
+        Some(PendingActionRecord {
+            action,
+            result: Some(first.clone()),
+        }),
+    );
+    store.plan_repo.expect_create_task().never();
+    store.chat_repo.expect_mark_confirmed().never();
+
+    let (status, body, _) = confirm(store, auth, Setup::default()).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["pending_action"]["status"], "confirmed");
+    assert_eq!(body["result"], serde_json::to_value(&first).unwrap());
+}
+
+#[tokio::test]
+async fn an_unknown_card_is_404_on_confirm_and_reject() {
+    for verb in ["confirm", "reject"] {
+        let mut store = FakeStore::default();
+        let auth = signed_in(&mut store, Some(Role::Editor));
+        store
+            .access_repo
+            .expect_pending_action_conversation()
+            .returning(|_| Ok(None));
+        let pipeline = Arc::new(RecordingPipeline::default());
+
+        let (status, body) =
+            post_to(app(store, auth, Setup::default(), &pipeline), ACTION, verb).await;
+
+        assert_eq!(status, StatusCode::NOT_FOUND, "{verb}");
+        assert_eq!(body["error"]["code"], "not_found", "{verb}");
     }
 }
