@@ -73,7 +73,7 @@ def recorded_findings() -> dict:
         },
         "organisms": [{"label": "aphid", "other_name": None, "count": "few", "image": "img2",
                        "bbox_2d": [112, 233, 345, 467], "certainty": "low"}],
-        "damage": [{"pattern": "shot_holes", "other_description": None, "image": "img3",
+        "damage": [{"trace": "flea beetles", "pattern": "shot_holes", "other_description": None, "image": "img3",
                     "bbox_2d": [10, 20, 990, 980], "certainty": "high"}],
         "notes": "Small round holes on the upper leaves, and a few aphids under one leaf.",
     }
