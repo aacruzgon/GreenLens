@@ -343,10 +343,12 @@ impl TextClassifier for JevClassifier {
                 retry_after: retry_after(response.headers()),
             })));
         }
-        let body: SystemOneResponse = response
-            .json()
-            .await
-            .map_err(|e| invalid(Box::new(TransportError::from_reqwest(e))))?;
+        // The deadline can run out while the body is read: that is the network, not the output.
+        let body: SystemOneResponse = response.json().await.map_err(|e| {
+            let timeout = e.is_timeout();
+            let e = Box::new(TransportError::from_reqwest(e));
+            if timeout { unavailable(e) } else { invalid(e) }
+        })?;
         tracing::debug!(
             model = MODEL,
             version = %body.model,
@@ -719,6 +721,39 @@ mod tests {
         };
         let transport = source.downcast_ref::<TransportError>().unwrap();
         assert!(transport.timeout);
+    }
+
+    /// Headers on time, then a body that stalls past the deadline: `Unavailable`, like any
+    /// timeout, not `InvalidOutput`.
+    #[tokio::test]
+    async fn a_body_that_stalls_past_the_deadline_is_unavailable() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0u8; 4096];
+            let _ = socket.read(&mut request).await.unwrap();
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
+                      content-length: 200\r\n\r\n{\"model\":",
+                )
+                .await
+                .unwrap();
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        });
+        let mut config = JevConfig::new(format!("http://{addr}"), SecretString::from("k"));
+        config.timeout = Duration::from_millis(200);
+        let e = JevClassifier::new(reqwest::Client::new(), config)
+            .classify(ROUTE, "hi")
+            .await
+            .unwrap_err();
+        let ModelError::Unavailable { source, .. } = &e else {
+            panic!("{e:?}");
+        };
+        assert!(source.downcast_ref::<TransportError>().unwrap().timeout);
+        server.abort();
     }
 
     #[test]
