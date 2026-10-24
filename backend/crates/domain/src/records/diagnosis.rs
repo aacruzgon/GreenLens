@@ -331,3 +331,31 @@ impl Sign for Diagnosis<Stored> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `CandidateScore` as contracts 7 shows it, `classifier_weight` after `score`; a diagnosis
+    /// stored before the field reads it as 0.
+    #[test]
+    fn a_candidate_score_is_exactly_its_contract() {
+        let score = CandidateScore {
+            problem_id: "tomato_early_blight".parse().unwrap(),
+            name: "Early blight".to_owned(),
+            kind: ProblemKind::Fungal,
+            score: 2,
+            classifier_weight: 2,
+            matched: Vec::new(),
+            contradicted: Vec::new(),
+            unsure: Vec::new(),
+            weather_fit: WeatherFit::Neutral,
+        };
+        let json = r#"{"problem_id":"tomato_early_blight","name":"Early blight","kind":"fungal","score":2,"classifier_weight":2,"matched":[],"contradicted":[],"unsure":[],"weather_fit":"neutral"}"#;
+        assert_eq!(serde_json::to_string(&score).unwrap(), json);
+        assert_eq!(serde_json::from_str::<CandidateScore>(json).unwrap(), score);
+        let stored = json.replace(r#""classifier_weight":2,"#, "");
+        let old: CandidateScore = serde_json::from_str(&stored).unwrap();
+        assert_eq!(old.classifier_weight, 0);
+    }
+}

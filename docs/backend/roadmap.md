@@ -332,12 +332,13 @@ What S0 changed in the design, each found by running it:
 - **`s4.py`** and `s5.py --leaf-photo`, with the kill and start commands for the laptop and the control plane ([smoke README](../../backend/tools/smoke/README.md)).
 - **P11** (vision dev-roadmap): a VLM damage finding must name the animal or the trace it left, and decode drops one that names none, so Qwen3.5's early-blight spots no longer come back as `leaf_mines` (`findings@6`). Its own pull request, stacked on S4's, with its rig re-run.
 
-**Decided** (recorded in the documents that own them): the margin stays 2 for the submission, fitted with the indicator weights once the evaluation harness exists (contracts 12, question 3); an empty candidate set is `uncertain` with `low_evidence` and asks nothing (knowledge 12, item 3); a plan-writer outage on a first plan fails the scan, retryable (contracts 12, question 29); the verification-answer timeout is 10 minutes (architecture open decision 14). The measurement thresholds (17) wait on item 4.
+**Decided** (recorded in the documents that own them): the margin stays 2 for the submission, fitted with the indicator weights once the evaluation harness exists (contracts 12, question 3); an empty candidate set is `uncertain` (with `low_evidence` unless a pest or damage finding is at medium or more) and asks nothing (knowledge 12, item 3); a plan-writer outage on a first plan fails the scan, retryable (contracts 12, question 29); the verification-answer timeout is 10 minutes (architecture open decision 14). The measurement thresholds (17) wait on item 4.
 
 **Found running it:**
 - A late answer ends with `plan_superseded`, not a second `plan_ready`, as contracts 4's stream rules say; the app must treat it as the new plan.
 - After the kill, the stream has two `stage_started` of `plan` (seq 48 and 49) and one `stage_completed`, the re-claim's. The app should treat a repeated start as the same stage.
 - The dev database's soil task still fails every 15 minutes on a garden from before connectors (S5's finding).
+- A diagnosis stored before `classifier_weight` reads it as 0, so its first re-score (a late answer or a guided check) may see a changed result and write a new diagnosis and plan. Only data from before this change is affected.
 
 **For the rig,** after this merges and deploys:
 1. Bring up the 5070 Ti's `vlm-worker-nv`, then run `s4.py` against the control plane with PlantDoc's `dscn3175.jpg` and a leaf crop from it, `--answers concentric_rings_bullseye=yes,*=unsure --expect-problem tomato_early_blight --out`, the kill commands of the smoke README, and a new `--email`. Then once more with only the fallback worker.

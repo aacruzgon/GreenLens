@@ -1,7 +1,7 @@
 # PDM Data Contracts
 
 > **Status:** Draft v0.11.4, 2026-10-24. Companion to the [architecture document](README.md).
-> **v0.11.4**: the disease classifier's call counts in a candidate's score as `CandidateScore.classifier_weight` (3 at high confidence, 2 at medium), and `confirmed` needs at least one matched indicator, so the classifier ranks but never confirms alone (section 7); open questions 3 (the margin stays 2) and 29 (a plan-writer outage on a first plan fails the scan) are settled in backend roadmap S4.
+> **v0.11.4**: the disease classifier's call counts in a candidate's score as `CandidateScore.classifier_weight` (3 at high confidence, 2 at medium), and `confirmed` needs at least one matched indicator, so the classifier ranks but never confirms alone; a run whose classifier named a candidate asks the user an indicator rather than for another close-up (section 7); open questions 3 (the margin stays 2) and 29 (a plan-writer outage on a first plan fails the scan) are settled in backend roadmap S4.
 > **v0.11.3**: answer blocks: each tool result's `data` element carries its `call_id`, the id `show_block` names, and `call_id` may name the tool when it ran once with success in the turn (section 8, answer blocks); live, the model never saw an id and named the tool, so no block ever showed; no wire change.
 > **v0.11.2**: the write tools (`create_task`, `complete_task`, `revise_plan`) are sent to the model under strict tool use with every argument required, so `null`, or `[]` for a list, means none (section 8, tool return shapes); the live S5 checks found the hosted model never filled an optional argument; no wire change.
 > **v0.11.1**: open question 35 is settled: the Jev adapter follows TypeSafe's published System One API and ran against it on 2026-10-23, and `api` uses it when `JEV_*` is set (backend integrations 13); no wire shape changed.
@@ -1465,7 +1465,7 @@ Those are the first three conditions of `healthy`, without its positive evidence
 
 With `low_evidence` the app names no problem (architecture 6.1, low confidence). It asks for a closer photo through the open `photo_request` question when there is one, and through a new scan otherwise, and it suggests a local extension office. A guided check's new diagnosis copies it.
 
-A result that is neither `healthy` nor `confirmed` is **ambiguous**: the run asks a question if it is still `analysing` or `awaiting_answer` and has asked fewer than 2, and is otherwise diagnosed `uncertain` (a late answer or a guided check never asks one). When every score is zero because the indicators came back `unsure`, the question is a `photo_request` for the shot those indicators need, usually a `leaf_closeup`. Two examples: a distant whole-plant photo where only the species is recognised and every indicator is `unsure` is not called healthy; and a classifier result of early blight at 0.71 with the VLM's indicators `unsure` is ambiguous, never `healthy` next to an early-blight finding.
+A result that is neither `healthy` nor `confirmed` is **ambiguous**: the run asks a question if it is still `analysing` or `awaiting_answer` and has asked fewer than 2, and is otherwise diagnosed `uncertain` (a late answer or a guided check never asks one). When every score is zero because the indicators came back `unsure`, the question is a `photo_request` for the shot those indicators need, usually a `leaf_closeup`. A candidate the classifier named scores its `classifier_weight`, so a run where the classifier read a close-up asks the user that candidate's heaviest unsettled indicator instead: the close-up is already there, and the VLM couldn't settle it. Two examples: a distant whole-plant photo where only the species is recognised and every indicator is `unsure` is not called healthy, and asks for a close-up; and a classifier result of early blight at 0.71 with the VLM's indicators `unsure` is ambiguous, never `healthy` next to an early-blight finding, and asks the user about early blight's target rings. The weight also keeps a candidate the classifier named among an uncertain plan's remaining candidates (those scoring zero or more) when one of its indicators is contradicted.
 
 ### ActionPlan
 
@@ -2583,7 +2583,7 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.11.1: open question 35 settled, Jev's adapter on the real API | 10 (the Jev note), 15 (open decision 8) |
 | v0.11.2: the write tools' strict schemas require every argument, `null` or `[]` meaning none | none (7 doesn't describe the tools' schemas) |
 | v0.11.3: a tool result's `data` element carries its `call_id`; `show_block` may name a tool that ran once | none (7 doesn't describe the framing or the anchor rule) |
-| v0.11.4: `CandidateScore.classifier_weight`, the disease classifier's call counted in a candidate's score; `confirmed` needs a matched indicator; open questions 3 and 29 settled | 6.3 (step 3); 15 (open decision 14) |
+| v0.11.4: `CandidateScore.classifier_weight`, the disease classifier's call counted in a candidate's score; `confirmed` needs a matched indicator; a classifier-named candidate gets an indicator question, not a photo request; open questions 3 and 29 settled | 6.3 (step 3); 15 (open decision 14) |
 
 ---
 

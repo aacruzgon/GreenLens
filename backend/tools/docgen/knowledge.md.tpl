@@ -203,7 +203,7 @@ Two readings are fixed here:
 
 | Ambiguity | Question |
 |---|---|
-| Every score is zero because the indicators came back `unsure` or unanswered | A `photo_request` for the plant or soil shot that most of the unsettled indicators can be seen on, ties broken by the findings order; `leaf_closeup` when nothing says otherwise |
+| Every score is zero because the indicators came back `unsure` or unanswered | A `photo_request` for the plant or soil shot that most of the unsettled indicators can be seen on, ties broken by the findings order; `leaf_closeup` when nothing says otherwise. A candidate the classifier named at medium or more scores its weight, so that run asks the indicator question below instead: the classifier already read a close-up |
 | Otherwise (the lead is too small, or no positive evidence) | The heaviest unsettled indicator of the top two candidates, the leader's on a tie, asked with `yes`, `no`, `unsure`; none left gives no question and the run is diagnosed `uncertain` |
 
 @@items status.rs QuestionChoice choose_question@@
@@ -259,7 +259,7 @@ These belong in [contracts 12](../architecture/contracts.md#12-open-questions):
 
 1. **Weather fit arithmetic.** Contracts 7 defines the three values but not how they are computed. Section 6 fixes "all stated conditions met / none / some" over now, the past week and 3 forecast days.
 2. **The confirmed margin.** Settled for the submission in backend roadmap S4 (contracts 12, question 3): 2, one weight-2 indicator, in `PipelineConfig::diagnosis_margin`, with the classifier's weight in the score. It is fitted with the indicator weights once the evaluation harness exists.
-3. **Empty candidate sets.** Settled in backend roadmap S4: a `label_only` species with no classifier result has no candidates; it is `uncertain` with `low_evidence`, never `healthy` without the classifier's own `healthy` result, and `choose_question` asks nothing, since a photo can't add a candidate the knowledge base doesn't hold (test `an_empty_candidate_set_is_low_evidence_and_asks_nothing`).
+3. **Empty candidate sets.** Settled in backend roadmap S4: a `label_only` species with no classifier result has no candidates; it is `uncertain` (with `low_evidence` when no pest or damage finding is at medium or more), never `healthy` without the classifier's own `healthy` result, and `choose_question` asks nothing, since a photo can't add a candidate the knowledge base doesn't hold (test `an_empty_candidate_set_is_low_evidence_and_asks_nothing`).
 
 ---
 

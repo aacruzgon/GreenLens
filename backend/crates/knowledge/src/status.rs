@@ -57,7 +57,8 @@ pub struct StatusInput<'a> {
 /// Why a result is ambiguous, which picks the kind of question.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ambiguity {
-    /// Every score is zero because the indicators came back `unsure` (or unanswered): ask for
+    /// Every score is zero because the indicators came back `unsure` (or unanswered), and the
+    /// classifier named no candidate at medium or more (its weight makes a score): ask for
     /// a photo.
     AllUnsure,
     /// Scores differ but the lead is too small, or there is no positive evidence: ask an
@@ -314,6 +315,39 @@ mod tests {
             decide(&input(&s, &clean)).status,
             DiagnosisStatus::Confirmed
         );
+    }
+
+    /// Contracts 7's example: the classifier's early blight at 0.71, every indicator `unsure`.
+    /// Its weight makes a score, so the run asks the user early blight's target rings (the
+    /// heaviest indicator nobody settled) instead of a close-up the classifier already read.
+    #[test]
+    fn a_head_call_with_unsure_indicators_asks_its_heaviest_indicator() {
+        let profiles = fixtures::problems();
+        let mut cands = fixtures::candidates(
+            &profiles,
+            &["tomato_early_blight", "tomato_septoria_leaf_spot"],
+        );
+        cands[0].classifier = Some(Confidence::saturating(0.71));
+        let ev: Vec<_> = cands
+            .iter()
+            .flat_map(Candidate::indicators)
+            .map(|i| fixtures::evidence(&i.id, i.weight.get(), Answer::Unsure, EvidenceSource::Vlm))
+            .collect();
+        let ranked = scored(&cands, &ev);
+        let s: Vec<_> = ranked.iter().map(|s| s.score.clone()).collect();
+        let clean = BTreeSet::new();
+        let mut i = input(&s, &clean);
+        i.findings.classifier_problem = true;
+        let d = decide(&i);
+        assert_eq!(d.status, DiagnosisStatus::Uncertain);
+        assert!(!d.low_evidence);
+        assert_eq!(d.ambiguity, Some(Ambiguity::Undecided));
+        let q = choose_question(Ambiguity::Undecided, &ranked, &AnswerSet::new(&ev)).unwrap();
+        let QuestionChoice::Indicator { indicator, .. } = q else {
+            panic!("expected an indicator question, got {q:?}");
+        };
+        let heaviest = cands[0].indicators().max_by_key(|i| i.weight).unwrap();
+        assert_eq!(indicator.id, heaviest.id);
     }
 
     #[test]

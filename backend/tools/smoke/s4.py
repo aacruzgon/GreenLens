@@ -470,6 +470,7 @@ class S4:
         need(swept, f"no {stage} stage started {STALE_S[step] - SLACK_S} s or more after the kill's "
              f"event: the {step} step committed before the kill landed, or was re-run by "
              f"something other than the sweep")
+        need(len(swept) == 1, f"the sweep re-ran {stage} {len(swept)} times, not once")
         commits = {"retrieve": "candidates_selected", "score": "diagnosis", "plan": "plan_ready"}
         done = st.of(commits[step], after=k["seq"], run=run)
         need(done, f"no {commits[step]} after the kill: the recovered {step} step didn't commit")
