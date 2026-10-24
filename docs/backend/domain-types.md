@@ -1,6 +1,6 @@
 # PDM Backend: `domain` contract types
 
-> **Status:** Draft v0.3.5, 2026-10-23. v0.3.5: `PlanStepDraft.farm_citations`, the farm records a plan-writer step cites, optional and omitted when empty, strings that validation parses so a bad id refuses the step and not the answer (EON E5.4). v0.3.4: the farm connectors' wire types ([connectors](../connectors/README.md), roadmap E1.1): `Connector` and its enums, the connect requests, `FarmCitation`, `FarmRecordId` and `ConnectorId`; `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations`, absent when empty; the `search_farm_records` tool. v0.3.3: memories gain a `topic`, and the beliefs mirrored into Agent Memory get their wire types (`Belief`, `PlantBeliefs`, `BeliefHit`, `MemorySearch`). v0.3.2: the schema links point to `backend/migrations/schema.surql`. v0.3.1: `JobErrorCode`'s comments follow contracts 5: `max_runtime_exceeded` is settled (question 18), and `unsupported_version` and `model_error` carry the contract's full meaning. v0.3: `PastWeather` gains `longest_humid_run_days` (contracts v0.10, section 7), the longest run of humid days in the past week, so a past humid stretch is detectable. v0.2: follows contracts v0.9 and v0.10 where they touch shapes: `JobError.code` is a `JobErrorCode` (`max_runtime_exceeded` and `unknown_label_version` included), the `model_versions` keys are `ModelVersionKey` constants, `Invite.created_by` is optional, worker payloads never carry a mask URL and `complete` results are read by the job's kind (both as v0.1 had them); `BoxFormat`'s comments name the models of each format. v0.1: every shape of [contracts.md](../architecture/contracts.md) v0.8.2 as compiled Rust, section by section, with the serde and schema decisions explained and a TypeScript → Rust map.
+> **Status:** Draft v0.3.6, 2026-10-23. v0.3.6: `SpeciesSeed.frost`, a species' frost tenderness (`tender` or `hardy`), top level and absent when the sources don't say (backend S5 work 9). v0.3.5: `PlanStepDraft.farm_citations`, the farm records a plan-writer step cites, optional and omitted when empty, strings that validation parses so a bad id refuses the step and not the answer (EON E5.4). v0.3.4: the farm connectors' wire types ([connectors](../connectors/README.md), roadmap E1.1): `Connector` and its enums, the connect requests, `FarmCitation`, `FarmRecordId` and `ConnectorId`; `PlanStep.farm_citations`, `ActionPlan.farm_records` and `Message.farm_citations`, absent when empty; the `search_farm_records` tool. v0.3.3: memories gain a `topic`, and the beliefs mirrored into Agent Memory get their wire types (`Belief`, `PlantBeliefs`, `BeliefHit`, `MemorySearch`). v0.3.2: the schema links point to `backend/migrations/schema.surql`. v0.3.1: `JobErrorCode`'s comments follow contracts 5: `max_runtime_exceeded` is settled (question 18), and `unsupported_version` and `model_error` carry the contract's full meaning. v0.3: `PastWeather` gains `longest_humid_run_days` (contracts v0.10, section 7), the longest run of humid days in the past week, so a past humid stretch is detectable. v0.2: follows contracts v0.9 and v0.10 where they touch shapes: `JobError.code` is a `JobErrorCode` (`max_runtime_exceeded` and `unknown_label_version` included), the `model_versions` keys are `ModelVersionKey` constants, `Invite.created_by` is optional, worker payloads never carry a mask URL and `complete` results are read by the job's kind (both as v0.1 had them); `BoxFormat`'s comments name the models of each format. v0.1: every shape of [contracts.md](../architecture/contracts.md) v0.8.2 as compiled Rust, section by section, with the serde and schema decisions explained and a TypeScript → Rust map.
 
 Companion to the [backend architecture](README.md) and to the [`domain` crate](domain.md). Sections 1–10 follow [contracts.md](../architecture/contracts.md) 1–10, so "contracts 7" and "domain-types 7" describe the same shapes. Every listing is copied from the compiled source of `crates/domain` (`cargo check`, `cargo test` and `cargo clippy --all-targets` pass on Rust 1.99.1 with serde 1.0.229, utoipa 6.0.0, schemars 1.2.3, chrono 0.4.45 and ulid 3.0.0); the module paths are in [the map](#11-typescript-to-rust-map).
 
@@ -6364,6 +6364,12 @@ pub struct FarmCitation {
     pub at: Timestamp,
     /// Opens the record in Slack or Drive (or, for an `era` connector, the simulator).
     pub link: String,
+    /// The record as the farm wrote it, rates included: one stored chunk, at most 2,000
+    /// characters. Set only for a record of an `era` connector, whose data is synthetic; the app
+    /// shows it in a sheet, labelled as Era's demo data. A vendor record's citation never has it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    pub text: Option<String>,
 }
 
 /// One `search_farm_records` result: the record's text, framed as data for the model, and its
@@ -6387,6 +6393,7 @@ fn a_farm_citation_is_exactly_its_contract() {
         author: Some("Sam".to_owned()),
         at: "2026-10-12T07:30:00Z".parse().unwrap(),
         link: "https://maplerow.slack.com/archives/C024BE91L/p1729000000000100".to_owned(),
+        text: None,
     };
     assert_eq!(
         serde_json::to_value(&citation).unwrap(),
@@ -6409,6 +6416,14 @@ fn a_farm_citation_is_exactly_its_contract() {
             .get("author")
             .is_none()
     );
+    // An `era` record's citation carries its text, rates included.
+    let era = FarmCitation {
+        text: Some("Sprayed bed 3 at 2.5 L/ha.".to_owned()),
+        ..citation.clone()
+    };
+    let v = serde_json::to_value(&era).unwrap();
+    assert_eq!(v["text"], "Sprayed bed 3 at 2.5 L/ha.");
+    assert_eq!(serde_json::from_value::<FarmCitation>(v).unwrap(), era);
     let hit = FarmRecordHit {
         text: "Rings on bed 3 again.".to_owned(),
         citation,
@@ -6673,6 +6688,16 @@ pub enum LightNeed {
     Shade,
 }
 
+/// `SpeciesSeed.frost`: how a species takes a light frost.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Frost {
+    /// Damaged by a light frost.
+    Tender,
+    /// Stands a light frost.
+    Hardy,
+}
+
 /// `SpeciesSeed.care`: required when `profile` is `full`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -6724,6 +6749,11 @@ pub struct SpeciesSeed {
     /// Required when `full`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub care: Option<Care>,
+    /// Frost tenderness: `tender` is damaged by a light frost, `hardy` stands one. Absent when
+    /// the sources don't say. Separate from `care.hardiness_zones`, whose `annual` means "grown
+    /// as an annual": lettuce is grown as an annual but stands a light frost.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frost: Option<Frost>,
     /// Checked against `classifier_labels.yaml` at ingestion.
     pub classifier_supported: bool,
     /// The text prompt `BioCLIP` scores against.

@@ -578,6 +578,8 @@ DEFINE FIELD OVERWRITE scientific_name      ON species TYPE string;
 DEFINE FIELD OVERWRITE common_names         ON species TYPE array<string>;
 DEFINE FIELD OVERWRITE profile              ON species TYPE "full" | "label_only";
 DEFINE FIELD OVERWRITE care                 ON species TYPE option<object> FLEXIBLE;
+-- frost tenderness (contracts 10): tender is damaged by a light frost, hardy stands one; none when the sources don't say
+DEFINE FIELD OVERWRITE frost                ON species TYPE option<"tender" | "hardy">;
 DEFINE FIELD OVERWRITE classifier_supported ON species TYPE bool DEFAULT false;
 DEFINE FIELD OVERWRITE bioclip_label        ON species TYPE string;
 DEFINE FIELD OVERWRITE sources              ON species TYPE array<record<source>> DEFAULT [];

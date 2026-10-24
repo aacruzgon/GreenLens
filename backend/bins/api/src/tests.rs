@@ -7,6 +7,7 @@ mod connect;
 mod connector_deletion;
 mod connectors;
 mod fake_store;
+mod pending_actions;
 mod pipeline;
 
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
@@ -1040,4 +1041,33 @@ fn the_committed_openapi_document_matches_the_types() {
         committed.trim_end() == generated,
         "backend/openapi.json is stale: run `cargo run -p api -- openapi > openapi.json` in backend/"
     );
+}
+
+#[test]
+fn the_poison_control_text_setting_reaches_the_agent_config() {
+    let products =
+        agent::safety::ProductCatalogue::new(&domain::knowledge::ProductsSeed::default());
+    let default = crate::wiring::agent_config(&config(), &products).unwrap();
+    assert_eq!(
+        default.poison_control_text,
+        agent::safety::routes::POISON_CONTROL_TEXT
+    );
+
+    let local = "Ontario Poison Centre: 1 800 000 0000.";
+    let set =
+        crate::wiring::agent_config(&config_with(&[("POISON_CONTROL_TEXT", local)]), &products)
+            .unwrap();
+    assert_eq!(set.poison_control_text, local);
+    // Nothing else about the agent changes.
+    assert_eq!(set.summarise_every, default.summarise_every);
+
+    // A text the dose check would replace stops start-up.
+    let refused = crate::wiring::agent_config(
+        &config_with(&[(
+            "POISON_CONTROL_TEXT",
+            "Poison Centre, 24/7: 1-800-268-9017.",
+        )]),
+        &products,
+    );
+    assert!(refused.is_err());
 }

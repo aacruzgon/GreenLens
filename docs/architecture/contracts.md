@@ -1,6 +1,8 @@
 # PDM Data Contracts
 
-> **Status:** Draft v0.10.34, 2026-10-23. Companion to the [architecture document](README.md).
+> **Status:** Draft v0.10.36, 2026-10-23. Companion to the [architecture document](README.md).
+> **v0.10.36**: `FarmCitation.text?` is the cited record as the farm wrote it, rates included, set only when the record's connector is an `era` one (its data is synthetic), so the app can show it in a sheet instead of opening the simulator's link (EON decision 10); plans and messages store it with the citation, and no route returns a record (sections 7, 8, 9).
+> **v0.10.35**: `SpeciesSeed.frost?: "tender" | "hardy"` (section 10), a top-level field outside `care`: tender is damaged by a light frost, hardy stands one, absent when the sources don't say; `get_species_profile` returns it with the profile (section 8); backend roadmap S5 work 9's domain and schema half, the seed values are the knowledge track's.
 > **v0.10.34**: the dose check reads a clock time after an opening parenthesis as it would without one, so "on 31 August (22:40 UTC)" passes while "Mix copper (18:40 utc)" still fails (EON gap G20's re-run).
 > **v0.10.33**: section 7 says a necrotic group under `min_spot_share` (2e-5) of its leaf is a speck the `SpotSegmenter` folds into the leaf, not a spot, for the spot measurements and the `healthy` rule, and open question 10's spot colour thresholds are set (vision evaluation 6, M15); no wire shape changed.
 > **v0.10.32**: plan validation checks farm citations (EON E5.4): a step citing a farm record the plan writer wasn't given, or citing farm records without a knowledge source, fails, and `ActionPlan.farm_records` holds the records the passing steps cite; the plan writer's output steps (and `revise_plan`'s `changed_steps`) take the optional `farm_citations`, as strings, so an id that doesn't parse fails its step and not the answer; no API wire shape changed.
@@ -1512,7 +1514,7 @@ interface ActionPlan {
 }
 ```
 
-**Farm records in a plan.** `farm_citations` and `farm_records` are optional and omitted when empty, and a plan stored before connectors reads as citing none. A step still needs at least one knowledge source in `citations`: farm records add the farm's history, never the advice. Every id in a step's `farm_citations` must appear in `ActionPlan.farm_records`. The plan writer is given the top 4 hits of one search of the garden's records, for the plant and the leading candidate, and a step may cite only those; a `revise_plan` preview may cite only the base plan's `farm_records` ([connectors 7](../connectors/README.md#7-the-agent), [EON E5.4](../EON/README.md#e5-the-agent)). A deleted record leaves its `FarmCitation` in a stored plan as it was.
+**Farm records in a plan.** `farm_citations` and `farm_records` are optional and omitted when empty, and a plan stored before connectors reads as citing none. A step still needs at least one knowledge source in `citations`: farm records add the farm's history, never the advice. Every id in a step's `farm_citations` must appear in `ActionPlan.farm_records`. The plan writer is given the top 4 hits of one search of the garden's records, for the plant and the leading candidate, and a step may cite only those; a `revise_plan` preview may cite only the base plan's `farm_records` ([connectors 7](../connectors/README.md#7-the-agent), [EON E5.4](../EON/README.md#e5-the-agent)). A deleted record leaves its `FarmCitation` in a stored plan as it was. A citation of an `era` record carries its `text` ([`FarmCitation`](#9-gardens-plants-tasks-and-account) and [connectors 7](../connectors/README.md#7-the-agent)).
 
 **Steps to tasks.**
 
@@ -2020,6 +2022,7 @@ interface FarmCitation {
   author?: string;                   // display name
   at: Timestamp;                     // the message's time, or the document's modifiedTime
   link: string;                      // opens Slack or Drive (for an "era" connector, the simulator)
+  text?: string;                     // the record as the farm wrote it, one stored chunk of at most 2,000 characters; only for a record of an "era" connector, never for a vendor's; omitted otherwise
 }
 ```
 
@@ -2341,6 +2344,8 @@ interface SpeciesSeed {
     mature_height_cm?: number;       // the growth_stalled rule stops here
     notes?: string;
   };
+  frost?: "tender" | "hardy";       // tender: damaged by a light frost; hardy: stands one; absent when the sources don't say.
+                                     // Not hardiness_zones: "annual" there means grown as an annual, and lettuce is one that stands a light frost
   classifier_supported: boolean;     // checked against classifier_labels.yaml at ingestion
   bioclip_label: string;             // the class text BioCLIP's prompt templates wrap ("a photo of {label}."):
                                      // "<scientific name> with common name <common name>", e.g.
@@ -2512,6 +2517,8 @@ The contracts changed these parts of the architecture document, which has been u
 | v0.10.32: plan validation's farm-citation rules; the plan writer's steps take `farm_citations` | none (7, farm connectors, already says the plan writer passes its top 4 hits and a plan lists the records it cites) |
 | v0.10.33: a necrotic group under `min_spot_share` of its leaf is a speck folded into the leaf, not a spot, for the spot measurements and the `healthy` rule; open question 10's spot colour thresholds are set | 6.7 (spots), 15 (decision 17) |
 | v0.10.34: a clock time after an opening parenthesis is a clock time to the dose check ("on 31 August (22:40 UTC)") | none: 11 names clock times only as a category, which this doesn't change |
+| v0.10.35: `SpeciesSeed.frost` (`tender` or `hardy`), top-level, absent when unknown | 5 (Species profiles) |
+| v0.10.36: `FarmCitation.text?`, set only for a record of an `era` connector, so the app shows an Era record in a sheet (EON decision 10) | 7 (farm connectors: an `era` citation carries the record's text; the dose check still covers the model's sentences only) |
 
 ---
 
