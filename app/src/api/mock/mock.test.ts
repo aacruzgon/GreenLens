@@ -137,6 +137,21 @@ describe("fixtures over REST", () => {
     expect(tl[2].primary?.name).toBe("Early blight");
   });
 
+  it("dates no seeded scan or event after now, early in the morning too, and keeps today's in order", () => {
+    for (const [hour, minute] of [[0, 3], [7, 30], [11, 0], [15, 0]]) {
+      const now = new Date(2026, 9, 24, hour, minute);
+      const seed = buildSeed(new DateKit(now));
+      const times = seed.scans.flatMap((s) => [s.scan.created_at, ...s.events.map((e) => e.ts)]);
+      for (const t of times) expect(Date.parse(t)).toBeLessThanOrEqual(now.getTime());
+      const today = seed.scans.filter((s) => new Date(s.scan.created_at).getDate() === 24);
+      expect(today.length).toBeGreaterThan(0);
+      for (const s of today) {
+        const ts = s.events.map((e) => Date.parse(e.ts));
+        expect(ts).toEqual([...ts].sort((a, b) => a - b));
+      }
+    }
+  });
+
   it("forecasts the frost on the coming Thursday within the home's 6 days, and on Friday on a Thursday", () => {
     // Monday Oct 19, 2026 to Sunday Oct 25: the strip shows the 6 days after today.
     for (let day = 19; day <= 25; day++) {

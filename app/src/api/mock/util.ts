@@ -139,9 +139,18 @@ export class DateKit {
     this.d = now.getDate();
   }
 
-  /** A UTC timestamp for the local day `daysAgo` days back (negative: ahead), at hour:minute. */
+  /**
+   * A UTC timestamp for the local day `daysAgo` days back (negative: ahead), at hour:minute. Today's fixtures sit
+   * in the morning; before noon their times are squeezed, in order, into the part of today already past, so none
+   * is later than now and a scan taken now is the plant's latest.
+   */
   ts(daysAgo: number, hour = 9, minute = 0): string {
-    return isoSeconds(new Date(this.y, this.m, this.d - daysAgo, hour, minute));
+    const t = new Date(this.y, this.m, this.d - daysAgo, hour, minute);
+    if (daysAgo !== 0) return isoSeconds(t);
+    const midnight = new Date(this.y, this.m, this.d).getTime();
+    const noon = new Date(this.y, this.m, this.d, 12).getTime();
+    const squeeze = Math.min(1, (this.now.getTime() - midnight) / (noon - midnight));
+    return isoSeconds(new Date(midnight + (t.getTime() - midnight) * squeeze));
   }
 
   /** A `YYYY-MM-DD` local date. */
