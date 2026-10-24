@@ -118,7 +118,8 @@ pub struct Meter {
     inner: Arc<dyn ChatModel>,
     calls: Mutex<Vec<Call>>,
     tool_calls: Mutex<Vec<ToolCall>>,
-    /// The chat model's streamed text, every call in order (EON gap G20).
+    /// The chat model's streamed text and the plan writer's answers, every call in order (EON
+    /// gap G20).
     text: Mutex<String>,
 }
 
@@ -294,6 +295,14 @@ impl ChatModel for Meter {
     async fn complete(&self, request: &ChatRequest) -> Result<ChatCompletion, ModelError> {
         let completion = self.inner.complete(request).await?;
         self.record(request.purpose, completion.usage);
+        if request.purpose == ChatPurpose::PlanWriter {
+            // The plan writer's raw JSON, before validation drops a step; one paragraph each.
+            let mut text = self.text.lock().unwrap_or_else(PoisonError::into_inner);
+            if !text.is_empty() {
+                text.push_str("\n\n");
+            }
+            text.push_str(&completion.text);
+        }
         Ok(completion)
     }
 }

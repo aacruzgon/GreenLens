@@ -24,7 +24,9 @@ pub struct Report {
     pub drive_synced: bool,
     /// The sync and E8.2's journal check.
     pub sync: SyncReport,
-    /// The scans of `garden.json` the loader couldn't write (they need the knowledge base).
+    /// The plants of `garden.json` created without a species: the knowledge seed hasn't it.
+    pub plants_without_species: Vec<String>,
+    /// The scans of `garden.json` the loader couldn't write, each with why.
     pub skipped_scans: Vec<String>,
     /// Every question, with its runs.
     pub questions: Vec<QuestionReport>,
@@ -75,7 +77,8 @@ pub struct RunReport {
     pub outcome: String,
     /// The route of `message_started` (`care_question`, `off_topic`, …); empty if none came.
     pub route: String,
-    /// The stored answer.
+    /// The stored answer; for a plan question, the plan's text: its summary, each step's title
+    /// and detail, and what to watch for, one paragraph each.
     pub text: String,
     /// The model's text across all calls of the turn, before the dose check. It differs from
     /// `text` where a sentence was replaced. A paragraph break joins each call's text to the
@@ -95,7 +98,7 @@ pub struct RunReport {
     /// Every tool call the model made, with its arguments, including any the turn did not run
     /// (the last call at the loop cap, a stream that failed or refused) (EON gap G18).
     pub tool_calls: Vec<crate::meter::ToolCall>,
-    /// The vendor ids of `farm_citations`.
+    /// The vendor ids of `farm_citations`; for a plan question, of the plan's `farm_records`.
     pub farm_citations: Vec<String>,
     /// Every model call of the turn.
     pub calls: Vec<Call>,
@@ -107,6 +110,48 @@ pub struct RunReport {
     pub cost_usd: f64,
     /// The error events, if any.
     pub errors: Vec<String>,
+    /// The plan the writer wrote, for a plan question.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan: Option<PlanReport>,
+}
+
+/// A plan the plan writer wrote for a plan question, validated as the pipeline stores it.
+#[derive(Debug, Clone, Serialize)]
+pub struct PlanReport {
+    /// The `garden.json` scan it was written for.
+    pub scan: String,
+    /// Its summary.
+    pub summary: String,
+    /// Its steps that passed validation.
+    pub steps: Vec<PlanStepReport>,
+    /// What to watch for.
+    pub watch_for: Vec<String>,
+    /// The farm records its steps cite (`ActionPlan.farm_records`).
+    pub farm_records: Vec<FarmRecordReport>,
+    /// The rules the final answer still broke; their steps were dropped.
+    pub dropped: Vec<String>,
+    /// The model that wrote it.
+    pub llm_model: String,
+}
+
+/// One step of a [`PlanReport`].
+#[derive(Debug, Clone, Serialize)]
+pub struct PlanStepReport {
+    /// Its title.
+    pub title: String,
+    /// Its detail.
+    pub detail: String,
+    /// The farm records it cites.
+    pub farm_citations: Vec<String>,
+}
+
+/// A farm record a plan cites.
+#[derive(Debug, Clone, Serialize)]
+pub struct FarmRecordReport {
+    /// Slack `"<channel>/<ts>"` or a Drive file id.
+    pub vendor_id: String,
+    /// `"#field-reports"`, `"Spray log 2026"`.
+    pub title: String,
 }
 
 impl RunReport {
@@ -139,6 +184,51 @@ fn tally<'a>(verdicts: impl Iterator<Item = &'a crate::score::Verdict>) -> Strin
 }
 
 impl Report {
+    /// What `garden.json`'s loader left out: plants without a species, scans not written.
+    fn loading_notes(&self, out: &mut String) {
+        if !self.plants_without_species.is_empty() {
+            let _ = writeln!(
+                out,
+                "\nPlants without a species (not in the knowledge seed): {}.",
+                self.plants_without_species.join("; ")
+            );
+        }
+        if !self.skipped_scans.is_empty() {
+            let _ = writeln!(
+                out,
+                "\nScans not loaded: {}.",
+                self.skipped_scans.join("; ")
+            );
+        }
+    }
+
+    /// A line per plan question: the farm records each run's plan cites.
+    fn plan_citations(&self, model: &str, out: &mut String) {
+        for q in &self.questions {
+            let cited: Vec<String> = q
+                .runs
+                .iter()
+                .filter(|r| r.model == model && r.plan.is_some())
+                .map(|r| {
+                    let ids = if r.farm_citations.is_empty() {
+                        "none".to_owned()
+                    } else {
+                        r.farm_citations.join(", ")
+                    };
+                    format!("run {}: {ids}", r.run)
+                })
+                .collect();
+            if !cited.is_empty() {
+                let _ = writeln!(
+                    out,
+                    "\n{}: the farm records the plan cites: {}.",
+                    q.id,
+                    cited.join("; ")
+                );
+            }
+        }
+    }
+
     /// One Markdown table per model: each question's measures over its runs, its tool calls,
     /// tokens and cost (means over runs).
     #[expect(
@@ -199,6 +289,7 @@ impl Report {
                     cost / n,
                 );
             }
+            self.plan_citations(model, &mut out);
             let _ = writeln!(out, "\nTotal for {model}: US${total:.2}\n");
         }
         let verdict = |j: &JournalCheck| {
@@ -222,6 +313,7 @@ impl Report {
                 let _ = writeln!(out, ". Drive: not synced");
             }
         }
+        self.loading_notes(&mut out);
         if self.failed_turns > 0 {
             let _ = writeln!(
                 out,
