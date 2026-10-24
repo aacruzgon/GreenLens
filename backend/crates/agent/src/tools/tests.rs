@@ -164,6 +164,7 @@ impl Kb {
             neighbours: &self.neighbours,
             beneficials_seen: false,
             known_sources: &self.sources,
+            farm_records: &[],
         }
     }
 }

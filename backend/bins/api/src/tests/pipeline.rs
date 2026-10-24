@@ -2167,3 +2167,189 @@ async fn a_resubmitted_run_does_not_keep_the_earlier_suggestion() {
     let (store, auth) = store_submitting(snap, None);
     assert_eq!(submit(store, auth).await, StatusCode::ACCEPTED);
 }
+
+// ---------------------------------------------------------------------------------------------
+// The plan step's farm records (EON E5.4)
+// ---------------------------------------------------------------------------------------------
+
+/// What the plan writer was given, and the plan it answers with.
+struct FarmPlans {
+    given: Mutex<Vec<domain::connectors::FarmRecordHit>>,
+}
+
+#[async_trait::async_trait]
+impl PlanAuthor for FarmPlans {
+    async fn write_plan(
+        &self,
+        input: &agent::plan_writer::PlanInput<'_>,
+    ) -> Result<agent::plan_writer::WrittenPlan, agent::PlanWriterError> {
+        *self.given.lock().unwrap() = input.farm_records.to_vec();
+        let cited = input.farm_records[0].citation.clone();
+        let step = serde_json::from_value(serde_json::json!({
+            "id": "s1", "order": 1, "title": "Check the lower leaves", "detail": "Look for spots.",
+            "category": "monitoring", "when": {"kind": "now"}, "targets": [],
+            "citations": ["ext_tomato"], "farm_citations": [cited.record_id]
+        }))
+        .unwrap();
+        Ok(agent::plan_writer::WrittenPlan {
+            summary: "Early blight.".into(),
+            steps: vec![step],
+            watch_for: Vec::new(),
+            citations: vec!["ext_tomato".parse().unwrap()],
+            farm_records: vec![cited],
+            dropped: Vec::new(),
+            llm_model: "scripted".into(),
+            prompt_version: agent::prompt::PLAN_PROMPT_VERSION.into(),
+            usage: domain::chat::Usage::default(),
+        })
+    }
+}
+
+fn farm_hit(vendor: &str, system: &str) -> domain::ports::FarmRecordMatch {
+    domain::ports::FarmRecordMatch {
+        hit: serde_json::from_value(serde_json::json!({
+            "text": format!("record {vendor}"),
+            "citation": {
+                "record_id": format!("01JAX3K9T6R2B8V0QZ4M7D1E5C.0.{vendor}"),
+                "system": system, "title": "Spray log 2026", "at": "2026-09-04T18:00:00Z",
+                "link": "http://localhost:4003/file/d/D_SPRAY/view"
+            }
+        }))
+        .unwrap(),
+        similarity: 0.5,
+    }
+}
+
+/// The plan step searches the garden's farm records once, for the plant and the leading
+/// candidate, gives the hits to the plan writer and stores the records its steps cite in
+/// `ActionPlan.farm_records`.
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "every port the plan step reads, set up in order"
+)]
+async fn the_plan_step_gives_the_writer_farm_records_and_stores_the_cited_ones() {
+    use domain::{
+        connectors::FarmRecordKind,
+        ports::{EmbedMode, Embedding, EmbeddingModel, StepClaim, StepOutput},
+        rules::steps::PipelineStep,
+    };
+
+    let diagnosis: domain::records::diagnosis::Diagnosis<Stored> =
+        serde_json::from_value(serde_json::json!({
+            "id": "01JAX3K9T6R2B8V0QZ4M7D1E60", "scan_id": SCAN, "run": 1, "status": "confirmed",
+            "low_evidence": false,
+            "primary": {
+                "problem_id": "tomato_early_blight", "name": "Early blight", "kind": "fungal",
+                "score": 5, "matched": [], "contradicted": [], "unsure": [],
+                "weather_fit": "favourable"
+            },
+            "candidates": [], "organisms": [], "soil": [], "risks": [],
+            "evidence_basis": {"user_input": [], "photo": [], "modelled": []},
+            "citations": [], "model_versions": {}, "created_at": NOW
+        }))
+        .unwrap();
+    let mut snap = snapshot(false);
+    snap.scan.status = ScanStatus::Diagnosed;
+    snap.diagnosis = Some(diagnosis);
+
+    let stored: Arc<Mutex<Option<domain::records::plan::ActionPlan>>> = Arc::default();
+    let mut store = FakeStore::default();
+    store
+        .scan_repo
+        .expect_snapshot()
+        .returning(move |_| Ok(snap.clone()));
+    store
+        .farm_record_store
+        .expect_garden_has_records()
+        .returning(|_| Ok(true));
+    store
+        .farm_record_store
+        .expect_search_records_for_plan()
+        .withf(|garden, _, _, k| garden.to_string() == GARDEN && *k == 4)
+        .times(2)
+        .returning(|_, _, filter, _| {
+            Ok(match filter.kind {
+                Some(FarmRecordKind::Document) => vec![farm_hit("D_SPRAY", "google_drive")],
+                _ => Vec::new(),
+            })
+        });
+    let keep = stored.clone();
+    store
+        .step_repo
+        .expect_commit_step()
+        .times(1)
+        .returning(move |_, output, _| {
+            let StepOutput::Plan(write) = output else {
+                panic!("a plan");
+            };
+            *keep.lock().unwrap() = Some(write.plan);
+            Ok(None)
+        });
+
+    let mut knowledge = MockKnowledgeStore::new();
+    knowledge.expect_problems().returning(|_| Ok(Vec::new()));
+    knowledge.expect_treatments().returning(|_| Ok(Vec::new()));
+    knowledge.expect_citations().returning(|_| Ok(Vec::new()));
+    let mut memory = MockMemoryStore::new();
+    memory
+        .expect_shared_for_plan()
+        .returning(|_, _| Ok(Vec::new()));
+    let mut beliefs = MockBeliefStore::new();
+    beliefs.expect_enabled().return_const(false);
+    let mut embedder = MockTextEmbedder::new();
+    embedder
+        .expect_embed()
+        .withf(|mode, texts| {
+            *mode == EmbedMode::Query && texts == ["Tomato by the fence Early blight"]
+        })
+        .times(1)
+        .returning(|_, _| Ok(vec![Embedding(vec![1.0, 0.0])]));
+    // The scan's pipeline memory is best effort: no vector, no memory.
+    embedder
+        .expect_embed()
+        .withf(|mode, _| *mode == EmbedMode::Document)
+        .returning(|_, _| Ok(Vec::new()));
+    embedder.expect_model().returning(|| EmbeddingModel {
+        name: "test".into(),
+        version: "1".into(),
+        dimension: 2,
+    });
+    let author = Arc::new(FarmPlans {
+        given: Mutex::default(),
+    });
+    let pipeline = Pipeline::new(PipelineDeps {
+        store: Arc::new(store),
+        writer: Arc::new(Recorder::default()),
+        knowledge: Arc::new(knowledge),
+        weather: Arc::new(MockWeatherProvider::new()),
+        memory: Arc::new(memory),
+        beliefs: Arc::new(beliefs),
+        embedder: Arc::new(embedder),
+        blobs: Arc::new(MockBlobStore::new()),
+        measurer: Arc::new(NoMeasurer),
+        plan_author: author.clone(),
+        clock: Arc::new(FixedClock::at(now())),
+        ids: Arc::new(SequentialIds::default()),
+        config: PipelineConfig::default(),
+    });
+
+    pipeline
+        .follow_up(pipeline::FollowUp::Step(StepClaim {
+            scan: SCAN.parse().unwrap(),
+            step: PipelineStep::Plan,
+            run: Run(1),
+            stamp: now(),
+        }))
+        .await
+        .unwrap();
+
+    let given = author.given.lock().unwrap().clone();
+    assert_eq!(given, vec![farm_hit("D_SPRAY", "google_drive").hit]);
+    let plan = stored.lock().unwrap().clone().expect("a plan was stored");
+    assert_eq!(plan.farm_records, vec![given[0].citation.clone()]);
+    assert_eq!(
+        plan.steps[0].farm_citations,
+        vec![given[0].citation.record_id.clone()]
+    );
+}
