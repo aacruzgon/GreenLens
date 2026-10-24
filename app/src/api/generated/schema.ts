@@ -2667,6 +2667,30 @@ export interface components {
          * @enum {string}
          */
         MemoryTopic: "watering" | "feeding" | "treatment" | "pruning" | "planting" | "location" | "container" | "soil" | "light" | "health" | "harvest" | "other";
+        /** @description `Message` ([contracts 8]). Tool calls and results are stored but never sent to the app. */
+        Message: {
+            /** @description The user's images. */
+            attachments: components["schemas"]["Attachment"][];
+            /** @description Sources cited. */
+            citations: components["schemas"]["Citation"][];
+            /** @description When it was stored. */
+            created_at: components["schemas"]["Timestamp"];
+            /**
+             * @description The farm records an assistant message cites ([connectors 7]); absent when it cites none,
+             *     and read as empty from a message stored before connectors.
+             */
+            farm_citations?: components["schemas"]["FarmCitation"][];
+            /** @description The message. */
+            id: components["schemas"]["Id"];
+            /** @description The stream dropped before `message_completed`. */
+            interrupted: boolean;
+            /** @description Confirmation cards. */
+            pending_actions: components["schemas"]["PendingAction"][];
+            /** @description Who wrote it. */
+            role: components["schemas"]["MessageRole"];
+            /** @description The text, dose-checked when the assistant wrote it. */
+            text: string;
+        };
         /** @description `message_completed` data. */
         MessageCompleted: {
             /** @description The stored message. */
@@ -2682,6 +2706,11 @@ export interface components {
             notes?: string;
             /** @description The rating. */
             rating: components["schemas"]["Rating"];
+        };
+        /** @description The replay of a finished chat message under its idempotency key: `200 { message }`. */
+        MessageReplay: {
+            /** @description The stored assistant message. */
+            message: components["schemas"]["Message"];
         };
         /**
          * @description `Message.role`.
@@ -5035,13 +5064,14 @@ export interface operations {
             };
         };
         responses: {
-            /** @description `event: name`, `data: ChatEvent`; a replay is `application/json` MessageReplay */
+            /** @description `event: name`, `data: ChatEvent` as SSE; a finished turn's replay is `application/json` MessageReplay */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "text/event-stream": components["schemas"]["ChatEvent"];
+                    "application/json": components["schemas"]["MessageReplay"];
                 };
             };
             400: {
